@@ -33,6 +33,9 @@ export default function Home() {
   const [period, setPeriod] = useState("7 days");
   const [notice, setNotice] = useState("");
   const [quickOpen, setQuickOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   const showNotice = (message: string) => {
     setNotice(message);
@@ -41,25 +44,31 @@ export default function Home() {
 
   return (
     <main className="app-shell">
-      <aside className="sidebar">
+      <aside className={mobileNavOpen ? "sidebar mobile-open" : "sidebar"}>
         <button className="brand" onClick={() => setView("Overview")}><span className="brand-mark"><i/><b>V</b></span><span className="brand-name">Vanteloq<small>OPERATING INTELLIGENCE</small></span></button>
         <div className="workspace-switcher"><span className="workspace-avatar">SW</span><span><b>Supplement World</b><small>Newcastle · Edmonton</small></span><span className="chev">⌄</span></div>
         <nav aria-label="Primary navigation">
-          {nav.map(([group, items]) => <section className="nav-group" key={group}><p>{group}</p>{items.map(item => <button key={item} className={view === item ? "nav-item active" : "nav-item"} onClick={() => setView(item)}><Icon name={item}/>{item}{item === "Action Centre" && <span className="badge">3</span>}</button>)}</section>)}
+          {nav.map(([group, items]) => <section className="nav-group" key={group}><p>{group}</p>{items.map(item => <button key={item} className={view === item ? "nav-item active" : "nav-item"} onClick={() => {setView(item);setMobileNavOpen(false)}}><Icon name={item}/>{item}{item === "Action Centre" && <span className="badge">3</span>}</button>)}</section>)}
         </nav>
-        <div className="side-bottom"><button className={view === "Integrations" ? "nav-item active" : "nav-item"} onClick={() => setView("Integrations")}><span className="nav-icon">⇄</span>Integrations</button><button className="nav-item"><span className="nav-icon">⚙</span>Settings</button><div className="profile"><span className="avatar">HI</span><span><b>Hussien</b><small>Manager</small></span><button aria-label="Account menu">•••</button></div></div>
+        <div className="side-bottom"><button className={view === "Integrations" ? "nav-item active" : "nav-item"} onClick={() => setView("Integrations")}><span className="nav-icon">⇄</span>Integrations</button><button className={view === "Settings" ? "nav-item active" : "nav-item"} onClick={() => setView("Settings")}><span className="nav-icon">⚙</span>Settings</button><div className="profile"><span className="avatar">HI</span><span><b>Hussien</b><small>Manager</small></span><button aria-label="Open account settings" onClick={() => setView("Settings")}>•••</button></div></div>
       </aside>
 
       <section className="main-panel">
-        <header className="topbar"><div><p className="eyebrow">{view === "Overview" ? "COMMAND CENTRE" : "WORKSPACE"}</p><h1>{view}</h1></div><div className="top-actions"><button className="icon-button" aria-label="Search">⌕</button><button className="icon-button notification" aria-label="Notifications">♢<span /></button><button className="primary" onClick={() => setQuickOpen(true)}>+ Quick action</button></div></header>
+        <header className="topbar"><button className="mobile-menu" aria-label="Open navigation" onClick={() => setMobileNavOpen(v=>!v)}>☰</button><div><p className="eyebrow">{view === "Overview" ? "COMMAND CENTRE" : "WORKSPACE"}</p><h1>{view}</h1></div><div className="top-actions"><button className="icon-button" aria-label="Search" onClick={() => setSearchOpen(true)}>⌕</button><button className="icon-button notification" aria-label="Notifications" onClick={() => setNotificationsOpen(v=>!v)}>♢<span /></button><button className="primary" onClick={() => setQuickOpen(true)}>+ Quick action</button></div></header>
 
         {view === "Integrations" ? <Integrations showNotice={showNotice} /> : view === "Action Centre" ? <TaskCentre showNotice={showNotice} openComposer={() => setQuickOpen(true)} /> : view === "Overview" ? <Dashboard period={period} setPeriod={setPeriod} showNotice={showNotice} navigate={setView} /> : <WorkspaceView view={view} showNotice={showNotice} />}
       </section>
       {quickOpen && <TaskComposer close={() => setQuickOpen(false)} saved={() => { setQuickOpen(false); setView("Action Centre"); showNotice("Task saved to the Action Centre"); }} />}
+      {searchOpen && <CommandSearch close={()=>setSearchOpen(false)} navigate={(next)=>{setView(next);setSearchOpen(false)}} />}
+      {notificationsOpen && <NotificationPanel close={()=>setNotificationsOpen(false)} navigate={(next)=>{setView(next);setNotificationsOpen(false)}} />}
       {notice && <div className="toast" role="status">{notice}</div>}
     </main>
   );
 }
+
+function CommandSearch({close,navigate}:{close:()=>void;navigate:(v:string)=>void}){const [query,setQuery]=useState("");const destinations=[...nav.flatMap(([,items])=>items),"Integrations","Settings"];const results=destinations.filter(x=>x.toLowerCase().includes(query.toLowerCase()));return <div className="modal-backdrop" onMouseDown={e=>{if(e.currentTarget===e.target)close()}}><div className="command-modal" role="dialog" aria-modal="true"><div className="command-input"><span>⌕</span><input autoFocus value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search tools, reports and workspaces…"/><button onClick={close}>Esc</button></div><div className="command-results"><small>GO TO</small>{results.map(x=><button key={x} onClick={()=>navigate(x)}><Icon name={x}/><span>{x}</span><b>↵</b></button>)}{!results.length&&<p>No matching workspace found.</p>}</div></div></div>}
+
+function NotificationPanel({close,navigate}:{close:()=>void;navigate:(v:string)=>void}){return <aside className="notification-panel"><div className="panel-head"><div><small>INBOX</small><h2>Notifications</h2></div><button onClick={close}>×</button></div>{[["Inventory","Stockout risk detected","Cadence Melonberry has 6 days of cover."],["Action Centre","Task due today","Confirm the Peak supplier order."],["Customers","Loyalty opportunity","18 VIP customers are becoming inactive."]].map(([target,title,copy])=><button className="notification-item" key={title} onClick={()=>navigate(target)}><i/><span><b>{title}</b><small>{copy}</small></span><em>›</em></button>)}<button className="mark-read" onClick={close}>Mark all as read</button></aside>}
 
 type Task = { id: number; title: string; detail: string; priority: "high" | "medium" | "low"; status: "open" | "in_progress" | "done"; assignee: string; dueDate: string | null };
 
