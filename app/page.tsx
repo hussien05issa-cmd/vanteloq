@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 
 const nav = [
   ["Command", ["Overview", "Action Centre", "Business Brief", "Advisor"]],
@@ -32,6 +32,7 @@ export default function Home() {
   const [view, setView] = useState("Overview");
   const [period, setPeriod] = useState("7 days");
   const [notice, setNotice] = useState("");
+  const [quickOpen, setQuickOpen] = useState(false);
 
   const showNotice = (message: string) => {
     setNotice(message);
@@ -50,13 +51,31 @@ export default function Home() {
       </aside>
 
       <section className="main-panel">
-        <header className="topbar"><div><p className="eyebrow">{view === "Overview" ? "COMMAND CENTRE" : "WORKSPACE"}</p><h1>{view}</h1></div><div className="top-actions"><button className="icon-button" aria-label="Search">⌕</button><button className="icon-button notification" aria-label="Notifications">♢<span /></button><button className="primary" onClick={() => showNotice("Quick action menu opened")}>+ Quick action</button></div></header>
+        <header className="topbar"><div><p className="eyebrow">{view === "Overview" ? "COMMAND CENTRE" : "WORKSPACE"}</p><h1>{view}</h1></div><div className="top-actions"><button className="icon-button" aria-label="Search">⌕</button><button className="icon-button notification" aria-label="Notifications">♢<span /></button><button className="primary" onClick={() => setQuickOpen(true)}>+ Quick action</button></div></header>
 
-        {view === "Integrations" ? <Integrations showNotice={showNotice} /> : <Dashboard period={period} setPeriod={setPeriod} showNotice={showNotice} />}
+        {view === "Integrations" ? <Integrations showNotice={showNotice} /> : view === "Action Centre" ? <TaskCentre showNotice={showNotice} openComposer={() => setQuickOpen(true)} /> : <Dashboard period={period} setPeriod={setPeriod} showNotice={showNotice} />}
       </section>
+      {quickOpen && <TaskComposer close={() => setQuickOpen(false)} saved={() => { setQuickOpen(false); setView("Action Centre"); showNotice("Task saved to the Action Centre"); }} />}
       {notice && <div className="toast" role="status">{notice}</div>}
     </main>
   );
+}
+
+type Task = { id: number; title: string; detail: string; priority: "high" | "medium" | "low"; status: "open" | "in_progress" | "done"; assignee: string; dueDate: string | null };
+
+function TaskCentre({ showNotice, openComposer }: { showNotice: (m: string) => void; openComposer: () => void }) {
+  const [tasks, setTasks] = useState<Task[]>([]); const [loading, setLoading] = useState(true); const [error, setError] = useState("");
+  const load = async () => { try { const response = await fetch("/api/tasks"); const data = await response.json(); if (!response.ok) throw new Error(data.error); setTasks(data.tasks); setError(""); } catch (e) { setError(e instanceof Error ? e.message : "Unable to load tasks"); } finally { setLoading(false); } };
+  useEffect(() => { void load(); }, []);
+  const update = async (task: Task, status: Task["status"]) => { const response = await fetch("/api/tasks", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: task.id, status }) }); if (response.ok) { setTasks(current => current.map(item => item.id === task.id ? { ...item, status } : item)); showNotice(status === "done" ? "Task completed" : "Task status updated"); } };
+  const active = tasks.filter(task => task.status !== "done");
+  return <div className="content tasks-page"><section className="welcome-row"><div><h2>Turn signals into assigned work.</h2><p>Prioritize, assign and close the work that moves the business forward.</p></div><button className="primary" onClick={openComposer}>+ Create task</button></section><section className="task-stats"><div><strong>{active.length}</strong><span>Active tasks</span></div><div><strong>{tasks.filter(t => t.priority === "high" && t.status !== "done").length}</strong><span>High priority</span></div><div><strong>{tasks.filter(t => t.status === "done").length}</strong><span>Completed</span></div></section><article className="card task-board"><div className="card-head"><div><p className="card-kicker">OPERATIONS</p><h3>Shared task queue</h3></div><span className="live-label"><i/> Saved automatically</span></div>{loading ? <p className="empty-state">Loading your workspace…</p> : error ? <div className="empty-state"><b>We couldn’t load the task queue.</b><span>{error}</span><button onClick={() => { setLoading(true); void load(); }}>Try again</button></div> : tasks.length === 0 ? <div className="empty-state"><b>No tasks yet.</b><span>Create the first task for the Newcastle team.</span><button onClick={openComposer}>Create a task</button></div> : <div className="task-list">{tasks.map(task => <div className={`task-item ${task.status === "done" ? "is-done" : ""}`} key={task.id}><button className="check-task" aria-label={`Mark ${task.title} complete`} onClick={() => void update(task, task.status === "done" ? "open" : "done")}>{task.status === "done" ? "✓" : ""}</button><div className="task-copy"><div><span className={`task-priority ${task.priority}`}>{task.priority}</span><b>{task.title}</b></div>{task.detail && <p>{task.detail}</p>}<small>{task.assignee}{task.dueDate ? ` · Due ${new Date(`${task.dueDate}T12:00:00`).toLocaleDateString("en-CA", { month: "short", day: "numeric" })}` : " · No due date"}</small></div><select aria-label={`Status for ${task.title}`} value={task.status} onChange={event => void update(task, event.target.value as Task["status"])}><option value="open">To do</option><option value="in_progress">In progress</option><option value="done">Done</option></select></div>)}</div>}</article></div>;
+}
+
+function TaskComposer({ close, saved }: { close: () => void; saved: () => void }) {
+  const [saving, setSaving] = useState(false); const [error, setError] = useState("");
+  const submit = async (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); setSaving(true); setError(""); const form = new FormData(event.currentTarget); const response = await fetch("/api/tasks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(Object.fromEntries(form)) }); const data = await response.json(); if (!response.ok) { setError(data.error ?? "Unable to save task"); setSaving(false); return; } saved(); };
+  return <div className="modal-backdrop" role="presentation" onMouseDown={event => { if (event.currentTarget === event.target) close(); }}><form className="task-modal" onSubmit={submit} aria-labelledby="task-title"><div className="modal-head"><div><p className="card-kicker">QUICK ACTION</p><h2 id="task-title">Create a team task</h2></div><button type="button" onClick={close} aria-label="Close">×</button></div><label>Task title<input name="title" maxLength={120} required autoFocus placeholder="e.g. Confirm Friday Peak order" /></label><label>Details<textarea name="detail" rows={3} placeholder="Add enough context to complete this without follow-up." /></label><div className="form-row"><label>Priority<select name="priority" defaultValue="medium"><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></label><label>Assignee<select name="assignee" defaultValue="Hussien"><option>Hussien</option><option>Owner</option><option>Store team</option></select></label><label>Due date<input name="dueDate" type="date" /></label></div>{error && <p className="form-error">{error}</p>}<div className="modal-actions"><button type="button" className="secondary" onClick={close}>Cancel</button><button className="primary" disabled={saving}>{saving ? "Saving…" : "Create task"}</button></div></form></div>;
 }
 
 function Dashboard({ period, setPeriod, showNotice }: { period: string; setPeriod: (p: string) => void; showNotice: (m: string) => void }) {
