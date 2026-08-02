@@ -1,9 +1,10 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import AnalyticsWorkspace from "./analytics-workspace";
 
 const nav = [
-  ["Command", ["Overview", "Action Centre", "Business Brief", "Advisor"]],
+  ["Command", ["Overview", "Intelligence", "Action Centre", "Business Brief", "Advisor"]],
   ["Operate", ["Sales & margin", "Inventory", "Customers", "Marketing", "SEO"]],
   ["Plan", ["Calendar", "Reports", "Goals"]],
 ] as const;
@@ -24,7 +25,7 @@ const integrations = [
 ];
 
 function Icon({ name }: { name: string }) {
-  const map: Record<string, string> = { Overview: "⌂", "Action Centre": "✓", "Business Brief": "▤", Advisor: "✦", "Sales & margin": "↗", Inventory: "□", Customers: "◎", Marketing: "◇", SEO: "⌕", Calendar: "▦", Reports: "≡", Goals: "◉" };
+  const map: Record<string, string> = { Overview: "⌂", Intelligence: "◫", "Action Centre": "✓", "Business Brief": "▤", Advisor: "✦", "Sales & margin": "↗", Inventory: "□", Customers: "◎", Marketing: "◇", SEO: "⌕", Calendar: "▦", Reports: "≡", Goals: "◉" };
   return <span className="nav-icon" aria-hidden>{map[name] ?? "·"}</span>;
 }
 
@@ -56,7 +57,7 @@ export default function Home() {
       <section className="main-panel">
         <header className="topbar"><button className="mobile-menu" aria-label="Open navigation" onClick={() => setMobileNavOpen(v=>!v)}>☰</button><div><p className="eyebrow">{view === "Overview" ? "COMMAND CENTRE" : "WORKSPACE"}</p><h1>{view}</h1></div><div className="top-actions"><button className="icon-button" aria-label="Search" onClick={() => setSearchOpen(true)}>⌕</button><button className="icon-button notification" aria-label="Notifications" onClick={() => setNotificationsOpen(v=>!v)}>♢<span /></button><button className="primary" onClick={() => setQuickOpen(true)}>+ Quick action</button></div></header>
 
-        {view === "Integrations" ? <Integrations showNotice={showNotice} /> : view === "Action Centre" ? <TaskCentre showNotice={showNotice} openComposer={() => setQuickOpen(true)} /> : view === "Overview" ? <Dashboard period={period} setPeriod={setPeriod} showNotice={showNotice} navigate={setView} /> : view === "Reports" ? <ReportsView showNotice={showNotice} /> : <WorkspaceView view={view} showNotice={showNotice} />}
+        {view === "Integrations" ? <Integrations showNotice={showNotice} /> : view === "Action Centre" ? <TaskCentre showNotice={showNotice} openComposer={() => setQuickOpen(true)} /> : view === "Overview" ? <Dashboard period={period} setPeriod={setPeriod} showNotice={showNotice} navigate={setView} /> : view === "Intelligence" ? <AnalyticsWorkspace showNotice={showNotice} navigate={setView} /> : view === "Reports" ? <ReportsView showNotice={showNotice} /> : <WorkspaceView view={view} showNotice={showNotice} />}
       </section>
       {quickOpen && <TaskComposer close={() => setQuickOpen(false)} saved={() => { setQuickOpen(false); setView("Action Centre"); showNotice("Task saved to the Action Centre"); }} />}
       {searchOpen && <CommandSearch close={()=>setSearchOpen(false)} navigate={(next)=>{setView(next);setSearchOpen(false)}} />}
@@ -109,7 +110,7 @@ function Dashboard({ period, setPeriod, showNotice, navigate }: { period: string
       <article className="card priorities"><div className="card-head"><div><p className="card-kicker">PRIORITIES</p><h3>Action Centre</h3></div><button>View all <span>→</span></button></div><div>{actions.map(a => <button className="action-row" key={a.title} onClick={() => showNotice(`${a.title} opened`)}><span className={`priority-icon ${a.tone}`}>{a.tone === "red" ? "!" : a.tone === "blue" ? "↗" : "◷"}</span><span className="action-copy"><span className={`priority-label ${a.tone}`}>{a.priority}</span><b>{a.title}</b><small>{a.detail}</small></span><span className="impact">{a.impact}<i>›</i></span></button>)}</div></article>
     </section>
 
-    <section className="tool-launcher"><div className="launcher-head"><div><p className="section-overline">OPERATING SYSTEM</p><h2>Run the whole business from here.</h2></div><span>Live sync + CSV ready</span></div><div className="launcher-grid">{[["Inventory","Inventory intelligence","Predict stockouts, expose dead stock and build smarter orders.","$84k","on hand"],["Customers","Customer intelligence","Find top customers, loyalty opportunities and churn risk.","38.4%","repeat"],["Marketing","Campaign studio","Plan promotions and see true return on ad spend.","4.8×","ROAS"],["SEO","Local search","Track discovery, rankings and technical health.","1,284","clicks"],["Calendar","Operating calendar","Coordinate orders, shifts, demos and deadlines.","8","events"],["Reports","Report centre","Build, schedule and export management reporting.","6","reports"]].map(([name,title,copy,value,label])=><button key={name} className="launch-card" onClick={()=>navigate(name)}><span className="launch-visual"><i/><i/><i/><b>{value}</b><small>{label}</small></span><span className="launch-copy"><small>{name.toUpperCase()}</small><strong>{title}</strong><em>{copy}</em></span><b className="launch-arrow">↗</b></button>)}</div></section>
+    <section className="tool-launcher"><div className="launcher-head"><div><p className="section-overline">OPERATING SYSTEM</p><h2>Run the whole business from here.</h2></div><span>Live sync + CSV ready</span></div><div className="launcher-grid">{[["Intelligence","Business intelligence","See what changed, why it changed and the next best action.","+8.6%","profit"],["Inventory","Inventory intelligence","Predict stockouts, expose dead stock and build smarter orders.","$84k","on hand"],["Customers","Customer intelligence","Find top customers, loyalty opportunities and churn risk.","38.4%","repeat"],["Marketing","Campaign studio","Plan promotions and see true return on ad spend.","4.8×","ROAS"],["SEO","Local search","Track discovery, rankings and technical health.","1,284","clicks"],["Calendar","Operating calendar","Coordinate orders, shifts, demos and deadlines.","8","events"],["Reports","Report centre","Build, schedule and export management reporting.","6","reports"]].map(([name,title,copy,value,label])=><button key={name} className="launch-card" onClick={()=>navigate(name)}><span className="launch-visual"><i/><i/><i/><b>{value}</b><small>{label}</small></span><span className="launch-copy"><small>{name.toUpperCase()}</small><strong>{title}</strong><em>{copy}</em></span><b className="launch-arrow">↗</b></button>)}</div></section>
     <section className="bottom-grid"><article className="card mini"><p className="card-kicker">TOP CATEGORY</p><h3>Hydration & performance</h3><div><strong>$5,842</strong><span className="positive">↑ 18.2%</span></div><p>31.7% of period revenue</p></article><article className="card mini"><p className="card-kicker">CUSTOMER SIGNAL</p><h3>Repeat purchase rate</h3><div><strong>38.4%</strong><span className="positive">↑ 3.1 pts</span></div><p>84 returning customers</p></article><article className="card mini integration-mini"><div><p className="card-kicker">DATA FRESHNESS</p><h3>4 sources connected</h3></div><button onClick={() => showNotice("Integration status opened")}>All systems healthy <span className="healthy-dot"/> →</button></article></section>
   </div>;
 }
