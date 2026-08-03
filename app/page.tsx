@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import SecureOnboardingFlow from "./secure-onboarding-flow";
 import VanteloqApp from "./vanteloq-app";
 
 export default function Home() {
+  const router = useRouter();
   const [entry, setEntry] = useState<"loading" | "landing" | "signup" | "app">("loading");
   const [organizationName, setOrganizationName] = useState("");
   const [accountName, setAccountName] = useState("Account owner");
@@ -27,12 +29,13 @@ export default function Home() {
 
   if (entry === "loading") return <div className="entry-loading"><span className="brand-mark"><i/><b>V</b></span><p>Preparing Vanteloq…</p></div>;
   if (entry === "landing") return <LandingPage/>;
-  if (entry === "signup") return <SecureOnboardingFlow accountName={accountName} signOut={() => window.location.assign("/signout-with-chatgpt?return_to=/")} complete={(business, owner) => { setOrganizationName(business); setAccountName(owner); setEntry("app"); }}/>;
+  if (entry === "signup") return <SecureOnboardingFlow accountName={accountName} signOut={() => router.push("/signout-with-chatgpt?return_to=/")} complete={(business, owner) => { setOrganizationName(business); setAccountName(owner); setEntry("app"); }}/>;
   return <VanteloqApp organizationName={organizationName} accountName={accountName}/>;
 }
 
 function LandingPage() {
-  const start = () => window.location.assign("/signin-with-chatgpt?return_to=/");
+  const router = useRouter();
+  const start = () => router.push("/signin-with-chatgpt?return_to=/");
   return <main className="public-site">
     <header className="public-nav"><button className="public-brand" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}><span className="brand-mark"><i/><b>V</b></span><span>Vanteloq<small>OPERATING INTELLIGENCE</small></span></button><nav><a href="#platform">Platform</a><a href="#connect">Data</a><a href="#how">How it works</a></nav><div><a className="nav-login" href="/signin-with-chatgpt?return_to=/">Sign in</a><button onClick={start}>Create workspace</button></div></header>
     <section className="public-hero"><div className="hero-grid"/><div className="public-copy"><span className="public-pill"><i/> Action-first intelligence for independent operators</span><h1>Know what changed.<br/><em>Know what to do next.</em></h1><p>Vanteloq connects sales, inventory, expenses, customers and operations—then separates verified facts from estimates, explains what needs attention and turns the answer into accountable work.</p><div className="public-actions"><button onClick={start}>Build your workspace <span>→</span></button><a href="#platform">Explore the system</a></div><div className="public-trust"><span>✓ No fabricated metrics</span><span>✓ Evidence-linked actions</span><span>✓ Tenant-scoped by design</span></div></div>

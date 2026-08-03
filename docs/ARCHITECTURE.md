@@ -63,6 +63,10 @@ erDiagram
   USERS ||--o{ MEMBERSHIPS : has
   ORGANIZATIONS ||--o{ MEMBERSHIPS : grants
   ORGANIZATIONS ||--o{ TASKS : owns
+  ORGANIZATIONS ||--o{ DATA_IMPORTS : owns
+  ORGANIZATIONS ||--o{ DAILY_BUSINESS_METRICS : owns
+  ORGANIZATIONS ||--o{ BUSINESS_EVENTS : owns
+  DATA_IMPORTS ||--o{ DAILY_BUSINESS_METRICS : sources
   ORGANIZATIONS ||--o{ INTEGRATION_CONNECTIONS : owns
   ORGANIZATIONS ||--o{ AUDIT_EVENTS : records
   USERS ||--o{ AUDIT_EVENTS : performs
@@ -74,16 +78,21 @@ Phase-one tables:
 - `organizations`: business and reporting profile
 - `memberships`: organization role and state
 - `workspace_tasks`: tenant-owned operational tasks with idempotency protection
+- `data_imports`: tenant-owned, idempotent import history and status
+- `daily_business_metrics`: date/location summaries used by the first reproducible intelligence engine
+- `business_events`: decisions, promotions, stockouts, external events, expected outcomes, and review dates
 - `integration_connections`: provider/status metadata only; no plaintext tokens
 - `audit_events`: append-only security and business-control events
 - `rate_limit_buckets`: bounded abuse-control counters
 
-Later POS model:
+Later line-item model:
 
 - `locations`, `data_sources`, `sync_runs`, `import_batches`, `import_errors`
 - `products`, `product_variants`, `suppliers`, `inventory_snapshots`, `inventory_movements`
 - `customers`, `transactions`, `transaction_lines`, `payments`, `discounts`, `returns`
 - Derived metrics remain reproducible from normalized source facts and are never the only stored record.
+
+The current daily-summary model calculates sales, product-cost gross profit, margin, transaction value, units per transaction, discounts, refunds, labour pressure, contribution after labour, aggregate balances, and 30-day comparisons. It cannot isolate SKU, customer, campaign, supplier, employee, channel, or hourly causes; those dimensions are explicitly returned as missing rather than inferred.
 
 ## Sensitive-data flow
 
@@ -109,4 +118,3 @@ Worker instances remain stateless. D1, object storage, and future queues externa
 ## Backup and recovery baseline
 
 The operator must configure and verify encrypted D1 backups, multiple restore points, restricted backup access, and a quarterly restoration exercise. Proposed initial objectives are RPO 24 hours and RTO 8 hours until business requirements justify tighter targets. These are targets, not evidence of configured backups.
-

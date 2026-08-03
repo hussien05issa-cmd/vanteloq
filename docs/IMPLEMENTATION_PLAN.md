@@ -11,7 +11,20 @@
 
 Exit gate: no unauthenticated organization/task access; no shared workspace key; tenant tests pass.
 
-## Phase 2 — import and normalized commerce data
+## Phase 2A — daily-summary intelligence (implemented)
+
+- Store tenant-owned import batches and daily date/location facts
+- Validate and import up to 366 CSV/manual daily summaries with idempotent convergent writes
+- Calculate reproducible period metrics and volume-versus-basket explanations
+- Return evidence, confidence, missing dimensions, financial effect, and suggested action
+- Link recommendations to persistent actions
+- Record business events and measure 14-day before/after sales impact when supported
+- Add formula-transparent scenario planning
+- Test forward migrations, import replay, intelligence output, business memory, action linkage, and two-tenant isolation
+
+Exit gate: passed in the automated disposable-D1 flow.
+
+## Phase 2B — normalized commerce data
 
 - Define locations, sources, import batches, products, inventory, customers, transactions, lines, tenders, discounts, and returns
 - Implement CSV template detection, mapping, validation, reconciliation, duplicate detection, and dry-run preview
@@ -29,7 +42,7 @@ Exit gate: totals reconcile, duplicate import is idempotent, malformed data cann
 
 Exit gate: token redaction and rotation pass; webhook replay and tenant isolation tests pass; provider failure cannot corrupt core state.
 
-## Phase 4 — analytics and operational workflows
+## Phase 4 — deeper analytics and operational workflows
 
 - Rebuild inventory, customers, reports, loyalty, marketing, SEO, calendars, and recommendations on normalized facts
 - Add metric definitions, data-quality status, drill-down lineage, confidence, and anomaly explanations
@@ -45,4 +58,3 @@ Exit gate: every metric is reproducible, filters share tenant/location/date cont
 - Complete privacy/legal review and subprocessor/retention documentation
 
 Exit gate: final launch checklist passes, no Critical findings remain, and every High finding has an approved owner and deadline.
-
