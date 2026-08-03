@@ -25,6 +25,9 @@ function taskDto(task: typeof workspaceTasks.$inferSelect) {
     status: task.status,
     assignee: task.assignee,
     dueDate: task.dueDate,
+    sourceType: task.sourceType,
+    sourceRef: task.sourceRef,
+    expectedImpact: task.expectedImpact,
     createdAt: task.createdAt,
     updatedAt: task.updatedAt,
   };
@@ -71,6 +74,9 @@ export async function POST(request: Request) {
       status: "open",
       assignee: input.assignee,
       dueDate: input.dueDate,
+      sourceType: input.sourceType,
+      sourceRef: input.sourceRef,
+      expectedImpact: input.expectedImpact,
       createdByUserId: context.userId,
       idempotencyKey: key,
       createdAt: now,
@@ -126,4 +132,3 @@ export async function PATCH(request: Request) {
     return jsonResponse({ task: taskDto(task) });
   });
 }
-

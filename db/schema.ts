@@ -131,6 +131,9 @@ export const workspaceTasks = sqliteTable(
     status: text("status", { enum: ["open", "in_progress", "done"] }).notNull().default("open"),
     assignee: text("assignee").notNull().default("Owner"),
     dueDate: text("due_date"),
+    sourceType: text("source_type", { enum: ["manual", "insight", "alert", "decision"] }).notNull().default("manual"),
+    sourceRef: text("source_ref"),
+    expectedImpact: text("expected_impact").notNull().default(""),
     createdByUserId: text("created_by_user_id").notNull().references(() => users.id),
     idempotencyKey: text("idempotency_key").notNull(),
     createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
@@ -142,6 +145,83 @@ export const workspaceTasks = sqliteTable(
     index("workspace_tasks_workspace_created_idx").on(table.organizationId, table.createdAt),
     check("workspace_tasks_priority_check", sql`${table.priority} in ('high', 'medium', 'low')`),
     check("workspace_tasks_status_check", sql`${table.status} in ('open', 'in_progress', 'done')`),
+    check("workspace_tasks_source_type_check", sql`${table.sourceType} in ('manual', 'insight', 'alert', 'decision')`),
+  ],
+);
+
+export const dataImports = sqliteTable(
+  "data_imports",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    importType: text("import_type", { enum: ["daily_summary_csv", "manual_entry"] }).notNull(),
+    status: text("status", { enum: ["processing", "completed", "failed"] }).notNull(),
+    fileName: text("file_name").notNull().default(""),
+    rowCount: integer("row_count").notNull().default(0),
+    idempotencyKey: text("idempotency_key").notNull(),
+    importedByUserId: text("imported_by_user_id").notNull().references(() => users.id),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("data_imports_workspace_idempotency_unique").on(table.organizationId, table.idempotencyKey),
+    index("data_imports_workspace_created_idx").on(table.organizationId, table.createdAt),
+    check("data_imports_type_check", sql`${table.importType} in ('daily_summary_csv', 'manual_entry')`),
+    check("data_imports_status_check", sql`${table.status} in ('processing', 'completed', 'failed')`),
+    check("data_imports_row_count_check", sql`${table.rowCount} >= 0`),
+  ],
+);
+
+export const dailyBusinessMetrics = sqliteTable(
+  "daily_business_metrics",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    businessDate: text("business_date").notNull(),
+    locationRef: text("location_ref").notNull().default("all"),
+    grossSalesCents: integer("gross_sales_cents").notNull(),
+    netSalesCents: integer("net_sales_cents").notNull(),
+    costOfGoodsCents: integer("cost_of_goods_cents").notNull(),
+    transactionCount: integer("transaction_count").notNull(),
+    unitsSold: integer("units_sold").notNull(),
+    refundsCents: integer("refunds_cents").notNull().default(0),
+    discountsCents: integer("discounts_cents").notNull().default(0),
+    labourCostCents: integer("labour_cost_cents").notNull().default(0),
+    inventoryValueCents: integer("inventory_value_cents"),
+    cashBalanceCents: integer("cash_balance_cents"),
+    accountsPayableCents: integer("accounts_payable_cents"),
+    sourceImportId: text("source_import_id").references(() => dataImports.id, { onDelete: "set null" }),
+    createdByUserId: text("created_by_user_id").notNull().references(() => users.id),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("daily_metrics_workspace_date_location_unique").on(table.organizationId, table.businessDate, table.locationRef),
+    index("daily_metrics_workspace_date_idx").on(table.organizationId, table.businessDate),
+    check("daily_metrics_nonnegative_amounts_check", sql`${table.grossSalesCents} >= 0 and ${table.netSalesCents} >= 0 and ${table.costOfGoodsCents} >= 0 and ${table.refundsCents} >= 0 and ${table.discountsCents} >= 0 and ${table.labourCostCents} >= 0`),
+    check("daily_metrics_nonnegative_counts_check", sql`${table.transactionCount} >= 0 and ${table.unitsSold} >= 0`),
+  ],
+);
+
+export const businessEvents = sqliteTable(
+  "business_events",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    eventType: text("event_type", { enum: ["decision", "promotion", "hours", "staffing", "supplier_price", "stockout", "competitor", "construction", "other"] }).notNull(),
+    title: text("title").notNull(),
+    detail: text("detail").notNull().default(""),
+    eventDate: text("event_date").notNull(),
+    expectedOutcome: text("expected_outcome").notNull().default(""),
+    reviewDate: text("review_date"),
+    status: text("status", { enum: ["active", "reviewed"] }).notNull().default("active"),
+    createdByUserId: text("created_by_user_id").notNull().references(() => users.id),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    index("business_events_workspace_date_idx").on(table.organizationId, table.eventDate),
+    check("business_events_type_check", sql`${table.eventType} in ('decision', 'promotion', 'hours', 'staffing', 'supplier_price', 'stockout', 'competitor', 'construction', 'other')`),
+    check("business_events_status_check", sql`${table.status} in ('active', 'reviewed')`),
   ],
 );
 
@@ -195,4 +275,3 @@ export const rateLimitBuckets = sqliteTable("rate_limit_buckets", {
   requestCount: integer("request_count").notNull().default(1),
   expiresAt: integer("expires_at").notNull(),
 });
-

@@ -126,7 +126,7 @@ export function onboardingInput(value: Record<string, unknown>) {
 }
 
 export function taskCreateInput(value: Record<string, unknown>) {
-  rejectUnknown(value, ["title", "detail", "priority", "assignee", "dueDate"]);
+  rejectUnknown(value, ["title", "detail", "priority", "assignee", "dueDate", "sourceType", "sourceRef", "expectedImpact"]);
   const dueDate = optionalString(value.dueDate, "due date", 10);
   if (dueDate && !DATE.test(dueDate)) throw new ApiError(400, "INVALID_FIELD", "Enter a valid due date.");
   return {
@@ -135,6 +135,9 @@ export function taskCreateInput(value: Record<string, unknown>) {
     priority: selected(value.priority ?? "medium", ["high", "medium", "low"] as const, "priority"),
     assignee: optionalString(value.assignee, "assignee", 80) || "Owner",
     dueDate: dueDate || null,
+    sourceType: selected(value.sourceType ?? "manual", ["manual", "insight", "alert", "decision"] as const, "task source"),
+    sourceRef: optionalString(value.sourceRef, "task source reference", 120) || null,
+    expectedImpact: optionalString(value.expectedImpact, "expected impact", 500),
   };
 }
 
@@ -157,3 +160,89 @@ export function idempotencyKey(request: Request): string {
   return value;
 }
 
+function integerValue(value: unknown, label: string, minimum: number, maximum = 1_000_000_000_000): number {
+  if (!Number.isSafeInteger(value) || Number(value) < minimum || Number(value) > maximum) {
+    throw new ApiError(400, "INVALID_FIELD", `Enter a valid ${label}.`);
+  }
+  return Number(value);
+}
+
+function nullableInteger(value: unknown, label: string, minimum: number): number | null {
+  if (value === undefined || value === null || value === "") return null;
+  return integerValue(value, label, minimum);
+}
+
+export type DailyMetricInput = ReturnType<typeof dailyMetricRow>;
+
+function dailyMetricRow(value: unknown) {
+  if (!value || Array.isArray(value) || typeof value !== "object") {
+    throw new ApiError(400, "INVALID_ROW", "Each daily metric row must be an object.");
+  }
+  const row = value as Record<string, unknown>;
+  rejectUnknown(row, [
+    "businessDate", "locationRef", "grossSalesCents", "netSalesCents", "costOfGoodsCents",
+    "transactionCount", "unitsSold", "refundsCents", "discountsCents", "labourCostCents",
+    "inventoryValueCents", "cashBalanceCents", "accountsPayableCents",
+  ]);
+  const businessDate = requiredString(row.businessDate, "business date", 10);
+  if (!DATE.test(businessDate) || Number.isNaN(Date.parse(`${businessDate}T00:00:00Z`))) {
+    throw new ApiError(400, "INVALID_FIELD", "Enter a valid business date.");
+  }
+  const grossSalesCents = integerValue(row.grossSalesCents, "gross sales amount", 0);
+  const netSalesCents = integerValue(row.netSalesCents, "net sales amount", 0);
+  if (netSalesCents > grossSalesCents) {
+    throw new ApiError(400, "INVALID_FIELD", "Net sales cannot exceed gross sales.");
+  }
+  return {
+    businessDate,
+    locationRef: optionalString(row.locationRef, "location reference", 80) || "all",
+    grossSalesCents,
+    netSalesCents,
+    costOfGoodsCents: integerValue(row.costOfGoodsCents, "cost of goods amount", 0),
+    transactionCount: integerValue(row.transactionCount, "transaction count", 0, 10_000_000),
+    unitsSold: integerValue(row.unitsSold, "units sold", 0, 100_000_000),
+    refundsCents: integerValue(row.refundsCents ?? 0, "refund amount", 0),
+    discountsCents: integerValue(row.discountsCents ?? 0, "discount amount", 0),
+    labourCostCents: integerValue(row.labourCostCents ?? 0, "labour cost", 0),
+    inventoryValueCents: nullableInteger(row.inventoryValueCents, "inventory value", 0),
+    cashBalanceCents: nullableInteger(row.cashBalanceCents, "cash balance", -1_000_000_000_000),
+    accountsPayableCents: nullableInteger(row.accountsPayableCents, "accounts payable", 0),
+  };
+}
+
+export function dailyMetricImportInput(value: Record<string, unknown>) {
+  rejectUnknown(value, ["importType", "fileName", "rows"]);
+  const importType = selected(value.importType ?? "daily_summary_csv", ["daily_summary_csv", "manual_entry"] as const, "import type");
+  const fileName = optionalString(value.fileName, "file name", 140);
+  if (!Array.isArray(value.rows) || value.rows.length < 1 || value.rows.length > 366) {
+    throw new ApiError(400, "INVALID_ROWS", "Provide between 1 and 366 daily metric rows per import.");
+  }
+  const rows = value.rows.map(dailyMetricRow);
+  const keys = new Set<string>();
+  for (const row of rows) {
+    const key = `${row.businessDate}:${row.locationRef}`;
+    if (keys.has(key)) throw new ApiError(400, "DUPLICATE_ROW", "An import cannot repeat the same date and location.");
+    keys.add(key);
+  }
+  return { importType, fileName, rows };
+}
+
+export function businessEventCreateInput(value: Record<string, unknown>) {
+  rejectUnknown(value, ["eventType", "title", "detail", "eventDate", "expectedOutcome", "reviewDate"]);
+  const eventDate = requiredString(value.eventDate, "event date", 10);
+  const reviewDate = optionalString(value.reviewDate, "review date", 10);
+  if (!DATE.test(eventDate) || (reviewDate && !DATE.test(reviewDate))) {
+    throw new ApiError(400, "INVALID_FIELD", "Enter valid event and review dates.");
+  }
+  if (reviewDate && reviewDate < eventDate) {
+    throw new ApiError(400, "INVALID_FIELD", "The review date cannot be before the event date.");
+  }
+  return {
+    eventType: selected(value.eventType, ["decision", "promotion", "hours", "staffing", "supplier_price", "stockout", "competitor", "construction", "other"] as const, "event type"),
+    title: requiredString(value.title, "event title", 120),
+    detail: optionalString(value.detail, "event details", 2_000),
+    eventDate,
+    expectedOutcome: optionalString(value.expectedOutcome, "expected outcome", 500),
+    reviewDate: reviewDate || null,
+  };
+}

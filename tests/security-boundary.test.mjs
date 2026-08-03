@@ -39,6 +39,18 @@ test("task APIs reject missing identity before database access", async () => {
   assert.doesNotMatch(JSON.stringify(body), /stack|sql|owner@vanteloq\.local|default-workspace/i);
 });
 
+test("business intelligence APIs reject anonymous access before database reads", async () => {
+  const worker = await loadWorker();
+  for (const path of ["/api/v1/command-centre", "/api/v1/daily-metrics", "/api/v1/events"]) {
+    const response = await worker.fetch(new Request(`https://vanteloq.example${path}`, {
+      headers: { accept: "application/json" },
+    }), environment, context);
+    assert.equal(response.status, 401, path);
+    const body = await response.json();
+    assert.equal(body.error.code, "AUTHENTICATION_REQUIRED", path);
+  }
+});
+
 test("state-changing onboarding rejects a cross-site origin before data access", async () => {
   const worker = await loadWorker();
   const response = await worker.fetch(new Request("https://vanteloq.example/api/v1/onboarding", {
@@ -54,6 +66,25 @@ test("state-changing onboarding rejects a cross-site origin before data access",
   assert.equal(response.status, 403);
   const body = await response.json();
   assert.equal(body.error.code, "ORIGIN_MISMATCH");
+});
+
+test("imports and business-memory writes reject cross-site origins before data access", async () => {
+  const worker = await loadWorker();
+  for (const path of ["/api/v1/daily-metrics", "/api/v1/events"]) {
+    const response = await worker.fetch(new Request(`https://vanteloq.example${path}`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin: "https://attacker.example",
+        "sec-fetch-site": "cross-site",
+        "oai-authenticated-user-email": "owner@example.com",
+      },
+      body: "{}",
+    }), environment, context);
+    assert.equal(response.status, 403, path);
+    const body = await response.json();
+    assert.equal(body.error.code, "ORIGIN_MISMATCH", path);
+  }
 });
 
 test("removed unversioned prototype APIs are unavailable", async () => {
@@ -75,6 +106,8 @@ test("operational health and API description expose no internal configuration", 
   const specification = await openapi.json();
   assert.equal(specification.openapi, "3.1.0");
   assert.ok(specification.paths["/tasks"]);
+  assert.ok(specification.paths["/command-centre"]);
+  assert.ok(specification.paths["/daily-metrics"]);
+  assert.ok(specification.paths["/events"]);
   assert.doesNotMatch(JSON.stringify(specification), /secret|token|database_id/i);
 });
-

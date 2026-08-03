@@ -17,10 +17,20 @@ const specification = {
     "/integrations": {
       get: { summary: "List configured and available integrations", responses: { "200": { description: "Tenant integration metadata" }, "403": { description: "Membership required" } } },
     },
+    "/command-centre": {
+      get: { summary: "Calculate the tenant's evidence-bound owner command centre", responses: { "200": { description: "Verified metrics, comparisons, source freshness and recommendations" }, "401": { description: "Authentication required" }, "403": { description: "Membership required" }, "429": { description: "Rate limited" } } },
+    },
+    "/daily-metrics": {
+      get: { summary: "List bounded daily-summary import history", responses: { "200": { description: "Tenant-owned import metadata" }, "403": { description: "Membership required" } } },
+      post: { summary: "Upsert validated daily operating summaries", parameters: [{ name: "Idempotency-Key", in: "header", required: true, schema: { type: "string", format: "uuid" } }], responses: { "201": { description: "Daily summaries imported" }, "400": { description: "Invalid or inconsistent input" }, "403": { description: "Insufficient permission or origin rejected" }, "413": { description: "Request too large" }, "429": { description: "Rate limited" } } },
+    },
+    "/events": {
+      get: { summary: "List business-memory events with measured before/after impact where supported", responses: { "200": { description: "Tenant-owned events" }, "403": { description: "Membership required" } } },
+      post: { summary: "Record a decision or material business event", responses: { "201": { description: "Event recorded" }, "400": { description: "Invalid input" }, "403": { description: "Insufficient permission or origin rejected" }, "429": { description: "Rate limited" } } },
+    },
   },
 };
 
 export async function GET(request: Request) {
   return handleApi(request, async () => jsonResponse(specification));
 }
-
