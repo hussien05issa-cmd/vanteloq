@@ -59,7 +59,7 @@ Production readiness is therefore **blocked**. The first implementation phase mu
 | Severity | Finding | Evidence | Required correction |
 |---|---|---|---|
 | Critical | Organization disclosure | Onboarding GET selects the first organization and does not require identity | Require trusted identity; resolve organization only through membership |
-| Critical | Organization overwrite/hijack | Onboarding POST trusts `ownerEmail` from JSON and upserts by that value | Derive email from trusted identity; create membership and organization atomically |
+| Critical | Organization overwrite/hijack | Onboarding POST trusts `ownerEmail` from JSON and upserts by that value | Derive email from trusted identity; create membership and organization with retry-safe server identifiers |
 | Critical | Tenant escape in tasks | Every task uses `default-workspace`; GET is unauthenticated | Replace the shared key with a foreign-keyed organization ID derived server-side |
 | Critical | Identity spoofing | Missing auth header becomes `owner@vanteloq.local` | Fail with 401; never invent an identity |
 | High | No authorization model | No roles, memberships, ownership rules, or denied operations | Add membership-based RBAC and central policy helpers |
@@ -103,4 +103,3 @@ No plaintext secret or committed credential was found in the inspected source. T
 - Git history was inspected for the current source progression, but a dedicated secret-history scanner has not yet passed.
 - No dynamic security testing against a public staging environment or third-party penetration test has been completed.
 - Privacy, tax, and legal obligations require qualified Canadian counsel; this audit does not claim PIPEDA, Alberta PIPA, PCI DSS, or tax compliance.
-

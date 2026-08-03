@@ -1,12 +1,13 @@
 import { eq } from "drizzle-orm";
 import { getD1, getDb } from "../../../../db";
-import { users } from "../../../../db/schema";
+import { memberships, users } from "../../../../db/schema";
 import { findAccessContext } from "../../../../server/authorization";
 import {
   ApiError,
   clientSource,
   enforceRateLimit,
   handleApi,
+  hashIdentifier,
   jsonResponse,
   optionalIdentity,
   readJsonObject,
@@ -63,27 +64,73 @@ export async function POST(request: Request) {
     if (existingUser?.status === "suspended") {
       throw new ApiError(403, "ACCOUNT_SUSPENDED", "This account cannot create a workspace.");
     }
+    if (existingUser) {
+      const [existingMembership] = await getDb()
+        .select({ id: memberships.id })
+        .from(memberships)
+        .where(eq(memberships.userId, existingUser.id))
+        .limit(1);
+      if (existingMembership) {
+        throw new ApiError(409, "WORKSPACE_EXISTS", "This account already belongs to a workspace.");
+      }
+    }
 
     const now = Date.now();
-    const userId = existingUser?.id ?? crypto.randomUUID();
-    const organizationId = crypto.randomUUID();
-    const membershipId = crypto.randomUUID();
-    const auditId = crypto.randomUUID();
     const database = getD1();
+    const persistedUser = await database.prepare(`
+      INSERT INTO users (id, email, display_name, status, created_at, updated_at)
+      VALUES (?, ?, ?, 'active', ?, ?)
+      ON CONFLICT(email) DO UPDATE SET display_name = excluded.display_name, updated_at = excluded.updated_at
+      RETURNING id, status
+    `).bind(existingUser?.id ?? crypto.randomUUID(), identity.email, input.ownerName, now, now)
+      .first<{ id: string; status: "active" | "suspended" }>();
+    if (!persistedUser) {
+      throw new ApiError(503, "DATABASE_UNAVAILABLE", "Account setup is temporarily unavailable.");
+    }
+    if (persistedUser.status === "suspended") {
+      throw new ApiError(403, "ACCOUNT_SUSPENDED", "This account cannot create a workspace.");
+    }
+
+    const userId = persistedUser.id;
+    const stableIdentityHash = (await hashIdentifier(`onboarding:${userId}`)).slice(0, 32);
+    const organizationId = `workspace-${stableIdentityHash}`;
+    const membershipId = `membership-${stableIdentityHash}`;
+    const auditId = `audit-workspace-created-${stableIdentityHash}`;
 
     try {
+      // D1 batches commit statements sequentially. Stable identifiers and
+      // convergent upserts make a retry safe if execution stops partway through.
+      // The audit row precedes membership activation so visible access is never
+      // granted without the corresponding creation record.
       await database.batch([
-        database.prepare(`
-          INSERT INTO users (id, email, display_name, status, created_at, updated_at)
-          VALUES (?, ?, ?, 'active', ?, ?)
-          ON CONFLICT(email) DO UPDATE SET display_name = excluded.display_name, updated_at = excluded.updated_at
-        `).bind(userId, identity.email, input.ownerName, now, now),
         database.prepare(`
           INSERT INTO workspaces (
             id, owner_name, business_name, legal_name, business_email, phone, website, industry,
             country, province, city, address, postal_code, timezone, currency, fiscal_year_start,
             tax_number, hours_json, source_mode, selected_pos, setup_complete, created_at, updated_at
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET
+            owner_name = excluded.owner_name,
+            business_name = excluded.business_name,
+            legal_name = excluded.legal_name,
+            business_email = excluded.business_email,
+            phone = excluded.phone,
+            website = excluded.website,
+            industry = excluded.industry,
+            country = excluded.country,
+            province = excluded.province,
+            city = excluded.city,
+            address = excluded.address,
+            postal_code = excluded.postal_code,
+            timezone = excluded.timezone,
+            currency = excluded.currency,
+            fiscal_year_start = excluded.fiscal_year_start,
+            tax_number = excluded.tax_number,
+            hours_json = excluded.hours_json,
+            source_mode = excluded.source_mode,
+            selected_pos = excluded.selected_pos,
+            setup_complete = 1,
+            updated_at = excluded.updated_at
         `).bind(
           organizationId, input.ownerName, input.businessName, input.legalName, input.businessEmail,
           input.phone, input.website, input.industry, input.country, input.province, input.city,
@@ -91,15 +138,16 @@ export async function POST(request: Request) {
           input.taxNumber, input.hoursJson, input.sourceMode, input.selectedPos, now, now,
         ),
         database.prepare(`
-          INSERT INTO memberships (id, user_id, organization_id, role, status, created_at, updated_at)
-          VALUES (?, ?, ?, 'owner', 'active', ?, ?)
-        `).bind(membershipId, userId, organizationId, now, now),
-        database.prepare(`
-          INSERT INTO audit_events (
+          INSERT OR IGNORE INTO audit_events (
             id, organization_id, actor_user_id, action, resource_type, resource_id,
             outcome, request_id, source_hash, details_json, created_at
           ) VALUES (?, ?, ?, 'workspace.created', 'workspace', ?, 'success', ?, NULL, ?, ?)
         `).bind(auditId, organizationId, userId, organizationId, requestId, JSON.stringify({ sourceMode: input.sourceMode }), now),
+        database.prepare(`
+          INSERT INTO memberships (id, user_id, organization_id, role, status, created_at, updated_at)
+          VALUES (?, ?, ?, 'owner', 'active', ?, ?)
+          ON CONFLICT(user_id) DO NOTHING
+        `).bind(membershipId, userId, organizationId, now, now),
       ]);
     } catch (error) {
       if (error instanceof Error && /unique|constraint/i.test(error.message)) {
@@ -124,4 +172,3 @@ export async function POST(request: Request) {
     }, { status: 201 });
   });
 }
-
