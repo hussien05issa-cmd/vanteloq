@@ -26,8 +26,8 @@ export async function POST(request: Request) {
     const values = {
       ownerEmail, ownerName: String(p.ownerName).trim(), businessName: String(p.businessName).trim(), legalName: String(p.legalName).trim(),
       businessEmail: String(p.businessEmail).trim(), phone: String(p.phone ?? "").trim(), website: String(p.website ?? "").trim(), industry: String(p.industry).trim(),
-      country: String(p.country ?? "Canada"), province: String(p.province ?? "Alberta"), city: String(p.city).trim(), address: String(p.address).trim(), postalCode: String(p.postalCode).trim().toUpperCase(),
-      timezone: String(p.timezone ?? "America/Edmonton"), currency: String(p.currency ?? "CAD"), fiscalYearStart: String(p.fiscalYearStart ?? "January"), taxNumber: String(p.taxNumber ?? "").trim(),
+      country: String(p.country ?? "Canada"), province: String(p.province ?? ""), city: String(p.city).trim(), address: String(p.address).trim(), postalCode: String(p.postalCode).trim().toUpperCase(),
+      timezone: String(p.timezone ?? "America/Toronto"), currency: String(p.currency ?? "CAD"), fiscalYearStart: String(p.fiscalYearStart ?? "January"), taxNumber: String(p.taxNumber ?? "").trim(),
       hoursJson: String(p.hoursJson), sourceMode: (p.sourceMode === "csv" || p.sourceMode === "live" ? p.sourceMode : "connect_later") as "csv" | "live" | "connect_later", selectedPos: String(p.selectedPos ?? ""), updatedAt: new Date(),
     };
     const existing = await getDb().select({ id: organizations.id }).from(organizations).where(eq(organizations.ownerEmail, ownerEmail)).limit(1);

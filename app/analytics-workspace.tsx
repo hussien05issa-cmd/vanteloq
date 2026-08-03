@@ -41,7 +41,7 @@ function linePoints(values: number[], width = 620, height = 174) {
 export default function AnalyticsWorkspace({ showNotice, navigate }: Props) {
   const [lens, setLens] = useState<Lens>("Executive");
   const [period, setPeriod] = useState("30 days");
-  const [location, setLocation] = useState("Newcastle");
+  const [location, setLocation] = useState("Primary location");
   const [channel, setChannel] = useState("All channels");
   const [compare, setCompare] = useState(true);
   const [metric, setMetric] = useState("Net sales");
@@ -87,7 +87,7 @@ export default function AnalyticsWorkspace({ showNotice, navigate }: Props) {
       <div className="intel-lenses" role="tablist">{(["Executive", "Profit drivers", "Products", "Customers", "Operations"] as Lens[]).map(item => <button role="tab" aria-selected={lens === item} className={lens === item ? "active" : ""} key={item} onClick={() => setLens(item)}>{item}</button>)}</div>
       <div className="intel-filters">
         <label><span>Period</span><select value={period} onChange={e => setPeriod(e.target.value)}><option>7 days</option><option>30 days</option><option>Quarter</option><option>Year to date</option></select></label>
-        <label><span>Location</span><select value={location} onChange={e => setLocation(e.target.value)}><option>Newcastle</option><option>All locations</option></select></label>
+        <label><span>Location</span><select value={location} onChange={e => setLocation(e.target.value)}><option>Primary location</option><option>All locations</option></select></label>
         <label><span>Channel</span><select value={channel} onChange={e => setChannel(e.target.value)}><option>All channels</option><option>In-store</option><option>Online</option></select></label>
         <button className={compare ? "intel-compare active" : "intel-compare"} onClick={() => setCompare(value => !value)}><i /> Compare prior period</button>
       </div>
