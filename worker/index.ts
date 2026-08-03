@@ -41,7 +41,26 @@ const worker = {
       }, allowedWidths);
     }
 
-    return handler.fetch(request, env, ctx);
+    const response = await handler.fetch(request, env, ctx);
+    const headers = new Headers(response.headers);
+    headers.delete("Server");
+    headers.delete("X-Powered-By");
+    headers.set("X-Content-Type-Options", "nosniff");
+    headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+    headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=()");
+    headers.set("X-Frame-Options", "DENY");
+    headers.set("X-DNS-Prefetch-Control", "off");
+    headers.set("Content-Security-Policy", "frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
+    headers.set(
+      "Content-Security-Policy-Report-Only",
+      "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; frame-src 'none'; worker-src 'self'; manifest-src 'self'",
+    );
+    if (url.protocol === "https:") headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+    if (url.pathname.startsWith("/api/")) {
+      headers.set("Cache-Control", "no-store, max-age=0");
+      headers.set("Cross-Origin-Resource-Policy", "same-origin");
+    }
+    return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
   },
 };
 

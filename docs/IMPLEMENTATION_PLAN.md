@@ -1,0 +1,48 @@
+# Secure backend implementation plan
+
+## Phase 1 — identity and tenant boundary
+
+- Require trusted hosted identity on protected APIs
+- Add users, memberships, roles, tenant-owned tasks, audit events, and rate-limit buckets
+- Derive organization scope server-side
+- Remove mock identity and fake password-registration behavior
+- Add strict validation, origin checks, body limits, safe errors, correlation IDs, security headers, and health/readiness endpoints
+- Add authorization and hostile-path tests
+
+Exit gate: no unauthenticated organization/task access; no shared workspace key; tenant tests pass.
+
+## Phase 2 — import and normalized commerce data
+
+- Define locations, sources, import batches, products, inventory, customers, transactions, lines, tenders, discounts, and returns
+- Implement CSV template detection, mapping, validation, reconciliation, duplicate detection, and dry-run preview
+- Keep uploads private with short retention and scan/isolation controls
+- Produce metrics only from accepted source facts
+
+Exit gate: totals reconcile, duplicate import is idempotent, malformed data cannot cross tenants, and deletion/retention behavior is tested.
+
+## Phase 3 — live integrations
+
+- Add provider adapter interface for Lightspeed, Square, Moneris, Shopify POS, Google, and accounting providers
+- Implement OAuth state/PKCE, encrypted tokens, revocation, scope review, callback validation, and tenant-bound sync state
+- Add signed/replay-protected webhooks and idempotent queued sync jobs
+- Surface last successful sync, freshness, gaps, and provider outages honestly
+
+Exit gate: token redaction and rotation pass; webhook replay and tenant isolation tests pass; provider failure cannot corrupt core state.
+
+## Phase 4 — analytics and operational workflows
+
+- Rebuild inventory, customers, reports, loyalty, marketing, SEO, calendars, and recommendations on normalized facts
+- Add metric definitions, data-quality status, drill-down lineage, confidence, and anomaly explanations
+- Add scheduled reports, bounded exports, operational approvals, and immutable period controls
+
+Exit gate: every metric is reproducible, filters share tenant/location/date context, and no fixture data reaches a real workspace.
+
+## Phase 5 — production operations
+
+- Configure WAF, bot controls, external uptime, error tracking, dashboards, alert routing, backup retention, and restore drills
+- Add dependency/SAST/secret/SBOM/container or artifact checks as applicable
+- Run staging DAST, recovery, rollback, MFA/recovery, session revocation, and incident exercises
+- Complete privacy/legal review and subprocessor/retention documentation
+
+Exit gate: final launch checklist passes, no Critical findings remain, and every High finding has an approved owner and deadline.
+

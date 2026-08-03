@@ -15,6 +15,13 @@
       "when": 1785722805031,
       "tag": "0001_stale_gabe_jones",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1785728744297,
+      "tag": "0002_absent_shard",
+      "breakpoints": true
     }
   ]
 }

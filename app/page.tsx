@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import AnalyticsWorkspace from "./analytics-workspace";
+import SecureOnboardingFlow from "./secure-onboarding-flow";
 
 const nav = [
   ["Command", ["Overview", "Intelligence", "Action Centre", "Business Brief", "Advisor"]],
@@ -16,12 +16,12 @@ const actions = [
 ];
 
 const integrations = [
-  ["Lightspeed", "Point of sale", "Sales, products and inventory sync", "Ready to connect"],
+  ["Lightspeed", "Point of sale", "Sales, products and inventory sync", "Planned"],
   ["Moneris", "Payments", "Settlement and transaction reconciliation", "Planned"],
-  ["Google Business", "Local presence", "Reviews, profile performance and search", "Ready to connect"],
-  ["Meta", "Advertising", "Campaign spend, reach and conversions", "Ready to connect"],
+  ["Google Business", "Local presence", "Reviews, profile performance and search", "Planned"],
+  ["Meta", "Advertising", "Campaign spend, reach and conversions", "Planned"],
   ["QuickBooks", "Accounting", "Expenses, categories and reconciliation", "Planned"],
-  ["Stripe", "Payments", "Revenue, refunds and payout tracking", "Ready to connect"],
+  ["Stripe", "Payments", "Revenue, refunds and payout tracking", "Planned"],
 ];
 
 function Icon({ name }: { name: string }) {
@@ -34,14 +34,29 @@ export default function Home() {
   const [organizationName, setOrganizationName] = useState("");
   const [accountName, setAccountName] = useState("Account owner");
   const [view, setView] = useState("Overview");
-  const [period, setPeriod] = useState("7 days");
   const [notice, setNotice] = useState("");
   const [quickOpen, setQuickOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
-  useEffect(() => { void fetch("/api/onboarding").then(r => r.json()).then(data => { if (data.organization?.setupComplete) { setOrganizationName(data.organization.businessName); setAccountName(data.organization.ownerName || "Account owner"); setEntry("app"); } else setEntry("landing"); }).catch(() => setEntry("landing")); }, []);
+  useEffect(() => {
+    void fetch("/api/v1/onboarding", { headers: { Accept: "application/json" } })
+      .then(async (response) => ({ response, data: await response.json() }))
+      .then(({ response, data }) => {
+        if (response.ok && data.organization?.setupComplete) {
+          setOrganizationName(data.organization.businessName);
+          setAccountName(data.organization.ownerName || data.user?.displayName || "Account owner");
+          setEntry("app");
+        } else if (response.ok && data.authenticated) {
+          setAccountName(data.user?.displayName || "Account owner");
+          setEntry("signup");
+        } else {
+          setEntry("landing");
+        }
+      })
+      .catch(() => setEntry("landing"));
+  }, []);
 
   const showNotice = (message: string) => {
     setNotice(message);
@@ -49,8 +64,8 @@ export default function Home() {
   };
 
   if (entry === "loading") return <div className="entry-loading"><span className="brand-mark"><i/><b>V</b></span><p>Preparing Vanteloq…</p></div>;
-  if (entry === "landing") return <LandingPage start={() => setEntry("signup")} />;
-  if (entry === "signup") return <OnboardingFlow back={() => setEntry("landing")} complete={(business, owner) => { setOrganizationName(business); setAccountName(owner); setEntry("app"); }} />;
+  if (entry === "landing") return <LandingPage start={() => window.location.assign("/signin-with-chatgpt?return_to=/")} />;
+  if (entry === "signup") return <SecureOnboardingFlow accountName={accountName} signOut={() => window.location.assign("/signout-with-chatgpt?return_to=/")} complete={(business, owner) => { setOrganizationName(business); setAccountName(owner); setEntry("app"); }} />;
   const dataViews = ["Overview","Intelligence","Sales & margin","Inventory","Customers","Marketing","SEO","Reports","Business Brief","Advisor","Goals"];
   return (
     <main className="app-shell">
@@ -121,16 +136,16 @@ type Task = { id: number; title: string; detail: string; priority: "high" | "med
 
 function TaskCentre({ showNotice, openComposer }: { showNotice: (m: string) => void; openComposer: () => void }) {
   const [tasks, setTasks] = useState<Task[]>([]); const [loading, setLoading] = useState(true); const [error, setError] = useState("");
-  const load = async () => { try { const response = await fetch("/api/tasks"); const data = await response.json(); if (!response.ok) throw new Error(data.error); setTasks(data.tasks); setError(""); } catch (e) { setError(e instanceof Error ? e.message : "Unable to load tasks"); } finally { setLoading(false); } };
+  const load = async () => { try { const response = await fetch("/api/v1/tasks"); const data = await response.json(); if (!response.ok) throw new Error(data.error?.message ?? "Unable to load tasks"); setTasks(data.tasks); setError(""); } catch (e) { setError(e instanceof Error ? e.message : "Unable to load tasks"); } finally { setLoading(false); } };
   useEffect(() => { const timer = window.setTimeout(() => void load(), 0); return () => window.clearTimeout(timer); }, []);
-  const update = async (task: Task, status: Task["status"]) => { const response = await fetch("/api/tasks", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: task.id, status }) }); if (response.ok) { setTasks(current => current.map(item => item.id === task.id ? { ...item, status } : item)); showNotice(status === "done" ? "Task completed" : "Task status updated"); } };
+  const update = async (task: Task, status: Task["status"]) => { const response = await fetch("/api/v1/tasks", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: task.id, status }) }); if (response.ok) { setTasks(current => current.map(item => item.id === task.id ? { ...item, status } : item)); showNotice(status === "done" ? "Task completed" : "Task status updated"); } };
   const active = tasks.filter(task => task.status !== "done");
   return <div className="content tasks-page"><section className="welcome-row"><div><h2>Turn signals into assigned work.</h2><p>Prioritize, assign and close the work that moves the business forward.</p></div><button className="primary" onClick={openComposer}>+ Create task</button></section><section className="task-stats"><div><strong>{active.length}</strong><span>Active tasks</span></div><div><strong>{tasks.filter(t => t.priority === "high" && t.status !== "done").length}</strong><span>High priority</span></div><div><strong>{tasks.filter(t => t.status === "done").length}</strong><span>Completed</span></div></section><article className="card task-board"><div className="card-head"><div><p className="card-kicker">OPERATIONS</p><h3>Shared task queue</h3></div><span className="live-label"><i/> Saved automatically</span></div>{loading ? <p className="empty-state">Loading your workspace…</p> : error ? <div className="empty-state"><b>We couldn’t load the task queue.</b><span>{error}</span><button onClick={() => { setLoading(true); void load(); }}>Try again</button></div> : tasks.length === 0 ? <div className="empty-state"><b>No tasks yet.</b><span>Create the first task for the store team.</span><button onClick={openComposer}>Create a task</button></div> : <div className="task-list">{tasks.map(task => <div className={`task-item ${task.status === "done" ? "is-done" : ""}`} key={task.id}><button className="check-task" aria-label={`Mark ${task.title} complete`} onClick={() => void update(task, task.status === "done" ? "open" : "done")}>{task.status === "done" ? "✓" : ""}</button><div className="task-copy"><div><span className={`task-priority ${task.priority}`}>{task.priority}</span><b>{task.title}</b></div>{task.detail && <p>{task.detail}</p>}<small>{task.assignee}{task.dueDate ? ` · Due ${new Date(`${task.dueDate}T12:00:00`).toLocaleDateString("en-CA", { month: "short", day: "numeric" })}` : " · No due date"}</small></div><select aria-label={`Status for ${task.title}`} value={task.status} onChange={event => void update(task, event.target.value as Task["status"])}><option value="open">To do</option><option value="in_progress">In progress</option><option value="done">Done</option></select></div>)}</div>}</article></div>;
 }
 
 function TaskComposer({ close, saved }: { close: () => void; saved: () => void }) {
   const [saving, setSaving] = useState(false); const [error, setError] = useState("");
-  const submit = async (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); setSaving(true); setError(""); const form = new FormData(event.currentTarget); const response = await fetch("/api/tasks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(Object.fromEntries(form)) }); const data = await response.json(); if (!response.ok) { setError(data.error ?? "Unable to save task"); setSaving(false); return; } saved(); };
+  const submit = async (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); setSaving(true); setError(""); const form = new FormData(event.currentTarget); const response = await fetch("/api/v1/tasks", { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() }, body: JSON.stringify(Object.fromEntries(form)) }); const data = await response.json(); if (!response.ok) { setError(data.error?.message ?? "Unable to save task"); setSaving(false); return; } saved(); };
   return <div className="modal-backdrop" role="presentation" onMouseDown={event => { if (event.currentTarget === event.target) close(); }}><form className="task-modal" onSubmit={submit} aria-labelledby="task-title"><div className="modal-head"><div><p className="card-kicker">QUICK ACTION</p><h2 id="task-title">Create a team task</h2></div><button type="button" onClick={close} aria-label="Close">×</button></div><label>Task title<input name="title" maxLength={120} required autoFocus placeholder="e.g. Confirm Friday supplier order" /></label><label>Details<textarea name="detail" rows={3} placeholder="Add enough context to complete this without follow-up." /></label><div className="form-row"><label>Priority<select name="priority" defaultValue="medium"><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></label><label>Assignee<select name="assignee" defaultValue="Owner"><option>Owner</option><option>Store team</option></select></label><label>Due date<input name="dueDate" type="date" /></label></div>{error && <p className="form-error">{error}</p>}<div className="modal-actions"><button type="button" className="secondary" onClick={close}>Cancel</button><button className="primary" disabled={saving}>{saving ? "Saving…" : "Create task"}</button></div></form></div>;
 }
 
