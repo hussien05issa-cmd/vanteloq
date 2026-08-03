@@ -255,7 +255,7 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": "'Hussien'"
+          "default": "'Owner'"
         },
         "due_date": {
           "name": "due_date",
