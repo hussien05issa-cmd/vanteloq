@@ -70,6 +70,14 @@ erDiagram
   ORGANIZATIONS ||--o{ INTEGRATION_CONNECTIONS : owns
   ORGANIZATIONS ||--o{ AUDIT_EVENTS : records
   USERS ||--o{ AUDIT_EVENTS : performs
+  ORGANIZATIONS ||--o{ FINANCIAL_ACCOUNTS : owns
+  ORGANIZATIONS ||--o{ ACCOUNTING_PERIODS : owns
+  ORGANIZATIONS ||--o{ JOURNAL_ENTRIES : posts
+  JOURNAL_ENTRIES ||--|{ JOURNAL_LINES : contains
+  FINANCIAL_ACCOUNTS ||--o{ JOURNAL_LINES : classifies
+  ORGANIZATIONS ||--o{ FINANCIAL_TRANSACTIONS : imports
+  ORGANIZATIONS ||--o{ RECONCILIATIONS : completes
+  ORGANIZATIONS ||--o{ BOOKLOQ_ALERTS : receives
 ```
 
 Phase-one tables:
@@ -84,6 +92,22 @@ Phase-one tables:
 - `integration_connections`: provider/status metadata only; no plaintext tokens
 - `audit_events`: append-only security and business-control events
 - `rate_limit_buckets`: bounded abuse-control counters
+
+BookLoQ accounting tables:
+
+- `bookloq_settings` and `bookloq_role_assignments`: tenant configuration and finance-role extension points
+- `financial_accounts`: chart of accounts with account type, normal balance, explanation, tax treatment, and archive state
+- `accounting_periods`: open/review/locked posting boundaries
+- `journal_entries` and `journal_lines`: balanced double-entry source of truth, idempotent posting, and linked reversals
+- `financial_transactions`: normalized bank, card, POS, processor, bill, invoice, payroll, loan, and owner activity feed
+- `bank_accounts` and `reconciliations`: statement/book balances, preparation, review, supporting-status, and lock workflow
+- `bookloq_contacts`, `supplier_bills`, and `customer_invoices`: shared parties and AP/AR records
+- `bookloq_alerts`: traceable financial attention items with evidence, confidence, action, assignment, status, and resolution history
+- `bookloq_budgets` and `month_end_items`: budget/actual/forecast controls and close dependencies
+
+All stored money uses integer minor units. Percentage rates use basis points and exchange rates use parts per million. JavaScript floating-point values are never accepted or stored as monetary source values. Financial statements, sales-tax working values, ledger balances, reconciliation differences, and journal validation are deterministic server calculations. Explanatory assistance consumes those results but cannot create or replace them.
+
+Posted entries are immutable in normal workflows. Corrections create a linked reversal in an open period; the original remains visible. Period unlock requires the owner-level finance permission, a reason, and an audit event. Future bank/POS/OCR/payment/filing adapters remain disabled until their provider-specific authorization, signature, idempotency, recovery, and reconciliation tests exist.
 
 Later line-item model:
 

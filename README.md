@@ -1,6 +1,6 @@
 # Vanteloq
 
-Vanteloq is a retail operating-intelligence platform for sales, margin, inventory, customers, marketing, SEO, reporting, and daily operating work. This repository is the Cloudflare Worker-compatible modular monolith hosted through Sites.
+Vanteloq is a retail operating-intelligence platform for sales, margin, inventory, customers, marketing, reporting, daily operating work, and BookLoQ accounting. This repository is the Cloudflare Worker-compatible modular monolith hosted through Sites.
 
 ## Current release boundary
 
@@ -15,6 +15,8 @@ Implemented now:
 - Evidence-bound owner command centre with period comparisons, source freshness, data-quality limits, deterministic insight evidence, and recommended actions
 - Business memory and decision journal with measured before/after sales impact when sufficient history exists
 - Formula-transparent scenario planner, owner brief, evidence-bound advisor, owner stress list, and industry/module data contracts
+- Integrated BookLoQ workspace with a permission-aware 24-section finance navigator, integer-minor-unit double-entry ledger, balanced journals and linked reversals, Canadian GST/HST working calculations, banking and reconciliation records, receivables/payables, alerts-to-actions, cash forecast, budgets, month-end controls, reports, audit history, and a deterministic accounting assistant
+- An optional, explicitly labelled Canadian retail demonstration ledger that cannot be loaded over an existing live ledger
 - Versioned API, strict request validation, same-origin write protection, rate limits, idempotency, audit events, and security headers
 - D1 migrations that preserve and migrate the earlier prototype workspace and tasks
 - Health, readiness, OpenAPI, hostile-path tests, deterministic calculation tests, forward-migration tests, idempotent import tests, and a two-tenant end-to-end intelligence-to-action test
@@ -24,7 +26,7 @@ Not implemented yet:
 - Independent email/password, passkeys, MFA, recovery, or session-management UI
 - Live POS/Google/accounting OAuth, provider tokens, webhooks, or synchronization
 - Live line-item POS, SKU inventory, customer, campaign, employee, supplier, payout, bank, and accounting feeds
-- Full expense ledger, invoice scanning, deposit reconciliation, tax estimation, and accountant exports
+- Provider-backed bank/POS synchronization, document OCR, payment initiation, tax filing, payroll execution, accountant invitations, and production PDF/XLSX report generation
 - Payments, billing, email delivery, background queues, or customer-data exports
 - Account-level Cloudflare WAF/backup/alert configuration evidence
 
@@ -56,7 +58,7 @@ Local development uses a Sites-managed simulated D1 binding. No production data 
 
 The supported application API is under `/api/v1`. The runtime description is available at `/api/v1/openapi`; detailed rules are in `docs/API.md`. Old unversioned prototype endpoints have been removed.
 
-Calculation definitions and evidence rules are in `docs/INTELLIGENCE_CONTRACT.md`. The honest implementation boundary for every requested product area is in `docs/PRODUCT_CAPABILITY_AUDIT.md`.
+Calculation definitions and evidence rules are in `docs/INTELLIGENCE_CONTRACT.md`. BookLoQ's accounting boundary is documented in `docs/BOOKLOQ.md`. The honest implementation boundary for every requested product area is in `docs/PRODUCT_CAPABILITY_AUDIT.md`.
 
 ## Security reporting
 

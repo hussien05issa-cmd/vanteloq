@@ -131,6 +131,49 @@ test("migrations, tenant isolation and the complete intelligence-to-action flow 
     assert.ok(command.insights.some(insight => insight.id === "sales-trend"));
     assert.ok(command.insights.every(insight => insight.evidence.length > 0));
 
+    const seeded = await dispatch(worker, environment, "/api/v1/bookloq/demo", { method: "POST", ...owner, body: {} });
+    assert.equal(seeded.status, 201);
+    assert.equal((await seeded.json()).seeded, true);
+    const seededReplay = await dispatch(worker, environment, "/api/v1/bookloq/demo", { method: "POST", ...owner, body: {} });
+    assert.equal(seededReplay.status, 200);
+    assert.equal((await seededReplay.json()).replayed, true);
+    const bookloqResponse = await dispatch(worker, environment, "/api/v1/bookloq", owner);
+    assert.equal(bookloqResponse.status, 200);
+    const bookloq = (await bookloqResponse.json()).bookloq;
+    assert.equal(bookloq.configured, true);
+    assert.equal(bookloq.settings.dataMode, "demonstration");
+    assert.equal(bookloq.statements.trialBalance.totalDebitCents, bookloq.statements.trialBalance.totalCreditCents);
+    assert.equal(bookloq.summary.revenueCents, 1_460_000);
+    assert.equal(bookloq.summary.salesTaxPayableCents, 1_750);
+    assert.ok(bookloq.alerts.every(alert => alert.demoRecord === 1));
+
+    const debitAccount = bookloq.statements.accounts.find(account => account.systemKey === "supplies_expense");
+    const creditAccount = bookloq.statements.accounts.find(account => account.systemKey === "accounts_payable");
+    const journalKey = crypto.randomUUID();
+    const manualJournal = await dispatch(worker, environment, "/api/v1/bookloq/journals", { method: "POST", ...owner, idempotencyKey: journalKey, body: {
+      entryDate: latest, memo: "Verified manual journal", currency: "CAD",
+      lines: [
+        { accountId: debitAccount.id, description: "Supplies", debitCents: 10_000, creditCents: 0, locationRef: "Main" },
+        { accountId: creditAccount.id, description: "Supplier payable", debitCents: 0, creditCents: 10_000, locationRef: "Main" },
+      ],
+    } });
+    assert.equal(manualJournal.status, 201);
+    const manualJournalBody = await manualJournal.json();
+    assert.equal(manualJournalBody.journal.totalDebitCents, 10_000);
+    const journalReplay = await dispatch(worker, environment, "/api/v1/bookloq/journals", { method: "POST", ...owner, idempotencyKey: journalKey, body: {
+      entryDate: latest, memo: "Verified manual journal", currency: "CAD",
+      lines: [
+        { accountId: debitAccount.id, debitCents: 10_000, creditCents: 0 },
+        { accountId: creditAccount.id, debitCents: 0, creditCents: 10_000 },
+      ],
+    } });
+    assert.equal(journalReplay.status, 200);
+    assert.equal((await journalReplay.json()).replayed, true);
+
+    const reversal = await dispatch(worker, environment, "/api/v1/bookloq/journals", { method: "PATCH", ...owner, idempotencyKey: crypto.randomUUID(), body: { entryId: manualJournalBody.journal.id, reason: "Correct the verified test entry", reversalDate: latest } });
+    assert.equal(reversal.status, 201);
+    assert.equal((await reversal.json()).journal.reversalOfEntryId, manualJournalBody.journal.id);
+
     const salesInsight = command.insights.find(insight => insight.id === "sales-trend");
     const task = await dispatch(worker, environment, "/api/v1/tasks", { method: "POST", ...owner, idempotencyKey: crypto.randomUUID(), body: { ...salesInsight.suggestedTask, sourceType: "insight", sourceRef: salesInsight.id, assignee: "Owner", dueDate: null } });
     assert.equal(task.status, 201);
@@ -149,6 +192,11 @@ test("migrations, tenant isolation and the complete intelligence-to-action flow 
     const secondBody = await secondCommand.json();
     assert.equal(secondBody.commandCentre.ready, false);
     assert.equal(secondBody.commandCentre.source.rowCount, 0);
+    const secondBookLoq = await dispatch(worker, environment, "/api/v1/bookloq", secondOwner);
+    assert.equal(secondBookLoq.status, 200);
+    const secondBookLoqBody = await secondBookLoq.json();
+    assert.equal(secondBookLoqBody.bookloq.configured, false);
+    assert.equal(secondBookLoqBody.bookloq.transactions.length, 0);
   } finally {
     await miniflare.dispose();
   }

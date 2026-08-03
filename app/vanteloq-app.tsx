@@ -1,11 +1,13 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import BookLoQWorkspace from "./bookloq-workspace";
 
-type View = "Overview" | "Intelligence" | "Action Centre" | "Business Brief" | "Advisor" | "Sales" | "Profit" | "Cash" | "Bookkeeping" | "Inventory" | "Customers" | "Marketing" | "Team" | "Operations" | "Suppliers" | "Locations" | "Decision Journal" | "Scenario Planner" | "Reports" | "Industry Modules" | "Integrations" | "Settings";
+type View = "Overview" | "Intelligence" | "Action Centre" | "Business Brief" | "Advisor" | "BookLoQ" | "Sales" | "Profit" | "Cash" | "Bookkeeping" | "Inventory" | "Customers" | "Marketing" | "Team" | "Operations" | "Suppliers" | "Locations" | "Decision Journal" | "Scenario Planner" | "Reports" | "Industry Modules" | "Integrations" | "Settings";
 
 const nav: [string, View[]][] = [
   ["Command", ["Overview", "Intelligence", "Action Centre", "Business Brief", "Advisor"]],
+  ["Finance", ["BookLoQ"]],
   ["Performance", ["Sales", "Profit", "Cash", "Bookkeeping", "Inventory", "Customers", "Marketing", "Team"]],
   ["Operate", ["Operations", "Suppliers", "Locations", "Decision Journal", "Scenario Planner", "Reports"]],
 ];
@@ -43,6 +45,7 @@ export default function VanteloqApp({ organizationName, accountName }: { organiz
   const [taskSeed, setTaskSeed] = useState<TaskSeed | null>(null);
   const [notice, setNotice] = useState("");
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [appRole, setAppRole] = useState("employee");
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -50,7 +53,7 @@ export default function VanteloqApp({ organizationName, accountName }: { organiz
       const response = await fetch("/api/v1/command-centre", { headers: { Accept: "application/json" } });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error?.message ?? "Unable to load the command centre.");
-      setData(body.commandCentre); setCurrency(body.organization.currency); setError("");
+      setData(body.commandCentre); setCurrency(body.organization.currency); setAppRole(body.organization.role ?? "employee"); setError("");
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to load the command centre."); }
     finally { setLoading(false); }
   }, []);
@@ -62,7 +65,7 @@ export default function VanteloqApp({ organizationName, accountName }: { organiz
     <aside className={mobileNavOpen ? "sidebar mobile-open" : "sidebar"}>
       <button className="brand" onClick={() => navigate("Overview")}><span className="brand-mark"><i/><b>V</b></span><span className="brand-name">Vanteloq<small>OPERATING INTELLIGENCE</small></span></button>
       <div className="workspace-switcher"><span className="workspace-avatar">{organizationName.slice(0, 2).toUpperCase()}</span><span><b>{organizationName}</b><small>{data?.source.latestBusinessDate ? `Data through ${data.source.latestBusinessDate}` : "Data source required"}</small></span></div>
-      <nav aria-label="Primary navigation">{nav.map(([group, items]) => <section className="nav-group" key={group}><p>{group}</p>{items.map(item => <button key={item} className={view === item ? "nav-item active" : "nav-item"} onClick={() => navigate(item)}><span className="nav-dot"/>{item}</button>)}</section>)}</nav>
+      <nav aria-label="Primary navigation">{nav.filter(([group]) => group !== "Finance" || ["owner", "admin", "manager", "read_only"].includes(appRole)).map(([group, items]) => <section className="nav-group" key={group}><p>{group}</p>{items.map(item => <button key={item} className={`${view === item ? "nav-item active" : "nav-item"}${item === "BookLoQ" ? " bookloq-main-nav" : ""}`} onClick={() => navigate(item)}>{item === "BookLoQ" ? <span className="bookloq-nav-glyph" aria-hidden="true"><svg viewBox="0 0 18 18"><rect x="2.5" y="2.5" width="13" height="13" rx="2"/><path d="M6 6h6M6 9h2m2 0h2M6 12h2m2 0h2"/></svg></span> : <span className="nav-dot"/>}{item}</button>)}</section>)}</nav>
       <div className="side-bottom"><button className={view === "Industry Modules" ? "nav-item active" : "nav-item"} onClick={() => navigate("Industry Modules")}><span className="nav-dot"/>Industry modules</button><button className={view === "Integrations" ? "nav-item active" : "nav-item"} onClick={() => navigate("Integrations")}><span className="nav-dot"/>Integrations & data</button><button className={view === "Settings" ? "nav-item active" : "nav-item"} onClick={() => navigate("Settings")}><span className="nav-dot"/>Settings</button><div className="profile"><span className="avatar">{accountName.split(/\s+/).map(part => part[0]).join("").slice(0, 2).toUpperCase()}</span><span><b>{accountName}</b><small>Owner</small></span><a aria-label="Sign out" href="/signout-with-chatgpt?return_to=/">↗</a></div></div>
     </aside>
     <section className="main-panel">
@@ -79,6 +82,7 @@ function Workspace({ view, data, currency, navigate, refresh, showNotice, create
   if (view === "Overview") return <Overview data={data} currency={currency} navigate={navigate} createTask={createTask}/>;
   if (view === "Intelligence") return <Intelligence data={data} currency={currency} navigate={navigate} createTask={createTask}/>;
   if (view === "Action Centre") return <TaskCentre showNotice={showNotice} openComposer={() => createTask({ title: "", detail: "", priority: "medium", sourceType: "manual" })}/>;
+  if (view === "BookLoQ") return <BookLoQWorkspace createTask={createTask} showNotice={showNotice}/>;
   if (view === "Integrations") return <DataHub refresh={refresh} showNotice={showNotice}/>;
   if (view === "Decision Journal") return <DecisionJournal currency={currency} showNotice={showNotice}/>;
   if (view === "Scenario Planner") return <ScenarioPlanner data={data} currency={currency}/>;

@@ -33,6 +33,18 @@ Exit gate: passed in the automated disposable-D1 flow.
 
 Exit gate: totals reconcile, duplicate import is idempotent, malformed data cannot cross tenants, and deletion/retention behavior is tested.
 
+## Phase 2C — BookLoQ accounting core (implemented)
+
+- Add BookLoQ as a primary Vanteloq workspace with a responsive, collapsible, searchable, permission-filtered 24-section navigator
+- Add tenant-owned chart of accounts, periods, contacts, journal entries and lines, transaction feed, bank/reconciliation records, AP/AR, alerts, budgets, and close work
+- Enforce integer-minor-unit money, balanced journals, active organization-owned accounts, open-period posting, idempotency, immutable linked reversals, and audit events
+- Calculate trial balance, P&L, balance sheet, GST/HST working position, reconciliation difference, health score, and certainty-separated cash forecast deterministically
+- Connect financial alerts to the shared Vanteloq Action Centre
+- Include only explicitly labelled demo records and block demo seeding into any populated live ledger
+- Disable provider-dependent actions until their adapters and operational controls pass
+
+Exit gate: lint, strict types, production build, rendering, accounting-unit, migration, hostile-request, idempotency, journal-reversal, and two-tenant flow tests pass. Live financial data remains gated by Phase 3 and Phase 5.
+
 ## Phase 3 — live integrations
 
 - Add provider adapter interface for Lightspeed, Square, Moneris, Shopify POS, Google, and accounting providers

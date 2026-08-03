@@ -41,7 +41,7 @@ test("task APIs reject missing identity before database access", async () => {
 
 test("business intelligence APIs reject anonymous access before database reads", async () => {
   const worker = await loadWorker();
-  for (const path of ["/api/v1/command-centre", "/api/v1/daily-metrics", "/api/v1/events"]) {
+  for (const path of ["/api/v1/command-centre", "/api/v1/daily-metrics", "/api/v1/events", "/api/v1/bookloq"]) {
     const response = await worker.fetch(new Request(`https://vanteloq.example${path}`, {
       headers: { accept: "application/json" },
     }), environment, context);
@@ -70,7 +70,13 @@ test("state-changing onboarding rejects a cross-site origin before data access",
 
 test("imports and business-memory writes reject cross-site origins before data access", async () => {
   const worker = await loadWorker();
-  for (const path of ["/api/v1/daily-metrics", "/api/v1/events"]) {
+  for (const path of [
+    "/api/v1/daily-metrics",
+    "/api/v1/events",
+    "/api/v1/bookloq/demo",
+    "/api/v1/bookloq/journals",
+    "/api/v1/bookloq/actions",
+  ]) {
     const response = await worker.fetch(new Request(`https://vanteloq.example${path}`, {
       method: "POST",
       headers: {
@@ -109,5 +115,9 @@ test("operational health and API description expose no internal configuration", 
   assert.ok(specification.paths["/command-centre"]);
   assert.ok(specification.paths["/daily-metrics"]);
   assert.ok(specification.paths["/events"]);
+  assert.ok(specification.paths["/bookloq"]);
+  assert.ok(specification.paths["/bookloq/demo"]);
+  assert.ok(specification.paths["/bookloq/journals"]);
+  assert.ok(specification.paths["/bookloq/actions"]);
   assert.doesNotMatch(JSON.stringify(specification), /secret|token|database_id/i);
 });

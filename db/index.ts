@@ -1,5 +1,5 @@
 import { drizzle } from "drizzle-orm/d1";
-import * as schema from "./schema";
+import * as schema from "./schema.ts";
 
 type VanteloqRuntime = typeof globalThis & { __vanteloqEnv?: { DB?: D1Database } };
 export function getD1() {

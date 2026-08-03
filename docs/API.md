@@ -14,6 +14,11 @@ All application endpoints are versioned under `/api/v1`. Responses are JSON, sen
 | POST | `/api/v1/daily-metrics` | Active owner/admin/manager membership | 512 KiB | 12/hour/user | Same-origin and UUID `Idempotency-Key`; 1–366 unique date/location rows; convergent upserts; audited import |
 | GET | `/api/v1/events` | Active owner/admin/manager/read-only membership | None | 60/minute/user | Maximum 200 tenant-owned business-memory events; measured impact requires at least 7 verified days on both sides |
 | POST | `/api/v1/events` | Active owner/admin/manager membership | 32 KiB | 30/hour/user | Same-origin; strict event type/date validation; audited write |
+| GET | `/api/v1/bookloq` | Active owner/admin/manager/read-only membership plus section permission | None | 120/minute/user | Returns only tenant-owned ledger-derived balances, statements, alerts, AP/AR, close, forecast, audit, and supporting records |
+| POST | `/api/v1/bookloq/demo` | Active owner/admin membership | 32 KiB | 3/day/user | Same-origin; loads only an explicitly labelled demo into an empty ledger; retry is convergent |
+| POST | `/api/v1/bookloq/journals` | Active owner/admin with `post_journals` | 64 KiB | 30/hour/user | Same-origin and UUID `Idempotency-Key`; integer minor units; 2–50 lines; active tenant accounts; balanced; open period; audited |
+| PATCH | `/api/v1/bookloq/journals` | Active owner/admin with `post_journals` | 16 KiB | 20/hour/user | Same-origin and UUID `Idempotency-Key`; creates one linked counter-entry in an open period; never overwrites lines |
+| POST | `/api/v1/bookloq/actions` | Active owner/admin plus action-specific finance permission | 16 KiB | 60/minute/user | Same-origin; explicit transitions for close work, alert status, period lock, and reason-required owner unlock; audited |
 | GET | `/api/v1/integrations` | Active owner/admin/manager/read-only membership | None | Edge controls | Metadata only; no token or connection action exists |
 | GET | `/api/v1/openapi` | Public | None | Edge controls | OpenAPI 3.1 description; no secrets or internal identifiers |
 | GET | `/api/health` | Public | None | Edge controls | Liveness only; no dependency details |
@@ -31,4 +36,4 @@ All application endpoints are versioned under `/api/v1`. Responses are JSON, sen
 }
 ```
 
-Unknown fields are rejected. Strings are normalized and bounded. Dates, emails, URLs, phone numbers, business hours, roles, status values, source modes, currencies, timezones, provider choices, integer monetary values, counts, import sizes, event types, and date/location uniqueness use explicit validation.
+Unknown fields are rejected. Strings are normalized and bounded. Dates, emails, URLs, phone numbers, business hours, roles, status values, source modes, currencies, timezones, provider choices, integer monetary values, counts, import sizes, event types, and date/location uniqueness use explicit validation. BookLoQ additionally rejects unbalanced journals, mixed debit/credit lines, inactive or cross-tenant account IDs, locked-period postings, repeated reversals, incomplete close locks, and unexplained unlocks.

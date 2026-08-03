@@ -1,4 +1,4 @@
-import { getD1 } from "../db";
+import { getD1 } from "../db/index.ts";
 
 const EMAIL_PATTERN = /^[^\s@]{1,64}@[^\s@]{1,190}$/;
 const JSON_CONTENT_TYPE = /^application\/json(?:\s*;|$)/i;
@@ -168,4 +168,3 @@ export async function enforceRateLimit(
     throw new ApiError(429, "RATE_LIMITED", "Too many requests. Please try again later.");
   }
 }
-
