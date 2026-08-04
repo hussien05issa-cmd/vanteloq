@@ -8,8 +8,9 @@ import {
   forecastCash,
   type LedgerAccountRow,
 } from "../../../../server/bookloq";
+import { requirePermission } from "../../../../server/permissions";
 
-const readers = ["owner", "admin", "manager", "read_only"] as const;
+const readers = ["owner", "admin", "manager", "employee", "read_only"] as const;
 
 type SettingsRow = {
   baseCurrency: string;
@@ -35,6 +36,7 @@ function rows<T>(result: D1Result<T>): T[] {
 export async function GET(request: Request) {
   return handleApi(request, async () => {
     const context = await requireAccess(request, readers);
+    await requirePermission(context, "finance.statements");
     await enforceRateLimit("bookloq:read", `${context.userId}:${clientSource(request)}`, 90, 60);
     const database = getD1();
     const organizationId = context.organizationId;

@@ -3,6 +3,7 @@ import { getDb } from "../../../../db";
 import { integrationConnections } from "../../../../db/schema";
 import { requireAccess } from "../../../../server/authorization";
 import { handleApi, jsonResponse } from "../../../../server/api";
+import { requirePermission } from "../../../../server/permissions";
 
 const providers = [
   { id: "lightspeed", name: "Lightspeed", category: "Point of sale", availability: "configuration_required" },
@@ -11,11 +12,16 @@ const providers = [
   { id: "shopify", name: "Shopify POS", category: "Commerce", availability: "configuration_required" },
   { id: "google-business", name: "Google Business Profile", category: "Local presence", availability: "configuration_required" },
   { id: "quickbooks", name: "QuickBooks", category: "Accounting", availability: "planned" },
+  { id: "plaid", name: "Plaid", category: "Banking", availability: "configuration_required" },
+  { id: "mx", name: "MX", category: "Banking", availability: "configuration_required" },
+  { id: "flinks", name: "Flinks", category: "Canadian banking", availability: "configuration_required" },
+  { id: "manual-bank", name: "Manual bank statements", category: "Banking", availability: "planned" },
 ] as const;
 
 export async function GET(request: Request) {
   return handleApi(request, async () => {
-    const context = await requireAccess(request, ["owner", "admin", "manager", "read_only"]);
+    const context = await requireAccess(request, ["owner", "admin", "manager", "employee", "read_only"]);
+    await requirePermission(context, "integrations.view");
     const rows = await getDb()
       .select({
         provider: integrationConnections.provider,
@@ -36,4 +42,3 @@ export async function GET(request: Request) {
     });
   });
 }
-

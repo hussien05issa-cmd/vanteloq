@@ -41,6 +41,30 @@ const specification = {
     "/bookloq/actions": {
       post: { summary: "Resolve alerts, update close work, or lock and controlled-unlock accounting periods", responses: { "200": { description: "Tenant-owned accounting workflow updated and audited" }, "400": { description: "Invalid state transition" }, "403": { description: "Required BookLoQ permission missing" }, "404": { description: "Record not found in this tenant" }, "409": { description: "Close prerequisites are incomplete" }, "429": { description: "Rate limited" } } },
     },
+    "/governance": {
+      get: { summary: "Get organization profile, locations, team, roles and permission catalogue", responses: { "200": { description: "Tenant governance workspace" }, "403": { description: "Administrative access required" } } },
+      post: { summary: "Update tenant profile, locations, employees, roles or workplace PINs", responses: { "200": { description: "Governance change saved and audited" }, "400": { description: "Invalid input" }, "403": { description: "Administrative permission required" }, "409": { description: "Protected owner or duplicate record" } } },
+    },
+    "/organization-logo": {
+      get: { summary: "Read the current tenant-scoped organization logo", responses: { "200": { description: "Verified image object" }, "404": { description: "No custom logo" } } },
+      post: { summary: "Verify and store a tenant-scoped organization logo", responses: { "200": { description: "Logo stored" }, "400": { description: "Invalid image" }, "403": { description: "Branding permission required" }, "413": { description: "Image too large" } } },
+      delete: { summary: "Remove the current tenant-scoped logo", responses: { "200": { description: "Logo removed" }, "403": { description: "Branding permission required" } } },
+    },
+    "/purchasing": {
+      get: { summary: "List tenant purchase orders, lines, receipts and invoice matches", responses: { "200": { description: "Purchase-order centre" }, "403": { description: "Purchasing view permission required" } } },
+      post: { summary: "Create, approve, send-confirm, receive or match a purchase order", responses: { "200": { description: "Workflow updated and audited" }, "201": { description: "Purchase order created" }, "400": { description: "Invalid input" }, "403": { description: "Action permission required" }, "409": { description: "Invalid lifecycle transition" } } },
+    },
+    "/documents": {
+      get: { summary: "List or download tenant documents", responses: { "200": { description: "Document list or attachment" }, "403": { description: "Document permission required" } } },
+      post: { summary: "Verify and quarantine a tenant invoice or receipt", responses: { "201": { description: "Document stored for review" }, "400": { description: "Invalid file" }, "409": { description: "Duplicate document" }, "413": { description: "File too large" } } },
+      delete: { summary: "Remove an unprocessed tenant document", responses: { "200": { description: "Document removed" }, "403": { description: "Retention permission required" }, "409": { description: "Protected record" } } },
+    },
+    "/reports": {
+      get: { summary: "Run a source-backed aggregate report or authorized CSV export", responses: { "200": { description: "Report result or CSV" }, "400": { description: "Unsupported report or filters" }, "403": { description: "Report or data permission required" } } },
+    },
+    "/data-quality": {
+      get: { summary: "Calculate tenant source completeness and affected metrics", responses: { "200": { description: "Data-quality score and corrections" }, "403": { description: "Integration visibility required" } } },
+    },
   },
 };
 

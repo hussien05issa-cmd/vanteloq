@@ -4,8 +4,9 @@ import { requireAccess } from "../../../../../server/authorization";
 import { enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameOrigin } from "../../../../../server/api";
 import { journalInput, requireBookLoQPermission } from "../../../../../server/bookloq";
 import { idempotencyKey } from "../../../../../server/validation";
+import { requirePermission } from "../../../../../server/permissions";
 
-const writers = ["owner", "admin"] as const;
+const writers = ["owner", "admin", "manager", "employee", "read_only"] as const;
 
 type ExistingEntry = { id: string; entryNumber: string; status: string };
 type OriginalLine = {
@@ -32,6 +33,7 @@ export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
     const context = await requireAccess(request, writers);
+    await requirePermission(context, "finance.journal_post");
     requireBookLoQPermission(context.role, "post_journals");
     await enforceRateLimit("bookloq:journals:create", context.userId, 30, 3_600);
     const key = idempotencyKey(request);
@@ -88,6 +90,7 @@ export async function PATCH(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
     const context = await requireAccess(request, writers);
+    await requirePermission(context, "finance.journal_post");
     requireBookLoQPermission(context.role, "post_journals");
     await enforceRateLimit("bookloq:journals:reverse", context.userId, 20, 3_600);
     const key = idempotencyKey(request);

@@ -268,6 +268,268 @@ export const integrationConnections = sqliteTable(
   ],
 );
 
+// Organization governance is deliberately separated from the immutable
+// accounting ledger. These records can change without rewriting posted facts.
+export const organizationProfiles = sqliteTable(
+  "organization_profiles",
+  {
+    organizationId: text("organization_id").primaryKey().references(() => workspaces.id, { onDelete: "cascade" }),
+    displayName: text("display_name").notNull(),
+    organizationType: text("organization_type").notNull().default("business"),
+    businessStructure: text("business_structure").notNull().default(""),
+    locale: text("locale").notNull().default("en-CA"),
+    language: text("language").notNull().default("en"),
+    brandColor: text("brand_color").notNull().default("#2368c4"),
+    logoObjectKey: text("logo_object_key"),
+    logoContentType: text("logo_content_type"),
+    logoAltText: text("logo_alt_text").notNull().default("Organization logo"),
+    logoVersion: integer("logo_version").notNull().default(0),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [check("organization_profiles_logo_version_check", sql`${table.logoVersion} >= 0`)],
+);
+
+export const organizationLocations = sqliteTable(
+  "organization_locations",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    status: text("status", { enum: ["active", "archived"] }).notNull().default("active"),
+    countryCode: text("country_code").notNull(),
+    addressLine1: text("address_line_1").notNull(),
+    addressLine2: text("address_line_2").notNull().default(""),
+    addressLine3: text("address_line_3").notNull().default(""),
+    locality: text("locality").notNull(),
+    district: text("district").notNull().default(""),
+    administrativeArea: text("administrative_area").notNull(),
+    postalCode: text("postal_code").notNull().default(""),
+    timezone: text("timezone").notNull(),
+    currency: text("currency").notNull(),
+    locale: text("locale").notNull().default("en-CA"),
+    taxJurisdiction: text("tax_jurisdiction").notNull().default(""),
+    validationStatus: text("validation_status", { enum: ["entered", "suggested", "validated"] }).notNull().default("entered"),
+    latitudeE6: integer("latitude_e6"),
+    longitudeE6: integer("longitude_e6"),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("organization_locations_name_unique").on(table.organizationId, table.name),
+    index("organization_locations_status_idx").on(table.organizationId, table.status),
+    check("organization_locations_status_check", sql`${table.status} in ('active', 'archived')`),
+    check("organization_locations_validation_check", sql`${table.validationStatus} in ('entered', 'suggested', 'validated')`),
+  ],
+);
+
+export const accessRoles = sqliteTable(
+  "access_roles",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    description: text("description").notNull().default(""),
+    color: text("color").notNull().default("#53657a"),
+    systemKey: text("system_key"),
+    permissionsJson: text("permissions_json").notNull().default("[]"),
+    locationScopeJson: text("location_scope_json").notNull().default("[]"),
+    archived: integer("archived", { mode: "boolean" }).notNull().default(false),
+    createdByUserId: text("created_by_user_id").notNull().references(() => users.id),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("access_roles_name_unique").on(table.organizationId, table.name),
+    uniqueIndex("access_roles_system_unique").on(table.organizationId, table.systemKey),
+    index("access_roles_workspace_idx").on(table.organizationId, table.archived),
+  ],
+);
+
+export const teamMembers = sqliteTable(
+  "team_members",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    userId: text("user_id").references(() => users.id, { onDelete: "set null" }),
+    roleId: text("role_id").references(() => accessRoles.id, { onDelete: "set null" }),
+    firstName: text("first_name").notNull(),
+    lastName: text("last_name").notNull(),
+    preferredName: text("preferred_name").notNull().default(""),
+    email: text("email").notNull(),
+    mobile: text("mobile").notNull().default(""),
+    employeeCode: text("employee_code").notNull(),
+    jobTitle: text("job_title").notNull().default(""),
+    department: text("department").notNull().default(""),
+    employmentType: text("employment_type").notNull().default("employee"),
+    startDate: text("start_date"),
+    endDate: text("end_date"),
+    managerMemberId: text("manager_member_id"),
+    primaryLocationId: text("primary_location_id").references(() => organizationLocations.id, { onDelete: "set null" }),
+    permittedLocationsJson: text("permitted_locations_json").notNull().default("[]"),
+    status: text("status", { enum: ["draft", "invited", "invitation_expired", "pending_verification", "active", "suspended", "archived"] }).notNull().default("draft"),
+    remoteLogin: integer("remote_login", { mode: "boolean" }).notNull().default(false),
+    requireMfa: integer("require_mfa", { mode: "boolean" }).notNull().default(false),
+    pinEnabled: integer("pin_enabled", { mode: "boolean" }).notNull().default(false),
+    invitationSentAt: integer("invitation_sent_at", { mode: "timestamp" }),
+    invitationExpiresAt: integer("invitation_expires_at", { mode: "timestamp" }),
+    lastLoginAt: integer("last_login_at", { mode: "timestamp" }),
+    notes: text("notes").notNull().default(""),
+    createdByUserId: text("created_by_user_id").notNull().references(() => users.id),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("team_members_email_unique").on(table.organizationId, table.email),
+    uniqueIndex("team_members_code_unique").on(table.organizationId, table.employeeCode),
+    index("team_members_status_idx").on(table.organizationId, table.status),
+    check("team_members_status_check", sql`${table.status} in ('draft', 'invited', 'invitation_expired', 'pending_verification', 'active', 'suspended', 'archived')`),
+  ],
+);
+
+export const employeePinCredentials = sqliteTable(
+  "employee_pin_credentials",
+  {
+    memberId: text("member_id").primaryKey().references(() => teamMembers.id, { onDelete: "cascade" }),
+    organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    saltHex: text("salt_hex").notNull(),
+    hashHex: text("hash_hex").notNull(),
+    iterations: integer("iterations").notNull().default(210000),
+    failedAttempts: integer("failed_attempts").notNull().default(0),
+    lockedUntil: integer("locked_until", { mode: "timestamp" }),
+    expiresAt: integer("expires_at", { mode: "timestamp" }).notNull(),
+    forceChange: integer("force_change", { mode: "boolean" }).notNull().default(true),
+    revokedAt: integer("revoked_at", { mode: "timestamp" }),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    index("employee_pin_workspace_idx").on(table.organizationId),
+    check("employee_pin_iterations_check", sql`${table.iterations} >= 100000`),
+    check("employee_pin_failures_check", sql`${table.failedAttempts} >= 0`),
+  ],
+);
+
+export const workspaceDocuments = sqliteTable(
+  "workspace_documents",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    documentType: text("document_type", { enum: ["invoice", "receipt", "supplier_statement", "packing_slip", "purchase_order", "other"] }).notNull(),
+    fileName: text("file_name").notNull(),
+    objectKey: text("object_key").notNull(),
+    contentType: text("content_type").notNull(),
+    sizeBytes: integer("size_bytes").notNull(),
+    sha256Hex: text("sha256_hex").notNull(),
+    status: text("status", { enum: ["uploaded", "review_required", "approved", "rejected"] }).notNull().default("uploaded"),
+    extractionStatus: text("extraction_status", { enum: ["not_configured", "pending", "complete", "failed"] }).notNull().default("not_configured"),
+    extractedJson: text("extracted_json").notNull().default("{}"),
+    uploadedByUserId: text("uploaded_by_user_id").notNull().references(() => users.id),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("workspace_documents_hash_unique").on(table.organizationId, table.sha256Hex),
+    index("workspace_documents_status_idx").on(table.organizationId, table.status),
+    check("workspace_documents_size_check", sql`${table.sizeBytes} > 0 and ${table.sizeBytes} <= 10485760`),
+  ],
+);
+
+export const purchaseOrders = sqliteTable(
+  "purchase_orders",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    orderNumber: text("order_number").notNull(),
+    supplierName: text("supplier_name").notNull(),
+    deliveryLocationId: text("delivery_location_id").references(() => organizationLocations.id, { onDelete: "set null" }),
+    orderDate: text("order_date").notNull(),
+    expectedDeliveryDate: text("expected_delivery_date"),
+    currency: text("currency").notNull(),
+    paymentTerms: text("payment_terms").notNull().default(""),
+    status: text("status", { enum: ["draft", "suggested", "awaiting_approval", "approved", "sent", "acknowledged", "partially_received", "received", "partially_invoiced", "invoiced", "disputed", "closed", "cancelled"] }).notNull().default("draft"),
+    subtotalCents: integer("subtotal_cents").notNull().default(0),
+    taxCents: integer("tax_cents").notNull().default(0),
+    discountCents: integer("discount_cents").notNull().default(0),
+    totalCents: integer("total_cents").notNull().default(0),
+    committedCashDate: text("committed_cash_date"),
+    notes: text("notes").notNull().default(""),
+    approvedByUserId: text("approved_by_user_id").references(() => users.id),
+    createdByUserId: text("created_by_user_id").notNull().references(() => users.id),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("purchase_orders_number_unique").on(table.organizationId, table.orderNumber),
+    index("purchase_orders_status_idx").on(table.organizationId, table.status),
+    check("purchase_orders_money_check", sql`${table.subtotalCents} >= 0 and ${table.taxCents} >= 0 and ${table.discountCents} >= 0 and ${table.totalCents} = ${table.subtotalCents} + ${table.taxCents} - ${table.discountCents}`),
+  ],
+);
+
+export const purchaseOrderLines = sqliteTable(
+  "purchase_order_lines",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    purchaseOrderId: text("purchase_order_id").notNull().references(() => purchaseOrders.id, { onDelete: "cascade" }),
+    lineNumber: integer("line_number").notNull(),
+    sku: text("sku").notNull().default(""),
+    description: text("description").notNull(),
+    quantity: integer("quantity").notNull(),
+    receivedQuantity: integer("received_quantity").notNull().default(0),
+    invoicedQuantity: integer("invoiced_quantity").notNull().default(0),
+    unitCostCents: integer("unit_cost_cents").notNull(),
+    previousCostCents: integer("previous_cost_cents"),
+    landedCostCents: integer("landed_cost_cents"),
+    currentInventory: integer("current_inventory"),
+    reorderPoint: integer("reorder_point"),
+    forecastDemand: integer("forecast_demand"),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("purchase_order_lines_number_unique").on(table.purchaseOrderId, table.lineNumber),
+    index("purchase_order_lines_workspace_idx").on(table.organizationId, table.purchaseOrderId),
+    check("purchase_order_lines_quantity_check", sql`${table.quantity} > 0 and ${table.receivedQuantity} >= 0 and ${table.invoicedQuantity} >= 0`),
+    check("purchase_order_lines_cost_check", sql`${table.unitCostCents} >= 0`),
+  ],
+);
+
+export const goodsReceipts = sqliteTable(
+  "goods_receipts",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    purchaseOrderId: text("purchase_order_id").notNull().references(() => purchaseOrders.id, { onDelete: "cascade" }),
+    receivedDate: text("received_date").notNull(),
+    receivedByUserId: text("received_by_user_id").notNull().references(() => users.id),
+    linesJson: text("lines_json").notNull(),
+    discrepancyStatus: text("discrepancy_status", { enum: ["matched", "short", "over", "damaged", "review_required"] }).notNull().default("matched"),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [index("goods_receipts_po_idx").on(table.organizationId, table.purchaseOrderId)],
+);
+
+export const invoiceMatches = sqliteTable(
+  "invoice_matches",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    purchaseOrderId: text("purchase_order_id").notNull().references(() => purchaseOrders.id, { onDelete: "cascade" }),
+    documentId: text("document_id").notNull().references(() => workspaceDocuments.id, { onDelete: "cascade" }),
+    status: text("status", { enum: ["matched", "quantity_mismatch", "price_mismatch", "tax_mismatch", "review_required"] }).notNull(),
+    differenceCents: integer("difference_cents").notNull().default(0),
+    detailsJson: text("details_json").notNull().default("{}"),
+    reviewedByUserId: text("reviewed_by_user_id").references(() => users.id),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("invoice_matches_document_unique").on(table.organizationId, table.documentId),
+    index("invoice_matches_po_idx").on(table.organizationId, table.purchaseOrderId),
+  ],
+);
+
 // BookLoQ stores every monetary amount as an integer number of minor currency
 // units (for example, Canadian cents). Rates use integer basis points or parts
 // per million. JavaScript floating-point values are never persisted as money.

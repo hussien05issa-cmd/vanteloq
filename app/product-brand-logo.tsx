@@ -1,5 +1,3 @@
-import Image from "next/image";
-
 type ProductBrandLogoProps = {
   product: "vanteloq" | "bookloq";
   variant?: "icon" | "full";
@@ -22,13 +20,16 @@ export default function ProductBrandLogo({
 
   return (
     <span className={`product-brand-logo ${product} ${variant} ${className}`.trim()}>
-      <Image
+      {/* Local product artwork is served directly so previews and production do not depend on an image-transformation binding. */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
         src={`/brand/${product}-logo.jpeg`}
         alt={`${name} logo`}
         width={1024}
         height={1024}
-        priority={priority}
-        sizes={variant === "full" ? "(max-width: 620px) 42vw, 190px" : "42px"}
+        loading={priority ? "eager" : "lazy"}
+        fetchPriority={priority ? "high" : "auto"}
+        decoding="async"
       />
     </span>
   );

@@ -12,6 +12,7 @@ import {
   requireSameOrigin,
 } from "../../../../server/api";
 import { idempotencyKey, taskCreateInput, taskUpdateInput } from "../../../../server/validation";
+import { requirePermission } from "../../../../server/permissions";
 
 const taskReaders = ["owner", "admin", "manager", "employee", "read_only"] as const;
 const taskWriters = ["owner", "admin", "manager", "employee"] as const;
@@ -36,6 +37,7 @@ function taskDto(task: typeof workspaceTasks.$inferSelect) {
 export async function GET(request: Request) {
   return handleApi(request, async () => {
     const context = await requireAccess(request, taskReaders);
+    await requirePermission(context, "operations.tasks");
     await enforceRateLimit("tasks:read", `${context.userId}:${clientSource(request)}`, 120, 60);
     const rows = await getDb()
       .select()
@@ -54,6 +56,7 @@ export async function POST(request: Request) {
     await enforceRateLimit("tasks:create", context.userId, 60, 60);
     const key = idempotencyKey(request);
     const input = taskCreateInput(await readJsonObject(request));
+    await requirePermission(context, input.sourceType === "manual" ? "operations.manage" : "insights.create_task");
 
     const [existing] = await getDb()
       .select()
@@ -101,6 +104,7 @@ export async function PATCH(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
     const context = await requireAccess(request, taskWriters);
+    await requirePermission(context, "operations.tasks");
     await enforceRateLimit("tasks:update", context.userId, 120, 60);
     const input = taskUpdateInput(await readJsonObject(request));
 

@@ -23,3 +23,15 @@ interface Fetcher {
   fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
 }
 
+interface R2ObjectBody {
+  body: ReadableStream;
+  httpEtag: string;
+  size: number;
+  httpMetadata?: { contentType?: string; cacheControl?: string };
+}
+
+interface R2Bucket {
+  put(key: string, value: ArrayBuffer | ReadableStream | Blob, options?: { httpMetadata?: { contentType?: string; cacheControl?: string }; customMetadata?: Record<string, string> }): Promise<{ key: string; httpEtag: string }>;
+  get(key: string): Promise<R2ObjectBody | null>;
+  delete(key: string): Promise<void>;
+}

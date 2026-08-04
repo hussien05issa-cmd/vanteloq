@@ -41,7 +41,7 @@ test("task APIs reject missing identity before database access", async () => {
 
 test("business intelligence APIs reject anonymous access before database reads", async () => {
   const worker = await loadWorker();
-  for (const path of ["/api/v1/command-centre", "/api/v1/daily-metrics", "/api/v1/events", "/api/v1/bookloq"]) {
+  for (const path of ["/api/v1/command-centre", "/api/v1/daily-metrics", "/api/v1/events", "/api/v1/bookloq", "/api/v1/governance", "/api/v1/reports", "/api/v1/purchasing", "/api/v1/documents", "/api/v1/data-quality"]) {
     const response = await worker.fetch(new Request(`https://vanteloq.example${path}`, {
       headers: { accept: "application/json" },
     }), environment, context);
@@ -76,6 +76,10 @@ test("imports and business-memory writes reject cross-site origins before data a
     "/api/v1/bookloq/demo",
     "/api/v1/bookloq/journals",
     "/api/v1/bookloq/actions",
+    "/api/v1/governance",
+    "/api/v1/purchasing",
+    "/api/v1/documents",
+    "/api/v1/organization-logo",
   ]) {
     const response = await worker.fetch(new Request(`https://vanteloq.example${path}`, {
       method: "POST",

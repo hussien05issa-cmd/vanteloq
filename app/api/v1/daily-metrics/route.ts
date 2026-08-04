@@ -5,13 +5,15 @@ import { recordAudit } from "../../../../server/audit";
 import { requireAccess } from "../../../../server/authorization";
 import { ApiError, enforceRateLimit, handleApi, hashIdentifier, jsonResponse, readJsonObject, requireSameOrigin } from "../../../../server/api";
 import { dailyMetricImportInput, idempotencyKey } from "../../../../server/validation";
+import { requirePermission } from "../../../../server/permissions";
 
-const readers = ["owner", "admin", "manager", "read_only"] as const;
-const writers = ["owner", "admin", "manager"] as const;
+const readers = ["owner", "admin", "manager", "employee", "read_only"] as const;
+const writers = ["owner", "admin", "manager", "employee", "read_only"] as const;
 
 export async function GET(request: Request) {
   return handleApi(request, async () => {
     const context = await requireAccess(request, readers);
+    await requirePermission(context, "integrations.view");
     await enforceRateLimit("daily-metrics:read", context.userId, 60, 60);
     const imports = await getDb().select({
       id: dataImports.id,
@@ -29,6 +31,7 @@ export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
     const context = await requireAccess(request, writers);
+    await requirePermission(context, "data.import");
     await enforceRateLimit("daily-metrics:write", context.userId, 12, 3_600);
     const key = idempotencyKey(request);
     const input = dailyMetricImportInput(await readJsonObject(request, 512_000));

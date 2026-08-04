@@ -3,8 +3,9 @@ import { recordAudit } from "../../../../../server/audit";
 import { requireAccess } from "../../../../../server/authorization";
 import { enforceRateLimit, handleApi, jsonResponse, requireSameOrigin } from "../../../../../server/api";
 import { requireBookLoQPermission } from "../../../../../server/bookloq";
+import { requirePermission } from "../../../../../server/permissions";
 
-const writers = ["owner", "admin"] as const;
+const writers = ["owner", "admin", "manager", "employee", "read_only"] as const;
 
 function dateAt(offset: number): string {
   const current = new Date();
@@ -34,6 +35,7 @@ export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
     const context = await requireAccess(request, writers);
+    await requirePermission(context, "finance.journal_post");
     requireBookLoQPermission(context.role, "post_journals");
     await enforceRateLimit("bookloq:demo", context.userId, 3, 3_600);
     const database = getD1();

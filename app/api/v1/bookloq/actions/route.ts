@@ -3,8 +3,9 @@ import { recordAudit } from "../../../../../server/audit";
 import { requireAccess } from "../../../../../server/authorization";
 import { enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameOrigin } from "../../../../../server/api";
 import { requireBookLoQPermission } from "../../../../../server/bookloq";
+import { requirePermission } from "../../../../../server/permissions";
 
-const writers = ["owner", "admin"] as const;
+const writers = ["owner", "admin", "manager", "employee", "read_only"] as const;
 
 function identifier(value: unknown): string | null {
   return typeof value === "string" && value.length >= 3 && value.length <= 180 && !/[\u0000-\u001f\u007f]/.test(value) ? value : null;
@@ -23,6 +24,7 @@ export async function POST(request: Request) {
     const timestamp = Math.floor(Date.now() / 1_000);
 
     if (body.type === "month_end_status") {
+      await requirePermission(context, "finance.reconcile");
       requireBookLoQPermission(context.role, "reconcile_accounts");
       const itemId = identifier(body.itemId);
       const status = typeof body.status === "string" && ["not_started", "in_progress", "blocked", "complete"].includes(body.status) ? body.status : null;
@@ -38,6 +40,7 @@ export async function POST(request: Request) {
     }
 
     if (body.type === "alert_status") {
+      await requirePermission(context, "finance.statements");
       requireBookLoQPermission(context.role, "create_transactions");
       const alertId = identifier(body.alertId);
       const status = typeof body.status === "string" && ["open", "in_progress", "resolved", "dismissed"].includes(body.status) ? body.status : null;
@@ -56,6 +59,7 @@ export async function POST(request: Request) {
     }
 
     if (body.type === "lock_period") {
+      await requirePermission(context, "finance.periods");
       requireBookLoQPermission(context.role, "lock_periods");
       const periodId = identifier(body.periodId);
       if (!periodId) return jsonResponse({ error: { code: "INVALID_PERIOD", message: "Select a valid accounting period." } }, { status: 400 });
@@ -73,6 +77,7 @@ export async function POST(request: Request) {
     }
 
     if (body.type === "unlock_period") {
+      await requirePermission(context, "finance.periods");
       requireBookLoQPermission(context.role, "unlock_periods");
       const periodId = identifier(body.periodId);
       const reason = typeof body.reason === "string" ? body.reason.trim().normalize("NFC") : "";
