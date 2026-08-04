@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import ProductBrandLogo from "./product-brand-logo";
 
 type Permission = "view_revenue" | "view_profit" | "view_banking" | "view_payroll" | "create_transactions" | "edit_drafts" | "post_journals" | "approve_bills" | "initiate_payments" | "reconcile_accounts" | "change_tax_settings" | "lock_periods" | "unlock_periods" | "export_data" | "manage_integrations" | "view_audit_logs";
 type Section = typeof sectionDefinitions[number]["name"];
@@ -89,14 +90,14 @@ export default function BookLoQWorkspace({ createTask, showNotice }: { createTas
   const visible = useMemo(() => sectionDefinitions.filter((item) => data?.permissions.includes(item.permission) && item.name.toLowerCase().includes(navSearch.toLowerCase())), [data, navSearch]);
   const activeSection = visible.some((item) => item.name === section) ? section : (visible[0]?.name ?? "Overview");
 
-  if (loading) return <div className="bookloq-loading"><span className="bookloq-ledger-icon">▤</span><b>Preparing BookLoQ</b><small>Validating ledger access and financial sources…</small></div>;
+  if (loading) return <div className="bookloq-loading"><ProductBrandLogo product="bookloq"/><b>Preparing BookLoQ</b><small>Validating ledger access and financial sources…</small></div>;
   if (error) return <div className="bookloq-loading error"><span>!</span><b>BookLoQ needs attention</b><small>{error}</small><button onClick={refresh}>Try again</button></div>;
   if (!data) return null;
   if (!data.configured) return <BookLoQStart seedDemo={seedDemo}/>;
 
   return <div className={`bookloq-shell ${collapsed ? "bookloq-collapsed" : ""}`}>
     <aside className="bookloq-side">
-      <div className="bookloq-brand"><span className="bookloq-ledger-icon">▤</span><span><b>BookLoQ</b><small>ACCOUNTING</small></span><button aria-label={collapsed ? "Expand BookLoQ navigation" : "Collapse BookLoQ navigation"} onClick={() => setCollapsed((value) => !value)}>‹</button></div>
+      <div className="bookloq-brand"><ProductBrandLogo product="bookloq"/><span><b>BookLoQ</b><small>ACCOUNTING</small></span><button aria-label={collapsed ? "Expand BookLoQ navigation" : "Collapse BookLoQ navigation"} onClick={() => setCollapsed((value) => !value)}>‹</button></div>
       {!collapsed && <><label className="bookloq-search"><span>⌕</span><input aria-label="Search BookLoQ navigation" value={navSearch} onChange={(event) => setNavSearch(event.target.value)} placeholder="Find a finance workspace"/></label><nav aria-label="BookLoQ navigation">{[...new Set(visible.map((item) => item.group))].map((group) => <section key={group}><p>{group}</p>{visible.filter((item) => item.group === group).map((item) => <button key={item.name} className={activeSection === item.name ? "active" : ""} onClick={() => setSection(item.name)}><span>{sectionIcon(item.name)}</span>{item.name}</button>)}</section>)}</nav></>}
       <div className="bookloq-side-foot"><i className={data.settings?.dataMode === "demonstration" ? "demo" : "live"}/>{!collapsed && <span><b>{data.settings?.dataMode === "demonstration" ? "Demonstration data" : "Live ledger"}</b><small>{data.organization.currency} · {data.settings?.accountingBasis}</small></span>}</div>
     </aside>
@@ -110,7 +111,7 @@ export default function BookLoQWorkspace({ createTask, showNotice }: { createTas
 }
 
 function BookLoQStart({ seedDemo }: { seedDemo: () => Promise<void> }) {
-  return <div className="bookloq-start"><div className="bookloq-start-mark"><span>▤</span></div><p>VANTELOQ FINANCIAL CONTROL</p><h2>BookLoQ keeps your books organized, explains your financial position and shows you what requires attention.</h2><span>No financial records have been added. BookLoQ will not invent balances, alerts, reports or tax figures.</span><div><button onClick={seedDemo}>Load labelled Canadian retail demo</button><button disabled title="Secure bank and POS adapters are not connected yet.">Connect live financial data</button></div><small>The demo is isolated and labelled. Live banking, POS, payroll, receipt capture, payments and tax filing remain disabled until their verified integrations are configured.</small></div>;
+  return <div className="bookloq-start"><ProductBrandLogo product="bookloq" variant="full"/><p>VANTELOQ FINANCIAL CONTROL</p><h2>BookLoQ keeps your books organized, explains your financial position and shows you what requires attention.</h2><span>No financial records have been added. BookLoQ will not invent balances, alerts, reports or tax figures.</span><div><button onClick={seedDemo}>Load labelled Canadian retail demo</button><button disabled title="Secure bank and POS adapters are not connected yet.">Connect live financial data</button></div><small>The demo is isolated and labelled. Live banking, POS, payroll, receipt capture, payments and tax filing remain disabled until their verified integrations are configured.</small></div>;
 }
 
 function BookLoQSection(props: { section: Section; data: BookLoQData; setSection: (section: Section) => void; createTask: (seed: TaskSeed) => void; showNotice: (message: string) => void; refresh: () => Promise<void>; openJournal: () => void }) {

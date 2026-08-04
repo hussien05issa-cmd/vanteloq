@@ -21,8 +21,9 @@ export const metadata: Metadata = {
     "codex-preview": "development",
   },
   icons: {
-    icon: "/favicon.svg",
-    shortcut: "/favicon.svg",
+    icon: { url: "/brand/vanteloq-logo.jpeg", type: "image/jpeg" },
+    shortcut: "/brand/vanteloq-logo.jpeg",
+    apple: "/brand/vanteloq-logo.jpeg",
   },
 };
 

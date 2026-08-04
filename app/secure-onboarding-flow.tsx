@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { COUNTRIES, formatPostalCode, REGIONS, validPostalCode } from "./address-data";
+import ProductBrandLogo from "./product-brand-logo";
 
 type Hour = { day: string; open: string; close: string; closed: boolean };
 type SourceMode = "connect_later" | "csv" | "live";
@@ -110,7 +111,7 @@ export default function SecureOnboardingFlow({ accountName, accountEmail, comple
 
   return <main className="onboarding">
     <aside>
-      <div className="public-brand"><span className="brand-mark"><i/><b>V</b></span><span>Vanteloq<small>SECURE WORKSPACE SETUP</small></span></div>
+      <div className="public-brand"><ProductBrandLogo product="vanteloq"/><span>Vanteloq<small>SECURE WORKSPACE SETUP</small></span></div>
       <div className="setup-message"><p>WELCOME TO VANTELOQ</p><h1>Build a workspace around your real business.</h1><span>Your account identity is verified by the hosted sign-in service. Vanteloq does not collect a pretend password or create sample business data.</span></div>
       <ol>{["Verified owner", "Business profile", "Location & hours", "Data source plan", "Review & launch"].map((label, index) => <li className={step === index + 1 ? "active" : step > index + 1 ? "done" : ""} key={label}><b>{step > index + 1 ? "✓" : index + 1}</b><span>{label}<small>{["Trusted account identity", "Identity & reporting", "Operating context", "POS or CSV", "Create tenant boundary"][index]}</small></span></li>)}</ol>
       <small className="setup-security">Trusted identity · Server-derived ownership · Tenant-isolated records</small>
