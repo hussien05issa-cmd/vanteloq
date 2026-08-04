@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import SecureOnboardingFlow from "./secure-onboarding-flow";
 import VanteloqApp from "./vanteloq-app";
+import IntegrationBrandLogo from "./integration-brand-logo";
 
 export default function Home() {
   const router = useRouter();
@@ -45,7 +46,7 @@ function LandingPage() {
     </section>
     <section className="signal-ribbon"><span>SALES & PROFIT</span><i/><span>CASH & INVENTORY</span><i/><span>CUSTOMERS</span><i/><span>TEAM & OPERATIONS</span><i/><span>FORECASTING</span></section>
     <section className="platform-section" id="platform"><div className="platform-intro"><p>THE VANTELOQ DIFFERENCE</p><h2>More than charts.<br/>An operating decision system.</h2><span>Your numbers become useful only when they explain what changed, what is known, what is missing and which action should follow.</span></div><div className="feature-stack">{[["01","One verified business model","Normalize sales, costs, balances, inventory, customer and operating records before calculating."],["02","Evidence-bound intelligence","Show calculations, confidence, missing dimensions and source freshness beside every conclusion."],["03","Execution and memory","Assign the action, record major decisions and measure what happened afterward."]].map(([number,title,copy]) => <article key={number}><b>{number}</b><div><h3>{title}</h3><p>{copy}</p></div><span>↗</span></article>)}</div></section>
-    <section className="connection-section" id="connect"><p>START WITH REAL DATA</p><h2>Import now. Connect as adapters become ready.</h2><div>{["Daily CSV","Lightspeed","Shopify","Square","Moneris","QuickBooks"].map(item => <span key={item}><b>{item.slice(0,2).toUpperCase()}</b>{item}</span>)}</div><small>The daily-summary importer works immediately. Provider buttons remain disabled until authorization, reconciliation, replay protection and failure recovery are fully wired.</small></section>
+    <section className="connection-section" id="connect"><p>START WITH REAL DATA</p><h2>Import now. Connect as adapters become ready.</h2><div>{["Daily CSV","Lightspeed","Shopify","Square","Moneris","QuickBooks"].map(item => <span key={item}><IntegrationBrandLogo name={item} compact/>{item}</span>)}</div><small>The daily-summary importer works immediately. Provider buttons remain disabled until authorization, reconciliation, replay protection and failure recovery are fully wired.</small></section>
     <section className="how-section" id="how"><div><p>THE DAILY LOOP</p><h2>Understand.<br/>Decide. Execute. Learn.</h2></div><ol><li><b>01</b><span><strong>Verify the source</strong><small>Validate format, totals, ownership and freshness.</small></span></li><li><b>02</b><span><strong>Explain the signal</strong><small>Separate known facts, estimates and missing context.</small></span></li><li><b>03</b><span><strong>Assign the next move</strong><small>Track an owner, deadline, expected impact and result.</small></span></li></ol></section>
     <footer className="public-footer"><div><span className="brand-mark"><i/><b>V</b></span><strong>Vanteloq</strong></div><p>Clarity for every operating decision.</p><button onClick={start}>Create workspace →</button></footer>
   </main>;
