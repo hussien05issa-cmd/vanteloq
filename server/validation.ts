@@ -8,7 +8,9 @@ const IDEMPOTENCY_KEY = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f
 
 const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] as const;
 const industries = ["Retail", "Food & beverage", "Health & wellness", "Professional services", "Hospitality", "E-commerce", "Other"] as const;
-const timezones = ["America/Edmonton", "America/Vancouver", "America/Toronto", "America/Halifax"] as const;
+const timezones = ["America/Edmonton", "America/Vancouver", "America/Toronto", "America/Halifax", "America/St_Johns", "America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles", "America/Anchorage", "Pacific/Honolulu"] as const;
+const canadianRegions = ["AB", "BC", "MB", "NB", "NL", "NT", "NS", "NU", "ON", "PE", "QC", "SK", "YT"] as const;
+const usRegions = ["AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "DC", "FL", "GA", "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY"] as const;
 const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"] as const;
 const posProviders = ["", "Lightspeed", "Square", "Moneris", "Shopify POS", "Clover", "Other POS"] as const;
 
@@ -87,17 +89,18 @@ export function onboardingInput(value: Record<string, unknown>) {
   rejectUnknown(value, [
     "ownerName", "businessName", "legalName", "businessEmail", "phone", "website", "industry",
     "country", "province", "city", "address", "postalCode", "timezone", "currency",
-    "fiscalYearStart", "taxNumber", "hours", "sourceMode", "selectedPos",
+    "fiscalYearStart", "taxNumber", "hours", "sourceMode", "selectedPos", "emailNotifications",
   ]);
 
   const businessEmail = requiredString(value.businessEmail, "business email", 254).toLowerCase();
   if (!EMAIL.test(businessEmail)) throw new ApiError(400, "INVALID_FIELD", "Enter a valid business email.");
   const phone = optionalString(value.phone, "phone number", 30);
   if (!PHONE.test(phone)) throw new ApiError(400, "INVALID_FIELD", "Enter a valid phone number.");
-  const postalCode = requiredString(value.postalCode, "postal code", 12).toUpperCase();
-  if (!/^[A-Z0-9][A-Z0-9 -]{1,10}[A-Z0-9]$/.test(postalCode)) {
-    throw new ApiError(400, "INVALID_FIELD", "Enter a valid postal code.");
-  }
+  const country = selected(value.country ?? "CA", ["CA", "US"] as const, "country");
+  const postalCode = requiredString(value.postalCode, country === "CA" ? "postal code" : "ZIP code", 12).toUpperCase();
+  const validPostal = country === "CA" ? /^[ABCEGHJ-NPRSTVXY]\d[ABCEGHJ-NPRSTV-Z][ -]?\d[ABCEGHJ-NPRSTV-Z]\d$/.test(postalCode) : /^\d{5}(?:-\d{4})?$/.test(postalCode);
+  if (!validPostal) throw new ApiError(400, "INVALID_FIELD", `Enter a valid ${country === "CA" ? "Canadian postal code" : "U.S. ZIP code"}.`);
+  const province = country === "CA" ? selected(value.province, canadianRegions, "province or territory") : selected(value.province, usRegions, "state");
   const sourceMode = selected(value.sourceMode ?? "connect_later", ["connect_later", "csv", "live"] as const, "data source mode");
   const selectedPos = selected(value.selectedPos ?? "", posProviders, "POS provider");
   if (sourceMode === "live" && !selectedPos) throw new ApiError(400, "INVALID_FIELD", "Select a POS provider to connect.");
@@ -110,8 +113,8 @@ export function onboardingInput(value: Record<string, unknown>) {
     phone,
     website: validWebsite(value.website),
     industry: selected(value.industry, industries, "industry"),
-    country: selected(value.country ?? "Canada", ["Canada", "United States"] as const, "country"),
-    province: requiredString(value.province, "province or state", 80),
+    country,
+    province,
     city: requiredString(value.city, "city", 100),
     address: requiredString(value.address, "street address", 180),
     postalCode,
@@ -122,6 +125,7 @@ export function onboardingInput(value: Record<string, unknown>) {
     hoursJson: JSON.stringify(businessHours(value.hours)),
     sourceMode,
     selectedPos,
+    emailNotifications: value.emailNotifications !== false,
   };
 }
 

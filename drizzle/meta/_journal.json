@@ -36,6 +36,13 @@
       "when": 1785799131090,
       "tag": "0004_lyrical_black_bird",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1785815492627,
+      "tag": "0005_medical_mantis",
+      "breakpoints": true
     }
   ]
 }

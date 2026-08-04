@@ -37,7 +37,7 @@ export async function GET(request: Request) {
     const context = await findAccessContext(identity);
     return jsonResponse({
       authenticated: true,
-      user: { displayName: identity.displayName },
+      user: { displayName: identity.displayName, email: identity.email, emailVerified: true },
       role: context?.role ?? null,
       organization: context ? organizationDto(context) : null,
     });
@@ -143,6 +143,20 @@ export async function POST(request: Request) {
             outcome, request_id, source_hash, details_json, created_at
           ) VALUES (?, ?, ?, 'workspace.created', 'workspace', ?, 'success', ?, NULL, ?, ?)
         `).bind(auditId, organizationId, userId, organizationId, requestId, JSON.stringify({ sourceMode: input.sourceMode }), now),
+        database.prepare(`
+          INSERT INTO account_preferences (
+            user_id, email_notifications, remembered_profile, created_at, updated_at
+          ) VALUES (?, ?, 1, ?, ?)
+          ON CONFLICT(user_id) DO UPDATE SET
+            email_notifications = excluded.email_notifications,
+            remembered_profile = 1,
+            updated_at = excluded.updated_at
+        `).bind(userId, input.emailNotifications ? 1 : 0, now, now),
+        database.prepare(`
+          INSERT OR IGNORE INTO account_notifications (
+            id, user_id, organization_id, notification_type, title, message, delivery_status, created_at
+          ) VALUES (?, ?, ?, 'workspace_created', 'Workspace created', ?, 'in_app', ?)
+        `).bind(`notification-workspace-created-${stableIdentityHash}`, userId, organizationId, `${input.businessName} is ready. Your verified account, preferences and workspace history are stored securely.`, now),
         database.prepare(`
           INSERT INTO memberships (id, user_id, organization_id, role, status, created_at, updated_at)
           VALUES (?, ?, ?, 'owner', 'active', ?, ?)

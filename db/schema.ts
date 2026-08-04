@@ -120,6 +120,29 @@ export const memberships = sqliteTable(
   ],
 );
 
+export const accountPreferences = sqliteTable("account_preferences", {
+  userId: text("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  emailNotifications: integer("email_notifications", { mode: "boolean" }).notNull().default(true),
+  rememberedProfile: integer("remembered_profile", { mode: "boolean" }).notNull().default(true),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+});
+
+export const accountNotifications = sqliteTable("account_notifications", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  organizationId: text("organization_id").references(() => workspaces.id, { onDelete: "cascade" }),
+  notificationType: text("notification_type").notNull(),
+  title: text("title").notNull(),
+  message: text("message").notNull(),
+  deliveryStatus: text("delivery_status", { enum: ["in_app", "queued", "sent", "failed"] }).notNull().default("in_app"),
+  readAt: integer("read_at", { mode: "timestamp" }),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+}, (table) => [
+  index("account_notifications_user_created_idx").on(table.userId, table.createdAt),
+  check("account_notifications_delivery_check", sql`${table.deliveryStatus} in ('in_app', 'queued', 'sent', 'failed')`),
+]);
+
 export const workspaceTasks = sqliteTable(
   "workspace_tasks",
   {

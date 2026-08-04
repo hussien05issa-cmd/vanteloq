@@ -10,11 +10,13 @@ export default function Home() {
   const [entry, setEntry] = useState<"loading" | "landing" | "signup" | "app">("loading");
   const [organizationName, setOrganizationName] = useState("");
   const [accountName, setAccountName] = useState("Account owner");
+  const [accountEmail, setAccountEmail] = useState("");
 
   useEffect(() => {
     void fetch("/api/v1/onboarding", { headers: { Accept: "application/json" } })
       .then(async response => ({ response, data: await response.json() }))
       .then(({ response, data }) => {
+        if (data.user?.email) setAccountEmail(data.user.email);
         if (response.ok && data.organization?.setupComplete) {
           setOrganizationName(data.organization.businessName);
           setAccountName(data.organization.ownerName || data.user?.displayName || "Account owner");
@@ -29,7 +31,7 @@ export default function Home() {
 
   if (entry === "loading") return <div className="entry-loading"><span className="brand-mark"><i/><b>V</b></span><p>Preparing Vanteloq…</p></div>;
   if (entry === "landing") return <LandingPage/>;
-  if (entry === "signup") return <SecureOnboardingFlow accountName={accountName} signOut={() => router.push("/signout-with-chatgpt?return_to=/")} complete={(business, owner) => { setOrganizationName(business); setAccountName(owner); setEntry("app"); }}/>;
+  if (entry === "signup") return <SecureOnboardingFlow accountName={accountName} accountEmail={accountEmail} signOut={() => router.push("/signout-with-chatgpt?return_to=/")} complete={(business, owner) => { setOrganizationName(business); setAccountName(owner); setEntry("app"); }}/>;
   return <VanteloqApp organizationName={organizationName} accountName={accountName}/>;
 }
 
