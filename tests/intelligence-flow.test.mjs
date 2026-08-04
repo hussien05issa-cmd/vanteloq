@@ -92,6 +92,15 @@ test("migrations, tenant isolation and the complete intelligence-to-action flow 
     const onboarding = await dispatch(worker, environment, "/api/v1/onboarding", { method: "POST", ...owner, body: onboardingBody(owner.name, "North Store") });
     assert.equal(onboarding.status, 201);
 
+    const integrationResponse = await dispatch(worker, environment, "/api/v1/integrations", owner);
+    assert.equal(integrationResponse.status, 200);
+    const integrationBody = await integrationResponse.json();
+    assert.equal(integrationBody.syncEnabled, false);
+    assert.equal(integrationBody.preSyncControls.filter(control => control.status === "verified").length, 4);
+    assert.ok(integrationBody.preSyncControls.some(control => control.id === "reconciliation" && control.status === "gated"));
+    assert.ok(integrationBody.integrations.every(provider => provider.status === "not_connected"));
+    assert.equal(integrationBody.integrations.find(provider => provider.id === "lightspeed").availability, "provider_build_required");
+
     const empty = await dispatch(worker, environment, "/api/v1/command-centre", owner);
     assert.equal(empty.status, 200);
     assert.equal((await empty.json()).commandCentre.ready, false);

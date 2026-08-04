@@ -218,7 +218,7 @@ export function ReportsWorkspace({
             supplier, hourly, banking or payroll source exists.
           </span>
         </div>
-        <button className="secondary" disabled>
+        <button className="secondary" disabled title="Scheduled delivery requires an approved email provider, queue, export permission checks and retry handling.">
           Schedule delivery · provider required
         </button>
       </section>

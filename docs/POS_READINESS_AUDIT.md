@@ -1,0 +1,81 @@
+# POS integration readiness audit
+
+Date: 2026-08-04  
+Decision: **Do not begin a live POS synchronization yet.**
+
+The Vanteloq core is healthy enough to begin building the first provider adapter, but no provider is ready to receive production credentials or be represented as live. The application now exposes this boundary directly in the Connections workspace and returns `syncEnabled: false` from the integration-status API.
+
+## Verified platform controls
+
+| Control | Result | Evidence |
+|---|---|---|
+| Build and runtime artifact | Pass | Production Worker build and artifact validation complete |
+| Authentication boundary | Pass | Anonymous access to every business API, including integrations, is rejected |
+| Tenant isolation | Pass | Multi-organization flow test confirms records, metrics and BookLoQ data remain isolated |
+| Server authorization | Pass | Permission registry and restricted employee defaults are tested; restricted navigation is also blocked in the client |
+| Cross-site request protection | Pass | State-changing APIs reject unverified and cross-site origins |
+| Financial precision | Pass | BookLoQ, tax, reconciliation and normalized provider values use integer minor units |
+| Idempotency and replay safety primitives | Pass | Import and journal replay tests pass; provider adapters still need provider-specific replay tests |
+| Auditability | Pass | Sensitive internal workflows use append-only audit events; provider callbacks remain unimplemented |
+| Data integrity and intelligence | Pass | Metric definitions, lineage, confidence, empty-state honesty and deterministic calculations are tested |
+| Interaction integrity | Pass | Known no-op controls are absent and literal disabled buttons explain why they are unavailable |
+| Dependency security | Pass | Production dependency audit reports zero known vulnerabilities at the configured threshold |
+| Visual integration identity | Pass | Lightspeed uses its standalone flame asset; brand marks use one optical frame with no cropped wordmark |
+
+## Provider controls that remain blocked
+
+| Gate | Required implementation before activation |
+|---|---|
+| Authorization | Approved provider application, exact least-privilege scopes, hosted OAuth or consent, state validation and expiring authorization attempts |
+| Token security | Server-only encrypted token storage, refresh rotation, revocation and redacted operational logs |
+| Webhooks | Raw-body signature verification, timestamp tolerance, replay rejection, event idempotency and dead-letter recovery |
+| Backfill | Bounded date ranges, pagination, rate-limit handling, retry with jitter, resumable cursors and progress visibility |
+| Normalization | Provider-specific mapping for organizations, locations, transactions, line items, refunds, taxes, discounts, products, employees and payouts where supported |
+| Reconciliation | Source totals versus normalized totals, payout versus bank settlement, refund and dispute handling, duplicate detection and discrepancy queues |
+| Data quality | Missing periods, late arrivals, partial pages, invalid timestamps, currency mismatches, unmapped locations and stale connections |
+| Recovery | Safe disconnect, credential revocation, replay, rollback or compensating correction, incident runbook and restore test |
+| Operations | Sync health, last success, lag, failures, affected metrics, alerts and an owner-visible correction path |
+| Provider testing | Contract fixtures, sandbox tests, fault injection, tenant-isolation tests, reconciliation acceptance and a read-only canary period |
+
+## Readiness rule
+
+A provider may be marked live only when all of the following are true:
+
+1. The connection is verified by the provider, not inferred from saved credentials.
+2. The least-privilege scope set is documented and approved.
+3. Backfill and incremental sync complete idempotently.
+4. Webhooks pass signature, replay and duplicate-event tests.
+5. Normalized totals reconcile to the provider for the acceptance window.
+6. Payouts reconcile where the provider exposes settlement records.
+7. Failures produce a visible error, an affected-metric list and a recovery action.
+8. Disconnect and token revocation are proven.
+9. Tenant-isolation and export-permission tests pass with provider records.
+10. The Data Quality centre remains authoritative when the provider is delayed or incomplete.
+
+## Recommended first-provider sequence
+
+Use Lightspeed as a read-only pilot after the required partner approval and credentials exist:
+
+1. Implement authorization and token rotation without importing records.
+2. Import sandbox locations and verify tenant/location mapping.
+3. Backfill a bounded sample and reconcile source totals before exposing metrics.
+4. Add incremental synchronization and signed webhook processing.
+5. Run duplicate, refund, outage, partial-page, rate-limit and stale-token tests.
+6. Complete a read-only canary period with manual reconciliation.
+7. Activate production display only after the readiness API can return every provider gate as verified.
+
+## Verification completed in this audit
+
+- 25 automated tests passed.
+- TypeScript passed.
+- Lint passed with two expected image-optimization advisories for tenant-uploaded logos.
+- Production build and Sites artifact validation passed.
+- Production dependency audit found zero known vulnerabilities at the configured threshold.
+- Landing and integration-logo visual checks passed in the agent preview.
+
+## Evidence limits
+
+- No live provider credentials, OAuth application, webhook secret or production POS tenant was available; no external provider connection was attempted.
+- The authenticated workspace could not be visually traversed in the cloud audit browser because the hosted sign-in route is outside the local preview boundary. Its behavior was checked through source inspection, API integration tests and the supplied authenticated screenshots.
+- Cloudflare account-level WAF, backup schedules, external alerting and provider-side security settings are outside this source audit.
+- This is an engineering readiness audit, not a penetration test, SOC report, legal opinion or compliance certification.

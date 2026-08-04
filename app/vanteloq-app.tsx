@@ -3,6 +3,11 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import BookLoQWorkspace from "./bookloq-workspace";
 import IntegrationBrandLogo from "./integration-brand-logo";
+import {
+  integrationCatalog,
+  preSyncControls,
+  type IntegrationCatalogEntry,
+} from "./integration-catalog";
 import ProductBrandLogo from "./product-brand-logo";
 import { SettingsWorkspace, TeamWorkspace } from "./governance-workspaces";
 import {
@@ -96,7 +101,12 @@ const viewPermission: Partial<Record<View, string>> = {
   Documents: "documents.view",
   "Data Quality": "integrations.view",
   Locations: "locations.manage",
+  "Decision Journal": "insights.view",
+  "Scenario Planner": "metrics.cash",
   Reports: "reports.operational",
+  "Industry Modules": "dashboard.view",
+  Integrations: "integrations.view",
+  Settings: "organization.settings",
 };
 
 const moduleDefinitions: Record<
@@ -481,6 +491,14 @@ export default function VanteloqApp({
     window.setTimeout(() => setNotice(""), 3000);
   };
   const navigate = (next: View) => {
+    const requiredPermission = viewPermission[next];
+    if (
+      requiredPermission &&
+      !appPermissions.includes(requiredPermission)
+    ) {
+      showNotice("Your role does not have access to this workspace.");
+      return;
+    }
     setView(next);
     setMobileNavOpen(false);
   };
@@ -1523,25 +1541,12 @@ function TaskComposer({
   );
 }
 
-const providers = [
-  ["Lightspeed", "POS", "planned"],
-  ["Shopify", "Commerce", "planned"],
-  ["Square", "POS & payments", "planned"],
-  ["Clover", "POS", "planned"],
-  ["Stripe", "Payments", "planned"],
-  ["Moneris", "Payments", "planned"],
-  ["QuickBooks", "Accounting", "planned"],
-  ["Xero", "Accounting", "planned"],
-  ["WooCommerce", "Commerce", "planned"],
-  ["Amazon", "Marketplace", "planned"],
-  ["DoorDash", "Delivery", "planned"],
-  ["Uber Eats", "Delivery", "planned"],
-  ["Plaid", "Banking", "configuration required"],
-  ["MX", "Banking", "configuration required"],
-  ["Flinks", "Canadian banking", "configuration required"],
-  ["Bank feeds", "Manual statements", "planned"],
-  ["Payroll", "Labour", "planned"],
-] as const;
+type IntegrationConnection = IntegrationCatalogEntry & {
+  status: string;
+  lastSuccessfulSyncAt: string | null;
+  lastErrorCode: string | null;
+};
+
 function DataHub({
   refresh,
   showNotice,
@@ -1550,6 +1555,44 @@ function DataHub({
   showNotice: (message: string) => void;
 }) {
   const [tab, setTab] = useState<"import" | "connections">("import");
+  const [connections, setConnections] = useState<IntegrationConnection[]>([]);
+  const [connectionError, setConnectionError] = useState("");
+  const [connectionsLoading, setConnectionsLoading] = useState(false);
+  const [syncEnabled, setSyncEnabled] = useState(false);
+  const loadConnections = useCallback(async () => {
+    setConnectionsLoading(true);
+    setConnectionError("");
+    try {
+      const response = await fetch("/api/v1/integrations", {
+        headers: { Accept: "application/json" },
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        throw new Error(body.error?.message ?? "Connection status could not be loaded.");
+      }
+      setConnections(body.integrations ?? []);
+      setSyncEnabled(body.syncEnabled === true);
+    } catch (error) {
+      setConnectionError(
+        error instanceof Error
+          ? error.message
+          : "Connection status could not be loaded.",
+      );
+    } finally {
+      setConnectionsLoading(false);
+    }
+  }, []);
+  const providerRows: IntegrationConnection[] = connections.length
+    ? connections
+    : integrationCatalog.map((provider) => ({
+        ...provider,
+        status: "not_connected",
+        lastSuccessfulSyncAt: null,
+        lastErrorCode: null,
+      }));
+  const verifiedControls = preSyncControls.filter(
+    (control) => control.status === "verified",
+  ).length;
   return (
     <div className="content data-hub">
       <section className="page-intro">
@@ -1570,7 +1613,12 @@ function DataHub({
           </button>
           <button
             className={tab === "connections" ? "active" : ""}
-            onClick={() => setTab("connections")}
+            onClick={() => {
+              setTab("connections");
+              if (!connections.length && !connectionsLoading) {
+                void loadConnections();
+              }
+            }}
           >
             Connections
           </button>
@@ -1580,8 +1628,31 @@ function DataHub({
         <DailyImport refresh={refresh} showNotice={showNotice} />
       ) : (
         <>
+          <section className="connection-readiness" aria-labelledby="pre-sync-title">
+            <header>
+              <div>
+                <p>PRE-SYNC SAFETY GATE</p>
+                <h3 id="pre-sync-title">The platform stays locked until every provider control passes.</h3>
+                <span>
+                  {verifiedControls} of {preSyncControls.length} cross-platform controls are built and tested. Provider-specific authorization, webhook, normalization and reconciliation work remains gated.
+                </span>
+              </div>
+              <strong>SYNC OFF</strong>
+            </header>
+            <div>
+              {preSyncControls.map((control) => (
+                <article key={control.id} className={control.status}>
+                  <span>{control.status === "verified" ? "Verified" : "Required"}</span>
+                  <b>{control.label}</b>
+                  <small>{control.detail}</small>
+                </article>
+              ))}
+            </div>
+            <footer>
+              No provider can be represented as live while any required control remains gated.
+            </footer>
+          </section>
           <div className="integration-notice">
-            <span>✓</span>
             <div>
               <b>
                 Connections remain disabled until their complete secure adapter
@@ -1595,27 +1666,44 @@ function DataHub({
               </p>
             </div>
           </div>
+          {connectionError && (
+            <div className="connection-error" role="alert">
+              <span>{connectionError}</span>
+              <button onClick={() => void loadConnections()}>Retry status check</button>
+            </div>
+          )}
           <section className="integration-grid">
-            {providers.map(([name, category, status]) => (
-              <article className="integration-card" key={name}>
-                <IntegrationBrandLogo name={name} />
-                <span className="integration-type">{category}</span>
-                <h3>{name}</h3>
-                <p>
-                  Provider adapter, sync health, reconciliation and source
-                  freshness.
-                </p>
+            {providerRows.map((provider) => {
+              const connected = syncEnabled && provider.status === "connected";
+              return (
+              <article className="integration-card" key={provider.id}>
+                <div className="integration-card-head">
+                  <IntegrationBrandLogo name={provider.name} />
+                  <span className="integration-type">{provider.category}</span>
+                </div>
+                <h3>{provider.name}</h3>
+                <p>{provider.activationRequirement}</p>
                 <div>
-                  <span className="status planned">{status}</span>
-                  <button disabled>Not yet wired</button>
+                  <span className={`status ${connected ? "" : "planned"}`}>
+                    {connected ? "Connected" : availabilityLabel(provider.availability)}
+                  </span>
+                  <span className="connection-lock">
+                    {connectionsLoading ? "Checking…" : connected ? "Verified live" : "Sync disabled"}
+                  </span>
                 </div>
               </article>
-            ))}
+            );})}
           </section>
         </>
       )}
     </div>
   );
+}
+
+function availabilityLabel(value: IntegrationCatalogEntry["availability"]) {
+  return value === "provider_selection_required"
+    ? "Provider selection required"
+    : "Provider build required";
 }
 
 const requiredHeaders = [
@@ -2618,7 +2706,7 @@ function IndustryModules() {
             <span>{String(index + 1).padStart(2, "0")}</span>
             <h3>{name}</h3>
             <p>{detail}</p>
-            <button disabled>Requires source adapter</button>
+            <button disabled title="This module requires a tested industry source model, calculation registry, permissions and reconciliation path before activation.">Requires source adapter</button>
           </article>
         ))}
       </div>

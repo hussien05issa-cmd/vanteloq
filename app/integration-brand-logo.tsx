@@ -30,6 +30,14 @@ const simpleMarks: Record<string, SimpleIcon> = {
 };
 
 export default function IntegrationBrandLogo({ name, compact = false }: { name: string; compact?: boolean }) {
+  if (name === "Lightspeed") {
+    return <span className={`integration-logo brand-lightspeed${compact ? " compact" : ""}`} role="img" aria-label="Lightspeed logo">
+      {/* Standalone Lightspeed flame artwork; the wordmark is intentionally excluded. */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/brand/lightspeed-mark.png" alt="" aria-hidden="true" />
+    </span>;
+  }
+
   const icon = simpleMarks[name];
 
   if (icon) {
@@ -52,13 +60,6 @@ function CustomMark({ name }: { name: string }) {
   if (name === "Uber Eats") return <svg viewBox="0 0 48 48" aria-hidden="true">
     <text x="5" y="22" fill="#111" fontSize="14" fontWeight="800" fontFamily="Arial, sans-serif">UBER</text>
     <text x="7" y="37" fill="#06C167" fontSize="14" fontWeight="800" fontFamily="Arial, sans-serif">EATS</text>
-  </svg>;
-
-  if (name === "Lightspeed") return <svg viewBox="0 0 48 48" aria-hidden="true">
-    <path fill="#ED1C2E" d="M8.5 16.5 20.6 4.4h14.7l-12 12.1H8.5Z"/>
-    <path fill="#ED1C2E" d="m8.5 26.2 8.2-8.1h14.7l-8.2 8.1H8.5Z" opacity=".78"/>
-    <path fill="#ED1C2E" d="m8.5 36 8.1-8.2h14.7L23.2 36H8.5Z" opacity=".56"/>
-    <path fill="#ED1C2E" d="m17 43.5 6.8-6.8h15.7l-6.8 6.8H17Z" opacity=".34"/>
   </svg>;
 
   if (name === "Clover") return <svg viewBox="0 0 48 48" aria-hidden="true">
