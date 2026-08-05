@@ -55,8 +55,13 @@ This audit separates the two uploaded specifications and distinguishes working f
 - Production Worker build and hosting-manifest validation: passed.
 - Deterministic intelligence tests: 3 passed.
 - BookLoQ calculation tests: 5 passed.
+- Inventory Reorder Brain tests: 4 passed.
+- Lightspeed authorization, encryption, normalization and webhook tests: 6 passed.
 - Governance, PIN and metric-registry tests: 5 passed.
-- Authentication/origin/security-boundary tests: 7 passed.
+- Authentication/origin/security-boundary tests: 10 passed.
+- Render and interaction-integrity tests: 5 passed.
 - Migration, tenant-isolation and intelligence-to-action flow: 1 passed.
+
+Total automated checks: 39 passed.
 
 The product is complete for the working capabilities above. Provider-dependent features are deliberately gated because credentials, production agreements and external services are not present; marking those features live would be incorrect.

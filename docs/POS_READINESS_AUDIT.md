@@ -75,7 +75,7 @@ Continue Lightspeed as a read-only pilot after the required partner approval and
 
 ## Verification completed in this audit
 
-- Full automated suite includes dedicated reorder and Lightspeed security/calculation cases.
+- 39 automated checks passed, including dedicated reorder, Lightspeed, security, migration, tenant-isolation, calculation and interaction cases.
 - TypeScript passed.
 - Lint passed with two expected image-optimization advisories for tenant-uploaded logos.
 - Production build and Sites artifact validation passed.
