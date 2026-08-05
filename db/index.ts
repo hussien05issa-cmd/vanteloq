@@ -8,6 +8,9 @@ export type VanteloqRuntimeEnv = {
   LIGHTSPEED_CLIENT_SECRET?: string;
   LIGHTSPEED_REDIRECT_URI?: string;
   LIGHTSPEED_API_VERSION?: string;
+  LIGHTSPEED_R_CLIENT_ID?: string;
+  LIGHTSPEED_R_CLIENT_SECRET?: string;
+  LIGHTSPEED_R_REDIRECT_URI?: string;
   INTEGRATION_ENCRYPTION_KEY?: string;
 };
 

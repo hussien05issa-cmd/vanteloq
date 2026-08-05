@@ -58,6 +58,10 @@ test("Lightspeed management routes reject anonymous same-origin writes", async (
     "/api/v1/integrations/lightspeed/outlets",
     "/api/v1/integrations/lightspeed/sync",
     "/api/v1/integrations/lightspeed/disconnect",
+    "/api/v1/integrations/lightspeed-r/authorize",
+    "/api/v1/integrations/lightspeed-r/shops",
+    "/api/v1/integrations/lightspeed-r/sync",
+    "/api/v1/integrations/lightspeed-r/disconnect",
   ]) {
     const response = await worker.fetch(new Request(`https://vanteloq.example${path}`, {
       method: "POST",
@@ -77,6 +81,16 @@ test("the Lightspeed callback requires the initiating signed-in owner", async ()
   const worker = await loadWorker();
   const response = await worker.fetch(new Request(
     "https://vanteloq.example/api/v1/integrations/lightspeed/callback?code=test-code&state=state-with-entropy&domain_prefix=north-store",
+    { headers: { accept: "application/json" } },
+  ), environment, context);
+  assert.equal(response.status, 401);
+  assert.equal((await response.json()).error.code, "AUTHENTICATION_REQUIRED");
+});
+
+test("the R-Series callback requires the initiating signed-in owner", async () => {
+  const worker = await loadWorker();
+  const response = await worker.fetch(new Request(
+    "https://vanteloq.example/api/v1/integrations/lightspeed-r/callback?code=test-code&state=state-with-entropy",
     { headers: { accept: "application/json" } },
   ), environment, context);
   assert.equal(response.status, 401);
@@ -130,6 +144,10 @@ test("imports and business-memory writes reject cross-site origins before data a
     "/api/v1/integrations/lightspeed/outlets",
     "/api/v1/integrations/lightspeed/sync",
     "/api/v1/integrations/lightspeed/disconnect",
+    "/api/v1/integrations/lightspeed-r/authorize",
+    "/api/v1/integrations/lightspeed-r/shops",
+    "/api/v1/integrations/lightspeed-r/sync",
+    "/api/v1/integrations/lightspeed-r/disconnect",
   ]) {
     const response = await worker.fetch(new Request(`https://vanteloq.example${path}`, {
       method: "POST",

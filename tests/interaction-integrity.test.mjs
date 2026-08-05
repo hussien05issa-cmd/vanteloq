@@ -39,6 +39,15 @@ test("the Lightspeed integration uses the standalone image asset", async () => {
   assert.doesNotMatch(source, /name === "Lightspeed"[\s\S]{0,200}<path/);
 });
 
+test("X-Series and R-Series are distinct, actionable connection choices", async () => {
+  const catalog = await readFile(new URL("../app/integration-catalog.ts", import.meta.url), "utf8");
+  const app = await readFile(new URL("../app/vanteloq-app.tsx", import.meta.url), "utf8");
+  assert.match(catalog, /id: "lightspeed"[\s\S]*name: "Lightspeed X-Series"/);
+  assert.match(catalog, /id: "lightspeed-r"[\s\S]*name: "Lightspeed R-Series"/);
+  assert.match(app, /integrations\/\$\{provider\}\/authorize/);
+  assert.match(app, /provider === "lightspeed-r" \? "shops" : "outlets"/);
+});
+
 test("the banking catalogue uses Plaid's standalone mark and omits removed aggregators", async () => {
   const logoSource = await readFile(
     new URL("../app/integration-brand-logo.tsx", import.meta.url),

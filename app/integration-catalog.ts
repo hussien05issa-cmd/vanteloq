@@ -14,11 +14,19 @@ export type IntegrationCatalogEntry = {
 export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
   {
     id: "lightspeed",
-    name: "Lightspeed",
+    name: "Lightspeed X-Series",
     category: "Point of sale",
     availability: "credentials_required",
     activationRequirement:
       "The read-only X-Series pilot is built. Add developer credentials, authorize a store, map outlets and pass sample reconciliation before promoting data.",
+  },
+  {
+    id: "lightspeed-r",
+    name: "Lightspeed R-Series",
+    category: "Point of sale",
+    availability: "credentials_required",
+    activationRequirement:
+      "The multi-tenant read-only R-Series connector is built. Register one Vanteloq OAuth client, then each business securely authorizes and maps its own account.",
   },
   {
     id: "shopify",

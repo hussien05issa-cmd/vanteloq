@@ -36,6 +36,22 @@ const specification = {
     "/integrations/lightspeed/webhook": {
       post: { summary: "Verify and queue a signed provider change signal", responses: { "204": { description: "Verified signal queued; polling remains source of truth" }, "401": { description: "Signature invalid" }, "413": { description: "Payload too large" } } },
     },
+    "/integrations/lightspeed-r/authorize": {
+      post: { summary: "Begin tenant-bound Lightspeed R-Series read-only OAuth", responses: { "200": { description: "Short-lived authorization URL" }, "403": { description: "Integration-management permission required" }, "503": { description: "R-Series OAuth client not configured" } } },
+    },
+    "/integrations/lightspeed-r/callback": {
+      get: { summary: "Consume single-use OAuth state, verify the R-Series account and discover shops", responses: { "303": { description: "Return to the integration workspace" }, "400": { description: "Invalid or expired callback" } } },
+    },
+    "/integrations/lightspeed-r/shops": {
+      get: { summary: "Discover R-Series shops and tenant mappings", responses: { "200": { description: "Shop mappings" }, "409": { description: "R-Series not connected" } } },
+      post: { summary: "Map an R-Series shop to a tenant-owned location", responses: { "200": { description: "Mapping saved and audited" }, "404": { description: "Shop or local location not found" } } },
+    },
+    "/integrations/lightspeed-r/sync": {
+      post: { summary: "Read and stage a bounded R-Series sales sample without metric promotion", responses: { "200": { description: "Staging and reconciliation result" }, "409": { description: "Provider authorization needs recovery" } } },
+    },
+    "/integrations/lightspeed-r/disconnect": {
+      post: { summary: "Delete tenant R-Series credentials while retaining staged audit history", responses: { "200": { description: "Connection revoked" }, "403": { description: "Integration-management permission required" } } },
+    },
     "/command-centre": {
       get: { summary: "Calculate the tenant's evidence-bound owner command centre", responses: { "200": { description: "Verified metrics, comparisons, source freshness and recommendations" }, "401": { description: "Authentication required" }, "403": { description: "Membership required" }, "429": { description: "Rate limited" } } },
     },

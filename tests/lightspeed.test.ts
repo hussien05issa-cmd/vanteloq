@@ -11,6 +11,14 @@ import {
   validateDomainPrefix,
   verifyLightspeedWebhookSignature,
 } from "../server/integrations/lightspeed.ts";
+import {
+  buildLightspeedRAuthorizationUrl,
+  decryptLightspeedRSecret,
+  encryptLightspeedRSecret,
+  LIGHTSPEED_R_SCOPES,
+  lightspeedRReadiness,
+  normalizeLightspeedRSale,
+} from "../server/integrations/lightspeed-r.ts";
 
 const clientSecret = "test-client-secret";
 (globalThis as typeof globalThis & { __vanteloqEnv?: Record<string, string> }).__vanteloqEnv = {
@@ -18,6 +26,9 @@ const clientSecret = "test-client-secret";
   LIGHTSPEED_CLIENT_SECRET: clientSecret,
   LIGHTSPEED_REDIRECT_URI: "https://vanteloq.example/api/v1/integrations/lightspeed/callback",
   LIGHTSPEED_API_VERSION: "2026-07",
+  LIGHTSPEED_R_CLIENT_ID: "test-r-client-id",
+  LIGHTSPEED_R_CLIENT_SECRET: "test-r-client-secret",
+  LIGHTSPEED_R_REDIRECT_URI: "https://vanteloq.example/api/v1/integrations/lightspeed-r/callback",
   INTEGRATION_ENCRYPTION_KEY: Buffer.from(
     Uint8Array.from({ length: 32 }, (_, index) => index + 1),
   ).toString("base64"),
@@ -33,6 +44,51 @@ test("authorization is read-only and bound to an exact callback and state", () =
   assert.equal(url.searchParams.get("state"), state);
   assert.deepEqual(url.searchParams.get("scope")?.split(" "), [...LIGHTSPEED_SCOPES]);
   assert.doesNotMatch(url.toString(), /test-client-secret/);
+});
+
+test("R-Series authorization uses the official multi-account OAuth endpoint and read-only scopes", () => {
+  const url = new URL(buildLightspeedRAuthorizationUrl("r-series-state-with-entropy"));
+  assert.equal(url.origin, "https://cloud.lightspeedapp.com");
+  assert.equal(url.pathname, "/auth/oauth/authorize");
+  assert.equal(url.searchParams.get("client_id"), "test-r-client-id");
+  assert.equal(url.searchParams.get("state"), "r-series-state-with-entropy");
+  assert.deepEqual(url.searchParams.get("scope")?.split(" "), [...LIGHTSPEED_R_SCOPES]);
+  assert.doesNotMatch(url.toString(), /test-r-client-secret/);
+});
+
+test("R-Series readiness is independently configured and promotion stays disabled", () => {
+  const readiness = lightspeedRReadiness();
+  assert.equal(readiness.adapterBuilt, true);
+  assert.equal(readiness.credentialsConfigured, true);
+  assert.equal(readiness.apiVersion, "V3");
+  assert.deepEqual(readiness.scopes, ["employee:register_read", "employee:inventory_read"]);
+  assert.equal(readiness.dataPromotionEnabled, false);
+});
+
+test("R-Series tokens use provider-bound authenticated encryption", async () => {
+  const encrypted = await encryptLightspeedRSecret("r-series-private-token");
+  assert.match(encrypted, /^v1\./);
+  assert.doesNotMatch(encrypted, /r-series-private-token/);
+  assert.equal(await decryptLightspeedRSecret(encrypted), "r-series-private-token");
+  await assert.rejects(() => decryptIntegrationSecret(encrypted));
+});
+
+test("R-Series sale normalization preserves financial facts and excludes customer data", async () => {
+  const normalized = await normalizeLightspeedRSale({
+    saleID: "401", timeStamp: "2026-08-05T12:00:00Z", completeTime: "2026-08-05T11:59:00Z",
+    completed: "true", voided: "false", shopID: "8", total: "61.75", taxTotal: "3.75",
+    calcFIFOCost: "24.10", calcDiscount: "2.00", Customer: { firstName: "Do not store", email: "private@example.invalid" },
+    SaleLines: { SaleLine: [{ saleLineID: "1" }, { saleLineID: "2" }] },
+  });
+  assert.equal(normalized.externalSaleId, "401");
+  assert.equal(normalized.outletRef, "8");
+  assert.equal(normalized.state, "completed");
+  assert.equal(normalized.totalCents, 6175);
+  assert.equal(normalized.taxCents, 375);
+  assert.equal(normalized.costCents, 2410);
+  assert.equal(normalized.discountCents, 200);
+  assert.equal(normalized.lineCount, 2);
+  assert.doesNotMatch(JSON.stringify(normalized), /Do not store|private@example/);
 });
 
 test("readiness reports a staged adapter with promotion disabled", () => {

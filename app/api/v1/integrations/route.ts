@@ -6,6 +6,7 @@ import { handleApi, jsonResponse } from "../../../../server/api";
 import { effectivePermissions, requirePermission } from "../../../../server/permissions";
 import { integrationCatalog, preSyncControls } from "../../../integration-catalog";
 import { lightspeedReadiness } from "../../../../server/integrations/lightspeed";
+import { lightspeedRReadiness } from "../../../../server/integrations/lightspeed-r";
 
 export async function GET(request: Request) {
   return handleApi(request, async () => {
@@ -36,8 +37,11 @@ export async function GET(request: Request) {
         lastErrorCode: byProvider.get(provider.id)?.lastErrorCode ?? null,
         connectedAt: byProvider.get(provider.id)?.connectedAt ?? null,
         dataPromotionStatus: byProvider.get(provider.id)?.dataPromotionStatus ?? "blocked",
-        providerReadiness:
-          provider.id === "lightspeed" ? lightspeedReadiness() : null,
+        providerReadiness: provider.id === "lightspeed"
+          ? lightspeedReadiness()
+          : provider.id === "lightspeed-r"
+            ? lightspeedRReadiness()
+            : null,
       })),
     });
   });
