@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX `integration_connections_provider_domain_unique` ON `integration_connections` (`provider`,`domain_prefix`);

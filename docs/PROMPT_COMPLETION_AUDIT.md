@@ -32,7 +32,7 @@ This audit separates the two uploaded specifications and distinguishes working f
 - Working daily CSV/manual import with schema validation, fixed-precision minor-unit storage, idempotency keys, tenant isolation, import history and no invented sample data.
 - Searchable report catalogue containing the full requested grouping. Five aggregate reports run from verified daily summaries, support date/location API filters, carry generation/source/freshness metadata, include Explain & Act context and provide permissioned CSV exports.
 - Purchase-order centre with draft and awaiting-approval creation, protected approval, explicit externally-sent confirmation, goods receiving, partial/complete receiving, integer-minor-unit totals, audit history and invoice matching.
-- Deterministic recommendation scenario for conservative/recommended/growth quantities, case-pack rounding, stockout horizon, expected cost, cash before/after and cash-threshold breach warning. It never sends or pays automatically.
+- Dedicated Inventory Reorder Brain with conservative/recommended/growth scenarios, demand and variability, lead and review time, service level, seasonality, promotions, on-hand/incoming stock, case-pack and supplier minimums, cash safety threshold, AP/payroll/tax/debt commitments, shelf life, storage capacity, source freshness, confidence, constraints and human approval. It never sends or pays automatically.
 - Document centre with browser/mobile camera capture, R2 tenant isolation, file-size limits, MIME plus magic-byte verification, SHA-256 duplicate detection, quarantine state, original download authorization and protected deletion rules.
 - Data-quality centre calculating completeness, cost coverage, missing periods, failed sync/import count, document-review state, purchase-order discrepancies, affected metrics and recommended corrections.
 - Provider-neutral interfaces for POS, banking, address validation, malware scanning and document extraction, including hosted authorization, backfill, incremental synchronization, signed webhook verification, normalized records and disconnection.
@@ -40,11 +40,12 @@ This audit separates the two uploaded specifications and distinguishes working f
 
 ### Intentionally gated, not mislabelled complete
 
-- Lightspeed, Shopify, Square, Stripe, Moneris, Clover, WooCommerce, Plaid, MX, Flinks and other external providers are not live without production credentials, commercial access, webhook endpoints, scopes and coverage verification.
+- The Lightspeed X-Series read-only staging adapter, OAuth state flow, encrypted token rotation, outlet discovery/mapping, bounded sample staging, replay-safe webhooks and disconnect path are implemented. It is not live because approved client credentials and a real sandbox reconciliation are still external requirements; data promotion remains hard-blocked.
+- Shopify, Square, Stripe, Moneris, Clover, WooCommerce, Plaid and other external providers are not live without production credentials, commercial access, webhook endpoints, scopes and coverage verification.
 - No bank connection is labelled Connected. Live balances, pending transactions, consent expiry and automated bank synchronization remain unavailable until a banking adapter passes production verification.
 - Malware scanning and OCR/extraction are not configured. Documents remain `review_required`; Vanteloq never calls them clean or extracted.
 - The deeper line-item/hourly/product/customer/supplier/inventory reports are visible as source requirements, not fake results. XLSX, PDF and scheduled delivery remain gated.
-- Automatic statistical demand forecasts, supplier-price history, seasonality, shelf life, payroll/tax/debt commitments and twelve-month cash forecasts require normalized source records not yet present.
+- The reorder calculation accepts demand variability, seasonality, shelf life and cash commitments and exposes missing-input confidence. Automatic SKU-by-SKU recommendations still require normalized inventory, supplier, sales and commitment source records; the current screen is an owner-reviewed calculation lab.
 - International address deliverability, autocomplete and coordinates require a configured regional validation provider.
 
 ## Verification result

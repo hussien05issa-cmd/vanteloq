@@ -1,6 +1,10 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  calculateReorderRecommendation,
+  type ReorderInputs,
+} from "../domain/reorder-engine";
 
 type TaskSeed = {
   title: string;
@@ -1022,74 +1026,172 @@ function ReceiveModal({
   );
 }
 
+export function InventoryWorkspace({
+  currency,
+  createTask,
+  sourceCashCents,
+  sourceAccountsPayableCents,
+  sourceDataAgeHours,
+  sourceHistoryDays,
+}: SharedProps & {
+  sourceCashCents: number | null;
+  sourceAccountsPayableCents: number | null;
+  sourceDataAgeHours: number;
+  sourceHistoryDays: number;
+}) {
+  return (
+    <div className="content control-page inventory-brain-page">
+      <section className="page-intro">
+        <div>
+          <p>INVENTORY REORDER BRAIN</p>
+          <h2>Protect availability without spending past the cash line.</h2>
+          <span>
+            Demand, lead time, variability, incoming stock, case packs, supplier
+            minimums, shelf life, capacity and committed cash are evaluated
+            together. Every recommendation remains a human-reviewed decision.
+          </span>
+        </div>
+        <div className="reorder-source-state">
+          <small>OPERATING SOURCE</small>
+          <b>{sourceCashCents === null ? "Scenario mode" : "Latest verified balance"}</b>
+          <span>
+            {sourceCashCents === null
+              ? "Connect normalized inventory and cash sources to automate inputs."
+              : `${sourceHistoryDays} days of history · ${sourceDataAgeHours}h old`}
+          </span>
+        </div>
+      </section>
+      <RecommendationLab
+        currency={currency}
+        createTask={createTask}
+        sourceCashCents={sourceCashCents}
+        sourceAccountsPayableCents={sourceAccountsPayableCents}
+        sourceDataAgeHours={sourceDataAgeHours}
+        sourceHistoryDays={sourceHistoryDays}
+      />
+    </div>
+  );
+}
+
 function RecommendationLab({
   currency,
   createTask,
+  sourceCashCents = null,
+  sourceAccountsPayableCents = null,
+  sourceDataAgeHours = 0,
+  sourceHistoryDays = 0,
 }: {
   currency: string;
   createTask: (seed: TaskSeed) => void;
+  sourceCashCents?: number | null;
+  sourceAccountsPayableCents?: number | null;
+  sourceDataAgeHours?: number;
+  sourceHistoryDays?: number;
 }) {
   const [inputs, setInputs] = useState({
     onHand: 18,
     incoming: 0,
-    dailyVelocity: 4,
+    dailyDemand: 4,
+    demandStdDev: 1.2,
     leadTime: 7,
-    safetyStock: 14,
+    reviewPeriod: 7,
+    serviceLevelZ: 1.65,
+    seasonality: 1,
+    promotion: 1,
     casePack: 6,
+    supplierMinimum: 0,
     unitCost: 32,
-    availableCash: 25000,
+    availableCash: Math.round((sourceCashCents ?? 2_500_000) / 100),
     cashThreshold: 12000,
-    otherCommitments: 5000,
+    accountsPayable: Math.round((sourceAccountsPayableCents ?? 500_000) / 100),
+    payroll: 0,
+    tax: 0,
+    debt: 0,
+    otherCommitments: 0,
+    shelfLife: 180,
+    storageCapacity: 240,
+    demandHistoryDays: sourceHistoryDays,
+    dataAgeHours: sourceDataAgeHours,
   });
   const set = (key: keyof typeof inputs, value: number) =>
     setInputs((current) => ({ ...current, [key]: value }));
-  const result = useMemo(() => {
-    const demand = Math.ceil(
-      inputs.dailyVelocity * inputs.leadTime + inputs.safetyStock,
-    );
-    const raw = Math.max(0, demand - inputs.onHand - inputs.incoming);
-    const recommended =
-      Math.ceil(raw / Math.max(1, inputs.casePack)) *
-      Math.max(1, inputs.casePack);
-    const conservative =
-      Math.ceil(Math.max(0, raw * 0.7) / Math.max(1, inputs.casePack)) *
-      Math.max(1, inputs.casePack);
-    const growth =
-      Math.ceil((raw * 1.25) / Math.max(1, inputs.casePack)) *
-      Math.max(1, inputs.casePack);
-    const cost = recommended * inputs.unitCost;
-    const before = inputs.availableCash - inputs.otherCommitments;
-    const after = before - cost;
-    return {
-      demand,
-      recommended,
-      conservative,
-      growth,
-      cost,
-      before,
-      after,
-      breaches: after < inputs.cashThreshold,
-      stockoutDays: inputs.dailyVelocity
-        ? Math.floor((inputs.onHand + inputs.incoming) / inputs.dailyVelocity)
-        : null,
+  const calculation = useMemo(() => {
+    const engineInputs: ReorderInputs = {
+      onHandUnits: inputs.onHand,
+      incomingUnits: inputs.incoming,
+      averageDailyDemand: inputs.dailyDemand,
+      demandStdDevDaily: inputs.demandStdDev || null,
+      leadTimeDays: inputs.leadTime,
+      reviewPeriodDays: inputs.reviewPeriod,
+      serviceLevelZ: inputs.serviceLevelZ,
+      seasonalityFactor: inputs.seasonality,
+      promotionFactor: inputs.promotion,
+      casePackUnits: inputs.casePack,
+      minimumOrderUnits: inputs.supplierMinimum,
+      unitCostCents: Math.round(inputs.unitCost * 100),
+      availableCashCents: Math.round(inputs.availableCash * 100),
+      cashSafetyThresholdCents: Math.round(inputs.cashThreshold * 100),
+      accountsPayableCents: Math.round(inputs.accountsPayable * 100),
+      payrollCommitmentsCents: Math.round(inputs.payroll * 100),
+      taxCommitmentsCents: Math.round(inputs.tax * 100),
+      debtCommitmentsCents: Math.round(inputs.debt * 100),
+      otherCommitmentsCents: Math.round(inputs.otherCommitments * 100),
+      shelfLifeDays: inputs.shelfLife || null,
+      storageCapacityUnits: inputs.storageCapacity || null,
+      demandHistoryDays: inputs.demandHistoryDays,
+      dataAgeHours: inputs.dataAgeHours,
     };
+    try {
+      return { result: calculateReorderRecommendation(engineInputs), error: "" };
+    } catch (error) {
+      return {
+        result: null,
+        error: error instanceof Error ? error.message : "Check the scenario inputs.",
+      };
+    }
   }, [inputs]);
+  const result = calculation.result;
+  const fields: { key: keyof typeof inputs; label: string; suffix?: string }[] = [
+    { key: "onHand", label: "On hand", suffix: "units" },
+    { key: "incoming", label: "Incoming", suffix: "units" },
+    { key: "dailyDemand", label: "Average daily demand", suffix: "units" },
+    { key: "demandStdDev", label: "Daily demand variability", suffix: "σ" },
+    { key: "leadTime", label: "Supplier lead time", suffix: "days" },
+    { key: "reviewPeriod", label: "Review period", suffix: "days" },
+    { key: "serviceLevelZ", label: "Service level factor", suffix: "z" },
+    { key: "seasonality", label: "Seasonality factor", suffix: "×" },
+    { key: "promotion", label: "Promotion factor", suffix: "×" },
+    { key: "casePack", label: "Case pack", suffix: "units" },
+    { key: "supplierMinimum", label: "Supplier minimum", suffix: "units" },
+    { key: "unitCost", label: "Unit cost", suffix: currency },
+    { key: "availableCash", label: "Available cash", suffix: currency },
+    { key: "cashThreshold", label: "Cash safety threshold", suffix: currency },
+    { key: "accountsPayable", label: "Accounts payable", suffix: currency },
+    { key: "payroll", label: "Payroll commitments", suffix: currency },
+    { key: "tax", label: "Tax commitments", suffix: currency },
+    { key: "debt", label: "Debt commitments", suffix: currency },
+    { key: "otherCommitments", label: "Other commitments", suffix: currency },
+    { key: "shelfLife", label: "Shelf life", suffix: "days" },
+    { key: "storageCapacity", label: "Storage capacity", suffix: "units" },
+    { key: "demandHistoryDays", label: "Demand history", suffix: "days" },
+    { key: "dataAgeHours", label: "Data age", suffix: "hours" },
+  ];
   return (
     <section className="recommendation-lab">
       <article className="card rec-inputs">
-        <p>EXPLAINABLE INPUTS</p>
-        <h3>Cash-constrained order scenario</h3>
+        <p>TRACEABLE INPUTS</p>
+        <h3>Demand and cash constraints</h3>
         <div>
-          {Object.entries(inputs).map(([key, value]) => (
-            <label key={key}>
-              {key
-                .replaceAll(/([A-Z])/g, " $1")
-                .replace(/^./, (letter) => letter.toUpperCase())}
+          {fields.map((field) => (
+            <label key={field.key}>
+              <span>{field.label}<small>{field.suffix}</small></span>
               <input
                 type="number"
-                value={value}
+                min="0"
+                step={field.key === "seasonality" || field.key === "promotion" || field.key === "serviceLevelZ" || field.key === "demandStdDev" ? "0.05" : "1"}
+                value={inputs[field.key]}
                 onChange={(event) =>
-                  set(key as keyof typeof inputs, Number(event.target.value))
+                  set(field.key, Number(event.target.value))
                 }
               />
             </label>
@@ -1097,71 +1199,48 @@ function RecommendationLab({
         </div>
       </article>
       <article className="card rec-output">
-        <span className={result.breaches ? "breach" : "safe"}>
-          {result.breaches
-            ? "Cash threshold breached"
-            : "Inside cash threshold"}
-        </span>
-        <h2>{result.recommended} units</h2>
-        <p>
-          Demand through lead time plus safety stock, less on-hand and incoming
-          inventory, rounded to the case pack.
-        </p>
-        <div>
-          <span>
-            <small>CONSERVATIVE</small>
-            <b>{result.conservative}</b>
-          </span>
-          <span>
-            <small>RECOMMENDED</small>
-            <b>{result.recommended}</b>
-          </span>
-          <span>
-            <small>GROWTH</small>
-            <b>{result.growth}</b>
-          </span>
-        </div>
-        <dl>
-          <div>
-            <dt>Expected stockout</dt>
-            <dd>
-              {result.stockoutDays === null
-                ? "No velocity"
-                : `${result.stockoutDays} days`}
-            </dd>
+        {calculation.error || !result ? <p className="form-error">{calculation.error}</p> : <>
+          <div className="reorder-verdict">
+            <span className={result.status === "blocked" ? "breach" : "safe"}>
+              {result.status.replaceAll("_", " ")}
+            </span>
+            <small>{result.confidence} confidence</small>
           </div>
+          <h2>{result.recommendedUnits} units</h2>
+          <p>{result.formula}</p>
           <div>
-            <dt>Expected cost</dt>
-            <dd>{money(Math.round(result.cost * 100), currency)}</dd>
+            {result.scenarios.map((scenario) => <span key={scenario.label}>
+              <small>{scenario.label.toUpperCase()}</small>
+              <b>{scenario.orderUnits}</b>
+              <em>{money(scenario.orderCostCents, currency)}</em>
+            </span>)}
           </div>
-          <div>
-            <dt>Cash before order</dt>
-            <dd>{money(Math.round(result.before * 100), currency)}</dd>
-          </div>
-          <div>
-            <dt>Cash after order</dt>
-            <dd>{money(Math.round(result.after * 100), currency)}</dd>
-          </div>
-          <div>
-            <dt>Cash safety threshold</dt>
-            <dd>{money(Math.round(inputs.cashThreshold * 100), currency)}</dd>
-          </div>
-        </dl>
-        <p className="rec-boundary">
-          User-controlled scenario. Missing: supplier minimum, seasonality,
-          promotions, shelf life, product margin, payroll, tax, debt and
-          verified forecast inflows unless included above.
-        </p>
+          <dl>
+            <div><dt>Forecast demand</dt><dd>{result.forecastDemandUnits} units</dd></div>
+            <div><dt>Safety stock</dt><dd>{result.safetyStockUnits} units</dd></div>
+            <div><dt>Expected stockout</dt><dd>{result.expectedStockoutDays === null ? "No velocity" : `${result.expectedStockoutDays} days`}</dd></div>
+            <div><dt>Expected cost</dt><dd>{money(result.orderCostCents, currency)}</dd></div>
+            <div><dt>Committed cash</dt><dd>{money(result.committedCashCents, currency)}</dd></div>
+            <div><dt>Cash after order</dt><dd>{money(result.cashAfterOrderCents, currency)}</dd></div>
+            <div><dt>Cash safety threshold</dt><dd>{money(Math.round(inputs.cashThreshold * 100), currency)}</dd></div>
+            <div><dt>Human approval</dt><dd>Always required</dd></div>
+          </dl>
+          {!!result.constrainedBy.length && <div className="reorder-explain"><b>Constraints applied</b>{result.constrainedBy.map(item => <span key={item}>{item}</span>)}</div>}
+          {!!result.missingInputs.length && <div className="reorder-explain missing"><b>Confidence gaps</b>{result.missingInputs.map(item => <span key={item}>{item}</span>)}</div>}
+          {!!result.assumptions.length && <p className="rec-boundary">{result.assumptions.join(" ")}</p>}
+        </>}
         <button
+          disabled={!result || result.status === "no_order"}
+          title={!result || result.status === "no_order" ? "No reorder action is needed for this scenario." : "Create a review action; this does not place an order."}
           onClick={() =>
-            createTask({
+            result && createTask({
               title: "Review purchase-order scenario",
-              detail: `Review ${result.recommended} units at an expected cost of ${money(Math.round(result.cost * 100), currency)}. Cash after order: ${money(Math.round(result.after * 100), currency)}.`,
-              priority: result.breaches ? "high" : "medium",
+              detail: `Review ${result.recommendedUnits} units at an expected cost of ${money(result.orderCostCents, currency)}. Cash after order: ${money(result.cashAfterOrderCents, currency)}. Constraints: ${result.constrainedBy.join(", ") || "none"}.`,
+              priority: result.status === "blocked" ? "high" : "medium",
               sourceType: "decision",
-              sourceRef: "purchase-order-scenario",
-              expectedImpact: result.breaches
-                ? "Avoid breaching the cash safety threshold."
+              sourceRef: "inventory-reorder-brain",
+              expectedImpact: result.status === "blocked"
+                ? "Resolve the limiting constraint before committing cash."
                 : "Protect availability while preserving cash.",
             })
           }

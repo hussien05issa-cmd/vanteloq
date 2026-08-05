@@ -13,6 +13,7 @@ import { SettingsWorkspace, TeamWorkspace } from "./governance-workspaces";
 import {
   DataQualityWorkspace,
   DocumentsWorkspace,
+  InventoryWorkspace,
   PurchaseOrdersWorkspace,
   ReportsWorkspace,
 } from "./control-workspaces";
@@ -486,6 +487,23 @@ export default function VanteloqApp({
     const timer = window.setTimeout(() => void refresh(), 0);
     return () => window.clearTimeout(timer);
   }, [refresh]);
+  useEffect(() => {
+    const parameters = new URLSearchParams(window.location.search);
+    if (parameters.get("integration") !== "lightspeed") return;
+    const timer = window.setTimeout(() => {
+      setView("Integrations");
+      const state = parameters.get("connection");
+      setNotice(
+        state === "connected"
+          ? "Lightspeed is verified in read-only staging mode"
+          : state === "declined"
+            ? "Lightspeed authorization was declined"
+            : "Lightspeed authorization needs to be restarted",
+      );
+      window.history.replaceState({}, "", window.location.pathname);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
   const showNotice = (message: string) => {
     setNotice(message);
     window.setTimeout(() => setNotice(""), 3000);
@@ -807,6 +825,18 @@ function Workspace({
         currency={currency}
         showNotice={showNotice}
         createTask={createTask}
+      />
+    );
+  if (view === "Inventory")
+    return (
+      <InventoryWorkspace
+        currency={currency}
+        showNotice={showNotice}
+        createTask={createTask}
+        sourceCashCents={data.balances?.cashBalanceCents ?? null}
+        sourceAccountsPayableCents={data.balances?.accountsPayableCents ?? null}
+        sourceDataAgeHours={(data.source.ageDays ?? 0) * 24}
+        sourceHistoryDays={data.current?.days ?? 0}
       />
     );
   if (view === "Documents")
@@ -1545,6 +1575,17 @@ type IntegrationConnection = IntegrationCatalogEntry & {
   status: string;
   lastSuccessfulSyncAt: string | null;
   lastErrorCode: string | null;
+  connectedAt: string | null;
+  dataPromotionStatus: string;
+  providerReadiness: null | {
+    adapterBuilt: boolean;
+    credentialsConfigured: boolean;
+    missingConfiguration: string[];
+    apiVersion: string;
+    scopes: string[];
+    mode: string;
+    dataPromotionEnabled: boolean;
+  };
 };
 
 function DataHub({
@@ -1558,7 +1599,22 @@ function DataHub({
   const [connections, setConnections] = useState<IntegrationConnection[]>([]);
   const [connectionError, setConnectionError] = useState("");
   const [connectionsLoading, setConnectionsLoading] = useState(false);
-  const [syncEnabled, setSyncEnabled] = useState(false);
+  const [canManage, setCanManage] = useState(false);
+  const [providerAction, setProviderAction] = useState("");
+  const [sampleResult, setSampleResult] = useState<null | {
+    run: { recordsRead: number; recordsStaged: number; duplicatesSkipped: number; warningCount: number };
+    reconciliation: { mappedOutlets: number; discoveredOutlets: number; unmappedOutlets: number };
+    nextStep: string;
+  }>(null);
+  const [outletData, setOutletData] = useState<null | {
+    mappings: Array<{
+      externalLocationRef: string;
+      externalName: string;
+      localLocationId: string | null;
+      status: "mapped" | "unmapped" | "ignored";
+    }>;
+    localLocations: Array<{ id: string; name: string; status: string }>;
+  }>(null);
   const loadConnections = useCallback(async () => {
     setConnectionsLoading(true);
     setConnectionError("");
@@ -1571,7 +1627,7 @@ function DataHub({
         throw new Error(body.error?.message ?? "Connection status could not be loaded.");
       }
       setConnections(body.integrations ?? []);
-      setSyncEnabled(body.syncEnabled === true);
+      setCanManage(body.canManage === true);
     } catch (error) {
       setConnectionError(
         error instanceof Error
@@ -1582,6 +1638,99 @@ function DataHub({
       setConnectionsLoading(false);
     }
   }, []);
+  useEffect(() => {
+    if (tab !== "connections" || connections.length || connectionsLoading) return;
+    const timer = window.setTimeout(() => void loadConnections(), 0);
+    return () => window.clearTimeout(timer);
+  }, [connections.length, connectionsLoading, loadConnections, tab]);
+  const providerPost = async (path: string, action: string) => {
+    setProviderAction(action);
+    try {
+      const response = await fetch(path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error?.message ?? "The provider action failed.");
+      return body;
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : "The provider action failed.");
+      return null;
+    } finally {
+      setProviderAction("");
+    }
+  };
+  const connectLightspeed = async () => {
+    const body = await providerPost(
+      "/api/v1/integrations/lightspeed/authorize",
+      "authorize",
+    );
+    if (body?.authorizationUrl) window.location.assign(body.authorizationUrl);
+  };
+  const stageLightspeedSample = async () => {
+    const body = await providerPost(
+      "/api/v1/integrations/lightspeed/sync",
+      "sample",
+    );
+    if (!body) return;
+    setSampleResult(body);
+    showNotice("Lightspeed sample staged; dashboard metrics remain unchanged");
+    await loadConnections();
+  };
+  const disconnectLightspeed = async () => {
+    if (!window.confirm("Disconnect Lightspeed and delete its encrypted tokens? Staged audit history will be retained.")) return;
+    const body = await providerPost(
+      "/api/v1/integrations/lightspeed/disconnect",
+      "disconnect",
+    );
+    if (!body) return;
+    setSampleResult(null);
+    setOutletData(null);
+    showNotice("Lightspeed disconnected; encrypted tokens were deleted");
+    await loadConnections();
+  };
+  const loadLightspeedOutlets = async () => {
+    setProviderAction("outlets");
+    try {
+      const response = await fetch("/api/v1/integrations/lightspeed/outlets", {
+        headers: { Accept: "application/json" },
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error?.message ?? "Lightspeed outlets could not be loaded.");
+      setOutletData(body);
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : "Lightspeed outlets could not be loaded.");
+    } finally {
+      setProviderAction("");
+    }
+  };
+  const saveOutletMapping = async (
+    externalLocationRef: string,
+    selection: string,
+  ) => {
+    setProviderAction(`mapping:${externalLocationRef}`);
+    try {
+      const status = selection === "__ignored__" ? "ignored" : selection ? "mapped" : "unmapped";
+      const response = await fetch("/api/v1/integrations/lightspeed/outlets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          externalLocationRef,
+          localLocationId: status === "mapped" ? selection : null,
+          status,
+        }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error?.message ?? "The outlet mapping could not be saved.");
+      setOutletData(body);
+      showNotice("Lightspeed outlet mapping saved");
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : "The outlet mapping could not be saved.");
+    } finally {
+      setProviderAction("");
+    }
+  };
   const providerRows: IntegrationConnection[] = connections.length
     ? connections
     : integrationCatalog.map((provider) => ({
@@ -1589,6 +1738,9 @@ function DataHub({
         status: "not_connected",
         lastSuccessfulSyncAt: null,
         lastErrorCode: null,
+        connectedAt: null,
+        dataPromotionStatus: "blocked",
+        providerReadiness: null,
       }));
   const verifiedControls = preSyncControls.filter(
     (control) => control.status === "verified",
@@ -1674,7 +1826,14 @@ function DataHub({
           )}
           <section className="integration-grid">
             {providerRows.map((provider) => {
-              const connected = syncEnabled && provider.status === "connected";
+              const connected = provider.status === "connected";
+              const isLightspeed = provider.id === "lightspeed";
+              const configured = provider.providerReadiness?.credentialsConfigured === true;
+              const disabledReason = !canManage
+                ? "Your role can view connection status but cannot manage integrations."
+                : !configured
+                  ? "Add the Lightspeed client ID and secret to Vanteloq's hosted secrets first."
+                  : "";
               return (
               <article className="integration-card" key={provider.id}>
                 <div className="integration-card-head">
@@ -1683,17 +1842,80 @@ function DataHub({
                 </div>
                 <h3>{provider.name}</h3>
                 <p>{provider.activationRequirement}</p>
-                <div>
-                  <span className={`status ${connected ? "" : "planned"}`}>
-                    {connected ? "Connected" : availabilityLabel(provider.availability)}
-                  </span>
-                  <span className="connection-lock">
-                    {connectionsLoading ? "Checking…" : connected ? "Verified live" : "Sync disabled"}
-                  </span>
+                <div className="integration-card-footer">
+                  <div>
+                    <span className={`status ${connected ? "" : "planned"}`}>
+                      {connected ? "Read-only connected" : availabilityLabel(provider.availability)}
+                    </span>
+                    <span className="connection-lock">
+                      {connectionsLoading
+                        ? "Checking…"
+                        : connected
+                          ? "Staging only · metrics locked"
+                          : "Sync disabled"}
+                    </span>
+                  </div>
+                  {isLightspeed && <div className="provider-actions">
+                    {!connected ? <button
+                      onClick={() => void connectLightspeed()}
+                      disabled={Boolean(disabledReason) || Boolean(providerAction)}
+                      title={disabledReason || "Authorize a Lightspeed X-Series store with read-only scopes."}
+                    >{providerAction === "authorize" ? "Opening…" : "Connect"}</button> : <>
+                      <button
+                        onClick={() => void stageLightspeedSample()}
+                        disabled={!canManage || Boolean(providerAction)}
+                        title={!canManage ? "Your role cannot run provider synchronization." : "Read and stage a bounded sample without changing dashboard metrics."}
+                      >{providerAction === "sample" ? "Staging…" : "Stage sample"}</button>
+                      <button
+                        className="secondary-provider-action"
+                        onClick={() => void loadLightspeedOutlets()}
+                        disabled={!canManage || Boolean(providerAction)}
+                        title={!canManage ? "Your role cannot manage location mappings." : "Discover and map Lightspeed outlets before reconciliation."}
+                      >{providerAction === "outlets" ? "Loading…" : "Map outlets"}</button>
+                      <button
+                        className="danger-text"
+                        onClick={() => void disconnectLightspeed()}
+                        disabled={!canManage || Boolean(providerAction)}
+                        title={!canManage ? "Your role cannot disconnect integrations." : "Delete local encrypted tokens while retaining staged audit history."}
+                      >Disconnect</button>
+                    </>}
+                  </div>}
                 </div>
               </article>
             );})}
           </section>
+          {outletData && <section className="outlet-mapping-panel" aria-labelledby="outlet-mapping-title">
+            <header>
+              <div><p>LOCATION CONTROL</p><h3 id="outlet-mapping-title">Map every Lightspeed outlet before promotion.</h3></div>
+              <strong>{outletData.mappings.filter((mapping) => mapping.status === "mapped").length} / {outletData.mappings.length} mapped</strong>
+            </header>
+            {outletData.mappings.length ? <div className="outlet-mapping-list">
+              {outletData.mappings.map((mapping) => <label key={mapping.externalLocationRef}>
+                <span><b>{mapping.externalName}</b><small>{mapping.externalLocationRef}</small></span>
+                <select
+                  value={mapping.status === "ignored" ? "__ignored__" : mapping.localLocationId ?? ""}
+                  onChange={(event) => void saveOutletMapping(mapping.externalLocationRef, event.target.value)}
+                  disabled={Boolean(providerAction)}
+                  aria-label={`Map ${mapping.externalName}`}
+                >
+                  <option value="">Unmapped — blocks promotion</option>
+                  {outletData.localLocations.filter((location) => location.status === "active").map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}
+                  <option value="__ignored__">Ignore this outlet</option>
+                </select>
+              </label>)}
+            </div> : <p className="outlet-empty">No outlets were returned. Confirm the retailer has active outlets, then retry discovery.</p>}
+            <footer>Ignored outlets remain excluded and visible in reconciliation. Mapping never merges tenants or changes provider records.</footer>
+          </section>}
+          {sampleResult && <section className="sample-sync-result" aria-live="polite">
+            <header><div><p>LIGHTSPEED SAMPLE RECONCILIATION</p><h3>Staged safely. Nothing has entered live metrics.</h3></div><strong>DATA PROMOTION OFF</strong></header>
+            <div>
+              <span><small>RECORDS READ</small><b>{sampleResult.run.recordsRead}</b></span>
+              <span><small>NEWLY STAGED</small><b>{sampleResult.run.recordsStaged}</b></span>
+              <span><small>DUPLICATES SKIPPED</small><b>{sampleResult.run.duplicatesSkipped}</b></span>
+              <span><small>UNMAPPED OUTLETS</small><b>{sampleResult.reconciliation.unmappedOutlets}</b></span>
+            </div>
+            <p>{sampleResult.nextStep}</p>
+          </section>}
         </>
       )}
     </div>
@@ -1703,7 +1925,9 @@ function DataHub({
 function availabilityLabel(value: IntegrationCatalogEntry["availability"]) {
   return value === "provider_selection_required"
     ? "Provider selection required"
-    : "Provider build required";
+    : value === "credentials_required"
+      ? "Credentials required"
+      : "Provider build required";
 }
 
 const requiredHeaders = [

@@ -17,6 +17,25 @@ const specification = {
     "/integrations": {
       get: { summary: "List configured and available integrations", responses: { "200": { description: "Tenant integration metadata" }, "403": { description: "Membership required" } } },
     },
+    "/integrations/lightspeed/authorize": {
+      post: { summary: "Begin owner-approved Lightspeed X-Series read-only OAuth", responses: { "200": { description: "Short-lived authorization URL" }, "403": { description: "Integration-management permission required" }, "503": { description: "Provider credentials not configured" } } },
+    },
+    "/integrations/lightspeed/callback": {
+      get: { summary: "Validate Lightspeed OAuth state and stage the connection", responses: { "303": { description: "Return to the integration workspace" }, "400": { description: "Invalid or expired callback" }, "409": { description: "Required read scopes were not granted" } } },
+    },
+    "/integrations/lightspeed/outlets": {
+      get: { summary: "Discover Lightspeed outlets and their tenant mappings", responses: { "200": { description: "Outlet mappings" }, "403": { description: "Integration visibility required" } } },
+      post: { summary: "Map a discovered outlet to a tenant-owned location", responses: { "200": { description: "Mapping saved and audited" }, "403": { description: "Integration-management permission required" }, "404": { description: "Location is not in this tenant" } } },
+    },
+    "/integrations/lightspeed/sync": {
+      post: { summary: "Read and stage a bounded sales sample without metric promotion", responses: { "200": { description: "Staging and reconciliation result" }, "403": { description: "Integration-management permission required" }, "409": { description: "Provider authorization needs recovery" } } },
+    },
+    "/integrations/lightspeed/disconnect": {
+      post: { summary: "Revoke local Lightspeed access and delete encrypted credentials", responses: { "200": { description: "Connection revoked; audit history retained" }, "403": { description: "Integration-management permission required" } } },
+    },
+    "/integrations/lightspeed/webhook": {
+      post: { summary: "Verify and queue a signed provider change signal", responses: { "204": { description: "Verified signal queued; polling remains source of truth" }, "401": { description: "Signature invalid" }, "413": { description: "Payload too large" } } },
+    },
     "/command-centre": {
       get: { summary: "Calculate the tenant's evidence-bound owner command centre", responses: { "200": { description: "Verified metrics, comparisons, source freshness and recommendations" }, "401": { description: "Authentication required" }, "403": { description: "Membership required" }, "429": { description: "Rate limited" } } },
     },

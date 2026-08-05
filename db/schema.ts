@@ -256,15 +256,153 @@ export const integrationConnections = sqliteTable(
     provider: text("provider").notNull(),
     status: text("status", { enum: ["not_connected", "pending", "connected", "error", "revoked"] }).notNull().default("not_connected"),
     externalAccountRef: text("external_account_ref"),
+    domainPrefix: text("domain_prefix"),
+    apiVersion: text("api_version"),
     scopesJson: text("scopes_json").notNull().default("[]"),
+    dataPromotionStatus: text("data_promotion_status", { enum: ["blocked", "staging", "approved"] }).notNull().default("blocked"),
+    connectedAt: integer("connected_at", { mode: "timestamp" }),
     lastSuccessfulSyncAt: integer("last_successful_sync_at", { mode: "timestamp" }),
+    lastSyncCursor: text("last_sync_cursor"),
     lastErrorCode: text("last_error_code"),
     createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
     updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
   },
   (table) => [
     uniqueIndex("integration_connections_workspace_provider_unique").on(table.organizationId, table.provider),
+    uniqueIndex("integration_connections_provider_domain_unique").on(table.provider, table.domainPrefix),
     check("integration_connections_status_check", sql`${table.status} in ('not_connected', 'pending', 'connected', 'error', 'revoked')`),
+    check("integration_connections_promotion_check", sql`${table.dataPromotionStatus} in ('blocked', 'staging', 'approved')`),
+  ],
+);
+
+// Provider tokens are isolated from connection metadata so routine status
+// queries cannot accidentally select or serialize credential material.
+export const integrationSecrets = sqliteTable(
+  "integration_secrets",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    provider: text("provider").notNull(),
+    accessTokenCiphertext: text("access_token_ciphertext").notNull(),
+    refreshTokenCiphertext: text("refresh_token_ciphertext").notNull(),
+    tokenExpiresAt: integer("token_expires_at", { mode: "timestamp" }).notNull(),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("integration_secrets_workspace_provider_unique").on(table.organizationId, table.provider),
+    index("integration_secrets_expiry_idx").on(table.provider, table.tokenExpiresAt),
+  ],
+);
+
+export const integrationOAuthStates = sqliteTable(
+  "integration_oauth_states",
+  {
+    stateHash: text("state_hash").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    actorUserId: text("actor_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    provider: text("provider").notNull(),
+    expiresAt: integer("expires_at", { mode: "timestamp" }).notNull(),
+    consumedAt: integer("consumed_at", { mode: "timestamp" }),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [index("integration_oauth_states_expiry_idx").on(table.provider, table.expiresAt)],
+);
+
+export const integrationLocationMappings = sqliteTable(
+  "integration_location_mappings",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    provider: text("provider").notNull(),
+    externalLocationRef: text("external_location_ref").notNull(),
+    externalName: text("external_name").notNull(),
+    // The mapping is tenant-scoped in application queries. It stays nullable so
+    // outlet discovery can complete before a local location is selected.
+    localLocationId: text("local_location_id"),
+    status: text("status", { enum: ["unmapped", "mapped", "ignored"] }).notNull().default("unmapped"),
+    lastSeenAt: integer("last_seen_at", { mode: "timestamp" }).notNull(),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("integration_location_mappings_external_unique").on(table.organizationId, table.provider, table.externalLocationRef),
+    index("integration_location_mappings_status_idx").on(table.organizationId, table.provider, table.status),
+    check("integration_location_mappings_status_check", sql`${table.status} in ('unmapped', 'mapped', 'ignored')`),
+  ],
+);
+
+export const integrationSyncRuns = sqliteTable(
+  "integration_sync_runs",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    provider: text("provider").notNull(),
+    mode: text("mode", { enum: ["discovery", "sample", "incremental", "webhook_recovery"] }).notNull(),
+    status: text("status", { enum: ["running", "completed", "failed"] }).notNull(),
+    cursorBefore: text("cursor_before"),
+    cursorAfter: text("cursor_after"),
+    recordsRead: integer("records_read").notNull().default(0),
+    recordsStaged: integer("records_staged").notNull().default(0),
+    duplicatesSkipped: integer("duplicates_skipped").notNull().default(0),
+    warningCount: integer("warning_count").notNull().default(0),
+    errorCode: text("error_code"),
+    startedAt: integer("started_at", { mode: "timestamp" }).notNull(),
+    completedAt: integer("completed_at", { mode: "timestamp" }),
+    createdByUserId: text("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  },
+  (table) => [
+    index("integration_sync_runs_workspace_provider_idx").on(table.organizationId, table.provider, table.startedAt),
+    check("integration_sync_runs_mode_check", sql`${table.mode} in ('discovery', 'sample', 'incremental', 'webhook_recovery')`),
+    check("integration_sync_runs_status_check", sql`${table.status} in ('running', 'completed', 'failed')`),
+  ],
+);
+
+export const integrationStagedSales = sqliteTable(
+  "integration_staged_sales",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    provider: text("provider").notNull(),
+    externalSaleId: text("external_sale_id").notNull(),
+    externalVersion: text("external_version").notNull(),
+    outletRef: text("outlet_ref"),
+    soldAt: text("sold_at"),
+    state: text("state").notNull(),
+    totalCents: integer("total_cents").notNull(),
+    taxCents: integer("tax_cents").notNull().default(0),
+    costCents: integer("cost_cents").notNull().default(0),
+    discountCents: integer("discount_cents").notNull().default(0),
+    lineCount: integer("line_count").notNull().default(0),
+    sourcePayloadHash: text("source_payload_hash").notNull(),
+    syncRunId: text("sync_run_id").notNull().references(() => integrationSyncRuns.id, { onDelete: "cascade" }),
+    stagedAt: integer("staged_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("integration_staged_sales_version_unique").on(table.organizationId, table.provider, table.externalSaleId, table.externalVersion),
+    index("integration_staged_sales_outlet_date_idx").on(table.organizationId, table.provider, table.outletRef, table.soldAt),
+    check("integration_staged_sales_counts_check", sql`${table.lineCount} >= 0`),
+  ],
+);
+
+export const integrationWebhookEvents = sqliteTable(
+  "integration_webhook_events",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    provider: text("provider").notNull(),
+    payloadHash: text("payload_hash").notNull(),
+    signatureHash: text("signature_hash").notNull(),
+    eventType: text("event_type").notNull(),
+    externalObjectRef: text("external_object_ref"),
+    status: text("status", { enum: ["queued", "processed", "rejected"] }).notNull().default("queued"),
+    receivedAt: integer("received_at", { mode: "timestamp" }).notNull(),
+    processedAt: integer("processed_at", { mode: "timestamp" }),
+  },
+  (table) => [
+    uniqueIndex("integration_webhook_events_replay_unique").on(table.organizationId, table.provider, table.payloadHash),
+    index("integration_webhook_events_status_idx").on(table.organizationId, table.provider, table.status, table.receivedAt),
+    check("integration_webhook_events_status_check", sql`${table.status} in ('queued', 'processed', 'rejected')`),
   ],
 );
 

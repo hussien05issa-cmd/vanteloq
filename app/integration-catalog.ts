@@ -1,5 +1,6 @@
 export type IntegrationAvailability =
   | "provider_build_required"
+  | "credentials_required"
   | "provider_selection_required";
 
 export type IntegrationCatalogEntry = {
@@ -15,9 +16,9 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
     id: "lightspeed",
     name: "Lightspeed",
     category: "Point of sale",
-    availability: "provider_build_required",
+    availability: "credentials_required",
     activationRequirement:
-      "Production app approval, OAuth, signed webhooks, normalized backfill and payout reconciliation tests.",
+      "The read-only X-Series pilot is built. Add developer credentials, authorize a store, map outlets and pass sample reconciliation before promoting data.",
   },
   {
     id: "shopify",
@@ -114,22 +115,6 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
     availability: "provider_build_required",
     activationRequirement:
       "Production agreement, Canadian institution coverage, hosted consent, signed webhooks and pending-to-posted reconciliation tests.",
-  },
-  {
-    id: "mx",
-    name: "MX",
-    category: "Banking",
-    availability: "provider_build_required",
-    activationRequirement:
-      "Production agreement, institution coverage, hosted consent, signed webhooks and transaction reconciliation tests.",
-  },
-  {
-    id: "flinks",
-    name: "Flinks",
-    category: "Canadian banking",
-    availability: "provider_build_required",
-    activationRequirement:
-      "Production agreement, verified Canadian coverage, consent flow, webhooks and transaction reconciliation tests.",
   },
   {
     id: "manual-bank",

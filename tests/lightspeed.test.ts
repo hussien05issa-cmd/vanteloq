@@ -1,0 +1,91 @@
+import assert from "node:assert/strict";
+import { createHmac } from "node:crypto";
+import test from "node:test";
+import {
+  buildLightspeedAuthorizationUrl,
+  decryptIntegrationSecret,
+  encryptIntegrationSecret,
+  LIGHTSPEED_SCOPES,
+  lightspeedReadiness,
+  normalizeLightspeedSale,
+  validateDomainPrefix,
+  verifyLightspeedWebhookSignature,
+} from "../server/integrations/lightspeed.ts";
+
+const clientSecret = "test-client-secret";
+(globalThis as typeof globalThis & { __vanteloqEnv?: Record<string, string> }).__vanteloqEnv = {
+  LIGHTSPEED_CLIENT_ID: "test-client-id",
+  LIGHTSPEED_CLIENT_SECRET: clientSecret,
+  LIGHTSPEED_REDIRECT_URI: "https://vanteloq.example/api/v1/integrations/lightspeed/callback",
+  LIGHTSPEED_API_VERSION: "2026-07",
+  INTEGRATION_ENCRYPTION_KEY: Buffer.from(
+    Uint8Array.from({ length: 32 }, (_, index) => index + 1),
+  ).toString("base64"),
+};
+
+test("authorization is read-only and bound to an exact callback and state", () => {
+  const state = "state-value-with-entropy";
+  const url = new URL(buildLightspeedAuthorizationUrl(state));
+  assert.equal(url.origin, "https://secure.retail.lightspeed.app");
+  assert.equal(url.pathname, "/connect");
+  assert.equal(url.searchParams.get("client_id"), "test-client-id");
+  assert.equal(url.searchParams.get("redirect_uri"), "https://vanteloq.example/api/v1/integrations/lightspeed/callback");
+  assert.equal(url.searchParams.get("state"), state);
+  assert.deepEqual(url.searchParams.get("scope")?.split(" "), [...LIGHTSPEED_SCOPES]);
+  assert.doesNotMatch(url.toString(), /test-client-secret/);
+});
+
+test("readiness reports a staged adapter with promotion disabled", () => {
+  const readiness = lightspeedReadiness();
+  assert.equal(readiness.adapterBuilt, true);
+  assert.equal(readiness.credentialsConfigured, true);
+  assert.equal(readiness.mode, "read_only_staging");
+  assert.equal(readiness.dataPromotionEnabled, false);
+  assert.deepEqual(readiness.scopes, ["outlets:read", "sales:read"]);
+});
+
+test("retailer domains are constrained to a single safe prefix", () => {
+  assert.equal(validateDomainPrefix("  North-Store  "), "north-store");
+  for (const value of ["evil.example", "https://evil", "../retailer", "two labels"]) {
+    assert.throws(() => validateDomainPrefix(value));
+  }
+});
+
+test("provider tokens encrypt with authenticated encryption and round-trip", async () => {
+  const plaintext = "access-token-that-must-not-be-stored";
+  const encrypted = await encryptIntegrationSecret(plaintext);
+  assert.match(encrypted, /^v1\./);
+  assert.doesNotMatch(encrypted, new RegExp(plaintext));
+  assert.equal(await decryptIntegrationSecret(encrypted), plaintext);
+});
+
+test("sale normalization stores accounting fields but drops customer PII", async () => {
+  const normalized = await normalizeLightspeedSale({
+    id: "sale-100",
+    state: "closed",
+    date: "2026-08-05T15:00:00Z",
+    outlet_id: "outlet-1",
+    customer: { name: "Never Persist", email: "private@example.invalid" },
+    totals: { total_price: 42.55, total_tax: 2.55, total_discount: 1.5 },
+    line_items: [
+      { quantity: 2, pricing: { cost: 8.25 }, product: { name: "Private source label" } },
+    ],
+    _metadata: { version: 17 },
+  });
+  assert.equal(normalized.externalSaleId, "sale-100");
+  assert.equal(normalized.externalVersion, "17");
+  assert.equal(normalized.totalCents, 4_255);
+  assert.equal(normalized.taxCents, 255);
+  assert.equal(normalized.discountCents, 150);
+  assert.equal(normalized.costCents, 1_650);
+  assert.equal(normalized.lineCount, 1);
+  assert.doesNotMatch(JSON.stringify(normalized), /Never Persist|private@example|Private source label/);
+});
+
+test("webhook HMAC verification rejects tampering", async () => {
+  const body = new TextEncoder().encode("type=sale.update&domain_prefix=north-store");
+  const signature = createHmac("sha256", clientSecret).update(body).digest("hex");
+  assert.equal((await verifyLightspeedWebhookSignature(body, `algorithm=HMAC-SHA256, signature=${signature}`)).valid, true);
+  const tampered = new TextEncoder().encode("type=sale.update&domain_prefix=other-store");
+  assert.equal((await verifyLightspeedWebhookSignature(tampered, `algorithm=HMAC-SHA256, signature=${signature}`)).valid, false);
+});

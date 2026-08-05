@@ -99,7 +99,10 @@ test("migrations, tenant isolation and the complete intelligence-to-action flow 
     assert.equal(integrationBody.preSyncControls.filter(control => control.status === "verified").length, 4);
     assert.ok(integrationBody.preSyncControls.some(control => control.id === "reconciliation" && control.status === "gated"));
     assert.ok(integrationBody.integrations.every(provider => provider.status === "not_connected"));
-    assert.equal(integrationBody.integrations.find(provider => provider.id === "lightspeed").availability, "provider_build_required");
+    assert.equal(integrationBody.integrations.find(provider => provider.id === "lightspeed").availability, "credentials_required");
+    assert.equal(integrationBody.integrations.find(provider => provider.id === "lightspeed").providerReadiness.dataPromotionEnabled, false);
+    assert.equal(integrationBody.integrations.some(provider => ["mx", "flinks"].includes(provider.id)), false);
+    assert.ok(integrationBody.integrations.some(provider => provider.id === "plaid"));
 
     const empty = await dispatch(worker, environment, "/api/v1/command-centre", owner);
     assert.equal(empty.status, 200);

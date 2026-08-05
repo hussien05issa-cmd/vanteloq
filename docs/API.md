@@ -19,7 +19,14 @@ All application endpoints are versioned under `/api/v1`. Responses are JSON, sen
 | POST | `/api/v1/bookloq/journals` | Active owner/admin with `post_journals` | 64 KiB | 30/hour/user | Same-origin and UUID `Idempotency-Key`; integer minor units; 2–50 lines; active tenant accounts; balanced; open period; audited |
 | PATCH | `/api/v1/bookloq/journals` | Active owner/admin with `post_journals` | 16 KiB | 20/hour/user | Same-origin and UUID `Idempotency-Key`; creates one linked counter-entry in an open period; never overwrites lines |
 | POST | `/api/v1/bookloq/actions` | Active owner/admin plus action-specific finance permission | 16 KiB | 60/minute/user | Same-origin; explicit transitions for close work, alert status, period lock, and reason-required owner unlock; audited |
-| GET | `/api/v1/integrations` | Active owner/admin/manager/read-only membership | None | Edge controls | Metadata only; no token or connection action exists |
+| GET | `/api/v1/integrations` | Active membership plus `integrations.view` | None | Edge controls | Catalogue, tenant connection state and provider readiness only; never returns tokens |
+| POST | `/api/v1/integrations/lightspeed/authorize` | Owner/admin plus `integrations.manage` | 32 KiB | 10/hour/user | Same-origin; creates a hashed one-time OAuth state and returns a read-only authorization URL |
+| GET | `/api/v1/integrations/lightspeed/callback` | Same active owner/admin and `integrations.manage` | None | Provider/edge controls | Consumes state before code exchange, encrypts rotating tokens, verifies scopes and reads outlets before connected state |
+| GET | `/api/v1/integrations/lightspeed/outlets` | Owner/admin plus `integrations.manage` | None | 20/hour/user | Discovers/stores provider outlet references and returns tenant-owned mappings |
+| POST | `/api/v1/integrations/lightspeed/outlets` | Owner/admin plus `integrations.manage` | 32 KiB | 60/hour/user | Same-origin; maps only to a location in the derived tenant and audits the change |
+| POST | `/api/v1/integrations/lightspeed/sync` | Owner/admin plus `integrations.manage` | 32 KiB | 12/hour/user | Same-origin; stages at most three pages; idempotent provider sale versions; never promotes metrics |
+| POST | `/api/v1/integrations/lightspeed/disconnect` | Owner/admin plus `integrations.manage` | 32 KiB | 10/hour/user | Same-origin; deletes encrypted tokens and blocks promotion while preserving audit/staging history |
+| POST | `/api/v1/integrations/lightspeed/webhook` | Provider HMAC and known tenant connection | 256 KiB | Edge controls | Form-encoded raw-body verification, replay hash and queue-only change signal; raw payload is not stored |
 | GET | `/api/v1/openapi` | Public | None | Edge controls | OpenAPI 3.1 description; no secrets or internal identifiers |
 | GET | `/api/health` | Public | None | Edge controls | Liveness only; no dependency details |
 | GET | `/api/readiness` | Public | None | Edge controls | Returns only ready/unavailable after a minimal D1 query |

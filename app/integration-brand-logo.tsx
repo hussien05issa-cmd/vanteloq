@@ -38,6 +38,14 @@ export default function IntegrationBrandLogo({ name, compact = false }: { name: 
     </span>;
   }
 
+  if (name === "Plaid") {
+    return <span className={`integration-logo brand-plaid${compact ? " compact" : ""}`} role="img" aria-label="Plaid logo">
+      {/* Plaid's standalone knot mark, cropped from the unchanged brand lockup. */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/brand/plaid-mark.png" alt="" aria-hidden="true" />
+    </span>;
+  }
+
   const icon = simpleMarks[name];
 
   if (icon) {

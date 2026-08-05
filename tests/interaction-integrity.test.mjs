@@ -38,3 +38,17 @@ test("the Lightspeed integration uses the standalone image asset", async () => {
   assert.match(source, /\/brand\/lightspeed-mark\.png/);
   assert.doesNotMatch(source, /name === "Lightspeed"[\s\S]{0,200}<path/);
 });
+
+test("the banking catalogue uses Plaid's standalone mark and omits removed aggregators", async () => {
+  const logoSource = await readFile(
+    new URL("../app/integration-brand-logo.tsx", import.meta.url),
+    "utf8",
+  );
+  const catalogue = await readFile(
+    new URL("../app/integration-catalog.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(logoSource, /\/brand\/plaid-mark\.png/);
+  assert.doesNotMatch(catalogue, /\bMX\b|\bFlinks\b/);
+  assert.match(catalogue, /name: "Plaid"/);
+});

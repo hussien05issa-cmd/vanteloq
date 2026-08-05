@@ -13,6 +13,11 @@ interface Env {
       };
     };
   };
+  LIGHTSPEED_CLIENT_ID?: string;
+  LIGHTSPEED_CLIENT_SECRET?: string;
+  LIGHTSPEED_REDIRECT_URI?: string;
+  LIGHTSPEED_API_VERSION?: string;
+  INTEGRATION_ENCRYPTION_KEY?: string;
 }
 
 interface ExecutionContext {

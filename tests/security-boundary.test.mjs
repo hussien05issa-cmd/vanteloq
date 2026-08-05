@@ -51,6 +51,52 @@ test("business intelligence APIs reject anonymous access before database reads",
   }
 });
 
+test("Lightspeed management routes reject anonymous same-origin writes", async () => {
+  const worker = await loadWorker();
+  for (const path of [
+    "/api/v1/integrations/lightspeed/authorize",
+    "/api/v1/integrations/lightspeed/outlets",
+    "/api/v1/integrations/lightspeed/sync",
+    "/api/v1/integrations/lightspeed/disconnect",
+  ]) {
+    const response = await worker.fetch(new Request(`https://vanteloq.example${path}`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin: "https://vanteloq.example",
+        "sec-fetch-site": "same-origin",
+      },
+      body: "{}",
+    }), environment, context);
+    assert.equal(response.status, 401, path);
+    assert.equal((await response.json()).error.code, "AUTHENTICATION_REQUIRED", path);
+  }
+});
+
+test("the Lightspeed callback requires the initiating signed-in owner", async () => {
+  const worker = await loadWorker();
+  const response = await worker.fetch(new Request(
+    "https://vanteloq.example/api/v1/integrations/lightspeed/callback?code=test-code&state=state-with-entropy&domain_prefix=north-store",
+    { headers: { accept: "application/json" } },
+  ), environment, context);
+  assert.equal(response.status, 401);
+  assert.equal((await response.json()).error.code, "AUTHENTICATION_REQUIRED");
+});
+
+test("the Lightspeed webhook rejects unsigned requests before database access", async () => {
+  const worker = await loadWorker();
+  const response = await worker.fetch(new Request(
+    "https://vanteloq.example/api/v1/integrations/lightspeed/webhook",
+    {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: "domain_prefix=north-store&payload=%7B%7D",
+    },
+  ), environment, context);
+  assert.equal(response.status, 401);
+  assert.equal((await response.json()).error.code, "LIGHTSPEED_WEBHOOK_SIGNATURE_INVALID");
+});
+
 test("state-changing onboarding rejects a cross-site origin before data access", async () => {
   const worker = await loadWorker();
   const response = await worker.fetch(new Request("https://vanteloq.example/api/v1/onboarding", {
@@ -80,6 +126,10 @@ test("imports and business-memory writes reject cross-site origins before data a
     "/api/v1/purchasing",
     "/api/v1/documents",
     "/api/v1/organization-logo",
+    "/api/v1/integrations/lightspeed/authorize",
+    "/api/v1/integrations/lightspeed/outlets",
+    "/api/v1/integrations/lightspeed/sync",
+    "/api/v1/integrations/lightspeed/disconnect",
   ]) {
     const response = await worker.fetch(new Request(`https://vanteloq.example${path}`, {
       method: "POST",

@@ -1,9 +1,9 @@
 # POS integration readiness audit
 
-Date: 2026-08-04  
-Decision: **Do not begin a live POS synchronization yet.**
+Date: 2026-08-05
+Decision: **The Lightspeed read-only staging pilot is built; do not promote live POS data yet.**
 
-The Vanteloq core is healthy enough to begin building the first provider adapter, but no provider is ready to receive production credentials or be represented as live. The application now exposes this boundary directly in the Connections workspace and returns `syncEnabled: false` from the integration-status API.
+The Vanteloq core and first Lightspeed X-Series adapter are ready for approved developer credentials and an owner-run sandbox pilot. No provider is represented as live. The Connections workspace keeps provider data in isolated staging and the integration-status API returns data promotion as disabled.
 
 ## Verified platform controls
 
@@ -15,21 +15,31 @@ The Vanteloq core is healthy enough to begin building the first provider adapter
 | Server authorization | Pass | Permission registry and restricted employee defaults are tested; restricted navigation is also blocked in the client |
 | Cross-site request protection | Pass | State-changing APIs reject unverified and cross-site origins |
 | Financial precision | Pass | BookLoQ, tax, reconciliation and normalized provider values use integer minor units |
-| Idempotency and replay safety primitives | Pass | Import and journal replay tests pass; provider adapters still need provider-specific replay tests |
-| Auditability | Pass | Sensitive internal workflows use append-only audit events; provider callbacks remain unimplemented |
+| Idempotency and replay safety primitives | Pass | Import/journal replay tests pass; Lightspeed sale versions and webhook payload hashes have tenant-scoped uniqueness |
+| Auditability | Pass | Authorization, mapping, sample sync and disconnect actions create append-only events without token or payload disclosure |
 | Data integrity and intelligence | Pass | Metric definitions, lineage, confidence, empty-state honesty and deterministic calculations are tested |
 | Interaction integrity | Pass | Known no-op controls are absent and literal disabled buttons explain why they are unavailable |
 | Dependency security | Pass | Production dependency audit reports zero known vulnerabilities at the configured threshold |
 | Visual integration identity | Pass | Lightspeed uses its standalone flame asset; brand marks use one optical frame with no cropped wordmark |
 
+## Lightspeed controls now implemented
+
+- Owner/admin authorization with one-time, hashed, ten-minute OAuth state.
+- Exact HTTPS callback, least-privilege `outlets:read sales:read` scopes and pinned date-based API version.
+- AES-GCM server-side access/refresh token encryption and refresh-token rotation.
+- Provider-domain allowlisting, outlet discovery and tenant-validated location mapping.
+- Bounded pagination, retry/rate-limit handling, resumable cursor and idempotent normalized sale staging.
+- HMAC webhook validation and replay rejection without raw payload retention; polling remains source of truth.
+- Explicit disconnect that deletes encrypted tokens and preserves audit/staging history.
+- Hard `dataPromotionEnabled: false` boundary until sample reconciliation and canary approval.
+
 ## Provider controls that remain blocked
 
 | Gate | Required implementation before activation |
 |---|---|
-| Authorization | Approved provider application, exact least-privilege scopes, hosted OAuth or consent, state validation and expiring authorization attempts |
-| Token security | Server-only encrypted token storage, refresh rotation, revocation and redacted operational logs |
-| Webhooks | Raw-body signature verification, timestamp tolerance, replay rejection, event idempotency and dead-letter recovery |
-| Backfill | Bounded date ranges, pagination, rate-limit handling, retry with jitter, resumable cursors and progress visibility |
+| Lightspeed credentials | Approved developer application client ID and secret in hosted secrets |
+| Webhook recovery | Queue consumer, dead-letter/retry operations and provider delivery fault tests; verified polling remains authoritative meanwhile |
+| Backfill acceptance | Bounded sandbox sample plus source-total, refund, tax, discount, cost and duplicate reconciliation |
 | Normalization | Provider-specific mapping for organizations, locations, transactions, line items, refunds, taxes, discounts, products, employees and payouts where supported |
 | Reconciliation | Source totals versus normalized totals, payout versus bank settlement, refund and dispute handling, duplicate detection and discrepancy queues |
 | Data quality | Missing periods, late arrivals, partial pages, invalid timestamps, currency mismatches, unmapped locations and stale connections |
@@ -54,19 +64,18 @@ A provider may be marked live only when all of the following are true:
 
 ## Recommended first-provider sequence
 
-Use Lightspeed as a read-only pilot after the required partner approval and credentials exist:
+Continue Lightspeed as a read-only pilot after the required partner approval and credentials exist:
 
-1. Implement authorization and token rotation without importing records.
-2. Import sandbox locations and verify tenant/location mapping.
-3. Backfill a bounded sample and reconcile source totals before exposing metrics.
-4. Add incremental synchronization and signed webhook processing.
-5. Run duplicate, refund, outage, partial-page, rate-limit and stale-token tests.
-6. Complete a read-only canary period with manual reconciliation.
-7. Activate production display only after the readiness API can return every provider gate as verified.
+1. Enter the two hosted developer secrets and authorize an owner sandbox account.
+2. Discover and map sandbox outlets to Vanteloq locations.
+3. Stage a bounded sample and reconcile source totals before exposing metrics.
+4. Run duplicate, refund, outage, partial-page, rate-limit and stale-token acceptance tests.
+5. Complete a read-only canary period with manual reconciliation.
+6. Activate production display only after the readiness API can return every provider gate as verified.
 
 ## Verification completed in this audit
 
-- 25 automated tests passed.
+- Full automated suite includes dedicated reorder and Lightspeed security/calculation cases.
 - TypeScript passed.
 - Lint passed with two expected image-optimization advisories for tenant-uploaded logos.
 - Production build and Sites artifact validation passed.

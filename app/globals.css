@@ -93,3 +93,35 @@
 @media(max-width:1050px){.connection-readiness>div{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:620px){.connection-readiness{padding:15px}.connection-readiness>header{flex-direction:column;gap:12px}.connection-readiness>div{grid-template-columns:1fr}.integration-card>p{min-height:0}.connection-error{align-items:flex-start;flex-direction:column}}
 .pv-title .pv-data-pill{display:block;border:1px solid #d7e0e9;background:#fff;border-radius:7px;padding:7px 9px;font-size:7px;color:#6d7d90}
+
+/* Plaid uses the real standalone knot mark; the card heading supplies the name. */
+.integration-logo.brand-plaid{--integration-brand:#111;--integration-wash:#f1f2f3}
+.integration-logo.brand-plaid img{width:29px;height:29px}
+.integration-logo.brand-plaid.compact img{width:22px;height:22px}
+
+/* Integration actions stay inside the card rhythm and never look like detached controls. */
+.integration-card-footer{display:flex;flex-direction:column;align-items:stretch!important;gap:11px}
+.integration-card-footer>div:first-child{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.provider-actions{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.provider-actions button{border:1px solid #ccd9e7;border-radius:8px;background:#155ba8;color:#fff;padding:8px 11px;font-size:8px;font-weight:760;cursor:pointer;transition:background .16s ease,border-color .16s ease,opacity .16s ease}
+.provider-actions button:hover:not(:disabled){background:#104d90;border-color:#104d90}
+.provider-actions button:disabled{cursor:not-allowed;opacity:.52}
+.provider-actions button.danger-text{background:#fff;color:#a24848;border-color:#ead1d1}
+.provider-actions button.danger-text:hover:not(:disabled){background:#fff5f5;border-color:#d9b5b5}
+.provider-actions button.secondary-provider-action{background:#fff;color:#245f9f;border-color:#cbd9e8}
+.provider-actions button.secondary-provider-action:hover:not(:disabled){background:#f3f7fb;border-color:#abc3dc}
+.outlet-mapping-panel{margin-top:15px;border:1px solid #d6e2ee;border-radius:13px;background:#fff;padding:18px;box-shadow:0 8px 24px rgba(18,46,78,.045)}
+.outlet-mapping-panel>header{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;padding-bottom:13px;border-bottom:1px solid #e8edf2}
+.outlet-mapping-panel>header p{margin:0;color:#2871bf;font-size:7px;font-weight:820;letter-spacing:1px}.outlet-mapping-panel>header h3{margin:7px 0 0;font-size:14px}.outlet-mapping-panel>header strong{white-space:nowrap;border-radius:999px;background:#eff6fd;color:#245f9f;padding:6px 9px;font-size:7px}
+.outlet-mapping-list label{display:grid;grid-template-columns:minmax(180px,1fr) minmax(220px,320px);gap:16px;align-items:center;padding:12px 2px;border-bottom:1px solid #eef1f4}.outlet-mapping-list label>span{display:flex;flex-direction:column;gap:4px}.outlet-mapping-list b{font-size:9px}.outlet-mapping-list small{color:#8a97a6;font-size:6.5px}.outlet-mapping-list select{width:100%;border:1px solid #d4dee9;border-radius:8px;background:#fff;color:#334e6a;padding:9px 10px;font-size:8px}.outlet-mapping-panel>footer,.outlet-empty{margin:12px 0 0;color:#738398;font-size:7px;line-height:1.5}
+.sample-sync-result{margin-top:15px;border:1px solid #d6e2ee;border-radius:13px;background:#fff;padding:18px;box-shadow:0 8px 24px rgba(18,46,78,.045)}
+.sample-sync-result>header{display:flex;align-items:flex-start;justify-content:space-between;gap:24px}
+.sample-sync-result>header p{margin:0;color:#2871bf;font-size:7px;font-weight:820;letter-spacing:1px}
+.sample-sync-result>header h3{margin:7px 0 0;font-size:14px}
+.sample-sync-result>header strong{white-space:nowrap;border:1px solid #ead6ac;border-radius:999px;background:#fff8ea;color:#926723;padding:6px 9px;font-size:7px;letter-spacing:.65px}
+.sample-sync-result>div{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:16px 0 12px}
+.sample-sync-result>div span{display:flex;flex-direction:column;border:1px solid #e6ebf1;border-radius:9px;background:#f8fafc;padding:11px}
+.sample-sync-result small{color:#7f8fa1;font-size:6px;letter-spacing:.55px}
+.sample-sync-result b{margin-top:5px;color:#1d3856;font-size:15px}
+.sample-sync-result>p{margin:0;color:#65778b;font-size:8px;line-height:1.55}
+@media(max-width:620px){.integration-card-footer>div:first-child,.sample-sync-result>header,.outlet-mapping-panel>header{align-items:flex-start;flex-direction:column}.sample-sync-result>div{grid-template-columns:repeat(2,1fr)}.outlet-mapping-list label{grid-template-columns:1fr;gap:8px}}
