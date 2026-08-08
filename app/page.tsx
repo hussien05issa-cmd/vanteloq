@@ -6,7 +6,7 @@ import VanteloqApp from "./vanteloq-app";
 import IntegrationBrandLogo from "./integration-brand-logo";
 import ProductBrandLogo from "./product-brand-logo";
 import AuthPanel from "./auth-panel";
-import { apiFetch, currentSession, signOut, supabase } from "./supabase-browser";
+import { apiFetch, currentSession, getSupabase, signOut } from "./supabase-browser";
 
 export default function Home() {
   const [entry, setEntry] = useState<"loading" | "landing" | "signup" | "app">("loading");
@@ -38,11 +38,15 @@ export default function Home() {
       })
       .catch(() => setEntry("landing"));
     });
-    const listener = supabase?.auth.onAuthStateChange((event) => {
-      if (event === "SIGNED_IN") window.location.reload();
-      if (event === "SIGNED_OUT") setEntry("landing");
+    let unsubscribe: (() => void) | undefined;
+    void getSupabase().then(client => {
+      const listener = client?.auth.onAuthStateChange((event) => {
+        if (event === "SIGNED_IN") window.location.reload();
+        if (event === "SIGNED_OUT") setEntry("landing");
+      });
+      unsubscribe = () => listener?.data.subscription.unsubscribe();
     });
-    return () => { active = false; listener?.data.subscription.unsubscribe(); };
+    return () => { active = false; unsubscribe?.(); };
   }, []);
 
   if (entry === "loading") return <div className="entry-loading"><ProductBrandLogo product="vanteloq" priority/><p>Preparing Vanteloq…</p></div>;

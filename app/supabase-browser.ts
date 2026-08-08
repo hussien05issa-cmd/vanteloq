@@ -1,24 +1,31 @@
 "use client";
 
-import { createClient, type Session } from "@supabase/supabase-js";
+import { createClient, type Session, type SupabaseClient } from "@supabase/supabase-js";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() ?? "";
-const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim() ?? "";
+let clientPromise: Promise<SupabaseClient | null> | null = null;
 
-export const isSupabaseAuthConfigured = Boolean(supabaseUrl && publishableKey);
-
-export const supabase = isSupabaseAuthConfigured
-  ? createClient(supabaseUrl, publishableKey, {
-      auth: {
-        flowType: "pkce",
-        persistSession: true,
-        autoRefreshToken: true,
-        detectSessionInUrl: true,
-      },
+export function getSupabase(): Promise<SupabaseClient | null> {
+  if (clientPromise) return clientPromise;
+  clientPromise = fetch("/api/v1/auth/config", { headers: { Accept: "application/json" } })
+    .then(async response => {
+      if (!response.ok) return null;
+      const config = await response.json() as { url?: unknown; publishableKey?: unknown };
+      if (typeof config.url !== "string" || typeof config.publishableKey !== "string") return null;
+      return createClient(config.url, config.publishableKey, {
+        auth: {
+          flowType: "pkce",
+          persistSession: true,
+          autoRefreshToken: true,
+          detectSessionInUrl: true,
+        },
+      });
     })
-  : null;
+    .catch(() => null);
+  return clientPromise;
+}
 
 export async function currentSession(): Promise<Session | null> {
+  const supabase = await getSupabase();
   if (!supabase) return null;
   const { data } = await supabase.auth.getSession();
   return data.session;
@@ -32,6 +39,7 @@ export async function apiFetch(input: RequestInfo | URL, init: RequestInit = {})
 }
 
 export async function signOut(): Promise<void> {
+  const supabase = await getSupabase();
   if (supabase) await supabase.auth.signOut();
-  window.location.assign("/");
+  window.location.reload();
 }

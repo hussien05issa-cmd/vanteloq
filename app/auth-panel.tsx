@@ -1,8 +1,8 @@
 "use client";
 
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import ProductBrandLogo from "./product-brand-logo";
-import { isSupabaseAuthConfigured, supabase } from "./supabase-browser";
+import { getSupabase } from "./supabase-browser";
 
 export default function AuthPanel({ close }: { close: () => void }) {
   const [mode, setMode] = useState<"signin" | "signup">("signup");
@@ -11,9 +11,13 @@ export default function AuthPanel({ close }: { close: () => void }) {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [configured, setConfigured] = useState<boolean | null>(null);
+
+  useEffect(() => { void getSupabase().then(client => setConfigured(Boolean(client))); }, []);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    const supabase = await getSupabase();
     if (!supabase) return setMessage("Account service is not configured yet.");
     setBusy(true);
     setMessage("");
@@ -42,13 +46,13 @@ export default function AuthPanel({ close }: { close: () => void }) {
       <small>SECURE VANTELOQ ACCOUNT</small>
       <h2 id="auth-title">{mode === "signup" ? "Create your workspace" : "Welcome back"}</h2>
       <p>{mode === "signup" ? "Start with a verified owner account. Business data stays separated by workspace." : "Sign in with your verified Vanteloq account."}</p>
-      {!isSupabaseAuthConfigured && <div className="auth-message error">Account service is temporarily unavailable.</div>}
+      {configured === false && <div className="auth-message error">Account service is temporarily unavailable.</div>}
       <form onSubmit={submit}>
         {mode === "signup" && <label>Full name<input autoComplete="name" value={name} onChange={event => setName(event.target.value)} minLength={2} maxLength={120} required/></label>}
         <label>Email address<input type="email" autoComplete="email" value={email} onChange={event => setEmail(event.target.value)} required/></label>
         <label>Password<input type="password" autoComplete={mode === "signup" ? "new-password" : "current-password"} value={password} onChange={event => setPassword(event.target.value)} minLength={8} required/></label>
         {message && <div className="auth-message" aria-live="polite">{message}</div>}
-        <button className="auth-submit" disabled={busy || !isSupabaseAuthConfigured}>{busy ? "Please wait…" : mode === "signup" ? "Create secure account" : "Sign in"}</button>
+        <button className="auth-submit" disabled={busy || configured !== true}>{busy || configured === null ? "Please wait…" : mode === "signup" ? "Create secure account" : "Sign in"}</button>
       </form>
       <button className="auth-switch" type="button" onClick={() => { setMode(value => value === "signup" ? "signin" : "signup"); setMessage(""); }}>
         {mode === "signup" ? "Already have an account? Sign in" : "New to Vanteloq? Create an account"}
