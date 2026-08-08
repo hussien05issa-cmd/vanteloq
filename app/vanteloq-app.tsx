@@ -401,6 +401,27 @@ type CommandCentre = {
     verifiedFields: number;
     missingDimensions: string[];
   };
+  operatingSystem: {
+    status: "blocked" | "limited" | "operational";
+    mode: string;
+    preliminaryPurchasingCapacityCents: number | null;
+    purchasingCapacityLabel: string;
+    pillars: { id: string; label: string; state: string }[];
+    decisions: {
+      id: string;
+      pillar: string;
+      priority: "critical" | "high" | "medium" | "low";
+      score: number;
+      title: string;
+      decision: string;
+      evidence: string[];
+      missing: string[];
+      confidence: "high" | "medium" | "low";
+      approval: string;
+      sourceRef: string;
+    }[];
+    guardrails: string[];
+  };
 };
 type TaskSeed = {
   title: string;
@@ -464,7 +485,7 @@ export default function VanteloqApp({
         throw new Error(
           body.error?.message ?? "Unable to load the command centre.",
         );
-      setData(body.commandCentre);
+      setData({ ...body.commandCentre, operatingSystem: body.operatingSystem });
       setCurrency(body.organization.currency);
       setAppRole(body.organization.role ?? "employee");
       setAppPermissions(body.organization.permissions ?? []);
@@ -1173,6 +1194,7 @@ function EmptyCommandCentre({ navigate }: { navigate: (view: View) => void }) {
 
 function Intelligence({
   data,
+  currency,
   navigate,
   createTask,
 }: {
@@ -1182,15 +1204,17 @@ function Intelligence({
   createTask: (seed: TaskSeed) => void;
 }) {
   if (!data.ready) return <EmptyCommandCentre navigate={navigate} />;
+  const operating = data.operatingSystem;
   return (
     <div className="content intelligence-page">
       <section className="intelligence-header">
         <div>
-          <p>DECISION-GRADE OUTPUT</p>
-          <h2>Every conclusion carries its evidence.</h2>
+          <p>RETAIL OPERATING SYSTEM</p>
+          <h2>One ranked queue for the decisions that matter.</h2>
           <span>
-            Vanteloq separates facts, modeled causes, recommendations and
-            missing information so an owner can judge the answer before acting.
+            Sales, cash, inventory and operations use the same evidence,
+            permission and approval rules. Vanteloq never turns a partial fact
+            into an automatic financial action.
           </span>
         </div>
         <div className={`quality-score ${data.dataQuality.status}`}>
@@ -1198,6 +1222,45 @@ function Intelligence({
           <b>{data.dataQuality.status}</b>
           <span>{data.source.rowCount} verified daily records</span>
         </div>
+      </section>
+      <section className="operating-system-strip">
+        <article className="cash-capacity-card">
+          <small>PRELIMINARY PURCHASING CAPACITY</small>
+          <b>{money(operating.preliminaryPurchasingCapacityCents, currency)}</b>
+          <span>{operating.purchasingCapacityLabel}</span>
+          <button onClick={() => navigate("Cash")}>Open cash model →</button>
+        </article>
+        <div className="pillar-readiness">
+          {operating.pillars.map((pillar) => (
+            <article key={pillar.id}>
+              <i className={pillar.state}/>
+              <span><b>{pillar.label}</b><small>{pillar.state.replaceAll("_", " ")}</small></span>
+            </article>
+          ))}
+        </div>
+        <article className="approval-card">
+          <small>EXECUTION POLICY</small>
+          <b>Recommend first. Approve before acting.</b>
+          {operating.guardrails.map((guardrail) => <span key={guardrail}>✓ {guardrail}</span>)}
+        </article>
+      </section>
+      <section className="decision-queue">
+        <div className="section-heading"><div><p>TODAY&apos;S DECISION QUEUE</p><h2>Ranked by urgency, confidence and freshness</h2></div><button onClick={() => navigate("Action Centre")}>Open assigned work →</button></div>
+        {operating.decisions.map((decision, index) => (
+          <article key={decision.id}>
+            <b className={`decision-rank ${decision.priority}`}>{String(index + 1).padStart(2, "0")}</b>
+            <div>
+              <span className="decision-meta">{decision.pillar} · {decision.priority} · {decision.confidence} confidence</span>
+              <h3>{decision.title}</h3>
+              <p>{decision.decision}</p>
+              <small>{decision.evidence[0]}</small>
+            </div>
+            <aside>
+              <span>{decision.missing.length ? `${decision.missing.length} confidence gap${decision.missing.length === 1 ? "" : "s"}` : "Evidence complete"}</span>
+              <button onClick={() => createTask({ title: decision.title, detail: `${decision.decision} Evidence: ${decision.evidence.join(" ")}`, priority: decision.priority === "critical" || decision.priority === "high" ? "high" : decision.priority === "medium" ? "medium" : "low", expectedImpact: "Review the evidence and record the approved outcome.", sourceType: "decision", sourceRef: decision.sourceRef })}>Create review action →</button>
+            </aside>
+          </article>
+        ))}
       </section>
       <div className="intelligence-list">
         {data.insights.map((insight) => (

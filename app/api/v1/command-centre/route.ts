@@ -4,6 +4,7 @@ import { dailyBusinessMetrics, organizationProfiles } from "../../../../db/schem
 import { requireAccess } from "../../../../server/authorization";
 import { clientSource, enforceRateLimit, handleApi, jsonResponse } from "../../../../server/api";
 import { buildCommandCentre } from "../../../../server/intelligence";
+import { buildOperatingSystem } from "../../../../server/operating-system";
 import { effectivePermissions, requirePermission } from "../../../../server/permissions";
 
 const readers = ["owner", "admin", "manager", "employee", "read_only"] as const;
@@ -50,9 +51,18 @@ export async function GET(request: Request) {
       commandCentre.insights = [];
     }
     if (commandCentre.balances && !permissions.includes("metrics.cash")) Object.assign(commandCentre.balances, { cashBalanceCents: null, accountsPayableCents: null });
+    const operatingSystem = buildOperatingSystem({
+      ready: commandCentre.ready,
+      currency: context.organization.currency,
+      source: commandCentre.source,
+      balances: commandCentre.balances,
+      insights: commandCentre.insights,
+      dataQuality: commandCentre.dataQuality,
+    });
     return jsonResponse({
       organization: { name: branding?.displayName ?? context.organization.businessName, currency: context.organization.currency, role: context.role, logoAvailable: Boolean(branding?.logoObjectKey), logoVersion: branding?.logoVersion ?? 0, permissions },
       commandCentre,
+      operatingSystem,
     });
   });
 }

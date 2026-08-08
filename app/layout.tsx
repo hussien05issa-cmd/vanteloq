@@ -17,8 +17,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Vanteloq · Business Command Centre",
-  description: "A unified operating system for sales, inventory, customers, marketing and business decisions.",
+  title: "Vanteloq · AI Business Operating System",
+  description: "A retail-first AI business operating system that connects sales, money, inventory and operations to evidence-backed, approval-controlled decisions.",
   other: {
     "codex-preview": "development",
   },

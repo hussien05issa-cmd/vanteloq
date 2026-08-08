@@ -1,5 +1,20 @@
 # Vanteloq target architecture
 
+## Retail operating-system layer
+
+Vanteloq treats connected POS, banking, accounting, payroll and commerce tools as systems of record. The operating-system layer is permission-filtered after source normalization and before delivery to the browser. It produces ranked decision packets containing the observed fact, source freshness, confidence, missing information, bounded recommendation, required approval and stable source reference.
+
+The first vertical is independent retail. Its core decision loop is:
+
+1. Sales and inventory records establish demand and availability.
+2. BookLoQ and commitment records establish cash constraints.
+3. The Reorder Brain calculates review-only purchasing scenarios.
+4. The operating-system queue ranks sales, money, inventory and execution decisions.
+5. An authorized user converts a packet into assigned work or an approval workflow.
+6. The Decision Journal records the expected outcome and later measurement.
+
+No connector may write to financial or operating metrics until tenant ownership, mapping, idempotency, reconciliation and recovery controls pass. No recommendation may initiate a payment, order, payroll change or external message without the separately authorized provider workflow and required human approval.
+
 ## Decision
 
 Vanteloq will remain a modular monolith on a stateless Cloudflare Worker. D1 stores relational application data. The Sites dispatcher supplies initial authentication. Every protected request resolves organization scope from a server-side membership record. Client-provided organization IDs, roles, prices, permissions, or ownership values are never authoritative.
