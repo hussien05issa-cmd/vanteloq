@@ -170,25 +170,25 @@ export const preSyncControls = [
   {
     id: "authorization",
     label: "Provider authorization",
-    detail: "Provider-specific OAuth, consent and encrypted token handling are not active.",
-    status: "gated",
+    detail: "Lightspeed X-Series and R-Series use scoped OAuth, one-time state and encrypted rotating credentials; providers without an adapter remain disabled.",
+    status: "verified",
   },
   {
     id: "webhooks",
-    label: "Webhook security",
-    detail: "Signature verification, replay rejection and dead-letter recovery need provider implementations.",
-    status: "gated",
+    label: "Change-signal security",
+    detail: "X-Series verifies signed webhooks and rejects replays; verified polling remains authoritative while durable delivery recovery is gated.",
+    status: "verified",
   },
   {
     id: "normalization",
     label: "Backfill and normalization",
-    detail: "Provider-specific pagination, mapping, retry and cursor tests are still required.",
-    status: "gated",
+    detail: "Both Lightspeed pilots use bounded pagination, mapping, retries, resumable cursors and isolated staging with data promotion disabled.",
+    status: "verified",
   },
   {
     id: "reconciliation",
     label: "Reconciliation and recovery",
-    detail: "Payout, refund, duplicate, disconnect and rollback tests must pass before activation.",
+    detail: "Source totals, tax, discounts, refunds, duplicates, payout timing and rollback acceptance must pass before live metric promotion.",
     status: "gated",
   },
 ] as const;

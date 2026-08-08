@@ -132,6 +132,7 @@ Generative AI is not currently an authoritative dependency. The visible advisor 
 - Integration secrets use authenticated encryption and never enter browser DTOs.
 - Lightspeed adapters use least-privilege scopes, OAuth state, pagination bounds, provider-domain allowlists, retry handling, token rotation, staging, webhook signature verification, and replay protection.
 - Provider data promotion remains disabled until reconciliation acceptance.
+- The shared pre-sync gate distinguishes verified Lightspeed authorization, change-signal, and staging controls from the remaining reconciliation acceptance gate.
 - Documents are tenant scoped, content/magic checked, duplicate hashed, and held for review; malware/OCR claims remain disabled.
 - Audit metadata is size bounded and excludes raw source addresses through hashing.
 - Worker responses apply HSTS, frame denial, MIME protection, same-origin API resource policy, and a report-only CSP.
