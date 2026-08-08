@@ -1200,6 +1200,25 @@ function EmptyCommandCentre({ navigate }: { navigate: (view: View) => void }) {
           ))}
         </div>
       </section>
+      <section className="card empty-visual-preview" aria-label="Dashboard layout preview">
+        <header>
+          <div><p>Dashboard preview</p><h3>Your charts will fill from verified records.</h3></div>
+          <span>Layout only · no business data</span>
+        </header>
+        <div className="empty-preview-grid">
+          <article className="empty-preview-chart">
+            <div className="chart-legend"><span><i className="legend-sales" />Net sales</span><span><i className="legend-profit" />Gross profit</span></div>
+            <svg viewBox="0 0 640 180" role="img" aria-label="Example layout for sales and gross-profit charts">
+              {[24, 64, 104, 144].map((y) => <line key={y} x1="20" x2="620" y1={y} y2={y} className="trend-gridline" />)}
+              <polyline points="20,132 105,104 190,118 275,75 360,91 445,53 530,67 620,35" className="preview-sales-line" />
+              <polyline points="20,151 105,134 190,141 275,111 360,124 445,95 530,103 620,83" className="preview-profit-line" />
+            </svg>
+          </article>
+          <aside className="empty-preview-sources">
+            {[['Sales history','Connect POS or CSV','indigo'],['Cash position','Connect banking or balances','emerald'],['Inventory risk','Connect SKU movement','amber']].map(([title,detail,tone]) => <div key={title}><i className={`preview-source-${tone}`} /><span><b>{title}</b><small>{detail}</small></span><em>Waiting</em></div>)}
+          </aside>
+        </div>
+      </section>
       <section className="wiring-principles">
         <article>
           <b>Known fact</b>
