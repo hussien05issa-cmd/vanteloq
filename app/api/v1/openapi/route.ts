@@ -17,6 +17,9 @@ const specification = {
     "/integrations": {
       get: { summary: "List configured and available integrations", responses: { "200": { description: "Tenant integration metadata" }, "403": { description: "Membership required" } } },
     },
+    "/backend": {
+      get: { summary: "Read the server-only Supabase transition readiness gate", responses: { "200": { description: "Sanitized backend readiness" }, "401": { description: "Authentication required" }, "403": { description: "Owner or administrator access required" }, "429": { description: "Rate limited" } } },
+    },
     "/integrations/lightspeed/authorize": {
       post: { summary: "Begin owner-approved Lightspeed X-Series read-only OAuth", responses: { "200": { description: "Short-lived authorization URL" }, "403": { description: "Integration-management permission required" }, "503": { description: "Provider credentials not configured" } } },
     },

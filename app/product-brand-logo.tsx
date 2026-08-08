@@ -17,16 +17,21 @@ export default function ProductBrandLogo({
   className = "",
 }: ProductBrandLogoProps) {
   const name = PRODUCT_NAMES[product];
+  const source = product === "vanteloq"
+    ? variant === "full"
+      ? "/brand/vanteloq-logo.png"
+      : "/brand/vanteloq-mark.png"
+    : "/brand/bookloq-logo.jpeg";
 
   return (
     <span className={`product-brand-logo ${product} ${variant} ${className}`.trim()}>
       {/* Local product artwork is served directly so previews and production do not depend on an image-transformation binding. */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src={`/brand/${product}-logo.jpeg`}
+        src={source}
         alt={`${name} logo`}
-        width={1024}
-        height={1024}
+        width={product === "vanteloq" && variant === "full" ? 1030 : 1024}
+        height={product === "vanteloq" && variant === "full" ? 576 : 1024}
         loading={priority ? "eager" : "lazy"}
         fetchPriority={priority ? "high" : "auto"}
         decoding="async"

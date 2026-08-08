@@ -12,6 +12,10 @@ export type VanteloqRuntimeEnv = {
   LIGHTSPEED_R_CLIENT_SECRET?: string;
   LIGHTSPEED_R_REDIRECT_URI?: string;
   INTEGRATION_ENCRYPTION_KEY?: string;
+  SUPABASE_URL?: string;
+  SUPABASE_SECRET_KEY?: string;
+  SUPABASE_SCHEMA?: string;
+  SUPABASE_BACKEND_MODE?: string;
 };
 
 type VanteloqRuntime = typeof globalThis & { __vanteloqEnv?: VanteloqRuntimeEnv };

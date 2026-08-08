@@ -41,7 +41,7 @@ test("task APIs reject missing identity before database access", async () => {
 
 test("business intelligence APIs reject anonymous access before database reads", async () => {
   const worker = await loadWorker();
-  for (const path of ["/api/v1/command-centre", "/api/v1/daily-metrics", "/api/v1/events", "/api/v1/operations", "/api/v1/bookloq", "/api/v1/governance", "/api/v1/reports", "/api/v1/purchasing", "/api/v1/documents", "/api/v1/data-quality", "/api/v1/integrations"]) {
+  for (const path of ["/api/v1/command-centre", "/api/v1/daily-metrics", "/api/v1/events", "/api/v1/operations", "/api/v1/bookloq", "/api/v1/governance", "/api/v1/reports", "/api/v1/purchasing", "/api/v1/documents", "/api/v1/data-quality", "/api/v1/integrations", "/api/v1/backend"]) {
     const response = await worker.fetch(new Request(`https://vanteloq.example${path}`, {
       headers: { accept: "application/json" },
     }), environment, context);
@@ -189,6 +189,7 @@ test("operational health and API description expose no internal configuration", 
   assert.ok(specification.paths["/daily-metrics"]);
   assert.ok(specification.paths["/events"]);
   assert.ok(specification.paths["/operations"]);
+  assert.ok(specification.paths["/backend"]);
   assert.ok(specification.paths["/bookloq"]);
   assert.ok(specification.paths["/bookloq/demo"]);
   assert.ok(specification.paths["/bookloq/journals"]);

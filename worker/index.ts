@@ -18,6 +18,10 @@ interface Env {
   LIGHTSPEED_REDIRECT_URI?: string;
   LIGHTSPEED_API_VERSION?: string;
   INTEGRATION_ENCRYPTION_KEY?: string;
+  SUPABASE_URL?: string;
+  SUPABASE_SECRET_KEY?: string;
+  SUPABASE_SCHEMA?: string;
+  SUPABASE_BACKEND_MODE?: string;
 }
 
 interface ExecutionContext {
