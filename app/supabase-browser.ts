@@ -2,25 +2,21 @@
 
 import { createClient, type Session, type SupabaseClient } from "@supabase/supabase-js";
 
+const SUPABASE_URL = "https://wqiwmpqnthshgyxpettl.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_756K45Ii9HTN4fk9ZtIUew_ap8XBaDp";
+
 let clientPromise: Promise<SupabaseClient | null> | null = null;
 
 export function getSupabase(): Promise<SupabaseClient | null> {
   if (clientPromise) return clientPromise;
-  clientPromise = fetch("/api/v1/auth/config", { headers: { Accept: "application/json" } })
-    .then(async response => {
-      if (!response.ok) return null;
-      const config = await response.json() as { url?: unknown; publishableKey?: unknown };
-      if (typeof config.url !== "string" || typeof config.publishableKey !== "string") return null;
-      return createClient(config.url, config.publishableKey, {
-        auth: {
-          flowType: "pkce",
-          persistSession: true,
-          autoRefreshToken: true,
-          detectSessionInUrl: true,
-        },
-      });
-    })
-    .catch(() => null);
+  clientPromise = Promise.resolve(createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+    auth: {
+      flowType: "pkce",
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+    },
+  }));
   return clientPromise;
 }
 
