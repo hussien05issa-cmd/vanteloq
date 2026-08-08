@@ -63,6 +63,10 @@ const specification = {
       get: { summary: "List business-memory events with measured before/after impact where supported", responses: { "200": { description: "Tenant-owned events" }, "403": { description: "Membership required" } } },
       post: { summary: "Record a decision or material business event", responses: { "201": { description: "Event recorded" }, "400": { description: "Invalid input" }, "403": { description: "Insufficient permission or origin rejected" }, "429": { description: "Rate limited" } } },
     },
+    "/operations": {
+      get: { summary: "Read cursor-based operational events, message outbox status and inventory projections", responses: { "200": { description: "Tenant-scoped operational feed" }, "401": { description: "Authentication required" }, "403": { description: "Membership required" }, "429": { description: "Rate limited" } } },
+      post: { summary: "Record an idempotent settled payment, append inventory movements and prepare a held confirmation", responses: { "200": { description: "Duplicate event safely acknowledged" }, "202": { description: "Event accepted and projections prepared" }, "400": { description: "Invalid input" }, "403": { description: "Origin or role rejected" }, "409": { description: "Payment totals do not reconcile" }, "429": { description: "Rate limited" } } },
+    },
     "/bookloq": {
       get: { summary: "Get the tenant's deterministic BookLoQ accounting workspace", responses: { "200": { description: "Ledger-derived balances, statements, alerts, close status and supporting records" }, "401": { description: "Authentication required" }, "403": { description: "BookLoQ permission required" }, "429": { description: "Rate limited" } } },
     },

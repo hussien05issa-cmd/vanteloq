@@ -248,6 +248,98 @@ export const businessEvents = sqliteTable(
   ],
 );
 
+// The operational event log is the durable contract between connected systems
+// and the Vanteloq UI. Provider webhooks are acknowledged only after an event is
+// persisted; projections and outbound work can then be retried independently.
+export const operationalEvents = sqliteTable(
+  "operational_events",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    eventType: text("event_type", { enum: ["payment.settled", "inventory.depleted", "message.queued", "message.sent", "message.failed"] }).notNull(),
+    aggregateType: text("aggregate_type", { enum: ["sale", "inventory", "message"] }).notNull(),
+    aggregateId: text("aggregate_id").notNull(),
+    sourceSystem: text("source_system").notNull(),
+    sourceEventId: text("source_event_id").notNull(),
+    payloadJson: text("payload_json").notNull(),
+    occurredAt: integer("occurred_at", { mode: "timestamp" }).notNull(),
+    recordedAt: integer("recorded_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("operational_events_source_unique").on(table.organizationId, table.sourceSystem, table.sourceEventId, table.eventType),
+    index("operational_events_workspace_cursor_idx").on(table.organizationId, table.recordedAt, table.id),
+    check("operational_events_type_check", sql`${table.eventType} in ('payment.settled', 'inventory.depleted', 'message.queued', 'message.sent', 'message.failed')`),
+    check("operational_events_aggregate_check", sql`${table.aggregateType} in ('sale', 'inventory', 'message')`),
+  ],
+);
+
+export const inventoryBalances = sqliteTable(
+  "inventory_balances",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    locationRef: text("location_ref").notNull(),
+    sku: text("sku").notNull(),
+    name: text("name").notNull(),
+    onHandQuantity: integer("on_hand_quantity").notNull().default(0),
+    reorderPoint: integer("reorder_point").notNull().default(0),
+    version: integer("version").notNull().default(1),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("inventory_balances_workspace_location_sku_unique").on(table.organizationId, table.locationRef, table.sku),
+    index("inventory_balances_workspace_stock_idx").on(table.organizationId, table.onHandQuantity),
+    check("inventory_balances_reorder_check", sql`${table.reorderPoint} >= 0`),
+  ],
+);
+
+export const inventoryMovements = sqliteTable(
+  "inventory_movements",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    operationalEventId: text("operational_event_id").notNull().references(() => operationalEvents.id, { onDelete: "cascade" }),
+    locationRef: text("location_ref").notNull(),
+    sku: text("sku").notNull(),
+    itemName: text("item_name").notNull(),
+    quantityDelta: integer("quantity_delta").notNull(),
+    reason: text("reason", { enum: ["sale", "refund", "receipt", "adjustment"] }).notNull(),
+    occurredAt: integer("occurred_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("inventory_movements_event_sku_unique").on(table.operationalEventId, table.locationRef, table.sku),
+    index("inventory_movements_workspace_sku_idx").on(table.organizationId, table.sku, table.occurredAt),
+    check("inventory_movements_nonzero_check", sql`${table.quantityDelta} <> 0`),
+    check("inventory_movements_reason_check", sql`${table.reason} in ('sale', 'refund', 'receipt', 'adjustment')`),
+  ],
+);
+
+export const outboundMessages = sqliteTable(
+  "outbound_messages",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    operationalEventId: text("operational_event_id").notNull().references(() => operationalEvents.id, { onDelete: "cascade" }),
+    channel: text("channel", { enum: ["email"] }).notNull().default("email"),
+    recipient: text("recipient").notNull(),
+    subject: text("subject").notNull(),
+    bodyText: text("body_text").notNull(),
+    status: text("status", { enum: ["held", "queued", "sending", "sent", "failed"] }).notNull().default("held"),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    nextAttemptAt: integer("next_attempt_at", { mode: "timestamp" }),
+    providerMessageRef: text("provider_message_ref"),
+    lastErrorCode: text("last_error_code"),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("outbound_messages_event_channel_unique").on(table.operationalEventId, table.channel),
+    index("outbound_messages_workspace_status_idx").on(table.organizationId, table.status, table.nextAttemptAt),
+    check("outbound_messages_status_check", sql`${table.status} in ('held', 'queued', 'sending', 'sent', 'failed')`),
+    check("outbound_messages_attempt_check", sql`${table.attemptCount} >= 0 and ${table.attemptCount} <= 20`),
+  ],
+);
+
 export const integrationConnections = sqliteTable(
   "integration_connections",
   {

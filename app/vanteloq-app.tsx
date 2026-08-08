@@ -2,6 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import BookLoQWorkspace from "./bookloq-workspace";
+import CommunicationsWorkspace from "./communications-workspace";
 import IntegrationBrandLogo from "./integration-brand-logo";
 import {
   integrationCatalog,
@@ -32,6 +33,7 @@ type View =
   | "Inventory"
   | "Customers"
   | "Marketing"
+  | "Communications"
   | "Team"
   | "Operations"
   | "Suppliers"
@@ -62,6 +64,7 @@ const nav: [string, View[]][] = [
       "Inventory",
       "Customers",
       "Marketing",
+      "Communications",
       "Team",
     ],
   ],
@@ -95,6 +98,7 @@ const viewPermission: Partial<Record<View, string>> = {
   Inventory: "inventory.view",
   Customers: "customers.totals",
   Marketing: "marketing.view",
+  Communications: "customers.identity",
   Team: "team.directory",
   Operations: "operations.tasks",
   Suppliers: "purchasing.view",
@@ -471,6 +475,7 @@ export default function VanteloqApp({
   const [taskSeed, setTaskSeed] = useState<TaskSeed | null>(null);
   const [notice, setNotice] = useState("");
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [commandOpen, setCommandOpen] = useState(false);
   const [appRole, setAppRole] = useState("employee");
   const [appPermissions, setAppPermissions] = useState<string[]>([]);
 
@@ -525,6 +530,17 @@ export default function VanteloqApp({
       window.history.replaceState({}, "", window.location.pathname);
     }, 0);
     return () => window.clearTimeout(timer);
+  }, []);
+  useEffect(() => {
+    const shortcut = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setCommandOpen((open) => !open);
+      }
+      if (event.key === "Escape") setCommandOpen(false);
+    };
+    window.addEventListener("keydown", shortcut);
+    return () => window.removeEventListener("keydown", shortcut);
   }, []);
   const showNotice = (message: string) => {
     setNotice(message);
@@ -673,9 +689,10 @@ export default function VanteloqApp({
                 ? "OWNER COMMAND CENTRE"
                 : "VANTELOQ WORKSPACE"}
             </p>
-            <h1>{view}</h1>
+            <h1>{view === "Dashboard" ? "Unified Workspace" : view}</h1>
           </div>
           <div className="top-actions">
+            <button className="command-trigger" onClick={() => setCommandOpen(true)} aria-label="Open workspace search"><span>Search workspace</span><kbd>⌘K</kbd></button>
             <span
               className={`source-pill ${data?.source.freshness ?? "missing"}`}
             >
@@ -754,8 +771,18 @@ export default function VanteloqApp({
           {notice}
         </div>
       )}
+      {commandOpen && <GlobalCommand permissions={appPermissions} navigate={(next) => { setCommandOpen(false); navigate(next); }} close={() => setCommandOpen(false)} />}
     </main>
   );
+}
+
+function GlobalCommand({ permissions, navigate, close }: { permissions: string[]; navigate: (view: View) => void; close: () => void }) {
+  const [query, setQuery] = useState("");
+  const options = useMemo(() => ([...nav.flatMap(([, items]) => items), "Industry Modules", "Integrations", "Settings"] as View[])
+    .filter((item, index, list) => list.indexOf(item) === index)
+    .filter((item) => !viewPermission[item] || permissions.includes(viewPermission[item]!))
+    .filter((item) => !query || item.toLowerCase().includes(query.toLowerCase())), [permissions, query]);
+  return <div className="modal-backdrop command-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}><section className="command-modal" role="dialog" aria-modal="true" aria-label="Workspace search"><div className="command-input"><span>⌕</span><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Go to a workspace…"/><button onClick={close}>ESC</button></div><div className="command-results"><small>WORKSPACES</small>{options.map((option) => <button key={option} onClick={() => navigate(option)}><span>↳</span><span>{option}</span><b>→</b></button>)}{!options.length && <p>No matching workspace.</p>}</div></section></div>;
 }
 
 function Workspace({
@@ -815,6 +842,7 @@ function Workspace({
     );
   if (view === "BookLoQ")
     return <BookLoQWorkspace createTask={createTask} showNotice={showNotice} />;
+  if (view === "Communications") return <CommunicationsWorkspace />;
   if (view === "Integrations")
     return <DataHub refresh={refresh} showNotice={showNotice} />;
   if (view === "Decision Journal")
