@@ -16,6 +16,7 @@ export type VanteloqRuntimeEnv = {
   SUPABASE_SECRET_KEY?: string;
   SUPABASE_SCHEMA?: string;
   SUPABASE_BACKEND_MODE?: string;
+  BOOKLOQ_DEMO_ENABLED?: string;
 };
 
 type VanteloqRuntime = typeof globalThis & { __vanteloqEnv?: VanteloqRuntimeEnv };

@@ -225,6 +225,67 @@ export const dailyBusinessMetrics = sqliteTable(
   ],
 );
 
+export const growthTouchpoints = sqliteTable(
+  "growth_touchpoints",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    occurredAt: text("occurred_at").notNull(),
+    source: text("source").notNull(),
+    stage: text("stage", { enum: ["discovery", "website", "phone_call", "lead", "customer"] }).notNull(),
+    journeyRef: text("journey_ref").notNull(),
+    sourceSystem: text("source_system").notNull(),
+    sourceEventId: text("source_event_id").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("growth_touchpoints_source_event_unique").on(table.organizationId, table.sourceSystem, table.sourceEventId),
+    index("growth_touchpoints_journey_idx").on(table.organizationId, table.journeyRef, table.occurredAt),
+    check("growth_touchpoints_stage_check", sql`${table.stage} in ('discovery','website','phone_call','lead','customer')`),
+  ],
+);
+
+export const growthTransactions = sqliteTable(
+  "growth_transactions",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    occurredAt: text("occurred_at").notNull(),
+    journeyRef: text("journey_ref").notNull(),
+    revenueCents: integer("revenue_cents").notNull(),
+    grossProfitCents: integer("gross_profit_cents"),
+    sourceSystem: text("source_system").notNull(),
+    sourceEventId: text("source_event_id").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("growth_transactions_source_event_unique").on(table.organizationId, table.sourceSystem, table.sourceEventId),
+    index("growth_transactions_journey_idx").on(table.organizationId, table.journeyRef, table.occurredAt),
+    check("growth_transactions_amount_check", sql`${table.revenueCents} >= 0 and (${table.grossProfitCents} is null or ${table.grossProfitCents} <= ${table.revenueCents})`),
+  ],
+);
+
+export const searchVisibilityObservations = sqliteTable(
+  "search_visibility_observations",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    query: text("query").notNull(),
+    observedDate: text("observed_date").notNull(),
+    positionMilli: integer("position_milli").notNull(),
+    discoveryActions: integer("discovery_actions"),
+    sourceSystem: text("source_system").notNull(),
+    sourceEventId: text("source_event_id").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("search_visibility_source_event_unique").on(table.organizationId, table.sourceSystem, table.sourceEventId),
+    index("search_visibility_query_date_idx").on(table.organizationId, table.query, table.observedDate),
+    check("search_visibility_position_check", sql`${table.positionMilli} > 0`),
+    check("search_visibility_actions_check", sql`${table.discoveryActions} is null or ${table.discoveryActions} >= 0`),
+  ],
+);
+
 export const businessEvents = sqliteTable(
   "business_events",
   {

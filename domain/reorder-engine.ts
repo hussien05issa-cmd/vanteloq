@@ -22,6 +22,10 @@ export type ReorderInputs = {
   storageCapacityUnits: number | null;
   demandHistoryDays: number;
   dataAgeHours: number;
+  grossMarginBasisPoints?: number | null;
+  weatherFactor?: number;
+  expiringUnits?: number;
+  supplierMinimumSpendCents?: number;
 };
 
 export type ReorderScenario = {
@@ -53,6 +57,8 @@ export type ReorderRecommendation = {
   scenarios: ReorderScenario[];
   formula: string;
   requiresHumanApproval: true;
+  urgency: "hold" | "normal" | "urgent";
+  marginBasisPoints: number | null;
 };
 
 const numberFields: (keyof ReorderInputs)[] = [
@@ -110,12 +116,15 @@ function roundDown(value: number, pack: number) {
 }
 
 function boundedOrder(inputs: ReorderInputs, demandFactor: number) {
+  const weatherFactor = inputs.weatherFactor ?? 1;
+  const expiringUnits = inputs.expiringUnits ?? 0;
   const horizonDays = inputs.leadTimeDays + inputs.reviewPeriodDays;
   const demandUnits = Math.ceil(
     inputs.averageDailyDemand *
       horizonDays *
       inputs.seasonalityFactor *
       inputs.promotionFactor *
+      weatherFactor *
       demandFactor,
   );
   const safetyStockUnits = Math.ceil(
@@ -128,10 +137,13 @@ function boundedOrder(inputs: ReorderInputs, demandFactor: number) {
   const targetStockUnits = demandUnits + safetyStockUnits;
   const netNeed = Math.max(
     0,
-    targetStockUnits - inputs.onHandUnits - inputs.incomingUnits,
+    targetStockUnits - Math.max(0, inputs.onHandUnits - expiringUnits) - inputs.incomingUnits,
   );
+  const minimumSpendUnits = inputs.supplierMinimumSpendCents
+    ? Math.ceil(inputs.supplierMinimumSpendCents / inputs.unitCostCents)
+    : 0;
   const minimumAdjusted =
-    netNeed > 0 ? Math.max(netNeed, inputs.minimumOrderUnits) : 0;
+    netNeed > 0 ? Math.max(netNeed, inputs.minimumOrderUnits, minimumSpendUnits) : 0;
   const unconstrainedUnits = roundUp(minimumAdjusted, inputs.casePackUnits);
 
   const committedCashCents =
@@ -203,6 +215,8 @@ export function calculateReorderRecommendation(
   inputs: ReorderInputs,
 ): ReorderRecommendation {
   assertInputs(inputs);
+  if ((inputs.weatherFactor ?? 1) < 0.25 || (inputs.weatherFactor ?? 1) > 4) throw new Error("weatherFactor must be between 0.25 and 4.");
+  if ((inputs.expiringUnits ?? 0) < 0 || (inputs.supplierMinimumSpendCents ?? 0) < 0) throw new Error("Expiry and supplier minimum spend must be non-negative.");
   const result = boundedOrder(inputs, 1);
   const constrainedBy: string[] = [];
   if (result.caps.cashCap < result.unconstrainedUnits) constrainedBy.push("Cash safety threshold");
@@ -224,6 +238,8 @@ export function calculateReorderRecommendation(
   if (inputs.shelfLifeDays === null) missingInputs.push("Shelf life");
   if (inputs.storageCapacityUnits === null) missingInputs.push("Storage capacity");
   if (!inputs.minimumOrderUnits) assumptions.push("No supplier minimum order was supplied.");
+  if (inputs.grossMarginBasisPoints == null) missingInputs.push("Product gross margin");
+  if (inputs.weatherFactor == null) missingInputs.push("Weather demand factor");
   if (inputs.demandHistoryDays < 28) missingInputs.push("At least 28 days of demand history");
   if (inputs.dataAgeHours > 72) missingInputs.push("Fresh inventory and sales data");
 
@@ -247,6 +263,10 @@ export function calculateReorderRecommendation(
         : constrainedBy.length || confidence === "low"
           ? "review_required"
           : "ready_for_review";
+  const expectedStockoutDays = inputs.averageDailyDemand > 0
+    ? Math.floor((Math.max(0, inputs.onHandUnits - (inputs.expiringUnits ?? 0)) + inputs.incomingUnits) / inputs.averageDailyDemand)
+    : null;
+  const urgency: ReorderRecommendation["urgency"] = status === "no_order" ? "hold" : expectedStockoutDays !== null && expectedStockoutDays <= inputs.leadTimeDays ? "urgent" : "normal";
 
   const scenarios = ([
     ["Conservative", 0.85],
@@ -272,13 +292,7 @@ export function calculateReorderRecommendation(
     forecastDemandUnits: result.demandUnits,
     safetyStockUnits: result.safetyStockUnits,
     targetStockUnits: result.targetStockUnits,
-    expectedStockoutDays:
-      inputs.averageDailyDemand > 0
-        ? Math.floor(
-            (inputs.onHandUnits + inputs.incomingUnits) /
-              inputs.averageDailyDemand,
-          )
-        : null,
+    expectedStockoutDays,
     orderCostCents: result.orderCostCents,
     committedCashCents: result.committedCashCents,
     cashAvailableForOrderCents: result.cashAvailableForOrderCents,
@@ -292,5 +306,7 @@ export function calculateReorderRecommendation(
     formula:
       "Order = pack-round(max(0, demand through lead + review period + safety stock − on hand − incoming)), capped by cash, shelf life and storage.",
     requiresHumanApproval: true,
+    urgency,
+    marginBasisPoints: inputs.grossMarginBasisPoints ?? null,
   };
 }

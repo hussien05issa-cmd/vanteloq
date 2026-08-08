@@ -134,6 +134,7 @@ test("imports and business-memory writes reject cross-site origins before data a
     "/api/v1/daily-metrics",
     "/api/v1/events",
     "/api/v1/operations",
+    "/api/v1/growth",
     "/api/v1/bookloq/demo",
     "/api/v1/bookloq/journals",
     "/api/v1/bookloq/actions",
@@ -191,7 +192,7 @@ test("operational health and API description expose no internal configuration", 
   assert.ok(specification.paths["/operations"]);
   assert.ok(specification.paths["/backend"]);
   assert.ok(specification.paths["/bookloq"]);
-  assert.ok(specification.paths["/bookloq/demo"]);
+  assert.equal(specification.paths["/bookloq/demo"], undefined);
   assert.ok(specification.paths["/bookloq/journals"]);
   assert.ok(specification.paths["/bookloq/actions"]);
   assert.doesNotMatch(JSON.stringify(specification), /secret|token|database_id/i);

@@ -1089,33 +1089,38 @@ function RecommendationLab({
   sourceHistoryDays?: number;
 }) {
   const [inputs, setInputs] = useState({
-    onHand: 18,
+    onHand: 0,
     incoming: 0,
-    dailyDemand: 4,
-    demandStdDev: 1.2,
-    leadTime: 7,
+    dailyDemand: 0,
+    demandStdDev: 0,
+    leadTime: 0,
     reviewPeriod: 7,
     serviceLevelZ: 1.65,
     seasonality: 1,
     promotion: 1,
-    casePack: 6,
+    casePack: 1,
     supplierMinimum: 0,
-    unitCost: 32,
-    availableCash: Math.round((sourceCashCents ?? 2_500_000) / 100),
-    cashThreshold: 12000,
-    accountsPayable: Math.round((sourceAccountsPayableCents ?? 500_000) / 100),
+    supplierMinimumSpend: 0,
+    unitCost: 0,
+    grossMargin: 0,
+    weather: 1,
+    expiringUnits: 0,
+    availableCash: Math.round((sourceCashCents ?? 0) / 100),
+    cashThreshold: 0,
+    accountsPayable: Math.round((sourceAccountsPayableCents ?? 0) / 100),
     payroll: 0,
     tax: 0,
     debt: 0,
     otherCommitments: 0,
-    shelfLife: 180,
-    storageCapacity: 240,
+    shelfLife: 0,
+    storageCapacity: 0,
     demandHistoryDays: sourceHistoryDays,
     dataAgeHours: sourceDataAgeHours,
   });
   const set = (key: keyof typeof inputs, value: number) =>
     setInputs((current) => ({ ...current, [key]: value }));
   const calculation = useMemo(() => {
+    if (inputs.dailyDemand <= 0 || inputs.leadTime <= 0 || inputs.unitCost <= 0 || sourceCashCents === null) return { result: null, error: "Verified cash plus SKU demand, lead time and unit cost are required before a recommendation is calculated." };
     const engineInputs: ReorderInputs = {
       onHandUnits: inputs.onHand,
       incomingUnits: inputs.incoming,
@@ -1128,7 +1133,11 @@ function RecommendationLab({
       promotionFactor: inputs.promotion,
       casePackUnits: inputs.casePack,
       minimumOrderUnits: inputs.supplierMinimum,
+      supplierMinimumSpendCents: Math.round(inputs.supplierMinimumSpend * 100),
       unitCostCents: Math.round(inputs.unitCost * 100),
+      grossMarginBasisPoints: inputs.grossMargin > 0 ? Math.round(inputs.grossMargin * 100) : null,
+      weatherFactor: inputs.weather,
+      expiringUnits: inputs.expiringUnits,
       availableCashCents: Math.round(inputs.availableCash * 100),
       cashSafetyThresholdCents: Math.round(inputs.cashThreshold * 100),
       accountsPayableCents: Math.round(inputs.accountsPayable * 100),
@@ -1149,7 +1158,7 @@ function RecommendationLab({
         error: error instanceof Error ? error.message : "Check the scenario inputs.",
       };
     }
-  }, [inputs]);
+  }, [inputs, sourceCashCents]);
   const result = calculation.result;
   const scenarioMaximum = result
     ? Math.max(...result.scenarios.map((scenario) => scenario.orderUnits), 1)
@@ -1166,14 +1175,18 @@ function RecommendationLab({
     { key: "promotion", label: "Promotion factor", suffix: "×" },
     { key: "casePack", label: "Case pack", suffix: "units" },
     { key: "supplierMinimum", label: "Supplier minimum", suffix: "units" },
+    { key: "supplierMinimumSpend", label: "Supplier minimum spend", suffix: currency },
     { key: "unitCost", label: "Unit cost", suffix: currency },
+    { key: "grossMargin", label: "Gross margin", suffix: "%" },
+    { key: "weather", label: "Weather demand factor", suffix: "×" },
+    { key: "expiringUnits", label: "Expiring before horizon", suffix: "units" },
     { key: "availableCash", label: "Available cash", suffix: currency },
     { key: "cashThreshold", label: "Cash safety threshold", suffix: currency },
     { key: "accountsPayable", label: "Accounts payable", suffix: currency },
     { key: "payroll", label: "Payroll commitments", suffix: currency },
     { key: "tax", label: "Tax commitments", suffix: currency },
     { key: "debt", label: "Debt commitments", suffix: currency },
-    { key: "otherCommitments", label: "Other commitments", suffix: currency },
+    { key: "otherCommitments", label: "Upcoming bills and rent", suffix: currency },
     { key: "shelfLife", label: "Shelf life", suffix: "days" },
     { key: "storageCapacity", label: "Storage capacity", suffix: "units" },
     { key: "demandHistoryDays", label: "Demand history", suffix: "days" },
@@ -1210,6 +1223,7 @@ function RecommendationLab({
             <small>{result.confidence} confidence</small>
           </div>
           <h2>{result.recommendedUnits} units</h2>
+          <p><b>{result.urgency.toUpperCase()}</b>{result.marginBasisPoints === null ? " · Margin unavailable" : ` · ${(result.marginBasisPoints / 100).toFixed(1)}% margin`}</p>
           <p>{result.formula}</p>
           <div className="reorder-scenarios" aria-label="Recommended order scenarios">
             {result.scenarios.map((scenario) => <span key={scenario.label}>

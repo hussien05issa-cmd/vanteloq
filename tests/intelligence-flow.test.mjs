@@ -72,7 +72,7 @@ async function createEnvironment() {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
   workerUrl.searchParams.set("flow-test", crypto.randomUUID());
   const worker = (await import(workerUrl.href)).default;
-  const environment = { DB: database, ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) } };
+  const environment = { DB: database, BOOKLOQ_DEMO_ENABLED: "true", ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) } };
   return { miniflare, worker, environment };
 }
 

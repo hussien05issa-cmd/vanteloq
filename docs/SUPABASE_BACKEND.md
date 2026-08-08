@@ -52,3 +52,10 @@ Every migrated business table must carry `organization_id`, indexes for its
 tenant access patterns, RLS enabled as defense in depth, explicit grants, and
 tests proving cross-tenant reads and writes fail. Supabase Auth is not added:
 dispatch-owned ChatGPT sign-in remains Vanteloq's authentication boundary.
+
+The local-growth domain is the first bounded migration candidate. Its contract
+contains `growth_touchpoints`, `growth_transactions`, and
+`search_visibility_observations`; raw contact details are excluded and the
+shared `journey_ref` must be a provider-side pseudonymous reference. Until the
+project is approved and promoted through the gates above, D1 remains
+authoritative and `SUPABASE_BACKEND_MODE` remains `off`.

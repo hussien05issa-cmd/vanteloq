@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import BookLoQWorkspace from "./bookloq-workspace";
 import CommunicationsWorkspace from "./communications-workspace";
+import GrowthWorkspace from "./growth-workspace";
 import IntegrationBrandLogo from "./integration-brand-logo";
 import {
   integrationCatalog,
@@ -870,6 +871,8 @@ function Workspace({
   if (view === "BookLoQ")
     return <BookLoQWorkspace createTask={createTask} showNotice={showNotice} />;
   if (view === "Communications") return <CommunicationsWorkspace />;
+  if (view === "Marketing")
+    return <GrowthWorkspace currency={currency} navigate={navigate} />;
   if (view === "Integrations")
     return <DataHub refresh={refresh} showNotice={showNotice} />;
   if (view === "Decision Journal")

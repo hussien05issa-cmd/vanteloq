@@ -1,4 +1,4 @@
-import { getD1 } from "../../../../../db";
+import { getD1, getRuntimeEnv } from "../../../../../db";
 import { recordAudit } from "../../../../../server/audit";
 import { requireAccess } from "../../../../../server/authorization";
 import { enforceRateLimit, handleApi, jsonResponse, requireSameOrigin } from "../../../../../server/api";
@@ -34,6 +34,7 @@ function canadianProvinceCode(value: string): string {
 export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
+    if (getRuntimeEnv().BOOKLOQ_DEMO_ENABLED !== "true") return jsonResponse({ error: { code: "NOT_FOUND", message: "Demonstration data is disabled." } }, { status: 404 });
     const context = await requireAccess(request, writers);
     await requirePermission(context, "finance.journal_post");
     requireBookLoQPermission(context.role, "post_journals");

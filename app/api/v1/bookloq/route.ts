@@ -9,6 +9,7 @@ import {
   type LedgerAccountRow,
 } from "../../../../server/bookloq";
 import { requirePermission } from "../../../../server/permissions";
+import { calculateCashFlowIntelligence, type CashFlowItem } from "../../../../domain/cash-flow-intelligence";
 
 const readers = ["owner", "admin", "manager", "employee", "read_only"] as const;
 
@@ -145,8 +146,8 @@ export async function GET(request: Request) {
     const transactions = rows(transactionsResult);
     const banks = rows(banksResult);
     const reconciliations = rows(reconciliationsResult);
-    const bills = rows(billsResult) as Array<{ dueDate: string; totalCents: number; paidCents: number; status: string }>;
-    const invoices = rows(invoicesResult) as Array<{ dueDate: string; totalCents: number; paidCents: number; status: string }>;
+    const bills = rows(billsResult) as Array<{ id: string; billNumber: string; supplierName: string; dueDate: string; totalCents: number; paidCents: number; status: string }>;
+    const invoices = rows(invoicesResult) as Array<{ id: string; invoiceNumber: string; customerName: string; dueDate: string; totalCents: number; paidCents: number; status: string }>;
     const alerts = rows(alertsResult) as Array<{ severity: string; status: string }>;
     const closeItems = rows(closeResult) as Array<{ status: string }>;
     const completeItems = closeItems.filter((item) => item.status === "complete").length;
@@ -162,6 +163,11 @@ export async function GET(request: Request) {
       ...invoices.filter((invoice) => !["paid", "written_off", "void"].includes(invoice.status)).map((invoice) => ({ dueDate: invoice.dueDate, amountCents: invoice.totalCents - invoice.paidCents, direction: "in" as const, certainty: "probable" as const })),
     ];
     const forecasts = forecastCash(statements.cashCents, cashFlowItems, asOf);
+    const intelligenceItems: CashFlowItem[] = [
+      ...bills.filter((bill) => !["paid", "reconciled", "void"].includes(bill.status)).map((bill) => ({ id: bill.id, label: `${bill.supplierName} bill ${bill.billNumber}`, dueDate: bill.dueDate, amountCents: bill.totalCents - bill.paidCents, direction: "out" as const, certainty: "confirmed" as const, category: "supplier" as const })),
+      ...invoices.filter((invoice) => !["paid", "written_off", "void"].includes(invoice.status)).map((invoice) => ({ id: invoice.id, label: `${invoice.customerName} invoice ${invoice.invoiceNumber}`, dueDate: invoice.dueDate, amountCents: invoice.totalCents - invoice.paidCents, direction: "in" as const, certainty: "probable" as const, category: "other" as const })),
+    ];
+    const cashIntelligence = calculateCashFlowIntelligence({ openingCashCents: settings ? statements.cashCents : null, safetyThresholdCents: settings?.cashSafetyThresholdCents ?? 0, items: intelligenceItems, asOf });
     const dueNext30Cents = cashFlowItems.filter((item) => item.direction === "out" && item.dueDate <= forecasts[1].endDate).reduce((sum, item) => sum + item.amountCents, 0);
 
     return jsonResponse({
@@ -196,6 +202,7 @@ export async function GET(request: Request) {
         },
         statements,
         forecasts,
+        cashIntelligence,
         transactions,
         banks,
         reconciliations,

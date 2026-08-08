@@ -22,6 +22,7 @@ interface Env {
   SUPABASE_SECRET_KEY?: string;
   SUPABASE_SCHEMA?: string;
   SUPABASE_BACKEND_MODE?: string;
+  BOOKLOQ_DEMO_ENABLED?: string;
 }
 
 interface ExecutionContext {

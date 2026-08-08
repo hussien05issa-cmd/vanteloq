@@ -70,11 +70,12 @@ const specification = {
       get: { summary: "Read cursor-based operational events, message outbox status and inventory projections", responses: { "200": { description: "Tenant-scoped operational feed" }, "401": { description: "Authentication required" }, "403": { description: "Membership required" }, "429": { description: "Rate limited" } } },
       post: { summary: "Record an idempotent settled payment, append inventory movements and prepare a held confirmation", responses: { "200": { description: "Duplicate event safely acknowledged" }, "202": { description: "Event accepted and projections prepared" }, "400": { description: "Invalid input" }, "403": { description: "Origin or role rejected" }, "409": { description: "Payment totals do not reconcile" }, "429": { description: "Rate limited" } } },
     },
+    "/growth": {
+      get: { summary: "Calculate tenant-scoped first-touch local growth attribution from verified events", responses: { "200": { description: "Attributed channels or an explicit unavailable state" }, "403": { description: "Marketing permission required" }, "429": { description: "Rate limited" } } },
+      post: { summary: "Ingest an idempotent discovery, conversion, POS, or search visibility record", responses: { "202": { description: "Verified source record accepted" }, "400": { description: "Invalid source record" }, "403": { description: "Origin or marketing management permission rejected" }, "429": { description: "Rate limited" } } },
+    },
     "/bookloq": {
       get: { summary: "Get the tenant's deterministic BookLoQ accounting workspace", responses: { "200": { description: "Ledger-derived balances, statements, alerts, close status and supporting records" }, "401": { description: "Authentication required" }, "403": { description: "BookLoQ permission required" }, "429": { description: "Rate limited" } } },
-    },
-    "/bookloq/demo": {
-      post: { summary: "Load an explicitly labelled Canadian retail demonstration ledger into an empty workspace", responses: { "200": { description: "Existing demonstration ledger returned without duplication" }, "201": { description: "Demonstration ledger created" }, "403": { description: "Owner or administrator permission required" }, "409": { description: "Live ledger data already exists" }, "429": { description: "Rate limited" } } },
     },
     "/bookloq/journals": {
       post: { summary: "Post a balanced journal in minor currency units", parameters: [{ name: "Idempotency-Key", in: "header", required: true, schema: { type: "string", format: "uuid" } }], responses: { "201": { description: "Balanced journal posted" }, "400": { description: "Invalid or unbalanced entry" }, "403": { description: "Posting permission required" }, "409": { description: "Period is locked" }, "429": { description: "Rate limited" } } },
