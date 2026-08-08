@@ -5,6 +5,7 @@ import "./operating.css";
 import "./bookloq.css";
 import "./governance.css";
 import "./control.css";
+import "./theme.css";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -17,8 +18,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Vanteloq · AI Business Operating System",
-  description: "A retail-first AI business operating system that connects sales, money, inventory and operations to evidence-backed, approval-controlled decisions.",
+  title: "Vanteloq · Business Operating System",
+  description: "A retail operating system that brings sales, cash, inventory and daily work into one clear, controlled view.",
   other: {
     "codex-preview": "development",
   },

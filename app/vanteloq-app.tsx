@@ -10,6 +10,12 @@ import {
   type IntegrationCatalogEntry,
 } from "./integration-catalog";
 import ProductBrandLogo from "./product-brand-logo";
+import {
+  BusinessTrendChart,
+  CashPositionRing,
+  MetricSparkline,
+  type Tone,
+} from "./dashboard-charts";
 import { SettingsWorkspace, TeamWorkspace } from "./governance-workspaces";
 import {
   DataQualityWorkspace,
@@ -948,22 +954,23 @@ function Overview({
   if (!data.ready || !data.current)
     return <EmptyCommandCentre navigate={navigate} />;
   const current = data.current;
-  const maximum = Math.max(
-    ...data.trend.map((point) => point.netSalesCents),
-    1,
+  const salesTrend = data.trend.map((point) => point.netSalesCents);
+  const profitTrend = data.trend.map((point) => point.grossProfitCents);
+  const marginTrend = data.trend.map((point) =>
+    point.netSalesCents > 0 ? point.grossProfitCents / point.netSalesCents : 0,
   );
   return (
     <div className="content command-page">
       <section className="owner-brief">
         <div>
-          <p>WHAT NEEDS YOUR ATTENTION</p>
+          <p>Today&apos;s priority</p>
           <h2>
             {data.insights[0]?.title ??
-              "Your verified operating picture is ready."}
+              "Your operating picture is up to date."}
           </h2>
           <span>
             {data.insights[0]?.recommendedAction ??
-              "No material exception is currently prioritized."}
+              "There are no material exceptions to review right now."}
           </span>
         </div>
         <button
@@ -976,7 +983,7 @@ function Overview({
             })
           }
         >
-          Turn into action <b>→</b>
+          Create an action <b>→</b>
         </button>
       </section>
       <section className="metric-grid">
@@ -985,12 +992,16 @@ function Overview({
           value={money(current.netSalesCents, currency)}
           delta={percent(data.comparisons?.netSalesRate)}
           detail={`${current.days} verified days`}
+          tone="indigo"
+          sparkline={salesTrend}
         />
         <Metric
           label="Gross profit"
           value={money(current.grossProfitCents, currency)}
           delta={percent(data.comparisons?.grossProfitRate)}
           detail="Net sales less product cost"
+          tone="emerald"
+          sparkline={profitTrend}
         />
         <Metric
           label="Gross margin"
@@ -1001,44 +1012,34 @@ function Overview({
               : `${percent(data.comparisons.marginPointChange)} pts`
           }
           detail="Weighted for the period"
+          tone="cyan"
+          sparkline={marginTrend}
         />
         <Metric
           label="Avg. transaction"
           value={money(current.averageTransactionCents, currency, 2)}
           delta={percent(data.comparisons?.averageTransactionRate)}
           detail={`${current.transactionCount.toLocaleString()} transactions`}
+          tone="amber"
         />
         <Metric
           label="Contribution"
           value={money(current.contributionCents, currency)}
           delta={percent(current.labourRate)}
           detail="After product and labour cost"
+          tone="rose"
         />
       </section>
       <section className="command-grid">
         <article className="card signal-chart">
           <div className="card-head">
             <div>
-              <p className="card-kicker">14-DAY SIGNAL</p>
-              <h3>Sales and gross-profit movement</h3>
+              <p className="card-kicker">Performance trend</p>
+              <h3>Net sales and gross profit</h3>
             </div>
-            <span className="verified-tag">Verified daily summaries</span>
+            <span className="verified-tag">14 verified days</span>
           </div>
-          <div className="bar-chart">
-            {data.trend.map((point) => (
-              <div
-                key={point.date}
-                title={`${point.date}: ${money(point.netSalesCents, currency)}`}
-              >
-                <i
-                  style={{
-                    height: `${Math.max(5, (point.netSalesCents / maximum) * 100)}%`,
-                  }}
-                />
-                <span>{point.date.slice(5)}</span>
-              </div>
-            ))}
-          </div>
+          <BusinessTrendChart data={data.trend} currency={currency} />
           <div className="chart-foot">
             <span>
               <b>{current.unitsSold.toLocaleString()}</b> units
@@ -1060,8 +1061,8 @@ function Overview({
       <section className="insight-section">
         <div className="section-heading">
           <div>
-            <p>PRIORITIZED INTELLIGENCE</p>
-            <h2>Facts, causes and next actions</h2>
+            <p>Decision queue</p>
+            <h2>What changed and what to do next</h2>
           </div>
           <button onClick={() => navigate("Intelligence")}>
             See full evidence →
@@ -1086,17 +1087,22 @@ function Metric({
   value,
   delta,
   detail,
+  tone = "indigo",
+  sparkline,
 }: {
   label: string;
   value: string;
   delta: string;
   detail: string;
+  tone?: Tone;
+  sparkline?: number[];
 }) {
   return (
-    <article className="metric-card">
+    <article className={`metric-card metric-${tone}`}>
       <p>{label}</p>
       <h3>{value}</h3>
       <span>{delta}</span>
+      {sparkline?.length ? <MetricSparkline values={sparkline} tone={tone} /> : <i className="metric-accent" aria-hidden="true" />}
       <small>{detail}</small>
     </article>
   );
@@ -1116,25 +1122,22 @@ function OwnerStress({
     <article className="card stress-card">
       <div className="card-head">
         <div>
-          <p className="card-kicker">OWNER STRESS LIST</p>
-          <h3>Only what needs review</h3>
+          <p className="card-kicker">Cash position</p>
+          <h3>Cash after known payables</h3>
         </div>
         <span>
           {data.insights.filter((x) => x.severity !== "informational").length}{" "}
           items
         </span>
       </div>
-      <div className="stress-list">
+      <CashPositionRing
+        cashCents={balances?.cashBalanceCents}
+        payableCents={balances?.accountsPayableCents}
+        currency={currency}
+      />
+      <div className="stress-list compact-stress-list">
         <button onClick={() => navigate("Cash")}>
-          <span>Cash position</span>
-          <b>{money(balances?.cashBalanceCents, currency)}</b>
-        </button>
-        <button onClick={() => navigate("Cash")}>
-          <span>Accounts payable</span>
-          <b>{money(balances?.accountsPayableCents, currency)}</b>
-        </button>
-        <button onClick={() => navigate("Inventory")}>
-          <span>Inventory value</span>
+          <span>Inventory held</span>
           <b>{money(balances?.inventoryValueCents, currency)}</b>
         </button>
         <button onClick={() => navigate("Action Centre")}>
@@ -1143,8 +1146,8 @@ function OwnerStress({
         </button>
       </div>
       <p className="stress-note">
-        Balances appear only when explicitly included in a verified daily
-        record.
+        This view uses verified balances only. Payroll, rent, tax and debt are
+        excluded until those schedules are connected.
       </p>
     </article>
   );
@@ -1158,9 +1161,8 @@ function EmptyCommandCentre({ navigate }: { navigate: (view: View) => void }) {
           <p>VANTELOQ IS READY</p>
           <h2>Your command centre starts with evidence.</h2>
           <span>
-            Connect a provider or import daily summaries. Until then, Vanteloq
-            will show no invented revenue, customers, inventory, alerts or AI
-            conclusions.
+            Connect a provider or import daily summaries. Until then, financial
+            values, customer records and inventory alerts remain unavailable.
           </span>
           <div>
             <button
@@ -1965,7 +1967,7 @@ function DataHub({
                       <button
                         onClick={() => void stageLightspeedSample(lightspeedProvider)}
                         disabled={!canManage || Boolean(providerAction)}
-                        title={!canManage ? "Your role cannot run provider synchronization." : "Read and stage a bounded sample without changing dashboard metrics."}
+                        title={!canManage ? "Your role cannot run provider synchronization." : "Read and review a limited sample without changing dashboard metrics."}
                       >{providerAction === `sample:${provider.id}` ? "Staging…" : "Stage sample"}</button>
                       <button
                         className="secondary-provider-action"
@@ -2792,7 +2794,7 @@ function Advisor({
         title: "Verified operating data is required",
         body: "I cannot answer from company performance yet because no daily source has been imported or connected.",
         limitation:
-          "Add daily summaries or connect a provider; I will not invent figures.",
+          "Add daily summaries or connect a provider before using financial figures.",
       });
       return;
     }

@@ -387,7 +387,7 @@ export function ReportsWorkspace({
           ) : (
             <div className="gated-report">
               <i>○</i>
-              <h3>The interface will not invent this report.</h3>
+              <h3>This report needs a connected source.</h3>
               <p>{reportRequirement(selected)}</p>
               <span>
                 Once connected, it will support filters, comparisons,
@@ -1151,6 +1151,9 @@ function RecommendationLab({
     }
   }, [inputs]);
   const result = calculation.result;
+  const scenarioMaximum = result
+    ? Math.max(...result.scenarios.map((scenario) => scenario.orderUnits), 1)
+    : 1;
   const fields: { key: keyof typeof inputs; label: string; suffix?: string }[] = [
     { key: "onHand", label: "On hand", suffix: "units" },
     { key: "incoming", label: "Incoming", suffix: "units" },
@@ -1208,11 +1211,12 @@ function RecommendationLab({
           </div>
           <h2>{result.recommendedUnits} units</h2>
           <p>{result.formula}</p>
-          <div>
+          <div className="reorder-scenarios" aria-label="Recommended order scenarios">
             {result.scenarios.map((scenario) => <span key={scenario.label}>
               <small>{scenario.label.toUpperCase()}</small>
               <b>{scenario.orderUnits}</b>
               <em>{money(scenario.orderCostCents, currency)}</em>
+              <i aria-hidden="true"><b style={{ width: `${Math.max(4, (scenario.orderUnits / scenarioMaximum) * 100)}%` }} /></i>
             </span>)}
           </div>
           <dl>
@@ -1291,7 +1295,7 @@ export function DocumentsWorkspace({ showNotice }: SharedProps) {
     const body: unknown = await response.json();
     if (response.ok) {
       setData(body as DocumentData);
-      showNotice("Document stored in the tenant quarantine for manual review");
+      showNotice("Document added to the secure review queue");
     } else showNotice(apiMessage(body, "Upload failed."));
     setUploading(false);
   };
