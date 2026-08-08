@@ -1,0 +1,188 @@
+/* Site-wide readability and surface contrast pass.
+   This file loads last so every workspace shares the same legibility floor. */
+:root {
+  --readable-muted: #526277;
+  --readable-subtle: #66768a;
+  --readable-line: #cbd5e1;
+  --readable-line-soft: #d9e1ea;
+  --readable-shadow: 0 4px 14px rgba(15, 35, 60, .07);
+}
+
+body {
+  font-size: 14px;
+  line-height: 1.5;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Navigation and persistent identity controls */
+.sidebar { border-right-color: #29384c; }
+.nav-group > p { font-size: 11px; color: #9cabbc; font-weight: 800; }
+.nav-item { min-height: 40px; height: auto; font-size: 13px; color: #b3bfcd; }
+.nav-item:hover { background: rgba(255,255,255,.075); color: #fff; }
+.nav-item.active { box-shadow: inset 3px 0 #62a6f5; }
+.workspace-switcher { border-color: rgba(255,255,255,.19); background: rgba(255,255,255,.045); }
+.workspace-switcher b, .profile b { font-size: 13px; }
+.workspace-switcher small, .profile small { font-size: 11px; color: #aebaca; }
+.side-bottom { border-top-color: rgba(255,255,255,.14); }
+
+/* Shared type floor across the authenticated product */
+.app-shell .eyebrow,
+.app-shell .card-kicker,
+.app-shell .section-overline,
+.app-shell .integration-type,
+.app-shell .priority-label,
+.app-shell .decision-meta { font-size: 10px !important; line-height: 1.45; }
+
+.app-shell p,
+.app-shell small,
+.app-shell label,
+.app-shell input,
+.app-shell select,
+.app-shell textarea,
+.app-shell button { line-height: 1.5; }
+
+.app-shell small { color: var(--readable-subtle); }
+.app-shell .welcome-row p { font-size: 14px; color: var(--readable-muted); }
+.app-shell .primary,
+.app-shell .secondary { font-size: 13px; min-height: 40px; }
+.app-shell .period button,
+.app-shell .signal-strip,
+.app-shell .signal-strip button { font-size: 12px; }
+
+/* Cards, fields, and tables should read as distinct interactive surfaces. */
+.app-shell .card,
+.app-shell .kpi,
+.app-shell .integration-card,
+.app-shell .task-stats > div,
+.app-shell .decision-queue > article,
+.app-shell .operating-system-strip > article,
+.app-shell .pillar-readiness,
+.app-shell .outlet-mapping-panel,
+.app-shell .sample-sync-result {
+  border-color: var(--readable-line);
+  box-shadow: var(--readable-shadow);
+}
+
+.app-shell input,
+.app-shell select,
+.app-shell textarea,
+.app-shell .icon-button,
+.app-shell .secondary,
+.app-shell .check-task {
+  border-color: #aebdce;
+  background-color: #fff;
+}
+
+.app-shell input:focus,
+.app-shell select:focus,
+.app-shell textarea:focus {
+  outline: 3px solid rgba(35,104,196,.18);
+  border-color: #3979be;
+}
+
+.app-shell .kpi-label { font-size: 12px; color: var(--readable-muted); }
+.app-shell .kpi-meta,
+.app-shell .chart-summary small,
+.app-shell .mini span,
+.app-shell .mini > p:last-child,
+.app-shell .task-stats span,
+.app-shell .task-copy p,
+.app-shell .task-copy small,
+.app-shell .action-copy small,
+.app-shell .impact,
+.app-shell .live-label { font-size: 11px; color: var(--readable-muted); }
+.app-shell .action-copy b,
+.app-shell .task-copy b { font-size: 12px; }
+.app-shell .card-head h3,
+.app-shell .mini h3,
+.app-shell .integration-card h3 { font-size: 15px; }
+
+/* Integration readiness contains the account identity and verified-data states. */
+.app-shell .integration-card > p { font-size: 12px; color: var(--readable-muted); }
+.app-shell .status,
+.app-shell .connection-lock,
+.app-shell .provider-actions button { font-size: 11px; }
+.app-shell .connection-readiness { border-color: #37658f; }
+.app-shell .connection-readiness > header p,
+.app-shell .connection-readiness > header strong { font-size: 10px; }
+.app-shell .connection-readiness > header span { font-size: 12px; color: #cfdae7; }
+.app-shell .connection-readiness article { border-color: rgba(255,255,255,.2); background: rgba(255,255,255,.065); }
+.app-shell .connection-readiness article > span { font-size: 9px; }
+.app-shell .connection-readiness article b { font-size: 12px; }
+.app-shell .connection-readiness article small,
+.app-shell .connection-readiness > footer { font-size: 10px; color: #c0cfdf; }
+
+/* Onboarding: the verified identity panel called out by the user. */
+.setup-shell .setup-progress span,
+.setup-shell .setup-progress em,
+.setup-shell .setup-security { font-size: 11px; }
+.setup-shell .setup-step > p { font-size: 14px; color: var(--readable-muted); }
+.setup-shell .verified-identity {
+  border: 2px solid #8fcbb5;
+  background: #f0faf6;
+  box-shadow: 0 5px 16px rgba(29, 112, 82, .09);
+}
+.setup-shell .verified-identity b { font-size: 13px; }
+.setup-shell .verified-identity small { font-size: 12px; color: #466c5d; }
+.setup-shell .field > span,
+.setup-shell .notification-consent { font-size: 12px; }
+.setup-shell .field input { min-height: 44px; font-size: 14px; border-color: #aebdce; }
+.setup-shell .text-action { font-size: 12px; }
+
+/* Governance and settings: account identity, verified email, and provider details. */
+.governance-page { --gov-line: var(--readable-line); }
+.governance-page .governance-tabs button,
+.governance-page .settings-nav > button { font-size: 12px; }
+.governance-page .settings-form > header p { font-size: 10px; }
+.governance-page .settings-form > header span { font-size: 13px; color: var(--readable-muted); }
+.governance-page .settings-grid label { font-size: 12px; }
+.governance-page .settings-grid input,
+.governance-page .settings-grid select { min-height: 44px; font-size: 14px; border-color: #aebdce; }
+.governance-page .settings-grid label small { font-size: 11px; color: var(--readable-muted); }
+.governance-page .setting-toggles > label { border-top-color: var(--readable-line-soft); }
+.governance-page .setting-toggles b { font-size: 12px; }
+.governance-page .setting-toggles small { font-size: 11px; color: var(--readable-muted); }
+.governance-page .provider-settings article { border-top-color: var(--readable-line); }
+.governance-page .provider-settings b { font-size: 13px; }
+.governance-page .provider-settings p { font-size: 12px; color: var(--readable-muted); }
+.governance-page .provider-settings article > span { font-size: 10px; border: 1px solid #cbd5e1; }
+.governance-page .employee-table-head { font-size: 10px; }
+.governance-page .employee-row b { font-size: 12px; }
+.governance-page .employee-row small,
+.governance-page .employee-person em,
+.governance-page .row-actions button,
+.governance-page .row-actions span { font-size: 10px; }
+
+/* Public site: improve supporting copy without disturbing the miniature product preview. */
+.public-site :is(.public-copy, .os-map-copy, .platform-intro, .engine-section, .product-family-section, .connection-section, .how-section, .public-footer) p,
+.public-site :is(.public-copy, .os-map-copy, .platform-intro, .engine-section, .product-family-section, .connection-section, .how-section, .public-footer) small,
+.public-site :is(.public-copy, .os-map-copy, .platform-intro, .engine-section, .product-family-section, .connection-section, .how-section, .public-footer) span {
+  line-height: 1.65;
+}
+.public-site .public-nav a,
+.public-site .public-nav button { font-size: 13px; }
+.public-site .public-copy > p { font-size: 16px; color: #4f556b; }
+.public-site .public-trust span { font-size: 12px; color: #565d72; }
+.public-site .os-map-copy > span,
+.public-site .platform-intro > span,
+.public-site .engine-section > div:first-child > span,
+.public-site .product-family-intro > span,
+.public-site .connection-section > small { font-size: 13px; color: #a9bacd; }
+.public-site .engine-grid p,
+.public-site .product-family-grid p { font-size: 12px; color: #adbed0; }
+.public-site .engine-grid small,
+.public-site .engine-grid span,
+.public-site .product-family-grid small,
+.public-site .product-family-grid article > div > span { font-size: 10px; }
+.public-site .engine-grid article,
+.public-site .product-family-grid article,
+.public-site .os-map { border-color: rgba(255,255,255,.2); box-shadow: 0 12px 30px rgba(0,0,0,.12); }
+.public-site .os-source-row span { font-size: 11px; border-color: rgba(255,255,255,.18); }
+.public-site .os-spine small,
+.public-site .os-decision span { font-size: 10px; }
+
+@media (max-width: 760px) {
+  .nav-item { font-size: 14px; }
+  .public-site .public-copy > p { font-size: 15px; }
+}

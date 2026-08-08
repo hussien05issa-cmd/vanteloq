@@ -6,6 +6,7 @@ import "./bookloq.css";
 import "./governance.css";
 import "./control.css";
 import "./theme.css";
+import "./readability.css";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
