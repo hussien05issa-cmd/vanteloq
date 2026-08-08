@@ -1,4 +1,4 @@
-import { getD1 } from "../db/index.ts";
+import { getD1, getRuntimeEnv } from "../db/index.ts";
 
 const EMAIL_PATTERN = /^[^\s@]{1,64}@[^\s@]{1,190}$/;
 const JSON_CONTENT_TYPE = /^application\/json(?:\s*;|$)/i;
@@ -6,6 +6,8 @@ const JSON_CONTENT_TYPE = /^application\/json(?:\s*;|$)/i;
 export type TrustedIdentity = {
   email: string;
   displayName: string;
+  subject: string | null;
+  provider: "supabase" | "sites";
 };
 
 export class ApiError extends Error {
@@ -23,7 +25,7 @@ export function requestId(request: Request): string {
   return edgeId && edgeId.length <= 64 ? edgeId : crypto.randomUUID();
 }
 
-export function optionalIdentity(request: Request): TrustedIdentity | null {
+function sitesIdentity(request: Request): TrustedIdentity | null {
   const rawEmail = request.headers.get("oai-authenticated-user-email")?.trim().toLowerCase();
   if (!rawEmail || rawEmail.length > 254 || !EMAIL_PATTERN.test(rawEmail)) return null;
 
@@ -41,11 +43,50 @@ export function optionalIdentity(request: Request): TrustedIdentity | null {
     }
   }
 
-  return { email: rawEmail, displayName };
+  return { email: rawEmail, displayName, subject: null, provider: "sites" };
 }
 
-export function requireIdentity(request: Request): TrustedIdentity {
-  const identity = optionalIdentity(request);
+export async function optionalIdentity(request: Request): Promise<TrustedIdentity | null> {
+  const env = getRuntimeEnv();
+  const authorization = request.headers.get("authorization")?.trim() ?? "";
+  const token = /^Bearer\s+([^\s]+)$/i.exec(authorization)?.[1];
+  const url = env.SUPABASE_URL?.trim().replace(/\/$/, "");
+  const publishableKey = env.SUPABASE_PUBLISHABLE_KEY?.trim();
+
+  if (token && url && publishableKey) {
+    try {
+      const response = await fetch(`${url}/auth/v1/user`, {
+        headers: {
+          apikey: publishableKey,
+          authorization: `Bearer ${token}`,
+          accept: "application/json",
+        },
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (!response.ok) return null;
+      const user = await response.json() as {
+        id?: unknown;
+        email?: unknown;
+        user_metadata?: Record<string, unknown>;
+      };
+      const email = typeof user.email === "string" ? user.email.trim().toLowerCase() : "";
+      const subject = typeof user.id === "string" ? user.id : "";
+      if (!subject || !EMAIL_PATTERN.test(email)) return null;
+      const metadataName = user.user_metadata?.full_name;
+      const displayName = typeof metadataName === "string" && metadataName.trim().length <= 120
+        ? metadataName.trim()
+        : email;
+      return { email, displayName, subject, provider: "supabase" };
+    } catch {
+      return null;
+    }
+  }
+
+  return env.SUPABASE_AUTH_MODE === "public" ? null : sitesIdentity(request);
+}
+
+export async function requireIdentity(request: Request): Promise<TrustedIdentity> {
+  const identity = await optionalIdentity(request);
   if (!identity) throw new ApiError(401, "AUTHENTICATION_REQUIRED", "Sign in to continue.");
   return identity;
 }

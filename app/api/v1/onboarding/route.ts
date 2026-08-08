@@ -15,6 +15,7 @@ import {
   requireSameOrigin,
 } from "../../../../server/api";
 import { onboardingInput } from "../../../../server/validation";
+import { bootstrapSupabaseOrganization } from "../../../../server/supabase";
 
 function organizationDto(context: NonNullable<Awaited<ReturnType<typeof findAccessContext>>>) {
   return {
@@ -32,7 +33,7 @@ function organizationDto(context: NonNullable<Awaited<ReturnType<typeof findAcce
 
 export async function GET(request: Request) {
   return handleApi(request, async () => {
-    const identity = optionalIdentity(request);
+    const identity = await optionalIdentity(request);
     if (!identity) return jsonResponse({ authenticated: false, organization: null }, { status: 401 });
     const context = await findAccessContext(identity);
     return jsonResponse({
@@ -47,7 +48,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
-    const identity = requireIdentity(request);
+    const identity = await requireIdentity(request);
     await enforceRateLimit("onboarding:user", identity.email, 5, 3_600);
     const source = clientSource(request);
     if (source !== "unknown") await enforceRateLimit("onboarding:source", source, 20, 3_600);
@@ -56,6 +57,11 @@ export async function POST(request: Request) {
     if (existingAccess) throw new ApiError(409, "WORKSPACE_EXISTS", "This account already belongs to a workspace.");
 
     const input = onboardingInput(await readJsonObject(request));
+    try {
+      await bootstrapSupabaseOrganization(request, input.businessName, identity.subject);
+    } catch {
+      throw new ApiError(503, "ACCOUNT_DATA_UNAVAILABLE", "Secure account setup is temporarily unavailable.");
+    }
     const [existingUser] = await getDb()
       .select({ id: users.id, status: users.status })
       .from(users)

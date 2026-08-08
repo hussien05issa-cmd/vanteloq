@@ -1,6 +1,7 @@
 "use client";
 
 import { startTransition, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { apiFetch } from "./supabase-browser";
 
 type OperationalEvent = {
   id: string;
@@ -38,7 +39,7 @@ export default function CommunicationsWorkspace() {
   const cursor = useRef(0);
 
   const refresh = useCallback(async (signal?: AbortSignal) => {
-    const response = await fetch(`/api/v1/operations?after=${cursor.current}`, { headers: { Accept: "application/json" }, signal });
+    const response = await apiFetch(`/api/v1/operations?after=${cursor.current}`, { headers: { Accept: "application/json" }, signal });
     const body = await response.json() as OperationsFeed & { error?: { message?: string } };
     if (!response.ok) throw new Error(body.error?.message || "The communications feed is unavailable.");
     cursor.current = body.cursor;

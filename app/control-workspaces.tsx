@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { apiFetch } from "./supabase-browser";
 import {
   calculateReorderRecommendation,
   type ReorderInputs,
@@ -196,7 +197,7 @@ export function ReportsWorkspace({
     const id = liveReports[name];
     if (!id) return;
     setLoading(true);
-    const response = await fetch(`/api/v1/reports?report=${id}`);
+    const response = await apiFetch(`/api/v1/reports?report=${id}`);
     const body: unknown = await response.json();
     if (response.ok) setReport(body as Record<string, unknown>);
     else showNotice(apiMessage(body, "Unable to load report."));
@@ -477,7 +478,7 @@ export function PurchaseOrdersWorkspace({
   const [selected, setSelected] = useState<Order | null>(null);
   const load = useCallback(async () => {
     setLoading(true);
-    const response = await fetch("/api/v1/purchasing");
+    const response = await apiFetch("/api/v1/purchasing");
     const body: unknown = await response.json();
     if (response.ok) setData(body as PurchasingData);
     else showNotice(apiMessage(body, "Unable to load purchase orders."));
@@ -488,7 +489,7 @@ export function PurchaseOrdersWorkspace({
     return () => window.clearTimeout(timer);
   }, [load]);
   const action = async (body: Record<string, unknown>) => {
-    const response = await fetch("/api/v1/purchasing", {
+    const response = await apiFetch("/api/v1/purchasing", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -771,7 +772,7 @@ function PurchaseOrderModal({
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const response = await fetch("/api/v1/purchasing", {
+    const response = await apiFetch("/api/v1/purchasing", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -1287,7 +1288,7 @@ export function DocumentsWorkspace({ showNotice }: SharedProps) {
   const [data, setData] = useState<DocumentData | null>(null);
   const [uploading, setUploading] = useState(false);
   const load = useCallback(async () => {
-    const response = await fetch("/api/v1/documents");
+    const response = await apiFetch("/api/v1/documents");
     const body: unknown = await response.json();
     if (response.ok) setData(body as DocumentData);
     else showNotice(apiMessage(body, "Unable to load documents."));
@@ -1302,7 +1303,7 @@ export function DocumentsWorkspace({ showNotice }: SharedProps) {
     const form = new FormData();
     form.set("file", file);
     form.set("documentType", documentType);
-    const response = await fetch("/api/v1/documents", {
+    const response = await apiFetch("/api/v1/documents", {
       method: "POST",
       body: form,
     });
@@ -1448,7 +1449,7 @@ type QualityData = {
 export function DataQualityWorkspace({ showNotice, createTask }: SharedProps) {
   const [data, setData] = useState<QualityData | null>(null);
   const load = useCallback(async () => {
-    const response = await fetch("/api/v1/data-quality");
+    const response = await apiFetch("/api/v1/data-quality");
     const body: unknown = await response.json();
     if (response.ok) setData(body as QualityData);
     else showNotice(apiMessage(body, "Unable to load data quality."));

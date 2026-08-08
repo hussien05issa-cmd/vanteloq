@@ -14,6 +14,8 @@ export type VanteloqRuntimeEnv = {
   INTEGRATION_ENCRYPTION_KEY?: string;
   SUPABASE_URL?: string;
   SUPABASE_SECRET_KEY?: string;
+  SUPABASE_PUBLISHABLE_KEY?: string;
+  SUPABASE_AUTH_MODE?: string;
   SUPABASE_SCHEMA?: string;
   SUPABASE_BACKEND_MODE?: string;
   BOOKLOQ_DEMO_ENABLED?: string;

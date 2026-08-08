@@ -20,6 +20,8 @@ interface Env {
   INTEGRATION_ENCRYPTION_KEY?: string;
   SUPABASE_URL?: string;
   SUPABASE_SECRET_KEY?: string;
+  SUPABASE_PUBLISHABLE_KEY?: string;
+  SUPABASE_AUTH_MODE?: string;
   SUPABASE_SCHEMA?: string;
   SUPABASE_BACKEND_MODE?: string;
   BOOKLOQ_DEMO_ENABLED?: string;
@@ -64,7 +66,7 @@ const worker = {
     headers.set("Content-Security-Policy", "frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
     headers.set(
       "Content-Security-Policy-Report-Only",
-      "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; frame-src 'none'; worker-src 'self'; manifest-src 'self'",
+      "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://*.supabase.co wss://*.supabase.co; object-src 'none'; frame-src 'none'; worker-src 'self'; manifest-src 'self'",
     );
     if (url.protocol === "https:") headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
     if (url.pathname.startsWith("/api/")) {

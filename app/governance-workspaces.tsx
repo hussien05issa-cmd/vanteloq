@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
+import { apiFetch } from "./supabase-browser";
 
 type Permission = {
   key: string;
@@ -112,7 +113,7 @@ function message(data: unknown, fallback: string) {
 }
 
 async function governanceAction(body: Record<string, unknown>) {
-  const response = await fetch("/api/v1/governance", {
+  const response = await apiFetch("/api/v1/governance", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -130,7 +131,7 @@ function useGovernance() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await fetch("/api/v1/governance", {
+      const response = await apiFetch("/api/v1/governance", {
         headers: { Accept: "application/json" },
       });
       const body = await response.json();
@@ -1508,7 +1509,7 @@ function BrandingSettings({
     const form = new FormData();
     form.set("logo", file);
     form.set("altText", `${data.organization.displayName} logo`);
-    const response = await fetch("/api/v1/organization-logo", {
+    const response = await apiFetch("/api/v1/organization-logo", {
       method: "POST",
       body: form,
     });
@@ -1524,7 +1525,7 @@ function BrandingSettings({
     setSaving(false);
   };
   const remove = async () => {
-    const response = await fetch("/api/v1/organization-logo", {
+    const response = await apiFetch("/api/v1/organization-logo", {
       method: "DELETE",
     });
     if (response.ok) {

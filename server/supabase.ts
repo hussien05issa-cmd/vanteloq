@@ -95,3 +95,45 @@ export async function probeSupabaseBackend(
     return { mode: config.mode, configured: true, status: "unreachable", schemaVersion: null, checkedAt };
   }
 }
+
+export async function bootstrapSupabaseOrganization(
+  request: Request,
+  name: string,
+  createdBy: string | null,
+): Promise<string | null> {
+  const env = getRuntimeEnv();
+  if (env.SUPABASE_AUTH_MODE !== "public") return null;
+  const url = safeUrl(clean(env.SUPABASE_URL));
+  const publishableKey = clean(env.SUPABASE_PUBLISHABLE_KEY);
+  const authorization = request.headers.get("authorization")?.trim();
+  if (!url || !publishableKey || !authorization?.startsWith("Bearer ") || !createdBy) {
+    throw new Error("Supabase organization bootstrap is not configured.");
+  }
+  const headers = { apikey: publishableKey, authorization, accept: "application/json" };
+  const existingResponse = await fetch(
+    `${url}/rest/v1/memberships?select=organization_id&status=eq.active&limit=1`,
+    { headers, signal: AbortSignal.timeout(7_500) },
+  );
+  if (!existingResponse.ok) throw new Error("Supabase membership lookup failed.");
+  const existing = await existingResponse.json() as Array<{ organization_id?: unknown }>;
+  if (typeof existing[0]?.organization_id === "string") return existing[0].organization_id;
+
+  const slugBase = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 48) || "workspace";
+  const response = await fetch(`${url}/rest/v1/organizations?select=id`, {
+    method: "POST",
+    headers: {
+      ...headers,
+      "content-type": "application/json",
+      prefer: "return=representation",
+    },
+    body: JSON.stringify({
+      name,
+      slug: `${slugBase}-${crypto.randomUUID().replaceAll("-", "").slice(0, 8)}`,
+      created_by: createdBy,
+    }),
+    signal: AbortSignal.timeout(7_500),
+  });
+  if (!response.ok) throw new Error("Supabase organization bootstrap failed.");
+  const organizations = await response.json() as Array<{ id?: unknown }>;
+  return typeof organizations[0]?.id === "string" ? organizations[0].id : null;
+}

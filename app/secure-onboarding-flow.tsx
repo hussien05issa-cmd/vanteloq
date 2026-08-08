@@ -8,6 +8,7 @@ import {
   validPostalCode,
 } from "./address-data";
 import ProductBrandLogo from "./product-brand-logo";
+import { apiFetch } from "./supabase-browser";
 
 type Hour = { day: string; open: string; close: string; closed: boolean };
 type SourceMode = "connect_later" | "csv" | "live";
@@ -152,7 +153,7 @@ export default function SecureOnboardingFlow({
     setSaving(true);
     setError("");
     try {
-      const response = await fetch("/api/v1/onboarding", {
+      const response = await apiFetch("/api/v1/onboarding", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...form, hours }),
@@ -162,12 +163,12 @@ export default function SecureOnboardingFlow({
         return setError(messageFrom(data, "Unable to create the workspace."));
       if (logoFile) {
         try {
-          await fetch("/api/v1/governance", {
+          await apiFetch("/api/v1/governance", {
             headers: { Accept: "application/json" },
           });
           const logo = new FormData();
           logo.set("logo", logoFile);
-          await fetch("/api/v1/organization-logo", {
+          await apiFetch("/api/v1/organization-logo", {
             method: "POST",
             body: logo,
           });

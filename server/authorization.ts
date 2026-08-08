@@ -43,7 +43,7 @@ export async function requireAccess(
   request: Request,
   allowedRoles: readonly Role[],
 ): Promise<AccessContext> {
-  const identity = requireIdentity(request);
+  const identity = await requireIdentity(request);
   const context = await findAccessContext(identity);
   if (!context) throw new ApiError(403, "MEMBERSHIP_REQUIRED", "This account does not have access to a workspace.");
   if (!allowedRoles.includes(context.role)) {
@@ -51,4 +51,3 @@ export async function requireAccess(
   }
   return context;
 }
-

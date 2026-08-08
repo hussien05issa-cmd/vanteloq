@@ -11,6 +11,7 @@ import {
   type IntegrationCatalogEntry,
 } from "./integration-catalog";
 import ProductBrandLogo from "./product-brand-logo";
+import { apiFetch, signOut } from "./supabase-browser";
 import {
   BusinessTrendChart,
   CashPositionRing,
@@ -510,7 +511,7 @@ export default function VanteloqApp({
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await fetch("/api/v1/command-centre", {
+      const response = await apiFetch("/api/v1/command-centre", {
         headers: { Accept: "application/json" },
       });
       const body = await response.json();
@@ -696,9 +697,9 @@ export default function VanteloqApp({
               <b>{accountName}</b>
               <small>{appRole.replaceAll("_", " ")}</small>
             </span>
-            <a aria-label="Sign out" href="/signout-with-chatgpt?return_to=/">
+            <button className="profile-signout" aria-label="Sign out" onClick={() => void signOut()}>
               ↗
-            </a>
+            </button>
           </div>
         </div>
       </aside>
@@ -1488,7 +1489,7 @@ function TaskCentre({
   const [error, setError] = useState("");
   const load = useCallback(async () => {
     try {
-      const response = await fetch("/api/v1/tasks");
+      const response = await apiFetch("/api/v1/tasks");
       const body = await response.json();
       if (!response.ok)
         throw new Error(body.error?.message ?? "Unable to load actions.");
@@ -1507,7 +1508,7 @@ function TaskCentre({
     return () => window.clearTimeout(timer);
   }, [load]);
   const update = async (task: Task, status: Task["status"]) => {
-    const response = await fetch("/api/v1/tasks", {
+    const response = await apiFetch("/api/v1/tasks", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: task.id, status }),
@@ -1645,7 +1646,7 @@ function TaskComposer({
     setSaving(true);
     setError("");
     const form = new FormData(event.currentTarget);
-    const response = await fetch("/api/v1/tasks", {
+    const response = await apiFetch("/api/v1/tasks", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -1795,7 +1796,7 @@ function DataHub({
     setConnectionsLoading(true);
     setConnectionError("");
     try {
-      const response = await fetch("/api/v1/integrations", {
+      const response = await apiFetch("/api/v1/integrations", {
         headers: { Accept: "application/json" },
       });
       const body = await response.json();
@@ -1822,7 +1823,7 @@ function DataHub({
   const providerPost = async (path: string, action: string) => {
     setProviderAction(action);
     try {
-      const response = await fetch(path, {
+      const response = await apiFetch(path, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: "{}",
@@ -1872,7 +1873,7 @@ function DataHub({
   const loadLightspeedLocations = async (provider: "lightspeed" | "lightspeed-r") => {
     setProviderAction(`locations:${provider}`);
     try {
-      const response = await fetch(`/api/v1/integrations/${provider}/${provider === "lightspeed-r" ? "shops" : "outlets"}`, {
+      const response = await apiFetch(`/api/v1/integrations/${provider}/${provider === "lightspeed-r" ? "shops" : "outlets"}`, {
         headers: { Accept: "application/json" },
       });
       const body = await response.json();
@@ -1893,7 +1894,7 @@ function DataHub({
     try {
       const status = selection === "__ignored__" ? "ignored" : selection ? "mapped" : "unmapped";
       const provider = outletData?.provider ?? activeLightspeedProvider;
-      const response = await fetch(`/api/v1/integrations/${provider}/${provider === "lightspeed-r" ? "shops" : "outlets"}`, {
+      const response = await apiFetch(`/api/v1/integrations/${provider}/${provider === "lightspeed-r" ? "shops" : "outlets"}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -2207,7 +2208,7 @@ function DailyImport({
     importType: string,
     fileName = "",
   ) => {
-    const response = await fetch("/api/v1/daily-metrics", {
+    const response = await apiFetch("/api/v1/daily-metrics", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -2443,7 +2444,7 @@ function DecisionJournal({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const load = useCallback(async () => {
-    const response = await fetch("/api/v1/events");
+    const response = await apiFetch("/api/v1/events");
     const body = await response.json();
     if (response.ok) setEvents(body.events);
     else setError(body.error?.message ?? "Unable to load business memory.");
@@ -2456,7 +2457,7 @@ function DecisionJournal({
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const response = await fetch("/api/v1/events", {
+    const response = await apiFetch("/api/v1/events", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

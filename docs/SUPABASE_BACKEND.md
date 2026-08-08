@@ -1,5 +1,11 @@
 # Supabase backend transition
 
+Public account sessions use Supabase Auth. The browser receives only
+`NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`; API routes
+validate bearer sessions against Supabase before resolving the existing
+workspace and role. Set `SUPABASE_AUTH_MODE=public` only after the Sites access
+policy is public and the production variables are deployed.
+
 Vanteloq currently keeps its operating source of truth in Sites-managed D1 and
 its files in R2. Supabase is introduced behind a server-only readiness boundary
 so the team can validate schema, authorization, reconciliation, and rollback
