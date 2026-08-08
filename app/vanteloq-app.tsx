@@ -382,6 +382,26 @@ type Insight = {
   missingInformation: string[];
   suggestedTask: TaskSeed;
 };
+type MetricProvenance = {
+  metricId: string;
+  metricName: string;
+  actuality: "actual" | "estimate" | "forecast" | "unavailable";
+  periodStart: string | null;
+  periodEnd: string | null;
+  comparisonPeriodStart: string | null;
+  comparisonPeriodEnd: string | null;
+  sourceSystem: string;
+  sourceAccount: string;
+  sourceRecords: number;
+  sourceTimestamp: string | null;
+  calculationMethod: string;
+  calculationVersion: string;
+  freshnessStatus: "current" | "aging" | "stale" | "missing";
+  confidenceLevel: "high" | "medium" | "low" | "unavailable";
+  confidenceBasis: string[];
+  limitations: string[];
+  generatedAt: string;
+};
 type CommandCentre = {
   ready: boolean;
   source: {
@@ -404,6 +424,7 @@ type CommandCentre = {
     cashBalanceCents: number | null;
     accountsPayableCents: number | null;
   } | null;
+  metrics: Record<string, MetricProvenance>;
   trend: { date: string; netSalesCents: number; grossProfitCents: number }[];
   insights: Insight[];
   dataQuality: {
@@ -994,6 +1015,7 @@ function Overview({
           detail={`${current.days} verified days`}
           tone="indigo"
           sparkline={salesTrend}
+          provenance={data.metrics.net_sales}
         />
         <Metric
           label="Gross profit"
@@ -1002,6 +1024,7 @@ function Overview({
           detail="Net sales less product cost"
           tone="emerald"
           sparkline={profitTrend}
+          provenance={data.metrics.gross_profit}
         />
         <Metric
           label="Gross margin"
@@ -1014,6 +1037,7 @@ function Overview({
           detail="Weighted for the period"
           tone="cyan"
           sparkline={marginTrend}
+          provenance={data.metrics.gross_margin}
         />
         <Metric
           label="Avg. transaction"
@@ -1021,6 +1045,7 @@ function Overview({
           delta={percent(data.comparisons?.averageTransactionRate)}
           detail={`${current.transactionCount.toLocaleString()} transactions`}
           tone="amber"
+          provenance={data.metrics.average_transaction}
         />
         <Metric
           label="Contribution"
@@ -1028,6 +1053,7 @@ function Overview({
           delta={percent(current.labourRate)}
           detail="After product and labour cost"
           tone="rose"
+          provenance={data.metrics.contribution_after_labour}
         />
       </section>
       <section className="command-grid">
@@ -1089,6 +1115,7 @@ function Metric({
   detail,
   tone = "indigo",
   sparkline,
+  provenance,
 }: {
   label: string;
   value: string;
@@ -1096,6 +1123,7 @@ function Metric({
   detail: string;
   tone?: Tone;
   sparkline?: number[];
+  provenance?: MetricProvenance;
 }) {
   return (
     <article className={`metric-card metric-${tone}`}>
@@ -1104,6 +1132,35 @@ function Metric({
       <span>{delta}</span>
       {sparkline?.length ? <MetricSparkline values={sparkline} tone={tone} /> : <i className="metric-accent" aria-hidden="true" />}
       <small>{detail}</small>
+      {provenance && (
+        <details className="metric-evidence">
+          <summary>
+            <span>{provenance.actuality}</span>
+            <b>{provenance.confidenceLevel} confidence</b>
+          </summary>
+          <div>
+            <dl>
+              <dt>Source</dt>
+              <dd>{provenance.sourceSystem} · {provenance.sourceAccount}</dd>
+              <dt>Records</dt>
+              <dd>{provenance.sourceRecords.toLocaleString()}</dd>
+              <dt>Period</dt>
+              <dd>{provenance.periodStart} → {provenance.periodEnd}</dd>
+              <dt>Comparison</dt>
+              <dd>{provenance.comparisonPeriodStart} → {provenance.comparisonPeriodEnd}</dd>
+              <dt>Calculation</dt>
+              <dd>{provenance.calculationMethod}</dd>
+              <dt>Version</dt>
+              <dd>{provenance.calculationVersion}</dd>
+              <dt>Freshness</dt>
+              <dd>{provenance.freshnessStatus}</dd>
+              <dt>Updated</dt>
+              <dd>{provenance.sourceTimestamp ? new Intl.DateTimeFormat("en-CA", { dateStyle: "medium", timeStyle: "short" }).format(new Date(provenance.sourceTimestamp)) : "Source timestamp unavailable"}</dd>
+            </dl>
+            <p>{provenance.confidenceBasis.join(" · ")}</p>
+          </div>
+        </details>
+      )}
     </article>
   );
 }

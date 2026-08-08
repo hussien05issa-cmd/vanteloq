@@ -1,3 +1,5 @@
+import { buildMetricResults, type FreshnessStatus } from "./data-trust.ts";
+
 export type MetricRow = {
   businessDate: string;
   grossSalesCents: number;
@@ -11,6 +13,9 @@ export type MetricRow = {
   inventoryValueCents: number | null;
   cashBalanceCents: number | null;
   accountsPayableCents: number | null;
+  sourceImportId?: string | null;
+  locationRef?: string;
+  updatedAt?: Date | number | string | null;
 };
 
 type Totals = {
@@ -212,6 +217,7 @@ export function buildCommandCentre(rows: MetricRow[], currency: string) {
       previous: null,
       comparisons: null,
       balances: null,
+      metrics: {},
       trend: [],
       insights: [],
       dataQuality: { status: "blocked", verifiedFields: 0, missingDimensions: ["Daily sales summaries", "Product and category detail", "Inventory movement", "Customer identity", "Marketing spend", "Shift-level labour"] },
@@ -227,19 +233,50 @@ export function buildCommandCentre(rows: MetricRow[], currency: string) {
   const previous = sum(previousRows);
   const latestWith = <K extends keyof MetricRow>(key: K) => [...sorted].reverse().find((row) => row[key] !== null)?.[key] ?? null;
   const latestAgeDays = Math.max(0, Math.floor((Date.now() - Date.parse(`${latestBusinessDate}T23:59:59Z`)) / 86_400_000));
+  const freshness: FreshnessStatus = latestAgeDays <= 1 ? "current" : latestAgeDays <= 7 ? "aging" : "stale";
+  const comparisons = {
+    netSalesRate: percentChange(current.netSalesCents, previous.netSalesCents),
+    grossProfitRate: percentChange(current.grossProfitCents, previous.grossProfitCents),
+    transactionRate: percentChange(current.transactionCount, previous.transactionCount),
+    averageTransactionRate: current.averageTransactionCents !== null && previous.averageTransactionCents !== null ? percentChange(current.averageTransactionCents, previous.averageTransactionCents) : null,
+    marginPointChange: current.grossMarginRate !== null && previous.grossMarginRate !== null ? current.grossMarginRate - previous.grossMarginRate : null,
+  };
+  const metrics = buildMetricResults({
+    rows: currentRows,
+    currency,
+    periodStart: currentStart,
+    periodEnd: latestBusinessDate,
+    comparisonPeriodStart: previousStart,
+    comparisonPeriodEnd: previousEnd,
+    freshnessStatus: freshness,
+    values: {
+      gross_sales: current.grossSalesCents,
+      net_sales: current.netSalesCents,
+      cost_of_goods: current.costOfGoodsCents,
+      gross_profit: current.grossProfitCents,
+      gross_margin: current.grossMarginRate,
+      transactions: current.transactionCount,
+      average_transaction: current.averageTransactionCents,
+      units: current.unitsSold,
+      units_per_transaction: current.unitsPerTransaction,
+      discounts: current.discountsCents,
+      refunds: current.refundsCents,
+      labour_cost: current.labourCostCents,
+      labour_rate: current.labourRate,
+      contribution_after_labour: current.contributionCents,
+      inventory_value: latestWith("inventoryValueCents") as number | null,
+      operating_cash: latestWith("cashBalanceCents") as number | null,
+      accounts_payable: latestWith("accountsPayableCents") as number | null,
+    },
+  });
   return {
     ready: true,
-    source: { rowCount: sorted.length, latestBusinessDate, freshness: latestAgeDays <= 1 ? "current" : latestAgeDays <= 7 ? "aging" : "stale", ageDays: latestAgeDays },
+    source: { rowCount: sorted.length, latestBusinessDate, freshness, ageDays: latestAgeDays },
     current,
     previous,
-    comparisons: {
-      netSalesRate: percentChange(current.netSalesCents, previous.netSalesCents),
-      grossProfitRate: percentChange(current.grossProfitCents, previous.grossProfitCents),
-      transactionRate: percentChange(current.transactionCount, previous.transactionCount),
-      averageTransactionRate: current.averageTransactionCents !== null && previous.averageTransactionCents !== null ? percentChange(current.averageTransactionCents, previous.averageTransactionCents) : null,
-      marginPointChange: current.grossMarginRate !== null && previous.grossMarginRate !== null ? current.grossMarginRate - previous.grossMarginRate : null,
-    },
+    comparisons,
     balances: { inventoryValueCents: latestWith("inventoryValueCents"), cashBalanceCents: latestWith("cashBalanceCents"), accountsPayableCents: latestWith("accountsPayableCents") },
+    metrics,
     trend: currentRows.slice(-14).map((row) => ({ date: row.businessDate, netSalesCents: row.netSalesCents, grossProfitCents: row.netSalesCents - row.costOfGoodsCents })),
     insights: buildInsights(current, previous, currency),
     dataQuality: { status: previous.days >= 7 ? "usable" : "limited", verifiedFields: 10, missingDimensions: ["Product and category detail", "Customer identity", "Marketing attribution", "Hourly traffic", "Supplier invoices"] },

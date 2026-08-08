@@ -98,6 +98,19 @@ body {
 .app-shell .mini h3,
 .app-shell .integration-card h3 { font-size: 15px; }
 
+.metric-evidence { grid-column: 1 / -1; margin-top: 10px; border-top: 1px solid var(--readable-line-soft); }
+.metric-evidence summary { min-height: 34px; display: flex; align-items: center; justify-content: space-between; gap: 8px; cursor: pointer; color: #34526f; font-size: 10px; list-style: none; }
+.metric-evidence summary::-webkit-details-marker { display: none; }
+.metric-evidence summary::before { content: "＋"; color: #2d6cae; font-weight: 800; }
+.metric-evidence[open] summary::before { content: "−"; }
+.metric-evidence summary span { margin-right: auto; text-transform: uppercase; letter-spacing: .65px; font-weight: 800; }
+.metric-evidence summary b { border: 1px solid #c9d7e6; border-radius: 999px; padding: 3px 6px; color: #365f87; background: #f2f7fc; font-size: 9px; text-transform: capitalize; }
+.metric-evidence > div { padding: 2px 0 8px; }
+.metric-evidence dl { display: grid; grid-template-columns: 72px 1fr; gap: 5px 8px; margin: 0; font-size: 10px; line-height: 1.45; }
+.metric-evidence dt { color: #718096; }
+.metric-evidence dd { margin: 0; color: #253b53; overflow-wrap: anywhere; }
+.metric-evidence p { margin: 8px 0 0; color: #5e6f82; font-size: 9px; line-height: 1.5; }
+
 /* Integration readiness contains the account identity and verified-data states. */
 .app-shell .integration-card > p { font-size: 12px; color: var(--readable-muted); }
 .app-shell .status,

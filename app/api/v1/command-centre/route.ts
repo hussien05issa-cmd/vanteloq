@@ -29,6 +29,9 @@ export async function GET(request: Request) {
         inventoryValueCents: dailyBusinessMetrics.inventoryValueCents,
         cashBalanceCents: dailyBusinessMetrics.cashBalanceCents,
         accountsPayableCents: dailyBusinessMetrics.accountsPayableCents,
+        sourceImportId: dailyBusinessMetrics.sourceImportId,
+        locationRef: dailyBusinessMetrics.locationRef,
+        updatedAt: dailyBusinessMetrics.updatedAt,
       })
       .from(dailyBusinessMetrics)
       .where(eq(dailyBusinessMetrics.organizationId, context.organizationId))
@@ -42,6 +45,7 @@ export async function GET(request: Request) {
       if (commandCentre.previous) Object.assign(commandCentre.previous, { costOfGoodsCents: null, grossProfitCents: null, contributionCents: null, grossMarginRate: null });
       if (commandCentre.comparisons) Object.assign(commandCentre.comparisons, { grossProfitRate: null, marginPointChange: null });
       commandCentre.trend = [];
+      for (const key of ["cost_of_goods", "gross_profit", "gross_margin", "contribution_after_labour", "labour_cost", "labour_rate"]) delete commandCentre.metrics[key];
       commandCentre.insights = commandCentre.insights.filter((insight) => insight.id !== "margin-trend" && insight.id !== "labour-pressure");
     }
     if (commandCentre.current && !permissions.includes("metrics.revenue")) {
@@ -49,8 +53,13 @@ export async function GET(request: Request) {
       if (commandCentre.previous) Object.assign(commandCentre.previous, { grossSalesCents: null, netSalesCents: null, transactionCount: null, unitsSold: null, refundsCents: null, discountsCents: null, averageTransactionCents: null, unitsPerTransaction: null, discountRate: null });
       commandCentre.trend = [];
       commandCentre.insights = [];
+      for (const key of ["gross_sales", "net_sales", "transactions", "average_transaction", "units", "units_per_transaction", "discounts", "refunds"]) delete commandCentre.metrics[key];
     }
-    if (commandCentre.balances && !permissions.includes("metrics.cash")) Object.assign(commandCentre.balances, { cashBalanceCents: null, accountsPayableCents: null });
+    if (commandCentre.balances && !permissions.includes("metrics.cash")) {
+      Object.assign(commandCentre.balances, { cashBalanceCents: null, accountsPayableCents: null });
+      delete commandCentre.metrics.operating_cash;
+      delete commandCentre.metrics.accounts_payable;
+    }
     const operatingSystem = buildOperatingSystem({
       ready: commandCentre.ready,
       currency: context.organization.currency,
