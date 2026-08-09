@@ -18,7 +18,9 @@
     "audit:dependencies": "npm audit --omit=dev --audit-level=high",
     "validate:artifact": "bash scripts/validate-artifact.sh",
     "lint": "bash scripts/sites-env.sh -- eslint . --ignore-pattern dist --ignore-pattern .next",
-    "db:generate": "bash scripts/sites-env.sh -- drizzle-kit generate"
+    "db:generate": "bash scripts/sites-env.sh -- drizzle-kit generate",
+    "email:validate": "node scripts/deploy-auth-email-templates.mjs --dry-run",
+    "email:deploy": "node scripts/deploy-auth-email-templates.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.2",
