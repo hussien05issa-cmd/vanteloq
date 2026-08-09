@@ -92,14 +92,26 @@ test("the Lightspeed callback rejects malformed one-time state before database a
   assert.equal((await response.json()).error.code, "LIGHTSPEED_CALLBACK_INVALID");
 });
 
-test("the R-Series callback requires the initiating signed-in owner", async () => {
+test("the R-Series callback rejects malformed one-time state before database access", async () => {
   const worker = await loadWorker();
   const response = await worker.fetch(new Request(
     "https://vanteloq.example/api/v1/integrations/lightspeed-r/callback?code=test-code&state=state-with-entropy",
     { headers: { accept: "application/json" } },
   ), environment, context);
-  assert.equal(response.status, 401);
-  assert.equal((await response.json()).error.code, "AUTHENTICATION_REQUIRED");
+  assert.equal(response.status, 400);
+  assert.equal((await response.json()).error.code, "LIGHTSPEED_R_CALLBACK_INVALID");
+});
+
+test("the R-Series callback binds the provider redirect to a one-time initiating owner", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) => readFile(
+    `${process.cwd()}/app/api/v1/integrations/lightspeed-r/callback/route.ts`,
+    "utf8",
+  ));
+  assert.doesNotMatch(source, /requireAccess\(request/);
+  assert.match(source, /eq\(users\.id, stored\.actorUserId\)/);
+  assert.match(source, /eq\(memberships\.organizationId, stored\.organizationId\)/);
+  assert.match(source, /isNull\(integrationOAuthStates\.consumedAt\)/);
+  assert.match(source, /returning\(\{ stateHash: integrationOAuthStates\.stateHash \}\)/);
 });
 
 test("the Stripe callback requires the initiating signed-in owner", async () => {

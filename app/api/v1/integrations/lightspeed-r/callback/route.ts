@@ -1,8 +1,16 @@
 import { and, eq, gt, isNull } from "drizzle-orm";
 import { getDb } from "../../../../../../db";
-import { integrationConnections, integrationLocationMappings, integrationOAuthStates, integrationSecrets } from "../../../../../../db/schema";
+import {
+  integrationConnections,
+  integrationLocationMappings,
+  integrationOAuthStates,
+  integrationSecrets,
+  memberships,
+  users,
+  workspaces,
+} from "../../../../../../db/schema";
 import { recordAudit } from "../../../../../../server/audit";
-import { requireAccess } from "../../../../../../server/authorization";
+import type { AccessContext } from "../../../../../../server/authorization";
 import { ApiError, handleApi } from "../../../../../../server/api";
 import {
   exchangeLightspeedRCode, fetchLightspeedRAccount, fetchLightspeedRCollection,
@@ -22,20 +30,74 @@ export async function GET(request: Request) {
     if (url.searchParams.get("error")) return Response.redirect(returnUrl(request, "declined"), 303);
     const code = url.searchParams.get("code")?.trim() ?? "";
     const state = url.searchParams.get("state")?.trim() ?? "";
-    if (!code || code.length > 512 || !state || state.length > 512) throw new ApiError(400, "LIGHTSPEED_R_CALLBACK_INVALID", "R-Series returned an incomplete callback.");
-    const context = await requireAccess(request, ["owner", "admin"]);
-    await requirePermission(context, "integrations.manage");
+    // R-Series authorization codes are opaque and can be substantially longer
+    // than a conventional short code. Bound the input without imposing an
+    // undocumented provider-specific 512-character limit.
+    if (!code || code.length > 4096 || !/^[A-Za-z0-9_-]{43}$/.test(state)) {
+      throw new ApiError(400, "LIGHTSPEED_R_CALLBACK_INVALID", "R-Series returned an incomplete callback.");
+    }
     const stateHash = await lightspeedRSha256(state);
     const now = new Date();
     const [stored] = await getDb().select().from(integrationOAuthStates).where(and(
       eq(integrationOAuthStates.stateHash, stateHash),
       eq(integrationOAuthStates.provider, LIGHTSPEED_R_PROVIDER),
-      eq(integrationOAuthStates.organizationId, context.organizationId),
-      eq(integrationOAuthStates.actorUserId, context.userId),
       isNull(integrationOAuthStates.consumedAt), gt(integrationOAuthStates.expiresAt, now),
     )).limit(1);
     if (!stored) throw new ApiError(400, "LIGHTSPEED_R_STATE_INVALID", "The R-Series authorization attempt expired or was already used. Start again.");
-    await getDb().update(integrationOAuthStates).set({ consumedAt: now }).where(eq(integrationOAuthStates.stateHash, stateHash));
+
+    // The browser's Supabase session lives in browser storage and cannot be
+    // attached as an Authorization header to Lightspeed's top-level redirect.
+    // The unguessable, one-time state identifies the exact initiating actor and
+    // workspace. Re-check that actor's current status, role and permission before
+    // consuming the state or storing any provider credential.
+    const [actor] = await getDb().select({
+      userId: users.id,
+      email: users.email,
+      displayName: users.displayName,
+      authSubject: users.authSubject,
+      authProvider: users.authProvider,
+      role: memberships.role,
+      organizationId: memberships.organizationId,
+      organization: workspaces,
+    }).from(users).innerJoin(memberships, and(
+      eq(memberships.userId, users.id),
+      eq(memberships.organizationId, stored.organizationId),
+    )).innerJoin(workspaces, eq(workspaces.id, memberships.organizationId)).where(and(
+      eq(users.id, stored.actorUserId),
+      eq(users.status, "active"),
+      eq(memberships.status, "active"),
+    )).limit(1);
+    if (!actor || (actor.role !== "owner" && actor.role !== "admin")) {
+      throw new ApiError(403, "LIGHTSPEED_R_INITIATOR_INELIGIBLE", "The account that started this connection can no longer manage integrations.");
+    }
+    const context: AccessContext = {
+      identity: {
+        email: actor.email,
+        displayName: actor.displayName,
+        subject: actor.authSubject,
+        provider: actor.authProvider ?? "sites",
+        emailVerified: true,
+        assuranceLevel: null,
+        sessionId: null,
+      },
+      userId: actor.userId,
+      organizationId: actor.organizationId,
+      role: actor.role,
+      authSubject: actor.authSubject,
+      authProvider: actor.authProvider,
+      organization: actor.organization,
+    };
+    await requirePermission(context, "integrations.manage");
+
+    const [consumedState] = await getDb().update(integrationOAuthStates).set({ consumedAt: now }).where(and(
+      eq(integrationOAuthStates.stateHash, stateHash),
+      eq(integrationOAuthStates.provider, LIGHTSPEED_R_PROVIDER),
+      isNull(integrationOAuthStates.consumedAt),
+      gt(integrationOAuthStates.expiresAt, now),
+    )).returning({ stateHash: integrationOAuthStates.stateHash });
+    if (!consumedState) {
+      throw new ApiError(400, "LIGHTSPEED_R_STATE_INVALID", "The R-Series authorization attempt expired or was already used. Start again.");
+    }
 
     try {
       const token = await exchangeLightspeedRCode(code);

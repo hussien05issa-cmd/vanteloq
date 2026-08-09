@@ -56,6 +56,16 @@ test("R-Series authorization uses the official multi-account OAuth endpoint and 
   assert.doesNotMatch(url.toString(), /test-r-client-secret/);
 });
 
+test("R-Series callback accepts the provider's long opaque authorization code shape", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) => readFile(
+    `${process.cwd()}/app/api/v1/integrations/lightspeed-r/callback/route.ts`,
+    "utf8",
+  ));
+  assert.match(source, /code\.length > 4096/);
+  assert.doesNotMatch(source, /code\.length > 512/);
+  assert.match(source, /\^\[A-Za-z0-9_-\]\{43\}\$/);
+});
+
 test("R-Series readiness is independently configured and promotion stays disabled", () => {
   const readiness = lightspeedRReadiness();
   assert.equal(readiness.adapterBuilt, true);
