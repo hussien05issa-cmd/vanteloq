@@ -80,3 +80,12 @@ test("account access includes confirmation recovery and a complete password-rese
   assert.match(home, /event === "SIGNED_IN"[\s\S]{0,300}loadWorkspace\(session\)/);
   assert.match(home, /entry === "load-error"/);
 });
+
+test("the founder account has a real Supabase MFA enrollment and challenge flow", async () => {
+  const source = await readFile(new URL("../app/founder-mfa-gate.tsx", import.meta.url), "utf8");
+  assert.match(source, /auth\.mfa\.enroll/);
+  assert.match(source, /auth\.mfa\.challenge/);
+  assert.match(source, /auth\.mfa\.verify/);
+  assert.match(source, /getAuthenticatorAssuranceLevel/);
+  assert.match(source, /hussienissa@lexedgeconsulting\.com/);
+});

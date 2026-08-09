@@ -7,6 +7,7 @@ import VanteloqApp from "./vanteloq-app";
 import IntegrationBrandLogo from "./integration-brand-logo";
 import ProductBrandLogo from "./product-brand-logo";
 import AuthPanel, { type AuthPanelMode } from "./auth-panel";
+import FounderMfaGate from "./founder-mfa-gate";
 import { currentSession, getSupabase, signOut } from "./supabase-browser";
 
 export default function Home() {
@@ -164,7 +165,7 @@ export default function Home() {
 
   if (entry === "landing") return <><LandingPage start={openAuth}/>{authOpen && <AuthPanel initialMode={authMode} close={closeAuth} authenticated={session => void loadWorkspace(session)}/>}</>;
   if (entry === "signup") return <SecureOnboardingFlow accountName={accountName} accountEmail={accountEmail} signOut={() => void signOut()} complete={(business, owner) => { setOrganizationName(business); setAccountName(owner); setEntry("app"); }}/>;
-  return <VanteloqApp organizationName={organizationName} accountName={accountName}/>;
+  return <FounderMfaGate email={accountEmail}><VanteloqApp organizationName={organizationName} accountName={accountName}/></FounderMfaGate>;
 }
 
 function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) {

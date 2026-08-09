@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { getDb } from "../db";
 import { memberships, users, workspaces } from "../db/schema";
 import { ApiError, requireIdentity, type TrustedIdentity } from "./api";
+import { bootstrapFounderInternalAccess } from "./internal-access";
 
 export type Role = "owner" | "admin" | "manager" | "employee" | "read_only" | "integration";
 
@@ -10,6 +11,8 @@ export type AccessContext = {
   userId: string;
   organizationId: string;
   role: Role;
+  authSubject: string | null;
+  authProvider: "supabase" | "sites" | null;
   organization: typeof workspaces.$inferSelect;
 };
 
@@ -17,6 +20,8 @@ export async function findAccessContext(identity: TrustedIdentity): Promise<Acce
   const [row] = await getDb()
     .select({
       userId: users.id,
+      authSubject: users.authSubject,
+      authProvider: users.authProvider,
       userStatus: users.status,
       membershipStatus: memberships.status,
       role: memberships.role,
@@ -30,13 +35,34 @@ export async function findAccessContext(identity: TrustedIdentity): Promise<Acce
     .limit(1);
 
   if (!row) return null;
-  return {
+  if (identity.provider === "supabase") {
+    if (!identity.subject || !identity.emailVerified) return null;
+    if (row.authSubject && (row.authSubject !== identity.subject || row.authProvider !== "supabase")) return null;
+    if (!row.authSubject) {
+      try {
+        await getDb().update(users).set({
+          authSubject: identity.subject,
+          authProvider: "supabase",
+          updatedAt: new Date(),
+        }).where(and(eq(users.id, row.userId), eq(users.email, identity.email)));
+      } catch {
+        return null;
+      }
+      row.authSubject = identity.subject;
+      row.authProvider = "supabase";
+    }
+  }
+  const context: AccessContext = {
     identity,
     userId: row.userId,
     organizationId: row.organizationId,
     role: row.role,
+    authSubject: row.authSubject,
+    authProvider: row.authProvider,
     organization: row.organization,
   };
+  await bootstrapFounderInternalAccess(context);
+  return context;
 }
 
 export async function requireAccess(

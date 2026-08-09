@@ -1,0 +1,82 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import {
+  ADDONS,
+  ALL_NORMAL_PAID_FEATURES,
+  FEATURE_KEYS,
+  PLANS,
+  planIncludesFeature,
+} from "../server/entitlements/catalog.ts";
+
+test("the central catalogue contains the exact approved CAD prices", () => {
+  assert.deepEqual(
+    {
+      starter: [PLANS.starter.prices.month.amountCents, PLANS.starter.prices.year.amountCents],
+      growth: [PLANS.growth.prices.month.amountCents, PLANS.growth.prices.year.amountCents],
+      pro: [PLANS.pro.prices.month.amountCents, PLANS.pro.prices.year.amountCents],
+      bookloq: [ADDONS.bookloq.prices.month.amountCents, ADDONS.bookloq.prices.year.amountCents],
+    },
+    {
+      starter: [4_900, 49_000],
+      growth: [9_900, 99_000],
+      pro: [17_900, 179_000],
+      bookloq: [3_900, 39_000],
+    },
+  );
+});
+
+test("plan inheritance is monotonic without leaking Growth or Pro features", () => {
+  for (const feature of PLANS.starter.features) assert.equal(planIncludesFeature("growth", feature), true);
+  for (const feature of PLANS.growth.features) assert.equal(planIncludesFeature("pro", feature), true);
+
+  assert.equal(planIncludesFeature("starter", "inventory.basic"), true);
+  assert.equal(planIncludesFeature("starter", "inventory.expiry"), false);
+  assert.equal(planIncludesFeature("starter", "growth.strategy"), false);
+  assert.equal(planIncludesFeature("growth", "inventory.expiry"), true);
+  assert.equal(planIncludesFeature("growth", "growth.strategy"), true);
+  assert.equal(planIncludesFeature("growth", "forecasting.advanced"), false);
+  assert.equal(planIncludesFeature("pro", "forecasting.advanced"), true);
+  assert.equal(planIncludesFeature("pro", "permissions.advanced"), true);
+});
+
+test("BookLoq remains an independent add-on for every base plan", () => {
+  for (const plan of Object.values(PLANS)) {
+    assert.equal(plan.features.includes("bookloq"), false);
+    assert.equal(plan.features.includes("bookloq.financial_statements"), false);
+  }
+  assert.equal(ADDONS.bookloq.features.includes("bookloq"), true);
+  assert.equal(ADDONS.bookloq.features.includes("bookloq.reconciliation"), true);
+});
+
+test("the catalogue has stable unique feature and lookup keys", () => {
+  assert.equal(new Set(FEATURE_KEYS).size, FEATURE_KEYS.length);
+  for (const plan of Object.values(PLANS)) assert.equal(new Set(plan.features).size, plan.features.length);
+  assert.equal(new Set(ADDONS.bookloq.features).size, ADDONS.bookloq.features.length);
+
+  const lookupKeys = [
+    ...Object.values(PLANS).flatMap((plan) => Object.values(plan.prices).map((value) => value.lookupKey)),
+    ...Object.values(ADDONS).flatMap((addon) => Object.values(addon.prices).map((value) => value.lookupKey)),
+  ];
+  assert.equal(new Set(lookupKeys).size, lookupKeys.length);
+  assert.ok(ALL_NORMAL_PAID_FEATURES.includes("bookloq"));
+  assert.ok(ALL_NORMAL_PAID_FEATURES.includes("forecasting.advanced"));
+});
+
+test("limits are centralized and numerical AI quotas remain undisclosed until metering exists", () => {
+  assert.deepEqual(
+    [PLANS.starter.limits.users, PLANS.growth.limits.users, PLANS.pro.limits.users],
+    [3, 10, 25],
+  );
+  assert.deepEqual(
+    [PLANS.starter.limits.activeLocations, PLANS.growth.limits.activeLocations, PLANS.pro.limits.activeLocations],
+    [1, 3, 10],
+  );
+  assert.deepEqual(
+    [PLANS.starter.limits.ai.capability, PLANS.growth.limits.ai.capability, PLANS.pro.limits.ai.capability],
+    ["basic", "advanced", "pro"],
+  );
+  for (const plan of Object.values(PLANS)) {
+    assert.equal(plan.limits.ai.requestsPerMonth, null);
+    assert.equal(plan.limits.ai.meteringStatus, "not_launched");
+  }
+});

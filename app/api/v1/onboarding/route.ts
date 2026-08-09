@@ -63,12 +63,17 @@ export async function POST(request: Request) {
       throw new ApiError(503, "ACCOUNT_DATA_UNAVAILABLE", "Secure account setup is temporarily unavailable.");
     }
     const [existingUser] = await getDb()
-      .select({ id: users.id, status: users.status })
+      .select({ id: users.id, status: users.status, authSubject: users.authSubject, authProvider: users.authProvider })
       .from(users)
       .where(eq(users.email, identity.email))
       .limit(1);
     if (existingUser?.status === "suspended") {
       throw new ApiError(403, "ACCOUNT_SUSPENDED", "This account cannot create a workspace.");
+    }
+    if (identity.provider === "supabase" && existingUser?.authSubject && (
+      existingUser.authSubject !== identity.subject || existingUser.authProvider !== "supabase"
+    )) {
+      throw new ApiError(403, "IDENTITY_CONFLICT", "This verified identity does not match the existing Vanteloq account.");
     }
     if (existingUser) {
       const [existingMembership] = await getDb()
@@ -84,11 +89,15 @@ export async function POST(request: Request) {
     const now = Date.now();
     const database = getD1();
     const persistedUser = await database.prepare(`
-      INSERT INTO users (id, email, display_name, status, created_at, updated_at)
-      VALUES (?, ?, ?, 'active', ?, ?)
-      ON CONFLICT(email) DO UPDATE SET display_name = excluded.display_name, updated_at = excluded.updated_at
+      INSERT INTO users (id, email, auth_subject, auth_provider, display_name, status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, 'active', ?, ?)
+      ON CONFLICT(email) DO UPDATE SET
+        auth_subject = COALESCE(users.auth_subject, excluded.auth_subject),
+        auth_provider = COALESCE(users.auth_provider, excluded.auth_provider),
+        display_name = excluded.display_name,
+        updated_at = excluded.updated_at
       RETURNING id, status
-    `).bind(existingUser?.id ?? crypto.randomUUID(), identity.email, input.ownerName, now, now)
+    `).bind(existingUser?.id ?? identity.subject ?? crypto.randomUUID(), identity.email, identity.subject, identity.provider, input.ownerName, now, now)
       .first<{ id: string; status: "active" | "suspended" }>();
     if (!persistedUser) {
       throw new ApiError(503, "DATABASE_UNAVAILABLE", "Account setup is temporarily unavailable.");

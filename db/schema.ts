@@ -56,6 +56,8 @@ export const users = sqliteTable(
   {
     id: text("id").primaryKey(),
     email: text("email").notNull(),
+    authSubject: text("auth_subject"),
+    authProvider: text("auth_provider", { enum: ["supabase", "sites"] }),
     displayName: text("display_name").notNull(),
     status: text("status", { enum: ["active", "suspended"] }).notNull().default("active"),
     createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
@@ -63,6 +65,8 @@ export const users = sqliteTable(
   },
   (table) => [
     uniqueIndex("users_email_unique").on(table.email),
+    uniqueIndex("users_auth_subject_unique").on(table.authSubject),
+    check("users_auth_provider_check", sql`${table.authProvider} is null or ${table.authProvider} in ('supabase','sites')`),
     check("users_status_check", sql`${table.status} in ('active', 'suspended')`),
   ],
 );
@@ -117,6 +121,90 @@ export const memberships = sqliteTable(
     index("memberships_workspace_idx").on(table.organizationId),
     check("memberships_role_check", sql`${table.role} in ('owner', 'admin', 'manager', 'employee', 'read_only', 'integration')`),
     check("memberships_status_check", sql`${table.status} in ('active', 'suspended')`),
+  ],
+);
+
+export const tenantSubscriptions = sqliteTable(
+  "tenant_subscriptions",
+  {
+    organizationId: text("organization_id").primaryKey().references(() => workspaces.id, { onDelete: "cascade" }),
+    basePlan: text("base_plan", { enum: ["starter", "growth", "pro"] }),
+    billingInterval: text("billing_interval", { enum: ["month", "year"] }),
+    status: text("status", {
+      enum: ["incomplete", "incomplete_expired", "trialing", "active", "past_due", "canceled", "unpaid", "paused"],
+    }).notNull().default("incomplete"),
+    stripeCustomerId: text("stripe_customer_id"),
+    stripeSubscriptionId: text("stripe_subscription_id"),
+    stripeBasePriceId: text("stripe_base_price_id"),
+    trialEndsAt: integer("trial_ends_at", { mode: "timestamp" }),
+    currentPeriodEndsAt: integer("current_period_ends_at", { mode: "timestamp" }),
+    cancelAtPeriodEnd: integer("cancel_at_period_end", { mode: "boolean" }).notNull().default(false),
+    scheduledBasePlan: text("scheduled_base_plan", { enum: ["starter", "growth", "pro"] }),
+    scheduledBillingInterval: text("scheduled_billing_interval", { enum: ["month", "year"] }),
+    scheduledEffectiveAt: integer("scheduled_effective_at", { mode: "timestamp" }),
+    lastStripeEventId: text("last_stripe_event_id"),
+    lastStripeEventCreatedAt: integer("last_stripe_event_created_at", { mode: "timestamp" }),
+    lastSyncedAt: integer("last_synced_at", { mode: "timestamp" }),
+    version: integer("version").notNull().default(1),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("tenant_subscriptions_customer_unique").on(table.stripeCustomerId),
+    uniqueIndex("tenant_subscriptions_subscription_unique").on(table.stripeSubscriptionId),
+    index("tenant_subscriptions_status_idx").on(table.status, table.updatedAt),
+    check("tenant_subscriptions_plan_check", sql`${table.basePlan} is null or ${table.basePlan} in ('starter','growth','pro')`),
+    check("tenant_subscriptions_interval_check", sql`${table.billingInterval} is null or ${table.billingInterval} in ('month','year')`),
+    check("tenant_subscriptions_status_check", sql`${table.status} in ('incomplete','incomplete_expired','trialing','active','past_due','canceled','unpaid','paused')`),
+    check("tenant_subscriptions_scheduled_plan_check", sql`${table.scheduledBasePlan} is null or ${table.scheduledBasePlan} in ('starter','growth','pro')`),
+    check("tenant_subscriptions_scheduled_interval_check", sql`${table.scheduledBillingInterval} is null or ${table.scheduledBillingInterval} in ('month','year')`),
+    check("tenant_subscriptions_version_check", sql`${table.version} >= 1`),
+  ],
+);
+
+export const tenantAddons = sqliteTable(
+  "tenant_addons",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    addonKey: text("addon_key", { enum: ["bookloq"] }).notNull(),
+    status: text("status", { enum: ["trialing", "active", "scheduled_for_removal", "inactive"] }).notNull(),
+    stripeSubscriptionItemId: text("stripe_subscription_item_id"),
+    stripePriceId: text("stripe_price_id"),
+    currentPeriodEndsAt: integer("current_period_ends_at", { mode: "timestamp" }),
+    scheduledRemovalAt: integer("scheduled_removal_at", { mode: "timestamp" }),
+    lastSyncedAt: integer("last_synced_at", { mode: "timestamp" }),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("tenant_addons_key_unique").on(table.organizationId, table.addonKey),
+    uniqueIndex("tenant_addons_item_unique").on(table.stripeSubscriptionItemId),
+    index("tenant_addons_status_idx").on(table.organizationId, table.status),
+    check("tenant_addons_key_check", sql`${table.addonKey} in ('bookloq')`),
+    check("tenant_addons_status_check", sql`${table.status} in ('trialing','active','scheduled_for_removal','inactive')`),
+  ],
+);
+
+export const internalAccess = sqliteTable(
+  "internal_access",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    accessLevel: text("access_level", { enum: ["founder"] }).notNull(),
+    reason: text("reason").notNull(),
+    active: integer("active", { mode: "boolean" }).notNull().default(true),
+    mfaRequired: integer("mfa_required", { mode: "boolean" }).notNull().default(true),
+    createdByUserId: text("created_by_user_id").notNull().references(() => users.id),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("internal_access_user_workspace_level_unique").on(table.userId, table.organizationId, table.accessLevel),
+    index("internal_access_workspace_active_idx").on(table.organizationId, table.active),
+    check("internal_access_level_check", sql`${table.accessLevel} in ('founder')`),
+    check("internal_access_reason_check", sql`length(${table.reason}) between 3 and 500`),
   ],
 );
 

@@ -8,6 +8,9 @@ export type TrustedIdentity = {
   displayName: string;
   subject: string | null;
   provider: "supabase" | "sites";
+  emailVerified: boolean;
+  assuranceLevel: "aal1" | "aal2" | null;
+  sessionId: string | null;
 };
 
 export class ApiError extends Error {
@@ -43,7 +46,29 @@ function sitesIdentity(request: Request): TrustedIdentity | null {
     }
   }
 
-  return { email: rawEmail, displayName, subject: null, provider: "sites" };
+  return {
+    email: rawEmail,
+    displayName,
+    subject: null,
+    provider: "sites",
+    emailVerified: true,
+    assuranceLevel: null,
+    sessionId: null,
+  };
+}
+
+function verifiedJwtSession(token: string): { assuranceLevel: "aal1" | "aal2" | null; sessionId: string | null } {
+  try {
+    const payloadPart = token.split(".")[1];
+    if (!payloadPart) return { assuranceLevel: null, sessionId: null };
+    const normalized = payloadPart.replaceAll("-", "+").replaceAll("_", "/").padEnd(Math.ceil(payloadPart.length / 4) * 4, "=");
+    const payload = JSON.parse(atob(normalized)) as { aal?: unknown; session_id?: unknown };
+    const assuranceLevel = payload.aal === "aal1" || payload.aal === "aal2" ? payload.aal : null;
+    const sessionId = typeof payload.session_id === "string" && payload.session_id.length <= 200 ? payload.session_id : null;
+    return { assuranceLevel, sessionId };
+  } catch {
+    return { assuranceLevel: null, sessionId: null };
+  }
 }
 
 export async function optionalIdentity(request: Request): Promise<TrustedIdentity | null> {
@@ -67,16 +92,20 @@ export async function optionalIdentity(request: Request): Promise<TrustedIdentit
       const user = await response.json() as {
         id?: unknown;
         email?: unknown;
+        email_confirmed_at?: unknown;
+        confirmed_at?: unknown;
         user_metadata?: Record<string, unknown>;
       };
       const email = typeof user.email === "string" ? user.email.trim().toLowerCase() : "";
       const subject = typeof user.id === "string" ? user.id : "";
-      if (!subject || !EMAIL_PATTERN.test(email)) return null;
+      const emailVerified = typeof user.email_confirmed_at === "string" || typeof user.confirmed_at === "string";
+      if (!subject || !EMAIL_PATTERN.test(email) || !emailVerified) return null;
       const metadataName = user.user_metadata?.full_name;
       const displayName = typeof metadataName === "string" && metadataName.trim().length <= 120
         ? metadataName.trim()
         : email;
-      return { email, displayName, subject, provider: "supabase" };
+      const session = verifiedJwtSession(token);
+      return { email, displayName, subject, provider: "supabase", emailVerified, ...session };
     } catch {
       return null;
     }
