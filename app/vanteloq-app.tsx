@@ -59,36 +59,46 @@ type View =
 
 const nav: [string, View[]][] = [
   [
-    "Command",
+    "Overview",
     ["Dashboard", "Intelligence", "Action Centre", "Business Brief", "Advisor"],
   ],
-  ["Finance", ["BookLoQ"]],
   [
-    "Performance",
+    "Commerce",
     [
       "Sales",
-      "Profit",
-      "Cash",
-      "Bookkeeping",
       "Inventory",
       "Customers",
-      "Marketing",
-      "Communications",
-      "Team",
-    ],
-  ],
-  [
-    "Operate",
-    [
       "Operations",
       "Suppliers",
       "Purchase Orders",
+    ],
+  ],
+  [
+    "Finance",
+    [
+      "Profit",
+      "Cash",
+      "BookLoQ",
+      "Bookkeeping",
+      "Reports",
+    ],
+  ],
+  [
+    "Growth",
+    [
+      "Marketing",
+      "Communications",
+    ],
+  ],
+  [
+    "Organization",
+    [
+      "Team",
       "Documents",
       "Data Quality",
       "Locations",
       "Decision Journal",
       "Scenario Planner",
-      "Reports",
     ],
   ],
 ];
@@ -567,7 +577,10 @@ export default function VanteloqApp({
         event.preventDefault();
         setCommandOpen((open) => !open);
       }
-      if (event.key === "Escape") setCommandOpen(false);
+      if (event.key === "Escape") {
+        setCommandOpen(false);
+        setMobileNavOpen(false);
+      }
     };
     window.addEventListener("keydown", shortcut);
     return () => window.removeEventListener("keydown", shortcut);
@@ -591,7 +604,17 @@ export default function VanteloqApp({
 
   return (
     <main className="app-shell operating-shell">
-      <aside className={mobileNavOpen ? "sidebar mobile-open" : "sidebar"}>
+      <aside
+        id="primary-sidebar"
+        className={mobileNavOpen ? "sidebar mobile-open" : "sidebar"}
+      >
+        <button
+          className="sidebar-close"
+          aria-label="Close navigation"
+          onClick={() => setMobileNavOpen(false)}
+        >
+          Close
+        </button>
         <button className="brand" onClick={() => navigate("Dashboard")}>
           <ProductBrandLogo product="vanteloq" />
           <span className="brand-name">
@@ -640,6 +663,7 @@ export default function VanteloqApp({
                     key={item}
                     className={`${view === item ? "nav-item active" : "nav-item"}${item === "BookLoQ" ? " bookloq-main-nav" : ""}`}
                     onClick={() => navigate(item)}
+                    aria-current={view === item ? "page" : undefined}
                   >
                     {item === "BookLoQ" ? (
                       <ProductBrandLogo
@@ -661,6 +685,7 @@ export default function VanteloqApp({
               view === "Industry Modules" ? "nav-item active" : "nav-item"
             }
             onClick={() => navigate("Industry Modules")}
+            aria-current={view === "Industry Modules" ? "page" : undefined}
           >
             <span className="nav-dot" />
             Industry modules
@@ -671,6 +696,7 @@ export default function VanteloqApp({
                 view === "Integrations" ? "nav-item active" : "nav-item"
               }
               onClick={() => navigate("Integrations")}
+              aria-current={view === "Integrations" ? "page" : undefined}
             >
               <span className="nav-dot" />
               Integrations & data
@@ -680,6 +706,7 @@ export default function VanteloqApp({
             <button
               className={view === "Settings" ? "nav-item active" : "nav-item"}
               onClick={() => navigate("Settings")}
+              aria-current={view === "Settings" ? "page" : undefined}
             >
               <span className="nav-dot" />
               Settings
@@ -699,16 +726,25 @@ export default function VanteloqApp({
               <small>{appRole.replaceAll("_", " ")}</small>
             </span>
             <button className="profile-signout" aria-label="Sign out" onClick={() => void signOut()}>
-              ↗
+              Sign out
             </button>
           </div>
         </div>
       </aside>
+      {mobileNavOpen && (
+        <button
+          className="sidebar-scrim"
+          aria-label="Close navigation"
+          onClick={() => setMobileNavOpen(false)}
+        />
+      )}
       <section className="main-panel">
         <header className="topbar">
           <button
             className="mobile-menu"
-            aria-label="Open navigation"
+            aria-label={mobileNavOpen ? "Close navigation" : "Open navigation"}
+            aria-expanded={mobileNavOpen}
+            aria-controls="primary-sidebar"
             onClick={() => setMobileNavOpen((value) => !value)}
           >
             ☰
@@ -3194,9 +3230,19 @@ function AlertDrawer({
 }
 function LoadingState() {
   return (
-    <div className="workspace-loading">
-      <ProductBrandLogo product="vanteloq" />
-      <p>Verifying the operating picture…</p>
+    <div className="workspace-loading ledger-skeleton" role="status" aria-live="polite" aria-label="Loading workspace data">
+      <span className="sr-only">Verifying the operating picture…</span>
+      <div className="skeleton-heading" aria-hidden="true">
+        <i />
+        <i />
+      </div>
+      <div className="skeleton-summary" aria-hidden="true">
+        {[1, 2, 3, 4, 5].map((item) => <i key={item} />)}
+      </div>
+      <div className="skeleton-ledger" aria-hidden="true">
+        <b />
+        {[1, 2, 3, 4, 5, 6].map((item) => <span key={item}><i /><i /><i /><i /></span>)}
+      </div>
     </div>
   );
 }
