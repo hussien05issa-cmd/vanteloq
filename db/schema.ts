@@ -186,6 +186,26 @@ export const tenantAddons = sqliteTable(
   ],
 );
 
+export const stripeBillingEvents = sqliteTable(
+  "stripe_billing_events",
+  {
+    eventId: text("event_id").primaryKey(),
+    organizationId: text("organization_id").references(() => workspaces.id, { onDelete: "set null" }),
+    eventType: text("event_type").notNull(),
+    stripeCreatedAt: integer("stripe_created_at", { mode: "timestamp" }).notNull(),
+    payloadHash: text("payload_hash").notNull(),
+    status: text("status", { enum: ["received", "processing", "processed", "failed", "ignored"] }).notNull().default("received"),
+    errorCode: text("error_code"),
+    receivedAt: integer("received_at", { mode: "timestamp" }).notNull(),
+    processedAt: integer("processed_at", { mode: "timestamp" }),
+  },
+  (table) => [
+    index("stripe_billing_events_workspace_created_idx").on(table.organizationId, table.stripeCreatedAt),
+    index("stripe_billing_events_status_idx").on(table.status, table.receivedAt),
+    check("stripe_billing_events_status_check", sql`${table.status} in ('received','processing','processed','failed','ignored')`),
+  ],
+);
+
 export const internalAccess = sqliteTable(
   "internal_access",
   {

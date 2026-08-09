@@ -15,6 +15,7 @@ export type VanteloqRuntimeEnv = {
   STRIPE_SECRET_KEY?: string;
   STRIPE_REDIRECT_URI?: string;
   STRIPE_WEBHOOK_SECRET?: string;
+  STRIPE_BILLING_WEBHOOK_SECRET?: string;
   STRIPE_API_VERSION?: string;
   INTEGRATION_ENCRYPTION_KEY?: string;
   SUPABASE_URL?: string;

@@ -1,6 +1,6 @@
 # Billing and entitlement foundation
 
-This document records the verified boundary reached before Stripe catalogue creation. It is deliberately explicit about what is and is not active.
+This document records the verified Stripe Billing and entitlement boundary. It is deliberately explicit about what is implemented in code and what still requires hosted Stripe configuration.
 
 ## Verified architecture audit
 
@@ -45,6 +45,23 @@ An active founder grant resolves all normal paid Vanteloq features plus BookLoq.
 
 Bootstrap uses insert-if-absent semantics so a revoked record is not silently reactivated. Grant creation is audit logged.
 
+## Implemented Stripe Billing flow
+
+- The owner/admin Billing screen reads synchronized subscription facts and the central catalogue; it never invents a billing state.
+- Checkout sessions are created only on the server. Client-supplied Price IDs are not accepted.
+- Stripe prices are resolved by stable lookup key and verified against exact CAD amount, interval, active state, and catalogue definition before Checkout opens.
+- Stripe-hosted Checkout requires a payment method. Existing customers are sent to the Stripe-hosted customer portal for changes and cancellation.
+- The dedicated Billing webhook verifies the raw-body Stripe HMAC with a five-minute replay window, enforces a 256 KB body limit, records a payload hash, atomically claims events, and ignores duplicates.
+- Webhook processing retrieves the current authoritative subscription from Stripe, validates every recognized plan/add-on price against the catalogue, rejects multiple base plans, ignores stale events, and synchronizes subscription and BookLoq entitlement state.
+- Vanteloq stores Stripe customer, subscription, item, and price identifiers plus billing status and periods. It does not store card details or payment-method payloads.
+
+Expected Stripe Price lookup keys:
+
+- `vanteloq_starter_monthly_cad`, `vanteloq_starter_yearly_cad`
+- `vanteloq_growth_monthly_cad`, `vanteloq_growth_yearly_cad`
+- `vanteloq_pro_monthly_cad`, `vanteloq_pro_yearly_cad`
+- `bookloq_monthly_cad`, `bookloq_yearly_cad`
+
 ## Tests passed at this boundary
 
 - exact price and lookup-key catalogue assertions;
@@ -54,17 +71,31 @@ Bootstrap uses insert-if-absent semantics so a revoked record is not silently re
 - scheduled-downgrade behavior before the effective event;
 - exact founder email, verified subject binding, owner role, and AAL2 enforcement;
 - D1 migrations and tenant isolation;
+- server-verified Checkout price selection and organization binding;
+- fail-closed catalogue mismatch handling;
+- raw webhook HMAC, tamper rejection, replay rejection, and anonymous route boundaries;
+- subscription normalization without payment data;
 - existing build, security, Lightspeed, BookLoq, inventory, governance, and operating-flow suites.
+
+## Hosted configuration still required
+
+The application fails closed until the following are configured in the hosted environment and Stripe Dashboard:
+
+- create the Stripe products/prices with the exact lookup keys and exact catalogue amounts above;
+- set `STRIPE_SECRET_KEY` and the dedicated `STRIPE_BILLING_WEBHOOK_SECRET` securely in the hosted environment;
+- register `/api/v1/billing/stripe/webhook` in Stripe for Checkout Session and customer subscription events;
+- configure and activate the Stripe customer portal;
+- run a Stripe test-mode purchase, renewal/change, cancellation, replay, and failed-payment QA matrix;
+- decide whether a trial is offered; no trial is claimed or granted by the current Checkout flow;
+- add automated reconciliation for a missed webhook and operational alerting for failed event receipts;
+- finish plan locks across existing API routes, AI tools, background jobs, and frontend modules.
 
 ## Not active yet
 
-The following work must not be described as complete until the numbered implementation sequence reaches and verifies it:
+The following broader product work must not be described as complete:
 
-- Stripe products/prices and validated Price IDs;
-- checkout, payment-method-required trial, or onboarding plan persistence;
-- webhook verification, idempotency, stale-event handling, or reconciliation;
 - upgrade, downgrade, cancellation, reactivation, or BookLoq billing changes;
 - plan locks across existing API routes, AI tools, background jobs, and frontend modules;
-- billing/admin/pricing interfaces and the complete QA matrix.
+- onboarding plan selection and the complete Stripe test/live-mode QA matrix.
 
 Do not activate checkout or paid feature enforcement using unverified or client-supplied Stripe Price IDs.

@@ -41,7 +41,7 @@ test("task APIs reject missing identity before database access", async () => {
 
 test("business intelligence APIs reject anonymous access before database reads", async () => {
   const worker = await loadWorker();
-  for (const path of ["/api/v1/command-centre", "/api/v1/daily-metrics", "/api/v1/events", "/api/v1/operations", "/api/v1/inventory-lifecycle", "/api/v1/bookloq", "/api/v1/governance", "/api/v1/reports", "/api/v1/purchasing", "/api/v1/documents", "/api/v1/data-quality", "/api/v1/integrations", "/api/v1/backend"]) {
+  for (const path of ["/api/v1/command-centre", "/api/v1/daily-metrics", "/api/v1/events", "/api/v1/operations", "/api/v1/inventory-lifecycle", "/api/v1/bookloq", "/api/v1/governance", "/api/v1/reports", "/api/v1/purchasing", "/api/v1/documents", "/api/v1/data-quality", "/api/v1/integrations", "/api/v1/backend", "/api/v1/billing"]) {
     const response = await worker.fetch(new Request(`https://vanteloq.example${path}`, {
       headers: { accept: "application/json" },
     }), environment, context);
@@ -65,6 +65,8 @@ test("Lightspeed management routes reject anonymous same-origin writes", async (
     "/api/v1/integrations/stripe/authorize",
     "/api/v1/integrations/stripe/sync",
     "/api/v1/integrations/stripe/disconnect",
+    "/api/v1/billing/checkout",
+    "/api/v1/billing/portal",
   ]) {
     const response = await worker.fetch(new Request(`https://vanteloq.example${path}`, {
       method: "POST",
@@ -122,6 +124,20 @@ test("the Stripe webhook rejects unsigned requests before database access", asyn
   ), environment, context);
   assert.equal(response.status, 401);
   assert.equal((await response.json()).error.code, "STRIPE_WEBHOOK_SIGNATURE_INVALID");
+});
+
+test("the Stripe Billing webhook rejects unsigned requests before database access", async () => {
+  const worker = await loadWorker();
+  const response = await worker.fetch(new Request(
+    "https://vanteloq.example/api/v1/billing/stripe/webhook",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: '{"id":"evt_unsigned","type":"customer.subscription.updated","created":1786265000}',
+    },
+  ), environment, context);
+  assert.equal(response.status, 401);
+  assert.equal((await response.json()).error.code, "STRIPE_BILLING_SIGNATURE_INVALID");
 });
 
 test("the Lightspeed webhook rejects unsigned requests before database access", async () => {
@@ -200,6 +216,8 @@ test("imports and business-memory writes reject cross-site origins before data a
     "/api/v1/integrations/stripe/authorize",
     "/api/v1/integrations/stripe/sync",
     "/api/v1/integrations/stripe/disconnect",
+    "/api/v1/billing/checkout",
+    "/api/v1/billing/portal",
   ]) {
     const response = await worker.fetch(new Request(`https://vanteloq.example${path}`, {
       method: "POST",

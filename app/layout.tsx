@@ -4,6 +4,7 @@ import "./globals.css";
 import "./operating.css";
 import "./bookloq.css";
 import "./governance.css";
+import "./billing.css";
 import "./control.css";
 import "./theme.css";
 import "./readability.css";
