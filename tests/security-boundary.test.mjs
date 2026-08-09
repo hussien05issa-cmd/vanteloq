@@ -82,14 +82,14 @@ test("Lightspeed management routes reject anonymous same-origin writes", async (
   }
 });
 
-test("the Lightspeed callback requires the initiating signed-in owner", async () => {
+test("the Lightspeed callback rejects malformed one-time state before database access", async () => {
   const worker = await loadWorker();
   const response = await worker.fetch(new Request(
     "https://vanteloq.example/api/v1/integrations/lightspeed/callback?code=test-code&state=state-with-entropy&domain_prefix=north-store",
     { headers: { accept: "application/json" } },
   ), environment, context);
-  assert.equal(response.status, 401);
-  assert.equal((await response.json()).error.code, "AUTHENTICATION_REQUIRED");
+  assert.equal(response.status, 400);
+  assert.equal((await response.json()).error.code, "LIGHTSPEED_CALLBACK_INVALID");
 });
 
 test("the R-Series callback requires the initiating signed-in owner", async () => {

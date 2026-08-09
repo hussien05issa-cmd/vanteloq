@@ -5,9 +5,12 @@ import {
   integrationLocationMappings,
   integrationOAuthStates,
   integrationSecrets,
+  memberships,
+  users,
+  workspaces,
 } from "../../../../../../db/schema";
 import { recordAudit } from "../../../../../../server/audit";
-import { requireAccess } from "../../../../../../server/authorization";
+import type { AccessContext } from "../../../../../../server/authorization";
 import { ApiError, handleApi } from "../../../../../../server/api";
 import {
   encryptIntegrationSecret,
@@ -36,11 +39,9 @@ export async function GET(request: Request) {
     const code = url.searchParams.get("code")?.trim() ?? "";
     const state = url.searchParams.get("state")?.trim() ?? "";
     const domainPrefix = validateDomainPrefix(url.searchParams.get("domain_prefix") ?? "");
-    if (!code || code.length > 512 || !state || state.length > 512) {
+    if (!code || code.length > 512 || !/^[A-Za-z0-9_-]{43}$/.test(state)) {
       throw new ApiError(400, "LIGHTSPEED_CALLBACK_INVALID", "Lightspeed returned an incomplete callback.");
     }
-    const context = await requireAccess(request, ["owner", "admin"]);
-    await requirePermission(context, "integrations.manage");
     const stateHash = await sha256Hex(state);
     const now = new Date();
     const [storedState] = await getDb()
@@ -50,8 +51,6 @@ export async function GET(request: Request) {
         and(
           eq(integrationOAuthStates.stateHash, stateHash),
           eq(integrationOAuthStates.provider, LIGHTSPEED_PROVIDER),
-          eq(integrationOAuthStates.organizationId, context.organizationId),
-          eq(integrationOAuthStates.actorUserId, context.userId),
           isNull(integrationOAuthStates.consumedAt),
           gt(integrationOAuthStates.expiresAt, now),
         ),
@@ -60,10 +59,72 @@ export async function GET(request: Request) {
     if (!storedState) {
       throw new ApiError(400, "LIGHTSPEED_STATE_INVALID", "The Lightspeed authorization attempt expired or was already used. Start again.");
     }
-    await getDb()
+
+    // OAuth callbacks can return without the application's session cookie in
+    // privacy-restricted browsers. The unguessable, one-time state identifies
+    // the exact initiating actor and workspace; re-check that actor's current
+    // membership and permission before consuming the state or storing tokens.
+    const [actor] = await getDb()
+      .select({
+        userId: users.id,
+        email: users.email,
+        displayName: users.displayName,
+        authSubject: users.authSubject,
+        authProvider: users.authProvider,
+        role: memberships.role,
+        organizationId: memberships.organizationId,
+        organization: workspaces,
+      })
+      .from(users)
+      .innerJoin(
+        memberships,
+        and(
+          eq(memberships.userId, users.id),
+          eq(memberships.organizationId, storedState.organizationId),
+        ),
+      )
+      .innerJoin(workspaces, eq(workspaces.id, memberships.organizationId))
+      .where(and(
+        eq(users.id, storedState.actorUserId),
+        eq(users.status, "active"),
+        eq(memberships.status, "active"),
+      ))
+      .limit(1);
+    if (!actor || (actor.role !== "owner" && actor.role !== "admin")) {
+      throw new ApiError(403, "LIGHTSPEED_INITIATOR_INELIGIBLE", "The account that started this connection can no longer manage integrations.");
+    }
+    const context: AccessContext = {
+      identity: {
+        email: actor.email,
+        displayName: actor.displayName,
+        subject: actor.authSubject,
+        provider: actor.authProvider ?? "sites",
+        emailVerified: true,
+        assuranceLevel: null,
+        sessionId: null,
+      },
+      userId: actor.userId,
+      organizationId: actor.organizationId,
+      role: actor.role,
+      authSubject: actor.authSubject,
+      authProvider: actor.authProvider,
+      organization: actor.organization,
+    };
+    await requirePermission(context, "integrations.manage");
+
+    const [consumedState] = await getDb()
       .update(integrationOAuthStates)
       .set({ consumedAt: now })
-      .where(eq(integrationOAuthStates.stateHash, stateHash));
+      .where(and(
+        eq(integrationOAuthStates.stateHash, stateHash),
+        eq(integrationOAuthStates.provider, LIGHTSPEED_PROVIDER),
+        isNull(integrationOAuthStates.consumedAt),
+        gt(integrationOAuthStates.expiresAt, now),
+      ))
+      .returning({ stateHash: integrationOAuthStates.stateHash });
+    if (!consumedState) {
+      throw new ApiError(400, "LIGHTSPEED_STATE_INVALID", "The Lightspeed authorization attempt expired or was already used. Start again.");
+    }
 
     try {
     const token = await exchangeAuthorizationCode(code, domainPrefix);
