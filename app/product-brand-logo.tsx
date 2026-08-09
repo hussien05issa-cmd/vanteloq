@@ -21,7 +21,11 @@ export default function ProductBrandLogo({
     ? variant === "full"
       ? "/brand/vanteloq-logo.png"
       : "/brand/vanteloq-mark.png"
-    : "/brand/bookloq-logo.jpeg";
+    : "/brand/bookloq-logo.png";
+
+  const dimensions = product === "vanteloq"
+    ? variant === "full" ? { width: 1030, height: 576 } : { width: 447, height: 402 }
+    : { width: 1536, height: 1024 };
 
   return (
     <span className={`product-brand-logo ${product} ${variant} ${className}`.trim()}>
@@ -30,12 +34,13 @@ export default function ProductBrandLogo({
       <img
         src={source}
         alt={`${name} logo`}
-        width={product === "vanteloq" && variant === "full" ? 1030 : 1024}
-        height={product === "vanteloq" && variant === "full" ? 576 : 1024}
+        width={dimensions.width}
+        height={dimensions.height}
         loading={priority ? "eager" : "lazy"}
         fetchPriority={priority ? "high" : "auto"}
         decoding="async"
       />
+      <sup className="brand-trademark" aria-hidden="true">™</sup>
     </span>
   );
 }

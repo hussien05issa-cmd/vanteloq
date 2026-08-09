@@ -39,6 +39,13 @@ test("the Lightspeed integration uses the standalone image asset", async () => {
   assert.doesNotMatch(source, /name === "Lightspeed"[\s\S]{0,200}<path/);
 });
 
+test("product branding uses the supplied BookLoq asset and a shared trademark glyph", async () => {
+  const productLogoSource = await readFile(new URL("../app/product-brand-logo.tsx", import.meta.url), "utf8");
+  assert.match(productLogoSource, /\/brand\/bookloq-logo\.png/);
+  assert.match(productLogoSource, /brand-trademark/);
+  assert.match(productLogoSource, />™<\/sup>/);
+});
+
 test("X-Series and R-Series are distinct, actionable connection choices", async () => {
   const catalog = await readFile(new URL("../app/integration-catalog.ts", import.meta.url), "utf8");
   const app = await readFile(new URL("../app/vanteloq-app.tsx", import.meta.url), "utf8");

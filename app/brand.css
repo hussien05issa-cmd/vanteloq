@@ -1,0 +1,49 @@
+/* Product marks use a deterministic text glyph so ™ stays crisp and accessible at every rendered size. */
+.product-brand-logo {
+  position: relative;
+  isolation: isolate;
+}
+
+.product-brand-logo .brand-trademark {
+  position: absolute;
+  z-index: 3;
+  margin: 0;
+  color: #0d2343;
+  background: rgba(255, 255, 255, .94);
+  border-radius: 3px;
+  padding: 0 1px;
+  font: 800 6px/1 Arial, sans-serif;
+  letter-spacing: 0;
+  text-decoration: none;
+}
+
+.product-brand-logo.icon .brand-trademark {
+  top: 1px;
+  right: 1px;
+}
+
+.product-brand-logo.bookloq.icon img {
+  width: 549%;
+  height: 366%;
+  left: -74%;
+  top: -134%;
+}
+
+.product-brand-logo.bookloq.full img {
+  object-fit: contain;
+  padding: 3px;
+}
+
+.product-brand-logo.full .brand-trademark {
+  font-size: 8px;
+}
+
+.product-brand-logo.bookloq.full .brand-trademark {
+  top: 42%;
+  right: 4%;
+}
+
+.product-brand-logo.vanteloq.full .brand-trademark {
+  top: 68%;
+  right: 1%;
+}
