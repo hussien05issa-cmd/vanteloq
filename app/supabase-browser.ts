@@ -40,5 +40,4 @@ export async function apiFetch(input: RequestInfo | URL, init: RequestInit = {})
 export async function signOut(): Promise<void> {
   const supabase = await getSupabase();
   if (supabase) await supabase.auth.signOut();
-  window.location.reload();
 }

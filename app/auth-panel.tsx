@@ -1,6 +1,7 @@
 "use client";
 
 import { type FormEvent, useEffect, useRef, useState } from "react";
+import type { Session } from "@supabase/supabase-js";
 import ProductBrandLogo from "./product-brand-logo";
 import { getSupabase } from "./supabase-browser";
 
@@ -42,7 +43,15 @@ function loadTurnstile(): Promise<void> {
   return turnstileScript;
 }
 
-export default function AuthPanel({ close, initialMode = "signup" }: { close: () => void; initialMode?: AuthPanelMode }) {
+export default function AuthPanel({
+  close,
+  authenticated,
+  initialMode = "signup",
+}: {
+  close: () => void;
+  authenticated: (session: Session) => void;
+  initialMode?: AuthPanelMode;
+}) {
   const [mode, setMode] = useState<AuthPanelMode>(initialMode);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -157,8 +166,8 @@ export default function AuthPanel({ close, initialMode = "signup" }: { close: ()
         }
         if (payload.session?.accessToken && payload.session.refreshToken) {
           const sessionResult = await supabase.auth.setSession({ access_token: payload.session.accessToken, refresh_token: payload.session.refreshToken });
-          if (sessionResult.error) throw sessionResult.error;
-          window.location.reload();
+          if (sessionResult.error || !sessionResult.data.session) throw sessionResult.error ?? new Error("Session unavailable");
+          authenticated(sessionResult.data.session);
           return;
         }
         resetTurnstile();
@@ -230,7 +239,12 @@ export default function AuthPanel({ close, initialMode = "signup" }: { close: ()
       }
       return setMessage(result.error.message);
     }
-    window.location.reload();
+    if (!result.data.session) {
+      setMessageIsError(true);
+      setMessage("Your account signed in, but the session could not be loaded. Please try again.");
+      return;
+    }
+    authenticated(result.data.session);
   }
 
   async function resendConfirmation() {

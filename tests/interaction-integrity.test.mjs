@@ -74,4 +74,9 @@ test("account access includes confirmation recovery and a complete password-rese
   assert.match(home, /event === "PASSWORD_RECOVERY"/);
   assert.match(home, /get\("recovery"\) === "1"/);
   assert.match(browserClient, /flowType: "implicit"/);
+  assert.doesNotMatch(home, /window\.location\.reload\(\)/);
+  assert.doesNotMatch(authPanel, /window\.location\.reload\(\)/);
+  assert.doesNotMatch(browserClient, /window\.location\.reload\(\)/);
+  assert.match(home, /event === "SIGNED_IN"[\s\S]{0,300}loadWorkspace\(session\)/);
+  assert.match(home, /entry === "load-error"/);
 });

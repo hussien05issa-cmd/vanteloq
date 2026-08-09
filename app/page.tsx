@@ -1,20 +1,96 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { Session } from "@supabase/supabase-js";
 import SecureOnboardingFlow from "./secure-onboarding-flow";
 import VanteloqApp from "./vanteloq-app";
 import IntegrationBrandLogo from "./integration-brand-logo";
 import ProductBrandLogo from "./product-brand-logo";
 import AuthPanel, { type AuthPanelMode } from "./auth-panel";
-import { apiFetch, currentSession, getSupabase, signOut } from "./supabase-browser";
+import { currentSession, getSupabase, signOut } from "./supabase-browser";
 
 export default function Home() {
-  const [entry, setEntry] = useState<"loading" | "landing" | "signup" | "app">("loading");
+  const [entry, setEntry] = useState<"loading" | "load-error" | "landing" | "signup" | "app">("loading");
   const [authOpen, setAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<AuthPanelMode>("signup");
   const [organizationName, setOrganizationName] = useState("");
   const [accountName, setAccountName] = useState("Account owner");
   const [accountEmail, setAccountEmail] = useState("");
+  const [loadError, setLoadError] = useState("");
+  const loadSequence = useRef(0);
+  const loadingUser = useRef<string | null>(null);
+  const loadedUser = useRef<string | null>(null);
+
+  const cancelPendingLoad = useCallback(() => {
+    ++loadSequence.current;
+    loadingUser.current = null;
+  }, []);
+
+  const loadWorkspace = useCallback(async (session: Session | null) => {
+    if (!session) {
+      ++loadSequence.current;
+      loadingUser.current = null;
+      loadedUser.current = null;
+      setLoadError("");
+      setEntry("landing");
+      return;
+    }
+    const userId = session.user.id;
+    if (loadingUser.current === userId || loadedUser.current === userId) return;
+    const sequence = ++loadSequence.current;
+    loadingUser.current = userId;
+
+    setEntry("loading");
+    setLoadError("");
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 10_000);
+
+    try {
+      const response = await fetch("/api/v1/onboarding", {
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        signal: controller.signal,
+      });
+      const data = await response.json().catch(() => ({})) as {
+        authenticated?: boolean;
+        user?: { email?: string; displayName?: string };
+        organization?: { setupComplete?: boolean; businessName?: string; ownerName?: string } | null;
+      };
+      if (sequence !== loadSequence.current) return;
+
+      if (response.ok && data.organization?.setupComplete) {
+        loadedUser.current = userId;
+        setAccountEmail(data.user?.email ?? "");
+        setOrganizationName(data.organization.businessName ?? "");
+        setAccountName(data.organization.ownerName || data.user?.displayName || "Account owner");
+        setEntry("app");
+        return;
+      }
+      if (response.ok && data.authenticated) {
+        loadedUser.current = userId;
+        setAccountEmail(data.user?.email ?? "");
+        setAccountName(data.user?.displayName || "Account owner");
+        setEntry("signup");
+        return;
+      }
+
+      setLoadError(response.status === 401
+        ? "Your sign-in could not be verified. Try again, or sign out and sign in once more."
+        : "Your workspace could not be loaded. Your account is safe; try again in a moment.");
+      setEntry("load-error");
+    } catch (error) {
+      if (sequence !== loadSequence.current) return;
+      setLoadError(error instanceof DOMException && error.name === "AbortError"
+        ? "Vanteloq took too long to load. Check your connection and try again."
+        : "Vanteloq could not load your workspace. Check your connection and try again.");
+      setEntry("load-error");
+    } finally {
+      window.clearTimeout(timeout);
+      if (sequence === loadSequence.current) loadingUser.current = null;
+    }
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -27,45 +103,54 @@ export default function Home() {
         setAuthOpen(true);
       });
     } else {
-      void currentSession().then(session => {
-        if (!active) return;
-        if (!session) {
-          setEntry("landing");
-          return;
-        }
-        return apiFetch("/api/v1/onboarding", { headers: { Accept: "application/json" } })
-        .then(async response => ({ response, data: await response.json() }))
-        .then(({ response, data }) => {
-          if (data.user?.email) setAccountEmail(data.user.email);
-          if (response.ok && data.organization?.setupComplete) {
-            setOrganizationName(data.organization.businessName);
-            setAccountName(data.organization.ownerName || data.user?.displayName || "Account owner");
-            setEntry("app");
-          } else if (response.ok && data.authenticated) {
-            setAccountName(data.user?.displayName || "Account owner");
-            setEntry("signup");
-          } else setEntry("landing");
-        })
-        .catch(() => setEntry("landing"));
-      });
+      void currentSession()
+        .then(session => { if (active) void loadWorkspace(session); })
+        .catch(() => {
+          if (!active) return;
+          setLoadError("Vanteloq could not check your sign-in. Check your connection and try again.");
+          setEntry("load-error");
+        });
     }
     let unsubscribe: (() => void) | undefined;
     void getSupabase().then(client => {
-      const listener = client?.auth.onAuthStateChange((event) => {
+      if (!active) return;
+      const listener = client?.auth.onAuthStateChange((event, session) => {
         if (event === "PASSWORD_RECOVERY") {
           setEntry("landing");
           setAuthMode("reset-password");
           setAuthOpen(true);
         }
-        if (event === "SIGNED_IN" && !recoveryRequested) window.location.reload();
-        if (event === "SIGNED_OUT") setEntry("landing");
+        if (event === "SIGNED_IN" && !recoveryRequested) {
+          setAuthOpen(false);
+          window.setTimeout(() => { if (active) void loadWorkspace(session); }, 0);
+        }
+        if (event === "SIGNED_OUT") {
+          cancelPendingLoad();
+          loadedUser.current = null;
+          setOrganizationName("");
+          setAccountEmail("");
+          setEntry("landing");
+        }
       });
       unsubscribe = () => listener?.data.subscription.unsubscribe();
     });
-    return () => { active = false; unsubscribe?.(); };
-  }, []);
+    return () => {
+      active = false;
+      cancelPendingLoad();
+      unsubscribe?.();
+    };
+  }, [cancelPendingLoad, loadWorkspace]);
 
-  if (entry === "loading") return <div className="entry-loading"><ProductBrandLogo product="vanteloq" priority/><p>Preparing Vanteloq…</p></div>;
+  if (entry === "loading") return <div className="entry-loading" role="status" aria-live="polite"><ProductBrandLogo product="vanteloq" priority/><p>Preparing Vanteloq…</p></div>;
+  if (entry === "load-error") return <main className="entry-loading entry-load-error">
+    <ProductBrandLogo product="vanteloq" priority/>
+    <h1>Vanteloq did not finish loading</h1>
+    <p>{loadError}</p>
+    <div>
+      <button onClick={() => void currentSession().then(loadWorkspace)}>Try again</button>
+      <button className="secondary" onClick={() => void signOut()}>Sign out</button>
+    </div>
+  </main>;
   function openAuth(mode: "signin" | "signup") {
     setAuthMode(mode);
     setAuthOpen(true);
@@ -77,7 +162,7 @@ export default function Home() {
     setAuthMode("signup");
   }
 
-  if (entry === "landing") return <><LandingPage start={openAuth}/>{authOpen && <AuthPanel initialMode={authMode} close={closeAuth}/>}</>;
+  if (entry === "landing") return <><LandingPage start={openAuth}/>{authOpen && <AuthPanel initialMode={authMode} close={closeAuth} authenticated={session => void loadWorkspace(session)}/>}</>;
   if (entry === "signup") return <SecureOnboardingFlow accountName={accountName} accountEmail={accountEmail} signOut={() => void signOut()} complete={(business, owner) => { setOrganizationName(business); setAccountName(owner); setEntry("app"); }}/>;
   return <VanteloqApp organizationName={organizationName} accountName={accountName}/>;
 }
