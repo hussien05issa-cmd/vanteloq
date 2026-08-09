@@ -128,6 +128,25 @@ test("state-changing onboarding rejects a cross-site origin before data access",
   assert.equal(body.error.code, "ORIGIN_MISMATCH");
 });
 
+test("signup protection fails closed and rejects cross-site account creation", async () => {
+  const worker = await loadWorker();
+  const availability = await worker.fetch(new Request("https://vanteloq.example/api/v1/auth/signup"), environment, context);
+  assert.equal(availability.status, 503);
+  assert.deepEqual(await availability.json().then(({ configured }) => ({ configured })), { configured: false });
+
+  const response = await worker.fetch(new Request("https://vanteloq.example/api/v1/auth/signup", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      origin: "https://attacker.example",
+      "sec-fetch-site": "cross-site",
+    },
+    body: JSON.stringify({ name: "Owner", email: "owner@example.com", password: "not-a-real-password", turnstileToken: "not-a-real-token" }),
+  }), environment, context);
+  assert.equal(response.status, 403);
+  assert.equal((await response.json()).error.code, "ORIGIN_MISMATCH");
+});
+
 test("imports and business-memory writes reject cross-site origins before data access", async () => {
   const worker = await loadWorker();
   for (const path of [

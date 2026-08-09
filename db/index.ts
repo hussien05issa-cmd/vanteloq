@@ -18,6 +18,10 @@ export type VanteloqRuntimeEnv = {
   SUPABASE_AUTH_MODE?: string;
   SUPABASE_SCHEMA?: string;
   SUPABASE_BACKEND_MODE?: string;
+  TURNSTILE_SITE_KEY?: string;
+  TURNSTILE_SECRET_KEY?: string;
+  TURNSTILE_EXPECTED_ACTION?: string;
+  TURNSTILE_ALLOWED_HOSTNAMES?: string;
   BOOKLOQ_DEMO_ENABLED?: string;
 };
 

@@ -24,6 +24,10 @@ interface Env {
   SUPABASE_AUTH_MODE?: string;
   SUPABASE_SCHEMA?: string;
   SUPABASE_BACKEND_MODE?: string;
+  TURNSTILE_SITE_KEY?: string;
+  TURNSTILE_SECRET_KEY?: string;
+  TURNSTILE_EXPECTED_ACTION?: string;
+  TURNSTILE_ALLOWED_HOSTNAMES?: string;
   BOOKLOQ_DEMO_ENABLED?: string;
 }
 
@@ -66,7 +70,7 @@ const worker = {
     headers.set("Content-Security-Policy", "frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
     headers.set(
       "Content-Security-Policy-Report-Only",
-      "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://*.supabase.co wss://*.supabase.co; object-src 'none'; frame-src 'none'; worker-src 'self'; manifest-src 'self'",
+      "default-src 'self'; script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://challenges.cloudflare.com; object-src 'none'; frame-src https://challenges.cloudflare.com; worker-src 'self'; manifest-src 'self'",
     );
     if (url.protocol === "https:") headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
     if (url.pathname.startsWith("/api/")) {
