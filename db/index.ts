@@ -28,6 +28,7 @@ export type VanteloqRuntimeEnv = {
   TURNSTILE_SECRET_KEY?: string;
   TURNSTILE_EXPECTED_ACTION?: string;
   TURNSTILE_ALLOWED_HOSTNAMES?: string;
+  SUPABASE_CAPTCHA_ENABLED?: string;
   BOOKLOQ_DEMO_ENABLED?: string;
 };
 

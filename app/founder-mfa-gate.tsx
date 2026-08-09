@@ -3,6 +3,7 @@
 import { type ReactNode, useEffect, useState } from "react";
 import { getSupabase, signOut } from "./supabase-browser";
 import ProductBrandLogo from "./product-brand-logo";
+import TurnstileField from "./turnstile-field";
 
 const FOUNDER_EMAIL = "hussienissa@lexedgeconsulting.com";
 const VERIFICATION_WINDOW_MS = 30 * 60 * 1000;
@@ -18,6 +19,9 @@ export default function FounderMfaGate({ email, children }: { email: string; chi
   const [state, setState] = useState<GateState>(isFounder ? "checking" : "ready");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const [siteKey, setSiteKey] = useState("");
+  const [turnstileToken, setTurnstileToken] = useState("");
+  const [turnstileResetSignal, setTurnstileResetSignal] = useState(0);
 
   useEffect(() => {
     if (!isFounder) return;
@@ -49,18 +53,44 @@ export default function FounderMfaGate({ email, children }: { email: string; chi
     return () => { active = false; };
   }, [isFounder]);
 
+  useEffect(() => {
+    if (!isFounder || state !== "request_required") return;
+    const controller = new AbortController();
+    void fetch("/api/v1/auth/signup?action=founder-signin", { headers: { accept: "application/json" }, signal: controller.signal })
+      .then(async response => {
+        const payload = await response.json() as { configured?: boolean; siteKey?: string; action?: string };
+        if (!response.ok || !payload.configured || !payload.siteKey || payload.action !== "founder-signin") {
+          throw new Error("Founder verification protection is unavailable.");
+        }
+        setSiteKey(payload.siteKey);
+      })
+      .catch(error => {
+        if ((error as Error).name !== "AbortError") {
+          setMessage("Secure account verification is temporarily unavailable.");
+          setState("error");
+        }
+      });
+    return () => controller.abort();
+  }, [isFounder, state]);
+
   async function sendLink() {
     const client = await getSupabase();
     if (!client || busy) return;
+    if (!turnstileToken) {
+      setMessage("Complete the security check before requesting the sign-in email.");
+      return;
+    }
     setBusy(true);
     setMessage("");
     const redirectTo = `${window.location.origin}/?founder_email_verified=1`;
     const { error } = await client.auth.signInWithOtp({
       email,
-      options: { shouldCreateUser: false, emailRedirectTo: redirectTo },
+      options: { shouldCreateUser: false, emailRedirectTo: redirectTo, captchaToken: turnstileToken },
     });
     setBusy(false);
     if (error) {
+      setTurnstileToken("");
+      setTurnstileResetSignal(value => value + 1);
       setMessage(error.message.includes("security purposes")
         ? "Please wait a moment before requesting another sign-in email."
         : error.message || "The secure sign-in email could not be sent.");
@@ -77,7 +107,7 @@ export default function FounderMfaGate({ email, children }: { email: string; chi
     <section>
       <header><ProductBrandLogo product="vanteloq" priority/><span><b>Secure founder access</b><small>Internal Vanteloq account</small></span></header>
       {state === "checking" && <div className="founder-mfa-copy"><h1>Checking this session…</h1><p>Vanteloq is confirming whether this browser was recently verified.</p></div>}
-      {state === "request_required" && <div className="founder-mfa-copy"><h1>Confirm this sign-in by email.</h1><p>We’ll send a secure, one-time sign-in link to the verified email address on your founder account. The address stays hidden on this screen.</p><button onClick={() => void sendLink()} disabled={busy}>{busy ? "Sending…" : "Send secure sign-in link"}</button></div>}
+      {state === "request_required" && <div className="founder-mfa-copy"><h1>Confirm this sign-in by email.</h1><p>We’ll send a secure, one-time sign-in link to the verified email address on your founder account. The address stays hidden on this screen.</p>{siteKey && <TurnstileField siteKey={siteKey} action="founder-signin" resetSignal={turnstileResetSignal} onToken={setTurnstileToken} onError={setMessage}/>}<button onClick={() => void sendLink()} disabled={busy || !siteKey || !turnstileToken}>{busy ? "Sending…" : "Send secure sign-in link"}</button></div>}
       {state === "link_sent" && <div className="founder-mfa-copy"><h1>Check your newest Vanteloq email.</h1><p>Select <b>Sign in securely</b> in that email. Older emails may no longer work after a new link is requested.</p><button onClick={() => { setMessage(""); setState("request_required"); }}>I need another link</button></div>}
       {state === "error" && <div className="founder-mfa-copy"><h1>Email verification did not finish.</h1><p>{message || "Try again or sign out safely."}</p><button onClick={() => { setMessage(""); setState("request_required"); }}>Try again</button></div>}
       {message && state !== "error" && <p className="founder-mfa-message" role="status">{message}</p>}

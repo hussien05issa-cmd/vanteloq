@@ -10,7 +10,7 @@ import {
 } from "../../../../../server/api";
 
 const EMAIL = /^[^\s@]{1,64}@[^\s@]{1,190}$/;
-const ACTION = "signup";
+const ACTIONS = new Set(["signup", "signin", "password-recovery", "founder-signin"]);
 
 function requiredText(value: unknown, label: string, minimum: number, maximum: number): string {
   if (typeof value !== "string") throw new ApiError(400, "INVALID_FIELD", `Enter a valid ${label}.`);
@@ -27,22 +27,23 @@ function configuration(request: Request) {
   const secretKey = env.TURNSTILE_SECRET_KEY?.trim() ?? "";
   const supabaseUrl = env.SUPABASE_URL?.trim().replace(/\/$/, "") ?? "";
   const publishableKey = env.SUPABASE_PUBLISHABLE_KEY?.trim() ?? "";
-  const expectedAction = env.TURNSTILE_EXPECTED_ACTION?.trim() || ACTION;
   const allowedHostnames = new Set((env.TURNSTILE_ALLOWED_HOSTNAMES ?? "")
     .split(",").map(hostname => hostname.trim().toLowerCase()).filter(Boolean));
   const requestHostname = new URL(request.url).hostname.toLowerCase();
   const configured = Boolean(
     siteKey && secretKey && supabaseUrl.startsWith("https://") && publishableKey &&
-    expectedAction === ACTION && allowedHostnames.has(requestHostname),
+    env.SUPABASE_CAPTCHA_ENABLED?.trim().toLowerCase() === "true" && allowedHostnames.has(requestHostname),
   );
-  return { siteKey, secretKey, supabaseUrl, publishableKey, expectedAction, allowedHostnames, requestHostname, configured };
+  return { siteKey, supabaseUrl, publishableKey, configured };
 }
 
 export async function GET(request: Request) {
   return handleApi(request, async () => {
     const config = configuration(request);
     if (!config.configured) return jsonResponse({ configured: false }, { status: 503 });
-    return jsonResponse({ configured: true, siteKey: config.siteKey, action: ACTION });
+    const action = new URL(request.url).searchParams.get("action") ?? "signup";
+    if (!ACTIONS.has(action)) throw new ApiError(400, "INVALID_ACTION", "The requested security check is not supported.");
+    return jsonResponse({ configured: true, siteKey: config.siteKey, action });
   });
 }
 
@@ -65,37 +66,6 @@ export async function POST(request: Request) {
     await enforceRateLimit("signup:email", email, 5, 3_600);
     if (source !== "unknown") await enforceRateLimit("signup:source", source, 20, 3_600);
 
-    const verificationBody = new URLSearchParams({
-      secret: config.secretKey,
-      response: turnstileToken,
-      idempotency_key: crypto.randomUUID(),
-    });
-    if (source !== "unknown") verificationBody.set("remoteip", source);
-
-    let verification: { success?: unknown; action?: unknown; hostname?: unknown };
-    try {
-      const response = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
-        method: "POST",
-        headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
-        body: verificationBody,
-        signal: AbortSignal.timeout(7_500),
-      });
-      if (!response.ok) throw new Error("Turnstile verification failed");
-      verification = await response.json() as typeof verification;
-    } catch {
-      throw new ApiError(503, "SECURITY_CHECK_UNAVAILABLE", "The security check is temporarily unavailable.");
-    }
-
-    const hostname = typeof verification.hostname === "string" ? verification.hostname.toLowerCase() : "";
-    if (
-      verification.success !== true ||
-      verification.action !== config.expectedAction ||
-      hostname !== config.requestHostname ||
-      !config.allowedHostnames.has(hostname)
-    ) {
-      throw new ApiError(400, "SECURITY_CHECK_FAILED", "The security check expired or could not be verified. Please retry.");
-    }
-
     let signupResponse: Response;
     try {
       signupResponse = await fetch(`${config.supabaseUrl}/auth/v1/signup?redirect_to=${encodeURIComponent(new URL("/", request.url).toString())}`, {
@@ -106,7 +76,12 @@ export async function POST(request: Request) {
           "content-type": "application/json",
           accept: "application/json",
         },
-        body: JSON.stringify({ email, password, data: { full_name: name } }),
+        body: JSON.stringify({
+          email,
+          password,
+          data: { full_name: name },
+          gotrue_meta_security: { captcha_token: turnstileToken },
+        }),
         signal: AbortSignal.timeout(10_000),
       });
     } catch {

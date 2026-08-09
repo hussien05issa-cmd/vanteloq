@@ -75,6 +75,9 @@ test("account access includes confirmation recovery and a complete password-rese
   const browserClient = await readFile(new URL("../app/supabase-browser.ts", import.meta.url), "utf8");
 
   assert.match(authPanel, /resetPasswordForEmail/);
+  assert.match(authPanel, /resetPasswordForEmail[\s\S]{0,250}captchaToken: turnstileToken/);
+  assert.match(authPanel, /signInWithPassword\(\{ email, password, options: \{ captchaToken: turnstileToken \} \}\)/);
+  assert.match(authPanel, /auth\.resend[\s\S]{0,300}captchaToken: turnstileToken/);
   assert.match(authPanel, /updateUser\(\{ password \}\)/);
   assert.match(authPanel, /auth\.resend/);
   assert.match(authPanel, /scope: "global"/);
@@ -91,6 +94,7 @@ test("account access includes confirmation recovery and a complete password-rese
 test("the founder account uses a Supabase email link instead of a rejected reauthentication code", async () => {
   const source = await readFile(new URL("../app/founder-mfa-gate.tsx", import.meta.url), "utf8");
   assert.match(source, /auth\.signInWithOtp/);
+  assert.match(source, /signInWithOtp[\s\S]{0,250}captchaToken: turnstileToken/);
   assert.match(source, /shouldCreateUser: false/);
   assert.match(source, /founder_email_verified=1/);
   assert.match(source, /Sign in securely/);
@@ -98,6 +102,19 @@ test("the founder account uses a Supabase email link instead of a rejected reaut
   assert.doesNotMatch(source, /verifyOtp|reauthenticate|six-digit/i);
   assert.doesNotMatch(source, /auth\.mfa\./);
   assert.match(source, /hussienissa@lexedgeconsulting\.com/);
+});
+
+test("Cloudflare Turnstile protects every unauthenticated Supabase email flow", async () => {
+  const authPanel = await readFile(new URL("../app/auth-panel.tsx", import.meta.url), "utf8");
+  const founderGate = await readFile(new URL("../app/founder-mfa-gate.tsx", import.meta.url), "utf8");
+  const signupRoute = await readFile(new URL("../app/api/v1/auth/signup/route.ts", import.meta.url), "utf8");
+
+  assert.match(authPanel, /mode === "signup" \|\| mode === "signin" \|\| mode === "request-reset"/);
+  assert.match(authPanel, /password-recovery/);
+  assert.match(founderGate, /action="founder-signin"/);
+  assert.match(signupRoute, /SUPABASE_CAPTCHA_ENABLED/);
+  assert.match(signupRoute, /gotrue_meta_security: \{ captcha_token: turnstileToken \}/);
+  assert.doesNotMatch(signupRoute, /turnstile\/v0\/siteverify/);
 });
 
 test("critical product surfaces preserve the readability and focus floor", async () => {
