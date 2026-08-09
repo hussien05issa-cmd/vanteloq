@@ -62,6 +62,9 @@ test("Lightspeed management routes reject anonymous same-origin writes", async (
     "/api/v1/integrations/lightspeed-r/shops",
     "/api/v1/integrations/lightspeed-r/sync",
     "/api/v1/integrations/lightspeed-r/disconnect",
+    "/api/v1/integrations/stripe/authorize",
+    "/api/v1/integrations/stripe/sync",
+    "/api/v1/integrations/stripe/disconnect",
   ]) {
     const response = await worker.fetch(new Request(`https://vanteloq.example${path}`, {
       method: "POST",
@@ -95,6 +98,30 @@ test("the R-Series callback requires the initiating signed-in owner", async () =
   ), environment, context);
   assert.equal(response.status, 401);
   assert.equal((await response.json()).error.code, "AUTHENTICATION_REQUIRED");
+});
+
+test("the Stripe callback requires the initiating signed-in owner", async () => {
+  const worker = await loadWorker();
+  const response = await worker.fetch(new Request(
+    "https://vanteloq.example/api/v1/integrations/stripe/callback?code=test-code&state=state-with-enough-entropy-for-validation",
+    { headers: { accept: "application/json" } },
+  ), environment, context);
+  assert.equal(response.status, 401);
+  assert.equal((await response.json()).error.code, "AUTHENTICATION_REQUIRED");
+});
+
+test("the Stripe webhook rejects unsigned requests before database access", async () => {
+  const worker = await loadWorker();
+  const response = await worker.fetch(new Request(
+    "https://vanteloq.example/api/v1/integrations/stripe/webhook",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: '{"id":"evt_unsigned","type":"payout.paid","account":"acct_12345678"}',
+    },
+  ), environment, context);
+  assert.equal(response.status, 401);
+  assert.equal((await response.json()).error.code, "STRIPE_WEBHOOK_SIGNATURE_INVALID");
 });
 
 test("the Lightspeed webhook rejects unsigned requests before database access", async () => {
@@ -170,6 +197,9 @@ test("imports and business-memory writes reject cross-site origins before data a
     "/api/v1/integrations/lightspeed-r/shops",
     "/api/v1/integrations/lightspeed-r/sync",
     "/api/v1/integrations/lightspeed-r/disconnect",
+    "/api/v1/integrations/stripe/authorize",
+    "/api/v1/integrations/stripe/sync",
+    "/api/v1/integrations/stripe/disconnect",
   ]) {
     const response = await worker.fetch(new Request(`https://vanteloq.example${path}`, {
       method: "POST",

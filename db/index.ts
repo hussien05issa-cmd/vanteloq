@@ -11,6 +11,11 @@ export type VanteloqRuntimeEnv = {
   LIGHTSPEED_R_CLIENT_ID?: string;
   LIGHTSPEED_R_CLIENT_SECRET?: string;
   LIGHTSPEED_R_REDIRECT_URI?: string;
+  STRIPE_CLIENT_ID?: string;
+  STRIPE_SECRET_KEY?: string;
+  STRIPE_REDIRECT_URI?: string;
+  STRIPE_WEBHOOK_SECRET?: string;
+  STRIPE_API_VERSION?: string;
   INTEGRATION_ENCRYPTION_KEY?: string;
   SUPABASE_URL?: string;
   SUPABASE_SECRET_KEY?: string;

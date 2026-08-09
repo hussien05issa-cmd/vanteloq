@@ -695,6 +695,49 @@ export const integrationStagedSales = sqliteTable(
   ],
 );
 
+// Stripe financial facts remain in an isolated staging ledger until a
+// reconciliation review explicitly promotes them. Customer, card and bank
+// account details are intentionally excluded from this table.
+export const integrationStagedFinancialRecords = sqliteTable(
+  "integration_staged_financial_records",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    provider: text("provider").notNull(),
+    externalRecordId: text("external_record_id").notNull(),
+    recordType: text("record_type", { enum: ["balance_transaction", "payout"] }).notNull(),
+    category: text("category").notNull(),
+    sourceRef: text("source_ref"),
+    occurredAt: text("occurred_at").notNull(),
+    availableAt: text("available_at"),
+    currency: text("currency").notNull(),
+    grossCents: integer("gross_cents").notNull(),
+    feeCents: integer("fee_cents").notNull().default(0),
+    netCents: integer("net_cents").notNull(),
+    state: text("state").notNull(),
+    livemode: integer("livemode", { mode: "boolean" }).notNull().default(false),
+    sourcePayloadHash: text("source_payload_hash").notNull(),
+    syncRunId: text("sync_run_id").notNull().references(() => integrationSyncRuns.id, { onDelete: "cascade" }),
+    stagedAt: integer("staged_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("integration_staged_financial_record_unique").on(
+      table.organizationId,
+      table.provider,
+      table.externalRecordId,
+      table.sourcePayloadHash,
+    ),
+    index("integration_staged_financial_date_idx").on(
+      table.organizationId,
+      table.provider,
+      table.recordType,
+      table.occurredAt,
+    ),
+    check("integration_staged_financial_type_check", sql`${table.recordType} in ('balance_transaction', 'payout')`),
+    check("integration_staged_financial_currency_check", sql`length(${table.currency}) = 3`),
+  ],
+);
+
 export const integrationWebhookEvents = sqliteTable(
   "integration_webhook_events",
   {

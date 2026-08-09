@@ -56,9 +56,9 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
     id: "stripe",
     name: "Stripe",
     category: "Payments",
-    availability: "provider_build_required",
+    availability: "credentials_required",
     activationRequirement:
-      "Restricted Connect scopes, signed events, balance transaction mapping, dispute handling and payout reconciliation tests.",
+      "The read-only Stripe Connect adapter is built for balance transactions and payouts. Add platform credentials, authorize an account, then reconcile a staged sample before promotion.",
   },
   {
     id: "moneris",

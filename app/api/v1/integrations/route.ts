@@ -7,6 +7,7 @@ import { effectivePermissions, requirePermission } from "../../../../server/perm
 import { integrationCatalog, preSyncControls } from "../../../integration-catalog";
 import { lightspeedReadiness } from "../../../../server/integrations/lightspeed";
 import { lightspeedRReadiness } from "../../../../server/integrations/lightspeed-r";
+import { stripeReadiness } from "../../../../server/integrations/stripe";
 
 export async function GET(request: Request) {
   return handleApi(request, async () => {
@@ -41,7 +42,9 @@ export async function GET(request: Request) {
           ? lightspeedReadiness()
           : provider.id === "lightspeed-r"
             ? lightspeedRReadiness()
-            : null,
+            : provider.id === "stripe"
+              ? stripeReadiness()
+              : null,
       })),
     });
   });
