@@ -10,6 +10,10 @@ function qrSource(value: string) {
   return value.startsWith("data:") ? value : `data:image/svg+xml;utf-8,${encodeURIComponent(value)}`;
 }
 
+function wait(milliseconds: number) {
+  return new Promise<void>((resolve) => globalThis.setTimeout(resolve, milliseconds));
+}
+
 export default function AccountMfaGate({ children }: { children: ReactNode }) {
   const [state, setState] = useState<GateState>("checking");
   const [message, setMessage] = useState("");
@@ -58,9 +62,26 @@ export default function AccountMfaGate({ children }: { children: ReactNode }) {
       // An interrupted enrollment is not a usable second factor. Remove only
       // unverified TOTP rows before issuing one fresh enrollment secret.
       for (const factor of factors.data.all.filter((item) => item.factor_type === "totp" && item.status === "unverified")) {
-        await client.auth.mfa.unenroll({ factorId: factor.id });
+        let removal = await client.auth.mfa.unenroll({ factorId: factor.id });
+        if (removal.error && removal.error.status !== 404) {
+          await wait(350);
+          removal = await client.auth.mfa.unenroll({ factorId: factor.id });
+        }
+        if (removal.error && removal.error.status !== 404) {
+          if (!active) return;
+          setMessage("An earlier authenticator setup is still being cleared. Wait a moment, then try again; no new QR code was issued.");
+          setState("error");
+          return;
+        }
       }
       if (!active) return;
+      const refreshedFactors = await client.auth.mfa.listFactors();
+      if (!active) return;
+      if (refreshedFactors.error || refreshedFactors.data.all.some((item) => item.factor_type === "totp" && item.status === "unverified")) {
+        setMessage("Vanteloq could not confirm that the earlier authenticator setup was cleared. Wait a moment, then try again.");
+        setState("error");
+        return;
+      }
       const enrollment = await client.auth.mfa.enroll({
         factorType: "totp",
         friendlyName: "Vanteloq owner account",
@@ -127,7 +148,7 @@ export default function AccountMfaGate({ children }: { children: ReactNode }) {
       {state === "enroll_required" && <div className="founder-mfa-enroll">
         <div>
           <h1>Protect this account with an authenticator.</h1>
-          <p>Scan this QR code with 1Password, Google Authenticator, Microsoft Authenticator or another TOTP app. Then enter the six-digit code it generates.</p>
+          <p>Scan this QR code with 1Password, Google Authenticator, Microsoft Authenticator or another TOTP app. Then enter the six-digit code it generates before refreshing this page.</p>
           <details><summary>Cannot scan the QR code?</summary><code>{manualSecret}</code></details>
         </div>
         <div>
