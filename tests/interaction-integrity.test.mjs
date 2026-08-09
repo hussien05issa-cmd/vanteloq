@@ -93,6 +93,9 @@ test("the founder account uses Supabase email reauthentication instead of an aut
   assert.match(source, /auth\.reauthenticate\(\)/);
   assert.match(source, /verifyOtp\(\{ email, token: code, type: "reauthentication" \}\)/);
   assert.match(source, /30 \* 60 \* 1000/);
+  assert.match(source, /\^\\d\{6,8\}\$/);
+  assert.match(source, /slice\(0, MAX_CODE_LENGTH\)/);
+  assert.doesNotMatch(source, /six-digit/i);
   assert.doesNotMatch(source, /auth\.mfa\./);
   assert.match(source, /hussienissa@lexedgeconsulting\.com/);
 });

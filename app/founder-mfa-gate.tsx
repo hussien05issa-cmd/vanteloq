@@ -6,6 +6,8 @@ import ProductBrandLogo from "./product-brand-logo";
 
 const FOUNDER_EMAIL = "hussienissa@lexedgeconsulting.com";
 const VERIFICATION_WINDOW_MS = 30 * 60 * 1000;
+const MIN_CODE_LENGTH = 6;
+const MAX_CODE_LENGTH = 8;
 
 type GateState = "checking" | "request_required" | "code_required" | "ready" | "error";
 
@@ -56,14 +58,14 @@ export default function FounderMfaGate({ email, children }: { email: string; chi
       return;
     }
     setState("code_required");
-    setMessage("A six-digit security code was sent to your verified email address.");
+    setMessage("A security code was sent to your verified email address.");
   }
 
   async function verifyCode() {
     const client = await getSupabase();
     if (!client || busy) return;
-    if (!/^\d{6}$/.test(code)) {
-      setMessage("Enter the six-digit code from the Vanteloq email.");
+    if (!/^\d{6,8}$/.test(code)) {
+      setMessage("Enter the complete code from the Vanteloq email.");
       return;
     }
     setBusy(true);
@@ -88,7 +90,7 @@ export default function FounderMfaGate({ email, children }: { email: string; chi
     <section>
       <header><ProductBrandLogo product="vanteloq" priority/><span><b>Secure founder access</b><small>Internal Vanteloq account</small></span></header>
       {state === "checking" && <div className="founder-mfa-copy"><h1>Checking this session…</h1><p>Vanteloq is confirming whether this browser was recently verified.</p></div>}
-      {state === "request_required" && <div className="founder-mfa-copy"><h1>Confirm this sign-in by email.</h1><p>We’ll send a six-digit code to the verified email address on your founder account. The address stays hidden on this screen.</p><button onClick={() => void sendCode()} disabled={busy}>{busy ? "Sending…" : "Send verification email"}</button></div>}
+      {state === "request_required" && <div className="founder-mfa-copy"><h1>Confirm this sign-in by email.</h1><p>We’ll send a security code to the verified email address on your founder account. The address stays hidden on this screen.</p><button onClick={() => void sendCode()} disabled={busy}>{busy ? "Sending…" : "Send verification email"}</button></div>}
       {state === "code_required" && <div className="founder-mfa-copy"><h1>Enter the code from your email.</h1><p>The code is short-lived and works once. Vanteloq support will never ask you to share it.</p><EmailCode code={code} setCode={setCode} verify={verifyCode} resend={sendCode} busy={busy}/></div>}
       {state === "error" && <div className="founder-mfa-copy"><h1>Email verification did not finish.</h1><p>{message || "Try again or sign out safely."}</p><button onClick={() => { setMessage(""); setState("request_required"); }}>Try again</button></div>}
       {message && state !== "error" && <p className="founder-mfa-message" role="status">{message}</p>}
@@ -98,9 +100,10 @@ export default function FounderMfaGate({ email, children }: { email: string; chi
 }
 
 function EmailCode({ code, setCode, verify, resend, busy }: { code: string; setCode: (value: string) => void; verify: () => Promise<void>; resend: () => Promise<void>; busy: boolean }) {
+  const complete = code.length >= MIN_CODE_LENGTH && code.length <= MAX_CODE_LENGTH;
   return <form className="founder-mfa-form" onSubmit={(event) => { event.preventDefault(); void verify(); }}>
-    <label>Six-digit email code<input inputMode="numeric" autoComplete="one-time-code" value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="000000" aria-label="Email verification code"/></label>
-    <button disabled={busy || code.length !== 6} title={code.length !== 6 ? "Enter the six-digit email code." : "Verify this email code."}>{busy ? "Verifying…" : "Verify and continue"}</button>
+    <label>Email verification code<input inputMode="numeric" autoComplete="one-time-code" value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, MAX_CODE_LENGTH))} placeholder="00000000" aria-label="Email verification code"/></label>
+    <button disabled={busy || !complete} title={!complete ? "Enter the complete code from the email." : "Verify this email code."}>{busy ? "Verifying…" : "Verify and continue"}</button>
     <button className="founder-mfa-resend" type="button" onClick={() => void resend()} disabled={busy}>Send a new code</button>
   </form>;
 }
