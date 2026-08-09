@@ -108,6 +108,7 @@ test("authenticated accounts require Supabase TOTP and a confirmed AAL2 session"
   assert.match(source, /no new QR code was issued/i);
   assert.match(source, /currentLevel !== "aal2"/);
   assert.match(source, /six-digit code/i);
+  assert.doesNotMatch(source, /Supabase AAL2|Server-enforced AAL2|Separate session on every device/);
   assert.doesNotMatch(source, /sessionStorage|signInWithOtp|founder_email_verified/);
 });
 

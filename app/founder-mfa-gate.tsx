@@ -143,13 +143,13 @@ export default function AccountMfaGate({ children }: { children: ReactNode }) {
 
   return <main className="founder-mfa-gate">
     <section>
-      <header><ProductBrandLogo product="vanteloq" priority/><span><b>Secure owner access</b><small>Supabase AAL2 verification</small></span></header>
-      {state === "checking" && <div className="founder-mfa-copy"><h1>Checking this session…</h1><p>Vanteloq is verifying the signed-in account and its authentication level.</p></div>}
+      <header><ProductBrandLogo product="vanteloq" priority/><span><b>Vanteloq account</b><small>Two-step verification</small></span></header>
+      {state === "checking" && <div className="founder-mfa-copy"><h1>Preparing secure sign-in…</h1><p>One moment while we finish protecting your account.</p></div>}
       {state === "enroll_required" && <div className="founder-mfa-enroll">
         <div>
-          <h1>Protect this account with an authenticator.</h1>
-          <p>Scan this QR code with 1Password, Google Authenticator, Microsoft Authenticator or another TOTP app. Then enter the six-digit code it generates before refreshing this page.</p>
-          <details><summary>Cannot scan the QR code?</summary><code>{manualSecret}</code></details>
+          <h1>Set up two-step verification.</h1>
+          <p>Scan the QR code with your authenticator app, then enter the six-digit code it provides. Keep this page open until setup is complete.</p>
+          <details><summary>Use a setup key instead</summary><code>{manualSecret}</code></details>
         </div>
         <div>
           {/* A provider-generated data URI cannot be optimized by next/image. */}
@@ -162,16 +162,16 @@ export default function AccountMfaGate({ children }: { children: ReactNode }) {
         </div>
       </div>}
       {state === "challenge_required" && <div className="founder-mfa-copy">
-        <h1>Enter your authenticator code.</h1>
-        <p>This sign-in has passed the password check. Enter the current six-digit code to unlock owner data and sensitive actions.</p>
+        <h1>Verify it&apos;s you.</h1>
+        <p>Enter the current six-digit code from your authenticator app to continue.</p>
         <form className="founder-mfa-form" onSubmit={verify}>
           <label>Verification code<input autoFocus value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required/></label>
           <button disabled={busy || code.length !== 6}>{busy ? "Verifying…" : "Verify and continue"}</button>
         </form>
       </div>}
-      {state === "error" && <div className="founder-mfa-copy"><h1>Secure verification did not finish.</h1><p>{message || "Sign out safely and try again."}</p></div>}
+      {state === "error" && <div className="founder-mfa-copy"><h1>We couldn&apos;t finish verification.</h1><p>{message || "Sign out safely and try again."}</p></div>}
       {message && state !== "error" && <p className="founder-mfa-message" role="alert">{message}</p>}
-      <footer><span>Password + authenticator · Separate session on every device · Server-enforced AAL2</span><button onClick={() => void signOut()}>Sign out</button></footer>
+      <footer><button onClick={() => void signOut()}>Sign out</button></footer>
     </section>
   </main>;
 }
