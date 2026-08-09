@@ -67,11 +67,11 @@ const worker = {
     headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=()");
     headers.set("X-Frame-Options", "DENY");
     headers.set("X-DNS-Prefetch-Control", "off");
-    headers.set("Content-Security-Policy", "frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
     headers.set(
-      "Content-Security-Policy-Report-Only",
-      "default-src 'self'; script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://challenges.cloudflare.com; object-src 'none'; frame-src https://challenges.cloudflare.com; worker-src 'self'; manifest-src 'self'",
+      "Content-Security-Policy",
+      "default-src 'self'; script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://challenges.cloudflare.com; object-src 'none'; frame-src https://challenges.cloudflare.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; worker-src 'self'; manifest-src 'self'; upgrade-insecure-requests",
     );
+    headers.delete("Content-Security-Policy-Report-Only");
     if (url.protocol === "https:") headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
     if (url.pathname.startsWith("/api/")) {
       headers.set("Cache-Control", "no-store, max-age=0");

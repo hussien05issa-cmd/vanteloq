@@ -99,3 +99,26 @@ test("the founder account uses a Supabase email link instead of a rejected reaut
   assert.doesNotMatch(source, /auth\.mfa\./);
   assert.match(source, /hussienissa@lexedgeconsulting\.com/);
 });
+
+test("critical product surfaces preserve the readability and focus floor", async () => {
+  const stylesheet = await readFile(new URL("../app/readability.css", import.meta.url), "utf8");
+
+  assert.match(stylesheet, /\.operating-shell :is\(p, label, dt, dd\)/);
+  assert.match(stylesheet, /font-size: max\(13px, 1em\) !important/);
+  assert.match(stylesheet, /:focus-visible/);
+  assert.match(stylesheet, /outline: 3px solid/);
+  assert.match(stylesheet, /prefers-reduced-motion: reduce/);
+  assert.match(stylesheet, /\.auth-panel input \{ min-height: 46px; font-size: 16px/);
+  assert.match(stylesheet, /\.founder-mfa-copy p,[\s\S]*font-size: 16px/);
+});
+
+test("the worker enforces the complete content security policy", async () => {
+  const source = await readFile(new URL("../worker/index.ts", import.meta.url), "utf8");
+
+  assert.match(source, /headers\.set\(\s*"Content-Security-Policy"/);
+  assert.match(source, /frame-ancestors 'none'/);
+  assert.match(source, /object-src 'none'/);
+  assert.match(source, /https:\/\/challenges\.cloudflare\.com/);
+  assert.match(source, /upgrade-insecure-requests/);
+  assert.match(source, /headers\.delete\("Content-Security-Policy-Report-Only"\)/);
+});

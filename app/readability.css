@@ -199,3 +199,75 @@ body {
   .nav-item { font-size: 14px; }
   .public-site .public-copy > p { font-size: 15px; }
 }
+
+/* Product-wide legibility floor.
+   Older high-density modules used 6–10px text to imitate desktop software.
+   Keep the compact layout, but never make operational copy depend on zoom. */
+.operating-shell :is(p, label, dt, dd) {
+  font-size: max(13px, 1em) !important;
+}
+
+.operating-shell :is(span, small, time, summary) {
+  font-size: max(12px, .9em) !important;
+  line-height: 1.45;
+}
+
+.operating-shell :is(button, input, select, textarea, th, td) {
+  font-size: max(13px, .93em) !important;
+  line-height: 1.4;
+}
+
+.operating-shell :is(.card, .metric-card, .insight-card, .dense-panel, .integration-card,
+  .module-hero, .empty-command-hero, .brief-document, .action-modal, .alert-drawer,
+  .outlet-mapping-panel, .sample-sync-result) {
+  border-color: var(--readable-line) !important;
+  box-shadow: var(--readable-shadow);
+}
+
+.operating-shell :is(button, a, input, select, textarea, summary):focus-visible,
+.auth-panel :is(button, input):focus-visible,
+.founder-mfa-gate :is(button, a):focus-visible {
+  outline: 3px solid rgba(37, 99, 235, .28);
+  outline-offset: 2px;
+}
+
+/* Account access, recovery and founder verification are critical paths. */
+.auth-panel > small { font-size: 11px; }
+.auth-panel > p { font-size: 14px; color: #53677d; }
+.auth-panel label { font-size: 13px; }
+.auth-panel input { min-height: 46px; font-size: 16px; border-color: #aebdce; }
+.auth-panel :is(.auth-submit, .auth-secondary, .auth-switch) { min-height: 42px; font-size: 14px; }
+.auth-panel .auth-message { font-size: 13px; }
+
+.founder-mfa-gate > section { border-width: 2px; border-color: #c7d5e4; }
+.founder-mfa-gate header b { font-size: 16px; }
+.founder-mfa-gate header small { font-size: 12px; color: #586f87; }
+.founder-mfa-copy h1,
+.founder-mfa-enroll h1 { font-size: clamp(28px, 4vw, 36px); }
+.founder-mfa-copy p,
+.founder-mfa-enroll p { font-size: 16px; color: #4f657b; }
+.founder-mfa-copy > button,
+.founder-mfa-form button { min-height: 46px; font-size: 14px; }
+.founder-mfa-message { font-size: 13px; }
+.founder-mfa-gate footer { font-size: 12px; color: #526b83; }
+.founder-mfa-gate footer button { min-height: 36px; font-size: 13px; }
+
+/* Onboarding and public entrance need the same readable baseline. */
+.setup-shell :is(p, span, small, label) { font-size: max(12px, .9em) !important; line-height: 1.5; }
+.setup-shell :is(button, input, select) { font-size: max(14px, 1em) !important; }
+.public-site :is(.public-pill, .signal-ribbon, .feature-stack, .how-section, .public-footer) {
+  font-size: 12px;
+}
+.public-site .public-pill { font-size: 12px; }
+.public-site .feature-stack :is(p, b, span, small),
+.public-site .how-section :is(p, b, span, small),
+.public-site .public-footer :is(p, span, small) { font-size: max(12px, .9em); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
