@@ -19,12 +19,23 @@ const payment = () => parsePaymentSettlement({
 
 test("normalizes a settled payment and produces deterministic inventory movements", () => {
   const settlement = payment();
+  assert.equal(settlement.lines[0]?.lotId, null);
   const key = eventKey("workspace-1", settlement);
   assert.equal(key, "payment:workspace-1:lightspeed-r:sale-1482");
   assert.deepEqual(buildInventoryWrites(key, settlement).map(({ sku, quantityDelta }) => ({ sku, quantityDelta })), [
     { sku: "CRE-MONO-500", quantityDelta: -2 },
     { sku: "SHAKER-01", quantityDelta: -1 },
   ]);
+});
+
+test("preserves an exact provider lot identifier for traceable depletion", () => {
+  const input = payment();
+  const settlement = parsePaymentSettlement({
+    ...input,
+    occurredAt: input.occurredAt.toISOString(),
+    lines: input.lines.map((line, index) => ({ ...line, lotId: index === 0 ? "lot-verified-1" : null })),
+  });
+  assert.equal(settlement.lines[0]?.lotId, "lot-verified-1");
 });
 
 test("rejects a payment whose lines do not reconcile to its total", () => {

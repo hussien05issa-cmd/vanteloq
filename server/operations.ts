@@ -5,6 +5,7 @@ export type PaymentLine = Readonly<{
   name: string;
   quantity: number;
   unitPriceCents: number;
+  lotId: string | null;
 }>;
 
 export type PaymentSettlement = Readonly<{
@@ -50,12 +51,13 @@ export function parsePaymentSettlement(value: Record<string, unknown>): PaymentS
   const lines = value.lines.map((candidate, index): PaymentLine => {
     if (!candidate || Array.isArray(candidate) || typeof candidate !== "object") throw new ApiError(400, "INVALID_LINE", `Payment line ${index + 1} is invalid.`);
     const row = candidate as Record<string, unknown>;
-    for (const key of Object.keys(row)) if (!["sku", "name", "quantity", "unitPriceCents"].includes(key)) throw new ApiError(400, "UNKNOWN_FIELD", `Payment line field ${key} is not supported.`);
+    for (const key of Object.keys(row)) if (!["sku", "name", "quantity", "unitPriceCents", "lotId"].includes(key)) throw new ApiError(400, "UNKNOWN_FIELD", `Payment line field ${key} is not supported.`);
     return {
       sku: text(row.sku, "SKU", 96),
       name: text(row.name, "item name", 180),
       quantity: integer(row.quantity, "quantity", 1, 100_000),
       unitPriceCents: integer(row.unitPriceCents, "unit price", 0, 100_000_000),
+      lotId: row.lotId == null || row.lotId === "" ? null : text(row.lotId, "inventory lot", 100),
     };
   });
   const calculatedTotal = lines.reduce((sum, line) => sum + line.quantity * line.unitPriceCents, 0);

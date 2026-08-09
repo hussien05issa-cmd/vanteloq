@@ -70,6 +70,10 @@ const specification = {
       get: { summary: "Read cursor-based operational events, message outbox status and inventory projections", responses: { "200": { description: "Tenant-scoped operational feed" }, "401": { description: "Authentication required" }, "403": { description: "Membership required" }, "429": { description: "Rate limited" } } },
       post: { summary: "Record an idempotent settled payment, append inventory movements and prepare a held confirmation", responses: { "200": { description: "Duplicate event safely acknowledged" }, "202": { description: "Event accepted and projections prepared" }, "400": { description: "Invalid input" }, "403": { description: "Origin or role rejected" }, "409": { description: "Payment totals do not reconcile" }, "429": { description: "Rate limited" } } },
     },
+    "/inventory-lifecycle": {
+      get: { summary: "Read tenant lot records, FEFO guidance and evidence-bound shelf-life risk", responses: { "200": { description: "Recorded lots and calculated risk" }, "401": { description: "Authentication required" }, "403": { description: "Inventory visibility required" } } },
+      post: { summary: "Create or update an audited tenant inventory lot", responses: { "200": { description: "Lot updated" }, "201": { description: "Lot created" }, "400": { description: "Invalid lot record" }, "403": { description: "Inventory adjustment permission required" }, "409": { description: "Duplicate or stale lot record" } } },
+    },
     "/growth": {
       get: { summary: "Calculate tenant-scoped first-touch local growth attribution from verified events", responses: { "200": { description: "Attributed channels or an explicit unavailable state" }, "403": { description: "Marketing permission required" }, "429": { description: "Rate limited" } } },
       post: { summary: "Ingest an idempotent discovery, conversion, POS, or search visibility record", responses: { "202": { description: "Verified source record accepted" }, "400": { description: "Invalid source record" }, "403": { description: "Origin or marketing management permission rejected" }, "429": { description: "Rate limited" } } },

@@ -375,6 +375,75 @@ export const inventoryMovements = sqliteTable(
   ],
 );
 
+// Lots are an optional lifecycle layer over the canonical SKU/location balance.
+// POS adapters continue to write normalized inventory movements; products that
+// need batch, shelf-life, or supplier traceability opt into these records.
+export const inventoryLots = sqliteTable(
+  "inventory_lots",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    locationRef: text("location_ref").notNull(),
+    sku: text("sku").notNull(),
+    productName: text("product_name").notNull(),
+    supplierName: text("supplier_name"),
+    lotNumber: text("lot_number").notNull().default(""),
+    batchNumber: text("batch_number").notNull().default(""),
+    manufacturingDate: text("manufacturing_date"),
+    receivedDate: text("received_date").notNull(),
+    expirationDate: text("expiration_date"),
+    bestBeforeDate: text("best_before_date"),
+    shelfLifeDays: integer("shelf_life_days"),
+    unitCostCents: integer("unit_cost_cents"),
+    unitRetailCents: integer("unit_retail_cents"),
+    quantityReceived: integer("quantity_received").notNull(),
+    quantityRemaining: integer("quantity_remaining").notNull(),
+    storageNotes: text("storage_notes").notNull().default(""),
+    status: text("status", { enum: ["active", "quarantined", "depleted", "expired"] }).notNull().default("active"),
+    sourceSystem: text("source_system", { enum: ["manual", "purchase_order", "pos", "import"] }).notNull().default("manual"),
+    sourceRef: text("source_ref"),
+    version: integer("version").notNull().default(1),
+    createdByUserId: text("created_by_user_id").notNull().references(() => users.id),
+    updatedByUserId: text("updated_by_user_id").notNull().references(() => users.id),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("inventory_lots_identity_unique").on(table.organizationId, table.locationRef, table.sku, table.lotNumber, table.batchNumber, table.receivedDate),
+    index("inventory_lots_fefo_idx").on(table.organizationId, table.locationRef, table.sku, table.expirationDate, table.bestBeforeDate),
+    index("inventory_lots_risk_idx").on(table.organizationId, table.status, table.expirationDate, table.bestBeforeDate),
+    check("inventory_lots_quantity_check", sql`${table.quantityReceived} >= 0 and ${table.quantityRemaining} >= 0`),
+    check("inventory_lots_money_check", sql`${table.unitCostCents} is null or ${table.unitCostCents} >= 0`),
+    check("inventory_lots_retail_check", sql`${table.unitRetailCents} is null or ${table.unitRetailCents} >= 0`),
+    check("inventory_lots_shelf_life_check", sql`${table.shelfLifeDays} is null or ${table.shelfLifeDays} > 0`),
+    check("inventory_lots_version_check", sql`${table.version} > 0`),
+    check("inventory_lots_status_check", sql`${table.status} in ('active', 'quarantined', 'depleted', 'expired')`),
+    check("inventory_lots_source_check", sql`${table.sourceSystem} in ('manual', 'purchase_order', 'pos', 'import')`),
+  ],
+);
+
+export const inventoryLotMovements = sqliteTable(
+  "inventory_lot_movements",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    lotId: text("lot_id").notNull().references(() => inventoryLots.id, { onDelete: "cascade" }),
+    operationalEventId: text("operational_event_id").references(() => operationalEvents.id, { onDelete: "set null" }),
+    quantityDelta: integer("quantity_delta").notNull(),
+    reason: text("reason", { enum: ["receipt", "sale", "refund", "adjustment", "transfer_in", "transfer_out", "waste", "expiry"] }).notNull(),
+    notes: text("notes").notNull().default(""),
+    occurredAt: integer("occurred_at", { mode: "timestamp" }).notNull(),
+    createdByUserId: text("created_by_user_id").references(() => users.id),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("inventory_lot_movements_event_unique").on(table.organizationId, table.operationalEventId, table.lotId, table.reason),
+    index("inventory_lot_movements_lot_time_idx").on(table.organizationId, table.lotId, table.occurredAt),
+    check("inventory_lot_movements_nonzero_check", sql`${table.quantityDelta} <> 0`),
+    check("inventory_lot_movements_reason_check", sql`${table.reason} in ('receipt', 'sale', 'refund', 'adjustment', 'transfer_in', 'transfer_out', 'waste', 'expiry')`),
+  ],
+);
+
 export const outboundMessages = sqliteTable(
   "outbound_messages",
   {

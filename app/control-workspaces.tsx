@@ -2,6 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "./supabase-browser";
+import { InventoryLifecycleWorkspace } from "./inventory-lifecycle-workspace";
 import {
   calculateReorderRecommendation,
   type ReorderInputs,
@@ -1029,6 +1030,7 @@ function ReceiveModal({
 
 export function InventoryWorkspace({
   currency,
+  showNotice,
   createTask,
   sourceCashCents,
   sourceAccountsPayableCents,
@@ -1062,6 +1064,7 @@ export function InventoryWorkspace({
           </span>
         </div>
       </section>
+      <InventoryLifecycleWorkspace currency={currency} showNotice={showNotice} createTask={createTask} />
       <RecommendationLab
         currency={currency}
         createTask={createTask}
