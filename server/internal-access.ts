@@ -36,14 +36,14 @@ export async function bootstrapFounderInternalAccess(context: AccessContext): Pr
     database.prepare(`INSERT OR IGNORE INTO internal_access
       (id, user_id, organization_id, access_level, reason, active, mfa_required,
        created_by_user_id, created_at, updated_at)
-      VALUES (?, ?, ?, 'founder', ?, 1, 1, ?, ?, ?)`)
+      VALUES (?, ?, ?, 'founder', ?, 1, 0, ?, ?, ?)`)
       .bind(accessId, context.userId, context.organizationId, reason, context.userId, now, now),
     database.prepare(`INSERT OR IGNORE INTO audit_events
       (id, organization_id, actor_user_id, action, resource_type, resource_id,
        outcome, request_id, source_hash, details_json, created_at)
       VALUES (?, ?, ?, 'internal_access.granted', 'internal_access', ?, 'success',
        'system-founder-bootstrap', NULL, ?, ?)`)
-      .bind(auditId, context.organizationId, context.userId, accessId, JSON.stringify({ accessLevel: "founder", mfaRequired: true, source: "verified_founder_bootstrap" }), now),
+      .bind(auditId, context.organizationId, context.userId, accessId, JSON.stringify({ accessLevel: "founder", mfaRequired: false, verification: "email_reauthentication_gate", source: "verified_founder_bootstrap" }), now),
   ]);
 }
 
@@ -59,4 +59,3 @@ export async function getInternalAccessGrant(context: AccessContext): Promise<In
   )).limit(1);
   return row ?? null;
 }
-

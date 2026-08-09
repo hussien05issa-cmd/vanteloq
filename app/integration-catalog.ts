@@ -11,6 +11,15 @@ export type IntegrationCatalogEntry = {
   activationRequirement: string;
 };
 
+export const salesChannelGroups = [
+  { label: "Point of Sale", providers: ["Lightspeed", "Square", "Clover", "Shopify POS", "Moneris"] },
+  { label: "E-commerce", providers: ["Shopify", "Amazon", "WooCommerce"] },
+  { label: "Delivery", providers: ["DoorDash", "Uber Eats"] },
+  { label: "Payments", providers: ["Stripe", "Square", "Moneris"] },
+  { label: "Accounting", providers: ["QuickBooks", "Xero"] },
+  { label: "Marketing", providers: ["Google", "Meta"] },
+] as const;
+
 export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
   {
     id: "lightspeed",
@@ -35,6 +44,14 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
     availability: "provider_build_required",
     activationRequirement:
       "Production OAuth, store and location mapping, webhooks, order/refund normalization and payout reconciliation tests.",
+  },
+  {
+    id: "shopify-pos",
+    name: "Shopify POS",
+    category: "Point of Sale",
+    availability: "provider_build_required",
+    activationRequirement:
+      "Production Shopify OAuth, retail location mapping, order and refund webhooks, register attribution and payout reconciliation tests.",
   },
   {
     id: "square",
@@ -115,6 +132,22 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
     availability: "provider_build_required",
     activationRequirement:
       "Approved partner access, store mapping, order and fee normalization, retry and reconciliation tests.",
+  },
+  {
+    id: "google",
+    name: "Google",
+    category: "Marketing",
+    availability: "provider_build_required",
+    activationRequirement:
+      "Verified OAuth consent, Business Profile and Analytics scopes, location mapping, attribution rules and historical backfill tests.",
+  },
+  {
+    id: "meta",
+    name: "Meta",
+    category: "Marketing",
+    availability: "provider_build_required",
+    activationRequirement:
+      "Approved Meta app, least-privilege business scopes, account mapping, webhook validation and attribution reconciliation tests.",
   },
   {
     id: "plaid",

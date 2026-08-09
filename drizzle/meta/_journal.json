@@ -120,6 +120,13 @@
       "when": 1786267086094,
       "tag": "0016_smart_ken_ellis",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1786355400000,
+      "tag": "0017_founder_email_verification",
+      "breakpoints": true
     }
   ]
 }

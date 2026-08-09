@@ -8,6 +8,7 @@ import IntegrationBrandLogo from "./integration-brand-logo";
 import {
   integrationCatalog,
   preSyncControls,
+  salesChannelGroups,
   type IntegrationCatalogEntry,
 } from "./integration-catalog";
 import ProductBrandLogo from "./product-brand-logo";
@@ -1971,6 +1972,21 @@ function DataHub({
         <DailyImport refresh={refresh} showNotice={showNotice} />
       ) : (
         <>
+          <section className="sales-channel-directory" aria-labelledby="sales-channels-title">
+            <header>
+              <p>SALES CHANNELS</p>
+              <h3 id="sales-channels-title">Connect every place the business sells, gets paid and finds customers.</h3>
+              <span>This directory is the connection plan. A provider only becomes live after its secure adapter and reconciliation tests pass.</span>
+            </header>
+            <div>
+              {salesChannelGroups.map((group) => <article key={group.label}>
+                <h4>{group.label}</h4>
+                <div>
+                  {group.providers.map((provider) => <span key={provider}><IntegrationBrandLogo name={provider} compact/>{provider}</span>)}
+                </div>
+              </article>)}
+            </div>
+          </section>
           <section className="connection-readiness" aria-labelledby="pre-sync-title">
             <header>
               <div>

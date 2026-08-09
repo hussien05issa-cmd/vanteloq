@@ -46,7 +46,7 @@ export default function IntegrationBrandLogo({ name, compact = false }: { name: 
     </span>;
   }
 
-  const icon = simpleMarks[name];
+  const icon = simpleMarks[name === "Shopify POS" ? "Shopify" : name];
 
   if (icon) {
     return <span className={`integration-logo brand-${slug(name)}${compact ? " compact" : ""}`} role="img" aria-label={`${name} logo`}>
@@ -60,6 +60,17 @@ export default function IntegrationBrandLogo({ name, compact = false }: { name: 
 }
 
 function CustomMark({ name }: { name: string }) {
+  if (name === "Google") return <svg viewBox="0 0 48 48" aria-hidden="true">
+    <path fill="#4285F4" d="M42.5 24.5c0-1.4-.1-2.7-.4-4H24v7.6h10.4a9 9 0 0 1-3.9 5.8v5h6.3c3.7-3.4 5.7-8.4 5.7-14.4Z"/>
+    <path fill="#34A853" d="M24 43c5.2 0 9.6-1.7 12.8-4.6l-6.3-5c-1.8 1.2-4 1.9-6.5 1.9-5 0-9.3-3.4-10.8-8h-6.5v5.1A19.3 19.3 0 0 0 24 43Z"/>
+    <path fill="#FBBC05" d="M13.2 27.3a11.7 11.7 0 0 1 0-7.5v-5.1H6.7a19.2 19.2 0 0 0 0 17.7l6.5-5.1Z"/>
+    <path fill="#EA4335" d="M24 11.7c2.9 0 5.4 1 7.4 2.9l5.5-5.5A18.6 18.6 0 0 0 24 4a19.3 19.3 0 0 0-17.3 10.7l6.5 5.1c1.5-4.7 5.8-8.1 10.8-8.1Z"/>
+  </svg>;
+
+  if (name === "Meta") return <svg viewBox="0 0 48 48" aria-hidden="true">
+    <path fill="none" stroke="#0866FF" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" d="M7 31c3-10 6-16 10-16 5 0 10 17 15 17 4 0 7-4 9-10 1-4-1-7-4-7-5 0-9 7-13 14-4 6-7 8-10 8-5 0-8-3-7-6Z"/>
+  </svg>;
+
   if (name === "WooCommerce") return <svg viewBox="0 0 48 48" aria-hidden="true">
     <path fill="#96588A" d="M5 9h38v24H27l-7 7 1.7-7H5V9Z"/>
     <text x="9" y="26" fill="#fff" fontSize="12" fontWeight="800" fontFamily="Arial, sans-serif">WOO</text>

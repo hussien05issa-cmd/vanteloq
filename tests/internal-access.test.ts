@@ -37,7 +37,7 @@ test("founder bootstrap eligibility requires the exact verified and subject-boun
 });
 
 test("internal founder access includes all normal Pro and BookLoq capabilities without billing state", () => {
-  const effective = resolveInternalEntitlements({ accessLevel: "founder", mfaRequired: true });
+  const effective = resolveInternalEntitlements({ accessLevel: "founder", mfaRequired: false });
   assert.equal(effective.accessType, "internal");
   assert.equal(effective.plan, null);
   assert.equal(effective.subscriptionStatus, null);
@@ -46,6 +46,11 @@ test("internal founder access includes all normal Pro and BookLoq capabilities w
   assert.equal(effective.features.includes("bookloq"), true);
   assert.equal(effective.features.includes("bookloq.reconciliation"), true);
   assert.deepEqual(effective.addons, ["bookloq"]);
+});
+
+test("email-verified founder access does not depend on an authenticator-app AAL", () => {
+  const grant = { accessLevel: "founder", mfaRequired: false } as const;
+  assert.doesNotThrow(() => requireInternalAccessMfa(grant, "aal1"));
 });
 
 test("internal full access requires a verified second authentication factor", () => {
