@@ -11,7 +11,10 @@ export function getSupabase(): Promise<SupabaseClient | null> {
   if (clientPromise) return clientPromise;
   clientPromise = Promise.resolve(createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
     auth: {
-      flowType: "pkce",
+      // Vanteloq keeps the Supabase session in this client-only application.
+      // Implicit links let confirmation and recovery complete even when a user
+      // opens the email on a different device from the one that requested it.
+      flowType: "implicit",
       persistSession: true,
       autoRefreshToken: true,
       detectSessionInUrl: true,

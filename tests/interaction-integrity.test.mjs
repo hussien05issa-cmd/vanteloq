@@ -61,3 +61,17 @@ test("the banking catalogue uses Plaid's standalone mark and omits removed aggre
   assert.doesNotMatch(catalogue, /\bMX\b|\bFlinks\b/);
   assert.match(catalogue, /name: "Plaid"/);
 });
+
+test("account access includes confirmation recovery and a complete password-reset path", async () => {
+  const authPanel = await readFile(new URL("../app/auth-panel.tsx", import.meta.url), "utf8");
+  const home = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const browserClient = await readFile(new URL("../app/supabase-browser.ts", import.meta.url), "utf8");
+
+  assert.match(authPanel, /resetPasswordForEmail/);
+  assert.match(authPanel, /updateUser\(\{ password \}\)/);
+  assert.match(authPanel, /auth\.resend/);
+  assert.match(authPanel, /scope: "global"/);
+  assert.match(home, /event === "PASSWORD_RECOVERY"/);
+  assert.match(home, /get\("recovery"\) === "1"/);
+  assert.match(browserClient, /flowType: "implicit"/);
+});
