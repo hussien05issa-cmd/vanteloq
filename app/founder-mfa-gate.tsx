@@ -6,10 +6,8 @@ import ProductBrandLogo from "./product-brand-logo";
 
 const FOUNDER_EMAIL = "hussienissa@lexedgeconsulting.com";
 const VERIFICATION_WINDOW_MS = 30 * 60 * 1000;
-const MIN_CODE_LENGTH = 6;
-const MAX_CODE_LENGTH = 8;
 
-type GateState = "checking" | "request_required" | "code_required" | "ready" | "error";
+type GateState = "checking" | "request_required" | "link_sent" | "ready" | "error";
 
 function verificationKey(userId: string) {
   return `vanteloq:founder-email-verification:${userId}`;
@@ -18,7 +16,6 @@ function verificationKey(userId: string) {
 export default function FounderMfaGate({ email, children }: { email: string; children: ReactNode }) {
   const isFounder = email.toLowerCase() === FOUNDER_EMAIL;
   const [state, setState] = useState<GateState>(isFounder ? "checking" : "ready");
-  const [code, setCode] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -39,49 +36,39 @@ export default function FounderMfaGate({ email, children }: { email: string; chi
         setState("error");
         return;
       }
+      const verifiedFromLink = new URLSearchParams(window.location.search).get("founder_email_verified") === "1";
+      if (verifiedFromLink) {
+        window.sessionStorage.setItem(verificationKey(data.user.id), String(Date.now()));
+        window.history.replaceState({}, "", `${window.location.pathname}${window.location.hash}`);
+        setState("ready");
+        return;
+      }
       const verifiedAt = Number(window.sessionStorage.getItem(verificationKey(data.user.id)) ?? "0");
       setState(Date.now() - verifiedAt < VERIFICATION_WINDOW_MS ? "ready" : "request_required");
     });
     return () => { active = false; };
   }, [isFounder]);
 
-  async function sendCode() {
+  async function sendLink() {
     const client = await getSupabase();
     if (!client || busy) return;
     setBusy(true);
     setMessage("");
-    const { error } = await client.auth.reauthenticate();
+    const redirectTo = `${window.location.origin}/?founder_email_verified=1`;
+    const { error } = await client.auth.signInWithOtp({
+      email,
+      options: { shouldCreateUser: false, emailRedirectTo: redirectTo },
+    });
     setBusy(false);
     if (error) {
-      setMessage(error.message || "The verification email could not be sent.");
+      setMessage(error.message.includes("security purposes")
+        ? "Please wait a moment before requesting another sign-in email."
+        : error.message || "The secure sign-in email could not be sent.");
       setState("error");
       return;
     }
-    setState("code_required");
-    setMessage("A security code was sent to your verified email address.");
-  }
-
-  async function verifyCode() {
-    const client = await getSupabase();
-    if (!client || busy) return;
-    if (!/^\d{6,8}$/.test(code)) {
-      setMessage("Enter the complete code from the Vanteloq email.");
-      return;
-    }
-    setBusy(true);
-    setMessage("");
-    const verified = await client.auth.verifyOtp({ email, token: code, type: "reauthentication" });
-    if (verified.error) {
-      setBusy(false);
-      setCode("");
-      setMessage("That code was not accepted. Request a fresh code and try again.");
-      return;
-    }
-    const { data } = await client.auth.getUser();
-    if (data.user) window.sessionStorage.setItem(verificationKey(data.user.id), String(Date.now()));
-    setBusy(false);
-    setCode("");
-    setState("ready");
+    setState("link_sent");
+    setMessage("Open the newest Vanteloq email and select “Sign in securely.”");
   }
 
   if (state === "ready") return children;
@@ -90,20 +77,11 @@ export default function FounderMfaGate({ email, children }: { email: string; chi
     <section>
       <header><ProductBrandLogo product="vanteloq" priority/><span><b>Secure founder access</b><small>Internal Vanteloq account</small></span></header>
       {state === "checking" && <div className="founder-mfa-copy"><h1>Checking this session…</h1><p>Vanteloq is confirming whether this browser was recently verified.</p></div>}
-      {state === "request_required" && <div className="founder-mfa-copy"><h1>Confirm this sign-in by email.</h1><p>We’ll send a security code to the verified email address on your founder account. The address stays hidden on this screen.</p><button onClick={() => void sendCode()} disabled={busy}>{busy ? "Sending…" : "Send verification email"}</button></div>}
-      {state === "code_required" && <div className="founder-mfa-copy"><h1>Enter the code from your email.</h1><p>The code is short-lived and works once. Vanteloq support will never ask you to share it.</p><EmailCode code={code} setCode={setCode} verify={verifyCode} resend={sendCode} busy={busy}/></div>}
+      {state === "request_required" && <div className="founder-mfa-copy"><h1>Confirm this sign-in by email.</h1><p>We’ll send a secure, one-time sign-in link to the verified email address on your founder account. The address stays hidden on this screen.</p><button onClick={() => void sendLink()} disabled={busy}>{busy ? "Sending…" : "Send secure sign-in link"}</button></div>}
+      {state === "link_sent" && <div className="founder-mfa-copy"><h1>Check your newest Vanteloq email.</h1><p>Select <b>Sign in securely</b> in that email. Older emails may no longer work after a new link is requested.</p><button onClick={() => { setMessage(""); setState("request_required"); }}>I need another link</button></div>}
       {state === "error" && <div className="founder-mfa-copy"><h1>Email verification did not finish.</h1><p>{message || "Try again or sign out safely."}</p><button onClick={() => { setMessage(""); setState("request_required"); }}>Try again</button></div>}
       {message && state !== "error" && <p className="founder-mfa-message" role="status">{message}</p>}
       <footer><span>Verified email · 30-minute browser window · Not billed</span><button onClick={() => void signOut()}>Sign out</button></footer>
     </section>
   </main>;
-}
-
-function EmailCode({ code, setCode, verify, resend, busy }: { code: string; setCode: (value: string) => void; verify: () => Promise<void>; resend: () => Promise<void>; busy: boolean }) {
-  const complete = code.length >= MIN_CODE_LENGTH && code.length <= MAX_CODE_LENGTH;
-  return <form className="founder-mfa-form" onSubmit={(event) => { event.preventDefault(); void verify(); }}>
-    <label>Email verification code<input inputMode="numeric" autoComplete="one-time-code" value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, MAX_CODE_LENGTH))} placeholder="00000000" aria-label="Email verification code"/></label>
-    <button disabled={busy || !complete} title={!complete ? "Enter the complete code from the email." : "Verify this email code."}>{busy ? "Verifying…" : "Verify and continue"}</button>
-    <button className="founder-mfa-resend" type="button" onClick={() => void resend()} disabled={busy}>Send a new code</button>
-  </form>;
 }

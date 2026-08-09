@@ -88,14 +88,14 @@ test("account access includes confirmation recovery and a complete password-rese
   assert.match(home, /entry === "load-error"/);
 });
 
-test("the founder account uses Supabase email reauthentication instead of an authenticator app", async () => {
+test("the founder account uses a Supabase email link instead of a rejected reauthentication code", async () => {
   const source = await readFile(new URL("../app/founder-mfa-gate.tsx", import.meta.url), "utf8");
-  assert.match(source, /auth\.reauthenticate\(\)/);
-  assert.match(source, /verifyOtp\(\{ email, token: code, type: "reauthentication" \}\)/);
+  assert.match(source, /auth\.signInWithOtp/);
+  assert.match(source, /shouldCreateUser: false/);
+  assert.match(source, /founder_email_verified=1/);
+  assert.match(source, /Sign in securely/);
   assert.match(source, /30 \* 60 \* 1000/);
-  assert.match(source, /\^\\d\{6,8\}\$/);
-  assert.match(source, /slice\(0, MAX_CODE_LENGTH\)/);
-  assert.doesNotMatch(source, /six-digit/i);
+  assert.doesNotMatch(source, /verifyOtp|reauthenticate|six-digit/i);
   assert.doesNotMatch(source, /auth\.mfa\./);
   assert.match(source, /hussienissa@lexedgeconsulting\.com/);
 });
