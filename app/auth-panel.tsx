@@ -6,6 +6,8 @@ import ProductBrandLogo from "./product-brand-logo";
 import { getSupabase } from "./supabase-browser";
 import TurnstileField from "./turnstile-field";
 import { MINIMUM_PASSWORD_LENGTH, passwordRules, strongPasswordError } from "../shared/password-security";
+import { canonicalAuthUrl } from "../shared/auth-urls";
+import { passwordExposureStatus } from "../shared/password-exposure";
 
 export type AuthPanelMode = "signin" | "signup" | "request-reset" | "reset-password";
 
@@ -110,30 +112,39 @@ export default function AuthPanel({
         setMessage(passwordError);
         return;
       }
+      const exposure = await passwordExposureStatus(password);
+      if (exposure !== "safe") {
+        setBusy(false);
+        setMessageIsError(true);
+        setMessage(exposure === "exposed"
+          ? "This password appears in known breach data. Choose a unique password that you have not used anywhere else."
+          : "The password safety check is temporarily unavailable. Please try again shortly.");
+        return;
+      }
       try {
-        const response = await fetch("/api/v1/auth/signup", {
-          method: "POST",
-          headers: { "content-type": "application/json", accept: "application/json" },
-          body: JSON.stringify({ name: name.trim(), email, password, turnstileToken }),
+        const result = await supabase.auth.signUp({
+          email: email.trim().toLowerCase(),
+          password,
+          options: {
+            data: { full_name: name.trim() },
+            emailRedirectTo: canonicalAuthUrl("/"),
+            captchaToken: turnstileToken,
+          },
         });
-        const payload = await response.json() as {
-          session?: { accessToken?: string; refreshToken?: string } | null;
-          error?: { message?: string };
-        };
-        if (!response.ok) {
+        if (result.error) {
           resetTurnstile();
           setMessageIsError(true);
-          setMessage(payload.error?.message ?? "Account creation could not be completed. Please try again.");
+          setMessage(result.error.status === 429
+            ? "Too many account-creation attempts. Wait a moment and try again."
+            : "Account creation could not be completed. Check your details and try again.");
           return;
         }
-        if (payload.session?.accessToken && payload.session.refreshToken) {
-          const sessionResult = await supabase.auth.setSession({ access_token: payload.session.accessToken, refresh_token: payload.session.refreshToken });
-          if (sessionResult.error || !sessionResult.data.session) throw sessionResult.error ?? new Error("Session unavailable");
-          authenticated(sessionResult.data.session);
+        if (result.data.session) {
+          authenticated(result.data.session);
           return;
         }
         resetTurnstile();
-        setMessage("Check your email to verify the account, then return here to sign in.");
+        setMessage("Check your email and open the newest verification link. Vanteloq will securely finish this sign-in for you.");
       } catch {
         resetTurnstile();
         setMessageIsError(true);
@@ -145,7 +156,7 @@ export default function AuthPanel({
     }
 
     if (mode === "request-reset") {
-      const redirectTo = `${window.location.origin}/?recovery=1`;
+      const redirectTo = canonicalAuthUrl("/?recovery=1");
       const result = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), { redirectTo, captchaToken: turnstileToken });
       resetTurnstile();
       setBusy(false);
@@ -176,6 +187,15 @@ export default function AuthPanel({
         setBusy(false);
         setMessageIsError(true);
         setMessage(passwordError);
+        return;
+      }
+      const exposure = await passwordExposureStatus(password);
+      if (exposure !== "safe") {
+        setBusy(false);
+        setMessageIsError(true);
+        setMessage(exposure === "exposed"
+          ? "This password appears in known breach data. Choose a unique password that you have not used anywhere else."
+          : "The password safety check is temporarily unavailable. Please try again shortly.");
         return;
       }
       const result = await supabase.auth.updateUser({ password });
@@ -247,7 +267,7 @@ export default function AuthPanel({
     const result = await supabase.auth.resend({
       type: "signup",
       email: email.trim().toLowerCase(),
-      options: { emailRedirectTo: `${window.location.origin}/`, captchaToken: turnstileToken },
+      options: { emailRedirectTo: canonicalAuthUrl("/"), captchaToken: turnstileToken },
     });
     resetTurnstile();
     setBusy(false);
@@ -300,7 +320,7 @@ export default function AuthPanel({
         {mode !== "reset-password" && <label>Email address<input type="email" autoComplete="email" value={email} onChange={event => setEmail(event.target.value)} required/></label>}
         {(mode === "signup" || mode === "signin" || mode === "reset-password") && <label>{mode === "reset-password" ? "New password" : "Password"}<input type="password" autoComplete={mode === "signin" ? "current-password" : "new-password"} value={password} onChange={event => setPassword(event.target.value)} minLength={mode === "signin" ? 1 : MINIMUM_PASSWORD_LENGTH} required/></label>}
         {mode === "reset-password" && <label>Confirm new password<input type="password" autoComplete="new-password" value={passwordConfirmation} onChange={event => setPasswordConfirmation(event.target.value)} minLength={MINIMUM_PASSWORD_LENGTH} required/></label>}
-        {(mode === "signup" || mode === "reset-password") && <div className="auth-password-rules" aria-label="Password requirements">{passwordRules(password).map(rule => <span className={rule.met ? "met" : ""} key={rule.id}>{rule.met ? "Met" : "Required"}: {rule.label}</span>)}</div>}
+        {(mode === "signup" || mode === "reset-password") && <div className="auth-password-rules" aria-label="Password requirements">{passwordRules(password).map(rule => <span className={rule.met ? "met" : ""} key={rule.id}>{rule.met ? "Met" : "Required"}: {rule.label}</span>)}<span>Known breached passwords are rejected when you submit.</span></div>}
         {protectedMode && siteKey && turnstileAction && <TurnstileField
           siteKey={siteKey}
           action={turnstileAction}

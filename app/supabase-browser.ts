@@ -13,9 +13,9 @@ export function getSupabase(): Promise<SupabaseClient | null> {
     auth: {
       // Passwords are never stored by this client. A rich browser application
       // must be able to read its session token; Supabase keeps the access JWT
-      // short-lived and rotates the persisted refresh token. PKCE prevents an
-      // intercepted email authorization code from being redeemed without the
-      // verifier held by the browser that started the flow.
+      // short-lived and rotates the persisted refresh token. Account creation,
+      // confirmation resends and recovery all start through this same client,
+      // so their PKCE verifier is available when the email callback returns.
       flowType: "pkce",
       persistSession: true,
       autoRefreshToken: true,
@@ -28,7 +28,16 @@ export function getSupabase(): Promise<SupabaseClient | null> {
 export async function currentSession(): Promise<Session | null> {
   const supabase = await getSupabase();
   if (!supabase) return null;
-  const { data } = await supabase.auth.getSession();
+  const { data, error } = await supabase.auth.getSession();
+  if (error) {
+    const staleRefreshToken = error.code === "refresh_token_not_found"
+      || /refresh token.*(?:not found|invalid|expired)/i.test(error.message);
+    if (staleRefreshToken) {
+      await supabase.auth.signOut({ scope: "local" }).catch(() => undefined);
+      return null;
+    }
+    throw error;
+  }
   return data.session;
 }
 

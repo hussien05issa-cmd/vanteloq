@@ -9,8 +9,10 @@ import ProductBrandLogo from "./product-brand-logo";
 import AuthPanel, { type AuthPanelMode } from "./auth-panel";
 import AccountMfaGate from "./founder-mfa-gate";
 import { currentSession, getSupabase, signOut } from "./supabase-browser";
+import { canonicalLocation } from "../shared/auth-urls";
 
 export default function Home() {
+  const canonicalDestination = typeof window === "undefined" ? null : canonicalLocation(window.location);
   const [entry, setEntry] = useState<"loading" | "load-error" | "landing" | "signup" | "app">("loading");
   const [authOpen, setAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<AuthPanelMode>("signup");
@@ -21,6 +23,10 @@ export default function Home() {
   const loadSequence = useRef(0);
   const loadingUser = useRef<string | null>(null);
   const loadedUser = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (canonicalDestination) window.location.replace(canonicalDestination);
+  }, [canonicalDestination]);
 
   const cancelPendingLoad = useCallback(() => {
     ++loadSequence.current;
@@ -94,6 +100,7 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    if (canonicalDestination) return;
     let active = true;
     const recoveryRequested = new URLSearchParams(window.location.search).get("recovery") === "1";
     if (recoveryRequested) {
@@ -140,7 +147,7 @@ export default function Home() {
       cancelPendingLoad();
       unsubscribe?.();
     };
-  }, [cancelPendingLoad, loadWorkspace]);
+  }, [cancelPendingLoad, loadWorkspace, canonicalDestination]);
 
   if (entry === "loading") return <div className="entry-loading" role="status" aria-live="polite"><ProductBrandLogo product="vanteloq" priority/><p>Preparing Vanteloq…</p></div>;
   if (entry === "load-error") return <main className="entry-loading entry-load-error">

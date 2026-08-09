@@ -76,16 +76,20 @@ test("account access includes confirmation recovery and a complete password-rese
 
   assert.match(authPanel, /resetPasswordForEmail/);
   assert.match(authPanel, /resetPasswordForEmail[\s\S]{0,250}captchaToken: turnstileToken/);
+  assert.match(authPanel, /auth\.signUp\([\s\S]{0,400}canonicalAuthUrl/);
   assert.match(authPanel, /fetch\("\/api\/v1\/auth\/signin"[\s\S]{0,400}turnstileToken/);
   assert.match(authPanel, /auth\.setSession/);
   assert.match(authPanel, /auth\.resend[\s\S]{0,300}captchaToken: turnstileToken/);
   assert.match(authPanel, /updateUser\(\{ password \}\)/);
   assert.match(authPanel, /strongPasswordError\(password\)/);
+  assert.match(authPanel, /passwordExposureStatus\(password\)/);
+  assert.match(authPanel, /known breach data/i);
   assert.match(authPanel, /auth\.resend/);
   assert.match(authPanel, /scope: "global"/);
   assert.match(home, /event === "PASSWORD_RECOVERY"/);
   assert.match(home, /get\("recovery"\) === "1"/);
   assert.match(browserClient, /flowType: "pkce"/);
+  assert.doesNotMatch(authPanel, /window\.location\.origin/);
   assert.doesNotMatch(home, /window\.location\.reload\(\)/);
   assert.doesNotMatch(authPanel, /window\.location\.reload\(\)/);
   assert.doesNotMatch(browserClient, /window\.location\.reload\(\)/);
@@ -112,12 +116,27 @@ test("Cloudflare Turnstile protects every unauthenticated Supabase email flow", 
   assert.match(authPanel, /mode === "signup" \|\| mode === "signin" \|\| mode === "request-reset"/);
   assert.match(authPanel, /password-recovery/);
   assert.match(signupRoute, /SUPABASE_CAPTCHA_ENABLED/);
-  assert.match(signupRoute, /gotrue_meta_security: \{ captcha_token: turnstileToken \}/);
+  assert.match(authPanel, /auth\.signUp[\s\S]{0,500}captchaToken: turnstileToken/);
   assert.match(signinRoute, /SUPABASE_CAPTCHA_ENABLED/);
   assert.match(signinRoute, /gotrue_meta_security: \{ captcha_token: turnstileToken \}/);
   assert.match(signinRoute, /signin:account-source/);
   assert.match(signinRoute, /signin:source/);
-  assert.doesNotMatch(signupRoute, /turnstile\/v0\/siteverify/);
+  assert.doesNotMatch(signupRoute, /export async function POST/);
+});
+
+test("authentication callbacks use one canonical production origin", async () => {
+  const authPanel = await readFile(new URL("../app/auth-panel.tsx", import.meta.url), "utf8");
+  const home = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const worker = await readFile(new URL("../worker/index.ts", import.meta.url), "utf8");
+  const authUrls = await readFile(new URL("../shared/auth-urls.ts", import.meta.url), "utf8");
+
+  assert.match(authUrls, /CANONICAL_APP_ORIGIN = "https:\/\/vanteloq\.com"/);
+  assert.match(authUrls, /LEGACY_APP_HOSTNAME = "vanteloq\.hussien05issa\.chatgpt\.site"/);
+  assert.match(home, /canonicalLocation\(window\.location\)/);
+  assert.match(home, /window\.location\.replace\(canonicalDestination\)/);
+  assert.match(worker, /Response\.redirect\(destination, 308\)/);
+  assert.match(authPanel, /canonicalAuthUrl\("\/"\)/);
+  assert.match(authPanel, /canonicalAuthUrl\("\/\?recovery=1"\)/);
 });
 
 test("authorization is server-bound to immutable identity and Supabase AAL2", async () => {
@@ -148,6 +167,7 @@ test("the worker enforces the complete content security policy", async () => {
   const source = await readFile(new URL("../worker/index.ts", import.meta.url), "utf8");
 
   assert.match(source, /headers\.set\(\s*"Content-Security-Policy"/);
+  assert.match(source, /https:\/\/api\.pwnedpasswords\.com/);
   assert.match(source, /frame-ancestors 'none'/);
   assert.match(source, /object-src 'none'/);
   assert.match(source, /https:\/\/challenges\.cloudflare\.com/);

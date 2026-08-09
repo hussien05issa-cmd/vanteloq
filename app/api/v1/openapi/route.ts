@@ -10,7 +10,6 @@ const specification = {
     },
     "/auth/signup": {
       get: { summary: "Get the configured Turnstile action", responses: { "200": { description: "Public site key and action" }, "503": { description: "Secure account protection unavailable" } } },
-      post: { summary: "Create a rate-limited Supabase account with the strong-password policy", responses: { "201": { description: "Account created; email confirmation may be required" }, "400": { description: "Invalid or weak account details" }, "403": { description: "Origin rejected" }, "429": { description: "Rate limited" } } },
     },
     "/onboarding": {
       get: { summary: "Get the signed-in user's workspace", responses: { "200": { description: "Workspace context" }, "401": { description: "Authentication required" } } },

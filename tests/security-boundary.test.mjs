@@ -171,7 +171,7 @@ test("state-changing onboarding rejects a cross-site origin before data access",
   assert.equal(body.error.code, "ORIGIN_MISMATCH");
 });
 
-test("signup protection fails closed and rejects cross-site account creation", async () => {
+test("signup configuration fails closed and direct server-side account creation is unavailable", async () => {
   const worker = await loadWorker();
   const availability = await worker.fetch(new Request("https://vanteloq.example/api/v1/auth/signup"), environment, context);
   assert.equal(availability.status, 503);
@@ -186,8 +186,7 @@ test("signup protection fails closed and rejects cross-site account creation", a
     },
     body: JSON.stringify({ name: "Owner", email: "owner@example.com", password: "not-a-real-password", turnstileToken: "not-a-real-token" }),
   }), environment, context);
-  assert.equal(response.status, 403);
-  assert.equal((await response.json()).error.code, "ORIGIN_MISMATCH");
+  assert.equal(response.status, 405);
 });
 
 test("password sign-in fails closed and rejects cross-site credential attempts", async () => {
