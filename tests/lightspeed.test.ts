@@ -138,6 +138,36 @@ test("sale normalization stores accounting fields but drops customer PII", async
   assert.doesNotMatch(JSON.stringify(normalized), /Never Persist|private@example|Private source label/);
 });
 
+test("sale normalization reads the official 2026-07 totals and line aggregate fields", async () => {
+  const normalized = await normalizeLightspeedSale({
+    id: "sale-2026-07",
+    date: "2026-08-09T15:00:00Z",
+    state: "closed",
+    source: { outlet_id: "outlet-live" },
+    totals: { price: 48, tax: 2.4, price_incl_tax: 50.4 },
+    line_items: [
+      {
+        quantity: 2,
+        pricing: {
+          price: 30,
+          total: 48,
+          discount: 6,
+          discount_total: 12,
+          cost: 15,
+          cost_total: 30,
+        },
+      },
+    ],
+    _metadata: { version: 22446763475 },
+  });
+  assert.equal(normalized.externalVersion, "22446763475");
+  assert.equal(normalized.outletRef, "outlet-live");
+  assert.equal(normalized.totalCents, 4_800);
+  assert.equal(normalized.taxCents, 240);
+  assert.equal(normalized.discountCents, 1_200);
+  assert.equal(normalized.costCents, 3_000);
+});
+
 test("webhook HMAC verification rejects tampering", async () => {
   const body = new TextEncoder().encode("type=sale.update&domain_prefix=north-store");
   const signature = createHmac("sha256", clientSecret).update(body).digest("hex");

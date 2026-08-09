@@ -52,17 +52,21 @@ function asArrayBuffer(bytes: Uint8Array): ArrayBuffer {
 
 export function lightspeedReadiness() {
   const env = getRuntimeEnv();
+  const clientId = env.LIGHTSPEED_X_CLIENT_ID || env.LIGHTSPEED_CLIENT_ID;
+  const clientSecret = env.LIGHTSPEED_X_CLIENT_SECRET || env.LIGHTSPEED_CLIENT_SECRET;
+  const redirectUri = env.LIGHTSPEED_X_REDIRECT_URI || env.LIGHTSPEED_REDIRECT_URI;
+  const encryptionKey = env.LIGHTSPEED_X_TOKEN_ENCRYPTION_KEY || env.INTEGRATION_ENCRYPTION_KEY;
   const missing = [
-    ["LIGHTSPEED_CLIENT_ID", env.LIGHTSPEED_CLIENT_ID],
-    ["LIGHTSPEED_CLIENT_SECRET", env.LIGHTSPEED_CLIENT_SECRET],
-    ["LIGHTSPEED_REDIRECT_URI", env.LIGHTSPEED_REDIRECT_URI],
-    ["INTEGRATION_ENCRYPTION_KEY", env.INTEGRATION_ENCRYPTION_KEY],
+    ["LIGHTSPEED_X_CLIENT_ID", clientId],
+    ["LIGHTSPEED_X_CLIENT_SECRET", clientSecret],
+    ["LIGHTSPEED_X_REDIRECT_URI", redirectUri],
+    ["LIGHTSPEED_X_TOKEN_ENCRYPTION_KEY", encryptionKey],
   ].filter((entry) => !entry[1]).map((entry) => entry[0]);
   return {
     adapterBuilt: true,
     credentialsConfigured: missing.length === 0,
     missingConfiguration: missing,
-    apiVersion: validApiVersion(env.LIGHTSPEED_API_VERSION),
+    apiVersion: validApiVersion(env.LIGHTSPEED_X_API_VERSION || env.LIGHTSPEED_API_VERSION),
     scopes: [...LIGHTSPEED_SCOPES],
     mode: "read_only_staging" as const,
     dataPromotionEnabled: false,
@@ -79,7 +83,7 @@ function config(): LightspeedConfig {
       "Lightspeed developer credentials must be configured before authorization can begin.",
     );
   }
-  const redirectUri = env.LIGHTSPEED_REDIRECT_URI!.trim();
+  const redirectUri = (env.LIGHTSPEED_X_REDIRECT_URI || env.LIGHTSPEED_REDIRECT_URI)!.trim();
   let parsed: URL;
   try {
     parsed = new URL(redirectUri);
@@ -90,11 +94,11 @@ function config(): LightspeedConfig {
     throw new ApiError(503, "LIGHTSPEED_REDIRECT_INVALID", "The configured Lightspeed callback URL must be a clean HTTPS URL.");
   }
   return {
-    clientId: env.LIGHTSPEED_CLIENT_ID!.trim(),
-    clientSecret: env.LIGHTSPEED_CLIENT_SECRET!,
+    clientId: (env.LIGHTSPEED_X_CLIENT_ID || env.LIGHTSPEED_CLIENT_ID)!.trim(),
+    clientSecret: (env.LIGHTSPEED_X_CLIENT_SECRET || env.LIGHTSPEED_CLIENT_SECRET)!,
     redirectUri,
     apiVersion: readiness.apiVersion,
-    encryptionKey: env.INTEGRATION_ENCRYPTION_KEY!,
+    encryptionKey: (env.LIGHTSPEED_X_TOKEN_ENCRYPTION_KEY || env.INTEGRATION_ENCRYPTION_KEY)!,
   };
 }
 
@@ -387,18 +391,29 @@ export async function normalizeLightspeedSale(
     : [];
   const externalVersion = stringValue(metadata.version) || stringValue(sale.version) || "0";
   const totalCents = firstMoney(
+    totals.price,
     totals.total_price,
     totals.total,
     sale.total_price,
     sale.total,
     sale.total_incl,
   );
-  const taxCents = firstMoney(totals.total_tax, sale.total_tax, sale.tax);
-  const discountCents = firstMoney(totals.total_discount, sale.total_discount, sale.discount);
+  const taxCents = firstMoney(totals.tax, totals.total_tax, sale.total_tax, sale.tax);
+  const lineDiscountCents = lines.reduce((sum, line) => {
+    const pricing = objectValue(line.pricing);
+    const quantity = finiteNumber(line.quantity, 0);
+    return sum + (moneyCents(pricing.discount_total) ?? Math.round(moneyNumber(pricing.discount) * quantity * 100));
+  }, 0);
+  const discountCents = firstMoneyOrNull(
+    totals.discount,
+    totals.total_discount,
+    sale.total_discount,
+    sale.discount,
+  ) ?? lineDiscountCents;
   const costCents = lines.reduce((sum, line) => {
     const pricing = objectValue(line.pricing);
     const quantity = finiteNumber(line.quantity, 0);
-    return sum + Math.round(moneyNumber(pricing.cost) * quantity * 100);
+    return sum + (moneyCents(pricing.cost_total) ?? Math.round(moneyNumber(pricing.cost) * quantity * 100));
   }, 0);
   const normalized = {
     externalSaleId,
@@ -480,11 +495,21 @@ function moneyNumber(value: unknown) {
 }
 
 function firstMoney(...values: unknown[]) {
+  return firstMoneyOrNull(...values) ?? 0;
+}
+
+function firstMoneyOrNull(...values: unknown[]) {
   for (const value of values) {
-    const number = typeof value === "number" ? value : Number(value);
-    if (Number.isFinite(number)) return Math.round(number * 100);
+    const cents = moneyCents(value);
+    if (cents !== null) return cents;
   }
-  return 0;
+  return null;
+}
+
+function moneyCents(value: unknown) {
+  if (value === null || value === undefined || value === "") return null;
+  const number = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(number) ? Math.round(number * 100) : null;
 }
 
 function base64(bytes: Uint8Array) {

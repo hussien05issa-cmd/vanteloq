@@ -187,6 +187,12 @@ export async function GET(request: Request) {
     return Response.redirect(returnUrl(request, "connected"), 303);
     } catch (error) {
       const errorCode = error instanceof ApiError ? error.code : "LIGHTSPEED_CONNECTION_FAILED";
+      // Do not retain a usable provider token when outlet verification fails.
+      // A future attempt must restart the one-time authorization flow.
+      await getDb().delete(integrationSecrets).where(and(
+        eq(integrationSecrets.organizationId, context.organizationId),
+        eq(integrationSecrets.provider, LIGHTSPEED_PROVIDER),
+      ));
       await getDb().update(integrationConnections).set({
         status: "error",
         dataPromotionStatus: "blocked",

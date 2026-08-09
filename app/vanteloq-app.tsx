@@ -2087,6 +2087,16 @@ function DataHub({
                 </div>
                 <h3>{provider.name}</h3>
                 <p>{provider.activationRequirement}</p>
+                {isLightspeed && !configured && provider.providerReadiness && (
+                  <div className="provider-setup-needed" role="note">
+                    <b>Connection setup remaining</b>
+                    <span>
+                      {provider.providerReadiness.missingConfiguration
+                        .map(lightspeedConfigurationLabel)
+                        .join(" · ")}
+                    </span>
+                  </div>
+                )}
                 <div className="integration-card-footer">
                   <div>
                     <span className={`status ${connected ? "" : "planned"}`}>
@@ -2173,6 +2183,20 @@ function availabilityLabel(value: IntegrationCatalogEntry["availability"]) {
     : value === "credentials_required"
       ? "Credentials required"
       : "Provider build required";
+}
+
+function lightspeedConfigurationLabel(value: string) {
+  const labels: Record<string, string> = {
+    LIGHTSPEED_X_CLIENT_ID: "Developer app client ID",
+    LIGHTSPEED_X_CLIENT_SECRET: "Developer app client secret",
+    LIGHTSPEED_X_REDIRECT_URI: "Approved callback URL",
+    LIGHTSPEED_X_TOKEN_ENCRYPTION_KEY: "Encrypted token storage key",
+    LIGHTSPEED_R_CLIENT_ID: "R-Series client ID",
+    LIGHTSPEED_R_CLIENT_SECRET: "R-Series client secret",
+    LIGHTSPEED_R_REDIRECT_URI: "R-Series callback URL",
+    INTEGRATION_ENCRYPTION_KEY: "Encrypted token storage key",
+  };
+  return labels[value] ?? "Provider configuration";
 }
 
 const requiredHeaders = [

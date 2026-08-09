@@ -179,6 +179,24 @@ button, a, input, select, textarea, summary { -webkit-tap-highlight-color: trans
   font-weight: 700 !important;
 }
 .operating-shell .bookloq-nav-glyph { width: 17px; height: 17px; }
+.operating-shell .provider-setup-needed {
+  display: grid;
+  gap: 4px;
+  margin-top: 14px;
+  padding: 10px 11px;
+  border: 1px solid #d8e2ee;
+  border-radius: 6px;
+  background: #f6f9fd;
+}
+.operating-shell .provider-setup-needed b {
+  color: #233a56;
+  font-size: 12px;
+}
+.operating-shell .provider-setup-needed span {
+  color: var(--vql-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
 .operating-shell .side-bottom {
   padding-top: 10px;
   border-color: var(--sidebar-line);
