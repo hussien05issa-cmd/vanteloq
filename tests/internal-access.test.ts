@@ -48,11 +48,6 @@ test("internal founder access includes all normal Pro and BookLoq capabilities w
   assert.deepEqual(effective.addons, ["bookloq"]);
 });
 
-test("email-verified founder access does not depend on an authenticator-app AAL", () => {
-  const grant = { accessLevel: "founder", mfaRequired: false } as const;
-  assert.doesNotThrow(() => requireInternalAccessMfa(grant, "aal1"));
-});
-
 test("internal full access requires a verified second authentication factor", () => {
   const grant = { accessLevel: "founder", mfaRequired: true } as const;
   assert.doesNotThrow(() => requireInternalAccessMfa(grant, "aal2"));

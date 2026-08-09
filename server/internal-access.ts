@@ -30,20 +30,23 @@ export async function bootstrapFounderInternalAccess(context: AccessContext): Pr
   const reason = "Permanent founder access for the verified Vanteloq owner account.";
   const database = getD1();
 
-  // INSERT OR IGNORE deliberately does not reactivate a revoked grant. A future
-  // internal administrator must make and audit that decision explicitly.
+  // Keep the grant's active/revoked state intact while making MFA mandatory for
+  // both new and previously bootstrapped founder grants.
   await database.batch([
-    database.prepare(`INSERT OR IGNORE INTO internal_access
+    database.prepare(`INSERT INTO internal_access
       (id, user_id, organization_id, access_level, reason, active, mfa_required,
        created_by_user_id, created_at, updated_at)
-      VALUES (?, ?, ?, 'founder', ?, 1, 0, ?, ?, ?)`)
+      VALUES (?, ?, ?, 'founder', ?, 1, 1, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        mfa_required = 1,
+        updated_at = excluded.updated_at`)
       .bind(accessId, context.userId, context.organizationId, reason, context.userId, now, now),
     database.prepare(`INSERT OR IGNORE INTO audit_events
       (id, organization_id, actor_user_id, action, resource_type, resource_id,
        outcome, request_id, source_hash, details_json, created_at)
       VALUES (?, ?, ?, 'internal_access.granted', 'internal_access', ?, 'success',
        'system-founder-bootstrap', NULL, ?, ?)`)
-      .bind(auditId, context.organizationId, context.userId, accessId, JSON.stringify({ accessLevel: "founder", mfaRequired: false, verification: "email_reauthentication_gate", source: "verified_founder_bootstrap" }), now),
+      .bind(auditId, context.organizationId, context.userId, accessId, JSON.stringify({ accessLevel: "founder", mfaRequired: true, verification: "supabase_aal2", source: "verified_founder_bootstrap" }), now),
   ]);
 }
 

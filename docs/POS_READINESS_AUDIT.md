@@ -1,9 +1,9 @@
 # POS integration readiness audit
 
-Date: 2026-08-05
-Decision: **The Lightspeed read-only staging pilot is built; do not promote live POS data yet.**
+Date: 2026-08-09
+Decision: **The Lightspeed X-Series and R-Series read-only staging connectors are built and hosted; do not promote live POS data yet.**
 
-The Vanteloq core and first Lightspeed X-Series adapter are ready for approved developer credentials and an owner-run sandbox pilot. No provider is represented as live. The Connections workspace keeps provider data in isolated staging and the integration-status API returns data promotion as disabled.
+The Vanteloq core and both Lightspeed adapters have their production OAuth values configured and are ready for an owner-run pilot. No provider is represented as live. The Connections workspace keeps provider data in isolated staging and the integration-status API returns data promotion as disabled.
 
 ## Verified platform controls
 
@@ -32,12 +32,13 @@ The Vanteloq core and first Lightspeed X-Series adapter are ready for approved d
 - HMAC webhook validation and replay rejection without raw payload retention; polling remains source of truth.
 - Explicit disconnect that deletes encrypted tokens and preserves audit/staging history.
 - Hard `dataPromotionEnabled: false` boundary until sample reconciliation and canary approval.
+- Separate R-Series OAuth client, `employee:register_read employee:inventory_read` scopes, V3 account/shop discovery, tenant-bound shop mapping and bounded sale staging.
 
 ## Provider controls that remain blocked
 
 | Gate | Required implementation before activation |
 |---|---|
-| Lightspeed credentials | Approved developer application client ID and secret in hosted secrets |
+| Retailer authorization | Complete OAuth for the owner's real X-Series or R-Series account; a saved client credential alone is not a connected retailer |
 | Webhook recovery | Queue consumer, dead-letter/retry operations and provider delivery fault tests; verified polling remains authoritative meanwhile |
 | Backfill acceptance | Bounded sandbox sample plus source-total, refund, tax, discount, cost and duplicate reconciliation |
 | Normalization | Provider-specific mapping for organizations, locations, transactions, line items, refunds, taxes, discounts, products, employees and payouts where supported |
@@ -66,7 +67,7 @@ A provider may be marked live only when all of the following are true:
 
 Continue Lightspeed as a read-only pilot after the required partner approval and credentials exist:
 
-1. Enter the two hosted developer secrets and authorize an owner sandbox account.
+1. Authorize an owner sandbox or production account using the already-configured hosted OAuth client.
 2. Discover and map sandbox outlets to Vanteloq locations.
 3. Stage a bounded sample and reconcile source totals before exposing metrics.
 4. Run duplicate, refund, outage, partial-page, rate-limit and stale-token acceptance tests.
@@ -75,7 +76,7 @@ Continue Lightspeed as a read-only pilot after the required partner approval and
 
 ## Verification completed in this audit
 
-- 39 automated checks passed, including dedicated reorder, Lightspeed, security, migration, tenant-isolation, calculation and interaction cases.
+- 100 automated checks passed, including dedicated reorder, Lightspeed, security, migration, tenant-isolation, calculation and interaction cases.
 - TypeScript passed.
 - Lint passed with two expected image-optimization advisories for tenant-uploaded logos.
 - Production build and Sites artifact validation passed.
@@ -84,7 +85,7 @@ Continue Lightspeed as a read-only pilot after the required partner approval and
 
 ## Evidence limits
 
-- No live provider credentials, OAuth application, webhook secret or production POS tenant was available; no external provider connection was attempted.
+- Hosted Lightspeed OAuth values were verified by name, secrecy classification and exact callback without exposing their contents. No retailer OAuth grant or production POS data was available, so no external data connection was claimed.
 - The authenticated workspace could not be visually traversed in the cloud audit browser because the hosted sign-in route is outside the local preview boundary. Its behavior was checked through source inspection, API integration tests and the supplied authenticated screenshots.
 - Cloudflare account-level WAF, backup schedules, external alerting and provider-side security settings are outside this source audit.
 - This is an engineering readiness audit, not a penetration test, SOC report, legal opinion or compliance certification.

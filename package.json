@@ -23,7 +23,7 @@
     "email:deploy": "node scripts/deploy-auth-email-templates.mjs"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.112.2",
+    "@supabase/supabase-js": "2.112.2",
     "drizzle-orm": "0.45.2",
     "next": "16.3.0",
     "react": "19.2.6",

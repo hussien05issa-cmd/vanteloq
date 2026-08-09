@@ -66,6 +66,19 @@ export async function POST(request: Request) {
       }).from(integrationLocationMappings).where(and(
         eq(integrationLocationMappings.organizationId, context.organizationId), eq(integrationLocationMappings.provider, LIGHTSPEED_R_PROVIDER),
       ));
+      const discoveredOutlets = Number(counts?.total ?? 0);
+      const mappedOutlets = Number(counts?.mapped ?? 0);
+      const ignoredOutlets = Number(counts?.ignored ?? 0);
+      const unmappedOutlets = discoveredOutlets - mappedOutlets - ignoredOutlets;
+      const completedSales = normalized.filter((sale) => sale.state === "completed");
+      const sampleTotals = completedSales.reduce((totals, sale) => ({
+        salesCents: totals.salesCents + sale.totalCents,
+        taxCents: totals.taxCents + sale.taxCents,
+        costCents: totals.costCents + sale.costCents,
+        discountCents: totals.discountCents + sale.discountCents,
+        units: totals.units + sale.lineCount,
+      }), { salesCents: 0, taxCents: 0, costCents: 0, discountCents: 0, units: 0 });
+      const readyForReview = warnings === 0 && unmappedOutlets === 0 && completedSales.length > 0;
       await recordAudit({
         request, requestId, organizationId: context.organizationId, actorUserId: context.userId,
         action: "integration.sample_staged", resourceType: "integration_sync_run", resourceId: runId,
@@ -75,12 +88,17 @@ export async function POST(request: Request) {
         provider: LIGHTSPEED_R_PROVIDER,
         run: { id: runId, status: "completed", recordsRead: page.data.length, recordsStaged: staged, duplicatesSkipped, warningCount: warnings, pages: page.pages, cursorPreserved: safeCursor },
         reconciliation: {
-          mappedOutlets: Number(counts?.mapped ?? 0), discoveredOutlets: Number(counts?.total ?? 0), ignoredOutlets: Number(counts?.ignored ?? 0),
-          unmappedOutlets: Number(counts?.total ?? 0) - Number(counts?.mapped ?? 0) - Number(counts?.ignored ?? 0),
+          mappedOutlets, discoveredOutlets, ignoredOutlets, unmappedOutlets,
           sourceRecords: normalized.length, stagedRecords: staged, duplicateRecords: duplicatesSkipped,
+          completedSales: completedSales.length,
+          openSales: normalized.filter((sale) => sale.state === "open").length,
+          voidedSales: normalized.filter((sale) => sale.state === "voided").length,
+          ...sampleTotals,
         },
-        stagingOnly: true, dataPromotionEnabled: false,
-        nextStep: "Map every active R-Series shop, review sample totals and approve a separate promotion gate before staged sales can affect Vanteloq metrics.",
+        stagingOnly: true, dataPromotionEnabled: false, readyForReview,
+        nextStep: readyForReview
+          ? "The sample is reconciled and ready for an owner to compare against the R-Series register report. Live metric promotion remains locked until that check is approved."
+          : "Resolve every unmapped R-Series shop and normalization warning, then stage the sample again before reviewing totals.",
       });
     } catch (error) {
       const code = error instanceof ApiError ? error.code : "LIGHTSPEED_R_SAMPLE_FAILED";

@@ -4,7 +4,9 @@ Baseline: OWASP ASVS 5.0.0 Level 2 target. “Implemented” means present in th
 
 | Control | Implementation | ASVS / OWASP relationship | Evidence |
 |---|---|---|---|
-| Trusted authentication boundary | Dispatcher-provided identity header; no fabricated fallback | ASVS authentication; OWASP A07 Identification and Authentication Failures | Anonymous API negative tests |
+| Trusted authentication boundary | Supabase token validation, immutable subject binding, verified email, mandatory AAL2; no fabricated fallback | ASVS authentication; OWASP A07 Identification and Authentication Failures | Auth integrity and anonymous API negative tests |
+| Credential abuse resistance | Turnstile plus D1 account/source and source rate buckets; generic invalid-credential response | ASVS authentication/API resource controls | Sign-in route and hostile-path tests |
+| Password policy | Shared client/server 12-character and character-class policy; Supabase bcrypt storage | ASVS password controls | Password-security module and interaction tests |
 | Tenant authorization | Active membership resolves organization server-side | ASVS access control; OWASP A01 Broken Access Control; API1 BOLA | Organization ID absent from client task inputs |
 | Function authorization | Explicit role allowlists per route | ASVS access control; API5 Broken Function Level Authorization | Route policy declarations |
 | Parameterized data access | Drizzle ORM and D1 prepared statements | ASVS injection prevention; OWASP A03 Injection | Repository/source review |
@@ -20,5 +22,4 @@ Baseline: OWASP ASVS 5.0.0 Level 2 target. “Implemented” means present in th
 | API inventory | `/api/v1` and OpenAPI 3.1 description | ASVS API/web services; API9 Improper Inventory Management | Runtime OpenAPI test |
 | Secret hygiene | `.env*` ignored, `.env.example` sanitized, source secret scan | ASVS configuration; OWASP A02 Cryptographic Failures / A05 Misconfiguration | Secret scan result |
 
-Not implemented: provider token encryption, OAuth/PKCE, webhook signatures/replay storage, file scanning/private upload, independent MFA/recovery, support/admin surfaces, external SIEM/alerts, backup restoration evidence, DAST, and full ASVS verification.
-
+Not implemented or not yet evidenced: passkeys, user-facing session/device revocation, leaked-password protection in the Supabase provider, malware scanning/OCR, external SIEM/alerts, backup restoration evidence, DAST, and full ASVS verification. Provider token encryption, OAuth state/PKCE, signed webhook/replay controls, Supabase MFA and recovery paths are implemented for their current bounded surfaces.

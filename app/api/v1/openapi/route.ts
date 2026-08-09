@@ -5,6 +5,13 @@ const specification = {
   info: { title: "Vanteloq API", version: "1.0.0" },
   servers: [{ url: "/api/v1" }],
   paths: {
+    "/auth/signin": {
+      post: { summary: "Create a Turnstile-protected, rate-limited Supabase password session", responses: { "200": { description: "Authenticated session established" }, "400": { description: "Generic invalid credentials" }, "403": { description: "Origin rejected or email not confirmed" }, "429": { description: "Rate limited" }, "503": { description: "Secure sign-in unavailable" } } },
+    },
+    "/auth/signup": {
+      get: { summary: "Get the configured Turnstile action", responses: { "200": { description: "Public site key and action" }, "503": { description: "Secure account protection unavailable" } } },
+      post: { summary: "Create a rate-limited Supabase account with the strong-password policy", responses: { "201": { description: "Account created; email confirmation may be required" }, "400": { description: "Invalid or weak account details" }, "403": { description: "Origin rejected" }, "429": { description: "Rate limited" } } },
+    },
     "/onboarding": {
       get: { summary: "Get the signed-in user's workspace", responses: { "200": { description: "Workspace context" }, "401": { description: "Authentication required" } } },
       post: { summary: "Create the signed-in user's first workspace", responses: { "201": { description: "Workspace created" }, "400": { description: "Invalid input" }, "401": { description: "Authentication required" }, "409": { description: "Workspace already exists" }, "429": { description: "Rate limited" } } },

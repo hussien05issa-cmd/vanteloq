@@ -1,117 +1,156 @@
 "use client";
 
-import { type ReactNode, useEffect, useState } from "react";
+import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 import { getSupabase, signOut } from "./supabase-browser";
 import ProductBrandLogo from "./product-brand-logo";
-import TurnstileField from "./turnstile-field";
 
-const FOUNDER_EMAIL = "hussienissa@lexedgeconsulting.com";
-const VERIFICATION_WINDOW_MS = 30 * 60 * 1000;
+type GateState = "checking" | "enroll_required" | "challenge_required" | "ready" | "error";
 
-type GateState = "checking" | "request_required" | "link_sent" | "ready" | "error";
-
-function verificationKey(userId: string) {
-  return `vanteloq:founder-email-verification:${userId}`;
+function qrSource(value: string) {
+  return value.startsWith("data:") ? value : `data:image/svg+xml;utf-8,${encodeURIComponent(value)}`;
 }
 
-export default function FounderMfaGate({ email, children }: { email: string; children: ReactNode }) {
-  const isFounder = email.toLowerCase() === FOUNDER_EMAIL;
-  const [state, setState] = useState<GateState>(isFounder ? "checking" : "ready");
+export default function AccountMfaGate({ children }: { children: ReactNode }) {
+  const [state, setState] = useState<GateState>("checking");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
-  const [siteKey, setSiteKey] = useState("");
-  const [turnstileToken, setTurnstileToken] = useState("");
-  const [turnstileResetSignal, setTurnstileResetSignal] = useState(0);
+  const [factorId, setFactorId] = useState("");
+  const [qrCode, setQrCode] = useState("");
+  const [manualSecret, setManualSecret] = useState("");
+  const [code, setCode] = useState("");
 
   useEffect(() => {
-    if (!isFounder) return;
     let active = true;
     void getSupabase().then(async (client) => {
       if (!active) return;
       if (!client) {
-        setMessage("Secure account verification is temporarily unavailable.");
+        setMessage("Multi-factor authentication is temporarily unavailable.");
         setState("error");
         return;
       }
-      const { data, error } = await client.auth.getUser();
+
+      const assurance = await client.auth.mfa.getAuthenticatorAssuranceLevel();
       if (!active) return;
-      if (error || !data.user) {
-        setMessage("Vanteloq could not confirm the signed-in account.");
+      if (assurance.error) {
+        setMessage("Vanteloq could not verify this session's security level.");
         setState("error");
         return;
       }
-      const verifiedFromLink = new URLSearchParams(window.location.search).get("founder_email_verified") === "1";
-      if (verifiedFromLink) {
-        window.sessionStorage.setItem(verificationKey(data.user.id), String(Date.now()));
-        window.history.replaceState({}, "", `${window.location.pathname}${window.location.hash}`);
+      if (assurance.data.currentLevel === "aal2") {
         setState("ready");
         return;
       }
-      const verifiedAt = Number(window.sessionStorage.getItem(verificationKey(data.user.id)) ?? "0");
-      setState(Date.now() - verifiedAt < VERIFICATION_WINDOW_MS ? "ready" : "request_required");
+
+      const factors = await client.auth.mfa.listFactors();
+      if (!active) return;
+      if (factors.error) {
+        setMessage("Vanteloq could not load your verification methods.");
+        setState("error");
+        return;
+      }
+      const verified = factors.data.totp[0];
+      if (verified) {
+        setFactorId(verified.id);
+        setState("challenge_required");
+        return;
+      }
+
+      // An interrupted enrollment is not a usable second factor. Remove only
+      // unverified TOTP rows before issuing one fresh enrollment secret.
+      for (const factor of factors.data.all.filter((item) => item.factor_type === "totp" && item.status === "unverified")) {
+        await client.auth.mfa.unenroll({ factorId: factor.id });
+      }
+      if (!active) return;
+      const enrollment = await client.auth.mfa.enroll({
+        factorType: "totp",
+        friendlyName: "Vanteloq owner account",
+        issuer: "Vanteloq",
+      });
+      if (!active) return;
+      if (enrollment.error) {
+        setMessage("A secure authenticator could not be prepared. Sign out, then try again.");
+        setState("error");
+        return;
+      }
+      setFactorId(enrollment.data.id);
+      setQrCode(qrSource(enrollment.data.totp.qr_code));
+      setManualSecret(enrollment.data.totp.secret);
+      setState("enroll_required");
+    }).catch(() => {
+      if (!active) return;
+      setMessage("Multi-factor authentication is temporarily unavailable.");
+      setState("error");
     });
     return () => { active = false; };
-  }, [isFounder]);
+  }, []);
 
-  useEffect(() => {
-    if (!isFounder || state !== "request_required") return;
-    const controller = new AbortController();
-    void fetch("/api/v1/auth/signup?action=founder-signin", { headers: { accept: "application/json" }, signal: controller.signal })
-      .then(async response => {
-        const payload = await response.json() as { configured?: boolean; siteKey?: string; action?: string };
-        if (!response.ok || !payload.configured || !payload.siteKey || payload.action !== "founder-signin") {
-          throw new Error("Founder verification protection is unavailable.");
-        }
-        setSiteKey(payload.siteKey);
-      })
-      .catch(error => {
-        if ((error as Error).name !== "AbortError") {
-          setMessage("Secure account verification is temporarily unavailable.");
-          setState("error");
-        }
-      });
-    return () => controller.abort();
-  }, [isFounder, state]);
-
-  async function sendLink() {
+  async function verify(event: FormEvent) {
+    event.preventDefault();
+    if (busy || !factorId || !/^\d{6}$/.test(code)) {
+      setMessage("Enter the current six-digit code from your authenticator app.");
+      return;
+    }
     const client = await getSupabase();
-    if (!client || busy) return;
-    if (!turnstileToken) {
-      setMessage("Complete the security check before requesting the sign-in email.");
+    if (!client) {
+      setMessage("Multi-factor authentication is temporarily unavailable.");
       return;
     }
     setBusy(true);
     setMessage("");
-    const redirectTo = `${window.location.origin}/?founder_email_verified=1`;
-    const { error } = await client.auth.signInWithOtp({
-      email,
-      options: { shouldCreateUser: false, emailRedirectTo: redirectTo, captchaToken: turnstileToken },
-    });
+    const result = await client.auth.mfa.challengeAndVerify({ factorId, code });
     setBusy(false);
-    if (error) {
-      setTurnstileToken("");
-      setTurnstileResetSignal(value => value + 1);
-      setMessage(error.message.includes("security purposes")
-        ? "Please wait a moment before requesting another sign-in email."
-        : error.message || "The secure sign-in email could not be sent.");
+    if (result.error) {
+      setCode("");
+      setMessage(result.error.status === 429
+        ? "Too many verification attempts. Wait before trying again."
+        : "That code was not accepted. Wait for a new code and try again.");
+      return;
+    }
+    const assurance = await client.auth.mfa.getAuthenticatorAssuranceLevel();
+    if (assurance.error || assurance.data.currentLevel !== "aal2") {
+      setMessage("The second factor was accepted, but the secured session could not be confirmed. Sign in again.");
       setState("error");
       return;
     }
-    setState("link_sent");
-    setMessage("Open the newest Vanteloq email and select “Sign in securely.”");
+    setCode("");
+    setManualSecret("");
+    setQrCode("");
+    setState("ready");
   }
 
   if (state === "ready") return children;
 
   return <main className="founder-mfa-gate">
     <section>
-      <header><ProductBrandLogo product="vanteloq" priority/><span><b>Secure founder access</b><small>Internal Vanteloq account</small></span></header>
-      {state === "checking" && <div className="founder-mfa-copy"><h1>Checking this session…</h1><p>Vanteloq is confirming whether this browser was recently verified.</p></div>}
-      {state === "request_required" && <div className="founder-mfa-copy"><h1>Confirm this sign-in by email.</h1><p>We’ll send a secure, one-time sign-in link to the verified email address on your founder account. The address stays hidden on this screen.</p>{siteKey && <TurnstileField siteKey={siteKey} action="founder-signin" resetSignal={turnstileResetSignal} onToken={setTurnstileToken} onError={setMessage}/>}<button onClick={() => void sendLink()} disabled={busy || !siteKey || !turnstileToken}>{busy ? "Sending…" : "Send secure sign-in link"}</button></div>}
-      {state === "link_sent" && <div className="founder-mfa-copy"><h1>Check your newest Vanteloq email.</h1><p>Select <b>Sign in securely</b> in that email. Older emails may no longer work after a new link is requested.</p><button onClick={() => { setMessage(""); setState("request_required"); }}>I need another link</button></div>}
-      {state === "error" && <div className="founder-mfa-copy"><h1>Email verification did not finish.</h1><p>{message || "Try again or sign out safely."}</p><button onClick={() => { setMessage(""); setState("request_required"); }}>Try again</button></div>}
-      {message && state !== "error" && <p className="founder-mfa-message" role="status">{message}</p>}
-      <footer><span>Verified email · 30-minute browser window · Not billed</span><button onClick={() => void signOut()}>Sign out</button></footer>
+      <header><ProductBrandLogo product="vanteloq" priority/><span><b>Secure owner access</b><small>Supabase AAL2 verification</small></span></header>
+      {state === "checking" && <div className="founder-mfa-copy"><h1>Checking this session…</h1><p>Vanteloq is verifying the signed-in account and its authentication level.</p></div>}
+      {state === "enroll_required" && <div className="founder-mfa-enroll">
+        <div>
+          <h1>Protect this account with an authenticator.</h1>
+          <p>Scan this QR code with 1Password, Google Authenticator, Microsoft Authenticator or another TOTP app. Then enter the six-digit code it generates.</p>
+          <details><summary>Cannot scan the QR code?</summary><code>{manualSecret}</code></details>
+        </div>
+        <div>
+          {/* A provider-generated data URI cannot be optimized by next/image. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          {qrCode && <img src={qrCode} width={190} height={190} alt="Authenticator enrollment QR code"/>}
+          <form className="founder-mfa-form" onSubmit={verify}>
+            <label>Verification code<input value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required/></label>
+            <button disabled={busy || code.length !== 6}>{busy ? "Verifying…" : "Enable two-factor authentication"}</button>
+          </form>
+        </div>
+      </div>}
+      {state === "challenge_required" && <div className="founder-mfa-copy">
+        <h1>Enter your authenticator code.</h1>
+        <p>This sign-in has passed the password check. Enter the current six-digit code to unlock owner data and sensitive actions.</p>
+        <form className="founder-mfa-form" onSubmit={verify}>
+          <label>Verification code<input autoFocus value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required/></label>
+          <button disabled={busy || code.length !== 6}>{busy ? "Verifying…" : "Verify and continue"}</button>
+        </form>
+      </div>}
+      {state === "error" && <div className="founder-mfa-copy"><h1>Secure verification did not finish.</h1><p>{message || "Sign out safely and try again."}</p></div>}
+      {message && state !== "error" && <p className="founder-mfa-message" role="alert">{message}</p>}
+      <footer><span>Password + authenticator · Separate session on every device · Server-enforced AAL2</span><button onClick={() => void signOut()}>Sign out</button></footer>
     </section>
   </main>;
 }

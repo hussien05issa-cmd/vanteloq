@@ -27,7 +27,7 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
     category: "Point of sale",
     availability: "credentials_required",
     activationRequirement:
-      "The read-only X-Series pilot is built. Add developer credentials, authorize a store, map outlets and pass sample reconciliation before promoting data.",
+      "The read-only X-Series pilot is built. Authorize a store, map outlets and pass sample reconciliation before promoting data.",
   },
   {
     id: "lightspeed-r",
@@ -35,7 +35,7 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
     category: "Point of sale",
     availability: "credentials_required",
     activationRequirement:
-      "The multi-tenant read-only R-Series connector is built. Register one Vanteloq OAuth client, then each business securely authorizes and maps its own account.",
+      "The multi-tenant read-only R-Series connector is built. Each business securely authorizes its own account, maps shops and reconciles a staged sample.",
   },
   {
     id: "shopify",
@@ -75,7 +75,7 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
     category: "Payments",
     availability: "credentials_required",
     activationRequirement:
-      "The read-only Stripe Connect adapter is built for balance transactions and payouts. Add platform credentials, authorize an account, then reconcile a staged sample before promotion.",
+      "The read-only Stripe Connect adapter is built for balance transactions and payouts. Authorize an account, then reconcile a staged sample before promotion.",
   },
   {
     id: "moneris",

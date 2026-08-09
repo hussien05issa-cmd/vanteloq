@@ -190,6 +190,33 @@ test("signup protection fails closed and rejects cross-site account creation", a
   assert.equal((await response.json()).error.code, "ORIGIN_MISMATCH");
 });
 
+test("password sign-in fails closed and rejects cross-site credential attempts", async () => {
+  const worker = await loadWorker();
+  const sameOrigin = await worker.fetch(new Request("https://vanteloq.example/api/v1/auth/signin", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      origin: "https://vanteloq.example",
+      "sec-fetch-site": "same-origin",
+    },
+    body: JSON.stringify({ email: "owner@example.com", password: "not-a-real-password", turnstileToken: "not-a-real-token" }),
+  }), environment, context);
+  assert.equal(sameOrigin.status, 503);
+  assert.equal((await sameOrigin.json()).error.code, "SIGNIN_UNAVAILABLE");
+
+  const crossSite = await worker.fetch(new Request("https://vanteloq.example/api/v1/auth/signin", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      origin: "https://attacker.example",
+      "sec-fetch-site": "cross-site",
+    },
+    body: JSON.stringify({ email: "owner@example.com", password: "not-a-real-password", turnstileToken: "not-a-real-token" }),
+  }), environment, context);
+  assert.equal(crossSite.status, 403);
+  assert.equal((await crossSite.json()).error.code, "ORIGIN_MISMATCH");
+});
+
 test("imports and business-memory writes reject cross-site origins before data access", async () => {
   const worker = await loadWorker();
   for (const path of [

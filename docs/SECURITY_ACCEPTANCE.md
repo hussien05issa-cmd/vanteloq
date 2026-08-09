@@ -1,6 +1,6 @@
 # Security acceptance status
 
-Date: 2026-08-03
+Date: 2026-08-09
 
 ## Passed in this phase
 
@@ -25,7 +25,7 @@ Date: 2026-08-03
 | Severity | Risk | Affected component | Temporary mitigation | Permanent fix | Owner / deadline |
 |---|---|---|---|---|---|
 | High | Account-level WAF, backup retention, restore drill, error tracking, uptime, and alert delivery are not evidenced | Cloudflare operations | Site remains limited during development; health/readiness endpoints exist | Configure account controls and complete a recorded restore/alert exercise | SRE, before public launch |
-| High | Independent MFA/recovery/session revocation is not implemented | Public identity lifecycle | Use dispatcher-owned authentication; do not collect passwords | Select/configure supported production identity provider and test MFA, recovery, revocation, reauthentication | Product/Security, before non-workspace users |
+| High | Supabase leaked-password protection is disabled on the Free plan and session/device revocation UI is not exposed | Public identity lifecycle | Live 12-character/character-class policy, secure password change, Turnstile, rate limits, PKCE, token rotation and mandatory AAL2 are enforced | Upgrade Supabase, enable leaked-password protection, configure session timeouts, and add session/device management | Product/Security, before public launch |
 | Medium | Full CSP still uses report-only mode for script/style policy | Browser security | Enforced frame/base/form restrictions plus other headers | Remove inline requirements and enforce full nonce/hash-based CSP after violation review | Frontend, before public launch |
 | Medium | External bank/POS/payroll/OCR/payment/filing adapters, credential encryption, webhook security, queue retries, and sync reconciliation are absent | Integrations and BookLoQ | All provider-dependent controls remain explicitly disabled; no credential is collected | Implement and test one provider at a time behind an adapter boundary | Integrations, phased |
 | Medium | Canadian jurisdiction content, foreign-currency remeasurement, full inventory subledger, depreciation schedules, and production financial-report rendering have not received professional accounting review | BookLoQ accounting content | The module is an evaluation core; demo data is labelled; unsupported functions are gated; tax disclaimer is displayed | Complete accountant/tax review, reference datasets, independent ledger validation, and report certification | Finance product, before live ledger use |
@@ -33,4 +33,4 @@ Date: 2026-08-03
 
 ## Launch decision
 
-**Fail — restricted development milestone only.** The production dependency audit and the source-level tenant, migration, import, accounting, calculation, and execution tests pass. Unresolved identity-lifecycle, account-level operations, restore, DAST, accounting-content review, and live-adapter findings still block admitting real customers or connecting live POS, bank, payroll, tax, or customer data.
+**Fail — restricted development milestone only.** The production dependency audit and the source-level authentication, MFA, tenant, migration, import, accounting, calculation, and execution tests pass. The provider leaked-password switch, session-management UI, account-level operations, restore, DAST, accounting-content review, and live-adapter findings still block admitting real customers or connecting live bank, payroll, tax, or customer data.

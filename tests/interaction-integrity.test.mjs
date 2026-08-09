@@ -76,14 +76,16 @@ test("account access includes confirmation recovery and a complete password-rese
 
   assert.match(authPanel, /resetPasswordForEmail/);
   assert.match(authPanel, /resetPasswordForEmail[\s\S]{0,250}captchaToken: turnstileToken/);
-  assert.match(authPanel, /signInWithPassword\(\{ email, password, options: \{ captchaToken: turnstileToken \} \}\)/);
+  assert.match(authPanel, /fetch\("\/api\/v1\/auth\/signin"[\s\S]{0,400}turnstileToken/);
+  assert.match(authPanel, /auth\.setSession/);
   assert.match(authPanel, /auth\.resend[\s\S]{0,300}captchaToken: turnstileToken/);
   assert.match(authPanel, /updateUser\(\{ password \}\)/);
+  assert.match(authPanel, /strongPasswordError\(password\)/);
   assert.match(authPanel, /auth\.resend/);
   assert.match(authPanel, /scope: "global"/);
   assert.match(home, /event === "PASSWORD_RECOVERY"/);
   assert.match(home, /get\("recovery"\) === "1"/);
-  assert.match(browserClient, /flowType: "implicit"/);
+  assert.match(browserClient, /flowType: "pkce"/);
   assert.doesNotMatch(home, /window\.location\.reload\(\)/);
   assert.doesNotMatch(authPanel, /window\.location\.reload\(\)/);
   assert.doesNotMatch(browserClient, /window\.location\.reload\(\)/);
@@ -91,30 +93,43 @@ test("account access includes confirmation recovery and a complete password-rese
   assert.match(home, /entry === "load-error"/);
 });
 
-test("the founder account uses a Supabase email link instead of a rejected reauthentication code", async () => {
+test("authenticated accounts require Supabase TOTP and a confirmed AAL2 session", async () => {
   const source = await readFile(new URL("../app/founder-mfa-gate.tsx", import.meta.url), "utf8");
-  assert.match(source, /auth\.signInWithOtp/);
-  assert.match(source, /signInWithOtp[\s\S]{0,250}captchaToken: turnstileToken/);
-  assert.match(source, /shouldCreateUser: false/);
-  assert.match(source, /founder_email_verified=1/);
-  assert.match(source, /Sign in securely/);
-  assert.match(source, /30 \* 60 \* 1000/);
-  assert.doesNotMatch(source, /verifyOtp|reauthenticate|six-digit/i);
-  assert.doesNotMatch(source, /auth\.mfa\./);
-  assert.match(source, /hussienissa@lexedgeconsulting\.com/);
+  assert.match(source, /auth\.mfa\.getAuthenticatorAssuranceLevel/);
+  assert.match(source, /auth\.mfa\.listFactors/);
+  assert.match(source, /auth\.mfa\.enroll/);
+  assert.match(source, /auth\.mfa\.challengeAndVerify/);
+  assert.match(source, /currentLevel !== "aal2"/);
+  assert.match(source, /six-digit code/i);
+  assert.doesNotMatch(source, /sessionStorage|signInWithOtp|founder_email_verified/);
 });
 
 test("Cloudflare Turnstile protects every unauthenticated Supabase email flow", async () => {
   const authPanel = await readFile(new URL("../app/auth-panel.tsx", import.meta.url), "utf8");
-  const founderGate = await readFile(new URL("../app/founder-mfa-gate.tsx", import.meta.url), "utf8");
   const signupRoute = await readFile(new URL("../app/api/v1/auth/signup/route.ts", import.meta.url), "utf8");
+  const signinRoute = await readFile(new URL("../app/api/v1/auth/signin/route.ts", import.meta.url), "utf8");
 
   assert.match(authPanel, /mode === "signup" \|\| mode === "signin" \|\| mode === "request-reset"/);
   assert.match(authPanel, /password-recovery/);
-  assert.match(founderGate, /action="founder-signin"/);
   assert.match(signupRoute, /SUPABASE_CAPTCHA_ENABLED/);
   assert.match(signupRoute, /gotrue_meta_security: \{ captcha_token: turnstileToken \}/);
+  assert.match(signinRoute, /SUPABASE_CAPTCHA_ENABLED/);
+  assert.match(signinRoute, /gotrue_meta_security: \{ captcha_token: turnstileToken \}/);
+  assert.match(signinRoute, /signin:account-source/);
+  assert.match(signinRoute, /signin:source/);
   assert.doesNotMatch(signupRoute, /turnstile\/v0\/siteverify/);
+});
+
+test("authorization is server-bound to immutable identity and Supabase AAL2", async () => {
+  const authorization = await readFile(new URL("../server/authorization.ts", import.meta.url), "utf8");
+  const api = await readFile(new URL("../server/api.ts", import.meta.url), "utf8");
+  const internalAccess = await readFile(new URL("../server/internal-access.ts", import.meta.url), "utf8");
+
+  assert.match(authorization, /row\.authSubject !== identity\.subject/);
+  assert.match(authorization, /requireAal2\(identity\)/);
+  assert.match(api, /identity\.provider === "supabase" && identity\.assuranceLevel !== "aal2"/);
+  assert.match(internalAccess, /mfa_required = 1/);
+  assert.doesNotMatch(internalAccess, /mfa_required[\s\S]{0,20}VALUES[\s\S]{0,80}, 0,/);
 });
 
 test("critical product surfaces preserve the readability and focus floor", async () => {

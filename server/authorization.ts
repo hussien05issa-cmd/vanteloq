@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../db";
 import { memberships, users, workspaces } from "../db/schema";
-import { ApiError, requireIdentity, type TrustedIdentity } from "./api";
+import { ApiError, requireAal2, requireIdentity, type TrustedIdentity } from "./api";
 import { bootstrapFounderInternalAccess } from "./internal-access";
 
 export type Role = "owner" | "admin" | "manager" | "employee" | "read_only" | "integration";
@@ -72,6 +72,7 @@ export async function requireAccess(
   const identity = await requireIdentity(request);
   const context = await findAccessContext(identity);
   if (!context) throw new ApiError(403, "MEMBERSHIP_REQUIRED", "This account does not have access to a workspace.");
+  requireAal2(identity);
   if (!allowedRoles.includes(context.role)) {
     throw new ApiError(403, "INSUFFICIENT_PERMISSION", "You do not have permission to perform this action.");
   }

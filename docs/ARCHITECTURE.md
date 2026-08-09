@@ -17,16 +17,15 @@ No connector may write to financial or operating metrics until tenant ownership,
 
 ## Decision
 
-Vanteloq will remain a modular monolith on a stateless Cloudflare Worker. D1 stores relational application data. The Sites dispatcher supplies initial authentication. Every protected request resolves organization scope from a server-side membership record. Client-provided organization IDs, roles, prices, permissions, or ownership values are never authoritative.
-
-Independent public email/password, passkeys, and MFA require a supported production identity provider and are a separate gated phase. Until that provider is selected and configured, Vanteloq must use the real hosted sign-in flow and must not collect or pretend to register passwords.
+Vanteloq will remain a modular monolith on a stateless Cloudflare Worker. D1 stores relational application data and Supabase Postgres supplies the RLS-backed transition layer. Supabase Auth supplies public identity and AAL2 sessions. Every protected request validates the token with Supabase and resolves organization scope from a server-side membership record. Client-provided organization IDs, roles, prices, permissions, ownership values, or decoded-but-unverified claims are never authoritative.
 
 ## Component and trust-boundary view
 
 ```mermaid
 flowchart TD
-  B["Browser"] -->|HTTPS + hosted session| D["Sites dispatcher"]
+  B["Browser"] -->|HTTPS + Supabase session| D["Cloudflare edge"]
   D --> W["Vanteloq Worker"]
+  W --> SA["Supabase Auth token validation"]
   W --> A["Auth and policy"]
   A --> S["Application services"]
   S --> R["Repositories"]
@@ -52,11 +51,11 @@ Business rules do not belong in client navigation or route handlers.
 ## Authentication flow
 
 1. Anonymous visitor can view the public landing page.
-2. Workspace creation or sign-in is sent to the dispatcher-owned sign-in path.
-3. The dispatcher validates the session and forwards a trusted email header to the Worker.
-4. The Worker normalizes the identity and finds an active membership.
-5. A user without membership can create one first organization through the onboarding service.
-6. Protected APIs fail with 401 when identity is absent, 403 when membership or permission is absent, and never fall back to a mock account.
+2. Sign-in passes a same-origin, rate-limited Turnstile boundary before Supabase checks the password.
+3. Supabase issues a rotating session; the application requires TOTP enrollment/challenge and confirms `aal2`.
+4. The Worker validates the bearer token with Supabase, binds the immutable subject, and finds an active membership.
+5. A verified AAL2 user without membership can create one first organization through onboarding.
+6. Protected APIs fail with 401 when identity is absent and 403 when MFA, membership, or permission is absent. They never fall back to a mock account.
 
 ## Authorization model
 

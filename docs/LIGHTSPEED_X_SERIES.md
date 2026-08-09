@@ -11,10 +11,12 @@ Set these names in the hosted secret/environment manager; never add values to so
 - `LIGHTSPEED_CLIENT_ID` — approved X-Series developer application client ID.
 - `LIGHTSPEED_CLIENT_SECRET` — approved developer application secret.
 - `INTEGRATION_ENCRYPTION_KEY` — base64-encoded 32-byte key managed as a hosted secret.
-- `LIGHTSPEED_REDIRECT_URI` — `https://vanteloq.hussien05issa.chatgpt.site/api/v1/integrations/lightspeed/callback`.
+- `LIGHTSPEED_REDIRECT_URI` — `https://vanteloq.com/api/v1/integrations/lightspeed/callback`.
 - `LIGHTSPEED_API_VERSION` — `2026-07`.
 
 Register the callback exactly. Vanteloq asks only for `outlets:read` and `sales:read`.
+
+The production Sites environment contains the required X-Series values and pins API version `2026-07`. This proves configuration readiness only; OAuth and sample reconciliation still determine whether a retailer connection is usable.
 
 ## Owner pilot
 

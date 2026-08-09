@@ -5,6 +5,7 @@ import type { Session } from "@supabase/supabase-js";
 import ProductBrandLogo from "./product-brand-logo";
 import { getSupabase } from "./supabase-browser";
 import TurnstileField from "./turnstile-field";
+import { MINIMUM_PASSWORD_LENGTH, passwordRules, strongPasswordError } from "../shared/password-security";
 
 export type AuthPanelMode = "signin" | "signup" | "request-reset" | "reset-password";
 
@@ -102,6 +103,13 @@ export default function AuthPanel({
     setNeedsConfirmation(false);
 
     if (mode === "signup") {
+      const passwordError = strongPasswordError(password);
+      if (passwordError) {
+        setBusy(false);
+        setMessageIsError(true);
+        setMessage(passwordError);
+        return;
+      }
       try {
         const response = await fetch("/api/v1/auth/signup", {
           method: "POST",
@@ -163,6 +171,13 @@ export default function AuthPanel({
         setMessage("The passwords do not match.");
         return;
       }
+      const passwordError = strongPasswordError(password);
+      if (passwordError) {
+        setBusy(false);
+        setMessageIsError(true);
+        setMessage(passwordError);
+        return;
+      }
       const result = await supabase.auth.updateUser({ password });
       if (result.error) {
         setBusy(false);
@@ -181,16 +196,32 @@ export default function AuthPanel({
       return;
     }
 
-    const result = await supabase.auth.signInWithPassword({ email, password, options: { captchaToken: turnstileToken } });
+    let result: { data: { session: Session | null }; error: { code?: string; message: string } | null };
+    try {
+      const response = await fetch("/api/v1/auth/signin", {
+        method: "POST",
+        headers: { "content-type": "application/json", accept: "application/json" },
+        body: JSON.stringify({ email, password, turnstileToken }),
+      });
+      const payload = await response.json() as { session?: { accessToken?: string; refreshToken?: string }; error?: { code?: string; message?: string } };
+      if (!response.ok || !payload.session?.accessToken || !payload.session.refreshToken) {
+        result = { data: { session: null }, error: { code: payload.error?.code, message: payload.error?.message ?? "Sign-in could not be completed." } };
+      } else {
+        const sessionResult = await supabase.auth.setSession({ access_token: payload.session.accessToken, refresh_token: payload.session.refreshToken });
+        result = { data: { session: sessionResult.data.session }, error: sessionResult.error };
+      }
+    } catch {
+      result = { data: { session: null }, error: { code: "SIGNIN_UNAVAILABLE", message: "Secure sign-in is temporarily unavailable." } };
+    }
     resetTurnstile();
     setBusy(false);
     if (result.error) {
       setMessageIsError(true);
-      if (result.error.code === "email_not_confirmed") {
+      if (result.error.code === "EMAIL_NOT_CONFIRMED") {
         setNeedsConfirmation(true);
         return setMessage("Your email has not been verified. Open the newest confirmation email, or resend it below.");
       }
-      if (result.error.code === "invalid_credentials") {
+      if (result.error.code === "INVALID_CREDENTIALS") {
         return setMessage("The email or password is incorrect. If you registered more than once, use the original password or reset it below.");
       }
       return setMessage(result.error.message);
@@ -250,7 +281,7 @@ export default function AuthPanel({
     : mode === "signin"
       ? "Sign in with your verified Vanteloq account."
       : mode === "request-reset"
-        ? "Enter your account email. We will send one secure reset link."
+        ? "Enter your account email. We will send one secure reset link to open on this device."
         : "Enter a new password for your Vanteloq account.";
   const submitLabel = mode === "signup" ? "Create secure account"
     : mode === "signin" ? "Sign in"
@@ -267,8 +298,9 @@ export default function AuthPanel({
       <form onSubmit={submit}>
         {mode === "signup" && <label>Full name<input autoComplete="name" value={name} onChange={event => setName(event.target.value)} minLength={2} maxLength={120} required/></label>}
         {mode !== "reset-password" && <label>Email address<input type="email" autoComplete="email" value={email} onChange={event => setEmail(event.target.value)} required/></label>}
-        {(mode === "signup" || mode === "signin" || mode === "reset-password") && <label>{mode === "reset-password" ? "New password" : "Password"}<input type="password" autoComplete={mode === "signin" ? "current-password" : "new-password"} value={password} onChange={event => setPassword(event.target.value)} minLength={8} required/></label>}
-        {mode === "reset-password" && <label>Confirm new password<input type="password" autoComplete="new-password" value={passwordConfirmation} onChange={event => setPasswordConfirmation(event.target.value)} minLength={8} required/></label>}
+        {(mode === "signup" || mode === "signin" || mode === "reset-password") && <label>{mode === "reset-password" ? "New password" : "Password"}<input type="password" autoComplete={mode === "signin" ? "current-password" : "new-password"} value={password} onChange={event => setPassword(event.target.value)} minLength={mode === "signin" ? 1 : MINIMUM_PASSWORD_LENGTH} required/></label>}
+        {mode === "reset-password" && <label>Confirm new password<input type="password" autoComplete="new-password" value={passwordConfirmation} onChange={event => setPasswordConfirmation(event.target.value)} minLength={MINIMUM_PASSWORD_LENGTH} required/></label>}
+        {(mode === "signup" || mode === "reset-password") && <div className="auth-password-rules" aria-label="Password requirements">{passwordRules(password).map(rule => <span className={rule.met ? "met" : ""} key={rule.id}>{rule.met ? "Met" : "Required"}: {rule.label}</span>)}</div>}
         {protectedMode && siteKey && turnstileAction && <TurnstileField
           siteKey={siteKey}
           action={turnstileAction}

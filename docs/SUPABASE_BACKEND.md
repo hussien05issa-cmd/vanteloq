@@ -56,8 +56,9 @@ secret is never used from React or shipped in a `NEXT_PUBLIC_` variable.
 
 Every migrated business table must carry `organization_id`, indexes for its
 tenant access patterns, RLS enabled as defense in depth, explicit grants, and
-tests proving cross-tenant reads and writes fail. Supabase Auth is not added:
-dispatch-owned ChatGPT sign-in remains Vanteloq's authentication boundary.
+tests proving cross-tenant reads and writes fail. Supabase Auth is the public
+authentication boundary; the Worker remotely validates every bearer token and
+requires AAL2 before application API access.
 
 The local-growth domain is the first bounded migration candidate. Its contract
 contains `growth_touchpoints`, `growth_transactions`, and

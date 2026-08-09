@@ -7,7 +7,7 @@ Vanteloq is a retail operating-intelligence platform for sales, margin, inventor
 Implemented now:
 
 - Public branded landing page
-- Dispatcher-owned authenticated sign-in
+- Supabase email/password sign-in with Cloudflare Turnstile, server rate limits, PKCE recovery, rotating sessions, and mandatory TOTP/AAL2 access
 - Secure, empty-workspace onboarding
 - Organization membership and owner role
 - Tenant-owned persistent actions linked to manual work, insights, alerts, or decisions
@@ -23,14 +23,14 @@ Implemented now:
 
 Not implemented yet:
 
-- Independent email/password, passkeys, MFA, recovery, or session-management UI
+- Passkeys and a user-facing session/device management screen
 - Live POS/Google/accounting OAuth, provider tokens, webhooks, or synchronization
 - Live line-item POS, SKU inventory, customer, campaign, employee, supplier, payout, bank, and accounting feeds
 - Provider-backed bank/POS synchronization, document OCR, payment initiation, tax filing, payroll execution, accountant invitations, and production PDF/XLSX report generation
 - Payments, billing, email delivery, background queues, or customer-data exports
 - Account-level Cloudflare WAF/backup/alert configuration evidence
 
-The production dependency audit is currently clean. The application must still not be described as production-ready while the remaining identity-lifecycle and account-level operational High findings in `docs/SECURITY_ACCEPTANCE.md` remain.
+The production dependency audit is currently clean. Authentication controls are documented in `docs/AUTH_SECURITY.md`. The application must still not be described as production-ready while the remaining account-level operational High findings in `docs/SECURITY_ACCEPTANCE.md` remain.
 
 ## Local setup
 

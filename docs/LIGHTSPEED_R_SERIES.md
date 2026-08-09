@@ -15,10 +15,10 @@ Vanteloq treats R-Series as a separate provider from Lightspeed X-Series. The co
 
 Register the Vanteloq client in the Lightspeed R-Series developer portal as a confidential, server-side application.
 
+- Registration page: `https://cloud.lightspeedapp.com/oauth/register.php`
 - Application name: `Vanteloq` (do not include “Lightspeed” in the client name)
-- Redirect URI: `https://vanteloq.hussien05issa.chatgpt.site/api/v1/integrations/lightspeed-r/callback`
-- Website: `https://vanteloq.hussien05issa.chatgpt.site`
-- Publicly distributed: `No`
+- Redirect URI: `https://vanteloq.com/api/v1/integrations/lightspeed-r/callback`
+- Website: `https://vanteloq.com`
 
 Configure these hosted values without committing them to source:
 
@@ -29,6 +29,8 @@ Configure these hosted values without committing them to source:
 
 The requested scopes are `employee:register_read` and `employee:inventory_read`. The authorizing R-Series employee must also have the corresponding rights.
 
+The production Sites environment contains all four required values and the callback is set to the exact `vanteloq.com` route. This proves configuration readiness only; the provider connection is not considered live until an owner completes OAuth and the staged sample reconciles.
+
 ## Owner workflow
 
 1. Open Integrations & data → Connections.
@@ -37,6 +39,8 @@ The requested scopes are `employee:register_read` and `employee:inventory_read`.
 4. Map every R-Series shop to the correct Vanteloq location or explicitly ignore it.
 5. Stage a bounded sample.
 6. Review record counts, duplicates, unmapped shops, totals and warnings.
+
+The reconciliation panel shows completed-sale count, the R-Series register total, recorded tax and recorded cost. These are source facts, not generated estimates. The owner must compare them to the matching R-Series report before Vanteloq enables a live import approval.
 
 Staged records do not affect dashboards, BookLoQ or the reorder engine. Promotion remains blocked until reconciliation and a separate approval gate pass.
 

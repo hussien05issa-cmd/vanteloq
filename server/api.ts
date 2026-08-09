@@ -120,6 +120,12 @@ export async function requireIdentity(request: Request): Promise<TrustedIdentity
   return identity;
 }
 
+export function requireAal2(identity: TrustedIdentity): void {
+  if (identity.provider === "supabase" && identity.assuranceLevel !== "aal2") {
+    throw new ApiError(403, "MFA_REQUIRED", "Complete multi-factor authentication to continue.");
+  }
+}
+
 export function requireSameOrigin(request: Request): void {
   const origin = request.headers.get("origin");
   if (!origin) throw new ApiError(403, "ORIGIN_REQUIRED", "The request origin could not be verified.");

@@ -1824,7 +1824,16 @@ function DataHub({
       grossCents?: number;
       feeCents?: number;
       netCents?: number;
+      completedSales?: number;
+      openSales?: number;
+      voidedSales?: number;
+      salesCents?: number;
+      taxCents?: number;
+      costCents?: number;
+      discountCents?: number;
+      units?: number;
     };
+    readyForReview?: boolean;
     nextStep: string;
   }>(null);
   const [outletData, setOutletData] = useState<null | {
@@ -2050,14 +2059,13 @@ function DataHub({
           <div className="integration-notice">
             <div>
               <b>
-                Connections remain disabled until their complete secure adapter
-                exists.
+                Provider connections stay isolated until their safety gates pass.
               </b>
               <p>
-                Vanteloq will not display a decorative “connected” state. Each
-                live adapter requires provider authorization, least-privilege
-                scopes, signed webhooks, idempotent synchronization,
-                reconciliation and failure recovery.
+                Vanteloq reports authorization and staging separately from live
+                data. Provider approval, least-privilege access, idempotent
+                synchronization, reconciliation and recovery must pass before
+                source data can affect business metrics.
               </p>
             </div>
           </div>
@@ -2100,14 +2108,20 @@ function DataHub({
                 <div className="integration-card-footer">
                   <div>
                     <span className={`status ${connected ? "" : "planned"}`}>
-                      {connected ? "Read-only connected" : availabilityLabel(provider.availability)}
+                      {connected
+                        ? "Read-only connected"
+                        : configured
+                          ? "Ready to authorize"
+                          : availabilityLabel(provider.availability)}
                     </span>
                     <span className="connection-lock">
                       {connectionsLoading
                         ? "Checking…"
                         : connected
                           ? "Staging only · metrics locked"
-                          : "Sync disabled"}
+                          : configured
+                            ? "Authorization required · metrics locked"
+                            : "Sync disabled"}
                     </span>
                   </div>
                   {(isLightspeed || isStripe) && <div className="provider-actions">
@@ -2161,15 +2175,28 @@ function DataHub({
             </div> : <p className="outlet-empty">No {outletData.locationLabel === "shop" ? "shops" : "outlets"} were returned. Confirm the retailer has active locations, then retry discovery.</p>}
             <footer>Ignored locations remain excluded and visible in reconciliation. Mapping never merges tenants or changes provider records.</footer>
           </section>}
-          {sampleResult && <section className="sample-sync-result" aria-live="polite">
-            <header><div><p>{activeSampleProvider === "stripe" ? "STRIPE" : activeSampleProvider === "lightspeed-r" ? "R-SERIES" : "X-SERIES"} SAMPLE RECONCILIATION</p><h3>Staged safely. Nothing has entered live metrics.</h3></div><strong>DATA PROMOTION OFF</strong></header>
+          {sampleResult && <section className={`sample-sync-result ${sampleResult.readyForReview ? "review-ready" : ""}`} aria-live="polite">
+            <header>
+              <div>
+                <p>{activeSampleProvider === "stripe" ? "STRIPE" : activeSampleProvider === "lightspeed-r" ? "R-SERIES" : "X-SERIES"} SAMPLE RECONCILIATION</p>
+                <h3>Staged safely. Nothing has entered live metrics.</h3>
+              </div>
+              <strong>{sampleResult.readyForReview ? "READY TO VERIFY" : "DATA PROMOTION OFF"}</strong>
+            </header>
             <div>
               <span><small>RECORDS READ</small><b>{sampleResult.run.recordsRead}</b></span>
               <span><small>NEWLY STAGED</small><b>{sampleResult.run.recordsStaged}</b></span>
               <span><small>DUPLICATES SKIPPED</small><b>{sampleResult.run.duplicatesSkipped}</b></span>
-              <span><small>{activeSampleProvider === "stripe" ? "PAYOUTS READ" : "UNMAPPED OUTLETS"}</small><b>{activeSampleProvider === "stripe" ? sampleResult.reconciliation.payouts ?? 0 : sampleResult.reconciliation.unmappedOutlets ?? 0}</b></span>
+              <span><small>{activeSampleProvider === "stripe" ? "PAYOUTS READ" : "UNMAPPED LOCATIONS"}</small><b>{activeSampleProvider === "stripe" ? sampleResult.reconciliation.payouts ?? 0 : sampleResult.reconciliation.unmappedOutlets ?? 0}</b></span>
+              {activeSampleProvider === "lightspeed-r" && <>
+                <span><small>COMPLETED SALES</small><b>{sampleResult.reconciliation.completedSales ?? 0}</b></span>
+                <span><small>REGISTER TOTAL</small><b>{money(sampleResult.reconciliation.salesCents, "CAD", 2)}</b></span>
+                <span><small>TAX RECORDED</small><b>{money(sampleResult.reconciliation.taxCents, "CAD", 2)}</b></span>
+                <span><small>COST RECORDED</small><b>{money(sampleResult.reconciliation.costCents, "CAD", 2)}</b></span>
+              </>}
             </div>
             <p>{sampleResult.nextStep}</p>
+            {activeSampleProvider === "lightspeed-r" && <small className="sample-contract-note">Register totals are shown exactly as returned by R-Series. Vanteloq does not infer revenue, margin or inventory insights until the owner verifies the sample against the source report.</small>}
           </section>}
         </>
       )}

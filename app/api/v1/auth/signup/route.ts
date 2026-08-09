@@ -8,9 +8,10 @@ import {
   readJsonObject,
   requireSameOrigin,
 } from "../../../../../server/api";
+import { strongPasswordError } from "../../../../../shared/password-security";
 
 const EMAIL = /^[^\s@]{1,64}@[^\s@]{1,190}$/;
-const ACTIONS = new Set(["signup", "signin", "password-recovery", "founder-signin"]);
+const ACTIONS = new Set(["signup", "signin", "password-recovery"]);
 
 function requiredText(value: unknown, label: string, minimum: number, maximum: number): string {
   if (typeof value !== "string") throw new ApiError(400, "INVALID_FIELD", `Enter a valid ${label}.`);
@@ -19,6 +20,13 @@ function requiredText(value: unknown, label: string, minimum: number, maximum: n
     throw new ApiError(400, "INVALID_FIELD", `Enter a valid ${label}.`);
   }
   return normalized;
+}
+
+function passwordText(value: unknown): string {
+  if (typeof value !== "string" || value.length < 12 || value.length > 256 || /[\u0000-\u001f\u007f]/.test(value)) {
+    throw new ApiError(400, "WEAK_PASSWORD", "Choose a password that meets every requirement.");
+  }
+  return value.normalize("NFC");
 }
 
 function configuration(request: Request) {
@@ -59,7 +67,9 @@ export async function POST(request: Request) {
     const name = requiredText(input.name, "full name", 2, 120);
     const email = requiredText(input.email, "email address", 3, 254).toLowerCase();
     if (!EMAIL.test(email)) throw new ApiError(400, "INVALID_FIELD", "Enter a valid email address.");
-    const password = requiredText(input.password, "password", 8, 256);
+    const password = passwordText(input.password);
+    const passwordError = strongPasswordError(password);
+    if (passwordError) throw new ApiError(400, "WEAK_PASSWORD", passwordError);
     const turnstileToken = requiredText(input.turnstileToken, "security response", 10, 2_048);
 
     const source = clientSource(request);

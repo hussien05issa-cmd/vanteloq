@@ -11,6 +11,7 @@ import {
   jsonResponse,
   optionalIdentity,
   readJsonObject,
+  requireAal2,
   requireIdentity,
   requireSameOrigin,
 } from "../../../../server/api";
@@ -49,6 +50,7 @@ export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
     const identity = await requireIdentity(request);
+    requireAal2(identity);
     await enforceRateLimit("onboarding:user", identity.email, 5, 3_600);
     const source = clientSource(request);
     if (source !== "unknown") await enforceRateLimit("onboarding:source", source, 20, 3_600);
