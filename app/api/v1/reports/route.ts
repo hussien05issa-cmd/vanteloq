@@ -85,6 +85,7 @@ export async function GET(request: Request) {
     const source = {
       type: "Imported daily summaries",
       rowCount: rows.length,
+      earliestBusinessDate: rows.at(0)?.businessDate ?? null,
       latestBusinessDate: rows.at(-1)?.businessDate ?? null,
       generatedAt,
       organizationId: context.organizationId,

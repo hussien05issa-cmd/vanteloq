@@ -67,7 +67,9 @@ test("live sales and report time frames stay connected to real API filters", asy
   assert.match(app, /refreshed automatically every five minutes/);
   assert.match(reports, /report-period-presets/);
   assert.match(reports, /type="date"/);
-  assert.match(reports, /new URLSearchParams\(\{ report: id, start, end \}\)/);
+  assert.match(reports, /new URLSearchParams\(\{ report: id \}\)/);
+  assert.match(reports, /params\.set\("start", start\)/);
+  assert.match(reports, /params\.set\("end", end\)/);
   assert.match(reports, /format=csv/);
   assert.match(reportRoute, /INVALID_DATE_RANGE/);
   assert.match(reportRoute, /periodStart: start/);

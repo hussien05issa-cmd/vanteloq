@@ -1096,7 +1096,7 @@ function LiveSalesPanel({ data, currency, compact = false }: { data: CommandCent
       <section className="today-metric-grid">
         <Metric label="Today's net sales" value={money(today.netSalesCents, currency)} delta="Current day" detail={`${today.businessDate} · completed sales`} tone="indigo" />
         <Metric label="Today's gross profit" value={money(today.grossProfitCents, currency)} delta="Current day" detail="Net sales less product cost" tone="emerald" />
-        <Metric label="Average transaction" value={money(today.averageTransactionCents, currency, 2)} delta="Current day" detail="Net sales ÷ completed transactions" tone="amber" />
+        <Metric label="Average transaction" value={today.averageTransactionCents == null ? "—" : money(today.averageTransactionCents, currency, 2)} delta="Current day" detail="Net sales ÷ completed transactions" tone="amber" />
         <Metric label="Number of sales" value={today.transactionCount.toLocaleString()} delta="Current day" detail={`${today.unitsSold.toLocaleString()} line items recorded`} tone="cyan" />
       </section>
       <section className={compact ? "live-sales-grid compact" : "live-sales-grid"}>

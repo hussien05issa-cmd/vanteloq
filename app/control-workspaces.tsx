@@ -200,10 +200,9 @@ export function ReportsWorkspace({
   const [selected, setSelected] = useState("Sales totals");
   const [report, setReport] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(false);
-  const initialRange = useMemo(() => reportRange(30), []);
-  const [start, setStart] = useState(initialRange.start);
-  const [end, setEnd] = useState(initialRange.end);
-  const [preset, setPreset] = useState("30");
+  const [start, setStart] = useState("");
+  const [end, setEnd] = useState("");
+  const [preset, setPreset] = useState("all");
   const visible = Object.entries(reportGroups)
     .flatMap(([category, reports]) =>
       reports.map((name) => ({ category, name })),
@@ -218,7 +217,9 @@ export function ReportsWorkspace({
     const id = liveReports[name];
     if (!id) return;
     setLoading(true);
-    const params = new URLSearchParams({ report: id, start, end });
+    const params = new URLSearchParams({ report: id });
+    if (start) params.set("start", start);
+    if (end) params.set("end", end);
     const response = await apiFetch(`/api/v1/reports?${params.toString()}`);
     const body: unknown = await response.json();
     if (response.ok) setReport(body as Record<string, unknown>);
@@ -269,6 +270,7 @@ export function ReportsWorkspace({
       <section className="report-period-control" aria-label="Report time frame">
         <div className="report-period-presets" aria-label="Time frame presets">
           {[
+            [0, "All data"],
             [1, "Today"],
             [7, "7 days"],
             [30, "30 days"],
@@ -276,9 +278,15 @@ export function ReportsWorkspace({
           ].map(([days, label]) => (
             <button
               type="button"
-              className={preset === String(days) ? "active" : ""}
+              className={preset === (Number(days) === 0 ? "all" : String(days)) ? "active" : ""}
               key={days}
-              onClick={() => applyPreset(Number(days))}
+              onClick={() => {
+                if (Number(days) === 0) {
+                  setPreset("all");
+                  setStart("");
+                  setEnd("");
+                } else applyPreset(Number(days));
+              }}
             >
               {label}
             </button>
@@ -290,7 +298,7 @@ export function ReportsWorkspace({
             <input
               type="date"
               value={start}
-              max={end}
+              max={end || localIsoDate(new Date())}
               onChange={(event) => {
                 setPreset("custom");
                 setStart(event.target.value);
@@ -303,7 +311,7 @@ export function ReportsWorkspace({
             <input
               type="date"
               value={end}
-              min={start}
+              min={start || undefined}
               max={localIsoDate(new Date())}
               onChange={(event) => {
                 setPreset("custom");
@@ -312,7 +320,9 @@ export function ReportsWorkspace({
             />
           </label>
         </div>
-        <p><b>{start}</b> through <b>{end}</b></p>
+        <p>
+          {start || end ? <><b>{start || "Earliest"}</b> through <b>{end || "Today"}</b></> : <><b>{String(source?.earliestBusinessDate || "All")}</b> through <b>{String(source?.latestBusinessDate || "imported dates")}</b></>}
+        </p>
       </section>
       <div className="report-toolbar">
         <label>
@@ -466,7 +476,7 @@ export function ReportsWorkspace({
                 {canExport ? (
                   <a
                     className="report-export"
-                    href={`/api/v1/reports?report=${liveReports[selected]}&start=${start}&end=${end}&format=csv`}
+                    href={`/api/v1/reports?report=${liveReports[selected]}${start ? `&start=${start}` : ""}${end ? `&end=${end}` : ""}&format=csv`}
                   >
                     Export CSV
                   </a>
