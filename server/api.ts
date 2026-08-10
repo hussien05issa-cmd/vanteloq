@@ -187,9 +187,17 @@ export async function handleApi(
   const id = requestId(request);
   try {
     const response = await handler({ requestId: id });
-    response.headers.set("X-Request-Id", id);
-    response.headers.set("Cache-Control", "no-store, max-age=0");
-    return response;
+    // Response.redirect() and some platform responses expose immutable headers.
+    // Clone the response metadata before applying Vanteloq's API headers so a
+    // valid OAuth redirect cannot be converted into a server error.
+    const headers = new Headers(response.headers);
+    headers.set("X-Request-Id", id);
+    headers.set("Cache-Control", "no-store, max-age=0");
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    });
   } catch (error) {
     const known = error instanceof ApiError;
     const status = known ? error.status : 500;
