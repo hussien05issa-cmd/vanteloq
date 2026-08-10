@@ -287,10 +287,10 @@ export async function POST(request: Request) {
         try { normalizedSaleLines.push(await normalizeLightspeedRSaleLine(source)); } catch { warnings += 1; }
       }
       for (const source of itemsPage.data) {
-        try {
-          inventoryBalances.push(...normalizeLightspeedRInventoryItem(source));
-          products.push(await normalizeLightspeedRProduct(source));
-        } catch { warnings += 1; }
+        // Catalog identity remains valid even when a particular shop-level
+        // quantity relation is incomplete. Validate the two facts separately.
+        try { products.push(await normalizeLightspeedRProduct(source)); } catch { warnings += 1; }
+        try { inventoryBalances.push(...normalizeLightspeedRInventoryItem(source)); } catch { warnings += 1; }
       }
       for (const source of customersPage.data) {
         try { customers.push(await normalizeLightspeedRCustomer(source)); } catch { warnings += 1; }
