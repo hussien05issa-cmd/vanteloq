@@ -451,7 +451,9 @@ export function ReportsWorkspace({
                     <dd>
                       {String(source?.type)} · Data through{" "}
                       {String(source?.latestBusinessDate || "no records")} ·
-                      {" "}{start} to {end} · generated {String(source?.generatedAt)}
+                      {" "}{start || end
+                        ? `${start || "earliest"} to ${end || "today"}`
+                        : `${String(source?.earliestBusinessDate || "earliest")} to ${String(source?.latestBusinessDate || "latest")}`} · generated {String(source?.generatedAt)}
                     </dd>
                   </div>
                 </dl>
