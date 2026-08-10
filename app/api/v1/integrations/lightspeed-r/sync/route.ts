@@ -220,6 +220,7 @@ export async function POST(request: Request) {
             maxPages: 3,
             cursor: previous.salesCursor,
             modifiedSince: previous.salesCursor ? null : previous.watermark,
+            loadRelations: ["SaleLines"],
           });
       // Do not make today's dashboard wait behind a long historical backfill.
       // R-Series supports timestamp filters on collection reads, so every run
@@ -231,6 +232,7 @@ export async function POST(request: Request) {
         {
           maxPages: 1,
           modifiedSince: new Date(Date.now() - 24 * 60 * 60 * 1_000).toISOString(),
+          loadRelations: ["SaleLines"],
         },
       );
       const saleLinesPage = reason === "auto" || (previous.saleLinesComplete && Number(existingCommerce?.saleLines ?? 0) > 0)
@@ -250,6 +252,7 @@ export async function POST(request: Request) {
             modifiedSince: previous.itemsCursor || Number(existingCommerce?.products ?? 0) === 0
               ? null
               : previous.watermark,
+            loadRelations: ["ItemShops", "Prices"],
           });
       const customersPage = reason === "auto" || (previous.customersComplete && Number(existingCommerce?.customers ?? 0) > 0)
         ? { data: [], pages: 0, cursor: null as string | null }
@@ -300,6 +303,26 @@ export async function POST(request: Request) {
       }
       const uniqueSales = [...new Map(normalizedSales.map((sale) => [`${sale.externalSaleId}:${sale.externalVersion}`, sale])).values()];
       const uniqueSaleLines = [...new Map(normalizedSaleLines.map((line) => [`${line.externalSaleId}:${line.externalLineId}`, line])).values()];
+      // SaleLine is also a trustworthy catalog identity source. Preserve sold
+      // products even if R-Series omits Item rows or a shop relation is partial;
+      // later Item pages enrich these records with names, cost, price and stock.
+      const knownProductRefs = new Set(products.map((product) => product.externalProductId));
+      for (const line of uniqueSaleLines) {
+        if (!line.productRef || knownProductRefs.has(line.productRef)) continue;
+        const fallback = {
+          externalProductId: line.productRef,
+          sku: line.sku || line.productRef,
+          name: line.productName || line.sku || `R-Series item ${line.productRef}`,
+          categoryRef: null,
+          supplierRef: null,
+          defaultCostCents: null,
+          defaultPriceCents: null,
+          archived: false,
+          sourceUpdatedAt: line.soldAt,
+        };
+        products.push({ ...fallback, sourcePayloadHash: await lightspeedRSha256(JSON.stringify(fallback)) });
+        knownProductRefs.add(line.productRef);
+      }
 
       const database = getD1();
       let stagedSales = 0;

@@ -335,6 +335,7 @@ export async function fetchLightspeedRCollection(
     fetcher?: typeof fetch;
     modifiedSince?: string | null;
     cursor?: string | null;
+    loadRelations?: string[];
   } = {},
 ) {
   if (!/^\d+$/.test(accountId)) throw new ApiError(400, "LIGHTSPEED_R_ACCOUNT_INVALID", "The R-Series account identifier is invalid.");
@@ -349,6 +350,9 @@ export async function fetchLightspeedRCollection(
   } else {
     url.searchParams.set("limit", "100");
     if (options.modifiedSince) url.searchParams.set("timeStamp", `>,${options.modifiedSince}`);
+    if (options.loadRelations?.length) {
+      url.searchParams.set("load_relations", JSON.stringify(options.loadRelations));
+    }
   }
   const data: Record<string, unknown>[] = [];
   let pages = 0;
