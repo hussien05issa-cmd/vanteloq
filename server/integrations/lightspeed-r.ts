@@ -329,7 +329,7 @@ export async function fetchLightspeedRAccount(organizationId: string, fetcher: t
 export async function fetchLightspeedRCollection(
   organizationId: string,
   accountId: string,
-  resource: "Shop" | "Sale" | "Item" | "Customer" | "Vendor" | "Order" | "OrderLine",
+  resource: "Shop" | "Sale" | "SaleLine" | "Item" | "Customer" | "Vendor" | "Order" | "OrderLine",
   options: {
     maxPages?: number;
     fetcher?: typeof fetch;
@@ -518,6 +518,28 @@ export async function normalizeLightspeedRSaleLines(sale: Record<string, unknown
     };
     return { ...normalized, sourcePayloadHash: await lightspeedRSha256(JSON.stringify(normalized)) };
   }));
+}
+
+export async function normalizeLightspeedRSaleLine(line: Record<string, unknown>): Promise<NormalizedLightspeedRSaleLine> {
+  const externalSaleId = stringValue(line.saleID);
+  const externalLineId = stringValue(line.saleLineID);
+  if (!externalSaleId || !externalLineId) throw new Error("Sale line identifiers are missing.");
+  const quantity = finiteNumber(line.unitQuantity ?? line.quantity) ?? 0;
+  const normalized = {
+    externalSaleId,
+    externalLineId,
+    productRef: limitedText(line.itemID, 120),
+    customerRef: limitedText(line.customerID, 120),
+    outletRef: limitedText(line.shopID, 120),
+    soldAt: limitedText(line.createTime ?? line.timeStamp, 80),
+    sku: limitedText(line.customSku ?? line.upc, 160),
+    productName: limitedText(line.description, 240),
+    quantityMilli: Math.round(quantity * 1000),
+    netSalesCents: money(line.calcSubtotal ?? line.calcTotal ?? Number(line.unitPrice ?? 0) * quantity),
+    costCents: money(line.calcFIFOCost ?? line.calcAvgCost ?? Number(line.avgCost ?? 0) * quantity),
+    discountCents: Math.abs(money(line.calcDiscount)),
+  };
+  return { ...normalized, sourcePayloadHash: await lightspeedRSha256(JSON.stringify(normalized)) };
 }
 
 export function buildLightspeedRDailyMetrics(

@@ -23,6 +23,7 @@ import {
   normalizeLightspeedRCustomer,
   normalizeLightspeedRProduct,
   normalizeLightspeedRSale,
+  normalizeLightspeedRSaleLine,
   normalizeLightspeedRSaleLines,
   normalizeLightspeedRSupplier,
 } from "../server/integrations/lightspeed-r.ts";
@@ -155,6 +156,13 @@ test("R-Series commerce normalization produces provider-neutral catalog, custome
   assert.equal(lines[0].quantityMilli, 2000);
   assert.equal(lines[0].netSalesCents, 7998);
   assert.equal(lines[0].customerRef, "cust-1");
+  const directLine = await normalizeLightspeedRSaleLine({
+    saleLineID: "line-2", saleID: "sale-1", itemID: "900", shopID: "8",
+    unitQuantity: "3", unitPrice: "12.50", calcFIFOCost: "18.00",
+  });
+  assert.equal(directLine.quantityMilli, 3000);
+  assert.equal(directLine.netSalesCents, 3750);
+  assert.equal(directLine.costCents, 1800);
 });
 
 test("R-Series daily metrics aggregate completed sales and refunds by source shop", async () => {

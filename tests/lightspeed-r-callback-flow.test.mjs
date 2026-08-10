@@ -111,6 +111,15 @@ test("R-Series completes a browser callback using the initiating one-time state"
           "@attributes": {},
         });
       }
+      if (url.origin === "https://api.lightspeedapp.com" && url.pathname === "/API/V3/Account/123/SaleLine.json") {
+        return Response.json({
+          SaleLine: [
+            { saleLineID: "line-1", saleID: "sale-100", itemID: "item-1", shopID: "1", unitQuantity: "1", calcSubtotal: "50.00", calcFIFOCost: "20.00" },
+            { saleLineID: "line-2", saleID: "sale-100", itemID: "item-1", shopID: "1", unitQuantity: "1", calcSubtotal: "50.00", calcFIFOCost: "20.00" },
+          ],
+          "@attributes": {},
+        });
+      }
       if (url.origin === "https://api.lightspeedapp.com" && url.pathname === "/API/V3/Account/123/Customer.json") {
         return Response.json({
           Customer: [{ customerID: "customer-1", firstName: "Ada", lastName: "Lovelace", Contact: { email: "ada@example.invalid", phone: "555-0100" } }],

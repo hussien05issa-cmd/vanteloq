@@ -17,6 +17,7 @@ import {
   normalizeLightspeedRCustomer,
   normalizeLightspeedRProduct,
   normalizeLightspeedRSale,
+  normalizeLightspeedRSaleLine,
   normalizeLightspeedRSaleLines,
   normalizeLightspeedRSupplier,
   lightspeedRSha256,
@@ -27,13 +28,15 @@ import { requirePermission } from "../../../../../../server/permissions";
 const IMPORT_LABEL = "Lightspeed R-Series live sync";
 
 type SyncCheckpoint = {
-  version: 2;
+  version: 3;
   watermark: string | null;
   salesCursor: string | null;
+  saleLinesCursor: string | null;
   itemsCursor: string | null;
   customersCursor: string | null;
   suppliersCursor: string | null;
   salesComplete: boolean;
+  saleLinesComplete: boolean;
   itemsComplete: boolean;
   customersComplete: boolean;
   suppliersComplete: boolean;
@@ -46,13 +49,15 @@ type StagedSaleRow = Pick<NormalizedLightspeedRSale,
 
 function checkpoint(value: string | null): SyncCheckpoint {
   const empty: SyncCheckpoint = {
-    version: 2,
+    version: 3,
     watermark: null,
     salesCursor: null,
+    saleLinesCursor: null,
     itemsCursor: null,
     customersCursor: null,
     suppliersCursor: null,
     salesComplete: false,
+    saleLinesComplete: false,
     itemsComplete: false,
     customersComplete: false,
     suppliersComplete: false,
@@ -64,15 +69,17 @@ function checkpoint(value: string | null): SyncCheckpoint {
   if (!Number.isNaN(Date.parse(value))) return { ...empty, watermark: value };
   try {
     const parsed = JSON.parse(value) as Record<string, unknown>;
-    if (parsed.version !== 1 && parsed.version !== 2) return empty;
+    if (parsed.version !== 1 && parsed.version !== 2 && parsed.version !== 3) return empty;
     return {
-      version: 2,
+      version: 3,
       watermark: typeof parsed.watermark === "string" ? parsed.watermark : null,
       salesCursor: typeof parsed.salesCursor === "string" ? parsed.salesCursor : null,
+      saleLinesCursor: typeof parsed.saleLinesCursor === "string" ? parsed.saleLinesCursor : null,
       itemsCursor: typeof parsed.itemsCursor === "string" ? parsed.itemsCursor : null,
       customersCursor: typeof parsed.customersCursor === "string" ? parsed.customersCursor : null,
       suppliersCursor: typeof parsed.suppliersCursor === "string" ? parsed.suppliersCursor : null,
       salesComplete: parsed.salesComplete === true,
+      saleLinesComplete: parsed.saleLinesComplete === true,
       itemsComplete: parsed.itemsComplete === true,
       customersComplete: parsed.customersComplete === true,
       suppliersComplete: parsed.suppliersComplete === true,
@@ -86,36 +93,42 @@ function nextCheckpoint(
   previous: SyncCheckpoint,
   completedAt: Date,
   salesCursor: string | null,
+  saleLinesCursor: string | null,
   itemsCursor: string | null,
   customersCursor: string | null,
   suppliersCursor: string | null,
   salesComplete: boolean,
+  saleLinesComplete: boolean,
   itemsComplete: boolean,
   customersComplete: boolean,
   suppliersComplete: boolean,
 ) {
-  if (salesComplete && itemsComplete && customersComplete && suppliersComplete) {
+  if (salesComplete && saleLinesComplete && itemsComplete && customersComplete && suppliersComplete) {
     return JSON.stringify({
-      version: 2,
+      version: 3,
       watermark: completedAt.toISOString(),
       salesCursor: null,
+      saleLinesCursor: null,
       itemsCursor: null,
       customersCursor: null,
       suppliersCursor: null,
       salesComplete: false,
+      saleLinesComplete: false,
       itemsComplete: false,
       customersComplete: false,
       suppliersComplete: false,
     } satisfies SyncCheckpoint);
   }
   return JSON.stringify({
-    version: 2,
+    version: 3,
     watermark: previous.watermark,
     salesCursor,
+    saleLinesCursor,
     itemsCursor,
     customersCursor,
     suppliersCursor,
     salesComplete,
+    saleLinesComplete,
     itemsComplete,
     customersComplete,
     suppliersComplete,
@@ -187,6 +200,18 @@ export async function POST(request: Request) {
       if (sourceAccount && sourceAccount.accountId !== connection.externalAccountRef) {
         throw new ApiError(409, "LIGHTSPEED_R_ACCOUNT_CHANGED", "The authorized R-Series account changed. Reconnect it before importing data.");
       }
+      const existingCommerce = await getD1().prepare(`
+        SELECT
+          (SELECT count(*) FROM commerce_products WHERE organization_id = ? AND provider = ?) AS products,
+          (SELECT count(*) FROM commerce_customers WHERE organization_id = ? AND provider = ?) AS customers,
+          (SELECT count(*) FROM commerce_suppliers WHERE organization_id = ? AND provider = ?) AS suppliers,
+          (SELECT count(*) FROM commerce_sale_lines WHERE organization_id = ? AND provider = ?) AS saleLines
+      `).bind(
+        context.organizationId, LIGHTSPEED_R_PROVIDER,
+        context.organizationId, LIGHTSPEED_R_PROVIDER,
+        context.organizationId, LIGHTSPEED_R_PROVIDER,
+        context.organizationId, LIGHTSPEED_R_PROVIDER,
+      ).first<{ products: number; customers: number; suppliers: number; saleLines: number }>();
       const salesPage = reason === "auto" || previous.salesComplete
         ? { data: [], pages: 0, cursor: null as string | null }
         : await fetchLightspeedRCollection(context.organizationId, connection.externalAccountRef, "Sale", {
@@ -206,26 +231,41 @@ export async function POST(request: Request) {
           modifiedSince: new Date(Date.now() - 24 * 60 * 60 * 1_000).toISOString(),
         },
       );
+      const saleLinesPage = reason === "auto" || previous.saleLinesComplete
+        ? { data: [], pages: 0, cursor: null as string | null }
+        : await fetchLightspeedRCollection(context.organizationId, connection.externalAccountRef, "SaleLine", {
+            maxPages: 3,
+            cursor: previous.saleLinesCursor,
+            modifiedSince: previous.saleLinesCursor || Number(existingCommerce?.saleLines ?? 0) === 0
+              ? null
+              : previous.watermark,
+          });
       const itemsPage = reason === "auto" || previous.itemsComplete
         ? { data: [], pages: 0, cursor: null as string | null }
         : await fetchLightspeedRCollection(context.organizationId, connection.externalAccountRef, "Item", {
             maxPages: 3,
             cursor: previous.itemsCursor,
-            modifiedSince: previous.itemsCursor ? null : previous.watermark,
+            modifiedSince: previous.itemsCursor || Number(existingCommerce?.products ?? 0) === 0
+              ? null
+              : previous.watermark,
           });
       const customersPage = reason === "auto" || previous.customersComplete
         ? { data: [], pages: 0, cursor: null as string | null }
         : await fetchLightspeedRCollection(context.organizationId, connection.externalAccountRef, "Customer", {
             maxPages: 2,
             cursor: previous.customersCursor,
-            modifiedSince: previous.customersCursor ? null : previous.watermark,
+            modifiedSince: previous.customersCursor || Number(existingCommerce?.customers ?? 0) === 0
+              ? null
+              : previous.watermark,
           });
       const suppliersPage = reason === "auto" || previous.suppliersComplete
         ? { data: [], pages: 0, cursor: null as string | null }
         : await fetchLightspeedRCollection(context.organizationId, connection.externalAccountRef, "Vendor", {
             maxPages: 2,
             cursor: previous.suppliersCursor,
-            modifiedSince: previous.suppliersCursor ? null : previous.watermark,
+            modifiedSince: previous.suppliersCursor || Number(existingCommerce?.suppliers ?? 0) === 0
+              ? null
+              : previous.watermark,
           });
 
       const normalizedSales: NormalizedLightspeedRSale[] = [];
@@ -240,6 +280,9 @@ export async function POST(request: Request) {
           normalizedSales.push(await normalizeLightspeedRSale(source));
           normalizedSaleLines.push(...await normalizeLightspeedRSaleLines(source));
         } catch { warnings += 1; }
+      }
+      for (const source of saleLinesPage.data) {
+        try { normalizedSaleLines.push(await normalizeLightspeedRSaleLine(source)); } catch { warnings += 1; }
       }
       for (const source of itemsPage.data) {
         try {
@@ -450,6 +493,7 @@ export async function POST(request: Request) {
 
       const completedAt = new Date();
       const salesComplete = previous.salesComplete || salesPage.cursor === null;
+      const saleLinesComplete = previous.saleLinesComplete || saleLinesPage.cursor === null;
       const itemsComplete = previous.itemsComplete || itemsPage.cursor === null;
       const customersComplete = previous.customersComplete || customersPage.cursor === null;
       const suppliersComplete = previous.suppliersComplete || suppliersPage.cursor === null;
@@ -457,16 +501,18 @@ export async function POST(request: Request) {
         previous,
         completedAt,
         salesPage.cursor,
+        saleLinesPage.cursor,
         itemsPage.cursor,
         customersPage.cursor,
         suppliersPage.cursor,
         salesComplete,
+        saleLinesComplete,
         itemsComplete,
         customersComplete,
         suppliersComplete,
       );
       const safeCheckpoint = reason === "auto" || warnings > 0 ? connection.lastSyncCursor : computedCheckpoint;
-      const recordsRead = recentSalesPage.data.length + salesPage.data.length + itemsPage.data.length + customersPage.data.length + suppliersPage.data.length;
+      const recordsRead = recentSalesPage.data.length + salesPage.data.length + saleLinesPage.data.length + itemsPage.data.length + customersPage.data.length + suppliersPage.data.length;
       const recordsImported = dailyMetrics.length + importedInventory + importedProducts + importedCustomers + importedSuppliers + importedSaleLines;
       const duplicatesSkipped = uniqueSales.length - stagedSales;
       await getDb().update(integrationSyncRuns).set({
@@ -522,7 +568,7 @@ export async function POST(request: Request) {
           recordsStaged: stagedSales + importedInventory + importedProducts + importedCustomers + importedSuppliers + importedSaleLines,
           duplicatesSkipped,
           warningCount: warnings,
-          pages: recentSalesPage.pages + salesPage.pages + itemsPage.pages + customersPage.pages + suppliersPage.pages,
+          pages: recentSalesPage.pages + salesPage.pages + saleLinesPage.pages + itemsPage.pages + customersPage.pages + suppliersPage.pages,
           cursorPreserved: safeCheckpoint,
         },
         reconciliation: {
@@ -552,7 +598,7 @@ export async function POST(request: Request) {
         readyForReview: warnings === 0,
         nextStep: warnings > 0
           ? `Imported ${recordsImported} verified records. ${warnings} source record${warnings === 1 ? " needs" : "s need"} attention before the sync cursor can advance.`
-          : salesComplete && itemsComplete && customersComplete && suppliersComplete
+          : salesComplete && saleLinesComplete && itemsComplete && customersComplete && suppliersComplete
             ? `R-Series is current. Sales, products, inventory, customers and suppliers are available to Vanteloq.`
             : `Imported ${recordsImported} records. Run sync again to continue the remaining R-Series backfill.` ,
       });
