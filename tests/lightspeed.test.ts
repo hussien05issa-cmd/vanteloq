@@ -163,6 +163,13 @@ test("R-Series commerce normalization produces provider-neutral catalog, custome
   assert.equal(directLine.quantityMilli, 3000);
   assert.equal(directLine.netSalesCents, 3750);
   assert.equal(directLine.costCents, 1800);
+  const relatedItemLine = await normalizeLightspeedRSaleLine({
+    saleLineID: "line-3", saleID: "sale-1", unitQuantity: "1", unitPrice: "9.99",
+    Item: { itemID: "901", customSku: "PRE-B", description: "Pre-workout B" },
+  });
+  assert.equal(relatedItemLine.productRef, "901");
+  assert.equal(relatedItemLine.sku, "PRE-B");
+  assert.equal(relatedItemLine.productName, "Pre-workout B");
 });
 
 test("R-Series daily metrics aggregate completed sales and refunds by source shop", async () => {

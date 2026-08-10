@@ -350,6 +350,7 @@ export async function fetchLightspeedRCollection(
   } else {
     url.searchParams.set("limit", "100");
     if (options.modifiedSince) url.searchParams.set("timeStamp", `>,${options.modifiedSince}`);
+    if (resource === "Item") url.searchParams.set("archived", "false");
     if (options.loadRelations?.length) {
       url.searchParams.set("load_relations", JSON.stringify(options.loadRelations));
     }
@@ -506,15 +507,16 @@ export async function normalizeLightspeedRSaleLines(sale: Record<string, unknown
   return Promise.all(lines.map(async (line, index) => {
     const externalLineId = stringValue(line.saleLineID) || `${externalSaleId}:${index}`;
     const quantity = finiteNumber(line.unitQuantity ?? line.quantity) ?? 0;
+    const item = objectValue(line.Item);
     const normalized = {
       externalSaleId,
       externalLineId,
-      productRef: limitedText(line.itemID, 120),
+      productRef: limitedText(line.itemID ?? item.itemID, 120),
       customerRef,
       outletRef,
       soldAt,
-      sku: limitedText(line.customSku ?? line.upc, 160),
-      productName: limitedText(line.description, 240),
+      sku: limitedText(line.customSku ?? line.upc ?? item.customSku ?? item.upc, 160),
+      productName: limitedText(line.description ?? item.description, 240),
       quantityMilli: Math.round(quantity * 1000),
       netSalesCents: money(line.calcSubtotal ?? line.calcTotal ?? Number(line.unitPrice ?? 0) * quantity),
       costCents: money(line.calcFIFOCost ?? line.calcAvgCost ?? Number(line.avgCost ?? 0) * quantity),
@@ -529,15 +531,16 @@ export async function normalizeLightspeedRSaleLine(line: Record<string, unknown>
   const externalLineId = stringValue(line.saleLineID);
   if (!externalSaleId || !externalLineId) throw new Error("Sale line identifiers are missing.");
   const quantity = finiteNumber(line.unitQuantity ?? line.quantity) ?? 0;
+  const item = objectValue(line.Item);
   const normalized = {
     externalSaleId,
     externalLineId,
-    productRef: limitedText(line.itemID, 120),
+    productRef: limitedText(line.itemID ?? item.itemID, 120),
     customerRef: limitedText(line.customerID, 120),
     outletRef: limitedText(line.shopID, 120),
     soldAt: limitedText(line.createTime ?? line.timeStamp, 80),
-    sku: limitedText(line.customSku ?? line.upc, 160),
-    productName: limitedText(line.description, 240),
+    sku: limitedText(line.customSku ?? line.upc ?? item.customSku ?? item.upc, 160),
+    productName: limitedText(line.description ?? item.description, 240),
     quantityMilli: Math.round(quantity * 1000),
     netSalesCents: money(line.calcSubtotal ?? line.calcTotal ?? Number(line.unitPrice ?? 0) * quantity),
     costCents: money(line.calcFIFOCost ?? line.calcAvgCost ?? Number(line.avgCost ?? 0) * quantity),
