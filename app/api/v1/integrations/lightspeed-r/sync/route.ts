@@ -133,10 +133,22 @@ export async function POST(request: Request) {
       const salesPage = previous.salesComplete
         ? { data: [], pages: 0, cursor: null as string | null }
         : await fetchLightspeedRCollection(context.organizationId, connection.externalAccountRef, "Sale", {
-            maxPages: 10,
+            maxPages: 5,
             cursor: previous.salesCursor,
             modifiedSince: previous.salesCursor ? null : previous.watermark,
           });
+      // Do not make today's dashboard wait behind a long historical backfill.
+      // R-Series supports timestamp filters on collection reads, so every run
+      // also stages the newest 24 hours before continuing the saved cursor.
+      const recentSalesPage = await fetchLightspeedRCollection(
+        context.organizationId,
+        connection.externalAccountRef,
+        "Sale",
+        {
+          maxPages: 5,
+          modifiedSince: new Date(Date.now() - 24 * 60 * 60 * 1_000).toISOString(),
+        },
+      );
       const itemsPage = previous.itemsComplete
         ? { data: [], pages: 0, cursor: null as string | null }
         : await fetchLightspeedRCollection(context.organizationId, connection.externalAccountRef, "Item", {
@@ -148,7 +160,7 @@ export async function POST(request: Request) {
       const normalizedSales: NormalizedLightspeedRSale[] = [];
       const inventoryBalances = [];
       let warnings = 0;
-      for (const source of salesPage.data) {
+      for (const source of [...recentSalesPage.data, ...salesPage.data]) {
         try { normalizedSales.push(await normalizeLightspeedRSale(source)); } catch { warnings += 1; }
       }
       for (const source of itemsPage.data) {
@@ -278,7 +290,7 @@ export async function POST(request: Request) {
         itemsComplete,
       );
       const safeCheckpoint = warnings > 0 ? connection.lastSyncCursor : computedCheckpoint;
-      const recordsRead = salesPage.data.length + itemsPage.data.length;
+      const recordsRead = recentSalesPage.data.length + salesPage.data.length + itemsPage.data.length;
       const recordsImported = dailyMetrics.length + importedInventory;
       const duplicatesSkipped = normalizedSales.length - stagedSales;
       await getDb().update(integrationSyncRuns).set({
@@ -329,7 +341,7 @@ export async function POST(request: Request) {
           recordsStaged: stagedSales + importedInventory,
           duplicatesSkipped,
           warningCount: warnings,
-          pages: salesPage.pages + itemsPage.pages,
+          pages: recentSalesPage.pages + salesPage.pages + itemsPage.pages,
           cursorPreserved: safeCheckpoint,
         },
         reconciliation: {
