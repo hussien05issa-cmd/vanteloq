@@ -233,7 +233,7 @@ export async function POST(request: Request) {
           modifiedSince: new Date(Date.now() - 24 * 60 * 60 * 1_000).toISOString(),
         },
       );
-      const saleLinesPage = reason === "auto" || previous.saleLinesComplete
+      const saleLinesPage = reason === "auto" || (previous.saleLinesComplete && Number(existingCommerce?.saleLines ?? 0) > 0)
         ? { data: [], pages: 0, cursor: null as string | null }
         : await fetchLightspeedRCollection(context.organizationId, connection.externalAccountRef, "SaleLine", {
             maxPages: 3,
@@ -242,7 +242,7 @@ export async function POST(request: Request) {
               ? null
               : previous.watermark,
           });
-      const itemsPage = reason === "auto" || previous.itemsComplete
+      const itemsPage = reason === "auto" || (previous.itemsComplete && Number(existingCommerce?.products ?? 0) > 0)
         ? { data: [], pages: 0, cursor: null as string | null }
         : await fetchLightspeedRCollection(context.organizationId, connection.externalAccountRef, "Item", {
             maxPages: 3,
@@ -251,7 +251,7 @@ export async function POST(request: Request) {
               ? null
               : previous.watermark,
           });
-      const customersPage = reason === "auto" || previous.customersComplete
+      const customersPage = reason === "auto" || (previous.customersComplete && Number(existingCommerce?.customers ?? 0) > 0)
         ? { data: [], pages: 0, cursor: null as string | null }
         : await fetchLightspeedRCollection(context.organizationId, connection.externalAccountRef, "Customer", {
             maxPages: 2,
@@ -260,7 +260,7 @@ export async function POST(request: Request) {
               ? null
               : previous.watermark,
           });
-      const suppliersPage = reason === "auto" || previous.suppliersComplete
+      const suppliersPage = reason === "auto" || (previous.suppliersComplete && Number(existingCommerce?.suppliers ?? 0) > 0)
         ? { data: [], pages: 0, cursor: null as string | null }
         : await fetchLightspeedRCollection(context.organizationId, connection.externalAccountRef, "Vendor", {
             maxPages: 2,
