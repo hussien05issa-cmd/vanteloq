@@ -1,16 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import Link from "next/link";
-import SecureOnboardingFlow from "./secure-onboarding-flow";
-import VanteloqApp from "./vanteloq-app";
 import IntegrationBrandLogo from "./integration-brand-logo";
 import ProductBrandLogo from "./product-brand-logo";
 import AuthPanel, { type AuthPanelMode } from "./auth-panel";
-import AccountMfaGate from "./founder-mfa-gate";
 import { currentSession, getSupabase, signOut } from "./supabase-browser";
 import { canonicalLocation } from "../shared/auth-urls";
+
+const SecureOnboardingFlow = lazy(() => import("./secure-onboarding-flow"));
+const VanteloqApp = lazy(() => import("./vanteloq-app"));
+const AccountMfaGate = lazy(() => import("./founder-mfa-gate"));
 
 export default function Home() {
   const canonicalDestination = typeof window === "undefined" ? null : canonicalLocation(window.location);
@@ -180,13 +181,26 @@ export default function Home() {
   }
 
   if (entry === "landing") return <><LandingPage start={openAuth}/>{authOpen && <AuthPanel initialMode={authMode} close={closeAuth} authenticated={session => void loadWorkspace(session)}/>}</>;
-  if (entry === "signup") return <AccountMfaGate><SecureOnboardingFlow accountName={accountName} accountEmail={accountEmail} signOut={() => void signOut()} complete={(business, owner) => { setOrganizationName(business); setAccountName(owner); setEntry("app"); }}/></AccountMfaGate>;
-  return <AccountMfaGate><VanteloqApp organizationName={organizationName} accountName={accountName}/></AccountMfaGate>;
+  if (entry === "signup") return <Suspense fallback={<AuthenticatedLoading/>}><AccountMfaGate><SecureOnboardingFlow accountName={accountName} accountEmail={accountEmail} signOut={() => void signOut()} complete={(business, owner) => { setOrganizationName(business); setAccountName(owner); setEntry("app"); }}/></AccountMfaGate></Suspense>;
+  return <Suspense fallback={<AuthenticatedLoading/>}><AccountMfaGate><VanteloqApp organizationName={organizationName} accountName={accountName}/></AccountMfaGate></Suspense>;
+}
+
+function AuthenticatedLoading() {
+  return <div className="entry-loading" role="status" aria-live="polite"><ProductBrandLogo product="vanteloq" priority/><p>Preparing your workspace…</p></div>;
 }
 
 function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const closeMobileNav = () => setMobileNavOpen(false);
+
+  useEffect(() => {
+    if (!mobileNavOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMobileNavOpen(false);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [mobileNavOpen]);
 
   return <div className="public-site">
     <a className="home-skip-link" href="#main-content">Skip to main content</a>
@@ -195,7 +209,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
         <ProductBrandLogo product="vanteloq" priority/>
         <span>Vanteloq<small>BUSINESS OPERATING SYSTEM</small></span>
       </button>
-      <button type="button" className="nav-menu-toggle" aria-expanded={mobileNavOpen} aria-controls="public-navigation" onClick={() => setMobileNavOpen(open => !open)}>{mobileNavOpen ? "Close" : "Menu"}</button>
+      <button type="button" className="nav-menu-toggle" aria-label={mobileNavOpen ? "Close navigation menu" : "Open navigation menu"} aria-expanded={mobileNavOpen} aria-controls="public-navigation" onClick={() => setMobileNavOpen(open => !open)}>{mobileNavOpen ? "Close" : "Menu"}</button>
       <nav id="public-navigation" className={mobileNavOpen ? "is-open" : ""} aria-label="Main navigation">
         <a href="#platform" onClick={closeMobileNav}>Platform</a>
         <a href="#capabilities" onClick={closeMobileNav}>Capabilities</a>
@@ -228,7 +242,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
         <figure className="product-visual product-visual-reference home-product-visual">
           {/* The image is a real Vanteloq interface composition; the values shown are illustrative. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/brand/vanteloq-command-ledger.png" alt="Vanteloq command centre interface with sales, gross profit, cash, inventory and a decision queue." width={1487} height={1058} loading="eager" fetchPriority="high" />
+          <img src="/brand/vanteloq-command-ledger.webp" alt="Vanteloq command centre interface with sales, gross profit, cash, inventory and a decision queue." width={1487} height={1058} loading="eager" fetchPriority="high" />
           <figcaption>Vanteloq command centre · Illustrative values · Available views depend on connected and verified source data</figcaption>
         </figure>
       </section>
@@ -236,13 +250,13 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
       <section className="home-connections" id="connections" aria-labelledby="connections-title">
         <div className="home-section-heading compact">
           <p>VERIFIED CONNECTION PATHS</p>
-          <h2 id="connections-title">Use supported sources without pretending every connector is ready.</h2>
-          <span>Only connection paths that exist in the product are shown here. Every imported source remains subject to authorization, mapping and reconciliation.</span>
+          <h2 id="connections-title">Connect supported sources with clear status at every step.</h2>
+          <span>Start with the connection paths available in Vanteloq today. Authorization, mapping and reconciliation remain visible before imported records are used for decisions.</span>
         </div>
         <div className="home-connection-grid">
-          <article><IntegrationBrandLogo name="Lightspeed" compact/><div><strong>Lightspeed R-Series</strong><span>Read-only sales and inventory import</span></div><small>BUILT</small></article>
-          <article><IntegrationBrandLogo name="Lightspeed" compact/><div><strong>Lightspeed X-Series</strong><span>Read-only pilot and sample review</span></div><small>PILOT</small></article>
-          <article><IntegrationBrandLogo name="Stripe" compact/><div><strong>Stripe</strong><span>Read-only payout and balance staging</span></div><small>STAGED</small></article>
+          <article><IntegrationBrandLogo name="Lightspeed" compact/><div><strong>Lightspeed R-Series</strong><span>Read-only sales and inventory import</span></div><small>READ-ONLY</small></article>
+          <article><IntegrationBrandLogo name="Lightspeed" compact/><div><strong>Lightspeed X-Series</strong><span>Read-only pilot and sample review</span></div><small>LIMITED PILOT</small></article>
+          <article><IntegrationBrandLogo name="Stripe" compact/><div><strong>Stripe</strong><span>Read-only payout and balance staging</span></div><small>STAGING</small></article>
           <article><IntegrationBrandLogo name="Daily CSV" compact/><div><strong>CSV import</strong><span>Structured daily operating records</span></div><small>AVAILABLE</small></article>
         </div>
       </section>
@@ -285,7 +299,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
         <div className="home-section-heading">
           <p>IMPLEMENTED CAPABILITIES</p>
           <h2 id="capabilities-title">One place to understand the operating picture.</h2>
-          <span>These are the strongest capabilities that can be verified in the current product—not a roadmap disguised as a feature list.</span>
+          <span>Focus on the workflows available in the current product, with source coverage and calculation limits kept visible.</span>
         </div>
         <div className="home-capability-grid">
           {[
@@ -303,7 +317,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
         <div className="home-section-heading compact">
           <p>PRODUCT FAMILY</p>
           <h2 id="product-family-title">Operating visibility and financial records, kept distinct.</h2>
-          <span>Vanteloq is the core operating workspace. BookLoQ is the separate accounting workspace inside the product; public subscription checkout is not advertised until billing is fully active.</span>
+          <span>Vanteloq is the core operating workspace. BookLoQ is the separate accounting workspace inside the product, available where the workspace has the required access.</span>
         </div>
         <div className="home-product-family-grid">
           <article><ProductBrandLogo product="vanteloq" variant="full"/><div><small>VANTELOQ</small><h3>Understand the operation.</h3><p>Sales, inventory, cash context, purchasing, reports, data quality and assigned operational work.</p></div></article>
@@ -356,7 +370,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
         <div className="home-section-heading">
           <p>VERIFIED SECURITY CONTROLS</p>
           <h2 id="security-title">Business data is business-critical.</h2>
-          <span>The current platform enforces authentication and authorization controls in the application. Vanteloq does not claim certifications it has not obtained.</span>
+          <span>Authentication, authorization and audit controls are enforced within the current application, with sensitive actions kept behind server-side permission checks.</span>
         </div>
         <div className="home-security-grid">
           <article><strong>Tenant isolation</strong><p>Organization membership scopes protected records, with cross-tenant boundary tests covering application routes.</p></article>
@@ -392,7 +406,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
       <div><strong>PRODUCT</strong><a href="#platform">How it works</a><a href="#capabilities">Capabilities</a><a href="#connections">Connections</a><a href="#security">Security</a></div>
       <div><strong>RESOURCES</strong><Link href="/resources">All resources</Link><Link href="/resources/inventory">Inventory</Link><Link href="/resources/finance">Finance</Link><Link href="/resources/analytics">Analytics</Link></div>
       <div><strong>ACCOUNT</strong><button type="button" onClick={() => start("signin")}>Sign in</button><button type="button" onClick={() => start("signup")}>Create workspace</button></div>
-      <p className="home-footer-note">© {new Date().getFullYear()} Vanteloq. Only verified product capabilities and active routes are represented on this page.</p>
+      <p className="home-footer-note">© {new Date().getFullYear()} Vanteloq. Feature availability depends on workspace access, configured sources and verified records.</p>
     </footer>
   </div>;
 }
