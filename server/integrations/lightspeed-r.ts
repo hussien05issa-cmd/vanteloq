@@ -51,6 +51,38 @@ export type LightspeedRDailyMetric = {
   discountsCents: number;
 };
 
+export type LightspeedRLiveSale = Pick<
+  NormalizedLightspeedRSale,
+  | "externalSaleId"
+  | "outletRef"
+  | "soldAt"
+  | "state"
+  | "totalCents"
+  | "taxCents"
+  | "costCents"
+  | "discountCents"
+  | "lineCount"
+>;
+
+export type LightspeedRLiveSalesSnapshot = {
+  businessDate: string;
+  netSalesCents: number;
+  grossProfitCents: number;
+  averageTransactionCents: number | null;
+  transactionCount: number;
+  unitsSold: number;
+  refundsCents: number;
+  discountsCents: number;
+  lastSaleAt: string | null;
+  hourly: Array<{
+    hour: number;
+    label: string;
+    netSalesCents: number;
+    grossProfitCents: number;
+    transactionCount: number;
+  }>;
+};
+
 type Config = {
   clientId: string;
   clientSecret: string;
@@ -384,6 +416,100 @@ export function buildLightspeedRDailyMetrics(
     netSalesCents: Math.max(0, positiveNetCents - row.refundsCents),
     costOfGoodsCents: Math.max(0, row.costOfGoodsCents - returnedCostCents),
   })).sort((left, right) => left.businessDate.localeCompare(right.businessDate) || left.locationRef.localeCompare(right.locationRef));
+}
+
+function localDateParts(value: string | Date, timeZone: string) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const get = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value ?? "";
+  const year = get("year");
+  const month = get("month");
+  const day = get("day");
+  const hour = Number(get("hour"));
+  if (!year || !month || !day || !Number.isInteger(hour)) return null;
+  return { businessDate: `${year}-${month}-${day}`, hour };
+}
+
+function saleLocalParts(value: string, timeZone: string) {
+  // Lightspeed may return a local timestamp without an offset. Preserve those
+  // wall-clock values instead of incorrectly treating them as UTC.
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(value) && !/(?:Z|[+-]\d{2}:?\d{2})$/i.test(value)) {
+    return { businessDate: value.slice(0, 10), hour: Number(value.slice(11, 13)) };
+  }
+  return localDateParts(value, timeZone);
+}
+
+export function buildLightspeedRLiveSalesSnapshot(
+  sales: LightspeedRLiveSale[],
+  timeZone: string,
+  now = new Date(),
+): LightspeedRLiveSalesSnapshot {
+  const today = localDateParts(now, timeZone)?.businessDate ?? now.toISOString().slice(0, 10);
+  const hourly = Array.from({ length: 24 }, (_, hour) => ({
+    hour,
+    label: new Intl.DateTimeFormat("en-CA", {
+      hour: "numeric",
+      hour12: true,
+      timeZone: "UTC",
+    }).format(new Date(Date.UTC(2020, 0, 1, hour))),
+    netSalesCents: 0,
+    grossProfitCents: 0,
+    transactionCount: 0,
+  }));
+  let positiveNetCents = 0;
+  let refundsCents = 0;
+  let costOfGoodsCents = 0;
+  let returnedCostCents = 0;
+  let discountsCents = 0;
+  let transactionCount = 0;
+  let unitsSold = 0;
+  let lastSaleAt: string | null = null;
+
+  for (const sale of sales) {
+    if (sale.state !== "completed" || !sale.soldAt) continue;
+    const local = saleLocalParts(sale.soldAt, timeZone);
+    if (!local || local.businessDate !== today || local.hour < 0 || local.hour > 23) continue;
+    const preTaxCents = sale.totalCents - sale.taxCents;
+    if (preTaxCents < 0) {
+      refundsCents += Math.abs(preTaxCents);
+      returnedCostCents += Math.abs(sale.costCents);
+      hourly[local.hour].netSalesCents -= Math.abs(preTaxCents);
+      hourly[local.hour].grossProfitCents -= Math.max(0, Math.abs(preTaxCents) - Math.abs(sale.costCents));
+    } else {
+      positiveNetCents += preTaxCents;
+      costOfGoodsCents += Math.max(0, sale.costCents);
+      discountsCents += Math.abs(sale.discountCents);
+      transactionCount += 1;
+      unitsSold += Math.max(0, sale.lineCount);
+      hourly[local.hour].netSalesCents += preTaxCents;
+      hourly[local.hour].grossProfitCents += Math.max(0, preTaxCents - Math.max(0, sale.costCents));
+      hourly[local.hour].transactionCount += 1;
+    }
+    if (!lastSaleAt || sale.soldAt > lastSaleAt) lastSaleAt = sale.soldAt;
+  }
+
+  const netSalesCents = Math.max(0, positiveNetCents - refundsCents);
+  const grossProfitCents = Math.max(0, netSalesCents - Math.max(0, costOfGoodsCents - returnedCostCents));
+  return {
+    businessDate: today,
+    netSalesCents,
+    grossProfitCents,
+    averageTransactionCents: transactionCount ? Math.round(netSalesCents / transactionCount) : null,
+    transactionCount,
+    unitsSold,
+    refundsCents,
+    discountsCents,
+    lastSaleAt,
+    hourly,
+  };
 }
 
 function records(value: unknown): Record<string, unknown>[] {

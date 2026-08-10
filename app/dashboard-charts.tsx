@@ -6,6 +6,14 @@ type TrendPoint = {
   grossProfitCents: number;
 };
 
+type IntradayPoint = {
+  hour: number;
+  label: string;
+  netSalesCents: number;
+  grossProfitCents: number;
+  transactionCount: number;
+};
+
 type Tone = "indigo" | "emerald" | "cyan" | "amber" | "rose";
 
 const toneColour: Record<Tone, string> = {
@@ -116,8 +124,8 @@ export function BusinessTrendChart({
       >
         <defs>
           <linearGradient id="sales-area" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" stopColor="#5b5bd6" stopOpacity="0.24" />
-            <stop offset="1" stopColor="#5b5bd6" stopOpacity="0" />
+            <stop offset="0" stopColor="#2563eb" stopOpacity="0.24" />
+            <stop offset="1" stopColor="#2563eb" stopOpacity="0" />
           </linearGradient>
         </defs>
         {yTicks.map((tick) => {
@@ -142,6 +150,74 @@ export function BusinessTrendChart({
               <text key={point.date} x={x} y={chartHeight + 24} textAnchor={index === 0 ? "start" : index === data.length - 1 ? "end" : "middle"} className="trend-axis-label">
                 {new Intl.DateTimeFormat("en-CA", { month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(`${point.date}T00:00:00Z`))}
               </text>
+            );
+          })}
+        </g>
+      </svg>
+    </div>
+  );
+}
+
+export function IntradaySalesChart({
+  data,
+  currency,
+}: {
+  data: IntradayPoint[];
+  currency: string;
+}) {
+  const width = 760;
+  const height = 250;
+  const plotLeft = 60;
+  const plotRight = 18;
+  const plotTop = 16;
+  const plotBottom = 36;
+  const chartWidth = width - plotLeft - plotRight;
+  const chartHeight = height - plotTop - plotBottom;
+  const values = data.map((point) => Math.max(0, point.netSalesCents));
+  const maximum = Math.max(...values, 1);
+  const line = points(values, chartWidth, chartHeight, maximum);
+  const area = line ? `0,${chartHeight} ${line} ${chartWidth},${chartHeight}` : "";
+  const yTicks = [1, 0.5, 0];
+  const labelHours = new Set([0, 6, 12, 18, 23]);
+  const total = values.reduce((sum, value) => sum + value, 0);
+
+  return (
+    <div className="intraday-sales-chart">
+      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Today&apos;s net sales by hour">
+        <title>Today&apos;s net sales by hour</title>
+        <desc>{`${compactMoney(total, currency)} in net sales across ${data.reduce((sum, point) => sum + point.transactionCount, 0)} completed transactions.`}</desc>
+        <defs>
+          <linearGradient id="intraday-area" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor="#176ac3" stopOpacity="0.28" />
+            <stop offset="1" stopColor="#176ac3" stopOpacity="0.02" />
+          </linearGradient>
+        </defs>
+        {yTicks.map((tick) => {
+          const y = plotTop + chartHeight * (1 - tick);
+          return (
+            <g key={tick}>
+              <line x1={plotLeft} x2={width - plotRight} y1={y} y2={y} className="trend-gridline" />
+              <text x={plotLeft - 11} y={y + 4} textAnchor="end" className="trend-axis-label">
+                {compactMoney(maximum * tick, currency)}
+              </text>
+            </g>
+          );
+        })}
+        <g transform={`translate(${plotLeft} ${plotTop})`}>
+          <polygon points={area} fill="url(#intraday-area)" />
+          <polyline points={line} className="intraday-sales-line" />
+          {data.map((point, index) => {
+            const x = data.length === 1 ? 0 : (index / (data.length - 1)) * chartWidth;
+            const y = chartHeight - (Math.max(0, point.netSalesCents) / maximum) * chartHeight;
+            return (
+              <g key={point.hour}>
+                {point.netSalesCents > 0 && <circle cx={x} cy={y} r="3.5" className="intraday-sales-point" />}
+                {labelHours.has(point.hour) && (
+                  <text x={x} y={chartHeight + 25} textAnchor={point.hour === 0 ? "start" : point.hour === 23 ? "end" : "middle"} className="trend-axis-label">
+                    {point.label}
+                  </text>
+                )}
+              </g>
             );
           })}
         </g>
@@ -201,4 +277,4 @@ export function CashPositionRing({
   );
 }
 
-export type { Tone, TrendPoint };
+export type { IntradayPoint, Tone, TrendPoint };

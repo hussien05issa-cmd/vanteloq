@@ -58,6 +58,22 @@ test("X-Series and R-Series are distinct, actionable connection choices", async 
   assert.doesNotMatch(app, /disabled=\{[^}]*Boolean\(providerActions\)[^}]*\}/);
 });
 
+test("live sales and report time frames stay connected to real API filters", async () => {
+  const app = await readFile(new URL("../app/vanteloq-app.tsx", import.meta.url), "utf8");
+  const reports = await readFile(new URL("../app/control-workspaces.tsx", import.meta.url), "utf8");
+  const reportRoute = await readFile(new URL("../app/api/v1/reports/route.ts", import.meta.url), "utf8");
+  assert.match(app, /IntradaySalesChart/);
+  assert.match(app, /integrations\/lightspeed-r\/sync/);
+  assert.match(app, /refreshed automatically every five minutes/);
+  assert.match(reports, /report-period-presets/);
+  assert.match(reports, /type="date"/);
+  assert.match(reports, /new URLSearchParams\(\{ report: id, start, end \}\)/);
+  assert.match(reports, /format=csv/);
+  assert.match(reportRoute, /INVALID_DATE_RANGE/);
+  assert.match(reportRoute, /periodStart: start/);
+  assert.match(reportRoute, /periodEnd: end/);
+});
+
 test("the banking catalogue uses Plaid's standalone mark and omits removed aggregators", async () => {
   const logoSource = await readFile(
     new URL("../app/integration-brand-logo.tsx", import.meta.url),

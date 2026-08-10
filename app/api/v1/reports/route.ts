@@ -66,6 +66,8 @@ export async function GET(request: Request) {
     const location = url.searchParams.get("location") || "all";
     if ((start && !DATE.test(start)) || (end && !DATE.test(end)))
       throw new ApiError(400, "INVALID_DATE", "Enter valid report dates.");
+    if (start && end && start > end)
+      throw new ApiError(400, "INVALID_DATE_RANGE", "The start date must be on or before the end date.");
     const filters = [
       eq(dailyBusinessMetrics.organizationId, context.organizationId),
     ];
@@ -87,6 +89,8 @@ export async function GET(request: Request) {
       generatedAt,
       organizationId: context.organizationId,
       location,
+      periodStart: start,
+      periodEnd: end,
     };
     if (format === "csv") {
       await requirePermission(context, "reports.export");
@@ -172,7 +176,13 @@ export async function GET(request: Request) {
           ? Math.round(totals.netSalesCents / totals.transactionCount)
           : null,
       },
-      rows: report === "sales_over_time" ? rows : undefined,
+      rows: rows.map((row) => ({
+        businessDate: row.businessDate,
+        locationRef: row.locationRef,
+        netSalesCents: row.netSalesCents,
+        costOfGoodsCents: permissions.includes("metrics.profit") ? row.costOfGoodsCents : 0,
+        transactionCount: row.transactionCount,
+      })),
       explainAndAct: {
         executiveSummary: rows.length
           ? `${rows.length} verified daily records are included.`

@@ -13,6 +13,7 @@ import {
 } from "../server/integrations/lightspeed.ts";
 import {
   buildLightspeedRDailyMetrics,
+  buildLightspeedRLiveSalesSnapshot,
   buildLightspeedRAuthorizationUrl,
   decryptLightspeedRSecret,
   encryptLightspeedRSecret,
@@ -146,6 +147,43 @@ test("R-Series daily metrics aggregate completed sales and refunds by source sho
     refundsCents: 2_000,
     discountsCents: 300,
   }]);
+});
+
+test("R-Series live snapshot calculates current-day sales, profit, average transaction and hourly points", async () => {
+  const saleOne = await normalizeLightspeedRSale({
+    saleID: "today-1", completed: "true", shopID: "8", completeTime: "2026-08-09T10:15:00-06:00",
+    total: "107.00", taxTotal: "5.00", calcFIFOCost: "40.00", calcDiscount: "3.00",
+    SaleLines: { SaleLine: [{ saleLineID: "1" }, { saleLineID: "2" }] },
+  });
+  const saleTwo = await normalizeLightspeedRSale({
+    saleID: "today-2", completed: "true", shopID: "8", completeTime: "2026-08-09T11:45:00-06:00",
+    total: "53.50", taxTotal: "2.50", calcFIFOCost: "20.00", calcDiscount: "0",
+    SaleLines: { SaleLine: [{ saleLineID: "3" }] },
+  });
+  const refund = await normalizeLightspeedRSale({
+    saleID: "today-refund", completed: "true", shopID: "8", completeTime: "2026-08-09T12:10:00-06:00",
+    total: "-21.00", taxTotal: "-1.00", calcFIFOCost: "-8.00", calcDiscount: "0",
+    SaleLines: { SaleLine: [{ saleLineID: "4" }] },
+  });
+  const yesterday = await normalizeLightspeedRSale({
+    saleID: "yesterday", completed: "true", shopID: "8", completeTime: "2026-08-08T16:00:00-06:00",
+    total: "999.00", taxTotal: "0", calcFIFOCost: "100.00",
+  });
+  const snapshot = buildLightspeedRLiveSalesSnapshot(
+    [saleOne, saleTwo, refund, yesterday],
+    "America/Edmonton",
+    new Date("2026-08-09T19:00:00Z"),
+  );
+  assert.equal(snapshot.businessDate, "2026-08-09");
+  assert.equal(snapshot.netSalesCents, 13_300);
+  assert.equal(snapshot.grossProfitCents, 8_100);
+  assert.equal(snapshot.averageTransactionCents, 6_650);
+  assert.equal(snapshot.transactionCount, 2);
+  assert.equal(snapshot.unitsSold, 3);
+  assert.equal(snapshot.refundsCents, 2_000);
+  assert.equal(snapshot.hourly[10].netSalesCents, 10_200);
+  assert.equal(snapshot.hourly[11].netSalesCents, 5_100);
+  assert.equal(snapshot.hourly[12].netSalesCents, -2_000);
 });
 
 test("readiness reports a staged adapter with promotion disabled", () => {

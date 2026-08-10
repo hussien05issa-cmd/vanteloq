@@ -1,13 +1,16 @@
-import { asc, eq } from "drizzle-orm";
-import { getDb } from "../../../../db";
-import { dailyBusinessMetrics, organizationProfiles } from "../../../../db/schema";
+import { and, asc, eq } from "drizzle-orm";
+import { getD1, getDb } from "../../../../db";
+import { dailyBusinessMetrics, integrationConnections, integrationLocationMappings, organizationProfiles } from "../../../../db/schema";
 import { requireAccess } from "../../../../server/authorization";
 import { clientSource, enforceRateLimit, handleApi, jsonResponse } from "../../../../server/api";
 import { buildCommandCentre } from "../../../../server/intelligence";
 import { buildOperatingSystem } from "../../../../server/operating-system";
 import { effectivePermissions, requirePermission } from "../../../../server/permissions";
+import { buildLightspeedRLiveSalesSnapshot, LIGHTSPEED_R_PROVIDER, type LightspeedRLiveSale } from "../../../../server/integrations/lightspeed-r";
 
 const readers = ["owner", "admin", "manager", "employee", "read_only"] as const;
+
+type LiveSaleRow = LightspeedRLiveSale;
 
 export async function GET(request: Request) {
   return handleApi(request, async () => {
@@ -39,7 +42,51 @@ export async function GET(request: Request) {
       .limit(730);
     const [branding] = await getDb().select({ displayName: organizationProfiles.displayName, logoObjectKey: organizationProfiles.logoObjectKey, logoVersion: organizationProfiles.logoVersion })
       .from(organizationProfiles).where(eq(organizationProfiles.organizationId, context.organizationId)).limit(1);
-    const commandCentre = buildCommandCentre(rows, context.organization.currency);
+    const [connection] = await getDb().select({ lastSuccessfulSyncAt: integrationConnections.lastSuccessfulSyncAt })
+      .from(integrationConnections).where(and(
+        eq(integrationConnections.organizationId, context.organizationId),
+        eq(integrationConnections.provider, LIGHTSPEED_R_PROVIDER),
+        eq(integrationConnections.status, "connected"),
+      )).limit(1);
+    const ignoredRows = await getDb().select({ externalLocationRef: integrationLocationMappings.externalLocationRef })
+      .from(integrationLocationMappings).where(and(
+        eq(integrationLocationMappings.organizationId, context.organizationId),
+        eq(integrationLocationMappings.provider, LIGHTSPEED_R_PROVIDER),
+        eq(integrationLocationMappings.status, "ignored"),
+      ));
+    const ignored = new Set(ignoredRows.map((row) => row.externalLocationRef));
+    const recentThreshold = new Date(Date.now() - 72 * 60 * 60 * 1_000).toISOString();
+    const staged = await getD1().prepare(`
+      SELECT external_sale_id AS externalSaleId, outlet_ref AS outletRef, sold_at AS soldAt, state,
+             total_cents AS totalCents, tax_cents AS taxCents, cost_cents AS costCents,
+             discount_cents AS discountCents, line_count AS lineCount
+      FROM (
+        SELECT *, row_number() OVER (
+          PARTITION BY external_sale_id ORDER BY staged_at DESC, id DESC
+        ) AS version_rank
+        FROM integration_staged_sales
+        WHERE organization_id = ? AND provider = ? AND sold_at >= ?
+      )
+      WHERE version_rank = 1
+      ORDER BY sold_at ASC
+      LIMIT 5000
+    `).bind(context.organizationId, LIGHTSPEED_R_PROVIDER, recentThreshold).all<LiveSaleRow>();
+    const today = buildLightspeedRLiveSalesSnapshot(
+      (staged.results ?? []).filter((sale) => !sale.outletRef || !ignored.has(sale.outletRef)),
+      context.organization.timezone,
+    );
+    const commandCentre = {
+      ...buildCommandCentre(rows, context.organization.currency),
+      today: {
+        ...today,
+        grossProfitCents: permissions.includes("metrics.profit") ? today.grossProfitCents : null,
+      },
+      liveSource: {
+        provider: connection ? LIGHTSPEED_R_PROVIDER : null,
+        lastSuccessfulSyncAt: connection?.lastSuccessfulSyncAt?.toISOString() ?? null,
+        refreshIntervalSeconds: connection ? 300 : null,
+      },
+    };
     if (commandCentre.current && !permissions.includes("metrics.profit")) {
       Object.assign(commandCentre.current, { costOfGoodsCents: null, grossProfitCents: null, contributionCents: null, grossMarginRate: null });
       if (commandCentre.previous) Object.assign(commandCentre.previous, { costOfGoodsCents: null, grossProfitCents: null, contributionCents: null, grossMarginRate: null });

@@ -15,7 +15,7 @@ import ProductBrandLogo from "./product-brand-logo";
 import { apiFetch, signOut } from "./supabase-browser";
 import {
   BusinessTrendChart,
-  CashPositionRing,
+  IntradaySalesChart,
   MetricSparkline,
   type Tone,
 } from "./dashboard-charts";
@@ -445,6 +445,29 @@ type CommandCentre = {
     verifiedFields: number;
     missingDimensions: string[];
   };
+  today: {
+    businessDate: string;
+    netSalesCents: number;
+    grossProfitCents: number | null;
+    averageTransactionCents: number | null;
+    transactionCount: number;
+    unitsSold: number;
+    refundsCents: number;
+    discountsCents: number;
+    lastSaleAt: string | null;
+    hourly: Array<{
+      hour: number;
+      label: string;
+      netSalesCents: number;
+      grossProfitCents: number;
+      transactionCount: number;
+    }>;
+  };
+  liveSource: {
+    provider: string | null;
+    lastSuccessfulSyncAt: string | null;
+    refreshIntervalSeconds: number | null;
+  };
   operatingSystem: {
     status: "blocked" | "limited" | "operational";
     mode: string;
@@ -518,9 +541,10 @@ export default function VanteloqApp({
   const [commandOpen, setCommandOpen] = useState(false);
   const [appRole, setAppRole] = useState("employee");
   const [appPermissions, setAppPermissions] = useState<string[]>([]);
+  const canAutoSync = appPermissions.includes("integrations.manage");
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
+  const refresh = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const response = await apiFetch("/api/v1/command-centre", {
         headers: { Accept: "application/json" },
@@ -546,13 +570,46 @@ export default function VanteloqApp({
           : "Unable to load the command centre.",
       );
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [organizationName]);
   useEffect(() => {
     const timer = window.setTimeout(() => void refresh(), 0);
     return () => window.clearTimeout(timer);
   }, [refresh]);
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void refresh(true);
+    }, 60_000);
+    return () => window.clearInterval(timer);
+  }, [refresh]);
+  useEffect(() => {
+    if (!canAutoSync) return;
+    let stopped = false;
+    let running = false;
+    const synchronize = async () => {
+      if (stopped || running || document.visibilityState !== "visible") return;
+      running = true;
+      try {
+        const response = await apiFetch("/api/v1/integrations/lightspeed-r/sync", {
+          method: "POST",
+          headers: { Accept: "application/json" },
+        });
+        if (response.ok && !stopped) await refresh(true);
+      } catch {
+        // The visible connection status remains the authoritative error surface.
+      } finally {
+        running = false;
+      }
+    };
+    const first = window.setTimeout(() => void synchronize(), 1_500);
+    const interval = window.setInterval(() => void synchronize(), 300_000);
+    return () => {
+      stopped = true;
+      window.clearTimeout(first);
+      window.clearInterval(interval);
+    };
+  }, [canAutoSync, refresh]);
   useEffect(() => {
     const parameters = new URLSearchParams(window.location.search);
     const integration = parameters.get("integration");
@@ -562,7 +619,9 @@ export default function VanteloqApp({
       const state = parameters.get("connection");
       setNotice(
         state === "connected"
-          ? `${integration === "lightspeed-r" ? "Lightspeed R-Series" : "Lightspeed X-Series"} is verified in read-only staging mode`
+          ? integration === "lightspeed-r"
+            ? "Lightspeed R-Series is connected. Live sales import is starting."
+            : "Lightspeed X-Series is verified in read-only staging mode"
           : state === "declined"
             ? `${integration === "lightspeed-r" ? "R-Series" : "X-Series"} authorization was declined`
             : `${integration === "lightspeed-r" ? "R-Series" : "X-Series"} authorization needs to be restarted`,
@@ -635,7 +694,9 @@ export default function VanteloqApp({
           <span>
             <b>{workspaceName}</b>
             <small>
-              {data?.source.latestBusinessDate
+              {data?.today.lastSaleAt
+                ? `Live through ${formatTime(data.today.lastSaleAt)}`
+                : data?.source.latestBusinessDate
                 ? `Data through ${data.source.latestBusinessDate}`
                 : "Data source required"}
             </small>
@@ -760,10 +821,12 @@ export default function VanteloqApp({
           <div className="top-actions">
             <button className="command-trigger" onClick={() => setCommandOpen(true)} aria-label="Open workspace search"><span>Search workspace</span><kbd>⌘K</kbd></button>
             <span
-              className={`source-pill ${data?.source.freshness ?? "missing"}`}
+              className={`source-pill ${data?.liveSource.lastSuccessfulSyncAt ? "current" : data?.source.freshness ?? "missing"}`}
             >
               <i />
-              {data?.source.latestBusinessDate
+              {data?.liveSource.lastSuccessfulSyncAt
+                ? "live sales"
+                : data?.source.latestBusinessDate
                 ? `${data.source.freshness} data`
                 : "no data"}
             </span>
@@ -937,6 +1000,15 @@ function Workspace({
         createTask={createTask}
       />
     );
+  if (view === "Sales")
+    return (
+      <SalesWorkspace
+        data={data}
+        currency={currency}
+        navigate={navigate}
+        refresh={refresh}
+      />
+    );
   if (view === "Purchase Orders")
     return (
       <PurchaseOrdersWorkspace
@@ -1002,148 +1074,101 @@ function Workspace({
   );
 }
 
-function Overview({
-  data,
-  currency,
-  navigate,
-  createTask,
-}: {
-  data: CommandCentre;
-  currency: string;
-  navigate: (view: View) => void;
-  createTask: (seed: TaskSeed) => void;
-}) {
-  if (!data.ready || !data.current)
-    return <EmptyCommandCentre navigate={navigate} />;
-  const current = data.current;
-  const salesTrend = data.trend.map((point) => point.netSalesCents);
-  const profitTrend = data.trend.map((point) => point.grossProfitCents);
-  const marginTrend = data.trend.map((point) =>
-    point.netSalesCents > 0 ? point.grossProfitCents / point.netSalesCents : 0,
-  );
+function formatTime(value: string) {
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime())
+    ? value.slice(11, 16)
+    : new Intl.DateTimeFormat("en-CA", { hour: "numeric", minute: "2-digit" }).format(parsed);
+}
+
+function formatRelativeSync(value: string) {
+  const elapsedMinutes = Math.max(0, Math.floor((Date.now() - Date.parse(value)) / 60_000));
+  if (elapsedMinutes < 1) return "just now";
+  if (elapsedMinutes === 1) return "1 minute ago";
+  if (elapsedMinutes < 60) return `${elapsedMinutes} minutes ago`;
+  return new Intl.DateTimeFormat("en-CA", { hour: "numeric", minute: "2-digit" }).format(new Date(value));
+}
+
+function LiveSalesPanel({ data, currency, compact = false }: { data: CommandCentre; currency: string; compact?: boolean }) {
+  const today = data.today;
   return (
-    <div className="content command-page">
-      <section className="owner-brief">
-        <div>
-          <p>Today&apos;s priority</p>
-          <h2>
-            {data.insights[0]?.title ??
-              "Your operating picture is up to date."}
-          </h2>
-          <span>
-            {data.insights[0]?.recommendedAction ??
-              "There are no material exceptions to review right now."}
-          </span>
-        </div>
-        <button
-          onClick={() =>
-            data.insights[0] &&
-            createTask({
-              ...data.insights[0].suggestedTask,
-              sourceType: "insight",
-              sourceRef: data.insights[0].id,
-            })
-          }
-        >
-          Create an action <b>→</b>
-        </button>
+    <>
+      <section className="today-metric-grid">
+        <Metric label="Today's net sales" value={money(today.netSalesCents, currency)} delta="Current day" detail={`${today.businessDate} · completed sales`} tone="indigo" />
+        <Metric label="Today's gross profit" value={money(today.grossProfitCents, currency)} delta="Current day" detail="Net sales less product cost" tone="emerald" />
+        <Metric label="Average transaction" value={money(today.averageTransactionCents, currency, 2)} delta="Current day" detail="Net sales ÷ completed transactions" tone="amber" />
+        <Metric label="Number of sales" value={today.transactionCount.toLocaleString()} delta="Current day" detail={`${today.unitsSold.toLocaleString()} line items recorded`} tone="cyan" />
       </section>
-      <section className="metric-grid">
-        <Metric
-          label="Net sales"
-          value={money(current.netSalesCents, currency)}
-          delta={percent(data.comparisons?.netSalesRate)}
-          detail={`${current.days} verified days`}
-          tone="indigo"
-          sparkline={salesTrend}
-          provenance={data.metrics.net_sales}
-        />
-        <Metric
-          label="Gross profit"
-          value={money(current.grossProfitCents, currency)}
-          delta={percent(data.comparisons?.grossProfitRate)}
-          detail="Net sales less product cost"
-          tone="emerald"
-          sparkline={profitTrend}
-          provenance={data.metrics.gross_profit}
-        />
-        <Metric
-          label="Gross margin"
-          value={percent(current.grossMarginRate)}
-          delta={
-            data.comparisons?.marginPointChange == null
-              ? "No baseline"
-              : `${percent(data.comparisons.marginPointChange)} pts`
-          }
-          detail="Weighted for the period"
-          tone="cyan"
-          sparkline={marginTrend}
-          provenance={data.metrics.gross_margin}
-        />
-        <Metric
-          label="Avg. transaction"
-          value={money(current.averageTransactionCents, currency, 2)}
-          delta={percent(data.comparisons?.averageTransactionRate)}
-          detail={`${current.transactionCount.toLocaleString()} transactions`}
-          tone="amber"
-          provenance={data.metrics.average_transaction}
-        />
-        <Metric
-          label="Contribution"
-          value={money(current.contributionCents, currency)}
-          delta={percent(current.labourRate)}
-          detail="After product and labour cost"
-          tone="rose"
-          provenance={data.metrics.contribution_after_labour}
-        />
-      </section>
-      <section className="command-grid">
-        <article className="card signal-chart">
+      <section className={compact ? "live-sales-grid compact" : "live-sales-grid"}>
+        <article className="card live-sales-chart-card">
           <div className="card-head">
-            <div>
-              <p className="card-kicker">Performance trend</p>
-              <h3>Net sales and gross profit</h3>
-            </div>
-            <span className="verified-tag">14 verified days</span>
+            <div><p className="card-kicker">CURRENT DAY</p><h3>Sales by hour</h3></div>
+            <span className="verified-tag">Lightspeed R-Series · verified</span>
           </div>
-          <BusinessTrendChart data={data.trend} currency={currency} />
+          <IntradaySalesChart data={today.hourly} currency={currency} />
           <div className="chart-foot">
-            <span>
-              <b>{current.unitsSold.toLocaleString()}</b> units
-            </span>
-            <span>
-              <b>{current.unitsPerTransaction?.toFixed(2) ?? "—"}</b> per
-              transaction
-            </span>
-            <span>
-              <b>{money(current.discountsCents, currency)}</b> discounts
-            </span>
-            <span>
-              <b>{money(current.refundsCents, currency)}</b> refunds
-            </span>
+            <span><b>{today.transactionCount.toLocaleString()}</b> completed sales</span>
+            <span><b>{today.unitsSold.toLocaleString()}</b> line items</span>
+            <span><b>{money(today.discountsCents, currency)}</b> discounts</span>
+            <span><b>{money(today.refundsCents, currency)}</b> refunds</span>
           </div>
         </article>
-        <OwnerStress data={data} currency={currency} navigate={navigate} />
+        {!compact && data.current && (
+          <article className="card period-summary-card">
+            <p className="card-kicker">LAST 30 DAYS</p>
+            <h3>Period context</h3>
+            <dl>
+              <div><dt>Net sales</dt><dd>{money(data.current.netSalesCents, currency)}</dd></div>
+              <div><dt>Gross profit</dt><dd>{money(data.current.grossProfitCents, currency)}</dd></div>
+              <div><dt>Average transaction</dt><dd>{money(data.current.averageTransactionCents, currency, 2)}</dd></div>
+              <div><dt>Transactions</dt><dd>{data.current.transactionCount.toLocaleString()}</dd></div>
+            </dl>
+          </article>
+        )}
       </section>
-      <section className="insight-section">
-        <div className="section-heading">
-          <div>
-            <p>Decision queue</p>
-            <h2>What changed and what to do next</h2>
-          </div>
-          <button onClick={() => navigate("Intelligence")}>
-            See full evidence →
-          </button>
+    </>
+  );
+}
+
+function Overview({ data, currency, navigate, createTask }: { data: CommandCentre; currency: string; navigate: (view: View) => void; createTask: (seed: TaskSeed) => void }) {
+  const hasCurrentDayData = data.today.transactionCount > 0 || data.today.refundsCents > 0;
+  if ((!data.ready || !data.current) && !hasCurrentDayData) return <EmptyCommandCentre navigate={navigate} />;
+  return (
+    <div className="content command-page">
+      <section className="live-sales-heading">
+        <div>
+          <p>TODAY&apos;S SALES</p>
+          <h2>Current-day performance, directly from Lightspeed.</h2>
+          <span>{data.today.lastSaleAt ? `Through ${formatTime(data.today.lastSaleAt)} · refreshed automatically every five minutes` : `No completed sale has been received for ${data.today.businessDate} yet.`}</span>
         </div>
-        <div className="insight-grid">
-          {data.insights.slice(0, 3).map((insight) => (
-            <InsightCard
-              key={insight.id}
-              insight={insight}
-              createTask={createTask}
-            />
-          ))}
-        </div>
+        <span className={`live-sync-state ${data.source.freshness}`}><i />{data.liveSource.lastSuccessfulSyncAt ? `Synced ${formatRelativeSync(data.liveSource.lastSuccessfulSyncAt)}` : "Waiting for first sync"}</span>
+      </section>
+      <LiveSalesPanel data={data} currency={currency} />
+      <section className="card period-trend-card">
+        <div className="card-head"><div><p className="card-kicker">PERIOD TREND</p><h3>Net sales and gross profit</h3></div><span className="verified-tag">{data.trend.length} verified days</span></div>
+        <BusinessTrendChart data={data.trend} currency={currency} />
+      </section>
+      {data.insights[0] && (
+        <section className="owner-priority-strip">
+          <div><p>TODAY&apos;S PRIORITY</p><h3>{data.insights[0].title}</h3><span>{data.insights[0].recommendedAction}</span></div>
+          <button onClick={() => createTask({ ...data.insights[0].suggestedTask, sourceType: "insight", sourceRef: data.insights[0].id })}>Create an action →</button>
+        </section>
+      )}
+    </div>
+  );
+}
+
+function SalesWorkspace({ data, currency, navigate, refresh }: { data: CommandCentre; currency: string; navigate: (view: View) => void; refresh: () => Promise<void> }) {
+  return (
+    <div className="content sales-live-page">
+      <section className="live-sales-heading">
+        <div><p>SALES INTELLIGENCE</p><h2>Today&apos;s trade, without waiting for an end-of-day report.</h2><span>Completed R-Series sales refresh automatically. Refunds and product cost are reflected in the totals.</span></div>
+        <div className="live-sales-actions"><span className="live-sync-state current"><i />{data.liveSource.lastSuccessfulSyncAt ? `Synced ${formatRelativeSync(data.liveSource.lastSuccessfulSyncAt)}` : "Awaiting sync"}</span><button onClick={() => void refresh()}>Refresh view</button></div>
+      </section>
+      <LiveSalesPanel data={data} currency={currency} compact />
+      <section className="card period-trend-card">
+        <div className="card-head"><div><p className="card-kicker">RECENT PERFORMANCE</p><h3>Daily net sales and gross profit</h3></div><button className="text-action" onClick={() => navigate("Reports")}>Choose another time frame →</button></div>
+        <BusinessTrendChart data={data.trend} currency={currency} />
       </section>
     </div>
   );
@@ -1202,51 +1227,6 @@ function Metric({
           </div>
         </details>
       )}
-    </article>
-  );
-}
-
-function OwnerStress({
-  data,
-  currency,
-  navigate,
-}: {
-  data: CommandCentre;
-  currency: string;
-  navigate: (view: View) => void;
-}) {
-  const balances = data.balances;
-  return (
-    <article className="card stress-card">
-      <div className="card-head">
-        <div>
-          <p className="card-kicker">Cash position</p>
-          <h3>Cash after known payables</h3>
-        </div>
-        <span>
-          {data.insights.filter((x) => x.severity !== "informational").length}{" "}
-          items
-        </span>
-      </div>
-      <CashPositionRing
-        cashCents={balances?.cashBalanceCents}
-        payableCents={balances?.accountsPayableCents}
-        currency={currency}
-      />
-      <div className="stress-list compact-stress-list">
-        <button onClick={() => navigate("Cash")}>
-          <span>Inventory held</span>
-          <b>{money(balances?.inventoryValueCents, currency)}</b>
-        </button>
-        <button onClick={() => navigate("Action Centre")}>
-          <span>Assigned actions</span>
-          <b>Open queue →</b>
-        </button>
-      </div>
-      <p className="stress-note">
-        This view uses verified balances only. Payroll, rent, tax and debt are
-        excluded until those schedules are connected.
-      </p>
     </article>
   );
 }

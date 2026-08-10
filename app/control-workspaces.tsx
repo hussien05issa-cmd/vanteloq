@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "./supabase-browser";
 import { InventoryLifecycleWorkspace } from "./inventory-lifecycle-workspace";
+import { BusinessTrendChart } from "./dashboard-charts";
 import {
   calculateReorderRecommendation,
   type ReorderInputs,
@@ -151,10 +152,26 @@ const reportGroups: Record<string, string[]> = {
 const liveReports: Record<string, string> = {
   "Sales totals": "sales_totals",
   "Sales over time": "sales_over_time",
+  "Average transaction value": "sales_totals",
+  "Units per transaction": "sales_totals",
   Discounts: "discounts_refunds",
   Refunds: "discounts_refunds",
   "Labour cost percentage": "labour_summary",
 };
+
+function localIsoDate(value: Date) {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function reportRange(days: number) {
+  const end = new Date();
+  const start = new Date(end);
+  start.setDate(start.getDate() - Math.max(0, days - 1));
+  return { start: localIsoDate(start), end: localIsoDate(end) };
+}
 
 function money(cents: number | null | undefined, currency: string) {
   return cents === null || cents === undefined
@@ -183,6 +200,10 @@ export function ReportsWorkspace({
   const [selected, setSelected] = useState("Sales totals");
   const [report, setReport] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(false);
+  const initialRange = useMemo(() => reportRange(30), []);
+  const [start, setStart] = useState(initialRange.start);
+  const [end, setEnd] = useState(initialRange.end);
+  const [preset, setPreset] = useState("30");
   const visible = Object.entries(reportGroups)
     .flatMap(([category, reports]) =>
       reports.map((name) => ({ category, name })),
@@ -193,24 +214,41 @@ export function ReportsWorkspace({
         item.name.toLowerCase().includes(query.toLowerCase()),
     );
   const load = useCallback(async (name: string) => {
-    setSelected(name);
     setReport(null);
     const id = liveReports[name];
     if (!id) return;
     setLoading(true);
-    const response = await apiFetch(`/api/v1/reports?report=${id}`);
+    const params = new URLSearchParams({ report: id, start, end });
+    const response = await apiFetch(`/api/v1/reports?${params.toString()}`);
     const body: unknown = await response.json();
     if (response.ok) setReport(body as Record<string, unknown>);
     else showNotice(apiMessage(body, "Unable to load report."));
     setLoading(false);
-  }, [showNotice]);
+  }, [end, showNotice, start]);
   useEffect(() => {
-    const timer = window.setTimeout(() => void load("Sales totals"), 0);
+    const timer = window.setTimeout(() => void load(selected), 0);
     return () => window.clearTimeout(timer);
-  }, [load]);
+  }, [load, selected]);
+  const applyPreset = (days: number) => {
+    const next = reportRange(days);
+    setPreset(String(days));
+    setStart(next.start);
+    setEnd(next.end);
+  };
   const totals = report?.totals as Record<string, number | null> | undefined;
   const explain = report?.explainAndAct as Record<string, unknown> | undefined;
   const source = report?.source as Record<string, unknown> | undefined;
+  const rows = (report?.rows as Array<{ businessDate: string; netSalesCents: number; costOfGoodsCents: number }> | undefined) ?? [];
+  const trendRows = useMemo(() => {
+    const daily = new Map<string, { date: string; netSalesCents: number; grossProfitCents: number }>();
+    for (const row of rows) {
+      const current = daily.get(row.businessDate) ?? { date: row.businessDate, netSalesCents: 0, grossProfitCents: 0 };
+      current.netSalesCents += row.netSalesCents;
+      current.grossProfitCents += row.netSalesCents - row.costOfGoodsCents;
+      daily.set(row.businessDate, current);
+    }
+    return [...daily.values()].sort((left, right) => left.date.localeCompare(right.date));
+  }, [rows]);
   const canExport = report?.canExport === true;
   return (
     <div className="content control-page reports-centre">
@@ -227,6 +265,54 @@ export function ReportsWorkspace({
         <button className="secondary" disabled title="Scheduled delivery requires an approved email provider, queue, export permission checks and retry handling.">
           Schedule delivery · provider required
         </button>
+      </section>
+      <section className="report-period-control" aria-label="Report time frame">
+        <div className="report-period-presets" aria-label="Time frame presets">
+          {[
+            [1, "Today"],
+            [7, "7 days"],
+            [30, "30 days"],
+            [90, "90 days"],
+          ].map(([days, label]) => (
+            <button
+              type="button"
+              className={preset === String(days) ? "active" : ""}
+              key={days}
+              onClick={() => applyPreset(Number(days))}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <div className="report-date-fields">
+          <label>
+            <span>From</span>
+            <input
+              type="date"
+              value={start}
+              max={end}
+              onChange={(event) => {
+                setPreset("custom");
+                setStart(event.target.value);
+              }}
+            />
+          </label>
+          <span aria-hidden="true">to</span>
+          <label>
+            <span>To</span>
+            <input
+              type="date"
+              value={end}
+              min={start}
+              max={localIsoDate(new Date())}
+              onChange={(event) => {
+                setPreset("custom");
+                setEnd(event.target.value);
+              }}
+            />
+          </label>
+        </div>
+        <p><b>{start}</b> through <b>{end}</b></p>
       </section>
       <div className="report-toolbar">
         <label>
@@ -263,7 +349,7 @@ export function ReportsWorkspace({
                     <button
                       className={selected === item.name ? "selected" : ""}
                       key={item.name}
-                      onClick={() => void load(item.name)}
+                      onClick={() => setSelected(item.name)}
                     >
                       <span>{item.name}</span>
                       <em className={liveReports[item.name] ? "live" : "gated"}>
@@ -315,6 +401,23 @@ export function ReportsWorkspace({
                   </b>
                 </article>
               </div>
+              <section className="report-period-chart" aria-label="Sales over the selected time frame">
+                <header>
+                  <div>
+                    <p>SELECTED TIME FRAME</p>
+                    <h3>Net sales and gross profit</h3>
+                  </div>
+                  <span>{rows.length} daily records</span>
+                </header>
+                {trendRows.length ? (
+                  <BusinessTrendChart
+                    currency={currency}
+                    data={trendRows}
+                  />
+                ) : (
+                  <div className="report-chart-empty">No verified sales records match this time frame.</div>
+                )}
+              </section>
               <section className="explain-act">
                 <p>EXPLAIN & ACT</p>
                 <h3>
@@ -338,7 +441,7 @@ export function ReportsWorkspace({
                     <dd>
                       {String(source?.type)} · Data through{" "}
                       {String(source?.latestBusinessDate || "no records")} ·
-                      generated {String(source?.generatedAt)}
+                      {" "}{start} to {end} · generated {String(source?.generatedAt)}
                     </dd>
                   </div>
                 </dl>
@@ -363,7 +466,7 @@ export function ReportsWorkspace({
                 {canExport ? (
                   <a
                     className="report-export"
-                    href={`/api/v1/reports?report=${liveReports[selected]}&format=csv`}
+                    href={`/api/v1/reports?report=${liveReports[selected]}&start=${start}&end=${end}&format=csv`}
                   >
                     Export CSV
                   </a>
