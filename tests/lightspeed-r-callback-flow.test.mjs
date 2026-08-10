@@ -153,7 +153,7 @@ test("R-Series completes a browser callback using the initiating one-time state"
     assert.equal(typeof oauthState?.consumed_at, "number");
 
     const sync = await worker.fetch(new Request(`${origin}/api/v1/integrations/lightspeed-r/sync`, {
-      method: "POST", headers: ownerHeaders(true), body: "{}",
+      method: "POST", headers: ownerHeaders(true), body: JSON.stringify({ reason: "manual" }),
     }), environment, context);
     assert.equal(sync.status, 200);
     const syncBody = await sync.json();

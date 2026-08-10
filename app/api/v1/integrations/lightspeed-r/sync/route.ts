@@ -141,7 +141,9 @@ export async function POST(request: Request) {
     const context = await requireAccess(request, ["owner", "admin"]);
     await requirePermission(context, "integrations.manage");
     const requested = await request.json().catch(() => ({})) as { reason?: unknown };
-    const reason = requested.reason === "auto" ? "auto" : "manual";
+    // Older open tabs did not send a reason. Treat them as lightweight refreshes
+    // so stale clients cannot accidentally start full catalog backfills.
+    const reason = requested.reason === "manual" ? "manual" : "auto";
     const [connection] = await getDb().select().from(integrationConnections).where(and(
       eq(integrationConnections.organizationId, context.organizationId),
       eq(integrationConnections.provider, LIGHTSPEED_R_PROVIDER),
