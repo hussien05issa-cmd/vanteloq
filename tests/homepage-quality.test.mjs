@@ -42,6 +42,9 @@ test("homepage copy stays within the verified product boundary", async () => {
   assert.match(html, /Lightspeed R-Series/);
   assert.match(html, /LIMITED PILOT/);
   assert.match(html, /STAGING/);
+  assert.doesNotMatch(html, /\p{L}—\p{L}/u, "homepage prose should not join words with an em dash");
+  assert.match(html, /home-intelligence-map/);
+  assert.match(html, /home-resource-art/);
 });
 
 test("homepage preserves responsive and keyboard interaction safeguards", async () => {

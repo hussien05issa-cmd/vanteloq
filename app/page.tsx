@@ -228,7 +228,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
         <div className="home-hero-copy">
           <span className="public-pill"><i/> Operations and analytics for independent retail</span>
           <h1 id="home-title">Understand your business. <em>Make better decisions.</em></h1>
-          <p>Bring verified sales, inventory, cash and operational records into clearer views—so owners and managers can see what changed, understand the limits of the data and decide what needs attention.</p>
+          <p>Bring supported sales, inventory, cash and operational records into one clear view. See what changed, understand the limits of the data and decide what needs attention.</p>
           <div className="public-actions">
             <button type="button" onClick={() => start("signup")}>Create your workspace <span aria-hidden="true">→</span></button>
             <a href="#platform">See how Vanteloq works</a>
@@ -271,7 +271,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
           <article><small>SALES</small><h3>Your POS records transactions.</h3><p>Revenue and product activity need consistent dates, locations, refunds and source definitions before they can be compared.</p></article>
           <article><small>INVENTORY</small><h3>Your stock records quantities.</h3><p>On-hand balances become more useful when they retain movements, costs, expiry context and count evidence.</p></article>
           <article><small>CASH</small><h3>Your balance is only one input.</h3><p>Known obligations and planned purchases change how much cash is actually available to commit.</p></article>
-          <article><small>OPERATIONS</small><h3>Your team owns the follow-through.</h3><p>Important findings need an owner, approval boundary and recorded outcome—not another forgotten report.</p></article>
+          <article><small>OPERATIONS</small><h3>Your team owns the follow-through.</h3><p>Important findings need an owner, an approval boundary and a recorded outcome. They should not become another forgotten report.</p></article>
         </div>
       </section>
 
@@ -343,6 +343,13 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
         <div>
           <p>BUSINESS INTELLIGENCE FOR EVERYDAY OPERATORS</p>
           <h2 id="seo-copy-title">A clearer operating view for independent retail businesses.</h2>
+          <div className="home-intelligence-map" role="img" aria-label="Supported sources are organized with context before they become an approved action.">
+            <span><small>SUPPORTED SOURCES</small><b>Sales · Inventory · Cash</b></span>
+            <i aria-hidden="true"/>
+            <span><small>BUSINESS CONTEXT</small><b>Definitions · Limits · Owners</b></span>
+            <i aria-hidden="true"/>
+            <span><small>REVIEWED ACTION</small><b>Decide · Approve · Follow through</b></span>
+          </div>
         </div>
         <div className="home-seo-columns">
           <p>Vanteloq is a business operating and analytics platform designed for independent retailers that need a clearer view of day-to-day performance. It works with supported point-of-sale and payment sources, structured daily imports and operating records created inside the platform. The goal is not to collect data for its own sake. It is to help owners and managers understand how sales, inventory, cash commitments, purchasing decisions and assigned work relate to one another.</p>
@@ -359,9 +366,9 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
           <span>Detailed, source-backed explanations for the operating questions behind the dashboard.</span>
         </div>
         <div className="home-resource-grid">
-          <Link href="/resources/how-to-track-inventory-small-business"><small>INVENTORY · 8 MIN</small><h3>How to Track Inventory for a Small Business</h3><p>Build a reliable SKU, movement, counting and reorder process before choosing the software.</p><span>Read guide →</span></Link>
-          <Link href="/resources/how-to-calculate-gross-margin-small-business"><small>FINANCE · 6 MIN</small><h3>How to Calculate Gross Margin for a Small Business</h3><p>Use the right sales and cost inputs, then avoid the mistakes that make the percentage misleading.</p><span>Read guide →</span></Link>
-          <Link href="/resources/what-should-small-business-dashboard-show"><small>ANALYTICS · 7 MIN</small><h3>What Should a Small Business Dashboard Show?</h3><p>Choose a focused set of measures, context and action cues instead of filling the screen with charts.</p><span>Read guide →</span></Link>
+          <Link href="/resources/how-to-track-inventory-small-business"><div className="home-resource-art inventory-art" aria-hidden="true"><i/><i/><i/><b>SKU</b></div><small>INVENTORY · 5 MIN</small><h3>How to Track Inventory for a Small Business</h3><p>Build a reliable SKU, movement, counting and reorder process before choosing the software.</p><span>Read guide →</span></Link>
+          <Link href="/resources/how-to-calculate-gross-margin-small-business"><div className="home-resource-art finance-art" aria-hidden="true"><i/><i/><i/><b>%</b></div><small>FINANCE · 5 MIN</small><h3>How to Calculate Gross Margin for a Small Business</h3><p>Use the right sales and cost inputs, then avoid the mistakes that make the percentage misleading.</p><span>Read guide →</span></Link>
+          <Link href="/resources/what-should-small-business-dashboard-show"><div className="home-resource-art analytics-art" aria-hidden="true"><i/><i/><i/><b>VIEW</b></div><small>ANALYTICS · 6 MIN</small><h3>What Should a Small Business Dashboard Show?</h3><p>Choose a focused set of measures, context and action cues instead of filling the screen with charts.</p><span>Read guide →</span></Link>
         </div>
         <Link className="home-text-link" href="/resources">Explore all Vanteloq resources →</Link>
       </section>

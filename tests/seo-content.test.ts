@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   RESOURCE_ARTICLES,
@@ -30,5 +31,15 @@ test("resource catalogue preserves one canonical route namespace", () => {
   const categories = new Set(RESOURCE_CATEGORIES.map((category) => category.slug));
   for (const article of RESOURCE_ARTICLES) {
     assert.ok(!categories.has(article.slug as never), `${article.slug} collides with a category route`);
+  }
+});
+
+test("homepage reading times stay synchronized with the published guides", () => {
+  const homepage = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const categoryLabels = { inventory: "INVENTORY", finance: "FINANCE", analytics: "ANALYTICS" } as const;
+  for (const article of RESOURCE_ARTICLES) {
+    const category = categoryLabels[article.category as keyof typeof categoryLabels];
+    assert.ok(category, `${article.slug} needs a homepage category label`);
+    assert.match(homepage, new RegExp(`${category} · ${getReadingTime(article)} MIN`), `${article.slug} homepage reading time is stale`);
   }
 });

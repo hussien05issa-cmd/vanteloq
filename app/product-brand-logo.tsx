@@ -21,11 +21,13 @@ export default function ProductBrandLogo({
     ? variant === "full"
       ? "/brand/vanteloq-logo.png"
       : "/brand/vanteloq-mark.png"
-    : "/brand/bookloq-logo.png";
+    : variant === "full"
+      ? "/brand/bookloq-logo.jpeg"
+      : "/brand/bookloq-logo.png";
 
   const dimensions = product === "vanteloq"
     ? variant === "full" ? { width: 1030, height: 576 } : { width: 447, height: 402 }
-    : { width: 1536, height: 1024 };
+    : variant === "full" ? { width: 1024, height: 1024 } : { width: 1536, height: 1024 };
 
   return (
     <span className={`product-brand-logo ${product} ${variant} ${className}`.trim()}>

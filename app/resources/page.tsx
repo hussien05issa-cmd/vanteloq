@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArticleCard, ResourceShell } from "./components";
+import { ArticleCard, ResourceShell, ResourceVisual } from "./components";
 import { RESOURCE_ARTICLES, RESOURCE_CATEGORIES, getArticlesByCategory } from "./content";
 import { DEFAULT_SOCIAL_IMAGE } from "../seo";
 
@@ -32,12 +32,15 @@ export default function ResourcesPage() {
           <div>
             <p className="resource-eyebrow">VANTELOQ FIELD GUIDES</p>
             <h1>Make better business decisions with clearer operating data.</h1>
-            <p>Practical explanations for owners and managers—without invented benchmarks, vague promises or unexplained formulas.</p>
+            <p>Practical explanations for owners and managers, without invented benchmarks, vague promises or unexplained formulas.</p>
           </div>
           <aside aria-label="Editorial standard">
-            <span>OUR EDITORIAL STANDARD</span>
-            <strong>Evidence before advice.</strong>
-            <p>Each guide separates facts, formulas, assumptions and limitations so you can see what a decision actually depends on.</p>
+            <figure>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/brand/vanteloq-command-ledger.webp" alt="Vanteloq command centre with sales, margin, cash, inventory and decision views." width={1487} height={1058} loading="eager" fetchPriority="high" />
+              <figcaption>Real Vanteloq interface · Illustrative values</figcaption>
+            </figure>
+            <div><span>OUR EDITORIAL STANDARD</span><strong>Evidence before advice.</strong><p>Each guide separates facts, formulas, assumptions and limitations so you can see what a decision actually depends on.</p></div>
           </aside>
         </section>
 
@@ -49,7 +52,8 @@ export default function ResourcesPage() {
           <div className="resource-category-grid">
             {RESOURCE_CATEGORIES.map((category) => (
               <Link href={`/resources/${category.slug}`} key={category.slug}>
-                <span>{String(getArticlesByCategory(category.slug).length).padStart(2, "0")}</span>
+                <ResourceVisual category={category.slug} compact />
+                <span>{getArticlesByCategory(category.slug).length ? `${getArticlesByCategory(category.slug).length} guide` : "Guides planned"}</span>
                 <strong>{category.name}</strong>
                 <p>{category.description}</p>
               </Link>

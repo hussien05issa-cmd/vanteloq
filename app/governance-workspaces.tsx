@@ -958,7 +958,7 @@ function AccessSafeguards({ security }: { security: Governance["security"] }) {
   const items = [
     [
       "Remote authentication",
-      "Password, passkeys and MFA are managed by the verified identity provider—not duplicated inside Vanteloq.",
+      "Passwords, passkeys and MFA are managed by the verified identity provider. Vanteloq does not duplicate them.",
       "Protected",
     ],
     [
@@ -1802,7 +1802,7 @@ function BillingSettings() {
   };
   if (!data && !error) return <section className="settings-form"><header><p>STRIPE BILLING</p><h2>Loading verified subscription status…</h2></header></section>;
   const managed = data?.current.hasCustomer === true;
-  return <section className="settings-form billing-settings"><header><p>STRIPE BILLING</p><h2>Billing & subscription</h2><span>Stripe hosts payment collection, invoices, renewals and cancellation. Vanteloq stores only synchronized subscription identifiers and entitlement status—never card details.</span></header>
+  return <section className="settings-form billing-settings"><header><p>STRIPE BILLING</p><h2>Billing & subscription</h2><span>Stripe hosts payment collection, invoices, renewals and cancellation. Vanteloq stores only synchronized subscription identifiers and entitlement status. It never stores card details.</span></header>
     {error && <p className="form-error">{error}</p>}
     {data?.accessType === "internal" ? <div className="billing-internal"><b>Founder access active</b><span>This workspace has verified internal full access and does not require a Stripe subscription.</span></div> : <>
       <div className="billing-cycle"><button className={interval === "month" ? "active" : ""} onClick={() => setInterval("month")}>Monthly</button><button className={interval === "year" ? "active" : ""} onClick={() => setInterval("year")}>Annual</button></div>

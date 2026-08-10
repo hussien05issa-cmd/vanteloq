@@ -109,9 +109,9 @@ export async function POST(request: Request) {
     }
 
     const contacts = [
-      ["supplier_peak", "supplier", "Peak Performance Distribution", "accounts@peak-demo.invalid", 30, "Primary inventory supplier — demonstration record."],
-      ["supplier_local", "supplier", "Edmonton Print & Promo", "billing@print-demo.invalid", 15, "Local campaign supplier — demonstration record."],
-      ["customer_corp", "customer", "Northside Fitness Studio", "finance@northside-demo.invalid", 15, "Wholesale customer — demonstration record."],
+      ["supplier_peak", "supplier", "Peak Performance Distribution", "accounts@peak-demo.invalid", 30, "Primary inventory supplier. Demonstration record."],
+      ["supplier_local", "supplier", "Edmonton Print & Promo", "billing@print-demo.invalid", 15, "Local campaign supplier. Demonstration record."],
+      ["customer_corp", "customer", "Northside Fitness Studio", "finance@northside-demo.invalid", 15, "Wholesale customer. Demonstration record."],
     ] as const;
     for (const [key, type, name, email, terms, notes] of contacts) {
       statements.push(database.prepare(`INSERT OR IGNORE INTO bookloq_contacts

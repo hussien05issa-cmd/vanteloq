@@ -1468,7 +1468,7 @@ function InsightCard({
           <div>
             <b>Still missing</b>
             {insight.missingInformation.map((item) => (
-              <span key={item}>— {item}</span>
+              <span key={item}>• {item}</span>
             ))}
           </div>
         </div>
@@ -2211,7 +2211,7 @@ function DataHub({
                   disabled={Boolean(providerActions[outletData.provider ?? "lightspeed"])}
                   aria-label={`Map ${mapping.externalName}`}
                 >
-                  <option value="">{outletData.provider === "lightspeed-r" ? "Keep as a separate R-Series location" : "Unmapped — blocks promotion"}</option>
+                  <option value="">{outletData.provider === "lightspeed-r" ? "Keep as a separate R-Series location" : "Unmapped: blocks promotion"}</option>
                   {outletData.localLocations.filter((location) => location.status === "active").map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}
                   <option value="__ignored__">Ignore this outlet</option>
                 </select>
@@ -2644,7 +2644,7 @@ function DecisionJournal({
           <span>
             Vanteloq compares up to 14 days before and after each event when
             enough verified history exists. Correlation is shown as
-            correlation—not proof of causation.
+            correlation, not proof of causation.
           </span>
         </div>
       </section>
@@ -2812,7 +2812,7 @@ function ScenarioPlanner({
           <p>WHAT-IF MODEL</p>
           <h2>Test a decision before spending money.</h2>
           <span>
-            This is a user-controlled scenario—not a forecast. Every output is a
+            This is a user-controlled scenario, not a forecast. Every output is a
             direct formula from the inputs below.
           </span>
         </div>

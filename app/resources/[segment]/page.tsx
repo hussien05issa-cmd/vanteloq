@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArticleCard, Breadcrumbs, ResourceShell } from "../components";
+import { ArticleCard, Breadcrumbs, ResourceShell, ResourceVisual } from "../components";
 import {
   RESOURCE_ARTICLES,
   RESOURCE_CATEGORIES,
@@ -95,7 +95,7 @@ function ArticlePage({ article }: { article: ResourceArticle }) {
     dateModified: article.updated,
     articleSection: category?.name,
     author: { "@type": "Organization", name: article.author },
-    publisher: { "@id": `${absoluteUrl() }#organization` },
+    publisher: { "@id": `${absoluteUrl()}#organization` },
   };
   const breadcrumbs = breadcrumbJsonLd([
     { name: "Home", path: "/" },
@@ -116,15 +116,18 @@ function ArticlePage({ article }: { article: ResourceArticle }) {
             { label: article.title },
           ]} />
           <header className="article-header">
-            <p className="resource-eyebrow">{category?.name.toUpperCase()}</p>
-            <h1>{article.title}</h1>
-            <p className="article-dek">{article.dek}</p>
-            <dl className="article-byline">
-              <div><dt>Written by</dt><dd>{article.author}</dd></div>
-              <div><dt>Published</dt><dd><time dateTime={article.published}>{formatDate(article.published)}</time></dd></div>
-              <div><dt>Updated</dt><dd><time dateTime={article.updated}>{formatDate(article.updated)}</time></dd></div>
-              <div><dt>Reading time</dt><dd>{getReadingTime(article)} minutes</dd></div>
-            </dl>
+            <div className="article-header-copy">
+              <p className="resource-eyebrow">{category?.name.toUpperCase()}</p>
+              <h1>{article.title}</h1>
+              <p className="article-dek">{article.dek}</p>
+              <dl className="article-byline">
+                <div><dt>Written by</dt><dd>{article.author}</dd></div>
+                <div><dt>Published</dt><dd><time dateTime={article.published}>{formatDate(article.published)}</time></dd></div>
+                <div><dt>Updated</dt><dd><time dateTime={article.updated}>{formatDate(article.updated)}</time></dd></div>
+                <div><dt>Reading time</dt><dd>{getReadingTime(article)} minutes</dd></div>
+              </dl>
+            </div>
+            <ResourceVisual category={article.category} />
           </header>
 
           <div className="article-layout">
@@ -191,9 +194,8 @@ function CategoryPage({ categorySlug }: { categorySlug: string }) {
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumbs) }} />
         <section className="category-hero">
           <Breadcrumbs items={[{ label: "Resources", href: "/resources" }, { label: category.name }]} />
-          <p className="resource-eyebrow">RESOURCE TOPIC</p>
-          <h1>{category.name}</h1>
-          <p>{category.description}</p>
+          <div className="category-hero-copy"><p className="resource-eyebrow">RESOURCE TOPIC</p><h1>{category.name}</h1><p>{category.description}</p></div>
+          <ResourceVisual category={category.slug} />
         </section>
         <section className="category-articles" aria-labelledby="category-guides">
           <div className="resource-section-heading"><p className="resource-eyebrow">PRACTICAL GUIDES</p><h2 id="category-guides">{category.name} questions, answered clearly</h2></div>
