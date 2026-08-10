@@ -26,10 +26,12 @@ export async function GET(request: Request) {
       .from(integrationConnections)
       .where(eq(integrationConnections.organizationId, context.organizationId));
     const byProvider = new Map(rows.map((row) => [row.provider, row]));
+    const syncEnabled = rows.some((row) => row.status === "connected");
+    const dataPromotionEnabled = rows.some((row) => row.dataPromotionStatus === "approved");
     return jsonResponse({
       preSyncControls,
-      syncEnabled: false,
-      dataPromotionEnabled: false,
+      syncEnabled,
+      dataPromotionEnabled,
       canManage: permissions.includes("integrations.manage"),
       integrations: integrationCatalog.map((provider) => ({
         ...provider,

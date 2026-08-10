@@ -30,6 +30,27 @@ export type NormalizedLightspeedRSale = {
   sourcePayloadHash: string;
 };
 
+export type NormalizedLightspeedRInventoryBalance = {
+  externalItemId: string;
+  outletRef: string;
+  sku: string;
+  name: string;
+  onHandQuantity: number;
+  reorderPoint: number;
+};
+
+export type LightspeedRDailyMetric = {
+  businessDate: string;
+  locationRef: string;
+  grossSalesCents: number;
+  netSalesCents: number;
+  costOfGoodsCents: number;
+  transactionCount: number;
+  unitsSold: number;
+  refundsCents: number;
+  discountsCents: number;
+};
+
 type Config = {
   clientId: string;
   clientSecret: string;
@@ -51,8 +72,8 @@ export function lightspeedRReadiness() {
     missingConfiguration: missing,
     apiVersion: "V3",
     scopes: [...LIGHTSPEED_R_SCOPES],
-    mode: "read_only_staging" as const,
-    dataPromotionEnabled: false,
+    mode: "read_only_live_sync" as const,
+    dataPromotionEnabled: true,
   };
 }
 
@@ -224,21 +245,32 @@ export async function fetchLightspeedRCollection(
   organizationId: string,
   accountId: string,
   resource: "Shop" | "Sale" | "Item",
-  options: { maxPages?: number; fetcher?: typeof fetch; modifiedSince?: string | null } = {},
+  options: {
+    maxPages?: number;
+    fetcher?: typeof fetch;
+    modifiedSince?: string | null;
+    cursor?: string | null;
+  } = {},
 ) {
   if (!/^\d+$/.test(accountId)) throw new ApiError(400, "LIGHTSPEED_R_ACCOUNT_INVALID", "The R-Series account identifier is invalid.");
   const fetcher = options.fetcher ?? fetch;
   const token = await loadAccessToken(organizationId, fetcher);
   const basePath = `/API/V3/Account/${accountId}/${resource}.json`;
   let url = new URL(basePath, API_ORIGIN);
-  url.searchParams.set("limit", "100");
-  if (options.modifiedSince) url.searchParams.set("timeStamp", `>,${options.modifiedSince}`);
+  if (options.cursor) {
+    try { url = new URL(options.cursor); } catch {
+      throw new ApiError(502, "LIGHTSPEED_R_PAGINATION_INVALID", "The saved R-Series pagination cursor is invalid.");
+    }
+  } else {
+    url.searchParams.set("limit", "100");
+    if (options.modifiedSince) url.searchParams.set("timeStamp", `>,${options.modifiedSince}`);
+  }
   const data: Record<string, unknown>[] = [];
   let pages = 0;
   const maximum = Math.min(Math.max(options.maxPages ?? 1, 1), 10);
   let cursor: string | null = null;
   while (pages < maximum) {
-    if (url.origin !== API_ORIGIN || !url.pathname.startsWith(`/API/V3/Account/${accountId}/`)) {
+    if (url.origin !== API_ORIGIN || url.pathname !== basePath) {
       throw new ApiError(502, "LIGHTSPEED_R_PAGINATION_INVALID", "R-Series returned an unsafe pagination URL.");
     }
     const response = await providerGet(url, token, fetcher);
@@ -247,7 +279,10 @@ export async function fetchLightspeedRCollection(
     pages += 1;
     const attributes = objectValue(body["@attributes"]);
     const next = stringValue(attributes.next);
-    if (!next) break;
+    if (!next) {
+      cursor = null;
+      break;
+    }
     url = new URL(next, API_ORIGIN);
     cursor = url.toString();
   }
@@ -275,6 +310,82 @@ export async function normalizeLightspeedRSale(sale: Record<string, unknown>): P
   return { ...normalized, sourcePayloadHash: await lightspeedRSha256(JSON.stringify(normalized)) };
 }
 
+export function normalizeLightspeedRInventoryItem(
+  item: Record<string, unknown>,
+): NormalizedLightspeedRInventoryBalance[] {
+  const externalItemId = stringValue(item.itemID);
+  if (!externalItemId) throw new Error("Item ID is missing.");
+  const sku = (
+    stringValue(item.customSku) ||
+    stringValue(item.upc) ||
+    stringValue(item.ean) ||
+    externalItemId
+  ).trim().slice(0, 160);
+  const name = (stringValue(item.description) || `R-Series item ${externalItemId}`).trim().slice(0, 240);
+  const container = objectValue(item.ItemShops ?? item.Shops);
+  const shops = records(container.ItemShop ?? container.Shop);
+  const embedded = shops.length ? shops : stringValue(item.shopID) ? [item] : [];
+  return embedded.map((shop) => {
+    const outletRef = stringValue(shop.shopID);
+    const quantity = finiteNumber(shop.qoh ?? shop.quantityOnHand ?? shop.onHand);
+    const reorder = finiteNumber(shop.reorderPoint);
+    if (!outletRef || quantity === null) throw new Error("Item shop inventory is incomplete.");
+    return {
+      externalItemId,
+      outletRef,
+      sku,
+      name,
+      onHandQuantity: Math.round(quantity),
+      reorderPoint: Math.max(0, Math.round(reorder ?? 0)),
+    };
+  });
+}
+
+export function buildLightspeedRDailyMetrics(
+  sales: Array<Pick<NormalizedLightspeedRSale, "externalSaleId" | "outletRef" | "soldAt" | "state" | "totalCents" | "taxCents" | "costCents" | "discountCents" | "lineCount">>,
+): LightspeedRDailyMetric[] {
+  const totals = new Map<string, LightspeedRDailyMetric & { positiveNetCents: number; returnedCostCents: number }>();
+  for (const sale of sales) {
+    if (sale.state !== "completed" || !sale.outletRef || !sale.soldAt) continue;
+    const businessDate = sale.soldAt.slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(businessDate)) continue;
+    const locationRef = `${LIGHTSPEED_R_PROVIDER}:${sale.outletRef}`;
+    const key = `${businessDate}\u0000${locationRef}`;
+    const row = totals.get(key) ?? {
+      businessDate,
+      locationRef,
+      grossSalesCents: 0,
+      netSalesCents: 0,
+      costOfGoodsCents: 0,
+      transactionCount: 0,
+      unitsSold: 0,
+      refundsCents: 0,
+      discountsCents: 0,
+      positiveNetCents: 0,
+      returnedCostCents: 0,
+    };
+    const preTaxCents = sale.totalCents - sale.taxCents;
+    if (preTaxCents < 0) {
+      row.refundsCents += Math.abs(preTaxCents);
+      row.returnedCostCents += Math.abs(sale.costCents);
+    } else {
+      const discountCents = Math.abs(sale.discountCents);
+      row.positiveNetCents += preTaxCents;
+      row.grossSalesCents += preTaxCents + discountCents;
+      row.costOfGoodsCents += Math.max(0, sale.costCents);
+      row.discountsCents += discountCents;
+      row.transactionCount += 1;
+      row.unitsSold += Math.max(0, sale.lineCount);
+    }
+    totals.set(key, row);
+  }
+  return [...totals.values()].map(({ positiveNetCents, returnedCostCents, ...row }) => ({
+    ...row,
+    netSalesCents: Math.max(0, positiveNetCents - row.refundsCents),
+    costOfGoodsCents: Math.max(0, row.costOfGoodsCents - returnedCostCents),
+  })).sort((left, right) => left.businessDate.localeCompare(right.businessDate) || left.locationRef.localeCompare(right.locationRef));
+}
+
 function records(value: unknown): Record<string, unknown>[] {
   if (Array.isArray(value)) return value.filter(isRecord);
   return isRecord(value) ? [value] : [];
@@ -285,6 +396,7 @@ function objectValue(value: unknown): Record<string, unknown> { return isRecord(
 function stringValue(value: unknown) { return typeof value === "string" || typeof value === "number" ? String(value) : ""; }
 function truthy(value: unknown) { return value === true || value === "true" || value === 1 || value === "1"; }
 function money(value: unknown) { const number = typeof value === "number" ? value : Number(value); return Number.isFinite(number) ? Math.round(number * 100) : 0; }
+function finiteNumber(value: unknown) { const number = typeof value === "number" ? value : Number(value); return Number.isFinite(number) ? number : null; }
 function toArrayBuffer(bytes: Uint8Array) { return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer; }
 function base64(bytes: Uint8Array) { let binary = ""; for (const byte of bytes) binary += String.fromCharCode(byte); return btoa(binary); }
 function base64Url(bytes: Uint8Array) { return base64(bytes).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, ""); }

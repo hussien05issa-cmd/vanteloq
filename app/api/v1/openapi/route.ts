@@ -56,7 +56,7 @@ const specification = {
       post: { summary: "Map an R-Series shop to a tenant-owned location", responses: { "200": { description: "Mapping saved and audited" }, "404": { description: "Shop or local location not found" } } },
     },
     "/integrations/lightspeed-r/sync": {
-      post: { summary: "Read and stage a bounded R-Series sales sample without metric promotion", responses: { "200": { description: "Staging and reconciliation result" }, "409": { description: "Provider authorization needs recovery" } } },
+      post: { summary: "Import bounded, resumable R-Series sales and inventory into verified operating data", responses: { "200": { description: "Import, reconciliation and checkpoint result" }, "409": { description: "Provider authorization needs recovery" } } },
     },
     "/integrations/lightspeed-r/disconnect": {
       post: { summary: "Delete tenant R-Series credentials while retaining staged audit history", responses: { "200": { description: "Connection revoked" }, "403": { description: "Integration-management permission required" } } },

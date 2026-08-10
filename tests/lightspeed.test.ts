@@ -12,11 +12,13 @@ import {
   verifyLightspeedWebhookSignature,
 } from "../server/integrations/lightspeed.ts";
 import {
+  buildLightspeedRDailyMetrics,
   buildLightspeedRAuthorizationUrl,
   decryptLightspeedRSecret,
   encryptLightspeedRSecret,
   LIGHTSPEED_R_SCOPES,
   lightspeedRReadiness,
+  normalizeLightspeedRInventoryItem,
   normalizeLightspeedRSale,
 } from "../server/integrations/lightspeed-r.ts";
 
@@ -66,13 +68,14 @@ test("R-Series callback accepts the provider's long opaque authorization code sh
   assert.match(source, /\^\[A-Za-z0-9_-\]\{43\}\$/);
 });
 
-test("R-Series readiness is independently configured and promotion stays disabled", () => {
+test("R-Series readiness exposes the verified read-only live sync", () => {
   const readiness = lightspeedRReadiness();
   assert.equal(readiness.adapterBuilt, true);
   assert.equal(readiness.credentialsConfigured, true);
   assert.equal(readiness.apiVersion, "V3");
   assert.deepEqual(readiness.scopes, ["employee:register_read", "employee:inventory_read"]);
-  assert.equal(readiness.dataPromotionEnabled, false);
+  assert.equal(readiness.mode, "read_only_live_sync");
+  assert.equal(readiness.dataPromotionEnabled, true);
 });
 
 test("R-Series tokens use provider-bound authenticated encryption", async () => {
@@ -99,6 +102,50 @@ test("R-Series sale normalization preserves financial facts and excludes custome
   assert.equal(normalized.discountCents, 200);
   assert.equal(normalized.lineCount, 2);
   assert.doesNotMatch(JSON.stringify(normalized), /Do not store|private@example/);
+});
+
+test("R-Series inventory normalization extracts per-shop balances without customer data", () => {
+  const balances = normalizeLightspeedRInventoryItem({
+    itemID: "900",
+    description: "Creatine A",
+    customSku: "CRE-A",
+    ItemShops: {
+      ItemShop: [
+        { shopID: "8", qoh: "45", reorderPoint: "24" },
+        { shopID: "9", qoh: "12", reorderPoint: "6" },
+      ],
+    },
+    Customer: { email: "private@example.invalid" },
+  });
+  assert.deepEqual(balances, [
+    { externalItemId: "900", outletRef: "8", sku: "CRE-A", name: "Creatine A", onHandQuantity: 45, reorderPoint: 24 },
+    { externalItemId: "900", outletRef: "9", sku: "CRE-A", name: "Creatine A", onHandQuantity: 12, reorderPoint: 6 },
+  ]);
+  assert.doesNotMatch(JSON.stringify(balances), /private@example/);
+});
+
+test("R-Series daily metrics aggregate completed sales and refunds by source shop", async () => {
+  const sale = await normalizeLightspeedRSale({
+    saleID: "sale-1", completed: "true", shopID: "8", completeTime: "2026-08-09T10:00:00-06:00",
+    total: "107.00", taxTotal: "5.00", calcFIFOCost: "40.00", calcDiscount: "3.00",
+    SaleLines: { SaleLine: [{ saleLineID: "1" }, { saleLineID: "2" }] },
+  });
+  const refund = await normalizeLightspeedRSale({
+    saleID: "sale-2", completed: "true", shopID: "8", completeTime: "2026-08-09T11:00:00-06:00",
+    total: "-21.00", taxTotal: "-1.00", calcFIFOCost: "-8.00", calcDiscount: "0",
+    SaleLines: { SaleLine: [{ saleLineID: "3" }] },
+  });
+  assert.deepEqual(buildLightspeedRDailyMetrics([sale, refund]), [{
+    businessDate: "2026-08-09",
+    locationRef: "lightspeed-r:8",
+    grossSalesCents: 10_500,
+    netSalesCents: 8_200,
+    costOfGoodsCents: 3_200,
+    transactionCount: 1,
+    unitsSold: 2,
+    refundsCents: 2_000,
+    discountsCents: 300,
+  }]);
 });
 
 test("readiness reports a staged adapter with promotion disabled", () => {

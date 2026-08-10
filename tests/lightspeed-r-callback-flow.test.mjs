@@ -88,6 +88,29 @@ test("R-Series completes a browser callback using the initiating one-time state"
       if (url.origin === "https://api.lightspeedapp.com" && url.pathname === "/API/V3/Account/123/Shop.json") {
         return Response.json({ Shop: [{ shopID: "1", name: "Main shop" }], "@attributes": {} });
       }
+      if (url.origin === "https://api.lightspeedapp.com" && url.pathname === "/API/V3/Account/123/Sale.json") {
+        return Response.json({
+          Sale: [
+            {
+              saleID: "sale-100", timeStamp: "2026-08-09T16:00:00Z", completeTime: "2026-08-09T15:58:00-06:00",
+              completed: "true", voided: "false", shopID: "1", total: "105.00", taxTotal: "5.00",
+              calcFIFOCost: "40.00", calcDiscount: "2.00", SaleLines: { SaleLine: [{ saleLineID: "line-1" }, { saleLineID: "line-2" }] },
+            },
+          ],
+          "@attributes": {},
+        });
+      }
+      if (url.origin === "https://api.lightspeedapp.com" && url.pathname === "/API/V3/Account/123/Item.json") {
+        return Response.json({
+          Item: [
+            {
+              itemID: "item-1", description: "Creatine A", customSku: "CRE-A",
+              ItemShops: { ItemShop: [{ shopID: "1", qoh: "45", reorderPoint: "24" }] },
+            },
+          ],
+          "@attributes": {},
+        });
+      }
       throw new Error(`Unexpected outbound request: ${url.origin}${url.pathname}`);
     };
 
@@ -107,6 +130,52 @@ test("R-Series completes a browser callback using the initiating one-time state"
       "SELECT consumed_at FROM integration_oauth_states WHERE provider = 'lightspeed-r'",
     ).first();
     assert.equal(typeof oauthState?.consumed_at, "number");
+
+    const sync = await worker.fetch(new Request(`${origin}/api/v1/integrations/lightspeed-r/sync`, {
+      method: "POST", headers: ownerHeaders(true), body: "{}",
+    }), environment, context);
+    assert.equal(sync.status, 200);
+    const syncBody = await sync.json();
+    assert.equal(syncBody.dataPromotionEnabled, true);
+    assert.deepEqual(syncBody.imported, { dailyMetrics: 1, inventoryBalances: 1 });
+
+    const metric = await database.prepare(`
+      SELECT business_date, location_ref, gross_sales_cents, net_sales_cents, cost_of_goods_cents,
+             transaction_count, units_sold, refunds_cents, discounts_cents
+      FROM daily_business_metrics
+    `).first();
+    assert.deepEqual(metric, {
+      business_date: "2026-08-09", location_ref: "lightspeed-r:1", gross_sales_cents: 10_200,
+      net_sales_cents: 10_000, cost_of_goods_cents: 4_000, transaction_count: 1,
+      units_sold: 2, refunds_cents: 0, discounts_cents: 200,
+    });
+    const balance = await database.prepare(`
+      SELECT location_ref, sku, name, on_hand_quantity, reorder_point FROM inventory_balances
+    `).first();
+    assert.deepEqual(balance, {
+      location_ref: "lightspeed-r:1", sku: "CRE-A", name: "Creatine A", on_hand_quantity: 45, reorder_point: 24,
+    });
+    const promoted = await database.prepare(
+      "SELECT data_promotion_status FROM integration_connections WHERE provider = 'lightspeed-r'",
+    ).first();
+    assert.deepEqual(promoted, { data_promotion_status: "approved" });
+
+    const command = await worker.fetch(new Request(`${origin}/api/v1/command-centre`, {
+      headers: ownerHeaders(),
+    }), environment, context);
+    assert.equal(command.status, 200);
+    const commandBody = await command.json();
+    assert.equal(commandBody.commandCentre.ready, true);
+    assert.equal(commandBody.commandCentre.source.rowCount, 1);
+
+    const inventory = await worker.fetch(new Request(`${origin}/api/v1/inventory-lifecycle`, {
+      headers: ownerHeaders(),
+    }), environment, context);
+    assert.equal(inventory.status, 200);
+    const inventoryBody = await inventory.json();
+    assert.equal(inventoryBody.summary.posSkus, 1);
+    assert.equal(inventoryBody.summary.posUnits, 45);
+    assert.equal(inventoryBody.posBalances[0].sku, "CRE-A");
   } finally {
     globalThis.fetch = originalFetch;
     await miniflare.dispose();

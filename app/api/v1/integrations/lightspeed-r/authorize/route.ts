@@ -33,7 +33,7 @@ export async function POST(request: Request) {
     });
     return jsonResponse({
       authorizationUrl: buildLightspeedRAuthorizationUrl(state), expiresAt: expiresAt.toISOString(),
-      scopes: [...LIGHTSPEED_R_SCOPES], mode: "read_only_staging",
+      scopes: [...LIGHTSPEED_R_SCOPES], mode: "read_only_live_sync",
     });
   });
 }

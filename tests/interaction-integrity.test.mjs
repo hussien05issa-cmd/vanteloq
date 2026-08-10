@@ -53,6 +53,9 @@ test("X-Series and R-Series are distinct, actionable connection choices", async 
   assert.match(catalog, /id: "lightspeed-r"[\s\S]*name: "Lightspeed R-Series"/);
   assert.match(app, /integrations\/\$\{provider\}\/authorize/);
   assert.match(app, /provider === "lightspeed-r" \? "shops" : "outlets"/);
+  assert.match(app, /providerActions\[provider\.id\]/);
+  assert.match(app, /delete next\[provider\]/);
+  assert.doesNotMatch(app, /disabled=\{[^}]*Boolean\(providerActions\)[^}]*\}/);
 });
 
 test("the banking catalogue uses Plaid's standalone mark and omits removed aggregators", async () => {

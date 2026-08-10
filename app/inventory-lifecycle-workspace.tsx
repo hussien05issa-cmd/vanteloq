@@ -37,6 +37,14 @@ type Lot = {
   };
 };
 type Payload = {
+  posBalances: {
+    locationRef: string;
+    sku: string;
+    name: string;
+    onHandQuantity: number;
+    reorderPoint: number;
+    updatedAt: string;
+  }[];
   lots: Lot[];
   fefo: (Lot & { fefoRank: number })[];
   summary: {
@@ -46,6 +54,9 @@ type Payload = {
     costAtRiskCents: number;
     costRiskKnownLots: number;
     riskCounts: Record<Risk, number>;
+    posSkus: number;
+    posUnits: number;
+    lowStockSkus: number;
   };
   source: { calculation: string; generatedAt: string };
 };
@@ -191,11 +202,21 @@ export function InventoryLifecycleWorkspace({ currency, showNotice, createTask }
     </header>
     {loading ? <div className="card lifecycle-state">Loading recorded inventory lots…</div> : error && !data ? <div className="card lifecycle-state"><b>Inventory lifecycle unavailable</b><span>{error}</span><button onClick={() => void load()}>Retry</button></div> : data ? <>
       <div className="lifecycle-summary">
+        <article><small>POS SKUS</small><b>{data.summary.posSkus}</b></article>
+        <article><small>POS UNITS ON HAND</small><b>{data.summary.posUnits}</b></article>
+        <article><small>AT OR BELOW REORDER</small><b>{data.summary.lowStockSkus}</b></article>
         <article><small>LOT RECORDS</small><b>{data.summary.totalLots}</b></article>
-        <article><small>DATE TRACKED</small><b>{data.summary.trackedLots}</b></article>
-        <article><small>UNITS RECORDED</small><b>{data.summary.totalUnits}</b></article>
-        <article><small>KNOWN COST AT RISK</small><b>{data.summary.costRiskKnownLots === 0 ? "Unavailable" : money(data.summary.costAtRiskCents, currency)}</b></article>
       </div>
+      {data.posBalances.length > 0 ? <article className="card pos-stock-ledger">
+        <header><div><p>CONNECTED POS INVENTORY</p><h3>Current R-Series stock balances</h3><span>Read-only quantities imported by shop. Reorder points are copied from the source when present.</span></div><strong>{data.summary.posSkus} SKUs</strong></header>
+        <div className="pos-stock-head"><span>Product</span><span>Location</span><span>On hand</span><span>Reorder point</span></div>
+        {data.posBalances.slice(0, 100).map(balance => <div className="pos-stock-row" key={`${balance.locationRef}:${balance.sku}`}>
+          <span><b>{balance.name}</b><small>{balance.sku}</small></span>
+          <span>{balance.locationRef.replace("lightspeed-r:", "R-Series shop ")}</span>
+          <strong>{balance.onHandQuantity}</strong>
+          <em className={balance.onHandQuantity <= balance.reorderPoint ? "low" : "ok"}>{balance.reorderPoint}</em>
+        </div>)}
+      </article> : null}
       <div className="lifecycle-grid">
         <article className="card lot-ledger">
           <header><div><h3>Lot risk ledger</h3><span>{data.source.calculation}</span></div><select value={filter} onChange={event => setFilter(event.target.value as Risk | "all")}><option value="all">All risk states</option><option value="urgent">Urgent</option><option value="expired">Expired</option><option value="at_risk">At risk</option><option value="monitor">Monitor</option><option value="healthy">Healthy</option><option value="untracked">Date untracked</option></select></header>

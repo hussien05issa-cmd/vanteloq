@@ -1811,7 +1811,7 @@ function DataHub({
   const [connectionError, setConnectionError] = useState("");
   const [connectionsLoading, setConnectionsLoading] = useState(false);
   const [canManage, setCanManage] = useState(false);
-  const [providerAction, setProviderAction] = useState("");
+  const [providerActions, setProviderActions] = useState<Record<string, string>>({});
   const [activeSampleProvider, setActiveSampleProvider] = useState<"lightspeed" | "lightspeed-r" | "stripe">("lightspeed");
   const [sampleResult, setSampleResult] = useState<null | {
     run: { recordsRead: number; recordsStaged: number; duplicatesSkipped: number; warningCount: number };
@@ -1832,6 +1832,8 @@ function DataHub({
       costCents?: number;
       discountCents?: number;
       units?: number;
+      dailyMetrics?: number;
+      inventoryBalances?: number;
     };
     readyForReview?: boolean;
     nextStep: string;
@@ -1875,8 +1877,12 @@ function DataHub({
     const timer = window.setTimeout(() => void loadConnections(), 0);
     return () => window.clearTimeout(timer);
   }, [connections.length, connectionsLoading, loadConnections, tab]);
-  const providerPost = async (path: string, action: string) => {
-    setProviderAction(action);
+  const providerPost = async (
+    provider: "lightspeed" | "lightspeed-r" | "stripe",
+    path: string,
+    action: string,
+  ) => {
+    setProviderActions((current) => ({ ...current, [provider]: action }));
     try {
       const response = await apiFetch(path, {
         method: "POST",
@@ -1890,32 +1896,42 @@ function DataHub({
       showNotice(error instanceof Error ? error.message : "The provider action failed.");
       return null;
     } finally {
-      setProviderAction("");
+      setProviderActions((current) => {
+        const next = { ...current };
+        delete next[provider];
+        return next;
+      });
     }
   };
   const connectProvider = async (provider: "lightspeed" | "lightspeed-r" | "stripe") => {
     const body = await providerPost(
+      provider,
       `/api/v1/integrations/${provider}/authorize`,
-      `authorize:${provider}`,
+      "authorize",
     );
     if (body?.authorizationUrl) window.location.assign(body.authorizationUrl);
   };
   const stageProviderSample = async (provider: "lightspeed" | "lightspeed-r" | "stripe") => {
     const body = await providerPost(
+      provider,
       `/api/v1/integrations/${provider}/sync`,
-      `sample:${provider}`,
+      provider === "lightspeed-r" ? "sync" : "sample",
     );
     if (!body) return;
     setActiveSampleProvider(provider);
     setSampleResult(body);
-    showNotice(`${provider === "stripe" ? "Stripe" : provider === "lightspeed-r" ? "R-Series" : "X-Series"} sample staged; dashboard metrics remain unchanged`);
+    showNotice(provider === "lightspeed-r"
+      ? "R-Series sales and inventory imported into Vanteloq"
+      : `${provider === "stripe" ? "Stripe" : "X-Series"} sample staged; dashboard metrics remain unchanged`);
     await loadConnections();
+    if (provider === "lightspeed-r") await refresh();
   };
   const disconnectProvider = async (provider: "lightspeed" | "lightspeed-r" | "stripe") => {
     if (!window.confirm(`Disconnect ${provider === "stripe" ? "Stripe" : provider === "lightspeed-r" ? "Lightspeed R-Series" : "Lightspeed X-Series"}? Staged audit history will be retained.`)) return;
     const body = await providerPost(
+      provider,
       `/api/v1/integrations/${provider}/disconnect`,
-      `disconnect:${provider}`,
+      "disconnect",
     );
     if (!body) return;
     if (activeSampleProvider === provider) {
@@ -1926,7 +1942,7 @@ function DataHub({
     await loadConnections();
   };
   const loadLightspeedLocations = async (provider: "lightspeed" | "lightspeed-r") => {
-    setProviderAction(`locations:${provider}`);
+    setProviderActions((current) => ({ ...current, [provider]: "locations" }));
     try {
       const response = await apiFetch(`/api/v1/integrations/${provider}/${provider === "lightspeed-r" ? "shops" : "outlets"}`, {
         headers: { Accept: "application/json" },
@@ -1938,17 +1954,22 @@ function DataHub({
     } catch (error) {
       showNotice(error instanceof Error ? error.message : "Lightspeed locations could not be loaded.");
     } finally {
-      setProviderAction("");
+      setProviderActions((current) => {
+        const next = { ...current };
+        delete next[provider];
+        return next;
+      });
     }
   };
   const saveOutletMapping = async (
     externalLocationRef: string,
     selection: string,
   ) => {
-    setProviderAction(`mapping:${externalLocationRef}`);
+    const mappingProvider = outletData?.provider ?? (activeSampleProvider === "stripe" ? "lightspeed" : activeSampleProvider);
+    setProviderActions((current) => ({ ...current, [mappingProvider]: `mapping:${externalLocationRef}` }));
     try {
       const status = selection === "__ignored__" ? "ignored" : selection ? "mapped" : "unmapped";
-      const provider = outletData?.provider ?? (activeSampleProvider === "stripe" ? "lightspeed" : activeSampleProvider);
+      const provider = mappingProvider;
       const response = await apiFetch(`/api/v1/integrations/${provider}/${provider === "lightspeed-r" ? "shops" : "outlets"}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1965,7 +1986,11 @@ function DataHub({
     } catch (error) {
       showNotice(error instanceof Error ? error.message : "The outlet mapping could not be saved.");
     } finally {
-      setProviderAction("");
+      setProviderActions((current) => {
+        const next = { ...current };
+        delete next[mappingProvider];
+        return next;
+      });
     }
   };
   const providerRows: IntegrationConnection[] = connections.length
@@ -1982,6 +2007,9 @@ function DataHub({
   const verifiedControls = preSyncControls.filter(
     (control) => control.status === "verified",
   ).length;
+  const rSeriesLive = providerRows.some(
+    (provider) => provider.id === "lightspeed-r" && provider.dataPromotionStatus === "approved",
+  );
   return (
     <div className="content data-hub">
       <section className="page-intro">
@@ -2041,7 +2069,7 @@ function DataHub({
                   {verifiedControls} of {preSyncControls.length} cross-platform controls are built and tested. Provider-specific authorization, webhook, normalization and reconciliation work remains gated.
                 </span>
               </div>
-              <strong>SYNC OFF</strong>
+              <strong>{rSeriesLive ? "R-SERIES LIVE" : "SYNC OFF"}</strong>
             </header>
             <div>
               {preSyncControls.map((control) => (
@@ -2081,6 +2109,7 @@ function DataHub({
               const isLightspeed = provider.id === "lightspeed" || provider.id === "lightspeed-r";
               const isStripe = provider.id === "stripe";
               const actionableProvider = provider.id as "lightspeed" | "lightspeed-r" | "stripe";
+              const providerAction = providerActions[provider.id] ?? "";
               const configured = provider.providerReadiness?.credentialsConfigured === true;
               const disabledReason = !canManage
                 ? "Your role can view connection status but cannot manage integrations."
@@ -2118,7 +2147,9 @@ function DataHub({
                       {connectionsLoading
                         ? "Checking…"
                         : connected
-                          ? "Staging only · metrics locked"
+                        ? provider.id === "lightspeed-r" && provider.dataPromotionStatus === "approved"
+                          ? "Live sales and inventory imported"
+                          : "Staging only · metrics locked"
                           : configured
                             ? "Authorization required · metrics locked"
                             : "Sync disabled"}
@@ -2129,18 +2160,18 @@ function DataHub({
                       onClick={() => void connectProvider(actionableProvider)}
                       disabled={Boolean(disabledReason) || Boolean(providerAction)}
                       title={disabledReason || (isStripe ? "Authorize Stripe financial data for read-only staging." : `Authorize a Lightspeed ${provider.id === "lightspeed-r" ? "R-Series account" : "X-Series store"} with read-only scopes.`)}
-                    >{providerAction === `authorize:${provider.id}` ? "Opening…" : "Connect"}</button> : <>
+                    >{providerAction === "authorize" ? "Opening…" : "Connect"}</button> : <>
                       <button
                         onClick={() => void stageProviderSample(actionableProvider)}
                         disabled={!canManage || Boolean(providerAction)}
-                        title={!canManage ? "Your role cannot run provider synchronization." : "Read and review a limited sample without changing dashboard metrics."}
-                      >{providerAction === `sample:${provider.id}` ? "Staging…" : "Stage sample"}</button>
+                        title={!canManage ? "Your role cannot run provider synchronization." : provider.id === "lightspeed-r" ? "Import current R-Series sales and inventory into Vanteloq." : "Read and review a limited sample without changing dashboard metrics."}
+                      >{providerAction === (provider.id === "lightspeed-r" ? "sync" : "sample") ? (provider.id === "lightspeed-r" ? "Syncing…" : "Staging…") : provider.id === "lightspeed-r" ? "Sync data" : "Stage sample"}</button>
                       {isLightspeed && <button
                         className="secondary-provider-action"
                         onClick={() => void loadLightspeedLocations(actionableProvider as "lightspeed" | "lightspeed-r")}
                         disabled={!canManage || Boolean(providerAction)}
                         title={!canManage ? "Your role cannot manage location mappings." : `Discover and map Lightspeed ${provider.id === "lightspeed-r" ? "shops" : "outlets"} before reconciliation.`}
-                      >{providerAction === `locations:${provider.id}` ? "Loading…" : `Map ${provider.id === "lightspeed-r" ? "shops" : "outlets"}`}</button>}
+                      >{providerAction === "locations" ? "Loading…" : `Map ${provider.id === "lightspeed-r" ? "shops" : "outlets"}`}</button>}
                       <button
                         className="danger-text"
                         onClick={() => void disconnectProvider(actionableProvider)}
@@ -2155,7 +2186,7 @@ function DataHub({
           </section>
           {outletData && <section className="outlet-mapping-panel" aria-labelledby="outlet-mapping-title">
             <header>
-              <div><p>LOCATION CONTROL</p><h3 id="outlet-mapping-title">Map every Lightspeed {outletData.locationLabel ?? "outlet"} before promotion.</h3></div>
+              <div><p>LOCATION CONTROL</p><h3 id="outlet-mapping-title">{outletData.provider === "lightspeed-r" ? "Match R-Series shops to Vanteloq locations when needed." : `Map every Lightspeed ${outletData.locationLabel ?? "outlet"} before promotion.`}</h3></div>
               <strong>{outletData.mappings.filter((mapping) => mapping.status === "mapped").length} / {outletData.mappings.length} mapped</strong>
             </header>
             {outletData.mappings.length ? <div className="outlet-mapping-list">
@@ -2164,39 +2195,39 @@ function DataHub({
                 <select
                   value={mapping.status === "ignored" ? "__ignored__" : mapping.localLocationId ?? ""}
                   onChange={(event) => void saveOutletMapping(mapping.externalLocationRef, event.target.value)}
-                  disabled={Boolean(providerAction)}
+                  disabled={Boolean(providerActions[outletData.provider ?? "lightspeed"])}
                   aria-label={`Map ${mapping.externalName}`}
                 >
-                  <option value="">Unmapped — blocks promotion</option>
+                  <option value="">{outletData.provider === "lightspeed-r" ? "Keep as a separate R-Series location" : "Unmapped — blocks promotion"}</option>
                   {outletData.localLocations.filter((location) => location.status === "active").map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}
                   <option value="__ignored__">Ignore this outlet</option>
                 </select>
               </label>)}
             </div> : <p className="outlet-empty">No {outletData.locationLabel === "shop" ? "shops" : "outlets"} were returned. Confirm the retailer has active locations, then retry discovery.</p>}
-            <footer>Ignored locations remain excluded and visible in reconciliation. Mapping never merges tenants or changes provider records.</footer>
+            <footer>{outletData.provider === "lightspeed-r" ? "Unmapped shops remain separate and safe; ignored shops are excluded from future imports." : "Ignored locations remain excluded and visible in reconciliation. Mapping never merges tenants or changes provider records."}</footer>
           </section>}
           {sampleResult && <section className={`sample-sync-result ${sampleResult.readyForReview ? "review-ready" : ""}`} aria-live="polite">
             <header>
               <div>
-                <p>{activeSampleProvider === "stripe" ? "STRIPE" : activeSampleProvider === "lightspeed-r" ? "R-SERIES" : "X-SERIES"} SAMPLE RECONCILIATION</p>
-                <h3>Staged safely. Nothing has entered live metrics.</h3>
+                <p>{activeSampleProvider === "stripe" ? "STRIPE SAMPLE RECONCILIATION" : activeSampleProvider === "lightspeed-r" ? "R-SERIES DATA SYNC" : "X-SERIES SAMPLE RECONCILIATION"}</p>
+                <h3>{activeSampleProvider === "lightspeed-r" ? "Verified provider data is now available across Vanteloq." : "Staged safely. Nothing has entered live metrics."}</h3>
               </div>
-              <strong>{sampleResult.readyForReview ? "READY TO VERIFY" : "DATA PROMOTION OFF"}</strong>
+              <strong>{activeSampleProvider === "lightspeed-r" && sampleResult.readyForReview ? "SYNCED" : sampleResult.readyForReview ? "READY TO VERIFY" : "DATA PROMOTION OFF"}</strong>
             </header>
             <div>
               <span><small>RECORDS READ</small><b>{sampleResult.run.recordsRead}</b></span>
-              <span><small>NEWLY STAGED</small><b>{sampleResult.run.recordsStaged}</b></span>
+              <span><small>{activeSampleProvider === "lightspeed-r" ? "RECORDS IMPORTED" : "NEWLY STAGED"}</small><b>{sampleResult.run.recordsStaged}</b></span>
               <span><small>DUPLICATES SKIPPED</small><b>{sampleResult.run.duplicatesSkipped}</b></span>
-              <span><small>{activeSampleProvider === "stripe" ? "PAYOUTS READ" : "UNMAPPED LOCATIONS"}</small><b>{activeSampleProvider === "stripe" ? sampleResult.reconciliation.payouts ?? 0 : sampleResult.reconciliation.unmappedOutlets ?? 0}</b></span>
+              <span><small>{activeSampleProvider === "stripe" ? "PAYOUTS READ" : activeSampleProvider === "lightspeed-r" ? "DAILY SUMMARIES" : "UNMAPPED LOCATIONS"}</small><b>{activeSampleProvider === "stripe" ? sampleResult.reconciliation.payouts ?? 0 : activeSampleProvider === "lightspeed-r" ? sampleResult.reconciliation.dailyMetrics ?? 0 : sampleResult.reconciliation.unmappedOutlets ?? 0}</b></span>
               {activeSampleProvider === "lightspeed-r" && <>
                 <span><small>COMPLETED SALES</small><b>{sampleResult.reconciliation.completedSales ?? 0}</b></span>
-                <span><small>REGISTER TOTAL</small><b>{money(sampleResult.reconciliation.salesCents, "CAD", 2)}</b></span>
-                <span><small>TAX RECORDED</small><b>{money(sampleResult.reconciliation.taxCents, "CAD", 2)}</b></span>
-                <span><small>COST RECORDED</small><b>{money(sampleResult.reconciliation.costCents, "CAD", 2)}</b></span>
+                <span><small>INVENTORY BALANCES</small><b>{sampleResult.reconciliation.inventoryBalances ?? 0}</b></span>
+                <span><small>OPEN SALES SKIPPED</small><b>{sampleResult.reconciliation.openSales ?? 0}</b></span>
+                <span><small>VOIDED SALES SKIPPED</small><b>{sampleResult.reconciliation.voidedSales ?? 0}</b></span>
               </>}
             </div>
             <p>{sampleResult.nextStep}</p>
-            {activeSampleProvider === "lightspeed-r" && <small className="sample-contract-note">Register totals are shown exactly as returned by R-Series. Vanteloq does not infer revenue, margin or inventory insights until the owner verifies the sample against the source report.</small>}
+            {activeSampleProvider === "lightspeed-r" && <small className="sample-contract-note">Vanteloq imports completed sales and per-shop inventory from the authorized R-Series account. Open, voided and ignored-shop records stay excluded and visible in this reconciliation.</small>}
           </section>}
         </>
       )}

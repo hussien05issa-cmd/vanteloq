@@ -35,7 +35,7 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
     category: "Point of sale",
     availability: "credentials_required",
     activationRequirement:
-      "The multi-tenant read-only R-Series connector is built. Each business securely authorizes its own account, maps shops and reconciles a staged sample.",
+      "The read-only R-Series connector securely imports each authorized retailer's sales and inventory with resumable pagination and source traceability.",
   },
   {
     id: "shopify",
@@ -215,7 +215,7 @@ export const preSyncControls = [
   {
     id: "normalization",
     label: "Backfill and normalization",
-    detail: "Both Lightspeed pilots use bounded pagination, mapping, retries, resumable cursors and isolated staging with data promotion disabled.",
+    detail: "Both Lightspeed adapters use bounded pagination, mapping, retries and resumable cursors; R-Series additionally promotes verified sales and inventory into the operating model.",
     status: "verified",
   },
   {

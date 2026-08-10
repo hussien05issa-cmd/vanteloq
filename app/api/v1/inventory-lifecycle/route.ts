@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { getD1, getDb } from "../../../../db";
-import { inventoryLots } from "../../../../db/schema";
+import { inventoryBalances, inventoryLots } from "../../../../db/schema";
 import { assessInventoryLot, fefoSort } from "../../../../domain/inventory-lifecycle";
 import { recordAudit } from "../../../../server/audit";
 import { requireAccess } from "../../../../server/authorization";
@@ -72,8 +72,19 @@ function lotInput(input: Record<string, unknown>) {
 }
 
 async function lifecycleDto(organizationId: string) {
-  const lots = await getDb().select().from(inventoryLots)
-    .where(eq(inventoryLots.organizationId, organizationId)).limit(1_000);
+  const [lots, posBalances] = await Promise.all([
+    getDb().select().from(inventoryLots)
+      .where(eq(inventoryLots.organizationId, organizationId)).limit(1_000),
+    getDb().select({
+      locationRef: inventoryBalances.locationRef,
+      sku: inventoryBalances.sku,
+      name: inventoryBalances.name,
+      onHandQuantity: inventoryBalances.onHandQuantity,
+      reorderPoint: inventoryBalances.reorderPoint,
+      updatedAt: inventoryBalances.updatedAt,
+    }).from(inventoryBalances)
+      .where(eq(inventoryBalances.organizationId, organizationId)).limit(1_000),
+  ]);
   const velocityResult = await getD1().prepare(`SELECT sku, location_ref AS locationRef,
       SUM(CASE WHEN occurred_at >= ? AND quantity_delta < 0 THEN -quantity_delta ELSE 0 END) AS unitsSold30Days,
       MIN(occurred_at) AS firstMovementAt
@@ -115,6 +126,8 @@ async function lifecycleDto(organizationId: string) {
   const riskCounts = { healthy: 0, monitor: 0, at_risk: 0, urgent: 0, expired: 0, untracked: 0 };
   for (const lot of assessed) riskCounts[lot.assessment.risk] += 1;
   return {
+    posBalances: posBalances.sort((left, right) =>
+      left.onHandQuantity - right.onHandQuantity || left.name.localeCompare(right.name)),
     lots: assessed.sort((a, b) => b.updatedAt.valueOf() - a.updatedAt.valueOf()),
     fefo: ordered.filter(lot => lot.quantityRemaining > 0 && lot.status === "active").map((lot, index) => ({ ...lot, fefoRank: index + 1 })),
     summary: {
@@ -124,6 +137,9 @@ async function lifecycleDto(organizationId: string) {
       costAtRiskCents: assessed.reduce((sum, lot) => sum + (lot.assessment.inventoryCostAtRiskCents ?? 0), 0),
       costRiskKnownLots: assessed.filter(lot => lot.assessment.inventoryCostAtRiskCents !== null).length,
       riskCounts,
+      posSkus: posBalances.length,
+      posUnits: posBalances.reduce((sum, balance) => sum + balance.onHandQuantity, 0),
+      lowStockSkus: posBalances.filter((balance) => balance.onHandQuantity <= balance.reorderPoint).length,
     },
     source: {
       calculation: "Recorded lot quantities joined to tenant-scoped SKU sale movements; no missing demand, cost, margin, or dates are imputed.",
