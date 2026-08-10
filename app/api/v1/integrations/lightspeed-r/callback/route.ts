@@ -106,13 +106,13 @@ export async function GET(request: Request) {
       const readiness = lightspeedRReadiness();
       await getDb().insert(integrationConnections).values({
         id: crypto.randomUUID(), organizationId: context.organizationId, provider: LIGHTSPEED_R_PROVIDER,
-        status: "pending", externalAccountRef: account.accountId, domainPrefix: null,
+        status: "pending", externalAccountRef: account.accountId, externalAccountName: account.name, domainPrefix: null,
         apiVersion: readiness.apiVersion, scopesJson: JSON.stringify(LIGHTSPEED_R_SCOPES),
         dataPromotionStatus: "blocked", connectedAt: null, lastSuccessfulSyncAt: null,
         lastSyncCursor: null, lastErrorCode: null, createdAt: now, updatedAt: now,
       }).onConflictDoUpdate({
         target: [integrationConnections.organizationId, integrationConnections.provider],
-        set: { status: "pending", externalAccountRef: account.accountId, apiVersion: readiness.apiVersion,
+        set: { status: "pending", externalAccountRef: account.accountId, externalAccountName: account.name, apiVersion: readiness.apiVersion,
           scopesJson: JSON.stringify(LIGHTSPEED_R_SCOPES), dataPromotionStatus: "blocked",
           connectedAt: null, lastErrorCode: null, updatedAt: now },
       });

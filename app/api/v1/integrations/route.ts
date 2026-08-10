@@ -18,6 +18,8 @@ export async function GET(request: Request) {
       .select({
         provider: integrationConnections.provider,
         status: integrationConnections.status,
+        externalAccountRef: integrationConnections.externalAccountRef,
+        externalAccountName: integrationConnections.externalAccountName,
         lastSuccessfulSyncAt: integrationConnections.lastSuccessfulSyncAt,
         lastErrorCode: integrationConnections.lastErrorCode,
         connectedAt: integrationConnections.connectedAt,
@@ -36,6 +38,8 @@ export async function GET(request: Request) {
       integrations: integrationCatalog.map((provider) => ({
         ...provider,
         status: byProvider.get(provider.id)?.status ?? "not_connected",
+        externalAccountRef: byProvider.get(provider.id)?.externalAccountRef ?? null,
+        externalAccountName: byProvider.get(provider.id)?.externalAccountName ?? null,
         lastSuccessfulSyncAt: byProvider.get(provider.id)?.lastSuccessfulSyncAt ?? null,
         lastErrorCode: byProvider.get(provider.id)?.lastErrorCode ?? null,
         connectedAt: byProvider.get(provider.id)?.connectedAt ?? null,

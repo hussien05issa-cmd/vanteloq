@@ -127,6 +127,13 @@
       "when": 1786355400000,
       "tag": "0017_founder_email_verification",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1786326590042,
+      "tag": "0018_overjoyed_ben_grimm",
+      "breakpoints": true
     }
   ]
 }

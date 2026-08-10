@@ -39,6 +39,59 @@ export type NormalizedLightspeedRInventoryBalance = {
   reorderPoint: number;
 };
 
+export type NormalizedLightspeedRProduct = {
+  externalProductId: string;
+  sku: string;
+  name: string;
+  categoryRef: string | null;
+  supplierRef: string | null;
+  defaultCostCents: number | null;
+  defaultPriceCents: number | null;
+  archived: boolean;
+  sourceUpdatedAt: string | null;
+  sourcePayloadHash: string;
+};
+
+export type NormalizedLightspeedRCustomer = {
+  externalCustomerId: string;
+  displayName: string;
+  firstName: string | null;
+  lastName: string | null;
+  email: string | null;
+  phone: string | null;
+  archived: boolean;
+  sourceUpdatedAt: string | null;
+  sourcePayloadHash: string;
+};
+
+export type NormalizedLightspeedRSupplier = {
+  externalSupplierId: string;
+  name: string;
+  accountNumber: string | null;
+  contactName: string | null;
+  email: string | null;
+  phone: string | null;
+  archived: boolean;
+  sourceUpdatedAt: string | null;
+  sourcePayloadHash: string;
+};
+
+export type NormalizedLightspeedRSaleLine = {
+  externalSaleId: string;
+  externalLineId: string;
+  productRef: string | null;
+  customerRef: string | null;
+  outletRef: string | null;
+  soldAt: string | null;
+  sku: string | null;
+  productName: string | null;
+  quantityMilli: number;
+  netSalesCents: number;
+  costCents: number;
+  discountCents: number;
+  sourcePayloadHash: string;
+};
+
 export type LightspeedRDailyMetric = {
   businessDate: string;
   locationRef: string;
@@ -276,7 +329,7 @@ export async function fetchLightspeedRAccount(organizationId: string, fetcher: t
 export async function fetchLightspeedRCollection(
   organizationId: string,
   accountId: string,
-  resource: "Shop" | "Sale" | "Item",
+  resource: "Shop" | "Sale" | "Item" | "Customer" | "Vendor" | "Order" | "OrderLine",
   options: {
     maxPages?: number;
     fetcher?: typeof fetch;
@@ -371,6 +424,100 @@ export function normalizeLightspeedRInventoryItem(
       reorderPoint: Math.max(0, Math.round(reorder ?? 0)),
     };
   });
+}
+
+function limitedText(value: unknown, maximum: number) {
+  const text = stringValue(value).trim();
+  return text ? text.slice(0, maximum) : null;
+}
+
+function firstPrice(item: Record<string, unknown>) {
+  const prices = records(objectValue(item.Prices).ItemPrice);
+  const preferred = prices.find((price) => stringValue(price.useType).toLowerCase() === "default") ?? prices[0];
+  return preferred ? money(preferred.amount) : null;
+}
+
+export async function normalizeLightspeedRProduct(item: Record<string, unknown>): Promise<NormalizedLightspeedRProduct> {
+  const externalProductId = stringValue(item.itemID);
+  if (!externalProductId) throw new Error("Item ID is missing.");
+  const normalized = {
+    externalProductId,
+    sku: (limitedText(item.customSku, 160) || limitedText(item.upc, 160) || limitedText(item.ean, 160) || externalProductId),
+    name: limitedText(item.description, 240) || `R-Series item ${externalProductId}`,
+    categoryRef: limitedText(item.categoryID, 120),
+    supplierRef: limitedText(item.defaultVendorID, 120),
+    defaultCostCents: item.defaultCost == null ? null : money(item.defaultCost),
+    defaultPriceCents: firstPrice(item),
+    archived: truthy(item.archived),
+    sourceUpdatedAt: limitedText(item.timeStamp ?? item.updatetime, 80),
+  };
+  return { ...normalized, sourcePayloadHash: await lightspeedRSha256(JSON.stringify(normalized)) };
+}
+
+export async function normalizeLightspeedRCustomer(customer: Record<string, unknown>): Promise<NormalizedLightspeedRCustomer> {
+  const externalCustomerId = stringValue(customer.customerID);
+  if (!externalCustomerId) throw new Error("Customer ID is missing.");
+  const contact = objectValue(customer.Contact);
+  const firstName = limitedText(customer.firstName, 120);
+  const lastName = limitedText(customer.lastName, 120);
+  const normalized = {
+    externalCustomerId,
+    displayName: limitedText(customer.company, 240) || [firstName, lastName].filter(Boolean).join(" ") || `Customer ${externalCustomerId}`,
+    firstName,
+    lastName,
+    email: limitedText(contact.email ?? customer.email, 254),
+    phone: limitedText(contact.phone ?? customer.phone, 64),
+    archived: truthy(customer.archived),
+    sourceUpdatedAt: limitedText(customer.timeStamp ?? customer.updatetime, 80),
+  };
+  return { ...normalized, sourcePayloadHash: await lightspeedRSha256(JSON.stringify(normalized)) };
+}
+
+export async function normalizeLightspeedRSupplier(vendor: Record<string, unknown>): Promise<NormalizedLightspeedRSupplier> {
+  const externalSupplierId = stringValue(vendor.vendorID);
+  if (!externalSupplierId) throw new Error("Vendor ID is missing.");
+  const contact = objectValue(vendor.Contact);
+  const firstName = limitedText(contact.firstName ?? vendor.firstName, 120);
+  const lastName = limitedText(contact.lastName ?? vendor.lastName, 120);
+  const normalized = {
+    externalSupplierId,
+    name: limitedText(vendor.name, 240) || `Supplier ${externalSupplierId}`,
+    accountNumber: limitedText(vendor.accountNumber, 120),
+    contactName: [firstName, lastName].filter(Boolean).join(" ") || null,
+    email: limitedText(contact.email ?? vendor.email, 254),
+    phone: limitedText(contact.phone ?? vendor.phone, 64),
+    archived: truthy(vendor.archived),
+    sourceUpdatedAt: limitedText(vendor.timeStamp ?? vendor.updatetime, 80),
+  };
+  return { ...normalized, sourcePayloadHash: await lightspeedRSha256(JSON.stringify(normalized)) };
+}
+
+export async function normalizeLightspeedRSaleLines(sale: Record<string, unknown>): Promise<NormalizedLightspeedRSaleLine[]> {
+  const externalSaleId = stringValue(sale.saleID);
+  if (!externalSaleId) throw new Error("Sale ID is missing.");
+  const outletRef = limitedText(sale.shopID, 120);
+  const customerRef = limitedText(sale.customerID, 120);
+  const soldAt = limitedText(sale.completeTime ?? sale.timeStamp, 80);
+  const lines = records(objectValue(sale.SaleLines).SaleLine);
+  return Promise.all(lines.map(async (line, index) => {
+    const externalLineId = stringValue(line.saleLineID) || `${externalSaleId}:${index}`;
+    const quantity = finiteNumber(line.unitQuantity ?? line.quantity) ?? 0;
+    const normalized = {
+      externalSaleId,
+      externalLineId,
+      productRef: limitedText(line.itemID, 120),
+      customerRef,
+      outletRef,
+      soldAt,
+      sku: limitedText(line.customSku ?? line.upc, 160),
+      productName: limitedText(line.description, 240),
+      quantityMilli: Math.round(quantity * 1000),
+      netSalesCents: money(line.calcSubtotal ?? line.calcTotal ?? Number(line.unitPrice ?? 0) * quantity),
+      costCents: money(line.calcFIFOCost ?? line.calcAvgCost ?? Number(line.avgCost ?? 0) * quantity),
+      discountCents: Math.abs(money(line.calcDiscount)),
+    };
+    return { ...normalized, sourcePayloadHash: await lightspeedRSha256(JSON.stringify(normalized)) };
+  }));
 }
 
 export function buildLightspeedRDailyMetrics(

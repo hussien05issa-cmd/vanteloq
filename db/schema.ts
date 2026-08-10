@@ -586,6 +586,7 @@ export const integrationConnections = sqliteTable(
     provider: text("provider").notNull(),
     status: text("status", { enum: ["not_connected", "pending", "connected", "error", "revoked"] }).notNull().default("not_connected"),
     externalAccountRef: text("external_account_ref"),
+    externalAccountName: text("external_account_name"),
     domainPrefix: text("domain_prefix"),
     apiVersion: text("api_version"),
     scopesJson: text("scopes_json").notNull().default("[]"),
@@ -712,6 +713,113 @@ export const integrationStagedSales = sqliteTable(
     uniqueIndex("integration_staged_sales_version_unique").on(table.organizationId, table.provider, table.externalSaleId, table.externalVersion),
     index("integration_staged_sales_outlet_date_idx").on(table.organizationId, table.provider, table.outletRef, table.soldAt),
     check("integration_staged_sales_counts_check", sql`${table.lineCount} >= 0`),
+  ],
+);
+
+// Canonical commerce records are provider-neutral so every POS adapter can
+// feed the same tenant-scoped customer, catalog, supplier and reporting views.
+// Only fields required by the product are retained; raw provider payloads and
+// credentials never enter these tables.
+export const commerceProducts = sqliteTable(
+  "commerce_products",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    provider: text("provider").notNull(),
+    externalProductId: text("external_product_id").notNull(),
+    sku: text("sku").notNull(),
+    name: text("name").notNull(),
+    categoryRef: text("category_ref"),
+    supplierRef: text("supplier_ref"),
+    defaultCostCents: integer("default_cost_cents"),
+    defaultPriceCents: integer("default_price_cents"),
+    archived: integer("archived", { mode: "boolean" }).notNull().default(false),
+    sourceUpdatedAt: text("source_updated_at"),
+    sourcePayloadHash: text("source_payload_hash").notNull(),
+    syncRunId: text("sync_run_id").notNull().references(() => integrationSyncRuns.id, { onDelete: "cascade" }),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("commerce_products_external_unique").on(table.organizationId, table.provider, table.externalProductId),
+    index("commerce_products_sku_idx").on(table.organizationId, table.sku),
+    index("commerce_products_supplier_idx").on(table.organizationId, table.provider, table.supplierRef),
+  ],
+);
+
+export const commerceCustomers = sqliteTable(
+  "commerce_customers",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    provider: text("provider").notNull(),
+    externalCustomerId: text("external_customer_id").notNull(),
+    displayName: text("display_name").notNull(),
+    firstName: text("first_name"),
+    lastName: text("last_name"),
+    email: text("email"),
+    phone: text("phone"),
+    archived: integer("archived", { mode: "boolean" }).notNull().default(false),
+    sourceUpdatedAt: text("source_updated_at"),
+    sourcePayloadHash: text("source_payload_hash").notNull(),
+    syncRunId: text("sync_run_id").notNull().references(() => integrationSyncRuns.id, { onDelete: "cascade" }),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("commerce_customers_external_unique").on(table.organizationId, table.provider, table.externalCustomerId),
+    index("commerce_customers_name_idx").on(table.organizationId, table.displayName),
+  ],
+);
+
+export const commerceSuppliers = sqliteTable(
+  "commerce_suppliers",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    provider: text("provider").notNull(),
+    externalSupplierId: text("external_supplier_id").notNull(),
+    name: text("name").notNull(),
+    accountNumber: text("account_number"),
+    contactName: text("contact_name"),
+    email: text("email"),
+    phone: text("phone"),
+    archived: integer("archived", { mode: "boolean" }).notNull().default(false),
+    sourceUpdatedAt: text("source_updated_at"),
+    sourcePayloadHash: text("source_payload_hash").notNull(),
+    syncRunId: text("sync_run_id").notNull().references(() => integrationSyncRuns.id, { onDelete: "cascade" }),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("commerce_suppliers_external_unique").on(table.organizationId, table.provider, table.externalSupplierId),
+    index("commerce_suppliers_name_idx").on(table.organizationId, table.name),
+  ],
+);
+
+export const commerceSaleLines = sqliteTable(
+  "commerce_sale_lines",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    provider: text("provider").notNull(),
+    externalSaleId: text("external_sale_id").notNull(),
+    externalLineId: text("external_line_id").notNull(),
+    productRef: text("product_ref"),
+    customerRef: text("customer_ref"),
+    outletRef: text("outlet_ref"),
+    soldAt: text("sold_at"),
+    sku: text("sku"),
+    productName: text("product_name"),
+    quantityMilli: integer("quantity_milli").notNull().default(0),
+    netSalesCents: integer("net_sales_cents").notNull().default(0),
+    costCents: integer("cost_cents").notNull().default(0),
+    discountCents: integer("discount_cents").notNull().default(0),
+    sourcePayloadHash: text("source_payload_hash").notNull(),
+    syncRunId: text("sync_run_id").notNull().references(() => integrationSyncRuns.id, { onDelete: "cascade" }),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("commerce_sale_lines_external_unique").on(table.organizationId, table.provider, table.externalSaleId, table.externalLineId),
+    index("commerce_sale_lines_product_date_idx").on(table.organizationId, table.provider, table.productRef, table.soldAt),
+    index("commerce_sale_lines_customer_date_idx").on(table.organizationId, table.provider, table.customerRef, table.soldAt),
   ],
 );
 

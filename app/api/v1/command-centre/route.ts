@@ -42,7 +42,12 @@ export async function GET(request: Request) {
       .limit(730);
     const [branding] = await getDb().select({ displayName: organizationProfiles.displayName, logoObjectKey: organizationProfiles.logoObjectKey, logoVersion: organizationProfiles.logoVersion })
       .from(organizationProfiles).where(eq(organizationProfiles.organizationId, context.organizationId)).limit(1);
-    const [connection] = await getDb().select({ lastSuccessfulSyncAt: integrationConnections.lastSuccessfulSyncAt })
+    const [connection] = await getDb().select({
+      lastSuccessfulSyncAt: integrationConnections.lastSuccessfulSyncAt,
+      externalAccountRef: integrationConnections.externalAccountRef,
+      externalAccountName: integrationConnections.externalAccountName,
+      lastErrorCode: integrationConnections.lastErrorCode,
+    })
       .from(integrationConnections).where(and(
         eq(integrationConnections.organizationId, context.organizationId),
         eq(integrationConnections.provider, LIGHTSPEED_R_PROVIDER),
@@ -83,6 +88,9 @@ export async function GET(request: Request) {
       },
       liveSource: {
         provider: connection ? LIGHTSPEED_R_PROVIDER : null,
+        accountRef: connection?.externalAccountRef ?? null,
+        accountName: connection?.externalAccountName ?? null,
+        lastErrorCode: connection?.lastErrorCode ?? null,
         lastSuccessfulSyncAt: connection?.lastSuccessfulSyncAt?.toISOString() ?? null,
         refreshIntervalSeconds: connection ? 300 : null,
       },

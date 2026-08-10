@@ -181,6 +181,15 @@ export function IntradaySalesChart({
   const labelHours = new Set([0, 6, 12, 18, 23]);
   const total = values.reduce((sum, value) => sum + value, 0);
 
+  if (total === 0) {
+    return (
+      <div className="intraday-empty" role="img" aria-label="No completed sales have been received for today">
+        <div className="intraday-empty-grid" aria-hidden="true"><i/><i/><i/><i/></div>
+        <span><b>No completed sales received today</b><small>The graph will populate by hour as the connected R-Series account returns completed transactions.</small></span>
+      </div>
+    );
+  }
+
   return (
     <div className="intraday-sales-chart">
       <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Today&apos;s net sales by hour">

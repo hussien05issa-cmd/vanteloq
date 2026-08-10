@@ -20,7 +20,11 @@ import {
   LIGHTSPEED_R_SCOPES,
   lightspeedRReadiness,
   normalizeLightspeedRInventoryItem,
+  normalizeLightspeedRCustomer,
+  normalizeLightspeedRProduct,
   normalizeLightspeedRSale,
+  normalizeLightspeedRSaleLines,
+  normalizeLightspeedRSupplier,
 } from "../server/integrations/lightspeed-r.ts";
 
 const clientSecret = "test-client-secret";
@@ -123,6 +127,34 @@ test("R-Series inventory normalization extracts per-shop balances without custom
     { externalItemId: "900", outletRef: "9", sku: "CRE-A", name: "Creatine A", onHandQuantity: 12, reorderPoint: 6 },
   ]);
   assert.doesNotMatch(JSON.stringify(balances), /private@example/);
+});
+
+test("R-Series commerce normalization produces provider-neutral catalog, customer, supplier and sale-line records", async () => {
+  const product = await normalizeLightspeedRProduct({
+    itemID: "900", description: "Creatine A", customSku: "CRE-A", categoryID: "12",
+    defaultVendorID: "44", defaultCost: "21.50", Prices: { ItemPrice: [{ useType: "Default", amount: "39.99" }] },
+  });
+  assert.equal(product.defaultCostCents, 2150);
+  assert.equal(product.defaultPriceCents, 3999);
+  assert.equal(product.supplierRef, "44");
+  const customer = await normalizeLightspeedRCustomer({
+    customerID: "cust-1", firstName: "Ada", lastName: "Lovelace",
+    Contact: { email: "ada@example.invalid", phone: "555-0100" },
+  });
+  assert.equal(customer.displayName, "Ada Lovelace");
+  assert.equal(customer.email, "ada@example.invalid");
+  const supplier = await normalizeLightspeedRSupplier({
+    vendorID: "44", name: "North Supply", accountNumber: "NS-14",
+    Contact: { firstName: "Sam", lastName: "Lee", email: "orders@example.invalid" },
+  });
+  assert.equal(supplier.contactName, "Sam Lee");
+  const lines = await normalizeLightspeedRSaleLines({
+    saleID: "sale-1", customerID: "cust-1", shopID: "8", completeTime: "2026-08-09T10:00:00-06:00",
+    SaleLines: { SaleLine: [{ saleLineID: "line-1", itemID: "900", unitQuantity: "2", calcSubtotal: "79.98", calcFIFOCost: "43.00" }] },
+  });
+  assert.equal(lines[0].quantityMilli, 2000);
+  assert.equal(lines[0].netSalesCents, 7998);
+  assert.equal(lines[0].customerRef, "cust-1");
 });
 
 test("R-Series daily metrics aggregate completed sales and refunds by source shop", async () => {

@@ -111,6 +111,18 @@ test("R-Series completes a browser callback using the initiating one-time state"
           "@attributes": {},
         });
       }
+      if (url.origin === "https://api.lightspeedapp.com" && url.pathname === "/API/V3/Account/123/Customer.json") {
+        return Response.json({
+          Customer: [{ customerID: "customer-1", firstName: "Ada", lastName: "Lovelace", Contact: { email: "ada@example.invalid", phone: "555-0100" } }],
+          "@attributes": {},
+        });
+      }
+      if (url.origin === "https://api.lightspeedapp.com" && url.pathname === "/API/V3/Account/123/Vendor.json") {
+        return Response.json({
+          Vendor: [{ vendorID: "vendor-1", name: "North Supply", accountNumber: "NS-14", Contact: { email: "orders@example.invalid" } }],
+          "@attributes": {},
+        });
+      }
       throw new Error(`Unexpected outbound request: ${url.origin}${url.pathname}`);
     };
 
@@ -137,7 +149,14 @@ test("R-Series completes a browser callback using the initiating one-time state"
     assert.equal(sync.status, 200);
     const syncBody = await sync.json();
     assert.equal(syncBody.dataPromotionEnabled, true);
-    assert.deepEqual(syncBody.imported, { dailyMetrics: 1, inventoryBalances: 1 });
+    assert.deepEqual(syncBody.imported, {
+      dailyMetrics: 1,
+      inventoryBalances: 1,
+      products: 1,
+      customers: 1,
+      suppliers: 1,
+      saleLines: 2,
+    });
 
     const metric = await database.prepare(`
       SELECT business_date, location_ref, gross_sales_cents, net_sales_cents, cost_of_goods_cents,

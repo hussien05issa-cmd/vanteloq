@@ -465,6 +465,9 @@ type CommandCentre = {
   };
   liveSource: {
     provider: string | null;
+    accountRef: string | null;
+    accountName: string | null;
+    lastErrorCode: string | null;
     lastSuccessfulSyncAt: string | null;
     refreshIntervalSeconds: number | null;
   };
@@ -593,7 +596,8 @@ export default function VanteloqApp({
       try {
         const response = await apiFetch("/api/v1/integrations/lightspeed-r/sync", {
           method: "POST",
-          headers: { Accept: "application/json" },
+          headers: { Accept: "application/json", "Content-Type": "application/json" },
+          body: JSON.stringify({ reason: "auto" }),
         });
         if (response.ok && !stopped) await refresh(true);
       } catch {
@@ -1029,6 +1033,8 @@ function Workspace({
         sourceHistoryDays={data.current?.days ?? 0}
       />
     );
+  if (view === "Customers" || view === "Suppliers")
+    return <CommerceRecordsWorkspace kind={view} navigate={navigate} />;
   if (view === "Documents")
     return (
       <DocumentsWorkspace
@@ -1103,7 +1109,7 @@ function LiveSalesPanel({ data, currency, compact = false }: { data: CommandCent
         <article className="card live-sales-chart-card">
           <div className="card-head">
             <div><p className="card-kicker">CURRENT DAY</p><h3>Sales by hour</h3></div>
-            <span className="verified-tag">Lightspeed R-Series · verified</span>
+            <span className="verified-tag">{data.liveSource.accountName || "Lightspeed R-Series"} · verified</span>
           </div>
           <IntradaySalesChart data={today.hourly} currency={currency} />
           <div className="chart-foot">
@@ -1139,7 +1145,7 @@ function Overview({ data, currency, navigate, createTask }: { data: CommandCentr
         <div>
           <p>TODAY&apos;S SALES</p>
           <h2>Current-day performance, directly from Lightspeed.</h2>
-          <span>{data.today.lastSaleAt ? `Through ${formatTime(data.today.lastSaleAt)} · refreshed automatically every five minutes` : `No completed sale has been received for ${data.today.businessDate} yet.`}</span>
+          <span>{data.today.lastSaleAt ? `Through ${formatTime(data.today.lastSaleAt)} · refreshed automatically every five minutes` : `No completed sale has been received for ${data.today.businessDate} from ${data.liveSource.accountName || "the connected R-Series account"}.`}</span>
         </div>
         <span className={`live-sync-state ${data.source.freshness}`}><i />{data.liveSource.lastSuccessfulSyncAt ? `Synced ${formatRelativeSync(data.liveSource.lastSuccessfulSyncAt)}` : "Waiting for first sync"}</span>
       </section>
@@ -1162,7 +1168,7 @@ function SalesWorkspace({ data, currency, navigate, refresh }: { data: CommandCe
   return (
     <div className="content sales-live-page">
       <section className="live-sales-heading">
-        <div><p>SALES INTELLIGENCE</p><h2>Today&apos;s trade, without waiting for an end-of-day report.</h2><span>Completed R-Series sales refresh automatically. Refunds and product cost are reflected in the totals.</span></div>
+        <div><p>SALES INTELLIGENCE</p><h2>Today&apos;s trade, without waiting for an end-of-day report.</h2><span>Completed sales from {data.liveSource.accountName || "the connected R-Series account"} refresh automatically. Refunds and product cost are reflected in the totals.</span></div>
         <div className="live-sales-actions"><span className="live-sync-state current"><i />{data.liveSource.lastSuccessfulSyncAt ? `Synced ${formatRelativeSync(data.liveSource.lastSuccessfulSyncAt)}` : "Awaiting sync"}</span><button onClick={() => void refresh()}>Refresh view</button></div>
       </section>
       <LiveSalesPanel data={data} currency={currency} compact />
@@ -1764,6 +1770,8 @@ function TaskComposer({
 
 type IntegrationConnection = IntegrationCatalogEntry & {
   status: string;
+  externalAccountRef: string | null;
+  externalAccountName: string | null;
   lastSuccessfulSyncAt: string | null;
   lastErrorCode: string | null;
   connectedAt: string | null;
@@ -1814,6 +1822,10 @@ function DataHub({
       units?: number;
       dailyMetrics?: number;
       inventoryBalances?: number;
+      products?: number;
+      customers?: number;
+      suppliers?: number;
+      saleLines?: number;
     };
     readyForReview?: boolean;
     nextStep: string;
@@ -1867,7 +1879,7 @@ function DataHub({
       const response = await apiFetch(path, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: "{}",
+        body: JSON.stringify({ reason: provider === "lightspeed-r" && action === "sync" ? "manual" : undefined }),
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error?.message ?? "The provider action failed.");
@@ -1898,6 +1910,12 @@ function DataHub({
       provider === "lightspeed-r" ? "sync" : "sample",
     );
     if (!body) return;
+    if (body.coalesced) {
+      showNotice(body.nextStep ?? "The current R-Series sync is already in progress.");
+      await loadConnections();
+      if (provider === "lightspeed-r") await refresh();
+      return;
+    }
     setActiveSampleProvider(provider);
     setSampleResult(body);
     showNotice(provider === "lightspeed-r"
@@ -1978,6 +1996,8 @@ function DataHub({
     : integrationCatalog.map((provider) => ({
         ...provider,
         status: "not_connected",
+        externalAccountRef: null,
+        externalAccountName: null,
         lastSuccessfulSyncAt: null,
         lastErrorCode: null,
         connectedAt: null,
@@ -2104,6 +2124,13 @@ function DataHub({
                 </div>
                 <h3>{provider.name}</h3>
                 <p>{provider.activationRequirement}</p>
+                {connected && provider.externalAccountRef && (
+                  <div className="connected-source" role="status">
+                    <span>Connected source</span>
+                    <b>{provider.externalAccountName || `R-Series account ${provider.externalAccountRef}`}</b>
+                    <small>Account ID {provider.externalAccountRef}</small>
+                  </div>
+                )}
                 {isLightspeed && !configured && provider.providerReadiness && (
                   <div className="provider-setup-needed" role="note">
                     <b>Connection setup remaining</b>
@@ -2128,7 +2155,7 @@ function DataHub({
                         ? "Checking…"
                         : connected
                         ? provider.id === "lightspeed-r" && provider.dataPromotionStatus === "approved"
-                          ? "Live sales and inventory imported"
+                          ? "Sales, catalog, customers and suppliers imported"
                           : "Staging only · metrics locked"
                           : configured
                             ? "Authorization required · metrics locked"
@@ -2144,7 +2171,7 @@ function DataHub({
                       <button
                         onClick={() => void stageProviderSample(actionableProvider)}
                         disabled={!canManage || Boolean(providerAction)}
-                        title={!canManage ? "Your role cannot run provider synchronization." : provider.id === "lightspeed-r" ? "Import current R-Series sales and inventory into Vanteloq." : "Read and review a limited sample without changing dashboard metrics."}
+                        title={!canManage ? "Your role cannot run provider synchronization." : provider.id === "lightspeed-r" ? "Import current R-Series sales, catalog, inventory, customers and suppliers into Vanteloq." : "Read and review a limited sample without changing dashboard metrics."}
                       >{providerAction === (provider.id === "lightspeed-r" ? "sync" : "sample") ? (provider.id === "lightspeed-r" ? "Syncing…" : "Staging…") : provider.id === "lightspeed-r" ? "Sync data" : "Stage sample"}</button>
                       {isLightspeed && <button
                         className="secondary-provider-action"
@@ -2152,6 +2179,12 @@ function DataHub({
                         disabled={!canManage || Boolean(providerAction)}
                         title={!canManage ? "Your role cannot manage location mappings." : `Discover and map Lightspeed ${provider.id === "lightspeed-r" ? "shops" : "outlets"} before reconciliation.`}
                       >{providerAction === "locations" ? "Loading…" : `Map ${provider.id === "lightspeed-r" ? "shops" : "outlets"}`}</button>}
+                      {provider.id === "lightspeed-r" && <button
+                        className="secondary-provider-action"
+                        onClick={() => void connectProvider("lightspeed-r")}
+                        disabled={!canManage || Boolean(providerAction)}
+                        title="Authorize a different R-Series account without deleting the current connection first."
+                      >{providerAction === "authorize" ? "Opening…" : "Change account"}</button>}
                       <button
                         className="danger-text"
                         onClick={() => void disconnectProvider(actionableProvider)}
@@ -3080,6 +3113,63 @@ function Advisor({
           )}
         </article>
       )}
+    </div>
+  );
+}
+
+type CommerceSnapshot = {
+  counts: { products: number; customers: number; suppliers: number; saleLines: number };
+  customerIdentityAvailable: boolean;
+  customers: Array<{ externalCustomerId: string; displayName: string; email: string | null; phone: string | null; sourceUpdatedAt: string | null }>;
+  suppliers: Array<{ externalSupplierId: string; name: string; accountNumber: string | null; contactName: string | null; email: string | null; phone: string | null; sourceUpdatedAt: string | null }>;
+};
+
+function CommerceRecordsWorkspace({ kind, navigate }: { kind: "Customers" | "Suppliers"; navigate: (view: View) => void }) {
+  const [snapshot, setSnapshot] = useState<CommerceSnapshot | null>(null);
+  const [query, setQuery] = useState("");
+  const [error, setError] = useState("");
+  useEffect(() => {
+    let cancelled = false;
+    void apiFetch("/api/v1/commerce", { headers: { Accept: "application/json" } })
+      .then(async (response) => {
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.error?.message ?? "Commerce records could not be loaded.");
+        if (!cancelled) setSnapshot(body);
+      })
+      .catch((caught) => { if (!cancelled) setError(caught instanceof Error ? caught.message : "Commerce records could not be loaded."); });
+    return () => { cancelled = true; };
+  }, []);
+  const records = kind === "Customers" ? snapshot?.customers ?? [] : snapshot?.suppliers ?? [];
+  const filtered = records.filter((record) => JSON.stringify(record).toLowerCase().includes(query.trim().toLowerCase()));
+  const total = kind === "Customers" ? snapshot?.counts.customers ?? 0 : snapshot?.counts.suppliers ?? 0;
+  return (
+    <div className="content commerce-records-page">
+      <section className="workspace-titlebar">
+        <div><p>LIGHTSPEED R-SERIES</p><h2>{kind === "Customers" ? "Customer directory" : "Supplier directory"}</h2><span>{kind === "Customers" ? "Customer records linked to sales, ready for repeat-rate and retention analysis." : "Vendor records linked to the catalog, ready for purchasing and margin analysis."}</span></div>
+        <div className="sync-health"><i className={error ? "error" : ""}/><span><b>{error ? "Source unavailable" : `${total.toLocaleString()} imported`}</b><small>{snapshot ? `${snapshot.counts.saleLines.toLocaleString()} transaction lines available` : "Loading provider records…"}</small></span></div>
+      </section>
+      <section className="commerce-summary-strip">
+        <article><small>PRODUCTS</small><b>{snapshot?.counts.products.toLocaleString() ?? "—"}</b><span>Catalog records</span></article>
+        <article><small>CUSTOMERS</small><b>{snapshot?.counts.customers.toLocaleString() ?? "—"}</b><span>Active profiles</span></article>
+        <article><small>SUPPLIERS</small><b>{snapshot?.counts.suppliers.toLocaleString() ?? "—"}</b><span>Vendor records</span></article>
+        <article><small>SALE LINES</small><b>{snapshot?.counts.saleLines.toLocaleString() ?? "—"}</b><span>Product-level facts</span></article>
+      </section>
+      <section className="dense-panel commerce-directory">
+        <header><div><p>{kind.toUpperCase()}</p><h3>Imported from the authorized source account</h3></div><span>{filtered.length.toLocaleString()} shown</span></header>
+        <div className="table-toolbar"><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Search ${kind.toLowerCase()}…`} aria-label={`Search ${kind.toLowerCase()}`}/></div>
+        {error ? <div className="commerce-source-error"><b>Could not load the connected records.</b><span>{error}</span><button onClick={() => navigate("Integrations")}>Check connection →</button></div> : !snapshot ? <div className="commerce-loading" aria-label="Loading commerce records"><i/><i/><i/></div> : filtered.length ? <div className="dense-table">
+          <div className="dense-row dense-head"><span>Name</span><span>{kind === "Customers" ? "Email" : "Contact"}</span><span>{kind === "Customers" ? "Phone" : "Account"}</span><span>Source</span></div>
+          {filtered.map((record) => {
+            const customer = "displayName" in record;
+            return <div className="dense-row" key={customer ? record.externalCustomerId : record.externalSupplierId}>
+              <span><b>{customer ? record.displayName : record.name}</b><small>{customer ? record.externalCustomerId : record.externalSupplierId}</small></span>
+              <span>{customer ? record.email || "Not supplied" : record.contactName || record.email || "Not supplied"}</span>
+              <span className="mono-cell">{customer ? record.phone || "—" : record.accountNumber || "—"}</span>
+              <span className="mono-cell">R-Series</span>
+            </div>;
+          })}
+        </div> : <div className="commerce-source-error"><b>No {kind.toLowerCase()} have been imported from this account.</b><span>Run a sync, or reconnect the production R-Series account if this is a developer store.</span><button onClick={() => navigate("Integrations")}>Manage source →</button></div>}
+      </section>
     </div>
   );
 }
