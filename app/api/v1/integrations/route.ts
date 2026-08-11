@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { getD1, getDb } from "../../../../db";
 import { integrationConnections, integrationSyncRuns } from "../../../../db/schema";
 import { requireAccess } from "../../../../server/authorization";
@@ -192,22 +192,20 @@ export async function POST(request: Request) {
     }
 
     if (connection.provider === "lightspeed-r") {
-      const [latestRun] = await getDb().select().from(integrationSyncRuns).where(and(
+      const [reviewedRun] = await getDb().select().from(integrationSyncRuns).where(and(
         eq(integrationSyncRuns.organizationId, context.organizationId),
         eq(integrationSyncRuns.provider, connection.provider),
         eq(integrationSyncRuns.connectionId, connection.id),
         eq(integrationSyncRuns.mode, "incremental"),
-      )).orderBy(desc(integrationSyncRuns.startedAt), desc(integrationSyncRuns.id)).limit(1);
-      if (!latestRun || latestRun.status !== "completed" || latestRun.errorCode || !latestRun.completedAt) {
-        throw new ApiError(409, "INTEGRATION_SYNC_STALE", "Complete a clean R-Series sync after the latest attempt before approving this data.");
-      }
-      if (latestRun.warningCount !== 0) {
-        throw new ApiError(409, "INTEGRATION_RECONCILIATION_REQUIRED", "Resolve the latest R-Series sync warnings before making its data available.");
-      }
-      if (
-        latestRun.completedAt.getTime() !== connection.lastSuccessfulSyncAt.getTime()
-        || latestRun.cursorAfter !== connection.lastSyncCursor
-      ) {
+        eq(integrationSyncRuns.status, "completed"),
+        isNull(integrationSyncRuns.errorCode),
+        eq(integrationSyncRuns.warningCount, 0),
+        eq(integrationSyncRuns.completedAt, connection.lastSuccessfulSyncAt),
+        connection.lastSyncCursor === null
+          ? isNull(integrationSyncRuns.cursorAfter)
+          : eq(integrationSyncRuns.cursorAfter, connection.lastSyncCursor),
+      )).limit(1);
+      if (!reviewedRun) {
         throw new ApiError(409, "INTEGRATION_SYNC_STALE", "The reviewed R-Series sync no longer matches this account. Sync and review it again.");
       }
       if (!lightspeedRCheckpointReadyForApproval(connection.lastSyncCursor)) {
