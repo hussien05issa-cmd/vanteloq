@@ -130,6 +130,7 @@ test("Lightspeed management routes reject anonymous same-origin writes", async (
     "/api/v1/integrations/plaid/exchange",
     "/api/v1/integrations/plaid/sync",
     "/api/v1/integrations/plaid/disconnect",
+    "/api/v1/integrations/plaid/delete-data",
     "/api/v1/billing/checkout",
     "/api/v1/billing/portal",
   ]) {

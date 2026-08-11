@@ -37,6 +37,7 @@ export async function GET(request: Request) {
         lastErrorCode: integrationConnections.lastErrorCode,
         connectedAt: integrationConnections.connectedAt,
         dataPromotionStatus: integrationConnections.dataPromotionStatus,
+        privacyDataDeletedAt: integrationConnections.privacyDataDeletedAt,
       })
       .from(integrationConnections)
       .where(eq(integrationConnections.organizationId, context.organizationId));
@@ -104,6 +105,7 @@ export async function GET(request: Request) {
       canManageBankConnections: permissions.includes("finance.connections"),
       integrations: integrationCatalog.map((provider) => {
         const canonicalCoverage = coverageByProvider.get(provider.id)!;
+        const allProviderConnections = rows.filter((connection) => connection.provider === provider.id);
         const providerConnections = byProvider.get(provider.id) ?? [];
         const aggregate = aggregateConnectionStatus(providerConnections.map((connection) => ({
           ...connection,
@@ -115,7 +117,11 @@ export async function GET(request: Request) {
         return ({
         ...provider,
         canManage: canManageProvider,
-        status: aggregate.status,
+        status: providerConnections.length
+          ? aggregate.status
+          : allProviderConnections.some((connection) => connection.status === "revoked")
+            ? "revoked"
+            : aggregate.status,
         maskedAccountRef: providerConnections.length === 1 ? maskedAccountRef(providerConnections[0]?.externalAccountRef) : null,
         externalAccountName: providerConnections.length === 1 ? providerConnections[0]?.externalAccountName ?? null : providerConnections.length ? `${providerConnections.length} provider accounts` : null,
         lastSuccessfulSyncAt: aggregate.lastSuccessfulSyncAt,
@@ -132,7 +138,12 @@ export async function GET(request: Request) {
           lastErrorCode: connection.lastErrorCode,
           connectedAt: connection.connectedAt?.toISOString() ?? null,
           dataPromotionStatus: connection.dataPromotionStatus,
+          privacyDataDeletedAt: connection.privacyDataDeletedAt?.toISOString() ?? null,
         })),
+        privacyDataDeletedAt: allProviderConnections
+          .map((connection) => connection.privacyDataDeletedAt)
+          .filter((value): value is Date => Boolean(value))
+          .sort((left, right) => right.getTime() - left.getTime())[0]?.toISOString() ?? null,
         providerReadiness: provider.id === "lightspeed"
           ? lightspeedReadiness()
           : provider.id === "lightspeed-r"

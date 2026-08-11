@@ -169,3 +169,36 @@ test("Plaid retains cleanup credentials before optional Item metadata lookup", a
   assert.ok(exchange.indexOf("database.insert(integrationSecrets)") < exchange.indexOf('"/item/get"'));
   assert.match(exchange, /if \(providerAuthorizationRevoked\) \{[\s\S]*?delete\(integrationSecrets\)[\s\S]*?\} else \{[\s\S]*?PLAID_PROVISIONING_CLEANUP_REQUIRED/);
 });
+
+test("Plaid authorization is bound to durable, versioned consent evidence", async () => {
+  const schema = await readFile(new URL("../db/schema.ts", import.meta.url), "utf8");
+  const control = await readFile(new URL("../domain/privacy-controls.ts", import.meta.url), "utf8");
+  const privacy = await readFile(new URL("../server/privacy.ts", import.meta.url), "utf8");
+  const linkRoute = await readFile(new URL("../app/api/v1/integrations/plaid/link-token/route.ts", import.meta.url), "utf8");
+  const exchangeRoute = await readFile(new URL("../app/api/v1/integrations/plaid/exchange/route.ts", import.meta.url), "utf8");
+
+  assert.match(schema, /integration_consents/);
+  assert.match(schema, /noticeVersion/);
+  assert.match(schema, /privacyPolicyVersion/);
+  assert.match(control, /PLAID_CONSENT_NOTICE_VERSION/);
+  assert.match(privacy, /recordPlaidConsent/);
+  assert.match(privacy, /requireFreshPlaidConsent/);
+  assert.match(privacy, /PLAID_CONSENT_MAX_AGE_MS/);
+  assert.match(linkRoute, /input\.consentAcknowledged !== true/);
+  assert.match(linkRoute, /consentRecordId: consent\.id/);
+  assert.match(exchangeRoute, /requireFreshPlaidConsent/);
+  assert.doesNotMatch(exchangeRoute, /input\.consentAcknowledged !== true/);
+});
+
+test("Plaid deletion fails closed and preserves only de-identified accounting evidence", async () => {
+  const route = await readFile(new URL("../app/api/v1/integrations/plaid/delete-data/route.ts", import.meta.url), "utf8");
+  const source = await readFile(new URL("../server/integrations/plaid.ts", import.meta.url), "utf8");
+  assert.match(route, /requireAccess\(request, \["owner"\]\)/);
+  assert.match(route, /DELETE PLAID DATA/);
+  assert.match(route, /plaid:delete-data/);
+  assert.match(source, /PLAID_DISCONNECT_REQUIRED/);
+  assert.match(source, /database\.batch/);
+  assert.match(source, /DELETE FROM financial_transactions/);
+  assert.match(source, /source_system = 'retained_accounting'/);
+  assert.match(source, /external_account_ref = NULL/);
+});

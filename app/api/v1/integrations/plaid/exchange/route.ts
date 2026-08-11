@@ -4,6 +4,7 @@ import { integrationConnections } from "../../../../../../db/schema";
 import { requireAccess } from "../../../../../../server/authorization";
 import { recordAudit } from "../../../../../../server/audit";
 import { ApiError, enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameOrigin } from "../../../../../../server/api";
+import { requireAddon } from "../../../../../../server/entitlements/engine";
 import {
   exchangePlaidPublicToken,
   PLAID_PROVIDER,
@@ -11,9 +12,9 @@ import {
   plaidRequiresUserRepair,
   syncPlaidTransactions,
 } from "../../../../../../server/integrations/plaid";
-import { requirePermission } from "../../../../../../server/permissions";
-import { requireAddon } from "../../../../../../server/entitlements/engine";
 import { requireOrganizationWideLocationAccess } from "../../../../../../server/location-access";
+import { requirePermission } from "../../../../../../server/permissions";
+import { requireFreshPlaidConsent } from "../../../../../../server/privacy";
 
 export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
@@ -25,10 +26,15 @@ export async function POST(request: Request) {
     await enforceRateLimit("plaid:exchange", context.userId, 8, 3_600);
     const input = await readJsonObject(request, 4_000);
     const publicToken = typeof input.publicToken === "string" ? input.publicToken.trim() : "";
-    if (!publicToken || publicToken.length > 500 || input.consentAcknowledged !== true) {
+    const consentRecordId = typeof input.consentRecordId === "string" ? input.consentRecordId.trim() : "";
+    if (!publicToken || publicToken.length > 500 || !consentRecordId || consentRecordId.length > 100) {
       throw new ApiError(400, "PLAID_CONSENT_REQUIRED", "Confirm the disclosed read-only banking purpose before connecting.");
     }
-
+    await requireFreshPlaidConsent({
+      consentRecordId,
+      organizationId: context.organizationId,
+      actorUserId: context.userId,
+    });
     let connection: Awaited<ReturnType<typeof exchangePlaidPublicToken>>;
     try {
       connection = await exchangePlaidPublicToken(context.organizationId, publicToken);
@@ -45,6 +51,7 @@ export async function POST(request: Request) {
         details: {
           provider: PLAID_PROVIDER,
           mode: plaidReadiness().mode,
+          consentRecordId,
           errorCode: error instanceof ApiError ? error.code : "PLAID_CONNECTION_FAILED",
         },
       });
@@ -62,8 +69,10 @@ export async function POST(request: Request) {
       details: {
         provider: PLAID_PROVIDER,
         mode: plaidReadiness().mode,
+        connectionId: connection.connectionId,
         institutionName: connection.institutionName,
         dataPromotionStatus: "staging",
+        consentRecordId,
       },
     });
 
@@ -82,6 +91,7 @@ export async function POST(request: Request) {
         details: {
           provider: PLAID_PROVIDER,
           mode: plaidReadiness().mode,
+          connectionId: connection.connectionId,
           accountsImported: sync.accountsImported,
           added: sync.added,
           modified: sync.modified,

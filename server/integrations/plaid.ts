@@ -1,5 +1,5 @@
 import { and, eq, inArray } from "drizzle-orm";
-import { getDb, getRuntimeEnv, type VanteloqRuntimeEnv } from "../../db/index.ts";
+import { getD1, getDb, getRuntimeEnv, type VanteloqRuntimeEnv } from "../../db/index.ts";
 import {
   bankAccounts,
   financialAccounts,
@@ -499,6 +499,7 @@ export async function exchangePlaidPublicToken(organizationId: string, publicTok
       externalAccountName: institutionName,
       scopesJson: JSON.stringify(["transactions", "balance"]),
       dataPromotionStatus: "staging",
+      privacyDataDeletedAt: null,
       connectedAt: now,
       lastErrorCode: null,
       lastSyncCursor: null,
@@ -532,6 +533,7 @@ export async function exchangePlaidPublicToken(organizationId: string, publicTok
         externalAccountRef: exchange.item_id,
         externalAccountName: "Plaid bank feed requiring cleanup",
         dataPromotionStatus: "blocked",
+        privacyDataDeletedAt: null,
         lastErrorCode: "PLAID_PROVISIONING_CLEANUP_REQUIRED",
         updatedAt: new Date(),
       }).where(and(
@@ -918,6 +920,76 @@ export async function settlePlaidWebhookEvent(
     queued: false,
     ...(repairRequired ? { repairRequired: true } : {}),
     ...(repaired ? { repaired: true } : {}),
+  };
+}
+
+export async function deletePlaidConsumerData(organizationId: string) {
+  const database = getD1();
+  const activeConnection = await database.prepare(
+    `SELECT status FROM integration_connections
+     WHERE organization_id = ? AND provider = 'plaid'
+       AND status NOT IN ('not_connected', 'revoked')
+     LIMIT 1`,
+  ).bind(organizationId).first<{ status: string }>();
+  if (activeConnection) {
+    throw new ApiError(409, "PLAID_DISCONNECT_REQUIRED", "Disconnect Plaid before deleting retained financial data.");
+  }
+
+  // The batch is atomic in D1. Unreviewed imports are deleted. Transactions
+  // already approved, reconciled, or posted into a journal retain only the
+  // minimum accounting fields; bank/provider identifiers and descriptions are
+  // removed. This preserves ledger integrity without retaining reusable bank
+  // connection data.
+  const results = await database.batch([
+    database.prepare(`
+      DELETE FROM financial_transactions
+      WHERE organization_id = ? AND source_system = 'plaid'
+        AND journal_entry_id IS NULL
+        AND reconciliation_status = 'unreconciled'
+        AND approval_status != 'approved'
+    `).bind(organizationId),
+    database.prepare(`
+      UPDATE financial_transactions
+      SET description = 'Retained accounting transaction',
+          original_description = '',
+          source_system = 'retained_accounting',
+          external_source_id = 'retained:' || id,
+          pending_external_source_id = NULL,
+          updated_at = unixepoch()
+      WHERE organization_id = ? AND source_system = 'plaid'
+    `).bind(organizationId),
+    database.prepare(`
+      UPDATE financial_accounts
+      SET name = 'Disconnected financial account',
+          system_key = 'retained:' || id,
+          description = '',
+          plain_language = 'Retained only where required for an approved, reconciled, or posted accounting record.',
+          active = 0,
+          archived_at = unixepoch(),
+          updated_at = unixepoch()
+      WHERE organization_id = ? AND id IN (
+        SELECT financial_account_id FROM bank_accounts
+        WHERE organization_id = ? AND provider = 'plaid'
+      )
+    `).bind(organizationId, organizationId),
+    database.prepare("DELETE FROM bank_accounts WHERE organization_id = ? AND provider = 'plaid'").bind(organizationId),
+    database.prepare("DELETE FROM integration_secrets WHERE organization_id = ? AND provider = 'plaid'").bind(organizationId),
+    database.prepare(`
+      UPDATE integration_connections
+      SET status = 'revoked', external_account_ref = NULL, external_account_name = NULL,
+          scopes_json = '[]', data_promotion_status = 'blocked', connected_at = NULL,
+          last_successful_sync_at = NULL, last_sync_cursor = NULL, last_error_code = NULL,
+          sync_lease_owner = NULL, sync_lease_expires_at = NULL, sync_version = sync_version + 1,
+          privacy_data_deleted_at = unixepoch(), updated_at = unixepoch()
+      WHERE organization_id = ? AND provider = 'plaid'
+    `).bind(organizationId),
+  ]);
+  return {
+    importedTransactionsDeleted: Number(results[0]?.meta.changes ?? 0),
+    retainedTransactionsDeidentified: Number(results[1]?.meta.changes ?? 0),
+    financialAccountsDeidentified: Number(results[2]?.meta.changes ?? 0),
+    bankAccountsDeleted: Number(results[3]?.meta.changes ?? 0),
+    encryptedCredentialsDeleted: Number(results[4]?.meta.changes ?? 0),
   };
 }
 

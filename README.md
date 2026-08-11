@@ -27,12 +27,15 @@ Implemented now:
 - Versioned API, strict request validation, same-origin write protection, rate limits, idempotency, audit events, and security headers
 - D1 migrations that preserve and migrate the earlier prototype workspace and tasks
 - Health, readiness, OpenAPI, hostile-path tests, deterministic calculation tests, forward-migration tests, idempotent import tests, and a two-tenant end-to-end intelligence-to-action test
+- Lightspeed R-Series read-only OAuth and normalized sales, catalog, inventory, customer, supplier, and payment imports, subject to provider/account approval
+- Plaid sandbox Link with versioned consent, application-encrypted credentials, read-only balances/transactions, revocation, and owner-controlled deletion/de-identification
 
 Intentionally unavailable until its required production control or provider adapter exists:
 
 - Passkeys and a user-facing session/device management screen
-- Shopify, Moneris, Square, Clover, Google marketing, and accounting-provider adapters
+- Production Plaid access; Shopify, Moneris, Square, Clover, Google and Meta marketing, and accounting-provider adapters
 - Lightspeed X-Series promotion into live dashboard metrics, pending provider reconciliation approval
+- Live campaign, employee, payout, and accounting feeds, plus line-item POS, SKU inventory, customer, supplier, and bank feeds from providers not identified above as implemented
 - Invoice malware scanning and OCR extraction, so uploaded documents remain quarantined and unavailable for download
 - Payment initiation, tax filing, payroll execution, automatic accounting posting, and accountant invitations
 - Production PDF or XLSX report generation, outbound email delivery, and customer-data exports

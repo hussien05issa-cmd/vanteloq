@@ -2193,6 +2193,7 @@ type IntegrationConnection = IntegrationCatalogEntry & {
     connectedAt: string | null;
     dataPromotionStatus: string;
   }>;
+  privacyDataDeletedAt: string | null;
   canManage: boolean;
   providerReadiness: null | {
     adapterBuilt?: boolean;
@@ -2474,6 +2475,7 @@ function DataHub({
         dataPromotionStatus: "blocked",
         connectionCount: 0,
         connections: [],
+        privacyDataDeletedAt: null,
         canManage: false,
         providerReadiness: null,
         canonicalCoverage: emptyCommerceCoverage,
@@ -2714,7 +2716,7 @@ function DataHub({
                       onClick={() => void approveConnectionData(provider.id, provider.connections![0].id)}
                       disabled={!canManageBankConnections || anyProviderAction}
                     >Approve reviewed data</button>}
-                    <PlaidLinkButton connected={connected} repairRequired={repairRequired} configured={configured} canManage={canManageProvider && canManageBankConnections} onChanged={loadConnections} showNotice={showNotice} />
+                    <PlaidLinkButton connected={connected} repairRequired={repairRequired} configured={configured} canManage={canManageProvider && canManageBankConnections} deletionAvailable={provider.status === "revoked" && !provider.privacyDataDeletedAt} onChanged={loadConnections} showNotice={showNotice} />
                   </div> : supportsMultipleAccounts ? <div className="provider-actions">
                     <button
                       type="button"

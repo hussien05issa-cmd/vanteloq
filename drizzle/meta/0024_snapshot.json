@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "0f52b962-9a7d-4954-a2a1-f4912f194835",
-  "prevId": "4c2e4b5b-cd46-428c-9e0a-67d96939c3ce",
+  "id": "d7b059d8-6406-4a1a-b377-d8168a5a8606",
+  "prevId": "9e7ca5b8-9ba0-4693-9535-dfcd09a37340",
   "tables": {
     "access_roles": {
       "name": "access_roles",
@@ -1757,14 +1757,6 @@
           "notNull": true,
           "autoincrement": false
         },
-        "connection_id": {
-          "name": "connection_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'legacy'"
-        },
         "external_customer_id": {
           "name": "external_customer_id",
           "type": "text",
@@ -1850,7 +1842,6 @@
           "columns": [
             "organization_id",
             "provider",
-            "connection_id",
             "external_customer_id"
           ],
           "isUnique": true
@@ -1919,14 +1910,6 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
-        },
-        "connection_id": {
-          "name": "connection_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'legacy'"
         },
         "external_payment_id": {
           "name": "external_payment_id",
@@ -2014,7 +1997,6 @@
           "columns": [
             "organization_id",
             "provider",
-            "connection_id",
             "external_payment_id"
           ],
           "isUnique": true
@@ -2098,14 +2080,6 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
-        },
-        "connection_id": {
-          "name": "connection_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'legacy'"
         },
         "external_product_id": {
           "name": "external_product_id",
@@ -2199,7 +2173,6 @@
           "columns": [
             "organization_id",
             "provider",
-            "connection_id",
             "external_product_id"
           ],
           "isUnique": true
@@ -2277,14 +2250,6 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
-        },
-        "connection_id": {
-          "name": "connection_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'legacy'"
         },
         "external_sale_id": {
           "name": "external_sale_id",
@@ -2402,7 +2367,6 @@
           "columns": [
             "organization_id",
             "provider",
-            "connection_id",
             "external_sale_id",
             "external_line_id"
           ],
@@ -2484,14 +2448,6 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
-        },
-        "connection_id": {
-          "name": "connection_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'legacy'"
         },
         "external_supplier_id": {
           "name": "external_supplier_id",
@@ -2578,7 +2534,6 @@
           "columns": [
             "organization_id",
             "provider",
-            "connection_id",
             "external_supplier_id"
           ],
           "isUnique": true
@@ -4160,14 +4115,6 @@
           "notNull": true,
           "autoincrement": false
         },
-        "source_namespace": {
-          "name": "source_namespace",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'legacy'"
-        },
         "status": {
           "name": "status",
           "type": "text",
@@ -4248,27 +4195,12 @@
           "notNull": false,
           "autoincrement": false
         },
-        "sync_lease_owner": {
-          "name": "sync_lease_owner",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "sync_lease_expires_at": {
-          "name": "sync_lease_expires_at",
+        "privacy_data_deleted_at": {
+          "name": "privacy_data_deleted_at",
           "type": "integer",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
-        },
-        "sync_version": {
-          "name": "sync_version",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
         },
         "created_at": {
           "name": "created_at",
@@ -4286,29 +4218,11 @@
         }
       },
       "indexes": {
-        "integration_connections_workspace_provider_idx": {
-          "name": "integration_connections_workspace_provider_idx",
+        "integration_connections_workspace_provider_unique": {
+          "name": "integration_connections_workspace_provider_unique",
           "columns": [
             "organization_id",
             "provider"
-          ],
-          "isUnique": false
-        },
-        "integration_connections_workspace_account_unique": {
-          "name": "integration_connections_workspace_account_unique",
-          "columns": [
-            "organization_id",
-            "provider",
-            "external_account_ref"
-          ],
-          "isUnique": true
-        },
-        "integration_connections_workspace_namespace_unique": {
-          "name": "integration_connections_workspace_namespace_unique",
-          "columns": [
-            "organization_id",
-            "provider",
-            "source_namespace"
           ],
           "isUnique": true
         },
@@ -4317,6 +4231,14 @@
           "columns": [
             "provider",
             "domain_prefix"
+          ],
+          "isUnique": true
+        },
+        "integration_connections_provider_external_account_unique": {
+          "name": "integration_connections_provider_external_account_unique",
+          "columns": [
+            "provider",
+            "external_account_ref"
           ],
           "isUnique": true
         }
@@ -4349,6 +4271,158 @@
         }
       }
     },
+    "integration_consents": {
+      "name": "integration_consents",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "actor_user_id": {
+          "name": "actor_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "provider": {
+          "name": "provider",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'accepted'"
+        },
+        "notice_version": {
+          "name": "notice_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "privacy_policy_version": {
+          "name": "privacy_policy_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "data_categories_json": {
+          "name": "data_categories_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "purposes_json": {
+          "name": "purposes_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "consent_source": {
+          "name": "consent_source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'in_app'"
+        },
+        "accepted_at": {
+          "name": "accepted_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "withdrawn_at": {
+          "name": "withdrawn_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "integration_consents_workspace_provider_status_idx": {
+          "name": "integration_consents_workspace_provider_status_idx",
+          "columns": [
+            "organization_id",
+            "provider",
+            "status",
+            "accepted_at"
+          ],
+          "isUnique": false
+        },
+        "integration_consents_actor_idx": {
+          "name": "integration_consents_actor_idx",
+          "columns": [
+            "actor_user_id",
+            "accepted_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "integration_consents_organization_id_workspaces_id_fk": {
+          "name": "integration_consents_organization_id_workspaces_id_fk",
+          "tableFrom": "integration_consents",
+          "tableTo": "workspaces",
+          "columnsFrom": [
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "integration_consents_status_check": {
+          "name": "integration_consents_status_check",
+          "value": "\"integration_consents\".\"status\" in ('accepted', 'withdrawn', 'expired')"
+        },
+        "integration_consents_source_check": {
+          "name": "integration_consents_source_check",
+          "value": "\"integration_consents\".\"consent_source\" in ('in_app')"
+        }
+      }
+    },
     "integration_location_mappings": {
       "name": "integration_location_mappings",
       "columns": {
@@ -4372,14 +4446,6 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
-        },
-        "connection_id": {
-          "name": "connection_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'legacy'"
         },
         "external_location_ref": {
           "name": "external_location_ref",
@@ -4438,7 +4504,6 @@
           "columns": [
             "organization_id",
             "provider",
-            "connection_id",
             "external_location_ref"
           ],
           "isUnique": true
@@ -4448,7 +4513,6 @@
           "columns": [
             "organization_id",
             "provider",
-            "connection_id",
             "status"
           ],
           "isUnique": false
@@ -4508,14 +4572,6 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
-        },
-        "connection_id": {
-          "name": "connection_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'legacy'"
         },
         "expires_at": {
           "name": "expires_at",
@@ -4605,14 +4661,6 @@
           "notNull": true,
           "autoincrement": false
         },
-        "connection_id": {
-          "name": "connection_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'legacy'"
-        },
         "access_token_ciphertext": {
           "name": "access_token_ciphertext",
           "type": "text",
@@ -4650,20 +4698,13 @@
         }
       },
       "indexes": {
-        "integration_secrets_connection_unique": {
-          "name": "integration_secrets_connection_unique",
-          "columns": [
-            "connection_id"
-          ],
-          "isUnique": true
-        },
-        "integration_secrets_workspace_provider_idx": {
-          "name": "integration_secrets_workspace_provider_idx",
+        "integration_secrets_workspace_provider_unique": {
+          "name": "integration_secrets_workspace_provider_unique",
           "columns": [
             "organization_id",
             "provider"
           ],
-          "isUnique": false
+          "isUnique": true
         },
         "integration_secrets_expiry_idx": {
           "name": "integration_secrets_expiry_idx",
@@ -4716,14 +4757,6 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
-        },
-        "connection_id": {
-          "name": "connection_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'legacy'"
         },
         "external_record_id": {
           "name": "external_record_id",
@@ -4839,7 +4872,6 @@
           "columns": [
             "organization_id",
             "provider",
-            "connection_id",
             "external_record_id",
             "source_payload_hash"
           ],
@@ -4920,14 +4952,6 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
-        },
-        "connection_id": {
-          "name": "connection_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'legacy'"
         },
         "external_sale_id": {
           "name": "external_sale_id",
@@ -5031,7 +5055,6 @@
           "columns": [
             "organization_id",
             "provider",
-            "connection_id",
             "external_sale_id",
             "external_version"
           ],
@@ -5042,7 +5065,6 @@
           "columns": [
             "organization_id",
             "provider",
-            "connection_id",
             "outlet_ref",
             "sold_at"
           ],
@@ -5109,14 +5131,6 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
-        },
-        "connection_id": {
-          "name": "connection_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'legacy'"
         },
         "mode": {
           "name": "mode",
@@ -5213,7 +5227,6 @@
           "columns": [
             "organization_id",
             "provider",
-            "connection_id",
             "started_at"
           ],
           "isUnique": false
@@ -5284,14 +5297,6 @@
           "notNull": true,
           "autoincrement": false
         },
-        "connection_id": {
-          "name": "connection_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'legacy'"
-        },
         "payload_hash": {
           "name": "payload_hash",
           "type": "text",
@@ -5349,7 +5354,6 @@
           "columns": [
             "organization_id",
             "provider",
-            "connection_id",
             "payload_hash"
           ],
           "isUnique": true
@@ -5359,7 +5363,6 @@
           "columns": [
             "organization_id",
             "provider",
-            "connection_id",
             "status",
             "received_at"
           ],
@@ -8359,20 +8362,6 @@
           "notNull": true,
           "autoincrement": false
         },
-        "provider": {
-          "name": "provider",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "external_product_ref": {
-          "name": "external_product_ref",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
         "sku": {
           "name": "sku",
           "type": "text",
@@ -8482,15 +8471,6 @@
           "columns": [
             "organization_id",
             "purchase_order_id"
-          ],
-          "isUnique": false
-        },
-        "purchase_order_lines_product_idx": {
-          "name": "purchase_order_lines_product_idx",
-          "columns": [
-            "organization_id",
-            "provider",
-            "external_product_ref"
           ],
           "isUnique": false
         }
@@ -10276,6 +10256,14 @@
           "notNull": true,
           "autoincrement": false
         },
+        "security_state": {
+          "name": "security_state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'quarantined'"
+        },
         "status": {
           "name": "status",
           "type": "text",
@@ -10371,6 +10359,10 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {
+        "workspace_documents_security_state_check": {
+          "name": "workspace_documents_security_state_check",
+          "value": "\"workspace_documents\".\"security_state\" in ('quarantined', 'clean', 'rejected')"
+        },
         "workspace_documents_size_check": {
           "name": "workspace_documents_size_check",
           "value": "\"workspace_documents\".\"size_bytes\" > 0 and \"workspace_documents\".\"size_bytes\" <= 10485760"
