@@ -116,7 +116,7 @@ test("R-Series completes a browser callback using the initiating one-time state"
         return Response.json({
           Sale: [
             {
-              saleID: "sale-100", timeStamp: "2026-08-09T16:00:00Z", completeTime: "2026-08-09T15:58:00-06:00",
+              saleID: "sale-100", timeStamp: injectSyncWarning ? "2026-08-10T16:00:00Z" : "2026-08-09T16:00:00Z", completeTime: "2026-08-09T15:58:00-06:00",
               completed: "true", voided: "false", shopID: "1", total: injectSyncWarning ? "205.00" : "105.00", taxTotal: "5.00",
               calcFIFOCost: injectSyncWarning ? "80.00" : "40.00", calcDiscount: "2.00", SaleLines: { SaleLine: [{ saleLineID: "line-1" }, { saleLineID: "line-2" }] },
               SalePayments: { SalePayment: [{ salePaymentID: "payment-1", paymentTypeID: "card-1", amount: "105.00" }] },
@@ -396,6 +396,10 @@ test("R-Series completes a browser callback using the initiating one-time state"
       SELECT location_ref, sku, name, on_hand_quantity, reorder_point
       FROM inventory_balances WHERE source_connection_id = ?
     `).bind(connection.id).first(), balance);
+    assert.deepEqual(await database.prepare(`
+      SELECT COUNT(*) count, MAX(total_cents) maximumTotalCents
+      FROM integration_staged_sales WHERE connection_id = ?
+    `).bind(connection.id).first(), { count: 1, maximumTotalCents: 10_500 });
     injectSyncWarning = false;
 
     const command = await worker.fetch(new Request(`${origin}/api/v1/command-centre`, {
