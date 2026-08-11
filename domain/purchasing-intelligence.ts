@@ -91,7 +91,7 @@ export function calculateOpenPurchasingObligations(input: {
     "approved", "scheduled", "partially_paid", "disputed",
   ]);
   const committedOrderStatuses = new Set([
-    "approved", "sent", "acknowledged", "partially_received", "received",
+    "sent", "acknowledged", "partially_received", "received",
     "partially_invoiced", "invoiced", "disputed",
   ]);
   const liveBills = input.bills.filter((bill) => !Boolean(bill.demoRecord) && bill.status !== "void");

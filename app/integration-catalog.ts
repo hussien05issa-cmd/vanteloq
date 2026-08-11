@@ -167,7 +167,7 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
     category: "Marketing",
     availability: "credentials_required",
     activationRequirement:
-      "Connect Business Profile, Search Console, and Analytics to import reviews, local actions, website clicks, search performance, and site engagement into Marketing.",
+      "Google setup is staged until an owner selects the exact Search Console site and Analytics property, maps the business location, and approves a sample. Business Profile review content is not accessed, stored, or aggregated.",
   },
   {
     id: "meta",
@@ -175,7 +175,7 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
     category: "Marketing",
     availability: "credentials_required",
     activationRequirement:
-      "Connect Meta to import account-level ad impressions, reach, link clicks, spend, click-through rate, and cost-per-click into Marketing.",
+      "Meta setup is staged until an owner selects the exact ad account and approves a sample. No account-level measurement is imported before that review.",
   },
   {
     id: "plaid",

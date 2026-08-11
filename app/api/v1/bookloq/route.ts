@@ -15,6 +15,11 @@ import { calculateCashFlowIntelligence, type CashFlowItem } from "../../../../do
 import { authorizedLocationDataScope } from "../../../../server/location-access";
 import { requireAddon } from "../../../../server/entitlements/engine";
 import { calculateVerifiedPurchasingCapacity } from "../../../../domain/purchasing-intelligence";
+import {
+  buildThirteenWeekCashFlow,
+  type CashFlowDecisionBlock,
+  type ThirteenWeekCashFlowItem,
+} from "../../../../domain/thirteen-week-cash-flow";
 
 const readers = ["owner", "admin", "manager", "employee", "read_only"] as const;
 
@@ -67,6 +72,12 @@ type BankRow = {
 
 function rows<T>(result: D1Result<T>): T[] {
   return result.results ?? [];
+}
+
+function validIsoDate(value: string | null) {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
 }
 
 export async function GET(request: Request) {
@@ -131,7 +142,7 @@ export async function GET(request: Request) {
         t.external_source_id externalSourceId, t.location_ref locationRef,
         t.reconciliation_status reconciliationStatus, t.categorization_status categorizationStatus,
         t.confidence_basis_points confidenceBasisPoints, t.approval_status approvalStatus,
-        t.demo_record demoRecord, a.code accountCode, a.name accountName, c.name contactName
+        t.demo_record demoRecord, t.source_state sourceState, a.code accountCode, a.name accountName, c.name contactName
         FROM financial_transactions t
         LEFT JOIN financial_accounts a ON a.id = t.account_id AND a.organization_id = t.organization_id
         LEFT JOIN bookloq_contacts c ON c.id = t.contact_id AND c.organization_id = t.organization_id
@@ -262,8 +273,8 @@ export async function GET(request: Request) {
     const transactions = rows(transactionsResult);
     const banks = rows(banksResult) as BankRow[];
     const reconciliations = rows(reconciliationsResult);
-    const bills = rows(billsResult) as Array<{ id: string; billNumber: string; supplierName: string; dueDate: string; totalCents: number; paidCents: number; status: string }>;
-    const invoices = rows(invoicesResult) as Array<{ id: string; invoiceNumber: string; customerName: string; dueDate: string; totalCents: number; paidCents: number; status: string }>;
+    const bills = rows(billsResult) as Array<{ id: string; billNumber: string; supplierName: string; dueDate: string; totalCents: number; paidCents: number; status: string; currency: string; approvalStatus: string; demoRecord: number; purchaseOrderRef: string | null }>;
+    const invoices = rows(invoicesResult) as Array<{ id: string; invoiceNumber: string; customerName: string; dueDate: string; totalCents: number; paidCents: number; status: string; currency: string; demoRecord: number }>;
     const closeItems = rows(closeResult) as Array<{ status: string }>;
     const completeItems = closeItems.filter((item) => item.status === "complete").length;
     const monthEndCompletionRate = closeItems.length ? completeItems / closeItems.length : 0;
@@ -331,8 +342,9 @@ export async function GET(request: Request) {
           : current ? "current" : ageMs !== null && ageMs > 48 * 60 * 60 * 1_000 ? "stale" : "unavailable";
         return { ...bank, lastSyncAt: synchronizedAt, lastReconciledAt: reconciledAt, balanceState };
       }) : [];
-    const visibleBills = access.accountsPayableReceivable ? rows(billsResult) : [];
-    const visibleInvoices = access.accountsPayableReceivable ? rows(invoicesResult) : [];
+    const matchesDataMode = (demoRecord: number) => dataMode === "demonstration" ? Boolean(demoRecord) : !Boolean(demoRecord);
+    const visibleBills = access.accountsPayableReceivable ? bills.filter((bill) => matchesDataMode(bill.demoRecord)) : [];
+    const visibleInvoices = access.accountsPayableReceivable ? invoices.filter((invoice) => matchesDataMode(invoice.demoRecord)) : [];
     const visibleContacts = access.contactIdentity ? rows(contactsResult) : [];
     const demonstrationCashBanks = visibleBanks.filter((bank) =>
       cashAccountTypes.has(bank.accountType)
@@ -364,29 +376,254 @@ export async function GET(request: Request) {
         ? demonstrationCashBanks.reduce((sum, bank) => sum + Number(bank.availableBalanceCents ?? bank.liveBalanceCents ?? 0), 0)
         : null
       : verifiedBankCashCents;
-    const cashOpeningBalanceCents = verifiedBankCashCents ?? (ledgerAvailable ? statements.cashCents : null);
-    const cashSource = verifiedBankCashCents !== null
+    const cashOpeningBalanceCents = dataMode === "demonstration" ? bankBalanceCents : verifiedBankCashCents;
+    const cashSource = dataMode === "demonstration" && bankBalanceCents !== null
+      ? "demonstration" as const
+      : verifiedBankCashCents !== null
       ? "plaid_available_balance" as const
-      : ledgerAvailable
-        ? "posted_ledger" as const
-        : "unavailable" as const;
+      : "unavailable" as const;
     const cashLastSyncMs = plaidBanks
       .map((bank) => bank.lastSyncAt)
       .filter((value): value is number => value !== null)
       .sort((left, right) => right - left)[0] ?? null;
     const cashLastSyncAt = cashLastSyncMs === null ? null : Math.floor(cashLastSyncMs / 1_000);
+    const cashProjectionAllowed = access.bankBalances && access.accountsPayableReceivable && cashOpeningBalanceCents !== null;
+    const thirteenWeekAllowed = cashProjectionAllowed && access.bankTransactions;
+    const asOfMilliseconds = Date.parse(`${asOf}T00:00:00Z`);
+    const asOfWeekday = new Date(asOfMilliseconds).getUTCDay();
+    const firstWeekStart = new Date(asOfMilliseconds - ((asOfWeekday + 6) % 7) * 86_400_000).toISOString().slice(0, 10);
+    const thirteenWeekEnd = new Date(Date.parse(`${firstWeekStart}T00:00:00Z`) + 90 * 86_400_000).toISOString().slice(0, 10);
+    type CalculationBill = { id: string; billNumber: string; supplierName: string; dueDate: string; totalCents: number; paidCents: number; status: string; currency: string; approvalStatus: string; demoRecord: number; purchaseOrderRef: string | null };
+    type CalculationInvoice = { id: string; invoiceNumber: string; customerName: string; dueDate: string; totalCents: number; paidCents: number; status: string; currency: string; demoRecord: number };
+    type CalculationPurchaseOrder = { id: string; orderNumber: string; supplierName: string; committedCashDate: string | null; expectedDeliveryDate: string | null; totalCents: number; currency: string; status: string };
+    let calculationBills: CalculationBill[] = [];
+    let calculationInvoices: CalculationInvoice[] = [];
+    let calculationPurchaseOrders: CalculationPurchaseOrder[] = [];
+    if (cashProjectionAllowed) {
+      const [calculationBillsResult, calculationInvoicesResult, calculationPurchaseOrdersResult] = await Promise.all([
+        database.prepare(`SELECT b.id, b.bill_number billNumber, b.due_date dueDate, b.status,
+          b.total_cents totalCents, b.paid_cents paidCents, b.currency,
+          b.approval_status approvalStatus, b.demo_record demoRecord,
+          b.purchase_order_ref purchaseOrderRef, c.name supplierName
+          FROM supplier_bills b JOIN bookloq_contacts c
+            ON c.id = b.supplier_id AND c.organization_id = b.organization_id
+          WHERE b.organization_id = ? AND b.status <> 'void'`)
+          .bind(organizationId).all<CalculationBill>(),
+        database.prepare(`SELECT i.id, i.invoice_number invoiceNumber, i.due_date dueDate, i.status,
+          i.total_cents totalCents, i.paid_cents paidCents, i.currency,
+          i.demo_record demoRecord, c.name customerName
+          FROM customer_invoices i JOIN bookloq_contacts c
+            ON c.id = i.customer_id AND c.organization_id = i.organization_id
+          WHERE i.organization_id = ?`)
+          .bind(organizationId).all<CalculationInvoice>(),
+        database.prepare(`SELECT id, order_number orderNumber, supplier_name supplierName,
+          committed_cash_date committedCashDate, expected_delivery_date expectedDeliveryDate,
+          total_cents totalCents, currency, status
+          FROM purchase_orders
+          WHERE organization_id = ?
+            AND ? = 'live'
+            AND status IN ('sent', 'acknowledged', 'partially_received', 'received', 'partially_invoiced', 'invoiced', 'disputed')`)
+          .bind(organizationId, dataMode).all<CalculationPurchaseOrder>(),
+      ]);
+      calculationBills = rows(calculationBillsResult);
+      calculationInvoices = rows(calculationInvoicesResult);
+      calculationPurchaseOrders = rows(calculationPurchaseOrdersResult);
+    }
+    const openBillStatuses = new Set(["draft", "received", "extracted", "under_review", "matched", "awaiting_approval", "approved", "scheduled", "partially_paid", "disputed"]);
+    const isConfirmedBill = (bill: CalculationBill) =>
+      ["approved", "scheduled", "partially_paid"].includes(bill.status)
+      && ["approved", "not_required"].includes(bill.approvalStatus);
+    const outstandingBillCents = (bill: CalculationBill) => Math.max(0, bill.totalCents - bill.paidCents);
+    const linkedToOrder = (bill: CalculationBill, order: CalculationPurchaseOrder) =>
+      bill.purchaseOrderRef === order.id || bill.purchaseOrderRef === order.orderNumber;
+    const forecastBills = calculationBills.filter((bill) =>
+      matchesDataMode(bill.demoRecord)
+      && bill.currency.toUpperCase() === baseCurrency
+      && openBillStatuses.has(bill.status)
+      && outstandingBillCents(bill) > 0,
+    );
+    const forecastInvoices = calculationInvoices.filter((invoice) => matchesDataMode(invoice.demoRecord) && invoice.currency.toUpperCase() === baseCurrency && ["approved", "sent", "viewed", "due", "partially_paid", "overdue"].includes(invoice.status) && invoice.totalCents > invoice.paidCents);
+    const orderGroups = calculationPurchaseOrders.map((order) => {
+      const currency = order.currency.toUpperCase();
+      const linkedBills = calculationBills.filter((bill) =>
+        matchesDataMode(bill.demoRecord)
+        && bill.currency.toUpperCase() === currency
+        && linkedToOrder(bill, order),
+      );
+      const openLinkedBills = linkedBills.filter((bill) => openBillStatuses.has(bill.status) && outstandingBillCents(bill) > 0);
+      const poRemainingCents = Math.max(0, order.totalCents - linkedBills.reduce((sum, bill) => sum + Math.max(0, bill.paidCents), 0));
+      const openOutstandingCents = openLinkedBills.reduce((sum, bill) => sum + outstandingBillCents(bill), 0);
+      const groupRemainingCents = Math.max(poRemainingCents, openOutstandingCents);
+      const confirmedBillOutstandingCents = openLinkedBills.filter(isConfirmedBill).reduce((sum, bill) => sum + outstandingBillCents(bill), 0);
+      const committedDateValid = validIsoDate(order.committedCashDate);
+      const confirmedAmountCents = Math.min(
+        groupRemainingCents,
+        committedDateValid
+          ? Math.max(poRemainingCents, confirmedBillOutstandingCents)
+          : confirmedBillOutstandingCents,
+      );
+      return {
+        order,
+        currency,
+        linkedBills,
+        openLinkedBills,
+        openOutstandingCents,
+        groupRemainingCents,
+        confirmedAmountCents,
+        confirmedBillOutstandingCents,
+        expectedAmountCents: Math.max(0, groupRemainingCents - confirmedAmountCents),
+        committedDateValid,
+      };
+    });
+    const baseOrderGroups = orderGroups.filter((group) => group.currency === baseCurrency);
+    const baseLinkedBillIds = new Set(baseOrderGroups.flatMap((group) => group.linkedBills.map((bill) => bill.id)));
+    const unlinkedForecastBills = forecastBills.filter((bill) => !baseLinkedBillIds.has(bill.id));
+    const purchaseCommitmentItems: ThirteenWeekCashFlowItem[] = baseOrderGroups.flatMap((group) => {
+      const confirmedBillItems = group.openLinkedBills.filter(isConfirmedBill).map((bill) => ({
+        id: bill.id,
+        label: `${bill.supplierName} bill ${bill.billNumber}`,
+        dueDate: bill.dueDate,
+        amountCents: outstandingBillCents(bill),
+        direction: "out" as const,
+        certainty: "confirmed" as const,
+      }));
+      let expectedBillCentsRemaining = group.expectedAmountCents;
+      const expectedBillItems = group.openLinkedBills
+        .filter((bill) => !isConfirmedBill(bill))
+        .sort((left, right) => left.dueDate.localeCompare(right.dueDate) || left.id.localeCompare(right.id))
+        .flatMap((bill) => {
+          const amountCents = Math.min(outstandingBillCents(bill), expectedBillCentsRemaining);
+          expectedBillCentsRemaining -= amountCents;
+          return amountCents > 0 ? [{
+            id: bill.id,
+            label: `${bill.supplierName} bill ${bill.billNumber}`,
+            dueDate: bill.dueDate,
+            amountCents,
+            direction: "out" as const,
+            certainty: "expected" as const,
+          }] : [];
+        });
+      const confirmedOrderRemainderCents = Math.max(0, group.confirmedAmountCents - group.confirmedBillOutstandingCents);
+      const orderItems: ThirteenWeekCashFlowItem[] = [];
+      if (confirmedOrderRemainderCents > 0) {
+        orderItems.push({
+          id: `purchase-order:${group.order.id}:confirmed`,
+          label: `${group.order.supplierName} purchase order ${group.order.orderNumber}`,
+          dueDate: group.order.committedCashDate!,
+          amountCents: confirmedOrderRemainderCents,
+          direction: "out",
+          certainty: "confirmed",
+        });
+      }
+      if (expectedBillCentsRemaining > 0) {
+        orderItems.push({
+          id: `purchase-order:${group.order.id}:expected`,
+          label: `${group.order.supplierName} purchase order ${group.order.orderNumber}`,
+          dueDate: validIsoDate(group.order.expectedDeliveryDate) ? group.order.expectedDeliveryDate! : asOf,
+          amountCents: expectedBillCentsRemaining,
+          direction: "out",
+          certainty: "expected",
+        });
+      }
+      return [...confirmedBillItems, ...expectedBillItems, ...orderItems];
+    });
+    const undatedCommittedItemCount = baseOrderGroups.filter((group) => group.groupRemainingCents > 0 && !group.committedDateValid).length;
+    const confirmedPurchasingObligationsCents = baseOrderGroups.reduce((sum, group) => sum + group.confirmedAmountCents, 0)
+      + unlinkedForecastBills.filter(isConfirmedBill).reduce((sum, bill) => sum + outstandingBillCents(bill), 0);
+    const foreignOrderGroups = orderGroups.filter((group) => group.currency !== baseCurrency && group.groupRemainingCents > 0);
+    const foreignLinkedBillIds = new Set(foreignOrderGroups.flatMap((group) => group.linkedBills.map((bill) => bill.id)));
+    const foreignUnlinkedOpenBills = calculationBills.filter((bill) =>
+      matchesDataMode(bill.demoRecord)
+      && bill.currency.toUpperCase() !== baseCurrency
+      && openBillStatuses.has(bill.status)
+      && outstandingBillCents(bill) > 0
+      && !foreignLinkedBillIds.has(bill.id),
+    );
+    const excludedCurrencyItemCount = foreignOrderGroups.length + foreignUnlinkedOpenBills.length;
+    const decisionBlocks: CashFlowDecisionBlock[] = [];
+    if (dataMode === "demonstration") decisionBlocks.push("demonstration_data");
+    if (settings?.status !== "active") decisionBlocks.push("bookloq_inactive");
+    if (!access.bankBalances || !access.accountsPayableReceivable || !access.bankTransactions) {
+      decisionBlocks.push("finance_permissions_required");
+    }
+    if (dataMode === "live" && verifiedBankCashCents === null) decisionBlocks.push("bank_data_unavailable");
+    if (excludedCurrencyItemCount > 0) decisionBlocks.push("foreign_currency_obligations");
+    if (undatedCommittedItemCount > 0) decisionBlocks.push("undated_purchase_commitments");
+    const cashFactsAllowed = !decisionBlocks.some((block) => [
+      "demonstration_data",
+      "bookloq_inactive",
+      "finance_permissions_required",
+      "bank_data_unavailable",
+    ].includes(block));
+    const decisionCashAllowed = decisionBlocks.length === 0;
     const cashFlowItems: CashFlowRecord[] = [
-      ...bills.filter((bill) => !["paid", "reconciled", "void"].includes(bill.status)).map((bill) => ({ dueDate: bill.dueDate, amountCents: bill.totalCents - bill.paidCents, direction: "out" as const, certainty: "confirmed" as const })),
-      ...invoices.filter((invoice) => !["paid", "written_off", "void"].includes(invoice.status)).map((invoice) => ({ dueDate: invoice.dueDate, amountCents: invoice.totalCents - invoice.paidCents, direction: "in" as const, certainty: "probable" as const })),
+      ...unlinkedForecastBills.map((bill) => ({ dueDate: bill.dueDate, amountCents: bill.totalCents - bill.paidCents, direction: "out" as const, certainty: isConfirmedBill(bill) ? "confirmed" as const : "estimated" as const })),
+      ...forecastInvoices.map((invoice) => ({ dueDate: invoice.dueDate, amountCents: invoice.totalCents - invoice.paidCents, direction: "in" as const, certainty: "probable" as const })),
+      ...purchaseCommitmentItems.map((item) => ({ dueDate: item.dueDate, amountCents: item.amountCents, direction: "out" as const, certainty: item.certainty === "confirmed" ? "confirmed" as const : "estimated" as const })),
     ];
     const forecasts = forecastCash(cashOpeningBalanceCents ?? 0, cashFlowItems, asOf);
     const intelligenceItems: CashFlowItem[] = [
-      ...bills.filter((bill) => !["paid", "reconciled", "void"].includes(bill.status)).map((bill) => ({ id: bill.id, label: `${bill.supplierName} bill ${bill.billNumber}`, dueDate: bill.dueDate, amountCents: bill.totalCents - bill.paidCents, direction: "out" as const, certainty: "confirmed" as const, category: "supplier" as const })),
-      ...invoices.filter((invoice) => !["paid", "written_off", "void"].includes(invoice.status)).map((invoice) => ({ id: invoice.id, label: `${invoice.customerName} invoice ${invoice.invoiceNumber}`, dueDate: invoice.dueDate, amountCents: invoice.totalCents - invoice.paidCents, direction: "in" as const, certainty: "probable" as const, category: "other" as const })),
+      ...unlinkedForecastBills.map((bill) => ({ id: bill.id, label: `${bill.supplierName} bill ${bill.billNumber}`, dueDate: bill.dueDate, amountCents: bill.totalCents - bill.paidCents, direction: "out" as const, certainty: isConfirmedBill(bill) ? "confirmed" as const : "estimated" as const, category: "supplier" as const })),
+      ...forecastInvoices.map((invoice) => ({ id: invoice.id, label: `${invoice.customerName} invoice ${invoice.invoiceNumber}`, dueDate: invoice.dueDate, amountCents: invoice.totalCents - invoice.paidCents, direction: "in" as const, certainty: "probable" as const, category: "other" as const })),
+      ...purchaseCommitmentItems.map((item) => ({ ...item, certainty: item.certainty === "confirmed" ? "confirmed" as const : "estimated" as const, category: "supplier" as const })),
     ];
-    const cashIntelligence = calculateCashFlowIntelligence({ openingCashCents: cashOpeningBalanceCents, safetyThresholdCents: settings?.cashSafetyThresholdCents ?? 0, items: intelligenceItems, asOf });
-    const dueNext30Cents = cashFlowItems.filter((item) => item.direction === "out" && item.dueDate <= forecasts[1].endDate).reduce((sum, item) => sum + item.amountCents, 0);
-    const cashProjectionAllowed = ledgerAvailable && access.bankBalances && access.accountsPayableReceivable && cashOpeningBalanceCents !== null;
+    const calculatedCashIntelligence = calculateCashFlowIntelligence({ openingCashCents: cashFactsAllowed ? cashOpeningBalanceCents : null, safetyThresholdCents: settings?.cashSafetyThresholdCents ?? 0, items: intelligenceItems, asOf });
+    const cashIntelligence = cashFactsAllowed && !decisionCashAllowed
+      ? {
+          ...calculatedCashIntelligence,
+          purchasingCapacityCents: null,
+          warning: "Foreign-currency or undated vendor commitments require review before purchasing capacity can be used.",
+          evidence: [...calculatedCashIntelligence.evidence, "Purchasing capacity is withheld until commitment review is complete."],
+        }
+      : calculatedCashIntelligence;
+    const dueNext30Cents = cashFlowItems.filter((item) => item.direction === "out" && item.certainty === "confirmed" && item.dueDate <= forecasts[1].endDate).reduce((sum, item) => sum + item.amountCents, 0);
+    const actualTransactionResult = thirteenWeekAllowed
+      ? await database.prepare(`SELECT t.posting_date postingDate, SUM(t.amount_cents) amountCents
+          FROM financial_transactions t
+          INNER JOIN bank_accounts b ON b.organization_id = t.organization_id AND b.financial_account_id = t.account_id
+          WHERE t.organization_id = ? AND UPPER(t.currency) = ? AND t.demo_record = ?
+            AND UPPER(b.currency) = ? AND b.demo_record = ?
+            AND b.account_type IN ('chequing', 'savings', 'merchant')
+            AND t.source_state IN ('posted', 'modified')
+            AND t.posting_date BETWEEN ? AND ?
+            AND ((? = 'live'
+              AND t.source_system = 'plaid' AND b.provider = 'plaid' AND b.connection_status = 'healthy'
+              AND b.external_item_ref IS NOT NULL
+              AND (b.available_balance_cents IS NOT NULL OR b.live_balance_cents IS NOT NULL)
+              AND b.last_sync_at >= CAST(strftime('%s', 'now') AS INTEGER) - 172800
+              AND EXISTS (
+                SELECT 1 FROM integration_connections c
+                WHERE c.organization_id = t.organization_id AND c.provider = 'plaid'
+                  AND c.external_account_ref = b.external_item_ref
+                  AND c.status = 'connected' AND c.data_promotion_status = 'approved'
+                  AND (c.sync_lease_owner IS NULL OR c.sync_lease_expires_at IS NULL
+                    OR c.sync_lease_expires_at <= CAST(strftime('%s', 'now') AS INTEGER))))
+              OR (? = 'demonstration' AND b.demo_record = 1))
+          GROUP BY t.posting_date ORDER BY t.posting_date`)
+          .bind(
+            organizationId, baseCurrency, dataMode === "demonstration" ? 1 : 0,
+            baseCurrency, dataMode === "demonstration" ? 1 : 0,
+            firstWeekStart, asOf, dataMode, dataMode,
+          )
+          .all<{ postingDate: string; amountCents: number }>()
+      : null;
+    const actualTransactions = actualTransactionResult ? rows(actualTransactionResult).map((transaction) => ({ postingDate: transaction.postingDate, amountCents: Number(transaction.amountCents) })) : [];
+    const thirteenWeekItems: ThirteenWeekCashFlowItem[] = [
+      ...unlinkedForecastBills.map((bill) => ({ id: bill.id, label: `${bill.supplierName} bill ${bill.billNumber}`, dueDate: bill.dueDate, amountCents: bill.totalCents - bill.paidCents, direction: "out" as const, certainty: isConfirmedBill(bill) ? "confirmed" as const : "expected" as const })),
+      ...forecastInvoices.map((invoice) => ({ id: invoice.id, label: `${invoice.customerName} invoice ${invoice.invoiceNumber}`, dueDate: invoice.dueDate, amountCents: invoice.totalCents - invoice.paidCents, direction: "in" as const, certainty: "expected" as const })),
+      ...purchaseCommitmentItems,
+    ];
+    const thirteenWeekCashFlow = buildThirteenWeekCashFlow({
+      asOf,
+      openingCashCents: thirteenWeekAllowed ? cashOpeningBalanceCents : null,
+      safetyThresholdCents: settings?.cashSafetyThresholdCents ?? 0,
+      actualTransactions: thirteenWeekAllowed ? actualTransactions : [],
+      forecastItems: thirteenWeekAllowed ? thirteenWeekItems.filter((item) => item.dueDate <= thirteenWeekEnd || item.dueDate < asOf) : [],
+      excludedCurrencyItemCount: thirteenWeekAllowed ? excludedCurrencyItemCount : 0,
+      undatedCommittedItemCount: thirteenWeekAllowed ? undatedCommittedItemCount : 0,
+      confirmedPurchasingObligationsCents: thirteenWeekAllowed ? confirmedPurchasingObligationsCents : null,
+      decisionBlocks,
+    });
     const availableStatements = ledgerAvailable ? statements : {
       accounts: [],
       trialBalance: { totalDebitCents: null, totalCreditCents: null },
@@ -405,8 +642,8 @@ export async function GET(request: Request) {
         permissions: uiPermissions,
         organization: { name: context.organization.businessName, currency: settings?.baseCurrency ?? context.organization.currency },
         summary: {
-          currentCashCents: cashOpeningBalanceCents,
-          availableCashCents: cashProjectionAllowed && cashOpeningBalanceCents !== null
+          currentCashCents: cashFactsAllowed ? cashOpeningBalanceCents : null,
+          availableCashCents: decisionCashAllowed && cashOpeningBalanceCents !== null
             ? cashOpeningBalanceCents - dueNext30Cents
             : null,
           bankBalanceCents,
@@ -442,8 +679,9 @@ export async function GET(request: Request) {
           organizationWideRecords: ["bank balances", "financial statements", "bills", "invoices", "tax", "reconciliations"],
           boundary: "Transactions and budgets are filtered to records tagged to the selected location. Shared bank balances, statements, bills, invoices, tax and reconciliations remain organization-wide until an approved allocation exists.",
         } : null,
-        forecasts: cashProjectionAllowed ? forecasts : [],
-        cashIntelligence: cashProjectionAllowed ? cashIntelligence : {
+        forecasts: cashFactsAllowed ? forecasts : [],
+        thirteenWeekCashFlow,
+        cashIntelligence: cashFactsAllowed ? cashIntelligence : {
           status: "unavailable",
           liquidity30Cents: null,
           liquidity60Cents: null,

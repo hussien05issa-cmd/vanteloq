@@ -134,9 +134,11 @@ test("provider management routes reject anonymous same-origin writes", async () 
     "/api/v1/integrations/plaid/disconnect",
     "/api/v1/integrations/plaid/delete-data",
     "/api/v1/integrations/google/authorize",
+    "/api/v1/integrations/google/resources",
     "/api/v1/integrations/google/sync",
     "/api/v1/integrations/google/disconnect",
     "/api/v1/integrations/meta/authorize",
+    "/api/v1/integrations/meta/resources",
     "/api/v1/integrations/meta/sync",
     "/api/v1/integrations/meta/disconnect",
     "/api/v1/billing/checkout",
@@ -288,7 +290,8 @@ test("provider approval uses the permission for the selected connection type", a
   const post = source.slice(source.indexOf("export async function POST"));
   assert.match(post, /requireAccess\(request, \["owner", "admin", "manager"\]\)/);
   assert.match(post, /connection\.provider === "plaid"[\s\S]*requirePermission\(context, "finance\.connections"\)/);
-  assert.match(post, /connection\.provider !== "plaid"[\s\S]*requirePermission\(context, "integrations\.manage"\)/);
+  assert.match(post, /\}\s*else\s*\{[\s\S]*requirePermission\(context, "integrations\.manage"\)/);
+  assert.match(post, /isMarketingProvider[\s\S]*requirePermission\(context, "marketing\.manage"\)/);
   assert.match(post, /requireOrganizationWideLocationAccess\(context\)/);
 });
 
@@ -445,9 +448,11 @@ test("imports and business-memory writes reject cross-site origins before data a
     "/api/v1/integrations/plaid/sync",
     "/api/v1/integrations/plaid/disconnect",
     "/api/v1/integrations/google/authorize",
+    "/api/v1/integrations/google/resources",
     "/api/v1/integrations/google/sync",
     "/api/v1/integrations/google/disconnect",
     "/api/v1/integrations/meta/authorize",
+    "/api/v1/integrations/meta/resources",
     "/api/v1/integrations/meta/sync",
     "/api/v1/integrations/meta/disconnect",
     "/api/v1/billing/checkout",

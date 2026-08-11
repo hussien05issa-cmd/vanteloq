@@ -13,14 +13,14 @@ import {
   marketingCalendarEntries,
   marketingDailyMetrics,
   marketingProfiles,
-  marketingReviews,
+  marketingResourceSelections,
   organizationLocations,
   searchVisibilityObservations,
   workspaces,
 } from "../../../../db/schema";
 import { buildGrowthIntelligence } from "../../../../domain/growth-intelligence";
-import { buildGoogleReviewInsights } from "../../../../domain/google-review-insights";
 import { buildMarketingRecommendations, type EvidenceCoverage, type MarketingOperatingCoverage } from "../../../../domain/marketing-recommendations";
+import { buildGoogleResourceReadiness, buildLocalOpportunityModel, buildProfileHealthChecklist } from "../../../../domain/local-growth-intelligence";
 import { recordAudit } from "../../../../server/audit";
 import { requireAccess } from "../../../../server/authorization";
 import { ApiError, enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameOrigin } from "../../../../server/api";
@@ -104,13 +104,13 @@ export async function GET(request: Request) {
     const locationAccess = await authorizedLocationDataScope(context, requestedLocationId);
     const selectedLocation = locationAccess.selectedLocation;
     const since = new Date(Date.now() - 366 * 86_400_000).toISOString().slice(0, 10);
-    const [touchpoints, transactions, visibility, storedProfile, calendar, workspace, inventory, dailyMetrics, customers, locations, locationMappings, bookkeepingSettings, cashAccounts, providerMetrics, providerReviews, marketingConnections] = await Promise.all([
+    const [touchpoints, transactions, visibility, storedProfile, calendar, workspace, inventory, dailyMetrics, customers, locations, locationMappings, bookkeepingSettings, cashAccounts, providerMetrics, marketingConnections, marketingSelections] = await Promise.all([
       getDb().select({ id: growthTouchpoints.id, occurredAt: growthTouchpoints.occurredAt, source: growthTouchpoints.source, stage: growthTouchpoints.stage, journeyRef: growthTouchpoints.journeyRef }).from(growthTouchpoints).where(and(eq(growthTouchpoints.organizationId, context.organizationId), gte(growthTouchpoints.occurredAt, since))).orderBy(asc(growthTouchpoints.occurredAt)).limit(10_000),
       getDb().select({ id: growthTransactions.id, occurredAt: growthTransactions.occurredAt, journeyRef: growthTransactions.journeyRef, revenueCents: growthTransactions.revenueCents, grossProfitCents: growthTransactions.grossProfitCents }).from(growthTransactions).where(and(eq(growthTransactions.organizationId, context.organizationId), gte(growthTransactions.occurredAt, since))).orderBy(asc(growthTransactions.occurredAt)).limit(10_000),
-      getDb().select({ query: searchVisibilityObservations.query, observedDate: searchVisibilityObservations.observedDate, positionMilli: searchVisibilityObservations.positionMilli, discoveryActions: searchVisibilityObservations.discoveryActions, sourceSystem: searchVisibilityObservations.sourceSystem }).from(searchVisibilityObservations).where(and(eq(searchVisibilityObservations.organizationId, context.organizationId), gte(searchVisibilityObservations.observedDate, since))).orderBy(asc(searchVisibilityObservations.observedDate)).limit(2_000),
+      getDb().select({ query: searchVisibilityObservations.query, observedDate: searchVisibilityObservations.observedDate, positionMilli: searchVisibilityObservations.positionMilli, sourceSystem: searchVisibilityObservations.sourceSystem }).from(searchVisibilityObservations).where(and(eq(searchVisibilityObservations.organizationId, context.organizationId), gte(searchVisibilityObservations.observedDate, since))).orderBy(asc(searchVisibilityObservations.observedDate)).limit(2_000),
       getDb().select().from(marketingProfiles).where(eq(marketingProfiles.organizationId, context.organizationId)).limit(1),
       getDb().select({ id: marketingCalendarEntries.id, title: marketingCalendarEntries.title, channel: marketingCalendarEntries.channel, eventType: marketingCalendarEntries.eventType, startDate: marketingCalendarEntries.startDate, dueDate: marketingCalendarEntries.dueDate, status: marketingCalendarEntries.status, objective: marketingCalendarEntries.objective, notes: marketingCalendarEntries.notes }).from(marketingCalendarEntries).where(eq(marketingCalendarEntries.organizationId, context.organizationId)).orderBy(asc(marketingCalendarEntries.startDate)).limit(500),
-      getDb().select({ businessName: workspaces.businessName, industry: workspaces.industry, city: workspaces.city, province: workspaces.province, website: workspaces.website }).from(workspaces).where(eq(workspaces.id, context.organizationId)).limit(1),
+      getDb().select({ businessName: workspaces.businessName, industry: workspaces.industry, city: workspaces.city, province: workspaces.province, website: workspaces.website, phone: workspaces.phone, hoursJson: workspaces.hoursJson }).from(workspaces).where(eq(workspaces.id, context.organizationId)).limit(1),
       getDb().select({ id: inventoryBalances.id, locationRef: inventoryBalances.locationRef, updatedAt: inventoryBalances.updatedAt }).from(inventoryBalances).where(and(
         eq(inventoryBalances.organizationId, context.organizationId),
         approvedFactSource(inventoryBalances.organizationId, inventoryBalances.sourceProvider, inventoryBalances.sourceConnectionId),
@@ -124,7 +124,7 @@ export async function GET(request: Request) {
         eq(commerceCustomers.organizationId, context.organizationId),
         approvedCommerceSource(commerceCustomers.organizationId, commerceCustomers.provider, commerceCustomers.connectionId),
       )).orderBy(desc(commerceCustomers.updatedAt)).limit(1_000),
-      getDb().select({ id: organizationLocations.id, validationStatus: organizationLocations.validationStatus, updatedAt: organizationLocations.updatedAt }).from(organizationLocations).where(and(eq(organizationLocations.organizationId, context.organizationId), eq(organizationLocations.status, "active"))).orderBy(desc(organizationLocations.updatedAt)).limit(100),
+      getDb().select({ id: organizationLocations.id, name: organizationLocations.name, validationStatus: organizationLocations.validationStatus, latitudeE6: organizationLocations.latitudeE6, longitudeE6: organizationLocations.longitudeE6, updatedAt: organizationLocations.updatedAt }).from(organizationLocations).where(and(eq(organizationLocations.organizationId, context.organizationId), eq(organizationLocations.status, "active"))).orderBy(desc(organizationLocations.updatedAt)).limit(100),
       getDb().select({ localLocationId: integrationLocationMappings.localLocationId, provider: integrationLocationMappings.provider, externalLocationRef: integrationLocationMappings.externalLocationRef, updatedAt: integrationLocationMappings.updatedAt }).from(integrationLocationMappings).where(and(
         eq(integrationLocationMappings.organizationId, context.organizationId),
         eq(integrationLocationMappings.status, "mapped"),
@@ -135,9 +135,38 @@ export async function GET(request: Request) {
         eq(bankAccounts.organizationId, context.organizationId),
         approvedBankSource(bankAccounts.organizationId, bankAccounts.provider, bankAccounts.externalItemRef),
       )).orderBy(desc(bankAccounts.updatedAt)).limit(100),
-      getDb().select({ provider: marketingDailyMetrics.provider, metricDate: marketingDailyMetrics.metricDate, metricKey: marketingDailyMetrics.metricKey, valueMilli: marketingDailyMetrics.valueMilli, resourceRef: marketingDailyMetrics.resourceRef }).from(marketingDailyMetrics).where(and(eq(marketingDailyMetrics.organizationId, context.organizationId), gte(marketingDailyMetrics.metricDate, since))).orderBy(asc(marketingDailyMetrics.metricDate)).limit(25_000),
-      getDb().select({ ratingMilli: marketingReviews.ratingMilli, comment: marketingReviews.comment, reviewedAt: marketingReviews.reviewedAt }).from(marketingReviews).where(and(eq(marketingReviews.organizationId, context.organizationId), gte(marketingReviews.reviewedAt, since))).orderBy(asc(marketingReviews.reviewedAt)).limit(5_000),
-      getDb().select({ id: integrationConnections.id, provider: integrationConnections.provider, status: integrationConnections.status, externalAccountName: integrationConnections.externalAccountName, lastSuccessfulSyncAt: integrationConnections.lastSuccessfulSyncAt }).from(integrationConnections).where(and(eq(integrationConnections.organizationId, context.organizationId), eq(integrationConnections.dataPromotionStatus, "approved"))).orderBy(desc(integrationConnections.updatedAt)).limit(100),
+      getDb().select({
+        selectionId: marketingResourceSelections.id,
+        provider: marketingResourceSelections.provider,
+        dataset: marketingResourceSelections.dataset,
+        resourceName: marketingResourceSelections.externalResourceName,
+        scopeKind: marketingResourceSelections.scopeKind,
+        localLocationId: marketingResourceSelections.localLocationId,
+        metricDate: marketingDailyMetrics.metricDate,
+        metricKey: marketingDailyMetrics.metricKey,
+        valueMilli: marketingDailyMetrics.valueMilli,
+      }).from(marketingDailyMetrics)
+        .innerJoin(marketingResourceSelections, eq(marketingResourceSelections.id, marketingDailyMetrics.resourceSelectionId))
+        .innerJoin(integrationConnections, and(
+          eq(integrationConnections.id, marketingResourceSelections.connectionId),
+          eq(integrationConnections.organizationId, marketingResourceSelections.organizationId),
+          eq(integrationConnections.status, "connected"),
+          eq(integrationConnections.dataPromotionStatus, "approved"),
+        )).where(and(
+          eq(marketingResourceSelections.organizationId, context.organizationId),
+          gte(marketingDailyMetrics.metricDate, since),
+        )).orderBy(asc(marketingDailyMetrics.metricDate)).limit(25_000),
+      getDb().select({ id: integrationConnections.id, provider: integrationConnections.provider, status: integrationConnections.status, dataPromotionStatus: integrationConnections.dataPromotionStatus, externalAccountName: integrationConnections.externalAccountName, lastSuccessfulSyncAt: integrationConnections.lastSuccessfulSyncAt }).from(integrationConnections).where(eq(integrationConnections.organizationId, context.organizationId)).orderBy(desc(integrationConnections.updatedAt)).limit(100),
+      getDb().select({
+        id: marketingResourceSelections.id,
+        connectionId: marketingResourceSelections.connectionId,
+        provider: marketingResourceSelections.provider,
+        dataset: marketingResourceSelections.dataset,
+        externalResourceRef: marketingResourceSelections.externalResourceRef,
+        externalResourceName: marketingResourceSelections.externalResourceName,
+        scopeKind: marketingResourceSelections.scopeKind,
+        localLocationId: marketingResourceSelections.localLocationId,
+      }).from(marketingResourceSelections).where(eq(marketingResourceSelections.organizationId, context.organizationId)).limit(1_000),
     ]);
     const selectedLocationRefs = new Set(locationAccess.locationRefs ?? []);
     const locationDataRestricted = locationAccess.locationRefs !== null;
@@ -153,23 +182,49 @@ export async function GET(request: Request) {
     const authorizedTouchpoints = authorizationRestricted ? [] : touchpoints;
     const authorizedTransactions = authorizationRestricted ? [] : transactions;
     const authorizedVisibility = authorizationRestricted ? [] : visibility;
-    const authorizedProviderMetrics = authorizationRestricted ? [] : providerMetrics;
-    const authorizedProviderReviews = authorizationRestricted ? [] : providerReviews;
+    const accessibleLocationIds = new Set(locationAccess.locationIds ?? scopedLocations.map((location) => location.id));
+    const authorizedProviderMetrics = locationDataRestricted
+      ? providerMetrics.filter((row) => row.scopeKind === "location" && Boolean(row.localLocationId && accessibleLocationIds.has(row.localLocationId)))
+      : providerMetrics;
     const averageMetricKeys = new Set(["search_ctr", "search_position", "meta_ctr", "meta_cpc"]);
-    const metricBuckets = new Map<string, { provider: "google" | "meta"; metricDate: string; sums: Record<string, number>; counts: Record<string, number> }>();
+    const metricBuckets = new Map<string, {
+      selectionId: string;
+      provider: "google" | "meta";
+      dataset: string;
+      resourceName: string;
+      scopeKind: "organization" | "location";
+      localLocationId: string | null;
+      metricDate: string;
+      sums: Record<string, number>;
+      counts: Record<string, number>;
+    }>();
     for (const row of authorizedProviderMetrics) {
-      const key = `${row.provider}:${row.metricDate}`;
-      const bucket = metricBuckets.get(key) ?? { provider: row.provider, metricDate: row.metricDate, sums: {}, counts: {} };
+      const key = `${row.selectionId}:${row.metricDate}`;
+      const bucket = metricBuckets.get(key) ?? {
+        selectionId: row.selectionId,
+        provider: row.provider,
+        dataset: row.dataset,
+        resourceName: row.resourceName,
+        scopeKind: row.scopeKind,
+        localLocationId: row.localLocationId,
+        metricDate: row.metricDate,
+        sums: {} as Record<string, number>,
+        counts: {} as Record<string, number>,
+      };
       bucket.sums[row.metricKey] = (bucket.sums[row.metricKey] ?? 0) + row.valueMilli / 1_000;
       bucket.counts[row.metricKey] = (bucket.counts[row.metricKey] ?? 0) + 1;
       metricBuckets.set(key, bucket);
     }
     const measurementSeries = [...metricBuckets.values()].sort((left, right) => left.metricDate.localeCompare(right.metricDate)).map((bucket) => ({
+      selectionId: bucket.selectionId,
       provider: bucket.provider,
+      dataset: bucket.dataset,
+      resourceName: bucket.resourceName,
+      scopeKind: bucket.scopeKind,
+      localLocationId: bucket.localLocationId,
       metricDate: bucket.metricDate,
       metrics: Object.fromEntries(Object.entries(bucket.sums).map(([key, value]) => [key, averageMetricKeys.has(key) ? value / bucket.counts[key] : value])),
     }));
-    const reviewInsights = buildGoogleReviewInsights(authorizedProviderReviews);
     const saved = storedProfile[0];
     const organization = workspace[0];
     const profile = saved ?? {
@@ -186,7 +241,7 @@ export async function GET(request: Request) {
       createdAt: null,
       updatedAt: null,
     };
-    const growth = buildGrowthIntelligence({ touchpoints: authorizedTouchpoints, transactions: authorizedTransactions, searchVisibility: authorizedVisibility.map((row) => ({ ...row, position: row.positionMilli / 1000 })) });
+    const growth = buildGrowthIntelligence({ touchpoints: authorizedTouchpoints, transactions: authorizedTransactions, searchVisibility: authorizedVisibility.map((row) => ({ ...row, position: row.positionMilli / 1000, discoveryActions: null })) });
     const hasAttributionData = growth.status === "available" && (growth.channels.length > 0 || authorizedTransactions.length > 0);
     const hasSearchData = authorizedVisibility.length > 0 || authorizedProviderMetrics.some((row) => row.metricKey === "search_clicks" || row.metricKey === "search_impressions");
     const marketingLatest = latestValue([
@@ -194,7 +249,6 @@ export async function GET(request: Request) {
       ...authorizedTouchpoints.map((row) => row.occurredAt),
       ...authorizedTransactions.map((row) => row.occurredAt),
       ...authorizedProviderMetrics.map((row) => row.metricDate),
-      ...authorizedProviderReviews.map((row) => row.reviewedAt),
     ]);
     const marketingFreshness = sourceFreshness(marketingLatest, 31, "No marketing source date");
     const marketingEvidence: EvidenceCoverage = {
@@ -204,7 +258,6 @@ export async function GET(request: Request) {
         ...(hasSearchData ? [`${authorizedVisibility.length} owner-entered or imported search observations`] : []),
         ...(hasAttributionData ? [`${authorizedTouchpoints.length} touchpoints and ${authorizedTransactions.length} matched transaction records`] : []),
         ...(authorizedProviderMetrics.length ? [`${authorizedProviderMetrics.length} authorized Google and Meta daily measurements`] : []),
-        ...(authorizedProviderReviews.length ? [`${authorizedProviderReviews.length} Google reviews available for aggregate themes`] : []),
       ],
       missingInputs: [
         ...(!hasSearchData ? ["Search Console measurements or search observations"] : []),
@@ -290,23 +343,62 @@ export async function GET(request: Request) {
       cashReadiness: cashCoverage,
       location: locationCoverage,
     };
-    const connectionSummaries = (["google", "meta"] as const).map((provider) => {
-      const connected = marketingConnections.find((connection) => connection.provider === provider && connection.status === "connected");
+    type ConnectionSummary = {
+      provider: string;
+      providerId: "google" | "meta";
+      status: "connected" | "selection_required" | "sample_required" | "approval_required" | "ready_to_connect" | "configuration_required";
+      label: string;
+      availableNow: string;
+      connectionId: string | null;
+    };
+    const connectionSummaries = (["google", "meta"] as const).flatMap((provider): ConnectionSummary[] => {
+      const connectedAccounts = marketingConnections.filter((connection) => connection.provider === provider && connection.status === "connected");
       const readiness = marketingReadiness(provider);
-      return {
+      if (!connectedAccounts.length) return [{
         provider: provider === "google" ? "Google" : "Meta",
         providerId: provider,
-        status: connected ? "connected" as const : readiness.credentialsConfigured ? "ready_to_connect" as const : "configuration_required" as const,
-        label: connected ? "Connected" : readiness.credentialsConfigured ? "Ready to connect" : "Configuration required",
-        availableNow: connected
-          ? connected.lastSuccessfulSyncAt ? `Last synced ${connected.lastSuccessfulSyncAt.toISOString()}` : "Connected · first sync needed"
-          : provider === "google"
-            ? "Business Profile, reviews, Search Console and Analytics"
-            : "Ads insights, website link clicks and spend",
-        connectionId: connected?.id ?? null,
-      };
+        status: readiness.credentialsConfigured ? "ready_to_connect" as const : "configuration_required" as const,
+        label: readiness.credentialsConfigured ? "Ready to connect" : "Configuration required",
+        availableNow: provider === "google"
+          ? "Connect, then choose exact Search Console sites and Analytics properties"
+          : "Connect, then choose exact ad accounts",
+        connectionId: null,
+      }];
+      return connectedAccounts.map((connected) => {
+        const selections = marketingSelections.filter((selection) => selection.connectionId === connected.id && selection.provider === provider);
+        const status = !selections.length
+          ? "selection_required" as const
+          : connected.dataPromotionStatus !== "approved"
+            ? connected.lastSuccessfulSyncAt ? "approval_required" as const : "sample_required" as const
+            : "connected" as const;
+        return {
+          provider: connected.externalAccountName || (provider === "google" ? "Google" : "Meta"),
+          providerId: provider,
+          status,
+          label: status === "selection_required" ? "Resource selection required" : status === "sample_required" ? "Sample required" : status === "approval_required" ? "Sample review required" : "Connected",
+          availableNow: status === "selection_required"
+            ? "Choose exact provider resources and an organization or owned-location scope"
+            : status === "sample_required"
+              ? "Run a sample from the selected resources"
+              : status === "approval_required"
+                ? "Review the current sample in Connections"
+                : connected.lastSuccessfulSyncAt ? `Last synced ${connected.lastSuccessfulSyncAt.toISOString()}` : "Approved resource selection",
+          connectionId: connected.id,
+        };
+      });
     });
-    const googleConnected = connectionSummaries.some((connection) => connection.providerId === "google" && connection.status === "connected");
+    const googleSelections = marketingSelections.filter((selection) => selection.provider === "google" && (
+      selection.scopeKind === "organization"
+      || Boolean(selection.localLocationId && accessibleLocationIds.has(selection.localLocationId))
+    ));
+    const googleAnalyticsSelection = googleSelections.find((selection) => selection.dataset === "google_analytics") ?? null;
+    const googleSearchConsoleSelection = googleSelections.find((selection) => selection.dataset === "google_search_console") ?? null;
+    const googleReadinessScope = locationDataRestricted
+      ? selectedLocation?.id ?? scopedLocations[0]?.id ?? "location-required"
+      : "organization";
+    const selectionScopeRef = (selection: typeof googleSelections[number] | null) => selection
+      ? selection.scopeKind === "organization" ? "organization" : selection.localLocationId
+      : null;
     const recommendations = buildMarketingRecommendations({
       businessModel: profile.businessModel,
       primaryOffer: profile.primaryOffer,
@@ -314,7 +406,7 @@ export async function GET(request: Request) {
       serviceArea: profile.serviceArea,
       primaryGoal: profile.primaryGoal,
       websiteUrl: profile.websiteUrl,
-      googleProfileStatus: googleConnected && (authorizedProviderReviews.length > 0 || authorizedProviderMetrics.some((row) => row.metricKey.startsWith("business_"))) ? "verified" : profile.googleProfileStatus,
+      googleProfileStatus: profile.googleProfileStatus,
       hasAttributionData,
       hasSearchData,
       asOfDate: new Date().toISOString().slice(0, 10),
@@ -330,18 +422,27 @@ export async function GET(request: Request) {
       marketingEvidence,
       locationScope: locationDataRestricted ? { id: selectedLocation?.id ?? "accessible", name: selectedLocation?.name ?? "Accessible locations" } : null,
       calendar: authorizationRestricted ? [] : calendar,
-      searchSeries: authorizedVisibility.slice(-24).map((row) => ({ query: row.query, observedDate: row.observedDate, position: row.positionMilli / 1000, discoveryActions: row.discoveryActions, sourceSystem: row.sourceSystem })),
+      searchSeries: authorizedVisibility.slice(-24).map((row) => ({ query: row.query, observedDate: row.observedDate, position: row.positionMilli / 1000, sourceSystem: row.sourceSystem })),
       measurementSeries,
-      reviewInsights,
+      googleResourceReadiness: buildGoogleResourceReadiness({
+        locationId: googleReadinessScope,
+        analyticsPropertyRef: googleAnalyticsSelection?.externalResourceRef ?? null,
+        analyticsScopeRef: selectionScopeRef(googleAnalyticsSelection),
+        searchConsoleSiteRef: googleSearchConsoleSelection?.externalResourceRef ?? null,
+        searchConsoleScopeRef: selectionScopeRef(googleSearchConsoleSelection),
+        businessProfileLocationRef: null,
+      }),
+      profileChecklist: buildProfileHealthChecklist({ businessType: organization?.industry || "local_business", profile: { verified: profile.googleProfileStatus === "verified", websiteRecorded: Boolean(profile.websiteUrl || organization?.website), phoneRecorded: Boolean(organization?.phone), hoursRecorded: Boolean(organization?.hoursJson && organization.hoursJson !== "{}" && organization.hoursJson !== "[]") } }),
+      localOpportunityModel: buildLocalOpportunityModel({ centre: (() => { const location = selectedLocation ?? scopedLocations[0]; return location?.latitudeE6 !== null && location?.latitudeE6 !== undefined && location?.longitudeE6 !== null && location?.longitudeE6 !== undefined ? { latitude: location.latitudeE6 / 1_000_000, longitude: location.longitudeE6 / 1_000_000 } : null; })() }),
       importCounts: {
         touchpoints: authorizedTouchpoints.length,
         transactions: authorizedTransactions.length,
         searchObservations: authorizedVisibility.length,
       },
       canManage: context.role === "owner" || context.role === "admin",
-      connections: connectionSummaries,
+      connections: authorizationRestricted ? [] : connectionSummaries,
       period: { since, through: new Date().toISOString().slice(0, 10) },
-      sourceBoundary: "Recommendations use saved business context, authorized Google and Meta measurements, aggregate Google review themes, tenant operating records, and recorded observations. First-touch attribution still requires a shared pseudonymous journey reference across discovery, website or call, customer, and POS events. Association is not proof of causation. Reviewer names and profile photos are not stored.",
+      sourceBoundary: "Recommendations use saved owner context, approved tenant operating records, recorded observations, and measurements from explicitly selected provider resources after sample approval. Resource series remain separate unless an owner-approved model combines them. No Business Profile review content is stored or aggregated. Association is not proof of causation.",
       scopeBoundary: locationDataRestricted
         ? `Inventory and daily operating evidence are filtered to ${selectedLocation?.name ?? "accessible locations"}. Marketing journeys and customer outcomes are not location-tagged, so location-specific promotion confidence remains limited.`
         : "All authorized organization evidence is included.",
@@ -426,7 +527,7 @@ export async function POST(request: Request) {
       if (!calendarDate.test(observedDate)) throw new ApiError(400, "INVALID_GROWTH_RECORD", "observedDate must be YYYY-MM-DD.");
       const position = Number(body.position);
       if (!Number.isFinite(position) || position <= 0 || position > 1_000) throw new ApiError(400, "INVALID_GROWTH_RECORD", "position must be greater than zero and no more than 1000.");
-      await getDb().insert(searchVisibilityObservations).values({ id, organizationId: context.organizationId, query: textValue(body.query, "query", 180), observedDate, positionMilli: Math.round(position * 1_000), discoveryActions: integerValue(body.discoveryActions ?? null, "discoveryActions", true), sourceSystem, sourceEventId, createdAt: now }).onConflictDoNothing();
+      await getDb().insert(searchVisibilityObservations).values({ id, organizationId: context.organizationId, query: textValue(body.query, "query", 180), observedDate, positionMilli: Math.round(position * 1_000), discoveryActions: null, sourceSystem, sourceEventId, createdAt: now }).onConflictDoNothing();
     } else throw new ApiError(400, "INVALID_GROWTH_RECORD", "type must be a supported marketing profile, calendar, touchpoint, transaction, or search record.");
     await recordAudit({ request, requestId, organizationId: context.organizationId, actorUserId: context.userId, action: "growth.record_ingested", resourceType: "growth_record", resourceId: id, details: { type, sourceSystem } });
     return jsonResponse({ accepted: true, id }, { status: 202 });

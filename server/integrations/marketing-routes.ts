@@ -1,12 +1,13 @@
-import { and, eq, gt, isNull } from "drizzle-orm";
+import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import { getD1, getDb } from "../../db";
 import {
   integrationConnections,
   integrationOAuthStates,
   integrationSecrets,
-  marketingDailyMetrics,
-  marketingReviews,
+  integrationSyncRuns,
+  marketingResourceSelections,
   memberships,
+  organizationLocations,
   users,
   workspaces,
 } from "../../db/schema";
@@ -25,10 +26,13 @@ import { requirePermission } from "../permissions";
 import {
   acquireIntegrationSyncLease,
   releaseIntegrationSyncLease,
+  renewIntegrationSyncLease,
   requireOwnedIntegrationConnection,
 } from "./connection";
 import {
   buildMarketingAuthorizationUrl,
+  discoverGoogleMarketingResources,
+  discoverMetaMarketingResources,
   encryptedMarketingTokens,
   exchangeMarketingAuthorizationCode,
   marketingAccessToken,
@@ -36,10 +40,13 @@ import {
   marketingStateHash,
   newMarketingOAuthState,
   revokeMarketingAccess,
+  storedMarketingAccessToken,
   syncGoogleMarketing,
   syncMetaMarketing,
   verifyMarketingIdentity,
   type MarketingProvider,
+  type MarketingDataset,
+  type SelectedMarketingResource,
   type MarketingSyncSnapshot,
 } from "./marketing";
 
@@ -254,22 +261,39 @@ export function marketingCallback(request: Request, provider: MarketingProvider)
       const encrypted = await encryptedMarketingTokens(token);
       const readiness = marketingReadiness(provider);
       if (existing) {
-        await saveSecret(context.organizationId, provider, existing.id, encrypted, now);
-        await getDb().update(integrationConnections).set({
-          externalAccountName: identity.name,
-          scopesJson: JSON.stringify(token.scopes),
-          apiVersion: readiness.apiVersion,
-          status: "connected",
-          dataPromotionStatus: "approved",
-          connectedAt: now,
-          lastErrorCode: null,
-          updatedAt: now,
-        }).where(and(eq(integrationConnections.id, existing.id), eq(integrationConnections.organizationId, context.organizationId)));
-        await getDb().delete(integrationConnections).where(and(
-          eq(integrationConnections.id, pending.id),
-          eq(integrationConnections.organizationId, context.organizationId),
-          eq(integrationConnections.status, "pending"),
-        ));
+        const reauthorizationLease = await acquireIntegrationSyncLease(context.organizationId, provider, existing.id, 10 * 60_000);
+        if (!reauthorizationLease) throw new ApiError(409, "MARKETING_SYNC_IN_PROGRESS", "Wait for the current synchronization before reauthorizing this account.");
+        try {
+          const [staged] = await getDb().update(integrationConnections).set({
+            externalAccountName: identity.name,
+            scopesJson: JSON.stringify(token.scopes),
+            apiVersion: readiness.apiVersion,
+            status: "connected",
+            dataPromotionStatus: "staging",
+            connectedAt: now,
+            lastSuccessfulSyncAt: null,
+            promotionAuthorizedAt: null,
+            lastSyncCursor: null,
+            lastErrorCode: null,
+            resourceSelectionVersion: sql`${integrationConnections.resourceSelectionVersion} + 1`,
+            updatedAt: now,
+          }).where(and(
+            eq(integrationConnections.id, existing.id),
+            eq(integrationConnections.organizationId, context.organizationId),
+            eq(integrationConnections.provider, provider),
+            eq(integrationConnections.syncLeaseOwner, reauthorizationLease.owner),
+            eq(integrationConnections.syncVersion, reauthorizationLease.version),
+          )).returning({ id: integrationConnections.id });
+          if (!staged) throw new ApiError(409, "MARKETING_CONNECTION_CHANGED", "The account changed before reauthorization could be saved.");
+          await saveSecret(context.organizationId, provider, existing.id, encrypted, now);
+          await getDb().delete(integrationConnections).where(and(
+            eq(integrationConnections.id, pending.id),
+            eq(integrationConnections.organizationId, context.organizationId),
+            eq(integrationConnections.status, "pending"),
+          ));
+        } finally {
+          await releaseIntegrationSyncLease(reauthorizationLease);
+        }
         return Response.redirect(returnUrl(request, provider, "connected"), 303);
       }
       const [connected] = await getDb().update(integrationConnections).set({
@@ -278,7 +302,7 @@ export function marketingCallback(request: Request, provider: MarketingProvider)
         externalAccountName: identity.name,
         apiVersion: readiness.apiVersion,
         scopesJson: JSON.stringify(token.scopes),
-        dataPromotionStatus: "approved",
+        dataPromotionStatus: "staging",
         connectedAt: now,
         lastSuccessfulSyncAt: null,
         lastErrorCode: null,
@@ -349,51 +373,257 @@ async function batchStatements(statements: D1PreparedStatement[]) {
   }
 }
 
+const providerDatasets: Record<MarketingProvider, readonly MarketingDataset[]> = {
+  google: ["google_analytics", "google_search_console"],
+  meta: ["meta_ads"],
+};
+
+async function discoverResources(provider: MarketingProvider, accessToken: string) {
+  return provider === "google"
+    ? discoverGoogleMarketingResources(accessToken)
+    : discoverMetaMarketingResources(accessToken);
+}
+
+export function marketingResources(request: Request, provider: MarketingProvider) {
+  return handleApi(request, async ({ requestId }) => {
+    requireSameOrigin(request);
+    const context = await requireAccess(request, ["owner", "admin"]);
+    await requireMarketingPermissions(context);
+    await enforceRateLimit(`${provider}:marketing:resources`, context.organizationId, 30, 3_600);
+    const body = await readJsonObject(request, 65_536);
+    const requestedConnectionId = typeof body.connectionId === "string" ? body.connectionId : null;
+    const connection = await requireOwnedIntegrationConnection(context.organizationId, provider, requestedConnectionId, { connected: true });
+    const locations = await getDb().select({
+      id: organizationLocations.id,
+      name: organizationLocations.name,
+    }).from(organizationLocations).where(and(
+      eq(organizationLocations.organizationId, context.organizationId),
+      eq(organizationLocations.status, "active"),
+    ));
+    const existing = await getDb().select().from(marketingResourceSelections).where(and(
+      eq(marketingResourceSelections.organizationId, context.organizationId),
+      eq(marketingResourceSelections.connectionId, connection.id),
+      eq(marketingResourceSelections.provider, provider),
+    ));
+    const accessToken = await marketingAccessToken(context.organizationId, connection.id, provider);
+    const discovered = await discoverResources(provider, accessToken);
+
+    if (body.action === "discover") {
+      const selectedByKey = new Map(existing.map((selection) => [
+        `${selection.dataset}\u0000${selection.externalResourceRef}`,
+        selection,
+      ]));
+      return jsonResponse({
+        connectionId: connection.id,
+        provider,
+        selectionVersion: connection.resourceSelectionVersion,
+        datasets: providerDatasets[provider].map((dataset) => ({
+          dataset,
+          resources: discovered.filter((resource) => resource.dataset === dataset).map((resource) => {
+            const selected = selectedByKey.get(`${resource.dataset}\u0000${resource.externalResourceRef}`);
+            return {
+              ...resource,
+              selected: Boolean(selected),
+              scopeKind: selected?.scopeKind ?? null,
+              localLocationId: selected?.localLocationId ?? null,
+            };
+          }),
+        })),
+        selections: existing.map((selection) => ({
+          id: selection.id,
+          dataset: selection.dataset,
+          externalResourceRef: selection.externalResourceRef,
+          name: selection.externalResourceName,
+          scopeKind: selection.scopeKind,
+          localLocationId: selection.localLocationId,
+        })),
+        locations,
+      });
+    }
+
+    if (body.action !== "replace" || !Number.isInteger(body.expectedSelectionVersion) || !Array.isArray(body.selections)) {
+      throw new ApiError(400, "MARKETING_SELECTION_INVALID", "Discover resources, then submit the exact resources and scopes to select.");
+    }
+    if (body.selections.length > 100) throw new ApiError(400, "MARKETING_SELECTION_LIMIT", "Select no more than 100 marketing resources per account.");
+    if (body.expectedSelectionVersion !== connection.resourceSelectionVersion) {
+      throw new ApiError(409, "MARKETING_SELECTION_CHANGED", "The resource selection changed. Refresh the resource list and try again.");
+    }
+    const discoveredByKey = new Map(discovered.map((resource) => [
+      `${resource.dataset}\u0000${resource.externalResourceRef}`,
+      resource,
+    ]));
+    const locationIds = new Set(locations.map((location) => location.id));
+    const selectedKeys = new Set<string>();
+    const replacements: Array<{
+      id: string;
+      dataset: MarketingDataset;
+      externalResourceRef: string;
+      externalResourceName: string;
+      scopeKind: "organization" | "location";
+      localLocationId: string | null;
+    }> = [];
+    for (const raw of body.selections) {
+      if (!raw || typeof raw !== "object") throw new ApiError(400, "MARKETING_SELECTION_INVALID", "Every resource selection must include a discovered resource and scope.");
+      const item = raw as Record<string, unknown>;
+      if (typeof item.dataset !== "string" || !providerDatasets[provider].includes(item.dataset as MarketingDataset) || typeof item.externalResourceRef !== "string") {
+        throw new ApiError(400, "MARKETING_SELECTION_INVALID", "A selected resource does not belong to this provider.");
+      }
+      const dataset = item.dataset as MarketingDataset;
+      const externalResourceRef = item.externalResourceRef.trim();
+      const key = `${dataset}\u0000${externalResourceRef}`;
+      const canonical = discoveredByKey.get(key);
+      if (!canonical) throw new ApiError(409, "MARKETING_RESOURCE_UNAVAILABLE", "A selected resource is no longer available to this provider account.");
+      if (selectedKeys.has(key)) throw new ApiError(400, "MARKETING_SELECTION_DUPLICATE", "Each provider resource can be selected only once.");
+      selectedKeys.add(key);
+      const scopeKind = item.scopeKind === "organization" || item.scopeKind === "location" ? item.scopeKind : null;
+      const localLocationId = typeof item.localLocationId === "string" ? item.localLocationId : null;
+      if (!scopeKind || (scopeKind === "organization" && localLocationId !== null) || (scopeKind === "location" && (!localLocationId || !locationIds.has(localLocationId)))) {
+        throw new ApiError(400, "MARKETING_SELECTION_SCOPE_INVALID", "Choose either the organization or one accessible active location for each resource.");
+      }
+      replacements.push({
+        id: crypto.randomUUID(),
+        dataset,
+        externalResourceRef: canonical.externalResourceRef,
+        externalResourceName: canonical.name,
+        scopeKind,
+        localLocationId,
+      });
+    }
+
+    const lease = await acquireIntegrationSyncLease(context.organizationId, provider, connection.id, 10 * 60_000);
+    if (!lease) throw new ApiError(409, "MARKETING_SYNC_IN_PROGRESS", "Wait for the current synchronization or selection update to finish.");
+    try {
+      const database = getD1();
+      const now = Math.floor(Date.now() / 1_000);
+      const fresh = await database.prepare(`SELECT resource_selection_version selectionVersion
+        FROM integration_connections
+        WHERE id = ? AND organization_id = ? AND provider = ? AND sync_lease_owner = ? AND sync_version = ?`)
+        .bind(connection.id, context.organizationId, provider, lease.owner, lease.version)
+        .first<{ selectionVersion: number }>();
+      if (!fresh || Number(fresh.selectionVersion) !== body.expectedSelectionVersion) {
+        throw new ApiError(409, "MARKETING_SELECTION_CHANGED", "The resource selection changed. Refresh the resource list and try again.");
+      }
+      const statements: D1PreparedStatement[] = [
+        database.prepare(`INSERT INTO integration_connections (id)
+          SELECT ?
+          WHERE NOT EXISTS (
+            SELECT 1 FROM integration_connections
+            WHERE id = ? AND organization_id = ? AND provider = ? AND status = 'connected'
+              AND sync_lease_owner = ? AND sync_version = ? AND resource_selection_version = ?
+          )`).bind(
+            connection.id, connection.id, context.organizationId, provider,
+            lease.owner, lease.version, body.expectedSelectionVersion,
+          ),
+        database.prepare(`DELETE FROM marketing_daily_metrics WHERE resource_selection_id IN (
+          SELECT id FROM marketing_resource_selections WHERE organization_id = ? AND connection_id = ? AND provider = ?
+        )`).bind(context.organizationId, connection.id, provider),
+        database.prepare(`DELETE FROM marketing_resource_selections WHERE organization_id = ? AND connection_id = ? AND provider = ?`)
+          .bind(context.organizationId, connection.id, provider),
+        ...replacements.map((selection) => database.prepare(`INSERT INTO marketing_resource_selections (
+          id, organization_id, connection_id, provider, dataset, external_resource_ref,
+          external_resource_name, scope_kind, local_location_id, selected_by_user_id,
+          selected_at, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+          .bind(
+            selection.id, context.organizationId, connection.id, provider, selection.dataset,
+            selection.externalResourceRef, selection.externalResourceName, selection.scopeKind,
+            selection.localLocationId, context.userId, now, now, now,
+          )),
+        database.prepare(`UPDATE integration_connections
+          SET resource_selection_version = resource_selection_version + 1,
+              data_promotion_status = 'staging', last_successful_sync_at = NULL,
+              last_error_code = NULL, updated_at = ?
+          WHERE id = ? AND organization_id = ? AND provider = ?
+            AND sync_lease_owner = ? AND sync_version = ? AND resource_selection_version = ?`)
+          .bind(now, connection.id, context.organizationId, provider, lease.owner, lease.version, body.expectedSelectionVersion),
+      ];
+      let results: D1Result<unknown>[];
+      try {
+        results = await database.batch(statements);
+      } catch (error) {
+        const stillOwned = await database.prepare(`SELECT id FROM integration_connections
+          WHERE id = ? AND organization_id = ? AND provider = ? AND status = 'connected'
+            AND sync_lease_owner = ? AND sync_version = ? AND resource_selection_version = ?`)
+          .bind(
+            connection.id, context.organizationId, provider,
+            lease.owner, lease.version, body.expectedSelectionVersion,
+          )
+          .first<{ id: string }>();
+        if (!stillOwned) throw new ApiError(409, "MARKETING_SELECTION_CHANGED", "The resource selection changed before it could be saved.");
+        throw error;
+      }
+      if (Number(results.at(-1)?.meta.changes ?? 0) !== 1) throw new ApiError(409, "MARKETING_SELECTION_CHANGED", "The resource selection changed before it could be saved.");
+      await recordAudit({
+        request,
+        requestId,
+        organizationId: context.organizationId,
+        actorUserId: context.userId,
+        action: "integration.marketing_resources_selected",
+        resourceType: "integration_connection",
+        resourceId: connection.id,
+        details: {
+          provider,
+          connectionId: connection.id,
+          selectionVersion: connection.resourceSelectionVersion + 1,
+          selectedResourceCount: replacements.length,
+          resourcesJson: JSON.stringify(replacements.map((selection) => ({
+            selectionId: selection.id,
+            dataset: selection.dataset,
+            scopeKind: selection.scopeKind,
+          }))),
+        },
+      });
+      return jsonResponse({
+        connectionId: connection.id,
+        provider,
+        selectionVersion: connection.resourceSelectionVersion + 1,
+        dataPromotionStatus: "staging",
+        syncEligible: replacements.length > 0,
+        selections: replacements.map((selection) => ({
+          id: selection.id,
+          dataset: selection.dataset,
+          externalResourceRef: selection.externalResourceRef,
+          name: selection.externalResourceName,
+          scopeKind: selection.scopeKind,
+          localLocationId: selection.localLocationId,
+        })),
+      });
+    } finally {
+      await releaseIntegrationSyncLease(lease);
+    }
+  });
+}
+
 async function persistSnapshot(
-  organizationId: string,
-  connectionId: string,
-  provider: MarketingProvider,
   snapshot: MarketingSyncSnapshot,
+  input: { organizationId: string; connectionId: string; provider: MarketingProvider; mode: "sample" | "incremental" },
 ) {
   const database = getD1();
   const now = Math.floor(Date.now() / 1_000);
-  const metricStatements = snapshot.metrics.map((row) => database.prepare(`
+  const metricStatements = [
+    ...(input.mode === "sample" ? [database.prepare(`
+      DELETE FROM marketing_daily_metrics
+      WHERE resource_selection_id IN (
+        SELECT id FROM marketing_resource_selections
+        WHERE organization_id = ? AND connection_id = ? AND provider = ?
+      )
+    `).bind(input.organizationId, input.connectionId, input.provider)] : []),
+    ...snapshot.metrics.map((row) => database.prepare(`
     INSERT INTO marketing_daily_metrics (
-      id, organization_id, connection_id, provider, resource_ref, metric_date,
-      metric_key, value_milli, source_event_id, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(connection_id, source_event_id) DO UPDATE SET
-      resource_ref = excluded.resource_ref,
+      id, resource_selection_id, metric_date, metric_key, value_milli,
+      source_event_id, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(resource_selection_id, source_event_id) DO UPDATE SET
       metric_date = excluded.metric_date,
       metric_key = excluded.metric_key,
       value_milli = excluded.value_milli,
       updated_at = excluded.updated_at
-  `).bind(
-    crypto.randomUUID(), organizationId, connectionId, provider, row.resourceRef,
-    row.metricDate, row.metricKey, row.valueMilli, row.sourceEventId, now, now,
-  ));
-  await batchStatements(metricStatements);
-  if (provider === "google") {
-    const reviewStatements = snapshot.reviews.map((row) => database.prepare(`
-      INSERT INTO marketing_reviews (
-        id, organization_id, connection_id, provider, external_location_ref,
-        external_review_ref, rating_milli, comment, reviewed_at,
-        source_updated_at, created_at, updated_at
-      ) VALUES (?, ?, ?, 'google', ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(connection_id, external_review_ref) DO UPDATE SET
-        external_location_ref = excluded.external_location_ref,
-        rating_milli = excluded.rating_milli,
-        comment = excluded.comment,
-        reviewed_at = excluded.reviewed_at,
-        source_updated_at = excluded.source_updated_at,
-        updated_at = excluded.updated_at
     `).bind(
-      crypto.randomUUID(), organizationId, connectionId, row.externalLocationRef,
-      row.externalReviewRef, row.ratingMilli, row.comment, row.reviewedAt,
-      row.sourceUpdatedAt, now, now,
-    ));
-    await batchStatements(reviewStatements);
-  }
+    crypto.randomUUID(), row.resourceSelectionId, row.metricDate, row.metricKey,
+    row.valueMilli, row.sourceEventId, now, now,
+    )),
+  ];
+  await batchStatements(metricStatements);
 }
 
 export function marketingSync(request: Request, provider: MarketingProvider) {
@@ -405,18 +635,122 @@ export function marketingSync(request: Request, provider: MarketingProvider) {
     const body = await readJsonObject(request, 8_192);
     const requestedConnectionId = typeof body.connectionId === "string" ? body.connectionId : null;
     const connection = await requireOwnedIntegrationConnection(context.organizationId, provider, requestedConnectionId, { connected: true });
+    const mode = body.mode === "sample" || body.mode === "incremental" ? body.mode : null;
+    const expectedSelectionVersion = Number.isInteger(body.expectedSelectionVersion) ? Number(body.expectedSelectionVersion) : null;
+    if (!mode || expectedSelectionVersion === null) throw new ApiError(400, "MARKETING_SYNC_REQUEST_INVALID", "Choose sample or incremental sync and include the current resource-selection version.");
+    if (expectedSelectionVersion !== connection.resourceSelectionVersion) throw new ApiError(409, "MARKETING_SELECTION_CHANGED", "The selected resources changed. Refresh and try again.");
+    if (mode === "sample" && connection.dataPromotionStatus !== "staging") throw new ApiError(409, "MARKETING_SAMPLE_UNAVAILABLE", "Sample sync is available while selected resources are staged for review.");
+    if (mode === "incremental" && connection.dataPromotionStatus !== "approved") throw new ApiError(409, "MARKETING_APPROVAL_REQUIRED", "Approve a warning-free sample before incremental synchronization.");
     const lease = await acquireIntegrationSyncLease(context.organizationId, provider, connection.id, 20 * 60_000);
     if (!lease) throw new ApiError(409, "MARKETING_SYNC_IN_PROGRESS", `A ${providerName(provider)} synchronization is already in progress.`);
+    const runId = crypto.randomUUID();
+    const startedAt = new Date();
     try {
+      const fresh = await getD1().prepare(`SELECT resource_selection_version selectionVersion, data_promotion_status promotionStatus
+        FROM integration_connections
+        WHERE id = ? AND organization_id = ? AND provider = ? AND sync_lease_owner = ? AND sync_version = ?`)
+        .bind(connection.id, context.organizationId, provider, lease.owner, lease.version)
+        .first<{ selectionVersion: number; promotionStatus: string }>();
+      if (!fresh || Number(fresh.selectionVersion) !== expectedSelectionVersion) throw new ApiError(409, "MARKETING_SELECTION_CHANGED", "The selected resources changed before synchronization began.");
+      const selectionRows = await getDb().select().from(marketingResourceSelections).where(and(
+        eq(marketingResourceSelections.organizationId, context.organizationId),
+        eq(marketingResourceSelections.connectionId, connection.id),
+        eq(marketingResourceSelections.provider, provider),
+      ));
+      const selections: SelectedMarketingResource[] = selectionRows.map((selection) => ({
+        id: selection.id,
+        provider: selection.provider,
+        dataset: selection.dataset,
+        externalResourceRef: selection.externalResourceRef,
+        scopeKind: selection.scopeKind,
+        localLocationId: selection.localLocationId,
+      }));
+      if (!selections.length) throw new ApiError(409, "MARKETING_RESOURCE_SELECTION_REQUIRED", `Choose the exact ${providerName(provider)} resources and scopes before synchronization.`);
+      await getDb().insert(integrationSyncRuns).values({
+        id: runId,
+        organizationId: context.organizationId,
+        provider,
+        connectionId: connection.id,
+        mode,
+        status: "running",
+        resourceSelectionVersion: expectedSelectionVersion,
+        startedAt,
+        createdByUserId: context.userId,
+      });
       const accessToken = await marketingAccessToken(context.organizationId, connection.id, provider);
-      const snapshot = provider === "google" ? await syncGoogleMarketing(accessToken) : await syncMetaMarketing(accessToken);
-      await persistSnapshot(context.organizationId, connection.id, provider, snapshot);
+      const snapshot = provider === "google"
+        ? await syncGoogleMarketing(accessToken, selections)
+        : await syncMetaMarketing(accessToken, selections);
+      const selectedIds = new Set(selections.map((selection) => selection.id));
+      const metricCounts = new Map<string, number>();
+      for (const metric of snapshot.metrics) {
+        if (!selectedIds.has(metric.resourceSelectionId)) {
+          throw new ApiError(502, "MARKETING_RESOURCE_MISMATCH", `${providerName(provider)} returned measurements for an unselected resource.`);
+        }
+        metricCounts.set(metric.resourceSelectionId, (metricCounts.get(metric.resourceSelectionId) ?? 0) + 1);
+      }
+      const providerResults = new Map<string, MarketingSyncSnapshot["resourceResults"][number]>();
+      for (const result of snapshot.resourceResults) {
+        if (!selectedIds.has(result.resourceSelectionId) || providerResults.has(result.resourceSelectionId)) {
+          throw new ApiError(502, "MARKETING_RESOURCE_MISMATCH", `${providerName(provider)} returned inconsistent resource evidence.`);
+        }
+        providerResults.set(result.resourceSelectionId, result);
+      }
+      const resourceResults = selections.map((selection) => {
+        const recordsRead = metricCounts.get(selection.id) ?? 0;
+        const providerResult = providerResults.get(selection.id);
+        return {
+          resourceSelectionId: selection.id,
+          recordsRead,
+          warningCodes: [...new Set([
+            ...(providerResult?.warningCodes ?? []),
+            ...(recordsRead === 0 ? ["NO_MEASUREMENTS_RETURNED"] : []),
+          ])],
+        };
+      });
+      const warnings = [...new Set([
+        ...snapshot.warnings,
+        ...resourceResults.flatMap((result) => result.warningCodes),
+      ])];
+      const normalizedSnapshot: MarketingSyncSnapshot = { ...snapshot, resourceResults };
+      if (mode === "incremental" && warnings.length) {
+        await getDb().update(integrationSyncRuns).set({
+          recordsRead: snapshot.metrics.length,
+          recordsStaged: 0,
+          warningCount: warnings.length,
+        }).where(and(
+          eq(integrationSyncRuns.id, runId),
+          eq(integrationSyncRuns.organizationId, context.organizationId),
+          eq(integrationSyncRuns.connectionId, connection.id),
+        ));
+        throw new ApiError(409, "MARKETING_PARTIAL_SYNC", `${providerName(provider)} returned an incomplete refresh. Existing approved measurements were preserved.`);
+      }
+      const leaseRenewed = await renewIntegrationSyncLease(lease, 20 * 60_000);
+      if (!leaseRenewed) throw new ApiError(409, "MARKETING_SYNC_LEASE_LOST", "The marketing synchronization lease expired before the replacement snapshot could be saved.");
+      await persistSnapshot(normalizedSnapshot, {
+        organizationId: context.organizationId,
+        connectionId: connection.id,
+        provider,
+        mode,
+      });
       const completedAt = new Date();
-      await getDb().update(integrationConnections).set({
+      await getDb().update(integrationSyncRuns).set({
+        status: "completed",
+        recordsRead: snapshot.metrics.length,
+        recordsStaged: snapshot.metrics.length,
+        warningCount: warnings.length,
+        errorCode: null,
+        completedAt,
+      }).where(and(
+        eq(integrationSyncRuns.id, runId),
+        eq(integrationSyncRuns.organizationId, context.organizationId),
+        eq(integrationSyncRuns.connectionId, connection.id),
+      ));
+      const [published] = await getDb().update(integrationConnections).set({
         status: "connected",
-        dataPromotionStatus: "approved",
+        dataPromotionStatus: mode === "sample" ? "staging" : "approved",
         lastSuccessfulSyncAt: completedAt,
-        lastErrorCode: null,
+        lastErrorCode: warnings.length ? "MARKETING_SAMPLE_WARNINGS" : null,
         updatedAt: completedAt,
       }).where(and(
         eq(integrationConnections.id, connection.id),
@@ -424,7 +758,9 @@ export function marketingSync(request: Request, provider: MarketingProvider) {
         eq(integrationConnections.provider, provider),
         eq(integrationConnections.syncLeaseOwner, lease.owner),
         eq(integrationConnections.syncVersion, lease.version),
-      ));
+        eq(integrationConnections.resourceSelectionVersion, expectedSelectionVersion),
+      )).returning({ id: integrationConnections.id });
+      if (!published) throw new ApiError(409, "MARKETING_SELECTION_CHANGED", "The selected resources changed before synchronization could be published.");
       await recordAudit({
         request,
         requestId,
@@ -437,26 +773,43 @@ export function marketingSync(request: Request, provider: MarketingProvider) {
           provider,
           connectionId: connection.id,
           metricCount: snapshot.metrics.length,
-          reviewCount: snapshot.reviews.length,
           resourcesRead: snapshot.resourcesRead,
-          warningCodes: JSON.stringify(snapshot.warnings),
+          warningCodes: JSON.stringify(warnings),
+          mode,
+          selectionVersion: expectedSelectionVersion,
+          runId,
         },
       });
-      await releaseIntegrationSyncLease(lease);
       return jsonResponse({
         run: {
-          recordsRead: snapshot.metrics.length + snapshot.reviews.length,
-          recordsImported: snapshot.metrics.length + snapshot.reviews.length,
-          warningCount: snapshot.warnings.length,
+          id: runId,
+          mode,
+          selectionVersion: expectedSelectionVersion,
+          recordsRead: snapshot.metrics.length,
+          recordsImported: snapshot.metrics.length,
+          warningCount: warnings.length,
         },
         metrics: snapshot.metrics.length,
-        reviews: snapshot.reviews.length,
         resources: snapshot.resourcesRead,
-        warnings: snapshot.warnings,
-        nextStep: `${providerName(provider)} measurements are current in Marketing.`,
+        warnings,
+        resourceResults,
+        nextStep: mode === "sample"
+          ? warnings.length
+            ? `${providerName(provider)} remains staged because the sample completed with warnings.`
+            : `Review this exact-resource sample before making ${providerName(provider)} measurements available.`
+          : `${providerName(provider)} measurements were refreshed from the approved resources.`,
       });
     } catch (error) {
       const errorCode = error instanceof ApiError ? error.code : "MARKETING_SYNC_FAILED";
+      await getDb().update(integrationSyncRuns).set({
+        status: "failed",
+        errorCode,
+        completedAt: new Date(),
+      }).where(and(
+        eq(integrationSyncRuns.id, runId),
+        eq(integrationSyncRuns.organizationId, context.organizationId),
+        eq(integrationSyncRuns.connectionId, connection.id),
+      ));
       await getDb().update(integrationConnections).set({
         lastErrorCode: errorCode,
         updatedAt: new Date(),
@@ -466,8 +819,9 @@ export function marketingSync(request: Request, provider: MarketingProvider) {
         eq(integrationConnections.syncLeaseOwner, lease.owner),
         eq(integrationConnections.syncVersion, lease.version),
       ));
-      await releaseIntegrationSyncLease(lease);
       throw error;
+    } finally {
+      await releaseIntegrationSyncLease(lease);
     }
   });
 }
@@ -481,45 +835,51 @@ export function marketingDisconnect(request: Request, provider: MarketingProvide
     const body = await readJsonObject(request, 8_192);
     const requestedConnectionId = typeof body.connectionId === "string" ? body.connectionId : null;
     const connection = await requireOwnedIntegrationConnection(context.organizationId, provider, requestedConnectionId, { connected: true });
-    if (connection.syncLeaseOwner) throw new ApiError(409, "MARKETING_SYNC_IN_PROGRESS", "Wait for the current synchronization to finish before disconnecting.");
-    const accessToken = await marketingAccessToken(context.organizationId, connection.id, provider);
-    if (!await revokeMarketingAccess(provider, accessToken)) {
-      throw new ApiError(502, "MARKETING_REVOCATION_FAILED", `${providerName(provider)} access could not be revoked. Try again before removing the local connection.`);
-    }
+    const accessToken = await (async () => {
+      try {
+        return await storedMarketingAccessToken(context.organizationId, connection.id, provider);
+      } catch {
+        return null;
+      }
+    })();
     const deletedAt = new Date();
-    await getDb().delete(marketingDailyMetrics).where(and(
-      eq(marketingDailyMetrics.organizationId, context.organizationId),
-      eq(marketingDailyMetrics.connectionId, connection.id),
-    ));
-    if (provider === "google") {
-      await getDb().delete(marketingReviews).where(and(
-        eq(marketingReviews.organizationId, context.organizationId),
-        eq(marketingReviews.connectionId, connection.id),
-      ));
-    }
-    await getDb().delete(integrationSecrets).where(and(
-      eq(integrationSecrets.organizationId, context.organizationId),
-      eq(integrationSecrets.connectionId, connection.id),
-      eq(integrationSecrets.provider, provider),
-    ));
-    await getDb().delete(integrationOAuthStates).where(and(
-      eq(integrationOAuthStates.organizationId, context.organizationId),
-      eq(integrationOAuthStates.connectionId, connection.id),
-      eq(integrationOAuthStates.provider, provider),
-    ));
-    await getDb().update(integrationConnections).set({
-      status: "revoked",
-      dataPromotionStatus: "blocked",
-      lastSuccessfulSyncAt: null,
-      lastSyncCursor: null,
-      lastErrorCode: null,
-      privacyDataDeletedAt: deletedAt,
-      updatedAt: deletedAt,
-    }).where(and(
-      eq(integrationConnections.id, connection.id),
-      eq(integrationConnections.organizationId, context.organizationId),
-      eq(integrationConnections.provider, provider),
-    ));
+    const deletedAtSeconds = Math.floor(deletedAt.getTime() / 1_000);
+    const database = getD1();
+    await database.batch([
+      database.prepare(`
+        DELETE FROM marketing_daily_metrics
+        WHERE resource_selection_id IN (
+          SELECT id FROM marketing_resource_selections
+          WHERE organization_id = ? AND connection_id = ? AND provider = ?
+        )
+      `).bind(context.organizationId, connection.id, provider),
+      database.prepare(`
+        DELETE FROM marketing_resource_selections
+        WHERE organization_id = ? AND connection_id = ? AND provider = ?
+      `).bind(context.organizationId, connection.id, provider),
+      database.prepare(`
+        DELETE FROM integration_secrets
+        WHERE organization_id = ? AND connection_id = ? AND provider = ?
+      `).bind(context.organizationId, connection.id, provider),
+      database.prepare(`
+        DELETE FROM integration_oauth_states
+        WHERE organization_id = ? AND connection_id = ? AND provider = ?
+      `).bind(context.organizationId, connection.id, provider),
+      database.prepare(`
+        UPDATE integration_connections
+        SET status = 'revoked', data_promotion_status = 'blocked',
+            last_successful_sync_at = NULL, last_sync_cursor = NULL,
+            last_error_code = NULL, privacy_data_deleted_at = ?, updated_at = ?,
+            external_account_ref = NULL, external_account_name = NULL,
+            domain_prefix = NULL, api_version = NULL, scopes_json = '[]',
+            promotion_authorized_at = NULL, connected_at = NULL,
+            sync_lease_owner = NULL, sync_lease_expires_at = NULL,
+            sync_version = sync_version + 1,
+            resource_selection_version = resource_selection_version + 1
+        WHERE id = ? AND organization_id = ? AND provider = ?
+      `).bind(deletedAtSeconds, deletedAtSeconds, connection.id, context.organizationId, provider),
+    ]);
+    const providerRevoked = accessToken ? await revokeMarketingAccess(provider, accessToken).catch(() => false) : false;
     await recordAudit({
       request,
       requestId,
@@ -528,8 +888,14 @@ export function marketingDisconnect(request: Request, provider: MarketingProvide
       action: "integration.disconnected",
       resourceType: "integration",
       resourceId: connection.id,
-      details: { provider, connectionId: connection.id, importedMarketingDataDeleted: true },
+      details: { provider, connectionId: connection.id, importedMarketingDataDeleted: true, providerRevoked },
     });
-    return jsonResponse({ disconnected: true, connectionId: connection.id, provider });
+    return jsonResponse({
+      disconnected: true,
+      connectionId: connection.id,
+      provider,
+      providerRevoked,
+      nextStep: providerRevoked ? null : `Local access was removed. Revoke Vanteloq in your ${providerName(provider)} account settings to finish provider-side disconnection.`,
+    });
   });
 }

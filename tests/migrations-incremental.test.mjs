@@ -413,3 +413,65 @@ test("the composite schema stores explicit purchase-order lineage and leaves amb
     await miniflare.dispose();
   }
 });
+
+test("marketing migrations purge legacy provider content before requiring selected-resource lineage", async () => {
+  const miniflare = new Miniflare({
+    modules: true,
+    script: "export default { fetch() { return new Response('ok') } }",
+    d1Databases: { DB: `vanteloq-marketing-lineage-${crypto.randomUUID()}` },
+  });
+  try {
+    const database = await miniflare.getD1Database("DB");
+    const migrations = (await readdir(new URL("../drizzle/", import.meta.url)))
+      .filter((file) => /^\d{4}.*\.sql$/.test(file))
+      .sort();
+    for (const migration of migrations.filter((file) => file < "0027")) await applyMigration(database, migration);
+
+    const now = Date.now();
+    await database.batch([
+      database.prepare(`INSERT INTO users (id, email, display_name, status, created_at, updated_at)
+        VALUES ('marketing-owner', 'marketing@example.invalid', 'Marketing Owner', 'active', ?, ?)`).bind(now, now),
+      database.prepare(`INSERT INTO workspaces
+        (id, owner_name, business_name, legal_name, business_email, phone, website, industry, country,
+         province, city, address, postal_code, timezone, currency, fiscal_year_start, tax_number,
+         hours_json, source_mode, selected_pos, setup_complete, created_at, updated_at)
+        VALUES ('marketing-workspace', 'Marketing Owner', 'Marketing Store', 'Marketing Store Ltd.',
+         'marketing@example.invalid', '', '', 'Retail', 'CA', 'AB', 'Edmonton', '1 Marketing Avenue',
+         'T5A 1A1', 'America/Edmonton', 'CAD', 'January', '', '[]', 'connect_later', '', 1, ?, ?)`).bind(now, now),
+      database.prepare(`INSERT INTO integration_connections
+        (id, organization_id, provider, source_namespace, status, external_account_ref,
+         data_promotion_status, last_successful_sync_at, created_at, updated_at)
+        VALUES ('google-connection', 'marketing-workspace', 'google', 'google-account', 'connected',
+          'google-account', 'approved', ?, ?, ?)`).bind(now, now, now),
+      database.prepare(`INSERT INTO marketing_daily_metrics
+        (id, organization_id, connection_id, provider, resource_ref, metric_date, metric_key,
+         value_milli, source_event_id, created_at, updated_at)
+        VALUES ('legacy-metric', 'marketing-workspace', 'google-connection', 'google', 'properties/1',
+          '2026-08-10', 'analytics_sessions', 1000, 'legacy-event', ?, ?)`).bind(now, now),
+      database.prepare(`INSERT INTO marketing_reviews
+        (id, organization_id, connection_id, provider, external_location_ref, external_review_ref,
+         rating_milli, comment, reviewed_at, created_at, updated_at)
+        VALUES ('legacy-review', 'marketing-workspace', 'google-connection', 'google', 'locations/1',
+          'review-1', 5000, 'legacy content', '2026-08-10', ?, ?)`).bind(now, now),
+    ]);
+
+    await applyMigration(database, migrations.find((file) => file.startsWith("0027_")));
+    await applyMigration(database, migrations.find((file) => file.startsWith("0028_")));
+
+    assert.deepEqual(
+      await database.prepare(`SELECT data_promotion_status AS dataPromotionStatus,
+        last_successful_sync_at AS lastSuccessfulSyncAt, resource_selection_version AS selectionVersion
+        FROM integration_connections WHERE id = 'google-connection'`).first(),
+      { dataPromotionStatus: "staging", lastSuccessfulSyncAt: null, selectionVersion: 0 },
+    );
+    assert.equal((await database.prepare("SELECT COUNT(*) AS count FROM marketing_daily_metrics").first()).count, 0);
+    assert.equal(await database.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'marketing_reviews'").first(), null);
+    assert.ok(await database.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'marketing_resource_selections'").first());
+    const metricColumns = await database.prepare("PRAGMA table_info(marketing_daily_metrics)").all();
+    assert.ok(metricColumns.results.some((column) => column.name === "resource_selection_id"));
+    assert.equal(metricColumns.results.some((column) => column.name === "organization_id"), false);
+    assert.equal((await database.prepare("PRAGMA foreign_key_check").all()).results.length, 0);
+  } finally {
+    await miniflare.dispose();
+  }
+});

@@ -190,6 +190,20 @@
       "when": 1786477207208,
       "tag": "0026_lazy_gamma_corps",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "6",
+      "when": 1786480943584,
+      "tag": "0027_fuzzy_jean_grey",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "6",
+      "when": 1786482552078,
+      "tag": "0028_fair_wallflower",
+      "breakpoints": true
     }
   ]
 }

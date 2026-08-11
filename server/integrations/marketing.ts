@@ -10,20 +10,33 @@ import {
 } from "./lightspeed";
 
 export type MarketingProvider = "google" | "meta";
+export type MarketingDataset = "google_analytics" | "google_search_console" | "meta_ads";
+
+export type SelectedMarketingResource = {
+  id: string;
+  provider: MarketingProvider;
+  dataset: MarketingDataset;
+  externalResourceRef: string;
+  scopeKind: "organization" | "location";
+  localLocationId: string | null;
+};
+
+export type DiscoveredMarketingResource = {
+  dataset: MarketingDataset;
+  externalResourceRef: string;
+  name: string;
+  syncCapability: "metrics";
+};
 
 export const GOOGLE_MARKETING_SCOPES = [
   "openid",
   "email",
-  "https://www.googleapis.com/auth/business.manage",
   "https://www.googleapis.com/auth/webmasters.readonly",
   "https://www.googleapis.com/auth/analytics.readonly",
 ] as const;
 
 export const META_MARKETING_SCOPES = [
   "ads_read",
-  "read_insights",
-  "pages_show_list",
-  "pages_read_engagement",
 ] as const;
 
 const META_VERSION = /^v\d{1,2}\.\d$/;
@@ -37,27 +50,18 @@ type ProviderConfig = {
 };
 
 export type MarketingMetricImport = {
-  resourceRef: string;
+  resourceSelectionId: string;
   metricDate: string;
   metricKey: string;
   valueMilli: number;
   sourceEventId: string;
 };
 
-export type MarketingReviewImport = {
-  externalLocationRef: string;
-  externalReviewRef: string;
-  ratingMilli: number;
-  comment: string;
-  reviewedAt: string;
-  sourceUpdatedAt: string | null;
-};
-
 export type MarketingSyncSnapshot = {
   metrics: MarketingMetricImport[];
-  reviews: MarketingReviewImport[];
   resourcesRead: number;
   warnings: string[];
+  resourceResults: Array<{ resourceSelectionId: string; recordsRead: number; warningCodes: string[] }>;
 };
 
 type TokenResponse = {
@@ -95,8 +99,14 @@ export function marketingReadiness(provider: MarketingProvider) {
     apiVersion: provider === "google" ? "Google APIs v1" : metaVersion(),
     scopes: provider === "google" ? [...GOOGLE_MARKETING_SCOPES] : [...META_MARKETING_SCOPES],
     mode: "measurement" as const,
-    dataPromotionEnabled: true,
-    liveDataEligible: missingConfiguration.length === 0,
+    resourceSelectionStatus: "required" as const,
+    resourceSelectionRequired: true,
+    syncEligible: false,
+    dataPromotionEnabled: false,
+    liveDataEligible: false,
+    supportedDatasets: provider === "google"
+      ? ["google_analytics", "google_search_console"] as const
+      : ["meta_ads"] as const,
   };
 }
 
@@ -286,6 +296,15 @@ export async function marketingAccessToken(organizationId: string, connectionId:
   return refreshed.accessToken;
 }
 
+export async function storedMarketingAccessToken(organizationId: string, connectionId: string, provider: MarketingProvider) {
+  const [secret] = await getDb().select({ accessTokenCiphertext: integrationSecrets.accessTokenCiphertext }).from(integrationSecrets).where(and(
+    eq(integrationSecrets.organizationId, organizationId),
+    eq(integrationSecrets.connectionId, connectionId),
+    eq(integrationSecrets.provider, provider),
+  )).limit(1);
+  return secret ? decryptIntegrationSecret(secret.accessTokenCiphertext) : null;
+}
+
 function isoDate(value: unknown): string | null {
   if (typeof value === "string" && DATE.test(value)) return value;
   if (value && typeof value === "object") {
@@ -301,13 +320,6 @@ function isoDate(value: unknown): string | null {
   return null;
 }
 
-function dateParts(date: string, prefix: string, target: URLSearchParams) {
-  const [year, month, day] = date.split("-").map(Number);
-  target.set(`${prefix}.year`, String(year));
-  target.set(`${prefix}.month`, String(month));
-  target.set(`${prefix}.day`, String(day));
-}
-
 function dateWindow(days = 90) {
   const end = new Date();
   const start = new Date(end.getTime() - (days - 1) * 86_400_000);
@@ -319,207 +331,252 @@ function numberValue(value: unknown) {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 }
 
+const DISCOVERY_RESOURCE_LIMIT = 500;
+const DISCOVERY_PAGE_LIMIT = 10;
+
+function assertDiscoveryCapacity(resources: readonly DiscoveredMarketingResource[]) {
+  if (resources.length > DISCOVERY_RESOURCE_LIMIT) {
+    throw new ApiError(409, "MARKETING_RESOURCE_DISCOVERY_LIMIT", `This provider account exposes more than ${DISCOVERY_RESOURCE_LIMIT} resources. Reduce its accessible resources before selecting data.`);
+  }
+}
+
+async function discoverGoogleAnalyticsResources(accessToken: string) {
+  const resources: DiscoveredMarketingResource[] = [];
+  const seenPageTokens = new Set<string>();
+  let pageToken: string | null = null;
+  for (let page = 0; page < DISCOVERY_PAGE_LIMIT; page += 1) {
+    const url = new URL("https://analyticsadmin.googleapis.com/v1beta/accountSummaries");
+    url.searchParams.set("pageSize", "200");
+    if (pageToken) url.searchParams.set("pageToken", pageToken);
+    const result = await providerJson<{
+      accountSummaries?: Array<{ propertySummaries?: Array<{ property?: string; displayName?: string }> }>;
+      nextPageToken?: string;
+    }>(
+      url.toString(),
+      { headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" } },
+      "GOOGLE_ANALYTICS_PROPERTIES_FAILED",
+      "Google Analytics properties could not be loaded.",
+    );
+    resources.push(...(result.accountSummaries ?? []).flatMap((account) => account.propertySummaries ?? []).flatMap((property) => property.property ? [{
+      dataset: "google_analytics" as const,
+      externalResourceRef: property.property,
+      name: property.displayName || property.property,
+      syncCapability: "metrics" as const,
+    }] : []));
+    assertDiscoveryCapacity(resources);
+    const nextPageToken = typeof result.nextPageToken === "string" ? result.nextPageToken.trim() : "";
+    if (!nextPageToken) return resources;
+    if (nextPageToken.length > 2_048 || seenPageTokens.has(nextPageToken)) {
+      throw new ApiError(502, "GOOGLE_ANALYTICS_PAGINATION_INVALID", "Google Analytics returned an invalid resource page sequence.");
+    }
+    seenPageTokens.add(nextPageToken);
+    pageToken = nextPageToken;
+  }
+  throw new ApiError(502, "GOOGLE_ANALYTICS_PAGINATION_LIMIT", "Google Analytics returned too many resource pages to verify safely.");
+}
+
+export async function discoverGoogleMarketingResources(accessToken: string): Promise<DiscoveredMarketingResource[]> {
+  const [searchResult, analyticsResources] = await Promise.all([
+    providerJson<{ siteEntry?: Array<{ siteUrl?: string }> }>(
+      "https://www.googleapis.com/webmasters/v3/sites",
+      { headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" } },
+      "GOOGLE_SEARCH_CONSOLE_FAILED",
+      "Search Console resources could not be loaded.",
+    ),
+    discoverGoogleAnalyticsResources(accessToken),
+  ]);
+  const searchResources = (searchResult.siteEntry ?? []).flatMap((site) => site.siteUrl ? [{
+    dataset: "google_search_console" as const,
+    externalResourceRef: site.siteUrl,
+    name: site.siteUrl,
+    syncCapability: "metrics" as const,
+  }] : []);
+  const resources = [...searchResources, ...analyticsResources];
+  assertDiscoveryCapacity(resources);
+  return resources;
+}
+
+export async function discoverMetaMarketingResources(accessToken: string): Promise<DiscoveredMarketingResource[]> {
+  const current = config("meta");
+  const resources: DiscoveredMarketingResource[] = [];
+  const seenCursors = new Set<string>();
+  let after: string | null = null;
+  for (let page = 0; page < DISCOVERY_PAGE_LIMIT; page += 1) {
+    const url = new URL(`https://graph.facebook.com/${current.apiVersion}/me/adaccounts`);
+    url.searchParams.set("fields", "id,name,account_status,currency");
+    url.searchParams.set("limit", "100");
+    url.searchParams.set("access_token", accessToken);
+    if (after) url.searchParams.set("after", after);
+    const accounts = await providerJson<{
+      data?: Array<{ id?: string; name?: string; account_status?: number; currency?: string }>;
+      paging?: { cursors?: { after?: string }; next?: string };
+    }>(
+      url.toString(),
+      { headers: { Accept: "application/json" } },
+      "META_AD_ACCOUNTS_FAILED",
+      "Meta advertising accounts could not be loaded.",
+    );
+    resources.push(...(accounts.data ?? []).flatMap((account) => account.id && (account.account_status === undefined || account.account_status === 1) ? [{
+      dataset: "meta_ads" as const,
+      externalResourceRef: account.id,
+      name: `${account.name || account.id}${account.currency ? ` · ${account.currency}` : ""}`,
+      syncCapability: "metrics" as const,
+    }] : []));
+    assertDiscoveryCapacity(resources);
+    const nextCursor = typeof accounts.paging?.cursors?.after === "string" ? accounts.paging.cursors.after.trim() : "";
+    if (!accounts.paging?.next || !nextCursor) return resources;
+    if (nextCursor.length > 2_048 || seenCursors.has(nextCursor)) {
+      throw new ApiError(502, "META_AD_ACCOUNTS_PAGINATION_INVALID", "Meta returned an invalid advertising-account page sequence.");
+    }
+    seenCursors.add(nextCursor);
+    after = nextCursor;
+  }
+  throw new ApiError(502, "META_AD_ACCOUNTS_PAGINATION_LIMIT", "Meta returned too many advertising-account pages to verify safely.");
+}
+
 async function metricCollector(provider: MarketingProvider) {
   const values = new Map<string, Omit<MarketingMetricImport, "sourceEventId">>();
-  const add = (resourceRef: string, metricDate: string | null, metricKey: string, value: unknown, aggregate = false) => {
+  const add = (resourceSelectionId: string, metricDate: string | null, metricKey: string, value: unknown, aggregate = false) => {
     const numeric = numberValue(value);
     if (!metricDate || numeric === null) return;
-    const safeResource = resourceRef.slice(0, 500);
-    const key = `${safeResource}\u0000${metricDate}\u0000${metricKey}`;
+    const key = `${resourceSelectionId}\u0000${metricDate}\u0000${metricKey}`;
     const valueMilli = Math.round(numeric * 1_000);
     const previous = values.get(key);
-    values.set(key, { resourceRef: safeResource, metricDate, metricKey, valueMilli: aggregate ? (previous?.valueMilli ?? 0) + valueMilli : valueMilli });
+    values.set(key, { resourceSelectionId, metricDate, metricKey, valueMilli: aggregate ? (previous?.valueMilli ?? 0) + valueMilli : valueMilli });
   };
   const finish = async () => Promise.all([...values.values()].map(async (row) => ({
     ...row,
-    sourceEventId: await sha256Hex(`${provider}|${row.resourceRef}|${row.metricDate}|${row.metricKey}`),
+    sourceEventId: await sha256Hex(`${provider}|${row.resourceSelectionId}|${row.metricDate}|${row.metricKey}`),
   })));
   return { add, finish };
 }
 
-async function googleSearchMetrics(accessToken: string, add: Awaited<ReturnType<typeof metricCollector>>["add"]) {
+async function googleSearchMetrics(accessToken: string, selection: SelectedMarketingResource, add: Awaited<ReturnType<typeof metricCollector>>["add"]) {
   const { start, end } = dateWindow();
-  const sites = await providerJson<{ siteEntry?: Array<{ siteUrl?: string }> }>("https://www.googleapis.com/webmasters/v3/sites", { headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" } }, "GOOGLE_SEARCH_CONSOLE_FAILED", "Search Console measurements could not be loaded.");
-  let resources = 0;
-  for (const site of (sites.siteEntry ?? []).slice(0, 10)) {
-    if (!site.siteUrl) continue;
-    const endpoint = `https://www.googleapis.com/webmasters/v3/sites/${encodeURIComponent(site.siteUrl)}/searchAnalytics/query`;
-    const report = await providerJson<{ rows?: Array<{ keys?: string[]; clicks?: number; impressions?: number; ctr?: number; position?: number }> }>(endpoint, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ startDate: start, endDate: end, dimensions: ["date"], rowLimit: 1_000 }),
-    }, "GOOGLE_SEARCH_CONSOLE_REPORT_FAILED", "A Search Console report could not be loaded.");
-    resources += 1;
-    for (const row of report.rows ?? []) {
-      const date = isoDate(row.keys?.[0]);
-      add(site.siteUrl, date, "search_clicks", row.clicks);
-      add(site.siteUrl, date, "search_impressions", row.impressions);
-      add(site.siteUrl, date, "search_ctr", row.ctr);
-      add(site.siteUrl, date, "search_position", row.position);
-    }
+  const siteRef = selection.externalResourceRef;
+  if (!siteRef || siteRef.length > 500) throw new ApiError(409, "GOOGLE_SEARCH_SELECTION_INVALID", "The selected Search Console resource is invalid.");
+  const endpoint = `https://www.googleapis.com/webmasters/v3/sites/${encodeURIComponent(siteRef)}/searchAnalytics/query`;
+  const report = await providerJson<{ rows?: Array<{ keys?: string[]; clicks?: number; impressions?: number; ctr?: number; position?: number }> }>(endpoint, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ startDate: start, endDate: end, dimensions: ["date"], rowLimit: 1_000 }),
+  }, "GOOGLE_SEARCH_CONSOLE_REPORT_FAILED", "The selected Search Console report could not be loaded.");
+  for (const row of report.rows ?? []) {
+    const date = isoDate(row.keys?.[0]);
+    add(selection.id, date, "search_clicks", row.clicks);
+    add(selection.id, date, "search_impressions", row.impressions);
+    add(selection.id, date, "search_ctr", row.ctr);
+    add(selection.id, date, "search_position", row.position);
   }
-  return resources;
 }
 
-async function googleAnalyticsMetrics(accessToken: string, add: Awaited<ReturnType<typeof metricCollector>>["add"]) {
+async function googleAnalyticsMetrics(accessToken: string, selection: SelectedMarketingResource, add: Awaited<ReturnType<typeof metricCollector>>["add"]) {
   const { start, end } = dateWindow();
-  const summaries = await providerJson<{ accountSummaries?: Array<{ propertySummaries?: Array<{ property?: string; displayName?: string }> }> }>("https://analyticsadmin.googleapis.com/v1beta/accountSummaries?pageSize=200", { headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" } }, "GOOGLE_ANALYTICS_PROPERTIES_FAILED", "Google Analytics properties could not be loaded.");
-  const properties = (summaries.accountSummaries ?? []).flatMap((account) => account.propertySummaries ?? []).filter((property) => property.property).slice(0, 10);
-  for (const property of properties) {
-    const report = await providerJson<{ rows?: Array<{ dimensionValues?: Array<{ value?: string }>; metricValues?: Array<{ value?: string }> }> }>(`https://analyticsdata.googleapis.com/v1beta/${property.property}:runReport`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        dateRanges: [{ startDate: start, endDate: end }],
-        dimensions: [{ name: "date" }],
-        metrics: [{ name: "sessions" }, { name: "engagedSessions" }, { name: "keyEvents" }, { name: "screenPageViews" }],
-        limit: "1000",
-      }),
-    }, "GOOGLE_ANALYTICS_REPORT_FAILED", "A Google Analytics report could not be loaded.");
-    for (const row of report.rows ?? []) {
-      const rawDate = row.dimensionValues?.[0]?.value ?? "";
-      const date = /^\d{8}$/.test(rawDate) ? `${rawDate.slice(0, 4)}-${rawDate.slice(4, 6)}-${rawDate.slice(6, 8)}` : null;
-      const resource = `${property.property}:${property.displayName ?? "property"}`;
-      add(resource, date, "analytics_sessions", row.metricValues?.[0]?.value);
-      add(resource, date, "analytics_engaged_sessions", row.metricValues?.[1]?.value);
-      add(resource, date, "analytics_key_events", row.metricValues?.[2]?.value);
-      add(resource, date, "analytics_page_views", row.metricValues?.[3]?.value);
-    }
+  const propertyRef = selection.externalResourceRef;
+  if (!/^properties\/\d+$/.test(propertyRef)) throw new ApiError(409, "GOOGLE_ANALYTICS_SELECTION_INVALID", "The selected Analytics property is invalid.");
+  const report = await providerJson<{ rows?: Array<{ dimensionValues?: Array<{ value?: string }>; metricValues?: Array<{ value?: string }> }> }>(`https://analyticsdata.googleapis.com/v1beta/${propertyRef}:runReport`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      dateRanges: [{ startDate: start, endDate: end }],
+      dimensions: [{ name: "date" }],
+      metrics: [{ name: "sessions" }, { name: "engagedSessions" }, { name: "keyEvents" }, { name: "screenPageViews" }],
+      limit: "1000",
+    }),
+  }, "GOOGLE_ANALYTICS_REPORT_FAILED", "The selected Google Analytics report could not be loaded.");
+  for (const row of report.rows ?? []) {
+    const rawDate = row.dimensionValues?.[0]?.value ?? "";
+    const date = /^\d{8}$/.test(rawDate) ? `${rawDate.slice(0, 4)}-${rawDate.slice(4, 6)}-${rawDate.slice(6, 8)}` : null;
+    add(selection.id, date, "analytics_sessions", row.metricValues?.[0]?.value);
+    add(selection.id, date, "analytics_engaged_sessions", row.metricValues?.[1]?.value);
+    add(selection.id, date, "analytics_key_events", row.metricValues?.[2]?.value);
+    add(selection.id, date, "analytics_page_views", row.metricValues?.[3]?.value);
   }
-  return properties.length;
 }
 
-const googlePerformanceMetrics: Record<string, string> = {
-  WEBSITE_CLICKS: "business_website_clicks",
-  CALL_CLICKS: "business_call_clicks",
-  BUSINESS_DIRECTION_REQUESTS: "business_direction_requests",
-  BUSINESS_IMPRESSIONS_DESKTOP_MAPS: "business_impressions",
-  BUSINESS_IMPRESSIONS_DESKTOP_SEARCH: "business_impressions",
-  BUSINESS_IMPRESSIONS_MOBILE_MAPS: "business_impressions",
-  BUSINESS_IMPRESSIONS_MOBILE_SEARCH: "business_impressions",
-};
-
-function ratingValue(value: unknown) {
-  if (typeof value === "number" && value >= 1 && value <= 5) return value;
-  const ratings: Record<string, number> = { ONE: 1, TWO: 2, THREE: 3, FOUR: 4, FIVE: 5, ONE_STAR: 1, TWO_STAR: 2, THREE_STAR: 3, FOUR_STAR: 4, FIVE_STAR: 5 };
-  return typeof value === "string" ? ratings[value] ?? null : null;
-}
-
-async function googleBusinessMetrics(accessToken: string, add: Awaited<ReturnType<typeof metricCollector>>["add"]) {
-  const { start, end } = dateWindow();
-  const accounts = await providerJson<{ accounts?: Array<{ name?: string; accountName?: string }> }>("https://mybusinessaccountmanagement.googleapis.com/v1/accounts?pageSize=20", { headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" } }, "GOOGLE_BUSINESS_ACCOUNTS_FAILED", "Google Business Profile accounts could not be loaded.");
-  const reviews: MarketingReviewImport[] = [];
-  let resources = 0;
-  for (const account of (accounts.accounts ?? []).slice(0, 10)) {
-    if (!account.name) continue;
-    const locations = await providerJson<{ locations?: Array<{ name?: string; title?: string }> }>(`https://mybusinessbusinessinformation.googleapis.com/v1/${account.name}/locations?readMask=name,title,storeCode&pageSize=100`, { headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" } }, "GOOGLE_BUSINESS_LOCATIONS_FAILED", "Google Business Profile locations could not be loaded.");
-    for (const location of (locations.locations ?? []).slice(0, 100)) {
-      if (!location.name) continue;
-      resources += 1;
-      const parameters = new URLSearchParams();
-      Object.keys(googlePerformanceMetrics).forEach((metric) => parameters.append("dailyMetrics", metric));
-      dateParts(start, "dailyRange.startDate", parameters);
-      dateParts(end, "dailyRange.endDate", parameters);
-      const performance = await providerJson<{ multiDailyMetricTimeSeries?: Array<{ dailyMetricTimeSeries?: Array<{ dailyMetric?: string; timeSeries?: { datedValues?: Array<{ date?: unknown; value?: string }> } }> }> }>(`https://businessprofileperformance.googleapis.com/v1/${location.name}:fetchMultiDailyMetricsTimeSeries?${parameters}`, { headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" } }, "GOOGLE_BUSINESS_PERFORMANCE_FAILED", "Google Business Profile performance could not be loaded.");
-      for (const group of performance.multiDailyMetricTimeSeries ?? []) {
-        for (const series of group.dailyMetricTimeSeries ?? []) {
-          const metricKey = series.dailyMetric ? googlePerformanceMetrics[series.dailyMetric] : undefined;
-          if (!metricKey) continue;
-          for (const point of series.timeSeries?.datedValues ?? []) add(location.name, isoDate(point.date), metricKey, point.value, metricKey === "business_impressions");
-        }
-      }
-      let pageToken = "";
-      for (let page = 0; page < 5; page += 1) {
-        const reviewUrl = new URL(`https://mybusiness.googleapis.com/v4/${account.name}/${location.name}/reviews`);
-        reviewUrl.searchParams.set("pageSize", "50");
-        reviewUrl.searchParams.set("orderBy", "updateTime desc");
-        if (pageToken) reviewUrl.searchParams.set("pageToken", pageToken);
-        const result = await providerJson<{ reviews?: Array<{ name?: string; reviewId?: string; starRating?: unknown; comment?: string; createTime?: string; updateTime?: string }>; nextPageToken?: string }>(reviewUrl.toString(), { headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" } }, "GOOGLE_BUSINESS_REVIEWS_FAILED", "Google Business Profile reviews could not be loaded.");
-        for (const review of result.reviews ?? []) {
-          const rating = ratingValue(review.starRating);
-          const reference = review.reviewId || review.name;
-          const reviewedAt = review.createTime?.slice(0, 10);
-          if (!rating || !reference || !reviewedAt || !DATE.test(reviewedAt)) continue;
-          reviews.push({
-            externalLocationRef: location.name,
-            externalReviewRef: reference,
-            ratingMilli: rating * 1_000,
-            comment: (review.comment ?? "").slice(0, 2_000),
-            reviewedAt,
-            sourceUpdatedAt: review.updateTime?.slice(0, 10) || null,
-          });
-        }
-        pageToken = result.nextPageToken ?? "";
-        if (!pageToken) break;
-      }
-    }
-  }
-  return { resources, reviews };
-}
-
-export async function syncGoogleMarketing(accessToken: string): Promise<MarketingSyncSnapshot> {
+export async function syncGoogleMarketing(accessToken: string, selections: readonly SelectedMarketingResource[]): Promise<MarketingSyncSnapshot> {
   const collector = await metricCollector("google");
   const warnings: string[] = [];
   let resourcesRead = 0;
-  const reviews: MarketingReviewImport[] = [];
-  try { resourcesRead += await googleSearchMetrics(accessToken, collector.add); } catch (error) { warnings.push(error instanceof ApiError ? error.code : "GOOGLE_SEARCH_CONSOLE_FAILED"); }
-  try { resourcesRead += await googleAnalyticsMetrics(accessToken, collector.add); } catch (error) { warnings.push(error instanceof ApiError ? error.code : "GOOGLE_ANALYTICS_FAILED"); }
-  try {
-    const business = await googleBusinessMetrics(accessToken, collector.add);
-    resourcesRead += business.resources;
-    reviews.push(...business.reviews);
-  } catch (error) { warnings.push(error instanceof ApiError ? error.code : "GOOGLE_BUSINESS_PROFILE_FAILED"); }
-  if (warnings.length === 3) throw new ApiError(502, "GOOGLE_MARKETING_SYNC_FAILED", "Google did not return Search Console, Analytics, or Business Profile data. Check API access and reconnect if needed.");
-  return { metrics: await collector.finish(), reviews, resourcesRead, warnings };
+  const resourceResults: MarketingSyncSnapshot["resourceResults"] = [];
+  const supported = selections.filter((selection) => selection.provider === "google" && ["google_search_console", "google_analytics"].includes(selection.dataset));
+  if (!supported.length) throw new ApiError(409, "MARKETING_RESOURCE_SELECTION_REQUIRED", "Choose at least one metrics-capable Google resource before synchronization.");
+  for (const selection of supported) {
+    const before = (await collector.finish()).length;
+    const warningCodes: string[] = [];
+    try {
+      if (selection.dataset === "google_search_console") await googleSearchMetrics(accessToken, selection, collector.add);
+      else await googleAnalyticsMetrics(accessToken, selection, collector.add);
+      resourcesRead += 1;
+    } catch (error) {
+      const code = error instanceof ApiError ? error.code : "GOOGLE_MARKETING_RESOURCE_FAILED";
+      warningCodes.push(code);
+      warnings.push(code);
+    }
+    const after = (await collector.finish()).length;
+    resourceResults.push({ resourceSelectionId: selection.id, recordsRead: Math.max(0, after - before), warningCodes });
+  }
+  if (!resourcesRead) throw new ApiError(502, "GOOGLE_MARKETING_SYNC_FAILED", "Google did not return data for any selected resource.");
+  return { metrics: await collector.finish(), resourcesRead, warnings, resourceResults };
 }
 
-export async function syncMetaMarketing(accessToken: string): Promise<MarketingSyncSnapshot> {
+export async function syncMetaMarketing(accessToken: string, selections: readonly SelectedMarketingResource[]): Promise<MarketingSyncSnapshot> {
   const current = config("meta");
   const collector = await metricCollector("meta");
-  const accountUrl = new URL(`https://graph.facebook.com/${current.apiVersion}/me/adaccounts`);
-  accountUrl.searchParams.set("fields", "id,name,account_status");
-  accountUrl.searchParams.set("limit", "100");
-  accountUrl.searchParams.set("access_token", accessToken);
-  const accounts = await providerJson<{ data?: Array<{ id?: string; name?: string; account_status?: number }> }>(accountUrl.toString(), { headers: { Accept: "application/json" } }, "META_AD_ACCOUNTS_FAILED", "Meta advertising accounts could not be loaded.");
   const { start, end } = dateWindow();
   let resourcesRead = 0;
-  for (const account of (accounts.data ?? []).filter((row) => row.id).slice(0, 25)) {
-    const insights = new URL(`https://graph.facebook.com/${current.apiVersion}/${account.id}/insights`);
+  const warnings: string[] = [];
+  const resourceResults: MarketingSyncSnapshot["resourceResults"] = [];
+  const supported = selections.filter((selection) => selection.provider === "meta" && selection.dataset === "meta_ads");
+  if (!supported.length) throw new ApiError(409, "MARKETING_RESOURCE_SELECTION_REQUIRED", "Choose at least one Meta advertising account before synchronization.");
+  for (const selection of supported) {
+    if (!/^act_\d+$/.test(selection.externalResourceRef)) throw new ApiError(409, "META_AD_SELECTION_INVALID", "The selected Meta advertising account is invalid.");
+    const insights = new URL(`https://graph.facebook.com/${current.apiVersion}/${selection.externalResourceRef}/insights`);
     insights.searchParams.set("fields", "date_start,impressions,reach,clicks,inline_link_clicks,spend,ctr,cpc");
     insights.searchParams.set("level", "account");
     insights.searchParams.set("time_increment", "1");
     insights.searchParams.set("time_range", JSON.stringify({ since: start, until: end }));
     insights.searchParams.set("limit", "1000");
     insights.searchParams.set("access_token", accessToken);
-    const report = await providerJson<{ data?: Array<Record<string, string>> }>(insights.toString(), { headers: { Accept: "application/json" } }, "META_INSIGHTS_FAILED", "Meta advertising insights could not be loaded.");
-    resourcesRead += 1;
-    for (const row of report.data ?? []) {
-      const date = isoDate(row.date_start);
-      const resource = `${account.id}:${account.name ?? "ad account"}`;
-      collector.add(resource, date, "meta_impressions", row.impressions);
-      collector.add(resource, date, "meta_reach", row.reach);
-      collector.add(resource, date, "meta_clicks", row.clicks);
-      collector.add(resource, date, "meta_link_clicks", row.inline_link_clicks);
-      collector.add(resource, date, "meta_spend", row.spend);
-      collector.add(resource, date, "meta_ctr", row.ctr);
-      collector.add(resource, date, "meta_cpc", row.cpc);
+    const warningCodes: string[] = [];
+    let recordsRead = 0;
+    try {
+      const report = await providerJson<{ data?: Array<Record<string, string>> }>(insights.toString(), { headers: { Accept: "application/json" } }, "META_INSIGHTS_FAILED", "The selected Meta advertising insights could not be loaded.");
+      resourcesRead += 1;
+      recordsRead = report.data?.length ?? 0;
+      for (const row of report.data ?? []) {
+        const date = isoDate(row.date_start);
+        collector.add(selection.id, date, "meta_impressions", row.impressions);
+        collector.add(selection.id, date, "meta_reach", row.reach);
+        collector.add(selection.id, date, "meta_clicks", row.clicks);
+        collector.add(selection.id, date, "meta_link_clicks", row.inline_link_clicks);
+        collector.add(selection.id, date, "meta_spend", row.spend);
+        collector.add(selection.id, date, "meta_ctr", row.ctr);
+        collector.add(selection.id, date, "meta_cpc", row.cpc);
+      }
+    } catch (error) {
+      const code = error instanceof ApiError ? error.code : "META_INSIGHTS_FAILED";
+      warningCodes.push(code);
+      warnings.push(code);
     }
+    resourceResults.push({ resourceSelectionId: selection.id, recordsRead, warningCodes });
   }
-  return { metrics: await collector.finish(), reviews: [], resourcesRead, warnings: [] };
+  if (!resourcesRead) throw new ApiError(502, "META_MARKETING_SYNC_FAILED", "Meta did not return data for any selected advertising account.");
+  return { metrics: await collector.finish(), resourcesRead, warnings, resourceResults };
 }
 
 export async function revokeMarketingAccess(provider: MarketingProvider, accessToken: string) {
   if (provider === "google") {
     const url = new URL("https://oauth2.googleapis.com/revoke");
     url.searchParams.set("token", accessToken);
-    const response = await fetch(url, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" } });
+    const response = await fetch(url, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, signal: AbortSignal.timeout(5_000) });
     await response.body?.cancel().catch(() => undefined);
     return response.ok;
   }
   const current = config("meta");
   const url = new URL(`https://graph.facebook.com/${current.apiVersion}/me/permissions`);
   url.searchParams.set("access_token", accessToken);
-  const response = await fetch(url, { method: "DELETE" });
+  const response = await fetch(url, { method: "DELETE", signal: AbortSignal.timeout(5_000) });
   await response.body?.cancel().catch(() => undefined);
   return response.ok;
 }

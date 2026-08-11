@@ -656,6 +656,7 @@ export const integrationConnections = sqliteTable(
     syncLeaseOwner: text("sync_lease_owner"),
     syncLeaseExpiresAt: integer("sync_lease_expires_at", { mode: "timestamp" }),
     syncVersion: integer("sync_version").notNull().default(0),
+    resourceSelectionVersion: integer("resource_selection_version").notNull().default(0),
     privacyDataDeletedAt: integer("privacy_data_deleted_at", { mode: "timestamp" }),
     createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
     updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
@@ -671,17 +672,41 @@ export const integrationConnections = sqliteTable(
   ],
 );
 
-// Daily values imported from authorized marketing providers. Values use a
-// fixed three-decimal scale so counts, rates and currency values remain exact
-// without relying on floating-point database storage.
-export const marketingDailyMetrics = sqliteTable(
-  "marketing_daily_metrics",
+export const marketingResourceSelections = sqliteTable(
+  "marketing_resource_selections",
   {
     id: text("id").primaryKey(),
     organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
     connectionId: text("connection_id").notNull().references(() => integrationConnections.id, { onDelete: "cascade" }),
     provider: text("provider", { enum: ["google", "meta"] }).notNull(),
-    resourceRef: text("resource_ref").notNull(),
+    dataset: text("dataset", { enum: ["google_analytics", "google_search_console", "meta_ads"] }).notNull(),
+    externalResourceRef: text("external_resource_ref").notNull(),
+    externalResourceName: text("external_resource_name").notNull(),
+    scopeKind: text("scope_kind", { enum: ["organization", "location"] }).notNull(),
+    localLocationId: text("local_location_id").references(() => organizationLocations.id, { onDelete: "restrict" }),
+    selectedByUserId: text("selected_by_user_id").notNull().references(() => users.id),
+    selectedAt: integer("selected_at", { mode: "timestamp" }).notNull(),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("marketing_resource_selections_resource_unique").on(table.organizationId, table.connectionId, table.dataset, table.externalResourceRef),
+    index("marketing_resource_selections_connection_idx").on(table.organizationId, table.connectionId),
+    index("marketing_resource_selections_location_idx").on(table.organizationId, table.localLocationId),
+    check("marketing_resource_selections_provider_check", sql`${table.provider} in ('google','meta')`),
+    check("marketing_resource_selections_dataset_check", sql`${table.dataset} in ('google_analytics','google_search_console','meta_ads')`),
+    check("marketing_resource_selections_pair_check", sql`((${table.provider} = 'google' and ${table.dataset} in ('google_analytics','google_search_console')) or (${table.provider} = 'meta' and ${table.dataset} = 'meta_ads'))`),
+    check("marketing_resource_selections_scope_check", sql`((${table.scopeKind} = 'organization' and ${table.localLocationId} is null) or (${table.scopeKind} = 'location' and ${table.localLocationId} is not null))`),
+  ],
+);
+
+// Daily measurement lineage is derived from the required, owner-selected
+// provider resource rather than duplicated free-form provider references.
+export const marketingDailyMetrics = sqliteTable(
+  "marketing_daily_metrics",
+  {
+    id: text("id").primaryKey(),
+    resourceSelectionId: text("resource_selection_id").notNull().references(() => marketingResourceSelections.id, { onDelete: "cascade" }),
     metricDate: text("metric_date").notNull(),
     metricKey: text("metric_key").notNull(),
     valueMilli: integer("value_milli").notNull(),
@@ -690,38 +715,9 @@ export const marketingDailyMetrics = sqliteTable(
     updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
   },
   (table) => [
-    uniqueIndex("marketing_daily_metrics_source_unique").on(table.connectionId, table.sourceEventId),
-    index("marketing_daily_metrics_workspace_date_idx").on(table.organizationId, table.metricDate),
-    index("marketing_daily_metrics_provider_metric_idx").on(table.organizationId, table.provider, table.metricKey, table.metricDate),
-    check("marketing_daily_metrics_provider_check", sql`${table.provider} in ('google','meta')`),
+    uniqueIndex("marketing_daily_metrics_source_unique").on(table.resourceSelectionId, table.sourceEventId),
+    index("marketing_daily_metrics_selection_date_idx").on(table.resourceSelectionId, table.metricDate, table.metricKey),
     check("marketing_daily_metrics_value_check", sql`${table.valueMilli} >= 0`),
-  ],
-);
-
-// Google review content is stored without reviewer names or profile photos.
-// The external review reference provides idempotency while the comment and
-// rating support aggregate themes and evidence-backed recommendations.
-export const marketingReviews = sqliteTable(
-  "marketing_reviews",
-  {
-    id: text("id").primaryKey(),
-    organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
-    connectionId: text("connection_id").notNull().references(() => integrationConnections.id, { onDelete: "cascade" }),
-    provider: text("provider", { enum: ["google"] }).notNull().default("google"),
-    externalLocationRef: text("external_location_ref").notNull(),
-    externalReviewRef: text("external_review_ref").notNull(),
-    ratingMilli: integer("rating_milli").notNull(),
-    comment: text("comment").notNull().default(""),
-    reviewedAt: text("reviewed_at").notNull(),
-    sourceUpdatedAt: text("source_updated_at"),
-    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
-    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
-  },
-  (table) => [
-    uniqueIndex("marketing_reviews_connection_review_unique").on(table.connectionId, table.externalReviewRef),
-    index("marketing_reviews_workspace_date_idx").on(table.organizationId, table.reviewedAt),
-    check("marketing_reviews_provider_check", sql`${table.provider} = 'google'`),
-    check("marketing_reviews_rating_check", sql`${table.ratingMilli} >= 1000 and ${table.ratingMilli} <= 5000`),
   ],
 );
 
@@ -831,6 +827,7 @@ export const integrationSyncRuns = sqliteTable(
     duplicatesSkipped: integer("duplicates_skipped").notNull().default(0),
     warningCount: integer("warning_count").notNull().default(0),
     errorCode: text("error_code"),
+    resourceSelectionVersion: integer("resource_selection_version"),
     startedAt: integer("started_at", { mode: "timestamp" }).notNull(),
     completedAt: integer("completed_at", { mode: "timestamp" }),
     createdByUserId: text("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
@@ -1130,6 +1127,35 @@ export const organizationLocations = sqliteTable(
     index("organization_locations_status_idx").on(table.organizationId, table.status),
     check("organization_locations_status_check", sql`${table.status} in ('active', 'archived')`),
     check("organization_locations_validation_check", sql`${table.validationStatus} in ('entered', 'suggested', 'validated')`),
+  ],
+);
+
+// Consolidated commerce reports use one reviewed source per logical channel
+// and fact family at each organization location. Provider-specific reports may
+// still show every approved connection independently, but overlapping sources
+// never enter consolidated totals without this explicit authority record.
+export const integrationSourceAuthorities = sqliteTable(
+  "integration_source_authorities",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    localLocationId: text("local_location_id").notNull().references(() => organizationLocations.id, { onDelete: "cascade" }),
+    channel: text("channel", { enum: ["retail", "ecommerce", "marketplace", "delivery"] }).notNull(),
+    factFamily: text("fact_family", { enum: ["sales", "payments", "inventory", "products", "customers", "suppliers"] }).notNull(),
+    provider: text("provider").notNull(),
+    connectionId: text("connection_id").notNull().references(() => integrationConnections.id, { onDelete: "cascade" }),
+    createdByUserId: text("created_by_user_id").notNull().references(() => users.id),
+    updatedByUserId: text("updated_by_user_id").notNull().references(() => users.id),
+    version: integer("version").notNull().default(1),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("integration_source_authorities_scope_unique").on(table.organizationId, table.localLocationId, table.channel, table.factFamily),
+    index("integration_source_authorities_connection_idx").on(table.organizationId, table.connectionId),
+    check("integration_source_authorities_channel_check", sql`${table.channel} in ('retail','ecommerce','marketplace','delivery')`),
+    check("integration_source_authorities_family_check", sql`${table.factFamily} in ('sales','payments','inventory','products','customers','suppliers')`),
+    check("integration_source_authorities_version_check", sql`${table.version} >= 1`),
   ],
 );
 

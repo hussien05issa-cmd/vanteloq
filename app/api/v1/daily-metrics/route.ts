@@ -82,8 +82,9 @@ export async function POST(request: Request) {
           organization_id, business_date, location_ref, gross_sales_cents, net_sales_cents,
           cost_of_goods_cents, transaction_count, units_sold, refunds_cents, discounts_cents,
           labour_cost_cents, inventory_value_cents, cash_balance_cents, accounts_payable_cents,
-          source_import_id, created_by_user_id, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          source_provider, source_connection_id, source_import_id,
+          created_by_user_id, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?)
         ON CONFLICT(organization_id, business_date, location_ref) DO UPDATE SET
           gross_sales_cents = excluded.gross_sales_cents,
           net_sales_cents = excluded.net_sales_cents,
@@ -96,6 +97,8 @@ export async function POST(request: Request) {
           inventory_value_cents = excluded.inventory_value_cents,
           cash_balance_cents = excluded.cash_balance_cents,
           accounts_payable_cents = excluded.accounts_payable_cents,
+          source_provider = NULL,
+          source_connection_id = NULL,
           source_import_id = excluded.source_import_id,
           updated_at = excluded.updated_at
       `).bind(

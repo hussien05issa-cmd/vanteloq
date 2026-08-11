@@ -238,10 +238,18 @@ async function encryptionCryptoKey(encoded: string): Promise<CryptoKey> {
   return crypto.subtle.importKey("raw", asArrayBuffer(raw), "AES-GCM", false, ["encrypt", "decrypt"]);
 }
 
+function integrationEncryptionKey() {
+  const env = getRuntimeEnv();
+  const value = env.LIGHTSPEED_X_TOKEN_ENCRYPTION_KEY || env.INTEGRATION_ENCRYPTION_KEY;
+  if (!value?.trim()) {
+    throw new ApiError(503, "INTEGRATION_ENCRYPTION_KEY_REQUIRED", "Encrypted integration credential storage is not configured.");
+  }
+  return value.trim();
+}
+
 export async function encryptIntegrationSecret(value: string): Promise<string> {
-  const current = config();
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const key = await encryptionCryptoKey(current.encryptionKey);
+  const key = await encryptionCryptoKey(integrationEncryptionKey());
   const ciphertext = await crypto.subtle.encrypt(
     { name: "AES-GCM", iv, additionalData: new TextEncoder().encode("vanteloq:lightspeed:v1") },
     key,
@@ -256,7 +264,7 @@ export async function decryptIntegrationSecret(value: string): Promise<string> {
     throw new ApiError(500, "INTEGRATION_SECRET_INVALID", "Stored integration credentials could not be read.");
   }
   try {
-    const key = await encryptionCryptoKey(config().encryptionKey);
+    const key = await encryptionCryptoKey(integrationEncryptionKey());
     const plaintext = await crypto.subtle.decrypt(
       { name: "AES-GCM", iv: fromBase64(encodedIv), additionalData: new TextEncoder().encode("vanteloq:lightspeed:v1") },
       key,

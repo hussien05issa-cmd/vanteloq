@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "./supabase-browser";
 import { InventoryLifecycleWorkspace } from "./inventory-lifecycle-workspace";
 import { BusinessTrendChart } from "./dashboard-charts";
@@ -211,6 +211,53 @@ function apiMessage(body: unknown, fallback: string): string {
   return fallback;
 }
 
+type ReportCatalogItem = {
+  id: string;
+  label: string;
+  description: string;
+  status: "ready" | "needs_data";
+  dataNeeded: string[];
+  implementationStatus: "available" | "planned";
+  queryReportId: "sales_totals" | null;
+  presentation: "sales" | "payment_mix" | null;
+};
+
+type ProviderReportCatalog = {
+  provider: string;
+  connectionId: string;
+  accountName: string | null;
+  vocabulary: { sales: string; location: string; product: string; payment: string };
+  canonicalReports: ReportCatalogItem[];
+  providerReports: ReportCatalogItem[];
+  boundary: string;
+};
+
+type ReportAuthority = {
+  status: "ready" | "conflict" | "needs_data";
+  conflicts: Array<{
+    localLocationId: string;
+    locationName?: string;
+    channel: string;
+    expectedVersion: number;
+    candidates: Array<{
+      provider: string;
+      connectionId: string;
+      lastSuccessfulSyncAt: string | null;
+      accountName?: string | null;
+      hasFacts?: boolean;
+      availability?: "ready" | "syncing" | "staging" | "unavailable" | "needs_data";
+    }>;
+  }>;
+};
+
+function reportSourceAvailability(value: ReportAuthority["conflicts"][number]["candidates"][number]["availability"]) {
+  if (value === "syncing") return "Sync in progress";
+  if (value === "staging") return "Approval paused";
+  if (value === "unavailable") return "Connection unavailable";
+  if (value === "needs_data") return "No normalized facts";
+  return "Ready";
+}
+
 export function ReportsWorkspace({
   currency,
   showNotice,
@@ -225,6 +272,10 @@ export function ReportsWorkspace({
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
   const [preset, setPreset] = useState("all");
+  const [sourceConnectionId, setSourceConnectionId] = useState("");
+  const [sourceReportLabel, setSourceReportLabel] = useState("");
+  const [savingAuthority, setSavingAuthority] = useState("");
+  const reportRequestSequence = useRef(0);
   const visible = Object.entries(reportGroups)
     .flatMap(([category, reports]) =>
       reports.map((name) => ({ category, name })),
@@ -235,6 +286,7 @@ export function ReportsWorkspace({
         item.name.toLowerCase().includes(query.toLowerCase()),
     );
   const load = useCallback(async (name: string) => {
+    const requestSequence = ++reportRequestSequence.current;
     setReport(null);
     const id = liveReports[name];
     if (!id) return;
@@ -243,12 +295,26 @@ export function ReportsWorkspace({
     if (start) params.set("start", start);
     if (end) params.set("end", end);
     if (activeLocationId) params.set("location", activeLocationId);
-    const response = await apiFetch(`/api/v1/reports?${params.toString()}`);
-    const body: unknown = await response.json();
-    if (response.ok) setReport(body as Record<string, unknown>);
-    else showNotice(apiMessage(body, "Unable to load report."));
-    setLoading(false);
-  }, [activeLocationId, end, showNotice, start]);
+    if (sourceConnectionId) params.set("connection", sourceConnectionId);
+    if (name === "Payment-method performance") params.set("view", "payment_mix");
+    try {
+      const response = await apiFetch(`/api/v1/reports?${params.toString()}`);
+      const body: unknown = await response.json();
+      if (requestSequence !== reportRequestSequence.current) return;
+      if (response.ok) setReport(body as Record<string, unknown>);
+      else {
+        if (response.status === 403 && sourceConnectionId) {
+          setSourceConnectionId("");
+          setSourceReportLabel("");
+        }
+        showNotice(apiMessage(body, "Unable to load report."));
+      }
+    } catch {
+      if (requestSequence === reportRequestSequence.current) showNotice("Unable to load this report. Check the connection and try again.");
+    } finally {
+      if (requestSequence === reportRequestSequence.current) setLoading(false);
+    }
+  }, [activeLocationId, end, showNotice, sourceConnectionId, start]);
   useEffect(() => {
     const timer = window.setTimeout(() => void load(selected), 0);
     return () => window.clearTimeout(timer);
@@ -270,6 +336,40 @@ export function ReportsWorkspace({
   const paymentMix = (report?.paymentMix as Array<{ category: string; paymentTypeName: string | null; amountCents: number; transactionCount: number }> | undefined) ?? [];
   const explain = report?.explainAndAct as Record<string, unknown> | undefined;
   const source = report?.source as Record<string, unknown> | undefined;
+  const sourceLineage = source?.lineage as {
+    sales?: Array<{ locationId: string; locationName: string; channel: string; provider: string; accountName: string | null; connectionId: string; mode: string }>;
+    payments?: Array<{ locationId: string; locationName: string; channel: string; provider: string; accountName: string | null; connectionId: string; mode: string }>;
+    manual?: { rowCount?: number; importIds?: string[]; locationRefs?: string[] };
+  } | undefined;
+  const manualLineage = sourceLineage?.manual;
+  const providerCatalogs = (report?.providerReportCatalogs as ProviderReportCatalog[] | undefined) ?? [];
+  const canonicalReports = (report?.canonicalReportCatalog as ReportCatalogItem[] | undefined) ?? [];
+  const sourceAuthorities = report?.sourceAuthority as { sales: ReportAuthority; payments: ReportAuthority } | undefined;
+  const authorityEntries: Array<{ factFamily: "sales" | "payments"; authority: ReportAuthority }> = [
+    ...(sourceAuthorities?.sales ? [{ factFamily: "sales" as const, authority: sourceAuthorities.sales }] : []),
+    ...(selected === "Payment-method performance" && sourceAuthorities?.payments ? [{ factFamily: "payments" as const, authority: sourceAuthorities.payments }] : []),
+  ];
+  const sourceSelectionRequired = authorityEntries.some(({ authority }) => authority.status === "conflict");
+  const canResolveAuthority = report?.canResolveSourceAuthority === true;
+  const chooseAuthority = async (locationId: string, connectionId: string, factFamily: "sales" | "payments", expectedVersion: number) => {
+    setSavingAuthority(connectionId);
+    try {
+      const response = await apiFetch("/api/v1/reports", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "set_source_authority", locationId, connectionId, factFamily, expectedVersion }),
+      });
+      const body: unknown = await response.json();
+      if (response.ok) {
+        showNotice("Reporting source saved. Consolidated totals now exclude overlapping feeds.");
+        await load(selected);
+      } else showNotice(apiMessage(body, "Unable to save the reporting source."));
+    } catch {
+      showNotice("Unable to save the reporting source. Check the connection and try again.");
+    } finally {
+      setSavingAuthority("");
+    }
+  };
   const rows = useMemo(
     () => (report?.rows as Array<{ businessDate: string; netSalesCents: number; costOfGoodsCents: number; transactionCount: number }> | undefined) ?? [],
     [report],
@@ -301,6 +401,29 @@ export function ReportsWorkspace({
         <button className="secondary" disabled title="Scheduled delivery requires an approved email provider, queue, export permission checks and retry handling.">
           Schedule delivery · provider required
         </button>
+      </section>
+      <section className="card report-source-control" aria-label="Reporting sources">
+        <header>
+          <div><p>REPORTING SOURCES</p><h3>Canonical totals or one provider account</h3></div>
+          <span>{sourceConnectionId ? "Provider-specific" : sourceSelectionRequired ? "Selection required" : "Consolidated"}</span>
+        </header>
+        <div className="report-source-buttons">
+          <button className={!sourceConnectionId ? "active" : ""} onClick={() => { setSourceConnectionId(""); setSourceReportLabel(""); }}><b>Vanteloq consolidated</b><small>Canonical definitions and owner-selected authorities</small></button>
+          {providerCatalogs.map((catalog) => <button key={catalog.connectionId} className={sourceConnectionId === catalog.connectionId ? "active" : ""} onClick={() => { setSourceConnectionId(catalog.connectionId); setSourceReportLabel(""); }}><b>{catalog.accountName || catalog.provider.replaceAll("-", " ")}</b><small>{catalog.provider.replaceAll("-", " ")} · {catalog.vocabulary.sales} from this account only</small></button>)}
+        </div>
+        {sourceLineage && <div className="report-source-lineage" aria-label="Authoritative source coverage">
+          {[...(sourceLineage.sales ?? []).map((item) => ({ ...item, family: "Sales" })), ...(selected === "Payment-method performance" ? (sourceLineage.payments ?? []).map((item) => ({ ...item, family: "Payments" })) : [])].map((item) => <span key={`${item.family}:${item.locationId}:${item.connectionId}`}><small>{item.family} · {item.locationName}</small><b>{item.accountName || item.provider.replaceAll("-", " ")}</b><em>{item.channel.replaceAll("_", " ")} · {item.mode.replaceAll("_", " ")} · {String(source?.periodStart ?? source?.earliestBusinessDate ?? "no date")} to {String(source?.periodEnd ?? source?.latestBusinessDate ?? "no date")}</em></span>)}
+          {Number(sourceLineage.manual?.rowCount ?? 0) > 0 && <span><small>Owner-reviewed summaries</small><b>{Number(sourceLineage.manual?.rowCount)} manual rows</b><em>{(sourceLineage.manual?.locationRefs ?? []).length} location scope{(sourceLineage.manual?.locationRefs ?? []).length === 1 ? "" : "s"} · {String(source?.periodStart ?? source?.earliestBusinessDate ?? "no date")} to {String(source?.periodEnd ?? source?.latestBusinessDate ?? "no date")}</em></span>}
+        </div>}
+        {authorityEntries.flatMap(({ factFamily, authority }) => authority.conflicts.map((conflict) => <article className="report-source-conflict" key={`${factFamily}:${conflict.localLocationId}:${conflict.channel}`}>
+          <div><b>Choose the authoritative {conflict.channel} {factFamily} source for {conflict.locationName || conflict.localLocationId}</b><span>Overlapping feeds are excluded from consolidated totals until an owner or admin chooses one.</span></div>
+          {canResolveAuthority ? <div>{conflict.candidates.map((candidate) => {
+            const ready = candidate.availability === "ready";
+            return <button key={candidate.connectionId} disabled={Boolean(savingAuthority) || !ready} onClick={() => void chooseAuthority(conflict.localLocationId, candidate.connectionId, factFamily, conflict.expectedVersion)}><b>{candidate.accountName || candidate.provider.replaceAll("-", " ")}</b><small>{candidate.provider.replaceAll("-", " ")} · {ready && candidate.lastSuccessfulSyncAt ? `Synced ${new Date(candidate.lastSuccessfulSyncAt).toLocaleDateString("en-CA")}` : reportSourceAvailability(candidate.availability)}</small><span>{savingAuthority === candidate.connectionId ? "Saving..." : ready ? `Use for ${factFamily}` : reportSourceAvailability(candidate.availability)}</span></button>;
+          })}</div> : <p>An owner or admin must choose this source.</p>}
+        </article>))}
+        {canonicalReports.length > 0 && <details className="provider-report-list" open><summary>Vanteloq report definitions</summary><section><div><b>Canonical intelligence</b><small>Consistent definitions across approved provider accounts. Planned reports stay unavailable until their exact query and required facts exist.</small></div>{canonicalReports.map((item) => <button key={item.id} disabled={item.status !== "ready" || item.queryReportId === null} onClick={() => { setSourceConnectionId(""); setSourceReportLabel(""); setSelected(item.presentation === "payment_mix" ? "Payment-method performance" : "Sales totals"); }}><span><b>{item.label}</b><small>{item.description}</small></span><em>{item.implementationStatus === "planned" ? "Query planned" : item.status === "ready" ? "Open canonical report" : `Needs ${item.dataNeeded.join(", ")}`}</em></button>)}</section></details>}
+        {providerCatalogs.length > 0 && <details className="provider-report-list"><summary>Provider-specific report catalogue</summary>{providerCatalogs.map((catalog) => <section key={catalog.connectionId}><div><b>{catalog.accountName || catalog.provider.replaceAll("-", " ")}</b><small>{catalog.boundary}</small></div>{catalog.providerReports.map((item) => <button key={item.id} disabled={item.status !== "ready" || item.queryReportId === null} onClick={() => { setSourceConnectionId(catalog.connectionId); setSourceReportLabel(item.label); setSelected(item.presentation === "payment_mix" ? "Payment-method performance" : "Sales totals"); }}><span><b>{item.label}</b><small>{item.description}</small></span><em>{item.status === "ready" ? "Open source view" : item.implementationStatus === "planned" ? "Query planned" : `Needs ${item.dataNeeded.join(", ")}`}</em></button>)}</section>)}</details>}
       </section>
       <section className="report-period-control" aria-label="Report time frame">
         <div className="report-period-presets" aria-label="Time frame presets">
@@ -396,7 +519,7 @@ export function ReportsWorkspace({
                     <button
                       className={selected === item.name ? "selected" : ""}
                       key={item.name}
-                      onClick={() => setSelected(item.name)}
+                      onClick={() => { setSelected(item.name); setSourceReportLabel(""); }}
                     >
                       <span>{item.name}</span>
                       <em className={liveReports[item.name] ? "live" : "gated"}>
@@ -414,7 +537,7 @@ export function ReportsWorkspace({
           <header>
             <div>
               <p>REPORT DEFINITION</p>
-              <h2>{selected}</h2>
+              <h2>{sourceReportLabel || selected}</h2>
             </div>
             <span className={liveReports[selected] ? "live" : "gated"}>
               {liveReports[selected] ? "Available" : "Gated"}
@@ -422,6 +545,10 @@ export function ReportsWorkspace({
           </header>
           {loading ? (
             <div className="control-empty">Calculating verified records…</div>
+          ) : report?.reportStatus === "source_conflict" ? (
+            <div className="gated-report"><i>!</i><h3>Consolidated totals are withheld.</h3><p>Two or more approved feeds cover the same location. Choose each sales or payment authority shown above so Vanteloq cannot double count facts.</p><span>Provider-specific views remain available while the owner or admin resolves the overlap.</span></div>
+          ) : report?.reportStatus === "needs_data" ? (
+            <div className="gated-report"><i>!</i><h3>Verified report evidence is incomplete.</h3><p>At least one authoritative location has no approved facts for this report and selected period, so Vanteloq is withholding partial totals.</p><span>Sync the mapped source, add an owner-reviewed summary, or adjust the report period.</span></div>
           ) : liveReports[selected] && report ? (
             <>
               <div className="report-metrics">
@@ -447,7 +574,7 @@ export function ReportsWorkspace({
                 </article>
               </div>
               <section className="report-comparison-strip" aria-label="Matched period comparison">
-                <div><small>SELECTED PERIOD</small><b>{readableReportDate(source?.periodStart || source?.earliestBusinessDate)} to {readableReportDate(source?.periodEnd || source?.latestBusinessDate)}</b><span>{String(source?.verifiedDays ?? 0)} verified days · {Math.round(Number(source?.completenessRate ?? 0) * 100)}% date coverage</span></div>
+                <div><small>SELECTED PERIOD</small><b>{readableReportDate(source?.periodStart || source?.earliestBusinessDate)} to {readableReportDate(source?.periodEnd || source?.latestBusinessDate)}</b><span>{String(source?.verifiedDays ?? 0)} verified days · {Math.round(Number(source?.completenessRate ?? 0) * 100)}% date × location coverage</span></div>
                 <div><small>PREVIOUS MATCHED PERIOD</small><b>{comparison ? `${readableReportDate(comparison.periodStart)} to ${readableReportDate(comparison.periodEnd)}` : "Not available"}</b><span>{comparison ? `${comparison.verifiedDays} verified days` : "A complete baseline has not been imported"}</span></div>
               </section>
               <section className="report-period-chart" aria-label="Sales over the selected time frame">
@@ -494,7 +621,7 @@ export function ReportsWorkspace({
                   <div>
                     <dt>Source & freshness</dt>
                     <dd>
-                      {String(source?.type)} · Data through{" "}
+                      {source?.accountName ? `${String(source.accountName)} · ` : ""}{String(source?.type)}{Number(manualLineage?.rowCount ?? 0) > 0 ? ` · ${Number(manualLineage?.rowCount)} manual row${Number(manualLineage?.rowCount) === 1 ? "" : "s"} from ${(manualLineage?.importIds ?? []).length} import${(manualLineage?.importIds ?? []).length === 1 ? "" : "s"}` : ""} · Data through{" "}
                       {String(source?.latestBusinessDate || "no records")} ·
                       {" "}{start || end
                         ? `${start || "earliest"} to ${end || "today"}`
@@ -512,7 +639,7 @@ export function ReportsWorkspace({
                       ),
                       priority: "medium",
                       sourceType: "insight",
-                      sourceRef: `report:${liveReports[selected]}`,
+                      sourceRef: `report:${liveReports[selected]}:${sourceConnectionId || "consolidated"}:${selected === "Payment-method performance" ? "payment_mix" : "sales"}`,
                     })
                   }
                 >
@@ -523,7 +650,7 @@ export function ReportsWorkspace({
                 {canExport ? (
                   <a
                     className="report-export"
-                    href={`/api/v1/reports?report=${liveReports[selected]}${start ? `&start=${start}` : ""}${end ? `&end=${end}` : ""}${activeLocationId ? `&location=${encodeURIComponent(activeLocationId)}` : ""}&format=csv`}
+                    href={`/api/v1/reports?report=${liveReports[selected]}${start ? `&start=${start}` : ""}${end ? `&end=${end}` : ""}${activeLocationId ? `&location=${encodeURIComponent(activeLocationId)}` : ""}${sourceConnectionId ? `&connection=${encodeURIComponent(sourceConnectionId)}` : ""}${selected === "Payment-method performance" ? "&view=payment_mix" : ""}&format=csv`}
                   >
                     Export CSV
                   </a>
@@ -595,7 +722,8 @@ type OrderLine = {
   quantity: number;
   receivedQuantity: number;
   invoicedQuantity: number;
-  unitCostCents: number;
+  unitCostCents: number | null;
+  previousCostCents: number | null;
   currentInventory: number | null;
   reorderPoint: number | null;
   forecastDemand: number | null;
@@ -606,16 +734,17 @@ type Order = {
   supplierName: string;
   orderDate: string;
   expectedDeliveryDate: string | null;
+  committedCashDate: string | null;
   currency: string;
   status: string;
-  totalCents: number;
-  subtotalCents: number;
-  taxCents: number;
-  discountCents: number;
+  totalCents: number | null;
+  subtotalCents: number | null;
+  taxCents: number | null;
+  discountCents: number | null;
   paymentTerms: string;
   lines: OrderLine[];
   receipts: { id: string; discrepancyStatus: string }[];
-  matches: { id: string; status: string; differenceCents: number }[];
+  matches: { id: string; status: string; differenceCents: number | null }[];
 };
 type ProcurementSupplier = {
   id: string;
@@ -641,9 +770,9 @@ type ProcurementProduct = {
   soldUnits90d: number;
   averageDailyDemand: number;
   recommendedQuantity: number;
-  cashConstrainedQuantity: number | null;
+  cashConstrainedQuantity?: number | null;
   cashAllocatedCents: number | null;
-  cashDecision: "within_capacity" | "cash_constrained" | "needs_verified_cash" | "needs_unit_cost" | "no_order_needed" | "restricted";
+  cashDecision?: "within_capacity" | "cash_constrained" | "needs_verified_cash" | "needs_unit_cost" | "no_order_needed" | "restricted";
   daysCover: number | null;
   demandTrendRate: number | null;
   recommendationFactors: string[];
@@ -686,11 +815,43 @@ type PurchasingData = {
   summary: {
     openOrders: number;
     awaitingApproval: number;
-    openCommitmentsCents: number;
+    openCommitmentsCents: number | null;
+    commitmentsByCurrency: Array<{ currency: string; amountCents: number | null }>;
+    commitmentsLabel: string;
     discrepancies: number;
     redAlerts: number;
     healthyProducts: number;
     deadStockProducts: number;
+  };
+  commitmentBoard: {
+    totalRemainingMerchandiseCents: number | null;
+    plannedOrders: Array<{ id: string; orderNumber: string; supplierName: string; statusLabel: string; remainingUnits: number; lines: Array<{ sku: string; description: string; remainingQuantity: number; duplicateWarning: string }> }>;
+    boundary: string;
+    vendors: Array<{
+      supplierName: string;
+      currency: string;
+      openOrderCount: number;
+      remainingMerchandiseCents: number | null;
+      remainingUnits: number;
+      nextDeliveryDate: string | null;
+      orders: Array<{
+        id: string;
+        orderNumber: string;
+        statusLabel: string;
+        expectedDeliveryDate: string | null;
+        committedCashDate: string | null;
+        remainingMerchandiseCents: number | null;
+        remainingUnits: number;
+        lines: Array<{
+          sku: string;
+          description: string;
+          remainingQuantity: number;
+          unitCostCents: number | null;
+          priceChangeRate: number | null;
+          duplicateWarning: string;
+        }>;
+      }>;
+    }>;
   };
   catalog: ProcurementCatalog;
   calendar: Array<{
@@ -700,7 +861,7 @@ type PurchasingData = {
     title: string;
     detail: string;
     status: string;
-    amountCents: number;
+    amountCents: number | null;
     currency: string;
   }>;
 };
@@ -803,8 +964,9 @@ export function PurchaseOrdersWorkspace({
               <b>{data.summary.awaitingApproval}</b>
             </article>
             <article>
-              <small>OPEN COMMITMENTS</small>
-              <b>{money(data.summary.openCommitmentsCents, currency)}</b>
+              <small>INCOMING MERCHANDISE</small>
+              <b>{data.summary.commitmentsByCurrency.length ? data.summary.commitmentsByCurrency.map((item) => money(item.amountCents, item.currency)).join(" · ") : money(0, currency)}</b>
+              <em>{data.summary.commitmentsLabel}</em>
             </article>
             <article>
               <small>DISCREPANCIES</small>
@@ -816,6 +978,7 @@ export function PurchaseOrdersWorkspace({
             <article className="healthy"><i /> <span><small>GREEN HEALTH</small><b>{data.summary.healthyProducts}</b><em>Demand and cover are aligned</em></span></article>
             <article className="dead"><i /> <span><small>DEAD STOCK</small><b>{data.summary.deadStockProducts}</b><em>No verified sale in 90 days</em></span></article>
           </section>
+          <UpcomingPurchaseCommitments board={data.commitmentBoard} />
           <ProcurementSignals
             catalog={data.catalog}
             openDraft={(seed) => setCreating(seed)}
@@ -886,6 +1049,42 @@ export function PurchaseOrdersWorkspace({
         />
       )}
     </div>
+  );
+}
+
+function UpcomingPurchaseCommitments({ board }: { board: PurchasingData["commitmentBoard"] }) {
+  return (
+    <section className="card upcoming-purchase-commitments" aria-label="Upcoming purchased inventory by vendor">
+      <header>
+        <div>
+          <p>ALREADY PURCHASED</p>
+          <h3>Incoming orders grouped by vendor</h3>
+          <span>Use this before creating another order. Quantities below are already committed and count as incoming inventory.</span>
+        </div>
+        <strong>{board.vendors.length ? `${board.vendors.length} vendor${board.vendors.length === 1 ? "" : "s"}` : "No open purchases"}</strong>
+      </header>
+      {board.vendors.length ? <div className="commitment-vendor-grid">
+        {board.vendors.map((vendor) => <article key={`${vendor.currency}:${vendor.supplierName}`}>
+          <header>
+            <span><b>{vendor.supplierName}</b><small>{vendor.openOrderCount} open purchase{vendor.openOrderCount === 1 ? "" : "s"}</small></span>
+            <span><b>{money(vendor.remainingMerchandiseCents, vendor.currency)}</b><small>{vendor.remainingUnits} units still coming</small></span>
+          </header>
+          <p className="commitment-arrival">Next expected delivery <b>{vendor.nextDeliveryDate ?? "Not confirmed"}</b></p>
+          {vendor.orders.map((order) => <details key={order.id}>
+            <summary><span><b>{order.orderNumber}</b><small>{order.statusLabel}</small></span><span>{order.remainingUnits} units · {money(order.remainingMerchandiseCents, vendor.currency)}</span></summary>
+            <div className="commitment-lines">
+              {order.lines.filter((line) => line.remainingQuantity > 0).map((line) => <div key={`${order.id}:${line.sku}`}>
+                <span><b>{line.description}</b><small>{line.sku || "No SKU"}{typeof line.unitCostCents === "number" ? ` · ${money(line.unitCostCents, vendor.currency)} each` : ""}</small></span>
+                <span><b>{line.remainingQuantity} incoming</b><small>{typeof line.priceChangeRate === "number" ? `${new Intl.NumberFormat("en-CA", { style: "percent", maximumFractionDigits: 1, signDisplay: "exceptZero" }).format(line.priceChangeRate)} cost change` : line.priceChangeRate === null ? "No prior cost baseline" : "Cost comparison restricted"}</small></span>
+                <p>{line.duplicateWarning}</p>
+              </div>)}
+            </div>
+          </details>)}
+        </article>)}
+      </div> : <div className="control-empty"><b>No purchased inventory is still outstanding.</b><span>Orders sent to a vendor will appear here until their quantities are received.</span></div>}
+      {board.plannedOrders.length > 0 && <details className="planned-purchase-overlap"><summary>{board.plannedOrders.length} planned order{board.plannedOrders.length === 1 ? "" : "s"} to review before buying again</summary>{board.plannedOrders.map((order) => <section key={order.id}><b>{order.orderNumber} · {order.supplierName}</b><span>{order.statusLabel} · {order.remainingUnits} units planned</span>{order.lines.filter((line) => line.remainingQuantity > 0).map((line) => <small key={`${order.id}:${line.sku}`}>{line.duplicateWarning}</small>)}</section>)}</details>}
+      <footer>{board.boundary}</footer>
+    </section>
   );
 }
 
@@ -1048,7 +1247,9 @@ function CatalogRecommendations({
         </div>
       ) : (
         <div className="catalog-recommendation-grid">
-          {products.map((product) => (
+          {products.map((product) => {
+            const cashRestricted = !product.cashDecision || product.cashDecision === "restricted";
+            return (
             <article className={`card catalog-recommendation ${product.health.tone}`} key={product.id}>
               <header>
                 <div>
@@ -1063,11 +1264,11 @@ function CatalogRecommendations({
                 <span><small>INCOMING</small><b>{product.incomingUnits}</b></span>
                 <span><small>SOLD 30D</small><b>{product.soldUnits30d.toLocaleString()}</b></span>
                 <span><small>DEMAND NEED</small><b>{product.recommendedQuantity}</b></span>
-                <span><small>{product.cashDecision === "restricted" ? "OWNER REVIEW" : "CASH-AWARE"}</small><b>{product.cashConstrainedQuantity ?? "Review"}</b></span>
+                <span><small>{cashRestricted ? "OWNER REVIEW" : "CASH-AWARE"}</small><b>{product.cashConstrainedQuantity ?? "Review"}</b></span>
               </div>
               <p>{product.health.detail}</p>
-              <p className={`cash-decision-copy ${product.cashDecision}`}>
-                {product.cashDecision === "restricted"
+              <p className={`cash-decision-copy ${product.cashDecision ?? "restricted"}`}>
+                {cashRestricted
                   ? "An owner or finance teammate must review cash capacity before this demand quantity is approved."
                   : product.cashDecision === "within_capacity"
                   ? `${product.cashConstrainedQuantity} units fit within verified purchasing capacity.`
@@ -1094,7 +1295,7 @@ function CatalogRecommendations({
                 Create review draft
               </button>
             </article>
-          ))}
+          );})}
         </div>
       )}
     </section>
@@ -1154,7 +1355,7 @@ function OrderInspector({
               {line.receivedQuantity} received
             </span>
             <strong>
-              {money(line.quantity * line.unitCostCents, order.currency)}
+              {money(line.unitCostCents === null ? null : line.quantity * line.unitCostCents, order.currency)}
             </strong>
           </article>
         ))}
@@ -1171,6 +1372,9 @@ function OrderInspector({
         </span>
       </div>
       <div className="order-actions">
+        {!['cancelled', 'closed'].includes(order.status) && (
+          <CommitmentDateEditor key={order.id} order={order} action={action} />
+        )}
         {order.status === "awaiting_approval" && (
           <button
             className="primary"
@@ -1194,7 +1398,7 @@ function OrderInspector({
             Confirm sent externally
           </button>
         )}
-        {["approved", "sent", "acknowledged", "partially_received"].includes(
+        {["sent", "acknowledged", "partially_received"].includes(
           order.status,
         ) && <button onClick={() => setReceiving(true)}>Receive goods</button>}
       </div>
@@ -1218,6 +1422,36 @@ function OrderInspector({
         />
       )}
     </aside>
+  );
+}
+
+function CommitmentDateEditor({
+  order,
+  action,
+}: {
+  order: Order;
+  action: (body: Record<string, unknown>) => Promise<void>;
+}) {
+  const [committedCashDate, setCommittedCashDate] = useState(order.committedCashDate ?? "");
+  return (
+    <form
+      className="commitment-date-editor"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void action({ action: "set_commitment_date", purchaseOrderId: order.id, committedCashDate });
+      }}
+    >
+      <label>
+        Expected cash date
+        <input
+          type="date"
+          value={committedCashDate}
+          onChange={(event) => setCommittedCashDate(event.target.value)}
+          required
+        />
+      </label>
+      <button type="submit" disabled={committedCashDate === (order.committedCashDate ?? "")}>Save date</button>
+    </form>
   );
 }
 
@@ -1280,6 +1514,7 @@ function PurchaseOrderModal({
         deliveryLocationId: activeLocationId,
         orderDate: form.get("orderDate"),
         expectedDeliveryDate: form.get("expectedDeliveryDate"),
+        committedCashDate: form.get("committedCashDate"),
         currency,
         paymentTerms: form.get("paymentTerms"),
         taxCents: Math.round(Number(form.get("tax") || 0) * 100),
@@ -1367,6 +1602,11 @@ function PurchaseOrderModal({
           <label>
             Expected delivery
             <input name="expectedDeliveryDate" type="date" />
+          </label>
+          <label>
+            Expected cash date
+            <input name="committedCashDate" type="date" />
+            <small>Required before the order can be confirmed as sent.</small>
           </label>
           <label>
             Payment terms
@@ -1479,7 +1719,7 @@ function PurchaseOrderModal({
                     <span><b>{product.onHandQuantity}</b> on hand</span>
                     <span><b>{product.incomingUnits}</b> already incoming</span>
                     <span><b>{product.recommendedQuantity}</b> demand need</span>
-                    <span><b>{product.cashConstrainedQuantity ?? "Review"}</b> cash-aware</span>
+                    <span><b>{product.cashConstrainedQuantity ?? "Review"}</b> {!product.cashDecision || product.cashDecision === "restricted" ? "owner review" : "cash-aware"}</span>
                     <span>
                       Last ordered <b>{product.lastOrderedDate || "No history"}</b>
                     </span>

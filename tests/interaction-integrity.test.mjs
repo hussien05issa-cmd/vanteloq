@@ -109,6 +109,16 @@ test("live sales and report time frames stay connected to real API filters", asy
   assert.match(rSeriesSync, /\.\.\.recentSalesPage\.data, \.\.\.salesPage\.data/);
 });
 
+test("an unavailable provider report clears its source-specific label before consolidated fallback", async () => {
+  const reports = await readFile(new URL("../app/control-workspaces.tsx", import.meta.url), "utf8");
+  const unavailableBranch = reports.match(
+    /if \(response\.status === 403 && sourceConnectionId\) \{([\s\S]*?)\n\s*\}/,
+  );
+  assert.ok(unavailableBranch, "Expected a provider-source 403 recovery branch.");
+  assert.match(unavailableBranch[1], /setSourceConnectionId\(""\)/);
+  assert.match(unavailableBranch[1], /setSourceReportLabel\(""\)/);
+});
+
 test("connector and document controls reflect real workflow readiness", async () => {
   const app = await readFile(new URL("../app/vanteloq-app.tsx", import.meta.url), "utf8");
   const controls = await readFile(new URL("../app/control-workspaces.tsx", import.meta.url), "utf8");
@@ -230,16 +240,18 @@ test("marketing intelligence is owner-controlled, evidence-labeled and calendar-
   assert.match(workspace, /marketing-intelligence-v2\.png/);
   assert.match(workspace, /Google demand and website actions/);
   assert.match(workspace, /Meta reach and website clicks/);
-  assert.match(workspace, /Feedback patterns and recommended follow-up/);
+  assert.match(workspace, /Owner-record checklist/);
+  assert.match(workspace, /© OpenStreetMap contributors/);
   assert.match(route, /marketing\.profile_updated/);
   assert.match(route, /marketing\.calendar_created/);
   assert.match(route, /sourceSystem: "owner_entry"|sourceSystem/);
   assert.match(schema, /marketing_profiles/);
   assert.match(schema, /marketing_calendar_entries/);
   assert.match(schema, /marketing_daily_metrics/);
-  assert.match(schema, /marketing_reviews/);
+  assert.doesNotMatch(schema, /marketing_reviews/);
   assert.match(route, /measurementSeries/);
-  assert.match(route, /reviewInsights/);
+  assert.match(route, /profileChecklist/);
+  assert.doesNotMatch(route, /reviewInsights/);
 });
 
 test("sidebar scrolling is bounded and navigation customization lives in Settings", async () => {

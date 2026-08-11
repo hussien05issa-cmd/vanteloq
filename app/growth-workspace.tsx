@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import IntegrationBrandLogo from "./integration-brand-logo";
 import { apiFetch } from "./supabase-browser";
 
@@ -69,21 +69,22 @@ type GrowthData = {
   operatingCoverage: Record<CoverageItem["key"], Omit<CoverageItem, "key" | "label">>;
   marketingEvidence: Omit<CoverageItem, "key" | "label">;
   calendar: CalendarEntry[];
-  searchSeries: { query: string; observedDate: string; position: number; discoveryActions: number | null; sourceSystem: string }[];
-  measurementSeries: { provider: "google" | "meta"; metricDate: string; metrics: Record<string, number> }[];
-  reviewInsights: {
-    available: boolean;
-    reviewCount: number;
-    averageRating: number | null;
-    lowRatingCount: number;
-    fiveStarShare: number | null;
-    lastReviewAt: string | null;
-    themes: { key: string; label: string; mentions: number; lowRatingMentions: number }[];
-    recommendations: { id: string; title: string; rationale: string; action: string; evidence: string }[];
-    privacyBoundary: string;
-  };
+  searchSeries: { query: string; observedDate: string; position: number; sourceSystem: string }[];
+  measurementSeries: {
+    selectionId: string;
+    provider: "google" | "meta";
+    dataset: "google_analytics" | "google_search_console" | "meta_ads";
+    resourceName: string;
+    scopeKind: "organization" | "location";
+    localLocationId: string | null;
+    metricDate: string;
+    metrics: Record<string, number>;
+  }[];
+  googleResourceReadiness: { status: "selection_required" | "ready"; missing: string[]; boundary: string };
+  profileChecklist: { completedCount: number; actionRequiredCount: number; items: Array<{ id: string; label: string; status: "complete" | "action_required" | "review_in_google"; why: string }>; disclaimer: string };
+  localOpportunityModel: { status: "coordinates_required" | "provider_not_configured"; centre: { latitude: number; longitude: number } | null; source: { name: string; attributionUrl: string; live: false }; candidates: []; boundary: string };
   importCounts: { touchpoints: number; transactions: number; searchObservations: number };
-  connections: { provider: string; providerId: "google" | "meta"; status: "connected" | "ready_to_connect" | "configuration_required"; label: string; availableNow: string; connectionId: string | null }[];
+  connections: { provider: string; providerId: "google" | "meta"; status: "connected" | "selection_required" | "sample_required" | "approval_required" | "ready_to_connect" | "configuration_required"; label: string; availableNow: string; connectionId: string | null }[];
   canManage: boolean;
   period: { since: string; through: string };
   sourceBoundary: string;
@@ -96,6 +97,16 @@ type CsvKind = "search_visibility" | "touchpoint" | "transaction";
 type CsvRecord = Record<string, string>;
 const money = (cents: number, currency: string) => new Intl.NumberFormat("en-CA", { style: "currency", currency, maximumFractionDigits: 0 }).format(cents / 100);
 const label = (value: string) => value.replaceAll("_", " ").replace(/^./, (letter) => letter.toUpperCase());
+const configuredLocalMapStyleUrl = (() => {
+  const value = process.env.NEXT_PUBLIC_LOCAL_MAP_STYLE_URL?.trim() ?? "";
+  if (!value) return "";
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" ? url.toString() : "";
+  } catch {
+    return "";
+  }
+})();
 
 async function postGrowth(payload: Record<string, unknown>) {
   const response = await apiFetch("/api/v1/growth", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
@@ -145,13 +156,13 @@ async function stableSourceEventId(kind: CsvKind, row: CsvRecord) {
 }
 
 const csvRequirements: Record<CsvKind, { label: string; required: string[]; sample: string }> = {
-  search_visibility: { label: "Search visibility", required: ["query", "observedDate", "position"], sample: "query,observedDate,position,discoveryActions,sourceSystem,sourceEventId" },
+  search_visibility: { label: "Search visibility", required: ["query", "observedDate", "position"], sample: "query,observedDate,position,sourceSystem,sourceEventId" },
   touchpoint: { label: "Marketing touchpoints", required: ["occurredAt", "source", "stage", "journeyRef"], sample: "occurredAt,source,stage,journeyRef,sourceSystem,sourceEventId" },
   transaction: { label: "Attributed transactions", required: ["occurredAt", "journeyRef", "revenueCents"], sample: "occurredAt,journeyRef,revenueCents,grossProfitCents,sourceSystem,sourceEventId" },
 };
 
 function SearchVisibilityChart({ rows }: { rows: GrowthData["searchSeries"] }) {
-  if (!rows.length) return <div className="growth-chart-empty"><b>No search observations yet</b><span>Add an owner-entered Search Console or Business Profile observation to establish a baseline.</span></div>;
+  if (!rows.length) return <div className="growth-chart-empty"><b>No search observations yet</b><span>Add an owner-entered Search Console observation to establish a baseline.</span></div>;
   const points = rows.slice(-12);
   const positions = points.map((row) => row.position);
   const minimum = Math.min(...positions);
@@ -166,7 +177,7 @@ function SearchVisibilityChart({ rows }: { rows: GrowthData["searchSeries"] }) {
       <path d={path} className="growth-position-line" />
       {coordinates.map(({ row, x, y }, index) => <g key={`${row.query}-${row.observedDate}-${index}`} tabIndex={0} role="img" aria-label={`${row.query}, position ${row.position}, ${row.observedDate}`}>
         <circle cx={x} cy={y} r="5" />
-        <title>{`${row.query}: position ${row.position} on ${row.observedDate}${row.discoveryActions === null ? "" : `, ${row.discoveryActions} discovery actions`}`}</title>
+        <title>{`${row.query}: position ${row.position} on ${row.observedDate}`}</title>
       </g>)}
       {coordinates.map(({ row, x }, index) => (index === 0 || index === coordinates.length - 1) && <text key={row.observedDate} x={x} y="204" textAnchor={index ? "end" : "start"}>{row.observedDate}</text>)}
     </svg>
@@ -176,10 +187,6 @@ function SearchVisibilityChart({ rows }: { rows: GrowthData["searchSeries"] }) {
 const measurementLabels: Record<string, string> = {
   search_clicks: "Search clicks",
   search_impressions: "Search impressions",
-  business_website_clicks: "Profile website clicks",
-  business_call_clicks: "Profile calls",
-  business_direction_requests: "Direction requests",
-  business_impressions: "Profile impressions",
   analytics_sessions: "Website sessions",
   analytics_engaged_sessions: "Engaged sessions",
   analytics_key_events: "Key events",
@@ -195,14 +202,19 @@ function metricTotal(rows: GrowthData["measurementSeries"], metric: string) {
   return rows.reduce((sum, row) => sum + (row.metrics[metric] ?? 0), 0);
 }
 
-function metricAverage(rows: GrowthData["measurementSeries"], metric: string) {
-  const values = rows.map((row) => row.metrics[metric]).filter((value): value is number => value !== undefined);
-  return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
+function weightedMetricAverage(rows: GrowthData["measurementSeries"], metric: string, weightMetric: string) {
+  const weighted = rows.reduce((sum, row) => sum + (row.metrics[metric] ?? 0) * (row.metrics[weightMetric] ?? 0), 0);
+  const weight = metricTotal(rows, weightMetric);
+  return weight > 0 ? weighted / weight : 0;
+}
+
+function providerCurrency(value: number) {
+  return `${value.toLocaleString("en-CA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} · account currency`;
 }
 
 function MeasurementTrend({ rows, metric, labelText }: { rows: GrowthData["measurementSeries"]; metric: string; labelText: string }) {
   const points = rows.filter((row) => row.metrics[metric] !== undefined).slice(-30);
-  if (!points.length) return <div className="marketing-metric-empty"><b>No {labelText.toLowerCase()} yet</b><span>Sync the connected provider after its account has reporting data.</span></div>;
+  if (!points.length) return <div className="marketing-metric-empty"><b>No {labelText.toLowerCase()} yet</b><span>Select the exact resource, map its location, and approve a sample before measurement import is enabled.</span></div>;
   const maximum = Math.max(...points.map((row) => row.metrics[metric]), 1);
   const coordinates = points.map((row, index) => ({
     row,
@@ -214,47 +226,83 @@ function MeasurementTrend({ rows, metric, labelText }: { rows: GrowthData["measu
     <svg viewBox="0 0 688 196" role="img" aria-label={`${labelText} over the latest measured days`}>
       {[28, 73, 118, 164].map((y) => <line key={y} x1="28" x2="660" y1={y} y2={y} />)}
       <path d={path} />
-      {coordinates.map(({ row, x, y }) => <circle key={row.metricDate} cx={x} cy={y} r="4"><title>{`${row.metricDate}: ${row.metrics[metric].toLocaleString("en-CA", { maximumFractionDigits: 2 })}`}</title></circle>)}
+      {coordinates.map(({ row, x, y }) => <circle key={`${row.selectionId}:${row.metricDate}`} cx={x} cy={y} r="4"><title>{`${row.metricDate}: ${row.metrics[metric].toLocaleString("en-CA", { maximumFractionDigits: 2 })}`}</title></circle>)}
     </svg>
     <span>{points[0]?.metricDate}</span><span>{points.at(-1)?.metricDate}</span>
   </div>;
 }
 
-function ProviderMeasurementCard({ provider, rows, currency }: { provider: "google" | "meta"; rows: GrowthData["measurementSeries"]; currency: string }) {
+function ProviderMeasurementCard({ provider, rows }: { provider: "google" | "meta"; rows: GrowthData["measurementSeries"] }) {
   const providerRows = rows.filter((row) => row.provider === provider);
   const google = provider === "google";
-  const primaryMetric = google ? "search_clicks" : "meta_link_clicks";
-  const summaries = google
-    ? [
-        ["search_clicks", metricTotal(providerRows, "search_clicks")],
-        ["business_website_clicks", metricTotal(providerRows, "business_website_clicks")],
-        ["analytics_sessions", metricTotal(providerRows, "analytics_sessions")],
-        ["business_call_clicks", metricTotal(providerRows, "business_call_clicks")],
-      ] as const
-    : [
-        ["meta_impressions", metricTotal(providerRows, "meta_impressions")],
-        ["meta_reach", metricTotal(providerRows, "meta_reach")],
-        ["meta_link_clicks", metricTotal(providerRows, "meta_link_clicks")],
-        ["meta_spend", metricTotal(providerRows, "meta_spend")],
-      ] as const;
-  return <article className={`card marketing-measurement-card ${provider}`}>
-    <header><div><IntegrationBrandLogo name={google ? "Google" : "Meta"} compact /><span><small>{google ? "SEARCH, PROFILE & SITE" : "ADS INSIGHTS"}</small><h3>{google ? "Google demand and website actions" : "Meta reach and website clicks"}</h3></span></div><em>{providerRows.length ? `Through ${providerRows.at(-1)?.metricDate}` : "Awaiting sync"}</em></header>
-    <div className="marketing-measurement-summary">{summaries.map(([metric, value]) => <span key={metric}><small>{measurementLabels[metric]}</small><b>{metric === "meta_spend" ? money(Math.round(value * 100), currency) : Math.round(value).toLocaleString("en-CA")}</b></span>)}</div>
-    <MeasurementTrend rows={providerRows} metric={primaryMetric} labelText={measurementLabels[primaryMetric]} />
-    {providerRows.length > 0 && <footer>{google ? <><span>Search CTR <b>{(metricAverage(providerRows, "search_ctr") * 100).toFixed(1)}%</b></span><span>Average position <b>{metricAverage(providerRows, "search_position").toFixed(1)}</b></span></> : <><span>Average CTR <b>{metricAverage(providerRows, "meta_ctr").toFixed(2)}%</b></span><span>Average CPC <b>{money(Math.round(metricAverage(providerRows, "meta_cpc") * 100), currency)}</b></span></>}</footer>}
+  if (!providerRows.length) return <article className={`card marketing-measurement-card ${provider}`}>
+    <header><div><IntegrationBrandLogo name={google ? "Google" : "Meta"} compact /><span><small>{google ? "SEARCH & SITE" : "ADS INSIGHTS"}</small><h3>{google ? "Google demand and website actions" : "Meta reach and website clicks"}</h3></span></div><em>Selection required</em></header>
+    <div className="marketing-metric-empty"><b>Measurements unavailable</b><span>Select the exact provider resource, map its location, and approve a sample before import is enabled.</span></div>
   </article>;
+  const selectionIds = [...new Set(providerRows.map((row) => row.selectionId))];
+  return <>{selectionIds.map((selectionId) => {
+    const resourceRows = providerRows.filter((row) => row.selectionId === selectionId);
+    const resource = resourceRows[0];
+    if (!resource) return null;
+    const primaryMetric = resource.dataset === "google_analytics" ? "analytics_sessions" : resource.dataset === "google_search_console" ? "search_clicks" : "meta_link_clicks";
+    const metricKeys = resource.dataset === "google_analytics"
+      ? ["analytics_sessions", "analytics_engaged_sessions", "analytics_key_events"]
+      : resource.dataset === "google_search_console"
+        ? ["search_clicks", "search_impressions"]
+        : ["meta_impressions", "meta_reach", "meta_link_clicks", "meta_spend"];
+    return <article className={`card marketing-measurement-card ${provider}`} key={selectionId}>
+      <header><div><IntegrationBrandLogo name={google ? "Google" : "Meta"} compact /><span><small>{label(resource.dataset)}</small><h3>{resource.resourceName}</h3></span></div><em>{`Through ${resourceRows.at(-1)?.metricDate}`}</em></header>
+      <p className="marketing-resource-lineage">{resource.scopeKind === "organization" ? "Organization-wide resource" : `Location resource · ${resource.localLocationId}`}</p>
+      <div className="marketing-measurement-summary">{metricKeys.map((metric) => {
+        const value = metricTotal(resourceRows, metric);
+        return <span key={metric}><small>{measurementLabels[metric]}</small><b>{metric === "meta_spend" ? providerCurrency(value) : Math.round(value).toLocaleString("en-CA")}</b></span>;
+      })}</div>
+      <MeasurementTrend rows={resourceRows} metric={primaryMetric} labelText={measurementLabels[primaryMetric]} />
+      <footer>{resource.dataset === "google_search_console" ? <><span>Search CTR <b>{(metricTotal(resourceRows, "search_impressions") > 0 ? metricTotal(resourceRows, "search_clicks") / metricTotal(resourceRows, "search_impressions") * 100 : 0).toFixed(1)}%</b></span><span>Impression-weighted position <b>{weightedMetricAverage(resourceRows, "search_position", "search_impressions").toFixed(1)}</b></span></> : resource.dataset === "meta_ads" ? <><span>Derived CTR <b>{(metricTotal(resourceRows, "meta_impressions") > 0 ? metricTotal(resourceRows, "meta_link_clicks") / metricTotal(resourceRows, "meta_impressions") * 100 : 0).toFixed(2)}%</b></span><span>Derived CPC <b>{providerCurrency(metricTotal(resourceRows, "meta_link_clicks") > 0 ? metricTotal(resourceRows, "meta_spend") / metricTotal(resourceRows, "meta_link_clicks") : 0)}</b></span></> : <span>Source lineage <b>{resource.selectionId.slice(0, 8)}</b></span>}</footer>
+    </article>;
+  })}</>;
 }
 
-function ReviewInsightsCard({ insights }: { insights: GrowthData["reviewInsights"] }) {
-  return <article className="card google-review-insights">
-    <header><div><p className="card-kicker">GOOGLE REVIEW SIGNALS</p><h3>Feedback patterns and recommended follow-up</h3></div><strong>{insights.averageRating === null ? "No reviews" : `${insights.averageRating.toFixed(1)} ★`}</strong></header>
-    {insights.available ? <>
-      <div className="review-score-row"><span><b>{insights.reviewCount}</b><small>Reviews</small></span><span><b>{insights.lowRatingCount}</b><small>Three stars or lower</small></span><span><b>{insights.fiveStarShare === null ? "—" : `${Math.round(insights.fiveStarShare * 100)}%`}</b><small>Five-star share</small></span></div>
-      <div className="review-theme-list">{insights.themes.slice(0, 5).map((theme) => <span key={theme.key}><b>{theme.label}</b><i style={{ width: `${Math.max(8, theme.mentions / Math.max(...insights.themes.map((item) => item.mentions), 1) * 100)}%` }} /><small>{theme.mentions} mentions · {theme.lowRatingMentions} lower-rated</small></span>)}</div>
-      <div className="review-recommendations">{insights.recommendations.length ? insights.recommendations.map((item) => <section key={item.id}><small>RECOMMENDATION</small><b>{item.title}</b><p>{item.rationale}</p><span>{item.action}</span><em>{item.evidence}</em></section>) : <section><small>MONITOR</small><b>No repeated concern has enough evidence yet</b><p>Keep collecting reviews and revisit after the next measured sample.</p></section>}</div>
-      <footer>{insights.privacyBoundary}</footer>
-    </> : <div className="marketing-metric-empty"><b>No connected Google reviews yet</b><span>Connect Google and run a sync to build aggregate feedback themes and recommendations.</span></div>}
-  </article>;
+function LocalOpportunityMap({ model }: { model: GrowthData["localOpportunityModel"] }) {
+  const container = useRef<HTMLDivElement | null>(null);
+  const latitude = model.centre?.latitude;
+  const longitude = model.centre?.longitude;
+  useEffect(() => {
+    if (!container.current || latitude === undefined || longitude === undefined || !configuredLocalMapStyleUrl) return;
+    let map: import("maplibre-gl").Map | null = null;
+    let cancelled = false;
+    void import("maplibre-gl").then(({ AttributionControl, Map, Marker }) => {
+      if (cancelled || !container.current) return;
+      map = new Map({
+        container: container.current,
+        style: configuredLocalMapStyleUrl,
+        center: [longitude, latitude],
+        zoom: 13,
+        attributionControl: false,
+      });
+      map.addControl(new AttributionControl({ compact: false, customAttribution: "© OpenStreetMap contributors" }));
+      new Marker({ color: "#1768ba" }).setLngLat([longitude, latitude]).addTo(map);
+    });
+    return () => {
+      cancelled = true;
+      map?.remove();
+    };
+  }, [latitude, longitude]);
+  if (!model.centre) return <div className="local-map-preview local-map-unavailable" role="note"><b>Location coordinates required</b><span>Confirm an owned location&apos;s coordinates before loading a map.</span></div>;
+  if (!configuredLocalMapStyleUrl) return <div className="local-map-preview local-map-unavailable" role="note"><b>Map provider not configured</b><span>Nearby candidates are unavailable. Vanteloq does not connect to public map tiles or geocoders automatically.</span><small>{model.centre.latitude.toFixed(5)}, {model.centre.longitude.toFixed(5)}</small></div>;
+  return <div ref={container} className="local-map-preview" role="img" aria-label="Map showing the confirmed owner location; nearby business candidates are not configured" />;
+}
+
+function LocalReadinessPanels({ data }: { data: GrowthData }) {
+  const mapStatus = !data.localOpportunityModel.centre
+    ? "Coordinates required"
+    : !configuredLocalMapStyleUrl
+      ? "Map provider not configured"
+      : "Candidate provider required";
+  return <section className="local-readiness-grid" aria-label="Local profile and opportunity readiness">
+    <article className="card profile-health-card"><header><div><p className="card-kicker">LOCAL PROFILE MAINTENANCE</p><h3>Owner-record checklist</h3></div><strong>{data.profileChecklist.completedCount} complete</strong></header><div>{data.profileChecklist.items.map((item) => <section key={item.id}><span className={item.status}>{item.status === "complete" ? "Complete" : item.status === "review_in_google" ? "Review in Google" : "Action required"}</span><div><b>{item.label}</b><small>{item.why}</small></div></section>)}</div><footer>{data.profileChecklist.disclaimer}</footer></article>
+    <article className="card local-opportunity-shell"><header><div><p className="card-kicker">LOCAL OPPORTUNITY MAP</p><h3>Nearby business candidates</h3></div><span>{mapStatus}</span></header><LocalOpportunityMap model={data.localOpportunityModel} /><ul className="local-candidate-empty" aria-label="Nearby business candidates"><li><b>No nearby candidates loaded</b><span>A reviewed OSM-derived places provider is required. Candidates will remain neutral until an owner classifies them.</span></li></ul><footer><span>{data.localOpportunityModel.boundary}</span><a href={data.localOpportunityModel.source.attributionUrl} target="_blank" rel="noreferrer">© OpenStreetMap contributors</a></footer></article>
+  </section>;
 }
 
 export default function GrowthWorkspace({ currency, navigate, activeLocationId }: { currency: string; navigate: (view: "Integrations") => void; activeLocationId: string | null }) {
@@ -315,13 +363,11 @@ export default function GrowthWorkspace({ currency, navigate, activeLocationId }
     event.preventDefault();
     const form = event.currentTarget;
     const values = new FormData(form);
-    const actions = values.get("discoveryActions")?.toString().trim();
     void runSave(() => postGrowth({
       type: "search_visibility",
       query: values.get("query"),
       observedDate: values.get("observedDate"),
       position: Number(values.get("position")),
-      discoveryActions: actions ? Number(actions) : null,
       sourceSystem: "owner_entry",
       sourceEventId: crypto.randomUUID(),
     }), "Search observation recorded with Owner entry as its source.").then(() => form.reset());
@@ -372,7 +418,6 @@ export default function GrowthWorkspace({ currency, navigate, activeLocationId }
       };
       if (csvKind === "search_visibility") {
         payload.position = Number(row.position);
-        payload.discoveryActions = row.discoveryActions ? Number(row.discoveryActions) : null;
       } else if (csvKind === "transaction") {
         payload.revenueCents = Number(row.revenueCents);
         payload.grossProfitCents = row.grossProfitCents ? Number(row.grossProfitCents) : null;
@@ -381,16 +426,26 @@ export default function GrowthWorkspace({ currency, navigate, activeLocationId }
     }
   }, `${csvRows.length} marketing record${csvRows.length === 1 ? "" : "s"} validated and imported.`).then(() => { setCsvRows([]); setCsvFileName(""); });
 
+  const growthTabs = ["overview", "context", "data", "calendar"] as const;
+
   return <div className="content module-page growth-page">
     <section className="module-hero growth-visual-hero">
       <div><p>LOCAL BUSINESS GROWTH INTELLIGENCE</p><h2>Turn business context and measured outcomes into a focused marketing plan.</h2><span>Save who you serve, record the data you actually have, and receive recommendations that state their evidence and measurement limits.</span></div>
       <Image src="/brand/marketing-intelligence-v2.png" alt="Marketing channels connected to search, local discovery, content, conversion and a calendar" width={1672} height={941} sizes="(max-width: 900px) 100vw, 46vw" />
     </section>
 
-    <nav className="growth-tabs" aria-label="Marketing workspace sections">
-      {(["overview", "context", "data", "calendar"] as const).map((item) => <button key={item} className={tab === item ? "active" : ""} onClick={() => setTab(item)}>{item === "context" ? "Business context" : item === "data" ? "Import data" : item === "calendar" ? "Marketing calendar" : label(item)}</button>)}
+    <nav className="growth-tabs" aria-label="Marketing workspace sections" role="tablist">
+      {growthTabs.map((item, index) => <button key={item} id={`growth-tab-${item}`} role="tab" aria-controls={`growth-panel-${item}`} aria-selected={tab === item} tabIndex={tab === item ? 0 : -1} className={tab === item ? "active" : ""} onClick={() => setTab(item)} onKeyDown={(event) => {
+        const offset = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
+        if (!offset) return;
+        event.preventDefault();
+        const next = growthTabs[(index + offset + growthTabs.length) % growthTabs.length];
+        setTab(next);
+        window.requestAnimationFrame(() => document.getElementById(`growth-tab-${next}`)?.focus());
+      }}>{item === "context" ? "Business context" : item === "data" ? "Import data" : item === "calendar" ? "Marketing calendar" : label(item)}</button>)}
     </nav>
 
+    <div id={`growth-panel-${tab}`} role="tabpanel" aria-labelledby={`growth-tab-${tab}`} tabIndex={0}>
     {error && <div className="growth-message error" role="alert">{error}</div>}
     {notice && <div className="growth-message success" role="status">{notice}</div>}
 
@@ -403,14 +458,14 @@ export default function GrowthWorkspace({ currency, navigate, activeLocationId }
       </section>
 
       <section className="growth-connection-grid">
-        {data?.connections.map((connection) => <article className={`card growth-connection ${connection.status}`} key={connection.provider}><div><IntegrationBrandLogo name={connection.provider} compact /><div><b>{connection.provider}</b><small>{connection.availableNow}</small></div></div><footer><em>{connection.label}</em><button onClick={() => navigate("Integrations")}>{connection.status === "connected" ? "Manage" : "Set up"} →</button></footer></article>)}
+        {data?.connections.map((connection) => <article className={`card growth-connection ${connection.status}`} key={`${connection.providerId}:${connection.connectionId ?? "setup"}`}><div><IntegrationBrandLogo name={connection.providerId === "google" ? "Google" : "Meta"} compact /><div><b>{connection.provider}</b><small>{connection.availableNow}</small></div></div><footer><em>{connection.label}</em><button onClick={() => navigate("Integrations")}>{connection.status === "connected" ? "Manage" : "Set up"} →</button></footer></article>)}
       </section>
 
       <section className="marketing-provider-metrics" aria-label="Connected marketing measurements">
-        <ProviderMeasurementCard provider="google" rows={data?.measurementSeries ?? []} currency={currency} />
-        <ProviderMeasurementCard provider="meta" rows={data?.measurementSeries ?? []} currency={currency} />
+        <ProviderMeasurementCard provider="google" rows={data?.measurementSeries ?? []} />
+        <ProviderMeasurementCard provider="meta" rows={data?.measurementSeries ?? []} />
       </section>
-      <ReviewInsightsCard insights={data?.reviewInsights ?? { available: false, reviewCount: 0, averageRating: null, lowRatingCount: 0, fiveStarShare: null, lastReviewAt: null, themes: [], recommendations: [], privacyBoundary: "Reviewer names and profile photos are not stored." }} />
+      {data && <LocalReadinessPanels data={data} />}
 
       <section className="growth-overview-grid">
         <article className="card growth-recommendations">
@@ -456,12 +511,12 @@ export default function GrowthWorkspace({ currency, navigate, activeLocationId }
       </article>
       <form className="card growth-data-form" onSubmit={saveObservation}>
         <div className="card-head"><div><p className="card-kicker">MANUAL SEARCH SNAPSHOT</p><h3>Record an owner-exported observation</h3></div><span>Source: Owner entry</span></div>
-        <p>Use values from Search Console or Business Profile. This records what you provide; it does not verify or connect the Google account.</p>
-        <div className="growth-field-grid"><label className="wide">Search query<input name="query" maxLength={180} required placeholder="Search phrase exactly as shown in the export" /></label><label>Observation date<input name="observedDate" type="date" required /></label><label>Average position<input name="position" type="number" min="0.001" max="1000" step="0.001" required /></label><label>Discovery actions, if available<input name="discoveryActions" type="number" min="0" step="1" placeholder="Optional" /></label></div>
+        <p>Use values from an owner-exported Search Console report. This records what you provide; it does not verify or connect the Google account.</p>
+        <div className="growth-field-grid"><label className="wide">Search query<input name="query" maxLength={180} required placeholder="Search phrase exactly as shown in the export" /></label><label>Observation date<input name="observedDate" type="date" required /></label><label>Average position<input name="position" type="number" min="0.001" max="1000" step="0.001" required /></label></div>
         <footer><button type="button" onClick={() => navigate("Integrations")}>Open Import data</button><button disabled={busy || !data?.canManage}>{busy ? "Recording..." : data?.canManage ? "Record observation" : "Owner or admin access required"}</button></footer>
       </form>
-      <article className="card growth-source-status"><p className="card-kicker">CONNECTION ROADMAP</p><h3>Automated marketing sources</h3>{data?.connections.map((connection) => <div key={connection.provider}><IntegrationBrandLogo name={connection.provider} compact /><div><b>{connection.provider}</b><small>{connection.availableNow}</small></div><em>{connection.label}</em></div>)}<button onClick={() => navigate("Integrations")}>Review all connections</button></article>
-      <article className="card growth-observation-table"><div className="card-head"><div><p className="card-kicker">RECORDED EVIDENCE</p><h3>Recent search observations</h3></div><span>{data?.searchSeries.length ?? 0} records shown</span></div>{data?.searchSeries.length ? <><div className="observation-row observation-head"><span>Date</span><span>Query</span><span>Position</span><span>Actions</span><span>Source</span></div>{[...data.searchSeries].reverse().map((row, index) => <div className="observation-row" key={`${row.query}-${row.observedDate}-${index}`}><span>{row.observedDate}</span><b>{row.query}</b><strong>{row.position}</strong><span>{row.discoveryActions ?? "Unavailable"}</span><em>{label(row.sourceSystem)}</em></div>)}</> : <div className="growth-chart-empty"><b>No observations recorded</b><span>Add a snapshot above or use Import data for existing records.</span></div>}</article>
+      <article className="card growth-source-status"><p className="card-kicker">CONNECTION ROADMAP</p><h3>Automated marketing sources</h3>{data?.connections.map((connection) => <div key={`${connection.providerId}:${connection.connectionId ?? "setup"}`}><IntegrationBrandLogo name={connection.providerId === "google" ? "Google" : "Meta"} compact /><div><b>{connection.provider}</b><small>{connection.availableNow}</small></div><em>{connection.label}</em></div>)}<button onClick={() => navigate("Integrations")}>Review all connections</button></article>
+      <article className="card growth-observation-table"><div className="card-head"><div><p className="card-kicker">RECORDED EVIDENCE</p><h3>Recent search observations</h3></div><span>{data?.searchSeries.length ?? 0} records shown</span></div>{data?.searchSeries.length ? <><div className="observation-row observation-head"><span>Date</span><span>Query</span><span>Position</span><span>Source</span></div>{[...data.searchSeries].reverse().map((row, index) => <div className="observation-row" key={`${row.query}-${row.observedDate}-${index}`}><span>{row.observedDate}</span><b>{row.query}</b><strong>{row.position}</strong><em>{label(row.sourceSystem)}</em></div>)}</> : <div className="growth-chart-empty"><b>No observations recorded</b><span>Add a snapshot above or use Import data for existing records.</span></div>}</article>
     </section>}
 
     {tab === "calendar" && <section className="growth-calendar-layout">
@@ -474,5 +529,6 @@ export default function GrowthWorkspace({ currency, navigate, activeLocationId }
     </section>}
 
     <article className="card growth-boundary"><b>{data?.locationScope ? `${data.locationScope.name} evidence boundary` : "Evidence boundary"}</b><span>{data ? `${data.scopeBoundary} ${data.sourceBoundary}` : "Loading source contract..."}</span></article>
+    </div>
   </div>;
 }

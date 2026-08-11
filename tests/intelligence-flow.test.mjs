@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
 import { createServer } from "node:http";
-import test from "node:test";
+import test, { describe } from "node:test";
 import { Miniflare } from "miniflare";
 
 const origin = "https://vanteloq.example";
@@ -128,6 +128,101 @@ async function grantBookLoqForFlow(database, businessName) {
   ]);
 }
 
+async function createReportWorkspace(worker, environment, database, label) {
+  const suffix = crypto.randomUUID().slice(0, 8);
+  const owner = {
+    email: `report-${label}-${suffix}@example.invalid`,
+    name: `Report ${label}`,
+  };
+  const businessName = `Report ${label} ${suffix}`;
+  const onboarding = await dispatch(worker, environment, "/api/v1/onboarding", {
+    method: "POST",
+    ...owner,
+    body: onboardingBody(owner.name, businessName),
+  });
+  assert.equal(onboarding.status, 201);
+  const identity = await database.prepare(`SELECT u.id AS userId, m.organization_id AS organizationId
+    FROM users u JOIN memberships m ON m.user_id = u.id WHERE u.email = ?`).bind(owner.email).first();
+  const location = await database.prepare(`SELECT id FROM organization_locations
+    WHERE organization_id = ? AND status = 'active' ORDER BY created_at LIMIT 1`).bind(identity.organizationId).first();
+  assert.ok(identity?.userId && identity?.organizationId && location?.id);
+  return { owner, userId: identity.userId, organizationId: identity.organizationId, locationId: location.id };
+}
+
+async function seedReportConnection(database, {
+  organizationId,
+  locationId,
+  connectionId,
+  namespace,
+  externalLocationRef,
+  promotionStatus = "approved",
+  syncLeaseOwner = null,
+  syncLeaseExpiresAt = null,
+}) {
+  const timestamp = Math.floor(Date.now() / 1_000);
+  await database.batch([
+    database.prepare(`INSERT INTO integration_connections
+      (id, organization_id, provider, source_namespace, status, external_account_ref,
+       external_account_name, scopes_json, data_promotion_status, connected_at,
+       last_successful_sync_at, sync_lease_owner, sync_lease_expires_at, created_at, updated_at)
+      VALUES (?, ?, 'lightspeed-r', ?, 'connected', ?, ?, '[]', ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(connectionId, organizationId, namespace, connectionId, `Account ${connectionId}`,
+        promotionStatus, timestamp, timestamp, syncLeaseOwner, syncLeaseExpiresAt, timestamp, timestamp),
+    database.prepare(`INSERT INTO integration_location_mappings
+      (id, organization_id, provider, connection_id, external_location_ref, external_name,
+       local_location_id, status, last_seen_at, created_at, updated_at)
+      VALUES (?, ?, 'lightspeed-r', ?, ?, ?, ?, 'mapped', ?, ?, ?)`)
+      .bind(`mapping-${connectionId}`, organizationId, connectionId, externalLocationRef,
+        `Outlet ${externalLocationRef}`, locationId, timestamp, timestamp, timestamp),
+  ]);
+  return `lightspeed-r:${namespace}:${externalLocationRef}`;
+}
+
+async function seedReportMetric(database, {
+  organizationId,
+  userId,
+  businessDate,
+  locationRef,
+  netSalesCents,
+  sourceConnectionId = null,
+  sourceImportId = null,
+}) {
+  const timestamp = Math.floor(Date.now() / 1_000);
+  await database.prepare(`INSERT INTO daily_business_metrics
+    (organization_id, business_date, location_ref, gross_sales_cents, net_sales_cents,
+     cost_of_goods_cents, transaction_count, units_sold, refunds_cents, discounts_cents,
+     labour_cost_cents, source_provider, source_connection_id, source_import_id,
+     created_by_user_id, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, 0, 1, 1, 0, 0, 0, ?, ?, ?, ?, ?, ?)`)
+    .bind(organizationId, businessDate, locationRef, netSalesCents, netSalesCents,
+      sourceConnectionId ? "lightspeed-r" : null, sourceConnectionId, sourceImportId,
+      userId, timestamp, timestamp).run();
+}
+
+async function seedSalesAuthority(database, { organizationId, locationId, connectionId, userId }) {
+  const timestamp = Math.floor(Date.now() / 1_000);
+  await database.prepare(`INSERT INTO integration_source_authorities
+    (id, organization_id, local_location_id, channel, fact_family, provider, connection_id,
+     created_by_user_id, updated_by_user_id, version, created_at, updated_at)
+    VALUES (?, ?, ?, 'retail', 'sales', 'lightspeed-r', ?, ?, ?, 1, ?, ?)`)
+    .bind(`authority-${connectionId}`, organizationId, locationId, connectionId,
+      userId, userId, timestamp, timestamp).run();
+}
+
+async function seedReportLocation(database, organizationId, name) {
+  const locationId = `location-${crypto.randomUUID()}`;
+  const timestamp = Math.floor(Date.now() / 1_000);
+  await database.prepare(`INSERT INTO organization_locations
+    (id, organization_id, name, status, country_code, address_line_1, address_line_2,
+     address_line_3, locality, district, administrative_area, postal_code, timezone,
+     currency, locale, tax_jurisdiction, validation_status, created_at, updated_at)
+    VALUES (?, ?, ?, 'active', 'CA', '2 Test Avenue', '', '', 'Edmonton', '', 'AB',
+      'T5A 1A2', 'America/Edmonton', 'CAD', 'en-CA', '', 'validated', ?, ?)`)
+    .bind(locationId, organizationId, name, timestamp, timestamp).run();
+  return locationId;
+}
+
+describe("intelligence flow contracts", { concurrency: false }, () => {
 test("migrations, tenant isolation and the complete intelligence-to-action flow work", async () => {
   const { worker, environment, database, dispose } = await createEnvironment();
   try {
@@ -237,6 +332,13 @@ test("migrations, tenant isolation and the complete intelligence-to-action flow 
     assert.equal(bookloq.summary.missingReceiptsCount, 1);
     assert.ok(bookloq.summary.healthScore < 100);
     assert.ok(bookloq.alerts.every(alert => alert.demoRecord === 1));
+    assert.equal(bookloq.thirteenWeekCashFlow.status, "unavailable");
+    assert.equal(bookloq.thirteenWeekCashFlow.purchasingCapacityCents, null);
+    assert.deepEqual(bookloq.thirteenWeekCashFlow.decisionBlocks, ["demonstration_data"]);
+    assert.equal(bookloq.cashIntelligence.status, "unavailable");
+    assert.equal(bookloq.cashIntelligence.purchasingCapacityCents, null);
+    assert.equal(bookloq.summary.availableCashCents, null);
+    assert.deepEqual(bookloq.forecasts, []);
 
     const ownerRecord = await database.prepare(`SELECT u.id userId, m.organization_id organizationId
       FROM users u JOIN memberships m ON m.user_id = u.id WHERE u.email = ?`).bind(owner.email).first();
@@ -278,6 +380,80 @@ test("migrations, tenant isolation and the complete intelligence-to-action flow 
     assert.equal(liveBankBookLoq.banks[0].balanceState, "current");
     assert.equal(liveBankBookLoq.summary.bankBalanceCents, 2397800);
     assert.equal(liveBankBookLoq.integrations.banking, "connected_and_synced");
+    assert.equal(liveBankBookLoq.thirteenWeekCashFlow.status, "available");
+    const baselinePurchasingCapacity = liveBankBookLoq.thirteenWeekCashFlow.purchasingCapacityCents;
+    assert.equal(typeof baselinePurchasingCapacity, "number");
+
+    const cashFlowDate = new Date().toISOString().slice(0, 10);
+    await database.prepare(`INSERT INTO purchase_orders
+      (id, organization_id, order_number, supplier_name, delivery_location_id, order_date,
+       expected_delivery_date, currency, status, subtotal_cents, tax_cents, discount_cents,
+       total_cents, committed_cash_date, created_by_user_id, created_at, updated_at)
+      VALUES ('cash-flow-po', ?, 'PO-CASH-FLOW', 'Cash Flow Supplier', ?, ?, ?, 'CAD',
+        'approved', 100000, 0, 0, 100000, ?, ?, ?, ?)`)
+      .bind(ownerRecord.organizationId, primaryLocation.id, cashFlowDate, cashFlowDate,
+        cashFlowDate, ownerRecord.userId, freshBankNow, freshBankNow).run();
+    const purchaseFlowResponse = await dispatch(worker, environment, "/api/v1/bookloq", owner);
+    assert.equal(purchaseFlowResponse.status, 200);
+    const approvedFlow = (await purchaseFlowResponse.json()).bookloq.thirteenWeekCashFlow;
+    assert.equal(approvedFlow.status, "available");
+    assert.equal(approvedFlow.purchasingCapacityCents, baselinePurchasingCapacity);
+    assert.equal(approvedFlow.weeks.reduce((sum, week) => sum + week.confirmedNetCents, 0), 0);
+    await database.prepare("UPDATE purchase_orders SET status = 'sent', updated_at = ? WHERE id = 'cash-flow-po' AND organization_id = ?")
+      .bind(freshBankNow + 1, ownerRecord.organizationId).run();
+    const sentPurchaseFlowResponse = await dispatch(worker, environment, "/api/v1/bookloq", owner);
+    assert.equal(sentPurchaseFlowResponse.status, 200);
+    const purchaseFlow = (await sentPurchaseFlowResponse.json()).bookloq.thirteenWeekCashFlow;
+    assert.equal(purchaseFlow.status, "available");
+    assert.equal(purchaseFlow.purchasingCapacityCents, baselinePurchasingCapacity - 100000);
+    const confirmedWithPurchase = purchaseFlow.weeks.reduce((sum, week) => sum + week.confirmedNetCents, 0);
+    assert.equal(confirmedWithPurchase, -100000);
+
+    const supplier = await database.prepare(`SELECT id FROM bookloq_contacts
+      WHERE organization_id = ? AND contact_type = 'supplier' ORDER BY created_at LIMIT 1`)
+      .bind(ownerRecord.organizationId).first();
+    assert.ok(supplier?.id);
+    await database.prepare(`INSERT INTO supplier_bills
+      (id, organization_id, supplier_id, bill_number, invoice_date, due_date, status,
+       subtotal_cents, tax_cents, total_cents, paid_cents, currency, purchase_order_ref,
+       location_ref, approval_status, demo_record, created_at, updated_at)
+      VALUES ('cash-flow-linked-bill', ?, ?, 'BILL-CASH-FLOW', ?, ?, 'under_review',
+        100000, 0, 100000, 0, 'CAD', 'cash-flow-po', 'all', 'pending', 0, ?, ?)`)
+      .bind(ownerRecord.organizationId, supplier.id, cashFlowDate, cashFlowDate, freshBankNow, freshBankNow).run();
+    const provisionalFlowResponse = await dispatch(worker, environment, "/api/v1/bookloq", owner);
+    assert.equal(provisionalFlowResponse.status, 200);
+    const provisionalFlow = (await provisionalFlowResponse.json()).bookloq.thirteenWeekCashFlow;
+    assert.equal(provisionalFlow.purchasingCapacityCents, baselinePurchasingCapacity - 100000);
+    assert.equal(provisionalFlow.weeks.reduce((sum, week) => sum + week.confirmedNetCents, 0), -100000);
+    assert.equal(provisionalFlow.weeks.reduce((sum, week) => sum + week.expectedNetCents, 0), 0);
+    await database.prepare(`UPDATE supplier_bills SET status = 'approved', approval_status = 'approved', updated_at = ?
+      WHERE id = 'cash-flow-linked-bill' AND organization_id = ?`)
+      .bind(freshBankNow + 1, ownerRecord.organizationId).run();
+    const linkedFlowResponse = await dispatch(worker, environment, "/api/v1/bookloq", owner);
+    assert.equal(linkedFlowResponse.status, 200);
+    const linkedFlow = (await linkedFlowResponse.json()).bookloq.thirteenWeekCashFlow;
+    assert.equal(linkedFlow.purchasingCapacityCents, baselinePurchasingCapacity - 100000);
+    assert.equal(linkedFlow.weeks.reduce((sum, week) => sum + week.confirmedNetCents, 0), -100000);
+
+    await database.prepare(`INSERT INTO supplier_bills
+      (id, organization_id, supplier_id, bill_number, invoice_date, due_date, status,
+       subtotal_cents, tax_cents, total_cents, paid_cents, currency, purchase_order_ref,
+       location_ref, approval_status, demo_record, created_at, updated_at)
+      VALUES ('foreign-currency-bill', ?, ?, 'BILL-USD', ?, ?, 'approved',
+        50000, 0, 50000, 0, 'USD', NULL, 'all', 'approved', 0, ?, ?)`)
+      .bind(ownerRecord.organizationId, supplier.id, cashFlowDate, cashFlowDate, freshBankNow, freshBankNow).run();
+    const foreignFlowResponse = await dispatch(worker, environment, "/api/v1/bookloq", owner);
+    assert.equal(foreignFlowResponse.status, 200);
+    const foreignBookLoq = (await foreignFlowResponse.json()).bookloq;
+    const foreignFlow = foreignBookLoq.thirteenWeekCashFlow;
+    assert.equal(foreignFlow.status, "needs_review");
+    assert.equal(foreignFlow.purchasingCapacityCents, null);
+    assert.ok(foreignFlow.decisionBlocks.includes("foreign_currency_obligations"));
+    assert.equal(foreignBookLoq.cashIntelligence.status, "available");
+    assert.equal(foreignBookLoq.cashIntelligence.purchasingCapacityCents, null);
+    assert.equal(typeof foreignBookLoq.summary.currentCashCents, "number");
+    assert.equal(foreignBookLoq.summary.availableCashCents, null);
+    assert.ok(foreignBookLoq.forecasts.length > 0);
     await database.batch([
       database.prepare("UPDATE bookloq_settings SET data_mode = 'demonstration', updated_at = ? WHERE organization_id = ?")
         .bind(freshBankNow, ownerRecord.organizationId),
@@ -439,6 +615,305 @@ test("migrations, tenant isolation and the complete intelligence-to-action flow 
   }
 });
 
+test("report authority never silently fails over while the selected source is staging or syncing", async () => {
+  const { worker, environment, database, dispose } = await createEnvironment();
+  try {
+    const fixture = await createReportWorkspace(worker, environment, database, "authority-lease");
+    const selectedConnectionId = `selected-${crypto.randomUUID()}`;
+    const alternateConnectionId = `alternate-${crypto.randomUUID()}`;
+    const selectedMetricRef = await seedReportConnection(database, {
+      organizationId: fixture.organizationId,
+      locationId: fixture.locationId,
+      connectionId: selectedConnectionId,
+      namespace: "selected-account",
+      externalLocationRef: "main",
+      promotionStatus: "staging",
+    });
+    const alternateMetricRef = await seedReportConnection(database, {
+      organizationId: fixture.organizationId,
+      locationId: fixture.locationId,
+      connectionId: alternateConnectionId,
+      namespace: "alternate-account",
+      externalLocationRef: "main",
+    });
+    await seedReportMetric(database, {
+      organizationId: fixture.organizationId,
+      userId: fixture.userId,
+      businessDate: "2026-08-10",
+      locationRef: selectedMetricRef,
+      netSalesCents: 11_000,
+      sourceConnectionId: selectedConnectionId,
+    });
+    await seedReportMetric(database, {
+      organizationId: fixture.organizationId,
+      userId: fixture.userId,
+      businessDate: "2026-08-10",
+      locationRef: alternateMetricRef,
+      netSalesCents: 99_000,
+      sourceConnectionId: alternateConnectionId,
+    });
+    await seedSalesAuthority(database, {
+      organizationId: fixture.organizationId,
+      locationId: fixture.locationId,
+      connectionId: selectedConnectionId,
+      userId: fixture.userId,
+    });
+
+    const stagingResponse = await dispatch(
+      worker,
+      environment,
+      "/api/v1/reports?report=sales_totals&start=2026-08-10&end=2026-08-10",
+      fixture.owner,
+    );
+    assert.equal(stagingResponse.status, 200);
+    const stagingReport = await stagingResponse.json();
+    assert.equal(stagingReport.reportStatus, "source_conflict");
+    assert.equal(stagingReport.totals, null);
+    assert.deepEqual(stagingReport.sourceAuthority.sales.selections, []);
+    const stagingConflict = stagingReport.sourceAuthority.sales.conflicts.find(
+      (conflict) => conflict.localLocationId === fixture.locationId,
+    );
+    assert.equal(
+      stagingConflict?.candidates.find((candidate) => candidate.connectionId === selectedConnectionId)?.availability,
+      "staging",
+    );
+    assert.ok(stagingConflict?.candidates.some((candidate) => candidate.connectionId === alternateConnectionId));
+
+    const activeLeaseExpiry = Math.floor(Date.now() / 1_000) + 3_600;
+    await database.prepare(`UPDATE integration_connections
+      SET data_promotion_status = 'approved', sync_lease_owner = 'sync-worker', sync_lease_expires_at = ?
+      WHERE id = ? AND organization_id = ?`)
+      .bind(activeLeaseExpiry, selectedConnectionId, fixture.organizationId).run();
+    const syncingResponse = await dispatch(
+      worker,
+      environment,
+      "/api/v1/reports?report=sales_totals&start=2026-08-10&end=2026-08-10",
+      fixture.owner,
+    );
+    assert.equal(syncingResponse.status, 200);
+    const syncingReport = await syncingResponse.json();
+    assert.equal(syncingReport.reportStatus, "source_conflict");
+    assert.equal(syncingReport.totals, null);
+    assert.deepEqual(syncingReport.sourceAuthority.sales.selections, []);
+    const syncingConflict = syncingReport.sourceAuthority.sales.conflicts.find(
+      (conflict) => conflict.localLocationId === fixture.locationId,
+    );
+    assert.equal(
+      syncingConflict?.candidates.find((candidate) => candidate.connectionId === selectedConnectionId)?.availability,
+      "syncing",
+    );
+  } finally {
+    await dispose();
+  }
+});
+
+test("report authority requires scoped fact evidence before a mapped source can affect consolidation", async () => {
+  const { worker, environment, database, dispose } = await createEnvironment();
+  try {
+    const fixture = await createReportWorkspace(worker, environment, database, "fact-evidence");
+    const factualConnectionId = `factual-${crypto.randomUUID()}`;
+    const emptyConnectionId = `empty-${crypto.randomUUID()}`;
+    const factualMetricRef = await seedReportConnection(database, {
+      organizationId: fixture.organizationId,
+      locationId: fixture.locationId,
+      connectionId: factualConnectionId,
+      namespace: "factual-account",
+      externalLocationRef: "main",
+    });
+    await seedReportConnection(database, {
+      organizationId: fixture.organizationId,
+      locationId: fixture.locationId,
+      connectionId: emptyConnectionId,
+      namespace: "empty-account",
+      externalLocationRef: "main",
+    });
+    await seedReportMetric(database, {
+      organizationId: fixture.organizationId,
+      userId: fixture.userId,
+      businessDate: "2026-08-09",
+      locationRef: factualMetricRef,
+      netSalesCents: 12_345,
+      sourceConnectionId: factualConnectionId,
+    });
+
+    const response = await dispatch(
+      worker,
+      environment,
+      "/api/v1/reports?report=sales_totals&start=2026-08-09&end=2026-08-09",
+      fixture.owner,
+    );
+    assert.equal(response.status, 200);
+    const report = await response.json();
+    assert.equal(report.reportStatus, "ready");
+    assert.equal(report.totals.netSalesCents, 12_345);
+    assert.deepEqual(
+      report.sourceAuthority.sales.selections.map((selection) => selection.connectionId),
+      [factualConnectionId],
+    );
+    const emptyCandidate = report.sourceAuthority.sales.candidates.find(
+      (candidate) => candidate.connectionId === emptyConnectionId,
+    );
+    assert.equal(emptyCandidate?.hasFacts, false);
+    assert.equal(emptyCandidate?.availability, "needs_data");
+    assert.equal(report.sourceAuthority.sales.conflicts.length, 0);
+    assert.deepEqual(report.rows.map((row) => row.sourceConnectionId), [factualConnectionId]);
+  } finally {
+    await dispose();
+  }
+});
+
+test("report authority selection uses optimistic concurrency and stale disconnected choices do not block manual summaries", async () => {
+  const { worker, environment, database, dispose } = await createEnvironment();
+  try {
+    const fixture = await createReportWorkspace(worker, environment, database, "authority-cas");
+    const firstConnectionId = `first-${crypto.randomUUID()}`;
+    const secondConnectionId = `second-${crypto.randomUUID()}`;
+    const firstMetricRef = await seedReportConnection(database, {
+      organizationId: fixture.organizationId,
+      locationId: fixture.locationId,
+      connectionId: firstConnectionId,
+      namespace: "first-account",
+      externalLocationRef: "main",
+    });
+    const secondMetricRef = await seedReportConnection(database, {
+      organizationId: fixture.organizationId,
+      locationId: fixture.locationId,
+      connectionId: secondConnectionId,
+      namespace: "second-account",
+      externalLocationRef: "main",
+    });
+    for (const [connectionId, locationRef, amount] of [
+      [firstConnectionId, firstMetricRef, 10_000],
+      [secondConnectionId, secondMetricRef, 20_000],
+    ]) {
+      await seedReportMetric(database, {
+        organizationId: fixture.organizationId,
+        userId: fixture.userId,
+        businessDate: "2026-08-07",
+        locationRef,
+        netSalesCents: amount,
+        sourceConnectionId: connectionId,
+      });
+    }
+    const conflictResponse = await dispatch(worker, environment,
+      "/api/v1/reports?report=sales_totals&start=2026-08-07&end=2026-08-07", fixture.owner);
+    assert.equal(conflictResponse.status, 200);
+    const conflict = (await conflictResponse.json()).sourceAuthority.sales.conflicts[0];
+    assert.equal(conflict.expectedVersion, 0);
+
+    const selectionRequest = (connectionId) => dispatch(worker, environment, "/api/v1/reports", {
+      method: "POST",
+      ...fixture.owner,
+      body: {
+        action: "set_source_authority",
+        locationId: fixture.locationId,
+        connectionId,
+        factFamily: "sales",
+        expectedVersion: conflict.expectedVersion,
+      },
+    });
+    const attempts = await Promise.all([selectionRequest(firstConnectionId), selectionRequest(secondConnectionId)]);
+    assert.deepEqual(attempts.map((response) => response.status).sort(), [200, 409]);
+    const saved = await database.prepare(`SELECT connection_id connectionId, version
+      FROM integration_source_authorities WHERE organization_id = ? AND local_location_id = ?
+        AND channel = 'retail' AND fact_family = 'sales'`)
+      .bind(fixture.organizationId, fixture.locationId).first();
+    assert.equal(saved.version, 1);
+
+    const manualImportId = `manual-${crypto.randomUUID()}`;
+    const timestamp = Math.floor(Date.now() / 1_000);
+    await database.prepare(`INSERT INTO data_imports
+      (id, organization_id, import_type, status, file_name, row_count, idempotency_key,
+       imported_by_user_id, created_at)
+      VALUES (?, ?, 'manual_entry', 'completed', '', 1, ?, ?, ?)`)
+      .bind(manualImportId, fixture.organizationId, `key-${manualImportId}`, fixture.userId, timestamp).run();
+    await seedReportMetric(database, {
+      organizationId: fixture.organizationId,
+      userId: fixture.userId,
+      businessDate: "2026-08-08",
+      locationRef: fixture.locationId,
+      netSalesCents: 7_500,
+      sourceImportId: manualImportId,
+    });
+    await database.prepare(`UPDATE integration_connections SET status = 'revoked', data_promotion_status = 'blocked'
+      WHERE organization_id = ? AND id IN (?, ?)`)
+      .bind(fixture.organizationId, firstConnectionId, secondConnectionId).run();
+    const fallbackResponse = await dispatch(worker, environment,
+      "/api/v1/reports?report=sales_totals&start=2026-08-08&end=2026-08-08", fixture.owner);
+    assert.equal(fallbackResponse.status, 200);
+    const fallback = await fallbackResponse.json();
+    assert.equal(fallback.reportStatus, "ready");
+    assert.equal(fallback.totals.netSalesCents, 7_500);
+    assert.equal(fallback.rows[0].sourceKind, "manual_entry");
+  } finally {
+    await dispose();
+  }
+});
+
+test("mixed provider and manual report rows preserve import lineage in JSON and CSV", async () => {
+  const { worker, environment, database, dispose } = await createEnvironment();
+  try {
+    const fixture = await createReportWorkspace(worker, environment, database, "mixed-lineage");
+    const manualLocationId = await seedReportLocation(database, fixture.organizationId, "Manual South");
+    const providerConnectionId = `provider-${crypto.randomUUID()}`;
+    const providerMetricRef = await seedReportConnection(database, {
+      organizationId: fixture.organizationId,
+      locationId: fixture.locationId,
+      connectionId: providerConnectionId,
+      namespace: "provider-account",
+      externalLocationRef: "north",
+    });
+    const importId = `manual-import-${crypto.randomUUID()}`;
+    const timestamp = Math.floor(Date.now() / 1_000);
+    await database.prepare(`INSERT INTO data_imports
+      (id, organization_id, import_type, status, file_name, row_count, idempotency_key,
+       imported_by_user_id, created_at)
+      VALUES (?, ?, 'daily_summary_csv', 'completed', 'manual-south.csv', 1, ?, ?, ?)`)
+      .bind(importId, fixture.organizationId, `key-${importId}`, fixture.userId, timestamp).run();
+    await seedReportMetric(database, {
+      organizationId: fixture.organizationId,
+      userId: fixture.userId,
+      businessDate: "2026-08-08",
+      locationRef: providerMetricRef,
+      netSalesCents: 20_000,
+      sourceConnectionId: providerConnectionId,
+    });
+    await seedReportMetric(database, {
+      organizationId: fixture.organizationId,
+      userId: fixture.userId,
+      businessDate: "2026-08-08",
+      locationRef: manualLocationId,
+      netSalesCents: 5_000,
+      sourceImportId: importId,
+    });
+
+    const query = "/api/v1/reports?report=sales_totals&start=2026-08-08&end=2026-08-08";
+    const response = await dispatch(worker, environment, query, fixture.owner);
+    assert.equal(response.status, 200);
+    const report = await response.json();
+    assert.equal(report.totals.netSalesCents, 25_000);
+    assert.match(report.source.type, /authoritative records plus owner-reviewed summaries/);
+    const manualRow = report.rows.find((row) => row.sourceConnectionId === null);
+    assert.equal(manualRow?.sourceImportId, importId);
+    assert.deepEqual(report.source.lineage.manual.imports, [{ id: importId, importType: "daily_summary_csv" }]);
+    assert.equal(report.source.lineage.manual.rowCount, 1);
+
+    const csvResponse = await dispatch(worker, environment, `${query}&format=csv`, fixture.owner);
+    assert.equal(csvResponse.status, 200);
+    const [header, ...csvRows] = (await csvResponse.text()).trim().split("\n");
+    const columns = header.split(",");
+    const connectionColumn = columns.indexOf("Source connection");
+    const importColumn = columns.indexOf("Source import");
+    assert.notEqual(connectionColumn, -1);
+    assert.notEqual(importColumn, -1);
+    const manualCsvRow = csvRows.map((row) => row.split(",")).find((row) => row[connectionColumn] === "manual");
+    assert.equal(manualCsvRow?.[importColumn], importId);
+  } finally {
+    await dispose();
+  }
+});
+});
+
 test("location-limited purchasing cannot list or approve another location's orders", async () => {
   const { worker, environment, database, dispose } = await createEnvironment();
   try {
@@ -573,6 +1048,7 @@ test("location-limited purchasing cannot list or approve another location's orde
     assert.deepEqual(managerPayload.orders.map((order) => order.id), ["po-north"]);
     assert.equal(managerPayload.catalog.cashContext, null, "location-limited finance roles must not receive or use organization-wide cash data");
     assert.equal(managerPayload.calendar.some((entry) => entry.kind === "supplier_bill" || entry.kind === "customer_invoice"), false);
+    assert.doesNotMatch(JSON.stringify(managerPayload), /"(?:unitCostCents|previousCostCents|landedCostCents|remainingCostCents|remainingMerchandiseCents|totalRemainingMerchandiseCents|differenceCents|priceChangeRate)"/);
 
     await database.prepare("UPDATE tenant_addons SET status = 'inactive', updated_at = ? WHERE organization_id = ? AND addon_key = 'bookloq'")
       .bind(Date.now(), ownerRecord.organizationId).run();
@@ -608,6 +1084,78 @@ test("location-limited purchasing cannot list or approve another location's orde
     assert.equal(quarantinedMatch.status, 423);
     assert.equal((await quarantinedMatch.json()).error.code, "DOCUMENT_SCAN_REQUIRED");
     assert.equal((await database.prepare("SELECT status FROM purchase_orders WHERE id = 'po-north'").first()).status, "awaiting_approval");
+  } finally {
+    await dispose();
+  }
+});
+
+test("manual and CSV imports replace stale connector ownership and remain distinguishable in reports", async () => {
+  const { worker, environment, database, dispose } = await createEnvironment();
+  try {
+    const workspace = await createReportWorkspace(worker, environment, database, "import-lineage");
+    const staleTimestamp = Math.floor(Date.now() / 1_000);
+    await database.prepare(`INSERT INTO daily_business_metrics
+      (organization_id, business_date, location_ref, gross_sales_cents, net_sales_cents,
+       cost_of_goods_cents, transaction_count, units_sold, refunds_cents, discounts_cents,
+       labour_cost_cents, source_provider, source_connection_id, created_by_user_id,
+       created_at, updated_at)
+      VALUES (?, '2026-08-10', ?, 1, 1, 0, 1, 1, 0, 0, 0,
+        'lightspeed-r', 'stale-connection', ?, ?, ?)`)
+      .bind(workspace.organizationId, workspace.locationId, workspace.userId, staleTimestamp, staleTimestamp).run();
+
+    const baseRow = {
+      locationRef: workspace.locationId,
+      grossSalesCents: 20_000,
+      netSalesCents: 18_000,
+      costOfGoodsCents: 9_000,
+      transactionCount: 12,
+      unitsSold: 15,
+      refundsCents: 0,
+      discountsCents: 2_000,
+      labourCostCents: 3_000,
+      inventoryValueCents: null,
+      cashBalanceCents: null,
+      accountsPayableCents: null,
+    };
+    const manualResponse = await dispatch(worker, environment, "/api/v1/daily-metrics", {
+      method: "POST",
+      ...workspace.owner,
+      idempotencyKey: crypto.randomUUID(),
+      body: { importType: "manual_entry", fileName: "", rows: [{ ...baseRow, businessDate: "2026-08-10" }] },
+    });
+    assert.equal(manualResponse.status, 201);
+    const manualImportId = (await manualResponse.json()).import.id;
+    const csvResponse = await dispatch(worker, environment, "/api/v1/daily-metrics", {
+      method: "POST",
+      ...workspace.owner,
+      idempotencyKey: crypto.randomUUID(),
+      body: { importType: "daily_summary_csv", fileName: "august.csv", rows: [{ ...baseRow, businessDate: "2026-08-11" }] },
+    });
+    assert.equal(csvResponse.status, 201);
+    const csvImportId = (await csvResponse.json()).import.id;
+
+    const replaced = await database.prepare(`SELECT source_provider sourceProvider,
+      source_connection_id sourceConnectionId, source_import_id sourceImportId
+      FROM daily_business_metrics WHERE organization_id = ? AND business_date = '2026-08-10' AND location_ref = ?`)
+      .bind(workspace.organizationId, workspace.locationId).first();
+    assert.deepEqual(replaced, { sourceProvider: null, sourceConnectionId: null, sourceImportId: manualImportId });
+
+    const reportResponse = await dispatch(worker, environment,
+      "/api/v1/reports?report=sales_totals&start=2026-08-10&end=2026-08-11", workspace.owner);
+    assert.equal(reportResponse.status, 200);
+    const report = await reportResponse.json();
+    assert.deepEqual(report.rows.map((row) => ({ date: row.businessDate, sourceKind: row.sourceKind, sourceImportId: row.sourceImportId })), [
+      { date: "2026-08-10", sourceKind: "manual_entry", sourceImportId: manualImportId },
+      { date: "2026-08-11", sourceKind: "daily_summary_csv", sourceImportId: csvImportId },
+    ]);
+
+    const csvReport = await dispatch(worker, environment,
+      "/api/v1/reports?report=sales_totals&start=2026-08-10&end=2026-08-11&format=csv", workspace.owner);
+    assert.equal(csvReport.status, 200);
+    const csvText = await csvReport.text();
+    assert.match(csvText, /Source kind/);
+    assert.match(csvText, /manual_entry/);
+    assert.match(csvText, /daily_summary_csv/);
   } finally {
     await dispose();
   }

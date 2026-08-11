@@ -35,6 +35,7 @@ import { hasAddon } from "../../../../server/entitlements/engine";
 import { authorizedLocationDataScope, requireAccessibleLocation } from "../../../../server/location-access";
 import { plaidReadiness } from "../../../../server/integrations/plaid";
 import { approvedBankSource, noActiveIntegrationLease } from "../../../../server/integrations/trusted-data";
+import { buildPurchaseCommitmentBoard } from "../../../../domain/purchase-commitments";
 
 const users = ["owner", "admin", "manager", "employee", "read_only"] as const;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -97,6 +98,19 @@ function businessDateOffset(date: string, days: number) {
   return value.toISOString().slice(0, 10);
 }
 
+function validIsoDate(value: string) {
+  if (!DATE.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
+function validCurrencyCode(value: string) {
+  if (!/^[A-Z]{3}$/.test(value)) return false;
+  const supportedValuesOf = (Intl as typeof Intl & { supportedValuesOf?: (key: "currency") => string[] }).supportedValuesOf;
+  if (supportedValuesOf) return value !== "XXX" && supportedValuesOf("currency").includes(value);
+  return new Set(["CAD", "USD", "EUR", "GBP", "AUD", "NZD", "JPY", "CHF", "CNY", "HKD", "SGD", "MXN"]).has(value);
+}
+
 type ProcurementLocationScope = {
   ids: string[];
   selectedId: string | null;
@@ -110,7 +124,25 @@ type ProcurementLocationScope = {
 type PurchasingVisibility = {
   cashDetails: boolean;
   financeCalendar: boolean;
+  costDetails: boolean;
 };
+
+const sensitivePurchasingFields = new Set([
+  "unitCostCents", "previousCostCents", "defaultCostCents", "subtotalCents", "taxCents", "discountCents", "totalCents",
+  "amountCents", "openCommitmentsCents", "remainingMerchandiseCents", "totalRemainingMerchandiseCents", "remainingCostCents",
+  "cashAllocatedCents", "recommendedCostCents", "detailsJson", "priceChangeRate", "cashConstrainedQuantity", "cashDecision",
+]);
+
+function redactPurchasingCosts(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(redactPurchasingCosts);
+  if (value instanceof Date) return value;
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(([key]) => !sensitivePurchasingFields.has(key) && !key.endsWith("Cents"))
+      .map(([key, item]) => [key, redactPurchasingCosts(item)]),
+  );
+}
 
 async function requestLocationScope(request: Request, context: AccessContext): Promise<ProcurementLocationScope | null> {
   const requested = new URL(request.url).searchParams.get("location");
@@ -281,7 +313,7 @@ async function procurementCatalog(
                       WHERE m.organization_id = p.organization_id AND m.connection_id = p.connection_id AND m.status = 'mapped'
                     )
                     AND b.sku = p.sku), 0) AS reorderPoint,
-                COALESCE((SELECT SUM(pol.quantity - pol.received_quantity)
+                COALESCE((SELECT SUM(MAX(pol.quantity - pol.received_quantity, 0))
                   FROM purchase_order_lines pol
                   JOIN purchase_orders po ON po.id = pol.purchase_order_id
                   WHERE pol.organization_id = p.organization_id
@@ -303,7 +335,7 @@ async function procurementCatalog(
                               AND (duplicate_connection.sync_lease_owner IS NULL OR duplicate_connection.sync_lease_expires_at IS NULL
                                 OR duplicate_connection.sync_lease_expires_at <= CAST(strftime('%s', 'now') AS INTEGER))
                           ))))
-                    AND po.status NOT IN ('closed', 'cancelled', 'received', 'invoiced')), 0) AS incomingUnits,
+                    AND po.status IN ('sent', 'acknowledged', 'partially_received', 'received', 'partially_invoiced', 'invoiced', 'disputed')), 0) AS incomingUnits,
                 COALESCE((SELECT SUM(sl.quantity_milli)
                   FROM commerce_sale_lines sl
                   WHERE sl.organization_id = p.organization_id
@@ -487,7 +519,7 @@ async function procurementCatalog(
                  pol.provider,
                  pol.connection_id AS connectionId,
                  pol.external_product_ref AS externalProductRef,
-                 SUM(CASE WHEN po.status NOT IN ('closed', 'cancelled', 'received', 'invoiced')
+                 SUM(CASE WHEN po.status IN ('sent', 'acknowledged', 'partially_received', 'received', 'partially_invoiced', 'invoiced', 'disputed')
                           THEN MAX(pol.quantity - pol.received_quantity, 0) ELSE 0 END)
                    OVER (PARTITION BY COALESCE(
                      pol.provider || ':' || pol.connection_id || ':' || pol.external_product_ref,
@@ -675,7 +707,7 @@ async function requirePurchaseOrderInScope(
 async function list(
   organizationId: string,
   locationScope: ProcurementLocationScope | null = null,
-  visibility: PurchasingVisibility = { cashDetails: false, financeCalendar: false },
+  visibility: PurchasingVisibility = { cashDetails: false, financeCalendar: false, costDetails: false },
 ) {
   const orders = await getDb()
     .select()
@@ -732,10 +764,34 @@ async function list(
   const scopedInvoices = locationScope
     ? invoices.filter((invoice) => locationScope.refs.includes(invoice.locationRef))
     : invoices;
-  const commitments = scopedOrders
-    .filter((order) => !["closed", "cancelled"].includes(order.status))
-    .reduce((sum, order) => sum + order.totalCents, 0);
-  return {
+  const commitmentBoard = buildPurchaseCommitmentBoard(scopedOrders.map((order) => ({
+    id: order.id,
+    orderNumber: order.orderNumber,
+    supplierName: order.supplierName,
+    status: order.status,
+    orderDate: order.orderDate,
+    expectedDeliveryDate: order.expectedDeliveryDate,
+    committedCashDate: order.committedCashDate,
+    currency: order.currency,
+    totalCents: order.totalCents,
+    lines: lines.filter((line) => line.purchaseOrderId === order.id).map((line) => ({
+      sku: line.sku,
+      description: line.description,
+      quantity: line.quantity,
+      receivedQuantity: line.receivedQuantity,
+      unitCostCents: line.unitCostCents,
+      previousCostCents: line.previousCostCents,
+      })),
+  })));
+  const commitmentsByCurrency = [...commitmentBoard.vendors.reduce(
+    (totals, vendor) => totals.set(
+      vendor.currency,
+      (totals.get(vendor.currency) ?? 0) + vendor.remainingMerchandiseCents,
+    ),
+    new Map<string, number>(),
+  )].map(([currency, amountCents]) => ({ currency, amountCents }));
+  const commitments = commitmentsByCurrency.length === 1 ? commitmentsByCurrency[0].amountCents : null;
+  const response = {
     orders: scopedOrders.map((order) => ({
       ...order,
       lines: lines.filter((line) => line.purchaseOrderId === order.id),
@@ -752,6 +808,8 @@ async function list(
         (order) => order.status === "awaiting_approval",
       ).length,
       openCommitmentsCents: commitments,
+      commitmentsByCurrency,
+      commitmentsLabel: "Unreceived merchandise still incoming",
       discrepancies:
         receipts.filter((receipt) => scopedOrderIds.has(receipt.purchaseOrderId) && receipt.discrepancyStatus !== "matched")
           .length +
@@ -760,6 +818,7 @@ async function list(
       healthyProducts: catalog.products.filter((product) => product.health.tone === "green").length,
       deadStockProducts: catalog.products.filter((product) => product.health.label === "Dead stock").length,
     },
+    commitmentBoard,
     catalog,
     calendar: [
       ...scopedOrders.flatMap((order) => [
@@ -771,6 +830,19 @@ async function list(
       ...scopedInvoices.filter((invoice) => !["paid", "written_off", "void"].includes(invoice.status)).map((invoice) => ({ id: `invoice:${invoice.id}`, kind: "customer_invoice_due", date: invoice.dueDate, title: `${invoice.reference} due`, detail: "Customer invoice", status: invoice.status, amountCents: invoice.totalCents, currency: invoice.currency })),
     ].sort((left, right) => left.date.localeCompare(right.date)),
   };
+  if (visibility.costDetails) return response;
+  const redacted = redactPurchasingCosts(response) as Record<string, unknown>;
+  const redactedCatalog = redacted.catalog as Record<string, unknown> | undefined;
+  if (redactedCatalog) {
+    redactedCatalog.cashContext = null;
+    const redactedProducts = Array.isArray(redactedCatalog.products) ? redactedCatalog.products : [];
+    for (const product of redactedProducts) {
+      if (!product || typeof product !== "object") continue;
+      (product as Record<string, unknown>).cashDecision = "restricted";
+      (product as Record<string, unknown>).cashConstrainedQuantity = null;
+    }
+  }
+  return redacted;
 }
 
 export async function GET(request: Request) {
@@ -787,6 +859,7 @@ export async function GET(request: Request) {
     const visibility = {
       cashDetails: organizationWide && bookloqAddonActive && permissions.includes("finance.bank_balances") && permissions.includes("finance.ap_ar"),
       financeCalendar: organizationWide && permissions.includes("finance.ap_ar"),
+      costDetails: permissions.includes("finance.costs"),
     };
     return jsonResponse(await list(context.organizationId, locationScope, visibility));
   });
@@ -805,6 +878,7 @@ export async function POST(request: Request) {
     const visibility = {
       cashDetails: organizationWide && bookloqAddonActive && permissions.includes("finance.bank_balances") && permissions.includes("finance.ap_ar"),
       financeCalendar: organizationWide && permissions.includes("finance.ap_ar"),
+      costDetails: permissions.includes("finance.costs"),
     };
     await enforceRateLimit("purchasing:write", context.userId, 40, 3_600);
     const input = await readJsonObject(request, 256_000);
@@ -878,9 +952,12 @@ export async function POST(request: Request) {
           1_000_000,
         );
         const unitCostCents = integer(
-          row.unitCostCents ?? selectedProduct?.defaultCostCents,
+          row.unitCostCents ?? (visibility.costDetails ? selectedProduct?.defaultCostCents : undefined),
           `unit cost for line ${index + 1}`,
         );
+        if (!Number.isSafeInteger(quantity * unitCostCents)) {
+          throw new ApiError(400, "INVALID_FIELD", `The value for line ${index + 1} is too large.`);
+        }
         return {
           id: crypto.randomUUID(),
           lineNumber: index + 1,
@@ -893,14 +970,14 @@ export async function POST(request: Request) {
             text(row.description, "product description", 200),
           quantity,
           unitCostCents,
-          previousCostCents: selectedProduct?.defaultCostCents ?? null,
+          previousCostCents: visibility.costDetails ? selectedProduct?.defaultCostCents ?? null : null,
           currentInventory: selectedProduct?.onHandQuantity ?? null,
           reorderPoint: selectedProduct?.reorderPoint ?? null,
           forecastDemand: selectedProduct?.recommendedQuantity ?? null,
         };
       });
       const orderDate = text(input.orderDate, "order date", 10);
-      if (!DATE.test(orderDate))
+      if (!validIsoDate(orderDate))
         throw new ApiError(400, "INVALID_FIELD", "Enter a valid order date.");
       const expected = text(
         input.expectedDeliveryDate,
@@ -908,22 +985,33 @@ export async function POST(request: Request) {
         10,
         false,
       );
-      if (expected && !DATE.test(expected))
+      if (expected && !validIsoDate(expected))
         throw new ApiError(
           400,
           "INVALID_FIELD",
           "Enter a valid expected delivery date.",
         );
+      const committedCashDate = text(input.committedCashDate, "committed cash date", 10, false);
+      if (committedCashDate && !validIsoDate(committedCashDate)) {
+        throw new ApiError(400, "INVALID_FIELD", "Enter a valid committed cash date.");
+      }
       const taxCents = integer(input.taxCents ?? 0, "tax amount");
       const discountCents = integer(
         input.discountCents ?? 0,
         "discount amount",
       );
-      const subtotalCents = lines.reduce(
-        (sum, line) => sum + line.quantity * line.unitCostCents,
-        0,
-      );
-      if (discountCents > subtotalCents + taxCents)
+      const subtotalCents = lines.reduce((sum, line, index) => {
+        const next = sum + line.quantity * line.unitCostCents;
+        if (!Number.isSafeInteger(next)) {
+          throw new ApiError(400, "INVALID_FIELD", `The combined order value is too large after line ${index + 1}.`);
+        }
+        return next;
+      }, 0);
+      const grossCents = subtotalCents + taxCents;
+      if (!Number.isSafeInteger(grossCents)) {
+        throw new ApiError(400, "INVALID_FIELD", "The combined order value is too large.");
+      }
+      if (discountCents > grossCents)
         throw new ApiError(
           400,
           "INVALID_FIELD",
@@ -932,7 +1020,14 @@ export async function POST(request: Request) {
       const id = crypto.randomUUID();
       const status =
         input.submitForApproval === true ? "awaiting_approval" : "draft";
-      const totalCents = subtotalCents + taxCents - discountCents;
+      const totalCents = grossCents - discountCents;
+      if (!Number.isSafeInteger(totalCents)) {
+        throw new ApiError(400, "INVALID_FIELD", "The combined order value is too large.");
+      }
+      const currency = text(input.currency, "currency", 3).toUpperCase();
+      if (!validCurrencyCode(currency)) {
+        throw new ApiError(400, "INVALID_FIELD", "Enter a valid three-letter currency code.");
+      }
       const requestedDeliveryLocationId = text(input.deliveryLocationId, "delivery location", 200, false) || null;
       let deliveryLocationId: string;
       if (locationScope?.selectedId) {
@@ -966,15 +1061,14 @@ export async function POST(request: Request) {
             deliveryLocationId,
             orderDate,
             expected || null,
-            text(input.currency, "currency", 3).toUpperCase(),
+            currency,
             text(input.paymentTerms, "payment terms", 100, false),
             status,
             subtotalCents,
             taxCents,
             discountCents,
             totalCents,
-            text(input.committedCashDate, "committed cash date", 10, false) ||
-              null,
+            committedCashDate || null,
             text(input.notes, "notes", 2000, false),
             context.userId,
             now,
@@ -1037,29 +1131,60 @@ export async function POST(request: Request) {
         );
       resourceId = id;
       auditAction = "purchase_order.approved";
-    } else if (action === "mark_sent") {
+    } else if (action === "set_commitment_date") {
       await requirePermission(context, "purchasing.send");
       const id = text(input.purchaseOrderId, "purchase order", 200);
       await requirePurchaseOrderInScope(context.organizationId, id, locationScope);
+      const committedCashDate = text(input.committedCashDate, "committed cash date", 10);
+      if (!validIsoDate(committedCashDate)) {
+        throw new ApiError(400, "INVALID_FIELD", "Enter a valid committed cash date.");
+      }
+      const result = await database
+        .prepare("UPDATE purchase_orders SET committed_cash_date = ?, updated_at = ? WHERE id = ? AND organization_id = ? AND status NOT IN ('cancelled','closed')")
+        .bind(committedCashDate, now, id, context.organizationId)
+        .run();
+      if (!result.success || Number(result.meta.changes ?? 0) !== 1) {
+        throw new ApiError(409, "INVALID_TRANSITION", "A commitment date cannot be changed for this purchase order.");
+      }
+      resourceId = id;
+      auditAction = "purchase_order.commitment_date_set";
+      details = { action, committedCashDate };
+    } else if (action === "mark_sent") {
+      await requirePermission(context, "purchasing.send");
+      const id = text(input.purchaseOrderId, "purchase order", 200);
+      const order = await requirePurchaseOrderInScope(context.organizationId, id, locationScope);
       if (input.confirmExternalSend !== true)
         throw new ApiError(
           400,
           "CONFIRMATION_REQUIRED",
           "Confirm that an authorized person sent the purchase order outside Vanteloq. No email provider is connected.",
         );
-      await database
+      if (!order.committedCashDate || !validIsoDate(order.committedCashDate)) {
+        throw new ApiError(409, "COMMITMENT_DATE_REQUIRED", "Record the expected cash date before confirming that this order was sent.");
+      }
+      const result = await database
         .prepare(
           "UPDATE purchase_orders SET status = 'sent', updated_at = ? WHERE id = ? AND organization_id = ? AND status = 'approved'",
         )
         .bind(now, id, context.organizationId)
         .run();
+      if (!result.success || Number(result.meta.changes ?? 0) !== 1) {
+        throw new ApiError(409, "INVALID_TRANSITION", "Only an approved purchase order can be confirmed as sent.");
+      }
       resourceId = id;
       auditAction = "purchase_order.external_send_confirmed";
       details = { action, provider: "manual_external_confirmation" };
     } else if (action === "receive") {
       await requirePermission(context, "purchasing.receive");
       const id = text(input.purchaseOrderId, "purchase order", 200);
-      await requirePurchaseOrderInScope(context.organizationId, id, locationScope);
+      const order = await requirePurchaseOrderInScope(context.organizationId, id, locationScope);
+      if (!["sent", "acknowledged", "partially_received"].includes(order.status)) {
+        throw new ApiError(409, "INVALID_TRANSITION", "Goods can be received only after the purchase order is sent to the vendor.");
+      }
+      const receivedDate = text(input.receivedDate, "received date", 10);
+      if (!validIsoDate(receivedDate)) {
+        throw new ApiError(400, "INVALID_FIELD", "Enter a valid received date.");
+      }
       const lines = await getDb()
         .select()
         .from(purchaseOrderLines)
@@ -1076,19 +1201,27 @@ export async function POST(request: Request) {
           "Add received quantities for this purchase order.",
         );
       const received = new Map<string, number>();
+      const lineIds = new Set(lines.map((line) => line.id));
       for (const entry of input.lines) {
         if (!entry || typeof entry !== "object") continue;
         const row = entry as Record<string, unknown>;
-        received.set(
-          text(row.lineId, "line", 200),
-          integer(row.quantity, "received quantity", 0, 1_000_000),
-        );
+        const lineId = text(row.lineId, "line", 200);
+        if (!lineIds.has(lineId)) {
+          throw new ApiError(400, "INVALID_RECEIPT", "Every received line must belong to this purchase order.");
+        }
+        received.set(lineId, integer(row.quantity, "received quantity", 0, 1_000_000));
+      }
+      if (![...received.values()].some((quantity) => quantity > 0)) {
+        throw new ApiError(400, "INVALID_RECEIPT", "Record at least one received unit.");
       }
       let discrepancy: "matched" | "short" | "over" = "matched";
       const statements = [] as D1PreparedStatement[];
       for (const line of lines) {
         const add = received.get(line.id) ?? 0;
         const total = line.receivedQuantity + add;
+        if (!Number.isSafeInteger(total)) {
+          throw new ApiError(400, "INVALID_RECEIPT", "The cumulative received quantity is too large.");
+        }
         if (total < line.quantity) discrepancy = "short";
         if (total > line.quantity) discrepancy = "over";
         statements.push(
@@ -1113,7 +1246,7 @@ export async function POST(request: Request) {
             receiptId,
             context.organizationId,
             id,
-            text(input.receivedDate, "received date", 10),
+            receivedDate,
             context.userId,
             JSON.stringify(
               [...received.entries()].map(([lineId, quantity]) => ({
@@ -1128,7 +1261,7 @@ export async function POST(request: Request) {
       statements.push(
         database
           .prepare(
-            "UPDATE purchase_orders SET status = ?, updated_at = ? WHERE id = ? AND organization_id = ? AND status NOT IN ('cancelled','closed')",
+            "UPDATE purchase_orders SET status = ?, updated_at = ? WHERE id = ? AND organization_id = ? AND status IN ('sent','acknowledged','partially_received')",
           )
           .bind(
             allReceived ? "received" : "partially_received",
@@ -1172,6 +1305,9 @@ export async function POST(request: Request) {
           "This invoice cannot be matched until its independent security scan is complete.",
         );
       }
+      if (!["received", "partially_invoiced"].includes(order.status)) {
+        throw new ApiError(409, "INVALID_TRANSITION", "An invoice can be matched only after goods have been received.");
+      }
       const invoiceTotalCents = integer(
         input.invoiceTotalCents,
         "invoice total",
@@ -1202,7 +1338,7 @@ export async function POST(request: Request) {
           ),
         database
           .prepare(
-            "UPDATE purchase_orders SET status = ?, updated_at = ? WHERE id = ? AND organization_id = ?",
+            "UPDATE purchase_orders SET status = ?, updated_at = ? WHERE id = ? AND organization_id = ? AND status IN ('received','partially_invoiced')",
           )
           .bind(
             status === "matched" ? "invoiced" : "partially_invoiced",

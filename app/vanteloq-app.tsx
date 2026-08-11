@@ -2138,6 +2138,33 @@ type IntegrationConnection = IntegrationCatalogEntry & {
     lastErrorCode: string | null;
     connectedAt: string | null;
     dataPromotionStatus: string;
+    resourceSelectionVersion: number;
+    resourceSelections: Array<{
+      id: string;
+      dataset: "google_analytics" | "google_search_console" | "meta_ads";
+      externalResourceRef: string;
+      name: string;
+      scopeKind: "organization" | "location";
+      localLocationId: string | null;
+    }>;
+    syncEligible: boolean;
+    sampleReady: boolean;
+    sampleRunId: string | null;
+    sampleSummary: null | {
+      runId: string;
+      selectionVersion: number;
+      completedAt: string | null;
+      recordsRead: number;
+      recordsStaged: number;
+      warningCount: number;
+      warnings: string[];
+      resourceResults: Array<{ resourceSelectionId: string; recordsRead: number; warningCodes: string[] }>;
+    };
+    canonicalCoverage: CanonicalCommerceCoverage;
+    featureCoverage: ProviderFeatureCoverage[];
+    reportCatalog: {
+      providerReports: Array<{ id: string; label: string; status: "ready" | "needs_data"; dataNeeded: string[] }>;
+    };
   }>;
   privacyDataDeletedAt: string | null;
   canManage: boolean;
@@ -2150,9 +2177,29 @@ type IntegrationConnection = IntegrationCatalogEntry & {
     mode: string;
     dataPromotionEnabled?: boolean;
     liveDataEligible?: boolean;
+    resourceSelectionRequired?: boolean;
+    syncEligible?: boolean;
   };
   canonicalCoverage: CanonicalCommerceCoverage;
   featureCoverage: ProviderFeatureCoverage[];
+};
+
+type MarketingResourcePanel = {
+  provider: "google" | "meta";
+  connectionId: string;
+  selectionVersion: number;
+  datasets: Array<{
+    dataset: "google_analytics" | "google_search_console" | "meta_ads";
+    resources: Array<{
+      externalResourceRef: string;
+      name: string;
+      syncCapability: "metrics";
+      selected: boolean;
+      scopeKind: "organization" | "location";
+      localLocationId: string | null;
+    }>;
+  }>;
+  locations: Array<{ id: string; name: string }>;
 };
 
 function DataHub({
@@ -2171,6 +2218,18 @@ function DataHub({
   const [canManage, setCanManage] = useState(false);
   const [canManageBankConnections, setCanManageBankConnections] = useState(false);
   const [providerActions, setProviderActions] = useState<Record<string, string>>({});
+  const [marketingResourcePanel, setMarketingResourcePanel] = useState<MarketingResourcePanel | null>(null);
+  const marketingResourcePanelRef = useRef<HTMLElement | null>(null);
+  const marketingResourceTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const [marketingSampleResult, setMarketingSampleResult] = useState<null | {
+    provider: "google" | "meta";
+    connectionId: string;
+    run: { id: string; selectionVersion: number; recordsRead: number; recordsImported: number; warningCount: number };
+    warnings: string[];
+    resourceResults: Array<{ resourceSelectionId: string; resourceName: string; dataset: string; scope: string; recordsRead: number; warningCodes: string[] }>;
+    nextStep: string;
+  }>(null);
+  const [reviewedMarketingSamples, setReviewedMarketingSamples] = useState<Record<string, boolean>>({});
   const [activeSampleProvider, setActiveSampleProvider] = useState<"lightspeed" | "lightspeed-r" | "stripe">("lightspeed");
   const [sampleResult, setSampleResult] = useState<null | {
     run: { recordsRead: number; recordsStaged: number; duplicatesSkipped: number; warningCount: number };
@@ -2248,6 +2307,7 @@ function DataHub({
     path: string,
     action: string,
     connectionId?: string,
+    extraBody?: Record<string, unknown>,
   ) => {
     const actionKey = integrationActionKey(provider, connectionId);
     setProviderActions((current) => ({ ...current, [actionKey]: action }));
@@ -2258,6 +2318,7 @@ function DataHub({
         body: JSON.stringify({
           reason: provider === "lightspeed-r" && action === "sync" ? "manual" : undefined,
           connectionId,
+          ...extraBody,
         }),
       });
       const body = await response.json();
@@ -2304,14 +2365,41 @@ function DataHub({
     await loadConnections();
     if (provider === "lightspeed-r") await refresh();
   };
-  const syncMarketingProvider = async (provider: "google" | "meta", connectionId?: string) => {
-    const body = await providerPost(provider, providerSyncRoutes[provider], "sync", connectionId);
+  const syncMarketingProvider = async (
+    provider: "google" | "meta",
+    connection: NonNullable<IntegrationConnection["connections"]>[number],
+  ) => {
+    const mode = connection.dataPromotionStatus === "approved" ? "incremental" : "sample";
+    const body = await providerPost(provider, providerSyncRoutes[provider], "sync", connection.id, {
+      mode,
+      expectedSelectionVersion: connection.resourceSelectionVersion,
+    });
     if (!body) return;
+    setMarketingSampleResult({
+      provider,
+      connectionId: connection.id,
+      run: body.run,
+      warnings: Array.isArray(body.warnings) ? body.warnings : [],
+      resourceResults: (Array.isArray(body.resourceResults) ? body.resourceResults : []).map((result: { resourceSelectionId: string; recordsRead: number; warningCodes: string[] }) => {
+        const selection = connection.resourceSelections.find((item) => item.id === result.resourceSelectionId);
+        return {
+          ...result,
+          resourceName: selection?.name ?? "Selected provider resource",
+          dataset: selection?.dataset ?? "measurement",
+          scope: selection?.scopeKind === "location" ? "Owned location" : "Organization-wide",
+        };
+      }),
+      nextStep: body.nextStep ?? `${provider === "google" ? "Google" : "Meta"} sample completed.`,
+    });
     showNotice(body.nextStep ?? `${provider === "google" ? "Google" : "Meta"} measurements updated`);
     await loadConnections();
     await refresh();
   };
-  const approveConnectionData = async (provider: string, connectionId: string) => {
+  const approveConnectionData = async (
+    provider: string,
+    connectionId: string,
+    marketingReview?: { sampleRunId: string; expectedSelectionVersion: number },
+  ) => {
     if (!window.confirm("Make the reviewed records from this provider account available to dashboard features?")) return;
     const actionKey = integrationActionKey(provider, connectionId);
     setProviderActions((current) => ({ ...current, [actionKey]: "approve" }));
@@ -2319,7 +2407,7 @@ function DataHub({
       const response = await apiFetch("/api/v1/integrations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "approve_data", connectionId, confirmed: true }),
+        body: JSON.stringify({ action: "approve_data", connectionId, confirmed: true, ...marketingReview }),
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error?.message ?? "The reviewed data could not be approved.");
@@ -2328,6 +2416,109 @@ function DataHub({
       await refresh();
     } catch (error) {
       showNotice(error instanceof Error ? error.message : "The reviewed data could not be approved.");
+    } finally {
+      setProviderActions((current) => {
+        const next = { ...current };
+        delete next[actionKey];
+        return next;
+      });
+    }
+  };
+  useEffect(() => {
+    if (!marketingResourcePanel) return;
+    const frame = window.requestAnimationFrame(() => marketingResourcePanelRef.current?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [marketingResourcePanel]);
+  const closeMarketingResourcePanel = () => {
+    setMarketingResourcePanel(null);
+    window.requestAnimationFrame(() => marketingResourceTriggerRef.current?.focus());
+  };
+  const loadMarketingResources = async (provider: "google" | "meta", connectionId: string, trigger?: HTMLButtonElement) => {
+    marketingResourceTriggerRef.current = trigger ?? null;
+    const actionKey = integrationActionKey(provider, connectionId);
+    setProviderActions((current) => ({ ...current, [actionKey]: "resources" }));
+    try {
+      const response = await apiFetch(`/api/v1/integrations/${provider}/resources`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "discover", connectionId }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error?.message ?? "Provider resources could not be loaded.");
+      setMarketingResourcePanel({
+        provider,
+        connectionId,
+        selectionVersion: Number(body.selectionVersion),
+        locations: body.locations,
+        datasets: body.datasets.map((dataset: MarketingResourcePanel["datasets"][number]) => ({
+          ...dataset,
+          resources: dataset.resources.map((resource) => ({
+            ...resource,
+            scopeKind: resource.scopeKind ?? "organization",
+            localLocationId: resource.localLocationId ?? null,
+          })),
+        })),
+      });
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : "Provider resources could not be loaded.");
+    } finally {
+      setProviderActions((current) => {
+        const next = { ...current };
+        delete next[actionKey];
+        return next;
+      });
+    }
+  };
+  const updateMarketingResource = (
+    dataset: MarketingResourcePanel["datasets"][number]["dataset"],
+    externalResourceRef: string,
+    updates: Partial<MarketingResourcePanel["datasets"][number]["resources"][number]>,
+  ) => {
+    setMarketingResourcePanel((current) => current ? ({
+      ...current,
+      datasets: current.datasets.map((group) => group.dataset !== dataset ? group : ({
+        ...group,
+        resources: group.resources.map((resource) => resource.externalResourceRef !== externalResourceRef ? resource : ({ ...resource, ...updates })),
+      })),
+    }) : null);
+  };
+  const saveMarketingResources = async () => {
+    if (!marketingResourcePanel) return;
+    const selections = marketingResourcePanel.datasets.flatMap((group) => group.resources
+      .filter((resource) => resource.selected)
+      .map((resource) => ({
+        dataset: group.dataset,
+        externalResourceRef: resource.externalResourceRef,
+        scopeKind: resource.scopeKind,
+        localLocationId: resource.scopeKind === "location" ? resource.localLocationId : null,
+      })));
+    if (selections.some((selection) => selection.scopeKind === "location" && !selection.localLocationId)) {
+      showNotice("Choose a Vanteloq location for every location-scoped resource.");
+      return;
+    }
+    const { provider, connectionId, selectionVersion } = marketingResourcePanel;
+    const actionKey = integrationActionKey(provider, connectionId);
+    setProviderActions((current) => ({ ...current, [actionKey]: "save-resources" }));
+    try {
+      const response = await apiFetch(`/api/v1/integrations/${provider}/resources`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "replace",
+          connectionId,
+          expectedSelectionVersion: selectionVersion,
+          selections,
+        }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error?.message ?? "The provider resource selection could not be saved.");
+      showNotice(selections.length
+        ? "Exact provider resources saved. Run a sample and review it before these measurements become available."
+        : "Provider resources cleared. Marketing measurements remain unavailable.");
+      closeMarketingResourcePanel();
+      await loadConnections();
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : "The provider resource selection could not be saved.");
     } finally {
       setProviderActions((current) => {
         const next = { ...current };
@@ -2602,16 +2793,45 @@ function DataHub({
                           <small>{connection.maskedAccountRef ? `Protected reference ${connection.maskedAccountRef}` : connection.status === "pending" ? "Authorization pending" : "Protected provider identity"}</small>
                           {connection.lastSuccessfulSyncAt && <small>Last synced {formatRelativeSync(connection.lastSuccessfulSyncAt)}</small>}
                           {connection.dataPromotionStatus !== "blocked" && <small>Data {connection.dataPromotionStatus.replaceAll("_", " ")}</small>}
+                          {isMarketingProvider && <small>{connection.resourceSelections.length
+                            ? `${connection.resourceSelections.length} exact resource${connection.resourceSelections.length === 1 ? "" : "s"} selected`
+                            : "No provider resources selected"}</small>}
+                          {provider.category === "Point of sale" && <small>{connection.reportCatalog.providerReports.filter((report) => report.status === "ready").length} of {connection.reportCatalog.providerReports.length} source-specific reports ready</small>}
                           {connection.lastErrorCode && <small role="alert">Needs attention: {connection.lastErrorCode.replaceAll("_", " ")}</small>}
                         </div>
                         <span className={`provider-account-state ${connection.status}`}>{connection.status.replaceAll("_", " ")}</span>
+                        {isMarketingProvider && connection.sampleSummary && <section className="marketing-sample-review" aria-label={`Warning-free ${provider.name} sample review`}>
+                          <header><div><b>Warning-free exact-resource sample</b><small>Completed {connection.sampleSummary.completedAt ? new Date(connection.sampleSummary.completedAt).toLocaleString("en-CA") : "recently"} · version {connection.sampleSummary.selectionVersion}</small></div><strong>{connection.sampleSummary.recordsStaged} measurements</strong></header>
+                          <div>{connection.resourceSelections.map((selection) => {
+                            const result = connection.sampleSummary?.resourceResults.find((item) => item.resourceSelectionId === selection.id);
+                            return <span key={selection.id}><b>{selection.name}</b><small>{selection.dataset.replaceAll("_", " ")} · {selection.scopeKind === "location" ? "Owned location scope" : "Organization-wide scope"}</small><em>{result?.recordsRead ?? 0} records · {result?.warningCodes.length ?? 0} warnings</em></span>;
+                          })}</div>
+                          <label><input type="checkbox" checked={reviewedMarketingSamples[connection.sampleSummary.runId] === true} onChange={(event) => setReviewedMarketingSamples((current) => ({ ...current, [connection.sampleSummary!.runId]: event.target.checked }))} />I reviewed every selected resource, scope, record count, and warning total above.</label>
+                        </section>}
                         <div className="provider-account-actions">
                           {connection.status === "connected" && <>
-                            {isMarketingProvider ? <button
-                              type="button"
-                              onClick={() => void syncMarketingProvider(provider.id as "google" | "meta", connection.id)}
-                              disabled={!canManageProvider || Boolean(connectionAction)}
-                            >{connectionAction === "sync" ? "Syncing…" : "Sync now"}</button> : <button
+                            {isMarketingProvider ? <>
+                              <button
+                                type="button"
+                                onClick={(event) => void loadMarketingResources(provider.id as "google" | "meta", connection.id, event.currentTarget)}
+                                disabled={!canManageProvider || Boolean(connectionAction)}
+                              >{connectionAction === "resources" ? "Loading…" : "Choose resources"}</button>
+                              <button
+                                type="button"
+                                onClick={() => void syncMarketingProvider(provider.id as "google" | "meta", connection)}
+                                disabled={!canManageProvider || Boolean(connectionAction) || !connection.syncEligible}
+                                title={!connection.syncEligible ? "Choose at least one exact provider resource before synchronization." : undefined}
+                              >{connectionAction === "sync" ? "Syncing…" : connection.dataPromotionStatus === "approved" ? "Sync now" : "Run sample"}</button>
+                              {connection.dataPromotionStatus === "staging" && connection.sampleSummary && <button
+                                type="button"
+                                onClick={() => void approveConnectionData(provider.id, connection.id, {
+                                  sampleRunId: connection.sampleSummary!.runId,
+                                  expectedSelectionVersion: connection.resourceSelectionVersion,
+                                })}
+                                disabled={!canManageProvider || Boolean(connectionAction) || reviewedMarketingSamples[connection.sampleSummary.runId] !== true}
+                                title={reviewedMarketingSamples[connection.sampleSummary.runId] === true ? undefined : "Review the visible exact-resource sample and confirm it first."}
+                              >{connectionAction === "approve" ? "Approving…" : "Approve reviewed sample"}</button>}
+                            </> : <button
                               type="button"
                               onClick={() => void stageProviderSample(actionableProvider as "lightspeed" | "lightspeed-r" | "stripe", connection.id)}
                               disabled={!canManageProvider || Boolean(connectionAction)}
@@ -2666,7 +2886,9 @@ function DataHub({
                             : provider.id === "plaid"
                               ? "Reviewed bank data is available · fresh balances power cash analysis · transactions await review"
                               : isMarketingProvider
-                                ? "Measurements are available in Marketing"
+                                ? provider.providerReadiness?.liveDataEligible === true
+                                  ? "Measurements are available in Marketing"
+                                  : "Resource selection required · measurements unavailable"
                               : "Reviewed source data is available"
                           : "Staging only · metrics locked"
                           : configured
@@ -2703,6 +2925,63 @@ function DataHub({
               </div>
             </section>)}
           </div>
+          {marketingResourcePanel && <section ref={marketingResourcePanelRef} tabIndex={-1} className="outlet-mapping-panel marketing-resource-panel" aria-labelledby="marketing-resource-title">
+            <header>
+              <div>
+                <p>EXACT RESOURCE CONTROL</p>
+                <h3 id="marketing-resource-title">Choose only the {marketingResourcePanel.provider === "google" ? "Google" : "Meta"} resources Vanteloq may measure.</h3>
+              </div>
+              <strong>VERSION {marketingResourcePanel.selectionVersion}</strong>
+            </header>
+            <div className="outlet-mapping-list">
+              {marketingResourcePanel.datasets.map((group) => <div key={group.dataset} className="marketing-resource-group">
+                <h4>{group.dataset.replaceAll("_", " ")}</h4>
+                {group.resources.length ? group.resources.map((resource) => <article key={`${group.dataset}:${resource.externalResourceRef}`} className="marketing-resource-row">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={resource.selected}
+                      onChange={(event) => updateMarketingResource(group.dataset, resource.externalResourceRef, { selected: event.target.checked })}
+                    />
+                    <span><b>{resource.name}</b><small>{resource.externalResourceRef}</small></span>
+                  </label>
+                  {resource.selected && <div className="marketing-resource-scope">
+                    <select
+                      value={resource.scopeKind}
+                      onChange={(event) => updateMarketingResource(group.dataset, resource.externalResourceRef, {
+                        scopeKind: event.target.value as "organization" | "location",
+                        localLocationId: event.target.value === "organization" ? null : resource.localLocationId,
+                      })}
+                      aria-label={`Scope for ${resource.name}`}
+                    >
+                      <option value="organization">Organization-wide source</option>
+                      <option value="location">Map to one location</option>
+                    </select>
+                    {resource.scopeKind === "location" && <select
+                      value={resource.localLocationId ?? ""}
+                      onChange={(event) => updateMarketingResource(group.dataset, resource.externalResourceRef, { localLocationId: event.target.value || null })}
+                      aria-label={`Location for ${resource.name}`}
+                    >
+                      <option value="">Choose a location</option>
+                      {marketingResourcePanel.locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}
+                    </select>}
+                  </div>}
+                </article>) : <p className="outlet-empty">No accessible resources were returned for this dataset.</p>}
+              </div>)}
+            </div>
+            <footer>
+              <span>Saving replaces this account&apos;s selection, deletes its prior marketing measurements, and requires a new warning-free sample before dashboard use.</span>
+              <div className="provider-actions">
+                <button type="button" onClick={closeMarketingResourcePanel}>Cancel</button>
+                <button
+                  type="button"
+                  className="primary"
+                  onClick={() => void saveMarketingResources()}
+                  disabled={Boolean(providerActions[integrationActionKey(marketingResourcePanel.provider, marketingResourcePanel.connectionId)])}
+                >Save exact resources</button>
+              </div>
+            </footer>
+          </section>}
           {outletData && <section className="outlet-mapping-panel" aria-labelledby="outlet-mapping-title">
             <header>
               <div><p>LOCATION CONTROL</p><h3 id="outlet-mapping-title">{outletData.provider === "lightspeed-r" ? `Match ${outletData.accountName || "this R-Series account"}'s shops to Vanteloq locations.` : `Match ${outletData.accountName || "this X-Series account"}'s outlets to Vanteloq locations.`}</h3></div>
@@ -2727,6 +3006,12 @@ function DataHub({
               <span>{outletData.provider === "lightspeed-r" ? "Each authorized R-Series account keeps its own credentials, shop mappings, last sync position, and import history. Ignored shops stay excluded from future imports." : "Each authorized X-Series account keeps its own credentials, outlet mappings, last sync position, and staged import history. Ignored outlets stay excluded and visible during review."}</span>
               <button type="button" onClick={() => navigate("Settings")}>Add organization location</button>
             </footer>
+          </section>}
+          {marketingSampleResult && marketingSampleResult.run.warningCount > 0 && <section className="sample-sync-result marketing-sample-warning" aria-live="polite">
+            <header><div><p>{marketingSampleResult.provider === "google" ? "GOOGLE" : "META"} EXACT-RESOURCE SAMPLE</p><h3>This sample remains staged and cannot be approved.</h3></div><strong>REVIEW WARNINGS</strong></header>
+            <div><span><small>RECORDS READ</small><b>{marketingSampleResult.run.recordsRead}</b></span><span><small>RECORDS STAGED</small><b>{marketingSampleResult.run.recordsImported}</b></span><span><small>RESOURCES</small><b>{marketingSampleResult.resourceResults.length}</b></span><span><small>WARNINGS</small><b>{marketingSampleResult.run.warningCount}</b></span></div>
+            <section className="marketing-sample-result-list">{marketingSampleResult.resourceResults.map((result) => <span key={result.resourceSelectionId}><b>{result.resourceName}</b><small>{result.dataset.replaceAll("_", " ")} · {result.scope}</small><em>{result.recordsRead} records · {result.warningCodes.length ? result.warningCodes.join(", ").replaceAll("_", " ") : "No resource warning"}</em></span>)}</section>
+            <p>{marketingSampleResult.nextStep} {marketingSampleResult.warnings.length ? `Warnings: ${marketingSampleResult.warnings.join(", ").replaceAll("_", " ")}.` : ""}</p>
           </section>}
           {sampleResult && <section className={`sample-sync-result ${sampleResult.readyForReview ? "review-ready" : ""}`} aria-live="polite">
             <header>

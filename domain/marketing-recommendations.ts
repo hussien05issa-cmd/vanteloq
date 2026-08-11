@@ -195,8 +195,8 @@ export function buildMarketingRecommendations(input: MarketingRecommendationInpu
       action: "Import search visibility and journey events, keep source event IDs idempotent, map campaign and local-discovery actions to qualified outcomes, and review attribution limitations before changing budget.",
       metrics: ["measured journeys", "unattributed outcomes", "revenue by source", "gross profit by source"],
       evidenceNeeded: ["search observations", "touchpoints", "lead records", "customer or POS transactions"],
-      sourceLabel: "Google Business Profile Performance API",
-      sourceUrl: "https://developers.google.com/my-business/reference/performance/rest",
+      sourceLabel: "Google Search Console API",
+      sourceUrl: "https://developers.google.com/webmaster-tools/v1/searchanalytics/query",
     }, {
       confidence: "low",
       confidenceReason: "This recommendation identifies a measurement gap. It does not infer campaign performance from missing records.",

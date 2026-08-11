@@ -210,8 +210,8 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
     if (provider.id === "lightspeed") return { ...provider, status: "LIMITED PILOT", statusClass: "current", detail: "Sales and inventory pilot" };
     if (provider.id === "stripe") return { ...provider, status: "STAGING", statusClass: "current", detail: "Payout and balance staging" };
     if (provider.id === "plaid") return { ...provider, status: "SETUP REQUIRED", statusClass: "current", detail: "Built secure Link, balances, and reviewed transactions; production institution access awaits Plaid approval" };
-    if (provider.id === "google") return { ...provider, status: "SETUP REQUIRED", statusClass: "current", detail: "Built Search, Analytics, Business Profile and Reviews measurement sync" };
-    if (provider.id === "meta") return { ...provider, status: "SETUP REQUIRED", statusClass: "current", detail: "Built Ads Insights measurement sync" };
+    if (provider.id === "google") return { ...provider, status: "SETUP REQUIRED", statusClass: "current", detail: "Resource selection, location mapping, and sample approval are required before measurement import" };
+    if (provider.id === "meta") return { ...provider, status: "SETUP REQUIRED", statusClass: "current", detail: "Ad account selection and sample approval are required before measurement import" };
     return { ...provider, status: "PLANNED", statusClass: "planned", detail: provider.category };
   });
 
