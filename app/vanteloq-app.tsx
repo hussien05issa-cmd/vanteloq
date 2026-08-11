@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import BookLoQWorkspace from "./bookloq-workspace";
 import CommunicationsWorkspace from "./communications-workspace";
@@ -498,7 +499,6 @@ type CommandCentre = {
   };
   liveSource: {
     provider: string | null;
-    accountRef: string | null;
     accountName: string | null;
     lastErrorCode: string | null;
     lastSuccessfulSyncAt: string | null;
@@ -526,6 +526,8 @@ type CommandCentre = {
     guardrails: string[];
   };
 };
+
+type PaymentRange = 1 | 7 | 30;
 
 type PeriodComparison = {
   days: number;
@@ -594,12 +596,13 @@ export default function VanteloqApp({
   const [commandOpen, setCommandOpen] = useState(false);
   const [appRole, setAppRole] = useState("employee");
   const [appPermissions, setAppPermissions] = useState<string[]>([]);
+  const [paymentRange, setPaymentRange] = useState<PaymentRange>(1);
   const canAutoSync = appPermissions.includes("integrations.manage");
 
   const refresh = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const response = await apiFetch("/api/v1/command-centre", {
+      const response = await apiFetch(`/api/v1/command-centre?payment_days=${paymentRange}`, {
         headers: { Accept: "application/json" },
       });
       const body = await response.json();
@@ -625,7 +628,7 @@ export default function VanteloqApp({
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [organizationName]);
+  }, [organizationName, paymentRange]);
   useEffect(() => {
     const timer = window.setTimeout(() => void refresh(), 0);
     return () => window.clearTimeout(timer);
@@ -737,9 +740,12 @@ export default function VanteloqApp({
         <div className="workspace-switcher">
           <span className="workspace-avatar">
             {logoVersion !== null ? (
-              <img
+              <Image
                 src={`/api/v1/organization-logo?v=${logoVersion}`}
                 alt={`${workspaceName} logo`}
+                width={40}
+                height={40}
+                unoptimized
               />
             ) : (
               workspaceName.slice(0, 2).toUpperCase()
@@ -923,6 +929,8 @@ export default function VanteloqApp({
               setWorkspaceName(name);
               setLogoVersion(version);
             }}
+            paymentRange={paymentRange}
+            setPaymentRange={setPaymentRange}
           />
         )}
       </section>
@@ -977,6 +985,8 @@ function Workspace({
   organizationName,
   accountName,
   onBrandChange,
+  paymentRange,
+  setPaymentRange,
 }: {
   view: View;
   data: CommandCentre;
@@ -988,6 +998,8 @@ function Workspace({
   organizationName: string;
   accountName: string;
   onBrandChange: (name: string, logoVersion: number | null) => void;
+  paymentRange: PaymentRange;
+  setPaymentRange: (range: PaymentRange) => void;
 }) {
   if (view === "Dashboard")
     return (
@@ -996,6 +1008,8 @@ function Workspace({
         currency={currency}
         navigate={navigate}
         createTask={createTask}
+        paymentRange={paymentRange}
+        setPaymentRange={setPaymentRange}
       />
     );
   if (view === "Intelligence")
@@ -1059,6 +1073,8 @@ function Workspace({
         currency={currency}
         navigate={navigate}
         refresh={refresh}
+        paymentRange={paymentRange}
+        setPaymentRange={setPaymentRange}
       />
     );
   if (view === "Purchase Orders")
@@ -1152,7 +1168,7 @@ function comparisonCopy(rate: number | null | undefined, label: string) {
   return `${new Intl.NumberFormat("en-CA", { style: "percent", maximumFractionDigits: 1, signDisplay: "exceptZero" }).format(rate)} vs ${label}`;
 }
 
-function PaymentMixCard({ data, currency }: { data: CommandCentre["paymentMix"]; currency: string }) {
+function PaymentMixCard({ data, currency, paymentRange, setPaymentRange }: { data: CommandCentre["paymentMix"]; currency: string; paymentRange: PaymentRange; setPaymentRange: (range: PaymentRange) => void }) {
   const categories = data.rows.reduce((map, row) => {
     const current = map.get(row.category) ?? { category: row.category, amountCents: 0, transactionCount: 0 };
     current.amountCents += Number(row.amountCents);
@@ -1165,7 +1181,7 @@ function PaymentMixCard({ data, currency }: { data: CommandCentre["paymentMix"];
   const labels: Record<string, string> = { card: "Card", cash: "Cash", gift_card: "Gift card", store_credit: "Store credit", other: "Other" };
   return (
     <article className="card commerce-intel-card payment-mix-card">
-      <header><div><p className="card-kicker">PAYMENT MIX</p><h3>How customers paid</h3></div><span>{data.period}</span></header>
+      <header><div><p className="card-kicker">PAYMENT MIX</p><h3>Cash vs card</h3></div><label className="payment-range"><span>Time frame</span><select aria-label="Payment mix time frame" value={paymentRange} onChange={(event) => setPaymentRange(Number(event.target.value) as PaymentRange)}><option value={1}>Today</option><option value={7}>Last 7 days</option><option value={30}>Last 30 days</option></select></label></header>
       {data.sourceAvailable && total > 0 ? <>
         <div className="payment-stack" aria-label={`Payment mix totaling ${money(total, currency)}`}>
           {rows.map((row) => <i key={row.category} className={`payment-${row.category}`} style={{ width: `${Math.max(2, row.amountCents / total * 100)}%` }} />)}
@@ -1178,7 +1194,7 @@ function PaymentMixCard({ data, currency }: { data: CommandCentre["paymentMix"];
   );
 }
 
-function CommerceIntelligenceRail({ data, currency }: { data: CommandCentre; currency: string }) {
+function CommerceIntelligenceRail({ data, currency, paymentRange, setPaymentRange }: { data: CommandCentre; currency: string; paymentRange: PaymentRange; setPaymentRange: (range: PaymentRange) => void }) {
   const comparisons = [
     { label: "Today vs same weekday", period: data.todayComparison ? formatBusinessDate(data.todayComparison.baselineDate) : "Baseline unavailable", value: money(data.today.netSalesCents, currency), rate: data.todayComparison?.changes.netSalesRate ?? null },
     { label: "Last 7 days", period: `${formatBusinessDate(data.periodComparisons.sevenDays.periodStart)} – ${formatBusinessDate(data.periodComparisons.sevenDays.periodEnd)}`, value: money(data.periodComparisons.sevenDays.current.netSalesCents, currency), rate: data.periodComparisons.sevenDays.comparable ? data.periodComparisons.sevenDays.changes.netSalesRate : null },
@@ -1190,7 +1206,7 @@ function CommerceIntelligenceRail({ data, currency }: { data: CommandCentre; cur
         {comparisons.map((item) => <article key={item.label}><p>{item.label}</p><strong>{item.value}</strong><span className={item.rate == null ? "neutral" : item.rate >= 0 ? "positive" : "negative"}>{comparisonCopy(item.rate, item.label === "Today vs same weekday" ? item.period : "prior matched period")}</span><small>{item.period}</small></article>)}
       </section>
       <section className="commerce-intel-grid">
-        <PaymentMixCard data={data.paymentMix} currency={currency} />
+        <PaymentMixCard data={data.paymentMix} currency={currency} paymentRange={paymentRange} setPaymentRange={setPaymentRange} />
         <article className="card commerce-intel-card forecast-card">
           <header><div><p className="card-kicker">7-DAY OUTLOOK</p><h3>Expected net sales</h3></div><span>{data.forecast.confidence === "unavailable" ? "Not ready" : `${data.forecast.confidence} confidence`}</span></header>
           {data.forecast.available ? <>
@@ -1207,7 +1223,7 @@ function CommerceIntelligenceRail({ data, currency }: { data: CommandCentre; cur
   );
 }
 
-function LiveSalesPanel({ data, currency, compact = false }: { data: CommandCentre; currency: string; compact?: boolean }) {
+function LiveSalesPanel({ data, currency, paymentRange, setPaymentRange, compact = false }: { data: CommandCentre; currency: string; paymentRange: PaymentRange; setPaymentRange: (range: PaymentRange) => void; compact?: boolean }) {
   const today = data.today;
   const baselineLabel = data.todayComparison ? formatBusinessDate(data.todayComparison.baselineDate) : "same weekday";
   return (
@@ -1245,12 +1261,12 @@ function LiveSalesPanel({ data, currency, compact = false }: { data: CommandCent
           </article>
         )}
       </section>
-      <CommerceIntelligenceRail data={data} currency={currency} />
+      <CommerceIntelligenceRail data={data} currency={currency} paymentRange={paymentRange} setPaymentRange={setPaymentRange} />
     </>
   );
 }
 
-function Overview({ data, currency, navigate, createTask }: { data: CommandCentre; currency: string; navigate: (view: View) => void; createTask: (seed: TaskSeed) => void }) {
+function Overview({ data, currency, navigate, createTask, paymentRange, setPaymentRange }: { data: CommandCentre; currency: string; navigate: (view: View) => void; createTask: (seed: TaskSeed) => void; paymentRange: PaymentRange; setPaymentRange: (range: PaymentRange) => void }) {
   const hasCurrentDayData = data.today.transactionCount > 0 || data.today.refundsCents > 0;
   if ((!data.ready || !data.current) && !hasCurrentDayData) return <EmptyCommandCentre navigate={navigate} />;
   return (
@@ -1263,7 +1279,8 @@ function Overview({ data, currency, navigate, createTask }: { data: CommandCentr
         </div>
         <span className={`live-sync-state ${data.source.freshness}`}><i />{data.liveSource.lastSuccessfulSyncAt ? `Synced ${formatRelativeSync(data.liveSource.lastSuccessfulSyncAt)}` : "Waiting for first sync"}</span>
       </section>
-      <LiveSalesPanel data={data} currency={currency} />
+      <LiveSalesPanel data={data} currency={currency} paymentRange={paymentRange} setPaymentRange={setPaymentRange} />
+      <ConnectorHomeDirectory data={data} openIntegrations={() => navigate("Integrations")} />
       <section className="card period-trend-card">
         <div className="card-head"><div><p className="card-kicker">PERIOD TREND</p><h3>Net sales and gross profit</h3></div><span className="verified-tag">{data.trend.length} verified days</span></div>
         <BusinessTrendChart data={data.trend} currency={currency} />
@@ -1278,14 +1295,36 @@ function Overview({ data, currency, navigate, createTask }: { data: CommandCentr
   );
 }
 
-function SalesWorkspace({ data, currency, navigate, refresh }: { data: CommandCentre; currency: string; navigate: (view: View) => void; refresh: () => Promise<void> }) {
+function ConnectorHomeDirectory({ data, openIntegrations }: { data: CommandCentre; openIntegrations: () => void }) {
+  return (
+    <section className="card home-connector-directory" aria-labelledby="home-connectors-title">
+      <header>
+        <div><p className="card-kicker">CONNECTED BUSINESS</p><h3 id="home-connectors-title">Every connector, one secure control plane</h3><span>Open Connections to authorize supported providers, review scopes, and see reconciliation status.</span></div>
+        <button onClick={openIntegrations}>Manage connections →</button>
+      </header>
+      <div>
+        {integrationCatalog.map((provider) => {
+          const comingSoon = provider.id === "google" || provider.id === "meta";
+          const connected = data.liveSource.provider === provider.id;
+          return <button key={provider.id} onClick={openIntegrations} className={connected ? "connected" : comingSoon ? "coming-soon" : ""} aria-label={`${provider.name}: ${connected ? "connected" : comingSoon ? "coming soon" : "available in Connections"}`}>
+            <IntegrationBrandLogo name={provider.name} compact />
+            <span><b>{provider.name}</b><small>{provider.category}</small></span>
+            <em>{connected ? "Connected" : comingSoon ? "Coming soon!" : "View"}</em>
+          </button>;
+        })}
+      </div>
+    </section>
+  );
+}
+
+function SalesWorkspace({ data, currency, navigate, refresh, paymentRange, setPaymentRange }: { data: CommandCentre; currency: string; navigate: (view: View) => void; refresh: () => Promise<void>; paymentRange: PaymentRange; setPaymentRange: (range: PaymentRange) => void }) {
   return (
     <div className="content sales-live-page">
       <section className="live-sales-heading">
         <div><p>SALES INTELLIGENCE</p><h2>Today&apos;s trade, without waiting for an end-of-day report.</h2><span>Completed sales from {data.liveSource.accountName || "the connected R-Series account"} refresh automatically. Refunds and product cost are reflected in the totals.</span></div>
         <div className="live-sales-actions"><span className="live-sync-state current"><i />{data.liveSource.lastSuccessfulSyncAt ? `Synced ${formatRelativeSync(data.liveSource.lastSuccessfulSyncAt)}` : "Awaiting sync"}</span><button onClick={() => void refresh()}>Refresh view</button></div>
       </section>
-      <LiveSalesPanel data={data} currency={currency} compact />
+      <LiveSalesPanel data={data} currency={currency} paymentRange={paymentRange} setPaymentRange={setPaymentRange} compact />
       <section className="card period-trend-card">
         <div className="card-head"><div><p className="card-kicker">RECENT PERFORMANCE</p><h3>Daily net sales and gross profit</h3></div><button className="text-action" onClick={() => navigate("Reports")}>Choose another time frame →</button></div>
         <BusinessTrendChart data={data.trend} currency={currency} />
@@ -1884,7 +1923,7 @@ function TaskComposer({
 
 type IntegrationConnection = IntegrationCatalogEntry & {
   status: string;
-  externalAccountRef: string | null;
+  maskedAccountRef: string | null;
   externalAccountName: string | null;
   lastSuccessfulSyncAt: string | null;
   lastErrorCode: string | null;
@@ -1908,7 +1947,7 @@ function DataHub({
   refresh: () => Promise<void>;
   showNotice: (message: string) => void;
 }) {
-  const [tab, setTab] = useState<"import" | "connections">("import");
+  const [tab, setTab] = useState<"import" | "connections">("connections");
   const [connections, setConnections] = useState<IntegrationConnection[]>([]);
   const [connectionError, setConnectionError] = useState("");
   const [connectionsLoading, setConnectionsLoading] = useState(false);
@@ -2110,7 +2149,7 @@ function DataHub({
     : integrationCatalog.map((provider) => ({
         ...provider,
         status: "not_connected",
-        externalAccountRef: null,
+        maskedAccountRef: null,
         externalAccountName: null,
         lastSuccessfulSyncAt: null,
         lastErrorCode: null,
@@ -2137,12 +2176,6 @@ function DataHub({
         </div>
         <div className="segmented">
           <button
-            className={tab === "import" ? "active" : ""}
-            onClick={() => setTab("import")}
-          >
-            Import data
-          </button>
-          <button
             className={tab === "connections" ? "active" : ""}
             onClick={() => {
               setTab("connections");
@@ -2152,6 +2185,12 @@ function DataHub({
             }}
           >
             Connections
+          </button>
+          <button
+            className={tab === "import" ? "active" : ""}
+            onClick={() => setTab("import")}
+          >
+            Import data
           </button>
         </div>
       </section>
@@ -2222,6 +2261,7 @@ function DataHub({
               const connected = provider.status === "connected";
               const isLightspeed = provider.id === "lightspeed" || provider.id === "lightspeed-r";
               const isStripe = provider.id === "stripe";
+              const isComingSoon = provider.id === "google" || provider.id === "meta";
               const actionableProvider = provider.id as "lightspeed" | "lightspeed-r" | "stripe";
               const providerAction = providerActions[provider.id] ?? "";
               const configured = provider.providerReadiness?.credentialsConfigured === true;
@@ -2234,15 +2274,18 @@ function DataHub({
               <article className="integration-card" key={provider.id}>
                 <div className="integration-card-head">
                   <IntegrationBrandLogo name={provider.name} />
-                  <span className="integration-type">{provider.category}</span>
+                  <div className="integration-card-labels">
+                    <span className="integration-type">{provider.category}</span>
+                    {isComingSoon && <span className="integration-coming-soon">Coming soon!</span>}
+                  </div>
                 </div>
                 <h3>{provider.name}</h3>
                 <p>{provider.activationRequirement}</p>
-                {connected && provider.externalAccountRef && (
+                {connected && provider.maskedAccountRef && (
                   <div className="connected-source" role="status">
                     <span>Connected source</span>
-                    <b>{provider.externalAccountName || `R-Series account ${provider.externalAccountRef}`}</b>
-                    <small>Account ID {provider.externalAccountRef}</small>
+                    <b>{provider.externalAccountName || "Verified provider account"}</b>
+                    <small>Protected reference {provider.maskedAccountRef}</small>
                   </div>
                 )}
                 {isLightspeed && !configured && provider.providerReadiness && (
@@ -2260,6 +2303,8 @@ function DataHub({
                     <span className={`status ${connected ? "" : "planned"}`}>
                       {connected
                         ? "Read-only connected"
+                        : isComingSoon
+                          ? "Coming soon!"
                         : configured
                           ? "Ready to authorize"
                           : availabilityLabel(provider.availability)}
@@ -3434,6 +3479,15 @@ function IndustryModules() {
             tenant security or invent data the business does not collect.
           </span>
         </div>
+      </section>
+      <section className="industry-visual-hero card">
+        <div>
+          <p>ONE INTELLIGENCE CORE</p>
+          <h3>Different businesses. The same trusted operating foundation.</h3>
+          <span>Each model adds the vocabulary, source contracts, operating signals and recommended actions that matter to that industry.</span>
+          <div><b>10</b><small>industry models</small><b>1</b><small>security boundary</small><b>0</b><small>invented metrics</small></div>
+        </div>
+        <Image src="/brand/industry-models-v2.png" alt="Connected scenes representing retail, restaurants, fitness, property, professional services and distribution" width={1823} height={863} sizes="(max-width: 900px) 100vw, 64vw" />
       </section>
       <div className="industry-grid">
         {industries.map(([name, detail], index) => (

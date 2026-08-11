@@ -231,7 +231,7 @@
   border-bottom: 1px solid #e5eaf0;
 }
 .home-connections .home-section-heading h2 { font-size: clamp(30px, 3vw, 40px); }
-.home-connection-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.home-connection-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
 .home-connection-grid article {
   position: relative;
   overflow: hidden;
@@ -272,6 +272,13 @@
   font-size: 9px;
   font-weight: 850;
 }
+.home-connection-grid article.current { border-color: #b9ddce; background: linear-gradient(145deg, #fff, #f3fbf7); }
+.home-connection-grid article.current > small { color: #176b50; background: #dff4e9; }
+.home-connection-grid article.coming-soon { border-color: #c7dbee; background: linear-gradient(145deg, #fff, #f3f8fe); }
+.home-connection-grid article.coming-soon > small { color: #1b5fa5; background: #e0edfb; }
+.home-connection-grid article.planned { background: #f8fafc; box-shadow: none; }
+.home-connection-grid article.planned .integration-logo { filter: saturate(.45); opacity: .78; }
+.home-connection-grid article.planned > small { color: #68788b; background: #edf1f5; }
 
 .home-problem { padding-block: 108px; background: #f4f7fb; }
 .home-problem-intro { display: grid; grid-template-columns: minmax(0, .82fr) minmax(360px, 1.18fr); gap: 64px; align-items: center; }
@@ -565,6 +572,7 @@
   .home-seo-copy > div:first-child { position: static; }
   .home-product-family-grid article { grid-template-columns: 150px 1fr; }
   .home-product-logo-shell { width: 150px; }
+  .home-connection-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
 @media (max-width: 900px) {
@@ -605,6 +613,7 @@
   .home-problem-visual { max-width: 760px; }
   .home-hero { min-height: 0; gap: 46px; padding-block: 62px 72px; }
   .home-connections { gap: 34px; }
+  .home-connection-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .home-platform { gap: 54px; }
   .home-product-family-grid { grid-template-columns: 1fr; }
   .home-resource-grid { grid-template-columns: 1fr 1fr; }

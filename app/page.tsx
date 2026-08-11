@@ -4,6 +4,7 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react"
 import type { Session } from "@supabase/supabase-js";
 import Link from "next/link";
 import IntegrationBrandLogo from "./integration-brand-logo";
+import { integrationCatalog } from "./integration-catalog";
 import ProductBrandLogo from "./product-brand-logo";
 import AuthPanel, { type AuthPanelMode } from "./auth-panel";
 import { currentSession, getSupabase, signOut } from "./supabase-browser";
@@ -203,6 +204,13 @@ function AuthenticatedLoading() {
 function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const closeMobileNav = () => setMobileNavOpen(false);
+  const publicIntegrations = integrationCatalog.map(provider => {
+    if (provider.id === "lightspeed-r") return { ...provider, status: "READ-ONLY", statusClass: "current", detail: "Read-only sales and inventory import" };
+    if (provider.id === "lightspeed") return { ...provider, status: "LIMITED PILOT", statusClass: "current", detail: "Read-only pilot and sample review" };
+    if (provider.id === "stripe") return { ...provider, status: "STAGING", statusClass: "current", detail: "Read-only payout and balance staging" };
+    if (provider.id === "google" || provider.id === "meta") return { ...provider, status: "COMING SOON!", statusClass: "coming-soon", detail: "Verified connection is in development" };
+    return { ...provider, status: "PLANNED", statusClass: "planned", detail: provider.category };
+  });
 
   useEffect(() => {
     if (!mobileNavOpen) return;
@@ -260,15 +268,13 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
 
       <section className="home-connections" id="connections" aria-labelledby="connections-title">
         <div className="home-section-heading compact">
-          <p>VERIFIED CONNECTION PATHS</p>
-          <h2 id="connections-title">Connect supported sources with clear status at every step.</h2>
-          <span>Start with the connection paths available in Vanteloq today. Authorization, mapping and reconciliation remain visible before imported records are used for decisions.</span>
+          <p>CONNECTION DIRECTORY</p>
+          <h2 id="connections-title">See every connector and its honest availability.</h2>
+          <span>Only Lightspeed R-Series, the limited X-Series pilot, Stripe staging and structured CSV import have current paths. Google and Meta are coming soon. Every other connector stays planned until its production adapter is built and verified.</span>
         </div>
         <div className="home-connection-grid">
-          <article><IntegrationBrandLogo name="Lightspeed" compact/><div><strong>Lightspeed R-Series</strong><span>Read-only sales and inventory import</span></div><small>READ-ONLY</small></article>
-          <article><IntegrationBrandLogo name="Lightspeed" compact/><div><strong>Lightspeed X-Series</strong><span>Read-only pilot and sample review</span></div><small>LIMITED PILOT</small></article>
-          <article><IntegrationBrandLogo name="Stripe" compact/><div><strong>Stripe</strong><span>Read-only payout and balance staging</span></div><small>STAGING</small></article>
-          <article><IntegrationBrandLogo name="Daily CSV" compact/><div><strong>CSV import</strong><span>Structured daily operating records</span></div><small>AVAILABLE</small></article>
+          {publicIntegrations.map(provider => <article className={provider.statusClass} key={provider.id}><IntegrationBrandLogo name={provider.name} compact/><div><strong>{provider.name}</strong><span>{provider.detail}</span></div><small>{provider.status}</small></article>)}
+          <article className="current"><IntegrationBrandLogo name="Daily CSV" compact/><div><strong>CSV import</strong><span>Structured daily operating records</span></div><small>AVAILABLE</small></article>
         </div>
       </section>
 

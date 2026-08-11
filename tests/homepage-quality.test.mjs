@@ -37,11 +37,18 @@ test("homepage keeps every crawlable internal link on a working route", async ()
 test("homepage copy stays within the verified product boundary", async () => {
   const html = await (await fetchRoute("/")).text();
   assert.doesNotMatch(html, /Start (?:Your )?Free Trial/i);
-  assert.doesNotMatch(html, /\b(?:Square|Moneris|QuickBooks|Xero|Plaid|Google Ads|Meta Ads)\b/);
+  for (const provider of ["Square", "Moneris", "QuickBooks", "Xero", "Plaid"]) {
+    assert.match(html, new RegExp(`<strong>${provider}</strong>[\\s\\S]{0,180}<small>PLANNED</small>`));
+  }
+  for (const provider of ["Google", "Meta"]) {
+    assert.match(html, new RegExp(`<strong>${provider}</strong>[\\s\\S]{0,220}<small>COMING SOON!</small>`));
+  }
+  assert.doesNotMatch(html, /(?:Square|Moneris|QuickBooks|Xero|Plaid|Google|Meta) (?:is )?(?:connected|available now|live)/i);
   assert.doesNotMatch(html, /\b(?:SOC 2|ISO 27001|HIPAA|PCI)\s+(?:certified|compliant|accredited)\b/i);
   assert.match(html, /Lightspeed R-Series/);
   assert.match(html, /LIMITED PILOT/);
   assert.match(html, /STAGING/);
+  assert.match(html, /PLANNED/);
   assert.doesNotMatch(html, /\u2014/u, "homepage prose should not contain an em dash");
   assert.match(html, /home-intelligence-map/);
   assert.match(html, /home-resource-art/);

@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { apiFetch } from "./supabase-browser";
 
@@ -94,6 +95,11 @@ type Governance = {
     passkeys: string;
     sessions: string;
     invitationDelivery: string;
+  };
+  billingCoverage: {
+    payer: "organization_owner";
+    employeeCheckoutRequired: false;
+    remoteSeatsEnforced: true;
   };
 };
 
@@ -226,6 +232,13 @@ export function TeamWorkspace({ showNotice }: Props) {
         <button className="primary" onClick={() => setCreating(true)}>
           + Create employee
         </button>
+      </section>
+      <section className="owner-plan-coverage" role="note">
+        <span>Covered by the owner plan</span>
+        <div>
+          <b>Employee access is billed to the organization owner.</b>
+          <small>Employees never complete a separate checkout. Remote logins use the available seats in the owner&apos;s current subscription.</small>
+        </div>
       </section>
       <div className="governance-tabs">
         <button
@@ -924,6 +937,9 @@ function EmployeeWizard({
               A profile is created immediately. No invitation is falsely marked
               sent while email delivery is not configured.
             </p>
+            <p className="employee-billing-note">
+              Covered by the owner plan. Employees never complete a separate checkout.
+            </p>
           </div>
         )}
         {error && <p className="form-error">{error}</p>}
@@ -1522,7 +1538,7 @@ function BrandingSettings({
       <div className="branding-preview">
         <div className="logo-preview">
           {preview ? (
-            <img src={preview} alt={`${data.organization.displayName} logo`} />
+            <Image src={preview} alt={`${data.organization.displayName} logo`} width={96} height={96} unoptimized />
           ) : (
             <b>{initials}</b>
           )}

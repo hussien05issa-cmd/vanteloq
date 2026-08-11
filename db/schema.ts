@@ -394,6 +394,51 @@ export const searchVisibilityObservations = sqliteTable(
   ],
 );
 
+export const marketingProfiles = sqliteTable(
+  "marketing_profiles",
+  {
+    organizationId: text("organization_id").primaryKey().references(() => workspaces.id, { onDelete: "cascade" }),
+    businessModel: text("business_model").notNull().default(""),
+    primaryOffer: text("primary_offer").notNull().default(""),
+    targetAudience: text("target_audience").notNull().default(""),
+    serviceArea: text("service_area").notNull().default(""),
+    primaryGoal: text("primary_goal", { enum: ["leads", "visits", "sales", "awareness"] }).notNull().default("leads"),
+    websiteUrl: text("website_url").notNull().default(""),
+    googleProfileStatus: text("google_profile_status", { enum: ["not_set", "claimed", "verified"] }).notNull().default("not_set"),
+    notes: text("notes").notNull().default(""),
+    updatedByUserId: text("updated_by_user_id").notNull().references(() => users.id),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    check("marketing_profiles_goal_check", sql`${table.primaryGoal} in ('leads','visits','sales','awareness')`),
+    check("marketing_profiles_google_check", sql`${table.googleProfileStatus} in ('not_set','claimed','verified')`),
+  ],
+);
+
+export const marketingCalendarEntries = sqliteTable(
+  "marketing_calendar_entries",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    channel: text("channel", { enum: ["content", "google", "meta", "email", "local", "website"] }).notNull(),
+    eventType: text("event_type", { enum: ["campaign", "content", "audit", "offer", "follow_up"] }).notNull(),
+    startDate: text("start_date").notNull(),
+    dueDate: text("due_date"),
+    status: text("status", { enum: ["planned", "in_progress", "completed", "cancelled"] }).notNull().default("planned"),
+    objective: text("objective").notNull().default(""),
+    notes: text("notes").notNull().default(""),
+    createdByUserId: text("created_by_user_id").notNull().references(() => users.id),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    index("marketing_calendar_workspace_date_idx").on(table.organizationId, table.startDate),
+    check("marketing_calendar_status_check", sql`${table.status} in ('planned','in_progress','completed','cancelled')`),
+  ],
+);
+
 export const businessEvents = sqliteTable(
   "business_events",
   {

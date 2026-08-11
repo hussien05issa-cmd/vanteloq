@@ -2,7 +2,7 @@ import { and, asc, eq } from "drizzle-orm";
 import { getD1, getDb } from "../../../../db";
 import { dailyBusinessMetrics, integrationConnections, integrationLocationMappings, organizationProfiles } from "../../../../db/schema";
 import { requireAccess } from "../../../../server/authorization";
-import { clientSource, enforceRateLimit, handleApi, jsonResponse } from "../../../../server/api";
+import { ApiError, clientSource, enforceRateLimit, handleApi, jsonResponse } from "../../../../server/api";
 import { buildCommandCentre } from "../../../../server/intelligence";
 import { buildOperatingSystem } from "../../../../server/operating-system";
 import { effectivePermissions, requirePermission } from "../../../../server/permissions";
@@ -31,6 +31,11 @@ function percentageChange(current: number, previous: number) {
 
 export async function GET(request: Request) {
   return handleApi(request, async () => {
+    const paymentDaysValue = new URL(request.url).searchParams.get("payment_days") ?? "1";
+    if (!["1", "7", "30"].includes(paymentDaysValue)) {
+      throw new ApiError(400, "PAYMENT_PERIOD_INVALID", "Choose today, the last 7 days, or the last 30 days.");
+    }
+    const paymentDays = Number(paymentDaysValue);
     const context = await requireAccess(request, readers);
     await requirePermission(context, "dashboard.view");
     await enforceRateLimit("command-centre:read", `${context.userId}:${clientSource(request)}`, 120, 60);
@@ -115,15 +120,14 @@ export async function GET(request: Request) {
              COUNT(DISTINCT CASE WHEN amount_cents > 0 THEN external_sale_id END) AS transactionCount
       FROM commerce_payments
       WHERE organization_id = ? AND provider = ? AND paid_at IS NOT NULL
-        AND substr(paid_at, 1, 10) >= ?
+        AND substr(paid_at, 1, 10) >= ? AND substr(paid_at, 1, 10) <= ?
       GROUP BY category, payment_type_name
       ORDER BY amountCents DESC
     `).bind(
       context.organizationId,
       LIGHTSPEED_R_PROVIDER,
-      baseCommandCentre.source.earliestBusinessDate
-        ? dateOffset(baseCommandCentre.source.latestBusinessDate!, -29)
-        : today.businessDate,
+      dateOffset(today.businessDate, -(paymentDays - 1)),
+      today.businessDate,
     ).all<PaymentMixRow>() : { results: [] as PaymentMixRow[] };
     const commandCentre = {
       ...baseCommandCentre,
@@ -144,13 +148,12 @@ export async function GET(request: Request) {
         },
       } : null,
       paymentMix: {
-        period: "Last 30 verified days",
+        period: paymentDays === 1 ? "Today" : `Last ${paymentDays} days`,
         rows: paymentRows.results ?? [],
         sourceAvailable: Boolean((paymentRows.results ?? []).length),
       },
       liveSource: {
         provider: connection ? LIGHTSPEED_R_PROVIDER : null,
-        accountRef: connection?.externalAccountRef ?? null,
         accountName: connection?.externalAccountName ?? null,
         lastErrorCode: connection?.lastErrorCode ?? null,
         lastSuccessfulSyncAt: connection?.lastSuccessfulSyncAt?.toISOString() ?? null,

@@ -615,6 +615,53 @@ type Order = {
   receipts: { id: string; discrepancyStatus: string }[];
   matches: { id: string; status: string; differenceCents: number }[];
 };
+type ProcurementSupplier = {
+  id: string;
+  provider: string;
+  externalSupplierId: string;
+  name: string;
+  accountNumber: string | null;
+};
+type ProcurementProduct = {
+  id: string;
+  provider: string;
+  externalProductId: string;
+  sku: string;
+  name: string;
+  supplierId: string | null;
+  supplierName: string | null;
+  defaultCostCents: number | null;
+  onHandQuantity: number;
+  reorderPoint: number;
+  incomingUnits: number;
+  soldUnits30d: number;
+  soldUnitsPrevious30d: number;
+  soldUnits90d: number;
+  averageDailyDemand: number;
+  recommendedQuantity: number;
+  daysCover: number | null;
+  demandTrendRate: number | null;
+  recommendationFactors: string[];
+  lastSoldDate: string | null;
+  lastOrderedDate: string | null;
+  health: {
+    tone: "red" | "green" | "amber";
+    label: string;
+    detail: string;
+  };
+};
+type ProcurementCatalog = {
+  suppliers: ProcurementSupplier[];
+  products: ProcurementProduct[];
+  method: {
+    periodStart: string;
+    periodEnd: string;
+    reviewHorizonDays: number;
+    deadStockWindowDays: number;
+    deadStockHistoryAvailable: boolean;
+    description: string;
+  };
+};
 type PurchasingData = {
   orders: Order[];
   summary: {
@@ -622,7 +669,21 @@ type PurchasingData = {
     awaitingApproval: number;
     openCommitmentsCents: number;
     discrepancies: number;
+    redAlerts: number;
+    healthyProducts: number;
+    deadStockProducts: number;
   };
+  catalog: ProcurementCatalog;
+  calendar: Array<{
+    id: string;
+    kind: "purchase_ordered" | "purchase_expected" | "purchase_cash_due" | "supplier_bill_due" | "customer_invoice_due";
+    date: string;
+    title: string;
+    detail: string;
+    status: string;
+    amountCents: number;
+    currency: string;
+  }>;
 };
 
 export function PurchaseOrdersWorkspace({
@@ -632,8 +693,11 @@ export function PurchaseOrdersWorkspace({
 }: SharedProps) {
   const [data, setData] = useState<PurchasingData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<"orders" | "recommendations">("orders");
-  const [creating, setCreating] = useState(false);
+  const [tab, setTab] = useState<"orders" | "recommendations" | "calendar">("orders");
+  const [creating, setCreating] = useState<{
+    supplierId?: string;
+    productId?: string;
+  } | null>(null);
   const [selected, setSelected] = useState<Order | null>(null);
   const load = useCallback(async () => {
     setLoading(true);
@@ -682,7 +746,7 @@ export function PurchaseOrdersWorkspace({
             automatically; every commitment requires an authorized approval.
           </span>
         </div>
-        <button className="primary" onClick={() => setCreating(true)}>
+        <button className="primary" onClick={() => setCreating({})}>
           + New purchase order
         </button>
       </section>
@@ -697,7 +761,13 @@ export function PurchaseOrdersWorkspace({
           className={tab === "recommendations" ? "active" : ""}
           onClick={() => setTab("recommendations")}
         >
-          Recommendation lab
+          Smart reorder
+        </button>
+        <button
+          className={tab === "calendar" ? "active" : ""}
+          onClick={() => setTab("calendar")}
+        >
+          PO & invoice calendar
         </button>
       </div>
       {tab === "orders" ? (
@@ -720,6 +790,15 @@ export function PurchaseOrdersWorkspace({
               <b>{data.summary.discrepancies}</b>
             </article>
           </div>
+          <section className="purchasing-health-overview" aria-label="Product purchasing health">
+            <article className="issue"><i /> <span><small>RED ISSUES</small><b>{data.summary.redAlerts}</b><em>Stockout risk or dead stock</em></span></article>
+            <article className="healthy"><i /> <span><small>GREEN HEALTH</small><b>{data.summary.healthyProducts}</b><em>Demand and cover are aligned</em></span></article>
+            <article className="dead"><i /> <span><small>DEAD STOCK</small><b>{data.summary.deadStockProducts}</b><em>No verified sale in 90 days</em></span></article>
+          </section>
+          <ProcurementSignals
+            catalog={data.catalog}
+            openDraft={(seed) => setCreating(seed)}
+          />
           <section className="po-layout">
             <article className="card po-table">
               <header>
@@ -759,21 +838,201 @@ export function PurchaseOrdersWorkspace({
             <OrderInspector order={selected} action={action} />
           </section>
         </>
+      ) : tab === "recommendations" ? (
+        <>
+          <CatalogRecommendations
+            catalog={data.catalog}
+            currency={currency}
+            openDraft={(seed) => setCreating(seed)}
+          />
+          <RecommendationLab currency={currency} createTask={createTask} />
+        </>
       ) : (
-        <RecommendationLab currency={currency} createTask={createTask} />
+        <PurchasingCalendar events={data.calendar} />
       )}{" "}
       {creating && (
         <PurchaseOrderModal
           currency={currency}
-          close={() => setCreating(false)}
+          catalog={data.catalog}
+          seed={creating}
+          close={() => setCreating(null)}
           created={(next) => {
             setData(next);
-            setCreating(false);
+            setCreating(null);
             showNotice("Draft purchase order created");
           }}
         />
       )}
     </div>
+  );
+}
+
+function ProcurementSignals({
+  catalog,
+  openDraft,
+}: {
+  catalog: ProcurementCatalog;
+  openDraft: (seed: { supplierId?: string; productId?: string }) => void;
+}) {
+  const signals = [...catalog.products]
+    .sort((left, right) => {
+      const rank = { red: 0, amber: 1, green: 2 };
+      return rank[left.health.tone] - rank[right.health.tone];
+    })
+    .slice(0, 4);
+  if (!signals.length)
+    return (
+      <section className="card procurement-source-empty">
+        <b>Product and supplier database ready for import</b>
+        <span>
+          Connect or sync a supported POS to populate purchase-order choices and
+          product-level ordering signals.
+        </span>
+      </section>
+    );
+  return (
+    <section className="procurement-signal-strip" aria-label="Purchasing health signals">
+      {signals.map((product) => (
+        <article className={`procurement-signal ${product.health.tone}`} key={product.id}>
+          <header>
+            <span>{product.health.label}</span>
+            <i aria-hidden="true" />
+          </header>
+          <b>{product.name}</b>
+          <small>
+            {product.onHandQuantity} on hand · {product.incomingUnits} incoming
+          </small>
+          <p>{product.health.detail}</p>
+          <footer>
+            <span>
+              {product.lastOrderedDate
+                ? `Last ordered ${product.lastOrderedDate}`
+                : "No purchase order history"}
+            </span>
+            <button
+              onClick={() =>
+                openDraft({
+                  supplierId: product.supplierId ?? undefined,
+                  productId: product.id,
+                })
+              }
+            >
+              Review order
+            </button>
+          </footer>
+        </article>
+      ))}
+    </section>
+  );
+}
+
+function PurchasingCalendar({ events }: { events: PurchasingData["calendar"] }) {
+  const initialMonth = (events.find((event) => event.date >= new Date().toISOString().slice(0, 10))?.date ?? new Date().toISOString().slice(0, 10)).slice(0, 7);
+  const [month, setMonth] = useState(initialMonth);
+  const first = new Date(`${month}-01T00:00:00Z`);
+  const daysInMonth = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 0)).getUTCDate();
+  const leading = first.getUTCDay();
+  const cells = Array.from({ length: leading + daysInMonth }, (_, index) => index < leading ? null : index - leading + 1);
+  const today = new Date().toISOString().slice(0, 10);
+  const monthEvents = events.filter((event) => event.date.startsWith(month));
+  return (
+    <section className="purchasing-calendar card">
+      <header>
+        <div><p>COMMITMENT CALENDAR</p><h3>Orders, expected deliveries and invoice due dates</h3><span>Purchase events and open payables or receivables share one date view so commitments are visible before the next order.</span></div>
+        <label>Month<input aria-label="Purchase calendar month" type="month" value={month} onChange={(event) => setMonth(event.target.value)} /></label>
+      </header>
+      <div className="calendar-weekdays">{["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => <span key={day}>{day}</span>)}</div>
+      <div className="purchasing-month-grid">
+        {cells.map((day, index) => {
+          if (day === null) return <span className="calendar-blank" key={`blank-${index}`} />;
+          const date = `${month}-${String(day).padStart(2, "0")}`;
+          const dayEvents = monthEvents.filter((event) => event.date === date);
+          return <article className={date === today ? "today" : ""} key={date}>
+            <b>{day}</b>
+            {dayEvents.map((event) => <span className={event.kind} key={event.id} title={`${event.title}: ${money(event.amountCents, event.currency)}`}><i />{event.title}<small>{event.detail}</small></span>)}
+          </article>;
+        })}
+      </div>
+      {!monthEvents.length && <p className="calendar-empty">No recorded purchase-order or invoice commitment falls in this month.</p>}
+      <footer><span><i className="ordered" />Ordered</span><span><i className="expected" />Expected</span><span><i className="payable" />Bill or cash due</span><span><i className="receivable" />Customer invoice due</span></footer>
+    </section>
+  );
+}
+
+function CatalogRecommendations({
+  catalog,
+  currency,
+  openDraft,
+}: {
+  catalog: ProcurementCatalog;
+  currency: string;
+  openDraft: (seed: { supplierId?: string; productId?: string }) => void;
+}) {
+  const products = [...catalog.products].sort(
+    (left, right) => right.recommendedQuantity - left.recommendedQuantity,
+  );
+  return (
+    <section className="catalog-recommendations">
+      <header className="card procurement-method">
+        <div>
+          <p>VERIFIED PRODUCT SIGNALS</p>
+          <h3>Recommended quantities with the ordering history beside them</h3>
+          <span>{catalog.method.description}</span>
+        </div>
+        <dl>
+          <div>
+            <dt>Sales evidence</dt>
+            <dd>{catalog.method.periodStart} to {catalog.method.periodEnd}</dd>
+          </div>
+          <div>
+            <dt>Review horizon</dt>
+            <dd>{catalog.method.reviewHorizonDays} days</dd>
+          </div>
+        </dl>
+      </header>
+      {!products.length ? (
+        <div className="card control-empty">
+          <b>No imported products are available.</b>
+          <span>Sync a supported POS before generating product recommendations.</span>
+        </div>
+      ) : (
+        <div className="catalog-recommendation-grid">
+          {products.map((product) => (
+            <article className={`card catalog-recommendation ${product.health.tone}`} key={product.id}>
+              <header>
+                <div>
+                  <small>{product.supplierName || "Supplier not assigned"}</small>
+                  <h3>{product.name}</h3>
+                  <span>{product.sku || "No SKU"}</span>
+                </div>
+                <em>{product.health.label}</em>
+              </header>
+              <div className="recommendation-metrics">
+                <span><small>ON HAND</small><b>{product.onHandQuantity}</b></span>
+                <span><small>INCOMING</small><b>{product.incomingUnits}</b></span>
+                <span><small>SOLD 30D</small><b>{product.soldUnits30d.toLocaleString()}</b></span>
+                <span><small>RECOMMENDED</small><b>{product.recommendedQuantity}</b></span>
+              </div>
+              <p>{product.health.detail}</p>
+              <div className="recommendation-history">
+                <span>Last ordered <b>{product.lastOrderedDate || "No history"}</b></span>
+                <span>Last sold <b>{product.lastSoldDate || "No verified sale"}</b></span>
+                <span>Default cost <b>{money(product.defaultCostCents, currency)}</b></span>
+              </div>
+              <ul className="recommendation-factors">
+                {product.recommendationFactors.map((factor) => <li key={factor}>{factor}</li>)}
+              </ul>
+              <button
+                className="primary"
+                onClick={() => openDraft({ supplierId: product.supplierId ?? undefined, productId: product.id })}
+              >
+                Create review draft
+              </button>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -899,24 +1158,36 @@ function OrderInspector({
 
 function PurchaseOrderModal({
   currency,
+  catalog,
+  seed,
   close,
   created,
 }: {
   currency: string;
+  catalog: ProcurementCatalog;
+  seed: { supplierId?: string; productId?: string };
   close: () => void;
   created: (data: PurchasingData) => void;
 }) {
-  const [lines, setLines] = useState([
-    {
-      sku: "",
-      description: "",
-      quantity: 1,
-      unitCost: 0,
-      currentInventory: 0,
-      reorderPoint: 0,
-      forecastDemand: 0,
-    },
-  ]);
+  const initialProduct = catalog.products.find(
+    (product) => product.id === seed.productId,
+  );
+  const blankLine = (product?: ProcurementProduct) => ({
+      productId: product?.id ?? "",
+      sku: product?.sku ?? "",
+      description: product?.name ?? "",
+      quantity: Math.max(1, product?.recommendedQuantity ?? 1),
+      unitCost: product?.defaultCostCents
+        ? product.defaultCostCents / 100
+        : 0,
+      currentInventory: product?.onHandQuantity ?? 0,
+      reorderPoint: product?.reorderPoint ?? 0,
+      forecastDemand: product?.recommendedQuantity ?? 0,
+    });
+  const [supplierId, setSupplierId] = useState(
+    seed.supplierId ?? initialProduct?.supplierId ?? "",
+  );
+  const [lines, setLines] = useState([blankLine(initialProduct)]);
   const [error, setError] = useState("");
   const update = (
     index: number,
@@ -937,6 +1208,7 @@ function PurchaseOrderModal({
       body: JSON.stringify({
         action: "create",
         orderNumber: form.get("orderNumber"),
+        supplierId: form.get("supplierId"),
         supplierName: form.get("supplierName"),
         orderDate: form.get("orderDate"),
         expectedDeliveryDate: form.get("expectedDeliveryDate"),
@@ -946,6 +1218,7 @@ function PurchaseOrderModal({
         discountCents: Math.round(Number(form.get("discount") || 0) * 100),
         submitForApproval: form.get("submitForApproval") === "on",
         lines: lines.map((line) => ({
+          productId: line.productId,
           sku: line.sku,
           description: line.description,
           quantity: Number(line.quantity),
@@ -980,8 +1253,40 @@ function PurchaseOrderModal({
           </label>
           <label>
             Supplier
-            <input name="supplierName" required />
+            <select
+              name="supplierId"
+              value={supplierId}
+              onChange={(event) => {
+                const nextSupplierId = event.target.value;
+                setSupplierId(nextSupplierId);
+                setLines((current) =>
+                  current.map((line) => {
+                    const product = catalog.products.find(
+                      (candidate) => candidate.id === line.productId,
+                    );
+                    return product?.supplierId &&
+                      nextSupplierId &&
+                      product.supplierId !== nextSupplierId
+                      ? blankLine()
+                      : line;
+                  }),
+                );
+              }}
+            >
+              <option value="">Enter a supplier manually</option>
+              {catalog.suppliers.map((supplier) => (
+                <option key={supplier.id} value={supplier.id}>
+                  {supplier.name}
+                </option>
+              ))}
+            </select>
           </label>
+          {!supplierId && (
+            <label>
+              Supplier name
+              <input name="supplierName" required />
+            </label>
+          )}
           <label>
             Order date
             <input
@@ -1012,15 +1317,7 @@ function PurchaseOrderModal({
               onClick={() =>
                 setLines((current) => [
                   ...current,
-                  {
-                    sku: "",
-                    description: "",
-                    quantity: 1,
-                    unitCost: 0,
-                    currentInventory: 0,
-                    reorderPoint: 0,
-                    forecastDemand: 0,
-                  },
+                  blankLine(),
                 ])
               }
             >
@@ -1028,7 +1325,38 @@ function PurchaseOrderModal({
             </button>
           </header>
           {lines.map((line, index) => (
-            <div key={index}>
+            <div className="po-product-line" key={index}>
+              <select
+                aria-label="Product from product database"
+                value={line.productId}
+                onChange={(event) => {
+                  const product = catalog.products.find(
+                    (candidate) => candidate.id === event.target.value,
+                  );
+                  if (!product) return update(index, "productId", "");
+                  setLines((current) =>
+                    current.map((candidate, position) =>
+                      position === index ? blankLine(product) : candidate,
+                    ),
+                  );
+                  if (!supplierId && product.supplierId)
+                    setSupplierId(product.supplierId);
+                }}
+              >
+                <option value="">Manual product</option>
+                {catalog.products
+                  .filter(
+                    (product) =>
+                      !supplierId ||
+                      !product.supplierId ||
+                      product.supplierId === supplierId,
+                  )
+                  .map((product) => (
+                    <option key={product.id} value={product.id}>
+                      {product.name} · {product.sku || "No SKU"}
+                    </option>
+                  ))}
+              </select>
               <input
                 aria-label="SKU"
                 placeholder="SKU"
@@ -1074,6 +1402,22 @@ function PurchaseOrderModal({
               >
                 ×
               </button>
+              {line.productId && (() => {
+                const product = catalog.products.find(
+                  (candidate) => candidate.id === line.productId,
+                );
+                return product ? (
+                  <aside className={`po-product-context ${product.health.tone}`}>
+                    <span><b>{product.onHandQuantity}</b> on hand</span>
+                    <span><b>{product.incomingUnits}</b> already incoming</span>
+                    <span><b>{product.recommendedQuantity}</b> recommended</span>
+                    <span>
+                      Last ordered <b>{product.lastOrderedDate || "No history"}</b>
+                    </span>
+                    <em>{product.health.label}</em>
+                  </aside>
+                ) : null;
+              })()}
             </div>
           ))}
         </div>

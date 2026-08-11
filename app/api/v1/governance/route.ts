@@ -6,6 +6,7 @@ import { requireAccess } from "../../../../server/authorization";
 import { ApiError, enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameOrigin } from "../../../../server/api";
 import { allPermissions, permissionCatalogDto, roleTemplates } from "../../../../server/permissions";
 import { hashPin, validateTemporaryPin } from "../../../../server/pin";
+import { canAddUser } from "../../../../server/entitlements/engine";
 
 const managers = ["owner", "admin"] as const;
 const readers = ["owner", "admin"] as const;
@@ -95,6 +96,11 @@ async function responseBody(context: Awaited<ReturnType<typeof requireAccess>>) 
       sessions: "Use sign out to end this Vanteloq session; provider-wide session management remains in the identity service.",
       invitationDelivery: "Email invitation delivery is not configured. New employee profiles remain Draft until a verified delivery provider is connected.",
     },
+    billingCoverage: {
+      payer: "organization_owner",
+      employeeCheckoutRequired: false,
+      remoteSeatsEnforced: true,
+    },
   };
 }
 
@@ -156,6 +162,15 @@ export async function POST(request: Request) {
       resourceType = "location"; resourceId = id;
     } else if (action === "create_employee") {
       const id = crypto.randomUUID();
+      const remoteLogin = boolean(input.remoteLogin);
+      if (remoteLogin) {
+        const capacity = await canAddUser(context);
+        if (!capacity.allowed) {
+          throw new ApiError(409, "TEAM_SEAT_LIMIT_REACHED", capacity.reason === "subscription_required"
+            ? "An active owner subscription is required before remote employee access can be added."
+            : `The owner plan includes ${capacity.limit} remote seats. Manage the organization plan before adding another remote login.`);
+        }
+      }
       const email = string(input.email, "employee email", 254).toLowerCase(); if (!EMAIL.test(email)) throw new ApiError(400, "INVALID_FIELD", "Enter a valid employee email.");
       const mobile = string(input.mobile, "mobile number", 30, false); if (!PHONE.test(mobile)) throw new ApiError(400, "INVALID_FIELD", "Enter a valid mobile number.");
       const startDate = string(input.startDate, "start date", 10, false); if (startDate && !DATE.test(startDate)) throw new ApiError(400, "INVALID_FIELD", "Enter a valid start date.");
@@ -169,7 +184,7 @@ export async function POST(request: Request) {
       await database.prepare(`INSERT INTO team_members
         (id, organization_id, role_id, first_name, last_name, preferred_name, email, mobile, employee_code, job_title, department, employment_type, start_date, manager_member_id, primary_location_id, permitted_locations_json, status, remote_login, require_mfa, pin_enabled, notes, created_by_user_id, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?)`)
-        .bind(id, context.organizationId, roleId, firstName, lastName, string(input.preferredName, "preferred name", 80, false), email, mobile, employeeCode, string(input.jobTitle, "job title", 100, false), string(input.department, "department", 100, false), string(input.employmentType, "employment type", 60, false) || "employee", startDate || null, string(input.managerMemberId, "manager", 200, false) || null, string(input.primaryLocationId, "primary location", 200, false) || null, JSON.stringify(jsonArray(input.permittedLocations)), boolean(input.remoteLogin) ? 1 : 0, boolean(input.requireMfa) ? 1 : 0, pin ? 1 : 0, string(input.notes, "notes", 1000, false), context.userId, now, now).run();
+        .bind(id, context.organizationId, roleId, firstName, lastName, string(input.preferredName, "preferred name", 80, false), email, mobile, employeeCode, string(input.jobTitle, "job title", 100, false), string(input.department, "department", 100, false), string(input.employmentType, "employment type", 60, false) || "employee", startDate || null, string(input.managerMemberId, "manager", 200, false) || null, string(input.primaryLocationId, "primary location", 200, false) || null, JSON.stringify(jsonArray(input.permittedLocations)), remoteLogin ? 1 : 0, boolean(input.requireMfa) ? 1 : 0, pin ? 1 : 0, string(input.notes, "notes", 1000, false), context.userId, now, now).run();
       if (pin) {
         const credential = await hashPin(pin);
         await database.prepare(`INSERT INTO employee_pin_credentials
@@ -177,7 +192,7 @@ export async function POST(request: Request) {
           VALUES (?, ?, ?, ?, ?, 0, ?, 1, ?, ?)`)
           .bind(id, context.organizationId, credential.saltHex, credential.hashHex, credential.iterations, now + 86_400_000, now, now).run();
       }
-      resourceType = "team_member"; resourceId = id; details = { action, remoteLogin: boolean(input.remoteLogin), pinEnabled: Boolean(pin), invitationDelivery: "gated" };
+      resourceType = "team_member"; resourceId = id; details = { action, remoteLogin, pinEnabled: Boolean(pin), invitationDelivery: "gated", billingPayer: "organization_owner" };
     } else if (action === "update_employee") {
       const memberId = string(input.memberId, "employee", 200);
       const status = string(input.status, "status", 40);

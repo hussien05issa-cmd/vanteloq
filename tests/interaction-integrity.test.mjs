@@ -109,6 +109,86 @@ test("commerce charts expose exact-date and exact-hour keyboard tooltips", async
   assert.match(app, /7-DAY OUTLOOK/);
 });
 
+test("sales payment mix defaults to today and offers verified date windows", async () => {
+  const app = await readFile(new URL("../app/vanteloq-app.tsx", import.meta.url), "utf8");
+  const route = await readFile(new URL("../app/api/v1/command-centre/route.ts", import.meta.url), "utf8");
+  assert.match(app, /paymentRange/);
+  assert.match(app, /Today/);
+  assert.match(app, /Last 7 days/);
+  assert.match(app, /Last 30 days/);
+  assert.match(route, /payment_days/);
+  assert.match(route, /PAYMENT_PERIOD_INVALID/);
+});
+
+test("integrations open on Connections and never render a raw provider account identifier", async () => {
+  const app = await readFile(new URL("../app/vanteloq-app.tsx", import.meta.url), "utf8");
+  const route = await readFile(new URL("../app/api/v1/integrations/route.ts", import.meta.url), "utf8");
+  assert.match(app, /useState<"import" \| "connections">\("connections"\)/);
+  assert.match(app, /Connections[\s\S]{0,500}Import data/);
+  assert.doesNotMatch(app, /Account ID \{provider\.externalAccountRef\}/);
+  assert.match(route, /maskedAccountRef/);
+  assert.doesNotMatch(route, /externalAccountRef: byProvider/);
+});
+
+test("the authenticated homepage mirrors the integration directory with truthful availability badges", async () => {
+  const app = await readFile(new URL("../app/vanteloq-app.tsx", import.meta.url), "utf8");
+  assert.match(app, /function ConnectorHomeDirectory/);
+  assert.match(app, /integrationCatalog\.map/);
+  assert.match(app, /provider\.id === "google" \|\| provider\.id === "meta"/);
+  assert.match(app, /Coming soon!/);
+  assert.match(app, /Manage connections/);
+});
+
+test("employee profiles are covered by organization billing and remote seats are capacity checked", async () => {
+  const governance = await readFile(new URL("../app/api/v1/governance/route.ts", import.meta.url), "utf8");
+  const workspace = await readFile(new URL("../app/governance-workspaces.tsx", import.meta.url), "utf8");
+  assert.match(governance, /canAddUser/);
+  assert.match(governance, /employeeCheckoutRequired: false/);
+  assert.match(workspace, /Covered by the owner plan/);
+  assert.match(workspace, /Employees never complete a separate checkout/);
+});
+
+test("purchase orders use the tenant product and supplier database with traceable recommendations", async () => {
+  const workspace = await readFile(new URL("../app/control-workspaces.tsx", import.meta.url), "utf8");
+  const route = await readFile(new URL("../app/api/v1/purchasing/route.ts", import.meta.url), "utf8");
+  assert.match(workspace, /Product from product database/);
+  assert.match(workspace, /Last ordered/);
+  assert.match(workspace, /already incoming/);
+  assert.match(route, /label: "Dead stock"/);
+  assert.match(route, /Healthy movement/);
+  assert.match(route, /commerce_products/);
+  assert.match(route, /commerce_suppliers/);
+  assert.match(route, /commerce_sale_lines/);
+  assert.match(route, /purchase_order_lines/);
+  assert.match(route, /PRODUCT_SUPPLIER_MISMATCH/);
+  assert.match(route, /reviewHorizonDays: 14/);
+  assert.match(route, /supplierSource: selectedSupplier/);
+});
+
+test("marketing intelligence is owner-controlled, evidence-labeled and calendar-backed", async () => {
+  const workspace = await readFile(new URL("../app/growth-workspace.tsx", import.meta.url), "utf8");
+  const route = await readFile(new URL("../app/api/v1/growth/route.ts", import.meta.url), "utf8");
+  const schema = await readFile(new URL("../db/schema.ts", import.meta.url), "utf8");
+
+  assert.match(workspace, /Owner entry/);
+  assert.match(route, /Coming soon!/);
+  assert.match(route, /Association is not proof of causation/i);
+  assert.match(workspace, /marketing-intelligence-v2\.png/);
+  assert.match(route, /marketing\.profile_updated/);
+  assert.match(route, /marketing\.calendar_created/);
+  assert.match(route, /sourceSystem: "owner_entry"|sourceSystem/);
+  assert.match(schema, /marketing_profiles/);
+  assert.match(schema, /marketing_calendar_entries/);
+  assert.doesNotMatch(workspace, /Google connected|Meta connected/i);
+});
+
+test("industry models use the generated operating-model visual without inventing active modules", async () => {
+  const workspace = await readFile(new URL("../app/vanteloq-app.tsx", import.meta.url), "utf8");
+  assert.match(workspace, /industry-models-v2\.png/);
+  assert.match(workspace, /Requires source adapter/);
+  assert.match(workspace, /0<\/b><small>invented metrics/);
+});
+
 test("the banking catalogue uses Plaid's standalone mark and omits removed aggregators", async () => {
   const logoSource = await readFile(
     new URL("../app/integration-brand-logo.tsx", import.meta.url),

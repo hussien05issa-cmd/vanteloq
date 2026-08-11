@@ -9,6 +9,12 @@ import { lightspeedReadiness } from "../../../../server/integrations/lightspeed"
 import { lightspeedRReadiness } from "../../../../server/integrations/lightspeed-r";
 import { stripeReadiness } from "../../../../server/integrations/stripe";
 
+function maskedAccountRef(value: string | null | undefined) {
+  if (!value) return null;
+  const ending = value.slice(-4);
+  return `•••• ${ending}`;
+}
+
 export async function GET(request: Request) {
   return handleApi(request, async () => {
     const context = await requireAccess(request, ["owner", "admin", "manager", "employee", "read_only"]);
@@ -38,7 +44,7 @@ export async function GET(request: Request) {
       integrations: integrationCatalog.map((provider) => ({
         ...provider,
         status: byProvider.get(provider.id)?.status ?? "not_connected",
-        externalAccountRef: byProvider.get(provider.id)?.externalAccountRef ?? null,
+        maskedAccountRef: maskedAccountRef(byProvider.get(provider.id)?.externalAccountRef),
         externalAccountName: byProvider.get(provider.id)?.externalAccountName ?? null,
         lastSuccessfulSyncAt: byProvider.get(provider.id)?.lastSuccessfulSyncAt ?? null,
         lastErrorCode: byProvider.get(provider.id)?.lastErrorCode ?? null,
