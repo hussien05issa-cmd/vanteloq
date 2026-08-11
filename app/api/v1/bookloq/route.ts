@@ -35,6 +35,16 @@ type CashFlowRecord = {
   certainty: "confirmed" | "probable" | "estimated";
 };
 
+type HealthStatsRow = {
+  ledgerAvailable: number;
+  unbalancedJournalCount: number;
+  uncategorizedCount: number;
+  unreconciledCount: number;
+  openCriticalAlerts: number;
+  receiptEvidenceAvailable: number;
+  missingReceiptCount: number;
+};
+
 type BankRow = {
   id: string;
   name: string;
@@ -94,6 +104,7 @@ export async function GET(request: Request) {
       invoicesResult,
       contactsResult,
       alertsResult,
+      healthStatsResult,
       journalsResult,
       periodsResult,
       closeResult,
@@ -177,6 +188,42 @@ export async function GET(request: Request) {
         FROM bookloq_alerts WHERE organization_id = ? ORDER BY
         CASE severity WHEN 'critical' THEN 1 WHEN 'attention' THEN 2 WHEN 'opportunity' THEN 3 ELSE 4 END,
         created_at DESC LIMIT 100`).bind(organizationId).all(),
+      database.prepare(`WITH trusted_transactions AS (
+          SELECT t.categorization_status, t.reconciliation_status
+          FROM financial_transactions t
+          WHERE t.organization_id = ?
+            AND (t.source_system <> 'plaid' OR EXISTS (
+              SELECT 1 FROM integration_connections c
+              WHERE c.organization_id = t.organization_id AND c.provider = 'plaid'
+                AND c.status = 'connected' AND c.data_promotion_status = 'approved'
+                AND (c.sync_lease_owner IS NULL OR c.sync_lease_expires_at IS NULL
+                  OR c.sync_lease_expires_at <= CAST(strftime('%s', 'now') AS INTEGER))
+            ))
+        )
+        SELECT
+          EXISTS(SELECT 1 FROM journal_entries
+            WHERE organization_id = ? AND status IN ('posted', 'reversed')) ledgerAvailable,
+          (SELECT COUNT(*) FROM journal_entries
+            WHERE organization_id = ? AND status IN ('posted', 'reversed')
+              AND total_debit_cents <> total_credit_cents) unbalancedJournalCount,
+          (SELECT COUNT(*) FROM trusted_transactions
+            WHERE categorization_status <> 'confirmed') uncategorizedCount,
+          (SELECT COUNT(*) FROM trusted_transactions
+            WHERE reconciliation_status <> 'reconciled') unreconciledCount,
+          (SELECT COUNT(*) FROM bookloq_alerts
+            WHERE organization_id = ? AND status = 'open' AND severity = 'critical') openCriticalAlerts,
+          EXISTS(SELECT 1 FROM bookloq_alerts
+            WHERE organization_id = ? AND alert_type = 'receipt_missing') receiptEvidenceAvailable,
+          (SELECT COUNT(*) FROM bookloq_alerts
+            WHERE organization_id = ? AND alert_type = 'receipt_missing' AND status = 'open') missingReceiptCount`
+        ).bind(
+          organizationId,
+          organizationId,
+          organizationId,
+          organizationId,
+          organizationId,
+          organizationId,
+        ).all<HealthStatsRow>(),
       database.prepare(`SELECT e.id, e.entry_number entryNumber, e.entry_date entryDate, e.posting_date postingDate,
         e.status, e.source_type sourceType, e.source_ref sourceRef, e.memo, e.currency,
         e.total_debit_cents totalDebitCents, e.total_credit_cents totalCreditCents,
@@ -215,19 +262,25 @@ export async function GET(request: Request) {
     const reconciliations = rows(reconciliationsResult);
     const bills = rows(billsResult) as Array<{ id: string; billNumber: string; supplierName: string; dueDate: string; totalCents: number; paidCents: number; status: string }>;
     const invoices = rows(invoicesResult) as Array<{ id: string; invoiceNumber: string; customerName: string; dueDate: string; totalCents: number; paidCents: number; status: string }>;
-    const alerts = rows(alertsResult) as Array<{ severity: string; status: string; alertType: string }>;
     const closeItems = rows(closeResult) as Array<{ status: string }>;
     const completeItems = closeItems.filter((item) => item.status === "complete").length;
     const monthEndCompletionRate = closeItems.length ? completeItems / closeItems.length : 0;
-    const uncategorizedCount = (transactions as Array<{ categorizationStatus: string }>).filter((transaction) => transaction.categorizationStatus !== "confirmed").length;
-    const unreconciledCount = (transactions as Array<{ reconciliationStatus: string }>).filter((transaction) => transaction.reconciliationStatus !== "reconciled").length;
-    const journalRows = rows(journalsResult) as Array<{ status: string; totalDebitCents: number; totalCreditCents: number }>;
-    const ledgerAvailable = journalRows.some((entry) => entry.status === "posted" || entry.status === "reversed");
-    const unbalancedJournalCount = journalRows.filter((entry) => entry.totalDebitCents !== entry.totalCreditCents).length;
-    const openCriticalAlerts = alerts.filter((alert) => alert.status === "open" && alert.severity === "critical").length;
-    const receiptEvidenceAlerts = alerts.filter((alert) => alert.alertType === "receipt_missing");
-    const missingReceiptCount = receiptEvidenceAlerts.length
-      ? receiptEvidenceAlerts.filter((alert) => alert.status === "open").length
+    const healthStats = rows(healthStatsResult)[0] ?? {
+      ledgerAvailable: 0,
+      unbalancedJournalCount: 0,
+      uncategorizedCount: 0,
+      unreconciledCount: 0,
+      openCriticalAlerts: 0,
+      receiptEvidenceAvailable: 0,
+      missingReceiptCount: 0,
+    };
+    const ledgerAvailable = Boolean(healthStats.ledgerAvailable);
+    const unbalancedJournalCount = Number(healthStats.unbalancedJournalCount);
+    const uncategorizedCount = Number(healthStats.uncategorizedCount);
+    const unreconciledCount = Number(healthStats.unreconciledCount);
+    const openCriticalAlerts = Number(healthStats.openCriticalAlerts);
+    const missingReceiptCount = healthStats.receiptEvidenceAvailable
+      ? Number(healthStats.missingReceiptCount)
       : null;
     const healthScore = missingReceiptCount === null
       ? null
