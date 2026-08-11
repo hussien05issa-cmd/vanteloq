@@ -291,18 +291,26 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
           <p>ONE OPERATING MODEL</p>
           <h2 id="platform-title">Move from source records to a decision you can explain.</h2>
           <span>Vanteloq keeps the source, calculation status and approval path visible. Missing inputs remain unavailable or provisional instead of being silently replaced with confident-looking numbers.</span>
-          <ol>
-            <li><b>01</b><div><strong>Connect or import</strong><span>Authorize a supported source or upload structured operating records.</span></div></li>
-            <li><b>02</b><div><strong>Verify and organize</strong><span>Map locations, reconcile totals and apply consistent metric definitions.</span></div></li>
-            <li><b>03</b><div><strong>Review and act</strong><span>Turn a supported finding into assigned work with the right approval.</span></div></li>
+          <ol className="home-step-list">
+            <li><b>01</b><div><strong>Connect or import</strong><span>Authorize a supported source or upload structured operating records.</span></div><span className="home-step-visual" aria-hidden="true">
+              {/* Decorative generated art is already compact and served directly without an image transformation binding. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/brand/connect-import-visual.webp" alt="" width={360} height={240}/>
+            </span></li>
+            <li><b>02</b><div><strong>Verify and organize</strong><span>Map locations, reconcile totals and apply consistent metric definitions.</span></div><span className="home-step-visual" aria-hidden="true">
+              {/* Decorative generated art is already compact and served directly without an image transformation binding. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/brand/verify-organize-visual.webp" alt="" width={360} height={240}/>
+            </span></li>
+            <li><b>03</b><div><strong>Review and act</strong><span>Turn a supported finding into assigned work with the right approval.</span></div><span className="home-step-review-visual" aria-hidden="true"><i/><i/><i/></span></li>
           </ol>
         </div>
-        <article className="home-workflow-preview" aria-label="Illustrative inventory decision workflow">
-          <header><span>ILLUSTRATIVE WORKFLOW</span><b>Inventory review</b></header>
+        <article className="home-workflow-preview" aria-label="Inventory decision example">
+          <header><span>SOURCE-BASED REVIEW</span><b>Inventory decision</b></header>
           <div className="home-workflow-source"><small>SOURCE</small><strong>Lightspeed R-Series</strong><span>Sales and inventory · last verified import shown in product</span></div>
           <div className="home-workflow-metrics"><span><small>ITEM</small><strong>Protein C</strong></span><span><small>ON HAND</small><strong>11 units</strong></span><span><small>LEAD TIME</small><strong>7 days</strong></span></div>
           <div className="home-workflow-decision"><small>REVIEW OUTPUT</small><strong>Check the proposed order against demand, supplier constraints and available cash.</strong></div>
-          <footer><span>Illustrative data, clearly labelled</span><b>Owner approval required</b></footer>
+          <footer><span>Example data · confirm with source records</span><b>Owner approval required</b></footer>
         </article>
       </section>
 
@@ -320,7 +328,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
             ["04","Cash context","Separate current cash from known obligations and model supported purchasing or operating scenarios."],
             ["05","Purchasing decisions","Evaluate demand, lead time, case packs, supplier constraints, expiry and cash before reviewing an order quantity."],
             ["06","Operational follow-through","Create tasks from supported findings, assign responsibility and preserve the event and audit context."],
-          ].map(([number, title, copy]) => <article key={number}><small>{number}</small><h3>{title}</h3><p>{copy}</p></article>)}
+          ].map(([number, title, copy]) => <article key={number}><small>{number}</small><span className="home-capability-signal" aria-hidden="true"><i/><i/><i/></span><h3>{title}</h3><p>{copy}</p></article>)}
         </div>
       </section>
 
@@ -331,8 +339,8 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
           <span>Vanteloq is the core operating workspace. BookLoQ is the separate accounting workspace inside the product, available where the workspace has the required access.</span>
         </div>
         <div className="home-product-family-grid">
-          <article><ProductBrandLogo product="vanteloq" variant="full"/><div><small>VANTELOQ</small><h3>Understand the operation.</h3><p>Sales, inventory, cash context, purchasing, reports, data quality and assigned operational work.</p></div></article>
-          <article><ProductBrandLogo product="bookloq" variant="full"/><div><small>BOOKLOQ</small><h3>Maintain the accounting workspace.</h3><p>Chart of accounts, journal controls, reconciliation, bills, documents and financial reporting where access is entitled.</p></div></article>
+          <article className="home-product-card"><div className="home-product-logo-shell"><ProductBrandLogo product="vanteloq" variant="full"/></div><div><small>VANTELOQ</small><h3>Understand the operation.</h3><p>Sales, inventory, cash context, purchasing, reports, data quality and assigned operational work.</p><span className="home-product-chip">CORE WORKSPACE</span></div></article>
+          <article className="home-product-card"><div className="home-product-logo-shell"><ProductBrandLogo product="bookloq" variant="full"/></div><div><small>BOOKLOQ</small><h3>Maintain the accounting workspace.</h3><p>Chart of accounts, journal controls, reconciliation, bills, documents and financial reporting where access is entitled.</p><span className="home-product-chip">ACCOUNTING WORKSPACE</span></div></article>
         </div>
       </section>
 
@@ -403,13 +411,21 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
           <p>FREQUENTLY ASKED QUESTIONS</p>
           <h2 id="faq-title">Clear answers before you create a workspace.</h2>
         </div>
-        <div className="home-faq-list">
-          <details><summary>What is Vanteloq?</summary><p>Vanteloq is a business operating and analytics platform for independent retail. It organizes supported sales, inventory, cash and operational records into source-aware views and workflows.</p></details>
-          <details><summary>Who is Vanteloq designed for?</summary><p>The current product and connection work are designed primarily for independent retailers and the owners or managers who oversee sales, inventory, purchasing, cash and daily operations.</p></details>
-          <details><summary>What systems can I connect?</summary><p>Implemented connection paths currently cover Lightspeed R-Series, a read-only Lightspeed X-Series pilot and read-only Stripe staging. Structured CSV import is also available. Other providers shown inside the integration directory are disabled until their production adapters are built and verified.</p></details>
-          <details><summary>Do I need to replace my POS?</summary><p>No. Vanteloq is designed to use supported source records while the POS remains the transaction system. Availability and depth depend on the connector and successful reconciliation.</p></details>
-          <details><summary>Can Vanteloq help with inventory?</summary><p>Yes. Implemented inventory tools cover lots, expiry, shelf-life risk, first-expiring-first-out review and a constrained reorder calculation. Recommendations still require reliable demand, cost, lead-time, supplier and cash inputs.</p></details>
-          <details><summary>How does Vanteloq protect workspace data?</summary><p>The application uses secure authentication, tenant-scoped records, role-based server permissions, protected provider authorization flows and audit events. Vanteloq does not claim SOC 2, ISO or other certifications that have not been obtained.</p></details>
+        <div className="home-faq-layout">
+          <aside className="home-faq-visual" aria-label="Vanteloq workspace principles">
+            <ProductBrandLogo product="vanteloq" variant="full"/>
+            <strong>Clarity before commitment.</strong>
+            <p>Know what connects, what needs verification and where a person stays in control.</p>
+            <div><span>Supported sources</span><span>Visible data limits</span><span>Human approvals</span></div>
+          </aside>
+          <div className="home-faq-list">
+            <details><summary>What is Vanteloq?</summary><p>Vanteloq is a business operating and analytics platform for independent retail. It organizes supported sales, inventory, cash and operational records into source-aware views and workflows.</p></details>
+            <details><summary>Who is Vanteloq designed for?</summary><p>The current product and connection work are designed primarily for independent retailers and the owners or managers who oversee sales, inventory, purchasing, cash and daily operations.</p></details>
+            <details><summary>What systems can I connect?</summary><p>Implemented connection paths currently cover Lightspeed R-Series, a read-only Lightspeed X-Series pilot and read-only Stripe staging. Structured CSV import is also available. Other providers shown inside the integration directory are disabled until their production adapters are built and verified.</p></details>
+            <details><summary>Do I need to replace my POS?</summary><p>No. Vanteloq is designed to use supported source records while the POS remains the transaction system. Availability and depth depend on the connector and successful reconciliation.</p></details>
+            <details><summary>Can Vanteloq help with inventory?</summary><p>Yes. Implemented inventory tools cover lots, expiry, shelf-life risk, first-expiring-first-out review and a constrained reorder calculation. Recommendations still require reliable demand, cost, lead-time, supplier and cash inputs.</p></details>
+            <details><summary>How does Vanteloq protect workspace data?</summary><p>The application uses secure authentication, tenant-scoped records, role-based server permissions, protected provider authorization flows and audit events. Vanteloq does not claim SOC 2, ISO or other certifications that have not been obtained.</p></details>
+          </div>
         </div>
       </section>
 

@@ -22,12 +22,12 @@ export default function ProductBrandLogo({
       ? "/brand/vanteloq-logo.png"
       : "/brand/vanteloq-mark.png"
     : variant === "full"
-      ? "/brand/bookloq-logo.jpeg"
-      : "/brand/bookloq-logo.png";
+      ? "/brand/bookloq-logo.png"
+      : "/brand/bookloq-mark.png";
 
   const dimensions = product === "vanteloq"
     ? variant === "full" ? { width: 1030, height: 576 } : { width: 447, height: 402 }
-    : variant === "full" ? { width: 1024, height: 1024 } : { width: 1536, height: 1024 };
+    : variant === "full" ? { width: 1229, height: 363 } : { width: 378, height: 331 };
 
   return (
     <span className={`product-brand-logo ${product} ${variant} ${className}`.trim()}>

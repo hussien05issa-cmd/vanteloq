@@ -45,6 +45,9 @@ test("homepage copy stays within the verified product boundary", async () => {
   assert.doesNotMatch(html, /\p{L}—\p{L}/u, "homepage prose should not join words with an em dash");
   assert.match(html, /home-intelligence-map/);
   assert.match(html, /home-resource-art/);
+  assert.doesNotMatch(html, /ILLUSTRATIVE WORKFLOW|Illustrative inventory decision workflow/i);
+  assert.match(html, /connect-import-visual\.webp/);
+  assert.match(html, /verify-organize-visual\.webp/);
 });
 
 test("homepage preserves responsive and keyboard interaction safeguards", async () => {
@@ -69,4 +72,13 @@ test("the above-the-fold product image is compact and dimensioned", async () => 
   assert.match(source, /vanteloq-command-ledger\.webp/);
   assert.match(source, /width=\{1487\} height=\{1058\}/);
   assert.match(source, /fetchPriority="high"/);
+});
+
+test("workflow illustrations stay compact and production-ready", async () => {
+  const [connect, verify] = await Promise.all([
+    stat(new URL("../public/brand/connect-import-visual.webp", import.meta.url)),
+    stat(new URL("../public/brand/verify-organize-visual.webp", import.meta.url)),
+  ]);
+  assert.ok(connect.size < 160_000, `connect illustration should stay below 160 KB, received ${connect.size}`);
+  assert.ok(verify.size < 160_000, `verify illustration should stay below 160 KB, received ${verify.size}`);
 });
