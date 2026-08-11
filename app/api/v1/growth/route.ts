@@ -7,15 +7,19 @@ import {
   dailyBusinessMetrics,
   growthTouchpoints,
   growthTransactions,
+  integrationConnections,
   integrationLocationMappings,
   inventoryBalances,
   marketingCalendarEntries,
+  marketingDailyMetrics,
   marketingProfiles,
+  marketingReviews,
   organizationLocations,
   searchVisibilityObservations,
   workspaces,
 } from "../../../../db/schema";
 import { buildGrowthIntelligence } from "../../../../domain/growth-intelligence";
+import { buildGoogleReviewInsights } from "../../../../domain/google-review-insights";
 import { buildMarketingRecommendations, type EvidenceCoverage, type MarketingOperatingCoverage } from "../../../../domain/marketing-recommendations";
 import { recordAudit } from "../../../../server/audit";
 import { requireAccess } from "../../../../server/authorization";
@@ -23,6 +27,7 @@ import { ApiError, enforceRateLimit, handleApi, jsonResponse, readJsonObject, re
 import { effectivePermissions, requirePermission } from "../../../../server/permissions";
 import { authorizedLocationDataScope, requireOrganizationWideLocationAccess } from "../../../../server/location-access";
 import { approvedBankSource, approvedCommerceSource, approvedFactSource } from "../../../../server/integrations/trusted-data";
+import { marketingReadiness } from "../../../../server/integrations/marketing";
 
 const readers = ["owner", "admin", "manager", "employee", "read_only"] as const;
 const writers = ["owner", "admin"] as const;
@@ -99,7 +104,7 @@ export async function GET(request: Request) {
     const locationAccess = await authorizedLocationDataScope(context, requestedLocationId);
     const selectedLocation = locationAccess.selectedLocation;
     const since = new Date(Date.now() - 366 * 86_400_000).toISOString().slice(0, 10);
-    const [touchpoints, transactions, visibility, storedProfile, calendar, workspace, inventory, dailyMetrics, customers, locations, locationMappings, bookkeepingSettings, cashAccounts] = await Promise.all([
+    const [touchpoints, transactions, visibility, storedProfile, calendar, workspace, inventory, dailyMetrics, customers, locations, locationMappings, bookkeepingSettings, cashAccounts, providerMetrics, providerReviews, marketingConnections] = await Promise.all([
       getDb().select({ id: growthTouchpoints.id, occurredAt: growthTouchpoints.occurredAt, source: growthTouchpoints.source, stage: growthTouchpoints.stage, journeyRef: growthTouchpoints.journeyRef }).from(growthTouchpoints).where(and(eq(growthTouchpoints.organizationId, context.organizationId), gte(growthTouchpoints.occurredAt, since))).orderBy(asc(growthTouchpoints.occurredAt)).limit(10_000),
       getDb().select({ id: growthTransactions.id, occurredAt: growthTransactions.occurredAt, journeyRef: growthTransactions.journeyRef, revenueCents: growthTransactions.revenueCents, grossProfitCents: growthTransactions.grossProfitCents }).from(growthTransactions).where(and(eq(growthTransactions.organizationId, context.organizationId), gte(growthTransactions.occurredAt, since))).orderBy(asc(growthTransactions.occurredAt)).limit(10_000),
       getDb().select({ query: searchVisibilityObservations.query, observedDate: searchVisibilityObservations.observedDate, positionMilli: searchVisibilityObservations.positionMilli, discoveryActions: searchVisibilityObservations.discoveryActions, sourceSystem: searchVisibilityObservations.sourceSystem }).from(searchVisibilityObservations).where(and(eq(searchVisibilityObservations.organizationId, context.organizationId), gte(searchVisibilityObservations.observedDate, since))).orderBy(asc(searchVisibilityObservations.observedDate)).limit(2_000),
@@ -130,6 +135,9 @@ export async function GET(request: Request) {
         eq(bankAccounts.organizationId, context.organizationId),
         approvedBankSource(bankAccounts.organizationId, bankAccounts.provider, bankAccounts.externalItemRef),
       )).orderBy(desc(bankAccounts.updatedAt)).limit(100),
+      getDb().select({ provider: marketingDailyMetrics.provider, metricDate: marketingDailyMetrics.metricDate, metricKey: marketingDailyMetrics.metricKey, valueMilli: marketingDailyMetrics.valueMilli, resourceRef: marketingDailyMetrics.resourceRef }).from(marketingDailyMetrics).where(and(eq(marketingDailyMetrics.organizationId, context.organizationId), gte(marketingDailyMetrics.metricDate, since))).orderBy(asc(marketingDailyMetrics.metricDate)).limit(25_000),
+      getDb().select({ ratingMilli: marketingReviews.ratingMilli, comment: marketingReviews.comment, reviewedAt: marketingReviews.reviewedAt }).from(marketingReviews).where(and(eq(marketingReviews.organizationId, context.organizationId), gte(marketingReviews.reviewedAt, since))).orderBy(asc(marketingReviews.reviewedAt)).limit(5_000),
+      getDb().select({ id: integrationConnections.id, provider: integrationConnections.provider, status: integrationConnections.status, externalAccountName: integrationConnections.externalAccountName, lastSuccessfulSyncAt: integrationConnections.lastSuccessfulSyncAt }).from(integrationConnections).where(and(eq(integrationConnections.organizationId, context.organizationId), eq(integrationConnections.dataPromotionStatus, "approved"))).orderBy(desc(integrationConnections.updatedAt)).limit(100),
     ]);
     const selectedLocationRefs = new Set(locationAccess.locationRefs ?? []);
     const locationDataRestricted = locationAccess.locationRefs !== null;
@@ -145,6 +153,23 @@ export async function GET(request: Request) {
     const authorizedTouchpoints = authorizationRestricted ? [] : touchpoints;
     const authorizedTransactions = authorizationRestricted ? [] : transactions;
     const authorizedVisibility = authorizationRestricted ? [] : visibility;
+    const authorizedProviderMetrics = authorizationRestricted ? [] : providerMetrics;
+    const authorizedProviderReviews = authorizationRestricted ? [] : providerReviews;
+    const averageMetricKeys = new Set(["search_ctr", "search_position", "meta_ctr", "meta_cpc"]);
+    const metricBuckets = new Map<string, { provider: "google" | "meta"; metricDate: string; sums: Record<string, number>; counts: Record<string, number> }>();
+    for (const row of authorizedProviderMetrics) {
+      const key = `${row.provider}:${row.metricDate}`;
+      const bucket = metricBuckets.get(key) ?? { provider: row.provider, metricDate: row.metricDate, sums: {}, counts: {} };
+      bucket.sums[row.metricKey] = (bucket.sums[row.metricKey] ?? 0) + row.valueMilli / 1_000;
+      bucket.counts[row.metricKey] = (bucket.counts[row.metricKey] ?? 0) + 1;
+      metricBuckets.set(key, bucket);
+    }
+    const measurementSeries = [...metricBuckets.values()].sort((left, right) => left.metricDate.localeCompare(right.metricDate)).map((bucket) => ({
+      provider: bucket.provider,
+      metricDate: bucket.metricDate,
+      metrics: Object.fromEntries(Object.entries(bucket.sums).map(([key, value]) => [key, averageMetricKeys.has(key) ? value / bucket.counts[key] : value])),
+    }));
+    const reviewInsights = buildGoogleReviewInsights(authorizedProviderReviews);
     const saved = storedProfile[0];
     const organization = workspace[0];
     const profile = saved ?? {
@@ -163,11 +188,13 @@ export async function GET(request: Request) {
     };
     const growth = buildGrowthIntelligence({ touchpoints: authorizedTouchpoints, transactions: authorizedTransactions, searchVisibility: authorizedVisibility.map((row) => ({ ...row, position: row.positionMilli / 1000 })) });
     const hasAttributionData = growth.status === "available" && (growth.channels.length > 0 || authorizedTransactions.length > 0);
-    const hasSearchData = authorizedVisibility.length > 0;
+    const hasSearchData = authorizedVisibility.length > 0 || authorizedProviderMetrics.some((row) => row.metricKey === "search_clicks" || row.metricKey === "search_impressions");
     const marketingLatest = latestValue([
       ...authorizedVisibility.map((row) => row.observedDate),
       ...authorizedTouchpoints.map((row) => row.occurredAt),
       ...authorizedTransactions.map((row) => row.occurredAt),
+      ...authorizedProviderMetrics.map((row) => row.metricDate),
+      ...authorizedProviderReviews.map((row) => row.reviewedAt),
     ]);
     const marketingFreshness = sourceFreshness(marketingLatest, 31, "No marketing source date");
     const marketingEvidence: EvidenceCoverage = {
@@ -176,9 +203,11 @@ export async function GET(request: Request) {
       evidence: [
         ...(hasSearchData ? [`${authorizedVisibility.length} owner-entered or imported search observations`] : []),
         ...(hasAttributionData ? [`${authorizedTouchpoints.length} touchpoints and ${authorizedTransactions.length} matched transaction records`] : []),
+        ...(authorizedProviderMetrics.length ? [`${authorizedProviderMetrics.length} authorized Google and Meta daily measurements`] : []),
+        ...(authorizedProviderReviews.length ? [`${authorizedProviderReviews.length} Google reviews available for aggregate themes`] : []),
       ],
       missingInputs: [
-        ...(!hasSearchData ? ["Search observations"] : []),
+        ...(!hasSearchData ? ["Search Console measurements or search observations"] : []),
         ...(!hasAttributionData ? ["Matched journey outcomes"] : []),
         ...(locationDataRestricted ? ["Location-tagged marketing journeys and outcomes"] : []),
       ],
@@ -261,6 +290,23 @@ export async function GET(request: Request) {
       cashReadiness: cashCoverage,
       location: locationCoverage,
     };
+    const connectionSummaries = (["google", "meta"] as const).map((provider) => {
+      const connected = marketingConnections.find((connection) => connection.provider === provider && connection.status === "connected");
+      const readiness = marketingReadiness(provider);
+      return {
+        provider: provider === "google" ? "Google" : "Meta",
+        providerId: provider,
+        status: connected ? "connected" as const : readiness.credentialsConfigured ? "ready_to_connect" as const : "configuration_required" as const,
+        label: connected ? "Connected" : readiness.credentialsConfigured ? "Ready to connect" : "Configuration required",
+        availableNow: connected
+          ? connected.lastSuccessfulSyncAt ? `Last synced ${connected.lastSuccessfulSyncAt.toISOString()}` : "Connected · first sync needed"
+          : provider === "google"
+            ? "Business Profile, reviews, Search Console and Analytics"
+            : "Ads insights, website link clicks and spend",
+        connectionId: connected?.id ?? null,
+      };
+    });
+    const googleConnected = connectionSummaries.some((connection) => connection.providerId === "google" && connection.status === "connected");
     const recommendations = buildMarketingRecommendations({
       businessModel: profile.businessModel,
       primaryOffer: profile.primaryOffer,
@@ -268,7 +314,7 @@ export async function GET(request: Request) {
       serviceArea: profile.serviceArea,
       primaryGoal: profile.primaryGoal,
       websiteUrl: profile.websiteUrl,
-      googleProfileStatus: profile.googleProfileStatus,
+      googleProfileStatus: googleConnected && (authorizedProviderReviews.length > 0 || authorizedProviderMetrics.some((row) => row.metricKey.startsWith("business_"))) ? "verified" : profile.googleProfileStatus,
       hasAttributionData,
       hasSearchData,
       asOfDate: new Date().toISOString().slice(0, 10),
@@ -285,18 +331,17 @@ export async function GET(request: Request) {
       locationScope: locationDataRestricted ? { id: selectedLocation?.id ?? "accessible", name: selectedLocation?.name ?? "Accessible locations" } : null,
       calendar: authorizationRestricted ? [] : calendar,
       searchSeries: authorizedVisibility.slice(-24).map((row) => ({ query: row.query, observedDate: row.observedDate, position: row.positionMilli / 1000, discoveryActions: row.discoveryActions, sourceSystem: row.sourceSystem })),
+      measurementSeries,
+      reviewInsights,
       importCounts: {
         touchpoints: authorizedTouchpoints.length,
         transactions: authorizedTransactions.length,
         searchObservations: authorizedVisibility.length,
       },
       canManage: context.role === "owner" || context.role === "admin",
-      connections: [
-        { provider: "Google", status: "coming_soon", label: "Coming soon!", availableNow: "Owner-entered Search and Business Profile observations" },
-        { provider: "Meta", status: "coming_soon", label: "Coming soon!", availableNow: "Owner-entered campaign context and calendar planning" },
-      ],
+      connections: connectionSummaries,
       period: { since, through: new Date().toISOString().slice(0, 10) },
-      sourceBoundary: "Recommendations use saved business context, tenant operating records and recorded observations. First-touch attribution requires a shared pseudonymous journey reference across discovery, website or call, customer and POS events. Association is not proof of causation. Google and Meta connectors remain unavailable, and this workspace does not store or aggregate automated Google Business Profile performance data.",
+      sourceBoundary: "Recommendations use saved business context, authorized Google and Meta measurements, aggregate Google review themes, tenant operating records, and recorded observations. First-touch attribution still requires a shared pseudonymous journey reference across discovery, website or call, customer, and POS events. Association is not proof of causation. Reviewer names and profile photos are not stored.",
       scopeBoundary: locationDataRestricted
         ? `Inventory and daily operating evidence are filtered to ${selectedLocation?.name ?? "accessible locations"}. Marketing journeys and customer outcomes are not location-tagged, so location-specific promotion confidence remains limited.`
         : "All authorized organization evidence is included.",

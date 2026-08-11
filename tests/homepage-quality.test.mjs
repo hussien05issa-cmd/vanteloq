@@ -41,9 +41,9 @@ test("homepage copy stays within the verified product boundary", async () => {
     assert.match(html, new RegExp(`<strong>${provider}</strong>[\\s\\S]{0,180}<small>PLANNED</small>`));
   }
   assert.match(html, /<strong>Plaid<\/strong>[\s\S]{0,240}<small>SETUP REQUIRED<\/small>/);
-  assert.match(html, /Plaid still requires hosted credentials, provider approval, and institution testing/);
+  assert.match(html, /Plaid, Google and Meta require hosted credentials and provider setup before customers can authorize them/);
   for (const provider of ["Google", "Meta"]) {
-    assert.match(html, new RegExp(`<strong>${provider}</strong>[\\s\\S]{0,220}<small>PLANNED</small>`));
+    assert.match(html, new RegExp(`<strong>${provider}</strong>[\\s\\S]{0,220}<small>SETUP REQUIRED</small>`));
   }
   assert.doesNotMatch(html, /(?:Square|Moneris|QuickBooks|Xero|Plaid|Google|Meta) (?:is )?(?:connected|available now|live)/i);
   assert.doesNotMatch(html, /\b(?:SOC 2|ISO 27001|HIPAA|PCI)\s+(?:certified|compliant|accredited)\b/i);
@@ -98,7 +98,8 @@ test("homepage and resource cards keep the hosted visual layout", async () => {
 
   assert.match(homepage, /home-resource-art/);
   assert.doesNotMatch(homepage, /home-resource-thumbnail/);
-  assert.match(resources, /resource-visual/);
+  assert.match(resources, /resource-card-image/);
+  assert.match(resources, /inventory-tracking-editorial-v2\.webp/);
   assert.doesNotMatch(resources, /resource-card-hero/);
   assert.match(homepageCss, /\.home-proof li::before[^}]*content:\s*"✓"/);
   assert.match(homepageCss, /\.home-step-review-visual::after[^}]*content:\s*"✓"/);
@@ -118,16 +119,24 @@ test("the above-the-fold product image is compact and dimensioned", async () => 
 });
 
 test("generated editorial visuals stay compact and production-ready", async () => {
-  const [connect, verify, sources, decision, method] = await Promise.all([
+  const [connect, verify, sources, decision, method, inventory, margin, dashboard, growth, bookkeeping] = await Promise.all([
     stat(new URL("../public/brand/connect-import-visual.webp", import.meta.url)),
     stat(new URL("../public/brand/verify-organize-visual.webp", import.meta.url)),
     stat(new URL("../public/brand/business-sources-visual.webp", import.meta.url)),
     stat(new URL("../public/brand/inventory-decision-visual.webp", import.meta.url)),
     stat(new URL("../public/brand/resource-method-visual.webp", import.meta.url)),
+    stat(new URL("../public/brand/inventory-tracking-editorial-v2.webp", import.meta.url)),
+    stat(new URL("../public/brand/gross-margin-editorial-v2.webp", import.meta.url)),
+    stat(new URL("../public/brand/dashboard-measures-editorial-v2.webp", import.meta.url)),
+    stat(new URL("../public/brand/scaling-decision-editorial-hero.webp", import.meta.url)),
+    stat(new URL("../public/brand/bookkeeping-month-end-editorial.webp", import.meta.url)),
   ]);
   assert.ok(connect.size < 160_000, `connect illustration should stay below 160 KB, received ${connect.size}`);
   assert.ok(verify.size < 160_000, `verify illustration should stay below 160 KB, received ${verify.size}`);
   assert.ok(sources.size < 160_000, `source illustration should stay below 160 KB, received ${sources.size}`);
   assert.ok(decision.size < 160_000, `decision illustration should stay below 160 KB, received ${decision.size}`);
   assert.ok(method.size < 160_000, `method illustration should stay below 160 KB, received ${method.size}`);
+  for (const [name, asset] of Object.entries({ inventory, margin, dashboard, growth, bookkeeping })) {
+    assert.ok(asset.size < 160_000, `${name} article image should stay below 160 KB, received ${asset.size}`);
+  }
 });

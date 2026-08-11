@@ -111,6 +111,12 @@ const articles: readonly ResourceArticle[] = [
     author: "Vanteloq Editorial Team",
     published: "2026-08-10",
     updated: "2026-08-10",
+    hero: {
+      src: "/brand/inventory-tracking-editorial-v2.webp",
+      alt: "Organized product shelves, a handheld scanner and clear paths for receiving, stocking and selling inventory.",
+      width: 1672,
+      height: 941,
+    },
     sections: [
       {
         id: "inventory-record",
@@ -231,6 +237,12 @@ const articles: readonly ResourceArticle[] = [
     author: "Vanteloq Editorial Team",
     published: "2026-08-10",
     updated: "2026-08-10",
+    hero: {
+      src: "/brand/gross-margin-editorial-v2.webp",
+      alt: "Sales value passing through visible cost layers into a smaller remaining gross margin stack.",
+      width: 1672,
+      height: 941,
+    },
     sections: [
       {
         id: "formulas",
@@ -351,6 +363,12 @@ const articles: readonly ResourceArticle[] = [
     author: "Vanteloq Editorial Team",
     published: "2026-08-10",
     updated: "2026-08-10",
+    hero: {
+      src: "/brand/dashboard-measures-editorial-v2.webp",
+      alt: "Sales, cash, inventory and action signals connected to one central decision hub.",
+      width: 1672,
+      height: 941,
+    },
     sections: [
       {
         id: "decision-first",

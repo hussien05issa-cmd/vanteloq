@@ -10,6 +10,7 @@ import { lightspeedReadiness } from "../../../../server/integrations/lightspeed"
 import { lightspeedRCheckpointReadyForApproval, lightspeedRReadiness } from "../../../../server/integrations/lightspeed-r";
 import { stripeReadiness } from "../../../../server/integrations/stripe";
 import { plaidReadiness } from "../../../../server/integrations/plaid";
+import { marketingReadiness } from "../../../../server/integrations/marketing";
 import { buildProviderFeatureCoverage, type CanonicalCommerceCoverage } from "../../../../domain/provider-feature-coverage";
 import { aggregateConnectionStatus } from "../../../../domain/integration-source";
 import { requireOrganizationWideLocationAccess } from "../../../../server/location-access";
@@ -152,6 +153,8 @@ export async function GET(request: Request) {
               ? stripeReadiness()
               : provider.id === "plaid"
                 ? plaidReadiness()
+                : provider.id === "google" || provider.id === "meta"
+                  ? marketingReadiness(provider.id)
               : null,
         canonicalCoverage,
         featureCoverage: buildProviderFeatureCoverage(provider.id, canonicalCoverage),

@@ -138,10 +138,13 @@ const emptyCommerceCoverage: CanonicalCommerceCoverage = {
   locations: false,
 };
 const universalPosContract = buildProviderFeatureCoverage("normalized-pos", emptyCommerceCoverage);
+type DirectIntegrationProvider = "lightspeed" | "lightspeed-r" | "stripe" | "google" | "meta";
 const providerSyncRoutes = {
   lightspeed: "/api/v1/integrations/lightspeed/sync",
   "lightspeed-r": "/api/v1/integrations/lightspeed-r/sync",
   stripe: "/api/v1/integrations/stripe/sync",
+  google: "/api/v1/integrations/google/sync",
+  meta: "/api/v1/integrations/meta/sync",
 } as const;
 
 const viewPermission: Partial<Record<View, string>> = {
@@ -640,8 +643,6 @@ export default function VanteloqApp({
   const [appPermissions, setAppPermissions] = useState<string[]>([]);
   const [paymentRange, setPaymentRange] = useState<PaymentRange>(1);
   const [hiddenNavigation, setHiddenNavigation] = useState<View[]>([]);
-  const [navigationEditorOpen, setNavigationEditorOpen] = useState(false);
-  const navigationCustomizeRef = useRef<HTMLButtonElement>(null);
   const [locations, setLocations] = useState<Array<{ id: string; name: string }>>([]);
   const [activeLocationId, setActiveLocationId] = useState<string | null>(null);
   const preferenceStateRef = useRef<{ hiddenNavigation: View[]; activeLocationId: string | null }>({
@@ -723,7 +724,7 @@ export default function VanteloqApp({
   useEffect(() => {
     const parameters = new URLSearchParams(window.location.search);
     const integration = parameters.get("integration");
-    if (integration !== "lightspeed" && integration !== "lightspeed-r" && integration !== "stripe" && integration !== "plaid") return;
+    if (integration !== "lightspeed" && integration !== "lightspeed-r" && integration !== "stripe" && integration !== "plaid" && integration !== "google" && integration !== "meta") return;
     const timer = window.setTimeout(() => {
       setView("Integrations");
       const state = parameters.get("connection");
@@ -736,13 +737,19 @@ export default function VanteloqApp({
         }
         return;
       }
+      if (integration === "google" || integration === "meta") {
+        const name = integration === "google" ? "Google" : "Meta";
+        setNotice(state === "connected" ? `${name} is connected. Sync it to update Marketing.` : state === "declined" ? `${name} authorization was declined.` : `${name} authorization needs to be restarted.`);
+        window.history.replaceState({}, "", window.location.pathname);
+        return;
+      }
       setNotice(
         state === "connected"
           ? integration === "lightspeed-r"
             ? "Lightspeed R-Series is connected. Review its shops, then start a sync from Connections."
             : integration === "stripe"
-              ? "Stripe is connected in read-only staging mode"
-            : "Lightspeed X-Series is verified in read-only staging mode"
+              ? "Stripe is connected."
+            : "Lightspeed X-Series is connected."
         : state === "declined"
           ? `${integration === "stripe" ? "Stripe" : integration === "lightspeed-r" ? "R-Series" : "X-Series"} authorization was declined`
           : `${integration === "stripe" ? "Stripe" : integration === "lightspeed-r" ? "R-Series" : "X-Series"} authorization needs to be restarted`,
@@ -823,11 +830,6 @@ export default function VanteloqApp({
     preferenceQueueRef.current = operation.then(() => undefined, () => undefined);
     return operation;
   };
-  const closeNavigationEditor = useCallback(() => {
-    setNavigationEditorOpen(false);
-    window.requestAnimationFrame(() => navigationCustomizeRef.current?.focus());
-  }, []);
-
   return (
     <main className="app-shell operating-shell">
       <aside
@@ -922,9 +924,6 @@ export default function VanteloqApp({
             ))}
         </nav>
         <div className="side-bottom">
-          <button ref={navigationCustomizeRef} className="navigation-customize" onClick={() => setNavigationEditorOpen(true)}>
-            Customize navigation
-          </button>
           {!hiddenNavigation.includes("Industry Modules") && <button
             className={
               view === "Industry Modules" ? "nav-item active" : "nav-item"
@@ -1062,6 +1061,21 @@ export default function VanteloqApp({
             selectLocation={(locationId) => {
               void savePreferences({ activeLocationId: locationId }).catch((caught) => showNotice(caught instanceof Error ? caught.message : "Location preference could not be saved."));
             }}
+            navigationSettings={
+              <NavigationSettingsPanel
+                hidden={hiddenNavigation}
+                permissions={appPermissions}
+                update={(item, visible) => {
+                  const next = setNavigationVisibility(preferenceStateRef.current.hiddenNavigation, item, visible, allNavigationViews, protectedNavigation);
+                  void savePreferences({ hiddenNavigation: next })
+                    .then(() => showNotice(visible ? `${item} restored to the sidebar` : `${item} hidden from the sidebar`))
+                    .catch((caught) => showNotice(caught instanceof Error ? caught.message : "Navigation preference could not be saved."));
+                }}
+                restoreAll={() => void savePreferences({ hiddenNavigation: [] })
+                  .then(() => showNotice("All available workspaces restored"))
+                  .catch((caught) => showNotice(caught instanceof Error ? caught.message : "Navigation preference could not be saved."))}
+              />
+            }
           />
         )}
       </section>
@@ -1092,18 +1106,6 @@ export default function VanteloqApp({
         </div>
       )}
       {commandOpen && <GlobalCommand permissions={appPermissions} navigate={(next) => { setCommandOpen(false); navigate(next); }} close={() => setCommandOpen(false)} />}
-      {navigationEditorOpen && (
-        <NavigationEditor
-          hidden={hiddenNavigation}
-          permissions={appPermissions}
-          close={closeNavigationEditor}
-          update={(item, visible) => {
-            const next = setNavigationVisibility(preferenceStateRef.current.hiddenNavigation, item, visible, allNavigationViews, protectedNavigation);
-            void savePreferences({ hiddenNavigation: next }).then(() => showNotice(visible ? `${item} restored to navigation` : `${item} hidden from navigation`)).catch((caught) => showNotice(caught instanceof Error ? caught.message : "Navigation preference could not be saved."));
-          }}
-          restoreAll={() => void savePreferences({ hiddenNavigation: [] }).then(() => showNotice("All available workspaces restored")).catch((caught) => showNotice(caught instanceof Error ? caught.message : "Navigation preference could not be saved."))}
-        />
-      )}
     </main>
   );
 }
@@ -1117,64 +1119,32 @@ function GlobalCommand({ permissions, navigate, close }: { permissions: string[]
   return <div className="modal-backdrop command-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}><section className="command-modal" role="dialog" aria-modal="true" aria-label="Workspace search"><div className="command-input"><span>⌕</span><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Go to a workspace…"/><button onClick={close}>ESC</button></div><div className="command-results"><small>WORKSPACES</small>{options.map((option) => <button key={option} onClick={() => navigate(option)}><span>↳</span><span>{option}</span><b>→</b></button>)}{!options.length && <p>No matching workspace.</p>}</div></section></div>;
 }
 
-function NavigationEditor({
+function NavigationSettingsPanel({
   hidden,
   permissions,
-  close,
   update,
   restoreAll,
 }: {
   hidden: View[];
   permissions: string[];
-  close: () => void;
   update: (item: View, visible: boolean) => void;
   restoreAll: () => void;
 }) {
-  const dialogRef = useRef<HTMLElement>(null);
   const sections: [string, View[]][] = [
     ...nav,
     ["Workspace controls", ["Industry Modules", "Integrations", "Settings"]],
   ];
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-    const focusableSelector = "button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex='-1'])";
-    const focusables = () => Array.from(dialog.querySelectorAll<HTMLElement>(focusableSelector)).filter((element) => element.getClientRects().length > 0);
-    focusables()[0]?.focus();
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        close();
-        return;
-      }
-      if (event.key !== "Tab") return;
-      const items = focusables();
-      if (!items.length) return;
-      const first = items[0];
-      const last = items[items.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [close]);
   return (
-    <div className="modal-backdrop navigation-editor-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
-      <section ref={dialogRef} className="navigation-editor" role="dialog" aria-modal="true" aria-labelledby="navigation-editor-title">
-        <header>
-          <div>
-            <p>PERSONAL NAVIGATION</p>
-            <h2 id="navigation-editor-title">Keep only the workspaces you use.</h2>
-            <span>Hiding a workspace removes it from your sidebar only. It never deletes records, changes access, or affects another account.</span>
-          </div>
-          <button onClick={close} aria-label="Close navigation settings">×</button>
-        </header>
-        <div className="navigation-editor-list">
+    <section className="navigation-settings-panel" aria-labelledby="navigation-settings-title">
+      <header>
+        <div>
+          <p>SIDEBAR</p>
+          <h2 id="navigation-settings-title">Choose the workspaces shown in your sidebar.</h2>
+          <span>Hiding a workspace changes only your sidebar. It never deletes records, changes access, or affects another account.</span>
+        </div>
+        <button onClick={restoreAll}>Restore all</button>
+      </header>
+      <div className="navigation-settings-list">
           {sections.map(([group, items]) => {
             const available = items.filter((item) => !viewPermission[item] || permissions.includes(viewPermission[item]!));
             if (!available.length) return null;
@@ -1201,13 +1171,8 @@ function NavigationEditor({
               })}
             </section>;
           })}
-        </div>
-        <footer>
-          <button onClick={restoreAll}>Restore all</button>
-          <button className="primary" onClick={close}>Done</button>
-        </footer>
-      </section>
-    </div>
+      </div>
+    </section>
   );
 }
 
@@ -1227,6 +1192,7 @@ function Workspace({
   setPaymentRange,
   activeLocationId,
   selectLocation,
+  navigationSettings,
 }: {
   view: View;
   data: CommandCentre;
@@ -1243,6 +1209,7 @@ function Workspace({
   setPaymentRange: (range: PaymentRange) => void;
   activeLocationId: string | null;
   selectLocation: (locationId: string | null) => void;
+  navigationSettings: React.ReactNode;
 }) {
   if (view === "Dashboard")
     return (
@@ -1381,6 +1348,7 @@ function Workspace({
         organizationName={organizationName}
         accountName={accountName}
         onBrandChange={onBrandChange}
+        navigationSettings={navigationSettings}
       />
     );
   return (
@@ -1535,7 +1503,6 @@ function Overview({ data, currency, navigate, createTask, paymentRange, setPayme
         <span className={`live-sync-state ${data.source.freshness}`}><i />{data.liveSource.lastSuccessfulSyncAt ? `Synced ${formatRelativeSync(data.liveSource.lastSuccessfulSyncAt)}` : "Waiting for first sync"}</span>
       </section>
       <LiveSalesPanel data={data} currency={currency} paymentRange={paymentRange} setPaymentRange={setPaymentRange} />
-      <ConnectorHomeDirectory data={data} openIntegrations={() => navigate("Integrations")} />
       <section className="card period-trend-card">
         <div className="card-head"><div><p className="card-kicker">PERIOD TREND</p><h3>Net sales and gross profit</h3></div><span className="verified-tag">{data.trend.length} verified days</span></div>
         <BusinessTrendChart data={data.trend} currency={currency} />
@@ -1547,34 +1514,6 @@ function Overview({ data, currency, navigate, createTask, paymentRange, setPayme
         </section>
       )}
     </div>
-  );
-}
-
-function ConnectorHomeDirectory({ data, openIntegrations }: { data: CommandCentre; openIntegrations: () => void }) {
-  return (
-    <section className="card home-connector-directory" aria-labelledby="home-connectors-title">
-      <header>
-        <div><p className="card-kicker">CONNECTION DIRECTORY</p><h3 id="home-connectors-title">Review supported and planned connections</h3><span>See authorization, data, location mapping, and sync status in Connections.</span></div>
-        <button onClick={openIntegrations}>Manage connections →</button>
-      </header>
-      <div>
-        {integrationCatalog.map((provider) => {
-          const connected = (data.liveSource.providers ?? []).includes(provider.id);
-          const display = connected
-            ? { label: "Connected", aria: "connected", className: "connected" }
-            : provider.availability === "credentials_required"
-              ? { label: "Configure", aria: "ready to configure", className: "configurable" }
-              : provider.availability === "provider_selection_required"
-                ? { label: "Select provider", aria: "provider selection required", className: "planned" }
-                : { label: "Planned", aria: "planned connector", className: "planned" };
-          return <button key={provider.id} onClick={openIntegrations} className={display.className} aria-label={`${provider.name}: ${display.aria}`}>
-            <IntegrationBrandLogo name={provider.name} compact />
-            <span><b>{provider.name}</b><small>{provider.category}</small></span>
-            <em>{display.label}</em>
-          </button>;
-        })}
-      </div>
-    </section>
   );
 }
 
@@ -2305,7 +2244,7 @@ function DataHub({
     return () => window.clearTimeout(timer);
   }, [connections.length, connectionsLoading, loadConnections, tab]);
   const providerPost = async (
-    provider: "lightspeed" | "lightspeed-r" | "stripe",
+    provider: DirectIntegrationProvider,
     path: string,
     action: string,
     connectionId?: string,
@@ -2335,7 +2274,7 @@ function DataHub({
       });
     }
   };
-  const connectProvider = async (provider: "lightspeed" | "lightspeed-r" | "stripe") => {
+  const connectProvider = async (provider: DirectIntegrationProvider) => {
     const body = await providerPost(
       provider,
       `/api/v1/integrations/${provider}/authorize`,
@@ -2365,6 +2304,13 @@ function DataHub({
     await loadConnections();
     if (provider === "lightspeed-r") await refresh();
   };
+  const syncMarketingProvider = async (provider: "google" | "meta", connectionId?: string) => {
+    const body = await providerPost(provider, providerSyncRoutes[provider], "sync", connectionId);
+    if (!body) return;
+    showNotice(body.nextStep ?? `${provider === "google" ? "Google" : "Meta"} measurements updated`);
+    await loadConnections();
+    await refresh();
+  };
   const approveConnectionData = async (provider: string, connectionId: string) => {
     if (!window.confirm("Make the reviewed records from this provider account available to dashboard features?")) return;
     const actionKey = integrationActionKey(provider, connectionId);
@@ -2391,11 +2337,11 @@ function DataHub({
     }
   };
   const disconnectProvider = async (
-    provider: "lightspeed" | "lightspeed-r" | "stripe",
+    provider: DirectIntegrationProvider,
     connectionId?: string,
     accountLabel?: string | null,
   ) => {
-    const providerLabel = provider === "stripe" ? "Stripe" : provider === "lightspeed-r" ? "Lightspeed R-Series" : "Lightspeed X-Series";
+    const providerLabel = provider === "stripe" ? "Stripe" : provider === "lightspeed-r" ? "Lightspeed R-Series" : provider === "lightspeed" ? "Lightspeed X-Series" : provider === "google" ? "Google" : "Meta";
     const targetLabel = accountLabel ? ` account “${accountLabel}”` : "";
     if (!window.confirm(`Disconnect ${providerLabel}${targetLabel}? Staged audit history will be retained.`)) return;
     const body = await providerPost(
@@ -2405,11 +2351,11 @@ function DataHub({
       connectionId,
     );
     if (!body) return;
-    if (activeSampleProvider === provider) {
+    if ((provider === "lightspeed" || provider === "lightspeed-r" || provider === "stripe") && activeSampleProvider === provider) {
       setSampleResult(null);
       if (provider !== "stripe") setOutletData(null);
     }
-    showNotice(`${provider === "stripe" ? "Stripe authorization revoked" : provider === "lightspeed-r" ? "R-Series disconnected; encrypted tokens were deleted" : "X-Series disconnected; encrypted tokens were deleted"}`);
+    showNotice(`${providerLabel} disconnected`);
     await loadConnections();
   };
   const loadLightspeedLocations = async (provider: "lightspeed" | "lightspeed-r", connectionId?: string) => {
@@ -2591,21 +2537,21 @@ function DataHub({
               const isLightspeed = provider.id === "lightspeed" || provider.id === "lightspeed-r";
               const isStripe = provider.id === "stripe";
               const isPlaid = provider.id === "plaid";
+              const isMarketingProvider = provider.id === "google" || provider.id === "meta";
               const supportsMultipleAccounts = supportsMultipleProviderAccounts(provider.id);
               const isPlanned = provider.availability === "provider_build_required" || provider.availability === "provider_selection_required";
               const repairRequired = isPlaid && provider.status === "error" && Boolean(provider.maskedAccountRef);
               const canManageProvider = provider.id === "plaid"
                 ? provider.canManage ?? canManageBankConnections
                 : provider.canManage ?? canManage;
-              const isComingSoon = provider.id === "google" || provider.id === "meta";
-              const actionableProvider = provider.id as "lightspeed" | "lightspeed-r" | "stripe";
+              const actionableProvider = provider.id as DirectIntegrationProvider;
               const providerAction = providerActions[integrationActionKey(provider.id)] ?? "";
               const anyProviderAction = Object.keys(providerActions).some((key) => key.startsWith(`${provider.id}:`));
               const configured = provider.providerReadiness?.credentialsConfigured === true;
               const disabledReason = !canManageProvider
                 ? "Your role can view connection status but cannot manage integrations."
                 : !configured
-                  ? `Add the ${isPlaid ? "Plaid client ID, environment secret, approved redirect and webhook URLs, and encryption key" : isStripe ? "Stripe Connect credentials and webhook secret" : provider.id === "lightspeed-r" ? "R-Series OAuth client ID and secret" : "X-Series OAuth client ID and secret"} to Vanteloq's hosted secrets first.`
+                  ? `Add the ${isPlaid ? "Plaid client ID, environment secret, approved redirect and webhook URLs, and encryption key" : isStripe ? "Stripe Connect credentials and webhook secret" : provider.id === "google" ? "Google OAuth client, approved callback, and encryption key" : provider.id === "meta" ? "Meta app credentials, approved callback, and encryption key" : provider.id === "lightspeed-r" ? "R-Series OAuth client ID and secret" : "X-Series OAuth client ID and secret"} to Vanteloq's hosted secrets first.`
                   : "";
               return (
               <article className="integration-card" key={provider.id}>
@@ -2613,7 +2559,7 @@ function DataHub({
                   <IntegrationBrandLogo name={provider.name} />
                   <div className="integration-card-labels">
                     <span className="integration-type">{provider.category}</span>
-                    {isPlanned && <span className="integration-coming-soon">{isComingSoon ? "Coming soon!" : "Planned"}</span>}
+                    {isPlanned && <span className="integration-coming-soon">Planned</span>}
                   </div>
                 </div>
                 <h3>{provider.name}</h3>
@@ -2641,6 +2587,9 @@ function DataHub({
                 {isPlaid && !configured && provider.providerReadiness && (
                   <div className="provider-setup-needed" role="note"><b>Hosted Plaid setup remaining</b><span>{provider.providerReadiness.missingConfiguration.map(lightspeedConfigurationLabel).join(" · ")}</span></div>
                 )}
+                {isMarketingProvider && !configured && provider.providerReadiness && (
+                  <div className="provider-setup-needed" role="note"><b>{provider.name} setup remaining</b><span>{provider.providerReadiness.missingConfiguration.map(lightspeedConfigurationLabel).join(" · ")}</span></div>
+                )}
                 {supportsMultipleAccounts && Boolean(provider.connections?.length) && (
                   <div className="provider-account-list" aria-label={`${provider.name} provider accounts`}>
                     {provider.connections!.map((connection, index) => {
@@ -2649,7 +2598,7 @@ function DataHub({
                       return <article key={connection.id}>
                         <div>
                           <span>Account {index + 1}</span>
-                          <b>{connection.externalAccountName || `${provider.id === "lightspeed-r" ? "R-Series" : provider.id === "lightspeed" ? "X-Series" : "Stripe"} account`}</b>
+                          <b>{connection.externalAccountName || `${provider.name} account`}</b>
                           <small>{connection.maskedAccountRef ? `Protected reference ${connection.maskedAccountRef}` : connection.status === "pending" ? "Authorization pending" : "Protected provider identity"}</small>
                           {connection.lastSuccessfulSyncAt && <small>Last synced {formatRelativeSync(connection.lastSuccessfulSyncAt)}</small>}
                           {connection.dataPromotionStatus !== "blocked" && <small>Data {connection.dataPromotionStatus.replaceAll("_", " ")}</small>}
@@ -2658,11 +2607,15 @@ function DataHub({
                         <span className={`provider-account-state ${connection.status}`}>{connection.status.replaceAll("_", " ")}</span>
                         <div className="provider-account-actions">
                           {connection.status === "connected" && <>
-                            <button
+                            {isMarketingProvider ? <button
                               type="button"
-                              onClick={() => void stageProviderSample(actionableProvider, connection.id)}
+                              onClick={() => void syncMarketingProvider(provider.id as "google" | "meta", connection.id)}
                               disabled={!canManageProvider || Boolean(connectionAction)}
-                            >{connectionAction === "sync" || connectionAction === "sample" ? "Working…" : provider.id === "lightspeed-r" ? "Sync" : "Stage sample"}</button>
+                            >{connectionAction === "sync" ? "Syncing…" : "Sync now"}</button> : <button
+                              type="button"
+                              onClick={() => void stageProviderSample(actionableProvider as "lightspeed" | "lightspeed-r" | "stripe", connection.id)}
+                              disabled={!canManageProvider || Boolean(connectionAction)}
+                            >{connectionAction === "sync" || connectionAction === "sample" ? "Working…" : provider.id === "lightspeed-r" ? "Sync" : "Stage sample"}</button>}
                             {isLightspeed && <button
                               type="button"
                               onClick={() => void loadLightspeedLocations(actionableProvider as "lightspeed" | "lightspeed-r", connection.id)}
@@ -2694,9 +2647,9 @@ function DataHub({
                       {repairRequired
                         ? "Repair required"
                         : connected
-                        ? "Read-only connected"
+                        ? "Connected"
                         : isPlanned
-                          ? isComingSoon ? "Coming soon!" : "Planned"
+                          ? "Planned"
                         : configured
                           ? "Ready to authorize"
                           : availabilityLabel(provider.availability)}
@@ -2712,6 +2665,8 @@ function DataHub({
                             ? "Approved sales, catalog, customers and suppliers are available"
                             : provider.id === "plaid"
                               ? "Reviewed bank data is available · fresh balances power cash analysis · transactions await review"
+                              : isMarketingProvider
+                                ? "Measurements are available in Marketing"
                               : "Reviewed source data is available"
                           : "Staging only · metrics locked"
                           : configured
@@ -2739,7 +2694,7 @@ function DataHub({
                       type="button"
                       onClick={() => void connectProvider(actionableProvider)}
                       disabled={Boolean(disabledReason) || Boolean(providerAction)}
-                      title={disabledReason || `Authorize another ${provider.id === "lightspeed-r" ? "R-Series" : provider.id === "lightspeed" ? "X-Series" : "Stripe"} account with its own credentials and import history.`}
+                      title={disabledReason || `Authorize another ${provider.name} account with its own credentials and import history.`}
                     >{providerAction === "authorize" ? "Opening…" : connected ? "Connect another account" : "Connect"}</button>
                   </div> : null}
                 </div>
@@ -2831,6 +2786,12 @@ function lightspeedConfigurationLabel(value: string) {
     PLAID_ENV: "Plaid environment",
     PLAID_WEBHOOK_URL: "Verified Plaid webhook URL",
     PLAID_REDIRECT_URI: "Approved Plaid redirect URL",
+    GOOGLE_MARKETING_CLIENT_ID: "Google OAuth client ID",
+    GOOGLE_MARKETING_CLIENT_SECRET: "Google OAuth client secret",
+    GOOGLE_MARKETING_REDIRECT_URI: "Approved Google callback URL",
+    META_MARKETING_APP_ID: "Meta app ID",
+    META_MARKETING_APP_SECRET: "Meta app secret",
+    META_MARKETING_REDIRECT_URI: "Approved Meta callback URL",
   };
   return labels[value] ?? "Provider configuration";
 }

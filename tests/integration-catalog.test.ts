@@ -26,7 +26,7 @@ test("the integration directory uses the approved sales-channel taxonomy", () =>
 
 test("only built pilots may claim that credentials are the remaining connection prerequisite", () => {
   const credentialReady = integrationCatalog.filter((provider) => provider.availability === "credentials_required");
-  assert.deepEqual(credentialReady.map((provider) => provider.id).sort(), ["lightspeed", "lightspeed-r", "plaid", "stripe"]);
+  assert.deepEqual(credentialReady.map((provider) => provider.id).sort(), ["google", "lightspeed", "lightspeed-r", "meta", "plaid", "stripe"]);
   assert.ok(integrationCatalog.filter((provider) => !credentialReady.includes(provider)).every((provider) => provider.availability !== "credentials_required"));
 });
 

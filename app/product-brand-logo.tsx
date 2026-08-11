@@ -22,7 +22,7 @@ export default function ProductBrandLogo({
       ? "/brand/vanteloq-logo.png"
       : "/brand/vanteloq-mark.png"
     : variant === "full"
-      ? "/brand/bookloq-logo.png"
+      ? "/brand/bookloq-logo-transparent.png"
       : "/brand/bookloq-mark.png";
 
   const dimensions = product === "vanteloq"

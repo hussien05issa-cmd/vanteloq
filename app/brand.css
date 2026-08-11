@@ -9,6 +9,12 @@
   background: #fff;
 }
 
+.product-brand-logo.bookloq.full {
+  background: transparent;
+  border-radius: 0;
+  box-shadow: none;
+}
+
 .product-brand-logo.icon img {
   position: absolute;
   inset: 3px !important;

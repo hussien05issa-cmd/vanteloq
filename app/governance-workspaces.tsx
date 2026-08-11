@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, type ReactNode, useCallback, useEffect, useState } from "react";
 import { apiFetch } from "./supabase-browser";
 
 type Permission = {
@@ -108,6 +108,7 @@ type Props = {
   organizationName: string;
   accountName: string;
   onBrandChange?: (name: string, logoVersion: number | null) => void;
+  navigationSettings?: ReactNode;
 };
 
 function message(data: unknown, fallback: string) {
@@ -1021,7 +1022,7 @@ function AccessSafeguards({ security }: { security: Governance["security"] }) {
   );
 }
 
-export function SettingsWorkspace({ showNotice, onBrandChange }: Props) {
+export function SettingsWorkspace({ showNotice, onBrandChange, navigationSettings }: Props) {
   const { data, setData, loading, error, load } = useGovernance();
   const [section, setSection] = useState("profile");
   const [saving, setSaving] = useState(false);
@@ -1034,6 +1035,7 @@ export function SettingsWorkspace({ showNotice, onBrandChange }: Props) {
     ["notifications", "Notifications"],
     ["organization", "Organization"],
     ["branding", "Branding"],
+    ["navigation", "Sidebar & workspaces"],
     ["locations", "Locations"],
     ["integrations", "Integrations"],
     ["privacy", "Data & privacy"],
@@ -1133,6 +1135,7 @@ export function SettingsWorkspace({ showNotice, onBrandChange }: Props) {
               }}
             />
           )}
+          {section === "navigation" && navigationSettings}
           {section === "locations" && (
             <LocationsSettings
               data={data}

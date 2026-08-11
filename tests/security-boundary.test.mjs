@@ -114,7 +114,7 @@ test("business intelligence APIs reject anonymous access before database reads",
   }
 });
 
-test("Lightspeed management routes reject anonymous same-origin writes", async () => {
+test("provider management routes reject anonymous same-origin writes", async () => {
   const worker = await loadWorker();
   for (const path of [
     "/api/v1/integrations/lightspeed/authorize",
@@ -133,6 +133,12 @@ test("Lightspeed management routes reject anonymous same-origin writes", async (
     "/api/v1/integrations/plaid/sync",
     "/api/v1/integrations/plaid/disconnect",
     "/api/v1/integrations/plaid/delete-data",
+    "/api/v1/integrations/google/authorize",
+    "/api/v1/integrations/google/sync",
+    "/api/v1/integrations/google/disconnect",
+    "/api/v1/integrations/meta/authorize",
+    "/api/v1/integrations/meta/sync",
+    "/api/v1/integrations/meta/disconnect",
     "/api/v1/billing/checkout",
     "/api/v1/billing/portal",
   ]) {
@@ -190,6 +196,30 @@ test("the Stripe callback rejects malformed one-time state before database acces
   ), environment, context);
   assert.equal(response.status, 400);
   assert.equal((await response.json()).error.code, "STRIPE_CALLBACK_INVALID");
+});
+
+test("marketing callbacks reject malformed one-time state before database access", async () => {
+  const worker = await loadWorker();
+  for (const provider of ["google", "meta"]) {
+    const response = await worker.fetch(new Request(
+      `https://vanteloq.example/api/v1/integrations/${provider}/callback?code=test-code&state=too-short`,
+      { headers: { accept: "application/json" } },
+    ), environment, context);
+    assert.equal(response.status, 400, provider);
+    assert.equal((await response.json()).error.code, "MARKETING_CALLBACK_INVALID", provider);
+  }
+});
+
+test("marketing connector routes keep one-time state, tenant ownership, and sync fences", async () => {
+  const source = await readFile(`${process.cwd()}/server/integrations/marketing-routes.ts`, "utf8");
+  assert.match(source, /requireMarketingPermissions\(context\)/);
+  assert.match(source, /isNull\(integrationOAuthStates\.consumedAt\)/);
+  assert.match(source, /returning\(\{ stateHash: integrationOAuthStates\.stateHash \}\)/);
+  assert.match(source, /requireOwnedIntegrationConnection\(context\.organizationId, provider/);
+  assert.match(source, /acquireIntegrationSyncLease/);
+  assert.match(source, /integrationConnections\.syncLeaseOwner/);
+  assert.match(source, /integrationConnections\.syncVersion/);
+  assert.match(source, /preserveGrant = Boolean\(currentConnection\)/);
 });
 
 test("the Stripe webhook rejects unsigned requests before database access", async () => {
@@ -414,6 +444,12 @@ test("imports and business-memory writes reject cross-site origins before data a
     "/api/v1/integrations/plaid/exchange",
     "/api/v1/integrations/plaid/sync",
     "/api/v1/integrations/plaid/disconnect",
+    "/api/v1/integrations/google/authorize",
+    "/api/v1/integrations/google/sync",
+    "/api/v1/integrations/google/disconnect",
+    "/api/v1/integrations/meta/authorize",
+    "/api/v1/integrations/meta/sync",
+    "/api/v1/integrations/meta/disconnect",
     "/api/v1/billing/checkout",
     "/api/v1/billing/portal",
   ]) {

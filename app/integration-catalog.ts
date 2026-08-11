@@ -55,7 +55,7 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
     category: "Point of sale",
     availability: "credentials_required",
     activationRequirement:
-      "The read-only X-Series pilot is built. Authorize a store, map outlets, and review a sample before dashboard results can use the data.",
+      "The X-Series connection is built. Authorize a store, map outlets, and review a sample before dashboard results can use the data.",
   },
   {
     id: "lightspeed-r",
@@ -63,7 +63,7 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
     category: "Point of sale",
     availability: "credentials_required",
     activationRequirement:
-      "The read-only R-Series connector securely imports sales and inventory for each authorized retailer account while keeping every source traceable.",
+      "The R-Series connection securely imports sales and inventory for each authorized retailer account while keeping every source traceable.",
   },
   {
     id: "shopify",
@@ -103,7 +103,7 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
     category: "Payments",
     availability: "credentials_required",
     activationRequirement:
-      "The read-only Stripe Connect adapter is built for balance transactions and payouts. Authorize an account, then reconcile a staged sample before promotion.",
+      "The Stripe Connect adapter is built for balance transactions and payouts. Authorize an account, then reconcile a staged sample before promotion.",
   },
   {
     id: "moneris",
@@ -165,17 +165,17 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
     id: "google",
     name: "Google",
     category: "Marketing",
-    availability: "provider_build_required",
+    availability: "credentials_required",
     activationRequirement:
-      "Not available yet. A production connection still needs verified consent, approved account access, location mapping, attribution rules, and historical import tests.",
+      "Connect Business Profile, Search Console, and Analytics to import reviews, local actions, website clicks, search performance, and site engagement into Marketing.",
   },
   {
     id: "meta",
     name: "Meta",
     category: "Marketing",
-    availability: "provider_build_required",
+    availability: "credentials_required",
     activationRequirement:
-      "Not available yet. A production connection still needs app approval, limited business permissions, account mapping, signed update validation, and attribution reconciliation tests.",
+      "Connect Meta to import account-level ad impressions, reach, link clicks, spend, click-through rate, and cost-per-click into Marketing.",
   },
   {
     id: "plaid",
@@ -231,7 +231,7 @@ export const preSyncControls = [
   {
     id: "authorization",
     label: "Provider authorization",
-    detail: "Lightspeed X-Series, Lightspeed R-Series, and Stripe use state-bound authorization with only the required access; Plaid uses short-lived Link sessions. Provider credentials stay server-side and encrypted where stored, and providers without a working connection remain disabled.",
+    detail: "Lightspeed, Stripe, Google, and Meta use state-bound authorization with only the required access; Plaid uses short-lived Link sessions. Provider credentials stay server-side and encrypted where stored, and providers without a working connection remain disabled.",
     status: "verified",
   },
   {

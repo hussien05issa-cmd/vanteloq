@@ -671,6 +671,60 @@ export const integrationConnections = sqliteTable(
   ],
 );
 
+// Daily values imported from authorized marketing providers. Values use a
+// fixed three-decimal scale so counts, rates and currency values remain exact
+// without relying on floating-point database storage.
+export const marketingDailyMetrics = sqliteTable(
+  "marketing_daily_metrics",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    connectionId: text("connection_id").notNull().references(() => integrationConnections.id, { onDelete: "cascade" }),
+    provider: text("provider", { enum: ["google", "meta"] }).notNull(),
+    resourceRef: text("resource_ref").notNull(),
+    metricDate: text("metric_date").notNull(),
+    metricKey: text("metric_key").notNull(),
+    valueMilli: integer("value_milli").notNull(),
+    sourceEventId: text("source_event_id").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("marketing_daily_metrics_source_unique").on(table.connectionId, table.sourceEventId),
+    index("marketing_daily_metrics_workspace_date_idx").on(table.organizationId, table.metricDate),
+    index("marketing_daily_metrics_provider_metric_idx").on(table.organizationId, table.provider, table.metricKey, table.metricDate),
+    check("marketing_daily_metrics_provider_check", sql`${table.provider} in ('google','meta')`),
+    check("marketing_daily_metrics_value_check", sql`${table.valueMilli} >= 0`),
+  ],
+);
+
+// Google review content is stored without reviewer names or profile photos.
+// The external review reference provides idempotency while the comment and
+// rating support aggregate themes and evidence-backed recommendations.
+export const marketingReviews = sqliteTable(
+  "marketing_reviews",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    connectionId: text("connection_id").notNull().references(() => integrationConnections.id, { onDelete: "cascade" }),
+    provider: text("provider", { enum: ["google"] }).notNull().default("google"),
+    externalLocationRef: text("external_location_ref").notNull(),
+    externalReviewRef: text("external_review_ref").notNull(),
+    ratingMilli: integer("rating_milli").notNull(),
+    comment: text("comment").notNull().default(""),
+    reviewedAt: text("reviewed_at").notNull(),
+    sourceUpdatedAt: text("source_updated_at"),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("marketing_reviews_connection_review_unique").on(table.connectionId, table.externalReviewRef),
+    index("marketing_reviews_workspace_date_idx").on(table.organizationId, table.reviewedAt),
+    check("marketing_reviews_provider_check", sql`${table.provider} = 'google'`),
+    check("marketing_reviews_rating_check", sql`${table.ratingMilli} >= 1000 and ${table.ratingMilli} <= 5000`),
+  ],
+);
+
 // Provider tokens are isolated from connection metadata so routine status
 // queries cannot accidentally select or serialize credential material.
 export const integrationSecrets = sqliteTable(

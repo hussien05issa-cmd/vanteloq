@@ -206,11 +206,12 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const closeMobileNav = () => setMobileNavOpen(false);
   const publicIntegrations = integrationCatalog.map(provider => {
-    if (provider.id === "lightspeed-r") return { ...provider, status: "READ-ONLY", statusClass: "current", detail: "Read-only sales and inventory import" };
-    if (provider.id === "lightspeed") return { ...provider, status: "LIMITED PILOT", statusClass: "current", detail: "Read-only pilot and sample review" };
-    if (provider.id === "stripe") return { ...provider, status: "STAGING", statusClass: "current", detail: "Read-only payout and balance staging" };
+    if (provider.id === "lightspeed-r") return { ...provider, status: "AVAILABLE", statusClass: "current", detail: "Sales and inventory connection" };
+    if (provider.id === "lightspeed") return { ...provider, status: "LIMITED PILOT", statusClass: "current", detail: "Sales and inventory pilot" };
+    if (provider.id === "stripe") return { ...provider, status: "STAGING", statusClass: "current", detail: "Payout and balance staging" };
     if (provider.id === "plaid") return { ...provider, status: "SETUP REQUIRED", statusClass: "current", detail: "Built secure Link, balances, and reviewed transactions; production institution access awaits Plaid approval" };
-    if (provider.id === "google" || provider.id === "meta") return { ...provider, status: "PLANNED", statusClass: "coming-soon", detail: "Verified connection is in development" };
+    if (provider.id === "google") return { ...provider, status: "SETUP REQUIRED", statusClass: "current", detail: "Built Search, Analytics, Business Profile and Reviews measurement sync" };
+    if (provider.id === "meta") return { ...provider, status: "SETUP REQUIRED", statusClass: "current", detail: "Built Ads Insights measurement sync" };
     return { ...provider, status: "PLANNED", statusClass: "planned", detail: provider.category };
   });
 
@@ -272,7 +273,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
         <div className="home-section-heading compact">
           <p>CONNECTION DIRECTORY</p>
           <h2 id="connections-title">See every connector and its honest availability.</h2>
-          <span>Lightspeed R-Series, the limited X-Series pilot, Stripe staging, Plaid sandbox bank feeds, and structured CSV import have built paths. Plaid still requires hosted credentials, provider approval, and institution testing before customers can authorize real institutions. Google and Meta are coming soon. Every other connector stays planned until its production adapter is built and verified.</span>
+          <span>Lightspeed R-Series, the limited X-Series pilot, Stripe staging, Plaid sandbox bank feeds, Google and Meta marketing measurement, and structured CSV import have built paths. Plaid, Google and Meta require hosted credentials and provider setup before customers can authorize them. Every other connector stays planned until its production adapter is built and verified.</span>
         </div>
         <div className="home-connection-grid">
           {publicIntegrations.map(provider => <article className={provider.statusClass} key={provider.id}><IntegrationBrandLogo name={provider.name} compact/><div><strong>{provider.name}</strong><span>{provider.detail}</span></div><small>{provider.status}</small></article>)}
@@ -360,7 +361,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
         </div>
         <div className="home-product-family-grid">
           <article className="home-product-card"><div className="home-product-logo-shell"><ProductBrandLogo product="vanteloq" variant="full"/></div><div><small>VANTELOQ</small><h3>Understand the operation.</h3><p>Sales, inventory, cash context, purchasing, reports, data quality and assigned operational work.</p><span className="home-product-chip">CORE WORKSPACE</span></div></article>
-          <article className="home-product-card"><div className="home-product-logo-shell"><ProductBrandLogo product="bookloq" variant="full"/></div><div><small>BOOKLOQ</small><h3>Maintain the accounting workspace.</h3><p>Chart of accounts, journal controls, reconciliation, bills, documents and financial reporting where access is entitled.</p><span className="home-product-chip">ACCOUNTING WORKSPACE</span></div></article>
+          <article className="home-product-card"><div className="home-product-logo-shell bookloq-logo-shell"><ProductBrandLogo product="bookloq" variant="full"/></div><div><small>BOOKLOQ</small><h3>Maintain the accounting workspace.</h3><p>Chart of accounts, journal controls, reconciliation, bills, documents and financial reporting where access is entitled.</p><span className="home-product-chip">ACCOUNTING WORKSPACE</span></div></article>
         </div>
       </section>
 
@@ -451,7 +452,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
           <div className="home-faq-list">
             <details><summary>What is Vanteloq?</summary><p>Vanteloq is a business operating and analytics platform for independent retail. It organizes supported sales, inventory, cash and operational records into source-aware views and workflows.</p></details>
             <details><summary>Who is Vanteloq designed for?</summary><p>The current product and connection work are designed primarily for independent retailers and the owners or managers who oversee sales, inventory, purchasing, cash and daily operations.</p></details>
-            <details><summary>What systems can I connect?</summary><p>Implemented connection paths currently cover Lightspeed R-Series, a read-only Lightspeed X-Series pilot and read-only Stripe staging. Structured CSV import is also available. Other providers shown inside the integration directory are disabled until their production adapters are built and verified.</p></details>
+            <details><summary>What systems can I connect?</summary><p>Implemented connection paths currently cover Lightspeed R-Series, a Lightspeed X-Series pilot, Stripe staging, Plaid Link, and Google and Meta marketing measurement. Google, Meta and Plaid remain disabled until their hosted credentials and provider setup are complete. Structured CSV import is also available.</p></details>
             <details><summary>Do I need to replace my POS?</summary><p>No. Vanteloq is designed to use supported source records while the POS remains the transaction system. Availability and depth depend on the connector and successful reconciliation.</p></details>
             <details><summary>Can Vanteloq help with inventory?</summary><p>Yes. Implemented inventory tools cover lots, expiry, shelf-life risk, first-expiring-first-out review and a constrained reorder calculation. Recommendations still require reliable demand, cost, lead-time, supplier and cash inputs.</p></details>
             <details><summary>How does Vanteloq protect workspace data?</summary><p>The application uses secure authentication, organization-separated records, role-based server permissions, protected provider authorization, and recorded security events. Vanteloq does not claim SOC 2, ISO, or other certifications that have not been obtained.</p></details>

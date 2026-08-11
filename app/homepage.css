@@ -467,6 +467,8 @@
 .home-product-family-grid article:nth-child(2)::after { animation-delay: 2.2s; }
 .home-product-logo-shell { position: relative; z-index: 1; width: 172px; height: 112px; display: grid; place-items: center; border: 1px solid rgba(196, 213, 233, .78); border-radius: 14px; background: #fff; box-shadow: 0 14px 34px rgba(7, 26, 53, .09), inset 0 1px 0 #fff; }
 .home-product-family-grid .product-brand-logo.full { width: 100%; height: 100%; border: 0; border-radius: 12px; background: #fff; box-shadow: none; }
+.home-product-logo-shell.bookloq-logo-shell { border-color: transparent; background: transparent; box-shadow: none; }
+.home-product-family-grid .product-brand-logo.bookloq.full { border-radius: 0; background: transparent; }
 .home-product-family-grid .product-brand-logo.full img { padding: 10px; object-fit: contain; }
 .home-product-family-grid .product-brand-logo.bookloq.full img { padding-inline: 5px; }
 .home-product-family-grid .product-brand-logo.full .brand-trademark { top: 6px; right: 6px; }

@@ -1,6 +1,6 @@
 export const LEGACY_SOURCE_NAMESPACE = "legacy";
 
-const MULTI_ACCOUNT_PROVIDER_IDS = new Set(["lightspeed", "lightspeed-r", "stripe"]);
+const MULTI_ACCOUNT_PROVIDER_IDS = new Set(["lightspeed", "lightspeed-r", "stripe", "google", "meta"]);
 
 export function supportsMultipleProviderAccounts(providerId: string) {
   return MULTI_ACCOUNT_PROVIDER_IDS.has(providerId);

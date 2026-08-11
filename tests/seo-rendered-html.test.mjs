@@ -46,8 +46,9 @@ test("resource index is server rendered with distinct metadata", async () => {
   assert.match(text, /href="https:\/\/vanteloq\.com\/resources"/);
   assert.match(text, /How to Track Inventory for a Small Business/);
   assert.match(text, /vanteloq-command-ledger\.webp/);
-  assert.match(text, /resource-visual visual-inventory/);
-  assert.match(text, /resource-visual visual-finance/);
+  assert.match(text, /resource-card-image/);
+  assert.match(text, /inventory-tracking-editorial-v2\.webp/);
+  assert.match(text, /gross-margin-editorial-v2\.webp/);
 });
 
 test("article HTML includes content, canonical, article and breadcrumb schemas", async () => {

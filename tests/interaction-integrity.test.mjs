@@ -40,12 +40,19 @@ test("the Lightspeed integration uses the standalone image asset", async () => {
 });
 
 test("product branding uses the supplied BookLoQ assets and a shared trademark glyph", async () => {
-  const productLogoSource = await readFile(new URL("../app/product-brand-logo.tsx", import.meta.url), "utf8");
-  assert.match(productLogoSource, /\/brand\/bookloq-logo\.png/);
+  const [productLogoSource, homepage, homepageCss] = await Promise.all([
+    readFile(new URL("../app/product-brand-logo.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/homepage.css", import.meta.url), "utf8"),
+  ]);
+  assert.match(productLogoSource, /\/brand\/bookloq-logo-transparent\.png/);
   assert.match(productLogoSource, /\/brand\/bookloq-mark\.png/);
   assert.doesNotMatch(productLogoSource, /bookloq-logo\.jpeg/);
   assert.match(productLogoSource, /brand-trademark/);
   assert.match(productLogoSource, />™<\/sup>/);
+  assert.match(homepage, /home-product-logo-shell bookloq-logo-shell/);
+  assert.match(homepageCss, /\.home-product-logo-shell\.bookloq-logo-shell \{[^}]*background:\s*transparent/);
+  assert.match(homepageCss, /\.product-brand-logo\.bookloq\.full \{[^}]*background:\s*transparent/);
 });
 
 test("X-Series and R-Series are distinct, actionable connection choices", async () => {
@@ -176,17 +183,14 @@ test("integrations open on Connections and never render a raw provider account i
   assert.doesNotMatch(route, /externalAccountRef: byProvider/);
 });
 
-test("the authenticated homepage mirrors the integration directory with truthful availability badges", async () => {
+test("the authenticated dashboard keeps connector management in Connections", async () => {
   const app = await readFile(new URL("../app/vanteloq-app.tsx", import.meta.url), "utf8");
-  assert.match(app, /function ConnectorHomeDirectory/);
-  assert.match(app, /integrationCatalog\.map/);
-  assert.match(app, /data\.liveSource\.providers/);
-  assert.match(app, /provider\.availability === "credentials_required"/);
-  assert.match(app, /label: "Configure"/);
-  assert.match(app, /label: "Planned"/);
+  assert.doesNotMatch(app, /function ConnectorHomeDirectory/);
+  assert.doesNotMatch(app, /home-connector-directory/);
+  assert.match(app, /CONNECTIONS AND DATA/);
   assert.match(app, /provider\.dataPromotionStatus === "approved"/);
   assert.match(app, /fresh balances power cash analysis · transactions await review/i);
-  assert.match(app, /Manage connections/);
+  assert.match(app, /Connect sources, review the data, then use the results/);
 });
 
 test("employee profiles are covered by organization billing and remote seats are capacity checked", async () => {
@@ -221,15 +225,34 @@ test("marketing intelligence is owner-controlled, evidence-labeled and calendar-
   const schema = await readFile(new URL("../db/schema.ts", import.meta.url), "utf8");
 
   assert.match(workspace, /Owner entry/);
-  assert.match(route, /Coming soon!/);
+  assert.doesNotMatch(route, /Coming soon!/);
   assert.match(route, /Association is not proof of causation/i);
   assert.match(workspace, /marketing-intelligence-v2\.png/);
+  assert.match(workspace, /Google demand and website actions/);
+  assert.match(workspace, /Meta reach and website clicks/);
+  assert.match(workspace, /Feedback patterns and recommended follow-up/);
   assert.match(route, /marketing\.profile_updated/);
   assert.match(route, /marketing\.calendar_created/);
   assert.match(route, /sourceSystem: "owner_entry"|sourceSystem/);
   assert.match(schema, /marketing_profiles/);
   assert.match(schema, /marketing_calendar_entries/);
-  assert.doesNotMatch(workspace, /Google connected|Meta connected/i);
+  assert.match(schema, /marketing_daily_metrics/);
+  assert.match(schema, /marketing_reviews/);
+  assert.match(route, /measurementSeries/);
+  assert.match(route, /reviewInsights/);
+});
+
+test("sidebar scrolling is bounded and navigation customization lives in Settings", async () => {
+  const [app, governance, css] = await Promise.all([
+    readFile(new URL("../app/vanteloq-app.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/governance-workspaces.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/operating.css", import.meta.url), "utf8"),
+  ]);
+  assert.doesNotMatch(app, /Customize navigation|NavigationEditor/);
+  assert.match(app, /NavigationSettingsPanel/);
+  assert.match(governance, /Sidebar & workspaces/);
+  assert.match(css, /sidebar>nav\{overflow-y:auto;overscroll-behavior:contain\}/);
+  assert.doesNotMatch(css, /sidebar>nav\{overflow-y:visible\}/);
 });
 
 test("industry models use the generated operating-model visual without inventing active modules", async () => {

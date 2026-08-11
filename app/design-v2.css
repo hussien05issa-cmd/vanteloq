@@ -72,13 +72,23 @@ button, a, input, select, textarea, summary { -webkit-tap-highlight-color: trans
 }
 .operating-shell .sidebar {
   width: 246px;
+  height: 100dvh;
+  max-height: 100dvh;
   padding: 18px 12px 14px;
+  overflow: hidden;
   background: var(--sidebar-bg);
   border-right: 1px solid var(--sidebar-line);
   color: #fff;
   box-shadow: none;
   scrollbar-width: thin;
   scrollbar-color: #315779 transparent;
+}
+.operating-shell .sidebar > nav {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 3px;
 }
 .operating-shell .brand {
   min-height: 44px;
@@ -179,9 +189,9 @@ button, a, input, select, textarea, summary { -webkit-tap-highlight-color: trans
   font-weight: 700 !important;
 }
 .operating-shell .bookloq-main-nav { min-height: 48px; padding-block: 4px; }
-.operating-shell .bookloq-nav-lockup { flex: 0 0 auto; width: 132px; height: 38px; overflow: hidden; border: 1px solid rgba(255,255,255,.28); border-radius: 7px; background: #fff; box-shadow: 0 6px 18px rgba(0,0,0,.12); }
-.operating-shell .bookloq-nav-lockup img { width: 100% !important; height: 100% !important; margin: 0 !important; padding: 2px 5px !important; object-fit: contain !important; }
-.operating-shell .bookloq-nav-lockup .brand-trademark { top: 3px; right: 3px; font-size: 6px; }
+.operating-shell .bookloq-nav-lockup { flex: 0 0 auto; width: 132px; height: 38px; overflow: hidden; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.operating-shell .bookloq-nav-lockup img { width: 100% !important; height: 100% !important; margin: 0 !important; padding: 1px 4px !important; object-fit: contain !important; filter: brightness(0) invert(1); }
+.operating-shell .bookloq-nav-lockup .brand-trademark { display: none; }
 .operating-shell .provider-setup-needed {
   display: grid;
   gap: 4px;
@@ -203,6 +213,7 @@ button, a, input, select, textarea, summary { -webkit-tap-highlight-color: trans
 .operating-shell .side-bottom {
   padding-top: 10px;
   border-color: var(--sidebar-line);
+  background: var(--sidebar-bg);
 }
 .operating-shell .profile {
   margin-top: 9px;

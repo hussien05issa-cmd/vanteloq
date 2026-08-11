@@ -70,8 +70,20 @@ type GrowthData = {
   marketingEvidence: Omit<CoverageItem, "key" | "label">;
   calendar: CalendarEntry[];
   searchSeries: { query: string; observedDate: string; position: number; discoveryActions: number | null; sourceSystem: string }[];
+  measurementSeries: { provider: "google" | "meta"; metricDate: string; metrics: Record<string, number> }[];
+  reviewInsights: {
+    available: boolean;
+    reviewCount: number;
+    averageRating: number | null;
+    lowRatingCount: number;
+    fiveStarShare: number | null;
+    lastReviewAt: string | null;
+    themes: { key: string; label: string; mentions: number; lowRatingMentions: number }[];
+    recommendations: { id: string; title: string; rationale: string; action: string; evidence: string }[];
+    privacyBoundary: string;
+  };
   importCounts: { touchpoints: number; transactions: number; searchObservations: number };
-  connections: { provider: string; status: "coming_soon"; label: string; availableNow: string }[];
+  connections: { provider: string; providerId: "google" | "meta"; status: "connected" | "ready_to_connect" | "configuration_required"; label: string; availableNow: string; connectionId: string | null }[];
   canManage: boolean;
   period: { since: string; through: string };
   sourceBoundary: string;
@@ -159,6 +171,90 @@ function SearchVisibilityChart({ rows }: { rows: GrowthData["searchSeries"] }) {
       {coordinates.map(({ row, x }, index) => (index === 0 || index === coordinates.length - 1) && <text key={row.observedDate} x={x} y="204" textAnchor={index ? "end" : "start"}>{row.observedDate}</text>)}
     </svg>
   </div>;
+}
+
+const measurementLabels: Record<string, string> = {
+  search_clicks: "Search clicks",
+  search_impressions: "Search impressions",
+  business_website_clicks: "Profile website clicks",
+  business_call_clicks: "Profile calls",
+  business_direction_requests: "Direction requests",
+  business_impressions: "Profile impressions",
+  analytics_sessions: "Website sessions",
+  analytics_engaged_sessions: "Engaged sessions",
+  analytics_key_events: "Key events",
+  meta_impressions: "Ad impressions",
+  meta_reach: "Reach",
+  meta_link_clicks: "Link clicks",
+  meta_spend: "Spend",
+  meta_ctr: "Click-through rate",
+  meta_cpc: "Cost per click",
+};
+
+function metricTotal(rows: GrowthData["measurementSeries"], metric: string) {
+  return rows.reduce((sum, row) => sum + (row.metrics[metric] ?? 0), 0);
+}
+
+function metricAverage(rows: GrowthData["measurementSeries"], metric: string) {
+  const values = rows.map((row) => row.metrics[metric]).filter((value): value is number => value !== undefined);
+  return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
+}
+
+function MeasurementTrend({ rows, metric, labelText }: { rows: GrowthData["measurementSeries"]; metric: string; labelText: string }) {
+  const points = rows.filter((row) => row.metrics[metric] !== undefined).slice(-30);
+  if (!points.length) return <div className="marketing-metric-empty"><b>No {labelText.toLowerCase()} yet</b><span>Sync the connected provider after its account has reporting data.</span></div>;
+  const maximum = Math.max(...points.map((row) => row.metrics[metric]), 1);
+  const coordinates = points.map((row, index) => ({
+    row,
+    x: 28 + index * (632 / Math.max(1, points.length - 1)),
+    y: 164 - (row.metrics[metric] / maximum) * 136,
+  }));
+  const path = coordinates.map((point, index) => `${index ? "L" : "M"}${point.x},${point.y}`).join(" ");
+  return <div className="marketing-measurement-trend">
+    <svg viewBox="0 0 688 196" role="img" aria-label={`${labelText} over the latest measured days`}>
+      {[28, 73, 118, 164].map((y) => <line key={y} x1="28" x2="660" y1={y} y2={y} />)}
+      <path d={path} />
+      {coordinates.map(({ row, x, y }) => <circle key={row.metricDate} cx={x} cy={y} r="4"><title>{`${row.metricDate}: ${row.metrics[metric].toLocaleString("en-CA", { maximumFractionDigits: 2 })}`}</title></circle>)}
+    </svg>
+    <span>{points[0]?.metricDate}</span><span>{points.at(-1)?.metricDate}</span>
+  </div>;
+}
+
+function ProviderMeasurementCard({ provider, rows, currency }: { provider: "google" | "meta"; rows: GrowthData["measurementSeries"]; currency: string }) {
+  const providerRows = rows.filter((row) => row.provider === provider);
+  const google = provider === "google";
+  const primaryMetric = google ? "search_clicks" : "meta_link_clicks";
+  const summaries = google
+    ? [
+        ["search_clicks", metricTotal(providerRows, "search_clicks")],
+        ["business_website_clicks", metricTotal(providerRows, "business_website_clicks")],
+        ["analytics_sessions", metricTotal(providerRows, "analytics_sessions")],
+        ["business_call_clicks", metricTotal(providerRows, "business_call_clicks")],
+      ] as const
+    : [
+        ["meta_impressions", metricTotal(providerRows, "meta_impressions")],
+        ["meta_reach", metricTotal(providerRows, "meta_reach")],
+        ["meta_link_clicks", metricTotal(providerRows, "meta_link_clicks")],
+        ["meta_spend", metricTotal(providerRows, "meta_spend")],
+      ] as const;
+  return <article className={`card marketing-measurement-card ${provider}`}>
+    <header><div><IntegrationBrandLogo name={google ? "Google" : "Meta"} compact /><span><small>{google ? "SEARCH, PROFILE & SITE" : "ADS INSIGHTS"}</small><h3>{google ? "Google demand and website actions" : "Meta reach and website clicks"}</h3></span></div><em>{providerRows.length ? `Through ${providerRows.at(-1)?.metricDate}` : "Awaiting sync"}</em></header>
+    <div className="marketing-measurement-summary">{summaries.map(([metric, value]) => <span key={metric}><small>{measurementLabels[metric]}</small><b>{metric === "meta_spend" ? money(Math.round(value * 100), currency) : Math.round(value).toLocaleString("en-CA")}</b></span>)}</div>
+    <MeasurementTrend rows={providerRows} metric={primaryMetric} labelText={measurementLabels[primaryMetric]} />
+    {providerRows.length > 0 && <footer>{google ? <><span>Search CTR <b>{(metricAverage(providerRows, "search_ctr") * 100).toFixed(1)}%</b></span><span>Average position <b>{metricAverage(providerRows, "search_position").toFixed(1)}</b></span></> : <><span>Average CTR <b>{metricAverage(providerRows, "meta_ctr").toFixed(2)}%</b></span><span>Average CPC <b>{money(Math.round(metricAverage(providerRows, "meta_cpc") * 100), currency)}</b></span></>}</footer>}
+  </article>;
+}
+
+function ReviewInsightsCard({ insights }: { insights: GrowthData["reviewInsights"] }) {
+  return <article className="card google-review-insights">
+    <header><div><p className="card-kicker">GOOGLE REVIEW SIGNALS</p><h3>Feedback patterns and recommended follow-up</h3></div><strong>{insights.averageRating === null ? "No reviews" : `${insights.averageRating.toFixed(1)} ★`}</strong></header>
+    {insights.available ? <>
+      <div className="review-score-row"><span><b>{insights.reviewCount}</b><small>Reviews</small></span><span><b>{insights.lowRatingCount}</b><small>Three stars or lower</small></span><span><b>{insights.fiveStarShare === null ? "—" : `${Math.round(insights.fiveStarShare * 100)}%`}</b><small>Five-star share</small></span></div>
+      <div className="review-theme-list">{insights.themes.slice(0, 5).map((theme) => <span key={theme.key}><b>{theme.label}</b><i style={{ width: `${Math.max(8, theme.mentions / Math.max(...insights.themes.map((item) => item.mentions), 1) * 100)}%` }} /><small>{theme.mentions} mentions · {theme.lowRatingMentions} lower-rated</small></span>)}</div>
+      <div className="review-recommendations">{insights.recommendations.length ? insights.recommendations.map((item) => <section key={item.id}><small>RECOMMENDATION</small><b>{item.title}</b><p>{item.rationale}</p><span>{item.action}</span><em>{item.evidence}</em></section>) : <section><small>MONITOR</small><b>No repeated concern has enough evidence yet</b><p>Keep collecting reviews and revisit after the next measured sample.</p></section>}</div>
+      <footer>{insights.privacyBoundary}</footer>
+    </> : <div className="marketing-metric-empty"><b>No connected Google reviews yet</b><span>Connect Google and run a sync to build aggregate feedback themes and recommendations.</span></div>}
+  </article>;
 }
 
 export default function GrowthWorkspace({ currency, navigate, activeLocationId }: { currency: string; navigate: (view: "Integrations") => void; activeLocationId: string | null }) {
@@ -307,8 +403,14 @@ export default function GrowthWorkspace({ currency, navigate, activeLocationId }
       </section>
 
       <section className="growth-connection-grid">
-        {data?.connections.map((connection) => <article className="card growth-connection" key={connection.provider}><div><IntegrationBrandLogo name={connection.provider} compact /><div><b>{connection.provider}</b><small>{connection.availableNow}</small></div></div><em>{connection.label}</em></article>)}
+        {data?.connections.map((connection) => <article className={`card growth-connection ${connection.status}`} key={connection.provider}><div><IntegrationBrandLogo name={connection.provider} compact /><div><b>{connection.provider}</b><small>{connection.availableNow}</small></div></div><footer><em>{connection.label}</em><button onClick={() => navigate("Integrations")}>{connection.status === "connected" ? "Manage" : "Set up"} →</button></footer></article>)}
       </section>
+
+      <section className="marketing-provider-metrics" aria-label="Connected marketing measurements">
+        <ProviderMeasurementCard provider="google" rows={data?.measurementSeries ?? []} currency={currency} />
+        <ProviderMeasurementCard provider="meta" rows={data?.measurementSeries ?? []} currency={currency} />
+      </section>
+      <ReviewInsightsCard insights={data?.reviewInsights ?? { available: false, reviewCount: 0, averageRating: null, lowRatingCount: 0, fiveStarShare: null, lastReviewAt: null, themes: [], recommendations: [], privacyBoundary: "Reviewer names and profile photos are not stored." }} />
 
       <section className="growth-overview-grid">
         <article className="card growth-recommendations">

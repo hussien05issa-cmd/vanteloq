@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
 import {
   RESOURCE_ARTICLES,
@@ -25,11 +25,11 @@ test("resource catalogue uses unique, stable and internally valid records", () =
     for (const source of article.sources) assert.match(source.url, /^https:\/\//);
     for (const related of article.related) assert.ok(getArticle(related), `${article.slug} links to missing related article ${related}`);
     assert.doesNotMatch(JSON.stringify(article), /\u2014/, `${article.slug} contains an em dash`);
-    if (article.hero) {
-      assert.match(article.hero.src, /^\/brand\/[a-z0-9-]+\.(?:png|webp)$/);
-      assert.ok(article.hero.alt.length >= 40, `${article.slug} hero needs useful alternative text`);
-      assert.ok(article.hero.width >= 1200 && article.hero.height >= 600, `${article.slug} hero is too small for social sharing`);
-    }
+    assert.ok(article.hero, `${article.slug} needs its generated editorial hero`);
+    assert.match(article.hero.src, /^\/brand\/[a-z0-9-]+\.(?:png|webp)$/);
+    assert.ok(article.hero.alt.length >= 40, `${article.slug} hero needs useful alternative text`);
+    assert.ok(article.hero.width >= 1200 && article.hero.height >= 600, `${article.slug} hero is too small for social sharing`);
+    assert.ok(existsSync(new URL(`../public${article.hero.src}`, import.meta.url)), `${article.slug} hero file is missing`);
   }
 });
 
