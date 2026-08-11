@@ -1,6 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
 import { getDb } from "../../../../../../db";
-import { integrationLocationMappings, integrationSyncRuns, organizationLocations } from "../../../../../../db/schema";
+import { integrationConnections, integrationLocationMappings, integrationSyncRuns, organizationLocations } from "../../../../../../db/schema";
 import { recordAudit } from "../../../../../../server/audit";
 import { requireAccess } from "../../../../../../server/authorization";
 import { ApiError, enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameOrigin } from "../../../../../../server/api";
@@ -78,6 +78,24 @@ export async function POST(request: Request) {
           });
           staged += 1;
         }
+        const [unmapped] = await getDb().select({ id: integrationLocationMappings.id })
+          .from(integrationLocationMappings).where(and(
+            eq(integrationLocationMappings.organizationId, context.organizationId),
+            eq(integrationLocationMappings.provider, LIGHTSPEED_R_PROVIDER),
+            eq(integrationLocationMappings.connectionId, connection.id),
+            eq(integrationLocationMappings.status, "unmapped"),
+          )).limit(1);
+        if (unmapped && connection.dataPromotionStatus === "approved") {
+          await getDb().update(integrationConnections).set({
+            dataPromotionStatus: "staging",
+            promotionAuthorizedAt: null,
+            updatedAt: new Date(),
+          }).where(and(
+            eq(integrationConnections.id, connection.id),
+            eq(integrationConnections.organizationId, context.organizationId),
+            eq(integrationConnections.provider, LIGHTSPEED_R_PROVIDER),
+          ));
+        }
         await getDb().update(integrationSyncRuns).set({ status: "completed", cursorAfter: shops.cursor, recordsRead: shops.data.length, recordsStaged: staged, completedAt: new Date() }).where(eq(integrationSyncRuns.id, runId));
         return jsonResponse(await list(context.organizationId, connection.id, connection.externalAccountName));
       } catch (error) {
@@ -104,6 +122,17 @@ export async function POST(request: Request) {
       eq(integrationLocationMappings.externalLocationRef, externalLocationRef),
     ));
     if (!result.meta.changes) throw new ApiError(404, "SHOP_NOT_FOUND", "Discover the R-Series shop before mapping it.");
+    if (connection.dataPromotionStatus === "approved") {
+      await getDb().update(integrationConnections).set({
+        dataPromotionStatus: "staging",
+        promotionAuthorizedAt: null,
+        updatedAt: new Date(),
+      }).where(and(
+        eq(integrationConnections.id, connection.id),
+        eq(integrationConnections.organizationId, context.organizationId),
+        eq(integrationConnections.provider, LIGHTSPEED_R_PROVIDER),
+      ));
+    }
     await recordAudit({
       request, requestId, organizationId: context.organizationId, actorUserId: context.userId,
       action: "integration.location_mapping_changed", resourceType: "integration_location", resourceId: `${connection.id}:${externalLocationRef}`,

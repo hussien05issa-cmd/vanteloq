@@ -43,7 +43,7 @@ test("homepage copy stays within the verified product boundary", async () => {
   assert.match(html, /<strong>Plaid<\/strong>[\s\S]{0,220}<small>ADAPTER BUILT<\/small>/);
   assert.match(html, /Plaid still requires approved production credentials/);
   for (const provider of ["Google", "Meta"]) {
-    assert.match(html, new RegExp(`<strong>${provider}</strong>[\\s\\S]{0,220}<small>PLANNED</small>`));
+    assert.match(html, new RegExp(`<strong>${provider}</strong>[\\s\\S]{0,220}<small>COMING SOON!</small>`));
   }
   assert.doesNotMatch(html, /(?:Square|Moneris|QuickBooks|Xero|Plaid|Google|Meta) (?:is )?(?:connected|available now|live)/i);
   assert.doesNotMatch(html, /\b(?:SOC 2|ISO 27001|HIPAA|PCI)\s+(?:certified|compliant|accredited)\b/i);
@@ -75,11 +75,37 @@ test("homepage preserves responsive and keyboard interaction safeguards", async 
   assert.match(css, /overflow-x:\s*clip/);
   assert.match(css, /@media \(max-width: 620px\)/);
   assert.match(css, /@media \(max-width: 390px\)/);
-  assert.match(css, /\.home-connection-grid \{ display: grid; grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.match(css, /\.home-connection-grid \{ display: grid; grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/);
   assert.match(css, /:focus-visible/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
   assert.doesNotMatch(css, /\.public-nav-actions\s+\.nav-login\s*\{\s*display:\s*none/);
   assert.match(css, /\.public-nav-actions\s+\.nav-login\s*\{[\s\S]*?display:\s*inline-flex/);
+});
+
+test("homepage and resource cards keep the hosted visual layout", async () => {
+  const [homepageResponse, resourcesResponse, homepageCss, resourcesCss] = await Promise.all([
+    fetchRoute("/"),
+    fetchRoute("/resources"),
+    readFile(new URL("../app/homepage.css", import.meta.url), "utf8"),
+    readFile(new URL("../app/resources/resources.css", import.meta.url), "utf8"),
+  ]);
+  assert.equal(homepageResponse.status, 200);
+  assert.equal(resourcesResponse.status, 200);
+  const [homepage, resources] = await Promise.all([
+    homepageResponse.text(),
+    resourcesResponse.text(),
+  ]);
+
+  assert.match(homepage, /home-resource-art/);
+  assert.doesNotMatch(homepage, /home-resource-thumbnail/);
+  assert.match(resources, /resource-visual/);
+  assert.doesNotMatch(resources, /resource-card-hero/);
+  assert.match(homepageCss, /\.home-proof li::before[^}]*content:\s*"✓"/);
+  assert.match(homepageCss, /\.home-step-review-visual::after[^}]*content:\s*"✓"/);
+  assert.match(homepageCss, /\.home-resource-grid \{[^}]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)/);
+  assert.doesNotMatch(homepageCss, /\.home-resource-grid[^}]*repeat\(6, minmax\(0, 1fr\)\)/);
+  assert.match(resourcesCss, /\.resource-latest \.resource-card-grid \{[^}]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)/);
+  assert.doesNotMatch(resourcesCss, /\.resource-latest \.resource-card-grid[^}]*repeat\(6, minmax\(0, 1fr\)\)/);
 });
 
 test("the above-the-fold product image is compact and dimensioned", async () => {

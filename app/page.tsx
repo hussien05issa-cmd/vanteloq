@@ -407,13 +407,10 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
         <div className="home-resource-grid">
           {RESOURCE_ARTICLES.map((article) => {
             const category = getCategory(article.category);
-            const visualLabel = article.category === "inventory" ? "SKU" : article.category === "finance" ? "%" : article.category === "analytics" ? "DATA" : article.category === "marketing" ? "GROWTH" : article.category === "operations" ? "OPS" : article.category === "pos" ? "POS" : "AI";
+            const visualLabel = article.category === "inventory" ? "SKU" : article.category === "finance" ? "%" : "VIEW";
             return (
               <Link href={`/resources/${article.slug}`} key={article.slug}>
-                {article.hero ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img className="home-resource-thumbnail" src={article.hero.src} alt={article.hero.alt} width={article.hero.width} height={article.hero.height} loading="lazy" />
-                ) : <div className={`home-resource-art ${article.category}-art`} aria-hidden="true"><i/><i/><i/><b>{visualLabel}</b></div>}
+                <div className={`home-resource-art ${article.category}-art`} aria-hidden="true"><i/><i/><i/><b>{visualLabel}</b></div>
                 <small>{category?.shortName.toUpperCase()} · {getReadingTime(article)} MIN</small>
                 <h3>{article.title}</h3>
                 <p>{article.description}</p>

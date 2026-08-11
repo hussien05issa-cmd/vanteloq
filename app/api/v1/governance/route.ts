@@ -70,7 +70,7 @@ async function validateEmployeeRelationships(
       eq(teamMembers.id, managerMemberId),
       eq(teamMembers.organizationId, organizationId),
     )).limit(1);
-    if (!manager || manager.status === "archived") throw new ApiError(400, "INVALID_FIELD", "Select a valid manager from this organization.");
+    if (!manager || manager.status !== "active") throw new ApiError(400, "INVALID_FIELD", "Select an active manager from this organization.");
   }
 
   const locationIds = [...new Set([primaryLocationId, ...permittedLocations].filter(Boolean))];
@@ -82,7 +82,11 @@ async function validateEmployeeRelationships(
     ));
     if (locations.length !== locationIds.length) throw new ApiError(400, "INVALID_FIELD", "Select active locations from this organization.");
   }
-  return { managerMemberId: managerMemberId || null, primaryLocationId: primaryLocationId || null, permittedLocations: [...new Set(permittedLocations)] };
+  return {
+    managerMemberId: managerMemberId || null,
+    primaryLocationId: primaryLocationId || null,
+    permittedLocations: locationIds,
+  };
 }
 
 async function validateRoleDelegation(context: GovernanceContext, permissions: string[], locationScope: string[]) {

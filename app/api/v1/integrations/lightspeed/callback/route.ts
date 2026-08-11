@@ -215,13 +215,9 @@ export async function GET(request: Request) {
 
     try {
       const token = await exchangeAuthorizationCode(code, domainPrefix);
-      const grantedScopes = (token.scope ?? "").split(/\s+/).filter(Boolean);
-      const missingScopes = LIGHTSPEED_SCOPES.filter((scope) => !grantedScopes.includes(scope));
-      if (missingScopes.length) {
-        throw new ApiError(409, "LIGHTSPEED_SCOPES_INCOMPLETE", "Lightspeed did not grant every read-only scope required by Vanteloq.");
-      }
-    const readiness = lightspeedReadiness();
-    await getDb().update(integrationConnections).set({
+      const grantedScopes = validateLightspeedGrantedScopes(token.scope);
+      const readiness = lightspeedReadiness();
+      await getDb().update(integrationConnections).set({
         status: "pending",
         externalAccountRef: domainPrefix,
         externalAccountName: domainPrefix,

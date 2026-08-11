@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import { readFile, readdir } from "node:fs/promises";
+import { createServer } from "node:http";
 import test from "node:test";
 import { Miniflare } from "miniflare";
 
@@ -8,11 +9,14 @@ const origin = "https://vanteloq.example";
 const context = { waitUntil() {}, passThroughOnException() {} };
 
 function ownerHeaders(write = false) {
+  const payload = Buffer.from(JSON.stringify({
+    email: "owner@example.invalid",
+    aal: "aal2",
+    session_id: "session:owner",
+  })).toString("base64url");
   const headers = {
     accept: "application/json",
-    "oai-authenticated-user-email": "owner@example.invalid",
-    "oai-authenticated-user-full-name": encodeURIComponent("Test Owner"),
-    "oai-authenticated-user-full-name-encoding": "percent-encoded-utf-8",
+    authorization: `Bearer test.${payload}.signature`,
   };
   if (write) {
     headers["content-type"] = "application/json";
@@ -34,6 +38,21 @@ async function applyMigrations(database) {
 }
 
 test("X-Series isolates two retailer accounts and every account action", async () => {
+  const authServer = createServer((request, response) => {
+    const token = request.headers.authorization?.replace(/^Bearer\s+/i, "") ?? "";
+    const payload = JSON.parse(Buffer.from(token.split(".")[1] ?? "", "base64url").toString("utf8"));
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({
+      id: `test-user:${payload.email}`,
+      email: payload.email,
+      email_confirmed_at: "2026-08-01T00:00:00.000Z",
+      user_metadata: { full_name: "Test Owner" },
+    }));
+  });
+  await new Promise((resolve) => authServer.listen(0, "127.0.0.1", resolve));
+  const authAddress = authServer.address();
+  assert.ok(authAddress && typeof authAddress !== "string");
+  const authOrigin = `http://127.0.0.1:${authAddress.port}`;
   const miniflare = new Miniflare({
     modules: true,
     script: "export default { fetch() { return new Response('ok') } }",
@@ -56,6 +75,8 @@ test("X-Series isolates two retailer accounts and every account action", async (
       LIGHTSPEED_X_TOKEN_ENCRYPTION_KEY: Buffer.from(
         Uint8Array.from({ length: 32 }, (_, index) => index + 1),
       ).toString("base64"),
+      SUPABASE_URL: authOrigin,
+      SUPABASE_PUBLISHABLE_KEY: "test-publishable-key",
     };
 
     const onboarding = await worker.fetch(new Request(`${origin}/api/v1/onboarding`, {
@@ -74,8 +95,9 @@ test("X-Series isolates two retailer accounts and every account action", async (
     assert.equal(onboarding.status, 201);
 
     let failNorthOutletVerification = false;
-    globalThis.fetch = async (input) => {
+    globalThis.fetch = async (input, init) => {
       const url = new URL(typeof input === "string" || input instanceof URL ? input : input.url);
+      if (url.origin === authOrigin) return originalFetch(input, init);
       if (url.pathname === "/api/1.0/token" && url.hostname.endsWith(".retail.lightspeed.app")) {
         return Response.json({
           access_token: `access-${url.hostname}`,
@@ -272,6 +294,7 @@ test("X-Series isolates two retailer accounts and every account action", async (
     ).first()).count, 1);
   } finally {
     globalThis.fetch = originalFetch;
+    await new Promise((resolve) => authServer.close(resolve));
     await miniflare.dispose();
   }
 });

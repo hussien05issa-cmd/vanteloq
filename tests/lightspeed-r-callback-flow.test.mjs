@@ -191,11 +191,18 @@ test("R-Series completes a browser callback using the initiating one-time state"
     assert.equal(callback.headers.get("location"), `${origin}/?integration=lightspeed-r&connection=connected`);
 
     const connection = await database.prepare(
-      "SELECT id, status, external_account_ref, data_promotion_status FROM integration_connections WHERE provider = 'lightspeed-r'",
+      "SELECT id, organization_id, status, external_account_ref, data_promotion_status FROM integration_connections WHERE provider = 'lightspeed-r'",
     ).first();
     assert.equal(typeof connection?.id, "string");
     assert.equal(connection.id, authorizationBody.connectionId);
-    assert.deepEqual(connection, { id: connection.id, status: "connected", external_account_ref: "123", data_promotion_status: "blocked" });
+    assert.equal(typeof connection.organization_id, "string");
+    assert.deepEqual(connection, {
+      id: connection.id,
+      organization_id: connection.organization_id,
+      status: "connected",
+      external_account_ref: "123",
+      data_promotion_status: "blocked",
+    });
     const oauthState = await database.prepare(
       "SELECT consumed_at FROM integration_oauth_states WHERE provider = 'lightspeed-r'",
     ).first();
@@ -291,11 +298,11 @@ test("R-Series completes a browser callback using the initiating one-time state"
     assert.deepEqual(syncBody.imported, {
       dailyMetrics: 0,
       inventoryBalances: 0,
-      products: 1,
-      customers: 1,
-      suppliers: 1,
-      saleLines: 2,
-      payments: 1,
+      products: 0,
+      customers: 0,
+      suppliers: 0,
+      saleLines: 0,
+      payments: 0,
     });
 
     assert.equal(
@@ -308,8 +315,11 @@ test("R-Series completes a browser callback using the initiating one-time state"
       0,
       "staged connector inventory must remain outside canonical balances before approval",
     );
-    const payment = await database.prepare("SELECT external_sale_id, payment_type_name, category, amount_cents FROM commerce_payments").first();
-    assert.deepEqual(payment, { external_sale_id: `${connection.id}:sale-100`, payment_type_name: "Visa", category: "card", amount_cents: 10_500 });
+    assert.equal(
+      (await database.prepare("SELECT COUNT(*) count FROM commerce_payments").first()).count,
+      0,
+      "unmapped shop data must stay outside canonical commerce tables",
+    );
     const promoted = await database.prepare(
       "SELECT data_promotion_status FROM integration_connections WHERE provider = 'lightspeed-r'",
     ).first();
@@ -335,6 +345,60 @@ test("R-Series completes a browser callback using the initiating one-time state"
     }), environment, context);
     assert.equal(mapping.status, 200, await mapping.clone().text());
 
+    const reviewedSync = await worker.fetch(new Request(`${origin}/api/v1/integrations/lightspeed-r/sync`, {
+      method: "POST", headers: ownerHeaders(true), body: JSON.stringify({ reason: "manual", connectionId: connection.id }),
+    }), environment, context);
+    assert.equal(reviewedSync.status, 200, await reviewedSync.clone().text());
+    const reviewedSyncBody = await reviewedSync.json();
+    assert.equal(reviewedSyncBody.run.warningCount, 0);
+    assert.deepEqual(reviewedSyncBody.imported, {
+      dailyMetrics: 0,
+      inventoryBalances: 1,
+      products: 1,
+      customers: 1,
+      suppliers: 1,
+      saleLines: 2,
+      payments: 1,
+    });
+    const payment = await database.prepare(
+      "SELECT external_sale_id, payment_type_name, category, amount_cents FROM commerce_payments",
+    ).first();
+    assert.deepEqual(payment, {
+      external_sale_id: `${connection.id}:sale-100`,
+      payment_type_name: "Visa",
+      category: "card",
+      amount_cents: 10_500,
+    });
+
+    const reviewedRun = await database.prepare(`SELECT
+      cursor_before cursorBefore, cursor_after cursorAfter,
+      started_at startedAt, completed_at completedAt
+      FROM integration_sync_runs
+      WHERE organization_id = ? AND provider = 'lightspeed-r' AND connection_id = ?
+        AND mode = 'incremental' AND warning_count = 0
+      ORDER BY rowid DESC LIMIT 1`
+    ).bind(connection.organization_id, connection.id).first();
+    assert.equal(typeof reviewedRun.startedAt, "number");
+    assert.equal(typeof reviewedRun.completedAt, "number");
+    const insertTiedRun = (id, warningCount) => database.prepare(`INSERT INTO integration_sync_runs
+      (id, organization_id, provider, connection_id, mode, status, cursor_before, cursor_after,
+       records_read, records_staged, duplicates_skipped, warning_count, started_at, completed_at)
+      VALUES (?, ?, 'lightspeed-r', ?, 'incremental', 'completed', ?, ?, 0, 0, 0, ?, ?, ?)`
+    ).bind(
+      id, connection.organization_id, connection.id,
+      reviewedRun.cursorBefore, reviewedRun.cursorAfter, warningCount,
+      reviewedRun.startedAt, reviewedRun.completedAt,
+    ).run();
+    await insertTiedRun(`zz-tied-warning-${connection.id}`, 1);
+    await insertTiedRun(`aa-tied-clean-${connection.id}`, 0);
+
+    const discoveryAt = Date.now() + 1_000;
+    await database.prepare(`INSERT INTO integration_sync_runs
+      (id, organization_id, provider, connection_id, mode, status, started_at, completed_at)
+      VALUES (?, ?, 'lightspeed-r', ?, 'discovery', 'completed', ?, ?)`)
+      .bind(`post-sync-discovery-${connection.id}`, connection.organization_id, connection.id, discoveryAt, discoveryAt)
+      .run();
+
     const approval = await worker.fetch(new Request(`${origin}/api/v1/integrations`, {
       method: "POST",
       headers: ownerHeaders(true),
@@ -347,10 +411,11 @@ test("R-Series completes a browser callback using the initiating one-time state"
       approvalBody.nextStep,
       "Run one final R-Series sync to publish the reviewed data to dashboard features.",
     );
-    assert.deepEqual(
-      await database.prepare("SELECT data_promotion_status FROM integration_connections WHERE id = ?").bind(connection.id).first(),
-      { data_promotion_status: "approved" },
-    );
+    const authorizedPublication = await database.prepare(`SELECT data_promotion_status dataPromotionStatus,
+      promotion_authorized_at promotionAuthorizedAt
+      FROM integration_connections WHERE id = ?`).bind(connection.id).first();
+    assert.equal(authorizedPublication.dataPromotionStatus, "staging");
+    assert.equal(typeof authorizedPublication.promotionAuthorizedAt, "number");
 
     const promotedSync = await worker.fetch(new Request(`${origin}/api/v1/integrations/lightspeed-r/sync`, {
       method: "POST", headers: ownerHeaders(true), body: JSON.stringify({ reason: "manual", connectionId: connection.id }),
@@ -358,8 +423,10 @@ test("R-Series completes a browser callback using the initiating one-time state"
     assert.equal(promotedSync.status, 200, await promotedSync.clone().text());
     assert.equal((await promotedSync.json()).dataPromotionEnabled, true);
     assert.deepEqual(
-      await database.prepare("SELECT data_promotion_status FROM integration_connections WHERE id = ?").bind(connection.id).first(),
-      { data_promotion_status: "approved" },
+      await database.prepare(`SELECT data_promotion_status dataPromotionStatus,
+        promotion_authorized_at promotionAuthorizedAt
+        FROM integration_connections WHERE id = ?`).bind(connection.id).first(),
+      { dataPromotionStatus: "approved", promotionAuthorizedAt: null },
     );
     const metric = await database.prepare(`
       SELECT business_date, location_ref, gross_sales_cents, net_sales_cents, cost_of_goods_cents,
@@ -492,6 +559,13 @@ test("R-Series completes a browser callback using the initiating one-time state"
       }),
     }), environment, context);
     assert.equal(secondMapping.status, 200, await secondMapping.clone().text());
+    const secondReviewedSync = await worker.fetch(new Request(`${origin}/api/v1/integrations/lightspeed-r/sync`, {
+      method: "POST",
+      headers: ownerHeaders(true),
+      body: JSON.stringify({ reason: "manual", connectionId: secondAuthorizationBody.connectionId }),
+    }), environment, context);
+    assert.equal(secondReviewedSync.status, 200, await secondReviewedSync.clone().text());
+    assert.equal((await secondReviewedSync.json()).run.warningCount, 0);
     const secondApproval = await worker.fetch(new Request(`${origin}/api/v1/integrations`, {
       method: "POST",
       headers: ownerHeaders(true),

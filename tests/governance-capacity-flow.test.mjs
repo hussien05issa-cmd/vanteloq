@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
+import { createServer } from "node:http";
 import test from "node:test";
 import { Miniflare } from "miniflare";
 
@@ -7,11 +8,10 @@ const origin = "https://vanteloq.example";
 const context = { waitUntil() {}, passThroughOnException() {} };
 
 function ownerHeaders(email, name, write = false) {
+  const payload = Buffer.from(JSON.stringify({ email, aal: "aal2", session_id: `session:${email}` })).toString("base64url");
   const headers = {
     accept: "application/json",
-    "oai-authenticated-user-email": email,
-    "oai-authenticated-user-full-name": encodeURIComponent(name),
-    "oai-authenticated-user-full-name-encoding": "percent-encoded-utf-8",
+    authorization: `Bearer test.${payload}.signature`,
   };
   if (write) {
     headers["content-type"] = "application/json";
@@ -60,6 +60,20 @@ async function applyMigrations(database) {
 }
 
 async function createEnvironment() {
+  const authServer = createServer((request, response) => {
+    const token = request.headers.authorization?.replace(/^Bearer\s+/i, "") ?? "";
+    const payload = JSON.parse(Buffer.from(token.split(".")[1] ?? "", "base64url").toString("utf8"));
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({
+      id: `test-user:${payload.email}`,
+      email: payload.email,
+      email_confirmed_at: "2026-08-01T00:00:00.000Z",
+      user_metadata: { full_name: payload.email },
+    }));
+  });
+  await new Promise((resolve) => authServer.listen(0, "127.0.0.1", resolve));
+  const authAddress = authServer.address();
+  assert.ok(authAddress && typeof authAddress !== "string");
   const miniflare = new Miniflare({
     modules: true,
     script: "export default { fetch() { return new Response('ok') } }",
@@ -72,9 +86,17 @@ async function createEnvironment() {
   const worker = (await import(workerUrl.href)).default;
   const environment = {
     DB: database,
+    SUPABASE_URL: `http://127.0.0.1:${authAddress.port}`,
+    SUPABASE_PUBLISHABLE_KEY: "test-publishable-key",
     ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) },
   };
-  return { miniflare, database, worker, environment };
+  return { miniflare, database, worker, environment, authServer };
+}
+
+async function disposeEnvironment(authServer, miniflare) {
+  authServer.closeAllConnections();
+  await new Promise((resolve) => authServer.close(resolve));
+  await miniflare.dispose();
 }
 
 async function dispatch(worker, environment, path, { method = "GET", email, name, body } = {}) {
@@ -158,7 +180,7 @@ function employeeBody(roleId, suffix) {
 }
 
 test("simultaneous location creates cannot exceed the owner plan", async () => {
-  const { miniflare, database, worker, environment } = await createEnvironment();
+  const { miniflare, database, worker, environment, authServer } = await createEnvironment();
   try {
     const owner = await createWorkspace(worker, environment, database, {
       email: "location-owner@example.invalid",
@@ -188,12 +210,12 @@ test("simultaneous location creates cannot exceed the owner plan", async () => {
     assert.equal((await database.prepare(`SELECT COUNT(*) count FROM organization_locations
       WHERE organization_id = ? AND status = 'active'`).bind(owner.organizationId).first()).count, 3);
   } finally {
-    await miniflare.dispose();
+    await disposeEnvironment(authServer, miniflare);
   }
 });
 
 test("simultaneous remote employee creates cannot exceed the owner plan", async () => {
-  const { miniflare, database, worker, environment } = await createEnvironment();
+  const { miniflare, database, worker, environment, authServer } = await createEnvironment();
   try {
     const owner = await createWorkspace(worker, environment, database, {
       email: "employee-owner@example.invalid",
@@ -231,12 +253,12 @@ test("simultaneous remote employee creates cannot exceed the owner plan", async 
         AND status IN ('draft', 'invited', 'pending_verification', 'active')`)
       .bind(owner.organizationId).first()).count, 3);
   } finally {
-    await miniflare.dispose();
+    await disposeEnvironment(authServer, miniflare);
   }
 });
 
 test("owner subscription messaging remains distinct from an exhausted quota", async () => {
-  const { miniflare, database, worker, environment } = await createEnvironment();
+  const { miniflare, database, worker, environment, authServer } = await createEnvironment();
   try {
     const owner = await createWorkspace(worker, environment, database, {
       email: "unsubscribed-owner@example.invalid",
@@ -264,6 +286,6 @@ test("owner subscription messaging remains distinct from an exhausted quota", as
     assert.equal(employeeError.code, "TEAM_SEAT_LIMIT_REACHED");
     assert.match(employeeError.message, /active owner subscription is required/i);
   } finally {
-    await miniflare.dispose();
+    await disposeEnvironment(authServer, miniflare);
   }
 });

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, exists, inArray, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { getD1, getDb } from "../../../../db";
 import {
   bankAccounts,
@@ -34,7 +34,7 @@ import { effectivePermissions, requirePermission } from "../../../../server/perm
 import { hasAddon } from "../../../../server/entitlements/engine";
 import { authorizedLocationDataScope, requireAccessibleLocation } from "../../../../server/location-access";
 import { plaidReadiness } from "../../../../server/integrations/plaid";
-import { noActiveIntegrationLease } from "../../../../server/integrations/trusted-data";
+import { approvedBankSource, noActiveIntegrationLease } from "../../../../server/integrations/trusted-data";
 
 const users = ["owner", "admin", "manager", "employee", "read_only"] as const;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -134,14 +134,7 @@ async function requestLocationScope(request: Request, context: AccessContext): P
 
 async function verifiedCashContext(organizationId: string) {
   const database = getDb();
-  const [connections, settings, accounts, bills, orders] = await Promise.all([
-    database.select({
-      status: integrationConnections.status,
-      promotion: integrationConnections.dataPromotionStatus,
-    }).from(integrationConnections).where(and(
-      eq(integrationConnections.organizationId, organizationId),
-      eq(integrationConnections.provider, "plaid"),
-    )).limit(1),
+  const [settings, accounts, bills, orders] = await Promise.all([
     database.select({
       baseCurrency: bookloqSettings.baseCurrency,
       cashSafetyThresholdCents: bookloqSettings.cashSafetyThresholdCents,
@@ -159,13 +152,7 @@ async function verifiedCashContext(organizationId: string) {
     }).from(bankAccounts).where(and(
       eq(bankAccounts.organizationId, organizationId),
       eq(bankAccounts.provider, "plaid"),
-      exists(database.select({ id: integrationConnections.id }).from(integrationConnections).where(and(
-        eq(integrationConnections.organizationId, organizationId),
-        eq(integrationConnections.provider, "plaid"),
-        eq(integrationConnections.status, "connected"),
-        eq(integrationConnections.dataPromotionStatus, "approved"),
-        noActiveIntegrationLease(integrationConnections.syncLeaseOwner, integrationConnections.syncLeaseExpiresAt),
-      ))),
+      approvedBankSource(bankAccounts.organizationId, bankAccounts.provider, bankAccounts.externalItemRef),
     )),
     database.select({
       status: supplierBills.status,
@@ -185,12 +172,11 @@ async function verifiedCashContext(organizationId: string) {
   ]);
   const baseCurrency = (settings[0]?.baseCurrency || "CAD").toUpperCase();
   const obligations = calculateOpenPurchasingObligations({ baseCurrency, bills, orders });
-  const connection = connections[0];
   const bookloq = settings[0];
   const result = calculateVerifiedPurchasingCapacity({
     connectionVerified: verifiedCashSourceEligible({
-      connectionStatus: connection?.status ?? "missing",
-      promotionStatus: connection?.promotion ?? "blocked",
+      connectionStatus: accounts.length ? "connected" : "missing",
+      promotionStatus: accounts.length ? "approved" : "blocked",
       liveDataEligible: plaidReadiness().liveDataEligible,
       bookloqAddonActive: true,
       bookloqStatus: bookloq?.status ?? null,

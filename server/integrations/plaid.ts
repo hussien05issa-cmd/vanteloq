@@ -464,17 +464,6 @@ export async function exchangePlaidPublicToken(organizationId: string, publicTok
   const database = getDb();
   try {
     exchange = await plaidRequest<{ access_token: string; item_id: string }>("/item/public_token/exchange", { public_token: publicToken }, fetcher);
-    const item = await plaidRequest<{ item?: { institution_id?: string | null } }>("/item/get", { access_token: exchange.access_token }, fetcher);
-    const institutionId = item.item?.institution_id?.trim() ?? "";
-    let institutionName = "Connected financial institution";
-    if (institutionId) {
-      const institution = await plaidRequest<{ institution?: { name?: string | null } }>("/institutions/get_by_id", {
-        institution_id: institutionId,
-        country_codes: ["CA"],
-      }, fetcher);
-      const providerName = institution.institution?.name?.trim();
-      if (providerName) institutionName = providerName.slice(0, 160);
-    }
     const accessTokenCiphertext = await encrypt(exchange.access_token);
     const itemIdCiphertext = await encrypt(exchange.item_id);
     await database.insert(integrationSecrets).values({
@@ -493,6 +482,17 @@ export async function exchangePlaidPublicToken(organizationId: string, publicTok
       tokenExpiresAt: new Date("2099-12-31T00:00:00Z"),
       updatedAt: now,
     }});
+    const item = await plaidRequest<{ item?: { institution_id?: string | null } }>("/item/get", { access_token: exchange.access_token }, fetcher);
+    const institutionId = item.item?.institution_id?.trim() ?? "";
+    let institutionName = "Connected financial institution";
+    if (institutionId) {
+      const institution = await plaidRequest<{ institution?: { name?: string | null } }>("/institutions/get_by_id", {
+        institution_id: institutionId,
+        country_codes: ["CA"],
+      }, fetcher);
+      const providerName = institution.institution?.name?.trim();
+      if (providerName) institutionName = providerName.slice(0, 160);
+    }
     const updated = await database.update(integrationConnections).set({
       status: "connected",
       externalAccountRef: exchange.item_id,
@@ -868,6 +868,7 @@ export async function settlePlaidWebhookEvent(
       eq(integrationConnections.id, connectionId),
       eq(integrationConnections.organizationId, organizationId),
       eq(integrationConnections.provider, PLAID_PROVIDER),
+      ...(options.itemId ? [eq(integrationConnections.externalAccountRef, options.itemId)] : []),
     ));
     if (options.itemId) {
       await getDb().update(bankAccounts).set({ connectionStatus: "healthy", updatedAt: now }).where(and(
@@ -891,6 +892,7 @@ export async function settlePlaidWebhookEvent(
         eq(integrationConnections.id, connectionId),
         eq(integrationConnections.organizationId, organizationId),
         eq(integrationConnections.provider, PLAID_PROVIDER),
+        ...(options.itemId ? [eq(integrationConnections.externalAccountRef, options.itemId)] : []),
       ));
       if (options.itemId) {
         await getDb().update(bankAccounts).set({ connectionStatus: "error", updatedAt: now }).where(and(

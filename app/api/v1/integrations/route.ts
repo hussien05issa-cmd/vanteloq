@@ -152,8 +152,12 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
-    const context = await requireAccess(request, ["owner", "admin"]);
-    await requirePermission(context, "integrations.manage");
+    const context = await requireAccess(request, ["owner", "admin", "manager"]);
+    await requireOrganizationWideLocationAccess(context);
+    const permissions = await effectivePermissions(context);
+    if (!permissions.includes("integrations.manage") && !permissions.includes("finance.connections")) {
+      throw new ApiError(403, "PERMISSION_DENIED", "This account cannot approve integration data.");
+    }
     const body = await request.json().catch(() => ({})) as {
       action?: unknown;
       connectionId?: unknown;
@@ -171,6 +175,8 @@ export async function POST(request: Request) {
     }
     if (connection.provider === "plaid") {
       await requirePermission(context, "finance.connections");
+    } else if (connection.provider !== "plaid") {
+      await requirePermission(context, "integrations.manage");
     }
     if (connection.dataPromotionStatus !== "staging") {
       throw new ApiError(409, "INTEGRATION_DATA_NOT_READY", "Sync and review this provider account before making its data available.");
@@ -190,6 +196,7 @@ export async function POST(request: Request) {
         eq(integrationSyncRuns.organizationId, context.organizationId),
         eq(integrationSyncRuns.provider, connection.provider),
         eq(integrationSyncRuns.connectionId, connection.id),
+        eq(integrationSyncRuns.mode, "incremental"),
       )).orderBy(desc(integrationSyncRuns.startedAt), desc(integrationSyncRuns.id)).limit(1);
       if (!latestRun || latestRun.status !== "completed" || latestRun.errorCode || !latestRun.completedAt) {
         throw new ApiError(409, "INTEGRATION_SYNC_STALE", "Complete a clean R-Series sync after the latest attempt before approving this data.");
@@ -228,7 +235,8 @@ export async function POST(request: Request) {
 
     const approvedAt = new Date();
     const approved = await getDb().update(integrationConnections).set({
-      dataPromotionStatus: "approved",
+      dataPromotionStatus: connection.provider === "lightspeed-r" ? "staging" : "approved",
+      promotionAuthorizedAt: connection.provider === "lightspeed-r" ? approvedAt : null,
       lastErrorCode: null,
       updatedAt: approvedAt,
     }).where(and(

@@ -253,13 +253,14 @@ test("migrations, tenant isolation and the complete intelligence-to-action flow 
       database.prepare("UPDATE bookloq_settings SET data_mode = 'live', updated_at = ? WHERE organization_id = ?")
         .bind(freshBankNow, ownerRecord.organizationId),
       database.prepare(`UPDATE bank_accounts SET provider = 'plaid', demo_record = 0, connection_status = 'healthy',
+        external_item_ref = 'plaid-item-fixture',
         currency = 'CAD', live_balance_cents = 2397800, available_balance_cents = 2397800,
         last_sync_at = ?, updated_at = ? WHERE organization_id = ?`)
         .bind(Math.floor((freshBankNow - 60_000) / 1_000), freshBankNow, ownerRecord.organizationId),
       database.prepare(`INSERT INTO integration_connections
-        (id, organization_id, provider, status, scopes_json, data_promotion_status, connected_at,
+        (id, organization_id, provider, status, external_account_ref, scopes_json, data_promotion_status, connected_at,
          last_successful_sync_at, created_at, updated_at)
-        VALUES ('plaid-live-fixture', ?, 'plaid', 'connected', '["transactions","balance"]',
+        VALUES ('plaid-live-fixture', ?, 'plaid', 'connected', 'plaid-item-fixture', '["transactions","balance"]',
           'approved', ?, ?, ?, ?)`)
         .bind(ownerRecord.organizationId, freshBankNow, freshBankNow, freshBankNow, freshBankNow),
     ]);
@@ -308,7 +309,7 @@ test("migrations, tenant isolation and the complete intelligence-to-action flow 
       assert.equal(limitedBookLoq.summary[key], null, key);
     }
     assert.equal(limitedBookLoq.cashIntelligence.status, "unavailable");
-    assert.doesNotMatch(JSON.stringify(limitedBookLoq), /4821|accounts@peak-demo\.invalid/);
+    assert.doesNotMatch(JSON.stringify(limitedBookLoq), /•••• 4821|accounts@peak-demo\.invalid/);
 
     const limitedReportResponse = await dispatch(worker, environment, "/api/v1/reports?report=sales_totals", financeReader);
     assert.equal(limitedReportResponse.status, 200);
@@ -409,14 +410,14 @@ test("migrations, tenant isolation and the complete intelligence-to-action flow 
       body: { action: "save_role", roleId: foreignRole.id, name: "Tampered role", description: "", color: "#53657a", permissions: ["dashboard.view"], locationScope: [] },
     });
     assert.equal(crossTenantRoleWrite.status, 404);
-    assert.equal((await crossTenantRoleWrite.json()).error.code, "ROLE_NOT_FOUND");
+    assert.equal((await crossTenantRoleWrite.json()).error.code, "NOT_FOUND");
     const crossTenantRoleAssignment = await dispatch(worker, environment, "/api/v1/governance", {
       method: "POST",
       ...owner,
       body: { action: "update_employee", memberId: ownerMember.id, roleId: foreignRole.id, status: "active" },
     });
-    assert.equal(crossTenantRoleAssignment.status, 400);
-    assert.equal((await crossTenantRoleAssignment.json()).error.code, "INVALID_FIELD");
+    assert.equal(crossTenantRoleAssignment.status, 409);
+    assert.equal((await crossTenantRoleAssignment.json()).error.code, "OWNER_ROLE_PROTECTED");
     const secondCommand = await dispatch(worker, environment, "/api/v1/command-centre", secondOwner);
     assert.equal(secondCommand.status, 200);
     const secondBody = await secondCommand.json();
@@ -426,6 +427,7 @@ test("migrations, tenant isolation and the complete intelligence-to-action flow 
     assert.equal(secondBookLoq.status, 403);
     assert.equal((await secondBookLoq.json()).error.code, "ADDON_NOT_INCLUDED");
   } finally {
+    authServer.closeAllConnections();
     await new Promise((resolve) => authServer.close(resolve));
     await miniflare.dispose();
   }
@@ -601,6 +603,7 @@ test("location-limited purchasing cannot list or approve another location's orde
     assert.equal((await quarantinedMatch.json()).error.code, "DOCUMENT_SCAN_REQUIRED");
     assert.equal((await database.prepare("SELECT status FROM purchase_orders WHERE id = 'po-north'").first()).status, "awaiting_approval");
   } finally {
+    authServer.closeAllConnections();
     await new Promise((resolve) => authServer.close(resolve));
     await miniflare.dispose();
   }

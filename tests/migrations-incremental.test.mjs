@@ -53,7 +53,7 @@ test("the founder migration preserves populated foreign-key relationships", asyn
   }
 });
 
-test("connector lineage and both document quarantine layers survive migrations 0023 through 0024", async () => {
+test("connector lineage and both document quarantine layers survive the preserved 0023 through 0025 upgrade", async () => {
   const miniflare = new Miniflare({
     modules: true,
     script: "export default { fetch() { return new Response('ok') } }",
@@ -131,8 +131,9 @@ test("connector lineage and both document quarantine layers survive migrations 0
          'application/pdf', 128, 'document-hash', 'review_required', 'not_configured', '{}', 'connector-user', ?, ?)`).bind(now, now),
     ]);
 
-    await applyMigration(database, migrations.find((file) => file.startsWith("0023_")));
-    await applyMigration(database, migrations.find((file) => file.startsWith("0024_")));
+    for (const migration of migrations.filter((file) => file >= "0023")) {
+      await applyMigration(database, migration);
+    }
 
     await database.batch([
       database.prepare(`INSERT INTO integration_connections

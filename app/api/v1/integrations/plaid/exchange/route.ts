@@ -18,7 +18,7 @@ import { requireOrganizationWideLocationAccess } from "../../../../../../server/
 export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
-    const context = await requireAccess(request, ["owner", "admin"]);
+    const context = await requireAccess(request, ["owner", "admin", "manager"]);
     await requireAddon(context, "bookloq");
     await requirePermission(context, "finance.connections");
     await requireOrganizationWideLocationAccess(context);
@@ -96,7 +96,7 @@ export async function POST(request: Request) {
       await getDb().update(integrationConnections).set({
         status: plaidRequiresUserRepair(errorCode) ? "error" : "connected",
         lastErrorCode: errorCode,
-        dataPromotionStatus: "staging",
+        dataPromotionStatus: plaidRequiresUserRepair(errorCode) ? "blocked" : "staging",
         updatedAt: new Date(),
       }).where(and(
         eq(integrationConnections.id, connection.connectionId),

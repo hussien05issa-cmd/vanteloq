@@ -648,6 +648,7 @@ export const integrationConnections = sqliteTable(
     apiVersion: text("api_version"),
     scopesJson: text("scopes_json").notNull().default("[]"),
     dataPromotionStatus: text("data_promotion_status", { enum: ["blocked", "staging", "approved"] }).notNull().default("blocked"),
+    promotionAuthorizedAt: integer("promotion_authorized_at", { mode: "timestamp" }),
     connectedAt: integer("connected_at", { mode: "timestamp" }),
     lastSuccessfulSyncAt: integer("last_successful_sync_at", { mode: "timestamp" }),
     lastSyncCursor: text("last_sync_cursor"),
