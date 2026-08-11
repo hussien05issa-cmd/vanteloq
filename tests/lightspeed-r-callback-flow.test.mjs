@@ -417,6 +417,83 @@ test("R-Series completes a browser callback using the initiating one-time state"
     assert.equal(authorizedPublication.dataPromotionStatus, "staging");
     assert.equal(typeof authorizedPublication.promotionAuthorizedAt, "number");
 
+    const discoveryCountBeforeLease = (await database.prepare(`SELECT COUNT(*) count
+      FROM integration_sync_runs WHERE connection_id = ? AND mode = 'discovery'`
+    ).bind(connection.id).first()).count;
+    await database.prepare(`UPDATE integration_connections
+      SET sync_lease_owner = ?, sync_lease_expires_at = ?, sync_version = sync_version + 1
+      WHERE id = ?`
+    ).bind("test-active-publication-lease", Math.floor(Date.now() / 1_000) + 300, connection.id).run();
+
+    const leasedDiscovery = await worker.fetch(new Request(`${origin}/api/v1/integrations/lightspeed-r/shops`, {
+      method: "POST",
+      headers: ownerHeaders(true),
+      body: JSON.stringify({ action: "discover", connectionId: connection.id }),
+    }), environment, context);
+    assert.equal(leasedDiscovery.status, 409, await leasedDiscovery.clone().text());
+    assert.equal((await leasedDiscovery.json()).error.code, "INTEGRATION_SYNC_IN_PROGRESS");
+    assert.equal((await database.prepare(`SELECT COUNT(*) count
+      FROM integration_sync_runs WHERE connection_id = ? AND mode = 'discovery'`
+    ).bind(connection.id).first()).count, discoveryCountBeforeLease);
+
+    const leasedMapping = await worker.fetch(new Request(`${origin}/api/v1/integrations/lightspeed-r/shops`, {
+      method: "POST",
+      headers: ownerHeaders(true),
+      body: JSON.stringify({
+        connectionId: connection.id,
+        externalLocationRef: "1",
+        localLocationId: null,
+        status: "ignored",
+      }),
+    }), environment, context);
+    assert.equal(leasedMapping.status, 409, await leasedMapping.clone().text());
+    assert.equal((await leasedMapping.json()).error.code, "INTEGRATION_SYNC_IN_PROGRESS");
+    assert.deepEqual(
+      await database.prepare(`SELECT status, local_location_id localLocationId
+        FROM integration_location_mappings WHERE connection_id = ? AND external_location_ref = '1'`
+      ).bind(connection.id).first(),
+      { status: "mapped", localLocationId: shopsBody.localLocations[0].id },
+    );
+    assert.deepEqual(
+      await database.prepare(`SELECT data_promotion_status dataPromotionStatus,
+        promotion_authorized_at promotionAuthorizedAt
+        FROM integration_connections WHERE id = ?`).bind(connection.id).first(),
+      authorizedPublication,
+    );
+
+    await database.prepare(`UPDATE integration_connections
+      SET sync_lease_owner = NULL, sync_lease_expires_at = NULL WHERE id = ?`
+    ).bind(connection.id).run();
+    const authorizationRevokingMapping = await worker.fetch(new Request(`${origin}/api/v1/integrations/lightspeed-r/shops`, {
+      method: "POST",
+      headers: ownerHeaders(true),
+      body: JSON.stringify({
+        connectionId: connection.id,
+        externalLocationRef: "1",
+        localLocationId: shopsBody.localLocations[0].id,
+        status: "mapped",
+      }),
+    }), environment, context);
+    assert.equal(authorizationRevokingMapping.status, 200, await authorizationRevokingMapping.clone().text());
+    assert.deepEqual(
+      await database.prepare(`SELECT data_promotion_status dataPromotionStatus,
+        promotion_authorized_at promotionAuthorizedAt
+        FROM integration_connections WHERE id = ?`).bind(connection.id).first(),
+      { dataPromotionStatus: "staging", promotionAuthorizedAt: null },
+    );
+
+    const reReviewedSync = await worker.fetch(new Request(`${origin}/api/v1/integrations/lightspeed-r/sync`, {
+      method: "POST", headers: ownerHeaders(true), body: JSON.stringify({ reason: "manual", connectionId: connection.id }),
+    }), environment, context);
+    assert.equal(reReviewedSync.status, 200, await reReviewedSync.clone().text());
+    assert.equal((await reReviewedSync.json()).run.warningCount, 0);
+    const reapproval = await worker.fetch(new Request(`${origin}/api/v1/integrations`, {
+      method: "POST",
+      headers: ownerHeaders(true),
+      body: JSON.stringify({ action: "approve_data", connectionId: connection.id, confirmed: true }),
+    }), environment, context);
+    assert.equal(reapproval.status, 200, await reapproval.clone().text());
+
     const promotedSync = await worker.fetch(new Request(`${origin}/api/v1/integrations/lightspeed-r/sync`, {
       method: "POST", headers: ownerHeaders(true), body: JSON.stringify({ reason: "manual", connectionId: connection.id }),
     }), environment, context);
