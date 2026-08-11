@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "700a505b-007c-43a9-a43b-b9b8e3cca2a5",
-  "prevId": "d7b059d8-6406-4a1a-b377-d8168a5a8606",
+  "id": "ae269c4e-db4f-423e-8b7f-320432f706b2",
+  "prevId": "0f52b962-9a7d-4954-a2a1-f4912f194835",
   "tables": {
     "access_roles": {
       "name": "access_roles",
@@ -2934,20 +2934,6 @@
           "notNull": false,
           "autoincrement": false
         },
-        "source_provider": {
-          "name": "source_provider",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "source_connection_id": {
-          "name": "source_connection_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
         "source_import_id": {
           "name": "source_import_id",
           "type": "text",
@@ -2992,14 +2978,6 @@
           "columns": [
             "organization_id",
             "business_date"
-          ],
-          "isUnique": false
-        },
-        "daily_metrics_workspace_source_idx": {
-          "name": "daily_metrics_workspace_source_idx",
-          "columns": [
-            "organization_id",
-            "source_connection_id"
           ],
           "isUnique": false
         }
@@ -4242,13 +4220,6 @@
           "autoincrement": false,
           "default": "'blocked'"
         },
-        "promotion_authorized_at": {
-          "name": "promotion_authorized_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
         "connected_at": {
           "name": "connected_at",
           "type": "integer",
@@ -4299,13 +4270,6 @@
           "autoincrement": false,
           "default": 0
         },
-        "privacy_data_deleted_at": {
-          "name": "privacy_data_deleted_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
         "created_at": {
           "name": "created_at",
           "type": "integer",
@@ -4355,14 +4319,6 @@
             "domain_prefix"
           ],
           "isUnique": true
-        },
-        "integration_connections_provider_external_account_unique": {
-          "name": "integration_connections_provider_external_account_unique",
-          "columns": [
-            "provider",
-            "external_account_ref"
-          ],
-          "isUnique": true
         }
       },
       "foreignKeys": {
@@ -4390,158 +4346,6 @@
         "integration_connections_promotion_check": {
           "name": "integration_connections_promotion_check",
           "value": "\"integration_connections\".\"data_promotion_status\" in ('blocked', 'staging', 'approved')"
-        }
-      }
-    },
-    "integration_consents": {
-      "name": "integration_consents",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "organization_id": {
-          "name": "organization_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "actor_user_id": {
-          "name": "actor_user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "provider": {
-          "name": "provider",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'accepted'"
-        },
-        "notice_version": {
-          "name": "notice_version",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "privacy_policy_version": {
-          "name": "privacy_policy_version",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "data_categories_json": {
-          "name": "data_categories_json",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "purposes_json": {
-          "name": "purposes_json",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "consent_source": {
-          "name": "consent_source",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'in_app'"
-        },
-        "accepted_at": {
-          "name": "accepted_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "withdrawn_at": {
-          "name": "withdrawn_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "integration_consents_workspace_provider_status_idx": {
-          "name": "integration_consents_workspace_provider_status_idx",
-          "columns": [
-            "organization_id",
-            "provider",
-            "status",
-            "accepted_at"
-          ],
-          "isUnique": false
-        },
-        "integration_consents_actor_idx": {
-          "name": "integration_consents_actor_idx",
-          "columns": [
-            "actor_user_id",
-            "accepted_at"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {
-        "integration_consents_organization_id_workspaces_id_fk": {
-          "name": "integration_consents_organization_id_workspaces_id_fk",
-          "tableFrom": "integration_consents",
-          "tableTo": "workspaces",
-          "columnsFrom": [
-            "organization_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {
-        "integration_consents_status_check": {
-          "name": "integration_consents_status_check",
-          "value": "\"integration_consents\".\"status\" in ('accepted', 'withdrawn', 'expired')"
-        },
-        "integration_consents_source_check": {
-          "name": "integration_consents_source_check",
-          "value": "\"integration_consents\".\"consent_source\" in ('in_app')"
         }
       }
     },
@@ -5797,20 +5601,6 @@
           "autoincrement": false,
           "default": 1
         },
-        "source_provider": {
-          "name": "source_provider",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "source_connection_id": {
-          "name": "source_connection_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
         "updated_at": {
           "name": "updated_at",
           "type": "integer",
@@ -5834,14 +5624,6 @@
           "columns": [
             "organization_id",
             "on_hand_quantity"
-          ],
-          "isUnique": false
-        },
-        "inventory_balances_workspace_source_idx": {
-          "name": "inventory_balances_workspace_source_idx",
-          "columns": [
-            "organization_id",
-            "source_connection_id"
           ],
           "isUnique": false
         }
@@ -8584,13 +8366,6 @@
           "notNull": false,
           "autoincrement": false
         },
-        "connection_id": {
-          "name": "connection_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
         "external_product_ref": {
           "name": "external_product_ref",
           "type": "text",
@@ -8715,7 +8490,6 @@
           "columns": [
             "organization_id",
             "provider",
-            "connection_id",
             "external_product_ref"
           ],
           "isUnique": false
@@ -8746,19 +8520,6 @@
             "id"
           ],
           "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "purchase_order_lines_connection_id_integration_connections_id_fk": {
-          "name": "purchase_order_lines_connection_id_integration_connections_id_fk",
-          "tableFrom": "purchase_order_lines",
-          "tableTo": "integration_connections",
-          "columnsFrom": [
-            "connection_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
           "onUpdate": "no action"
         }
       },
@@ -10515,14 +10276,6 @@
           "notNull": true,
           "autoincrement": false
         },
-        "security_state": {
-          "name": "security_state",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'quarantined'"
-        },
         "status": {
           "name": "status",
           "type": "text",
@@ -10648,10 +10401,6 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {
-        "workspace_documents_security_state_check": {
-          "name": "workspace_documents_security_state_check",
-          "value": "\"workspace_documents\".\"security_state\" in ('quarantined', 'clean', 'rejected')"
-        },
         "workspace_documents_size_check": {
           "name": "workspace_documents_size_check",
           "value": "\"workspace_documents\".\"size_bytes\" > 0 and \"workspace_documents\".\"size_bytes\" <= 10485760"
