@@ -12,6 +12,36 @@ async function applyMigration(database, file) {
   await database.batch(statements(sql).map((statement) => database.prepare(statement)));
 }
 
+test("Drizzle snapshots form one continuous journal chain", async () => {
+  const metaUrl = new URL("../drizzle/meta/", import.meta.url);
+  const journal = JSON.parse(await readFile(new URL("_journal.json", metaUrl), "utf8"));
+  const snapshotFiles = new Set(
+    (await readdir(metaUrl)).filter((file) => /^\d{4}_snapshot\.json$/.test(file)),
+  );
+  const snapshots = [];
+
+  for (const entry of journal.entries) {
+    const file = `${String(entry.idx).padStart(4, "0")}_snapshot.json`;
+    if (!snapshotFiles.has(file)) continue;
+    snapshots.push({ file, snapshot: JSON.parse(await readFile(new URL(file, metaUrl), "utf8")) });
+  }
+
+  assert.equal(
+    snapshots.length,
+    snapshotFiles.size,
+    "every snapshot must correspond to an ordered migration journal entry",
+  );
+  for (let index = 1; index < snapshots.length; index += 1) {
+    const previous = snapshots[index - 1];
+    const current = snapshots[index];
+    assert.equal(
+      current.snapshot.prevId,
+      previous.snapshot.id,
+      `${current.file} must link to the preceding journal snapshot ${previous.file}`,
+    );
+  }
+});
+
 test("the founder migration preserves populated foreign-key relationships", async () => {
   const miniflare = new Miniflare({
     modules: true,
