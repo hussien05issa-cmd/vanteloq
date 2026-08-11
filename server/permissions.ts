@@ -142,6 +142,17 @@ export const allPermissions = permissionGroups.flatMap((group) =>
   group.permissions.map((item) => item[0]),
 ) as PermissionKey[];
 
+const locationManagerGovernancePermissions = [
+  "organization.settings",
+  "locations.manage",
+  "team.directory",
+  "team.contacts",
+  "team.create",
+  "team.edit",
+  "team.roles",
+  "team.pin_reset",
+] as const satisfies readonly PermissionKey[];
+
 const operations = allPermissions.filter(
   (permission) =>
     !permission.startsWith("finance.") &&
@@ -183,7 +194,8 @@ export const roleTemplates: Record<string, readonly PermissionKey[]> = {
   general_manager: operations,
   location_manager: operations.filter(
     (permission) =>
-      !permission.startsWith("integrations.") && permission !== "team.roles",
+      !permission.startsWith("integrations.") &&
+      !locationManagerGovernancePermissions.includes(permission as typeof locationManagerGovernancePermissions[number]),
   ),
   inventory_purchasing_manager: allPermissions.filter(
     (permission) =>
@@ -235,7 +247,7 @@ export async function effectivePermissions(
 ): Promise<PermissionKey[]> {
   if (context.role === "owner") return [...allPermissions];
   const [profile] = await getDb()
-    .select({ permissionsJson: accessRoles.permissionsJson })
+    .select({ permissionsJson: accessRoles.permissionsJson, systemKey: accessRoles.systemKey })
     .from(teamMembers)
     .leftJoin(accessRoles, and(
       eq(teamMembers.roleId, accessRoles.id),
@@ -248,8 +260,14 @@ export async function effectivePermissions(
       ),
     )
     .limit(1);
-  if (profile?.permissionsJson)
-    return parsePermissions(profile.permissionsJson);
+  if (profile?.permissionsJson) {
+    const permissions = parsePermissions(profile.permissionsJson);
+    if (profile.systemKey === "location_manager") {
+      return permissions.filter((permission) =>
+        !locationManagerGovernancePermissions.includes(permission as typeof locationManagerGovernancePermissions[number]));
+    }
+    return permissions;
+  }
   const fallback: Record<Role, readonly PermissionKey[]> = {
     owner: allPermissions,
     admin: roleTemplates.organization_administrator,

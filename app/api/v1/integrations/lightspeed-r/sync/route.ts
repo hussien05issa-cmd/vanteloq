@@ -193,6 +193,10 @@ export async function POST(request: Request) {
     const importId = `provider-${LIGHTSPEED_R_PROVIDER}-${runId}`;
     const previous = checkpoint(connection.lastSyncCursor);
     const claimed = await getDb().update(integrationConnections).set({
+      // Every refresh re-enters review before any connector-owned facts change.
+      // Readers only trust approved connections, so a failed or partial refresh
+      // cannot expose a mixed generation after the lease is released.
+      dataPromotionStatus: "staging",
       lastErrorCode: null,
       updatedAt: startedAt,
     }).where(and(
@@ -226,6 +230,7 @@ export async function POST(request: Request) {
         eq(integrationSyncRuns.organizationId, context.organizationId),
       ));
       await getDb().update(integrationConnections).set({
+        dataPromotionStatus: "staging",
         lastErrorCode: error instanceof ApiError ? error.code : "RATE_LIMIT_FAILED",
         updatedAt: new Date(),
       }).where(and(
@@ -473,8 +478,11 @@ export async function POST(request: Request) {
             (latest.results ?? []).filter((sale) => !sale.outletRef || !ignored.has(sale.outletRef)),
           )
         : [];
-      const publishCanonical = connection.dataPromotionStatus === "approved" && warnings === 0;
-      const publishedDailyMetrics = publishCanonical ? dailyMetrics : [];
+      // Clean normalized facts are written while the connection is hidden in
+      // staging. Approval then exposes one complete reviewed dataset without a
+      // second undocumented synchronization.
+      const stageCanonical = warnings === 0;
+      const publishedDailyMetrics = stageCanonical ? dailyMetrics : [];
 
       const now = Date.now();
       await renewIntegrationSyncLease(syncLease);
@@ -484,7 +492,7 @@ export async function POST(request: Request) {
         VALUES (?, ?, 'manual_entry', 'processing', ?, 0, ?, ?, ?)
       `).bind(importId, context.organizationId, IMPORT_LABEL, runId, context.userId, now).run();
 
-      if (publishCanonical) {
+      if (stageCanonical) {
         await renewIntegrationSyncLease(syncLease);
         await database.prepare(`
           DELETE FROM daily_business_metrics
@@ -529,7 +537,7 @@ export async function POST(request: Request) {
       }
 
       let importedInventory = 0;
-      if (publishCanonical) {
+      if (stageCanonical) {
         for (const balance of inventoryBalances) {
           if (ignoredRaw.has(balance.outletRef)) continue;
           await renewIntegrationSyncLease(syncLease);
@@ -648,7 +656,7 @@ export async function POST(request: Request) {
       const recordsRead = recentSalesPage.data.length + salesPage.data.length + saleLinesPage.data.length + itemsPage.data.length + customersPage.data.length + suppliersPage.data.length + paymentTypesPage.data.length;
       const recordsImported = publishedDailyMetrics.length + importedInventory + importedProducts + importedCustomers + importedSuppliers + importedSaleLines + importedPayments;
       const duplicatesSkipped = uniqueSales.length - stagedSales;
-      const promotionStatus = connection.dataPromotionStatus === "approved" ? "approved" : "staging";
+      const promotionStatus = "staging" as const;
       await renewIntegrationSyncLease(syncLease);
       await getDb().update(integrationSyncRuns).set({
         status: "completed",
@@ -700,9 +708,10 @@ export async function POST(request: Request) {
           payments: importedPayments,
           duplicatesSkipped,
           warningCount: warnings,
-          publishedCanonical: publishCanonical,
-          usingLastApprovedData: promotionStatus === "approved" && !publishCanonical,
-          dataPromotionEnabled: promotionStatus === "approved",
+          stagedCanonical: stageCanonical,
+          publishedCanonical: false,
+          usingLastApprovedData: false,
+          dataPromotionEnabled: false,
         },
       });
 
@@ -743,15 +752,14 @@ export async function POST(request: Request) {
           saleLines: importedSaleLines,
           payments: importedPayments,
         },
-        stagingOnly: promotionStatus !== "approved",
-        dataPromotionEnabled: promotionStatus === "approved",
-        publishedCanonical: publishCanonical,
-        usingLastApprovedData: promotionStatus === "approved" && !publishCanonical,
-        readyForReview: warnings === 0 && backfillComplete && promotionStatus !== "approved",
+        stagingOnly: true,
+        dataPromotionEnabled: false,
+        stagedCanonical: stageCanonical,
+        publishedCanonical: false,
+        usingLastApprovedData: false,
+        readyForReview: warnings === 0 && backfillComplete,
         nextStep: warnings > 0
           ? `Imported ${recordsImported} verified records. ${warnings} source record${warnings === 1 ? " needs" : "s need"} attention before the sync cursor can advance.`
-          : promotionStatus === "approved"
-            ? "R-Series is current and the approved records are available to dashboard features."
           : backfillComplete
             ? `R-Series is current. Review the reconciliation, then approve this account before its records affect dashboard results.`
             : `Imported ${recordsImported} records. Run sync again to continue the remaining R-Series backfill before approval.` ,
@@ -766,6 +774,7 @@ export async function POST(request: Request) {
         completedAt: new Date(),
       }).where(eq(integrationSyncRuns.id, runId));
       await getDb().update(integrationConnections).set({
+        dataPromotionStatus: "staging",
         lastErrorCode: code,
         updatedAt: new Date(),
       }).where(and(

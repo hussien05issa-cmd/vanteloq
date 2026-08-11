@@ -213,6 +213,7 @@ export async function GET(request: Request) {
       return Response.redirect(returnUrl(request, "connected"), 303);
     }
 
+    let finalized = false;
     try {
       const token = await exchangeAuthorizationCode(code, domainPrefix);
       const grantedScopes = (token.scope ?? "").split(/\s+/).filter(Boolean);
@@ -221,7 +222,7 @@ export async function GET(request: Request) {
         throw new ApiError(409, "LIGHTSPEED_SCOPES_INCOMPLETE", "Lightspeed did not grant every read-only scope required by Vanteloq.");
       }
     const readiness = lightspeedReadiness();
-    await getDb().update(integrationConnections).set({
+    const [accountClaim] = await getDb().update(integrationConnections).set({
         status: "pending",
         externalAccountRef: domainPrefix,
         externalAccountName: domainPrefix,
@@ -236,7 +237,11 @@ export async function GET(request: Request) {
         eq(integrationConnections.id, activeConnectionId),
         eq(integrationConnections.organizationId, context.organizationId),
         eq(integrationConnections.provider, LIGHTSPEED_PROVIDER),
-      ));
+        eq(integrationConnections.status, "pending"),
+      )).returning({ id: integrationConnections.id });
+    if (!accountClaim) {
+      throw new ApiError(409, "LIGHTSPEED_CONNECTION_MISSING", "The X-Series connection attempt is no longer available. Start again.");
+    }
     const accessTokenCiphertext = await encryptIntegrationSecret(token.access_token);
     const refreshTokenCiphertext = await encryptIntegrationSecret(token.refresh_token);
     await getDb()
@@ -293,7 +298,7 @@ export async function GET(request: Request) {
         set: { externalName, lastSeenAt: now, updatedAt: now },
       });
     }
-    await getDb().update(integrationConnections).set({
+    const [connected] = await getDb().update(integrationConnections).set({
       status: "connected",
       connectedAt: now,
       lastErrorCode: null,
@@ -302,7 +307,12 @@ export async function GET(request: Request) {
       eq(integrationConnections.id, activeConnectionId),
       eq(integrationConnections.organizationId, context.organizationId),
       eq(integrationConnections.provider, LIGHTSPEED_PROVIDER),
-    ));
+      eq(integrationConnections.status, "pending"),
+    )).returning({ id: integrationConnections.id });
+    if (!connected) {
+      throw new ApiError(409, "LIGHTSPEED_CONNECTION_MISSING", "The X-Series connection attempt is no longer available. Start again.");
+    }
+    finalized = true;
     await recordAudit({
       request,
       requestId,
@@ -322,6 +332,7 @@ export async function GET(request: Request) {
     });
     return Response.redirect(returnUrl(request, "connected"), 303);
     } catch (error) {
+      if (finalized) throw error;
       const errorCode = error instanceof ApiError ? error.code : "LIGHTSPEED_CONNECTION_FAILED";
       // Do not retain a usable provider token when outlet verification fails.
       // A future attempt must restart the one-time authorization flow.
@@ -329,6 +340,11 @@ export async function GET(request: Request) {
         eq(integrationSecrets.connectionId, activeConnectionId),
         eq(integrationSecrets.organizationId, context.organizationId),
         eq(integrationSecrets.provider, LIGHTSPEED_PROVIDER),
+      ));
+      await getDb().delete(integrationLocationMappings).where(and(
+        eq(integrationLocationMappings.connectionId, activeConnectionId),
+        eq(integrationLocationMappings.organizationId, context.organizationId),
+        eq(integrationLocationMappings.provider, LIGHTSPEED_PROVIDER),
       ));
       await getDb().update(integrationConnections).set({
         status: "error",
@@ -340,6 +356,7 @@ export async function GET(request: Request) {
         eq(integrationConnections.id, activeConnectionId),
         eq(integrationConnections.organizationId, context.organizationId),
         eq(integrationConnections.provider, LIGHTSPEED_PROVIDER),
+        eq(integrationConnections.status, "pending"),
       ));
       await recordAudit({
         request,

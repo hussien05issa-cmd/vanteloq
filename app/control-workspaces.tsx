@@ -1860,7 +1860,7 @@ type DocumentData = {
   }[];
   pipeline: Record<string, string>;
 };
-export function DocumentsWorkspace({ showNotice }: SharedProps) {
+export function DocumentsWorkspace({ showNotice, canUpload }: SharedProps & { canUpload: boolean }) {
   const [data, setData] = useState<DocumentData | null>(null);
   const [uploading, setUploading] = useState(false);
   const load = useCallback(async () => {
@@ -1874,7 +1874,7 @@ export function DocumentsWorkspace({ showNotice }: SharedProps) {
     return () => window.clearTimeout(timer);
   }, [load]);
   const upload = async (file: File | null, documentType: string) => {
-    if (!file) return;
+    if (!canUpload || !file) return;
     setUploading(true);
     const form = new FormData();
     form.set("file", file);
@@ -1915,7 +1915,7 @@ export function DocumentsWorkspace({ showNotice }: SharedProps) {
           </article>
         ))}
       </section>
-      <section className="document-upload card">
+      {canUpload ? <section className="document-upload card">
         <div>
           <i>↑</i>
           <h3>
@@ -1946,7 +1946,12 @@ export function DocumentsWorkspace({ showNotice }: SharedProps) {
             ),
           )}
         </div>
-      </section>
+      </section> : <section className="document-upload card" aria-label="Document upload access required">
+        <div>
+          <h3>Document review access</h3>
+          <p>You can review existing documents. A workspace owner can grant upload access when you need to add files.</p>
+        </div>
+      </section>}
       <article className="card document-table">
         <header>
           <span>Document</span>

@@ -206,7 +206,7 @@ test("connector lineage and document quarantine survive migrations 0023 through 
       { source_namespace: "legacy", sync_lease_owner: null, sync_lease_expires_at: null, sync_version: 0 },
     );
     for (const table of [
-      "integration_secrets", "integration_oauth_states", "integration_location_mappings", "integration_sync_runs",
+      "integration_secrets", "integration_location_mappings", "integration_sync_runs",
       "integration_staged_sales", "integration_staged_financial_records", "integration_webhook_events",
       "commerce_products", "commerce_customers", "commerce_suppliers", "commerce_sale_lines", "commerce_payments",
     ]) {
@@ -222,6 +222,21 @@ test("connector lineage and document quarantine survive migrations 0023 through 
         `${table} never retains the migration placeholder as lineage`,
       );
     }
+    const oauthStates = await database.prepare(`SELECT state_hash stateHash, connection_id connectionId,
+      consumed_at consumedAt FROM integration_oauth_states ORDER BY state_hash`).all();
+    assert.equal(oauthStates.results.length, 2);
+    const legacyState = oauthStates.results.find((row) => row.stateHash === "legacy-state");
+    assert.equal(legacyState.connectionId, "legacy");
+    assert.equal(
+      typeof legacyState.consumedAt,
+      "number",
+      "an OAuth callback started before the lineage migration is consumed instead of being attached to an existing connection",
+    );
+    assert.deepEqual(oauthStates.results.find((row) => row.stateHash === "second-state"), {
+      stateHash: "second-state",
+      connectionId: "second-connection",
+      consumedAt: null,
+    });
     assert.deepEqual(
       await database.prepare(`SELECT scan_status, scanned_at, scan_provider FROM workspace_documents
         WHERE id = 'legacy-document'`).first(),

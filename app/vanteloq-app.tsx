@@ -730,7 +730,7 @@ export default function VanteloqApp({
       setNotice(
         state === "connected"
           ? integration === "lightspeed-r"
-            ? "Lightspeed R-Series is connected. Live sales import is starting."
+            ? "Lightspeed R-Series is connected. Review its shops, then start a sync from Connections."
             : "Lightspeed X-Series is verified in read-only staging mode"
           : state === "declined"
             ? `${integration === "lightspeed-r" ? "R-Series" : "X-Series"} authorization was declined`
@@ -1033,6 +1033,7 @@ export default function VanteloqApp({
           <Workspace
             view={view}
             data={data!}
+            permissions={appPermissions}
             currency={currency}
             navigate={navigate}
             refresh={refresh}
@@ -1202,6 +1203,7 @@ function NavigationEditor({
 function Workspace({
   view,
   data,
+  permissions,
   currency,
   navigate,
   refresh,
@@ -1217,6 +1219,7 @@ function Workspace({
 }: {
   view: View;
   data: CommandCentre;
+  permissions: string[];
   currency: string;
   navigate: (view: View) => void;
   refresh: () => Promise<void>;
@@ -1339,6 +1342,7 @@ function Workspace({
         currency={currency}
         showNotice={showNotice}
         createTask={createTask}
+        canUpload={permissions.includes("documents.upload")}
       />
     );
   if (view === "Data Quality")
@@ -1356,6 +1360,7 @@ function Workspace({
         showNotice={showNotice}
         organizationName={organizationName}
         accountName={accountName}
+        permissions={permissions}
       />
     );
   if (view === "Settings")
@@ -2341,7 +2346,7 @@ function DataHub({
     setActiveSampleProvider(provider);
     setSampleResult(body);
     showNotice(provider === "lightspeed-r"
-      ? "R-Series sales and inventory imported into Vanteloq"
+      ? body.nextStep ?? "The R-Series sync finished. Review its reconciliation before approval."
       : `${provider === "stripe" ? "Stripe" : "X-Series"} sample staged; dashboard metrics remain unchanged`);
     await loadConnections();
     if (provider === "lightspeed-r") await refresh();
@@ -2735,7 +2740,13 @@ function DataHub({
             <header>
               <div>
                 <p>{activeSampleProvider === "stripe" ? "STRIPE SAMPLE RECONCILIATION" : activeSampleProvider === "lightspeed-r" ? "R-SERIES DATA SYNC" : "X-SERIES SAMPLE RECONCILIATION"}</p>
-                <h3>{activeSampleProvider === "lightspeed-r" ? "The R-Series import is ready for your review." : "Staged safely. Nothing has entered live metrics."}</h3>
+                <h3>{activeSampleProvider === "lightspeed-r"
+                  ? sampleResult.readyForReview
+                    ? "The R-Series import is ready for your review."
+                    : sampleResult.run.warningCount > 0
+                      ? "The R-Series import needs attention before review."
+                      : "The R-Series backfill is still in progress."
+                  : "Staged safely. Nothing has entered live metrics."}</h3>
               </div>
               <strong>{activeSampleProvider === "lightspeed-r" && sampleResult.readyForReview ? "READY TO REVIEW" : sampleResult.readyForReview ? "READY TO VERIFY" : "DASHBOARD DATA LOCKED"}</strong>
             </header>

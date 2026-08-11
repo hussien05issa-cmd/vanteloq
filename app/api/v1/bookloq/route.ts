@@ -282,6 +282,11 @@ export async function GET(request: Request) {
     const missingReceiptCount = healthStats.receiptEvidenceAvailable
       ? Number(healthStats.missingReceiptCount)
       : null;
+    const journalRows = rows(journalsResult) as Array<{
+      status: string;
+      totalDebitCents: number;
+      totalCreditCents: number;
+    }>;
     const healthScore = missingReceiptCount === null
       ? null
       : bookkeepingHealthScore({ unbalancedJournalCount, uncategorizedCount, unreconciledCount, openCriticalAlerts, missingReceiptCount, monthEndCompletionRate });

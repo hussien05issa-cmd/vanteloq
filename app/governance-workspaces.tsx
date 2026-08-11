@@ -181,7 +181,7 @@ function Loading({ error, retry }: { error: string; retry: () => void }) {
   );
 }
 
-export function TeamWorkspace({ showNotice }: Props) {
+export function TeamWorkspace({ showNotice, permissions }: Props & { permissions: string[] }) {
   const { data, setData, loading, error, load } = useGovernance();
   const [tab, setTab] = useState<"people" | "roles" | "access">("people");
   const [query, setQuery] = useState("");
@@ -190,6 +190,10 @@ export function TeamWorkspace({ showNotice }: Props) {
   const [editingRole, setEditingRole] = useState<Role | null>(null);
   if (loading || !data)
     return <Loading error={error} retry={() => void load()} />;
+  const canCreate = permissions.includes("team.create");
+  const canEdit = permissions.includes("team.edit");
+  const canViewContacts = permissions.includes("team.contacts");
+  const canManageRoles = permissions.includes("team.roles");
   const visible = data.members.filter((member) => {
     const match =
       `${member.firstName} ${member.lastName} ${member.email} ${member.jobTitle} ${member.department}`
@@ -229,9 +233,9 @@ export function TeamWorkspace({ showNotice }: Props) {
             are kept separate from Vanteloq’s product identity.
           </span>
         </div>
-        <button className="primary" onClick={() => setCreating(true)}>
+        {canCreate && <button className="primary" onClick={() => setCreating(true)}>
           + Create employee
-        </button>
+        </button>}
       </section>
       <section className="owner-plan-coverage" role="note">
         <span>Covered by the owner plan</span>
@@ -247,12 +251,12 @@ export function TeamWorkspace({ showNotice }: Props) {
         >
           Employees <b>{data.members.length}</b>
         </button>
-        <button
+        {canManageRoles && <button
           className={tab === "roles" ? "active" : ""}
           onClick={() => setTab("roles")}
         >
           Roles & permissions
-        </button>
+        </button>}
         <button
           className={tab === "access" ? "active" : ""}
           onClick={() => setTab("access")}
@@ -314,7 +318,7 @@ export function TeamWorkspace({ showNotice }: Props) {
                       {member.jobTitle || "Job title not set"} ·{" "}
                       {member.department || "No department"}
                     </small>
-                    <em>{member.email}</em>
+                    {canViewContacts && member.email && <em>{member.email}</em>}
                   </span>
                 </div>
                 <div>
@@ -341,19 +345,19 @@ export function TeamWorkspace({ showNotice }: Props) {
                   )}
                 </div>
                 <div className="row-actions">
-                  {member.status === "active" && !member.userId && (
+                  {canEdit && member.status === "active" && !member.userId && (
                     <button
                       onClick={() => void updateMember(member, "suspended")}
                     >
                       Suspend
                     </button>
                   )}
-                  {member.status === "suspended" && (
+                  {canEdit && member.status === "suspended" && (
                     <button onClick={() => void updateMember(member, "active")}>
                       Restore
                     </button>
                   )}
-                  {!member.userId && member.status !== "archived" && (
+                  {canEdit && !member.userId && member.status !== "archived" && (
                     <button
                       onClick={() => void updateMember(member, "archived")}
                     >
@@ -373,7 +377,7 @@ export function TeamWorkspace({ showNotice }: Props) {
           </section>
         </>
       )}
-      {tab === "roles" && (
+      {canManageRoles && tab === "roles" && (
         <section className="roles-layout">
           <aside className="card role-list">
             <div>
@@ -452,9 +456,10 @@ export function TeamWorkspace({ showNotice }: Props) {
         </section>
       )}
       {tab === "access" && <AccessSafeguards security={data.security} />}
-      {creating && (
+      {canCreate && creating && (
         <EmployeeWizard
           data={data}
+          canAssignRoles={canManageRoles}
           close={() => setCreating(false)}
           created={(next) => {
             setData(next);
@@ -629,13 +634,18 @@ function PermissionEditor({
 
 function EmployeeWizard({
   data,
+  canAssignRoles,
   close,
   created,
 }: {
   data: Governance;
+  canAssignRoles: boolean;
   close: () => void;
   created: (data: Governance) => void;
 }) {
+  const availableRoles = data.roles.filter((role) =>
+    role.systemKey !== "account_owner" && (canAssignRoles || role.systemKey === "employee"),
+  );
   const [step, setStep] = useState(1);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -651,8 +661,8 @@ function EmployeeWizard({
     employmentType: "employee",
     startDate: "",
     roleId:
-      data.roles.find((role) => role.systemKey === "employee")?.id ||
-      data.roles[0]?.id ||
+      availableRoles.find((role) => role.systemKey === "employee")?.id ||
+      availableRoles[0]?.id ||
       "",
     primaryLocationId: data.locations[0]?.id || "",
     remoteLogin: false,
@@ -694,7 +704,7 @@ function EmployeeWizard({
       setSaving(false);
     }
   };
-  const role = data.roles.find((item) => item.id === form.roleId);
+  const role = availableRoles.find((item) => item.id === form.roleId);
   return (
     <div className="modal-backdrop">
       <section className="employee-wizard">
@@ -806,7 +816,7 @@ function EmployeeWizard({
                 value={form.roleId}
                 onChange={(event) => set("roleId", event.target.value)}
               >
-                {data.roles.map((item) => (
+                {availableRoles.map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.name}
                   </option>

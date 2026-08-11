@@ -19,6 +19,23 @@ test("employee defaults allow work without exposing banking, profit, payroll or 
   assert.equal(permissions.has("team.roles"), false);
 });
 
+test("location manager defaults cannot enter organization or team governance", () => {
+  const permissions = new Set(roleTemplates.location_manager);
+  for (const permission of [
+    "organization.settings",
+    "locations.manage",
+    "team.directory",
+    "team.contacts",
+    "team.create",
+    "team.edit",
+    "team.roles",
+    "team.pin_reset",
+  ]) {
+    assert.equal(permissions.has(permission as never), false, permission);
+  }
+  assert.equal(permissions.has("sales.view"), true);
+});
+
 test("temporary workplace PINs reject common and sequential values", () => {
   for (const pin of ["123456", "654321", "111111", "01234567", "12345", "123456789", "12ab5678"]) {
     assert.throws(() => validateTemporaryPin(pin));

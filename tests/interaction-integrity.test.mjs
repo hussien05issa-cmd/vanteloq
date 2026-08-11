@@ -82,7 +82,7 @@ test("live sales and report time frames stay connected to real API filters", asy
   const rSeriesSync = await readFile(new URL("../app/api/v1/integrations/lightspeed-r/sync/route.ts", import.meta.url), "utf8");
   assert.match(app, /IntradaySalesChart/);
   assert.match(app, /integrations\/lightspeed-r\/sync/);
-  assert.match(app, /refreshed automatically every five minutes/);
+  assert.match(app, /refreshes are started from Connections and remain hidden until the latest reconciliation is reviewed/);
   assert.match(reports, /report-period-presets/);
   assert.match(reports, /type="date"/);
   assert.match(reports, /new URLSearchParams\(\{ report: id \}\)/);
@@ -100,6 +100,30 @@ test("live sales and report time frames stay connected to real API filters", asy
   assert.match(rSeriesSync, /recentSalesPage/);
   assert.match(rSeriesSync, /24 \* 60 \* 60 \* 1_000/);
   assert.match(rSeriesSync, /\.\.\.recentSalesPage\.data, \.\.\.salesPage\.data/);
+});
+
+test("connector and document controls reflect real workflow readiness", async () => {
+  const app = await readFile(new URL("../app/vanteloq-app.tsx", import.meta.url), "utf8");
+  const controls = await readFile(new URL("../app/control-workspaces.tsx", import.meta.url), "utf8");
+  assert.match(app, /Review its shops, then start a sync from Connections/);
+  assert.doesNotMatch(app, /Live sales import is starting/);
+  assert.match(app, /sampleResult\.readyForReview/);
+  assert.match(app, /sampleResult\.run\.warningCount > 0/);
+  assert.match(app, /canUpload=\{permissions\.includes\("documents\.upload"\)\}/);
+  assert.match(controls, /if \(!canUpload \|\| !file\) return/);
+  assert.match(controls, /Document upload access required/);
+});
+
+test("team controls follow effective governance permissions", async () => {
+  const app = await readFile(new URL("../app/vanteloq-app.tsx", import.meta.url), "utf8");
+  const governance = await readFile(new URL("../app/governance-workspaces.tsx", import.meta.url), "utf8");
+  assert.match(app, /<TeamWorkspace[\s\S]{0,220}permissions=\{permissions\}/);
+  assert.match(governance, /const canCreate = permissions\.includes\("team\.create"\)/);
+  assert.match(governance, /const canEdit = permissions\.includes\("team\.edit"\)/);
+  assert.match(governance, /const canManageRoles = permissions\.includes\("team\.roles"\)/);
+  assert.match(governance, /canCreate && <button className="primary"/);
+  assert.match(governance, /canManageRoles && tab === "roles"/);
+  assert.match(governance, /role\.systemKey !== "account_owner"/);
 });
 
 test("public resources always expose Home and Sign in navigation", async () => {

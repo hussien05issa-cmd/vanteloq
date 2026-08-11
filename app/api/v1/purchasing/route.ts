@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, exists, inArray, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, exists, inArray } from "drizzle-orm";
 import { getD1, getDb } from "../../../../db";
 import {
   bankAccounts,

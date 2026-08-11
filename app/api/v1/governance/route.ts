@@ -4,12 +4,30 @@ import { accountPreferences, accessRoles, organizationLocations, organizationPro
 import { recordAudit } from "../../../../server/audit";
 import { requireAccess } from "../../../../server/authorization";
 import { ApiError, enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameOrigin } from "../../../../server/api";
-import { allPermissions, permissionCatalogDto, roleTemplates } from "../../../../server/permissions";
+import { allPermissions, effectivePermissions, permissionCatalogDto, requirePermission, roleTemplates, type PermissionKey } from "../../../../server/permissions";
 import { hashPin, validateTemporaryPin } from "../../../../server/pin";
 import { canAddLocation, canAddUser } from "../../../../server/entitlements/engine";
 
-const managers = ["owner", "admin"] as const;
-const readers = ["owner", "admin"] as const;
+const governanceUsers = ["owner", "admin", "manager", "employee", "read_only"] as const;
+const governanceReadPermissions = [
+  "organization.settings",
+  "locations.manage",
+  "team.directory",
+  "team.contacts",
+  "team.create",
+  "team.edit",
+  "team.roles",
+  "team.pin_reset",
+] as const satisfies readonly PermissionKey[];
+const governanceActionPermissions = {
+  update_profile: "organization.settings",
+  update_organization: "organization.settings",
+  create_location: "locations.manage",
+  create_employee: "team.create",
+  update_employee: "team.edit",
+  save_role: "team.roles",
+  reset_pin: "team.pin_reset",
+} as const satisfies Record<string, PermissionKey>;
 const EMAIL = /^[^\s@]{1,64}@[^\s@]{1,190}$/;
 const PHONE = /^[0-9+().\-\s]{0,30}$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -42,6 +60,28 @@ function string(value: unknown, label: string, maximum: number, required = true)
 
 function boolean(value: unknown): boolean { return value === true; }
 function jsonArray(value: unknown): string[] { return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string").slice(0, 100) : []; }
+function storedPermissions(value: string): PermissionKey[] {
+  try {
+    return jsonArray(JSON.parse(value)).filter((permission): permission is PermissionKey => allPermissions.includes(permission as PermissionKey));
+  } catch {
+    return [];
+  }
+}
+
+async function requireDelegablePermissions(context: Awaited<ReturnType<typeof requireAccess>>, permissions: readonly PermissionKey[]) {
+  const actorPermissions = await effectivePermissions(context);
+  if (permissions.some((permission) => !actorPermissions.includes(permission))) {
+    throw new ApiError(403, "INSUFFICIENT_PERMISSION", "You cannot grant permissions that are outside your own access.");
+  }
+}
+
+async function governancePermissions(context: Awaited<ReturnType<typeof requireAccess>>) {
+  const permissions = await effectivePermissions(context);
+  if (!governanceReadPermissions.some((permission) => permissions.includes(permission))) {
+    throw new ApiError(403, "INSUFFICIENT_PERMISSION", "You do not have permission to perform this action.");
+  }
+  return permissions;
+}
 
 async function bootstrap(organizationId: string, userId: string, ownerName: string, businessName: string, country: string, province: string, city: string, address: string, postalCode: string, timezone: string, currency: string) {
   const now = Date.now();
@@ -68,12 +108,18 @@ async function bootstrap(organizationId: string, userId: string, ownerName: stri
     ...roleStatements,
     database.prepare(`INSERT OR IGNORE INTO team_members
       (id, organization_id, user_id, role_id, first_name, last_name, preferred_name, email, mobile, employee_code, job_title, department, employment_type, start_date, permitted_locations_json, status, remote_login, require_mfa, pin_enabled, notes, created_by_user_id, created_at, updated_at)
-      SELECT ?, ?, ?, ?, ?, ?, ?, email, '', 'OWNER', 'Account Owner', 'Executive', 'owner', date('now'), ?, 'active', 1, 1, 0, '', ?, ?, ? FROM users WHERE id = ?`)
-      .bind(`${organizationId}:member:owner`, organizationId, userId, `${organizationId}:role:account_owner`, firstName, lastName, ownerName, JSON.stringify([`${organizationId}:location:primary`]), userId, now, now, userId),
+      SELECT ?, ?, owner.id, ?, ?, ?, ?, owner.email, '', 'OWNER', 'Account Owner', 'Executive', 'owner', date('now'), ?, 'active', 1, 1, 0, '', ?, ?, ?
+      FROM users owner
+      INNER JOIN memberships owner_membership ON owner_membership.user_id = owner.id
+      WHERE owner_membership.organization_id = ? AND owner_membership.role = 'owner'
+        AND owner_membership.status = 'active' AND owner.status = 'active'
+      ORDER BY owner_membership.created_at ASC LIMIT 1`)
+      .bind(`${organizationId}:member:owner`, organizationId, `${organizationId}:role:account_owner`, firstName, lastName, ownerName, JSON.stringify([`${organizationId}:location:primary`]), userId, now, now, organizationId),
   ]);
 }
 
-async function responseBody(context: Awaited<ReturnType<typeof requireAccess>>) {
+async function responseBody(context: Awaited<ReturnType<typeof requireAccess>>, grantedPermissions?: readonly PermissionKey[]) {
+  const permissions = grantedPermissions ?? await effectivePermissions(context);
   await bootstrap(context.organizationId, context.userId, context.organization.ownerName, context.organization.businessName, context.organization.country, context.organization.province, context.organization.city, context.organization.address, context.organization.postalCode, context.organization.timezone, context.organization.currency);
   const [profile] = await getDb().select().from(organizationProfiles).where(eq(organizationProfiles.organizationId, context.organizationId)).limit(1);
   const [preferences] = await getDb().select().from(accountPreferences).where(eq(accountPreferences.userId, context.userId)).limit(1);
@@ -84,14 +130,59 @@ async function responseBody(context: Awaited<ReturnType<typeof requireAccess>>) 
   const authenticationProvider = context.identity.provider === "supabase"
     ? "Supabase authentication"
     : "Sites authentication";
+  const canViewOrganization = permissions.includes("organization.settings");
+  const canViewLocations = canViewOrganization || permissions.includes("locations.manage") || permissions.includes("team.create") || permissions.includes("team.edit") || permissions.includes("team.roles");
+  const canViewDirectory = permissions.includes("team.directory") || permissions.includes("team.contacts") || permissions.includes("team.create") || permissions.includes("team.edit") || permissions.includes("team.roles") || permissions.includes("team.pin_reset");
+  const canViewContacts = permissions.includes("team.contacts");
+  const canViewRoleDefinitions = permissions.includes("team.roles");
   return {
     account: { ...account, emailVerified: context.identity.emailVerified, authenticationProvider },
-    organization: { ...context.organization, displayName: profile?.displayName ?? context.organization.businessName, organizationType: profile?.organizationType ?? "business", businessStructure: profile?.businessStructure ?? "", locale: profile?.locale ?? "en-CA", language: profile?.language ?? "en", brandColor: profile?.brandColor ?? "#2368c4", logoAvailable: Boolean(profile?.logoObjectKey), logoVersion: profile?.logoVersion ?? 0 },
+    organization: canViewOrganization ? { ...context.organization, displayName: profile?.displayName ?? context.organization.businessName, organizationType: profile?.organizationType ?? "business", businessStructure: profile?.businessStructure ?? "", locale: profile?.locale ?? "en-CA", language: profile?.language ?? "en", brandColor: profile?.brandColor ?? "#2368c4", logoAvailable: Boolean(profile?.logoObjectKey), logoVersion: profile?.logoVersion ?? 0 } : null,
     preferences: preferences ?? { emailNotifications: true, rememberedProfile: true, hiddenNavigationJson: "[]", preferredLocationId: null },
-    locations,
-    roles: roles.map((role) => ({ ...role, permissions: jsonArray(JSON.parse(role.permissionsJson)) })),
-    members: members.map((member) => ({ ...member, permittedLocations: jsonArray(JSON.parse(member.permittedLocationsJson)) })),
-    permissionCatalog: permissionCatalogDto(),
+    locations: canViewLocations ? locations.map((location) => ({
+      id: location.id,
+      name: location.name,
+      status: location.status,
+      countryCode: location.countryCode,
+      addressLine1: location.addressLine1,
+      locality: location.locality,
+      administrativeArea: location.administrativeArea,
+      postalCode: location.postalCode,
+      timezone: location.timezone,
+      currency: location.currency,
+      validationStatus: location.validationStatus,
+    })) : [],
+    roles: canViewDirectory ? roles.map((role) => ({
+      id: role.id,
+      name: role.name,
+      description: role.description,
+      color: role.color,
+      systemKey: role.systemKey,
+      permissions: canViewRoleDefinitions ? storedPermissions(role.permissionsJson) : [],
+      locationScopeJson: canViewRoleDefinitions ? role.locationScopeJson : "[]",
+    })) : [],
+    members: canViewDirectory ? members.map((member) => ({
+      id: member.id,
+      userId: member.userId,
+      roleId: member.roleId,
+      firstName: member.firstName,
+      lastName: member.lastName,
+      preferredName: member.preferredName,
+      email: canViewContacts ? member.email : "",
+      mobile: canViewContacts ? member.mobile : "",
+      employeeCode: member.employeeCode,
+      jobTitle: member.jobTitle,
+      department: member.department,
+      employmentType: member.employmentType,
+      status: member.status,
+      remoteLogin: member.remoteLogin,
+      requireMfa: member.requireMfa,
+      pinEnabled: member.pinEnabled,
+      primaryLocationId: member.primaryLocationId,
+      permittedLocations: jsonArray(JSON.parse(member.permittedLocationsJson)),
+      lastLoginAt: member.lastLoginAt,
+    })) : [],
+    permissionCatalog: canViewRoleDefinitions ? permissionCatalogDto() : [],
     security: {
       password: `Managed by ${authenticationProvider}`,
       mfa: "Managed by the authenticated identity provider",
@@ -109,20 +200,27 @@ async function responseBody(context: Awaited<ReturnType<typeof requireAccess>>) 
 
 export async function GET(request: Request) {
   return handleApi(request, async () => {
-    const context = await requireAccess(request, readers);
+    const context = await requireAccess(request, governanceUsers);
+    const permissions = await governancePermissions(context);
     await enforceRateLimit("governance:read", context.userId, 90, 60);
-    return jsonResponse({ governance: await responseBody(context) });
+    return jsonResponse({ governance: await responseBody(context, permissions) });
   });
 }
 
 export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
-    const context = await requireAccess(request, managers);
+    const context = await requireAccess(request, governanceUsers);
     await enforceRateLimit("governance:write", context.userId, 40, 3_600);
-    await bootstrap(context.organizationId, context.userId, context.organization.ownerName, context.organization.businessName, context.organization.country, context.organization.province, context.organization.city, context.organization.address, context.organization.postalCode, context.organization.timezone, context.organization.currency);
     const input = await readJsonObject(request, 128_000);
     const action = string(input.action, "action", 60);
+    const permission = governanceActionPermissions[action as keyof typeof governanceActionPermissions];
+    if (!permission) throw new ApiError(400, "UNKNOWN_ACTION", "Select a supported governance action.");
+    await requirePermission(context, permission);
+    if (action === "update_employee" && typeof input.roleId === "string" && input.roleId.trim()) {
+      await requirePermission(context, "team.roles");
+    }
+    await bootstrap(context.organizationId, context.userId, context.organization.ownerName, context.organization.businessName, context.organization.country, context.organization.province, context.organization.city, context.organization.address, context.organization.postalCode, context.organization.timezone, context.organization.currency);
     const database = getD1();
     const now = Date.now();
     let resourceType = "governance";
@@ -186,8 +284,13 @@ export async function POST(request: Request) {
       const mobile = string(input.mobile, "mobile number", 30, false); if (!PHONE.test(mobile)) throw new ApiError(400, "INVALID_FIELD", "Enter a valid mobile number.");
       const startDate = string(input.startDate, "start date", 10, false); if (startDate && !DATE.test(startDate)) throw new ApiError(400, "INVALID_FIELD", "Enter a valid start date.");
       const roleId = string(input.roleId, "role", 200);
-      const [role] = await getDb().select({ id: accessRoles.id }).from(accessRoles).where(and(eq(accessRoles.id, roleId), eq(accessRoles.organizationId, context.organizationId), eq(accessRoles.archived, false))).limit(1);
+      const [role] = await getDb().select({ id: accessRoles.id, systemKey: accessRoles.systemKey, permissionsJson: accessRoles.permissionsJson }).from(accessRoles).where(and(eq(accessRoles.id, roleId), eq(accessRoles.organizationId, context.organizationId), eq(accessRoles.archived, false))).limit(1);
       if (!role) throw new ApiError(400, "INVALID_FIELD", "Select a valid role.");
+      if (role.systemKey === "account_owner") throw new ApiError(409, "OWNER_ROLE_PROTECTED", "The Account Owner role cannot be assigned here.");
+      if (role.systemKey !== "employee") {
+        await requirePermission(context, "team.roles");
+        await requireDelegablePermissions(context, storedPermissions(role.permissionsJson));
+      }
       const pinValue = string(input.temporaryPin, "temporary PIN", 8, false);
       const pin = pinValue ? validateTemporaryPin(pinValue) : "";
       const firstName = string(input.firstName, "first name", 80); const lastName = string(input.lastName, "last name", 80);
@@ -237,24 +340,36 @@ export async function POST(request: Request) {
       const memberId = string(input.memberId, "employee", 200);
       const status = string(input.status, "status", 40);
       if (!["draft", "active", "suspended", "archived"].includes(status)) throw new ApiError(400, "INVALID_FIELD", "Select a valid employee status.");
-      const [member] = await getDb().select({ userId: teamMembers.userId }).from(teamMembers).where(and(eq(teamMembers.id, memberId), eq(teamMembers.organizationId, context.organizationId))).limit(1);
+      const [member] = await getDb().select({ userId: teamMembers.userId, roleId: teamMembers.roleId, systemKey: accessRoles.systemKey })
+        .from(teamMembers)
+        .leftJoin(accessRoles, and(eq(teamMembers.roleId, accessRoles.id), eq(teamMembers.organizationId, accessRoles.organizationId)))
+        .where(and(eq(teamMembers.id, memberId), eq(teamMembers.organizationId, context.organizationId))).limit(1);
       if (!member) throw new ApiError(404, "NOT_FOUND", "Employee profile not found.");
       if (member.userId === context.userId && status !== "active") throw new ApiError(409, "LAST_OWNER_PROTECTED", "The active account owner cannot suspend or archive their own profile.");
       const roleId = string(input.roleId, "role", 200, false);
+      if (member.systemKey === "account_owner" && (status !== "active" || (roleId && roleId !== member.roleId))) {
+        throw new ApiError(409, "OWNER_ROLE_PROTECTED", "The Account Owner profile and role cannot be changed here.");
+      }
       if (roleId) {
-        const [role] = await getDb().select({ id: accessRoles.id }).from(accessRoles).where(and(
+        const [role] = await getDb().select({ id: accessRoles.id, systemKey: accessRoles.systemKey, permissionsJson: accessRoles.permissionsJson }).from(accessRoles).where(and(
           eq(accessRoles.id, roleId),
           eq(accessRoles.organizationId, context.organizationId),
           eq(accessRoles.archived, false),
         )).limit(1);
         if (!role) throw new ApiError(400, "INVALID_FIELD", "Select a valid role.");
+        if (role.systemKey === "account_owner") throw new ApiError(409, "OWNER_ROLE_PROTECTED", "The Account Owner role cannot be assigned here.");
+        if (member.userId === context.userId && roleId !== member.roleId) {
+          throw new ApiError(409, "SELF_ROLE_CHANGE_FORBIDDEN", "You cannot change your own access role.");
+        }
+        await requireDelegablePermissions(context, storedPermissions(role.permissionsJson));
       }
       await database.prepare("UPDATE team_members SET role_id = COALESCE(?, role_id), status = ?, updated_at = ? WHERE id = ? AND organization_id = ?").bind(roleId || null, status, now, memberId, context.organizationId).run();
       resourceType = "team_member"; resourceId = memberId; details = { action, status };
     } else if (action === "save_role") {
       const requestedRoleId = string(input.roleId, "role", 200, false);
       const roleId = requestedRoleId || crypto.randomUUID();
-      const permissions = jsonArray(input.permissions).filter((permission) => allPermissions.includes(permission as never));
+      const permissions = jsonArray(input.permissions).filter((permission): permission is PermissionKey => allPermissions.includes(permission as PermissionKey));
+      await requireDelegablePermissions(context, permissions);
       const [existing] = await getDb().select({ systemKey: accessRoles.systemKey }).from(accessRoles).where(and(eq(accessRoles.id, roleId), eq(accessRoles.organizationId, context.organizationId))).limit(1);
       if (requestedRoleId && !existing) throw new ApiError(404, "ROLE_NOT_FOUND", "Role not found in this organization.");
       if (existing?.systemKey === "account_owner") throw new ApiError(409, "OWNER_ROLE_PROTECTED", "The Account Owner role cannot be changed.");

@@ -73,7 +73,9 @@ CREATE UNIQUE INDEX `integration_webhook_events_replay_unique` ON `integration_w
 CREATE INDEX `integration_webhook_events_status_idx` ON `integration_webhook_events` (`organization_id`,`provider`,`connection_id`,`status`,`received_at`);--> statement-breakpoint
 ALTER TABLE `integration_oauth_states` ADD `connection_id` text DEFAULT 'legacy' NOT NULL;--> statement-breakpoint
 UPDATE `integration_oauth_states`
-SET `connection_id` = COALESCE((SELECT `id` FROM `integration_connections` WHERE `organization_id` = `integration_oauth_states`.`organization_id` AND `provider` = `integration_oauth_states`.`provider` LIMIT 1), `connection_id`);--> statement-breakpoint
+SET `expires_at` = MIN(`expires_at`, CAST(strftime('%s', 'now') AS INTEGER)),
+    `consumed_at` = COALESCE(`consumed_at`, CAST(strftime('%s', 'now') AS INTEGER))
+WHERE `connection_id` = 'legacy';--> statement-breakpoint
 ALTER TABLE `purchase_order_lines` ADD `provider` text;--> statement-breakpoint
 ALTER TABLE `purchase_order_lines` ADD `external_product_ref` text;--> statement-breakpoint
 CREATE INDEX `purchase_order_lines_product_idx` ON `purchase_order_lines` (`organization_id`,`provider`,`external_product_ref`);

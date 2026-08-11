@@ -254,15 +254,12 @@ export async function POST(request: Request) {
       resourceId: connection.id,
       details: { provider: connection.provider, reviewedAt: approvedAt.toISOString() },
     });
-    const publicationPending = connection.provider === "lightspeed-r";
     return jsonResponse({
       approved: true,
       connectionId: connection.id,
       provider: connection.provider,
-      publicationPending,
-      nextStep: publicationPending
-        ? "Run one final R-Series sync to publish the reviewed data to dashboard features."
-        : "Reviewed provider data is now available to dashboard features.",
+      publicationPending: false,
+      nextStep: "Reviewed provider data is now available to dashboard features.",
     });
   });
 }

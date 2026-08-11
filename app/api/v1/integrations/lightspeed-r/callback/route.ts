@@ -143,8 +143,18 @@ export async function GET(request: Request) {
       return Response.redirect(returnUrl(request, "declined"), 303);
     }
 
+    let finalized = false;
     try {
       const token = await exchangeLightspeedRCode(code);
+      const [tokenClaim] = await getDb().update(integrationConnections).set({ updatedAt: now }).where(and(
+        eq(integrationConnections.id, activeConnectionId),
+        eq(integrationConnections.organizationId, context.organizationId),
+        eq(integrationConnections.provider, LIGHTSPEED_R_PROVIDER),
+        eq(integrationConnections.status, "pending"),
+      )).returning({ id: integrationConnections.id });
+      if (!tokenClaim) {
+        throw new ApiError(409, "LIGHTSPEED_R_CONNECTION_MISSING", "The R-Series connection attempt is no longer available. Start again.");
+      }
       await saveLightspeedRTokens(context.organizationId, activeConnectionId, token);
       const account = await fetchLightspeedRAccount(context.organizationId, activeConnectionId);
       const readiness = lightspeedRReadiness();
@@ -187,7 +197,7 @@ export async function GET(request: Request) {
         });
         return Response.redirect(returnUrl(request, "connected"), 303);
       }
-      await getDb().update(integrationConnections).set({
+      const [accountClaim] = await getDb().update(integrationConnections).set({
         status: "pending", externalAccountRef: account.accountId, externalAccountName: account.name,
         apiVersion: readiness.apiVersion, scopesJson: JSON.stringify(LIGHTSPEED_R_SCOPES),
         dataPromotionStatus: "blocked", connectedAt: null, lastErrorCode: null, updatedAt: now,
@@ -195,7 +205,11 @@ export async function GET(request: Request) {
         eq(integrationConnections.id, activeConnectionId),
         eq(integrationConnections.organizationId, context.organizationId),
         eq(integrationConnections.provider, LIGHTSPEED_R_PROVIDER),
-      ));
+        eq(integrationConnections.status, "pending"),
+      )).returning({ id: integrationConnections.id });
+      if (!accountClaim) {
+        throw new ApiError(409, "LIGHTSPEED_R_CONNECTION_MISSING", "The R-Series connection attempt is no longer available. Start again.");
+      }
       const shops = await fetchLightspeedRCollection(context.organizationId, activeConnectionId, account.accountId, "Shop", { maxPages: 10 });
       for (const shop of shops.data) {
         const ref = typeof shop.shopID === "string" || typeof shop.shopID === "number" ? String(shop.shopID) : "";
@@ -210,9 +224,14 @@ export async function GET(request: Request) {
           set: { externalName: name, lastSeenAt: now, updatedAt: now },
         });
       }
-      await getDb().update(integrationConnections).set({ status: "connected", connectedAt: now, updatedAt: now }).where(and(
+      const [connected] = await getDb().update(integrationConnections).set({ status: "connected", connectedAt: now, updatedAt: now }).where(and(
         eq(integrationConnections.id, activeConnectionId), eq(integrationConnections.organizationId, context.organizationId), eq(integrationConnections.provider, LIGHTSPEED_R_PROVIDER),
-      ));
+        eq(integrationConnections.status, "pending"),
+      )).returning({ id: integrationConnections.id });
+      if (!connected) {
+        throw new ApiError(409, "LIGHTSPEED_R_CONNECTION_MISSING", "The R-Series connection attempt is no longer available. Start again.");
+      }
+      finalized = true;
       await recordAudit({
         request, requestId, organizationId: context.organizationId, actorUserId: context.userId,
         action: "integration.connected", resourceType: "integration", resourceId: activeConnectionId,
@@ -220,10 +239,17 @@ export async function GET(request: Request) {
       });
       return Response.redirect(returnUrl(request, "connected"), 303);
     } catch (error) {
+      if (finalized) throw error;
       const errorCode = error instanceof ApiError ? error.code : "LIGHTSPEED_R_CONNECTION_FAILED";
       await getDb().delete(integrationSecrets).where(and(eq(integrationSecrets.organizationId, context.organizationId), eq(integrationSecrets.provider, LIGHTSPEED_R_PROVIDER), eq(integrationSecrets.connectionId, activeConnectionId)));
+      await getDb().delete(integrationLocationMappings).where(and(
+        eq(integrationLocationMappings.organizationId, context.organizationId),
+        eq(integrationLocationMappings.provider, LIGHTSPEED_R_PROVIDER),
+        eq(integrationLocationMappings.connectionId, activeConnectionId),
+      ));
       await getDb().update(integrationConnections).set({ status: "error", dataPromotionStatus: "blocked", connectedAt: null, lastErrorCode: errorCode, updatedAt: new Date() }).where(and(
         eq(integrationConnections.id, activeConnectionId), eq(integrationConnections.organizationId, context.organizationId), eq(integrationConnections.provider, LIGHTSPEED_R_PROVIDER),
+        eq(integrationConnections.status, "pending"),
       ));
       await recordAudit({
         request, requestId, organizationId: context.organizationId, actorUserId: context.userId,

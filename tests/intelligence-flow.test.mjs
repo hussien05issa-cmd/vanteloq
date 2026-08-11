@@ -394,8 +394,8 @@ test("migrations, tenant isolation and the complete intelligence-to-action flow 
       ...owner,
       body: { action: "update_employee", memberId: ownerMember.id, roleId: foreignRole.id, status: "active" },
     });
-    assert.equal(crossTenantRoleAssignment.status, 400);
-    assert.equal((await crossTenantRoleAssignment.json()).error.code, "INVALID_FIELD");
+    assert.equal(crossTenantRoleAssignment.status, 409);
+    assert.equal((await crossTenantRoleAssignment.json()).error.code, "OWNER_ROLE_PROTECTED");
     const secondCommand = await dispatch(worker, environment, "/api/v1/command-centre", secondOwner);
     assert.equal(secondCommand.status, 200);
     const secondBody = await secondCommand.json();
