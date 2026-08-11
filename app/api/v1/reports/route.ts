@@ -119,12 +119,15 @@ export async function GET(request: Request) {
       status: integrationConnections.status,
       dataPromotionStatus: integrationConnections.dataPromotionStatus,
       syncLeaseOwner: integrationConnections.syncLeaseOwner,
+      syncLeaseExpiresAt: integrationConnections.syncLeaseExpiresAt,
     }).from(integrationConnections)
       .where(eq(integrationConnections.organizationId, context.organizationId));
     const posProviders = new Set(["lightspeed", "lightspeed-r", "shopify", "shopify-pos", "square", "clover", "moneris"]);
     const posRows = connectedRows.filter((row) => posProviders.has(row.provider));
     const connectedPosRows = posRows.filter((row) => row.status === "connected");
-    const approvedPosRows = connectedPosRows.filter((row) => row.dataPromotionStatus === "approved" && !row.syncLeaseOwner);
+    const now = Date.now();
+    const approvedPosRows = connectedPosRows.filter((row) => row.dataPromotionStatus === "approved"
+      && (!row.syncLeaseOwner || !row.syncLeaseExpiresAt || row.syncLeaseExpiresAt.getTime() <= now));
     const connectedPosProviders = new Set(approvedPosRows.map((row) => row.provider));
     const approvedConnectionIds = approvedPosRows.map((row) => row.id);
     const filters = [

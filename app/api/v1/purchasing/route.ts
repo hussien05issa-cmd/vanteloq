@@ -299,8 +299,10 @@ async function procurementCatalog(
                   FROM purchase_order_lines pol
                   JOIN purchase_orders po ON po.id = pol.purchase_order_id
                   WHERE pol.organization_id = p.organization_id
-                    AND ((pol.provider = p.provider AND pol.external_product_ref = p.external_product_id)
-                      OR (pol.provider IS NULL AND pol.sku = p.sku AND NOT EXISTS (
+                    AND ((pol.connection_id = p.connection_id
+                          AND pol.provider = p.provider
+                          AND pol.external_product_ref = p.external_product_id)
+                      OR (pol.connection_id IS NULL AND pol.provider IS NULL AND pol.sku = p.sku AND NOT EXISTS (
                         SELECT 1 FROM commerce_products duplicate
                         WHERE duplicate.organization_id = p.organization_id
                           AND duplicate.sku = p.sku
@@ -312,7 +314,8 @@ async function procurementCatalog(
                               AND duplicate_connection.organization_id = duplicate.organization_id
                               AND duplicate_connection.status = 'connected'
                               AND duplicate_connection.data_promotion_status = 'approved'
-                              AND duplicate_connection.sync_lease_owner IS NULL
+                              AND (duplicate_connection.sync_lease_owner IS NULL OR duplicate_connection.sync_lease_expires_at IS NULL
+                                OR duplicate_connection.sync_lease_expires_at <= CAST(strftime('%s', 'now') AS INTEGER))
                           ))))
                     AND po.status NOT IN ('closed', 'cancelled', 'received', 'invoiced')), 0) AS incomingUnits,
                 COALESCE((SELECT SUM(sl.quantity_milli)
@@ -347,8 +350,10 @@ async function procurementCatalog(
                   FROM purchase_order_lines pol
                   JOIN purchase_orders po ON po.id = pol.purchase_order_id
                   WHERE pol.organization_id = p.organization_id
-                    AND ((pol.provider = p.provider AND pol.external_product_ref = p.external_product_id)
-                      OR (pol.provider IS NULL AND pol.sku = p.sku AND NOT EXISTS (
+                    AND ((pol.connection_id = p.connection_id
+                          AND pol.provider = p.provider
+                          AND pol.external_product_ref = p.external_product_id)
+                      OR (pol.connection_id IS NULL AND pol.provider IS NULL AND pol.sku = p.sku AND NOT EXISTS (
                         SELECT 1 FROM commerce_products duplicate
                         WHERE duplicate.organization_id = p.organization_id
                           AND duplicate.sku = p.sku
@@ -360,14 +365,17 @@ async function procurementCatalog(
                               AND duplicate_connection.organization_id = duplicate.organization_id
                               AND duplicate_connection.status = 'connected'
                               AND duplicate_connection.data_promotion_status = 'approved'
-                              AND duplicate_connection.sync_lease_owner IS NULL
+                              AND (duplicate_connection.sync_lease_owner IS NULL OR duplicate_connection.sync_lease_expires_at IS NULL
+                                OR duplicate_connection.sync_lease_expires_at <= CAST(strftime('%s', 'now') AS INTEGER))
                           ))))) AS lastOrderedDate
                 ,(SELECT po.status
                   FROM purchase_order_lines pol
                   JOIN purchase_orders po ON po.id = pol.purchase_order_id
                   WHERE pol.organization_id = p.organization_id
-                    AND ((pol.provider = p.provider AND pol.external_product_ref = p.external_product_id)
-                      OR (pol.provider IS NULL AND pol.sku = p.sku AND NOT EXISTS (
+                    AND ((pol.connection_id = p.connection_id
+                          AND pol.provider = p.provider
+                          AND pol.external_product_ref = p.external_product_id)
+                      OR (pol.connection_id IS NULL AND pol.provider IS NULL AND pol.sku = p.sku AND NOT EXISTS (
                         SELECT 1 FROM commerce_products duplicate
                         WHERE duplicate.organization_id = p.organization_id
                           AND duplicate.sku = p.sku
@@ -379,7 +387,8 @@ async function procurementCatalog(
                               AND duplicate_connection.organization_id = duplicate.organization_id
                               AND duplicate_connection.status = 'connected'
                               AND duplicate_connection.data_promotion_status = 'approved'
-                              AND duplicate_connection.sync_lease_owner IS NULL
+                              AND (duplicate_connection.sync_lease_owner IS NULL OR duplicate_connection.sync_lease_expires_at IS NULL
+                                OR duplicate_connection.sync_lease_expires_at <= CAST(strftime('%s', 'now') AS INTEGER))
                           ))))
                   ORDER BY po.order_date DESC, po.updated_at DESC LIMIT 1) AS lastOrderStatus
          FROM commerce_products p
@@ -391,7 +400,9 @@ async function procurementCatalog(
           AND s.connection_id = p.connection_id
           AND s.external_supplier_id = p.supplier_ref
          WHERE p.organization_id = ? AND p.archived = 0
-           AND pc.status = 'connected' AND pc.data_promotion_status = 'approved' AND pc.sync_lease_owner IS NULL
+           AND pc.status = 'connected' AND pc.data_promotion_status = 'approved'
+           AND (pc.sync_lease_owner IS NULL OR pc.sync_lease_expires_at IS NULL
+             OR pc.sync_lease_expires_at <= CAST(strftime('%s', 'now') AS INTEGER))
          ORDER BY p.name ASC
          LIMIT 1000`,
       )
@@ -404,7 +415,9 @@ async function procurementCatalog(
          JOIN integration_connections c
            ON c.id = sl.connection_id AND c.organization_id = sl.organization_id
          WHERE sl.organization_id = ? AND sl.sold_at IS NOT NULL
-           AND c.status = 'connected' AND c.data_promotion_status = 'approved' AND c.sync_lease_owner IS NULL`,
+           AND c.status = 'connected' AND c.data_promotion_status = 'approved'
+           AND (c.sync_lease_owner IS NULL OR c.sync_lease_expires_at IS NULL
+             OR c.sync_lease_expires_at <= CAST(strftime('%s', 'now') AS INTEGER))`,
       )
       .bind(organizationId)
       .first<{ earliestSaleDate: string | null }>(),
@@ -466,7 +479,8 @@ async function procurementCatalog(
               AND approved.organization_id = commerce_sale_lines.organization_id
               AND approved.status = 'connected'
               AND approved.data_promotion_status = 'approved'
-              AND approved.sync_lease_owner IS NULL
+              AND (approved.sync_lease_owner IS NULL OR approved.sync_lease_expires_at IS NULL
+                OR approved.sync_lease_expires_at <= CAST(strftime('%s', 'now') AS INTEGER))
           )
         GROUP BY provider, connection_id, product_ref
       `).bind(thirtyDayStart, sixtyDayStart, thirtyDayStart, ninetyDayStart, organizationId, ...saleLocationBindings).all<{
@@ -480,28 +494,39 @@ async function procurementCatalog(
         earliestSaleDate: string | null;
       }>(),
       database.prepare(`
-        SELECT sku, provider, externalProductRef, incomingUnits, orderDate AS lastOrderedDate, status AS lastOrderStatus
+        SELECT sku, provider, connectionId, externalProductRef, incomingUnits,
+               orderDate AS lastOrderedDate, status AS lastOrderStatus
         FROM (
           SELECT pol.sku,
                  pol.provider,
+                 pol.connection_id AS connectionId,
                  pol.external_product_ref AS externalProductRef,
                  SUM(CASE WHEN po.status NOT IN ('closed', 'cancelled', 'received', 'invoiced')
                           THEN MAX(pol.quantity - pol.received_quantity, 0) ELSE 0 END)
-                   OVER (PARTITION BY COALESCE(pol.provider || ':' || pol.external_product_ref, 'legacy:' || pol.sku)) AS incomingUnits,
+                   OVER (PARTITION BY COALESCE(
+                     pol.provider || ':' || pol.connection_id || ':' || pol.external_product_ref,
+                     'legacy:' || pol.sku
+                   )) AS incomingUnits,
                  po.order_date AS orderDate,
                  po.status,
                  ROW_NUMBER() OVER (
-                   PARTITION BY COALESCE(pol.provider || ':' || pol.external_product_ref, 'legacy:' || pol.sku)
+                   PARTITION BY COALESCE(
+                     pol.provider || ':' || pol.connection_id || ':' || pol.external_product_ref,
+                     'legacy:' || pol.sku
+                   )
                    ORDER BY po.order_date DESC, po.updated_at DESC
                  ) AS rank
           FROM purchase_order_lines pol
           JOIN purchase_orders po ON po.id = pol.purchase_order_id
-          WHERE pol.organization_id = ? AND po.delivery_location_id IN (${orderLocationPlaceholders})
+          WHERE pol.organization_id = ?
+            AND (pol.connection_id IS NOT NULL OR pol.provider IS NULL)
+            AND po.delivery_location_id IN (${orderLocationPlaceholders})
         )
         WHERE rank = 1
       `).bind(organizationId, ...locationScope.ids).all<{
         sku: string;
         provider: string | null;
+        connectionId: string | null;
         externalProductRef: string | null;
         incomingUnits: number;
         lastOrderedDate: string | null;
@@ -528,9 +553,12 @@ async function procurementCatalog(
       });
     }
     for (const row of orderRows.results ?? []) {
-      const key = row.provider && row.externalProductRef
-        ? `${row.provider}:${row.externalProductRef}`
-        : `legacy:${row.sku}`;
+      const key = row.provider && row.connectionId && row.externalProductRef
+        ? `${row.provider}:${row.connectionId}:${row.externalProductRef}`
+        : row.provider === null
+          ? `legacy:${row.sku}`
+          : null;
+      if (!key) continue;
       scopedOrdersByProduct.set(key, {
         incomingUnits: Number(row.incomingUnits ?? 0),
         lastOrderedDate: row.lastOrderedDate,
@@ -548,7 +576,7 @@ async function procurementCatalog(
       candidate.sku === row.sku && candidate.id !== row.id,
     );
     const scopedOrder = locationScope
-      ? scopedOrdersByProduct.get(`${row.provider}:${row.externalProductId}`)
+      ? scopedOrdersByProduct.get(`${row.provider}:${row.connectionId}:${row.externalProductId}`)
         ?? (!duplicateSku ? scopedOrdersByProduct.get(`legacy:${row.sku}`) : undefined)
       : null;
     const onHandQuantity = Number(locationScope ? scopedInventory?.onHandQuantity ?? 0 : row.onHandQuantity ?? 0);
@@ -871,6 +899,7 @@ export async function POST(request: Request) {
           id: crypto.randomUUID(),
           lineNumber: index + 1,
           provider: selectedProduct?.provider ?? null,
+          connectionId: selectedProduct?.connectionId ?? null,
           externalProductRef: selectedProduct?.externalProductId ?? null,
           sku: selectedProduct?.sku ?? text(row.sku, "SKU", 80, false),
           description:
@@ -971,8 +1000,8 @@ export async function POST(request: Request) {
           database
             .prepare(
               `INSERT INTO purchase_order_lines
-        (id, organization_id, purchase_order_id, line_number, provider, external_product_ref, sku, description, quantity, received_quantity, invoiced_quantity, unit_cost_cents, previous_cost_cents, current_inventory, reorder_point, forecast_demand, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?, ?)`,
+        (id, organization_id, purchase_order_id, line_number, provider, connection_id, external_product_ref, sku, description, quantity, received_quantity, invoiced_quantity, unit_cost_cents, previous_cost_cents, current_inventory, reorder_point, forecast_demand, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?, ?)`,
             )
             .bind(
               line.id,
@@ -980,6 +1009,7 @@ export async function POST(request: Request) {
               id,
               line.lineNumber,
               line.provider,
+              line.connectionId,
               line.externalProductRef,
               line.sku,
               line.description,

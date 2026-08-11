@@ -214,6 +214,19 @@ test("migrations, tenant isolation and the complete intelligence-to-action flow 
     const primaryLocation = await database.prepare(`SELECT id FROM organization_locations
       WHERE organization_id = ? AND status = 'active' ORDER BY created_at LIMIT 1`).bind(ownerRecord.organizationId).first();
     assert.ok(ownerRecord?.userId && ownerRecord?.organizationId && primaryLocation?.id);
+    const alertTimestamp = Math.floor(Date.now() / 1_000);
+    await database.batch(Array.from({ length: 100 }, (_, index) => database.prepare(`INSERT INTO bookloq_alerts
+      (id, organization_id, severity, alert_type, title, explanation, dollar_impact_cents,
+       confidence, supporting_records_json, recommended_action, assigned_user_id, due_date,
+       status, resolution_history_json, demo_record, created_at, updated_at)
+      VALUES (?, ?, 'critical', 'test_non_receipt', ?, 'Aggregate health coverage fixture.', NULL,
+        'high', '[]', 'Review the fixture.', NULL, NULL, 'open', '[]', 1, ?, ?)`)
+      .bind(`health-alert-${index}`, ownerRecord.organizationId, `Critical fixture ${index}`, alertTimestamp + index, alertTimestamp + index)));
+    const crowdedBookLoqResponse = await dispatch(worker, environment, "/api/v1/bookloq", owner);
+    assert.equal(crowdedBookLoqResponse.status, 200);
+    const crowdedSummary = (await crowdedBookLoqResponse.json()).bookloq.summary;
+    assert.equal(crowdedSummary.missingReceiptsCount, 1);
+    assert.notEqual(crowdedSummary.healthScore, null);
     const freshBankNow = Date.now();
     await database.batch([
       database.prepare("UPDATE bookloq_settings SET data_mode = 'live', updated_at = ? WHERE organization_id = ?")

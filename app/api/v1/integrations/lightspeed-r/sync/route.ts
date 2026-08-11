@@ -394,6 +394,7 @@ export async function POST(request: Request) {
       const ignored = new Set(ignoredMappings.map((row) => scopedRef(row.externalLocationRef)).filter((value): value is string => Boolean(value)));
       let stagedSales = 0;
       for (const sale of warnings === 0 ? uniqueSales : []) {
+        await renewIntegrationSyncLease(syncLease);
         const result = await database.prepare(`
           INSERT OR IGNORE INTO integration_staged_sales
             (id, organization_id, provider, connection_id, external_sale_id, external_version, outlet_ref, sold_at, state,
@@ -409,6 +410,7 @@ export async function POST(request: Request) {
       }
       let importedSaleLines = 0;
       for (const line of warnings === 0 ? uniqueSaleLines.filter((row) => !row.outletRef || !ignoredRaw.has(row.outletRef)) : []) {
+        await renewIntegrationSyncLease(syncLease);
         const result = await database.prepare(`
           INSERT INTO commerce_sale_lines
             (id, organization_id, provider, connection_id, external_sale_id, external_line_id, product_ref, customer_ref,
@@ -432,6 +434,7 @@ export async function POST(request: Request) {
       }
       let importedPayments = 0;
       for (const payment of warnings === 0 ? uniquePayments.filter((row) => !row.outletRef || !ignoredRaw.has(row.outletRef)) : []) {
+        await renewIntegrationSyncLease(syncLease);
         const result = await database.prepare(`
           INSERT INTO commerce_payments
             (id, organization_id, provider, connection_id, external_payment_id, external_sale_id, payment_type_ref,
@@ -474,6 +477,7 @@ export async function POST(request: Request) {
       const publishedDailyMetrics = publishCanonical ? dailyMetrics : [];
 
       const now = Date.now();
+      await renewIntegrationSyncLease(syncLease);
       await database.prepare(`
         INSERT INTO data_imports
           (id, organization_id, import_type, status, file_name, row_count, idempotency_key, imported_by_user_id, created_at)
@@ -481,6 +485,7 @@ export async function POST(request: Request) {
       `).bind(importId, context.organizationId, IMPORT_LABEL, runId, context.userId, now).run();
 
       if (publishCanonical) {
+        await renewIntegrationSyncLease(syncLease);
         await database.prepare(`
           DELETE FROM daily_business_metrics
           WHERE organization_id = ? AND location_ref IN (
@@ -494,6 +499,7 @@ export async function POST(request: Request) {
         ).run();
 
         for (const row of publishedDailyMetrics) {
+          await renewIntegrationSyncLease(syncLease);
           await database.prepare(`
           INSERT INTO daily_business_metrics (
             organization_id, business_date, location_ref, gross_sales_cents, net_sales_cents,
@@ -526,6 +532,7 @@ export async function POST(request: Request) {
       if (publishCanonical) {
         for (const balance of inventoryBalances) {
           if (ignoredRaw.has(balance.outletRef)) continue;
+          await renewIntegrationSyncLease(syncLease);
           const result = await database.prepare(`
           INSERT INTO inventory_balances
             (id, organization_id, location_ref, sku, name, on_hand_quantity, reorder_point, version,
@@ -549,6 +556,7 @@ export async function POST(request: Request) {
       }
       let importedProducts = 0;
       for (const product of warnings === 0 ? products : []) {
+        await renewIntegrationSyncLease(syncLease);
         const result = await database.prepare(`
           INSERT INTO commerce_products
             (id, organization_id, provider, connection_id, external_product_id, sku, name, category_ref, supplier_ref,
@@ -571,6 +579,7 @@ export async function POST(request: Request) {
       }
       let importedCustomers = 0;
       for (const customer of warnings === 0 ? customers : []) {
+        await renewIntegrationSyncLease(syncLease);
         const result = await database.prepare(`
           INSERT INTO commerce_customers
             (id, organization_id, provider, connection_id, external_customer_id, display_name, first_name, last_name,
@@ -590,6 +599,7 @@ export async function POST(request: Request) {
       }
       let importedSuppliers = 0;
       for (const supplier of warnings === 0 ? suppliers : []) {
+        await renewIntegrationSyncLease(syncLease);
         const result = await database.prepare(`
           INSERT INTO commerce_suppliers
             (id, organization_id, provider, connection_id, external_supplier_id, name, account_number, contact_name,
@@ -607,6 +617,7 @@ export async function POST(request: Request) {
         ).run();
         importedSuppliers += Number(result.meta.changes ?? 0);
       }
+      await renewIntegrationSyncLease(syncLease);
       await database.prepare(`
         UPDATE data_imports SET status = 'completed', row_count = ?
         WHERE id = ? AND organization_id = ?

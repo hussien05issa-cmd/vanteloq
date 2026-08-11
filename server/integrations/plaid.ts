@@ -13,6 +13,7 @@ import {
   acquireIntegrationSyncLease,
   releaseIntegrationSyncLease,
   renewIntegrationSyncLease,
+  type IntegrationSyncLease,
 } from "./connection.ts";
 
 export const PLAID_PROVIDER = "plaid";
@@ -205,7 +206,13 @@ function accountType(account: PlaidAccount): "chequing" | "savings" | "credit_ca
   return null;
 }
 
-async function syncAccounts(organizationId: string, itemId: string, accessToken: string, fetcher: typeof fetch = fetch) {
+async function syncAccounts(
+  organizationId: string,
+  itemId: string,
+  accessToken: string,
+  fetcher: typeof fetch = fetch,
+  syncLease?: IntegrationSyncLease,
+) {
   const payload = await plaidRequest<{ accounts: PlaidAccount[] }>("/accounts/balance/get", { access_token: accessToken }, fetcher);
   const database = getDb();
   const now = new Date();
@@ -223,6 +230,7 @@ async function syncAccounts(organizationId: string, itemId: string, accessToken:
     )).limit(1);
     const ledgerId = existingLedger?.id ?? crypto.randomUUID();
     const liability = account.type === "credit" || account.type === "loan";
+    if (syncLease) await renewIntegrationSyncLease(syncLease);
     await database.insert(financialAccounts).values({
       id: ledgerId,
       organizationId,
@@ -245,6 +253,7 @@ async function syncAccounts(organizationId: string, itemId: string, accessToken:
       updatedAt: now,
     }});
     const toCents = (value: number | null | undefined) => typeof value === "number" && Number.isFinite(value) ? Math.round(value * 100) : null;
+    if (syncLease) await renewIntegrationSyncLease(syncLease);
     await database.insert(bankAccounts).values({
       id: crypto.randomUUID(),
       organizationId,
@@ -291,6 +300,7 @@ async function syncAccounts(organizationId: string, itemId: string, accessToken:
     synchronizedAccountRefs,
   );
   if (removedAccountRefs.length) {
+    if (syncLease) await renewIntegrationSyncLease(syncLease);
     await database.update(bankAccounts).set({
       connectionStatus: "error",
       liveBalanceCents: null,
@@ -551,7 +561,7 @@ export async function syncPlaidTransactions(organizationId: string, fetcher: typ
 
   const database = getDb();
   const now = new Date();
-  const accountsImported = await syncAccounts(organizationId, current.itemId, current.accessToken, fetcher);
+  const accountsImported = await syncAccounts(organizationId, current.itemId, current.accessToken, fetcher, syncLease);
   const accountRows = await database.select({ externalAccountRef: bankAccounts.externalAccountRef, accountId: bankAccounts.financialAccountId })
     .from(bankAccounts).where(and(eq(bankAccounts.organizationId, organizationId), eq(bankAccounts.provider, PLAID_PROVIDER)));
   const accountMap = new Map(accountRows.map((account) => [account.externalAccountRef, account.accountId]));
@@ -570,6 +580,7 @@ export async function syncPlaidTransactions(organizationId: string, fetcher: typ
   for (const { state, record } of normalizedRecords) {
       const accountId = accountMap.get(record.externalAccountRef);
       if (!accountId) throw new ApiError(502, "PLAID_ACCOUNT_MAPPING_MISSING", "Plaid account mapping became unavailable during synchronization. The cursor was not advanced.");
+      await renewIntegrationSyncLease(syncLease);
       await database.insert(financialTransactions).values({
         id: crypto.randomUUID(),
         organizationId,
@@ -608,6 +619,7 @@ export async function syncPlaidTransactions(organizationId: string, fetcher: typ
         updatedAt: now,
       }});
       if (record.pendingExternalSourceId) {
+        await renewIntegrationSyncLease(syncLease);
         await database.update(financialTransactions).set({ sourceState: "removed", updatedAt: now }).where(and(
           eq(financialTransactions.organizationId, organizationId),
           eq(financialTransactions.sourceSystem, PLAID_PROVIDER),
@@ -616,6 +628,7 @@ export async function syncPlaidTransactions(organizationId: string, fetcher: typ
       }
   }
   for (const record of removed) {
+    await renewIntegrationSyncLease(syncLease);
     await database.update(financialTransactions).set({ sourceState: "removed", updatedAt: now }).where(and(
       eq(financialTransactions.organizationId, organizationId),
       eq(financialTransactions.sourceSystem, PLAID_PROVIDER),

@@ -1567,7 +1567,7 @@ function SalesWorkspace({ data, currency, navigate, refresh, paymentRange, setPa
   return (
     <div className="content sales-live-page">
       <section className="live-sales-heading">
-        <div><p>SALES INTELLIGENCE</p><h2>Sales performance from each supported commerce source.</h2><span>Sales from {sourceName} use the finest verified detail that provider supplies. Refunds and product cost appear only when included in the normalized source records.</span>{data.liveSource.provider === "lightspeed-r" && <span>For roles allowed to manage integrations, connected R-Series data is refreshed automatically every five minutes while this workspace is open.</span>}</div>
+        <div><p>SALES INTELLIGENCE</p><h2>Sales performance from each supported commerce source.</h2><span>Sales from {sourceName} use the finest verified detail that provider supplies. Refunds and product cost appear only when included in the normalized source records.</span>{data.liveSource.provider === "lightspeed-r" && <span>R-Series refreshes are started from Connections and remain hidden until the latest reconciliation is reviewed.</span>}</div>
         <div className="live-sales-actions"><span className="live-sync-state current"><i />{data.liveSource.lastSuccessfulSyncAt ? `Synced ${formatRelativeSync(data.liveSource.lastSuccessfulSyncAt)}` : "Awaiting sync"}</span><button onClick={() => void refresh()}>Refresh view</button></div>
       </section>
       <LiveSalesPanel data={data} currency={currency} paymentRange={paymentRange} setPaymentRange={setPaymentRange} compact />
