@@ -1,6 +1,6 @@
 # Vanteloq intelligence contract
 
-Vanteloq must answer four questions—what happened, why, what needs attention, and what to do next—without treating inference as fact.
+Vanteloq must answer four questions: what happened, why, what needs attention, and what to do next. It must do so without treating inference as fact.
 
 ## Output contract
 

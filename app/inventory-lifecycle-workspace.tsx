@@ -208,11 +208,11 @@ export function InventoryLifecycleWorkspace({ currency, showNotice, createTask }
         <article><small>LOT RECORDS</small><b>{data.summary.totalLots}</b></article>
       </div>
       {data.posBalances.length > 0 ? <article className="card pos-stock-ledger">
-        <header><div><p>CONNECTED POS INVENTORY</p><h3>Current R-Series stock balances</h3><span>Read-only quantities imported by shop. Reorder points are copied from the source when present.</span></div><strong>{data.summary.posSkus} SKUs</strong></header>
+        <header><div><p>CONNECTED POS INVENTORY</p><h3>Current normalized stock balances</h3><span>Read-only quantities imported by location. Reorder points are copied from the connected source when present.</span></div><strong>{data.summary.posSkus} SKUs</strong></header>
         <div className="pos-stock-head"><span>Product</span><span>Location</span><span>On hand</span><span>Reorder point</span></div>
         {data.posBalances.slice(0, 100).map(balance => <div className="pos-stock-row" key={`${balance.locationRef}:${balance.sku}`}>
           <span><b>{balance.name}</b><small>{balance.sku}</small></span>
-          <span>{balance.locationRef.replace("lightspeed-r:", "R-Series shop ")}</span>
+          <span>{balance.locationRef.replace(/^([^:]+):/, (_, provider: string) => `${provider.replaceAll("-", " ")} location `)}</span>
           <strong>{balance.onHandQuantity}</strong>
           <em className={balance.onHandQuantity <= balance.reorderPoint ? "low" : "ok"}>{balance.reorderPoint}</em>
         </div>)}

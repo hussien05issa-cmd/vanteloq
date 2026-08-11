@@ -4,7 +4,7 @@ import { LegalShell, PolicySection } from "../legal-shell";
 
 export const metadata: Metadata = {
   title: "Legal Centre | Vanteloq",
-  description: "Read Vanteloq's Privacy Policy, Terms of Service, and Cookie Notice.",
+  description: "Read Vanteloq's Privacy Policy, Terms of Service, Cookie Notice, connected-data boundaries, and professional review notice.",
   alternates: { canonical: "/legal" },
 };
 
@@ -24,8 +24,17 @@ export default function LegalPage() {
         <p>Vanteloq is operated by LexEdge Consulting in Alberta, Canada. References to “Vanteloq,” “we,” “us,” or “our” in these documents refer to LexEdge Consulting operating the Vanteloq service.</p>
         <p>Questions about these documents can be sent to <a href="mailto:hussienissa@lexedgeconsulting.com">hussienissa@lexedgeconsulting.com</a>.</p>
       </PolicySection>
+      <PolicySection id="boundaries" title="Connected data and product boundaries">
+        <ul>
+          <li>A Plaid connection begins through an authorized provider consent flow and is read-only for the disclosed data products. It does not allow Vanteloq to move money. Disconnecting revokes or deletes stored access credentials and stops scheduled access, while accounting records may remain under a valid retention requirement.</li>
+          <li>Uploaded invoices and receipts remain source evidence. Extracted fields can be incomplete or incorrect and require comparison with the original document before posting, payment, filing, or tax use.</li>
+          <li>Vanteloq and BookLoQ support record organization, analysis, reconciliation, and review. They do not replace legal, accounting, tax, payroll, or financial advice.</li>
+          <li>A transaction or customer record is not automatically consent to send marketing. Customers remain responsible for establishing express or implied consent, or an applicable CASL exception, and for sender information, unsubscribe controls, consent evidence, and suppression records.</li>
+          <li>An integration, recommendation, or workflow does not guarantee sales, profit, legal compliance, tax treatment, provider availability, or a particular business result.</li>
+        </ul>
+      </PolicySection>
       <PolicySection id="review" title="Professional review recommended">
-        <div className="legal-note"><strong>Important:</strong> These documents are written to reflect the current Vanteloq product and Canadian privacy principles. They should still be reviewed by a qualified Alberta lawyer before paid subscriptions or broad public onboarding begin.</div>
+        <div className="legal-note"><strong>Important:</strong> These documents are written to reflect the current Vanteloq product and Canadian privacy principles, but no website notice can guarantee that every legal issue has been resolved. A qualified Alberta lawyer should review the service, provider agreements, customer contracts, privacy practices, cross-border processing, retention schedule, and commercial-message workflows before paid subscriptions or broad public onboarding begin. Accounting and tax controls should also be reviewed by the appropriate qualified professionals.</div>
       </PolicySection>
     </LegalShell>
   );

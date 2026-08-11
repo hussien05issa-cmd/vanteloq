@@ -148,6 +148,20 @@
       "when": 1786431315047,
       "tag": "0020_special_speedball",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
+      "when": 1786433162337,
+      "tag": "0021_abandoned_morlocks",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "6",
+      "when": 1786434490965,
+      "tag": "0022_cheerful_silhouette",
+      "breakpoints": true
     }
   ]
 }

@@ -27,6 +27,23 @@ type Recommendation = {
   evidenceNeeded: string[];
   sourceLabel: string;
   sourceUrl: string;
+  confidence: "high" | "medium" | "low" | "blocked";
+  confidenceReason: string;
+  evidence: string[];
+  missingInputs: string[];
+  actionOwner: string;
+  actionDueDate: string;
+  reviewMethod: string;
+  sourceFreshness: string;
+  operatingCoverage: CoverageItem[];
+};
+type CoverageItem = {
+  key: "customers" | "inventory" | "margin" | "cashReadiness" | "location";
+  label: string;
+  status: "ready" | "limited" | "missing" | "stale";
+  freshness: string;
+  evidence: string[];
+  missingInputs: string[];
 };
 type CalendarEntry = {
   id: string;
@@ -49,6 +66,8 @@ type GrowthData = {
   profile: Profile;
   organization: { businessName: string };
   recommendations: Recommendation[];
+  operatingCoverage: Record<CoverageItem["key"], Omit<CoverageItem, "key" | "label">>;
+  marketingEvidence: Omit<CoverageItem, "key" | "label">;
   calendar: CalendarEntry[];
   searchSeries: { query: string; observedDate: string; position: number; discoveryActions: number | null; sourceSystem: string }[];
   importCounts: { touchpoints: number; transactions: number; searchObservations: number };
@@ -56,6 +75,8 @@ type GrowthData = {
   canManage: boolean;
   period: { since: string; through: string };
   sourceBoundary: string;
+  scopeBoundary: string;
+  locationScope: { id: string; name: string } | null;
 };
 
 type Tab = "overview" | "context" | "data" | "calendar";
@@ -140,7 +161,7 @@ function SearchVisibilityChart({ rows }: { rows: GrowthData["searchSeries"] }) {
   </div>;
 }
 
-export default function GrowthWorkspace({ currency, navigate }: { currency: string; navigate: (view: "Integrations") => void }) {
+export default function GrowthWorkspace({ currency, navigate, activeLocationId }: { currency: string; navigate: (view: "Integrations") => void; activeLocationId: string | null }) {
   const [data, setData] = useState<GrowthData | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [tab, setTab] = useState<Tab>("overview");
@@ -150,18 +171,19 @@ export default function GrowthWorkspace({ currency, navigate }: { currency: stri
   const [csvKind, setCsvKind] = useState<CsvKind>("search_visibility");
   const [csvFileName, setCsvFileName] = useState("");
   const [csvRows, setCsvRows] = useState<CsvRecord[]>([]);
+  const growthPath = `/api/v1/growth${activeLocationId ? `?location=${encodeURIComponent(activeLocationId)}` : ""}`;
 
   const load = useCallback(async () => {
-    const response = await apiFetch("/api/v1/growth", { headers: { Accept: "application/json" } });
+    const response = await apiFetch(growthPath, { headers: { Accept: "application/json" } });
     const body = await response.json();
     if (!response.ok) throw new Error(body.error?.message ?? "Growth intelligence could not be loaded.");
     setData(body);
     setProfile(body.profile);
-  }, []);
+  }, [growthPath]);
 
   useEffect(() => {
     let active = true;
-    void apiFetch("/api/v1/growth", { headers: { Accept: "application/json" } })
+    void apiFetch(growthPath, { headers: { Accept: "application/json" } })
       .then(async (response) => {
         const body = await response.json();
         if (!response.ok) throw new Error(body.error?.message ?? "Growth intelligence could not be loaded.");
@@ -176,7 +198,7 @@ export default function GrowthWorkspace({ currency, navigate }: { currency: stri
         if (active) setError(caught instanceof Error ? caught.message : "Growth intelligence could not be loaded.");
       });
     return () => { active = false; };
-  }, []);
+  }, [growthPath]);
 
   const totals = useMemo(() => data?.growth.channels.reduce((result, row) => ({ revenue: result.revenue + row.revenueCents, leads: result.leads + row.leads, customers: result.customers + row.customers }), { revenue: 0, leads: 0, customers: 0 }) ?? { revenue: 0, leads: 0, customers: 0 }, [data]);
 
@@ -293,7 +315,7 @@ export default function GrowthWorkspace({ currency, navigate }: { currency: stri
           <div className="card-head"><div><p className="card-kicker">TAILORED NEXT ACTIONS</p><h3>{data?.organization.businessName ?? "Business"} growth plan</h3></div><button onClick={() => setTab("context")}>Edit context</button></div>
           <div className="recommendation-stack">{data?.recommendations.map((item, index) => <section key={item.id}>
             <span className={`recommendation-rank ${item.priority}`}>{String(index + 1).padStart(2, "0")}</span>
-            <div><div className="recommendation-meta"><small>{label(item.category)}</small><em>{item.priority} priority</em></div><h4>{item.title}</h4><p>{item.rationale}</p><strong>Recommended action</strong><span>{item.action}</span><dl><dt>Measure</dt><dd>{item.metrics.join(" · ")}</dd><dt>Evidence needed</dt><dd>{item.evidenceNeeded.join(" · ")}</dd></dl><a href={item.sourceUrl} target="_blank" rel="noreferrer">Method source: {item.sourceLabel}</a></div>
+            <div><div className="recommendation-meta"><small>{label(item.category)}</small><em>{item.priority} priority</em><em>{label(item.confidence)} confidence</em></div><h4>{item.title}</h4><p>{item.rationale}</p><strong>Recommended action</strong><span>{item.action}</span><dl><dt>Confidence</dt><dd>{item.confidenceReason}</dd><dt>Source freshness</dt><dd>{item.sourceFreshness}</dd><dt>Evidence</dt><dd>{item.evidence.join(" · ")}</dd><dt>Missing inputs</dt><dd>{item.missingInputs.length ? item.missingInputs.join(" · ") : "No material inputs missing"}</dd><dt>Operating checks</dt><dd>{item.operatingCoverage.map((check) => `${check.label}: ${label(check.status)} (${check.freshness})`).join(" · ")}</dd><dt>Action owner</dt><dd>{item.actionOwner}</dd><dt>Action due</dt><dd>{item.actionDueDate}</dd><dt>Measure</dt><dd>{item.metrics.join(" · ")}</dd><dt>Evidence needed</dt><dd>{item.evidenceNeeded.join(" · ")}</dd><dt>Review method</dt><dd>{item.reviewMethod}</dd></dl><a href={item.sourceUrl} target="_blank" rel="noreferrer">Method source: {item.sourceLabel}</a></div>
           </section>)}</div>
         </article>
         <article className="card growth-search-card"><div className="card-head"><div><p className="card-kicker">SEARCH VISIBILITY</p><h3>Recorded position trend</h3></div><button onClick={() => setTab("data")}>Add data</button></div><SearchVisibilityChart rows={data?.searchSeries ?? []} />{data?.growth.insight && <div className="growth-search-insight"><b>{data.growth.insight.title}</b><span>{data.growth.insight.explanation}</span></div>}</article>
@@ -349,6 +371,6 @@ export default function GrowthWorkspace({ currency, navigate }: { currency: stri
       <article className="card growth-calendar-list"><div className="card-head"><div><p className="card-kicker">UPCOMING & RECENT</p><h3>Marketing work</h3></div><span>{data?.calendar.length ?? 0} entries</span></div>{data?.calendar.length ? <div>{data.calendar.map((entry) => <section key={entry.id} className={`calendar-entry ${entry.status}`}><time dateTime={entry.startDate}><b>{new Date(`${entry.startDate}T12:00:00`).toLocaleDateString("en-CA", { day: "2-digit" })}</b><span>{new Date(`${entry.startDate}T12:00:00`).toLocaleDateString("en-CA", { month: "short" })}</span></time><div><div><small>{label(entry.channel)} · {label(entry.eventType)}</small><em>{label(entry.status)}</em></div><h4>{entry.title}</h4>{entry.objective && <p>{entry.objective}</p>}<span>{entry.dueDate ? `Due ${entry.dueDate}` : "No separate due date"}</span></div>{entry.status !== "completed" && entry.status !== "cancelled" && data.canManage && <button onClick={() => completeEntry(entry)}>Mark complete</button>}</section>)}</div> : <div className="growth-chart-empty"><b>No marketing work planned</b><span>Add the first campaign, content task, audit, offer or follow-up.</span></div>}</article>
     </section>}
 
-    <article className="card growth-boundary"><b>Evidence boundary</b><span>{data?.sourceBoundary ?? "Loading source contract..."}</span></article>
+    <article className="card growth-boundary"><b>{data?.locationScope ? `${data.locationScope.name} evidence boundary` : "Evidence boundary"}</b><span>{data ? `${data.scopeBoundary} ${data.sourceBoundary}` : "Loading source contract..."}</span></article>
   </div>;
 }

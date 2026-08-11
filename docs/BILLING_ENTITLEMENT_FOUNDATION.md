@@ -18,7 +18,7 @@ This document records the verified Stripe Billing and entitlement boundary. It i
 | Starter | $49 CAD | $490 CAD | 3 | 1 |
 | Growth | $99 CAD | $990 CAD | 10 | 3 |
 | Pro | $179 CAD | $1,790 CAD | 25 | 10 |
-| BookLoq add-on | $39 CAD | $390 CAD | — | — |
+| BookLoq add-on | $39 CAD | $390 CAD | Not applicable | Not applicable |
 
 The Pro location value of 10 is an initial centralized policy value, not an unlimited claim. AI capability levels are represented, but numerical quotas remain `null` until reliable metering exists.
 

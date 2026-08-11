@@ -1,6 +1,6 @@
 # Vanteloq transactional email
 
-## Deployment status — August 9, 2026
+## Deployment status: August 9, 2026
 
 - Cloudflare Email Routing is enabled for `vanteloq.com`; Cloudflare added and is syncing the required MX, SPF and routing DKIM records.
 - No inbound alias is published yet because the monitored destination inbox still needs to be explicitly selected and verified.

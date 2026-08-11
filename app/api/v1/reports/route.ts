@@ -1,6 +1,6 @@
-import { and, asc, eq, gte, like, lte } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, lte } from "drizzle-orm";
 import { getD1, getDb } from "../../../../db";
-import { dailyBusinessMetrics, integrationConnections } from "../../../../db/schema";
+import { dailyBusinessMetrics, integrationConnections, integrationLocationMappings } from "../../../../db/schema";
 import { requireAccess } from "../../../../server/authorization";
 import {
   ApiError,
@@ -12,7 +12,7 @@ import {
   effectivePermissions,
   requirePermission,
 } from "../../../../server/permissions";
-import { LIGHTSPEED_R_PROVIDER } from "../../../../server/integrations/lightspeed-r";
+import { requireAccessibleLocation } from "../../../../server/location-access";
 
 const users = ["owner", "admin", "manager", "employee", "read_only"] as const;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -99,38 +99,59 @@ export async function GET(request: Request) {
       await requirePermission(context, "payroll.totals");
     const start = url.searchParams.get("start");
     const end = url.searchParams.get("end");
-    const location = url.searchParams.get("location") || "all";
+    const requestedLocationId = url.searchParams.get("location");
+    const selectedLocation = requestedLocationId ? await requireAccessibleLocation(context, requestedLocationId) : null;
+    const selectedMappings = selectedLocation ? await getDb().select({
+      provider: integrationLocationMappings.provider,
+      externalLocationRef: integrationLocationMappings.externalLocationRef,
+    }).from(integrationLocationMappings).where(and(
+      eq(integrationLocationMappings.organizationId, context.organizationId),
+      eq(integrationLocationMappings.localLocationId, selectedLocation.id),
+      eq(integrationLocationMappings.status, "mapped"),
+    )) : [];
+    const locationRefs = new Set<string>(selectedLocation ? [selectedLocation.id, selectedLocation.name] : []);
+    for (const mapping of selectedMappings) {
+      locationRefs.add(`${mapping.provider}:${mapping.externalLocationRef}`);
+    }
     if ((start && !DATE.test(start)) || (end && !DATE.test(end)))
       throw new ApiError(400, "INVALID_DATE", "Enter valid report dates.");
     if (start && end && start > end)
       throw new ApiError(400, "INVALID_DATE_RANGE", "The start date must be on or before the end date.");
-    const [lightspeedConnection] = await getDb().select({ id: integrationConnections.id }).from(integrationConnections).where(and(
+    const connectedRows = await getDb().select({ provider: integrationConnections.provider }).from(integrationConnections).where(and(
       eq(integrationConnections.organizationId, context.organizationId),
-      eq(integrationConnections.provider, LIGHTSPEED_R_PROVIDER),
       eq(integrationConnections.status, "connected"),
-    )).limit(1);
+    ));
+    const posProviders = new Set(["lightspeed", "lightspeed-r", "shopify", "shopify-pos", "square", "clover", "moneris"]);
+    const connectedPosProviders = new Set(connectedRows.map((row) => row.provider).filter((provider) => posProviders.has(provider)));
     const filters = [
       eq(dailyBusinessMetrics.organizationId, context.organizationId),
     ];
     if (start) filters.push(gte(dailyBusinessMetrics.businessDate, start));
     if (end) filters.push(lte(dailyBusinessMetrics.businessDate, end));
-    if (location !== "all")
-      filters.push(eq(dailyBusinessMetrics.locationRef, location));
-    else if (lightspeedConnection)
-      filters.push(like(dailyBusinessMetrics.locationRef, `${LIGHTSPEED_R_PROVIDER}:%`));
-    const rows = await getDb()
+    if (selectedLocation)
+      filters.push(inArray(dailyBusinessMetrics.locationRef, [...locationRefs]));
+    const unscopedRows = await getDb()
       .select()
       .from(dailyBusinessMetrics)
       .where(and(...filters))
       .orderBy(asc(dailyBusinessMetrics.businessDate))
       .limit(1000);
+    const hasConnectedProviderRows = unscopedRows.some((row) => {
+      const provider = row.locationRef.split(":", 1)[0];
+      return connectedPosProviders.has(provider);
+    });
+    const rows = !selectedLocation && hasConnectedProviderRows
+      ? unscopedRows.filter((row) => connectedPosProviders.has(row.locationRef.split(":", 1)[0]))
+      : unscopedRows;
     const generatedAt = new Date().toISOString();
     const distinctDates = [...new Set(rows.map((row) => row.businessDate))];
     const resolvedStart = start ?? distinctDates.at(0) ?? null;
     const resolvedEnd = end ?? distinctDates.at(-1) ?? null;
     const expectedDays = resolvedStart && resolvedEnd ? inclusiveDays(resolvedStart, resolvedEnd) : 0;
     const source = {
-      type: lightspeedConnection ? "Lightspeed R-Series" : "Imported daily summaries",
+      type: connectedPosProviders.size
+        ? `${[...connectedPosProviders].map((provider) => provider.replaceAll("-", " ")).join(", ")} normalized records`
+        : "Imported daily summaries",
       rowCount: rows.length,
       verifiedDays: distinctDates.length,
       expectedDays,
@@ -139,10 +160,11 @@ export async function GET(request: Request) {
       latestBusinessDate: rows.at(-1)?.businessDate ?? null,
       generatedAt,
       organizationId: context.organizationId,
-      location,
+      location: selectedLocation?.name ?? "All locations",
+      locationId: selectedLocation?.id ?? null,
       periodStart: resolvedStart,
       periodEnd: resolvedEnd,
-      providerScoped: Boolean(lightspeedConnection),
+      providerScoped: connectedPosProviders.size > 0,
     };
     if (format === "csv") {
       await requirePermission(context, "reports.export");
@@ -200,23 +222,48 @@ export async function GET(request: Request) {
         gte(dailyBusinessMetrics.businessDate, comparisonStart),
         lte(dailyBusinessMetrics.businessDate, comparisonEnd),
       ];
-      if (location !== "all") comparisonFilters.push(eq(dailyBusinessMetrics.locationRef, location));
-      else if (lightspeedConnection) comparisonFilters.push(like(dailyBusinessMetrics.locationRef, `${LIGHTSPEED_R_PROVIDER}:%`));
-      comparisonRows = await getDb().select().from(dailyBusinessMetrics).where(and(...comparisonFilters)).orderBy(asc(dailyBusinessMetrics.businessDate)).limit(1000);
+      if (selectedLocation) comparisonFilters.push(inArray(dailyBusinessMetrics.locationRef, [...locationRefs]));
+      const unscopedComparisonRows = await getDb().select().from(dailyBusinessMetrics).where(and(...comparisonFilters)).orderBy(asc(dailyBusinessMetrics.businessDate)).limit(1000);
+      comparisonRows = !selectedLocation && hasConnectedProviderRows
+        ? unscopedComparisonRows.filter((row) => connectedPosProviders.has(row.locationRef.split(":", 1)[0]))
+        : unscopedComparisonRows;
     }
     const comparisonTotals = totalsFor(comparisonRows);
-    const paymentMix = lightspeedConnection && resolvedStart && resolvedEnd
+    const paymentOutletRefs = selectedMappings.map((mapping) => mapping.externalLocationRef);
+    const paymentLocationClause = selectedLocation
+      ? ` AND outlet_ref IN (${paymentOutletRefs.map(() => "?").join(", ") || "NULL"})`
+      : "";
+    const paymentMixResult = connectedPosProviders.size && resolvedStart && resolvedEnd && (!selectedLocation || paymentOutletRefs.length)
       ? await getD1().prepare(`
-          SELECT category, payment_type_name AS paymentTypeName,
+          SELECT provider, category, payment_type_name AS paymentTypeName,
                  SUM(CASE WHEN amount_cents > 0 THEN amount_cents ELSE 0 END) AS amountCents,
                  COUNT(DISTINCT CASE WHEN amount_cents > 0 THEN external_sale_id END) AS transactionCount
           FROM commerce_payments
-          WHERE organization_id = ? AND provider = ? AND paid_at IS NOT NULL
+          WHERE organization_id = ? AND paid_at IS NOT NULL
             AND substr(paid_at, 1, 10) BETWEEN ? AND ?
-          GROUP BY category, payment_type_name
+            ${paymentLocationClause}
+          GROUP BY provider, category, payment_type_name
           ORDER BY amountCents DESC
-        `).bind(context.organizationId, LIGHTSPEED_R_PROVIDER, resolvedStart, resolvedEnd).all()
+        `).bind(context.organizationId, resolvedStart, resolvedEnd, ...paymentOutletRefs).all<{
+          provider: string;
+          category: string;
+          paymentTypeName: string | null;
+          amountCents: number;
+          transactionCount: number;
+        }>()
       : { results: [] };
+    const paymentMix = (paymentMixResult.results ?? [])
+      .filter((row) => connectedPosProviders.has(row.provider))
+      .reduce<Array<{ category: string; paymentTypeName: string | null; amountCents: number; transactionCount: number }>>((combined, row) => {
+        const existing = combined.find((item) => item.category === row.category && item.paymentTypeName === row.paymentTypeName);
+        if (existing) {
+          existing.amountCents += Number(row.amountCents);
+          existing.transactionCount += Number(row.transactionCount);
+        } else {
+          combined.push({ category: row.category, paymentTypeName: row.paymentTypeName, amountCents: Number(row.amountCents), transactionCount: Number(row.transactionCount) });
+        }
+        return combined;
+      }, []);
     return jsonResponse({
       report,
       source,
@@ -250,7 +297,7 @@ export async function GET(request: Request) {
             : null,
         },
       } : null,
-      paymentMix: paymentMix.results ?? [],
+      paymentMix,
       rows: rows.map((row) => ({
         businessDate: row.businessDate,
         locationRef: row.locationRef,

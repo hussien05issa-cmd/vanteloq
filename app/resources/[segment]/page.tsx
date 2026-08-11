@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArticleCard, Breadcrumbs, ResourceShell, ResourceVisual } from "../components";
@@ -27,6 +28,12 @@ export async function generateMetadata({ params }: SegmentProps): Promise<Metada
   const article = getArticle(segment);
   if (article) {
     const url = `/resources/${article.slug}`;
+    const socialImage = article.hero ?? {
+      src: DEFAULT_SOCIAL_IMAGE,
+      alt: "Vanteloq business operating view",
+      width: 1487,
+      height: 1058,
+    };
     return {
       title: article.seoTitle,
       description: article.description,
@@ -41,13 +48,13 @@ export async function generateMetadata({ params }: SegmentProps): Promise<Metada
         modifiedTime: article.updated,
         authors: [article.author],
         section: getCategory(article.category)?.name,
-        images: [{ url: DEFAULT_SOCIAL_IMAGE, width: 1487, height: 1058, alt: "Vanteloq business operating view" }],
+        images: [{ url: socialImage.src, width: socialImage.width, height: socialImage.height, alt: socialImage.alt }],
       },
       twitter: {
         card: "summary_large_image",
         title: article.seoTitle,
         description: article.description,
-        images: [DEFAULT_SOCIAL_IMAGE],
+        images: [socialImage.src],
       },
     };
   }
@@ -94,6 +101,7 @@ function ArticlePage({ article }: { article: ResourceArticle }) {
     datePublished: article.published,
     dateModified: article.updated,
     articleSection: category?.name,
+    image: absoluteUrl(article.hero?.src ?? DEFAULT_SOCIAL_IMAGE),
     author: { "@type": "Organization", name: article.author },
     publisher: { "@id": `${absoluteUrl()}#organization` },
   };
@@ -127,7 +135,7 @@ function ArticlePage({ article }: { article: ResourceArticle }) {
                 <div><dt>Reading time</dt><dd>{getReadingTime(article)} minutes</dd></div>
               </dl>
             </div>
-            <ResourceVisual category={article.category} />
+            <ArticleHero article={article} />
           </header>
 
           <div className="article-layout">
@@ -176,6 +184,27 @@ function ArticlePage({ article }: { article: ResourceArticle }) {
         </section>
       </main>
     </ResourceShell>
+  );
+}
+
+function ArticleHero({ article }: { article: ResourceArticle }) {
+  if (!article.hero) return <ResourceVisual category={article.category} />;
+
+  return (
+    <div
+      className={`resource-visual visual-${article.category}`}
+      style={{ aspectRatio: `${article.hero.width} / ${article.hero.height}`, display: "block", minHeight: 0, padding: 0 }}
+    >
+      <Image
+        src={article.hero.src}
+        alt={article.hero.alt}
+        width={article.hero.width}
+        height={article.hero.height}
+        priority
+        sizes="(max-width: 700px) calc(100vw - 36px), (max-width: 1050px) calc(100vw - 48px), 430px"
+        style={{ display: "block", height: "100%", objectFit: "cover", position: "relative", width: "100%", zIndex: 1 }}
+      />
+    </div>
   );
 }
 

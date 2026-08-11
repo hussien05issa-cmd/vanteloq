@@ -3,6 +3,7 @@ import { RESOURCE_ARTICLES, RESOURCE_CATEGORIES } from "./resources/content";
 import { absoluteUrl } from "./seo";
 
 export default function sitemap(): MetadataRoute.Sitemap {
+  const latestResourceUpdate = RESOURCE_ARTICLES.map((article) => article.updated).sort().at(-1) ?? "2026-08-11";
   const articleEntries: MetadataRoute.Sitemap = RESOURCE_ARTICLES.map((article) => ({
     url: absoluteUrl(`/resources/${article.slug}`),
     lastModified: article.updated,
@@ -21,12 +22,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
   }));
 
   return [
-    { url: absoluteUrl("/"), lastModified: "2026-08-10", changeFrequency: "weekly", priority: 1 },
-    { url: absoluteUrl("/resources"), lastModified: "2026-08-10", changeFrequency: "weekly", priority: 0.9 },
-    { url: absoluteUrl("/legal"), lastModified: "2026-08-10", changeFrequency: "monthly", priority: 0.4 },
-    { url: absoluteUrl("/privacy"), lastModified: "2026-08-10", changeFrequency: "monthly", priority: 0.5 },
-    { url: absoluteUrl("/terms"), lastModified: "2026-08-10", changeFrequency: "monthly", priority: 0.5 },
-    { url: absoluteUrl("/cookies"), lastModified: "2026-08-10", changeFrequency: "monthly", priority: 0.4 },
+    { url: absoluteUrl("/"), lastModified: latestResourceUpdate, changeFrequency: "weekly", priority: 1 },
+    { url: absoluteUrl("/resources"), lastModified: latestResourceUpdate, changeFrequency: "weekly", priority: 0.9 },
+    { url: absoluteUrl("/legal"), lastModified: "2026-08-11", changeFrequency: "monthly", priority: 0.4 },
+    { url: absoluteUrl("/privacy"), lastModified: "2026-08-11", changeFrequency: "monthly", priority: 0.5 },
+    { url: absoluteUrl("/terms"), lastModified: "2026-08-11", changeFrequency: "monthly", priority: 0.5 },
+    { url: absoluteUrl("/cookies"), lastModified: "2026-08-11", changeFrequency: "monthly", priority: 0.4 },
     ...categoryEntries,
     ...articleEntries,
   ];

@@ -24,6 +24,20 @@ test("resource catalogue uses unique, stable and internally valid records", () =
     assert.ok(article.sources.length >= 2, `${article.slug} needs credible further reading`);
     for (const source of article.sources) assert.match(source.url, /^https:\/\//);
     for (const related of article.related) assert.ok(getArticle(related), `${article.slug} links to missing related article ${related}`);
+    assert.doesNotMatch(JSON.stringify(article), /\u2014/, `${article.slug} contains an em dash`);
+    if (article.hero) {
+      assert.match(article.hero.src, /^\/brand\/[a-z0-9-]+\.(?:png|webp)$/);
+      assert.ok(article.hero.alt.length >= 40, `${article.slug} hero needs useful alternative text`);
+      assert.ok(article.hero.width >= 1200 && article.hero.height >= 600, `${article.slug} hero is too small for social sharing`);
+    }
+  }
+});
+
+test("requested analytics and bookkeeping guides are published with article heroes", () => {
+  for (const slug of ["how-to-analyze-business-data-for-growth", "small-business-bookkeeping-system"]) {
+    const article = getArticle(slug);
+    assert.ok(article, `${slug} is missing`);
+    assert.ok(article.hero, `${slug} needs its generated editorial hero`);
   }
 });
 
@@ -34,12 +48,10 @@ test("resource catalogue preserves one canonical route namespace", () => {
   }
 });
 
-test("homepage reading times stay synchronized with the published guides", () => {
+test("homepage resource cards are rendered from the published catalogue", () => {
   const homepage = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
-  const categoryLabels = { inventory: "INVENTORY", finance: "FINANCE", analytics: "ANALYTICS" } as const;
-  for (const article of RESOURCE_ARTICLES) {
-    const category = categoryLabels[article.category as keyof typeof categoryLabels];
-    assert.ok(category, `${article.slug} needs a homepage category label`);
-    assert.match(homepage, new RegExp(`${category} · ${getReadingTime(article)} MIN`), `${article.slug} homepage reading time is stale`);
-  }
+  assert.match(homepage, /RESOURCE_ARTICLES\.map\(\(article\)/);
+  assert.match(homepage, /getCategory\(article\.category\)/);
+  assert.match(homepage, /getReadingTime\(article\)/);
+  assert.doesNotMatch(homepage, /(?:INVENTORY|FINANCE|ANALYTICS) · \d+ MIN/);
 });

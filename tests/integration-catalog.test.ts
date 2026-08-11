@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { integrationCatalog, preSyncControls, salesChannelGroups } from "../app/integration-catalog.ts";
+import { integrationCatalog, integrationCategoryOrder, preSyncControls, salesChannelGroups } from "../app/integration-catalog.ts";
 
 test("the shared provider gate matches the implemented provider staging boundary", () => {
   const verified = preSyncControls.filter((control) => control.status === "verified");
@@ -26,6 +26,24 @@ test("the integration directory uses the approved sales-channel taxonomy", () =>
 
 test("only built pilots may claim that credentials are the remaining connection prerequisite", () => {
   const credentialReady = integrationCatalog.filter((provider) => provider.availability === "credentials_required");
-  assert.deepEqual(credentialReady.map((provider) => provider.id).sort(), ["lightspeed", "lightspeed-r", "stripe"]);
+  assert.deepEqual(credentialReady.map((provider) => provider.id).sort(), ["lightspeed", "lightspeed-r", "plaid", "stripe"]);
   assert.ok(integrationCatalog.filter((provider) => !credentialReady.includes(provider)).every((provider) => provider.availability !== "credentials_required"));
+});
+
+test("integration cards use one canonical ordered category taxonomy", () => {
+  const categories = integrationCatalog.map((provider) => provider.category);
+  assert.ok(categories.every((category) => integrationCategoryOrder.includes(category)));
+  assert.equal(new Set(categories.map((category) => category.toLocaleLowerCase())).size, new Set(categories).size);
+  assert.deepEqual(integrationCategoryOrder, [
+    "Point of sale",
+    "Commerce",
+    "Payments",
+    "Banking",
+    "Accounting",
+    "Marketplace",
+    "Delivery",
+    "Marketing",
+    "Labour",
+    "Manual imports",
+  ]);
 });

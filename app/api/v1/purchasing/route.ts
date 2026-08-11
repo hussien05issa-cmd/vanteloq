@@ -1,18 +1,26 @@
 import { and, asc, desc, eq } from "drizzle-orm";
 import { getD1, getDb } from "../../../../db";
 import {
+  bankAccounts,
+  bookloqSettings,
   commerceSuppliers,
   customerInvoices,
   goodsReceipts,
+  integrationConnections,
+  integrationLocationMappings,
   invoiceMatches,
   purchaseOrderLines,
   purchaseOrders,
   supplierBills,
   workspaceDocuments,
 } from "../../../../db/schema";
-import { assessPurchasingProduct } from "../../../../domain/purchasing-intelligence";
+import {
+  allocatePurchasingCapacity,
+  assessPurchasingProduct,
+  calculateVerifiedPurchasingCapacity,
+} from "../../../../domain/purchasing-intelligence";
 import { recordAudit } from "../../../../server/audit";
-import { requireAccess } from "../../../../server/authorization";
+import { requireAccess, type AccessContext } from "../../../../server/authorization";
 import {
   ApiError,
   enforceRateLimit,
@@ -22,6 +30,7 @@ import {
   requireSameOrigin,
 } from "../../../../server/api";
 import { requirePermission } from "../../../../server/permissions";
+import { requireAccessibleLocation } from "../../../../server/location-access";
 
 const users = ["owner", "admin", "manager", "employee", "read_only"] as const;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -83,13 +92,140 @@ function businessDateOffset(date: string, days: number) {
   return value.toISOString().slice(0, 10);
 }
 
-async function procurementCatalog(organizationId: string) {
+type ProcurementLocationScope = {
+  id: string;
+  name: string;
+  refs: string[];
+  providerByRef: Map<string, string>;
+};
+
+async function requestLocationScope(request: Request, context: AccessContext): Promise<ProcurementLocationScope | null> {
+  const requested = new URL(request.url).searchParams.get("location");
+  if (!requested) return null;
+  const location = await requireAccessibleLocation(context, requested);
+  const mappings = await getDb().select({
+    provider: integrationLocationMappings.provider,
+    externalLocationRef: integrationLocationMappings.externalLocationRef,
+  }).from(integrationLocationMappings).where(and(
+    eq(integrationLocationMappings.organizationId, context.organizationId),
+    eq(integrationLocationMappings.localLocationId, location.id),
+    eq(integrationLocationMappings.status, "mapped"),
+  ));
+  const providerByRef = new Map<string, string>();
+  const refs = new Set<string>([location.id, location.name]);
+  for (const mapping of mappings) {
+    refs.add(mapping.externalLocationRef);
+    refs.add(`${mapping.provider}:${mapping.externalLocationRef}`);
+    providerByRef.set(mapping.externalLocationRef, mapping.provider);
+    providerByRef.set(`${mapping.provider}:${mapping.externalLocationRef}`, mapping.provider);
+  }
+  return { id: location.id, name: location.name, refs: [...refs], providerByRef };
+}
+
+async function verifiedCashContext(organizationId: string) {
+  const database = getDb();
+  const [connections, settings, accounts, bills, committedLines] = await Promise.all([
+    database.select({
+      status: integrationConnections.status,
+      promotion: integrationConnections.dataPromotionStatus,
+    }).from(integrationConnections).where(and(
+      eq(integrationConnections.organizationId, organizationId),
+      eq(integrationConnections.provider, "plaid"),
+    )).limit(1),
+    database.select({
+      baseCurrency: bookloqSettings.baseCurrency,
+      cashSafetyThresholdCents: bookloqSettings.cashSafetyThresholdCents,
+    }).from(bookloqSettings).where(eq(bookloqSettings.organizationId, organizationId)).limit(1),
+    database.select({
+      accountType: bankAccounts.accountType,
+      currency: bankAccounts.currency,
+      connectionStatus: bankAccounts.connectionStatus,
+      availableBalanceCents: bankAccounts.availableBalanceCents,
+      liveBalanceCents: bankAccounts.liveBalanceCents,
+      lastSyncAt: bankAccounts.lastSyncAt,
+    }).from(bankAccounts).where(and(
+      eq(bankAccounts.organizationId, organizationId),
+      eq(bankAccounts.provider, "plaid"),
+    )),
+    database.select({
+      status: supplierBills.status,
+      totalCents: supplierBills.totalCents,
+      paidCents: supplierBills.paidCents,
+      currency: supplierBills.currency,
+    }).from(supplierBills).where(eq(supplierBills.organizationId, organizationId)),
+    database.select({
+      status: purchaseOrders.status,
+      currency: purchaseOrders.currency,
+      quantity: purchaseOrderLines.quantity,
+      invoicedQuantity: purchaseOrderLines.invoicedQuantity,
+      unitCostCents: purchaseOrderLines.unitCostCents,
+    }).from(purchaseOrderLines).innerJoin(
+      purchaseOrders,
+      and(
+        eq(purchaseOrders.organizationId, purchaseOrderLines.organizationId),
+        eq(purchaseOrders.id, purchaseOrderLines.purchaseOrderId),
+      ),
+    ).where(eq(purchaseOrderLines.organizationId, organizationId)),
+  ]);
+  const baseCurrency = (settings[0]?.baseCurrency || "CAD").toUpperCase();
+  const openBillStatuses = new Set([
+    "draft", "received", "extracted", "under_review", "matched", "awaiting_approval",
+    "approved", "scheduled", "partially_paid", "disputed",
+  ]);
+  const committedOrderStatuses = new Set([
+    "approved", "sent", "acknowledged", "partially_received", "received",
+    "partially_invoiced", "disputed",
+  ]);
+  const matchingBills = bills.filter(
+    (bill) => openBillStatuses.has(bill.status) && bill.currency.toUpperCase() === baseCurrency,
+  );
+  const matchingCommitments = committedLines.filter(
+    (line) => committedOrderStatuses.has(line.status) && line.currency.toUpperCase() === baseCurrency,
+  );
+  const outstandingBillsCents = matchingBills.reduce(
+    (sum, bill) => sum + Math.max(0, bill.totalCents - bill.paidCents),
+    0,
+  );
+  const uninvoicedPurchaseCommitmentsCents = matchingCommitments.reduce(
+    (sum, line) => sum + Math.max(0, line.quantity - line.invoicedQuantity) * line.unitCostCents,
+    0,
+  );
+  const connection = connections[0];
+  const result = calculateVerifiedPurchasingCapacity({
+    connectionVerified: connection?.status === "connected" && connection.promotion === "approved",
+    nowMs: Date.now(),
+    maximumAgeMs: 48 * 60 * 60 * 1000,
+    baseCurrency,
+    cashSafetyReserveCents: settings[0]?.cashSafetyThresholdCents ?? 0,
+    outstandingBillsCents,
+    uninvoicedPurchaseCommitmentsCents,
+    accounts: accounts.map((account) => ({
+      ...account,
+      lastSyncAtMs: account.lastSyncAt?.getTime() ?? null,
+    })),
+  });
+  return {
+    ...result,
+    excludedCurrencyObligations:
+      bills.filter((bill) => openBillStatuses.has(bill.status) && bill.currency.toUpperCase() !== baseCurrency).length +
+      committedLines.filter((line) => committedOrderStatuses.has(line.status) && line.currency.toUpperCase() !== baseCurrency).length,
+    explanation: result.status === "available"
+      ? "Available cash from fresh, healthy Plaid depository accounts minus the BookLoQ reserve, open supplier bills and uninvoiced approved purchase commitments. Credit availability and other currencies are excluded."
+      : result.status === "stale_bank_data"
+        ? "Connected bank balances are older than 48 hours. Recommendations remain demand-based until a fresh balance sync succeeds."
+        : result.status === "needs_healthy_cash_account"
+          ? `No fresh, healthy ${baseCurrency} cash account is available. Recommendations remain demand-based.`
+          : "Connect and synchronize Plaid in BookLoQ before cash can constrain reorder quantities.",
+  };
+}
+
+async function procurementCatalog(organizationId: string, locationScope: ProcurementLocationScope | null = null) {
   const database = getD1();
   const today = new Date().toISOString().slice(0, 10);
   const thirtyDayStart = businessDateOffset(today, -29);
   const sixtyDayStart = businessDateOffset(today, -59);
   const ninetyDayStart = businessDateOffset(today, -89);
-  const [supplierRows, productRows, coverage] = await Promise.all([
+  const [supplierRows, productRows, coverage, cashContext] = await Promise.all([
     getDb()
       .select({
         id: commerceSuppliers.id,
@@ -181,21 +317,123 @@ async function procurementCatalog(organizationId: string) {
       )
       .bind(organizationId)
       .first<{ earliestSaleDate: string | null }>(),
+    verifiedCashContext(organizationId),
   ]);
 
   const hasNinetyDaysOfHistory = Boolean(
     coverage?.earliestSaleDate && coverage.earliestSaleDate <= ninetyDayStart,
   );
-  const products = (productRows.results ?? []).map((row) => {
-    const onHandQuantity = Number(row.onHandQuantity ?? 0);
-    const reorderPoint = Number(row.reorderPoint ?? 0);
-    const incomingUnits = Number(row.incomingUnits ?? 0);
+  const scopedInventoryByProduct = new Map<string, { onHandQuantity: number; reorderPoint: number }>();
+  const scopedSalesByProduct = new Map<string, {
+    soldQuantityMilli30d: number;
+    soldQuantityMilliPrevious30d: number;
+    soldQuantityMilli90d: number;
+    lastSoldDate: string | null;
+  }>();
+  const scopedOrdersBySku = new Map<string, {
+    incomingUnits: number;
+    lastOrderedDate: string | null;
+    lastOrderStatus: string | null;
+  }>();
+  if (locationScope) {
+    const placeholders = locationScope.refs.map(() => "?").join(", ");
+    const [inventoryRows, saleRows, orderRows] = await Promise.all([
+      database.prepare(`
+        SELECT location_ref AS locationRef, sku,
+               SUM(on_hand_quantity) AS onHandQuantity,
+               SUM(reorder_point) AS reorderPoint
+        FROM inventory_balances
+        WHERE organization_id = ? AND location_ref IN (${placeholders})
+        GROUP BY location_ref, sku
+      `).bind(organizationId, ...locationScope.refs).all<{
+        locationRef: string;
+        sku: string;
+        onHandQuantity: number;
+        reorderPoint: number;
+      }>(),
+      database.prepare(`
+        SELECT provider, product_ref AS productRef,
+               SUM(CASE WHEN substr(sold_at, 1, 10) >= ? THEN quantity_milli ELSE 0 END) AS soldQuantityMilli30d,
+               SUM(CASE WHEN substr(sold_at, 1, 10) >= ? AND substr(sold_at, 1, 10) < ? THEN quantity_milli ELSE 0 END) AS soldQuantityMilliPrevious30d,
+               SUM(CASE WHEN substr(sold_at, 1, 10) >= ? THEN quantity_milli ELSE 0 END) AS soldQuantityMilli90d,
+               MAX(substr(sold_at, 1, 10)) AS lastSoldDate
+        FROM commerce_sale_lines
+        WHERE organization_id = ? AND outlet_ref IN (${placeholders})
+        GROUP BY provider, product_ref
+      `).bind(thirtyDayStart, sixtyDayStart, thirtyDayStart, ninetyDayStart, organizationId, ...locationScope.refs).all<{
+        provider: string;
+        productRef: string;
+        soldQuantityMilli30d: number;
+        soldQuantityMilliPrevious30d: number;
+        soldQuantityMilli90d: number;
+        lastSoldDate: string | null;
+      }>(),
+      database.prepare(`
+        SELECT sku, incomingUnits, orderDate AS lastOrderedDate, status AS lastOrderStatus
+        FROM (
+          SELECT pol.sku,
+                 SUM(CASE WHEN po.status NOT IN ('closed', 'cancelled', 'received', 'invoiced')
+                          THEN MAX(pol.quantity - pol.received_quantity, 0) ELSE 0 END)
+                   OVER (PARTITION BY pol.sku) AS incomingUnits,
+                 po.order_date AS orderDate,
+                 po.status,
+                 ROW_NUMBER() OVER (PARTITION BY pol.sku ORDER BY po.order_date DESC, po.updated_at DESC) AS rank
+          FROM purchase_order_lines pol
+          JOIN purchase_orders po ON po.id = pol.purchase_order_id
+          WHERE pol.organization_id = ? AND po.delivery_location_id = ?
+        )
+        WHERE rank = 1
+      `).bind(organizationId, locationScope.id).all<{
+        sku: string;
+        incomingUnits: number;
+        lastOrderedDate: string | null;
+        lastOrderStatus: string | null;
+      }>(),
+    ]);
+    for (const row of inventoryRows.results ?? []) {
+      const provider = locationScope.providerByRef.get(row.locationRef)
+        ?? (row.locationRef.includes(":") ? row.locationRef.split(":", 1)[0] : "*");
+      const key = `${provider}:${row.sku}`;
+      const current = scopedInventoryByProduct.get(key) ?? { onHandQuantity: 0, reorderPoint: 0 };
+      current.onHandQuantity += Number(row.onHandQuantity ?? 0);
+      current.reorderPoint += Number(row.reorderPoint ?? 0);
+      scopedInventoryByProduct.set(key, current);
+    }
+    for (const row of saleRows.results ?? []) {
+      scopedSalesByProduct.set(`${row.provider}:${row.productRef}`, {
+        soldQuantityMilli30d: Number(row.soldQuantityMilli30d ?? 0),
+        soldQuantityMilliPrevious30d: Number(row.soldQuantityMilliPrevious30d ?? 0),
+        soldQuantityMilli90d: Number(row.soldQuantityMilli90d ?? 0),
+        lastSoldDate: row.lastSoldDate,
+      });
+    }
+    for (const row of orderRows.results ?? []) {
+      scopedOrdersBySku.set(row.sku, {
+        incomingUnits: Number(row.incomingUnits ?? 0),
+        lastOrderedDate: row.lastOrderedDate,
+        lastOrderStatus: row.lastOrderStatus,
+      });
+    }
+  }
+  const assessmentByProductId = new Map<string, ReturnType<typeof assessPurchasingProduct>>();
+  const demandProducts = (productRows.results ?? []).map((row) => {
+    const scopedInventory = locationScope
+      ? scopedInventoryByProduct.get(`${row.provider}:${row.sku}`) ?? scopedInventoryByProduct.get(`*:${row.sku}`)
+      : null;
+    const scopedSales = locationScope ? scopedSalesByProduct.get(`${row.provider}:${row.externalProductId}`) : null;
+    const scopedOrder = locationScope ? scopedOrdersBySku.get(row.sku) : null;
+    const onHandQuantity = Number(locationScope ? scopedInventory?.onHandQuantity ?? 0 : row.onHandQuantity ?? 0);
+    const reorderPoint = Number(locationScope ? scopedInventory?.reorderPoint ?? 0 : row.reorderPoint ?? 0);
+    const incomingUnits = Number(locationScope ? scopedOrder?.incomingUnits ?? 0 : row.incomingUnits ?? 0);
     const soldUnits30d = Math.max(
       0,
-      Math.round(Number(row.soldQuantityMilli30d ?? 0)) / 1000,
+      Math.round(Number(locationScope ? scopedSales?.soldQuantityMilli30d ?? 0 : row.soldQuantityMilli30d ?? 0)) / 1000,
     );
-    const soldUnitsPrevious30d = Math.max(0, Math.round(Number(row.soldQuantityMilliPrevious30d ?? 0)) / 1000);
-    const soldUnits90d = Math.max(0, Math.round(Number(row.soldQuantityMilli90d ?? 0)) / 1000);
+    const soldUnitsPrevious30d = Math.max(0, Math.round(Number(locationScope ? scopedSales?.soldQuantityMilliPrevious30d ?? 0 : row.soldQuantityMilliPrevious30d ?? 0)) / 1000);
+    const soldUnits90d = Math.max(0, Math.round(Number(locationScope ? scopedSales?.soldQuantityMilli90d ?? 0 : row.soldQuantityMilli90d ?? 0)) / 1000);
+    const lastOrderedDate = locationScope ? scopedOrder?.lastOrderedDate ?? null : row.lastOrderedDate;
+    const lastOrderStatus = locationScope ? scopedOrder?.lastOrderStatus ?? null : row.lastOrderStatus;
+    const lastSoldDate = locationScope ? scopedSales?.lastSoldDate ?? null : row.lastSoldDate;
     const assessment = assessPurchasingProduct({
       sku: row.sku,
       name: row.name,
@@ -207,10 +445,11 @@ async function procurementCatalog(organizationId: string) {
       unitsSoldPrevious30: soldUnitsPrevious30d,
       unitsSold90: hasNinetyDaysOfHistory ? soldUnits90d : Math.max(1, soldUnits90d),
       unitCostCents: row.defaultCostCents,
-      lastOrderedAt: row.lastOrderedDate,
-      lastOrderStatus: row.lastOrderStatus,
-      lastSaleAt: row.lastSoldDate,
+      lastOrderedAt: lastOrderedDate,
+      lastOrderStatus,
+      lastSaleAt: lastSoldDate,
     });
+    assessmentByProductId.set(row.id, assessment);
     const averageDailyDemand = soldUnits30d / 30;
     const health = assessment.health === "healthy"
       ? { tone: "green" as const, label: "Healthy movement", detail: assessment.summary }
@@ -228,6 +467,9 @@ async function procurementCatalog(organizationId: string) {
       soldUnitsPrevious30d,
       soldUnits90d,
       averageDailyDemand,
+      lastOrderedDate,
+      lastOrderStatus,
+      lastSoldDate,
       recommendedQuantity: assessment.recommendedUnits,
       daysCover: assessment.daysCover,
       demandTrendRate: assessment.demandTrendRate,
@@ -235,10 +477,30 @@ async function procurementCatalog(organizationId: string) {
       health,
     };
   });
+  const allocationByProductId = new Map(
+    allocatePurchasingCapacity(
+      [...assessmentByProductId].map(([productId, assessment]) => ({
+        ...assessment,
+        sku: productId,
+      })),
+      cashContext.verifiedPurchasingCapacityCents,
+    ).map((assessment) => [assessment.sku, assessment]),
+  );
+  const products = demandProducts.map((product) => {
+    const allocation = allocationByProductId.get(product.id);
+    return {
+      ...product,
+      cashConstrainedQuantity: allocation?.cashConstrainedUnits ?? null,
+      cashAllocatedCents: allocation?.cashAllocatedCents ?? null,
+      cashDecision: allocation?.cashDecision ?? "needs_verified_cash",
+    };
+  });
 
   return {
     suppliers: supplierRows,
     products,
+    cashContext,
+    locationScope: locationScope ? { id: locationScope.id, name: locationScope.name } : null,
     method: {
       periodStart: thirtyDayStart,
       periodEnd: today,
@@ -246,12 +508,12 @@ async function procurementCatalog(organizationId: string) {
       deadStockWindowDays: 90,
       deadStockHistoryAvailable: hasNinetyDaysOfHistory,
       description:
-        "Recommendations use verified 30-day performance, prior-period trend, 90-day movement, current stock, reorder points and open purchase orders. Lead time, case packs, shelf life and cash capacity still require review before approval.",
+        "Demand quantities use verified 30-day performance, prior-period trend, 90-day movement, current stock, reorder points and open purchase orders. When fresh Plaid cash is available, the approved quantity also preserves the BookLoQ reserve and deducts open bills and uninvoiced purchase commitments. Lead time, case packs, shelf life and storage limits still require review before approval.",
     },
   };
 }
 
-async function list(organizationId: string) {
+async function list(organizationId: string, locationScope: ProcurementLocationScope | null = null) {
   const [orders, lines, receipts, matches, catalog, bills, invoices] = await Promise.all([
     getDb()
       .select()
@@ -274,7 +536,7 @@ async function list(organizationId: string) {
       .from(invoiceMatches)
       .where(eq(invoiceMatches.organizationId, organizationId))
       .orderBy(desc(invoiceMatches.createdAt)),
-    procurementCatalog(organizationId),
+    procurementCatalog(organizationId, locationScope),
     getDb().select({
       id: supplierBills.id,
       reference: supplierBills.billNumber,
@@ -338,7 +600,8 @@ export async function GET(request: Request) {
     const context = await requireAccess(request, users);
     await requirePermission(context, "purchasing.view");
     await enforceRateLimit("purchasing:read", context.userId, 90, 60);
-    return jsonResponse(await list(context.organizationId));
+    const locationScope = await requestLocationScope(request, context);
+    return jsonResponse(await list(context.organizationId, locationScope));
   });
 }
 
@@ -346,6 +609,7 @@ export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
     const context = await requireAccess(request, users);
+    const locationScope = await requestLocationScope(request, context);
     await enforceRateLimit("purchasing:write", context.userId, 40, 3_600);
     const input = await readJsonObject(request, 256_000);
     const action = text(input.action, "action", 50);
@@ -367,7 +631,7 @@ export async function POST(request: Request) {
           "INVALID_LINES",
           "Add between one and 100 purchase-order lines.",
         );
-      const catalog = await procurementCatalog(context.organizationId);
+      const catalog = await procurementCatalog(context.organizationId, locationScope);
       const productById = new Map(
         catalog.products.map((product) => [product.id, product]),
       );
@@ -754,7 +1018,7 @@ export async function POST(request: Request) {
       resourceId,
       details,
     });
-    return jsonResponse(await list(context.organizationId), {
+    return jsonResponse(await list(context.organizationId, locationScope), {
       status: action === "create" ? 201 : 200,
     });
   });

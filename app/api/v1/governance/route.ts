@@ -6,7 +6,7 @@ import { requireAccess } from "../../../../server/authorization";
 import { ApiError, enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameOrigin } from "../../../../server/api";
 import { allPermissions, permissionCatalogDto, roleTemplates } from "../../../../server/permissions";
 import { hashPin, validateTemporaryPin } from "../../../../server/pin";
-import { canAddUser } from "../../../../server/entitlements/engine";
+import { canAddLocation, canAddUser } from "../../../../server/entitlements/engine";
 
 const managers = ["owner", "admin"] as const;
 const readers = ["owner", "admin"] as const;
@@ -84,7 +84,7 @@ async function responseBody(context: Awaited<ReturnType<typeof requireAccess>>) 
   return {
     account: { ...account, emailVerified: true, authenticationProvider: "ChatGPT secure sign-in" },
     organization: { ...context.organization, displayName: profile?.displayName ?? context.organization.businessName, organizationType: profile?.organizationType ?? "business", businessStructure: profile?.businessStructure ?? "", locale: profile?.locale ?? "en-CA", language: profile?.language ?? "en", brandColor: profile?.brandColor ?? "#2368c4", logoAvailable: Boolean(profile?.logoObjectKey), logoVersion: profile?.logoVersion ?? 0 },
-    preferences: preferences ?? { emailNotifications: true, rememberedProfile: true },
+    preferences: preferences ?? { emailNotifications: true, rememberedProfile: true, hiddenNavigationJson: "[]", preferredLocationId: null },
     locations,
     roles: roles.map((role) => ({ ...role, permissions: jsonArray(JSON.parse(role.permissionsJson)) })),
     members: members.map((member) => ({ ...member, permittedLocations: jsonArray(JSON.parse(member.permittedLocationsJson)) })),
@@ -152,6 +152,12 @@ export async function POST(request: Request) {
       ]);
       resourceType = "organization"; resourceId = context.organizationId; details = { action, displayName };
     } else if (action === "create_location") {
+      const capacity = await canAddLocation(context);
+      if (!capacity.allowed) {
+        throw new ApiError(409, "LOCATION_LIMIT_REACHED", capacity.reason === "subscription_required"
+          ? "An active owner subscription is required before another location can be added."
+          : `The owner plan includes ${capacity.limit} locations. Manage the organization plan before adding another location.`);
+      }
       const id = crypto.randomUUID();
       const countryCode = string(input.countryCode, "country", 2).toUpperCase();
       const currency = string(input.currency, "currency", 3).toUpperCase();

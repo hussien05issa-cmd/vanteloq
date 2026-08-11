@@ -215,7 +215,8 @@ export function ReportsWorkspace({
   currency,
   showNotice,
   createTask,
-}: SharedProps) {
+  activeLocationId,
+}: SharedProps & { activeLocationId: string | null }) {
   const [query, setQuery] = useState("");
   const [group, setGroup] = useState("All reports");
   const [selected, setSelected] = useState("Sales totals");
@@ -241,12 +242,13 @@ export function ReportsWorkspace({
     const params = new URLSearchParams({ report: id });
     if (start) params.set("start", start);
     if (end) params.set("end", end);
+    if (activeLocationId) params.set("location", activeLocationId);
     const response = await apiFetch(`/api/v1/reports?${params.toString()}`);
     const body: unknown = await response.json();
     if (response.ok) setReport(body as Record<string, unknown>);
     else showNotice(apiMessage(body, "Unable to load report."));
     setLoading(false);
-  }, [end, showNotice, start]);
+  }, [activeLocationId, end, showNotice, start]);
   useEffect(() => {
     const timer = window.setTimeout(() => void load(selected), 0);
     return () => window.clearTimeout(timer);
@@ -468,7 +470,7 @@ export function ReportsWorkspace({
               {selected === "Payment-method performance" && (
                 <section className="report-payment-mix" aria-label="Payment method performance">
                   <header><div><p>VERIFIED TENDERS</p><h3>Payment method mix</h3></div><span>{paymentMix.length ? `${paymentMix.length} payment types` : "Backfill required"}</span></header>
-                  {paymentMix.length ? paymentMix.map((row) => <div key={`${row.category}:${row.paymentTypeName ?? "unknown"}`}><span><i className={`payment-${row.category}`} /><b>{row.paymentTypeName || row.category.replaceAll("_", " ")}</b><small>{Number(row.transactionCount).toLocaleString()} recorded payments</small></span><strong>{money(Number(row.amountCents), currency)}</strong></div>) : <p>No verified R-Series SalePayment records match this period. Vanteloq will not infer cash or card mix from sales totals.</p>}
+                  {paymentMix.length ? paymentMix.map((row) => <div key={`${row.category}:${row.paymentTypeName ?? "unknown"}`}><span><i className={`payment-${row.category}`} /><b>{row.paymentTypeName || row.category.replaceAll("_", " ")}</b><small>{Number(row.transactionCount).toLocaleString()} recorded payments</small></span><strong>{money(Number(row.amountCents), currency)}</strong></div>) : <p>No verified payment records match this period. Vanteloq will not infer cash or card mix from sales totals.</p>}
                 </section>
               )}
               <section className="explain-act">
@@ -521,7 +523,7 @@ export function ReportsWorkspace({
                 {canExport ? (
                   <a
                     className="report-export"
-                    href={`/api/v1/reports?report=${liveReports[selected]}${start ? `&start=${start}` : ""}${end ? `&end=${end}` : ""}&format=csv`}
+                    href={`/api/v1/reports?report=${liveReports[selected]}${start ? `&start=${start}` : ""}${end ? `&end=${end}` : ""}${activeLocationId ? `&location=${encodeURIComponent(activeLocationId)}` : ""}&format=csv`}
                   >
                     Export CSV
                   </a>
@@ -639,6 +641,9 @@ type ProcurementProduct = {
   soldUnits90d: number;
   averageDailyDemand: number;
   recommendedQuantity: number;
+  cashConstrainedQuantity: number | null;
+  cashAllocatedCents: number | null;
+  cashDecision: "within_capacity" | "cash_constrained" | "needs_verified_cash" | "needs_unit_cost" | "no_order_needed";
   daysCover: number | null;
   demandTrendRate: number | null;
   recommendationFactors: string[];
@@ -653,6 +658,20 @@ type ProcurementProduct = {
 type ProcurementCatalog = {
   suppliers: ProcurementSupplier[];
   products: ProcurementProduct[];
+  cashContext: {
+    status: "available" | "needs_bank_connection" | "stale_bank_data" | "needs_healthy_cash_account";
+    verifiedPurchasingCapacityCents: number | null;
+    verifiedCashCents: number | null;
+    cashSafetyReserveCents: number;
+    outstandingBillsCents: number;
+    uninvoicedPurchaseCommitmentsCents: number;
+    accountsUsed: number;
+    baseCurrency: string;
+    maximumAgeHours: number;
+    excludedCurrencyObligations: number;
+    explanation: string;
+  };
+  locationScope: { id: string; name: string } | null;
   method: {
     periodStart: string;
     periodEnd: string;
@@ -690,7 +709,8 @@ export function PurchaseOrdersWorkspace({
   currency,
   showNotice,
   createTask,
-}: SharedProps) {
+  activeLocationId,
+}: SharedProps & { activeLocationId: string | null }) {
   const [data, setData] = useState<PurchasingData | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<"orders" | "recommendations" | "calendar">("orders");
@@ -701,18 +721,18 @@ export function PurchaseOrdersWorkspace({
   const [selected, setSelected] = useState<Order | null>(null);
   const load = useCallback(async () => {
     setLoading(true);
-    const response = await apiFetch("/api/v1/purchasing");
+    const response = await apiFetch(`/api/v1/purchasing${activeLocationId ? `?location=${encodeURIComponent(activeLocationId)}` : ""}`);
     const body: unknown = await response.json();
     if (response.ok) setData(body as PurchasingData);
     else showNotice(apiMessage(body, "Unable to load purchase orders."));
     setLoading(false);
-  }, [showNotice]);
+  }, [activeLocationId, showNotice]);
   useEffect(() => {
     const timer = window.setTimeout(() => void load(), 0);
     return () => window.clearTimeout(timer);
   }, [load]);
   const action = async (body: Record<string, unknown>) => {
-    const response = await apiFetch("/api/v1/purchasing", {
+    const response = await apiFetch(`/api/v1/purchasing${activeLocationId ? `?location=${encodeURIComponent(activeLocationId)}` : ""}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -745,6 +765,7 @@ export function PurchaseOrdersWorkspace({
             Amounts use integer minor units. Sending and payment never happen
             automatically; every commitment requires an authorized approval.
           </span>
+          <small className="active-purchasing-scope">Recommendation scope: {data.catalog.locationScope?.name ?? "All locations"}</small>
         </div>
         <button className="primary" onClick={() => setCreating({})}>
           + New purchase order
@@ -990,6 +1011,23 @@ function CatalogRecommendations({
           </div>
         </dl>
       </header>
+      <aside className={`card purchasing-cash-context ${catalog.cashContext.status}`}>
+        <div>
+          <p>CASH GUARDRAIL</p>
+          <h3>
+            {catalog.cashContext.verifiedPurchasingCapacityCents === null
+              ? "Cash-aware quantities need verified banking data"
+              : `${money(catalog.cashContext.verifiedPurchasingCapacityCents, catalog.cashContext.baseCurrency)} available for reviewed reorders`}
+          </h3>
+          <span>{catalog.cashContext.explanation}</span>
+        </div>
+        <dl>
+          <div><dt>Fresh cash</dt><dd>{money(catalog.cashContext.verifiedCashCents, catalog.cashContext.baseCurrency)}</dd></div>
+          <div><dt>Safety reserve</dt><dd>{money(catalog.cashContext.cashSafetyReserveCents, catalog.cashContext.baseCurrency)}</dd></div>
+          <div><dt>Open bills</dt><dd>{money(catalog.cashContext.outstandingBillsCents, catalog.cashContext.baseCurrency)}</dd></div>
+          <div><dt>Uninvoiced commitments</dt><dd>{money(catalog.cashContext.uninvoicedPurchaseCommitmentsCents, catalog.cashContext.baseCurrency)}</dd></div>
+        </dl>
+      </aside>
       {!products.length ? (
         <div className="card control-empty">
           <b>No imported products are available.</b>
@@ -1011,9 +1049,21 @@ function CatalogRecommendations({
                 <span><small>ON HAND</small><b>{product.onHandQuantity}</b></span>
                 <span><small>INCOMING</small><b>{product.incomingUnits}</b></span>
                 <span><small>SOLD 30D</small><b>{product.soldUnits30d.toLocaleString()}</b></span>
-                <span><small>RECOMMENDED</small><b>{product.recommendedQuantity}</b></span>
+                <span><small>DEMAND NEED</small><b>{product.recommendedQuantity}</b></span>
+                <span><small>CASH-AWARE</small><b>{product.cashConstrainedQuantity ?? "Review"}</b></span>
               </div>
               <p>{product.health.detail}</p>
+              <p className={`cash-decision-copy ${product.cashDecision}`}>
+                {product.cashDecision === "within_capacity"
+                  ? `${product.cashConstrainedQuantity} units fit within verified purchasing capacity.`
+                  : product.cashDecision === "cash_constrained"
+                    ? `Verified capacity reduces this reviewed quantity from ${product.recommendedQuantity} to ${product.cashConstrainedQuantity}.`
+                    : product.cashDecision === "needs_unit_cost"
+                      ? "Add a verified unit cost before cash can constrain this quantity."
+                      : product.cashDecision === "no_order_needed"
+                        ? "No order is needed from the current demand and inventory evidence."
+                        : "Connect and refresh BookLoQ banking before using this demand quantity as a cash-approved amount."}
+              </p>
               <div className="recommendation-history">
                 <span>Last ordered <b>{product.lastOrderedDate || "No history"}</b></span>
                 <span>Last sold <b>{product.lastSoldDate || "No verified sale"}</b></span>
@@ -1176,7 +1226,7 @@ function PurchaseOrderModal({
       productId: product?.id ?? "",
       sku: product?.sku ?? "",
       description: product?.name ?? "",
-      quantity: Math.max(1, product?.recommendedQuantity ?? 1),
+      quantity: Math.max(1, product?.cashConstrainedQuantity ?? product?.recommendedQuantity ?? 1),
       unitCost: product?.defaultCostCents
         ? product.defaultCostCents / 100
         : 0,
@@ -1410,7 +1460,8 @@ function PurchaseOrderModal({
                   <aside className={`po-product-context ${product.health.tone}`}>
                     <span><b>{product.onHandQuantity}</b> on hand</span>
                     <span><b>{product.incomingUnits}</b> already incoming</span>
-                    <span><b>{product.recommendedQuantity}</b> recommended</span>
+                    <span><b>{product.recommendedQuantity}</b> demand need</span>
+                    <span><b>{product.cashConstrainedQuantity ?? "Review"}</b> cash-aware</span>
                     <span>
                       Last ordered <b>{product.lastOrderedDate || "No history"}</b>
                     </span>

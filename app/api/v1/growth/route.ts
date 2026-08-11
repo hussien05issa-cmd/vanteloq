@@ -1,19 +1,27 @@
-import { and, asc, eq, gte } from "drizzle-orm";
+import { and, asc, desc, eq, gte } from "drizzle-orm";
 import { getDb } from "../../../../db";
 import {
+  bankAccounts,
+  bookloqSettings,
+  commerceCustomers,
+  dailyBusinessMetrics,
   growthTouchpoints,
   growthTransactions,
+  integrationLocationMappings,
+  inventoryBalances,
   marketingCalendarEntries,
   marketingProfiles,
+  organizationLocations,
   searchVisibilityObservations,
   workspaces,
 } from "../../../../db/schema";
 import { buildGrowthIntelligence } from "../../../../domain/growth-intelligence";
-import { buildMarketingRecommendations } from "../../../../domain/marketing-recommendations";
+import { buildMarketingRecommendations, type EvidenceCoverage, type MarketingOperatingCoverage } from "../../../../domain/marketing-recommendations";
 import { recordAudit } from "../../../../server/audit";
 import { requireAccess } from "../../../../server/authorization";
 import { ApiError, enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameOrigin } from "../../../../server/api";
-import { requirePermission } from "../../../../server/permissions";
+import { effectivePermissions, requirePermission } from "../../../../server/permissions";
+import { requireAccessibleLocation } from "../../../../server/location-access";
 
 const readers = ["owner", "admin", "manager", "employee", "read_only"] as const;
 const writers = ["owner", "admin"] as const;
@@ -52,20 +60,63 @@ const websiteValue = (value: unknown) => {
   return url.toString();
 };
 
+const timeValue = (value: Date | string | null | undefined) => {
+  if (!value) return null;
+  const time = value instanceof Date ? value.getTime() : new Date(value.length === 10 ? `${value}T00:00:00Z` : value).getTime();
+  return Number.isFinite(time) ? time : null;
+};
+
+const latestValue = (values: Array<Date | string | null | undefined>) => {
+  let latest: Date | string | null = null;
+  let latestTime = -1;
+  for (const value of values) {
+    const time = timeValue(value);
+    if (value && time !== null && time > latestTime) {
+      latest = value;
+      latestTime = time;
+    }
+  }
+  return latest;
+};
+
+const sourceFreshness = (value: Date | string | null | undefined, maxAgeDays: number, missingLabel: string) => {
+  const time = timeValue(value);
+  if (time === null) return { status: "missing" as const, freshness: missingLabel };
+  const date = new Date(time).toISOString().slice(0, 10);
+  const ageDays = Math.max(0, Math.floor((Date.now() - time) / 86_400_000));
+  if (ageDays > maxAgeDays) return { status: "stale" as const, freshness: `Last updated ${date}, ${ageDays} days ago` };
+  return { status: "ready" as const, freshness: `Current through ${date}` };
+};
+
 export async function GET(request: Request) {
   return handleApi(request, async () => {
     const context = await requireAccess(request, readers);
     await requirePermission(context, "marketing.view");
     await enforceRateLimit("growth:read", context.userId, 60, 60);
+    const permissions = await effectivePermissions(context);
+    const requestedLocationId = new URL(request.url).searchParams.get("location");
+    const selectedLocation = requestedLocationId ? await requireAccessibleLocation(context, requestedLocationId) : null;
     const since = new Date(Date.now() - 366 * 86_400_000).toISOString().slice(0, 10);
-    const [touchpoints, transactions, visibility, storedProfile, calendar, workspace] = await Promise.all([
+    const [touchpoints, transactions, visibility, storedProfile, calendar, workspace, inventory, dailyMetrics, customers, locations, locationMappings, bookkeepingSettings, cashAccounts] = await Promise.all([
       getDb().select({ id: growthTouchpoints.id, occurredAt: growthTouchpoints.occurredAt, source: growthTouchpoints.source, stage: growthTouchpoints.stage, journeyRef: growthTouchpoints.journeyRef }).from(growthTouchpoints).where(and(eq(growthTouchpoints.organizationId, context.organizationId), gte(growthTouchpoints.occurredAt, since))).orderBy(asc(growthTouchpoints.occurredAt)).limit(10_000),
       getDb().select({ id: growthTransactions.id, occurredAt: growthTransactions.occurredAt, journeyRef: growthTransactions.journeyRef, revenueCents: growthTransactions.revenueCents, grossProfitCents: growthTransactions.grossProfitCents }).from(growthTransactions).where(and(eq(growthTransactions.organizationId, context.organizationId), gte(growthTransactions.occurredAt, since))).orderBy(asc(growthTransactions.occurredAt)).limit(10_000),
       getDb().select({ query: searchVisibilityObservations.query, observedDate: searchVisibilityObservations.observedDate, positionMilli: searchVisibilityObservations.positionMilli, discoveryActions: searchVisibilityObservations.discoveryActions, sourceSystem: searchVisibilityObservations.sourceSystem }).from(searchVisibilityObservations).where(and(eq(searchVisibilityObservations.organizationId, context.organizationId), gte(searchVisibilityObservations.observedDate, since))).orderBy(asc(searchVisibilityObservations.observedDate)).limit(2_000),
       getDb().select().from(marketingProfiles).where(eq(marketingProfiles.organizationId, context.organizationId)).limit(1),
       getDb().select({ id: marketingCalendarEntries.id, title: marketingCalendarEntries.title, channel: marketingCalendarEntries.channel, eventType: marketingCalendarEntries.eventType, startDate: marketingCalendarEntries.startDate, dueDate: marketingCalendarEntries.dueDate, status: marketingCalendarEntries.status, objective: marketingCalendarEntries.objective, notes: marketingCalendarEntries.notes }).from(marketingCalendarEntries).where(eq(marketingCalendarEntries.organizationId, context.organizationId)).orderBy(asc(marketingCalendarEntries.startDate)).limit(500),
       getDb().select({ businessName: workspaces.businessName, industry: workspaces.industry, city: workspaces.city, province: workspaces.province, website: workspaces.website }).from(workspaces).where(eq(workspaces.id, context.organizationId)).limit(1),
+      getDb().select({ id: inventoryBalances.id, locationRef: inventoryBalances.locationRef, updatedAt: inventoryBalances.updatedAt }).from(inventoryBalances).where(eq(inventoryBalances.organizationId, context.organizationId)).orderBy(desc(inventoryBalances.updatedAt)).limit(1_000),
+      getDb().select({ businessDate: dailyBusinessMetrics.businessDate, locationRef: dailyBusinessMetrics.locationRef, netSalesCents: dailyBusinessMetrics.netSalesCents, costOfGoodsCents: dailyBusinessMetrics.costOfGoodsCents, cashBalanceCents: dailyBusinessMetrics.cashBalanceCents, updatedAt: dailyBusinessMetrics.updatedAt }).from(dailyBusinessMetrics).where(and(eq(dailyBusinessMetrics.organizationId, context.organizationId), gte(dailyBusinessMetrics.businessDate, since))).orderBy(desc(dailyBusinessMetrics.businessDate)).limit(1_000),
+      getDb().select({ id: commerceCustomers.id, updatedAt: commerceCustomers.updatedAt }).from(commerceCustomers).where(eq(commerceCustomers.organizationId, context.organizationId)).orderBy(desc(commerceCustomers.updatedAt)).limit(1_000),
+      getDb().select({ id: organizationLocations.id, validationStatus: organizationLocations.validationStatus, updatedAt: organizationLocations.updatedAt }).from(organizationLocations).where(and(eq(organizationLocations.organizationId, context.organizationId), eq(organizationLocations.status, "active"))).orderBy(desc(organizationLocations.updatedAt)).limit(100),
+      getDb().select({ localLocationId: integrationLocationMappings.localLocationId, provider: integrationLocationMappings.provider, externalLocationRef: integrationLocationMappings.externalLocationRef, updatedAt: integrationLocationMappings.updatedAt }).from(integrationLocationMappings).where(and(eq(integrationLocationMappings.organizationId, context.organizationId), eq(integrationLocationMappings.status, "mapped"))).orderBy(desc(integrationLocationMappings.updatedAt)).limit(500),
+      getDb().select({ status: bookloqSettings.status, cashSafetyThresholdCents: bookloqSettings.cashSafetyThresholdCents, updatedAt: bookloqSettings.updatedAt }).from(bookloqSettings).where(eq(bookloqSettings.organizationId, context.organizationId)).limit(1),
+      getDb().select({ availableBalanceCents: bankAccounts.availableBalanceCents, liveBalanceCents: bankAccounts.liveBalanceCents, lastSyncAt: bankAccounts.lastSyncAt, updatedAt: bankAccounts.updatedAt }).from(bankAccounts).where(eq(bankAccounts.organizationId, context.organizationId)).orderBy(desc(bankAccounts.updatedAt)).limit(100),
     ]);
+    const selectedMappings = selectedLocation ? locationMappings.filter((mapping) => mapping.localLocationId === selectedLocation.id) : [];
+    const selectedLocationRefs = new Set<string>(selectedLocation ? [selectedLocation.id, selectedLocation.name] : []);
+    for (const mapping of selectedMappings) selectedLocationRefs.add(`${mapping.provider}:${mapping.externalLocationRef}`);
+    const scopedInventory = selectedLocation ? inventory.filter((row) => selectedLocationRefs.has(row.locationRef)) : inventory;
+    const scopedDailyMetrics = selectedLocation ? dailyMetrics.filter((row) => selectedLocationRefs.has(row.locationRef)) : dailyMetrics;
     const saved = storedProfile[0];
     const organization = workspace[0];
     const profile = saved ?? {
@@ -83,6 +134,105 @@ export async function GET(request: Request) {
       updatedAt: null,
     };
     const growth = buildGrowthIntelligence({ touchpoints, transactions, searchVisibility: visibility.map((row) => ({ ...row, position: row.positionMilli / 1000 })) });
+    const hasAttributionData = growth.status === "available" && (growth.channels.length > 0 || transactions.length > 0);
+    const hasSearchData = visibility.length > 0;
+    const marketingLatest = latestValue([
+      ...visibility.map((row) => row.observedDate),
+      ...touchpoints.map((row) => row.occurredAt),
+      ...transactions.map((row) => row.occurredAt),
+    ]);
+    const marketingFreshness = sourceFreshness(marketingLatest, 31, "No marketing source date");
+    const marketingEvidence: EvidenceCoverage = {
+      status: marketingFreshness.status === "ready" && (!hasAttributionData || !hasSearchData) ? "limited" : marketingFreshness.status,
+      freshness: marketingFreshness.freshness,
+      evidence: [
+        ...(hasSearchData ? [`${visibility.length} owner-entered or imported search observations`] : []),
+        ...(hasAttributionData ? [`${touchpoints.length} touchpoints and ${transactions.length} matched transaction records`] : []),
+      ],
+      missingInputs: [
+        ...(!hasSearchData ? ["Search observations"] : []),
+        ...(!hasAttributionData ? ["Matched journey outcomes"] : []),
+        ...(selectedLocation ? ["Location-tagged marketing journeys and outcomes"] : []),
+      ],
+    };
+    if (selectedLocation && marketingEvidence.status === "ready") marketingEvidence.status = "limited";
+
+    const inventoryFreshness = sourceFreshness(scopedInventory[0]?.updatedAt, 14, "No inventory source date");
+    const inventoryCoverage: EvidenceCoverage = !permissions.includes("inventory.view")
+      ? { status: "limited", freshness: "Inventory freshness is permission restricted", evidence: [], missingInputs: ["Permission to view inventory readiness"] }
+      : !scopedInventory.length
+        ? { status: "missing", freshness: inventoryFreshness.freshness, evidence: [], missingInputs: ["Location inventory balances"] }
+        : { status: inventoryFreshness.status, freshness: inventoryFreshness.freshness, evidence: [`${scopedInventory.length} location inventory balances are recorded`], missingInputs: inventoryFreshness.status === "stale" ? ["Current inventory balance"] : [] };
+
+    const marginRow = scopedDailyMetrics.find((row) => row.netSalesCents > 0);
+    const marginFreshness = sourceFreshness(marginRow?.businessDate, 31, "No margin source date");
+    const marginCoverage: EvidenceCoverage = !permissions.includes("metrics.profit")
+      ? { status: "limited", freshness: "Margin freshness is permission restricted", evidence: [], missingInputs: ["Permission to view margin coverage"] }
+      : !marginRow
+        ? { status: "missing", freshness: marginFreshness.freshness, evidence: [], missingInputs: ["Net sales and cost of goods"] }
+        : { status: marginFreshness.status, freshness: marginFreshness.freshness, evidence: [`Net sales and cost of goods are recorded through ${marginRow.businessDate}`], missingInputs: marginFreshness.status === "stale" ? ["Current margin evidence"] : [] };
+
+    const settings = bookkeepingSettings[0];
+    const cashMetric = scopedDailyMetrics.find((row) => row.cashBalanceCents !== null);
+    const cashAccount = cashAccounts.find((row) => row.availableBalanceCents !== null || row.liveBalanceCents !== null);
+    const cashLatest = latestValue([cashMetric?.businessDate, cashAccount?.lastSyncAt, cashAccount?.updatedAt]);
+    const cashFreshness = sourceFreshness(cashLatest, 14, "No cash source date");
+    const hasCashBalance = Boolean(cashMetric || cashAccount);
+    const hasCashGuard = settings?.status === "active" && settings.cashSafetyThresholdCents > 0;
+    const canViewCash = permissions.includes("metrics.cash") || permissions.includes("finance.bank_balances");
+    const cashCoverage: EvidenceCoverage = !canViewCash
+      ? { status: "limited", freshness: "Cash freshness is permission restricted", evidence: [], missingInputs: ["Permission to view cash readiness"] }
+      : !hasCashBalance && !hasCashGuard
+        ? { status: "missing", freshness: cashFreshness.freshness, evidence: [], missingInputs: ["Current cash balance", "Cash safety threshold"] }
+        : {
+            status: hasCashBalance && hasCashGuard ? cashFreshness.status : "limited",
+            freshness: cashFreshness.freshness,
+            evidence: [
+              ...(hasCashBalance ? ["A current cash balance source is recorded"] : []),
+              ...(hasCashGuard ? ["An active cash safety threshold is configured"] : []),
+            ],
+            missingInputs: [
+              ...(!hasCashBalance || cashFreshness.status === "stale" ? ["Current cash balance"] : []),
+              ...(!hasCashGuard ? ["Cash safety threshold"] : []),
+            ],
+          };
+
+    const validatedLocations = locations.filter((row) => row.validationStatus === "validated");
+    const mappedLocationIds = new Set(locationMappings.map((row) => row.localLocationId).filter((value): value is string => Boolean(value)));
+    const inventoryLocationRefs = new Set(scopedInventory.map((row) => row.locationRef));
+    const locationMapped = validatedLocations.some((row) => mappedLocationIds.has(row.id) || inventoryLocationRefs.has(row.id));
+    const locationLatest = latestValue([...locations.map((row) => row.updatedAt), ...locationMappings.map((row) => row.updatedAt)]);
+    const locationFreshness = sourceFreshness(locationLatest, 90, "No location source date");
+    const locationCoverage: EvidenceCoverage = !locations.length
+      ? { status: "missing", freshness: locationFreshness.freshness, evidence: [], missingInputs: ["Validated operating location"] }
+      : !validatedLocations.length || !locationMapped
+        ? {
+            status: "limited",
+            freshness: locationFreshness.freshness,
+            evidence: [`${locations.length} active location records are available`],
+            missingInputs: [
+              ...(!validatedLocations.length ? ["Validated operating location"] : []),
+              ...(!locationMapped ? ["Verified inventory to location mapping"] : []),
+            ],
+          }
+        : { status: locationFreshness.status, freshness: locationFreshness.freshness, evidence: [`${validatedLocations.length} validated locations include an operating source mapping`], missingInputs: locationFreshness.status === "stale" ? ["Current location mapping review"] : [] };
+
+    const customerFreshness = sourceFreshness(customers[0]?.updatedAt, 31, "No customer source date");
+    const customerCoverage: EvidenceCoverage = !permissions.includes("customers.totals")
+      ? { status: "limited", freshness: "Customer freshness is permission restricted", evidence: [], missingInputs: ["Permission to view customer records"] }
+      : selectedLocation
+        ? { status: "limited", freshness: customerFreshness.freshness, evidence: [], missingInputs: ["Customer outcomes linked to the selected location"] }
+      : !customers.length
+        ? { status: "missing", freshness: customerFreshness.freshness, evidence: [], missingInputs: ["Customer records"] }
+        : { status: customerFreshness.status, freshness: customerFreshness.freshness, evidence: [`${customers.length} customer records are available`], missingInputs: customerFreshness.status === "stale" ? ["Current customer records"] : [] };
+
+    const operatingCoverage: MarketingOperatingCoverage = {
+      customers: customerCoverage,
+      inventory: inventoryCoverage,
+      margin: marginCoverage,
+      cashReadiness: cashCoverage,
+      location: locationCoverage,
+    };
     const recommendations = buildMarketingRecommendations({
       businessModel: profile.businessModel,
       primaryOffer: profile.primaryOffer,
@@ -91,14 +241,20 @@ export async function GET(request: Request) {
       primaryGoal: profile.primaryGoal,
       websiteUrl: profile.websiteUrl,
       googleProfileStatus: profile.googleProfileStatus,
-      hasAttributionData: growth.status === "available" && (growth.channels.length > 0 || transactions.length > 0),
-      hasSearchData: visibility.length > 0,
+      hasAttributionData,
+      hasSearchData,
+      asOfDate: new Date().toISOString().slice(0, 10),
+      operatingCoverage,
+      marketingEvidence,
     });
     return jsonResponse({
       growth,
       profile: { ...profile, saved: Boolean(saved) },
       organization: { businessName: organization?.businessName ?? "Your business" },
       recommendations,
+      operatingCoverage,
+      marketingEvidence,
+      locationScope: selectedLocation ? { id: selectedLocation.id, name: selectedLocation.name } : null,
       calendar,
       searchSeries: visibility.slice(-24).map((row) => ({ query: row.query, observedDate: row.observedDate, position: row.positionMilli / 1000, discoveryActions: row.discoveryActions, sourceSystem: row.sourceSystem })),
       importCounts: {
@@ -112,7 +268,10 @@ export async function GET(request: Request) {
         { provider: "Meta", status: "coming_soon", label: "Coming soon!", availableNow: "Owner-entered campaign context and calendar planning" },
       ],
       period: { since, through: new Date().toISOString().slice(0, 10) },
-      sourceBoundary: "Recommendations use saved business context and recorded observations. First-touch attribution requires a shared pseudonymous journey reference across discovery, website or call, customer and POS events. Association is not proof of causation.",
+      sourceBoundary: "Recommendations use saved business context, tenant operating records and recorded observations. First-touch attribution requires a shared pseudonymous journey reference across discovery, website or call, customer and POS events. Association is not proof of causation. Google and Meta connectors remain unavailable, and this workspace does not store or aggregate automated Google Business Profile performance data.",
+      scopeBoundary: selectedLocation
+        ? `Inventory and daily operating evidence are filtered to ${selectedLocation.name}. Marketing journeys and customer outcomes are not location-tagged, so location-specific promotion confidence remains limited.`
+        : "All authorized organization evidence is included.",
     });
   });
 }

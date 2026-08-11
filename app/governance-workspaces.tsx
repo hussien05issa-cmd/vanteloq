@@ -84,7 +84,7 @@ type Governance = {
     logoAvailable: boolean;
     logoVersion: number;
   };
-  preferences: { emailNotifications: boolean; rememberedProfile: boolean };
+  preferences: { emailNotifications: boolean; rememberedProfile: boolean; hiddenNavigationJson?: string; preferredLocationId?: string | null };
   locations: Location[];
   roles: Role[];
   members: Member[];

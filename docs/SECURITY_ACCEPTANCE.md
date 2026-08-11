@@ -33,4 +33,4 @@ Date: 2026-08-09
 
 ## Launch decision
 
-**Fail — restricted development milestone only.** The production dependency audit and the source-level authentication, MFA, tenant, migration, import, accounting, calculation, and execution tests pass. The provider leaked-password switch, session-management UI, account-level operations, restore, DAST, accounting-content review, and live-adapter findings still block admitting real customers or connecting live bank, payroll, tax, or customer data.
+**Fail: restricted development milestone only.** The production dependency audit and the source-level authentication, MFA, tenant, migration, import, accounting, calculation, and execution tests pass. The provider leaked-password switch, session-management UI, account-level operations, restore, DAST, accounting-content review, and live-adapter findings still block admitting real customers or connecting live bank, payroll, tax, or customer data.

@@ -8,11 +8,11 @@ The adapter is implemented but not represented as live. It can authorize, discov
 
 Set these names in the hosted secret/environment manager; never add values to source control:
 
-- `LIGHTSPEED_CLIENT_ID` — approved X-Series developer application client ID.
-- `LIGHTSPEED_CLIENT_SECRET` — approved developer application secret.
-- `INTEGRATION_ENCRYPTION_KEY` — base64-encoded 32-byte key managed as a hosted secret.
-- `LIGHTSPEED_REDIRECT_URI` — `https://vanteloq.com/api/v1/integrations/lightspeed/callback`.
-- `LIGHTSPEED_API_VERSION` — `2026-07`.
+- `LIGHTSPEED_CLIENT_ID`: approved X-Series developer application client ID.
+- `LIGHTSPEED_CLIENT_SECRET`: approved developer application secret.
+- `INTEGRATION_ENCRYPTION_KEY`: base64-encoded 32-byte key managed as a hosted secret.
+- `LIGHTSPEED_REDIRECT_URI`: `https://vanteloq.com/api/v1/integrations/lightspeed/callback`.
+- `LIGHTSPEED_API_VERSION`: `2026-07`.
 
 Register the callback exactly. Vanteloq asks only for `outlets:read` and `sales:read`.
 

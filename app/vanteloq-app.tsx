@@ -1,18 +1,19 @@
 "use client";
 
 import Image from "next/image";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import BookLoQWorkspace from "./bookloq-workspace";
 import CommunicationsWorkspace from "./communications-workspace";
 import GrowthWorkspace from "./growth-workspace";
 import IntegrationBrandLogo from "./integration-brand-logo";
 import {
   integrationCatalog,
+  integrationCategoryOrder,
   preSyncControls,
-  salesChannelGroups,
   type IntegrationCatalogEntry,
 } from "./integration-catalog";
 import ProductBrandLogo from "./product-brand-logo";
+import PlaidLinkButton from "./plaid-link-button";
 import { apiFetch, signOut } from "./supabase-browser";
 import {
   BusinessTrendChart,
@@ -28,6 +29,13 @@ import {
   PurchaseOrdersWorkspace,
   ReportsWorkspace,
 } from "./control-workspaces";
+import {
+  NAVIGATION_VIEW_IDS,
+  PROTECTED_NAVIGATION_VIEW_IDS,
+  normalizeHiddenNavigation,
+  setNavigationVisibility,
+} from "../domain/navigation-preferences";
+import { buildProviderFeatureCoverage, type CanonicalCommerceCoverage, type ProviderFeatureCoverage } from "../domain/provider-feature-coverage";
 
 type View =
   | "Dashboard"
@@ -60,49 +68,74 @@ type View =
 
 const nav: [string, View[]][] = [
   [
-    "Overview",
+    "Command centre",
     ["Dashboard", "Intelligence", "Action Centre", "Business Brief", "Advisor"],
   ],
   [
-    "Commerce",
-    [
-      "Sales",
-      "Inventory",
-      "Customers",
-      "Operations",
-      "Suppliers",
-      "Purchase Orders",
-    ],
+    "Sales and customers",
+    ["Sales", "Customers"],
   ],
   [
-    "Finance",
-    [
-      "Profit",
-      "Cash",
-      "BookLoQ",
-      "Bookkeeping",
-      "Reports",
-    ],
+    "Inventory and purchasing",
+    ["Inventory", "Suppliers", "Purchase Orders"],
   ],
   [
-    "Growth",
-    [
-      "Marketing",
-      "Communications",
-    ],
+    "Finance and books",
+    ["Profit", "Cash", "BookLoQ", "Bookkeeping", "Reports"],
   ],
   [
-    "Organization",
-    [
-      "Team",
-      "Documents",
-      "Data Quality",
-      "Locations",
-      "Decision Journal",
-      "Scenario Planner",
-    ],
+    "Growth and relationships",
+    ["Marketing", "Communications"],
+  ],
+  [
+    "Operations and governance",
+    ["Operations", "Team", "Documents", "Data Quality", "Locations", "Decision Journal", "Scenario Planner"],
   ],
 ];
+
+const protectedNavigation = [...PROTECTED_NAVIGATION_VIEW_IDS] as View[];
+const allNavigationViews = [...NAVIGATION_VIEW_IDS] as View[];
+
+const navigationGuide: Record<View, { outcome: string; data: string }> = {
+  Dashboard: { outcome: "Prioritizes the owner’s current operating picture and exceptions.", data: "Verified sales, margin, cash, inventory and task records." },
+  Intelligence: { outcome: "Explains supported changes, confidence and missing evidence.", data: "Metric history, comparisons, provenance and quality checks." },
+  "Action Centre": { outcome: "Turns decisions and exceptions into assigned, measurable work.", data: "Owner actions, due dates, assignees and linked evidence." },
+  "Business Brief": { outcome: "Creates a compact review of performance and next actions.", data: "Verified command-centre metrics and ranked insights." },
+  Advisor: { outcome: "Answers supported operating questions and states its limits.", data: "The same verified metrics and source contracts used by the dashboard." },
+  Sales: { outcome: "Shows revenue, transactions, average order value and payment mix.", data: "Completed sales, refunds, discounts, payments, dates and locations." },
+  Customers: { outcome: "Supports repeat-rate and retention analysis when identity is authorized.", data: "Customer profiles, consent state and customer-linked transactions." },
+  Inventory: { outcome: "Finds stockout, overstock, expiry and transfer decisions.", data: "SKU balances, sales history, incoming orders, lead time and location." },
+  Suppliers: { outcome: "Connects vendor records to products and purchasing decisions.", data: "Suppliers, products, costs, purchase orders and receiving history." },
+  "Purchase Orders": { outcome: "Builds reviewed orders without duplicating incoming stock.", data: "Demand, stock, suppliers, order history and verified buying capacity." },
+  Operations: { outcome: "Organizes recurring duties, exceptions and accountable follow-up.", data: "Tasks, checklists, incidents, receiving and shift records." },
+  Profit: { outcome: "Shows margin movement and where contribution may be leaking.", data: "Net sales, product cost, labour and supported operating expenses." },
+  Cash: { outcome: "Shows liquidity pressure and protected purchasing capacity.", data: "Verified bank balances, obligations, receivables and due dates." },
+  BookLoQ: { outcome: "Organizes financial records, reconciliation and month-end review.", data: "Bank activity, POS payouts, invoices, receipts and reviewed journal entries." },
+  Bookkeeping: { outcome: "Explains the close workflow and unresolved accounting records.", data: "Transactions, source documents, tax coding and reconciliation status." },
+  Reports: { outcome: "Produces traceable operating and accountant-ready exports.", data: "Verified metrics, periods, sources and role permissions." },
+  Marketing: { outcome: "Recommends measurable growth work constrained by operations.", data: "Search, journeys, campaign cost, customers, margin, stock and location." },
+  Communications: { outcome: "Keeps customer outreach gated by consent and evidence.", data: "Authorized contacts, consent, campaign purpose and delivery status." },
+  Team: { outcome: "Manages roles, location scope and organization-paid access.", data: "Employee profiles, permissions, assigned locations and security state." },
+  Documents: { outcome: "Captures invoices and receipts for controlled human review.", data: "Private uploads, file metadata, duplicate checks and review status." },
+  "Data Quality": { outcome: "Shows freshness, completeness, reconciliation and blocked calculations.", data: "Import runs, source coverage, errors and metric provenance." },
+  Locations: { outcome: "Compares each mapped store and switches the whole workspace scope.", data: "Organization locations, provider mappings and location-tagged metrics." },
+  "Decision Journal": { outcome: "Records what was decided, why and what happened next.", data: "Decision evidence, owner, date, expected result and review outcome." },
+  "Scenario Planner": { outcome: "Tests assumptions without changing live books or metrics.", data: "Owner-entered assumptions plus verified baseline figures." },
+  "Industry Modules": { outcome: "Explains optional industry-specific source and metric models.", data: "A tested industry adapter is required before activation." },
+  Integrations: { outcome: "Connects and maps sources only after their safety gates pass.", data: "Authorization, scopes, locations, sync history and reconciliation." },
+  Settings: { outcome: "Controls organization, security, locations and personal navigation.", data: "Account preferences, roles, billing and organization records." },
+};
+
+const emptyCommerceCoverage: CanonicalCommerceCoverage = {
+  sales: false,
+  payments: false,
+  products: false,
+  inventory: false,
+  customers: false,
+  suppliers: false,
+  locations: false,
+};
+const universalPosContract = buildProviderFeatureCoverage("normalized-pos", emptyCommerceCoverage);
 
 const viewPermission: Partial<Record<View, string>> = {
   Dashboard: "dashboard.view",
@@ -473,6 +506,7 @@ type CommandCentre = {
     refundsCents: number;
     discountsCents: number;
     lastSaleAt: string | null;
+    sourceGranularity: "intraday" | "daily";
     hourly: Array<{
       hour: number;
       label: string;
@@ -597,12 +631,19 @@ export default function VanteloqApp({
   const [appRole, setAppRole] = useState("employee");
   const [appPermissions, setAppPermissions] = useState<string[]>([]);
   const [paymentRange, setPaymentRange] = useState<PaymentRange>(1);
+  const [hiddenNavigation, setHiddenNavigation] = useState<View[]>([]);
+  const [navigationEditorOpen, setNavigationEditorOpen] = useState(false);
+  const navigationCustomizeRef = useRef<HTMLButtonElement>(null);
+  const [locations, setLocations] = useState<Array<{ id: string; name: string }>>([]);
+  const [activeLocationId, setActiveLocationId] = useState<string | null>(null);
   const canAutoSync = appPermissions.includes("integrations.manage");
 
   const refresh = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const response = await apiFetch(`/api/v1/command-centre?payment_days=${paymentRange}`, {
+      const parameters = new URLSearchParams({ payment_days: String(paymentRange) });
+      if (activeLocationId) parameters.set("location", activeLocationId);
+      const response = await apiFetch(`/api/v1/command-centre?${parameters.toString()}`, {
         headers: { Accept: "application/json" },
       });
       const body = await response.json();
@@ -614,6 +655,7 @@ export default function VanteloqApp({
       setCurrency(body.organization.currency);
       setAppRole(body.organization.role ?? "employee");
       setAppPermissions(body.organization.permissions ?? []);
+      setLocations(body.organization.locations ?? []);
       setWorkspaceName(body.organization.name || organizationName);
       setLogoVersion(
         body.organization.logoAvailable ? body.organization.logoVersion : null,
@@ -628,7 +670,23 @@ export default function VanteloqApp({
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [organizationName, paymentRange]);
+  }, [activeLocationId, organizationName, paymentRange]);
+  useEffect(() => {
+    let cancelled = false;
+    void apiFetch("/api/v1/preferences", { headers: { Accept: "application/json" } })
+      .then(async (response) => {
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.error?.message ?? "Workspace preferences could not be loaded.");
+        if (cancelled) return;
+        setHiddenNavigation(normalizeHiddenNavigation(body.hiddenNavigation ?? [], allNavigationViews, protectedNavigation));
+        setActiveLocationId(body.preferredLocationId ?? null);
+        if (Array.isArray(body.locations)) setLocations(body.locations);
+      })
+      .catch(() => {
+        if (!cancelled) setHiddenNavigation([]);
+      });
+    return () => { cancelled = true; };
+  }, []);
   useEffect(() => {
     const timer = window.setTimeout(() => void refresh(), 0);
     return () => window.clearTimeout(timer);
@@ -717,6 +775,22 @@ export default function VanteloqApp({
     setView(next);
     setMobileNavOpen(false);
   };
+  const savePreferences = async (nextHidden: View[], nextLocationId = activeLocationId) => {
+    const normalized = normalizeHiddenNavigation(nextHidden, allNavigationViews, protectedNavigation);
+    setHiddenNavigation(normalized);
+    setActiveLocationId(nextLocationId);
+    const response = await apiFetch("/api/v1/preferences", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ hiddenNavigation: normalized, preferredLocationId: nextLocationId }),
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error?.message ?? "Workspace preferences could not be saved.");
+  };
+  const closeNavigationEditor = useCallback(() => {
+    setNavigationEditorOpen(false);
+    window.requestAnimationFrame(() => navigationCustomizeRef.current?.focus());
+  }, []);
 
   return (
     <main className="app-shell operating-shell">
@@ -761,6 +835,19 @@ export default function VanteloqApp({
                 : "Data source required"}
             </small>
           </span>
+          <label className="location-switcher">
+            <span className="sr-only">Dashboard location</span>
+            <select
+              value={activeLocationId ?? ""}
+              onChange={(event) => {
+                const next = event.target.value || null;
+                void savePreferences(hiddenNavigation, next).catch((caught) => showNotice(caught instanceof Error ? caught.message : "Location preference could not be saved."));
+              }}
+            >
+              <option value="">All locations</option>
+              {locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}
+            </select>
+          </label>
         </div>
         <nav aria-label="Primary navigation">
           {nav
@@ -770,8 +857,8 @@ export default function VanteloqApp({
                   group,
                   items.filter(
                     (item) =>
-                      !viewPermission[item] ||
-                      appPermissions.includes(viewPermission[item]!),
+                      !hiddenNavigation.includes(item) &&
+                      (!viewPermission[item] || appPermissions.includes(viewPermission[item]!)),
                   ),
                 ] as [string, View[]],
             )
@@ -799,7 +886,10 @@ export default function VanteloqApp({
             ))}
         </nav>
         <div className="side-bottom">
-          <button
+          <button ref={navigationCustomizeRef} className="navigation-customize" onClick={() => setNavigationEditorOpen(true)}>
+            Customize navigation
+          </button>
+          {!hiddenNavigation.includes("Industry Modules") && <button
             className={
               view === "Industry Modules" ? "nav-item active" : "nav-item"
             }
@@ -808,8 +898,8 @@ export default function VanteloqApp({
           >
             <span className="nav-dot" />
             Industry modules
-          </button>
-          {appPermissions.includes("integrations.view") && (
+          </button>}
+          {appPermissions.includes("integrations.view") && !hiddenNavigation.includes("Integrations") && (
             <button
               className={
                 view === "Integrations" ? "nav-item active" : "nav-item"
@@ -931,6 +1021,10 @@ export default function VanteloqApp({
             }}
             paymentRange={paymentRange}
             setPaymentRange={setPaymentRange}
+            activeLocationId={activeLocationId}
+            selectLocation={(locationId) => {
+              void savePreferences(hiddenNavigation, locationId).catch((caught) => showNotice(caught instanceof Error ? caught.message : "Location preference could not be saved."));
+            }}
           />
         )}
       </section>
@@ -961,6 +1055,18 @@ export default function VanteloqApp({
         </div>
       )}
       {commandOpen && <GlobalCommand permissions={appPermissions} navigate={(next) => { setCommandOpen(false); navigate(next); }} close={() => setCommandOpen(false)} />}
+      {navigationEditorOpen && (
+        <NavigationEditor
+          hidden={hiddenNavigation}
+          permissions={appPermissions}
+          close={closeNavigationEditor}
+          update={(item, visible) => {
+            const next = setNavigationVisibility(hiddenNavigation, item, visible, allNavigationViews, protectedNavigation);
+            void savePreferences(next).then(() => showNotice(visible ? `${item} restored to navigation` : `${item} hidden from navigation`)).catch((caught) => showNotice(caught instanceof Error ? caught.message : "Navigation preference could not be saved."));
+          }}
+          restoreAll={() => void savePreferences([]).then(() => showNotice("All available workspaces restored"))}
+        />
+      )}
     </main>
   );
 }
@@ -972,6 +1078,100 @@ function GlobalCommand({ permissions, navigate, close }: { permissions: string[]
     .filter((item) => !viewPermission[item] || permissions.includes(viewPermission[item]!))
     .filter((item) => !query || item.toLowerCase().includes(query.toLowerCase())), [permissions, query]);
   return <div className="modal-backdrop command-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}><section className="command-modal" role="dialog" aria-modal="true" aria-label="Workspace search"><div className="command-input"><span>⌕</span><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Go to a workspace…"/><button onClick={close}>ESC</button></div><div className="command-results"><small>WORKSPACES</small>{options.map((option) => <button key={option} onClick={() => navigate(option)}><span>↳</span><span>{option}</span><b>→</b></button>)}{!options.length && <p>No matching workspace.</p>}</div></section></div>;
+}
+
+function NavigationEditor({
+  hidden,
+  permissions,
+  close,
+  update,
+  restoreAll,
+}: {
+  hidden: View[];
+  permissions: string[];
+  close: () => void;
+  update: (item: View, visible: boolean) => void;
+  restoreAll: () => void;
+}) {
+  const dialogRef = useRef<HTMLElement>(null);
+  const sections: [string, View[]][] = [
+    ...nav,
+    ["Workspace controls", ["Industry Modules", "Integrations", "Settings"]],
+  ];
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    const focusableSelector = "button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex='-1'])";
+    const focusables = () => Array.from(dialog.querySelectorAll<HTMLElement>(focusableSelector)).filter((element) => element.getClientRects().length > 0);
+    focusables()[0]?.focus();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        close();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const items = focusables();
+      if (!items.length) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [close]);
+  return (
+    <div className="modal-backdrop navigation-editor-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
+      <section ref={dialogRef} className="navigation-editor" role="dialog" aria-modal="true" aria-labelledby="navigation-editor-title">
+        <header>
+          <div>
+            <p>PERSONAL NAVIGATION</p>
+            <h2 id="navigation-editor-title">Keep only the workspaces you use.</h2>
+            <span>Hiding a workspace removes it from your sidebar only. It never deletes records, changes access, or affects another account.</span>
+          </div>
+          <button onClick={close} aria-label="Close navigation settings">×</button>
+        </header>
+        <div className="navigation-editor-list">
+          {sections.map(([group, items]) => {
+            const available = items.filter((item) => !viewPermission[item] || permissions.includes(viewPermission[item]!));
+            if (!available.length) return null;
+            return <section key={group}>
+              <h3>{group}</h3>
+              {available.map((item) => {
+                const isHidden = hidden.includes(item);
+                const protectedItem = protectedNavigation.includes(item);
+                const guide = navigationGuide[item];
+                return <article key={item} className={isHidden ? "is-hidden" : ""}>
+                  <div>
+                    <strong>{item}</strong>
+                    <p>{guide.outcome}</p>
+                    <small><b>Data used:</b> {guide.data}</small>
+                  </div>
+                  <button
+                    onClick={() => update(item, isHidden)}
+                    disabled={protectedItem}
+                    title={protectedItem ? `${item} stays available so navigation can always be recovered.` : isHidden ? `Restore ${item} to the sidebar.` : `Hide ${item} from your sidebar.`}
+                  >
+                    {protectedItem ? "Always shown" : isHidden ? "Restore" : "Hide"}
+                  </button>
+                </article>;
+              })}
+            </section>;
+          })}
+        </div>
+        <footer>
+          <button onClick={restoreAll}>Restore all</button>
+          <button className="primary" onClick={close}>Done</button>
+        </footer>
+      </section>
+    </div>
+  );
 }
 
 function Workspace({
@@ -987,6 +1187,8 @@ function Workspace({
   onBrandChange,
   paymentRange,
   setPaymentRange,
+  activeLocationId,
+  selectLocation,
 }: {
   view: View;
   data: CommandCentre;
@@ -1000,6 +1202,8 @@ function Workspace({
   onBrandChange: (name: string, logoVersion: number | null) => void;
   paymentRange: PaymentRange;
   setPaymentRange: (range: PaymentRange) => void;
+  activeLocationId: string | null;
+  selectLocation: (locationId: string | null) => void;
 }) {
   if (view === "Dashboard")
     return (
@@ -1021,7 +1225,7 @@ function Workspace({
         createTask={createTask}
       />
     );
-  if (view === "Action Centre")
+  if (view === "Action Centre" || view === "Operations")
     return (
       <TaskCentre
         showNotice={showNotice}
@@ -1035,11 +1239,11 @@ function Workspace({
         }
       />
     );
-  if (view === "BookLoQ")
-    return <BookLoQWorkspace createTask={createTask} showNotice={showNotice} />;
+  if (view === "BookLoQ" || view === "Bookkeeping")
+    return <BookLoQWorkspace createTask={createTask} showNotice={showNotice} navigate={navigate} activeLocationId={activeLocationId} />;
   if (view === "Communications") return <CommunicationsWorkspace />;
   if (view === "Marketing")
-    return <GrowthWorkspace currency={currency} navigate={navigate} />;
+    return <GrowthWorkspace currency={currency} navigate={navigate} activeLocationId={activeLocationId} />;
   if (view === "Integrations")
     return <DataHub refresh={refresh} showNotice={showNotice} />;
   if (view === "Decision Journal")
@@ -1064,6 +1268,7 @@ function Workspace({
         currency={currency}
         showNotice={showNotice}
         createTask={createTask}
+        activeLocationId={activeLocationId}
       />
     );
   if (view === "Sales")
@@ -1083,6 +1288,7 @@ function Workspace({
         currency={currency}
         showNotice={showNotice}
         createTask={createTask}
+        activeLocationId={activeLocationId}
       />
     );
   if (view === "Inventory")
@@ -1098,7 +1304,9 @@ function Workspace({
       />
     );
   if (view === "Customers" || view === "Suppliers")
-    return <CommerceRecordsWorkspace kind={view} navigate={navigate} />;
+    return <CommerceRecordsWorkspace kind={view} navigate={navigate} activeLocationId={activeLocationId} />;
+  if (view === "Locations")
+    return <LocationsWorkspace currency={currency} activeLocationId={activeLocationId} selectLocation={selectLocation} navigate={navigate} />;
   if (view === "Documents")
     return (
       <DocumentsWorkspace
@@ -1226,6 +1434,7 @@ function CommerceIntelligenceRail({ data, currency, paymentRange, setPaymentRang
 function LiveSalesPanel({ data, currency, paymentRange, setPaymentRange, compact = false }: { data: CommandCentre; currency: string; paymentRange: PaymentRange; setPaymentRange: (range: PaymentRange) => void; compact?: boolean }) {
   const today = data.today;
   const baselineLabel = data.todayComparison ? formatBusinessDate(data.todayComparison.baselineDate) : "same weekday";
+  const sourceName = data.liveSource.accountName || (data.liveSource.provider ? providerLabel(data.liveSource.provider) : "connected source");
   return (
     <>
       <section className="today-metric-grid">
@@ -1238,9 +1447,11 @@ function LiveSalesPanel({ data, currency, paymentRange, setPaymentRange, compact
         <article className="card live-sales-chart-card">
           <div className="card-head">
             <div><p className="card-kicker">CURRENT DAY</p><h3>Sales by hour</h3></div>
-            <span className="verified-tag">{data.liveSource.accountName || "Lightspeed R-Series"} · verified</span>
+            <span className="verified-tag">{sourceName} · verified</span>
           </div>
-          <IntradaySalesChart data={today.hourly} currency={currency} />
+          {today.sourceGranularity === "intraday"
+            ? <IntradaySalesChart data={today.hourly} currency={currency} />
+            : <div className="intel-empty"><b>Hourly detail is not provided by this source</b><span>The totals above come from the latest verified daily summary. Connect a provider with transaction timestamps to unlock the intraday chart.</span></div>}
           <div className="chart-foot">
             <span><b>{today.transactionCount.toLocaleString()}</b> completed sales</span>
             <span><b>{today.unitsSold.toLocaleString()}</b> line items</span>
@@ -1269,13 +1480,14 @@ function LiveSalesPanel({ data, currency, paymentRange, setPaymentRange, compact
 function Overview({ data, currency, navigate, createTask, paymentRange, setPaymentRange }: { data: CommandCentre; currency: string; navigate: (view: View) => void; createTask: (seed: TaskSeed) => void; paymentRange: PaymentRange; setPaymentRange: (range: PaymentRange) => void }) {
   const hasCurrentDayData = data.today.transactionCount > 0 || data.today.refundsCents > 0;
   if ((!data.ready || !data.current) && !hasCurrentDayData) return <EmptyCommandCentre navigate={navigate} />;
+  const sourceName = data.liveSource.accountName || (data.liveSource.provider ? providerLabel(data.liveSource.provider) : "the connected source");
   return (
     <div className="content command-page">
       <section className="live-sales-heading">
         <div>
-          <p>TODAY&apos;S SALES</p>
-          <h2>Current-day performance, directly from Lightspeed.</h2>
-          <span>{data.today.lastSaleAt ? `Through ${formatTime(data.today.lastSaleAt)} · refreshed automatically every five minutes` : `No completed sale has been received for ${data.today.businessDate} from ${data.liveSource.accountName || "the connected R-Series account"}.`}</span>
+          <p>LATEST VERIFIED SALES</p>
+          <h2>Current performance from the connected commerce source.</h2>
+          <span>{data.today.lastSaleAt ? `${data.today.sourceGranularity === "intraday" ? "Through" : "Daily summary updated"} ${formatTime(data.today.lastSaleAt)} · ${sourceName}` : `No verified sale has been received for ${data.today.businessDate} from ${sourceName}.`}</span>
         </div>
         <span className={`live-sync-state ${data.source.freshness}`}><i />{data.liveSource.lastSuccessfulSyncAt ? `Synced ${formatRelativeSync(data.liveSource.lastSuccessfulSyncAt)}` : "Waiting for first sync"}</span>
       </section>
@@ -1318,10 +1530,11 @@ function ConnectorHomeDirectory({ data, openIntegrations }: { data: CommandCentr
 }
 
 function SalesWorkspace({ data, currency, navigate, refresh, paymentRange, setPaymentRange }: { data: CommandCentre; currency: string; navigate: (view: View) => void; refresh: () => Promise<void>; paymentRange: PaymentRange; setPaymentRange: (range: PaymentRange) => void }) {
+  const sourceName = data.liveSource.accountName || (data.liveSource.provider ? providerLabel(data.liveSource.provider) : "the connected commerce source");
   return (
     <div className="content sales-live-page">
       <section className="live-sales-heading">
-        <div><p>SALES INTELLIGENCE</p><h2>Today&apos;s trade, without waiting for an end-of-day report.</h2><span>Completed sales from {data.liveSource.accountName || "the connected R-Series account"} refresh automatically. Refunds and product cost are reflected in the totals.</span></div>
+        <div><p>SALES INTELLIGENCE</p><h2>Verified trade from every supported commerce source.</h2><span>Sales from {sourceName} use the finest verified detail that provider supplies. Refunds and product cost appear only when included in the normalized source records.</span>{data.liveSource.provider === "lightspeed-r" && <span>For roles allowed to manage integrations, connected R-Series data is refreshed automatically every five minutes while this workspace is open.</span>}</div>
         <div className="live-sales-actions"><span className="live-sync-state current"><i />{data.liveSource.lastSuccessfulSyncAt ? `Synced ${formatRelativeSync(data.liveSource.lastSuccessfulSyncAt)}` : "Awaiting sync"}</span><button onClick={() => void refresh()}>Refresh view</button></div>
       </section>
       <LiveSalesPanel data={data} currency={currency} paymentRange={paymentRange} setPaymentRange={setPaymentRange} compact />
@@ -1938,6 +2151,8 @@ type IntegrationConnection = IntegrationCatalogEntry & {
     mode: string;
     dataPromotionEnabled: boolean;
   };
+  canonicalCoverage: CanonicalCommerceCoverage;
+  featureCoverage: ProviderFeatureCoverage[];
 };
 
 function DataHub({
@@ -2156,6 +2371,8 @@ function DataHub({
         connectedAt: null,
         dataPromotionStatus: "blocked",
         providerReadiness: null,
+        canonicalCoverage: emptyCommerceCoverage,
+        featureCoverage: buildProviderFeatureCoverage(provider.id, emptyCommerceCoverage),
       }));
   const verifiedControls = preSyncControls.filter(
     (control) => control.status === "verified",
@@ -2198,21 +2415,6 @@ function DataHub({
         <DailyImport refresh={refresh} showNotice={showNotice} />
       ) : (
         <>
-          <section className="sales-channel-directory" aria-labelledby="sales-channels-title">
-            <header>
-              <p>SALES CHANNELS</p>
-              <h3 id="sales-channels-title">Connect every place the business sells, gets paid and finds customers.</h3>
-              <span>This directory is the connection plan. A provider only becomes live after its secure adapter and reconciliation tests pass.</span>
-            </header>
-            <div>
-              {salesChannelGroups.map((group) => <article key={group.label}>
-                <h4>{group.label}</h4>
-                <div>
-                  {group.providers.map((provider) => <span key={provider}><IntegrationBrandLogo name={provider} compact/>{provider}</span>)}
-                </div>
-              </article>)}
-            </div>
-          </section>
           <section className="connection-readiness" aria-labelledby="pre-sync-title">
             <header>
               <div>
@@ -2256,11 +2458,28 @@ function DataHub({
               <button onClick={() => void loadConnections()}>Retry status check</button>
             </div>
           )}
-          <section className="integration-grid">
-            {providerRows.map((provider) => {
+          <section className="provider-parity-contract" aria-labelledby="provider-parity-title">
+            <header>
+              <div><p>UNIVERSAL POS FEATURE CONTRACT</p><h3 id="provider-parity-title">The provider brand never decides feature access.</h3><span>Lightspeed, Shopify POS, Square, Clover and future POS adapters unlock the same workspace features when they supply the same normalized, verified records. A missing dataset blocks only the dependent feature and names what is missing.</span></div>
+              <strong>{universalPosContract.length} shared capabilities</strong>
+            </header>
+            <div>{universalPosContract.map((feature) => <article key={feature.id}><span>Shared contract</span><b>{feature.label}</b><p>{feature.insight}</p><small><strong>Required data:</strong> {feature.dataUsed.join(", ")}</small></article>)}</div>
+            <footer className="provider-coverage-matrix">
+              {providerRows.filter((provider) => provider.category === "Point of sale").map((provider) => {
+                const ready = provider.featureCoverage.filter((feature) => feature.status === "ready").length;
+                return <article key={provider.id}><div><b>{provider.name}</b><span>{provider.status === "connected" ? `${ready} of ${provider.featureCoverage.length} ready from verified records` : "Connection and verified records required"}</span></div><div>{provider.featureCoverage.map((feature) => <span className={feature.status} key={feature.id}>{feature.label}<b>{feature.status === "ready" ? "Ready" : `Needs ${feature.dataNeeded.join(", ")}`}</b></span>)}</div></article>;
+              })}
+            </footer>
+          </section>
+          <div className="integration-groups">
+            {integrationCategoryOrder.filter((category) => providerRows.some((provider) => provider.category === category)).map((category) => <section className="integration-category" key={category}>
+              <header><div><p>{category.toUpperCase()}</p><h3>{category}</h3></div><span>{providerRows.filter((provider) => provider.category === category).length} providers</span></header>
+              <div className="integration-grid">
+            {providerRows.filter((provider) => provider.category === category).map((provider) => {
               const connected = provider.status === "connected";
               const isLightspeed = provider.id === "lightspeed" || provider.id === "lightspeed-r";
               const isStripe = provider.id === "stripe";
+              const isPlaid = provider.id === "plaid";
               const isComingSoon = provider.id === "google" || provider.id === "meta";
               const actionableProvider = provider.id as "lightspeed" | "lightspeed-r" | "stripe";
               const providerAction = providerActions[provider.id] ?? "";
@@ -2268,7 +2487,7 @@ function DataHub({
               const disabledReason = !canManage
                 ? "Your role can view connection status but cannot manage integrations."
                 : !configured
-                  ? `Add the ${isStripe ? "Stripe Connect credentials and webhook secret" : provider.id === "lightspeed-r" ? "R-Series OAuth client ID and secret" : "X-Series OAuth client ID and secret"} to Vanteloq's hosted secrets first.`
+                  ? `Add the ${isPlaid ? "Plaid client ID, secret, webhook URL and encryption key" : isStripe ? "Stripe Connect credentials and webhook secret" : provider.id === "lightspeed-r" ? "R-Series OAuth client ID and secret" : "X-Series OAuth client ID and secret"} to Vanteloq's hosted secrets first.`
                   : "";
               return (
               <article className="integration-card" key={provider.id}>
@@ -2281,6 +2500,7 @@ function DataHub({
                 </div>
                 <h3>{provider.name}</h3>
                 <p>{provider.activationRequirement}</p>
+                {provider.category === "Point of sale" && <details className="integration-feature-checklist"><summary>Feature and data checklist</summary>{provider.featureCoverage.map((feature) => <div key={feature.id}><span className={`feature-state ${feature.status === "ready" ? "available" : "needs-data"}`}>{feature.status === "ready" ? "Available" : "Needs data"}</span><p><b>{feature.label}</b><small>{feature.insight}</small><em>{feature.status === "ready" ? `Verified: ${feature.dataUsed.join(", ")}` : `Missing: ${feature.dataNeeded.join(", ")}`}</em></p></div>)}</details>}
                 {connected && provider.maskedAccountRef && (
                   <div className="connected-source" role="status">
                     <span>Connected source</span>
@@ -2297,6 +2517,9 @@ function DataHub({
                         .join(" · ")}
                     </span>
                   </div>
+                )}
+                {isPlaid && !configured && provider.providerReadiness && (
+                  <div className="provider-setup-needed" role="note"><b>Hosted Plaid setup remaining</b><span>{provider.providerReadiness.missingConfiguration.map(lightspeedConfigurationLabel).join(" · ")}</span></div>
                 )}
                 <div className="integration-card-footer">
                   <div>
@@ -2321,7 +2544,7 @@ function DataHub({
                             : "Sync disabled"}
                     </span>
                   </div>
-                  {(isLightspeed || isStripe) && <div className="provider-actions">
+                  {isPlaid ? <PlaidLinkButton connected={connected} configured={configured} canManage={canManage} onChanged={loadConnections} showNotice={showNotice} /> : (isLightspeed || isStripe) && <div className="provider-actions">
                     {!connected ? <button
                       onClick={() => void connectProvider(actionableProvider)}
                       disabled={Boolean(disabledReason) || Boolean(providerAction)}
@@ -2355,7 +2578,9 @@ function DataHub({
                 </div>
               </article>
             );})}
-          </section>
+              </div>
+            </section>)}
+          </div>
           {outletData && <section className="outlet-mapping-panel" aria-labelledby="outlet-mapping-title">
             <header>
               <div><p>LOCATION CONTROL</p><h3 id="outlet-mapping-title">{outletData.provider === "lightspeed-r" ? "Match R-Series shops to Vanteloq locations when needed." : `Map every Lightspeed ${outletData.locationLabel ?? "outlet"} before promotion.`}</h3></div>
@@ -2425,6 +2650,9 @@ function lightspeedConfigurationLabel(value: string) {
     LIGHTSPEED_R_CLIENT_SECRET: "R-Series client secret",
     LIGHTSPEED_R_REDIRECT_URI: "R-Series callback URL",
     INTEGRATION_ENCRYPTION_KEY: "Encrypted token storage key",
+    PLAID_CLIENT_ID: "Plaid client ID",
+    PLAID_SECRET: "Plaid secret",
+    PLAID_WEBHOOK_URL: "Verified Plaid webhook URL",
   };
   return labels[value] ?? "Provider configuration";
 }
@@ -3278,18 +3506,35 @@ function Advisor({
 
 type CommerceSnapshot = {
   counts: { products: number; customers: number; suppliers: number; saleLines: number };
+  sources: Array<{ provider: string; products: number; customers: number; suppliers: number; saleLines: number }>;
   customerIdentityAvailable: boolean;
-  customers: Array<{ externalCustomerId: string; displayName: string; email: string | null; phone: string | null; sourceUpdatedAt: string | null }>;
-  suppliers: Array<{ externalSupplierId: string; name: string; accountNumber: string | null; contactName: string | null; email: string | null; phone: string | null; sourceUpdatedAt: string | null }>;
+  customers: Array<{ provider: string; externalCustomerId: string; displayName: string; email: string | null; phone: string | null; sourceUpdatedAt: string | null }>;
+  suppliers: Array<{ provider: string; externalSupplierId: string; name: string; accountNumber: string | null; contactName: string | null; email: string | null; phone: string | null; sourceUpdatedAt: string | null }>;
+  locationScope: { id: string; name: string; mappedProviders: string[] } | null;
+  scopeBoundary: string;
 };
 
-function CommerceRecordsWorkspace({ kind, navigate }: { kind: "Customers" | "Suppliers"; navigate: (view: View) => void }) {
+function providerLabel(provider: string) {
+  const labels: Record<string, string> = {
+    "lightspeed-r": "Lightspeed R-Series",
+    lightspeed: "Lightspeed X-Series",
+    "shopify-pos": "Shopify POS",
+    shopify: "Shopify",
+    square: "Square",
+    clover: "Clover",
+    moneris: "Moneris",
+    multiple: "Multiple POS sources",
+  };
+  return labels[provider] ?? provider.replaceAll("-", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function CommerceRecordsWorkspace({ kind, navigate, activeLocationId }: { kind: "Customers" | "Suppliers"; navigate: (view: View) => void; activeLocationId: string | null }) {
   const [snapshot, setSnapshot] = useState<CommerceSnapshot | null>(null);
   const [query, setQuery] = useState("");
   const [error, setError] = useState("");
   useEffect(() => {
     let cancelled = false;
-    void apiFetch("/api/v1/commerce", { headers: { Accept: "application/json" } })
+    void apiFetch(`/api/v1/commerce${activeLocationId ? `?location=${encodeURIComponent(activeLocationId)}` : ""}`, { headers: { Accept: "application/json" } })
       .then(async (response) => {
         const body = await response.json();
         if (!response.ok) throw new Error(body.error?.message ?? "Commerce records could not be loaded.");
@@ -3297,16 +3542,17 @@ function CommerceRecordsWorkspace({ kind, navigate }: { kind: "Customers" | "Sup
       })
       .catch((caught) => { if (!cancelled) setError(caught instanceof Error ? caught.message : "Commerce records could not be loaded."); });
     return () => { cancelled = true; };
-  }, []);
+  }, [activeLocationId]);
   const records = kind === "Customers" ? snapshot?.customers ?? [] : snapshot?.suppliers ?? [];
   const filtered = records.filter((record) => JSON.stringify(record).toLowerCase().includes(query.trim().toLowerCase()));
   const total = kind === "Customers" ? snapshot?.counts.customers ?? 0 : snapshot?.counts.suppliers ?? 0;
   return (
     <div className="content commerce-records-page">
       <section className="workspace-titlebar">
-        <div><p>LIGHTSPEED R-SERIES</p><h2>{kind === "Customers" ? "Customer directory" : "Supplier directory"}</h2><span>{kind === "Customers" ? "Customer records linked to sales, ready for repeat-rate and retention analysis." : "Vendor records linked to the catalog, ready for purchasing and margin analysis."}</span></div>
-        <div className="sync-health"><i className={error ? "error" : ""}/><span><b>{error ? "Source unavailable" : `${total.toLocaleString()} imported`}</b><small>{snapshot ? `${snapshot.counts.saleLines.toLocaleString()} transaction lines available` : "Loading provider records…"}</small></span></div>
+        <div><p>CONNECTED COMMERCE DATA</p><h2>{kind === "Customers" ? "Customer directory" : "Supplier directory"}</h2><span>{snapshot?.scopeBoundary ?? (kind === "Customers" ? "Customer records from every normalized POS source, linked to sales only when the source provides a valid relationship." : "Vendor records from every normalized POS source, ready for purchasing and margin review.")}</span></div>
+        <div className="sync-health"><i className={error ? "error" : ""}/><div className="sync-health-copy"><b>{error ? "Source unavailable" : `${total.toLocaleString()} imported`}</b><small>{snapshot ? `${snapshot.counts.saleLines.toLocaleString()} transaction lines available` : "Loading provider records…"}</small></div></div>
       </section>
+      {snapshot?.sources.length ? <section className="commerce-source-strip" aria-label="Connected commerce sources">{snapshot.sources.map((source) => <span key={source.provider}><b>{providerLabel(source.provider)}</b><small>{source.saleLines.toLocaleString()} sale lines</small></span>)}</section> : null}
       <section className="commerce-summary-strip">
         <article><small>PRODUCTS</small><b>{snapshot?.counts.products.toLocaleString() ?? "Not available"}</b><span>Catalog records</span></article>
         <article><small>CUSTOMERS</small><b>{snapshot?.counts.customers.toLocaleString() ?? "Not available"}</b><span>Active profiles</span></article>
@@ -3320,14 +3566,130 @@ function CommerceRecordsWorkspace({ kind, navigate }: { kind: "Customers" | "Sup
           <div className="dense-row dense-head"><span>Name</span><span>{kind === "Customers" ? "Email" : "Contact"}</span><span>{kind === "Customers" ? "Phone" : "Account"}</span><span>Source</span></div>
           {filtered.map((record) => {
             const customer = "displayName" in record;
-            return <div className="dense-row" key={customer ? record.externalCustomerId : record.externalSupplierId}>
+            return <div className="dense-row" key={`${record.provider}:${customer ? record.externalCustomerId : record.externalSupplierId}`}>
               <span><b>{customer ? record.displayName : record.name}</b><small>{customer ? record.externalCustomerId : record.externalSupplierId}</small></span>
               <span>{customer ? record.email || "Not supplied" : record.contactName || record.email || "Not supplied"}</span>
               <span className="mono-cell">{customer ? record.phone || "Not recorded" : record.accountNumber || "Not recorded"}</span>
-              <span className="mono-cell">R-Series</span>
+              <span className="mono-cell">{providerLabel(record.provider)}</span>
             </div>;
           })}
-        </div> : <div className="commerce-source-error"><b>No {kind.toLowerCase()} have been imported from this account.</b><span>Run a sync, or reconnect the production R-Series account if this is a developer store.</span><button onClick={() => navigate("Integrations")}>Manage source →</button></div>}
+        </div> : <div className="commerce-source-error"><b>No {kind.toLowerCase()} have been imported from a connected account.</b><span>Run the provider sync and review its data coverage. Vanteloq will not create missing records.</span><button onClick={() => navigate("Integrations")}>Manage source →</button></div>}
+      </section>
+    </div>
+  );
+}
+
+type LocationIntelligence = {
+  latestBusinessDate: string | null;
+  unmappedSourceLocations: number;
+  locations: Array<{
+    id: string;
+    name: string;
+    address: string;
+    timezone: string;
+    validationStatus: string;
+    sourceMappings: Array<{ provider: string; name: string }>;
+    metrics: {
+      period: string | null;
+      days: number;
+      netSalesCents: number | null;
+      grossProfitCents: number | null;
+      transactionCount: number | null;
+      inventoryValueCents: number | null;
+      lastUpdatedAt: string | null;
+    };
+  }>;
+};
+
+function LocationsWorkspace({
+  currency,
+  activeLocationId,
+  selectLocation,
+  navigate,
+}: {
+  currency: string;
+  activeLocationId: string | null;
+  selectLocation: (locationId: string | null) => void;
+  navigate: (view: View) => void;
+}) {
+  const [data, setData] = useState<LocationIntelligence | null>(null);
+  const [error, setError] = useState("");
+  const load = useCallback(async () => {
+    try {
+      const response = await apiFetch("/api/v1/locations", { headers: { Accept: "application/json" } });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error?.message ?? "Location intelligence could not be loaded.");
+      setData(body);
+      setError("");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Location intelligence could not be loaded.");
+    }
+  }, []);
+  useEffect(() => { const timer = window.setTimeout(() => void load(), 0); return () => window.clearTimeout(timer); }, [load]);
+  if (error) return <FailureState message={error} retry={load} />;
+  if (!data) return <LoadingState />;
+  return (
+    <div className="content locations-intelligence-page">
+      <section className="page-intro locations-intro">
+        <div>
+          <p>LOCATION INTELLIGENCE</p>
+          <h2>See each store clearly, then scope every dashboard to it.</h2>
+          <span>Sales and inventory appear only when provider locations are mapped to an organization location. Unmapped records remain separate and visible for review.</span>
+        </div>
+        <div className="location-scope-summary">
+          <small>CURRENT DASHBOARD SCOPE</small>
+          <b>{activeLocationId ? data.locations.find((location) => location.id === activeLocationId)?.name ?? "Selected location" : "All locations"}</b>
+          <button onClick={() => selectLocation(null)} disabled={!activeLocationId}>View all locations</button>
+        </div>
+      </section>
+      {data.unmappedSourceLocations > 0 && (
+        <section className="location-mapping-warning">
+          <div><b>{data.unmappedSourceLocations} provider {data.unmappedSourceLocations === 1 ? "location needs" : "locations need"} mapping</b><span>Map each POS shop or outlet before using location comparisons.</span></div>
+          <button onClick={() => navigate("Integrations")}>Map provider locations</button>
+        </section>
+      )}
+      {!data.locations.length ? (
+        <section className="card location-empty-state">
+          <h3>Add the first organization location.</h3>
+          <p>A location name and address are required before a POS shop can be mapped or a store dashboard can be selected.</p>
+          <button className="primary" onClick={() => navigate("Settings")}>Open location settings</button>
+        </section>
+      ) : (
+        <section className="location-intelligence-grid">
+          {data.locations.map((location) => (
+            <article key={location.id} className={activeLocationId === location.id ? "active-location" : ""}>
+              <header>
+                <div><p>{location.validationStatus.toUpperCase()} ADDRESS</p><h3>{location.name}</h3><span>{location.address}</span></div>
+                {activeLocationId === location.id && <strong>Current scope</strong>}
+              </header>
+              <div className="location-metric-grid">
+                <span><small>NET SALES</small><b>{money(location.metrics.netSalesCents, currency)}</b><em>{location.metrics.period ?? "No verified period"}</em></span>
+                <span><small>GROSS PROFIT</small><b>{money(location.metrics.grossProfitCents, currency)}</b><em>Permission and cost data required</em></span>
+                <span><small>TRANSACTIONS</small><b>{location.metrics.transactionCount?.toLocaleString() ?? "Not available"}</b><em>{location.metrics.days} verified days</em></span>
+                <span><small>INVENTORY VALUE</small><b>{money(location.metrics.inventoryValueCents, currency)}</b><em>Latest verified balance</em></span>
+              </div>
+              <div className="location-source-list">
+                <b>Mapped data sources</b>
+                {location.sourceMappings.length
+                  ? location.sourceMappings.map((mapping) => <span key={`${mapping.provider}:${mapping.name}`}>{mapping.name}<small>{mapping.provider.replaceAll("-", " ")}</small></span>)
+                  : <p>No provider location is mapped yet. Organization records remain available, but store metrics stay blocked.</p>}
+              </div>
+              <footer>
+                <button className="primary" onClick={() => selectLocation(location.id)} disabled={activeLocationId === location.id}>View this location</button>
+                <button onClick={() => navigate("Integrations")}>Manage mapping</button>
+              </footer>
+            </article>
+          ))}
+        </section>
+      )}
+      <section className="location-data-contract card">
+        <div><p>WHAT EACH LOCATION CAN FIX</p><h3>Traffic, margin, stock, staffing and cash stay separate until their own evidence exists.</h3></div>
+        <div>
+          <span><b>Demand</b><small>Completed sales and transactions by mapped store reveal local trend and basket changes.</small></span>
+          <span><b>Margin</b><small>Product cost plus location sales reveals gross profit. Expenses are never inferred.</small></span>
+          <span><b>Inventory</b><small>SKU balances, sell-through and incoming orders support transfer and reorder decisions.</small></span>
+          <span><b>Operations</b><small>Staffing, expense and task records become available only when connected and location-tagged.</small></span>
+        </div>
       </section>
     </div>
   );
@@ -3354,14 +3716,35 @@ function ModuleWorkspace({
   createTask: (seed: TaskSeed) => void;
 }) {
   if (!definition) return <EmptyCommandCentre navigate={navigate} />;
-  const immediate: Record<string, string> = {
-    Sales: money(data.current?.netSalesCents, currency),
-    Profit: money(data.current?.grossProfitCents, currency),
-    Cash: money(data.balances?.cashBalanceCents, currency),
-    Inventory: money(data.balances?.inventoryValueCents, currency),
-    Team: percent(data.current?.labourRate),
+  const immediate: Partial<Record<View, string | null>> = {
+    Sales: data.current?.netSalesCents == null ? null : money(data.current.netSalesCents, currency),
+    Profit: data.current?.grossProfitCents == null ? null : money(data.current.grossProfitCents, currency),
+    Cash: data.balances?.cashBalanceCents == null ? null : money(data.balances.cashBalanceCents, currency),
+    Inventory: data.balances?.inventoryValueCents == null ? null : money(data.balances.inventoryValueCents, currency),
+    Team: data.current?.labourRate == null ? null : percent(data.current.labourRate),
   };
-  const value = immediate[name];
+  const value = immediate[name] ?? null;
+  const featureAvailable = (item: string) => {
+    if (name === "Profit") {
+      if (item === "Gross profit and gross margin") return data.metrics.gross_profit?.actuality === "actual" && data.metrics.gross_margin?.actuality === "actual";
+      if (item === "Contribution after labour") return data.metrics.contribution_after_labour?.actuality === "actual";
+      return false;
+    }
+    if (name === "Cash") {
+      if (item === "Latest operating cash") return data.balances?.cashBalanceCents != null;
+      if (item === "Accounts payable") return data.balances?.accountsPayableCents != null;
+      return false;
+    }
+    if (name === "Team" && item === "Labour percentage") return data.metrics.labour_rate?.actuality === "actual";
+    return false;
+  };
+  const sourceAvailable = (item: string) => {
+    if (item.includes("Daily sales and cost summaries")) return data.ready && data.metrics.cost_of_goods?.actuality === "actual";
+    if (item.includes("Daily balance entry")) return data.balances?.cashBalanceCents != null;
+    if (item.includes("Daily labour cost")) return data.metrics.labour_cost?.actuality === "actual";
+    if (item.includes("Daily summaries now")) return data.ready;
+    return false;
+  };
   return (
     <div className="content module-page">
       <section className="module-hero">
@@ -3369,8 +3752,8 @@ function ModuleWorkspace({
           <p>{name.toUpperCase()} INTELLIGENCE</p>
           <h2>{definition.promise}</h2>
           <span>
-            Only supported figures appear. Everything else stays visibly blocked
-            until its required source is verified.
+            This workspace separates what is available, the records each feature
+            uses, and the decision it supports. Missing evidence stays unavailable.
           </span>
         </div>
         {value && (
@@ -3383,31 +3766,33 @@ function ModuleWorkspace({
       </section>
       <div className="module-columns">
         <article className="card">
-          <p className="card-kicker">METRICS</p>
-          <h3>What this workspace will answer</h3>
-          {definition.metrics.map((item) => (
-            <div className="capability-row" key={item}>
-              <span>○</span>
-              {item}
-            </div>
-          ))}
+          <p className="card-kicker">FEATURES AND INSIGHTS</p>
+          <h3>What the owner can diagnose</h3>
+          {definition.metrics.map((item) => {
+            const available = featureAvailable(item);
+            return <div className="feature-detail-row" key={item}>
+              <span className={available ? "feature-state available" : "feature-state needs-data"}>{available ? "Available now" : "Needs data"}</span>
+              <div><b>{item}</b><small>{available ? "This result is calculated from verified, permission-checked source records. Open Intelligence to inspect its formula, period and freshness." : "This result is withheld because at least one required field is missing, stale or outside your permission scope. No value is inferred from another metric."}</small></div>
+            </div>;
+          })}
         </article>
         <article className="card">
-          <p className="card-kicker">SOURCE CONTRACT</p>
-          <h3>What the answer depends on</h3>
-          {definition.sources.map((item, index) => (
-            <div className="capability-row" key={item}>
-              <span>{index === 0 && data.ready ? "✓" : "○"}</span>
-              {item}
-            </div>
-          ))}
+          <p className="card-kicker">DATA USED</p>
+          <h3>Records required for reliable results</h3>
+          {definition.sources.map((item) => {
+            const available = sourceAvailable(item);
+            return <div className="data-requirement-row" key={item}>
+              <span>{available ? "Connected" : "Required input"}</span><b>{item}</b>
+            </div>;
+          })}
           <button onClick={() => navigate("Integrations")}>
             Manage data sources →
           </button>
+          {name === "Bookkeeping" && <button onClick={() => navigate("BookLoQ")}>Open BookLoQ workspace →</button>}
         </article>
         <article className="card">
           <p className="card-kicker">EXECUTION</p>
-          <h3>Actions, not dashboard dead ends</h3>
+          <h3>Decisions this workspace supports</h3>
           {definition.actions.map((item) => (
             <button
               className="module-action"

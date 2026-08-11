@@ -254,7 +254,7 @@ export function IntradaySalesChart({
     return (
       <div className="intraday-empty" role="img" aria-label="No completed sales have been received for today">
         <div className="intraday-empty-grid" aria-hidden="true"><i/><i/><i/><i/></div>
-        <span><b>No completed sales received today</b><small>The graph will populate by hour as the connected R-Series account returns completed transactions.</small></span>
+        <span><b>No completed sales received today</b><small>The graph will populate when the connected commerce source returns transactions with verified timestamps.</small></span>
       </div>
     );
   }

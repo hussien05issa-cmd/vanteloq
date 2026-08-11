@@ -87,6 +87,12 @@ export type ResourceArticle = {
   author: string;
   published: string;
   updated: string;
+  hero?: {
+    src: string;
+    alt: string;
+    width: number;
+    height: number;
+  };
   sections: readonly ArticleSection[];
   sources: readonly ArticleSource[];
   related: readonly string[];
@@ -472,6 +478,323 @@ const articles: readonly ResourceArticle[] = [
       },
     ],
     related: ["how-to-track-inventory-small-business", "how-to-calculate-gross-margin-small-business"],
+  },
+  {
+    slug: "how-to-analyze-business-data-for-growth",
+    title: "How to Analyze Business Data for Sustainable Growth",
+    seoTitle: "How to Analyze Business Data for Sustainable Growth",
+    description: "Learn how to analyze sales, margin, cash, inventory and marketing data, test growth decisions, and scale a small business without losing control.",
+    dek: "Sustainable growth comes from a repeatable decision loop: define the question, verify the inputs, explain the change, test one action and review the result against operational limits.",
+    quickAnswer: "Begin with one decision, not a collection of charts. Compare a clearly defined metric with an equivalent period, then split the change into its likely drivers. Check whether margin, cash, inventory, staffing and location capacity can support the next action. Run a bounded test with a primary measure, a guardrail and a review date. Keep provider-attributed marketing results separate from verified sales and record what the evidence can and cannot prove.",
+    searchIntent: "Informational: the reader wants a practical method for analyzing business data and using it to guide controlled growth.",
+    category: "analytics",
+    author: "Vanteloq Editorial Team",
+    published: "2026-08-11",
+    updated: "2026-08-11",
+    hero: {
+      src: "/brand/scaling-decision-editorial-hero.webp",
+      alt: "An editorial still life with a payment terminal, product blocks, customer markers, coins and translucent planning panels.",
+      width: 1672,
+      height: 941,
+    },
+    sections: [
+      {
+        id: "decision-question",
+        heading: "1. Start with a decision the business can make",
+        paragraphs: [
+          "Analysis is useful when it changes a decision, a priority or a follow-up. A broad request such as \"show me growth\" invites a broad dashboard and a vague conclusion. A stronger question is specific: should this location extend weekend hours, should this product receive more stock, or should this campaign receive another two weeks of budget?",
+          "Write the decision, owner, scope and deadline before choosing metrics. Then identify the minimum evidence needed to answer it. A product promotion, for example, needs demand evidence, available stock, replenishment timing, supported unit economics and a cash limit. If one of those inputs is material and missing, the responsible result is blocked or provisional, not a confident recommendation.",
+        ],
+        callout: {
+          title: "Decision first",
+          body: "A metric earns space when it helps someone choose, investigate or verify an action. More data does not automatically create a better answer.",
+        },
+      },
+      {
+        id: "metric-contract",
+        heading: "2. Give every number a metric contract",
+        paragraphs: [
+          "Two reports can use the same label and still measure different things. Net sales may include or exclude returns, taxes, tips, shipping or cancelled orders. A customer count may mean profiles, purchasers or transactions. Record the definition before comparing the values.",
+          "A useful metric contract states the numerator, denominator, currency, date boundaries, time zone, locations, source system, refresh time and exclusions. It also states whether the value is an actual business record, a provider-attributed result, an external estimate, a forecast or unavailable. This context prevents a clean-looking chart from hiding incompatible records.",
+        ],
+        table: {
+          caption: "Minimum context for a growth measure",
+          headers: ["Field", "Question it answers", "Why it matters"],
+          rows: [
+            ["Definition", "What exactly was counted?", "Prevents similar labels from being treated as identical"],
+            ["Scope", "Which dates, locations, products and channels are included?", "Keeps comparisons equivalent"],
+            ["Source", "Which authorized record produced the value?", "Makes the result traceable"],
+            ["Freshness", "When did the source last update successfully?", "Separates a current signal from a stale one"],
+            ["Status", "Is it actual, attributed, estimated, forecast or unavailable?", "Keeps uncertainty visible"],
+          ],
+        },
+      },
+      {
+        id: "explain-change",
+        heading: "3. Separate what changed from why it changed",
+        paragraphs: [
+          "First calculate the absolute and percentage change using comparable periods. Then decompose the result. Sales can move because the number of transactions changed, the average basket changed, the mix shifted, prices moved, refunds changed or a location operated for a different number of days. Margin can move because of discounting, product mix, supplier costs, returns or missing cost records.",
+          "Percentage change is unavailable when the comparison value is zero. Report the absolute movement and label the result as new activity instead of dividing by zero or inventing a percentage.",
+          "Treat each explanation as supported, plausible or untested. Timing alone does not prove cause. A campaign and a sales increase can occur together while seasonality, a new location, a price change or an unrelated event explains some of the movement. The next analysis should be designed to distinguish those possibilities.",
+        ],
+        formula: {
+          label: "Period-over-period change",
+          value: "(Current value - Comparison value) / Comparison value x 100",
+          example: "If equivalent weekly net sales move from $40,000 to $44,000, the increase is $4,000 or 10%. The formula describes the change, not its cause.",
+        },
+      },
+      {
+        id: "growth-constraints",
+        heading: "4. Check whether the operation can support growth",
+        paragraphs: [
+          "Growth is not only a demand problem. A plan can increase revenue and still create a cash shortage, a stockout, weak contribution or a service failure. Before committing money, connect the proposed action to the constraints that could make it unsafe.",
+          "Use a range when an input is uncertain. Supplier lead time, future demand and campaign response are not fixed facts. A conservative scenario, a working scenario and an upside scenario are more useful than one precise forecast that hides uncertainty.",
+        ],
+        table: {
+          caption: "Growth readiness checks",
+          headers: ["Area", "Evidence to check", "Stop or revise when"],
+          rows: [
+            ["Margin", "Net selling price, discounts, refunds, recorded cost and included variable costs", "Cost coverage is incomplete or the action breaks the approved contribution floor"],
+            ["Cash", "Available balance, protected cash floor and known near-term obligations", "The commitment would reduce cash below the approved floor"],
+            ["Inventory", "Available units, incoming stock, demand history, safety stock and supplier lead time", "Fulfilment risk is not supported by enough stock or replenishment time"],
+            ["Capacity", "Staffing, operating hours, storage and service constraints", "The location cannot deliver the expected volume reliably"],
+          ],
+        },
+      },
+      {
+        id: "segments-locations",
+        heading: "5. Compare useful segments without losing scope",
+        paragraphs: [
+          "A blended result can hide the part of the business that moved. Break a supported change into product, category, location, channel, customer type or time-of-day segments only when those dimensions are recorded consistently. Start with the largest absolute contributors rather than chasing the largest percentages from tiny samples.",
+          "Location comparisons need special care. Align operating days, currency, tax treatment and store mappings. A new store should not be compared with a mature store as though both had the same history. Regional demand should not be inferred from one location unless broader evidence supports it.",
+        ],
+        bullets: [
+          "Compare the same metric definition across every segment.",
+          "Show the denominator so a small sample is visible.",
+          "Separate a location-specific pattern from a business-wide pattern.",
+          "Mark unmapped or shared transactions instead of assigning them to a convenient location.",
+        ],
+      },
+      {
+        id: "marketing-seo-evidence",
+        heading: "6. Use marketing and SEO data without double counting",
+        paragraphs: [
+          "Marketing platforms report valuable evidence, but each platform can assign credit under its own attribution model and time window. Keep Google Analytics, advertising-platform, commerce, CRM and POS outcomes separate at ingestion. Compare them in one decision packet, but do not add their conversion totals together or call provider-attributed revenue verified profit.",
+          "For SEO, begin with the business's own Search Console clicks, impressions, pages and queries. Search Console can omit anonymized and lower-volume query rows, so a detailed query table may not equal the headline total. Use third-party keyword or traffic estimates for discovery, label them as external estimates and validate important opportunities against site-owned evidence.",
+          "A useful SEO review asks which relevant pages receive impressions, whether clicks and click-through rate changed, which search intent the page serves, and whether the visit leads to a supported business outcome. Publishing more pages is not the goal. Clear, original content that helps the intended reader and is reviewed before publication is the safer operating standard.",
+        ],
+        callout: {
+          title: "Attribution is a provider view",
+          body: "A platform-reported conversion is evidence from that platform. It becomes a matched business outcome only after an approved identifier, scope and timing rule links it to a verified record.",
+        },
+      },
+      {
+        id: "bounded-test",
+        heading: "7. Run a bounded test and measure the result",
+        paragraphs: [
+          "Turn the leading explanation into a testable action. State the hypothesis, baseline, primary measure, guardrail, budget ceiling, owner, start date, review date and rollback condition. Change one important variable when practical so the result can teach the team something.",
+          "Choose a review window that matches the decision. A daily stockout response and an SEO content change do not mature on the same schedule. Record the outcome even when the test fails. A decision journal prevents the same unsupported idea from returning every quarter and gives future analysis better context.",
+        ],
+        numbered: [
+          "State what you believe will change and why.",
+          "Record the baseline and the exact source definition.",
+          "Approve the spending, inventory and cash limits.",
+          "Measure the primary result and at least one guardrail.",
+          "Record what happened, what remains uncertain and the next decision.",
+        ],
+      },
+      {
+        id: "vanteloq-analysis",
+        heading: "How Vanteloq strengthens the analysis loop",
+        paragraphs: [
+          "Vanteloq is designed to keep the decision beside its supporting records. A connected operating view can align sales, recorded cost, cash context, inventory, purchasing, location and assigned work while preserving source, period, status and missing-input warnings. That reduces the manual effort of rebuilding the same comparison across separate exports.",
+          "The platform should not make unsupported growth promises. A recommendation is useful when it shows what changed, the calculation, the evidence used, the operational constraints, the missing inputs, the responsible owner and the method for reviewing the result. When a source or permission is unavailable, Vanteloq should say so and keep the decision blocked or provisional.",
+        ],
+      },
+    ],
+    sources: [
+      {
+        title: "Google Analytics Data API reporting basics",
+        publisher: "Google for Developers",
+        url: "https://developers.google.com/analytics/devguides/reporting/data/v1/basics",
+      },
+      {
+        title: "Search Console common tasks and performance guidance",
+        publisher: "Google Search Central",
+        url: "https://support.google.com/webmasters/answer/17010961",
+      },
+      {
+        title: "Search Analytics query method and data boundaries",
+        publisher: "Google for Developers",
+        url: "https://developers.google.com/webmaster-tools/v1/searchanalytics/query",
+      },
+      {
+        title: "SEO Starter Guide",
+        publisher: "Google Search Central",
+        url: "https://developers.google.com/search/docs/fundamentals/seo-starter-guide",
+      },
+      {
+        title: "Financial Performance Data",
+        publisher: "Innovation, Science and Economic Development Canada",
+        url: "https://ised-isde.canada.ca/site/financial-performance-data/en",
+      },
+    ],
+    related: ["what-should-small-business-dashboard-show", "how-to-calculate-gross-margin-small-business", "small-business-bookkeeping-system"],
+  },
+  {
+    slug: "small-business-bookkeeping-system",
+    title: "A Practical Bookkeeping System for a Small Business",
+    seoTitle: "A Practical Bookkeeping System for a Small Business",
+    description: "Build a reliable small-business bookkeeping system with source documents, bank reconciliation, month-end controls and an accountant-ready review process.",
+    dek: "Reliable books come from a disciplined evidence, review, reconciliation and close routine. Software can reduce the work, but it cannot turn an unsupported transaction into an accounting conclusion.",
+    quickAnswer: "Keep the original invoice, receipt or statement for every material entry, record who paid or was paid, categorize the transaction under a documented policy, and reconcile bank, card, merchant and POS clearing balances regularly. Close each month only after unexplained differences, duplicate records and missing evidence are resolved or assigned. Preserve corrections through review and reversal instead of silently replacing history, then export an accountant-ready package with the source documents and open questions.",
+    searchIntent: "Informational: the reader wants a practical bookkeeping workflow, reconciliation method and month-end checklist for a small business.",
+    category: "finance",
+    author: "Vanteloq Editorial Team",
+    published: "2026-08-11",
+    updated: "2026-08-11",
+    hero: {
+      src: "/brand/bookkeeping-month-end-editorial.webp",
+      alt: "An editorial bookkeeping still life with source documents, a card reader, a secure connection marker, review tabs and a bound ledger.",
+      width: 1672,
+      height: 941,
+    },
+    sections: [
+      {
+        id: "source-evidence",
+        heading: "1. Treat source records as evidence",
+        paragraphs: [
+          "A bank line proves that money moved. It does not, by itself, prove the correct account, tax treatment, customer, supplier or business purpose. Keep the original invoice, receipt, contract, statement or other source record that explains the transaction and link it to the entry under review.",
+          "For each document, preserve the original file, supplier or customer, document date, amount, currency, tax fields, payment reference and review status. A clear file name helps, but searchable structured fields and a stable link to the original are what make the record useful during month-end work or a professional review.",
+        ],
+        callout: {
+          title: "Evidence before entry",
+          body: "A transaction feed is a starting point. The accounting treatment remains provisional until the supporting record, business purpose and reviewer are clear.",
+        },
+      },
+      {
+        id: "bank-feed-boundary",
+        heading: "2. Keep the bank feed separate from the ledger",
+        paragraphs: [
+          "Connected bank data can reduce manual entry and make missing transactions easier to spot. Preserve the account, date, amount, description, pending or posted state, provider reference and import time. Do not overwrite a pending item with a posted item unless the relationship is traceable, and do not assume every deposit is revenue or every withdrawal is an expense.",
+          "Use cached balances for ordinary context and request a current balance only when the decision needs it and the provider supports it. Available balance can be absent or defined differently by an institution. Show the balance type, source time and any limitation instead of presenting a single number as unrestricted cash.",
+        ],
+        bullets: [
+          "Separate imported, reviewed, posted and reconciled states.",
+          "Detect duplicates without deleting the original evidence trail.",
+          "Record transfers as movement between accounts, not income and expense.",
+          "Keep personal or unsupported transactions in a review queue.",
+        ],
+      },
+      {
+        id: "weekly-routine",
+        heading: "3. Use a weekly capture and review routine",
+        paragraphs: [
+          "A short weekly routine prevents month-end from becoming a search for missing documents. Import or record the latest bank, card, POS and merchant activity, attach source records, review duplicates and clarify unusual items while the details are still familiar.",
+          "Use a documented chart of accounts and a consistent categorization policy. If the correct treatment is uncertain, leave the item visibly uncategorized with an owner and due date. Guessing creates a cleaner-looking dashboard and a less reliable ledger.",
+        ],
+        numbered: [
+          "Capture invoices, receipts and statements in the private document workspace.",
+          "Review new bank and card activity, including pending-to-posted changes.",
+          "Match merchant deposits to POS payout batches and their fees.",
+          "Categorize supported items and assign uncertain items for review.",
+          "Check overdue receivables, supplier bills and near-term cash commitments.",
+        ],
+      },
+      {
+        id: "reconciliation",
+        heading: "4. Reconcile bank, card and merchant clearing accounts",
+        paragraphs: [
+          "Reconciliation explains the difference between an external statement and the books at the same date. Begin with the statement ending balance, compare it with the reconciled book balance, and account for timing items such as deposits in transit or outstanding payments. An unexplained difference should be zero before the period is marked complete.",
+          "Retail businesses also need payout reconciliation. A processor deposit may combine several sales, subtract fees, include refunds and arrive on a different day. Match the payout batch to the POS and processor records rather than recording the net deposit as sales. This preserves gross sales, refunds, fees and clearing activity as separate facts.",
+        ],
+        formula: {
+          label: "Unexplained reconciliation difference",
+          value: "Adjusted statement balance - Reconciled book balance",
+          example: "After valid timing items are recorded, the target is $0. A remaining amount stays open with its evidence and reviewer rather than being forced into a miscellaneous account.",
+        },
+      },
+      {
+        id: "invoice-capture",
+        heading: "5. Review every uploaded invoice and receipt",
+        paragraphs: [
+          "A secure capture flow should validate the file type and size, detect duplicates, scan or quarantine files according to the configured security process, store the original privately and record who uploaded it. Mobile camera capture is useful only when the image is readable and the full document is present.",
+          "Text extraction can suggest supplier, date, subtotal, tax and total fields, but it can misread a digit, duplicate tax or select the wrong page. Show field-level confidence and the source page when extraction is enabled. Require a person to compare the proposed fields with the original before posting, paying or using the amount in a tax claim.",
+        ],
+        callout: {
+          title: "Extraction is not approval",
+          body: "Keep the original document and the proposed fields side by side. A machine-readable value remains provisional until an authorized reviewer accepts or corrects it.",
+        },
+      },
+      {
+        id: "month-end-close",
+        heading: "6. Close the month with visible controls",
+        paragraphs: [
+          "Month-end is the point where ordinary records become a reviewed reporting period. Complete the bank, card and merchant reconciliations; review accounts receivable and payable; confirm payroll and tax-related balances; investigate unusual or duplicate entries; and resolve or disclose missing documents.",
+          "After approval, lock the period according to the business's policy. A later correction should use a documented adjusting entry or reversal with the original entry, reason, author and approval preserved. Silent edits make prior reports impossible to reproduce.",
+        ],
+        table: {
+          caption: "Practical month-end close checklist",
+          headers: ["Control", "Evidence", "Completion test"],
+          rows: [
+            ["Bank and card reconciliation", "Statements, imported transactions and timing items", "Unexplained difference is zero"],
+            ["Merchant and POS clearing", "Sales batches, refunds, processor fees and deposits", "Each payout is matched or assigned"],
+            ["Receivables and payables", "Open invoices, bills, credits and payment status", "Overdue and disputed items have an owner"],
+            ["Source documents", "Original invoices, receipts and review status", "Missing evidence is resolved or disclosed"],
+            ["Period approval", "Checklist, reviewer and close timestamp", "Reports can be reproduced from the locked records"],
+          ],
+        },
+      },
+      {
+        id: "accountant-package",
+        heading: "7. Prepare an accountant-ready package",
+        paragraphs: [
+          "A useful handoff includes the trial balance or ledger export, reconciliations, statements, source documents, receivable and payable listings, sales-tax working values, payroll summaries when applicable, inventory support and a list of unresolved questions. Use stable references so the reviewer can move from a figure to the entry and its evidence.",
+          "Retention depends on the record and the rules that apply to the business. The Canada Revenue Agency generally requires relevant records and supporting documents to be kept for six years from the end of the last tax year to which they relate, with exceptions. Confirm the required period and format for the business with a qualified professional before deleting source records.",
+        ],
+      },
+      {
+        id: "bookloq-role",
+        heading: "How BookLoQ supports the bookkeeping routine",
+        paragraphs: [
+          "BookLoQ is designed to keep connected financial activity, source documents, reconciliation work, exceptions, journal controls and reporting context in one governed workspace. Plaid-connected data can support reviewed transaction imports and balance context when the connection is configured, authorized and available. Private invoice and receipt uploads can preserve source evidence and duplicate checks for human review.",
+          "BookLoQ does not turn a bank feed or extracted field into an approved accounting entry. It does not replace an accountant or tax professional, and it does not file returns, remit tax, move money or pay an invoice unless a separate feature is explicitly identified, authorized and operational. Its value is a clearer close process with visible evidence, ownership and unresolved work.",
+        ],
+      },
+    ],
+    sources: [
+      {
+        title: "Keeping records",
+        publisher: "Canada Revenue Agency",
+        url: "https://www.canada.ca/en/revenue-agency/services/forms-publications/publications/rc188/keeping-records.html",
+      },
+      {
+        title: "Input tax credits and required supporting documents",
+        publisher: "Canada Revenue Agency",
+        url: "https://www.canada.ca/en/revenue-agency/services/tax/businesses/topics/gst-hst-businesses/calculate-prepare-report/input-tax-credit.html",
+      },
+      {
+        title: "Transactions product overview",
+        publisher: "Plaid",
+        url: "https://plaid.com/docs/transactions/",
+      },
+      {
+        title: "Balance product overview",
+        publisher: "Plaid",
+        url: "https://plaid.com/docs/balance/",
+      },
+      {
+        title: "Bank reconciliation in Xero",
+        publisher: "Xero Central",
+        url: "https://central.xero.com/s/article/Bank-reconciliation-in-Xero",
+      },
+      {
+        title: "File upload security guidance",
+        publisher: "OWASP Foundation",
+        url: "https://cheatsheetseries.owasp.org/cheatsheets/File_Upload_Cheat_Sheet.html",
+      },
+    ],
+    related: ["how-to-calculate-gross-margin-small-business", "how-to-analyze-business-data-for-growth", "what-should-small-business-dashboard-show"],
   },
 ];
 

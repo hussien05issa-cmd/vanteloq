@@ -2,7 +2,7 @@
 
 This audit separates the two uploaded specifications and distinguishes working functionality from source- or provider-gated capability. A rendered page is not counted as complete by itself.
 
-## Prompt 1 — identity, branding, team, settings and permissions
+## Prompt 1: identity, branding, team, settings and permissions
 
 ### Completed in this implementation
 
@@ -24,7 +24,7 @@ This audit separates the two uploaded specifications and distinguishes working f
 - Billing plan changes and payment methods need a billing provider.
 - Address autocomplete/deliverability requires a configured regional provider and never silently changes manual input.
 
-## Prompt 2 — dashboard, reports, documents, purchasing, banking and data quality
+## Prompt 2: dashboard, reports, documents, purchasing, banking and data quality
 
 ### Completed in this implementation
 

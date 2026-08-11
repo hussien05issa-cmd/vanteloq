@@ -26,7 +26,13 @@ test("homepage exposes the marketing page in initial HTML", async () => {
   assert.equal((text.match(/<h1\b/g) ?? []).length, 1);
   assert.match(text, /Business Analytics for Independent Retail/);
   assert.match(text, /Lightspeed R-Series/);
-  assert.match(text, /href="\/resources\/what-should-small-business-dashboard-show"/);
+  for (const slug of [
+    "how-to-track-inventory-small-business",
+    "how-to-calculate-gross-margin-small-business",
+    "what-should-small-business-dashboard-show",
+    "how-to-analyze-business-data-for-growth",
+    "small-business-bookkeeping-system",
+  ]) assert.match(text, new RegExp(`href="/resources/${slug}"`));
   assert.match(text, /id="security"/);
   assert.match(text, /<link[^>]+rel="canonical"[^>]+href="https:\/\/vanteloq\.com\/"/i);
   assert.match(text, /"@type":"Organization"/);
@@ -53,6 +59,35 @@ test("article HTML includes content, canonical, article and breadcrumb schemas",
   assert.match(text, /Sources and further reading/);
 });
 
+test("new analytics and bookkeeping guides render their metadata, heroes, and schemas", async () => {
+  const guides = [
+    {
+      path: "/resources/how-to-analyze-business-data-for-growth",
+      title: "How to Analyze Business Data for Sustainable Growth",
+      hero: "scaling-decision-editorial-hero.webp",
+      alt: "An editorial still life with a payment terminal, product blocks, customer markers, coins and translucent planning panels.",
+    },
+    {
+      path: "/resources/small-business-bookkeeping-system",
+      title: "A Practical Bookkeeping System for a Small Business",
+      hero: "bookkeeping-month-end-editorial.webp",
+      alt: "An editorial bookkeeping still life with source documents, a card reader, a secure connection marker, review tabs and a bound ledger.",
+    },
+  ];
+
+  for (const guide of guides) {
+    const { response, text } = await fetchText(guide.path);
+    assert.equal(response.status, 200);
+    assert.match(text, new RegExp(`<h1>${guide.title}<\\/h1>`));
+    assert.ok(text.includes(guide.hero), `${guide.path} should render its editorial hero`);
+    assert.ok(text.includes(guide.alt), `${guide.path} should render descriptive hero text`);
+    assert.match(text, new RegExp(`"image":"https://vanteloq\\.com/brand/${guide.hero.replace(".", "\\.")}"`));
+    const sectionIds = [...text.matchAll(/<section id="([^"]+)"/g)].map((match) => match[1]);
+    assert.equal(new Set(sectionIds).size, sectionIds.length, `${guide.path} section ids should be unique`);
+    assert.doesNotMatch(text, /\u2014/u);
+  }
+});
+
 test("category, sitemap and robots routes expose canonical crawl paths", async () => {
   const category = await fetchText("/resources/inventory");
   assert.equal(category.response.status, 200);
@@ -62,6 +97,8 @@ test("category, sitemap and robots routes expose canonical crawl paths", async (
   assert.equal(sitemap.response.status, 200);
   assert.match(sitemap.text, /https:\/\/vanteloq\.com\/resources\/how-to-track-inventory-small-business/);
   assert.match(sitemap.text, /https:\/\/vanteloq\.com\/resources\/what-should-small-business-dashboard-show/);
+  assert.match(sitemap.text, /https:\/\/vanteloq\.com\/resources\/how-to-analyze-business-data-for-growth/);
+  assert.match(sitemap.text, /https:\/\/vanteloq\.com\/resources\/small-business-bookkeeping-system/);
   assert.match(sitemap.text, /https:\/\/vanteloq\.com\/resources\/inventory/);
   assert.match(sitemap.text, /https:\/\/vanteloq\.com\/privacy/);
   assert.match(sitemap.text, /https:\/\/vanteloq\.com\/terms/);
@@ -78,6 +115,8 @@ test("legal pages are complete, crawlable, and use distinct metadata", async () 
   assert.match(privacy.text, /<title>Privacy Policy \| Vanteloq<\/title>/);
   assert.match(privacy.text, /Your information should have a clear purpose/);
   assert.match(privacy.text, /Personal Information Protection Act/);
+  assert.match(privacy.text, /read-only data products/);
+  assert.match(privacy.text, /applicable CASL exception/);
   assert.match(privacy.text, /href="https:\/\/vanteloq\.com\/privacy"/);
 
   const terms = await fetchText("/terms");
@@ -85,6 +124,7 @@ test("legal pages are complete, crawlable, and use distinct metadata", async () 
   assert.match(terms.text, /<title>Terms of Service \| Vanteloq<\/title>/);
   assert.match(terms.text, /The rules for using Vanteloq/);
   assert.match(terms.text, /Governing law and disputes/);
+  assert.match(terms.text, /Vanteloq and BookLoQ do not replace/);
 
   const cookies = await fetchText("/cookies");
   assert.equal(cookies.response.status, 200);

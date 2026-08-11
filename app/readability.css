@@ -217,6 +217,23 @@ body {
   line-height: 1.4;
 }
 
+/* BookLoQ uses the same readable type and control rhythm at its source size. */
+.operating-shell .bookloq-shell :is(p, label, dt, dd, span, small, time, summary) {
+  font-size: 12px !important;
+  line-height: 1.5;
+}
+
+.operating-shell .bookloq-shell :is(button, input, select, textarea) {
+  min-height: 36px;
+  font-size: 13px !important;
+}
+
+@media (max-width: 620px) {
+  .operating-shell .bookloq-shell :is(button, input, select, textarea) {
+    min-height: 44px;
+  }
+}
+
 .operating-shell :is(.card, .metric-card, .insight-card, .dense-panel, .integration-card,
   .module-hero, .empty-command-hero, .brief-document, .action-modal, .alert-drawer,
   .outlet-mapping-panel, .sample-sync-result) {

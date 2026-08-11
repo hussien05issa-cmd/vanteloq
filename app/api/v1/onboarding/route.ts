@@ -113,6 +113,7 @@ export async function POST(request: Request) {
     const organizationId = `workspace-${stableIdentityHash}`;
     const membershipId = `membership-${stableIdentityHash}`;
     const auditId = `audit-workspace-created-${stableIdentityHash}`;
+    const primaryLocationId = `${organizationId}:location:primary`;
 
     try {
       // D1 batches commit statements sequentially. Stable identifiers and
@@ -155,6 +156,18 @@ export async function POST(request: Request) {
           input.taxNumber, input.hoursJson, input.sourceMode, input.selectedPos, now, now,
         ),
         database.prepare(`
+          INSERT OR IGNORE INTO organization_locations (
+            id, organization_id, name, status, country_code, address_line_1,
+            address_line_2, address_line_3, locality, district, administrative_area,
+            postal_code, timezone, currency, locale, tax_jurisdiction,
+            validation_status, created_at, updated_at
+          ) VALUES (?, ?, 'Primary location', 'active', ?, ?, '', '', ?, '', ?, ?, ?, ?, ?, '', 'entered', ?, ?)
+        `).bind(
+          primaryLocationId, organizationId, input.country, input.address, input.city,
+          input.province, input.postalCode, input.timezone, input.currency,
+          input.country === "US" ? "en-US" : "en-CA", now, now,
+        ),
+        database.prepare(`
           INSERT OR IGNORE INTO audit_events (
             id, organization_id, actor_user_id, action, resource_type, resource_id,
             outcome, request_id, source_hash, details_json, created_at
@@ -162,13 +175,15 @@ export async function POST(request: Request) {
         `).bind(auditId, organizationId, userId, organizationId, requestId, JSON.stringify({ sourceMode: input.sourceMode }), now),
         database.prepare(`
           INSERT INTO account_preferences (
-            user_id, email_notifications, remembered_profile, created_at, updated_at
-          ) VALUES (?, ?, 1, ?, ?)
+            user_id, email_notifications, remembered_profile, hidden_navigation_json,
+            preferred_location_id, created_at, updated_at
+          ) VALUES (?, ?, 1, '[]', ?, ?, ?)
           ON CONFLICT(user_id) DO UPDATE SET
             email_notifications = excluded.email_notifications,
             remembered_profile = 1,
+            preferred_location_id = COALESCE(account_preferences.preferred_location_id, excluded.preferred_location_id),
             updated_at = excluded.updated_at
-        `).bind(userId, input.emailNotifications ? 1 : 0, now, now),
+        `).bind(userId, input.emailNotifications ? 1 : 0, primaryLocationId, now, now),
         database.prepare(`
           INSERT OR IGNORE INTO account_notifications (
             id, user_id, organization_id, notification_type, title, message, delivery_status, created_at

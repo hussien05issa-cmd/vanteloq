@@ -1,4 +1,4 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { getD1, getDb } from "../../../../db";
 import { dailyBusinessMetrics, integrationConnections, integrationLocationMappings, organizationProfiles } from "../../../../db/schema";
 import { requireAccess } from "../../../../server/authorization";
@@ -7,6 +7,7 @@ import { buildCommandCentre } from "../../../../server/intelligence";
 import { buildOperatingSystem } from "../../../../server/operating-system";
 import { effectivePermissions, requirePermission } from "../../../../server/permissions";
 import { buildLightspeedRLiveSalesSnapshot, LIGHTSPEED_R_PROVIDER, type LightspeedRLiveSale } from "../../../../server/integrations/lightspeed-r";
+import { accessibleLocations, requireAccessibleLocation } from "../../../../server/location-access";
 
 const readers = ["owner", "admin", "manager", "employee", "read_only"] as const;
 
@@ -17,6 +18,7 @@ type PaymentMixRow = {
   paymentTypeName: string;
   amountCents: number;
   transactionCount: number;
+  outletRef: string | null;
 };
 
 function dateOffset(iso: string, days: number) {
@@ -27,6 +29,51 @@ function dateOffset(iso: string, days: number) {
 
 function percentageChange(current: number, previous: number) {
   return previous === 0 ? null : (current - previous) / Math.abs(previous);
+}
+
+function buildDailySourceSnapshot(
+  rows: Array<{
+    businessDate: string;
+    netSalesCents: number;
+    costOfGoodsCents: number;
+    transactionCount: number;
+    unitsSold: number;
+    refundsCents: number;
+    discountsCents: number;
+    updatedAt: Date;
+  }>,
+  timeZone: string,
+) {
+  const latestDate = rows.at(-1)?.businessDate;
+  if (!latestDate) {
+    return {
+      ...buildLightspeedRLiveSalesSnapshot([], timeZone),
+      sourceGranularity: "daily" as const,
+    };
+  }
+  const latestRows = rows.filter((row) => row.businessDate === latestDate);
+  const netSalesCents = latestRows.reduce((sum, row) => sum + row.netSalesCents, 0);
+  const costOfGoodsCents = latestRows.reduce((sum, row) => sum + row.costOfGoodsCents, 0);
+  const transactionCount = latestRows.reduce((sum, row) => sum + row.transactionCount, 0);
+  return {
+    businessDate: latestDate,
+    netSalesCents,
+    grossProfitCents: Math.max(0, netSalesCents - costOfGoodsCents),
+    averageTransactionCents: transactionCount ? Math.round(netSalesCents / transactionCount) : null,
+    transactionCount,
+    unitsSold: latestRows.reduce((sum, row) => sum + row.unitsSold, 0),
+    refundsCents: latestRows.reduce((sum, row) => sum + row.refundsCents, 0),
+    discountsCents: latestRows.reduce((sum, row) => sum + row.discountsCents, 0),
+    lastSaleAt: [...latestRows].sort((left, right) => right.updatedAt.getTime() - left.updatedAt.getTime())[0]?.updatedAt.toISOString() ?? null,
+    hourly: Array.from({ length: 24 }, (_, hour) => ({
+      hour,
+      label: new Intl.DateTimeFormat("en-CA", { hour: "numeric", hour12: true, timeZone: "UTC" }).format(new Date(Date.UTC(2020, 0, 1, hour))),
+      netSalesCents: 0,
+      grossProfitCents: 0,
+      transactionCount: 0,
+    })),
+    sourceGranularity: "daily" as const,
+  };
 }
 
 export async function GET(request: Request) {
@@ -40,7 +87,28 @@ export async function GET(request: Request) {
     await requirePermission(context, "dashboard.view");
     await enforceRateLimit("command-centre:read", `${context.userId}:${clientSource(request)}`, 120, 60);
     const permissions = await effectivePermissions(context);
-    const rows = await getDb()
+    const requestedLocationId = new URL(request.url).searchParams.get("location");
+    const availableLocations = await accessibleLocations(context);
+    const selectedLocation = requestedLocationId
+      ? await requireAccessibleLocation(context, requestedLocationId)
+      : null;
+    const selectedMappings = selectedLocation
+      ? await getDb().select({
+          provider: integrationLocationMappings.provider,
+          externalLocationRef: integrationLocationMappings.externalLocationRef,
+        }).from(integrationLocationMappings).where(and(
+          eq(integrationLocationMappings.organizationId, context.organizationId),
+          eq(integrationLocationMappings.localLocationId, selectedLocation.id),
+          eq(integrationLocationMappings.status, "mapped"),
+        ))
+      : [];
+    const selectedExternalRefs = new Set(selectedMappings.map((mapping) => mapping.externalLocationRef));
+    const selectedMetricRefs = new Set(selectedLocation ? [selectedLocation.id, selectedLocation.name] : []);
+    for (const mapping of selectedMappings) {
+      selectedMetricRefs.add(mapping.externalLocationRef);
+      selectedMetricRefs.add(`${mapping.provider}:${mapping.externalLocationRef}`);
+    }
+    const recentRows = await getDb()
       .select({
         businessDate: dailyBusinessMetrics.businessDate,
         grossSalesCents: dailyBusinessMetrics.grossSalesCents,
@@ -60,11 +128,13 @@ export async function GET(request: Request) {
       })
       .from(dailyBusinessMetrics)
       .where(eq(dailyBusinessMetrics.organizationId, context.organizationId))
-      .orderBy(asc(dailyBusinessMetrics.businessDate))
+      .orderBy(desc(dailyBusinessMetrics.businessDate))
       .limit(730);
+    const rows = [...recentRows].reverse();
     const [branding] = await getDb().select({ displayName: organizationProfiles.displayName, logoObjectKey: organizationProfiles.logoObjectKey, logoVersion: organizationProfiles.logoVersion })
       .from(organizationProfiles).where(eq(organizationProfiles.organizationId, context.organizationId)).limit(1);
-    const [connection] = await getDb().select({
+    const connectionRows = await getDb().select({
+      provider: integrationConnections.provider,
       lastSuccessfulSyncAt: integrationConnections.lastSuccessfulSyncAt,
       externalAccountRef: integrationConnections.externalAccountRef,
       externalAccountName: integrationConnections.externalAccountName,
@@ -72,9 +142,13 @@ export async function GET(request: Request) {
     })
       .from(integrationConnections).where(and(
         eq(integrationConnections.organizationId, context.organizationId),
-        eq(integrationConnections.provider, LIGHTSPEED_R_PROVIDER),
         eq(integrationConnections.status, "connected"),
-      )).limit(1);
+      ));
+    const supportedPosProviders = new Set(["lightspeed", "lightspeed-r", "shopify", "shopify-pos", "square", "clover", "moneris"]);
+    const sourceConnections = connectionRows.filter((row) => supportedPosProviders.has(row.provider));
+    const sourceConnection = sourceConnections[0] ?? null;
+    const connection = sourceConnections.length === 1 && sourceConnection?.provider === LIGHTSPEED_R_PROVIDER ? sourceConnection : null;
+    const connectedPosProviders = new Set(sourceConnections.map((row) => row.provider));
     const ignoredRows = await getDb().select({ externalLocationRef: integrationLocationMappings.externalLocationRef })
       .from(integrationLocationMappings).where(and(
         eq(integrationLocationMappings.organizationId, context.organizationId),
@@ -83,7 +157,7 @@ export async function GET(request: Request) {
       ));
     const ignored = new Set(ignoredRows.map((row) => row.externalLocationRef));
     const recentThreshold = new Date(Date.now() - 72 * 60 * 60 * 1_000).toISOString();
-    const staged = await getD1().prepare(`
+    const staged = connection ? await getD1().prepare(`
       SELECT external_sale_id AS externalSaleId, outlet_ref AS outletRef, sold_at AS soldAt, state,
              total_cents AS totalCents, tax_cents AS taxCents, cost_cents AS costCents,
              discount_cents AS discountCents, line_count AS lineCount
@@ -97,15 +171,26 @@ export async function GET(request: Request) {
       WHERE version_rank = 1
       ORDER BY sold_at ASC
       LIMIT 5000
-    `).bind(context.organizationId, LIGHTSPEED_R_PROVIDER, recentThreshold).all<LiveSaleRow>();
-    const today = buildLightspeedRLiveSalesSnapshot(
-      (staged.results ?? []).filter((sale) => !sale.outletRef || !ignored.has(sale.outletRef)),
-      context.organization.timezone,
-    );
-    const hasLightspeedMetrics = rows.some((row) => row.locationRef.startsWith(`${LIGHTSPEED_R_PROVIDER}:`));
-    const trustedRows = connection && hasLightspeedMetrics
-      ? rows.filter((row) => row.locationRef.startsWith(`${LIGHTSPEED_R_PROVIDER}:`))
+    `).bind(context.organizationId, LIGHTSPEED_R_PROVIDER, recentThreshold).all<LiveSaleRow>() : { results: [] as LiveSaleRow[] };
+    const hasProviderMetrics = rows.some((row) => connectedPosProviders.has(row.locationRef.split(":", 1)[0]));
+    const providerTrustedRows = connectedPosProviders.size && hasProviderMetrics
+      ? rows.filter((row) => connectedPosProviders.has(row.locationRef.split(":", 1)[0]))
       : rows;
+    const trustedRows = selectedLocation
+      ? providerTrustedRows.filter((row) => selectedMetricRefs.has(row.locationRef))
+      : providerTrustedRows;
+    const today = connection
+      ? {
+          ...buildLightspeedRLiveSalesSnapshot(
+            (staged.results ?? []).filter((sale) =>
+              (!sale.outletRef || !ignored.has(sale.outletRef)) &&
+              (!selectedLocation || Boolean(sale.outletRef && selectedExternalRefs.has(sale.outletRef))),
+            ),
+            context.organization.timezone,
+          ),
+          sourceGranularity: "intraday" as const,
+        }
+      : buildDailySourceSnapshot(trustedRows, context.organization.timezone);
     const baseCommandCentre = buildCommandCentre(trustedRows, context.organization.currency);
     const comparisonDate = dateOffset(today.businessDate, -7);
     const comparisonRows = trustedRows.filter((row) => row.businessDate === comparisonDate);
@@ -114,21 +199,20 @@ export async function GET(request: Request) {
       grossProfitCents: total.grossProfitCents + row.netSalesCents - row.costOfGoodsCents,
       transactionCount: total.transactionCount + row.transactionCount,
     }), { netSalesCents: 0, grossProfitCents: 0, transactionCount: 0 });
-    const paymentRows = connection ? await getD1().prepare(`
-      SELECT category, payment_type_name AS paymentTypeName,
+    const paymentRows = sourceConnections.length ? await getD1().prepare(`
+      SELECT provider, category, payment_type_name AS paymentTypeName, outlet_ref AS outletRef,
              SUM(CASE WHEN amount_cents > 0 THEN amount_cents ELSE 0 END) AS amountCents,
              COUNT(DISTINCT CASE WHEN amount_cents > 0 THEN external_sale_id END) AS transactionCount
       FROM commerce_payments
-      WHERE organization_id = ? AND provider = ? AND paid_at IS NOT NULL
+      WHERE organization_id = ? AND paid_at IS NOT NULL
         AND substr(paid_at, 1, 10) >= ? AND substr(paid_at, 1, 10) <= ?
-      GROUP BY category, payment_type_name
+      GROUP BY provider, category, payment_type_name, outlet_ref
       ORDER BY amountCents DESC
     `).bind(
       context.organizationId,
-      LIGHTSPEED_R_PROVIDER,
       dateOffset(today.businessDate, -(paymentDays - 1)),
       today.businessDate,
-    ).all<PaymentMixRow>() : { results: [] as PaymentMixRow[] };
+    ).all<PaymentMixRow & { provider: string }>() : { results: [] as Array<PaymentMixRow & { provider: string }> };
     const commandCentre = {
       ...baseCommandCentre,
       today: {
@@ -149,15 +233,30 @@ export async function GET(request: Request) {
       } : null,
       paymentMix: {
         period: paymentDays === 1 ? "Today" : `Last ${paymentDays} days`,
-        rows: paymentRows.results ?? [],
-        sourceAvailable: Boolean((paymentRows.results ?? []).length),
+        rows: (paymentRows.results ?? [])
+          .filter((row) => connectedPosProviders.has(row.provider))
+          .filter((row) => !selectedLocation || Boolean(row.outletRef && selectedExternalRefs.has(row.outletRef)))
+          .reduce<Array<Omit<PaymentMixRow, "outletRef">>>((combined, row) => {
+            const existing = combined.find((item) => item.category === row.category && item.paymentTypeName === row.paymentTypeName);
+            if (existing) {
+              existing.amountCents += row.amountCents;
+              existing.transactionCount += row.transactionCount;
+            } else {
+              combined.push({ category: row.category, paymentTypeName: row.paymentTypeName, amountCents: row.amountCents, transactionCount: row.transactionCount });
+            }
+            return combined;
+          }, []),
+        sourceAvailable: Boolean((paymentRows.results ?? []).some((row) => !selectedLocation || Boolean(row.outletRef && selectedExternalRefs.has(row.outletRef)))),
       },
       liveSource: {
-        provider: connection ? LIGHTSPEED_R_PROVIDER : null,
-        accountName: connection?.externalAccountName ?? null,
-        lastErrorCode: connection?.lastErrorCode ?? null,
-        lastSuccessfulSyncAt: connection?.lastSuccessfulSyncAt?.toISOString() ?? null,
-        refreshIntervalSeconds: connection ? 300 : null,
+        provider: sourceConnections.length === 1 ? sourceConnection?.provider ?? null : sourceConnections.length ? "multiple" : null,
+        accountName: sourceConnections.length === 1 ? sourceConnection?.externalAccountName ?? null : sourceConnections.length ? `${sourceConnections.length} connected POS accounts` : null,
+        lastErrorCode: sourceConnections.find((item) => item.lastErrorCode)?.lastErrorCode ?? null,
+        lastSuccessfulSyncAt: sourceConnections
+          .map((item) => item.lastSuccessfulSyncAt)
+          .filter((value): value is Date => Boolean(value))
+          .sort((left, right) => right.getTime() - left.getTime())[0]?.toISOString() ?? null,
+        refreshIntervalSeconds: sourceConnections.length ? 300 : null,
       },
     };
     if (commandCentre.current && !permissions.includes("metrics.profit")) {
@@ -189,7 +288,17 @@ export async function GET(request: Request) {
       dataQuality: commandCentre.dataQuality,
     });
     return jsonResponse({
-      organization: { name: branding?.displayName ?? context.organization.businessName, currency: context.organization.currency, role: context.role, logoAvailable: Boolean(branding?.logoObjectKey), logoVersion: branding?.logoVersion ?? 0, permissions },
+      organization: {
+        name: branding?.displayName ?? context.organization.businessName,
+        currency: context.organization.currency,
+        role: context.role,
+        logoAvailable: Boolean(branding?.logoObjectKey),
+        logoVersion: branding?.logoVersion ?? 0,
+        selectedLocation: selectedLocation ? { id: selectedLocation.id, name: selectedLocation.name } : null,
+        locations: availableLocations.map((location) => ({ id: location.id, name: location.name })),
+        scopeLabel: selectedLocation?.name ?? "All locations",
+        permissions,
+      },
       commandCentre,
       operatingSystem,
     });

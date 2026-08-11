@@ -24,8 +24,111 @@ export type PurchasingProductAssessment = PurchasingProductInput & {
   factors: string[];
 };
 
+export type CashConstrainedPurchasingAssessment = PurchasingProductAssessment & {
+  cashConstrainedUnits: number | null;
+  cashAllocatedCents: number | null;
+  cashDecision: "within_capacity" | "cash_constrained" | "needs_verified_cash" | "needs_unit_cost" | "no_order_needed";
+};
+
+export type PurchasingCapacityAccount = {
+  accountType: "chequing" | "savings" | "credit_card" | "line_of_credit" | "merchant" | "loan";
+  currency: string;
+  connectionStatus: "manual" | "healthy" | "delayed" | "error";
+  availableBalanceCents: number | null;
+  liveBalanceCents: number | null;
+  lastSyncAtMs: number | null;
+};
+
+export type PurchasingCapacityInput = {
+  connectionVerified: boolean;
+  nowMs: number;
+  maximumAgeMs: number;
+  baseCurrency: string;
+  cashSafetyReserveCents: number;
+  outstandingBillsCents: number;
+  uninvoicedPurchaseCommitmentsCents: number;
+  accounts: readonly PurchasingCapacityAccount[];
+};
+
+export type PurchasingCapacityResult = {
+  status: "available" | "needs_bank_connection" | "stale_bank_data" | "needs_healthy_cash_account";
+  verifiedPurchasingCapacityCents: number | null;
+  verifiedCashCents: number | null;
+  cashSafetyReserveCents: number;
+  outstandingBillsCents: number;
+  uninvoicedPurchaseCommitmentsCents: number;
+  accountsUsed: number;
+  baseCurrency: string;
+  maximumAgeHours: number;
+};
+
 function nonNegative(value: number) {
   return Number.isFinite(value) ? Math.max(0, value) : 0;
+}
+
+export function calculateVerifiedPurchasingCapacity(
+  input: PurchasingCapacityInput,
+): PurchasingCapacityResult {
+  const baseCurrency = input.baseCurrency.trim().toUpperCase();
+  const cashSafetyReserveCents = Math.floor(nonNegative(input.cashSafetyReserveCents));
+  const outstandingBillsCents = Math.floor(nonNegative(input.outstandingBillsCents));
+  const uninvoicedPurchaseCommitmentsCents = Math.floor(
+    nonNegative(input.uninvoicedPurchaseCommitmentsCents),
+  );
+  const base = {
+    cashSafetyReserveCents,
+    outstandingBillsCents,
+    uninvoicedPurchaseCommitmentsCents,
+    baseCurrency,
+    maximumAgeHours: Math.round(input.maximumAgeMs / (60 * 60 * 1000)),
+  };
+  if (!input.connectionVerified) {
+    return {
+      ...base,
+      status: "needs_bank_connection",
+      verifiedPurchasingCapacityCents: null,
+      verifiedCashCents: null,
+      accountsUsed: 0,
+    };
+  }
+
+  const cashTypes = new Set(["chequing", "savings", "merchant"]);
+  const relevantAccounts = input.accounts.filter(
+    (account) => cashTypes.has(account.accountType) && account.currency.toUpperCase() === baseCurrency,
+  );
+  const freshAccounts = relevantAccounts.filter((account) => {
+    if (account.connectionStatus !== "healthy" || account.lastSyncAtMs === null) return false;
+    if (input.nowMs - account.lastSyncAtMs > input.maximumAgeMs) return false;
+    const balance = account.availableBalanceCents ?? account.liveBalanceCents;
+    return balance !== null && Number.isFinite(balance);
+  });
+  if (!freshAccounts.length) {
+    const hasStaleBalance = relevantAccounts.some(
+      (account) => account.lastSyncAtMs !== null && input.nowMs - account.lastSyncAtMs > input.maximumAgeMs,
+    );
+    return {
+      ...base,
+      status: hasStaleBalance ? "stale_bank_data" : "needs_healthy_cash_account",
+      verifiedPurchasingCapacityCents: null,
+      verifiedCashCents: null,
+      accountsUsed: 0,
+    };
+  }
+
+  const verifiedCashCents = freshAccounts.reduce(
+    (sum, account) => sum + Math.max(0, Math.floor(account.availableBalanceCents ?? account.liveBalanceCents ?? 0)),
+    0,
+  );
+  return {
+    ...base,
+    status: "available",
+    verifiedCashCents,
+    verifiedPurchasingCapacityCents: Math.max(
+      0,
+      verifiedCashCents - cashSafetyReserveCents - outstandingBillsCents - uninvoicedPurchaseCommitmentsCents,
+    ),
+    accountsUsed: freshAccounts.length,
+  };
 }
 
 export function assessPurchasingProduct(input: PurchasingProductInput): PurchasingProductAssessment {
@@ -87,4 +190,62 @@ export function assessPurchasingProduct(input: PurchasingProductInput): Purchasi
     summary,
     factors,
   };
+}
+
+export function allocatePurchasingCapacity(
+  assessments: readonly PurchasingProductAssessment[],
+  verifiedPurchasingCapacityCents: number | null,
+): CashConstrainedPurchasingAssessment[] {
+  if (verifiedPurchasingCapacityCents === null || !Number.isFinite(verifiedPurchasingCapacityCents)) {
+    return assessments.map((assessment) => ({
+      ...assessment,
+      cashConstrainedUnits: assessment.recommendedUnits === 0 ? 0 : null,
+      cashAllocatedCents: assessment.recommendedUnits === 0 ? 0 : null,
+      cashDecision: assessment.recommendedUnits === 0 ? "no_order_needed" : "needs_verified_cash",
+    }));
+  }
+
+  let remaining = Math.max(0, Math.floor(verifiedPurchasingCapacityCents));
+  const priority = new Map(
+    [...assessments]
+      .sort((a, b) => {
+        const healthRank = { issue: 0, watch: 1, healthy: 2, dead_stock: 3 } as const;
+        const byHealth = healthRank[a.health] - healthRank[b.health];
+        if (byHealth !== 0) return byHealth;
+        const byCover = (a.daysCover ?? Number.POSITIVE_INFINITY) - (b.daysCover ?? Number.POSITIVE_INFINITY);
+        if (byCover !== 0) return byCover;
+        return a.sku.localeCompare(b.sku);
+      })
+      .map((assessment, index) => [assessment.sku, index]),
+  );
+
+  const allocated = new Map<string, Pick<CashConstrainedPurchasingAssessment, "cashAllocatedCents" | "cashConstrainedUnits" | "cashDecision">>();
+  for (const assessment of [...assessments].sort((a, b) => (priority.get(a.sku) ?? 0) - (priority.get(b.sku) ?? 0))) {
+    if (assessment.recommendedUnits === 0) {
+      allocated.set(assessment.sku, { cashConstrainedUnits: 0, cashAllocatedCents: 0, cashDecision: "no_order_needed" });
+      continue;
+    }
+    const unitCost = assessment.unitCostCents === null ? null : Math.max(0, Math.floor(assessment.unitCostCents));
+    if (!unitCost) {
+      allocated.set(assessment.sku, { cashConstrainedUnits: null, cashAllocatedCents: null, cashDecision: "needs_unit_cost" });
+      continue;
+    }
+    const affordableUnits = Math.min(assessment.recommendedUnits, Math.floor(remaining / unitCost));
+    const cashAllocatedCents = affordableUnits * unitCost;
+    remaining -= cashAllocatedCents;
+    allocated.set(assessment.sku, {
+      cashConstrainedUnits: affordableUnits,
+      cashAllocatedCents,
+      cashDecision: affordableUnits === assessment.recommendedUnits ? "within_capacity" : "cash_constrained",
+    });
+  }
+
+  return assessments.map((assessment) => ({
+    ...assessment,
+    ...(allocated.get(assessment.sku) ?? {
+      cashConstrainedUnits: null,
+      cashAllocatedCents: null,
+      cashDecision: "needs_verified_cash" as const,
+    }),
+  }));
 }

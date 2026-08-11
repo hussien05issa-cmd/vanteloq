@@ -1,4 +1,6 @@
-import { getD1 } from "../../../../db";
+import { and, eq } from "drizzle-orm";
+import { getD1, getDb } from "../../../../db";
+import { integrationLocationMappings } from "../../../../db/schema";
 import { requireAccess } from "../../../../server/authorization";
 import { clientSource, enforceRateLimit, handleApi, jsonResponse } from "../../../../server/api";
 import {
@@ -10,6 +12,7 @@ import {
 } from "../../../../server/bookloq";
 import { requirePermission } from "../../../../server/permissions";
 import { calculateCashFlowIntelligence, type CashFlowItem } from "../../../../domain/cash-flow-intelligence";
+import { requireAccessibleLocation } from "../../../../server/location-access";
 
 const readers = ["owner", "admin", "manager", "employee", "read_only"] as const;
 
@@ -41,6 +44,22 @@ export async function GET(request: Request) {
     await enforceRateLimit("bookloq:read", `${context.userId}:${clientSource(request)}`, 90, 60);
     const database = getD1();
     const organizationId = context.organizationId;
+    const requestedLocationId = new URL(request.url).searchParams.get("location");
+    const selectedLocation = requestedLocationId ? await requireAccessibleLocation(context, requestedLocationId) : null;
+    const selectedMappings = selectedLocation ? await getDb().select({
+      provider: integrationLocationMappings.provider,
+      externalLocationRef: integrationLocationMappings.externalLocationRef,
+    }).from(integrationLocationMappings).where(and(
+      eq(integrationLocationMappings.organizationId, organizationId),
+      eq(integrationLocationMappings.localLocationId, selectedLocation.id),
+      eq(integrationLocationMappings.status, "mapped"),
+    )) : [];
+    const locationRefs = new Set<string>(selectedLocation ? [selectedLocation.id, selectedLocation.name] : []);
+    for (const mapping of selectedMappings) locationRefs.add(`${mapping.provider}:${mapping.externalLocationRef}`);
+    const locationPlaceholders = [...locationRefs].map(() => "?").join(", ");
+    const transactionLocationClause = selectedLocation ? ` AND t.location_ref IN (${locationPlaceholders})` : "";
+    const budgetLocationClause = selectedLocation ? ` AND b.location_ref IN (${locationPlaceholders})` : "";
+    const locationBindings = selectedLocation ? [...locationRefs] : [];
 
     const [
       settingsResult,
@@ -57,6 +76,8 @@ export async function GET(request: Request) {
       closeResult,
       budgetsResult,
       auditResult,
+      integrationsResult,
+      documentsResult,
     ] = await Promise.all([
       database.prepare(`SELECT base_currency baseCurrency, country_code countryCode, province_code provinceCode,
         accounting_basis accountingBasis, cash_safety_threshold_cents cashSafetyThresholdCents,
@@ -80,7 +101,7 @@ export async function GET(request: Request) {
         FROM financial_transactions t
         LEFT JOIN financial_accounts a ON a.id = t.account_id AND a.organization_id = t.organization_id
         LEFT JOIN bookloq_contacts c ON c.id = t.contact_id AND c.organization_id = t.organization_id
-        WHERE t.organization_id = ? ORDER BY t.posting_date DESC, t.created_at DESC LIMIT 200`).bind(organizationId).all(),
+        WHERE t.organization_id = ?${transactionLocationClause} ORDER BY t.posting_date DESC, t.created_at DESC LIMIT 200`).bind(organizationId, ...locationBindings).all(),
       database.prepare(`SELECT b.id, b.name, b.account_type accountType, b.institution_name institutionName,
         b.masked_number maskedNumber, b.live_balance_cents liveBalanceCents,
         b.available_balance_cents availableBalanceCents, b.book_balance_cents bookBalanceCents,
@@ -132,12 +153,18 @@ export async function GET(request: Request) {
         b.committed_cents committedCents, b.forecast_cents forecastCents,
         a.code accountCode, a.name accountName, a.account_type accountType
         FROM bookloq_budgets b JOIN financial_accounts a ON a.id = b.account_id
-        WHERE b.organization_id = ? ORDER BY a.code`).bind(organizationId).all(),
+        WHERE b.organization_id = ?${budgetLocationClause} ORDER BY a.code`).bind(organizationId, ...locationBindings).all(),
       database.prepare(`SELECT action, resource_type resourceType, resource_id resourceId,
         outcome, details_json detailsJson, created_at createdAt
         FROM audit_events WHERE organization_id = ? AND
         (resource_type LIKE 'bookloq%' OR resource_type IN ('journal_entry','accounting_period','financial_transaction'))
         ORDER BY created_at DESC LIMIT 80`).bind(organizationId).all(),
+      database.prepare(`SELECT provider, status, data_promotion_status dataPromotionStatus,
+        last_successful_sync_at lastSuccessfulSyncAt
+        FROM integration_connections WHERE organization_id = ?`).bind(organizationId).all(),
+      database.prepare(`SELECT document_type documentType, status, extraction_status extractionStatus,
+        created_at createdAt FROM workspace_documents WHERE organization_id = ?
+        ORDER BY created_at DESC LIMIT 200`).bind(organizationId).all(),
     ]);
 
     const settings = rows(settingsResult)[0] ?? null;
@@ -169,10 +196,13 @@ export async function GET(request: Request) {
     ];
     const cashIntelligence = calculateCashFlowIntelligence({ openingCashCents: settings ? statements.cashCents : null, safetyThresholdCents: settings?.cashSafetyThresholdCents ?? 0, items: intelligenceItems, asOf });
     const dueNext30Cents = cashFlowItems.filter((item) => item.direction === "out" && item.dueDate <= forecasts[1].endDate).reduce((sum, item) => sum + item.amountCents, 0);
+    const integrationRows = rows(integrationsResult) as Array<{ provider: string; status: string; dataPromotionStatus: string; lastSuccessfulSyncAt: number | null }>;
+    const documentRows = rows(documentsResult) as Array<{ documentType: string; status: string; extractionStatus: string; createdAt: number }>;
+    const plaidConnection = integrationRows.find((item) => item.provider === "plaid");
 
     return jsonResponse({
       bookloq: {
-        configured: Boolean(settings),
+        configured: Boolean(settings || banks.length || documentRows.length),
         settings,
         role: context.role,
         permissions: effectiveBookLoQPermissions(context.role),
@@ -180,7 +210,9 @@ export async function GET(request: Request) {
         summary: {
           currentCashCents: statements.cashCents,
           availableCashCents: statements.cashCents - dueNext30Cents,
-          bankBalanceCents: (banks[0] as { liveBalanceCents?: number | null } | undefined)?.liveBalanceCents ?? null,
+          bankBalanceCents: banks.some((bank) => (bank as { liveBalanceCents?: number | null }).liveBalanceCents !== null)
+            ? banks.reduce((sum, bank) => sum + Number((bank as { liveBalanceCents?: number | null }).liveBalanceCents ?? 0), 0)
+            : null,
           bookBalanceCents: statements.cashCents,
           revenueCents: statements.profitAndLoss.revenueCents,
           grossProfitCents: statements.profitAndLoss.grossProfitCents,
@@ -201,6 +233,13 @@ export async function GET(request: Request) {
           healthScore,
         },
         statements,
+        locationScope: selectedLocation ? {
+          id: selectedLocation.id,
+          name: selectedLocation.name,
+          filteredRecords: ["transactions", "budgets"],
+          organizationWideRecords: ["bank balances", "financial statements", "bills", "invoices", "tax", "reconciliations"],
+          boundary: "Transactions and budgets are filtered to records tagged to the selected location. Shared bank balances, statements, bills, invoices, tax and reconciliations remain organization-wide until an approved allocation exists.",
+        } : null,
         forecasts,
         cashIntelligence,
         transactions,
@@ -215,14 +254,21 @@ export async function GET(request: Request) {
         closeItems,
         budgets: rows(budgetsResult),
         audit: rows(auditResult),
+        documentSummary: {
+          total: documentRows.length,
+          invoices: documentRows.filter((document) => document.documentType === "invoice").length,
+          receipts: documentRows.filter((document) => document.documentType === "receipt").length,
+          needsReview: documentRows.filter((document) => document.status === "review_required" || document.status === "uploaded").length,
+          extractionConfigured: documentRows.some((document) => document.extractionStatus !== "not_configured"),
+        },
         integrations: {
-          banking: "not_connected",
-          pos: "not_connected",
+          banking: plaidConnection?.status === "connected" ? (plaidConnection.dataPromotionStatus === "approved" ? "connected_and_synced" : "connected_needs_sync") : "not_connected",
+          pos: integrationRows.some((item) => item.status === "connected" && ["lightspeed", "lightspeed-r", "shopify", "shopify-pos", "square", "clover"].includes(item.provider)) ? "connected" : "not_connected",
           payroll: "not_connected",
-          receiptCapture: "not_available",
+          receiptCapture: documentRows.length ? "review_queue_active" : "upload_available",
           taxFiling: "not_available",
         },
-        disclaimer: "BookLoQ assists with accounting and tax preparation. It does not replace a qualified accountant or tax professional.",
+        disclaimer: "BookLoQ organizes source records and assists with bookkeeping, reconciliation and tax preparation. Imported descriptions, categories, balances and document fields require review. It does not file returns, provide legal or tax advice, or replace a qualified accountant or tax professional.",
       },
     });
   });

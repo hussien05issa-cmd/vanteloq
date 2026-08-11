@@ -232,6 +232,8 @@ export const accountPreferences = sqliteTable("account_preferences", {
   userId: text("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
   emailNotifications: integer("email_notifications", { mode: "boolean" }).notNull().default(true),
   rememberedProfile: integer("remembered_profile", { mode: "boolean" }).notNull().default(true),
+  hiddenNavigationJson: text("hidden_navigation_json").notNull().default("[]"),
+  preferredLocationId: text("preferred_location_id"),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
 });
@@ -1430,6 +1432,8 @@ export const financialTransactions = sqliteTable(
     contactId: text("contact_id").references(() => bookloqContacts.id),
     sourceSystem: text("source_system").notNull(),
     externalSourceId: text("external_source_id").notNull(),
+    sourceState: text("source_state", { enum: ["pending", "posted", "modified", "removed"] }).notNull().default("posted"),
+    pendingExternalSourceId: text("pending_external_source_id"),
     locationRef: text("location_ref").notNull().default("all"),
     departmentRef: text("department_ref"),
     projectRef: text("project_ref"),
@@ -1449,6 +1453,7 @@ export const financialTransactions = sqliteTable(
     check("financial_transactions_reconciliation_check", sql`${table.reconciliationStatus} in ('unreconciled', 'matched', 'reconciled')`),
     check("financial_transactions_categorization_check", sql`${table.categorizationStatus} in ('confirmed', 'suggested', 'missing', 'issue', 'accountant_review')`),
     check("financial_transactions_confidence_check", sql`${table.confidenceBasisPoints} between 0 and 10000`),
+    check("financial_transactions_source_state_check", sql`${table.sourceState} in ('pending', 'posted', 'modified', 'removed')`),
   ],
 );
 
@@ -1462,6 +1467,10 @@ export const bankAccounts = sqliteTable(
     accountType: text("account_type", { enum: ["chequing", "savings", "credit_card", "line_of_credit", "merchant", "loan"] }).notNull(),
     institutionName: text("institution_name").notNull(),
     maskedNumber: text("masked_number").notNull(),
+    currency: text("currency").notNull().default("CAD"),
+    provider: text("provider").notNull().default("manual"),
+    externalAccountRef: text("external_account_ref"),
+    externalItemRef: text("external_item_ref"),
     liveBalanceCents: integer("live_balance_cents"),
     availableBalanceCents: integer("available_balance_cents"),
     bookBalanceCents: integer("book_balance_cents").notNull().default(0),
@@ -1475,6 +1484,7 @@ export const bankAccounts = sqliteTable(
   },
   (table) => [
     uniqueIndex("bank_accounts_workspace_ledger_unique").on(table.organizationId, table.financialAccountId),
+    uniqueIndex("bank_accounts_provider_external_unique").on(table.organizationId, table.provider, table.externalAccountRef),
     check("bank_accounts_type_check", sql`${table.accountType} in ('chequing', 'savings', 'credit_card', 'line_of_credit', 'merchant', 'loan')`),
     check("bank_accounts_connection_check", sql`${table.connectionStatus} in ('manual', 'healthy', 'delayed', 'error')`),
   ],

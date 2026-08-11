@@ -9,6 +9,7 @@ import ProductBrandLogo from "./product-brand-logo";
 import AuthPanel, { type AuthPanelMode } from "./auth-panel";
 import { currentSession, getSupabase, signOut } from "./supabase-browser";
 import { canonicalLocation } from "../shared/auth-urls";
+import { RESOURCE_ARTICLES, getCategory, getReadingTime } from "./resources/content";
 
 const SecureOnboardingFlow = lazy(() => import("./secure-onboarding-flow"));
 const VanteloqApp = lazy(() => import("./vanteloq-app"));
@@ -403,9 +404,19 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
           <span>Detailed, source-backed explanations for the operating questions behind the dashboard.</span>
         </div>
         <div className="home-resource-grid">
-          <Link href="/resources/how-to-track-inventory-small-business"><div className="home-resource-art inventory-art" aria-hidden="true"><i/><i/><i/><b>SKU</b></div><small>INVENTORY · 5 MIN</small><h3>How to Track Inventory for a Small Business</h3><p>Build a reliable SKU, movement, counting and reorder process before choosing the software.</p><span>Read guide →</span></Link>
-          <Link href="/resources/how-to-calculate-gross-margin-small-business"><div className="home-resource-art finance-art" aria-hidden="true"><i/><i/><i/><b>%</b></div><small>FINANCE · 5 MIN</small><h3>How to Calculate Gross Margin for a Small Business</h3><p>Use the right sales and cost inputs, then avoid the mistakes that make the percentage misleading.</p><span>Read guide →</span></Link>
-          <Link href="/resources/what-should-small-business-dashboard-show"><div className="home-resource-art analytics-art" aria-hidden="true"><i/><i/><i/><b>VIEW</b></div><small>ANALYTICS · 6 MIN</small><h3>What Should a Small Business Dashboard Show?</h3><p>Choose a focused set of measures, context and action cues instead of filling the screen with charts.</p><span>Read guide →</span></Link>
+          {RESOURCE_ARTICLES.map((article) => {
+            const category = getCategory(article.category);
+            const visualLabel = article.category === "inventory" ? "SKU" : article.category === "finance" ? "%" : "VIEW";
+            return (
+              <Link href={`/resources/${article.slug}`} key={article.slug}>
+                <div className={`home-resource-art ${article.category}-art`} aria-hidden="true"><i/><i/><i/><b>{visualLabel}</b></div>
+                <small>{category?.shortName.toUpperCase()} · {getReadingTime(article)} MIN</small>
+                <h3>{article.title}</h3>
+                <p>{article.description}</p>
+                <span>Read guide →</span>
+              </Link>
+            );
+          })}
         </div>
         <Link className="home-text-link" href="/resources">Explore all Vanteloq resources →</Link>
       </section>

@@ -72,7 +72,7 @@ Finance, Inventory and Communications remain separate focused workspaces, but th
 ### Finance / BookLoQ
 
 - First row: actually available cash, bank balance, 30-day position, accounts payable and tax reserve. Never label bank balance as available cash.
-- Metric cards always contain definition, period, freshness and comparison—not only a number.
+- Metric cards always contain definition, period, freshness and comparison, not only a number.
 - Trend chart: one selected series and one comparison maximum; direct labels and tooltips; no unnecessary legends.
 - Cash forecast: step or line view with known obligations visually distinct from estimated inflows.
 - Transaction centre: sticky headers, server filtering, confidence/reconciliation status, and a review drawer instead of inline form sprawl.

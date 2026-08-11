@@ -7,7 +7,7 @@ Authorization is evaluated server-side from the trusted identity and active memb
 | View organization-scoped tasks | Yes | Yes | Yes | Yes | Yes | No |
 | Create/update tasks | Yes | Yes | Yes | Yes | No | No |
 | View integration metadata | Yes | Yes | Yes | No | Yes | No |
-| Create first workspace | Authenticated user without membership only | — | — | — | — | — |
+| Create first workspace | Authenticated user without membership only | Not applicable | Not applicable | Not applicable | Not applicable | Not applicable |
 | Edit organization profile | Planned | Planned | No | No | No | No |
 | Configure/revoke integration | Planned | Planned | No | No | No | No |
 | Invite or change members | Planned | Planned with limits | No | No | No | No |

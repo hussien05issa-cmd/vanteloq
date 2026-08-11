@@ -3,10 +3,25 @@ export type IntegrationAvailability =
   | "credentials_required"
   | "provider_selection_required";
 
+export const integrationCategoryOrder = [
+  "Point of sale",
+  "Commerce",
+  "Payments",
+  "Banking",
+  "Accounting",
+  "Marketplace",
+  "Delivery",
+  "Marketing",
+  "Labour",
+  "Manual imports",
+] as const;
+
+export type IntegrationCategory = (typeof integrationCategoryOrder)[number];
+
 export type IntegrationCatalogEntry = {
   id: string;
   name: string;
-  category: string;
+  category: IntegrationCategory;
   availability: IntegrationAvailability;
   activationRequirement: string;
 };
@@ -48,7 +63,7 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
   {
     id: "shopify-pos",
     name: "Shopify POS",
-    category: "Point of Sale",
+    category: "Point of sale",
     availability: "provider_build_required",
     activationRequirement:
       "Production Shopify OAuth, retail location mapping, order and refund webhooks, register attribution and payout reconciliation tests.",
@@ -56,7 +71,7 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
   {
     id: "square",
     name: "Square",
-    category: "POS and payments",
+    category: "Point of sale",
     availability: "provider_build_required",
     activationRequirement:
       "Production OAuth, location mapping, signed events, catalog and payment backfill, retry and reconciliation tests.",
@@ -153,14 +168,14 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
     id: "plaid",
     name: "Plaid",
     category: "Banking",
-    availability: "provider_build_required",
+    availability: "credentials_required",
     activationRequirement:
-      "Production agreement, Canadian institution coverage, hosted consent, signed webhooks and pending-to-posted reconciliation tests.",
+      "The BookLoQ bank-feed foundation uses server-created Link sessions, encrypted tokens, cursor sync and reviewed transactions. Production still requires Plaid approval, Canadian institution testing and hosted credentials.",
   },
   {
     id: "manual-bank",
     name: "Bank feeds",
-    category: "Manual statements",
+    category: "Manual imports",
     availability: "provider_build_required",
     activationRequirement:
       "Bank-format parser, duplicate detection, review queue, rollback and statement-to-ledger reconciliation tests.",

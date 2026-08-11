@@ -1,6 +1,6 @@
 # Secure backend implementation plan
 
-## Phase 1 — identity and tenant boundary
+## Phase 1: identity and tenant boundary
 
 - Require trusted hosted identity on protected APIs
 - Add users, memberships, roles, tenant-owned tasks, audit events, and rate-limit buckets
@@ -11,7 +11,7 @@
 
 Exit gate: no unauthenticated organization/task access; no shared workspace key; tenant tests pass.
 
-## Phase 2A — daily-summary intelligence (implemented)
+## Phase 2A: daily-summary intelligence (implemented)
 
 - Store tenant-owned import batches and daily date/location facts
 - Validate and import up to 366 CSV/manual daily summaries with idempotent convergent writes
@@ -24,7 +24,7 @@ Exit gate: no unauthenticated organization/task access; no shared workspace key;
 
 Exit gate: passed in the automated disposable-D1 flow.
 
-## Phase 2B — normalized commerce data
+## Phase 2B: normalized commerce data
 
 - Define locations, sources, import batches, products, inventory, customers, transactions, lines, tenders, discounts, and returns
 - Implement CSV template detection, mapping, validation, reconciliation, duplicate detection, and dry-run preview
@@ -33,7 +33,7 @@ Exit gate: passed in the automated disposable-D1 flow.
 
 Exit gate: totals reconcile, duplicate import is idempotent, malformed data cannot cross tenants, and deletion/retention behavior is tested.
 
-## Phase 2C — BookLoQ accounting core (implemented)
+## Phase 2C: BookLoQ accounting core (implemented)
 
 - Add BookLoQ as a primary Vanteloq workspace with a responsive, collapsible, searchable, permission-filtered 24-section navigator
 - Add tenant-owned chart of accounts, periods, contacts, journal entries and lines, transaction feed, bank/reconciliation records, AP/AR, alerts, budgets, and close work
@@ -45,7 +45,7 @@ Exit gate: totals reconcile, duplicate import is idempotent, malformed data cann
 
 Exit gate: lint, strict types, production build, rendering, accounting-unit, migration, hostile-request, idempotency, journal-reversal, and two-tenant flow tests pass. Live financial data remains gated by Phase 3 and Phase 5.
 
-## Phase 3 — live integrations
+## Phase 3: live integrations
 
 - Add provider adapter interface for Lightspeed, Square, Moneris, Shopify POS, Google, and accounting providers
 - Implement OAuth state/PKCE, encrypted tokens, revocation, scope review, callback validation, and tenant-bound sync state
@@ -54,7 +54,7 @@ Exit gate: lint, strict types, production build, rendering, accounting-unit, mig
 
 Exit gate: token redaction and rotation pass; webhook replay and tenant isolation tests pass; provider failure cannot corrupt core state.
 
-## Phase 4 — deeper analytics and operational workflows
+## Phase 4: deeper analytics and operational workflows
 
 - Rebuild inventory, customers, reports, loyalty, marketing, SEO, calendars, and recommendations on normalized facts
 - Add metric definitions, data-quality status, drill-down lineage, confidence, and anomaly explanations
@@ -62,7 +62,7 @@ Exit gate: token redaction and rotation pass; webhook replay and tenant isolatio
 
 Exit gate: every metric is reproducible, filters share tenant/location/date context, and no fixture data reaches a real workspace.
 
-## Phase 5 — production operations
+## Phase 5: production operations
 
 - Configure WAF, bot controls, external uptime, error tracking, dashboards, alert routing, backup retention, and restore drills
 - Add dependency/SAST/secret/SBOM/container or artifact checks as applicable
