@@ -20,13 +20,15 @@ Implemented now:
 - Versioned API, strict request validation, same-origin write protection, rate limits, idempotency, audit events, and security headers
 - D1 migrations that preserve and migrate the earlier prototype workspace and tasks
 - Health, readiness, OpenAPI, hostile-path tests, deterministic calculation tests, forward-migration tests, idempotent import tests, and a two-tenant end-to-end intelligence-to-action test
+- Lightspeed R-Series read-only OAuth and normalized sales, catalog, inventory, customer, supplier, and payment imports, subject to provider/account approval
+- Plaid sandbox Link with versioned consent, application-encrypted credentials, read-only balances/transactions, revocation, and owner-controlled deletion/de-identification
 
 Not implemented yet:
 
 - Passkeys and a user-facing session/device management screen
-- Live POS/Google/accounting OAuth, provider tokens, webhooks, or synchronization
+- Production Plaid access, Google, Meta, accounting-provider OAuth, and the remaining POS adapters
 - Live line-item POS, SKU inventory, customer, campaign, employee, supplier, payout, bank, and accounting feeds
-- Provider-backed bank/POS synchronization, document OCR, payment initiation, tax filing, payroll execution, accountant invitations, and production PDF/XLSX report generation
+- Document OCR, payment initiation, tax filing, payroll execution, accountant invitations, and production PDF/XLSX report generation
 - Payments, billing, email delivery, background queues, or customer-data exports
 - Account-level Cloudflare WAF/backup/alert configuration evidence
 

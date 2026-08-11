@@ -2151,6 +2151,7 @@ type IntegrationConnection = IntegrationCatalogEntry & {
   lastErrorCode: string | null;
   connectedAt: string | null;
   dataPromotionStatus: string;
+  privacyDataDeletedAt: string | null;
   canManage: boolean;
   providerReadiness: null | {
     adapterBuilt?: boolean;
@@ -2381,6 +2382,7 @@ function DataHub({
         lastErrorCode: null,
         connectedAt: null,
         dataPromotionStatus: "blocked",
+        privacyDataDeletedAt: null,
         canManage: false,
         providerReadiness: null,
         canonicalCoverage: emptyCommerceCoverage,
@@ -2568,7 +2570,7 @@ function DataHub({
                             : "Sync disabled"}
                     </span>
                   </div>
-                  {isPlaid ? <PlaidLinkButton connected={connected} repairRequired={repairRequired} configured={configured} canManage={canManageProvider} onChanged={loadConnections} showNotice={showNotice} /> : (isLightspeed || isStripe) && <div className="provider-actions">
+                  {isPlaid ? <PlaidLinkButton connected={connected} repairRequired={repairRequired} configured={configured} canManage={canManageProvider} deletionAvailable={provider.status === "revoked" && !provider.privacyDataDeletedAt} onChanged={loadConnections} showNotice={showNotice} /> : (isLightspeed || isStripe) && <div className="provider-actions">
                     {!connected ? <button
                       onClick={() => void connectProvider(actionableProvider)}
                       disabled={Boolean(disabledReason) || Boolean(providerAction)}

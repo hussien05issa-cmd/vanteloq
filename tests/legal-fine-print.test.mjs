@@ -16,6 +16,9 @@ test("privacy notice explains financial connections, document review, and consen
     "Processing outside Canada",
     "express or implied consent",
     "Document extraction can misread",
+    "financial-data authorization",
+    "TLS 1.2",
+    "additional application-level AES-GCM encryption layer",
   ]) assert.match(privacy, new RegExp(phrase));
 });
 
@@ -41,6 +44,8 @@ test("legal and retention documents keep professional review and deletion limits
   assert.match(retention, /Disconnection is not the same as deletion of lawfully retained accounting records/);
   assert.match(retention, /unsubscribe and suppression records/i);
   assert.match(retention, /six years from the end of the last tax year/);
+  assert.match(retention, /DELETE PLAID DATA/);
+  assert.match(retention, /quarterly operational review/);
   assert.match(shell, /August 11, 2026/);
 
   for (const document of [legal, retention, shell]) assert.doesNotMatch(document, /\u2014/);

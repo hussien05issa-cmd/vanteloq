@@ -169,6 +169,13 @@
       "when": 1786436707769,
       "tag": "0023_careless_shooting_star",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1786443960729,
+      "tag": "0024_thick_mysterio",
+      "breakpoints": true
     }
   ]
 }

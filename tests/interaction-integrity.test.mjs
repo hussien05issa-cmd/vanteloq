@@ -210,6 +210,18 @@ test("the banking catalogue uses Plaid's standalone mark and omits removed aggre
   assert.match(catalogue, /name: "Plaid"/);
 });
 
+test("Plaid Link opens only after an explicit, accessible financial-data authorization", async () => {
+  const button = await readFile(new URL("../app/plaid-link-button.tsx", import.meta.url), "utf8");
+  assert.match(button, /role="dialog"/);
+  assert.match(button, /aria-modal="true"/);
+  assert.match(button, /type="checkbox"/);
+  assert.doesNotMatch(button, /type="checkbox"[^>]*defaultChecked|type="checkbox"[^>]*checked=\{true\}/);
+  assert.match(button, /Privacy Policy/);
+  assert.match(button, /Retention and deletion/);
+  assert.match(button, /consentRecordId/);
+  assert.match(button, /Vanteloq cannot move money or make payments/);
+});
+
 test("account access includes confirmation recovery and a complete password-reset path", async () => {
   const authPanel = await readFile(new URL("../app/auth-panel.tsx", import.meta.url), "utf8");
   const home = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");

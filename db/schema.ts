@@ -642,6 +642,7 @@ export const integrationConnections = sqliteTable(
     lastSuccessfulSyncAt: integer("last_successful_sync_at", { mode: "timestamp" }),
     lastSyncCursor: text("last_sync_cursor"),
     lastErrorCode: text("last_error_code"),
+    privacyDataDeletedAt: integer("privacy_data_deleted_at", { mode: "timestamp" }),
     createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
     updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
   },
@@ -671,6 +672,35 @@ export const integrationSecrets = sqliteTable(
   (table) => [
     uniqueIndex("integration_secrets_workspace_provider_unique").on(table.organizationId, table.provider),
     index("integration_secrets_expiry_idx").on(table.provider, table.tokenExpiresAt),
+  ],
+);
+
+// Versioned, tenant-scoped evidence that an authenticated user accepted the
+// provider-specific notice before an authorization session was issued. The
+// record deliberately stores identifiers and policy versions, not bank data.
+export const integrationConsents = sqliteTable(
+  "integration_consents",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    actorUserId: text("actor_user_id").notNull(),
+    provider: text("provider").notNull(),
+    status: text("status", { enum: ["accepted", "withdrawn", "expired"] }).notNull().default("accepted"),
+    noticeVersion: text("notice_version").notNull(),
+    privacyPolicyVersion: text("privacy_policy_version").notNull(),
+    dataCategoriesJson: text("data_categories_json").notNull(),
+    purposesJson: text("purposes_json").notNull(),
+    consentSource: text("consent_source").notNull().default("in_app"),
+    acceptedAt: integer("accepted_at", { mode: "timestamp" }).notNull(),
+    withdrawnAt: integer("withdrawn_at", { mode: "timestamp" }),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    index("integration_consents_workspace_provider_status_idx").on(table.organizationId, table.provider, table.status, table.acceptedAt),
+    index("integration_consents_actor_idx").on(table.actorUserId, table.acceptedAt),
+    check("integration_consents_status_check", sql`${table.status} in ('accepted', 'withdrawn', 'expired')`),
+    check("integration_consents_source_check", sql`${table.consentSource} in ('in_app')`),
   ],
 );
 

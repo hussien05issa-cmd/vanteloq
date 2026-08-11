@@ -32,6 +32,7 @@ export async function GET(request: Request) {
         lastErrorCode: integrationConnections.lastErrorCode,
         connectedAt: integrationConnections.connectedAt,
         dataPromotionStatus: integrationConnections.dataPromotionStatus,
+        privacyDataDeletedAt: integrationConnections.privacyDataDeletedAt,
       })
       .from(integrationConnections)
       .where(eq(integrationConnections.organizationId, context.organizationId));
@@ -101,6 +102,7 @@ export async function GET(request: Request) {
         lastErrorCode: byProvider.get(provider.id)?.lastErrorCode ?? null,
         connectedAt: byProvider.get(provider.id)?.connectedAt ?? null,
         dataPromotionStatus: byProvider.get(provider.id)?.dataPromotionStatus ?? "blocked",
+        privacyDataDeletedAt: byProvider.get(provider.id)?.privacyDataDeletedAt ?? null,
         providerReadiness: provider.id === "lightspeed"
           ? lightspeedReadiness()
           : provider.id === "lightspeed-r"
