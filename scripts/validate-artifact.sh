@@ -9,6 +9,7 @@ fi
 
 worker="${SITES_PROJECT_ROOT}/dist/server/index.js"
 hosting="${SITES_PROJECT_ROOT}/dist/.openai/hosting.json"
+dist_dir="${SITES_PROJECT_ROOT}/dist"
 
 [[ -f "${worker}" ]] || {
   echo "Missing Sites Worker entry: dist/server/index.js" >&2
@@ -34,4 +35,9 @@ if (!worker.default || typeof worker.default.fetch !== "function") {
 }
 NODE
 
-echo "Validated Sites artifact: ESM Worker default.fetch and hosting manifest are present."
+if rg -q '/workspace/sites/[^/]+/\.vinext/fonts/' "${dist_dir}"; then
+  echo "Artifact contains workstation-derived font URLs that cannot resolve in production" >&2
+  exit 66
+fi
+
+echo "Validated Sites artifact: Worker entry, hosting manifest, and production-safe asset paths are present."
