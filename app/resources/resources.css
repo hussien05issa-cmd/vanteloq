@@ -127,6 +127,9 @@
 
 .resource-method { display: grid; grid-template-columns: .8fr 1.2fr; gap: 90px; padding: 88px max(24px, calc((100vw - 1240px) / 2)); background: #f4f7fb; }
 .resource-method h2 { max-width: 520px; margin: 0; font-size: 40px; line-height: 1.1; letter-spacing: -.035em; }
+.resource-method-copy figure { position: relative; overflow: hidden; max-width: 420px; margin: 32px 0 0; border: 1px solid #c6d7ea; border-radius: 14px; background: radial-gradient(circle at 50% 32%, #fff, #eaf3ff 78%); box-shadow: 0 22px 54px rgba(7,26,53,.1); }
+.resource-method-copy figure::after { position: absolute; inset: 0 auto 0 -34%; width: 26%; content: ""; pointer-events: none; background: linear-gradient(90deg, transparent, rgba(255,255,255,.7), transparent); transform: skewX(-18deg); animation: resourceGloss 10s 2s ease-in-out infinite; }
+.resource-method-copy img { display: block; width: 100%; aspect-ratio: 1; object-fit: contain; }
 .resource-method ol { margin: 0; padding: 0; list-style: none; border-top: 1px solid #cbd6e4; }
 .resource-method li { display: grid; grid-template-columns: 46px 1fr; gap: 18px; padding: 22px 0; border-bottom: 1px solid #cbd6e4; }
 .resource-method li > span { color: var(--vql-blue-700); font: 700 11px var(--font-geist-mono); }
@@ -239,6 +242,7 @@
   .resource-latest .resource-card.featured { min-height: 400px; }
   .resource-method { padding: 64px 18px; }
   .resource-method h2 { font-size: 33px; }
+  .resource-method-copy figure { max-width: 100%; margin-top: 26px; }
   .resource-wide-cta { display: block; margin: 54px 18px; padding: 28px; }
   .resource-wide-cta > div:last-child { margin-top: 24px; flex-direction: column; }
   .resource-wide-cta a { justify-content: center; }
@@ -258,4 +262,10 @@
   .quick-answer { padding: 23px; }
   .article-sources li { display: block; }
   .article-sources span { display: block; margin-top: 3px; text-align: left; }
+}
+
+@keyframes resourceGloss { 0%, 62% { transform: translateX(0) skewX(-18deg); } 78%, 100% { transform: translateX(560%) skewX(-18deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .resource-method-copy figure::after { animation: none; }
 }

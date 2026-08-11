@@ -23,6 +23,10 @@ export default function sitemap(): MetadataRoute.Sitemap {
   return [
     { url: absoluteUrl("/"), lastModified: "2026-08-10", changeFrequency: "weekly", priority: 1 },
     { url: absoluteUrl("/resources"), lastModified: "2026-08-10", changeFrequency: "weekly", priority: 0.9 },
+    { url: absoluteUrl("/legal"), lastModified: "2026-08-10", changeFrequency: "monthly", priority: 0.4 },
+    { url: absoluteUrl("/privacy"), lastModified: "2026-08-10", changeFrequency: "monthly", priority: 0.5 },
+    { url: absoluteUrl("/terms"), lastModified: "2026-08-10", changeFrequency: "monthly", priority: 0.5 },
+    { url: absoluteUrl("/cookies"), lastModified: "2026-08-10", changeFrequency: "monthly", priority: 0.4 },
     ...categoryEntries,
     ...articleEntries,
   ];

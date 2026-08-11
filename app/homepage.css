@@ -274,7 +274,12 @@
 }
 
 .home-problem { padding-block: 108px; background: #f4f7fb; }
-.home-problem-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 44px; }
+.home-problem-intro { display: grid; grid-template-columns: minmax(0, .82fr) minmax(360px, 1.18fr); gap: 64px; align-items: center; }
+.home-problem-visual { position: relative; overflow: hidden; margin: 0; border: 1px solid #1a3d67; border-radius: 14px; background: #07111f; box-shadow: 0 28px 64px rgba(7, 26, 53, .2); }
+.home-problem-visual::after { position: absolute; inset: 0 auto 0 -30%; width: 24%; content: ""; pointer-events: none; background: linear-gradient(90deg, transparent, rgba(255,255,255,.2), transparent); transform: skewX(-18deg); animation: homeGloss 11s 1.8s ease-in-out infinite; }
+.home-problem-visual img { display: block; width: 100%; aspect-ratio: 3 / 2; object-fit: cover; }
+.home-problem-visual figcaption { position: absolute; right: 12px; bottom: 12px; padding: 7px 10px; border: 1px solid rgba(255,255,255,.22); border-radius: 999px; color: #e9f3ff; background: rgba(4,17,34,.76); backdrop-filter: blur(8px); font-size: 10px; font-weight: 700; }
+.home-problem-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 32px; }
 .home-problem-grid article,
 .home-capability-grid article,
 .home-security-grid article {
@@ -405,8 +410,11 @@
 .home-workflow-metrics small,
 .home-workflow-decision small { color: #718096; font-size: 9px; letter-spacing: .08em; }
 .home-workflow-metrics strong { font-size: 17px; }
-.home-workflow-decision { display: flex; flex-direction: column; gap: 10px; padding: 28px 24px; }
+.home-workflow-decision { display: grid; grid-template-columns: minmax(0, 1fr) 154px; gap: 18px; align-items: center; padding: 24px; }
+.home-workflow-decision > div { display: flex; flex-direction: column; gap: 10px; }
 .home-workflow-decision strong { max-width: 520px; font-size: 19px; line-height: 1.45; }
+.home-workflow-decision figure { overflow: hidden; margin: 0; border: 1px solid #d1deed; border-radius: 12px; background: linear-gradient(145deg, #fff, #edf5ff); box-shadow: 0 12px 30px rgba(7,26,53,.08); }
+.home-workflow-decision img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; }
 .home-workflow-preview footer { border-top: 1px solid #e2e8f0; color: #6a788c; background: #f8fafc; font-size: 11px; }
 .home-workflow-preview footer b { color: #1557d0; }
 
@@ -534,7 +542,7 @@
 .home-final-cta button,
 .home-final-cta a { padding-inline: 18px; }
 
-.home-footer { display: grid; grid-template-columns: 1.5fr repeat(3, 1fr); gap: 54px; padding-block: 70px 34px; color: #c0ccdc; background: #061429; }
+.home-footer { display: grid; grid-template-columns: 1.5fr repeat(4, 1fr); gap: 46px; padding-block: 70px 34px; color: #c0ccdc; background: #061429; }
 .home-footer > div { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
 .home-footer > div > strong { color: #86b8fa; font-size: 10px; letter-spacing: .12em; }
 .home-footer a,
@@ -593,6 +601,8 @@
   .home-hero,
   .home-connections,
   .home-platform { grid-template-columns: 1fr; }
+  .home-problem-intro { grid-template-columns: 1fr; gap: 34px; }
+  .home-problem-visual { max-width: 760px; }
   .home-hero { min-height: 0; gap: 46px; padding-block: 62px 72px; }
   .home-connections { gap: 34px; }
   .home-platform { gap: 54px; }
@@ -601,7 +611,6 @@
   .home-resource-grid > a:last-child { grid-column: 1 / -1; min-height: 240px; }
   .home-final-cta { align-items: flex-start; flex-direction: column; }
   .home-footer { grid-template-columns: 1.4fr 1fr 1fr; }
-  .home-footer > div:nth-of-type(4) { grid-column: 2 / -1; }
   .home-faq-layout { grid-template-columns: 1fr; gap: 28px; }
   .home-faq-visual { position: relative; top: auto; display: grid; grid-template-columns: 150px 1fr; column-gap: 24px; align-items: center; }
   .home-faq-visual .product-brand-logo.full { grid-row: 1 / 4; }
@@ -663,6 +672,7 @@
   .home-resource-grid,
   .home-security-grid { margin-top: 30px; }
   .home-workflow-metrics { grid-template-columns: 1fr; }
+  .home-workflow-decision { grid-template-columns: 1fr 124px; padding: 20px; }
   .home-workflow-source { grid-template-columns: 1fr; }
   .home-workflow-source small { grid-row: auto; justify-self: start; }
   .home-workflow-preview header,
@@ -684,7 +694,6 @@
   .home-final-cta a { width: 100%; justify-content: center; }
   .home-footer { grid-template-columns: 1fr 1fr; gap: 38px 24px; }
   .home-footer-brand { grid-column: 1 / -1; }
-  .home-footer > div:nth-of-type(4) { grid-column: auto; }
 }
 
 @media (max-width: 390px) {
@@ -692,7 +701,7 @@
   .home-product-family-grid article { grid-template-columns: 1fr; }
   .home-footer { grid-template-columns: 1fr; }
   .home-footer-brand,
-  .home-footer > div:nth-of-type(4) { grid-column: auto; }
+  .home-footer > div { grid-column: auto; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -702,6 +711,7 @@
   .home-final-cta button::after,
   .home-product-visual::after,
   .home-workflow-preview::before,
+  .home-problem-visual::after,
   .home-product-family-grid article::after { animation: none; }
   .home-connection-grid article,
   .home-problem-grid article,

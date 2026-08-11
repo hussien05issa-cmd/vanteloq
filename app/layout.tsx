@@ -12,6 +12,7 @@ import "./readability.css";
 import "./brand.css";
 import "./design-v2.css";
 import "./homepage.css";
+import "./legal.css";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",

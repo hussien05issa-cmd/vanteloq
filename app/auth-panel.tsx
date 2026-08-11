@@ -2,6 +2,7 @@
 
 import { type FormEvent, useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
+import Link from "next/link";
 import ProductBrandLogo from "./product-brand-logo";
 import { getSupabase } from "./supabase-browser";
 import TurnstileField from "./turnstile-field";
@@ -331,6 +332,7 @@ export default function AuthPanel({
         {message && <div className={`auth-message${messageIsError ? " error" : ""}`} aria-live="polite">{message}</div>}
         {needsConfirmation && <button className="auth-secondary" type="button" onClick={() => void resendConfirmation()} disabled={busy}>Resend confirmation email</button>}
         <button className="auth-submit" disabled={busy || configured !== true || (protectedMode && (!siteKey || !turnstileToken)) || (mode === "reset-password" && recoveryReady !== true)}>{busy || configured === null || (mode === "reset-password" && recoveryReady === null) ? "Please wait…" : submitLabel}</button>
+        {mode === "signup" && <p className="auth-legal">By creating an account, you agree to the <Link href="/terms" target="_blank">Terms of Service</Link> and acknowledge the <Link href="/privacy" target="_blank">Privacy Policy</Link>.</p>}
       </form>
       {mode === "signin" && <button className="auth-switch" type="button" onClick={() => changeMode("request-reset")}>Forgot your password?</button>}
       {mode === "request-reset" && <button className="auth-switch" type="button" onClick={() => changeMode("signin")}>Back to sign in</button>}

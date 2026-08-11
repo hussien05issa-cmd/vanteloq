@@ -178,7 +178,10 @@ button, a, input, select, textarea, summary { -webkit-tap-highlight-color: trans
   color: #fff !important;
   font-weight: 700 !important;
 }
-.operating-shell .bookloq-nav-glyph { width: 17px; height: 17px; }
+.operating-shell .bookloq-main-nav { min-height: 48px; padding-block: 4px; }
+.operating-shell .bookloq-nav-lockup { flex: 0 0 auto; width: 132px; height: 38px; overflow: hidden; border: 1px solid rgba(255,255,255,.28); border-radius: 7px; background: #fff; box-shadow: 0 6px 18px rgba(0,0,0,.12); }
+.operating-shell .bookloq-nav-lockup img { width: 100% !important; height: 100% !important; margin: 0 !important; padding: 2px 5px !important; object-fit: contain !important; }
+.operating-shell .bookloq-nav-lockup .brand-trademark { top: 3px; right: 3px; font-size: 6px; }
 .operating-shell .provider-setup-needed {
   display: grid;
   gap: 4px;
@@ -852,6 +855,8 @@ button, a, input, select, textarea, summary { -webkit-tap-highlight-color: trans
 .auth-secondary { color: #174f91; background: #edf5ff; border-color: #b8cee8; }
 .auth-message { border-radius: 7px; color: #2e536f; font-size: 13px; }
 .auth-message.error { color: #8f2632; background: var(--vql-danger-bg); border-color: #e5b6bc; }
+.auth-legal { margin: -3px 0 0; color: #65758b; font-size: 11px; line-height: 1.55; text-align: center; }
+.auth-legal a { color: var(--vql-blue-700); font-weight: 750; text-underline-offset: 2px; }
 
 /* Onboarding */
 .onboarding { grid-template-columns: 330px minmax(0, 1fr); background: var(--vql-canvas); color: var(--vql-ink); }

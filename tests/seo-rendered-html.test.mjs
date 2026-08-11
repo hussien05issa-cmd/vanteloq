@@ -63,9 +63,35 @@ test("category, sitemap and robots routes expose canonical crawl paths", async (
   assert.match(sitemap.text, /https:\/\/vanteloq\.com\/resources\/how-to-track-inventory-small-business/);
   assert.match(sitemap.text, /https:\/\/vanteloq\.com\/resources\/what-should-small-business-dashboard-show/);
   assert.match(sitemap.text, /https:\/\/vanteloq\.com\/resources\/inventory/);
+  assert.match(sitemap.text, /https:\/\/vanteloq\.com\/privacy/);
+  assert.match(sitemap.text, /https:\/\/vanteloq\.com\/terms/);
 
   const robots = await fetchText("/robots.txt");
   assert.equal(robots.response.status, 200);
   assert.match(robots.text, /Disallow: \/api\//);
   assert.match(robots.text, /Sitemap: https:\/\/vanteloq\.com\/sitemap\.xml/);
+});
+
+test("legal pages are complete, crawlable, and use distinct metadata", async () => {
+  const privacy = await fetchText("/privacy");
+  assert.equal(privacy.response.status, 200);
+  assert.match(privacy.text, /<title>Privacy Policy \| Vanteloq<\/title>/);
+  assert.match(privacy.text, /Your information should have a clear purpose/);
+  assert.match(privacy.text, /Personal Information Protection Act/);
+  assert.match(privacy.text, /href="https:\/\/vanteloq\.com\/privacy"/);
+
+  const terms = await fetchText("/terms");
+  assert.equal(terms.response.status, 200);
+  assert.match(terms.text, /<title>Terms of Service \| Vanteloq<\/title>/);
+  assert.match(terms.text, /The rules for using Vanteloq/);
+  assert.match(terms.text, /Governing law and disputes/);
+
+  const cookies = await fetchText("/cookies");
+  assert.equal(cookies.response.status, 200);
+  assert.match(cookies.text, /<title>Cookie Notice \| Vanteloq<\/title>/);
+  assert.match(cookies.text, /does not currently use advertising cookies/i);
+
+  for (const html of [privacy.text, terms.text, cookies.text]) {
+    assert.doesNotMatch(html, /\u2014/u, "legal pages should not contain em dashes");
+  }
 });

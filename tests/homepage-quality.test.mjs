@@ -42,12 +42,17 @@ test("homepage copy stays within the verified product boundary", async () => {
   assert.match(html, /Lightspeed R-Series/);
   assert.match(html, /LIMITED PILOT/);
   assert.match(html, /STAGING/);
-  assert.doesNotMatch(html, /\p{L}—\p{L}/u, "homepage prose should not join words with an em dash");
+  assert.doesNotMatch(html, /\u2014/u, "homepage prose should not contain an em dash");
   assert.match(html, /home-intelligence-map/);
   assert.match(html, /home-resource-art/);
   assert.doesNotMatch(html, /ILLUSTRATIVE WORKFLOW|Illustrative inventory decision workflow/i);
   assert.match(html, /connect-import-visual\.webp/);
   assert.match(html, /verify-organize-visual\.webp/);
+  assert.match(html, /business-sources-visual\.webp/);
+  assert.match(html, /inventory-decision-visual\.webp/);
+  assert.match(html, /href="\/privacy"/);
+  assert.match(html, /href="\/terms"/);
+  assert.match(html, /href="\/cookies"/);
 });
 
 test("homepage preserves responsive and keyboard interaction safeguards", async () => {
@@ -74,11 +79,17 @@ test("the above-the-fold product image is compact and dimensioned", async () => 
   assert.match(source, /fetchPriority="high"/);
 });
 
-test("workflow illustrations stay compact and production-ready", async () => {
-  const [connect, verify] = await Promise.all([
+test("generated editorial visuals stay compact and production-ready", async () => {
+  const [connect, verify, sources, decision, method] = await Promise.all([
     stat(new URL("../public/brand/connect-import-visual.webp", import.meta.url)),
     stat(new URL("../public/brand/verify-organize-visual.webp", import.meta.url)),
+    stat(new URL("../public/brand/business-sources-visual.webp", import.meta.url)),
+    stat(new URL("../public/brand/inventory-decision-visual.webp", import.meta.url)),
+    stat(new URL("../public/brand/resource-method-visual.webp", import.meta.url)),
   ]);
   assert.ok(connect.size < 160_000, `connect illustration should stay below 160 KB, received ${connect.size}`);
   assert.ok(verify.size < 160_000, `verify illustration should stay below 160 KB, received ${verify.size}`);
+  assert.ok(sources.size < 160_000, `source illustration should stay below 160 KB, received ${sources.size}`);
+  assert.ok(decision.size < 160_000, `decision illustration should stay below 160 KB, received ${decision.size}`);
+  assert.ok(method.size < 160_000, `method illustration should stay below 160 KB, received ${method.size}`);
 });

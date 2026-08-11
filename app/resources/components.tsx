@@ -40,6 +40,8 @@ export function ResourceFooter() {
         <Link href="/resources">Resources</Link>
         <Link href="/#platform">Platform</Link>
         <Link href="/#connections">Connections</Link>
+        <Link href="/privacy">Privacy</Link>
+        <Link href="/terms">Terms</Link>
         <Link href="/?start=signin">Sign in</Link>
       </nav>
     </footer>

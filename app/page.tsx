@@ -273,16 +273,24 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
       </section>
 
       <section className="home-problem" aria-labelledby="problem-title">
-        <div className="home-section-heading">
-          <p>THE VISIBILITY PROBLEM</p>
-          <h2 id="problem-title">Your business information should not become four different stories.</h2>
-          <span>A sale, a stock movement, a supplier bill and an assigned task may describe the same business event. When they are reviewed separately, owners spend more time reconciling reports and less time deciding what to do.</span>
+        <div className="home-problem-intro">
+          <div className="home-section-heading">
+            <p>THE VISIBILITY PROBLEM</p>
+            <h2 id="problem-title">Your business should not tell four different stories.</h2>
+            <span>A sale, a stock movement, a supplier bill and an assigned task may describe the same event. Reviewing them separately makes it harder to see what changed and what needs attention.</span>
+          </div>
+          <figure className="home-problem-visual">
+            {/* This generated editorial visual contains no customer data or fabricated performance values. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/brand/business-sources-visual.webp" alt="Sales, inventory, cash and operational records flowing into one business view." width={1200} height={800} loading="lazy" />
+            <figcaption>Four operating inputs. One decision view.</figcaption>
+          </figure>
         </div>
         <div className="home-problem-grid">
-          <article><small>SALES</small><h3>Your POS records transactions.</h3><p>Revenue and product activity need consistent dates, locations, refunds and source definitions before they can be compared.</p></article>
-          <article><small>INVENTORY</small><h3>Your stock records quantities.</h3><p>On-hand balances become more useful when they retain movements, costs, expiry context and count evidence.</p></article>
-          <article><small>CASH</small><h3>Your balance is only one input.</h3><p>Known obligations and planned purchases change how much cash is actually available to commit.</p></article>
-          <article><small>OPERATIONS</small><h3>Your team owns the follow-through.</h3><p>Important findings need an owner, an approval boundary and a recorded outcome. They should not become another forgotten report.</p></article>
+          <article><small>SALES</small><h3>Sales records show what happened at checkout.</h3><p>Dates, locations, refunds and source definitions must be consistent before revenue and product activity can be compared.</p></article>
+          <article><small>INVENTORY</small><h3>Stock records show what is on hand.</h3><p>Movements, costs, expiry context and count evidence explain whether the recorded quantity can be trusted.</p></article>
+          <article><small>CASH</small><h3>A bank balance is one part of the picture.</h3><p>Known obligations and planned purchases affect how much cash is actually available to commit.</p></article>
+          <article><small>OPERATIONS</small><h3>Every decision needs a clear owner.</h3><p>Important findings need an approval boundary, a responsible person and a recorded outcome.</p></article>
         </div>
       </section>
 
@@ -308,9 +316,13 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
         <article className="home-workflow-preview" aria-label="Inventory decision example">
           <header><span>SOURCE-BASED REVIEW</span><b>Inventory decision</b></header>
           <div className="home-workflow-source"><small>SOURCE</small><strong>Lightspeed R-Series</strong><span>Sales and inventory · last verified import shown in product</span></div>
-          <div className="home-workflow-metrics"><span><small>ITEM</small><strong>Protein C</strong></span><span><small>ON HAND</small><strong>11 units</strong></span><span><small>LEAD TIME</small><strong>7 days</strong></span></div>
-          <div className="home-workflow-decision"><small>REVIEW OUTPUT</small><strong>Check the proposed order against demand, supplier constraints and available cash.</strong></div>
-          <footer><span>Example data · confirm with source records</span><b>Owner approval required</b></footer>
+          <div className="home-workflow-metrics"><span><small>ITEM</small><strong>Sample SKU</strong></span><span><small>ON HAND</small><strong>Confirmed in source</strong></span><span><small>LEAD TIME</small><strong>Supplier input</strong></span></div>
+          <div className="home-workflow-decision"><div><small>REVIEW OUTPUT</small><strong>Review the proposed order against recent demand, supplier limits and available cash.</strong></div><figure>
+            {/* This generated visual explains the review process without presenting customer data. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/brand/inventory-decision-visual.webp" alt="Inventory, supplier timing, available cash and owner approval brought into one review." width={760} height={760} loading="lazy" />
+          </figure></div>
+          <footer><span>Example workflow · confirm with source records</span><b>Owner approval required</b></footer>
         </article>
       </section>
 
@@ -439,6 +451,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
       <div className="home-footer-brand"><div><ProductBrandLogo product="vanteloq"/><strong>Vanteloq</strong></div><p>Source-aware operations and analytics for independent retail.</p></div>
       <div><strong>PRODUCT</strong><a href="#platform">How it works</a><a href="#capabilities">Capabilities</a><a href="#connections">Connections</a><a href="#security">Security</a></div>
       <div><strong>RESOURCES</strong><Link href="/resources">All resources</Link><Link href="/resources/inventory">Inventory</Link><Link href="/resources/finance">Finance</Link><Link href="/resources/analytics">Analytics</Link></div>
+      <div><strong>LEGAL</strong><Link href="/legal">Legal centre</Link><Link href="/privacy">Privacy</Link><Link href="/terms">Terms</Link><Link href="/cookies">Cookies</Link></div>
       <div><strong>ACCOUNT</strong><button type="button" onClick={() => start("signin")}>Sign in</button><button type="button" onClick={() => start("signup")}>Create workspace</button></div>
       <p className="home-footer-note">© {new Date().getFullYear()} Vanteloq. Feature availability depends on workspace access, configured sources and verified records.</p>
     </footer>

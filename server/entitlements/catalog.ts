@@ -328,7 +328,7 @@ export const PLANS: Readonly<Record<PlanKey, PlanDefinition>> = Object.freeze({
 export const ADDONS: Readonly<Record<AddonKey, AddonDefinition>> = Object.freeze({
   bookloq: Object.freeze({
     key: "bookloq",
-    displayName: "BookLoq",
+    displayName: "BookLoQ",
     prices: Object.freeze({
       month: price(3_900, "month", "bookloq_monthly_cad"),
       year: price(39_000, "year", "bookloq_yearly_cad"),
@@ -353,4 +353,3 @@ export function isAddonKey(value: unknown): value is AddonKey {
 export function planIncludesFeature(plan: PlanKey, feature: FeatureKey): boolean {
   return PLANS[plan].features.includes(feature);
 }
-

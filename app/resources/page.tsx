@@ -74,9 +74,14 @@ export default function ResourcesPage() {
         )}
 
         <section className="resource-method">
-          <div>
+          <div className="resource-method-copy">
             <p className="resource-eyebrow">HOW THESE GUIDES WORK</p>
-            <h2>Useful enough to apply. Careful enough to trust.</h2>
+            <h2>Practical enough to use. Careful enough to trust.</h2>
+            <figure>
+              {/* This generated editorial visual contains no customer data or performance claims. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/brand/resource-method-visual.webp" alt="A clear answer, visible calculation layers and a guardrail shown as one guide system." width={760} height={760} loading="lazy" />
+            </figure>
           </div>
           <ol>
             <li><span>01</span><div><strong>Answer first</strong><p>The direct answer appears before the background.</p></div></li>

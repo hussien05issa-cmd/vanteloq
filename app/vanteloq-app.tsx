@@ -783,12 +783,10 @@ export default function VanteloqApp({
                     {item === "BookLoQ" ? (
                       <ProductBrandLogo
                         product="bookloq"
-                        className="bookloq-nav-glyph"
+                        variant="full"
+                        className="bookloq-nav-lockup"
                       />
-                    ) : (
-                      <span className="nav-dot" />
-                    )}
-                    {item}
+                    ) : <><span className="nav-dot" />{item}</>}
                   </button>
                 ))}
               </section>
@@ -1217,7 +1215,7 @@ function LiveSalesPanel({ data, currency, compact = false }: { data: CommandCent
       <section className="today-metric-grid">
         <Metric label="Today's net sales" value={money(today.netSalesCents, currency)} delta={comparisonCopy(data.todayComparison?.changes.netSalesRate, baselineLabel)} detail={`${today.businessDate} · completed sales`} tone="indigo" />
         <Metric label="Today's gross profit" value={money(today.grossProfitCents, currency)} delta={comparisonCopy(data.todayComparison?.changes.grossProfitRate, baselineLabel)} detail="Net sales less product cost" tone="emerald" />
-        <Metric label="Average transaction" value={today.averageTransactionCents == null ? "—" : money(today.averageTransactionCents, currency, 2)} delta="Live basket value" detail="Net sales ÷ completed transactions" tone="amber" />
+        <Metric label="Average transaction" value={today.averageTransactionCents == null ? "Not available" : money(today.averageTransactionCents, currency, 2)} delta="Live basket value" detail="Net sales ÷ completed transactions" tone="amber" />
         <Metric label="Number of sales" value={today.transactionCount.toLocaleString()} delta={comparisonCopy(data.todayComparison?.changes.transactionRate, baselineLabel)} detail={`${today.unitsSold.toLocaleString()} line items recorded`} tone="cyan" />
       </section>
       <section className={compact ? "live-sales-grid compact" : "live-sales-grid"}>
@@ -3265,10 +3263,10 @@ function CommerceRecordsWorkspace({ kind, navigate }: { kind: "Customers" | "Sup
         <div className="sync-health"><i className={error ? "error" : ""}/><span><b>{error ? "Source unavailable" : `${total.toLocaleString()} imported`}</b><small>{snapshot ? `${snapshot.counts.saleLines.toLocaleString()} transaction lines available` : "Loading provider records…"}</small></span></div>
       </section>
       <section className="commerce-summary-strip">
-        <article><small>PRODUCTS</small><b>{snapshot?.counts.products.toLocaleString() ?? "—"}</b><span>Catalog records</span></article>
-        <article><small>CUSTOMERS</small><b>{snapshot?.counts.customers.toLocaleString() ?? "—"}</b><span>Active profiles</span></article>
-        <article><small>SUPPLIERS</small><b>{snapshot?.counts.suppliers.toLocaleString() ?? "—"}</b><span>Vendor records</span></article>
-        <article><small>SALE LINES</small><b>{snapshot?.counts.saleLines.toLocaleString() ?? "—"}</b><span>Product-level facts</span></article>
+        <article><small>PRODUCTS</small><b>{snapshot?.counts.products.toLocaleString() ?? "Not available"}</b><span>Catalog records</span></article>
+        <article><small>CUSTOMERS</small><b>{snapshot?.counts.customers.toLocaleString() ?? "Not available"}</b><span>Active profiles</span></article>
+        <article><small>SUPPLIERS</small><b>{snapshot?.counts.suppliers.toLocaleString() ?? "Not available"}</b><span>Vendor records</span></article>
+        <article><small>SALE LINES</small><b>{snapshot?.counts.saleLines.toLocaleString() ?? "Not available"}</b><span>Product-level facts</span></article>
       </section>
       <section className="dense-panel commerce-directory">
         <header><div><p>{kind.toUpperCase()}</p><h3>Imported from the authorized source account</h3></div><span>{filtered.length.toLocaleString()} shown</span></header>
@@ -3280,7 +3278,7 @@ function CommerceRecordsWorkspace({ kind, navigate }: { kind: "Customers" | "Sup
             return <div className="dense-row" key={customer ? record.externalCustomerId : record.externalSupplierId}>
               <span><b>{customer ? record.displayName : record.name}</b><small>{customer ? record.externalCustomerId : record.externalSupplierId}</small></span>
               <span>{customer ? record.email || "Not supplied" : record.contactName || record.email || "Not supplied"}</span>
-              <span className="mono-cell">{customer ? record.phone || "—" : record.accountNumber || "—"}</span>
+              <span className="mono-cell">{customer ? record.phone || "Not recorded" : record.accountNumber || "Not recorded"}</span>
               <span className="mono-cell">R-Series</span>
             </div>;
           })}

@@ -369,7 +369,7 @@ export function CashPositionRing({
             />
           )}
         </svg>
-        <span><small>After payables</small><b>{hasData ? format(available) : "—"}</b></span>
+        <span><small>After payables</small><b>{hasData ? format(available) : "Not available"}</b></span>
       </div>
       <dl className="cash-ring-details">
         <div><dt><i className="cash-dot" />Operating cash</dt><dd>{cashCents == null ? "Not connected" : format(cash)}</dd></div>
