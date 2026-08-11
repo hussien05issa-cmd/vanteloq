@@ -68,3 +68,11 @@ test("Plaid creates financial accounts before advancing the first transaction cu
   const transactionLoop = source.indexOf("while (hasMore", syncStart);
   assert.ok(syncStart >= 0 && accountSync > syncStart && transactionLoop > accountSync);
 });
+
+test("successful Plaid balance syncs can power cash intelligence without posting transactions", async () => {
+  const source = await readFile(new URL("../server/integrations/plaid.ts", import.meta.url), "utf8");
+  assert.match(source, /dataPromotionStatus: accountsImported > 0 \? "approved" : "staging"/);
+  assert.match(source, /approvalStatus: "pending"/);
+  assert.match(source, /reconciliationStatus: "unreconciled"/);
+  assert.match(source, /categorizationStatus: record\.categorizationStatus/);
+});

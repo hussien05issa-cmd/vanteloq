@@ -29,7 +29,7 @@ export async function POST(request: Request) {
       await getDb().update(integrationConnections).set({
         status: plaidRequiresUserRepair(errorCode) ? "error" : "connected",
         lastErrorCode: errorCode,
-        dataPromotionStatus: "staging",
+        dataPromotionStatus: sync?.dataPromotionStatus ?? "staging",
         updatedAt: new Date(),
       }).where(and(
         eq(integrationConnections.organizationId, context.organizationId),
@@ -59,7 +59,8 @@ export async function POST(request: Request) {
       accountsImported: sync?.accountsImported ?? 0,
       sync,
       syncWarning,
-      reviewRequired: true,
+      bankBalancesAvailable: sync?.dataPromotionStatus === "approved",
+      transactionReviewRequired: true,
     });
   });
 }

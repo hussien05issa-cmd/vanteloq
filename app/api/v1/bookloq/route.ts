@@ -12,6 +12,7 @@ import {
 } from "../../../../server/bookloq";
 import { requirePermission } from "../../../../server/permissions";
 import { calculateCashFlowIntelligence, type CashFlowItem } from "../../../../domain/cash-flow-intelligence";
+import { calculateVerifiedPurchasingCapacity } from "../../../../domain/purchasing-intelligence";
 import { requireAccessibleLocation } from "../../../../server/location-access";
 
 const readers = ["owner", "admin", "manager", "employee", "read_only"] as const;
@@ -106,7 +107,8 @@ export async function GET(request: Request) {
         b.masked_number maskedNumber, b.live_balance_cents liveBalanceCents,
         b.available_balance_cents availableBalanceCents, b.book_balance_cents bookBalanceCents,
         b.available_credit_cents availableCreditCents, b.connection_status connectionStatus,
-        b.last_sync_at lastSyncAt, b.last_reconciled_at lastReconciledAt, b.demo_record demoRecord,
+        b.currency, b.provider, b.last_sync_at lastSyncAt,
+        b.last_reconciled_at lastReconciledAt, b.demo_record demoRecord,
         a.code accountCode, a.name accountName
         FROM bank_accounts b JOIN financial_accounts a ON a.id = b.financial_account_id AND a.organization_id = b.organization_id
         WHERE b.organization_id = ? ORDER BY b.name`).bind(organizationId).all(),
@@ -185,20 +187,57 @@ export async function GET(request: Request) {
     const openCriticalAlerts = alerts.filter((alert) => alert.status === "open" && alert.severity === "critical").length;
     const healthScore = bookkeepingHealthScore({ unbalancedJournalCount, uncategorizedCount, unreconciledCount, openCriticalAlerts, missingReceiptCount: 0, monthEndCompletionRate });
     const asOf = new Date().toISOString().slice(0, 10);
+    const integrationRows = rows(integrationsResult) as Array<{ provider: string; status: string; dataPromotionStatus: string; lastSuccessfulSyncAt: number | null }>;
+    const documentRows = rows(documentsResult) as Array<{ documentType: string; status: string; extractionStatus: string; createdAt: number }>;
+    const plaidConnection = integrationRows.find((item) => item.provider === "plaid");
+    const baseCurrency = (settings?.baseCurrency ?? context.organization.currency).toUpperCase();
+    const plaidBanks = banks as Array<{
+      provider: string;
+      accountType: "chequing" | "savings" | "credit_card" | "line_of_credit" | "merchant" | "loan";
+      currency: string;
+      connectionStatus: "manual" | "healthy" | "delayed" | "error";
+      availableBalanceCents: number | null;
+      liveBalanceCents: number | null;
+      lastSyncAt: number | null;
+    }>;
+    const verifiedBankCash = calculateVerifiedPurchasingCapacity({
+      connectionVerified: plaidConnection?.status === "connected" && plaidConnection.dataPromotionStatus === "approved",
+      nowMs: Date.now(),
+      maximumAgeMs: 48 * 60 * 60 * 1000,
+      baseCurrency,
+      cashSafetyReserveCents: 0,
+      outstandingBillsCents: 0,
+      uninvoicedPurchaseCommitmentsCents: 0,
+      accounts: plaidBanks.filter((bank) => bank.provider === "plaid").map((bank) => ({
+        accountType: bank.accountType,
+        currency: bank.currency,
+        connectionStatus: bank.connectionStatus,
+        availableBalanceCents: bank.availableBalanceCents,
+        liveBalanceCents: bank.liveBalanceCents,
+        lastSyncAtMs: bank.lastSyncAt === null ? null : bank.lastSyncAt * 1_000,
+      })),
+    });
+    const verifiedBankCashCents = verifiedBankCash.status === "available" ? verifiedBankCash.verifiedCashCents : null;
+    const cashOpeningBalanceCents = verifiedBankCashCents ?? (settings ? statements.cashCents : null);
+    const cashSource = verifiedBankCashCents !== null
+      ? "plaid_available_balance"
+      : settings
+        ? "posted_ledger"
+        : "unavailable";
+    const cashLastSyncAt = plaidBanks.some((bank) => bank.provider === "plaid" && bank.lastSyncAt !== null)
+      ? Math.max(...plaidBanks.filter((bank) => bank.provider === "plaid" && bank.lastSyncAt !== null).map((bank) => Number(bank.lastSyncAt)))
+      : null;
     const cashFlowItems: CashFlowRecord[] = [
       ...bills.filter((bill) => !["paid", "reconciled", "void"].includes(bill.status)).map((bill) => ({ dueDate: bill.dueDate, amountCents: bill.totalCents - bill.paidCents, direction: "out" as const, certainty: "confirmed" as const })),
       ...invoices.filter((invoice) => !["paid", "written_off", "void"].includes(invoice.status)).map((invoice) => ({ dueDate: invoice.dueDate, amountCents: invoice.totalCents - invoice.paidCents, direction: "in" as const, certainty: "probable" as const })),
     ];
-    const forecasts = forecastCash(statements.cashCents, cashFlowItems, asOf);
+    const forecasts = forecastCash(cashOpeningBalanceCents ?? statements.cashCents, cashFlowItems, asOf);
     const intelligenceItems: CashFlowItem[] = [
       ...bills.filter((bill) => !["paid", "reconciled", "void"].includes(bill.status)).map((bill) => ({ id: bill.id, label: `${bill.supplierName} bill ${bill.billNumber}`, dueDate: bill.dueDate, amountCents: bill.totalCents - bill.paidCents, direction: "out" as const, certainty: "confirmed" as const, category: "supplier" as const })),
       ...invoices.filter((invoice) => !["paid", "written_off", "void"].includes(invoice.status)).map((invoice) => ({ id: invoice.id, label: `${invoice.customerName} invoice ${invoice.invoiceNumber}`, dueDate: invoice.dueDate, amountCents: invoice.totalCents - invoice.paidCents, direction: "in" as const, certainty: "probable" as const, category: "other" as const })),
     ];
-    const cashIntelligence = calculateCashFlowIntelligence({ openingCashCents: settings ? statements.cashCents : null, safetyThresholdCents: settings?.cashSafetyThresholdCents ?? 0, items: intelligenceItems, asOf });
+    const cashIntelligence = calculateCashFlowIntelligence({ openingCashCents: cashOpeningBalanceCents, safetyThresholdCents: settings?.cashSafetyThresholdCents ?? 0, items: intelligenceItems, asOf });
     const dueNext30Cents = cashFlowItems.filter((item) => item.direction === "out" && item.dueDate <= forecasts[1].endDate).reduce((sum, item) => sum + item.amountCents, 0);
-    const integrationRows = rows(integrationsResult) as Array<{ provider: string; status: string; dataPromotionStatus: string; lastSuccessfulSyncAt: number | null }>;
-    const documentRows = rows(documentsResult) as Array<{ documentType: string; status: string; extractionStatus: string; createdAt: number }>;
-    const plaidConnection = integrationRows.find((item) => item.provider === "plaid");
 
     return jsonResponse({
       bookloq: {
@@ -208,12 +247,13 @@ export async function GET(request: Request) {
         permissions: effectiveBookLoQPermissions(context.role),
         organization: { name: context.organization.businessName, currency: settings?.baseCurrency ?? context.organization.currency },
         summary: {
-          currentCashCents: statements.cashCents,
-          availableCashCents: statements.cashCents - dueNext30Cents,
-          bankBalanceCents: banks.some((bank) => (bank as { liveBalanceCents?: number | null }).liveBalanceCents !== null)
-            ? banks.reduce((sum, bank) => sum + Number((bank as { liveBalanceCents?: number | null }).liveBalanceCents ?? 0), 0)
-            : null,
+          currentCashCents: cashOpeningBalanceCents ?? statements.cashCents,
+          availableCashCents: (cashOpeningBalanceCents ?? statements.cashCents) - dueNext30Cents,
+          bankBalanceCents: verifiedBankCashCents,
           bookBalanceCents: statements.cashCents,
+          cashSource,
+          cashLastSyncAt,
+          bankCashStatus: verifiedBankCash.status,
           revenueCents: statements.profitAndLoss.revenueCents,
           grossProfitCents: statements.profitAndLoss.grossProfitCents,
           grossMarginBasisPoints: statements.profitAndLoss.revenueCents ? Math.round(statements.profitAndLoss.grossProfitCents * 10_000 / statements.profitAndLoss.revenueCents) : null,

@@ -38,8 +38,12 @@ export async function POST(request: Request) {
       action: "integration.synchronized",
       resourceType: "integration",
       resourceId: "plaid",
-      details: { provider: "plaid", ...sync, dataPromotionStatus: "staging" },
+      details: { provider: "plaid", ...sync },
     });
-    return jsonResponse({ sync, reviewRequired: true });
+    return jsonResponse({
+      sync,
+      bankBalancesAvailable: sync.dataPromotionStatus === "approved",
+      transactionReviewRequired: true,
+    });
   });
 }

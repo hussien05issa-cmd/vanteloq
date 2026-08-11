@@ -2536,6 +2536,9 @@ function DataHub({
                 {isPlaid && !configured && provider.providerReadiness && (
                   <div className="provider-setup-needed" role="note"><b>Hosted Plaid setup remaining</b><span>{provider.providerReadiness.missingConfiguration.map(lightspeedConfigurationLabel).join(" · ")}</span></div>
                 )}
+                {isPlaid && configured && provider.providerReadiness?.mode !== "production" && (
+                  <div className="provider-setup-needed" role="note"><b>Plaid sandbox</b><span>Test institutions only. Real bank authorization remains locked until Plaid approves Vanteloq for production access.</span></div>
+                )}
                 <div className="integration-card-footer">
                   <div>
                     <span className={`status ${connected ? "" : repairRequired ? "repair" : "planned"}`}>
@@ -2557,7 +2560,9 @@ function DataHub({
                         : connected
                         ? provider.id === "lightspeed-r" && provider.dataPromotionStatus === "approved"
                           ? "Sales, catalog, customers and suppliers imported"
-                          : "Staging only · metrics locked"
+                          : provider.id === "plaid" && provider.dataPromotionStatus === "approved"
+                            ? "Fresh balances power cash analysis · transactions await review"
+                            : "Staging only · metrics locked"
                           : configured
                             ? "Authorization required · metrics locked"
                             : "Sync disabled"}
@@ -3762,6 +3767,7 @@ function ModuleWorkspace({
   const sourceAvailable = (item: string) => {
     if (item.includes("Daily sales and cost summaries")) return data.ready && data.metrics.cost_of_goods?.actuality === "actual";
     if (item.includes("Daily balance entry")) return data.balances?.cashBalanceCents != null;
+    if (item === "Bank feeds") return data.metrics.operating_cash?.sourceSystem === "Plaid read-only bank feed";
     if (item.includes("Daily labour cost")) return data.metrics.labour_cost?.actuality === "actual";
     if (item.includes("Daily summaries now")) return data.ready;
     return false;
@@ -3781,7 +3787,7 @@ function ModuleWorkspace({
           <div className="module-signal">
             <small>AVAILABLE NOW</small>
             <b>{value}</b>
-            <span>From verified daily summaries</span>
+            <span>{name === "Cash" ? data.metrics.operating_cash?.sourceSystem ?? "Verified cash source" : "From verified daily summaries"}</span>
           </div>
         )}
       </section>

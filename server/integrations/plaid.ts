@@ -500,10 +500,21 @@ export async function syncPlaidTransactions(organizationId: string, fetcher: typ
     lastSyncCursor: cursor ?? null,
     lastSuccessfulSyncAt: now,
     lastErrorCode: null,
-    dataPromotionStatus: "staging",
+    // Successful account and balance retrieval is enough to use fresh balances
+    // for cash readiness. Imported transactions remain independently gated by
+    // approval, categorization and reconciliation state and are never posted
+    // to the ledger by this promotion.
+    dataPromotionStatus: accountsImported > 0 ? "approved" : "staging",
     updatedAt: now,
   }).where(and(eq(integrationConnections.organizationId, organizationId), eq(integrationConnections.provider, PLAID_PROVIDER)));
-  return { added: added.length, modified: modified.length, removed: removed.length, pages, accountsImported };
+  return {
+    added: added.length,
+    modified: modified.length,
+    removed: removed.length,
+    pages,
+    accountsImported,
+    dataPromotionStatus: accountsImported > 0 ? "approved" as const : "staging" as const,
+  };
 }
 
 export async function disconnectPlaid(organizationId: string, fetcher: typeof fetch = fetch) {
