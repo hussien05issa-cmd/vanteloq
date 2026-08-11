@@ -4,8 +4,8 @@ import test from "node:test";
 import {
   createPlaidLinkToken,
   missingPlaidAccountRefs,
-  plaidAccountsMissingFromSync,
   normalizePlaidTransaction,
+  plaidAccountsMissingFromSync,
   plaidConnectionClaimErrorCode,
   plaidReadiness,
   plaidWebhookDisposition,
@@ -93,10 +93,7 @@ test("Plaid sync fails closed when a transaction account was not synchronized", 
     pending: false,
     pending_transaction_id: null,
   });
-  assert.deepEqual(
-    missingPlaidAccountRefs([first, second, second], new Set(["account-known"])),
-    ["account-new"],
-  );
+  assert.deepEqual(missingPlaidAccountRefs([first, second, second], new Set(["account-known"])), ["account-new"]);
 });
 
 test("Plaid refuses to replace an active or unresolved Item", () => {
@@ -114,10 +111,7 @@ test("Plaid webhook disposition retries only actionable transaction updates", ()
 });
 
 test("Plaid account synchronization identifies accounts removed from an Item", () => {
-  assert.deepEqual(
-    plaidAccountsMissingFromSync(["checking", "savings", "credit"], ["checking", "credit"]),
-    ["savings"],
-  );
+  assert.deepEqual(plaidAccountsMissingFromSync(["checking", "savings", "credit"], ["checking", "credit"]), ["savings"]);
   assert.deepEqual(plaidAccountsMissingFromSync(["checking"], ["checking"]), []);
 });
 
@@ -153,6 +147,27 @@ test("successful Plaid balance syncs remain staged until reviewed without postin
   assert.match(source, /approvalStatus: "pending"/);
   assert.match(source, /reconciliationStatus: "unreconciled"/);
   assert.match(source, /categorizationStatus: record\.categorizationStatus/);
+});
+
+test("repair-required initial Plaid sync remains blocked", async () => {
+  const source = await readFile(new URL("../app/api/v1/integrations/plaid/exchange/route.ts", import.meta.url), "utf8");
+  assert.match(source, /dataPromotionStatus:\s*plaidRequiresUserRepair\(errorCode\)\s*\?\s*"blocked"\s*:\s*"staging"/);
+});
+
+test("Plaid Item webhooks cannot mutate a replacement Item", async () => {
+  const source = await readFile(new URL("../server/integrations/plaid.ts", import.meta.url), "utf8");
+  const start = source.indexOf("export async function settlePlaidWebhookEvent");
+  const settlement = source.slice(start, source.indexOf("function hex", start));
+  assert.equal((settlement.match(/eq\(integrationConnections\.externalAccountRef,\s*options\.itemId\)/g) ?? []).length, 2);
+});
+
+test("Plaid retains cleanup credentials before optional Item metadata lookup", async () => {
+  const source = await readFile(new URL("../server/integrations/plaid.ts", import.meta.url), "utf8");
+  const start = source.indexOf("export async function exchangePlaidPublicToken");
+  const end = source.indexOf("async function credentials", start);
+  const exchange = source.slice(start, end);
+  assert.ok(exchange.indexOf("database.insert(integrationSecrets)") < exchange.indexOf('"/item/get"'));
+  assert.match(exchange, /if \(providerAuthorizationRevoked\) \{[\s\S]*?delete\(integrationSecrets\)[\s\S]*?\} else \{[\s\S]*?PLAID_PROVISIONING_CLEANUP_REQUIRED/);
 });
 
 test("Plaid authorization is bound to durable, versioned consent evidence", async () => {

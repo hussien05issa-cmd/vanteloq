@@ -1,8 +1,8 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "../../../../../../db";
-import { bankAccounts, integrationConnections, integrationWebhookEvents } from "../../../../../../db/schema";
+import { integrationConnections, integrationWebhookEvents } from "../../../../../../db/schema";
 import { ApiError, handleApi, jsonResponse } from "../../../../../../server/api";
-import { plaidRequiresUserRepair, PLAID_PROVIDER, settlePlaidWebhookEvent, verifyPlaidWebhook } from "../../../../../../server/integrations/plaid";
+import { PLAID_PROVIDER, settlePlaidWebhookEvent, verifyPlaidWebhook } from "../../../../../../server/integrations/plaid";
 
 const MAXIMUM_WEBHOOK_BYTES = 256_000;
 
@@ -36,13 +36,13 @@ export async function POST(request: Request) {
     const [connection] = await getDb().select({
       id: integrationConnections.id,
       organizationId: integrationConnections.organizationId,
-    })
-      .from(integrationConnections).where(and(
-        eq(integrationConnections.provider, PLAID_PROVIDER),
-        eq(integrationConnections.externalAccountRef, body.item_id),
-        inArray(integrationConnections.status, ["connected", "error"]),
-      )).limit(1);
+    }).from(integrationConnections).where(and(
+      eq(integrationConnections.provider, PLAID_PROVIDER),
+      eq(integrationConnections.externalAccountRef, body.item_id),
+      inArray(integrationConnections.status, ["connected", "error"]),
+    )).limit(1);
     if (!connection) return jsonResponse({ accepted: true });
+
     const payloadHash = await sha256(bytes);
     const inserted = await getDb().insert(integrationWebhookEvents).values({
       id: crypto.randomUUID(),
@@ -74,53 +74,21 @@ export async function POST(request: Request) {
           eq(integrationWebhookEvents.payloadHash, payloadHash),
         )).limit(1);
     if (!event || event.status === "processed") return jsonResponse({ accepted: true, duplicate });
+
     const providerError = body.error && typeof body.error === "object" && !Array.isArray(body.error)
       ? (body.error as { error_code?: unknown }).error_code
       : null;
     const issueCode = typeof providerError === "string" && providerError.length <= 100
       ? providerError
       : body.webhook_code;
-    if (body.webhook_type === "ITEM" && plaidRequiresUserRepair(issueCode)) {
-      const now = new Date();
-      await getDb().update(integrationConnections).set({
-        status: "error",
-        dataPromotionStatus: "blocked",
-        lastErrorCode: issueCode,
-        updatedAt: now,
-      }).where(and(
-        eq(integrationConnections.id, connection.id),
-        eq(integrationConnections.organizationId, connection.organizationId),
-        eq(integrationConnections.provider, PLAID_PROVIDER),
-      ));
-      await getDb().update(bankAccounts).set({ connectionStatus: "error", updatedAt: now }).where(and(
-        eq(bankAccounts.organizationId, connection.organizationId),
-        eq(bankAccounts.provider, PLAID_PROVIDER),
-        eq(bankAccounts.externalItemRef, body.item_id),
-      ));
-      await getDb().update(integrationWebhookEvents).set({ status: "processed", processedAt: now }).where(eq(integrationWebhookEvents.id, event.id));
-      return jsonResponse({ accepted: true, duplicate, repairRequired: true });
-    }
-    if (body.webhook_type === "ITEM" && body.webhook_code === "LOGIN_REPAIRED") {
-      const now = new Date();
-      await getDb().update(integrationConnections).set({ status: "connected", lastErrorCode: null, updatedAt: now }).where(and(
-        eq(integrationConnections.id, connection.id),
-        eq(integrationConnections.organizationId, connection.organizationId),
-        eq(integrationConnections.provider, PLAID_PROVIDER),
-      ));
-      await getDb().update(bankAccounts).set({ connectionStatus: "healthy", updatedAt: now }).where(and(
-        eq(bankAccounts.organizationId, connection.organizationId),
-        eq(bankAccounts.provider, PLAID_PROVIDER),
-        eq(bankAccounts.externalItemRef, body.item_id),
-      ));
-      await getDb().update(integrationWebhookEvents).set({ status: "processed", processedAt: now }).where(eq(integrationWebhookEvents.id, event.id));
-      return jsonResponse({ accepted: true, duplicate, repaired: true });
-    }
     const settlement = await settlePlaidWebhookEvent(
       event.id,
       connection.organizationId,
       connection.id,
       body.webhook_type,
       body.webhook_code,
+      undefined,
+      { itemId: body.item_id, issueCode },
     );
     return jsonResponse({ accepted: true, duplicate, ...settlement });
   });

@@ -85,7 +85,7 @@ export default function PrivacyPage() {
       </PolicySection>
 
       <PolicySection id="security" title="8. Safeguards">
-        <p>Vanteloq uses safeguards designed for the sensitivity of the information, including authenticated access, records separated by organization, role-based server permissions, protected provider authorization, encrypted credential storage, request controls, and recorded security events for important actions.</p>
+        <p>Vanteloq uses safeguards designed for the sensitivity of the information, including authenticated access, records separated and scoped by organization, role-based server permissions, protected provider authorization flows, encrypted credential storage, request controls, and recorded audit and security events for important actions.</p>
         <p>Production browser, API, authentication, webhook, and provider traffic uses HTTPS. Vanteloq&apos;s production change control requires the managed edge to reject protocol versions below TLS 1.2 before Plaid production access is enabled. Stored application data is encrypted at rest by the managed database platform. Plaid access tokens and provider item identifiers receive an additional application-level AES-GCM encryption layer under a hosted key that is not stored with the database record. Vanteloq does not place raw Plaid credentials in browser storage, source control, ordinary connection-status responses, or application logs.</p>
         <p>No online service can promise absolute security. Users must protect their credentials, use strong passwords, enable available account protections, and promptly report suspected unauthorized access.</p>
       </PolicySection>

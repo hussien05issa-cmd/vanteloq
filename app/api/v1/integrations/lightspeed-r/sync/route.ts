@@ -192,11 +192,8 @@ export async function POST(request: Request) {
     const runId = `lsr-${crypto.randomUUID()}`;
     const importId = `provider-${LIGHTSPEED_R_PROVIDER}-${runId}`;
     const previous = checkpoint(connection.lastSyncCursor);
+    let publicationPointerDemoted = false;
     const claimed = await getDb().update(integrationConnections).set({
-      // Every refresh re-enters review before any connector-owned facts change.
-      // Readers only trust approved connections, so a failed or partial refresh
-      // cannot expose a mixed generation after the lease is released.
-      dataPromotionStatus: "staging",
       lastErrorCode: null,
       updatedAt: startedAt,
     }).where(and(
@@ -230,7 +227,6 @@ export async function POST(request: Request) {
         eq(integrationSyncRuns.organizationId, context.organizationId),
       ));
       await getDb().update(integrationConnections).set({
-        dataPromotionStatus: "staging",
         lastErrorCode: error instanceof ApiError ? error.code : "RATE_LIMIT_FAILED",
         updatedAt: new Date(),
       }).where(and(
@@ -388,15 +384,20 @@ export async function POST(request: Request) {
       await renewIntegrationSyncLease(syncLease);
 
       const database = getD1();
-      const ignoredMappings = await getDb().select({ externalLocationRef: integrationLocationMappings.externalLocationRef })
+      const locationMappings = await getDb().select({
+        externalLocationRef: integrationLocationMappings.externalLocationRef,
+        status: integrationLocationMappings.status,
+      })
         .from(integrationLocationMappings).where(and(
           eq(integrationLocationMappings.organizationId, context.organizationId),
           eq(integrationLocationMappings.provider, LIGHTSPEED_R_PROVIDER),
           eq(integrationLocationMappings.connectionId, connection.id),
-          eq(integrationLocationMappings.status, "ignored"),
         ));
-      const ignoredRaw = new Set(ignoredMappings.map((row) => row.externalLocationRef));
-      const ignored = new Set(ignoredMappings.map((row) => scopedRef(row.externalLocationRef)).filter((value): value is string => Boolean(value)));
+      const mappedRaw = new Set(locationMappings.filter((row) => row.status === "mapped").map((row) => row.externalLocationRef));
+      const mapped = new Set([...mappedRaw].map((value) => scopedRef(value)).filter((value): value is string => Boolean(value)));
+      warnings += locationMappings.filter((row) => row.status === "unmapped").length;
+      const publicationAuthorized = connection.dataPromotionStatus === "approved" || connection.promotionAuthorizedAt !== null;
+      const publishCanonical = publicationAuthorized && warnings === 0;
       let stagedSales = 0;
       for (const sale of warnings === 0 ? uniqueSales : []) {
         await renewIntegrationSyncLease(syncLease);
@@ -413,8 +414,26 @@ export async function POST(request: Request) {
         ).run();
         stagedSales += Number(result.meta.changes ?? 0);
       }
+      if (publishCanonical && connection.dataPromotionStatus === "approved") {
+        const hidden = await getDb().update(integrationConnections).set({
+          dataPromotionStatus: "staging",
+          promotionAuthorizedAt: connection.promotionAuthorizedAt ?? startedAt,
+          updatedAt: new Date(),
+        }).where(and(
+          eq(integrationConnections.id, connection.id),
+          eq(integrationConnections.organizationId, context.organizationId),
+          eq(integrationConnections.provider, LIGHTSPEED_R_PROVIDER),
+          eq(integrationConnections.dataPromotionStatus, "approved"),
+          eq(integrationConnections.syncLeaseOwner, syncLease.owner),
+          eq(integrationConnections.syncVersion, syncLease.version),
+        )).returning({ id: integrationConnections.id });
+        if (!hidden.length) {
+          throw new ApiError(409, "INTEGRATION_SYNC_LEASE_LOST", "This synchronization was superseded before it could safely publish data.");
+        }
+        publicationPointerDemoted = true;
+      }
       let importedSaleLines = 0;
-      for (const line of warnings === 0 ? uniqueSaleLines.filter((row) => !row.outletRef || !ignoredRaw.has(row.outletRef)) : []) {
+      for (const line of warnings === 0 ? uniqueSaleLines.filter((row) => !row.outletRef || mappedRaw.has(row.outletRef)) : []) {
         await renewIntegrationSyncLease(syncLease);
         const result = await database.prepare(`
           INSERT INTO commerce_sale_lines
@@ -438,7 +457,7 @@ export async function POST(request: Request) {
         importedSaleLines += Number(result.meta.changes ?? 0);
       }
       let importedPayments = 0;
-      for (const payment of warnings === 0 ? uniquePayments.filter((row) => !row.outletRef || !ignoredRaw.has(row.outletRef)) : []) {
+      for (const payment of warnings === 0 ? uniquePayments.filter((row) => !row.outletRef || mappedRaw.has(row.outletRef)) : []) {
         await renewIntegrationSyncLease(syncLease);
         const result = await database.prepare(`
           INSERT INTO commerce_payments
@@ -475,14 +494,10 @@ export async function POST(request: Request) {
       `).bind(context.organizationId, LIGHTSPEED_R_PROVIDER, connection.id).all<StagedSaleRow>();
       const dailyMetrics = warnings === 0
         ? buildLightspeedRDailyMetrics(
-            (latest.results ?? []).filter((sale) => !sale.outletRef || !ignored.has(sale.outletRef)),
+            (latest.results ?? []).filter((sale) => !sale.outletRef || mapped.has(sale.outletRef)),
           )
         : [];
-      // Clean normalized facts are written while the connection is hidden in
-      // staging. Approval then exposes one complete reviewed dataset without a
-      // second undocumented synchronization.
-      const stageCanonical = warnings === 0;
-      const publishedDailyMetrics = stageCanonical ? dailyMetrics : [];
+      const publishedDailyMetrics = publishCanonical ? dailyMetrics : [];
 
       const now = Date.now();
       await renewIntegrationSyncLease(syncLease);
@@ -492,7 +507,7 @@ export async function POST(request: Request) {
         VALUES (?, ?, 'manual_entry', 'processing', ?, 0, ?, ?, ?)
       `).bind(importId, context.organizationId, IMPORT_LABEL, runId, context.userId, now).run();
 
-      if (stageCanonical) {
+      if (publishCanonical) {
         await renewIntegrationSyncLease(syncLease);
         await database.prepare(`
           DELETE FROM daily_business_metrics
@@ -537,9 +552,9 @@ export async function POST(request: Request) {
       }
 
       let importedInventory = 0;
-      if (stageCanonical) {
+      if (warnings === 0) {
         for (const balance of inventoryBalances) {
-          if (ignoredRaw.has(balance.outletRef)) continue;
+          if (!mappedRaw.has(balance.outletRef)) continue;
           await renewIntegrationSyncLease(syncLease);
           const result = await database.prepare(`
           INSERT INTO inventory_balances
@@ -656,7 +671,7 @@ export async function POST(request: Request) {
       const recordsRead = recentSalesPage.data.length + salesPage.data.length + saleLinesPage.data.length + itemsPage.data.length + customersPage.data.length + suppliersPage.data.length + paymentTypesPage.data.length;
       const recordsImported = publishedDailyMetrics.length + importedInventory + importedProducts + importedCustomers + importedSuppliers + importedSaleLines + importedPayments;
       const duplicatesSkipped = uniqueSales.length - stagedSales;
-      const promotionStatus = "staging" as const;
+      const promotionStatus = publishCanonical || connection.dataPromotionStatus === "approved" ? "approved" : "staging";
       await renewIntegrationSyncLease(syncLease);
       await getDb().update(integrationSyncRuns).set({
         status: "completed",
@@ -672,6 +687,7 @@ export async function POST(request: Request) {
         lastSuccessfulSyncAt: warnings > 0 ? connection.lastSuccessfulSyncAt : completedAt,
         lastSyncCursor: safeCheckpoint,
         dataPromotionStatus: promotionStatus,
+        promotionAuthorizedAt: promotionStatus === "approved" ? null : connection.promotionAuthorizedAt,
         lastErrorCode: warnings > 0 ? "LIGHTSPEED_R_RECONCILIATION_WARNINGS" : null,
         syncLeaseOwner: null,
         syncLeaseExpiresAt: null,
@@ -708,10 +724,9 @@ export async function POST(request: Request) {
           payments: importedPayments,
           duplicatesSkipped,
           warningCount: warnings,
-          stagedCanonical: stageCanonical,
-          publishedCanonical: false,
-          usingLastApprovedData: false,
-          dataPromotionEnabled: false,
+          publishedCanonical: publishCanonical,
+          usingLastApprovedData: promotionStatus === "approved" && !publishCanonical,
+          dataPromotionEnabled: promotionStatus === "approved",
         },
       });
 
@@ -752,14 +767,15 @@ export async function POST(request: Request) {
           saleLines: importedSaleLines,
           payments: importedPayments,
         },
-        stagingOnly: true,
-        dataPromotionEnabled: false,
-        stagedCanonical: stageCanonical,
-        publishedCanonical: false,
-        usingLastApprovedData: false,
-        readyForReview: warnings === 0 && backfillComplete,
+        stagingOnly: promotionStatus !== "approved",
+        dataPromotionEnabled: promotionStatus === "approved",
+        publishedCanonical: publishCanonical,
+        usingLastApprovedData: promotionStatus === "approved" && !publishCanonical,
+        readyForReview: warnings === 0 && backfillComplete && promotionStatus !== "approved",
         nextStep: warnings > 0
           ? `Imported ${recordsImported} verified records. ${warnings} source record${warnings === 1 ? " needs" : "s need"} attention before the sync cursor can advance.`
+          : promotionStatus === "approved"
+            ? "R-Series is current and the approved records are available to dashboard features."
           : backfillComplete
             ? `R-Series is current. Review the reconciliation, then approve this account before its records affect dashboard results.`
             : `Imported ${recordsImported} records. Run sync again to continue the remaining R-Series backfill before approval.` ,
@@ -774,7 +790,10 @@ export async function POST(request: Request) {
         completedAt: new Date(),
       }).where(eq(integrationSyncRuns.id, runId));
       await getDb().update(integrationConnections).set({
-        dataPromotionStatus: "staging",
+        dataPromotionStatus: publicationPointerDemoted ? "staging" : connection.dataPromotionStatus,
+        promotionAuthorizedAt: publicationPointerDemoted
+          ? (connection.promotionAuthorizedAt ?? startedAt)
+          : connection.promotionAuthorizedAt,
         lastErrorCode: code,
         updatedAt: new Date(),
       }).where(and(

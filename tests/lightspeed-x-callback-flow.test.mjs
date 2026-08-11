@@ -38,11 +38,13 @@ async function applyMigrations(database) {
 }
 
 test("X-Series isolates two retailer accounts and every account action", async () => {
-  const authServer = createServer((_request, response) => {
+  const authServer = createServer((request, response) => {
+    const token = request.headers.authorization?.replace(/^Bearer\s+/i, "") ?? "";
+    const payload = JSON.parse(Buffer.from(token.split(".")[1] ?? "", "base64url").toString("utf8"));
     response.writeHead(200, { "content-type": "application/json" });
     response.end(JSON.stringify({
-      id: "test-user:owner@example.invalid",
-      email: "owner@example.invalid",
+      id: `test-user:${payload.email}`,
+      email: payload.email,
       email_confirmed_at: "2026-08-01T00:00:00.000Z",
       user_metadata: { full_name: "Test Owner" },
     }));

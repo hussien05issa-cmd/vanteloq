@@ -2359,9 +2359,9 @@ function DataHub({
     }
     setActiveSampleProvider(provider);
     setSampleResult(body);
-    showNotice(provider === "lightspeed-r"
-      ? body.nextStep ?? "The R-Series sync finished. Review its reconciliation before approval."
-      : `${provider === "stripe" ? "Stripe" : "X-Series"} sample staged; dashboard metrics remain unchanged`);
+    showNotice(body.nextStep ?? (provider === "lightspeed-r"
+      ? "The R-Series sync finished. Review its reconciliation before approval."
+      : `${provider === "stripe" ? "Stripe" : "X-Series"} sample staged; dashboard metrics remain unchanged`));
     await loadConnections();
     if (provider === "lightspeed-r") await refresh();
   };
@@ -2613,7 +2613,7 @@ function DataHub({
                   <IntegrationBrandLogo name={provider.name} />
                   <div className="integration-card-labels">
                     <span className="integration-type">{provider.category}</span>
-                    {isPlanned && <span className="integration-coming-soon">{isComingSoon ? "Coming soon" : "Planned"}</span>}
+                    {isPlanned && <span className="integration-coming-soon">{isComingSoon ? "Coming soon!" : "Planned"}</span>}
                   </div>
                 </div>
                 <h3>{provider.name}</h3>
@@ -2696,7 +2696,7 @@ function DataHub({
                         : connected
                         ? "Read-only connected"
                         : isPlanned
-                          ? "Planned"
+                          ? isComingSoon ? "Coming soon!" : "Planned"
                         : configured
                           ? "Ready to authorize"
                           : availabilityLabel(provider.availability)}
@@ -2709,7 +2709,7 @@ function DataHub({
                         : connected
                         ? provider.dataPromotionStatus === "approved"
                           ? provider.id === "lightspeed-r"
-                            ? "Sales, catalog, customers and suppliers available"
+                            ? "Approved sales, catalog, customers and suppliers are available"
                             : provider.id === "plaid"
                               ? "Reviewed bank data is available · fresh balances power cash analysis · transactions await review"
                               : "Reviewed source data is available"
@@ -2729,7 +2729,7 @@ function DataHub({
                       connected={connected}
                       repairRequired={repairRequired}
                       configured={configured}
-                      canManage={canManageProvider}
+                      canManage={canManageProvider && canManageBankConnections}
                       deletionAvailable={provider.status === "revoked" && !provider.privacyDataDeletedAt}
                       onChanged={loadConnections}
                       showNotice={showNotice}
@@ -3951,11 +3951,11 @@ function ModuleWorkspace({
     "Commerce channels for consolidated sales": data.liveSource.providers.length > 0 && data.ready,
     "Daily sales and cost summaries now": data.ready && actual("cost_of_goods"),
     "Daily balance entry now": data.balances?.cashBalanceCents != null,
+    "Bank feeds": data.metrics.operating_cash?.sourceSystem === "Plaid read-only bank feed",
     "Daily labour cost now": actual("labour_cost"),
     "Latest aggregate value now": data.balances?.inventoryValueCents != null,
     "Location-tagged daily summaries": data.ready,
     "Every verified Vanteloq data source": data.ready,
-    "Bank feeds": data.metrics.operating_cash?.sourceSystem === "Plaid read-only bank feed",
   };
   const sourceAvailable = (item: string) => {
     return sourceRules[item] ?? false;

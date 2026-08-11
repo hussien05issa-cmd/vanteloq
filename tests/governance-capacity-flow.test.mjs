@@ -96,9 +96,12 @@ async function createEnvironment() {
     ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) },
   };
   const dispose = async () => {
-    await miniflare.dispose();
-    authServer.closeAllConnections();
-    await new Promise((resolve, reject) => authServer.close((error) => error ? reject(error) : resolve()));
+    try {
+      await miniflare.dispose();
+    } finally {
+      authServer.closeAllConnections();
+      await new Promise((resolve, reject) => authServer.close((error) => error ? reject(error) : resolve()));
+    }
   };
   return { database, worker, environment, dispose };
 }

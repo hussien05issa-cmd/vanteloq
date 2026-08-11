@@ -33,8 +33,9 @@ Implemented now:
 Intentionally unavailable until its required production control or provider adapter exists:
 
 - Passkeys and a user-facing session/device management screen
-- Production Plaid access, Shopify, Moneris, Square, Clover, Google and Meta marketing, and accounting-provider adapters
+- Production Plaid access; Shopify, Moneris, Square, Clover, Google and Meta marketing, and accounting-provider adapters
 - Lightspeed X-Series promotion into live dashboard metrics, pending provider reconciliation approval
+- Live campaign, employee, payout, and accounting feeds, plus line-item POS, SKU inventory, customer, supplier, and bank feeds from providers not identified above as implemented
 - Invoice malware scanning and OCR extraction, so uploaded documents remain quarantined and unavailable for download
 - Payment initiation, tax filing, payroll execution, automatic accounting posting, and accountant invitations
 - Production PDF or XLSX report generation, outbound email delivery, and customer-data exports

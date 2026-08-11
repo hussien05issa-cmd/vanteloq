@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { getD1, getDb } from "../../../../db";
 import { integrationConnections, integrationSyncRuns } from "../../../../db/schema";
 import { requireAccess } from "../../../../server/authorization";
@@ -105,6 +105,7 @@ export async function GET(request: Request) {
       canManageBankConnections: permissions.includes("finance.connections"),
       integrations: integrationCatalog.map((provider) => {
         const canonicalCoverage = coverageByProvider.get(provider.id)!;
+        const allProviderConnections = rows.filter((connection) => connection.provider === provider.id);
         const providerConnections = byProvider.get(provider.id) ?? [];
         const aggregate = aggregateConnectionStatus(providerConnections.map((connection) => ({
           ...connection,
@@ -113,21 +114,20 @@ export async function GET(request: Request) {
         const canManageProvider = provider.id === "plaid"
           ? permissions.includes("finance.connections")
           : permissions.includes("integrations.manage");
-        const privacyDataDeletedAt = providerConnections
-          .map((connection) => connection.privacyDataDeletedAt)
-          .filter((value): value is Date => Boolean(value))
-          .sort((left, right) => right.getTime() - left.getTime())[0] ?? null;
         return ({
         ...provider,
         canManage: canManageProvider,
-        status: aggregate.status,
+        status: providerConnections.length
+          ? aggregate.status
+          : allProviderConnections.some((connection) => connection.status === "revoked")
+            ? "revoked"
+            : aggregate.status,
         maskedAccountRef: providerConnections.length === 1 ? maskedAccountRef(providerConnections[0]?.externalAccountRef) : null,
         externalAccountName: providerConnections.length === 1 ? providerConnections[0]?.externalAccountName ?? null : providerConnections.length ? `${providerConnections.length} provider accounts` : null,
         lastSuccessfulSyncAt: aggregate.lastSuccessfulSyncAt,
         lastErrorCode: aggregate.lastErrorCode,
         connectedAt: providerConnections.map((connection) => connection.connectedAt).filter((value): value is Date => Boolean(value)).sort((left, right) => right.getTime() - left.getTime())[0]?.toISOString() ?? null,
         dataPromotionStatus: aggregate.dataPromotionStatus,
-        privacyDataDeletedAt: privacyDataDeletedAt?.toISOString() ?? null,
         connectionCount: providerConnections.length,
         connections: providerConnections.map((connection) => ({
           id: connection.id,
@@ -140,6 +140,10 @@ export async function GET(request: Request) {
           dataPromotionStatus: connection.dataPromotionStatus,
           privacyDataDeletedAt: connection.privacyDataDeletedAt?.toISOString() ?? null,
         })),
+        privacyDataDeletedAt: allProviderConnections
+          .map((connection) => connection.privacyDataDeletedAt)
+          .filter((value): value is Date => Boolean(value))
+          .sort((left, right) => right.getTime() - left.getTime())[0]?.toISOString() ?? null,
         providerReadiness: provider.id === "lightspeed"
           ? lightspeedReadiness()
           : provider.id === "lightspeed-r"
@@ -159,8 +163,12 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
-    const context = await requireAccess(request, ["owner", "admin"]);
-    await requirePermission(context, "integrations.manage");
+    const context = await requireAccess(request, ["owner", "admin", "manager"]);
+    await requireOrganizationWideLocationAccess(context);
+    const permissions = await effectivePermissions(context);
+    if (!permissions.includes("integrations.manage") && !permissions.includes("finance.connections")) {
+      throw new ApiError(403, "PERMISSION_DENIED", "This account cannot approve integration data.");
+    }
     const body = await request.json().catch(() => ({})) as {
       action?: unknown;
       connectionId?: unknown;
@@ -178,6 +186,8 @@ export async function POST(request: Request) {
     }
     if (connection.provider === "plaid") {
       await requirePermission(context, "finance.connections");
+    } else if (connection.provider !== "plaid") {
+      await requirePermission(context, "integrations.manage");
     }
     if (connection.dataPromotionStatus !== "staging") {
       throw new ApiError(409, "INTEGRATION_DATA_NOT_READY", "Sync and review this provider account before making its data available.");
@@ -193,21 +203,20 @@ export async function POST(request: Request) {
     }
 
     if (connection.provider === "lightspeed-r") {
-      const [latestRun] = await getDb().select().from(integrationSyncRuns).where(and(
+      const [reviewedRun] = await getDb().select().from(integrationSyncRuns).where(and(
         eq(integrationSyncRuns.organizationId, context.organizationId),
         eq(integrationSyncRuns.provider, connection.provider),
         eq(integrationSyncRuns.connectionId, connection.id),
-      )).orderBy(desc(integrationSyncRuns.startedAt), desc(integrationSyncRuns.id)).limit(1);
-      if (!latestRun || latestRun.status !== "completed" || latestRun.errorCode || !latestRun.completedAt) {
-        throw new ApiError(409, "INTEGRATION_SYNC_STALE", "Complete a clean R-Series sync after the latest attempt before approving this data.");
-      }
-      if (latestRun.warningCount !== 0) {
-        throw new ApiError(409, "INTEGRATION_RECONCILIATION_REQUIRED", "Resolve the latest R-Series sync warnings before making its data available.");
-      }
-      if (
-        latestRun.completedAt.getTime() !== connection.lastSuccessfulSyncAt.getTime()
-        || latestRun.cursorAfter !== connection.lastSyncCursor
-      ) {
+        eq(integrationSyncRuns.mode, "incremental"),
+        eq(integrationSyncRuns.status, "completed"),
+        isNull(integrationSyncRuns.errorCode),
+        eq(integrationSyncRuns.warningCount, 0),
+        eq(integrationSyncRuns.completedAt, connection.lastSuccessfulSyncAt),
+        connection.lastSyncCursor === null
+          ? isNull(integrationSyncRuns.cursorAfter)
+          : eq(integrationSyncRuns.cursorAfter, connection.lastSyncCursor),
+      )).limit(1);
+      if (!reviewedRun) {
         throw new ApiError(409, "INTEGRATION_SYNC_STALE", "The reviewed R-Series sync no longer matches this account. Sync and review it again.");
       }
       if (!lightspeedRCheckpointReadyForApproval(connection.lastSyncCursor)) {
@@ -235,7 +244,8 @@ export async function POST(request: Request) {
 
     const approvedAt = new Date();
     const approved = await getDb().update(integrationConnections).set({
-      dataPromotionStatus: "approved",
+      dataPromotionStatus: connection.provider === "lightspeed-r" ? "staging" : "approved",
+      promotionAuthorizedAt: connection.provider === "lightspeed-r" ? approvedAt : null,
       lastErrorCode: null,
       updatedAt: approvedAt,
     }).where(and(
@@ -265,12 +275,15 @@ export async function POST(request: Request) {
       resourceId: connection.id,
       details: { provider: connection.provider, reviewedAt: approvedAt.toISOString() },
     });
+    const publicationPending = connection.provider === "lightspeed-r";
     return jsonResponse({
       approved: true,
       connectionId: connection.id,
       provider: connection.provider,
-      publicationPending: false,
-      nextStep: "Reviewed provider data is now available to dashboard features.",
+      publicationPending,
+      nextStep: publicationPending
+        ? "Run one final R-Series sync to publish the reviewed data to dashboard features."
+        : "Reviewed provider data is now available to dashboard features.",
     });
   });
 }

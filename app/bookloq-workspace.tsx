@@ -197,6 +197,7 @@ function BankingPanel({ data, reconciliation }: { data: BookLoQData; reconciliat
   const gross = data.transactions.filter((item) => item.sourceSystem.includes("lightspeed") && item.amountCents > 0).reduce((sum, item) => sum + item.amountCents, 0);
   const payout = data.transactions.filter((item) => item.sourceSystem.includes("moneris") && item.amountCents > 0).reduce((sum, item) => sum + item.amountCents, 0);
   const fees = Math.abs(data.transactions.filter((item) => item.sourceSystem.includes("moneris") && item.amountCents < 0).reduce((sum, item) => sum + item.amountCents, 0));
+  const bankingConnected = data.integrations.banking.startsWith("connected");
   return <div className="bookloq-content"><PageIntro eyebrow={reconciliation ? "RECONCILIATION CENTRE" : "BANKING"} title={reconciliation ? "Make every source agree before close" : "Bank position with book-level evidence"} copy="Balances are never treated as live unless a verified financial-data connection confirms them."/>
     {!reconciliation && <section className="bank-grid">{data.banks.map((bank) => {
       const comparable = bank.balanceState === "current" || bank.balanceState === "demonstration";
@@ -219,8 +220,8 @@ function BankingPanel({ data, reconciliation }: { data: BookLoQData; reconciliat
       title="Secure bank connection"
       status={data.integrations.banking === "connected_and_synced" ? "Connected" : data.integrations.banking === "connected_needs_sync" ? "Needs sync" : "Not connected"}
       detail={data.integrations.banking === "connected_and_synced"
-        ? "Plaid supplies read-only account names, masked identifiers, balances, and transactions. Vanteloq stores encrypted provider tokens, never online-banking credentials, and imported transactions stay in review until categorized and reconciled."
-        : data.integrations.banking === "connected_needs_sync"
+        ? "Plaid supplies read-only account names, masked identifiers, current balances, and transactions. Vanteloq stores encrypted provider tokens, never online-banking credentials, and imported transactions stay in review until categorized and reconciled."
+        : bankingConnected
           ? "The bank connection needs a fresh, healthy balance sync before BookLoQ can treat balances as current."
           : "Connect Plaid from Integrations to authorize read-only balances and transactions. BookLoQ never stores online-banking credentials."}
     />

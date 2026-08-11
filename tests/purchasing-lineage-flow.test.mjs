@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
+import { createServer } from "node:http";
 import test from "node:test";
 import { Miniflare } from "miniflare";
 
@@ -8,11 +9,14 @@ const owner = { email: "lineage-owner@example.invalid", name: "Lineage Owner" };
 const executionContext = { waitUntil() {}, passThroughOnException() {} };
 
 function identityHeaders(write = false) {
+  const payload = Buffer.from(JSON.stringify({
+    email: owner.email,
+    aal: "aal2",
+    session_id: `session:${owner.email}`,
+  })).toString("base64url");
   const headers = {
     accept: "application/json",
-    "oai-authenticated-user-email": owner.email,
-    "oai-authenticated-user-full-name": encodeURIComponent(owner.name),
-    "oai-authenticated-user-full-name-encoding": "percent-encoded-utf-8",
+    authorization: `Bearer test.${payload}.signature`,
   };
   if (write) {
     headers["content-type"] = "application/json";
@@ -23,6 +27,20 @@ function identityHeaders(write = false) {
 }
 
 async function createEnvironment() {
+  const authServer = createServer((request, response) => {
+    const token = request.headers.authorization?.replace(/^Bearer\s+/i, "") ?? "";
+    const payload = JSON.parse(Buffer.from(token.split(".")[1] ?? "", "base64url").toString("utf8"));
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({
+      id: `test-user:${payload.email}`,
+      email: payload.email,
+      email_confirmed_at: "2026-08-01T00:00:00.000Z",
+      user_metadata: { full_name: owner.name },
+    }));
+  });
+  await new Promise((resolve) => authServer.listen(0, "127.0.0.1", resolve));
+  const authAddress = authServer.address();
+  assert.ok(authAddress && typeof authAddress !== "string");
   const miniflare = new Miniflare({
     modules: true,
     script: "export default { fetch() { return new Response('ok') } }",
@@ -44,7 +62,13 @@ async function createEnvironment() {
     miniflare,
     database,
     worker,
-    environment: { DB: database, ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) } },
+    authServer,
+    environment: {
+      DB: database,
+      SUPABASE_URL: `http://127.0.0.1:${authAddress.port}`,
+      SUPABASE_PUBLISHABLE_KEY: "test-publishable-key",
+      ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) },
+    },
   };
 }
 
@@ -83,7 +107,7 @@ function onboardingBody() {
 }
 
 test("purchase history stays isolated when same-provider accounts reuse a product reference", async () => {
-  const { miniflare, database, worker, environment } = await createEnvironment();
+  const { miniflare, database, worker, environment, authServer } = await createEnvironment();
   try {
     const onboarding = await dispatch(worker, environment, "/api/v1/onboarding", {
       method: "POST",
@@ -146,13 +170,15 @@ test("purchase history stays isolated when same-provider accounts reuse a produc
         lines: [{ productId: "product-account-a", quantity: 5, unitCostCents: 250 }],
       },
     });
-    assert.equal(created.status, 201);
+    assert.equal(created.status, 201, await created.clone().text());
     const payload = await created.json();
     const products = new Map(payload.catalog.products.map((product) => [product.id, product]));
     assert.equal(products.get("product-account-a").incomingUnits, 5);
     assert.equal(products.get("product-account-b").incomingUnits, 0);
     assert.equal(payload.orders[0].lines[0].connectionId, "pos-account-a");
   } finally {
+    authServer.closeAllConnections();
+    await new Promise((resolve) => authServer.close(resolve));
     await miniflare.dispose();
   }
 });

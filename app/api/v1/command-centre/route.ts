@@ -9,7 +9,7 @@ import { effectivePermissions, requirePermission } from "../../../../server/perm
 import { buildLightspeedRLiveSalesSnapshot, LIGHTSPEED_R_PROVIDER, type LightspeedRLiveSale } from "../../../../server/integrations/lightspeed-r";
 import { authorizedLocationDataScope } from "../../../../server/location-access";
 import { scopeExternalRef } from "../../../../domain/integration-source";
-import { approvedFactSource, noActiveIntegrationLease } from "../../../../server/integrations/trusted-data";
+import { approvedBankSource, approvedFactSource, noActiveIntegrationLease } from "../../../../server/integrations/trusted-data";
 import { calculateVerifiedPurchasingCapacity } from "../../../../domain/purchasing-intelligence";
 
 const readers = ["owner", "admin", "manager", "employee", "read_only"] as const;
@@ -160,6 +160,7 @@ export async function GET(request: Request) {
     }).from(bankAccounts).where(and(
       eq(bankAccounts.organizationId, context.organizationId),
       eq(bankAccounts.provider, "plaid"),
+      approvedBankSource(bankAccounts.organizationId, bankAccounts.provider, bankAccounts.externalItemRef),
     ));
     const supportedPosProviders = new Set(["lightspeed", "lightspeed-r", "shopify", "shopify-pos", "square", "clover", "moneris"]);
     const posConnectionRows = connectionRows.filter((row) => supportedPosProviders.has(row.provider));
@@ -223,10 +224,13 @@ export async function GET(request: Request) {
         }
       : buildDailySourceSnapshot(trustedRows, context.organization.timezone);
     const baseCommandCentre = buildCommandCentre(trustedRows, context.organization.currency);
-    const plaidConnection = connectionRows.find((row) => row.provider === "plaid");
+    const plaidConnections = connectionRows.filter((row) => row.provider === "plaid"
+      && row.status === "connected"
+      && row.dataPromotionStatus === "approved"
+      && (!row.syncLeaseOwner || !row.syncLeaseExpiresAt || row.syncLeaseExpiresAt.getTime() <= now));
     const plaidCash = calculateVerifiedPurchasingCapacity({
-      connectionVerified: plaidConnection?.status === "connected" && plaidConnection.dataPromotionStatus === "approved",
-      nowMs: Date.now(),
+      connectionVerified: plaidConnections.length > 0,
+      nowMs: now,
       maximumAgeMs: 48 * 60 * 60 * 1000,
       baseCurrency: context.organization.currency,
       cashSafetyReserveCents: 0,

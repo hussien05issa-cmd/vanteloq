@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "775e8975-9bed-44fa-9a17-8531019fd2ed",
+  "id": "700a505b-007c-43a9-a43b-b9b8e3cca2a5",
   "prevId": "d7b059d8-6406-4a1a-b377-d8168a5a8606",
   "tables": {
     "access_roles": {
@@ -4241,6 +4241,13 @@
           "notNull": true,
           "autoincrement": false,
           "default": "'blocked'"
+        },
+        "promotion_authorized_at": {
+          "name": "promotion_authorized_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
         },
         "connected_at": {
           "name": "connected_at",
@@ -10508,6 +10515,14 @@
           "notNull": true,
           "autoincrement": false
         },
+        "security_state": {
+          "name": "security_state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'quarantined'"
+        },
         "status": {
           "name": "status",
           "type": "text",
@@ -10633,6 +10648,10 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {
+        "workspace_documents_security_state_check": {
+          "name": "workspace_documents_security_state_check",
+          "value": "\"workspace_documents\".\"security_state\" in ('quarantined', 'clean', 'rejected')"
+        },
         "workspace_documents_size_check": {
           "name": "workspace_documents_size_check",
           "value": "\"workspace_documents\".\"size_bytes\" > 0 and \"workspace_documents\".\"size_bytes\" <= 10485760"

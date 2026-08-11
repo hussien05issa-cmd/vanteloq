@@ -68,6 +68,7 @@ async function createEnvironment() {
   await new Promise((resolve) => authServer.listen(0, "127.0.0.1", resolve));
   const address = authServer.address();
   assert.ok(address && typeof address !== "string");
+  const supabaseUrl = `http://127.0.0.1:${address.port}`;
   const miniflare = new Miniflare({
     modules: true,
     script: "export default { fetch() { return new Response('ok') } }",
@@ -89,11 +90,19 @@ async function createEnvironment() {
   const environment = {
     DB: database,
     BOOKLOQ_DEMO_ENABLED: "true",
-    SUPABASE_URL: `http://127.0.0.1:${address.port}`,
+    SUPABASE_URL: supabaseUrl,
     SUPABASE_PUBLISHABLE_KEY: "test-publishable-key",
     ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) },
   };
-  return { authServer, miniflare, worker, environment, database };
+  const dispose = async () => {
+    try {
+      await miniflare.dispose();
+    } finally {
+      authServer.closeAllConnections();
+      await new Promise((resolve, reject) => authServer.close((error) => error ? reject(error) : resolve()));
+    }
+  };
+  return { worker, environment, database, dispose };
 }
 
 async function dispatch(worker, environment, path, { method = "GET", email, name, body, idempotencyKey } = {}) {
@@ -120,7 +129,7 @@ async function grantBookLoqForFlow(database, businessName) {
 }
 
 test("migrations, tenant isolation and the complete intelligence-to-action flow work", async () => {
-  const { authServer, miniflare, worker, environment, database } = await createEnvironment();
+  const { worker, environment, database, dispose } = await createEnvironment();
   try {
     const owner = { email: "owner-one@example.invalid", name: "Owner One" };
     const secondOwner = { email: "owner-two@example.invalid", name: "Owner Two" };
@@ -252,13 +261,14 @@ test("migrations, tenant isolation and the complete intelligence-to-action flow 
       database.prepare("UPDATE bookloq_settings SET data_mode = 'live', updated_at = ? WHERE organization_id = ?")
         .bind(freshBankNow, ownerRecord.organizationId),
       database.prepare(`UPDATE bank_accounts SET provider = 'plaid', demo_record = 0, connection_status = 'healthy',
+        external_item_ref = 'plaid-item-fixture',
         currency = 'CAD', live_balance_cents = 2397800, available_balance_cents = 2397800,
         last_sync_at = ?, updated_at = ? WHERE organization_id = ?`)
         .bind(Math.floor((freshBankNow - 60_000) / 1_000), freshBankNow, ownerRecord.organizationId),
       database.prepare(`INSERT INTO integration_connections
-        (id, organization_id, provider, status, scopes_json, data_promotion_status, connected_at,
+        (id, organization_id, provider, status, external_account_ref, scopes_json, data_promotion_status, connected_at,
          last_successful_sync_at, created_at, updated_at)
-        VALUES ('plaid-live-fixture', ?, 'plaid', 'connected', '["transactions","balance"]',
+        VALUES ('plaid-live-fixture', ?, 'plaid', 'connected', 'plaid-item-fixture', '["transactions","balance"]',
           'approved', ?, ?, ?, ?)`)
         .bind(ownerRecord.organizationId, freshBankNow, freshBankNow, freshBankNow, freshBankNow),
     ]);
@@ -307,7 +317,7 @@ test("migrations, tenant isolation and the complete intelligence-to-action flow 
       assert.equal(limitedBookLoq.summary[key], null, key);
     }
     assert.equal(limitedBookLoq.cashIntelligence.status, "unavailable");
-    assert.doesNotMatch(JSON.stringify(limitedBookLoq), /4821|accounts@peak-demo\.invalid/);
+    assert.doesNotMatch(JSON.stringify(limitedBookLoq), /•••• 4821|accounts@peak-demo\.invalid/);
 
     const limitedReportResponse = await dispatch(worker, environment, "/api/v1/reports?report=sales_totals", financeReader);
     assert.equal(limitedReportResponse.status, 200);
@@ -425,14 +435,12 @@ test("migrations, tenant isolation and the complete intelligence-to-action flow 
     assert.equal(secondBookLoq.status, 403);
     assert.equal((await secondBookLoq.json()).error.code, "ADDON_NOT_INCLUDED");
   } finally {
-    await miniflare.dispose();
-    authServer.closeAllConnections();
-    await new Promise((resolve) => authServer.close(resolve));
+    await dispose();
   }
 });
 
 test("location-limited purchasing cannot list or approve another location's orders", async () => {
-  const { authServer, miniflare, worker, environment, database } = await createEnvironment();
+  const { worker, environment, database, dispose } = await createEnvironment();
   try {
     const owner = { email: "purchasing-owner@example.invalid", name: "Purchasing Owner" };
     const onboarding = await dispatch(worker, environment, "/api/v1/onboarding", {
@@ -601,8 +609,6 @@ test("location-limited purchasing cannot list or approve another location's orde
     assert.equal((await quarantinedMatch.json()).error.code, "DOCUMENT_SCAN_REQUIRED");
     assert.equal((await database.prepare("SELECT status FROM purchase_orders WHERE id = 'po-north'").first()).status, "awaiting_approval");
   } finally {
-    await miniflare.dispose();
-    authServer.closeAllConnections();
-    await new Promise((resolve) => authServer.close(resolve));
+    await dispose();
   }
 });

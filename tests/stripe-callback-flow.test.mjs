@@ -96,6 +96,8 @@ test("Stripe callback ownership and signed webhooks preserve unambiguous tenant 
     const environment = {
       DB: database,
       ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) },
+      SUPABASE_URL: authOrigin,
+      SUPABASE_PUBLISHABLE_KEY: "test-publishable-key",
       STRIPE_CLIENT_ID: "ca_test_client_12345678",
       STRIPE_SECRET_KEY: "sk_test_platform_12345678",
       STRIPE_REDIRECT_URI: `${origin}/api/v1/integrations/stripe/callback`,
@@ -255,6 +257,8 @@ test("Stripe callback ownership and signed webhooks preserve unambiguous tenant 
 
     const historicalConnectionId = crypto.randomUUID();
     const now = Date.now();
+    // Simulate duplicate legacy rows that predate the global provider/account
+    // uniqueness guard so the webhook ambiguity defense remains covered.
     await database.prepare("DROP INDEX integration_connections_provider_external_account_unique").run();
     await database.prepare(`
       INSERT INTO integration_connections (

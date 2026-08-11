@@ -231,19 +231,19 @@ export const preSyncControls = [
   {
     id: "authorization",
     label: "Provider authorization",
-    detail: "Lightspeed X-Series, R-Series, and Stripe use state-bound authorization with only the required access; Plaid uses short-lived Link sessions. Provider credentials stay server-side and encrypted where stored, and providers without a working connection remain disabled.",
+    detail: "Lightspeed X-Series, Lightspeed R-Series, and Stripe use state-bound authorization with only the required access; Plaid uses short-lived Link sessions. Provider credentials stay server-side and encrypted where stored, and providers without a working connection remain disabled.",
     status: "verified",
   },
   {
     id: "webhooks",
-    label: "Verified provider updates",
-    detail: "Built X-Series, Stripe, and Plaid endpoints verify signed events, reject oversized payloads, and preserve idempotent webhook receipts. Scheduled refresh remains the fallback while durable delivery recovery is still gated.",
+    label: "Change-signal security",
+    detail: "Built X-Series, Stripe, and Plaid update endpoints verify signed events, reject oversized payloads, and preserve idempotent webhook receipts. Scheduled refresh remains the fallback while durable delivery recovery is still gated.",
     status: "verified",
   },
   {
     id: "normalization",
     label: "Backfill and normalization",
-    detail: "Both Lightspeed connections import history in safe batches, map locations, and recover from interrupted updates; Stripe and Plaid use bounded pagination, retries, or resumable cursors. Only reviewed and approved records can reach dependent metrics.",
+    detail: "Both Lightspeed connections import history in safe batches, map locations, and recover from interrupted updates; Stripe and Plaid use bounded pagination, retries, or resumable cursors. Only reviewed, approved, and reconciled records can reach dependent metrics.",
     status: "verified",
   },
   {

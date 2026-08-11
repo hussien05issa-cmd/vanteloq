@@ -1,10 +1,10 @@
 import { requireAccess } from "../../../../../../server/authorization";
 import { ApiError, enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameOrigin } from "../../../../../../server/api";
 import { recordAudit } from "../../../../../../server/audit";
-import { createPlaidLinkToken, plaidReadiness } from "../../../../../../server/integrations/plaid";
-import { requirePermission } from "../../../../../../server/permissions";
 import { requireAddon } from "../../../../../../server/entitlements/engine";
+import { createPlaidLinkToken, plaidReadiness } from "../../../../../../server/integrations/plaid";
 import { requireOrganizationWideLocationAccess } from "../../../../../../server/location-access";
+import { requirePermission } from "../../../../../../server/permissions";
 import { recordPlaidConsent } from "../../../../../../server/privacy";
 
 export async function POST(request: Request) {

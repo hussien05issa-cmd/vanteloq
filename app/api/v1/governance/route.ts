@@ -108,9 +108,11 @@ async function validateEmployeeRelationships(
     ));
     if (locations.length !== locationIds.length) throw new ApiError(400, "INVALID_FIELD", "Select active locations from this organization.");
   }
-  const normalizedPermittedLocations = [...new Set(permittedLocations)];
-  if (primaryLocationId && !normalizedPermittedLocations.includes(primaryLocationId)) normalizedPermittedLocations.push(primaryLocationId);
-  return { managerMemberId: managerMemberId || null, primaryLocationId: primaryLocationId || null, permittedLocations: normalizedPermittedLocations };
+  return {
+    managerMemberId: managerMemberId || null,
+    primaryLocationId: primaryLocationId || null,
+    permittedLocations: locationIds,
+  };
 }
 
 async function validateRoleDelegation(context: GovernanceContext, permissions: string[], locationScope: string[]) {
@@ -404,6 +406,7 @@ export async function POST(request: Request) {
         throw new ApiError(409, "OWNER_ROLE_PROTECTED", "The Account Owner profile and role cannot be changed here.");
       }
       if (roleId) {
+        await requirePermission(context, "team.roles");
         const [requestedRole] = await getDb().select({ systemKey: accessRoles.systemKey }).from(accessRoles).where(and(
           eq(accessRoles.id, roleId),
           eq(accessRoles.organizationId, context.organizationId),

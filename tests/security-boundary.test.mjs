@@ -234,6 +234,34 @@ test("the Plaid webhook rejects unsigned requests before database access", async
   assert.equal((await response.json()).error.code, "PLAID_WEBHOOK_SIGNATURE_REQUIRED");
 });
 
+test("Plaid lifecycle routes keep delegated finance access and repair failures fail closed", async () => {
+  for (const action of ["link-token", "exchange", "sync", "disconnect"]) {
+    const source = await readFile(
+      `${process.cwd()}/app/api/v1/integrations/plaid/${action}/route.ts`,
+      "utf8",
+    );
+    assert.match(source, /requireAccess\(request, \["owner", "admin", "manager"\]\)/, action);
+    assert.match(source, /requirePermission\(context, "finance\.connections"\)/, action);
+  }
+  const exchange = await readFile(
+    `${process.cwd()}/app/api/v1/integrations/plaid/exchange/route.ts`,
+    "utf8",
+  );
+  assert.match(exchange, /dataPromotionStatus: plaidRequiresUserRepair\(errorCode\) \? "blocked" : "staging"/);
+});
+
+test("provider approval uses the permission for the selected connection type", async () => {
+  const source = await readFile(
+    `${process.cwd()}/app/api/v1/integrations/route.ts`,
+    "utf8",
+  );
+  const post = source.slice(source.indexOf("export async function POST"));
+  assert.match(post, /requireAccess\(request, \["owner", "admin", "manager"\]\)/);
+  assert.match(post, /connection\.provider === "plaid"[\s\S]*requirePermission\(context, "finance\.connections"\)/);
+  assert.match(post, /connection\.provider !== "plaid"[\s\S]*requirePermission\(context, "integrations\.manage"\)/);
+  assert.match(post, /requireOrganizationWideLocationAccess\(context\)/);
+});
+
 test("the Lightspeed webhook rejects unsigned requests before database access", async () => {
   const worker = await loadWorker();
   const response = await worker.fetch(new Request(
@@ -280,6 +308,18 @@ test("every cursor-bearing provider sync uses the connection lease and version f
   assert.match(plaid, /integrationConnections\.syncVersion/);
   assert.match(plaid, /dataPromotionStatus: "staging"[\s\S]{0,500}syncLeaseOwner/);
   assert.match(plaid, /PLAID_WEBHOOK_SYNC_DEFERRED/);
+});
+
+test("R-Series shop mutations share the sync lease and revoke pending publication authorization", async () => {
+  const source = await readFile(
+    `${process.cwd()}/app/api/v1/integrations/lightspeed-r/shops/route.ts`,
+    "utf8",
+  );
+  assert.match(source, /acquireIntegrationSyncLease/);
+  assert.match(source, /releaseIntegrationSyncLease/);
+  assert.match(source, /or\(\s*eq\(integrationConnections\.dataPromotionStatus, "approved"\),\s*isNotNull\(integrationConnections\.promotionAuthorizedAt\)/);
+  assert.match(source, /integrationConnections\.syncLeaseOwner/);
+  assert.match(source, /integrationConnections\.syncVersion/);
 });
 
 test("state-changing onboarding rejects a cross-site origin before data access", async () => {

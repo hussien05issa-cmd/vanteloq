@@ -82,7 +82,7 @@ test("live sales and report time frames stay connected to real API filters", asy
   const rSeriesSync = await readFile(new URL("../app/api/v1/integrations/lightspeed-r/sync/route.ts", import.meta.url), "utf8");
   assert.match(app, /IntradaySalesChart/);
   assert.match(app, /integrations\/lightspeed-r\/sync/);
-  assert.match(app, /refreshes are started from Connections and remain hidden until the latest reconciliation is reviewed/);
+  assert.match(app, /R-Series refreshes are started from Connections and remain hidden until the latest reconciliation is reviewed/);
   assert.match(reports, /report-period-presets/);
   assert.match(reports, /type="date"/);
   assert.match(reports, /new URLSearchParams\(\{ report: id \}\)/);
@@ -185,7 +185,7 @@ test("the authenticated homepage mirrors the integration directory with truthful
   assert.match(app, /label: "Configure"/);
   assert.match(app, /label: "Planned"/);
   assert.match(app, /provider\.dataPromotionStatus === "approved"/);
-  assert.match(app, /Reviewed bank data is available/);
+  assert.match(app, /fresh balances power cash analysis · transactions await review/i);
   assert.match(app, /Manage connections/);
 });
 

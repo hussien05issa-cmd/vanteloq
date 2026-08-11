@@ -191,11 +191,18 @@ test("R-Series completes a browser callback using the initiating one-time state"
     assert.equal(callback.headers.get("location"), `${origin}/?integration=lightspeed-r&connection=connected`);
 
     const connection = await database.prepare(
-      "SELECT id, status, external_account_ref, data_promotion_status FROM integration_connections WHERE provider = 'lightspeed-r'",
+      "SELECT id, organization_id, status, external_account_ref, data_promotion_status FROM integration_connections WHERE provider = 'lightspeed-r'",
     ).first();
     assert.equal(typeof connection?.id, "string");
     assert.equal(connection.id, authorizationBody.connectionId);
-    assert.deepEqual(connection, { id: connection.id, status: "connected", external_account_ref: "123", data_promotion_status: "blocked" });
+    assert.equal(typeof connection.organization_id, "string");
+    assert.deepEqual(connection, {
+      id: connection.id,
+      organization_id: connection.organization_id,
+      status: "connected",
+      external_account_ref: "123",
+      data_promotion_status: "blocked",
+    });
     const oauthState = await database.prepare(
       "SELECT consumed_at FROM integration_oauth_states WHERE provider = 'lightspeed-r'",
     ).first();
@@ -289,27 +296,30 @@ test("R-Series completes a browser callback using the initiating one-time state"
     assert.equal(syncBody.dataPromotionEnabled, false);
     assert.equal(syncBody.stagingOnly, true);
     assert.deepEqual(syncBody.imported, {
-      dailyMetrics: 1,
-      inventoryBalances: 1,
-      products: 1,
-      customers: 1,
-      suppliers: 1,
-      saleLines: 2,
-      payments: 1,
+      dailyMetrics: 0,
+      inventoryBalances: 0,
+      products: 0,
+      customers: 0,
+      suppliers: 0,
+      saleLines: 0,
+      payments: 0,
     });
 
     assert.equal(
       (await database.prepare("SELECT COUNT(*) count FROM daily_business_metrics").first()).count,
-      1,
-      "clean connector facts are staged with source lineage before approval",
+      0,
+      "staged connector data must not reach operating metrics before approval",
     );
     assert.equal(
       (await database.prepare("SELECT COUNT(*) count FROM inventory_balances").first()).count,
-      1,
-      "clean connector inventory is staged with source lineage before approval",
+      0,
+      "staged connector inventory must remain outside canonical balances before approval",
     );
-    const payment = await database.prepare("SELECT external_sale_id, payment_type_name, category, amount_cents FROM commerce_payments").first();
-    assert.deepEqual(payment, { external_sale_id: `${connection.id}:sale-100`, payment_type_name: "Visa", category: "card", amount_cents: 10_500 });
+    assert.equal(
+      (await database.prepare("SELECT COUNT(*) count FROM commerce_payments").first()).count,
+      0,
+      "unmapped shop data must stay outside canonical commerce tables",
+    );
     const promoted = await database.prepare(
       "SELECT data_promotion_status FROM integration_connections WHERE provider = 'lightspeed-r'",
     ).first();
@@ -335,6 +345,60 @@ test("R-Series completes a browser callback using the initiating one-time state"
     }), environment, context);
     assert.equal(mapping.status, 200, await mapping.clone().text());
 
+    const reviewedSync = await worker.fetch(new Request(`${origin}/api/v1/integrations/lightspeed-r/sync`, {
+      method: "POST", headers: ownerHeaders(true), body: JSON.stringify({ reason: "manual", connectionId: connection.id }),
+    }), environment, context);
+    assert.equal(reviewedSync.status, 200, await reviewedSync.clone().text());
+    const reviewedSyncBody = await reviewedSync.json();
+    assert.equal(reviewedSyncBody.run.warningCount, 0);
+    assert.deepEqual(reviewedSyncBody.imported, {
+      dailyMetrics: 0,
+      inventoryBalances: 1,
+      products: 1,
+      customers: 1,
+      suppliers: 1,
+      saleLines: 2,
+      payments: 1,
+    });
+    const payment = await database.prepare(
+      "SELECT external_sale_id, payment_type_name, category, amount_cents FROM commerce_payments",
+    ).first();
+    assert.deepEqual(payment, {
+      external_sale_id: `${connection.id}:sale-100`,
+      payment_type_name: "Visa",
+      category: "card",
+      amount_cents: 10_500,
+    });
+
+    const reviewedRun = await database.prepare(`SELECT
+      cursor_before cursorBefore, cursor_after cursorAfter,
+      started_at startedAt, completed_at completedAt
+      FROM integration_sync_runs
+      WHERE organization_id = ? AND provider = 'lightspeed-r' AND connection_id = ?
+        AND mode = 'incremental' AND warning_count = 0
+      ORDER BY rowid DESC LIMIT 1`
+    ).bind(connection.organization_id, connection.id).first();
+    assert.equal(typeof reviewedRun.startedAt, "number");
+    assert.equal(typeof reviewedRun.completedAt, "number");
+    const insertTiedRun = (id, warningCount) => database.prepare(`INSERT INTO integration_sync_runs
+      (id, organization_id, provider, connection_id, mode, status, cursor_before, cursor_after,
+       records_read, records_staged, duplicates_skipped, warning_count, started_at, completed_at)
+      VALUES (?, ?, 'lightspeed-r', ?, 'incremental', 'completed', ?, ?, 0, 0, 0, ?, ?, ?)`
+    ).bind(
+      id, connection.organization_id, connection.id,
+      reviewedRun.cursorBefore, reviewedRun.cursorAfter, warningCount,
+      reviewedRun.startedAt, reviewedRun.completedAt,
+    ).run();
+    await insertTiedRun(`zz-tied-warning-${connection.id}`, 1);
+    await insertTiedRun(`aa-tied-clean-${connection.id}`, 0);
+
+    const discoveryAt = Date.now() + 1_000;
+    await database.prepare(`INSERT INTO integration_sync_runs
+      (id, organization_id, provider, connection_id, mode, status, started_at, completed_at)
+      VALUES (?, ?, 'lightspeed-r', ?, 'discovery', 'completed', ?, ?)`)
+      .bind(`post-sync-discovery-${connection.id}`, connection.organization_id, connection.id, discoveryAt, discoveryAt)
+      .run();
+
     const approval = await worker.fetch(new Request(`${origin}/api/v1/integrations`, {
       method: "POST",
       headers: ownerHeaders(true),
@@ -342,16 +406,105 @@ test("R-Series completes a browser callback using the initiating one-time state"
     }), environment, context);
     assert.equal(approval.status, 200, await approval.clone().text());
     const approvalBody = await approval.json();
-    assert.equal(approvalBody.publicationPending, false);
+    assert.equal(approvalBody.publicationPending, true);
     assert.equal(
       approvalBody.nextStep,
-      "Reviewed provider data is now available to dashboard features.",
+      "Run one final R-Series sync to publish the reviewed data to dashboard features.",
+    );
+    const authorizedPublication = await database.prepare(`SELECT data_promotion_status dataPromotionStatus,
+      promotion_authorized_at promotionAuthorizedAt
+      FROM integration_connections WHERE id = ?`).bind(connection.id).first();
+    assert.equal(authorizedPublication.dataPromotionStatus, "staging");
+    assert.equal(typeof authorizedPublication.promotionAuthorizedAt, "number");
+
+    const discoveryCountBeforeLease = (await database.prepare(`SELECT COUNT(*) count
+      FROM integration_sync_runs WHERE connection_id = ? AND mode = 'discovery'`
+    ).bind(connection.id).first()).count;
+    await database.prepare(`UPDATE integration_connections
+      SET sync_lease_owner = ?, sync_lease_expires_at = ?, sync_version = sync_version + 1
+      WHERE id = ?`
+    ).bind("test-active-publication-lease", Math.floor(Date.now() / 1_000) + 300, connection.id).run();
+
+    const leasedDiscovery = await worker.fetch(new Request(`${origin}/api/v1/integrations/lightspeed-r/shops`, {
+      method: "POST",
+      headers: ownerHeaders(true),
+      body: JSON.stringify({ action: "discover", connectionId: connection.id }),
+    }), environment, context);
+    assert.equal(leasedDiscovery.status, 409, await leasedDiscovery.clone().text());
+    assert.equal((await leasedDiscovery.json()).error.code, "INTEGRATION_SYNC_IN_PROGRESS");
+    assert.equal((await database.prepare(`SELECT COUNT(*) count
+      FROM integration_sync_runs WHERE connection_id = ? AND mode = 'discovery'`
+    ).bind(connection.id).first()).count, discoveryCountBeforeLease);
+
+    const leasedMapping = await worker.fetch(new Request(`${origin}/api/v1/integrations/lightspeed-r/shops`, {
+      method: "POST",
+      headers: ownerHeaders(true),
+      body: JSON.stringify({
+        connectionId: connection.id,
+        externalLocationRef: "1",
+        localLocationId: null,
+        status: "ignored",
+      }),
+    }), environment, context);
+    assert.equal(leasedMapping.status, 409, await leasedMapping.clone().text());
+    assert.equal((await leasedMapping.json()).error.code, "INTEGRATION_SYNC_IN_PROGRESS");
+    assert.deepEqual(
+      await database.prepare(`SELECT status, local_location_id localLocationId
+        FROM integration_location_mappings WHERE connection_id = ? AND external_location_ref = '1'`
+      ).bind(connection.id).first(),
+      { status: "mapped", localLocationId: shopsBody.localLocations[0].id },
     );
     assert.deepEqual(
-      await database.prepare("SELECT data_promotion_status FROM integration_connections WHERE id = ?").bind(connection.id).first(),
-      { data_promotion_status: "approved" },
+      await database.prepare(`SELECT data_promotion_status dataPromotionStatus,
+        promotion_authorized_at promotionAuthorizedAt
+        FROM integration_connections WHERE id = ?`).bind(connection.id).first(),
+      authorizedPublication,
     );
 
+    await database.prepare(`UPDATE integration_connections
+      SET sync_lease_owner = NULL, sync_lease_expires_at = NULL WHERE id = ?`
+    ).bind(connection.id).run();
+    const authorizationRevokingMapping = await worker.fetch(new Request(`${origin}/api/v1/integrations/lightspeed-r/shops`, {
+      method: "POST",
+      headers: ownerHeaders(true),
+      body: JSON.stringify({
+        connectionId: connection.id,
+        externalLocationRef: "1",
+        localLocationId: shopsBody.localLocations[0].id,
+        status: "mapped",
+      }),
+    }), environment, context);
+    assert.equal(authorizationRevokingMapping.status, 200, await authorizationRevokingMapping.clone().text());
+    assert.deepEqual(
+      await database.prepare(`SELECT data_promotion_status dataPromotionStatus,
+        promotion_authorized_at promotionAuthorizedAt
+        FROM integration_connections WHERE id = ?`).bind(connection.id).first(),
+      { dataPromotionStatus: "staging", promotionAuthorizedAt: null },
+    );
+
+    const reReviewedSync = await worker.fetch(new Request(`${origin}/api/v1/integrations/lightspeed-r/sync`, {
+      method: "POST", headers: ownerHeaders(true), body: JSON.stringify({ reason: "manual", connectionId: connection.id }),
+    }), environment, context);
+    assert.equal(reReviewedSync.status, 200, await reReviewedSync.clone().text());
+    assert.equal((await reReviewedSync.json()).run.warningCount, 0);
+    const reapproval = await worker.fetch(new Request(`${origin}/api/v1/integrations`, {
+      method: "POST",
+      headers: ownerHeaders(true),
+      body: JSON.stringify({ action: "approve_data", connectionId: connection.id, confirmed: true }),
+    }), environment, context);
+    assert.equal(reapproval.status, 200, await reapproval.clone().text());
+
+    const promotedSync = await worker.fetch(new Request(`${origin}/api/v1/integrations/lightspeed-r/sync`, {
+      method: "POST", headers: ownerHeaders(true), body: JSON.stringify({ reason: "manual", connectionId: connection.id }),
+    }), environment, context);
+    assert.equal(promotedSync.status, 200, await promotedSync.clone().text());
+    assert.equal((await promotedSync.json()).dataPromotionEnabled, true);
+    assert.deepEqual(
+      await database.prepare(`SELECT data_promotion_status dataPromotionStatus,
+        promotion_authorized_at promotionAuthorizedAt
+        FROM integration_connections WHERE id = ?`).bind(connection.id).first(),
+      { dataPromotionStatus: "approved", promotionAuthorizedAt: null },
+    );
     const metric = await database.prepare(`
       SELECT business_date, location_ref, gross_sales_cents, net_sales_cents, cost_of_goods_cents,
              transaction_count, units_sold, refunds_cents, discounts_cents
@@ -383,8 +536,8 @@ test("R-Series completes a browser callback using the initiating one-time state"
     const warningBody = await warningSync.json();
     assert.ok(warningBody.run.warningCount > 0);
     assert.equal(warningBody.publishedCanonical, false);
-    assert.equal(warningBody.usingLastApprovedData, false);
-    assert.equal(warningBody.dataPromotionEnabled, false);
+    assert.equal(warningBody.usingLastApprovedData, true);
+    assert.equal(warningBody.dataPromotionEnabled, true);
     assert.deepEqual(
       await database.prepare(`
         SELECT data_promotion_status dataPromotionStatus,
@@ -393,11 +546,7 @@ test("R-Series completes a browser callback using the initiating one-time state"
                last_error_code lastErrorCode
         FROM integration_connections WHERE id = ?
       `).bind(connection.id).first(),
-      {
-        ...beforeWarning,
-        dataPromotionStatus: "staging",
-        lastErrorCode: "LIGHTSPEED_R_RECONCILIATION_WARNINGS",
-      },
+      { ...beforeWarning, lastErrorCode: "LIGHTSPEED_R_RECONCILIATION_WARNINGS" },
     );
     assert.deepEqual(await database.prepare(`
       SELECT business_date, location_ref, gross_sales_cents, net_sales_cents, cost_of_goods_cents,
@@ -419,17 +568,17 @@ test("R-Series completes a browser callback using the initiating one-time state"
     }), environment, context);
     assert.equal(command.status, 200);
     const commandBody = await command.json();
-    assert.equal(commandBody.commandCentre.ready, false);
-    assert.equal(commandBody.commandCentre.source.rowCount, 0);
+    assert.equal(commandBody.commandCentre.ready, true);
+    assert.equal(commandBody.commandCentre.source.rowCount, 1);
 
     const inventory = await worker.fetch(new Request(`${origin}/api/v1/inventory-lifecycle`, {
       headers: ownerHeaders(),
     }), environment, context);
     assert.equal(inventory.status, 200);
     const inventoryBody = await inventory.json();
-    assert.equal(inventoryBody.summary.posSkus, 0);
-    assert.equal(inventoryBody.summary.posUnits, 0);
-    assert.deepEqual(inventoryBody.posBalances, []);
+    assert.equal(inventoryBody.summary.posSkus, 1);
+    assert.equal(inventoryBody.summary.posUnits, 45);
+    assert.equal(inventoryBody.posBalances[0].sku, "CRE-A");
 
     const secondAuthorization = await worker.fetch(new Request(`${origin}/api/v1/integrations/lightspeed-r/authorize`, {
       method: "POST", headers: ownerHeaders(true), body: "{}",
@@ -487,13 +636,25 @@ test("R-Series completes a browser callback using the initiating one-time state"
       }),
     }), environment, context);
     assert.equal(secondMapping.status, 200, await secondMapping.clone().text());
+    const secondReviewedSync = await worker.fetch(new Request(`${origin}/api/v1/integrations/lightspeed-r/sync`, {
+      method: "POST",
+      headers: ownerHeaders(true),
+      body: JSON.stringify({ reason: "manual", connectionId: secondAuthorizationBody.connectionId }),
+    }), environment, context);
+    assert.equal(secondReviewedSync.status, 200, await secondReviewedSync.clone().text());
+    assert.equal((await secondReviewedSync.json()).run.warningCount, 0);
     const secondApproval = await worker.fetch(new Request(`${origin}/api/v1/integrations`, {
       method: "POST",
       headers: ownerHeaders(true),
       body: JSON.stringify({ action: "approve_data", connectionId: secondAuthorizationBody.connectionId, confirmed: true }),
     }), environment, context);
     assert.equal(secondApproval.status, 200, await secondApproval.clone().text());
-    assert.equal((await secondApproval.json()).publicationPending, false);
+    assert.equal((await secondApproval.json()).publicationPending, true);
+    const secondPromotedSync = await worker.fetch(new Request(`${origin}/api/v1/integrations/lightspeed-r/sync`, {
+      method: "POST", headers: ownerHeaders(true), body: JSON.stringify({ reason: "manual", connectionId: secondAuthorizationBody.connectionId }),
+    }), environment, context);
+    assert.equal(secondPromotedSync.status, 200, await secondPromotedSync.clone().text());
+    assert.equal((await secondPromotedSync.json()).dataPromotionEnabled, true);
 
     const connectionCount = await database.prepare("SELECT COUNT(*) count FROM integration_connections WHERE provider = 'lightspeed-r' AND status = 'connected'").first();
     const secretCount = await database.prepare("SELECT COUNT(*) count FROM integration_secrets WHERE provider = 'lightspeed-r'").first();

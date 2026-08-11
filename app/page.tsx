@@ -271,8 +271,8 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
       <section className="home-connections" id="connections" aria-labelledby="connections-title">
         <div className="home-section-heading compact">
           <p>CONNECTION DIRECTORY</p>
-    <h2 id="connections-title">See each connector and its current status.</h2>
-          <span>Lightspeed R-Series, the limited X-Series pilot, Stripe staging, Plaid sandbox bank feeds, and structured CSV import have built paths. Plaid still requires hosted credentials, provider approval, and institution testing before customers can authorize real institutions. Google and Meta are coming soon. Other connectors remain planned until their production adapters are built and verified.</span>
+          <h2 id="connections-title">See every connector and its honest availability.</h2>
+          <span>Lightspeed R-Series, the limited X-Series pilot, Stripe staging, Plaid sandbox bank feeds, and structured CSV import have built paths. Plaid still requires hosted credentials, provider approval, and institution testing before customers can authorize real institutions. Google and Meta are coming soon. Every other connector stays planned until its production adapter is built and verified.</span>
         </div>
         <div className="home-connection-grid">
           {publicIntegrations.map(provider => <article className={provider.statusClass} key={provider.id}><IntegrationBrandLogo name={provider.name} compact/><div><strong>{provider.name}</strong><span>{provider.detail}</span></div><small>{provider.status}</small></article>)}
@@ -407,13 +407,10 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
         <div className="home-resource-grid">
           {RESOURCE_ARTICLES.map((article) => {
             const category = getCategory(article.category);
-            const visualLabel = article.category === "inventory" ? "SKU" : article.category === "finance" ? "%" : article.category === "analytics" ? "DATA" : article.category === "marketing" ? "GROWTH" : article.category === "operations" ? "OPS" : article.category === "pos" ? "POS" : "AI";
+            const visualLabel = article.category === "inventory" ? "SKU" : article.category === "finance" ? "%" : "VIEW";
             return (
               <Link href={`/resources/${article.slug}`} key={article.slug}>
-                {article.hero ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img className="home-resource-thumbnail" src={article.hero.src} alt={article.hero.alt} width={article.hero.width} height={article.hero.height} loading="lazy" />
-                ) : <div className={`home-resource-art ${article.category}-art`} aria-hidden="true"><i/><i/><i/><b>{visualLabel}</b></div>}
+                <div className={`home-resource-art ${article.category}-art`} aria-hidden="true"><i/><i/><i/><b>{visualLabel}</b></div>
                 <small>{category?.shortName.toUpperCase()} · {getReadingTime(article)} MIN</small>
                 <h3>{article.title}</h3>
                 <p>{article.description}</p>

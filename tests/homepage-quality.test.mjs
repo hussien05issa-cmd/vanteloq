@@ -82,6 +82,32 @@ test("homepage preserves responsive and keyboard interaction safeguards", async 
   assert.match(css, /\.public-nav-actions\s+\.nav-login\s*\{[\s\S]*?display:\s*inline-flex/);
 });
 
+test("homepage and resource cards keep the hosted visual layout", async () => {
+  const [homepageResponse, resourcesResponse, homepageCss, resourcesCss] = await Promise.all([
+    fetchRoute("/"),
+    fetchRoute("/resources"),
+    readFile(new URL("../app/homepage.css", import.meta.url), "utf8"),
+    readFile(new URL("../app/resources/resources.css", import.meta.url), "utf8"),
+  ]);
+  assert.equal(homepageResponse.status, 200);
+  assert.equal(resourcesResponse.status, 200);
+  const [homepage, resources] = await Promise.all([
+    homepageResponse.text(),
+    resourcesResponse.text(),
+  ]);
+
+  assert.match(homepage, /home-resource-art/);
+  assert.doesNotMatch(homepage, /home-resource-thumbnail/);
+  assert.match(resources, /resource-visual/);
+  assert.doesNotMatch(resources, /resource-card-hero/);
+  assert.match(homepageCss, /\.home-proof li::before[^}]*content:\s*"✓"/);
+  assert.match(homepageCss, /\.home-step-review-visual::after[^}]*content:\s*"✓"/);
+  assert.match(homepageCss, /\.home-resource-grid \{[^}]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)/);
+  assert.doesNotMatch(homepageCss, /\.home-resource-grid[^}]*repeat\(6, minmax\(0, 1fr\)\)/);
+  assert.match(resourcesCss, /\.resource-latest \.resource-card-grid \{[^}]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)/);
+  assert.doesNotMatch(resourcesCss, /\.resource-latest \.resource-card-grid[^}]*repeat\(6, minmax\(0, 1fr\)\)/);
+});
+
 test("the above-the-fold product image is compact and dimensioned", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const image = await stat(new URL("../public/brand/vanteloq-command-ledger.webp", import.meta.url));

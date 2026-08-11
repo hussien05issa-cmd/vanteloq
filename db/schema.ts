@@ -648,6 +648,7 @@ export const integrationConnections = sqliteTable(
     apiVersion: text("api_version"),
     scopesJson: text("scopes_json").notNull().default("[]"),
     dataPromotionStatus: text("data_promotion_status", { enum: ["blocked", "staging", "approved"] }).notNull().default("blocked"),
+    promotionAuthorizedAt: integer("promotion_authorized_at", { mode: "timestamp" }),
     connectedAt: integer("connected_at", { mode: "timestamp" }),
     lastSuccessfulSyncAt: integer("last_successful_sync_at", { mode: "timestamp" }),
     lastSyncCursor: text("last_sync_cursor"),
@@ -1176,6 +1177,7 @@ export const workspaceDocuments = sqliteTable(
     contentType: text("content_type").notNull(),
     sizeBytes: integer("size_bytes").notNull(),
     sha256Hex: text("sha256_hex").notNull(),
+    securityState: text("security_state", { enum: ["quarantined", "clean", "rejected"] }).notNull().default("quarantined"),
     status: text("status", { enum: ["uploaded", "review_required", "approved", "rejected"] }).notNull().default("uploaded"),
     scanStatus: text("scan_status", { enum: ["pending", "clean", "blocked", "failed"] }).notNull().default("pending"),
     scannedAt: integer("scanned_at", { mode: "timestamp" }),
@@ -1188,6 +1190,7 @@ export const workspaceDocuments = sqliteTable(
   },
   (table) => [
     uniqueIndex("workspace_documents_hash_unique").on(table.organizationId, table.sha256Hex),
+    check("workspace_documents_security_state_check", sql`${table.securityState} in ('quarantined', 'clean', 'rejected')`),
     index("workspace_documents_status_idx").on(table.organizationId, table.status),
     index("workspace_documents_scan_idx").on(table.organizationId, table.scanStatus),
     check("workspace_documents_size_check", sql`${table.sizeBytes} > 0 and ${table.sizeBytes} <= 10485760`),

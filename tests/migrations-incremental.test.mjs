@@ -12,6 +12,36 @@ async function applyMigration(database, file) {
   await database.batch(statements(sql).map((statement) => database.prepare(statement)));
 }
 
+test("Drizzle snapshots form one continuous journal chain", async () => {
+  const metaUrl = new URL("../drizzle/meta/", import.meta.url);
+  const journal = JSON.parse(await readFile(new URL("_journal.json", metaUrl), "utf8"));
+  const snapshotFiles = new Set(
+    (await readdir(metaUrl)).filter((file) => /^\d{4}_snapshot\.json$/.test(file)),
+  );
+  const snapshots = [];
+
+  for (const entry of journal.entries) {
+    const file = `${String(entry.idx).padStart(4, "0")}_snapshot.json`;
+    if (!snapshotFiles.has(file)) continue;
+    snapshots.push({ file, snapshot: JSON.parse(await readFile(new URL(file, metaUrl), "utf8")) });
+  }
+
+  assert.equal(
+    snapshots.length,
+    snapshotFiles.size,
+    "every snapshot must correspond to an ordered migration journal entry",
+  );
+  for (let index = 1; index < snapshots.length; index += 1) {
+    const previous = snapshots[index - 1];
+    const current = snapshots[index];
+    assert.equal(
+      current.snapshot.prevId,
+      previous.snapshot.id,
+      `${current.file} must link to the preceding journal snapshot ${previous.file}`,
+    );
+  }
+});
+
 test("the founder migration preserves populated foreign-key relationships", async () => {
   const miniflare = new Miniflare({
     modules: true,
@@ -53,7 +83,7 @@ test("the founder migration preserves populated foreign-key relationships", asyn
   }
 });
 
-test("deployed migrations 0023 and 0024 upgrade cleanly into the composite connector migration", async () => {
+test("connector lineage, privacy metadata and both document quarantine layers survive the preserved 0023 through 0025 upgrade", async () => {
   const miniflare = new Miniflare({
     modules: true,
     script: "export default { fetch() { return new Response('ok') } }",
@@ -134,7 +164,7 @@ test("deployed migrations 0023 and 0024 upgrade cleanly into the composite conne
     const canonicalMigrations = [
       "0023_careless_shooting_star.sql",
       "0024_thick_mysterio.sql",
-      "0025_dry_frank_castle.sql",
+      "0025_talented_gateway.sql",
     ];
     for (const migration of canonicalMigrations) {
       assert.ok(migrations.includes(migration), `${migration} must remain in the deployed migration history`);
@@ -244,28 +274,27 @@ test("deployed migrations 0023 and 0024 upgrade cleanly into the composite conne
       consumed_at consumedAt FROM integration_oauth_states ORDER BY state_hash`).all();
     assert.equal(oauthStates.results.length, 2);
     const legacyState = oauthStates.results.find((row) => row.stateHash === "legacy-state");
-    assert.equal(legacyState.connectionId, "legacy");
-    assert.equal(
-      typeof legacyState.consumedAt,
-      "number",
-      "an OAuth callback started before the lineage migration is consumed instead of being attached to an existing connection",
-    );
+    assert.deepEqual(legacyState, {
+      stateHash: "legacy-state",
+      connectionId: "legacy-connection",
+      consumedAt: null,
+    });
     assert.deepEqual(oauthStates.results.find((row) => row.stateHash === "second-state"), {
       stateHash: "second-state",
       connectionId: "second-connection",
       consumedAt: null,
     });
     assert.deepEqual(
-      await database.prepare(`SELECT scan_status, scanned_at, scan_provider FROM workspace_documents
+      await database.prepare(`SELECT security_state, scan_status, scanned_at, scan_provider FROM workspace_documents
         WHERE id = 'legacy-document'`).first(),
-      { scan_status: "pending", scanned_at: null, scan_provider: null },
+      { security_state: "quarantined", scan_status: "pending", scanned_at: null, scan_provider: null },
     );
     const documentColumns = await database.prepare("PRAGMA table_info(workspace_documents)").all();
     const documentColumnNames = new Set(documentColumns.results.map((column) => column.name));
     assert.equal(documentColumnNames.has("scan_status"), true);
     assert.equal(documentColumnNames.has("scanned_at"), true);
     assert.equal(documentColumnNames.has("scan_provider"), true);
-    assert.equal(documentColumnNames.has("security_state"), false, "the superseded quarantine column is removed");
+    assert.equal(documentColumnNames.has("security_state"), true, "the deployed quarantine layer remains available");
     assert.deepEqual(
       await database.prepare(`SELECT organization_id, actor_user_id, provider, status, notice_version,
         privacy_policy_version FROM integration_consents WHERE id = 'plaid-consent'`).first(),
@@ -300,7 +329,7 @@ test("the composite schema stores explicit purchase-order lineage and leaves amb
     const migrations = (await readdir(new URL("../drizzle/", import.meta.url)))
       .filter((file) => /^\d{4}.*\.sql$/.test(file))
       .sort();
-    const compositeMigration = "0025_dry_frank_castle.sql";
+    const compositeMigration = "0025_talented_gateway.sql";
     assert.ok(migrations.includes(compositeMigration), "the composite migration must add exact purchase-order connection lineage");
     for (const migration of migrations.filter((file) => file <= compositeMigration)) {
       await applyMigration(database, migration);

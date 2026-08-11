@@ -41,7 +41,6 @@ export async function recordPlaidConsent(input: {
   });
   return { id, acceptedAt: now };
 }
-
 export async function requireFreshPlaidConsent(input: {
   consentRecordId: string;
   organizationId: string;
