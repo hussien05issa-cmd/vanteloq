@@ -17,11 +17,11 @@ import {
   exchangeAuthorizationCode,
   fetchLightspeedCollection,
   LIGHTSPEED_PROVIDER,
-  LIGHTSPEED_SCOPES,
   lightspeedReadiness,
   sha256Hex,
   tokenExpiry,
   validateDomainPrefix,
+  validateLightspeedGrantedScopes,
 } from "../../../../../../server/integrations/lightspeed";
 import { requirePermission } from "../../../../../../server/permissions";
 

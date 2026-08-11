@@ -113,6 +113,13 @@ test("public resources always expose Home and Sign in navigation", async () => {
   assert.match(article, /Breadcrumbs/);
 });
 
+test("resource article sections override the legacy global two-column rule", async () => {
+  const css = await readFile(new URL("../app/resources/resources.css", import.meta.url), "utf8");
+  assert.match(css, /\.resource-site \.article-body > section \{[^}]*display:\s*block;[^}]*grid-template-columns:\s*none;[^}]*padding:\s*0;[^}]*border-bottom:\s*0;/);
+  assert.match(css, /\.resource-site \.article-body > section > \* \{[^}]*grid-column:\s*auto;/);
+  assert.match(css, /\.resource-site \.article-body > section\.quick-answer \{[^}]*padding:\s*30px;/);
+});
+
 test("commerce charts expose exact-date and exact-hour keyboard tooltips", async () => {
   const charts = await readFile(new URL("../app/dashboard-charts.tsx", import.meta.url), "utf8");
   const app = await readFile(new URL("../app/vanteloq-app.tsx", import.meta.url), "utf8");
@@ -304,7 +311,7 @@ test("authorization is server-bound to immutable identity and Supabase AAL2", as
 
   assert.match(authorization, /row\.authSubject !== identity\.subject/);
   assert.match(authorization, /requireAal2\(identity\)/);
-  assert.match(api, /identity\.provider === "supabase" && identity\.assuranceLevel !== "aal2"/);
+  assert.match(api, /identity\.provider !== "supabase" \|\| identity\.assuranceLevel !== "aal2"/);
   assert.match(internalAccess, /mfa_required = 1/);
   assert.doesNotMatch(internalAccess, /mfa_required[\s\S]{0,20}VALUES[\s\S]{0,80}, 0,/);
 });

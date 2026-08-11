@@ -53,7 +53,7 @@ export default function ResourcesPage() {
             {RESOURCE_CATEGORIES.map((category) => (
               <Link href={`/resources/${category.slug}`} key={category.slug}>
                 <ResourceVisual category={category.slug} compact />
-                <span>{getArticlesByCategory(category.slug).length ? `${getArticlesByCategory(category.slug).length} guide` : "Guides planned"}</span>
+                <span>{getArticlesByCategory(category.slug).length ? `${getArticlesByCategory(category.slug).length} ${getArticlesByCategory(category.slug).length === 1 ? "guide" : "guides"}` : "Guides planned"}</span>
                 <strong>{category.name}</strong>
                 <p>{category.description}</p>
               </Link>

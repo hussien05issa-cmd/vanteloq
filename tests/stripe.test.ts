@@ -3,6 +3,7 @@ import { createHmac } from "node:crypto";
 import test from "node:test";
 import {
   buildStripeAuthorizationUrl,
+  exchangeStripeAuthorizationCode,
   normalizeStripeBalanceTransaction,
   normalizeStripePayout,
   stripeReadiness,
@@ -38,6 +39,26 @@ test("Stripe readiness remains staging-only", () => {
   assert.equal(readiness.mode, "read_only_staging");
   assert.equal(readiness.dataPromotionEnabled, false);
   assert.equal(readiness.apiVersion, "2026-02-25.clover");
+});
+
+test("Stripe Connect accepts only a read-only account grant", async () => {
+  const readOnlyFetcher = (async () => Response.json({
+    stripe_user_id: "acct_123456789",
+    scope: "read_only",
+    livemode: false,
+  })) as typeof fetch;
+  const readOnly = await exchangeStripeAuthorizationCode("ac_test_read_only", readOnlyFetcher);
+  assert.equal(readOnly.scope, "read_only");
+
+  const readWriteFetcher = (async () => Response.json({
+    stripe_user_id: "acct_123456789",
+    scope: "read_write",
+    livemode: false,
+  })) as typeof fetch;
+  await assert.rejects(
+    () => exchangeStripeAuthorizationCode("ac_test_read_write", readWriteFetcher),
+    (error: unknown) => error instanceof Error && "code" in error && error.code === "STRIPE_SCOPE_NOT_READ_ONLY",
+  );
 });
 
 test("Stripe balance normalization preserves settlement facts and excludes payment PII", async () => {

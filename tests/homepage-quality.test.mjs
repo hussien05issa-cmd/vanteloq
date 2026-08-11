@@ -40,8 +40,8 @@ test("homepage copy stays within the verified product boundary", async () => {
   for (const provider of ["Square", "Moneris", "QuickBooks", "Xero"]) {
     assert.match(html, new RegExp(`<strong>${provider}</strong>[\\s\\S]{0,180}<small>PLANNED</small>`));
   }
-  assert.match(html, /<strong>Plaid<\/strong>[\s\S]{0,240}<small>SETUP REQUIRED<\/small>/);
-  assert.match(html, /Plaid still requires hosted credentials, provider approval, and institution testing/);
+  assert.match(html, /<strong>Plaid<\/strong>[\s\S]{0,220}<small>ADAPTER BUILT<\/small>/);
+  assert.match(html, /Plaid still requires approved production credentials/);
   for (const provider of ["Google", "Meta"]) {
     assert.match(html, new RegExp(`<strong>${provider}</strong>[\\s\\S]{0,220}<small>PLANNED</small>`));
   }

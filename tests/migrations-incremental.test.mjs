@@ -53,7 +53,7 @@ test("the founder migration preserves populated foreign-key relationships", asyn
   }
 });
 
-test("connector lineage and document quarantine survive migrations 0023 through 0025", async () => {
+test("connector lineage and both document quarantine layers survive migrations 0023 through 0024", async () => {
   const miniflare = new Miniflare({
     modules: true,
     script: "export default { fetch() { return new Response('ok') } }",
@@ -132,6 +132,7 @@ test("connector lineage and document quarantine survive migrations 0023 through 
     ]);
 
     await applyMigration(database, migrations.find((file) => file.startsWith("0023_")));
+    await applyMigration(database, migrations.find((file) => file.startsWith("0024_")));
 
     await database.batch([
       database.prepare(`INSERT INTO integration_connections
@@ -197,9 +198,6 @@ test("connector lineage and document quarantine survive migrations 0023 through 
          'sale-1', 1000, 'payment-hash', 'second-run', ?)`).bind(now),
     ]);
 
-    await applyMigration(database, migrations.find((file) => file.startsWith("0024_")));
-    await applyMigration(database, migrations.find((file) => file.startsWith("0025_")));
-
     assert.deepEqual(
       await database.prepare(`SELECT source_namespace, sync_lease_owner, sync_lease_expires_at, sync_version
         FROM integration_connections WHERE id = 'legacy-connection'`).first(),
@@ -223,9 +221,9 @@ test("connector lineage and document quarantine survive migrations 0023 through 
       );
     }
     assert.deepEqual(
-      await database.prepare(`SELECT scan_status, scanned_at, scan_provider FROM workspace_documents
+      await database.prepare(`SELECT security_state, scan_status, scanned_at, scan_provider FROM workspace_documents
         WHERE id = 'legacy-document'`).first(),
-      { scan_status: "pending", scanned_at: null, scan_provider: null },
+      { security_state: "quarantined", scan_status: "pending", scanned_at: null, scan_provider: null },
     );
     assert.deepEqual(
       await database.prepare(`SELECT external_location_ref, connection_id FROM integration_location_mappings
@@ -238,7 +236,7 @@ test("connector lineage and document quarantine survive migrations 0023 through 
   }
 });
 
-test("purchase-order lineage migration backfills only unambiguous connector products", async () => {
+test("purchase-order lineage stores exact connector ownership without guessing ambiguous rows", async () => {
   const miniflare = new Miniflare({
     modules: true,
     script: "export default { fetch() { return new Response('ok') } }",
@@ -249,9 +247,7 @@ test("purchase-order lineage migration backfills only unambiguous connector prod
     const migrations = (await readdir(new URL("../drizzle/", import.meta.url)))
       .filter((file) => /^\d{4}.*\.sql$/.test(file))
       .sort();
-    const lineageMigration = migrations.find((file) => file.startsWith("0027_"));
-    assert.ok(lineageMigration, "a migration after 0026 must add exact purchase-order connection lineage");
-    for (const migration of migrations.filter((file) => file < lineageMigration)) {
+    for (const migration of migrations) {
       await applyMigration(database, migration);
     }
 
@@ -305,9 +301,9 @@ test("purchase-order lineage migration backfills only unambiguous connector prod
         VALUES ('legacy-po', 'lineage-workspace', 'PO-LEGACY', 'Legacy Supplier', '2026-08-11',
           'CAD', 'draft', 300, 0, 0, 300, 'lineage-user', ?, ?)`).bind(now, now),
       database.prepare(`INSERT INTO purchase_order_lines
-        (id, organization_id, purchase_order_id, line_number, provider, external_product_ref,
+        (id, organization_id, purchase_order_id, line_number, provider, connection_id, external_product_ref,
          sku, description, quantity, unit_cost_cents, created_at, updated_at)
-        VALUES ('unique-line', 'lineage-workspace', 'legacy-po', 1, 'lightspeed-r', 'unique-ref',
+        VALUES ('unique-line', 'lineage-workspace', 'legacy-po', 1, 'lightspeed-r', 'lineage-account-a', 'unique-ref',
           'UNIQUE-A', 'Unique product', 1, 100, ?, ?)`).bind(now, now),
       database.prepare(`INSERT INTO purchase_order_lines
         (id, organization_id, purchase_order_id, line_number, provider, external_product_ref,
@@ -320,8 +316,6 @@ test("purchase-order lineage migration backfills only unambiguous connector prod
         VALUES ('manual-line', 'lineage-workspace', 'legacy-po', 3, 'MANUAL', 'Manual product',
           1, 100, ?, ?)`).bind(now, now),
     ]);
-
-    await applyMigration(database, lineageMigration);
 
     const rows = await database.prepare(`SELECT id, connection_id AS connectionId
       FROM purchase_order_lines ORDER BY id`).all();

@@ -209,7 +209,8 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
     if (provider.id === "lightspeed-r") return { ...provider, status: "READ-ONLY", statusClass: "current", detail: "Read-only sales and inventory import" };
     if (provider.id === "lightspeed") return { ...provider, status: "LIMITED PILOT", statusClass: "current", detail: "Read-only pilot and sample review" };
     if (provider.id === "stripe") return { ...provider, status: "STAGING", statusClass: "current", detail: "Read-only payout and balance staging" };
-    if (provider.id === "plaid") return { ...provider, status: "SETUP REQUIRED", statusClass: "current", detail: "BookLoQ bank feed foundation; hosted credentials, provider approval, and institution testing remain" };
+    if (provider.id === "plaid") return { ...provider, status: "ADAPTER BUILT", statusClass: "current", detail: "Secure Link, balances and reviewed transactions; production access still requires Plaid approval" };
+    if (provider.id === "google" || provider.id === "meta") return { ...provider, status: "COMING SOON!", statusClass: "coming-soon", detail: "Verified connection is in development" };
     return { ...provider, status: "PLANNED", statusClass: "planned", detail: provider.category };
   });
 
@@ -270,8 +271,8 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
       <section className="home-connections" id="connections" aria-labelledby="connections-title">
         <div className="home-section-heading compact">
           <p>CONNECTION DIRECTORY</p>
-          <h2 id="connections-title">See each connector and its current status.</h2>
-          <span>Lightspeed R-Series, the limited X-Series pilot, Stripe staging, Plaid setup, and structured CSV import have current paths. Plaid still requires hosted credentials, provider approval, and institution testing. Other connectors remain planned until their production adapters are built and verified.</span>
+          <h2 id="connections-title">See every connector and its honest availability.</h2>
+          <span>Lightspeed R-Series, the limited X-Series pilot, Stripe staging, Plaid bank feeds and structured CSV import have built paths. Plaid still requires approved production credentials before customers can authorize institutions. Google and Meta are coming soon. Every other connector stays planned until its production adapter is built and verified.</span>
         </div>
         <div className="home-connection-grid">
           {publicIntegrations.map(provider => <article className={provider.statusClass} key={provider.id}><IntegrationBrandLogo name={provider.name} compact/><div><strong>{provider.name}</strong><span>{provider.detail}</span></div><small>{provider.status}</small></article>)}

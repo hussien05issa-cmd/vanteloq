@@ -109,8 +109,12 @@ export async function GET(request: Request) {
           ...connection,
           lastSuccessfulSyncAt: connection.lastSuccessfulSyncAt?.toISOString() ?? null,
         })));
+        const canManageProvider = provider.id === "plaid"
+          ? permissions.includes("finance.connections")
+          : permissions.includes("integrations.manage");
         return ({
         ...provider,
+        canManage: canManageProvider,
         status: aggregate.status,
         maskedAccountRef: providerConnections.length === 1 ? maskedAccountRef(providerConnections[0]?.externalAccountRef) : null,
         externalAccountName: providerConnections.length === 1 ? providerConnections[0]?.externalAccountName ?? null : providerConnections.length ? `${providerConnections.length} provider accounts` : null,

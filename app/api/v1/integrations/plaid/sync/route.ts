@@ -21,7 +21,7 @@ export async function POST(request: Request) {
         requestId,
         organizationId: context.organizationId,
         actorUserId: context.userId,
-        action: "integration.data_imported",
+        action: "integration.synchronized",
         resourceType: "integration",
         resourceId: PLAID_PROVIDER,
         details: {
@@ -32,17 +32,21 @@ export async function POST(request: Request) {
           modified: sync.modified,
           removed: sync.removed,
           pages: sync.pages,
-          dataPromotionEnabled: plaidReadiness().liveDataEligible,
+          dataPromotionStatus: sync.dataPromotionStatus,
         },
       });
-      return jsonResponse({ sync });
+      return jsonResponse({
+        sync,
+        bankBalancesAvailable: sync.dataPromotionStatus === "approved",
+        transactionReviewRequired: true,
+      });
     } catch (error) {
       await recordAudit({
         request,
         requestId,
         organizationId: context.organizationId,
         actorUserId: context.userId,
-        action: "integration.data_imported",
+        action: "integration.synchronized",
         resourceType: "integration",
         resourceId: PLAID_PROVIDER,
         outcome: "failure",

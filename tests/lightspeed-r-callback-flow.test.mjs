@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
+import { createServer } from "node:http";
 import test from "node:test";
 import { Miniflare } from "miniflare";
 
@@ -7,11 +8,10 @@ const origin = "https://vanteloq.example";
 const context = { waitUntil() {}, passThroughOnException() {} };
 
 function ownerHeaders(write = false) {
+  const payload = Buffer.from(JSON.stringify({ email: "owner@example.invalid", aal: "aal2", session_id: "session:owner" })).toString("base64url");
   const headers = {
     accept: "application/json",
-    "oai-authenticated-user-email": "owner@example.invalid",
-    "oai-authenticated-user-full-name": encodeURIComponent("Test Owner"),
-    "oai-authenticated-user-full-name-encoding": "percent-encoded-utf-8",
+    authorization: `Bearer test.${payload}.signature`,
   };
   if (write) {
     headers["content-type"] = "application/json";
@@ -33,6 +33,19 @@ async function applyMigrations(database) {
 }
 
 test("R-Series completes a browser callback using the initiating one-time state", async () => {
+  const authServer = createServer((_request, response) => {
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({
+      id: "test-user:owner@example.invalid",
+      email: "owner@example.invalid",
+      email_confirmed_at: "2026-08-01T00:00:00.000Z",
+      user_metadata: { full_name: "Test Owner" },
+    }));
+  });
+  await new Promise((resolve) => authServer.listen(0, "127.0.0.1", resolve));
+  const authAddress = authServer.address();
+  assert.ok(authAddress && typeof authAddress !== "string");
+  const authOrigin = `http://127.0.0.1:${authAddress.port}`;
   const miniflare = new Miniflare({
     modules: true,
     script: "export default { fetch() { return new Response('ok') } }",
@@ -52,6 +65,8 @@ test("R-Series completes a browser callback using the initiating one-time state"
       LIGHTSPEED_R_CLIENT_SECRET: "test-client-secret",
       LIGHTSPEED_R_REDIRECT_URI: `${origin}/api/v1/integrations/lightspeed-r/callback`,
       INTEGRATION_ENCRYPTION_KEY: Buffer.from(Uint8Array.from({ length: 32 }, (_, index) => index + 1)).toString("base64"),
+      SUPABASE_URL: authOrigin,
+      SUPABASE_PUBLISHABLE_KEY: "test-publishable-key",
     };
 
     const onboarding = await worker.fetch(new Request(`${origin}/api/v1/onboarding`, {
@@ -98,8 +113,10 @@ test("R-Series completes a browser callback using the initiating one-time state"
 
     let failShopVerification = false;
     let injectSyncWarning = false;
-    const mockLightspeedFetch = async (input) => {
-      const url = new URL(typeof input === "string" || input instanceof URL ? input : input.url);
+    const mockLightspeedFetch = async (input, init) => {
+      const request = input instanceof Request ? input : new Request(input, init);
+      const url = new URL(request.url);
+      if (url.origin === authOrigin) return originalFetch(request);
       if (url.origin === "https://cloud.lightspeedapp.com" && url.pathname === "/auth/oauth/token") {
         return Response.json({ access_token: "access-token", refresh_token: "refresh-token", expires_in: 3600 });
       }
@@ -429,7 +446,9 @@ test("R-Series completes a browser callback using the initiating one-time state"
     assert.notEqual(secondAuthorizationBody.connectionId, connection.id);
 
     globalThis.fetch = async (input, init) => {
-      const url = new URL(typeof input === "string" || input instanceof URL ? input : input.url);
+      const request = input instanceof Request ? input : new Request(input, init);
+      const url = new URL(request.url);
+      if (url.origin === authOrigin) return originalFetch(request);
       if (url.origin === "https://cloud.lightspeedapp.com" && url.pathname === "/auth/oauth/token") {
         return Response.json({ access_token: "access-token-2", refresh_token: "refresh-token-2", expires_in: 3600 });
       }
@@ -516,6 +535,7 @@ test("R-Series completes a browser callback using the initiating one-time state"
     assert.equal(commandAfterDisconnectBody.commandCentre.liveSource.accountName, "Second R-Series account");
   } finally {
     globalThis.fetch = originalFetch;
+    await new Promise((resolve) => authServer.close(resolve));
     await miniflare.dispose();
   }
 });

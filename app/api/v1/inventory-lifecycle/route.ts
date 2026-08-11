@@ -5,7 +5,7 @@ import { assessInventoryLot, fefoSort } from "../../../../domain/inventory-lifec
 import { recordAudit } from "../../../../server/audit";
 import { requireAccess } from "../../../../server/authorization";
 import { ApiError, enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameOrigin } from "../../../../server/api";
-import { requirePermission } from "../../../../server/permissions";
+import { effectivePermissions, requirePermission } from "../../../../server/permissions";
 import { authorizedLocationDataScope } from "../../../../server/location-access";
 import { approvedFactSource } from "../../../../server/integrations/trusted-data";
 
@@ -90,7 +90,7 @@ async function requestScope(request: Request, context: Awaited<ReturnType<typeof
   };
 }
 
-async function lifecycleDto(organizationId: string, scope: LifecycleScope) {
+async function lifecycleDto(organizationId: string, scope: LifecycleScope, canViewValue: boolean) {
   const [lots, posBalances] = await Promise.all([
     getDb().select().from(inventoryLots)
       .where(eq(inventoryLots.organizationId, organizationId)).limit(1_000),
@@ -154,14 +154,29 @@ async function lifecycleDto(organizationId: string, scope: LifecycleScope) {
   return {
     posBalances: visibleBalances.sort((left, right) =>
       left.onHandQuantity - right.onHandQuantity || left.name.localeCompare(right.name)),
-    lots: assessed.sort((a, b) => b.updatedAt.valueOf() - a.updatedAt.valueOf()),
-    fefo: ordered.filter(lot => lot.quantityRemaining > 0 && lot.status === "active").map((lot, index) => ({ ...lot, fefoRank: index + 1 })),
+    lots: assessed.sort((a, b) => b.updatedAt.valueOf() - a.updatedAt.valueOf()).map((lot) => ({
+      ...lot,
+      unitCostCents: canViewValue ? lot.unitCostCents : null,
+      unitRetailCents: canViewValue ? lot.unitRetailCents : null,
+      assessment: { ...lot.assessment, inventoryCostAtRiskCents: canViewValue ? lot.assessment.inventoryCostAtRiskCents : null },
+    })),
+    fefo: ordered.filter(lot => lot.quantityRemaining > 0 && lot.status === "active").map((lot, index) => ({
+      ...lot,
+      unitCostCents: canViewValue ? lot.unitCostCents : null,
+      unitRetailCents: canViewValue ? lot.unitRetailCents : null,
+      assessment: { ...lot.assessment, inventoryCostAtRiskCents: canViewValue ? lot.assessment.inventoryCostAtRiskCents : null },
+      fefoRank: index + 1,
+    })),
     summary: {
       totalLots: assessed.length,
       trackedLots: assessed.filter(lot => lot.assessment.trackedDate !== null).length,
       totalUnits: assessed.reduce((sum, lot) => sum + lot.quantityRemaining, 0),
-      costAtRiskCents: assessed.reduce((sum, lot) => sum + (lot.assessment.inventoryCostAtRiskCents ?? 0), 0),
-      costRiskKnownLots: assessed.filter(lot => lot.assessment.inventoryCostAtRiskCents !== null).length,
+      costAtRiskCents: canViewValue
+        ? assessed.reduce((sum, lot) => sum + (lot.assessment.inventoryCostAtRiskCents ?? 0), 0)
+        : null,
+      costRiskKnownLots: canViewValue
+        ? assessed.filter(lot => lot.assessment.inventoryCostAtRiskCents !== null).length
+        : 0,
       riskCounts,
       posSkus: visibleBalances.length,
       posUnits: visibleBalances.reduce((sum, balance) => sum + balance.onHandQuantity, 0),
@@ -183,7 +198,8 @@ export async function GET(request: Request) {
     await requirePermission(context, "inventory.view");
     await enforceRateLimit("inventory-lifecycle:read", context.userId, 90, 60);
     const scope = await requestScope(request, context);
-    return jsonResponse(await lifecycleDto(context.organizationId, scope));
+    const canViewValue = (await effectivePermissions(context)).includes("inventory.value");
+    return jsonResponse(await lifecycleDto(context.organizationId, scope, canViewValue));
   });
 }
 
@@ -275,6 +291,7 @@ export async function POST(request: Request) {
     } else {
       throw new ApiError(400, "UNKNOWN_ACTION", "Select a supported inventory-lot action.");
     }
-    return jsonResponse(await lifecycleDto(context.organizationId, scope), { status: action === "create" ? 201 : 200 });
+    const canViewValue = (await effectivePermissions(context)).includes("inventory.value");
+    return jsonResponse(await lifecycleDto(context.organizationId, scope, canViewValue), { status: action === "create" ? 201 : 200 });
   });
 }

@@ -1039,15 +1039,15 @@ export async function POST(request: Request) {
       await requirePurchaseOrderInScope(context.organizationId, id, locationScope);
       const result = await database
         .prepare(
-          "UPDATE purchase_orders SET status = 'approved', approved_by_user_id = ?, updated_at = ? WHERE id = ? AND organization_id = ? AND status = 'awaiting_approval'",
+          "UPDATE purchase_orders SET status = 'approved', approved_by_user_id = ?, updated_at = ? WHERE id = ? AND organization_id = ? AND status = 'awaiting_approval' AND created_by_user_id != ?",
         )
-        .bind(context.userId, now, id, context.organizationId)
+        .bind(context.userId, now, id, context.organizationId, context.userId)
         .run();
-      if (!result.success)
+      if (!result.success || Number(result.meta.changes ?? 0) !== 1)
         throw new ApiError(
           409,
           "INVALID_TRANSITION",
-          "Only purchase orders awaiting approval can be approved.",
+          "Only a different authorized reviewer can approve a purchase order that is awaiting approval.",
         );
       resourceId = id;
       auditAction = "purchase_order.approved";
@@ -1176,7 +1176,12 @@ export async function POST(request: Request) {
           "NOT_FOUND",
           "Select an invoice and purchase order from this organization.",
         );
-      if (document.scanStatus !== "clean" || !document.scannedAt || !document.scanProvider) {
+      if (
+        document.securityState !== "clean"
+        || document.scanStatus !== "clean"
+        || !document.scannedAt
+        || !document.scanProvider
+      ) {
         throw new ApiError(
           423,
           "DOCUMENT_SCAN_REQUIRED",

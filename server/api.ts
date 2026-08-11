@@ -28,35 +28,6 @@ export function requestId(request: Request): string {
   return edgeId && edgeId.length <= 64 ? edgeId : crypto.randomUUID();
 }
 
-function sitesIdentity(request: Request): TrustedIdentity | null {
-  const rawEmail = request.headers.get("oai-authenticated-user-email")?.trim().toLowerCase();
-  if (!rawEmail || rawEmail.length > 254 || !EMAIL_PATTERN.test(rawEmail)) return null;
-
-  let displayName = rawEmail;
-  const encodedName = request.headers.get("oai-authenticated-user-full-name");
-  if (
-    encodedName &&
-    request.headers.get("oai-authenticated-user-full-name-encoding") === "percent-encoded-utf-8"
-  ) {
-    try {
-      const decoded = decodeURIComponent(encodedName).trim();
-      if (decoded && decoded.length <= 120 && !/[\u0000-\u001f\u007f]/.test(decoded)) displayName = decoded;
-    } catch {
-      // The trusted email remains the safe display fallback.
-    }
-  }
-
-  return {
-    email: rawEmail,
-    displayName,
-    subject: null,
-    provider: "sites",
-    emailVerified: true,
-    assuranceLevel: null,
-    sessionId: null,
-  };
-}
-
 function verifiedJwtSession(token: string): { assuranceLevel: "aal1" | "aal2" | null; sessionId: string | null } {
   try {
     const payloadPart = token.split(".")[1];
@@ -111,7 +82,10 @@ export async function optionalIdentity(request: Request): Promise<TrustedIdentit
     }
   }
 
-  return env.SUPABASE_AUTH_MODE === "public" ? null : sitesIdentity(request);
+  // The public Worker boundary cannot prove legacy Sites identity headers were
+  // added by a trusted proxy. Protected identity therefore comes exclusively
+  // from the Supabase session verified above.
+  return null;
 }
 
 export async function requireIdentity(request: Request): Promise<TrustedIdentity> {
@@ -121,7 +95,7 @@ export async function requireIdentity(request: Request): Promise<TrustedIdentity
 }
 
 export function requireAal2(identity: TrustedIdentity): void {
-  if (identity.provider === "supabase" && identity.assuranceLevel !== "aal2") {
+  if (identity.provider !== "supabase" || identity.assuranceLevel !== "aal2") {
     throw new ApiError(403, "MFA_REQUIRED", "Complete multi-factor authentication to continue.");
   }
 }
