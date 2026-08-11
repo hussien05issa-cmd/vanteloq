@@ -44,7 +44,7 @@ export function LegalShell({
             </dl>
           </div>
           <aside aria-label="Document principles">
-            <div className="legal-principle-art" aria-hidden="true"><i/><i/><i/><b>✓</b></div>
+            <div className="legal-principle-art" aria-hidden="true"><i/><i/><i/></div>
             <strong>Plain language, visible limits, real contacts.</strong>
             <p>These documents describe the service as it operates today. They do not claim certifications, providers, or rights that have not been verified.</p>
           </aside>

@@ -1,5 +1,5 @@
 import { getDb } from "../../../../../../db";
-import { integrationOAuthStates } from "../../../../../../db/schema";
+import { integrationConnections, integrationOAuthStates } from "../../../../../../db/schema";
 import { recordAudit } from "../../../../../../server/audit";
 import { requireAccess } from "../../../../../../server/authorization";
 import { enforceRateLimit, handleApi, jsonResponse, requireSameOrigin } from "../../../../../../server/api";
@@ -18,13 +18,35 @@ export async function POST(request: Request) {
     await requirePermission(context, "integrations.manage");
     await enforceRateLimit("stripe:authorize", context.userId, 10, 3_600);
     const state = newStripeOAuthState();
+    const authorizationUrl = buildStripeAuthorizationUrl(state);
+    const connectionId = crypto.randomUUID();
     const now = new Date();
     const expiresAt = new Date(now.getTime() + 10 * 60_000);
+    await getDb().insert(integrationConnections).values({
+      id: connectionId,
+      organizationId: context.organizationId,
+      provider: STRIPE_PROVIDER,
+      sourceNamespace: connectionId,
+      status: "pending",
+      externalAccountRef: null,
+      externalAccountName: "New Stripe account",
+      domainPrefix: null,
+      apiVersion: null,
+      scopesJson: "[]",
+      dataPromotionStatus: "blocked",
+      connectedAt: null,
+      lastSuccessfulSyncAt: null,
+      lastSyncCursor: null,
+      lastErrorCode: null,
+      createdAt: now,
+      updatedAt: now,
+    });
     await getDb().insert(integrationOAuthStates).values({
       stateHash: await sha256Hex(state),
       organizationId: context.organizationId,
       actorUserId: context.userId,
       provider: STRIPE_PROVIDER,
+      connectionId,
       expiresAt,
       consumedAt: null,
       createdAt: now,
@@ -37,11 +59,12 @@ export async function POST(request: Request) {
       action: "integration.authorization_started",
       resourceType: "integration",
       resourceId: STRIPE_PROVIDER,
-      details: { provider: STRIPE_PROVIDER, mode: "read_only_staging", expiresInSeconds: 600 },
+      details: { provider: STRIPE_PROVIDER, connectionId, mode: "read_only_staging", expiresInSeconds: 600 },
     });
     return jsonResponse({
-      authorizationUrl: buildStripeAuthorizationUrl(state),
+      authorizationUrl,
       expiresAt: expiresAt.toISOString(),
+      connectionId,
       mode: "read_only_staging",
       dataPromotionEnabled: false,
     });

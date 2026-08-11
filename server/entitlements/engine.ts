@@ -185,6 +185,16 @@ export async function hasAddon(context: AccessContext, addon: AddonKey): Promise
   return (await getTenantEntitlements(context)).addons.includes(addon);
 }
 
+export function requireAddonEntitlement(entitlements: EffectiveEntitlements, addon: AddonKey): void {
+  if (!entitlements.addons.includes(addon)) {
+    throw new ApiError(403, "ADDON_NOT_INCLUDED", "This add-on is not included in the workspace's current access.");
+  }
+}
+
+export async function requireAddon(context: AccessContext, addon: AddonKey): Promise<void> {
+  requireAddonEntitlement(await getTenantEntitlements(context), addon);
+}
+
 export async function requireFeature(context: AccessContext, feature: FeatureKey): Promise<void> {
   if (!(await hasFeature(context, feature))) {
     throw new ApiError(403, "FEATURE_NOT_INCLUDED", "This feature is not included in the workspace's current access.");

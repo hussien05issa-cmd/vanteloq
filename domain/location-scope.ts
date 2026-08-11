@@ -1,10 +1,38 @@
 export type ProviderLocationMapping = {
   organizationLocationId: string;
   provider: string;
+  connectionId: string;
   providerLocationRef: string;
 };
 
-export type ProviderLocationRef = Pick<ProviderLocationMapping, "provider" | "providerLocationRef">;
+export type ProviderLocationRef = Pick<ProviderLocationMapping, "provider" | "connectionId" | "providerLocationRef">;
+
+export type AuthorizedLocationScope = {
+  /** null means the caller may read every location in the organization. */
+  locationIds: string[] | null;
+  selectedLocationId: string | null;
+};
+
+export function resolveAuthorizedLocationScope(input: {
+  organizationWide: boolean;
+  accessibleLocationIds: readonly string[];
+  requestedLocationId: string | null;
+}): AuthorizedLocationScope {
+  const accessibleLocationIds = [...new Set(input.accessibleLocationIds)];
+  if (input.requestedLocationId) {
+    if (!accessibleLocationIds.includes(input.requestedLocationId)) {
+      throw new Error("The requested location is not accessible to this account.");
+    }
+    return {
+      locationIds: [input.requestedLocationId],
+      selectedLocationId: input.requestedLocationId,
+    };
+  }
+  return {
+    locationIds: input.organizationWide ? null : accessibleLocationIds,
+    selectedLocationId: null,
+  };
+}
 
 export function parsePermittedLocationIds(value: string | null | undefined): string[] {
   if (!value) return [];
@@ -25,17 +53,17 @@ export function resolveProviderLocationRefs(
   const seen = new Set<string>();
   return mappings.flatMap((mapping) => {
     if (mapping.organizationLocationId !== organizationLocationId) return [];
-    const key = `${mapping.provider}\u0000${mapping.providerLocationRef}`;
+    const key = `${mapping.provider}\u0000${mapping.connectionId}\u0000${mapping.providerLocationRef}`;
     if (seen.has(key)) return [];
     seen.add(key);
-    return [{ provider: mapping.provider, providerLocationRef: mapping.providerLocationRef }];
+    return [{ provider: mapping.provider, connectionId: mapping.connectionId, providerLocationRef: mapping.providerLocationRef }];
   });
 }
 
-export function filterRowsForLocation<T extends { provider: string; locationRef: string | null }>(
+export function filterRowsForLocation<T extends { provider: string; connectionId: string; locationRef: string | null }>(
   rows: readonly T[],
   allowedRefs: readonly ProviderLocationRef[],
 ): T[] {
-  const allowed = new Set(allowedRefs.map((item) => `${item.provider}\u0000${item.providerLocationRef}`));
-  return rows.filter((row) => row.locationRef !== null && allowed.has(`${row.provider}\u0000${row.locationRef}`));
+  const allowed = new Set(allowedRefs.map((item) => `${item.provider}\u0000${item.connectionId}\u0000${item.providerLocationRef}`));
+  return rows.filter((row) => row.locationRef !== null && allowed.has(`${row.provider}\u0000${row.connectionId}\u0000${row.locationRef}`));
 }

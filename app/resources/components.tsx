@@ -96,7 +96,20 @@ export function ArticleCard({ article, featured = false }: { article: ResourceAr
         <Link href={`/resources/${article.category}`}>{category?.shortName}</Link>
         <span>{getReadingTime(article)} min read</span>
       </div>
-      <ResourceVisual category={article.category} compact={!featured} />
+      {article.hero ? (
+        <div className={`resource-card-hero${featured ? " featured" : ""}`}>
+          {/* The pre-compressed editorial image is served directly because this Worker has no image transformation binding. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={article.hero.src}
+            alt={article.hero.alt}
+            width={article.hero.width}
+            height={article.hero.height}
+            loading="lazy"
+            decoding="async"
+          />
+        </div>
+      ) : <ResourceVisual category={article.category} compact={!featured} />}
       <h2><Link href={`/resources/${article.slug}`}>{article.title}</Link></h2>
       <p>{article.description}</p>
       <Link className="resource-card-link" href={`/resources/${article.slug}`} aria-label={`Read ${article.title}`}>

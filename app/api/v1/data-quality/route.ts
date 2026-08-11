@@ -1,4 +1,4 @@
-import { asc, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "../../../../db";
 import {
   dailyBusinessMetrics,
@@ -6,6 +6,7 @@ import {
   goodsReceipts,
   integrationConnections,
   invoiceMatches,
+  purchaseOrders,
   workspaceDocuments,
 } from "../../../../db/schema";
 import { requireAccess } from "../../../../server/authorization";
@@ -14,7 +15,9 @@ import {
   handleApi,
   jsonResponse,
 } from "../../../../server/api";
-import { requirePermission } from "../../../../server/permissions";
+import { effectivePermissions, requirePermission } from "../../../../server/permissions";
+import { authorizedLocationDataScope } from "../../../../server/location-access";
+import { approvedFactSource } from "../../../../server/integrations/trusted-data";
 
 const users = ["owner", "admin", "manager", "employee", "read_only"] as const;
 const day = 86_400_000;
@@ -24,44 +27,81 @@ export async function GET(request: Request) {
     const context = await requireAccess(request, users);
     await requirePermission(context, "integrations.view");
     await enforceRateLimit("data-quality:read", context.userId, 60, 60);
+    const permissions = await effectivePermissions(context);
+    const canViewDocuments = permissions.includes("documents.view");
+    const canViewPurchasing = permissions.includes("purchasing.view");
+    const requestedLocationId = new URL(request.url).searchParams.get("location");
+    const locationAccess = await authorizedLocationDataScope(context, requestedLocationId);
+    const locationRefs = locationAccess.locationRefs;
+    const locationIds = locationAccess.locationIds;
+    const metricSourceWhere = approvedFactSource(
+      dailyBusinessMetrics.organizationId,
+      dailyBusinessMetrics.sourceProvider,
+      dailyBusinessMetrics.sourceConnectionId,
+    );
+    const metricWhere = locationRefs === null
+      ? and(eq(dailyBusinessMetrics.organizationId, context.organizationId), metricSourceWhere)
+      : locationRefs.length
+        ? and(eq(dailyBusinessMetrics.organizationId, context.organizationId), inArray(dailyBusinessMetrics.locationRef, locationRefs), metricSourceWhere)
+        : and(eq(dailyBusinessMetrics.organizationId, context.organizationId), sql`1 = 0`, metricSourceWhere);
+    const purchaseWhere = locationIds === null
+      ? eq(purchaseOrders.organizationId, context.organizationId)
+      : locationIds.length
+        ? and(eq(purchaseOrders.organizationId, context.organizationId), inArray(purchaseOrders.deliveryLocationId, locationIds))
+        : and(eq(purchaseOrders.organizationId, context.organizationId), sql`1 = 0`);
     const [rows, imports, connections, documents, receipts, matches] =
       await Promise.all([
         getDb()
           .select()
           .from(dailyBusinessMetrics)
-          .where(
-            eq(dailyBusinessMetrics.organizationId, context.organizationId),
-          )
-          .orderBy(asc(dailyBusinessMetrics.businessDate))
+          .where(metricWhere)
+          .orderBy(desc(dailyBusinessMetrics.businessDate))
           .limit(730),
-        getDb()
+        locationRefs === null ? getDb()
           .select()
           .from(dataImports)
           .where(eq(dataImports.organizationId, context.organizationId))
           .orderBy(desc(dataImports.createdAt))
-          .limit(100),
-        getDb()
+          .limit(100) : Promise.resolve([]),
+        locationRefs === null ? getDb()
           .select()
           .from(integrationConnections)
           .where(
             eq(integrationConnections.organizationId, context.organizationId),
-          ),
-        getDb()
+          ) : Promise.resolve([]),
+        locationRefs === null && canViewDocuments ? getDb()
           .select()
           .from(workspaceDocuments)
           .where(eq(workspaceDocuments.organizationId, context.organizationId))
-          .limit(500),
-        getDb()
-          .select()
+          .limit(500) : Promise.resolve([]),
+        canViewPurchasing ? getDb()
+          .select({
+            id: goodsReceipts.id,
+            purchaseOrderId: goodsReceipts.purchaseOrderId,
+            discrepancyStatus: goodsReceipts.discrepancyStatus,
+          })
           .from(goodsReceipts)
-          .where(eq(goodsReceipts.organizationId, context.organizationId))
-          .limit(500),
-        getDb()
-          .select()
+          .innerJoin(purchaseOrders, and(
+            eq(purchaseOrders.id, goodsReceipts.purchaseOrderId),
+            eq(purchaseOrders.organizationId, goodsReceipts.organizationId),
+          ))
+          .where(purchaseWhere)
+          .limit(500) : Promise.resolve([]),
+        canViewPurchasing ? getDb()
+          .select({
+            id: invoiceMatches.id,
+            purchaseOrderId: invoiceMatches.purchaseOrderId,
+            status: invoiceMatches.status,
+          })
           .from(invoiceMatches)
-          .where(eq(invoiceMatches.organizationId, context.organizationId))
-          .limit(500),
+          .innerJoin(purchaseOrders, and(
+            eq(purchaseOrders.id, invoiceMatches.purchaseOrderId),
+            eq(purchaseOrders.organizationId, invoiceMatches.organizationId),
+          ))
+          .where(purchaseWhere)
+          .limit(500) : Promise.resolve([]),
       ]);
+    rows.sort((left, right) => left.businessDate.localeCompare(right.businessDate));
     const dates = [...new Set(rows.map((row) => row.businessDate))];
     const missingPeriods: string[] = [];
     for (let index = 1; index < dates.length; index++) {
@@ -223,6 +263,11 @@ export async function GET(request: Request) {
           lastSuccessfulSyncAt: item.lastSuccessfulSyncAt,
         })),
         documents: documents.length,
+      },
+      locationScope: locationRefs === null ? null : {
+        id: locationAccess.selectedLocation?.id ?? "accessible",
+        name: locationAccess.selectedLocation?.name ?? "Accessible locations",
+        boundary: "Daily operating metrics and purchase-order evidence are location-scoped. Import filenames, connector metadata and documents are withheld because they do not yet have durable location ownership.",
       },
     });
   });

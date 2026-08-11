@@ -5,6 +5,8 @@ import { enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameO
 import { journalInput, requireBookLoQPermission } from "../../../../../server/bookloq";
 import { idempotencyKey } from "../../../../../server/validation";
 import { requirePermission } from "../../../../../server/permissions";
+import { requireAddon } from "../../../../../server/entitlements/engine";
+import { requireOrganizationWideLocationAccess } from "../../../../../server/location-access";
 
 const writers = ["owner", "admin", "manager", "employee", "read_only"] as const;
 
@@ -33,6 +35,8 @@ export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
     const context = await requireAccess(request, writers);
+    await requireAddon(context, "bookloq");
+    await requireOrganizationWideLocationAccess(context);
     await requirePermission(context, "finance.journal_post");
     requireBookLoQPermission(context.role, "post_journals");
     await enforceRateLimit("bookloq:journals:create", context.userId, 30, 3_600);
@@ -90,6 +94,8 @@ export async function PATCH(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
     const context = await requireAccess(request, writers);
+    await requireAddon(context, "bookloq");
+    await requireOrganizationWideLocationAccess(context);
     await requirePermission(context, "finance.journal_post");
     requireBookLoQPermission(context.role, "post_journals");
     await enforceRateLimit("bookloq:journals:reverse", context.userId, 20, 3_600);

@@ -13,6 +13,13 @@ Implemented now:
 - Tenant-owned persistent actions linked to manual work, insights, alerts, or decisions
 - Validated daily-summary CSV import and manual daily entry
 - Evidence-bound owner command centre with period comparisons, source freshness, data-quality limits, deterministic insight evidence, and recommended actions
+- Provider-neutral commerce records and feature coverage so every supported POS unlocks the same Vanteloq capability when it supplies the required verified data
+- Multiple Lightspeed R-Series or X-Series accounts in one workspace, each with separate encrypted credentials, mappings, cursors, history, and disconnect controls
+- Live read-only Lightspeed R-Series sales, payments, products, customers, suppliers, inventory, and location synchronization
+- Read-only Lightspeed X-Series authorization, outlet discovery, and isolated sample staging with dashboard promotion intentionally disabled
+- Plaid Link, encrypted Item credentials, transaction synchronization, verified webhook intake, account balances, connection repair states, and exact disconnection
+- Stripe Connect financial staging and Stripe Billing checkout, portal, and signed webhook handling
+- Private invoice and receipt upload to an R2 quarantine with signature checks, type and size limits, tenant isolation, content hashing, and duplicate detection
 - Business memory and decision journal with measured before/after sales impact when sufficient history exists
 - Formula-transparent scenario planner, owner brief, evidence-bound advisor, owner stress list, and industry/module data contracts
 - Integrated BookLoQ workspace with a permission-aware 24-section finance navigator, integer-minor-unit double-entry ledger, balanced journals and linked reversals, Canadian GST/HST working calculations, banking and reconciliation records, receivables/payables, alerts-to-actions, cash forecast, budgets, month-end controls, reports, audit history, and a deterministic accounting assistant
@@ -21,16 +28,18 @@ Implemented now:
 - D1 migrations that preserve and migrate the earlier prototype workspace and tasks
 - Health, readiness, OpenAPI, hostile-path tests, deterministic calculation tests, forward-migration tests, idempotent import tests, and a two-tenant end-to-end intelligence-to-action test
 
-Not implemented yet:
+Intentionally unavailable until its required production control or provider adapter exists:
 
 - Passkeys and a user-facing session/device management screen
-- Live POS/Google/accounting OAuth, provider tokens, webhooks, or synchronization
-- Live line-item POS, SKU inventory, customer, campaign, employee, supplier, payout, bank, and accounting feeds
-- Provider-backed bank/POS synchronization, document OCR, payment initiation, tax filing, payroll execution, accountant invitations, and production PDF/XLSX report generation
-- Payments, billing, email delivery, background queues, or customer-data exports
+- Shopify, Moneris, Square, Clover, Google marketing, and accounting-provider adapters
+- Lightspeed X-Series promotion into live dashboard metrics, pending provider reconciliation approval
+- Invoice malware scanning and OCR extraction, so uploaded documents remain quarantined and unavailable for download
+- Payment initiation, tax filing, payroll execution, automatic accounting posting, and accountant invitations
+- Production PDF or XLSX report generation, outbound email delivery, and customer-data exports
+- A durable background worker for queued provider webhook recovery
 - Account-level Cloudflare WAF/backup/alert configuration evidence
 
-The production dependency audit is currently clean. Authentication controls are documented in `docs/AUTH_SECURITY.md`. The application must still not be described as production-ready while the remaining account-level operational High findings in `docs/SECURITY_ACCEPTANCE.md` remain.
+The production dependency audit and release checks must be rerun for each deployment. Authentication controls are documented in `docs/AUTH_SECURITY.md`. Hosted secret configuration, provider review, account-level Cloudflare controls, operational monitoring, legal review, and the acceptance items in `docs/SECURITY_ACCEPTANCE.md` remain deployment responsibilities.
 
 ## Local setup
 

@@ -447,8 +447,8 @@ export function ReportsWorkspace({
                 </article>
               </div>
               <section className="report-comparison-strip" aria-label="Matched period comparison">
-                <div><small>SELECTED PERIOD</small><b>{readableReportDate(source?.periodStart || source?.earliestBusinessDate)} – {readableReportDate(source?.periodEnd || source?.latestBusinessDate)}</b><span>{String(source?.verifiedDays ?? 0)} verified days · {Math.round(Number(source?.completenessRate ?? 0) * 100)}% date coverage</span></div>
-                <div><small>PREVIOUS MATCHED PERIOD</small><b>{comparison ? `${readableReportDate(comparison.periodStart)} – ${readableReportDate(comparison.periodEnd)}` : "Not available"}</b><span>{comparison ? `${comparison.verifiedDays} verified days` : "A complete baseline has not been imported"}</span></div>
+                <div><small>SELECTED PERIOD</small><b>{readableReportDate(source?.periodStart || source?.earliestBusinessDate)} to {readableReportDate(source?.periodEnd || source?.latestBusinessDate)}</b><span>{String(source?.verifiedDays ?? 0)} verified days · {Math.round(Number(source?.completenessRate ?? 0) * 100)}% date coverage</span></div>
+                <div><small>PREVIOUS MATCHED PERIOD</small><b>{comparison ? `${readableReportDate(comparison.periodStart)} to ${readableReportDate(comparison.periodEnd)}` : "Not available"}</b><span>{comparison ? `${comparison.verifiedDays} verified days` : "A complete baseline has not been imported"}</span></div>
               </section>
               <section className="report-period-chart" aria-label="Sales over the selected time frame">
                 <header>
@@ -643,7 +643,7 @@ type ProcurementProduct = {
   recommendedQuantity: number;
   cashConstrainedQuantity: number | null;
   cashAllocatedCents: number | null;
-  cashDecision: "within_capacity" | "cash_constrained" | "needs_verified_cash" | "needs_unit_cost" | "no_order_needed";
+  cashDecision: "within_capacity" | "cash_constrained" | "needs_verified_cash" | "needs_unit_cost" | "no_order_needed" | "restricted";
   daysCover: number | null;
   demandTrendRate: number | null;
   recommendationFactors: string[];
@@ -659,18 +659,18 @@ type ProcurementCatalog = {
   suppliers: ProcurementSupplier[];
   products: ProcurementProduct[];
   cashContext: {
-    status: "available" | "needs_bank_connection" | "stale_bank_data" | "needs_healthy_cash_account";
+    status: "available" | "needs_bank_connection" | "stale_bank_data" | "needs_healthy_cash_account" | "needs_currency_review";
     verifiedPurchasingCapacityCents: number | null;
     verifiedCashCents: number | null;
     cashSafetyReserveCents: number;
     outstandingBillsCents: number;
-    uninvoicedPurchaseCommitmentsCents: number;
+    openPurchaseCommitmentsCents: number;
     accountsUsed: number;
     baseCurrency: string;
     maximumAgeHours: number;
     excludedCurrencyObligations: number;
     explanation: string;
-  };
+  } | null;
   locationScope: { id: string; name: string } | null;
   method: {
     periodStart: string;
@@ -762,7 +762,7 @@ export function PurchaseOrdersWorkspace({
             Order, approve, receive and match without losing the cash picture.
           </h2>
           <span>
-            Amounts use integer minor units. Sending and payment never happen
+            Amounts are stored to the cent. Sending and payment never happen
             automatically; every commitment requires an authorized approval.
           </span>
           <small className="active-purchasing-scope">Recommendation scope: {data.catalog.locationScope?.name ?? "All locations"}</small>
@@ -876,6 +876,7 @@ export function PurchaseOrdersWorkspace({
           currency={currency}
           catalog={data.catalog}
           seed={creating}
+          activeLocationId={activeLocationId}
           close={() => setCreating(null)}
           created={(next) => {
             setData(next);
@@ -1011,23 +1012,35 @@ function CatalogRecommendations({
           </div>
         </dl>
       </header>
-      <aside className={`card purchasing-cash-context ${catalog.cashContext.status}`}>
-        <div>
-          <p>CASH GUARDRAIL</p>
-          <h3>
-            {catalog.cashContext.verifiedPurchasingCapacityCents === null
-              ? "Cash-aware quantities need verified banking data"
-              : `${money(catalog.cashContext.verifiedPurchasingCapacityCents, catalog.cashContext.baseCurrency)} available for reviewed reorders`}
-          </h3>
-          <span>{catalog.cashContext.explanation}</span>
-        </div>
-        <dl>
-          <div><dt>Fresh cash</dt><dd>{money(catalog.cashContext.verifiedCashCents, catalog.cashContext.baseCurrency)}</dd></div>
-          <div><dt>Safety reserve</dt><dd>{money(catalog.cashContext.cashSafetyReserveCents, catalog.cashContext.baseCurrency)}</dd></div>
-          <div><dt>Open bills</dt><dd>{money(catalog.cashContext.outstandingBillsCents, catalog.cashContext.baseCurrency)}</dd></div>
-          <div><dt>Uninvoiced commitments</dt><dd>{money(catalog.cashContext.uninvoicedPurchaseCommitmentsCents, catalog.cashContext.baseCurrency)}</dd></div>
-        </dl>
-      </aside>
+      {catalog.cashContext ? (
+        <aside className={`card purchasing-cash-context ${catalog.cashContext.status}`}>
+          <div>
+            <p>CASH GUARDRAIL</p>
+            <h3>
+              {catalog.cashContext.status === "needs_currency_review"
+                ? "Currency review is required before cash can constrain reorders"
+                : catalog.cashContext.verifiedPurchasingCapacityCents === null
+                ? "Cash-aware quantities need verified banking data"
+                : `${money(catalog.cashContext.verifiedPurchasingCapacityCents, catalog.cashContext.baseCurrency)} available for reviewed reorders`}
+            </h3>
+            <span>{catalog.cashContext.explanation}</span>
+          </div>
+          <dl>
+            <div><dt>Fresh cash</dt><dd>{money(catalog.cashContext.verifiedCashCents, catalog.cashContext.baseCurrency)}</dd></div>
+            <div><dt>Safety reserve</dt><dd>{money(catalog.cashContext.cashSafetyReserveCents, catalog.cashContext.baseCurrency)}</dd></div>
+            <div><dt>Open bills</dt><dd>{money(catalog.cashContext.outstandingBillsCents, catalog.cashContext.baseCurrency)}</dd></div>
+            <div><dt>Open purchase commitments</dt><dd>{money(catalog.cashContext.openPurchaseCommitmentsCents, catalog.cashContext.baseCurrency)}</dd></div>
+          </dl>
+        </aside>
+      ) : (
+        <aside className="card purchasing-cash-context restricted">
+          <div>
+            <p>OWNER REVIEW</p>
+            <h3>Cash capacity is restricted</h3>
+            <span>An owner or finance teammate can review banking, bills, reserves, and the cash-aware order quantity before approval.</span>
+          </div>
+        </aside>
+      )}
       {!products.length ? (
         <div className="card control-empty">
           <b>No imported products are available.</b>
@@ -1050,11 +1063,13 @@ function CatalogRecommendations({
                 <span><small>INCOMING</small><b>{product.incomingUnits}</b></span>
                 <span><small>SOLD 30D</small><b>{product.soldUnits30d.toLocaleString()}</b></span>
                 <span><small>DEMAND NEED</small><b>{product.recommendedQuantity}</b></span>
-                <span><small>CASH-AWARE</small><b>{product.cashConstrainedQuantity ?? "Review"}</b></span>
+                <span><small>{product.cashDecision === "restricted" ? "OWNER REVIEW" : "CASH-AWARE"}</small><b>{product.cashConstrainedQuantity ?? "Review"}</b></span>
               </div>
               <p>{product.health.detail}</p>
               <p className={`cash-decision-copy ${product.cashDecision}`}>
-                {product.cashDecision === "within_capacity"
+                {product.cashDecision === "restricted"
+                  ? "An owner or finance teammate must review cash capacity before this demand quantity is approved."
+                  : product.cashDecision === "within_capacity"
                   ? `${product.cashConstrainedQuantity} units fit within verified purchasing capacity.`
                   : product.cashDecision === "cash_constrained"
                     ? `Verified capacity reduces this reviewed quantity from ${product.recommendedQuantity} to ${product.cashConstrainedQuantity}.`
@@ -1210,12 +1225,14 @@ function PurchaseOrderModal({
   currency,
   catalog,
   seed,
+  activeLocationId,
   close,
   created,
 }: {
   currency: string;
   catalog: ProcurementCatalog;
   seed: { supplierId?: string; productId?: string };
+  activeLocationId: string | null;
   close: () => void;
   created: (data: PurchasingData) => void;
 }) {
@@ -1252,7 +1269,7 @@ function PurchaseOrderModal({
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const response = await apiFetch("/api/v1/purchasing", {
+    const response = await apiFetch(`/api/v1/purchasing${activeLocationId ? `?location=${encodeURIComponent(activeLocationId)}` : ""}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -1260,6 +1277,7 @@ function PurchaseOrderModal({
         orderNumber: form.get("orderNumber"),
         supplierId: form.get("supplierId"),
         supplierName: form.get("supplierName"),
+        deliveryLocationId: activeLocationId,
         orderDate: form.get("orderDate"),
         expectedDeliveryDate: form.get("expectedDeliveryDate"),
         currency,
@@ -1589,11 +1607,13 @@ export function InventoryWorkspace({
   sourceAccountsPayableCents,
   sourceDataAgeHours,
   sourceHistoryDays,
+  activeLocationId,
 }: SharedProps & {
   sourceCashCents: number | null;
   sourceAccountsPayableCents: number | null;
   sourceDataAgeHours: number;
   sourceHistoryDays: number;
+  activeLocationId: string | null;
 }) {
   return (
     <div className="content control-page inventory-brain-page">
@@ -1617,7 +1637,7 @@ export function InventoryWorkspace({
           </span>
         </div>
       </section>
-      <InventoryLifecycleWorkspace currency={currency} showNotice={showNotice} createTask={createTask} />
+      <InventoryLifecycleWorkspace currency={currency} showNotice={showNotice} createTask={createTask} activeLocationId={activeLocationId} />
       <RecommendationLab
         currency={currency}
         createTask={createTask}
@@ -1954,9 +1974,7 @@ export function DocumentsWorkspace({ showNotice }: SharedProps) {
               </em>
             </span>
             <span>
-              <a href={`/api/v1/documents?id=${document.id}`}>
-                Download original
-              </a>
+              <em className="gated">Quarantined, download unavailable</em>
             </span>
           </div>
         ))}
@@ -2002,14 +2020,14 @@ type QualityData = {
     }[];
   };
 };
-export function DataQualityWorkspace({ showNotice, createTask }: SharedProps) {
+export function DataQualityWorkspace({ showNotice, createTask, activeLocationId }: SharedProps & { activeLocationId: string | null }) {
   const [data, setData] = useState<QualityData | null>(null);
   const load = useCallback(async () => {
-    const response = await apiFetch("/api/v1/data-quality");
+    const response = await apiFetch(`/api/v1/data-quality${activeLocationId ? `?location=${encodeURIComponent(activeLocationId)}` : ""}`);
     const body: unknown = await response.json();
     if (response.ok) setData(body as QualityData);
     else showNotice(apiMessage(body, "Unable to load data quality."));
-  }, [showNotice]);
+  }, [activeLocationId, showNotice]);
   useEffect(() => {
     const timer = window.setTimeout(() => void load(), 0);
     return () => window.clearTimeout(timer);

@@ -47,6 +47,7 @@ export async function POST(request: Request) {
       throw new ApiError(400, "LIGHTSPEED_WEBHOOK_PAYLOAD_INVALID", "The Lightspeed webhook payload is invalid.");
     }
     const [connection] = await getDb().select({
+      id: integrationConnections.id,
       organizationId: integrationConnections.organizationId,
     }).from(integrationConnections).where(and(
       eq(integrationConnections.provider, LIGHTSPEED_PROVIDER),
@@ -61,21 +62,24 @@ export async function POST(request: Request) {
         ? payload.event.slice(0, 80)
         : "provider.change";
     const externalObjectRef = typeof payload.id === "string" ? payload.id.slice(0, 160) : null;
+    const receivedAt = new Date();
     await getDb().insert(integrationWebhookEvents).values({
       id: crypto.randomUUID(),
       organizationId: connection.organizationId,
       provider: LIGHTSPEED_PROVIDER,
+      connectionId: connection.id,
       payloadHash,
       signatureHash: signature.signatureHash,
       eventType,
       externalObjectRef,
-      status: "queued",
-      receivedAt: new Date(),
-      processedAt: null,
+      status: "processed",
+      receivedAt,
+      processedAt: receivedAt,
     }).onConflictDoNothing({
       target: [
         integrationWebhookEvents.organizationId,
         integrationWebhookEvents.provider,
+        integrationWebhookEvents.connectionId,
         integrationWebhookEvents.payloadHash,
       ],
     });

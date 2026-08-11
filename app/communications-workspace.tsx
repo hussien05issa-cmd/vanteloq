@@ -30,7 +30,7 @@ type OperationsFeed = { cursor: number; events: OperationalEvent[]; messages: Ou
 
 const EMPTY: OperationsFeed = { cursor: 0, events: [], messages: [], inventory: [] };
 
-export default function CommunicationsWorkspace() {
+export default function CommunicationsWorkspace({ activeLocationId }: { activeLocationId: string | null }) {
   const [feed, setFeed] = useState<OperationsFeed>(EMPTY);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<"all" | OutboundMessage["status"]>("all");
@@ -38,26 +38,29 @@ export default function CommunicationsWorkspace() {
   const [loading, setLoading] = useState(true);
   const cursor = useRef(0);
 
-  const refresh = useCallback(async (signal?: AbortSignal) => {
-    const response = await apiFetch(`/api/v1/operations?after=${cursor.current}`, { headers: { Accept: "application/json" }, signal });
+  const refresh = useCallback(async (signal?: AbortSignal, replace = false) => {
+    const parameters = new URLSearchParams({ after: String(cursor.current) });
+    if (activeLocationId) parameters.set("location", activeLocationId);
+    const response = await apiFetch(`/api/v1/operations?${parameters.toString()}`, { headers: { Accept: "application/json" }, signal });
     const body = await response.json() as OperationsFeed & { error?: { message?: string } };
     if (!response.ok) throw new Error(body.error?.message || "The communications feed is unavailable.");
     cursor.current = body.cursor;
     startTransition(() => {
       setFeed((current) => ({
         cursor: body.cursor,
-        events: [...current.events, ...body.events].slice(-300),
+        events: replace ? body.events.slice(-300) : [...current.events, ...body.events].slice(-300),
         messages: body.messages,
         inventory: body.inventory,
       }));
       setError("");
       setLoading(false);
     });
-  }, []);
+  }, [activeLocationId]);
 
   useEffect(() => {
+    cursor.current = 0;
     const controller = new AbortController();
-    void refresh(controller.signal).catch((caught: unknown) => {
+    void refresh(controller.signal, true).catch((caught: unknown) => {
       if (controller.signal.aborted) return;
       setError(caught instanceof Error ? caught.message : "The communications feed is unavailable.");
       setLoading(false);
@@ -81,7 +84,7 @@ export default function CommunicationsWorkspace() {
     </header>
     <section className="communication-stats">
       <article><small>MESSAGES REQUIRING REVIEW</small><b>{feed.messages.filter((message) => message.status === "held" || message.status === "failed").length}</b><span>Held messages never send without a configured provider.</span></article>
-      <article><small>RECENT SYSTEM EVENTS</small><b>{feed.events.length}</b><span>Idempotent, tenant-scoped operating events.</span></article>
+      <article><small>RECENT SYSTEM EVENTS</small><b>{feed.events.length}</b><span>Repeated updates are handled safely within this organization.</span></article>
       <article><small>STOCK RISKS</small><b>{stockRisks.length}</b><span>Projected at or below reorder point.</span></article>
     </section>
     <section className="communications-grid">

@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { getDb } from "../../../../db";
 import { businessEvents, dailyBusinessMetrics } from "../../../../db/schema";
 import { recordAudit } from "../../../../server/audit";
@@ -6,6 +6,9 @@ import { requireAccess } from "../../../../server/authorization";
 import { enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameOrigin } from "../../../../server/api";
 import { measureEventImpact } from "../../../../server/intelligence";
 import { businessEventCreateInput } from "../../../../server/validation";
+import { requireOrganizationWideLocationAccess } from "../../../../server/location-access";
+import { requirePermission } from "../../../../server/permissions";
+import { approvedFactSource } from "../../../../server/integrations/trusted-data";
 
 const readers = ["owner", "admin", "manager", "read_only"] as const;
 const writers = ["owner", "admin", "manager"] as const;
@@ -13,6 +16,8 @@ const writers = ["owner", "admin", "manager"] as const;
 export async function GET(request: Request) {
   return handleApi(request, async () => {
     const context = await requireAccess(request, readers);
+    await requirePermission(context, "insights.view");
+    await requireOrganizationWideLocationAccess(context);
     await enforceRateLimit("events:read", context.userId, 60, 60);
     const [events, metricRows] = await Promise.all([
       getDb().select().from(businessEvents).where(eq(businessEvents.organizationId, context.organizationId)).orderBy(asc(businessEvents.eventDate)).limit(200),
@@ -29,7 +34,10 @@ export async function GET(request: Request) {
         inventoryValueCents: dailyBusinessMetrics.inventoryValueCents,
         cashBalanceCents: dailyBusinessMetrics.cashBalanceCents,
         accountsPayableCents: dailyBusinessMetrics.accountsPayableCents,
-      }).from(dailyBusinessMetrics).where(eq(dailyBusinessMetrics.organizationId, context.organizationId)).limit(730),
+      }).from(dailyBusinessMetrics).where(and(
+        eq(dailyBusinessMetrics.organizationId, context.organizationId),
+        approvedFactSource(dailyBusinessMetrics.organizationId, dailyBusinessMetrics.sourceProvider, dailyBusinessMetrics.sourceConnectionId),
+      )).limit(730),
     ]);
     return jsonResponse({ events: events.map((event) => ({ ...event, measuredImpact: measureEventImpact(metricRows, event.eventDate) })) });
   });
@@ -39,6 +47,8 @@ export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
     const context = await requireAccess(request, writers);
+    await requirePermission(context, "insights.view");
+    await requireOrganizationWideLocationAccess(context);
     await enforceRateLimit("events:create", context.userId, 30, 3_600);
     const input = businessEventCreateInput(await readJsonObject(request));
     const now = new Date();

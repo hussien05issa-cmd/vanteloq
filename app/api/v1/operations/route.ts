@@ -4,6 +4,7 @@ import { requireAccess } from "../../../../server/authorization";
 import { ApiError, enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameOrigin } from "../../../../server/api";
 import { buildInventoryWrites, confirmationCopy, eventKey, parsePaymentSettlement } from "../../../../server/operations";
 import { requirePermission } from "../../../../server/permissions";
+import { authorizedLocationDataScope } from "../../../../server/location-access";
 
 const readers = ["owner", "admin", "manager", "read_only"] as const;
 const writers = ["owner", "admin", "manager"] as const;
@@ -14,35 +15,88 @@ export async function GET(request: Request) {
     await requirePermission(context, "customers.identity");
     await enforceRateLimit("operations:feed", context.userId, 120, 60);
     const url = new URL(request.url);
+    const scope = await authorizedLocationDataScope(context, url.searchParams.get("location"));
+    const locationRefs = scope.locationRefs;
+    const placeholders = locationRefs?.map(() => "?").join(", ") ?? "";
+    const eventLocationClause = locationRefs === null ? "" : locationRefs.length
+      ? ` AND json_extract(payload_json, '$.locationRef') IN (${placeholders})`
+      : " AND 1 = 0";
+    const messageLocationClause = locationRefs === null ? "" : locationRefs.length
+      ? ` AND json_extract(e.payload_json, '$.locationRef') IN (${placeholders})`
+      : " AND 1 = 0";
+    const inventoryLocationClause = locationRefs === null ? "" : locationRefs.length
+      ? ` AND location_ref IN (${placeholders})`
+      : " AND 1 = 0";
     const after = Math.max(0, Number.parseInt(url.searchParams.get("after") || "0", 10) || 0);
     const database = getD1();
     type RawEvent = { id: string; eventType: string; aggregateType: string; aggregateId: string; sourceSystem: string; payloadJson: string; occurredAt: number; recordedAt: number };
+    type RawMessage = { id: string; channel: string; recipient: string; subject: string; status: string; attemptCount: number; createdAt: number; updatedAt: number; payloadJson: string };
+    type RawInventory = { locationRef: string; sku: string; name: string; projectedQuantity: number; reorderPoint: number; updatedAt: number };
     const [eventResult, messageResult, inventoryResult] = await Promise.all([
       database.prepare(`SELECT id, event_type AS eventType, aggregate_type AS aggregateType, aggregate_id AS aggregateId,
         source_system AS sourceSystem, payload_json AS payloadJson, occurred_at AS occurredAt, recorded_at AS recordedAt
-        FROM operational_events WHERE organization_id = ? AND recorded_at > ? ORDER BY recorded_at ASC, id ASC LIMIT 200`)
-        .bind(context.organizationId, after).all<RawEvent>(),
-      database.prepare(`SELECT id, channel, recipient, subject, status, attempt_count AS attemptCount,
-        created_at AS createdAt, updated_at AS updatedAt FROM outbound_messages
-        WHERE organization_id = ? ORDER BY created_at DESC LIMIT 100`).bind(context.organizationId).all(),
-      database.prepare(`WITH inventory_keys AS (
-          SELECT location_ref, sku, name FROM inventory_balances WHERE organization_id = ?
+        FROM operational_events WHERE organization_id = ? AND recorded_at > ?${eventLocationClause} ORDER BY recorded_at ASC, id ASC LIMIT 200`)
+        .bind(context.organizationId, after, ...(locationRefs ?? [])).all<RawEvent>(),
+      database.prepare(`SELECT m.id, m.channel, m.recipient, m.subject, m.status, m.attempt_count AS attemptCount,
+        m.created_at AS createdAt, m.updated_at AS updatedAt, e.payload_json AS payloadJson
+        FROM outbound_messages m INNER JOIN operational_events e
+          ON e.organization_id = m.organization_id AND e.id = m.operational_event_id
+        WHERE m.organization_id = ?${messageLocationClause} ORDER BY m.created_at DESC LIMIT 100`).bind(context.organizationId, ...(locationRefs ?? [])).all<RawMessage>(),
+      database.prepare(`WITH trusted_balances AS (
+          SELECT b.* FROM inventory_balances b
+          WHERE b.organization_id = ?
+            AND (
+              b.source_connection_id IS NULL
+              OR EXISTS (
+                SELECT 1 FROM integration_connections approved
+                WHERE approved.id = b.source_connection_id
+                  AND approved.organization_id = b.organization_id
+                  AND approved.provider = b.source_provider
+                  AND approved.status = 'connected'
+                  AND approved.data_promotion_status = 'approved'
+                  AND approved.sync_lease_owner IS NULL
+              )
+            )
+        ), inventory_keys AS (
+          SELECT location_ref, sku, name FROM trusted_balances WHERE 1 = 1${inventoryLocationClause}
           UNION
-          SELECT location_ref, sku, MAX(item_name) AS name FROM inventory_movements WHERE organization_id = ? GROUP BY location_ref, sku
+          SELECT location_ref, sku, MAX(item_name) AS name FROM inventory_movements WHERE organization_id = ?${inventoryLocationClause} GROUP BY location_ref, sku
         )
         SELECT k.location_ref AS locationRef, k.sku, k.name,
           COALESCE(b.on_hand_quantity, 0) + COALESCE(SUM(m.quantity_delta), 0) AS projectedQuantity,
           COALESCE(b.reorder_point, 0) AS reorderPoint, COALESCE(b.updated_at, MAX(m.occurred_at)) AS updatedAt
-        FROM inventory_keys k LEFT JOIN inventory_balances b
-          ON b.organization_id = ? AND b.location_ref = k.location_ref AND b.sku = k.sku
+        FROM inventory_keys k LEFT JOIN trusted_balances b
+          ON b.location_ref = k.location_ref AND b.sku = k.sku
         LEFT JOIN inventory_movements m
           ON m.organization_id = ? AND m.location_ref = k.location_ref AND m.sku = k.sku
         GROUP BY k.location_ref, k.sku, k.name, b.id ORDER BY projectedQuantity ASC LIMIT 250`)
-        .bind(context.organizationId, context.organizationId, context.organizationId, context.organizationId).all(),
+        .bind(
+          context.organizationId, ...(locationRefs ?? []),
+          context.organizationId, ...(locationRefs ?? []),
+          context.organizationId,
+        ).all<RawInventory>(),
     ]);
-    const events = (eventResult.results ?? []).map((row) => ({ ...row, payload: JSON.parse(row.payloadJson), payloadJson: undefined }));
-    const cursor = events.reduce((maximum, row) => Math.max(maximum, Number(row.recordedAt)), after);
-    return jsonResponse({ cursor, events, messages: messageResult.results, inventory: inventoryResult.results });
+    const parsePayload = (value: string) => {
+      try { return JSON.parse(value) as { locationRef?: unknown }; } catch { return {}; }
+    };
+    const rawEvents = eventResult.results ?? [];
+    const events = rawEvents.flatMap((row) => {
+      const payload = parsePayload(row.payloadJson);
+      return [{ ...row, payload, payloadJson: undefined }];
+    });
+    const messages = (messageResult.results ?? []).map((row) => ({
+      id: row.id,
+      channel: row.channel,
+      recipient: row.recipient,
+      subject: row.subject,
+      status: row.status,
+      attemptCount: row.attemptCount,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    }));
+    const inventory = inventoryResult.results ?? [];
+    const cursor = rawEvents.reduce((maximum, row) => Math.max(maximum, Number(row.recordedAt)), after);
+    return jsonResponse({ cursor, events, messages, inventory });
   });
 }
 
@@ -53,6 +107,10 @@ export async function POST(request: Request) {
     await requirePermission(context, "inventory.adjust");
     await enforceRateLimit("operations:settle", context.userId, 120, 60);
     const settlement = parsePaymentSettlement(await readJsonObject(request, 131_072));
+    const scope = await authorizedLocationDataScope(context, new URL(request.url).searchParams.get("location"));
+    if (scope.locationRefs !== null && !scope.locationRefs.includes(settlement.locationRef)) {
+      throw new ApiError(403, "LOCATION_ACCESS_DENIED", "This settlement location is not available to your account.");
+    }
     const eventId = eventKey(context.organizationId, settlement);
     const movements = buildInventoryWrites(eventId, settlement);
     const messageId = `${eventId}:confirmation`;

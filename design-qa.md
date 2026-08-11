@@ -29,8 +29,8 @@
 ## Findings
 
 - No actionable P0, P1, or P2 issues remain.
-- Fonts and typography: Geist remains consistent; supporting copy is now 14–15 px with high-contrast slate text, clear weight hierarchy, comfortable line height, and no clipped headings at desktop or mobile widths.
-- Spacing and layout rhythm: the four cards use consistent 22 px interiors, 7–9 px interface radii, aligned preview panels, and balanced whitespace. Product-family cards retain the original two-column rhythm on desktop and become single-column on mobile.
+- Fonts and typography: Geist remains consistent; supporting copy is now 14 to 15 px with high-contrast slate text, clear weight hierarchy, comfortable line height, and no clipped headings at desktop or mobile widths.
+- Spacing and layout rhythm: the four cards use consistent 22 px interiors, 7 to 9 px interface radii, aligned preview panels, and balanced whitespace. Product-family cards retain the original two-column rhythm on desktop and become single-column on mobile.
 - Colors and visual tokens: purple was removed from the operating layer. The interface now uses Vanteloq navy and cobalt, with semantic green and amber only for status meaning.
 - Image quality and asset fidelity: the supplied Vanteloq and BookLoQ raster brand assets remain the only logos. BookLoQ is shown as its intended horizontal lockup, centered and fully visible. No emoji, inline SVG, or replacement CSS illustration is used.
 - Copy and content: card figures are visibly presented as illustrative interface previews. They demonstrate the product model without implying that the visitor's account supplied those values.
@@ -41,7 +41,7 @@
 
 1. Initial screenshot review
    - Earlier P1: the supporting text was nearly white on a white canvas because the readability layer overrode the final design tokens.
-   - Fix: added final public-site typography overrides using `#4b5d75` and `#4e5d73`, with 14–15 px supporting copy.
+   - Fix: added final public-site typography overrides using `#4b5d75` and `#4e5d73`, with 14 to 15 px supporting copy.
    - Post-fix evidence: all desktop and mobile implementation captures listed above.
 
 2. Initial workspace-card review

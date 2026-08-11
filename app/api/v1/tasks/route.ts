@@ -13,6 +13,7 @@ import {
 } from "../../../../server/api";
 import { idempotencyKey, taskCreateInput, taskUpdateInput } from "../../../../server/validation";
 import { requirePermission } from "../../../../server/permissions";
+import { requireOrganizationWideLocationAccess } from "../../../../server/location-access";
 
 const taskReaders = ["owner", "admin", "manager", "employee", "read_only"] as const;
 const taskWriters = ["owner", "admin", "manager", "employee"] as const;
@@ -38,6 +39,7 @@ export async function GET(request: Request) {
   return handleApi(request, async () => {
     const context = await requireAccess(request, taskReaders);
     await requirePermission(context, "operations.tasks");
+    await requireOrganizationWideLocationAccess(context);
     await enforceRateLimit("tasks:read", `${context.userId}:${clientSource(request)}`, 120, 60);
     const rows = await getDb()
       .select()
@@ -57,6 +59,7 @@ export async function POST(request: Request) {
     const key = idempotencyKey(request);
     const input = taskCreateInput(await readJsonObject(request));
     await requirePermission(context, input.sourceType === "manual" ? "operations.manage" : "insights.create_task");
+    await requireOrganizationWideLocationAccess(context);
 
     const [existing] = await getDb()
       .select()
@@ -105,6 +108,7 @@ export async function PATCH(request: Request) {
     requireSameOrigin(request);
     const context = await requireAccess(request, taskWriters);
     await requirePermission(context, "operations.tasks");
+    await requireOrganizationWideLocationAccess(context);
     await enforceRateLimit("tasks:update", context.userId, 120, 60);
     const input = taskUpdateInput(await readJsonObject(request));
 

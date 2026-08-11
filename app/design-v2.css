@@ -903,7 +903,7 @@ button, a, input, select, textarea, summary { -webkit-tap-highlight-color: trans
   .public-actions, .public-trust { justify-content: flex-start; }
   .onboarding { grid-template-columns: 1fr; }
 }
-@media (max-width: 760px) {
+@media (max-width: 900px) {
   .operating-shell .sidebar {
     width: min(300px, 88vw);
     padding-top: 14px;

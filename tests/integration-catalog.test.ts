@@ -7,7 +7,7 @@ test("the shared provider gate matches the implemented provider staging boundary
   const gated = preSyncControls.filter((control) => control.status !== "verified");
   assert.equal(verified.length, 7);
   assert.deepEqual(gated.map((control) => control.id), ["reconciliation"]);
-  assert.match(gated[0].detail, /before live metric promotion/i);
+  assert.match(gated[0].detail, /before dashboard results can use the data/i);
 });
 
 test("the integration directory uses the approved sales-channel taxonomy", () => {

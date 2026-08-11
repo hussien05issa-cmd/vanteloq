@@ -4,6 +4,8 @@ import { requireAccess } from "../../../../../server/authorization";
 import { enforceRateLimit, handleApi, jsonResponse, requireSameOrigin } from "../../../../../server/api";
 import { requireBookLoQPermission } from "../../../../../server/bookloq";
 import { requirePermission } from "../../../../../server/permissions";
+import { requireAddon } from "../../../../../server/entitlements/engine";
+import { requireOrganizationWideLocationAccess } from "../../../../../server/location-access";
 
 const writers = ["owner", "admin", "manager", "employee", "read_only"] as const;
 
@@ -36,6 +38,8 @@ export async function POST(request: Request) {
     requireSameOrigin(request);
     if (getRuntimeEnv().BOOKLOQ_DEMO_ENABLED !== "true") return jsonResponse({ error: { code: "NOT_FOUND", message: "Demonstration data is disabled." } }, { status: 404 });
     const context = await requireAccess(request, writers);
+    await requireAddon(context, "bookloq");
+    await requireOrganizationWideLocationAccess(context);
     await requirePermission(context, "finance.journal_post");
     requireBookLoQPermission(context.role, "post_journals");
     await enforceRateLimit("bookloq:demo", context.userId, 3, 3_600);

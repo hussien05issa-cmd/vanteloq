@@ -29,6 +29,67 @@ export function requireBookLoQPermission(role: Role, permission: BookLoQPermissi
   }
 }
 
+export function bookloqAccessForPermissions(permissions: readonly string[]) {
+  const granted = new Set(permissions);
+  return {
+    statements: granted.has("finance.statements"),
+    bankBalances: granted.has("finance.bank_balances"),
+    bankTransactions: granted.has("finance.bank_transactions"),
+    accountsPayableReceivable: granted.has("finance.ap_ar"),
+    costs: granted.has("finance.costs"),
+    payrollTotals: granted.has("payroll.totals"),
+    payrollIndividuals: granted.has("payroll.individual"),
+    contactIdentity: granted.has("customers.identity"),
+    audit: granted.has("audit.view"),
+    export: granted.has("finance.export"),
+  };
+}
+
+type BookLoQBankBalanceRow = {
+  accountType: string;
+  liveBalanceCents: number | null;
+  currency: string;
+  connectionStatus: string;
+  lastSyncAt: Date | number | null;
+  demoRecord: boolean | number;
+};
+
+export function normalizeBookLoQTimestamp(value: Date | number | null) {
+  if (value === null) return null;
+  if (value instanceof Date) {
+    const timestamp = value.getTime();
+    return Number.isFinite(timestamp) ? timestamp : null;
+  }
+  const timestamp = Number(value);
+  if (!Number.isFinite(timestamp)) return null;
+  return Math.abs(timestamp) < 1_000_000_000_000 ? timestamp * 1_000 : timestamp;
+}
+
+export function verifiedBookLoQBankBalance(
+  banks: readonly BookLoQBankBalanceRow[],
+  baseCurrency: string,
+  nowMs = Date.now(),
+  maximumAgeMs = 48 * 60 * 60 * 1_000,
+) {
+  const cashTypes = new Set(["chequing", "savings", "merchant"]);
+  const relevant = banks.filter((bank) =>
+    !Boolean(bank.demoRecord)
+    && bank.currency.toUpperCase() === baseCurrency.toUpperCase()
+    && cashTypes.has(bank.accountType),
+  );
+  if (!relevant.length) return null;
+  const eligible = relevant.filter((bank) => {
+    if (bank.connectionStatus !== "healthy") return false;
+    if (!Number.isSafeInteger(bank.liveBalanceCents) || bank.lastSyncAt === null) return false;
+    const synchronizedAt = normalizeBookLoQTimestamp(bank.lastSyncAt);
+    if (synchronizedAt === null) return false;
+    const ageMs = nowMs - synchronizedAt;
+    return ageMs >= 0 && ageMs <= maximumAgeMs;
+  });
+  if (eligible.length !== relevant.length) return null;
+  return eligible.reduce((sum, bank) => sum + Number(bank.liveBalanceCents), 0);
+}
+
 export type JournalInputLine = {
   accountId: string;
   description: string;

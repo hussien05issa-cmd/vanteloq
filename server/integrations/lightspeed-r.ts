@@ -172,8 +172,24 @@ export function lightspeedRReadiness() {
     apiVersion: "V3",
     scopes: [...LIGHTSPEED_R_SCOPES],
     mode: "read_only_live_sync" as const,
-    dataPromotionEnabled: true,
+    dataPromotionEnabled: false,
   };
+}
+
+export function lightspeedRCheckpointReadyForApproval(value: string | null) {
+  if (!value) return false;
+  try {
+    const parsed = JSON.parse(value) as Record<string, unknown>;
+    if (parsed.version !== 4 || typeof parsed.watermark !== "string" || Number.isNaN(Date.parse(parsed.watermark))) {
+      return false;
+    }
+    const cursorKeys = ["salesCursor", "saleLinesCursor", "itemsCursor", "customersCursor", "suppliersCursor"];
+    const completionKeys = ["salesComplete", "saleLinesComplete", "itemsComplete", "customersComplete", "suppliersComplete"];
+    return cursorKeys.every((key) => parsed[key] === null)
+      && completionKeys.every((key) => parsed[key] === false);
+  } catch {
+    return false;
+  }
 }
 
 function config(): Config {
@@ -278,15 +294,15 @@ export async function decryptLightspeedRSecret(value: string) {
   }
 }
 
-export async function saveLightspeedRTokens(organizationId: string, token: LightspeedRTokenResponse) {
+export async function saveLightspeedRTokens(organizationId: string, connectionId: string, token: LightspeedRTokenResponse) {
   const now = new Date();
   await getDb().insert(integrationSecrets).values({
-    id: crypto.randomUUID(), organizationId, provider: LIGHTSPEED_R_PROVIDER,
+    id: crypto.randomUUID(), organizationId, provider: LIGHTSPEED_R_PROVIDER, connectionId,
     accessTokenCiphertext: await encryptLightspeedRSecret(token.access_token),
     refreshTokenCiphertext: await encryptLightspeedRSecret(token.refresh_token),
     tokenExpiresAt: tokenExpiry(token), createdAt: now, updatedAt: now,
   }).onConflictDoUpdate({
-    target: [integrationSecrets.organizationId, integrationSecrets.provider],
+    target: integrationSecrets.connectionId,
     set: {
       accessTokenCiphertext: await encryptLightspeedRSecret(token.access_token),
       refreshTokenCiphertext: await encryptLightspeedRSecret(token.refresh_token),
@@ -295,7 +311,7 @@ export async function saveLightspeedRTokens(organizationId: string, token: Light
   });
 }
 
-async function loadAccessToken(organizationId: string, fetcher: typeof fetch) {
+async function loadAccessToken(organizationId: string, connectionId: string, fetcher: typeof fetch) {
   const [row] = await getDb().select({
     access: integrationSecrets.accessTokenCiphertext,
     refresh: integrationSecrets.refreshTokenCiphertext,
@@ -303,6 +319,7 @@ async function loadAccessToken(organizationId: string, fetcher: typeof fetch) {
   }).from(integrationSecrets).where(and(
     eq(integrationSecrets.organizationId, organizationId),
     eq(integrationSecrets.provider, LIGHTSPEED_R_PROVIDER),
+    eq(integrationSecrets.connectionId, connectionId),
   )).limit(1);
   if (!row) throw new ApiError(409, "LIGHTSPEED_R_NOT_CONNECTED", "Authorize an R-Series account before accessing its data.");
   if (row.expires.getTime() > Date.now() + 30_000) return decryptLightspeedRSecret(row.access);
@@ -311,7 +328,7 @@ async function loadAccessToken(organizationId: string, fetcher: typeof fetch) {
     client_id: current.clientId, client_secret: current.clientSecret,
     grant_type: "refresh_token", refresh_token: await decryptLightspeedRSecret(row.refresh),
   }, fetcher);
-  await saveLightspeedRTokens(organizationId, token);
+  await saveLightspeedRTokens(organizationId, connectionId, token);
   return token.access_token;
 }
 
@@ -330,8 +347,8 @@ async function providerGet(url: URL, accessToken: string, fetcher: typeof fetch)
   throw new ApiError(502, "LIGHTSPEED_R_PROVIDER_ERROR", "R-Series could not complete the read-only request.");
 }
 
-export async function fetchLightspeedRAccount(organizationId: string, fetcher: typeof fetch = fetch) {
-  const token = await loadAccessToken(organizationId, fetcher);
+export async function fetchLightspeedRAccount(organizationId: string, connectionId: string, fetcher: typeof fetch = fetch) {
+  const token = await loadAccessToken(organizationId, connectionId, fetcher);
   const response = await providerGet(new URL("/API/V3/Account.json", API_ORIGIN), token, fetcher);
   const body = await response.json() as Record<string, unknown>;
   const account = firstRecord(body.Account);
@@ -342,6 +359,7 @@ export async function fetchLightspeedRAccount(organizationId: string, fetcher: t
 
 export async function fetchLightspeedRCollection(
   organizationId: string,
+  connectionId: string,
   accountId: string,
   resource: "Shop" | "Sale" | "SaleLine" | "SalePayment" | "PaymentType" | "Item" | "Customer" | "Vendor" | "Order" | "OrderLine",
   options: {
@@ -354,7 +372,7 @@ export async function fetchLightspeedRCollection(
 ) {
   if (!/^\d+$/.test(accountId)) throw new ApiError(400, "LIGHTSPEED_R_ACCOUNT_INVALID", "The R-Series account identifier is invalid.");
   const fetcher = options.fetcher ?? fetch;
-  const token = await loadAccessToken(organizationId, fetcher);
+  const token = await loadAccessToken(organizationId, connectionId, fetcher);
   const basePath = `/API/V3/Account/${accountId}/${resource}.json`;
   let url = new URL(basePath, API_ORIGIN);
   if (options.cursor) {

@@ -209,7 +209,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
     if (provider.id === "lightspeed-r") return { ...provider, status: "READ-ONLY", statusClass: "current", detail: "Read-only sales and inventory import" };
     if (provider.id === "lightspeed") return { ...provider, status: "LIMITED PILOT", statusClass: "current", detail: "Read-only pilot and sample review" };
     if (provider.id === "stripe") return { ...provider, status: "STAGING", statusClass: "current", detail: "Read-only payout and balance staging" };
-    if (provider.id === "google" || provider.id === "meta") return { ...provider, status: "COMING SOON!", statusClass: "coming-soon", detail: "Verified connection is in development" };
+    if (provider.id === "plaid") return { ...provider, status: "SETUP REQUIRED", statusClass: "current", detail: "BookLoQ bank feed foundation; hosted credentials, provider approval, and institution testing remain" };
     return { ...provider, status: "PLANNED", statusClass: "planned", detail: provider.category };
   });
 
@@ -270,8 +270,8 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
       <section className="home-connections" id="connections" aria-labelledby="connections-title">
         <div className="home-section-heading compact">
           <p>CONNECTION DIRECTORY</p>
-          <h2 id="connections-title">See every connector and its honest availability.</h2>
-          <span>Only Lightspeed R-Series, the limited X-Series pilot, Stripe staging and structured CSV import have current paths. Google and Meta are coming soon. Every other connector stays planned until its production adapter is built and verified.</span>
+          <h2 id="connections-title">See each connector and its current status.</h2>
+          <span>Lightspeed R-Series, the limited X-Series pilot, Stripe staging, Plaid setup, and structured CSV import have current paths. Plaid still requires hosted credentials, provider approval, and institution testing. Other connectors remain planned until their production adapters are built and verified.</span>
         </div>
         <div className="home-connection-grid">
           {publicIntegrations.map(provider => <article className={provider.statusClass} key={provider.id}><IntegrationBrandLogo name={provider.name} compact/><div><strong>{provider.name}</strong><span>{provider.detail}</span></div><small>{provider.status}</small></article>)}
@@ -406,10 +406,13 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
         <div className="home-resource-grid">
           {RESOURCE_ARTICLES.map((article) => {
             const category = getCategory(article.category);
-            const visualLabel = article.category === "inventory" ? "SKU" : article.category === "finance" ? "%" : "VIEW";
+            const visualLabel = article.category === "inventory" ? "SKU" : article.category === "finance" ? "%" : article.category === "analytics" ? "DATA" : article.category === "marketing" ? "GROWTH" : article.category === "operations" ? "OPS" : article.category === "pos" ? "POS" : "AI";
             return (
               <Link href={`/resources/${article.slug}`} key={article.slug}>
-                <div className={`home-resource-art ${article.category}-art`} aria-hidden="true"><i/><i/><i/><b>{visualLabel}</b></div>
+                {article.hero ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img className="home-resource-thumbnail" src={article.hero.src} alt={article.hero.alt} width={article.hero.width} height={article.hero.height} loading="lazy" />
+                ) : <div className={`home-resource-art ${article.category}-art`} aria-hidden="true"><i/><i/><i/><b>{visualLabel}</b></div>}
                 <small>{category?.shortName.toUpperCase()} · {getReadingTime(article)} MIN</small>
                 <h3>{article.title}</h3>
                 <p>{article.description}</p>
@@ -428,10 +431,10 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
           <span>Authentication, authorization and audit controls are enforced within the current application, with sensitive actions kept behind server-side permission checks.</span>
         </div>
         <div className="home-security-grid">
-          <article><strong>Tenant isolation</strong><p>Organization membership scopes protected records, with cross-tenant boundary tests covering application routes.</p></article>
+          <article><strong>Organization separation</strong><p>Signed-in membership limits protected records to the correct organization, with automated boundary tests across application routes.</p></article>
           <article><strong>Role permissions</strong><p>Server-side permissions control sensitive integration, finance, export and workspace actions.</p></article>
           <article><strong>Protected connections</strong><p>Implemented provider flows use scoped authorization, one-time state and encrypted credentials.</p></article>
-          <article><strong>Audit context</strong><p>Append-only audit events and idempotency controls preserve important operating and integration actions.</p></article>
+          <article><strong>Change history</strong><p>Important operating and connection actions are recorded, and duplicate requests are handled safely.</p></article>
         </div>
       </section>
 
@@ -453,7 +456,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
             <details><summary>What systems can I connect?</summary><p>Implemented connection paths currently cover Lightspeed R-Series, a read-only Lightspeed X-Series pilot and read-only Stripe staging. Structured CSV import is also available. Other providers shown inside the integration directory are disabled until their production adapters are built and verified.</p></details>
             <details><summary>Do I need to replace my POS?</summary><p>No. Vanteloq is designed to use supported source records while the POS remains the transaction system. Availability and depth depend on the connector and successful reconciliation.</p></details>
             <details><summary>Can Vanteloq help with inventory?</summary><p>Yes. Implemented inventory tools cover lots, expiry, shelf-life risk, first-expiring-first-out review and a constrained reorder calculation. Recommendations still require reliable demand, cost, lead-time, supplier and cash inputs.</p></details>
-            <details><summary>How does Vanteloq protect workspace data?</summary><p>The application uses secure authentication, tenant-scoped records, role-based server permissions, protected provider authorization flows and audit events. Vanteloq does not claim SOC 2, ISO or other certifications that have not been obtained.</p></details>
+            <details><summary>How does Vanteloq protect workspace data?</summary><p>The application uses secure authentication, organization-separated records, role-based server permissions, protected provider authorization, and recorded security events. Vanteloq does not claim SOC 2, ISO, or other certifications that have not been obtained.</p></details>
           </div>
         </div>
       </section>

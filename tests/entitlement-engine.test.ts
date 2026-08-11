@@ -82,3 +82,17 @@ test("resolved limits always come from the central plan catalogue", () => {
   }
 });
 
+test("BookLoQ API entitlement fails closed without the independent add-on", async () => {
+  const engine = await import("../server/entitlements/engine.ts") as Record<string, unknown>;
+  assert.equal(typeof engine.requireAddonEntitlement, "function");
+  const requireAddonEntitlement = engine.requireAddonEntitlement as (
+    entitlements: ReturnType<typeof resolveSubscriptionEntitlements>,
+    addon: "bookloq",
+  ) => void;
+
+  const withoutAddon = resolveSubscriptionEntitlements(snapshot({ basePlan: "pro", addons: [] }));
+  assert.throws(() => requireAddonEntitlement(withoutAddon, "bookloq"), /not included/i);
+
+  const withAddon = resolveSubscriptionEntitlements(snapshot({ basePlan: "starter", addons: ["bookloq"] }));
+  assert.doesNotThrow(() => requireAddonEntitlement(withAddon, "bookloq"));
+});

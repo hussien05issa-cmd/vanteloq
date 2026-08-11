@@ -24,7 +24,7 @@ Vanteloq is an operating console for independent retail, not a collection of dec
 | Success | `#087F5B` | Verified, reconciled, healthy, sent |
 | Warning | `#A15C07` | Held, stale, approval pending |
 | Danger | `#B42318` | Failed, overdue, stockout, destructive action |
-| Focus ring | `#60A5FA` | 2–3px keyboard focus indicator |
+| Focus ring | `#60A5FA` | 2 to 3 px keyboard focus indicator |
 
 Colours are semantic, never ornamental. Charts use blue for the selected business series, neutral grey for comparison, green only for favourable verified change, amber for uncertainty, and red only for material risk.
 
@@ -36,18 +36,18 @@ Colours are semantic, never ornamental. Charts use blue for the selected busines
 - Workspace title: 18px / 22px, weight 650.
 - Card title: 13px / 18px, weight 650.
 - Body: 11px / 17px for dense desktop UI; never below 10px for meaningful copy.
-- Table body: 10–11px / 16px. Table labels: 9px uppercase with restrained tracking.
-- Metric value: 20–24px tabular/monospace numerals.
+- Table body: 10 to 11 px / 16 px. Table labels: 9 px uppercase with restrained tracking.
+- Metric value: 20 to 24 px tabular/monospace numerals.
 
 ### Geometry
 
 - Default border: 1px neutral.
-- Radius: 6px controls, 7–8px cards/panels, 9px modal. Pills only for statuses.
+- Radius: 6 px controls, 7 to 8 px cards/panels, 9 px modal. Pills only for statuses.
 - Default shadow: `0 1px 2px rgba(16,24,40,.04)`.
 - Elevated modal shadow only: `0 18px 48px rgba(16,24,40,.18)`.
 - No gradients in application workspaces. No floating decoration. No card inside card unless the inner block represents a distinct record or decision.
 - Desktop spacing unit: 4px. Common gaps: 8, 12, 16, 24px.
-- Pointer targets: at least 24×24px; primary actions target 32–36px high.
+- Pointer targets: at least 24 by 24 px; primary actions target 32 to 36 px high.
 
 ## 2. Main layout
 
@@ -95,7 +95,7 @@ Finance, Inventory and Communications remain separate focused workspaces, but th
 
 ## 4. Dense tables
 
-- Default row height: 42–44px; compact mode may use 36px when all targets retain safe spacing.
+- Default row height: 42 to 44 px; compact mode may use 36 px when all targets retain safe spacing.
 - Sticky column header at the command-bar offset.
 - Primary identifier stays left; money and quantities align right and use tabular numerals.
 - Hover changes the row background only. It does not move content.
@@ -112,7 +112,7 @@ Finance, Inventory and Communications remain separate focused workspaces, but th
 2. **Dashboard card soup:** equal-looking cards erase priority. Fix with one owner priority, one metric strip and a ranked queue.
 3. **False real-time confidence:** live styling on stale or staged data destroys trust. Fix with source, freshness, reconciliation and promotion state.
 4. **Hidden action consequences:** one-click sends, payments or inventory changes create risk. Fix with permission checks, preview, approval, reason and audit record.
-5. **Tiny, low-contrast density:** density is not miniature typography. Fix with compact spacing, clear column alignment, 10–11px table text, 24px targets and visible focus.
+5. **Tiny, low-contrast density:** density is not miniature typography. Fix with compact spacing, clear column alignment, 10 to 11 px table text, 24 px targets and visible focus.
 
 ## Research basis
 

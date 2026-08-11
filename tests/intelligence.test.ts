@@ -75,3 +75,14 @@ test("business memory requires enough verified days on both sides", () => {
   assert.equal(measured.measurable, true);
   if (measured.measurable) assert.ok((measured.changeRate ?? 0) < 0);
 });
+
+test("business memory counts distinct dates rather than location rows", () => {
+  const eventDate = "2026-07-15";
+  const rows: MetricRow[] = [];
+  for (let offset = -4; offset <= 3; offset++) {
+    rows.push({ ...row(dateOffset(eventDate, offset), offset >= 0 ? "current" : "previous"), locationRef: "north" });
+    rows.push({ ...row(dateOffset(eventDate, offset), offset >= 0 ? "current" : "previous"), locationRef: "south" });
+  }
+
+  assert.equal(measureEventImpact(rows, eventDate).measurable, false);
+});

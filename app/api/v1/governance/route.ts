@@ -81,8 +81,11 @@ async function responseBody(context: Awaited<ReturnType<typeof requireAccess>>) 
   const locations = await getDb().select().from(organizationLocations).where(eq(organizationLocations.organizationId, context.organizationId)).orderBy(asc(organizationLocations.name));
   const roles = await getDb().select().from(accessRoles).where(and(eq(accessRoles.organizationId, context.organizationId), eq(accessRoles.archived, false))).orderBy(asc(accessRoles.name));
   const members = await getDb().select().from(teamMembers).where(eq(teamMembers.organizationId, context.organizationId)).orderBy(asc(teamMembers.firstName));
+  const authenticationProvider = context.identity.provider === "supabase"
+    ? "Supabase authentication"
+    : "Sites authentication";
   return {
-    account: { ...account, emailVerified: true, authenticationProvider: "ChatGPT secure sign-in" },
+    account: { ...account, emailVerified: context.identity.emailVerified, authenticationProvider },
     organization: { ...context.organization, displayName: profile?.displayName ?? context.organization.businessName, organizationType: profile?.organizationType ?? "business", businessStructure: profile?.businessStructure ?? "", locale: profile?.locale ?? "en-CA", language: profile?.language ?? "en", brandColor: profile?.brandColor ?? "#2368c4", logoAvailable: Boolean(profile?.logoObjectKey), logoVersion: profile?.logoVersion ?? 0 },
     preferences: preferences ?? { emailNotifications: true, rememberedProfile: true, hiddenNavigationJson: "[]", preferredLocationId: null },
     locations,
@@ -90,7 +93,7 @@ async function responseBody(context: Awaited<ReturnType<typeof requireAccess>>) 
     members: members.map((member) => ({ ...member, permittedLocations: jsonArray(JSON.parse(member.permittedLocationsJson)) })),
     permissionCatalog: permissionCatalogDto(),
     security: {
-      password: "Managed by ChatGPT secure sign-in",
+      password: `Managed by ${authenticationProvider}`,
       mfa: "Managed by the authenticated identity provider",
       passkeys: "Managed by the authenticated identity provider",
       sessions: "Use sign out to end this Vanteloq session; provider-wide session management remains in the identity service.",
@@ -108,7 +111,7 @@ export async function GET(request: Request) {
   return handleApi(request, async () => {
     const context = await requireAccess(request, readers);
     await enforceRateLimit("governance:read", context.userId, 90, 60);
-    return jsonResponse(await responseBody(context));
+    return jsonResponse({ governance: await responseBody(context) });
   });
 }
 
@@ -161,21 +164,23 @@ export async function POST(request: Request) {
       const id = crypto.randomUUID();
       const countryCode = string(input.countryCode, "country", 2).toUpperCase();
       const currency = string(input.currency, "currency", 3).toUpperCase();
-      await database.prepare(`INSERT INTO organization_locations
+      const locationInsert = await database.prepare(`INSERT INTO organization_locations
         (id, organization_id, name, status, country_code, address_line_1, address_line_2, address_line_3, locality, district, administrative_area, postal_code, timezone, currency, locale, tax_jurisdiction, validation_status, created_at, updated_at)
-        VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'entered', ?, ?)`)
-        .bind(id, context.organizationId, string(input.name, "location name", 120), countryCode, string(input.addressLine1, "address", 180), string(input.addressLine2, "address line 2", 180, false), string(input.addressLine3, "address line 3", 180, false), string(input.locality, "locality", 100), string(input.district, "district", 100, false), string(input.administrativeArea, "administrative area", 100), string(input.postalCode, "postal code", 20, false), string(input.timezone, "timezone", 80), currency, string(input.locale, "locale", 20), string(input.taxJurisdiction, "tax jurisdiction", 100, false), now, now).run();
+        SELECT ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'entered', ?, ?
+        WHERE (SELECT COUNT(*) FROM organization_locations WHERE organization_id = ? AND status = 'active') < ?`)
+        .bind(id, context.organizationId, string(input.name, "location name", 120), countryCode, string(input.addressLine1, "address", 180), string(input.addressLine2, "address line 2", 180, false), string(input.addressLine3, "address line 3", 180, false), string(input.locality, "locality", 100), string(input.district, "district", 100, false), string(input.administrativeArea, "administrative area", 100), string(input.postalCode, "postal code", 20, false), string(input.timezone, "timezone", 80), currency, string(input.locale, "locale", 20), string(input.taxJurisdiction, "tax jurisdiction", 100, false), now, now, context.organizationId, capacity.limit).run();
+      if (Number(locationInsert.meta.changes ?? 0) !== 1) {
+        throw new ApiError(409, "LOCATION_LIMIT_REACHED", `The owner plan includes ${capacity.limit} locations. Manage the organization plan before adding another location.`);
+      }
       resourceType = "location"; resourceId = id;
     } else if (action === "create_employee") {
       const id = crypto.randomUUID();
       const remoteLogin = boolean(input.remoteLogin);
-      if (remoteLogin) {
-        const capacity = await canAddUser(context);
-        if (!capacity.allowed) {
-          throw new ApiError(409, "TEAM_SEAT_LIMIT_REACHED", capacity.reason === "subscription_required"
-            ? "An active owner subscription is required before remote employee access can be added."
-            : `The owner plan includes ${capacity.limit} remote seats. Manage the organization plan before adding another remote login.`);
-        }
+      const remoteCapacity = remoteLogin ? await canAddUser(context) : null;
+      if (remoteCapacity && !remoteCapacity.allowed) {
+        throw new ApiError(409, "TEAM_SEAT_LIMIT_REACHED", remoteCapacity.reason === "subscription_required"
+          ? "An active owner subscription is required before remote employee access can be added."
+          : `The owner plan includes ${remoteCapacity.limit} remote seats. Manage the organization plan before adding another remote login.`);
       }
       const email = string(input.email, "employee email", 254).toLowerCase(); if (!EMAIL.test(email)) throw new ApiError(400, "INVALID_FIELD", "Enter a valid employee email.");
       const mobile = string(input.mobile, "mobile number", 30, false); if (!PHONE.test(mobile)) throw new ApiError(400, "INVALID_FIELD", "Enter a valid mobile number.");
@@ -187,10 +192,39 @@ export async function POST(request: Request) {
       const pin = pinValue ? validateTemporaryPin(pinValue) : "";
       const firstName = string(input.firstName, "first name", 80); const lastName = string(input.lastName, "last name", 80);
       const employeeCode = string(input.employeeCode, "employee identifier", 40);
-      await database.prepare(`INSERT INTO team_members
+      const managerMemberId = string(input.managerMemberId, "manager", 200, false) || null;
+      const primaryLocationId = string(input.primaryLocationId, "primary location", 200, false) || null;
+      const permittedLocations = [...new Set(jsonArray(input.permittedLocations))];
+      if (managerMemberId) {
+        const [manager] = await getDb().select({ id: teamMembers.id }).from(teamMembers).where(and(
+          eq(teamMembers.id, managerMemberId),
+          eq(teamMembers.organizationId, context.organizationId),
+          eq(teamMembers.status, "active"),
+        )).limit(1);
+        if (!manager) throw new ApiError(400, "INVALID_FIELD", "Select an active manager from this organization.");
+      }
+      const requestedLocationIds = [...new Set([...(primaryLocationId ? [primaryLocationId] : []), ...permittedLocations])];
+      if (requestedLocationIds.length) {
+        const validLocations = await getDb().select({ id: organizationLocations.id }).from(organizationLocations).where(and(
+          eq(organizationLocations.organizationId, context.organizationId),
+          eq(organizationLocations.status, "active"),
+        ));
+        const validLocationIds = new Set(validLocations.map((location) => location.id));
+        if (requestedLocationIds.some((locationId) => !validLocationIds.has(locationId))) {
+          throw new ApiError(400, "INVALID_FIELD", "Select active locations from this organization.");
+        }
+      }
+      if (primaryLocationId && !permittedLocations.includes(primaryLocationId)) permittedLocations.push(primaryLocationId);
+      const employeeInsert = await database.prepare(`INSERT INTO team_members
         (id, organization_id, role_id, first_name, last_name, preferred_name, email, mobile, employee_code, job_title, department, employment_type, start_date, manager_member_id, primary_location_id, permitted_locations_json, status, remote_login, require_mfa, pin_enabled, notes, created_by_user_id, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?)`)
-        .bind(id, context.organizationId, roleId, firstName, lastName, string(input.preferredName, "preferred name", 80, false), email, mobile, employeeCode, string(input.jobTitle, "job title", 100, false), string(input.department, "department", 100, false), string(input.employmentType, "employment type", 60, false) || "employee", startDate || null, string(input.managerMemberId, "manager", 200, false) || null, string(input.primaryLocationId, "primary location", 200, false) || null, JSON.stringify(jsonArray(input.permittedLocations)), remoteLogin ? 1 : 0, boolean(input.requireMfa) ? 1 : 0, pin ? 1 : 0, string(input.notes, "notes", 1000, false), context.userId, now, now).run();
+        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?
+        WHERE ? = 0 OR (SELECT COUNT(*) FROM team_members
+          WHERE organization_id = ? AND remote_login = 1
+            AND status IN ('draft', 'invited', 'pending_verification', 'active')) < ?`)
+        .bind(id, context.organizationId, roleId, firstName, lastName, string(input.preferredName, "preferred name", 80, false), email, mobile, employeeCode, string(input.jobTitle, "job title", 100, false), string(input.department, "department", 100, false), string(input.employmentType, "employment type", 60, false) || "employee", startDate || null, managerMemberId, primaryLocationId, JSON.stringify(permittedLocations), remoteLogin ? 1 : 0, boolean(input.requireMfa) ? 1 : 0, pin ? 1 : 0, string(input.notes, "notes", 1000, false), context.userId, now, now, remoteLogin ? 1 : 0, context.organizationId, remoteCapacity?.limit ?? 0).run();
+      if (Number(employeeInsert.meta.changes ?? 0) !== 1) {
+        throw new ApiError(409, "TEAM_SEAT_LIMIT_REACHED", `The owner plan includes ${remoteCapacity?.limit ?? 0} remote seats. Manage the organization plan before adding another remote login.`);
+      }
       if (pin) {
         const credential = await hashPin(pin);
         await database.prepare(`INSERT INTO employee_pin_credentials
@@ -207,18 +241,39 @@ export async function POST(request: Request) {
       if (!member) throw new ApiError(404, "NOT_FOUND", "Employee profile not found.");
       if (member.userId === context.userId && status !== "active") throw new ApiError(409, "LAST_OWNER_PROTECTED", "The active account owner cannot suspend or archive their own profile.");
       const roleId = string(input.roleId, "role", 200, false);
+      if (roleId) {
+        const [role] = await getDb().select({ id: accessRoles.id }).from(accessRoles).where(and(
+          eq(accessRoles.id, roleId),
+          eq(accessRoles.organizationId, context.organizationId),
+          eq(accessRoles.archived, false),
+        )).limit(1);
+        if (!role) throw new ApiError(400, "INVALID_FIELD", "Select a valid role.");
+      }
       await database.prepare("UPDATE team_members SET role_id = COALESCE(?, role_id), status = ?, updated_at = ? WHERE id = ? AND organization_id = ?").bind(roleId || null, status, now, memberId, context.organizationId).run();
       resourceType = "team_member"; resourceId = memberId; details = { action, status };
     } else if (action === "save_role") {
-      const roleId = string(input.roleId, "role", 200, false) || crypto.randomUUID();
+      const requestedRoleId = string(input.roleId, "role", 200, false);
+      const roleId = requestedRoleId || crypto.randomUUID();
       const permissions = jsonArray(input.permissions).filter((permission) => allPermissions.includes(permission as never));
       const [existing] = await getDb().select({ systemKey: accessRoles.systemKey }).from(accessRoles).where(and(eq(accessRoles.id, roleId), eq(accessRoles.organizationId, context.organizationId))).limit(1);
+      if (requestedRoleId && !existing) throw new ApiError(404, "ROLE_NOT_FOUND", "Role not found in this organization.");
       if (existing?.systemKey === "account_owner") throw new ApiError(409, "OWNER_ROLE_PROTECTED", "The Account Owner role cannot be changed.");
-      await database.prepare(`INSERT INTO access_roles
-        (id, organization_id, name, description, color, system_key, permissions_json, location_scope_json, archived, created_by_user_id, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, NULL, ?, ?, 0, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET name = excluded.name, description = excluded.description, color = excluded.color, permissions_json = excluded.permissions_json, location_scope_json = excluded.location_scope_json, updated_at = excluded.updated_at`)
-        .bind(roleId, context.organizationId, string(input.name, "role name", 100), string(input.description, "role description", 500, false), string(input.color, "role colour", 7), JSON.stringify(permissions), JSON.stringify(jsonArray(input.locationScope)), context.userId, now, now).run();
+      const roleName = string(input.name, "role name", 100);
+      const description = string(input.description, "role description", 500, false);
+      const color = string(input.color, "role colour", 7);
+      const permissionsJson = JSON.stringify(permissions);
+      const locationScopeJson = JSON.stringify(jsonArray(input.locationScope));
+      if (existing) {
+        await database.prepare(`UPDATE access_roles
+          SET name = ?, description = ?, color = ?, permissions_json = ?, location_scope_json = ?, updated_at = ?
+          WHERE id = ? AND organization_id = ?`)
+          .bind(roleName, description, color, permissionsJson, locationScopeJson, now, roleId, context.organizationId).run();
+      } else {
+        await database.prepare(`INSERT INTO access_roles
+          (id, organization_id, name, description, color, system_key, permissions_json, location_scope_json, archived, created_by_user_id, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, NULL, ?, ?, 0, ?, ?, ?)`)
+          .bind(roleId, context.organizationId, roleName, description, color, permissionsJson, locationScopeJson, context.userId, now, now).run();
+      }
       resourceType = "access_role"; resourceId = roleId; details = { action, permissionCount: permissions.length };
     } else if (action === "reset_pin") {
       const memberId = string(input.memberId, "employee", 200); const pin = validateTemporaryPin(input.temporaryPin);

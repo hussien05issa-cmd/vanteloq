@@ -23,7 +23,7 @@ export default function PrivacyPage() {
         <p>When an authorized workspace user connects a supported provider or imports records, Vanteloq may receive sales, payment, refund, product, inventory, customer, supplier, location, purchasing, finance, and operational records. The exact fields depend on the source, the permissions granted, and the import selected by the user.</p>
         <h3>Connected financial account information</h3>
         <p>When an authorized workspace owner chooses a bank connection, Vanteloq may use Plaid as a service provider to connect selected business accounts. Depending on the connection and consent shown, Vanteloq may receive account and institution names, masked account identifiers, account type, balances, transactions, transaction descriptions, pending or posted status, currency, provider item and account identifiers, and connection or sync status.</p>
-        <p>Bank sign-in information entered in Plaid Link is handled by Plaid and the financial institution. Vanteloq does not receive the online banking credentials entered in that flow. The current Plaid connection uses the read-only data products disclosed in the connection flow and does not allow Vanteloq to move money. We use the connected records for bookkeeping review, reconciliation, supported cash context, connection support, security, and audit evidence.</p>
+        <p>Bank sign-in information entered in Plaid Link is handled by Plaid and the financial institution. Vanteloq does not receive the online banking credentials entered in that flow. When a Plaid connection is configured and an authorized workspace user completes the provider consent flow, the connection uses only the read-only data products disclosed in that flow and does not allow Vanteloq to move money. We use connected records for bookkeeping review, reconciliation, supported cash context, connection support, security, and audit evidence.</p>
         <h3>Uploaded invoices, receipts, and other documents</h3>
         <p>When a user uploads a business document, we may collect the original file, file name, type, size, cryptographic duplicate-check value, uploader, upload time, document category, storage reference, review status, and links to related transactions or records. If document extraction is enabled, we may also process proposed supplier, customer, date, amount, tax, currency, line-item, confidence, and source-page fields. Extracted fields remain subject to human review.</p>
         <h3>Service and security information</h3>
@@ -42,7 +42,7 @@ export default function PrivacyPage() {
           <li>maintain integrations and show their connection or verification status;</li>
           <li>respond to support requests and service communications;</li>
           <li>protect the service, investigate misuse, and meet legal obligations;</li>
-          <li>improve reliability and usability using limited service information; and</li>
+          <li>improve reliability and usability using the service and security information described above; and</li>
           <li>send commercial electronic messages only with express or implied consent, or when an applicable CASL exception permits the message, with the required sender information and unsubscribe method;</li>
         </ul>
         <p>We do not sell personal information. We do not use workspace business data to create advertising profiles.</p>
@@ -69,8 +69,8 @@ export default function PrivacyPage() {
       </PolicySection>
 
       <PolicySection id="transfers" title="6. Processing outside Canada">
-        <p>Some service providers may process or store information outside Alberta or Canada. Information in another jurisdiction may be subject to that jurisdiction’s laws and lawful access rules. We assess providers and use contractual, technical, and organizational safeguards appropriate to the information and service.</p>
-        <p>Connected financial records and uploaded documents may be processed in another jurisdiction when a selected provider or its subprocessor operates there. Contact the Privacy Officer at <a href={`mailto:${LEGAL_EMAIL}`}>{LEGAL_EMAIL}</a> to ask about current service-provider locations or safeguards relevant to a specific connection.</p>
+        <p>Some service providers may process or store personal information outside Canada. Cloudflare may process web traffic through its global network for hosting, delivery, and security. Supabase processes authentication information in the configured project region and may use subprocessors in other countries. Stripe may process billing and supported payment information in the United States and other countries outside Canada when configured. Plaid may process authorized financial-connection information in the United States and other countries identified in its privacy materials when configured. A customer-selected integration may also process authorization and synchronized records in countries disclosed by that provider.</p>
+        <p>Information processed in another country may be subject to that country’s laws and lawful access rules. We assess providers and use contractual, technical, and organizational safeguards appropriate to the information and service. Contact the Privacy Officer at <a href={`mailto:${LEGAL_EMAIL}`}>{LEGAL_EMAIL}</a> to ask about a current service-provider location or safeguards relevant to a specific connection.</p>
       </PolicySection>
 
       <PolicySection id="retention" title="7. Retention and deletion">
@@ -81,7 +81,7 @@ export default function PrivacyPage() {
       </PolicySection>
 
       <PolicySection id="security" title="8. Safeguards">
-        <p>Vanteloq uses safeguards designed for the sensitivity of the information, including authenticated access, tenant-scoped records, role-based server permissions, protected provider authorization flows, encrypted credential storage, request controls, and audit events for important actions.</p>
+        <p>Vanteloq uses safeguards designed for the sensitivity of the information, including authenticated access, records separated by organization, role-based server permissions, protected provider authorization, encrypted credential storage, request controls, and recorded security events for important actions.</p>
         <p>No online service can promise absolute security. Users must protect their credentials, use strong passwords, enable available account protections, and promptly report suspected unauthorized access.</p>
       </PolicySection>
 

@@ -1,10 +1,12 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { getDb } from "../../../../db";
-import { dailyBusinessMetrics, integrationLocationMappings } from "../../../../db/schema";
+import { dailyBusinessMetrics, integrationConnections, integrationLocationMappings } from "../../../../db/schema";
+import { scopeExternalRef } from "../../../../domain/integration-source";
 import { enforceRateLimit, handleApi, jsonResponse } from "../../../../server/api";
 import { requireAccess } from "../../../../server/authorization";
 import { accessibleLocations } from "../../../../server/location-access";
 import { effectivePermissions, requirePermission } from "../../../../server/permissions";
+import { approvedFactSource, noActiveIntegrationLease } from "../../../../server/integrations/trusted-data";
 
 const readers = ["owner", "admin", "manager", "employee", "read_only"] as const;
 
@@ -18,11 +20,18 @@ export async function GET(request: Request) {
       accessibleLocations(context),
       getDb().select({
         provider: integrationLocationMappings.provider,
+        sourceNamespace: integrationConnections.sourceNamespace,
         externalLocationRef: integrationLocationMappings.externalLocationRef,
         externalName: integrationLocationMappings.externalName,
         localLocationId: integrationLocationMappings.localLocationId,
         status: integrationLocationMappings.status,
-      }).from(integrationLocationMappings).where(eq(integrationLocationMappings.organizationId, context.organizationId)),
+      }).from(integrationLocationMappings).innerJoin(integrationConnections, and(
+        eq(integrationConnections.id, integrationLocationMappings.connectionId),
+        eq(integrationConnections.organizationId, integrationLocationMappings.organizationId),
+        eq(integrationConnections.status, "connected"),
+        eq(integrationConnections.dataPromotionStatus, "approved"),
+        noActiveIntegrationLease(integrationConnections.syncLeaseOwner, integrationConnections.syncLeaseExpiresAt),
+      )).where(eq(integrationLocationMappings.organizationId, context.organizationId)),
       getDb().select({
         businessDate: dailyBusinessMetrics.businessDate,
         locationRef: dailyBusinessMetrics.locationRef,
@@ -32,24 +41,43 @@ export async function GET(request: Request) {
         inventoryValueCents: dailyBusinessMetrics.inventoryValueCents,
         updatedAt: dailyBusinessMetrics.updatedAt,
       }).from(dailyBusinessMetrics)
-        .where(eq(dailyBusinessMetrics.organizationId, context.organizationId))
+        .where(and(
+          eq(dailyBusinessMetrics.organizationId, context.organizationId),
+          approvedFactSource(dailyBusinessMetrics.organizationId, dailyBusinessMetrics.sourceProvider, dailyBusinessMetrics.sourceConnectionId),
+        ))
         .orderBy(desc(dailyBusinessMetrics.businessDate))
         .limit(2_500),
     ]);
-    rows.reverse();
+    const accessibleIds = new Set(locations.map((location) => location.id));
+    const visibleMappings = mappings.filter((mapping) =>
+      mapping.localLocationId !== null && accessibleIds.has(mapping.localLocationId),
+    );
+    const accessibleRefs = new Set<string>();
+    for (const location of locations) {
+      accessibleRefs.add(location.id);
+      accessibleRefs.add(location.name);
+    }
+    for (const mapping of visibleMappings) {
+      const externalRef = scopeExternalRef(mapping.sourceNamespace, mapping.externalLocationRef)!;
+      accessibleRefs.add(externalRef);
+      accessibleRefs.add(`${mapping.provider}:${externalRef}`);
+    }
+    const visibleRows = rows.filter((row) => accessibleRefs.has(row.locationRef));
+    visibleRows.reverse();
 
-    const latestDate = rows.at(-1)?.businessDate ?? null;
+    const latestDate = visibleRows.at(-1)?.businessDate ?? null;
     const cutoff = latestDate
       ? new Date(`${latestDate}T00:00:00Z`).getTime() - 29 * 86_400_000
       : null;
     const result = locations.map((location) => {
-      const locationMappings = mappings.filter((mapping) => mapping.localLocationId === location.id && mapping.status === "mapped");
+      const locationMappings = visibleMappings.filter((mapping) => mapping.localLocationId === location.id && mapping.status === "mapped");
       const refs = new Set<string>([location.id, location.name]);
       for (const mapping of locationMappings) {
-        refs.add(mapping.externalLocationRef);
-        refs.add(`${mapping.provider}:${mapping.externalLocationRef}`);
+        const externalRef = scopeExternalRef(mapping.sourceNamespace, mapping.externalLocationRef)!;
+        refs.add(externalRef);
+        refs.add(`${mapping.provider}:${externalRef}`);
       }
-      const scopedRows = rows.filter((row) => {
+      const scopedRows = visibleRows.filter((row) => {
         if (!refs.has(row.locationRef)) return false;
         if (cutoff === null) return true;
         return new Date(`${row.businessDate}T00:00:00Z`).getTime() >= cutoff;
@@ -76,6 +104,14 @@ export async function GET(request: Request) {
       };
     });
 
-    return jsonResponse({ latestBusinessDate: latestDate, locations: result, unmappedSourceLocations: mappings.filter((mapping) => mapping.status === "unmapped").length });
+    const canManageMappings = context.role === "owner" || context.role === "admin";
+    return jsonResponse({
+      scopeLabel: canManageMappings ? "All locations" : "All accessible locations",
+      latestBusinessDate: latestDate,
+      locations: result,
+      unmappedSourceLocations: canManageMappings
+        ? mappings.filter((mapping) => mapping.status === "unmapped").length
+        : 0,
+    });
   });
 }

@@ -55,9 +55,24 @@ test("X-Series and R-Series are distinct, actionable connection choices", async 
   assert.match(catalog, /id: "lightspeed-r"[\s\S]*name: "Lightspeed R-Series"/);
   assert.match(app, /integrations\/\$\{provider\}\/authorize/);
   assert.match(app, /provider === "lightspeed-r" \? "shops" : "outlets"/);
-  assert.match(app, /providerActions\[provider\.id\]/);
-  assert.match(app, /delete next\[provider\]/);
+  assert.match(app, /providerActions\[integrationActionKey\(provider\.id, connection\.id\)\]/);
+  assert.match(app, /integrationActionKey\(provider, connectionId\)/);
+  assert.match(app, /delete next\[actionKey\]/);
   assert.doesNotMatch(app, /disabled=\{[^}]*Boolean\(providerActions\)[^}]*\}/);
+});
+
+test("provider location discovery uses a same-origin write request", async () => {
+  const app = await readFile(new URL("../app/vanteloq-app.tsx", import.meta.url), "utf8");
+  for (const routePath of [
+    "../app/api/v1/integrations/lightspeed/outlets/route.ts",
+    "../app/api/v1/integrations/lightspeed-r/shops/route.ts",
+  ]) {
+    const route = await readFile(new URL(routePath, import.meta.url), "utf8");
+    const getHandler = route.split("export async function GET")[1].split("export async function POST")[0];
+    assert.doesNotMatch(getHandler, /fetchLightspeed|\.insert\(|\.update\(/, routePath);
+    assert.match(route, /input\.action === "discover"/);
+  }
+  assert.match(app, /method: "POST"[\s\S]{0,180}action: "discover"/);
 });
 
 test("live sales and report time frames stay connected to real API filters", async () => {
@@ -134,8 +149,12 @@ test("the authenticated homepage mirrors the integration directory with truthful
   const app = await readFile(new URL("../app/vanteloq-app.tsx", import.meta.url), "utf8");
   assert.match(app, /function ConnectorHomeDirectory/);
   assert.match(app, /integrationCatalog\.map/);
-  assert.match(app, /provider\.id === "google" \|\| provider\.id === "meta"/);
-  assert.match(app, /Coming soon!/);
+  assert.match(app, /data\.liveSource\.providers/);
+  assert.match(app, /provider\.availability === "credentials_required"/);
+  assert.match(app, /label: "Configure"/);
+  assert.match(app, /label: "Planned"/);
+  assert.match(app, /provider\.dataPromotionStatus === "approved"/);
+  assert.match(app, /Reviewed bank data is available/);
   assert.match(app, /Manage connections/);
 });
 
@@ -186,7 +205,8 @@ test("industry models use the generated operating-model visual without inventing
   const workspace = await readFile(new URL("../app/vanteloq-app.tsx", import.meta.url), "utf8");
   assert.match(workspace, /industry-models-v2\.png/);
   assert.match(workspace, /Requires source adapter/);
-  assert.match(workspace, /0<\/b><small>invented metrics/);
+  assert.match(workspace, /\{industries\.length\}<\/b><small>industry models/);
+  assert.match(workspace, /Reviewed<\/b><small>source required/);
 });
 
 test("the banking catalogue uses Plaid's standalone mark and omits removed aggregators", async () => {
@@ -299,6 +319,17 @@ test("critical product surfaces preserve the readability and focus floor", async
   assert.match(stylesheet, /prefers-reduced-motion: reduce/);
   assert.match(stylesheet, /\.auth-panel input \{ min-height: 46px; font-size: 16px/);
   assert.match(stylesheet, /\.founder-mfa-copy p,[\s\S]*font-size: 16px/);
+});
+
+test("the authenticated shell switches to tablet navigation without a sidebar overlap", async () => {
+  const [globals, design] = await Promise.all([
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+    readFile(new URL("../app/design-v2.css", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(globals, /@media\(max-width:900px\)\{\.app-shell\{display:block\}/);
+  assert.match(globals, /@media\(max-width:900px\)\{\.sidebar\{position:fixed;left:-100%/);
+  assert.match(design, /@media \(max-width: 900px\) \{[\s\S]*?\.operating-shell \.sidebar/);
 });
 
 test("the worker enforces the complete content security policy", async () => {

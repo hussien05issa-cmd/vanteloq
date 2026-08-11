@@ -344,7 +344,7 @@ export default function GrowthWorkspace({ currency, navigate, activeLocationId }
 
     {tab === "data" && <section className="growth-data-layout">
       <article className="card growth-csv-import">
-        <div className="card-head"><div><p className="card-kicker">OWNER DATA IMPORT</p><h3>Import marketing evidence</h3></div><span>Validated · tenant-scoped · audited</span></div>
+        <div className="card-head"><div><p className="card-kicker">OWNER DATA IMPORT</p><h3>Import marketing evidence</h3></div><span>Checked · organization-only · recorded</span></div>
         <p>Upload a CSV exported by the owner. Vanteloq checks each record through the same protected API used by manual entry. Existing source event IDs are ignored safely on re-import.</p>
         <label>Record type<select value={csvKind} onChange={(event) => { setCsvKind(event.target.value as CsvKind); setCsvRows([]); setCsvFileName(""); }}><option value="search_visibility">Search visibility</option><option value="touchpoint">Marketing touchpoints</option><option value="transaction">Attributed transactions</option></select></label>
         <div className="growth-csv-columns"><small>Required columns</small><code>{csvRequirements[csvKind].sample}</code></div>

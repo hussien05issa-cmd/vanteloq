@@ -37,6 +37,7 @@ export type PurchasingCapacityAccount = {
   availableBalanceCents: number | null;
   liveBalanceCents: number | null;
   lastSyncAtMs: number | null;
+  demoRecord?: boolean | number;
 };
 
 export type PurchasingCapacityInput = {
@@ -46,7 +47,7 @@ export type PurchasingCapacityInput = {
   baseCurrency: string;
   cashSafetyReserveCents: number;
   outstandingBillsCents: number;
-  uninvoicedPurchaseCommitmentsCents: number;
+  openPurchaseCommitmentsCents: number;
   accounts: readonly PurchasingCapacityAccount[];
 };
 
@@ -56,11 +57,89 @@ export type PurchasingCapacityResult = {
   verifiedCashCents: number | null;
   cashSafetyReserveCents: number;
   outstandingBillsCents: number;
-  uninvoicedPurchaseCommitmentsCents: number;
+  openPurchaseCommitmentsCents: number;
   accountsUsed: number;
   baseCurrency: string;
   maximumAgeHours: number;
 };
+
+type PurchasingObligationOrder = {
+  id: string;
+  orderNumber: string;
+  status: string;
+  currency: string;
+  totalCents: number;
+};
+
+type PurchasingObligationBill = {
+  status: string;
+  totalCents: number;
+  paidCents: number;
+  currency: string;
+  purchaseOrderRef: string | null;
+  demoRecord: boolean | number;
+};
+
+export function calculateOpenPurchasingObligations(input: {
+  baseCurrency: string;
+  orders: readonly PurchasingObligationOrder[];
+  bills: readonly PurchasingObligationBill[];
+}) {
+  const baseCurrency = input.baseCurrency.toUpperCase();
+  const openBillStatuses = new Set([
+    "draft", "received", "extracted", "under_review", "matched", "awaiting_approval",
+    "approved", "scheduled", "partially_paid", "disputed",
+  ]);
+  const committedOrderStatuses = new Set([
+    "approved", "sent", "acknowledged", "partially_received", "received",
+    "partially_invoiced", "invoiced", "disputed",
+  ]);
+  const liveBills = input.bills.filter((bill) => !Boolean(bill.demoRecord) && bill.status !== "void");
+  const committedOrders = input.orders.filter((order) => committedOrderStatuses.has(order.status));
+  const linkedBillIndexes = new Set<number>();
+  let openPurchaseCommitmentsCents = 0;
+
+  for (const order of committedOrders.filter((item) => item.currency.toUpperCase() === baseCurrency)) {
+    const linked = liveBills
+      .map((bill, index) => ({ bill, index }))
+      .filter(({ bill }) => bill.purchaseOrderRef === order.id || bill.purchaseOrderRef === order.orderNumber);
+    linked.forEach(({ index }) => linkedBillIndexes.add(index));
+    const paidCents = linked.reduce((sum, { bill }) => sum + Math.max(0, bill.paidCents), 0);
+    const outstandingCents = linked
+      .filter(({ bill }) => openBillStatuses.has(bill.status))
+      .reduce((sum, { bill }) => sum + Math.max(0, bill.totalCents - bill.paidCents), 0);
+    openPurchaseCommitmentsCents += Math.max(0, order.totalCents - paidCents, outstandingCents);
+  }
+
+  const outstandingBillsCents = liveBills.reduce((sum, bill, index) => {
+    if (linkedBillIndexes.has(index) || !openBillStatuses.has(bill.status)) return sum;
+    if (bill.currency.toUpperCase() !== baseCurrency) return sum;
+    return sum + Math.max(0, bill.totalCents - bill.paidCents);
+  }, 0);
+  const excludedCurrencyObligations = liveBills.filter(
+    (bill) => openBillStatuses.has(bill.status) && bill.currency.toUpperCase() !== baseCurrency,
+  ).length + committedOrders.filter((order) => order.currency.toUpperCase() !== baseCurrency).length;
+
+  return { outstandingBillsCents, openPurchaseCommitmentsCents, excludedCurrencyObligations };
+}
+
+export function verifiedCashSourceEligible(input: {
+  connectionStatus: string;
+  promotionStatus: string;
+  liveDataEligible: boolean;
+  bookloqAddonActive: boolean;
+  bookloqStatus: string | null;
+  bookloqDataMode: string | null;
+  hasDemoAccounts: boolean;
+}): boolean {
+  return input.connectionStatus === "connected"
+    && input.promotionStatus === "approved"
+    && input.liveDataEligible
+    && input.bookloqAddonActive
+    && input.bookloqStatus === "active"
+    && input.bookloqDataMode === "live"
+    && !input.hasDemoAccounts;
+}
 
 function nonNegative(value: number) {
   return Number.isFinite(value) ? Math.max(0, value) : 0;
@@ -72,13 +151,13 @@ export function calculateVerifiedPurchasingCapacity(
   const baseCurrency = input.baseCurrency.trim().toUpperCase();
   const cashSafetyReserveCents = Math.floor(nonNegative(input.cashSafetyReserveCents));
   const outstandingBillsCents = Math.floor(nonNegative(input.outstandingBillsCents));
-  const uninvoicedPurchaseCommitmentsCents = Math.floor(
-    nonNegative(input.uninvoicedPurchaseCommitmentsCents),
+  const openPurchaseCommitmentsCents = Math.floor(
+    nonNegative(input.openPurchaseCommitmentsCents),
   );
   const base = {
     cashSafetyReserveCents,
     outstandingBillsCents,
-    uninvoicedPurchaseCommitmentsCents,
+    openPurchaseCommitmentsCents,
     baseCurrency,
     maximumAgeHours: Math.round(input.maximumAgeMs / (60 * 60 * 1000)),
   };
@@ -96,13 +175,14 @@ export function calculateVerifiedPurchasingCapacity(
   const relevantAccounts = input.accounts.filter(
     (account) => cashTypes.has(account.accountType) && account.currency.toUpperCase() === baseCurrency,
   );
-  const freshAccounts = relevantAccounts.filter((account) => {
-    if (account.connectionStatus !== "healthy" || account.lastSyncAtMs === null) return false;
-    if (input.nowMs - account.lastSyncAtMs > input.maximumAgeMs) return false;
+  const usableAccount = (account: PurchasingCapacityAccount) => {
+    if (Boolean(account.demoRecord) || account.connectionStatus !== "healthy" || account.lastSyncAtMs === null) return false;
+    const ageMs = input.nowMs - account.lastSyncAtMs;
+    if (ageMs < 0 || ageMs > input.maximumAgeMs) return false;
     const balance = account.availableBalanceCents ?? account.liveBalanceCents;
     return balance !== null && Number.isFinite(balance);
-  });
-  if (!freshAccounts.length) {
+  };
+  if (!relevantAccounts.length || relevantAccounts.some((account) => !usableAccount(account))) {
     const hasStaleBalance = relevantAccounts.some(
       (account) => account.lastSyncAtMs !== null && input.nowMs - account.lastSyncAtMs > input.maximumAgeMs,
     );
@@ -115,8 +195,8 @@ export function calculateVerifiedPurchasingCapacity(
     };
   }
 
-  const verifiedCashCents = freshAccounts.reduce(
-    (sum, account) => sum + Math.max(0, Math.floor(account.availableBalanceCents ?? account.liveBalanceCents ?? 0)),
+  const verifiedCashCents = relevantAccounts.reduce(
+    (sum, account) => sum + Math.floor(account.availableBalanceCents ?? account.liveBalanceCents ?? 0),
     0,
   );
   return {
@@ -125,9 +205,9 @@ export function calculateVerifiedPurchasingCapacity(
     verifiedCashCents,
     verifiedPurchasingCapacityCents: Math.max(
       0,
-      verifiedCashCents - cashSafetyReserveCents - outstandingBillsCents - uninvoicedPurchaseCommitmentsCents,
+      verifiedCashCents - cashSafetyReserveCents - outstandingBillsCents - openPurchaseCommitmentsCents,
     ),
-    accountsUsed: freshAccounts.length,
+    accountsUsed: relevantAccounts.length,
   };
 }
 

@@ -181,6 +181,7 @@ export async function verifyStripeAccount(
 
 export async function fetchStripeFinancialCollection(
   organizationId: string,
+  connectionId: string,
   resource: "balance_transactions" | "payouts",
   options: { after?: string | null; maxPages?: number; fetcher?: typeof fetch } = {},
 ): Promise<{ data: Record<string, unknown>[]; cursor: string | null; pages: number }> {
@@ -189,6 +190,7 @@ export async function fetchStripeFinancialCollection(
   }).from(integrationConnections).where(and(
     eq(integrationConnections.organizationId, organizationId),
     eq(integrationConnections.provider, STRIPE_PROVIDER),
+    eq(integrationConnections.id, connectionId),
     eq(integrationConnections.status, "connected"),
   )).limit(1);
   if (!connection?.accountId || !ACCOUNT_ID.test(connection.accountId)) {

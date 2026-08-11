@@ -237,7 +237,10 @@ export async function effectivePermissions(
   const [profile] = await getDb()
     .select({ permissionsJson: accessRoles.permissionsJson })
     .from(teamMembers)
-    .leftJoin(accessRoles, eq(teamMembers.roleId, accessRoles.id))
+    .leftJoin(accessRoles, and(
+      eq(teamMembers.roleId, accessRoles.id),
+      eq(teamMembers.organizationId, accessRoles.organizationId),
+    ))
     .where(
       and(
         eq(teamMembers.organizationId, context.organizationId),

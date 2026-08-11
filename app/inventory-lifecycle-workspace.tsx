@@ -59,6 +59,7 @@ type Payload = {
     lowStockSkus: number;
   };
   source: { calculation: string; generatedAt: string };
+  locationScope: { id: string; name: string } | null;
 };
 type TaskSeed = {
   title: string;
@@ -72,6 +73,7 @@ type Props = {
   currency: string;
   showNotice: (message: string) => void;
   createTask: (seed: TaskSeed) => void;
+  activeLocationId: string | null;
 };
 type LotForm = {
   productName: string;
@@ -116,7 +118,7 @@ function message(body: unknown, fallback: string) {
   return fallback;
 }
 
-export function InventoryLifecycleWorkspace({ currency, showNotice, createTask }: Props) {
+export function InventoryLifecycleWorkspace({ currency, showNotice, createTask, activeLocationId }: Props) {
   const [data, setData] = useState<Payload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -129,7 +131,9 @@ export function InventoryLifecycleWorkspace({ currency, showNotice, createTask }
     setLoading(true);
     setError("");
     try {
-      const response = await apiFetch("/api/v1/inventory-lifecycle", { cache: "no-store" });
+      const parameters = new URLSearchParams();
+      if (activeLocationId) parameters.set("location", activeLocationId);
+      const response = await apiFetch(`/api/v1/inventory-lifecycle${parameters.size ? `?${parameters.toString()}` : ""}`, { cache: "no-store" });
       const body = await response.json() as Payload | unknown;
       if (!response.ok) throw new Error(message(body, "Inventory lifecycle data could not be loaded."));
       setData(body as Payload);
@@ -138,7 +142,7 @@ export function InventoryLifecycleWorkspace({ currency, showNotice, createTask }
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [activeLocationId]);
   useEffect(() => {
     const timer = window.setTimeout(() => void load(), 0);
     return () => window.clearTimeout(timer);
@@ -170,7 +174,9 @@ export function InventoryLifecycleWorkspace({ currency, showNotice, createTask }
     setSaving(true);
     setError("");
     try {
-      const response = await apiFetch("/api/v1/inventory-lifecycle", {
+      const parameters = new URLSearchParams();
+      if (activeLocationId) parameters.set("location", activeLocationId);
+      const response = await apiFetch(`/api/v1/inventory-lifecycle${parameters.size ? `?${parameters.toString()}` : ""}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -201,6 +207,7 @@ export function InventoryLifecycleWorkspace({ currency, showNotice, createTask }
       <button onClick={() => open()}>Add inventory lot</button>
     </header>
     {loading ? <div className="card lifecycle-state">Loading recorded inventory lots…</div> : error && !data ? <div className="card lifecycle-state"><b>Inventory lifecycle unavailable</b><span>{error}</span><button onClick={() => void load()}>Retry</button></div> : data ? <>
+      {data.locationScope ? <div className="workspace-scope-banner"><b>{data.locationScope.name}</b><span>Inventory lots, POS balances, shelf-life risk and sale velocity are limited to this mapped location.</span></div> : null}
       <div className="lifecycle-summary">
         <article><small>POS SKUS</small><b>{data.summary.posSkus}</b></article>
         <article><small>POS UNITS ON HAND</small><b>{data.summary.posUnits}</b></article>

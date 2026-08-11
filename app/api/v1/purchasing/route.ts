@@ -1,4 +1,4 @@
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, exists, inArray, isNull } from "drizzle-orm";
 import { getD1, getDb } from "../../../../db";
 import {
   bankAccounts,
@@ -7,7 +7,6 @@ import {
   customerInvoices,
   goodsReceipts,
   integrationConnections,
-  integrationLocationMappings,
   invoiceMatches,
   purchaseOrderLines,
   purchaseOrders,
@@ -17,7 +16,9 @@ import {
 import {
   allocatePurchasingCapacity,
   assessPurchasingProduct,
+  calculateOpenPurchasingObligations,
   calculateVerifiedPurchasingCapacity,
+  verifiedCashSourceEligible,
 } from "../../../../domain/purchasing-intelligence";
 import { recordAudit } from "../../../../server/audit";
 import { requireAccess, type AccessContext } from "../../../../server/authorization";
@@ -29,8 +30,11 @@ import {
   readJsonObject,
   requireSameOrigin,
 } from "../../../../server/api";
-import { requirePermission } from "../../../../server/permissions";
-import { requireAccessibleLocation } from "../../../../server/location-access";
+import { effectivePermissions, requirePermission } from "../../../../server/permissions";
+import { hasAddon } from "../../../../server/entitlements/engine";
+import { authorizedLocationDataScope, requireAccessibleLocation } from "../../../../server/location-access";
+import { plaidReadiness } from "../../../../server/integrations/plaid";
+import { noActiveIntegrationLease } from "../../../../server/integrations/trusted-data";
 
 const users = ["owner", "admin", "manager", "employee", "read_only"] as const;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -69,6 +73,7 @@ function integer(
 type ProcurementProductRow = {
   id: string;
   provider: string;
+  connectionId: string;
   externalProductId: string;
   sku: string;
   name: string;
@@ -93,38 +98,43 @@ function businessDateOffset(date: string, days: number) {
 }
 
 type ProcurementLocationScope = {
-  id: string;
+  ids: string[];
+  selectedId: string | null;
   name: string;
   refs: string[];
+  providerLocations: Array<{ provider: string; connectionId: string; externalLocationRef: string }>;
   providerByRef: Map<string, string>;
+  connectionByRef: Map<string, string>;
+};
+
+type PurchasingVisibility = {
+  cashDetails: boolean;
+  financeCalendar: boolean;
 };
 
 async function requestLocationScope(request: Request, context: AccessContext): Promise<ProcurementLocationScope | null> {
   const requested = new URL(request.url).searchParams.get("location");
-  if (!requested) return null;
-  const location = await requireAccessibleLocation(context, requested);
-  const mappings = await getDb().select({
-    provider: integrationLocationMappings.provider,
-    externalLocationRef: integrationLocationMappings.externalLocationRef,
-  }).from(integrationLocationMappings).where(and(
-    eq(integrationLocationMappings.organizationId, context.organizationId),
-    eq(integrationLocationMappings.localLocationId, location.id),
-    eq(integrationLocationMappings.status, "mapped"),
-  ));
-  const providerByRef = new Map<string, string>();
-  const refs = new Set<string>([location.id, location.name]);
-  for (const mapping of mappings) {
-    refs.add(mapping.externalLocationRef);
-    refs.add(`${mapping.provider}:${mapping.externalLocationRef}`);
-    providerByRef.set(mapping.externalLocationRef, mapping.provider);
-    providerByRef.set(`${mapping.provider}:${mapping.externalLocationRef}`, mapping.provider);
+  const access = await authorizedLocationDataScope(context, requested);
+  if (access.locationIds === null) return null;
+  const refs = new Set<string>(access.locationRefs ?? []);
+  const connectionByRef = new Map<string, string>();
+  for (const mapping of access.providerLocations ?? []) {
+    connectionByRef.set(`${mapping.provider}:${mapping.externalLocationRef}`, mapping.connectionId);
   }
-  return { id: location.id, name: location.name, refs: [...refs], providerByRef };
+  return {
+    ids: access.locationIds,
+    selectedId: access.selectedLocationId,
+    name: access.selectedLocation?.name ?? "Accessible locations",
+    refs: [...refs],
+    providerLocations: access.providerLocations ?? [],
+    providerByRef: access.providerByRef,
+    connectionByRef,
+  };
 }
 
 async function verifiedCashContext(organizationId: string) {
   const database = getDb();
-  const [connections, settings, accounts, bills, committedLines] = await Promise.all([
+  const [connections, settings, accounts, bills, orders] = await Promise.all([
     database.select({
       status: integrationConnections.status,
       promotion: integrationConnections.dataPromotionStatus,
@@ -135,6 +145,8 @@ async function verifiedCashContext(organizationId: string) {
     database.select({
       baseCurrency: bookloqSettings.baseCurrency,
       cashSafetyThresholdCents: bookloqSettings.cashSafetyThresholdCents,
+      status: bookloqSettings.status,
+      dataMode: bookloqSettings.dataMode,
     }).from(bookloqSettings).where(eq(bookloqSettings.organizationId, organizationId)).limit(1),
     database.select({
       accountType: bankAccounts.accountType,
@@ -143,83 +155,83 @@ async function verifiedCashContext(organizationId: string) {
       availableBalanceCents: bankAccounts.availableBalanceCents,
       liveBalanceCents: bankAccounts.liveBalanceCents,
       lastSyncAt: bankAccounts.lastSyncAt,
+      demoRecord: bankAccounts.demoRecord,
     }).from(bankAccounts).where(and(
       eq(bankAccounts.organizationId, organizationId),
       eq(bankAccounts.provider, "plaid"),
+      exists(database.select({ id: integrationConnections.id }).from(integrationConnections).where(and(
+        eq(integrationConnections.organizationId, organizationId),
+        eq(integrationConnections.provider, "plaid"),
+        eq(integrationConnections.status, "connected"),
+        eq(integrationConnections.dataPromotionStatus, "approved"),
+        noActiveIntegrationLease(integrationConnections.syncLeaseOwner, integrationConnections.syncLeaseExpiresAt),
+      ))),
     )),
     database.select({
       status: supplierBills.status,
       totalCents: supplierBills.totalCents,
       paidCents: supplierBills.paidCents,
       currency: supplierBills.currency,
+      purchaseOrderRef: supplierBills.purchaseOrderRef,
+      demoRecord: supplierBills.demoRecord,
     }).from(supplierBills).where(eq(supplierBills.organizationId, organizationId)),
     database.select({
+      id: purchaseOrders.id,
+      orderNumber: purchaseOrders.orderNumber,
       status: purchaseOrders.status,
       currency: purchaseOrders.currency,
-      quantity: purchaseOrderLines.quantity,
-      invoicedQuantity: purchaseOrderLines.invoicedQuantity,
-      unitCostCents: purchaseOrderLines.unitCostCents,
-    }).from(purchaseOrderLines).innerJoin(
-      purchaseOrders,
-      and(
-        eq(purchaseOrders.organizationId, purchaseOrderLines.organizationId),
-        eq(purchaseOrders.id, purchaseOrderLines.purchaseOrderId),
-      ),
-    ).where(eq(purchaseOrderLines.organizationId, organizationId)),
+      totalCents: purchaseOrders.totalCents,
+    }).from(purchaseOrders).where(eq(purchaseOrders.organizationId, organizationId)),
   ]);
   const baseCurrency = (settings[0]?.baseCurrency || "CAD").toUpperCase();
-  const openBillStatuses = new Set([
-    "draft", "received", "extracted", "under_review", "matched", "awaiting_approval",
-    "approved", "scheduled", "partially_paid", "disputed",
-  ]);
-  const committedOrderStatuses = new Set([
-    "approved", "sent", "acknowledged", "partially_received", "received",
-    "partially_invoiced", "disputed",
-  ]);
-  const matchingBills = bills.filter(
-    (bill) => openBillStatuses.has(bill.status) && bill.currency.toUpperCase() === baseCurrency,
-  );
-  const matchingCommitments = committedLines.filter(
-    (line) => committedOrderStatuses.has(line.status) && line.currency.toUpperCase() === baseCurrency,
-  );
-  const outstandingBillsCents = matchingBills.reduce(
-    (sum, bill) => sum + Math.max(0, bill.totalCents - bill.paidCents),
-    0,
-  );
-  const uninvoicedPurchaseCommitmentsCents = matchingCommitments.reduce(
-    (sum, line) => sum + Math.max(0, line.quantity - line.invoicedQuantity) * line.unitCostCents,
-    0,
-  );
+  const obligations = calculateOpenPurchasingObligations({ baseCurrency, bills, orders });
   const connection = connections[0];
+  const bookloq = settings[0];
   const result = calculateVerifiedPurchasingCapacity({
-    connectionVerified: connection?.status === "connected" && connection.promotion === "approved",
+    connectionVerified: verifiedCashSourceEligible({
+      connectionStatus: connection?.status ?? "missing",
+      promotionStatus: connection?.promotion ?? "blocked",
+      liveDataEligible: plaidReadiness().liveDataEligible,
+      bookloqAddonActive: true,
+      bookloqStatus: bookloq?.status ?? null,
+      bookloqDataMode: bookloq?.dataMode ?? null,
+      hasDemoAccounts: accounts.some((account) => account.demoRecord),
+    }),
     nowMs: Date.now(),
     maximumAgeMs: 48 * 60 * 60 * 1000,
     baseCurrency,
     cashSafetyReserveCents: settings[0]?.cashSafetyThresholdCents ?? 0,
-    outstandingBillsCents,
-    uninvoicedPurchaseCommitmentsCents,
+    outstandingBillsCents: obligations.outstandingBillsCents,
+    openPurchaseCommitmentsCents: obligations.openPurchaseCommitmentsCents,
     accounts: accounts.map((account) => ({
       ...account,
       lastSyncAtMs: account.lastSyncAt?.getTime() ?? null,
     })),
   });
+  const currencyReviewRequired = obligations.excludedCurrencyObligations > 0;
+  const guardedResult = currencyReviewRequired && result.status === "available"
+    ? { ...result, status: "needs_currency_review" as const, verifiedPurchasingCapacityCents: null }
+    : result;
   return {
-    ...result,
-    excludedCurrencyObligations:
-      bills.filter((bill) => openBillStatuses.has(bill.status) && bill.currency.toUpperCase() !== baseCurrency).length +
-      committedLines.filter((line) => committedOrderStatuses.has(line.status) && line.currency.toUpperCase() !== baseCurrency).length,
-    explanation: result.status === "available"
-      ? "Available cash from fresh, healthy Plaid depository accounts minus the BookLoQ reserve, open supplier bills and uninvoiced approved purchase commitments. Credit availability and other currencies are excluded."
-      : result.status === "stale_bank_data"
+    ...guardedResult,
+    excludedCurrencyObligations: obligations.excludedCurrencyObligations,
+    explanation: currencyReviewRequired
+      ? "Open obligations in another currency require a verified conversion or finance review before cash can constrain reorder quantities."
+      : guardedResult.status === "available"
+      ? "Available cash from fresh, healthy Plaid depository accounts minus the BookLoQ reserve, open supplier bills and open approved purchase commitments. Credit availability and other currencies are excluded."
+      : guardedResult.status === "stale_bank_data"
         ? "Connected bank balances are older than 48 hours. Recommendations remain demand-based until a fresh balance sync succeeds."
-        : result.status === "needs_healthy_cash_account"
+        : guardedResult.status === "needs_healthy_cash_account"
           ? `No fresh, healthy ${baseCurrency} cash account is available. Recommendations remain demand-based.`
           : "Connect and synchronize Plaid in BookLoQ before cash can constrain reorder quantities.",
   };
 }
 
-async function procurementCatalog(organizationId: string, locationScope: ProcurementLocationScope | null = null) {
+async function procurementCatalog(
+  organizationId: string,
+  locationScope: ProcurementLocationScope | null = null,
+  exposeCashContext = false,
+) {
   const database = getD1();
   const today = new Date().toISOString().slice(0, 10);
   const thirtyDayStart = businessDateOffset(today, -29);
@@ -235,10 +247,17 @@ async function procurementCatalog(organizationId: string, locationScope: Procure
         accountNumber: commerceSuppliers.accountNumber,
       })
       .from(commerceSuppliers)
+      .innerJoin(integrationConnections, and(
+        eq(integrationConnections.id, commerceSuppliers.connectionId),
+        eq(integrationConnections.organizationId, commerceSuppliers.organizationId),
+      ))
       .where(
         and(
           eq(commerceSuppliers.organizationId, organizationId),
           eq(commerceSuppliers.archived, false),
+          eq(integrationConnections.status, "connected"),
+          eq(integrationConnections.dataPromotionStatus, "approved"),
+          noActiveIntegrationLease(integrationConnections.syncLeaseOwner, integrationConnections.syncLeaseExpiresAt),
         ),
       )
       .orderBy(asc(commerceSuppliers.name))
@@ -247,6 +266,7 @@ async function procurementCatalog(organizationId: string, locationScope: Procure
       .prepare(
         `SELECT p.id,
                 p.provider,
+                p.connection_id AS connectionId,
                 p.external_product_id AS externalProductId,
                 p.sku,
                 p.name,
@@ -255,26 +275,58 @@ async function procurementCatalog(organizationId: string, locationScope: Procure
                 p.default_cost_cents AS defaultCostCents,
                 COALESCE((SELECT SUM(b.on_hand_quantity)
                   FROM inventory_balances b
-                  WHERE b.organization_id = p.organization_id AND b.sku = p.sku), 0) AS onHandQuantity,
+                  WHERE b.organization_id = p.organization_id
+                    AND b.source_connection_id = p.connection_id
+                    AND b.location_ref IN (
+                      SELECT m.provider || ':' || CASE WHEN c.source_namespace = 'legacy' THEN m.external_location_ref ELSE c.source_namespace || ':' || m.external_location_ref END
+                      FROM integration_location_mappings m
+                      JOIN integration_connections c ON c.id = m.connection_id AND c.organization_id = m.organization_id
+                      WHERE m.organization_id = p.organization_id AND m.connection_id = p.connection_id AND m.status = 'mapped'
+                    )
+                    AND b.sku = p.sku), 0) AS onHandQuantity,
                 COALESCE((SELECT SUM(b.reorder_point)
                   FROM inventory_balances b
-                  WHERE b.organization_id = p.organization_id AND b.sku = p.sku), 0) AS reorderPoint,
+                  WHERE b.organization_id = p.organization_id
+                    AND b.source_connection_id = p.connection_id
+                    AND b.location_ref IN (
+                      SELECT m.provider || ':' || CASE WHEN c.source_namespace = 'legacy' THEN m.external_location_ref ELSE c.source_namespace || ':' || m.external_location_ref END
+                      FROM integration_location_mappings m
+                      JOIN integration_connections c ON c.id = m.connection_id AND c.organization_id = m.organization_id
+                      WHERE m.organization_id = p.organization_id AND m.connection_id = p.connection_id AND m.status = 'mapped'
+                    )
+                    AND b.sku = p.sku), 0) AS reorderPoint,
                 COALESCE((SELECT SUM(pol.quantity - pol.received_quantity)
                   FROM purchase_order_lines pol
                   JOIN purchase_orders po ON po.id = pol.purchase_order_id
                   WHERE pol.organization_id = p.organization_id
-                    AND pol.sku = p.sku
+                    AND ((pol.provider = p.provider AND pol.external_product_ref = p.external_product_id)
+                      OR (pol.provider IS NULL AND pol.sku = p.sku AND NOT EXISTS (
+                        SELECT 1 FROM commerce_products duplicate
+                        WHERE duplicate.organization_id = p.organization_id
+                          AND duplicate.sku = p.sku
+                          AND duplicate.id <> p.id
+                          AND duplicate.archived = 0
+                          AND EXISTS (
+                            SELECT 1 FROM integration_connections duplicate_connection
+                            WHERE duplicate_connection.id = duplicate.connection_id
+                              AND duplicate_connection.organization_id = duplicate.organization_id
+                              AND duplicate_connection.status = 'connected'
+                              AND duplicate_connection.data_promotion_status = 'approved'
+                              AND duplicate_connection.sync_lease_owner IS NULL
+                          ))))
                     AND po.status NOT IN ('closed', 'cancelled', 'received', 'invoiced')), 0) AS incomingUnits,
                 COALESCE((SELECT SUM(sl.quantity_milli)
                   FROM commerce_sale_lines sl
                   WHERE sl.organization_id = p.organization_id
                     AND sl.provider = p.provider
+                    AND sl.connection_id = p.connection_id
                     AND sl.product_ref = p.external_product_id
                     AND substr(sl.sold_at, 1, 10) >= ?), 0) AS soldQuantityMilli30d,
                 COALESCE((SELECT SUM(sl.quantity_milli)
                   FROM commerce_sale_lines sl
                   WHERE sl.organization_id = p.organization_id
                     AND sl.provider = p.provider
+                    AND sl.connection_id = p.connection_id
                     AND sl.product_ref = p.external_product_id
                     AND substr(sl.sold_at, 1, 10) >= ?
                     AND substr(sl.sold_at, 1, 10) < ?), 0) AS soldQuantityMilliPrevious30d,
@@ -282,28 +334,64 @@ async function procurementCatalog(organizationId: string, locationScope: Procure
                   FROM commerce_sale_lines sl
                   WHERE sl.organization_id = p.organization_id
                     AND sl.provider = p.provider
+                    AND sl.connection_id = p.connection_id
                     AND sl.product_ref = p.external_product_id
                     AND substr(sl.sold_at, 1, 10) >= ?), 0) AS soldQuantityMilli90d,
                 (SELECT MAX(substr(sl.sold_at, 1, 10))
                   FROM commerce_sale_lines sl
                   WHERE sl.organization_id = p.organization_id
                     AND sl.provider = p.provider
+                    AND sl.connection_id = p.connection_id
                     AND sl.product_ref = p.external_product_id) AS lastSoldDate,
                 (SELECT MAX(po.order_date)
                   FROM purchase_order_lines pol
                   JOIN purchase_orders po ON po.id = pol.purchase_order_id
-                  WHERE pol.organization_id = p.organization_id AND pol.sku = p.sku) AS lastOrderedDate
+                  WHERE pol.organization_id = p.organization_id
+                    AND ((pol.provider = p.provider AND pol.external_product_ref = p.external_product_id)
+                      OR (pol.provider IS NULL AND pol.sku = p.sku AND NOT EXISTS (
+                        SELECT 1 FROM commerce_products duplicate
+                        WHERE duplicate.organization_id = p.organization_id
+                          AND duplicate.sku = p.sku
+                          AND duplicate.id <> p.id
+                          AND duplicate.archived = 0
+                          AND EXISTS (
+                            SELECT 1 FROM integration_connections duplicate_connection
+                            WHERE duplicate_connection.id = duplicate.connection_id
+                              AND duplicate_connection.organization_id = duplicate.organization_id
+                              AND duplicate_connection.status = 'connected'
+                              AND duplicate_connection.data_promotion_status = 'approved'
+                              AND duplicate_connection.sync_lease_owner IS NULL
+                          ))))) AS lastOrderedDate
                 ,(SELECT po.status
                   FROM purchase_order_lines pol
                   JOIN purchase_orders po ON po.id = pol.purchase_order_id
-                  WHERE pol.organization_id = p.organization_id AND pol.sku = p.sku
+                  WHERE pol.organization_id = p.organization_id
+                    AND ((pol.provider = p.provider AND pol.external_product_ref = p.external_product_id)
+                      OR (pol.provider IS NULL AND pol.sku = p.sku AND NOT EXISTS (
+                        SELECT 1 FROM commerce_products duplicate
+                        WHERE duplicate.organization_id = p.organization_id
+                          AND duplicate.sku = p.sku
+                          AND duplicate.id <> p.id
+                          AND duplicate.archived = 0
+                          AND EXISTS (
+                            SELECT 1 FROM integration_connections duplicate_connection
+                            WHERE duplicate_connection.id = duplicate.connection_id
+                              AND duplicate_connection.organization_id = duplicate.organization_id
+                              AND duplicate_connection.status = 'connected'
+                              AND duplicate_connection.data_promotion_status = 'approved'
+                              AND duplicate_connection.sync_lease_owner IS NULL
+                          ))))
                   ORDER BY po.order_date DESC, po.updated_at DESC LIMIT 1) AS lastOrderStatus
          FROM commerce_products p
+         JOIN integration_connections pc
+           ON pc.id = p.connection_id AND pc.organization_id = p.organization_id
          LEFT JOIN commerce_suppliers s
-           ON s.organization_id = p.organization_id
+          ON s.organization_id = p.organization_id
           AND s.provider = p.provider
+          AND s.connection_id = p.connection_id
           AND s.external_supplier_id = p.supplier_ref
          WHERE p.organization_id = ? AND p.archived = 0
+           AND pc.status = 'connected' AND pc.data_promotion_status = 'approved' AND pc.sync_lease_owner IS NULL
          ORDER BY p.name ASC
          LIMIT 1000`,
       )
@@ -311,16 +399,19 @@ async function procurementCatalog(organizationId: string, locationScope: Procure
       .all<ProcurementProductRow>(),
     database
       .prepare(
-        `SELECT MIN(substr(sold_at, 1, 10)) AS earliestSaleDate
-         FROM commerce_sale_lines
-         WHERE organization_id = ? AND sold_at IS NOT NULL`,
+        `SELECT MIN(substr(sl.sold_at, 1, 10)) AS earliestSaleDate
+         FROM commerce_sale_lines sl
+         JOIN integration_connections c
+           ON c.id = sl.connection_id AND c.organization_id = sl.organization_id
+         WHERE sl.organization_id = ? AND sl.sold_at IS NOT NULL
+           AND c.status = 'connected' AND c.data_promotion_status = 'approved' AND c.sync_lease_owner IS NULL`,
       )
       .bind(organizationId)
       .first<{ earliestSaleDate: string | null }>(),
-    verifiedCashContext(organizationId),
+    exposeCashContext ? verifiedCashContext(organizationId) : Promise.resolve(null),
   ]);
 
-  const hasNinetyDaysOfHistory = Boolean(
+  let hasNinetyDaysOfHistory = Boolean(
     coverage?.earliestSaleDate && coverage.earliestSaleDate <= ninetyDayStart,
   );
   const scopedInventoryByProduct = new Map<string, { onHandQuantity: number; reorderPoint: number }>();
@@ -330,13 +421,22 @@ async function procurementCatalog(organizationId: string, locationScope: Procure
     soldQuantityMilli90d: number;
     lastSoldDate: string | null;
   }>();
-  const scopedOrdersBySku = new Map<string, {
+  const scopedOrdersByProduct = new Map<string, {
     incomingUnits: number;
     lastOrderedDate: string | null;
     lastOrderStatus: string | null;
   }>();
   if (locationScope) {
     const placeholders = locationScope.refs.map(() => "?").join(", ");
+    const saleLocationClause = locationScope.providerLocations.length
+      ? locationScope.providerLocations.map(() => "(provider = ? AND connection_id = ? AND outlet_ref = ?)").join(" OR ")
+      : "0 = 1";
+    const saleLocationBindings = locationScope.providerLocations.flatMap((location) => [
+      location.provider,
+      location.connectionId,
+      location.externalLocationRef,
+    ]);
+    const orderLocationPlaceholders = locationScope.ids.map(() => "?").join(", ") || "NULL";
     const [inventoryRows, saleRows, orderRows] = await Promise.all([
       database.prepare(`
         SELECT location_ref AS locationRef, sku,
@@ -352,55 +452,75 @@ async function procurementCatalog(organizationId: string, locationScope: Procure
         reorderPoint: number;
       }>(),
       database.prepare(`
-        SELECT provider, product_ref AS productRef,
+        SELECT provider, connection_id AS connectionId, product_ref AS productRef,
                SUM(CASE WHEN substr(sold_at, 1, 10) >= ? THEN quantity_milli ELSE 0 END) AS soldQuantityMilli30d,
                SUM(CASE WHEN substr(sold_at, 1, 10) >= ? AND substr(sold_at, 1, 10) < ? THEN quantity_milli ELSE 0 END) AS soldQuantityMilliPrevious30d,
                SUM(CASE WHEN substr(sold_at, 1, 10) >= ? THEN quantity_milli ELSE 0 END) AS soldQuantityMilli90d,
-               MAX(substr(sold_at, 1, 10)) AS lastSoldDate
+               MAX(substr(sold_at, 1, 10)) AS lastSoldDate,
+               MIN(substr(sold_at, 1, 10)) AS earliestSaleDate
         FROM commerce_sale_lines
-        WHERE organization_id = ? AND outlet_ref IN (${placeholders})
-        GROUP BY provider, product_ref
-      `).bind(thirtyDayStart, sixtyDayStart, thirtyDayStart, ninetyDayStart, organizationId, ...locationScope.refs).all<{
+        WHERE organization_id = ? AND (${saleLocationClause})
+          AND EXISTS (
+            SELECT 1 FROM integration_connections approved
+            WHERE approved.id = commerce_sale_lines.connection_id
+              AND approved.organization_id = commerce_sale_lines.organization_id
+              AND approved.status = 'connected'
+              AND approved.data_promotion_status = 'approved'
+              AND approved.sync_lease_owner IS NULL
+          )
+        GROUP BY provider, connection_id, product_ref
+      `).bind(thirtyDayStart, sixtyDayStart, thirtyDayStart, ninetyDayStart, organizationId, ...saleLocationBindings).all<{
         provider: string;
+        connectionId: string;
         productRef: string;
         soldQuantityMilli30d: number;
         soldQuantityMilliPrevious30d: number;
         soldQuantityMilli90d: number;
         lastSoldDate: string | null;
+        earliestSaleDate: string | null;
       }>(),
       database.prepare(`
-        SELECT sku, incomingUnits, orderDate AS lastOrderedDate, status AS lastOrderStatus
+        SELECT sku, provider, externalProductRef, incomingUnits, orderDate AS lastOrderedDate, status AS lastOrderStatus
         FROM (
           SELECT pol.sku,
+                 pol.provider,
+                 pol.external_product_ref AS externalProductRef,
                  SUM(CASE WHEN po.status NOT IN ('closed', 'cancelled', 'received', 'invoiced')
                           THEN MAX(pol.quantity - pol.received_quantity, 0) ELSE 0 END)
-                   OVER (PARTITION BY pol.sku) AS incomingUnits,
+                   OVER (PARTITION BY COALESCE(pol.provider || ':' || pol.external_product_ref, 'legacy:' || pol.sku)) AS incomingUnits,
                  po.order_date AS orderDate,
                  po.status,
-                 ROW_NUMBER() OVER (PARTITION BY pol.sku ORDER BY po.order_date DESC, po.updated_at DESC) AS rank
+                 ROW_NUMBER() OVER (
+                   PARTITION BY COALESCE(pol.provider || ':' || pol.external_product_ref, 'legacy:' || pol.sku)
+                   ORDER BY po.order_date DESC, po.updated_at DESC
+                 ) AS rank
           FROM purchase_order_lines pol
           JOIN purchase_orders po ON po.id = pol.purchase_order_id
-          WHERE pol.organization_id = ? AND po.delivery_location_id = ?
+          WHERE pol.organization_id = ? AND po.delivery_location_id IN (${orderLocationPlaceholders})
         )
         WHERE rank = 1
-      `).bind(organizationId, locationScope.id).all<{
+      `).bind(organizationId, ...locationScope.ids).all<{
         sku: string;
+        provider: string | null;
+        externalProductRef: string | null;
         incomingUnits: number;
         lastOrderedDate: string | null;
         lastOrderStatus: string | null;
       }>(),
     ]);
+    hasNinetyDaysOfHistory = (saleRows.results ?? []).some(
+      (row) => Boolean(row.earliestSaleDate && row.earliestSaleDate <= ninetyDayStart),
+    );
     for (const row of inventoryRows.results ?? []) {
-      const provider = locationScope.providerByRef.get(row.locationRef)
-        ?? (row.locationRef.includes(":") ? row.locationRef.split(":", 1)[0] : "*");
-      const key = `${provider}:${row.sku}`;
+      const connectionId = locationScope.connectionByRef.get(row.locationRef) ?? "*";
+      const key = `${connectionId}:${row.sku}`;
       const current = scopedInventoryByProduct.get(key) ?? { onHandQuantity: 0, reorderPoint: 0 };
       current.onHandQuantity += Number(row.onHandQuantity ?? 0);
       current.reorderPoint += Number(row.reorderPoint ?? 0);
       scopedInventoryByProduct.set(key, current);
     }
     for (const row of saleRows.results ?? []) {
-      scopedSalesByProduct.set(`${row.provider}:${row.productRef}`, {
+      scopedSalesByProduct.set(`${row.connectionId}:${row.productRef}`, {
         soldQuantityMilli30d: Number(row.soldQuantityMilli30d ?? 0),
         soldQuantityMilliPrevious30d: Number(row.soldQuantityMilliPrevious30d ?? 0),
         soldQuantityMilli90d: Number(row.soldQuantityMilli90d ?? 0),
@@ -408,7 +528,10 @@ async function procurementCatalog(organizationId: string, locationScope: Procure
       });
     }
     for (const row of orderRows.results ?? []) {
-      scopedOrdersBySku.set(row.sku, {
+      const key = row.provider && row.externalProductRef
+        ? `${row.provider}:${row.externalProductRef}`
+        : `legacy:${row.sku}`;
+      scopedOrdersByProduct.set(key, {
         incomingUnits: Number(row.incomingUnits ?? 0),
         lastOrderedDate: row.lastOrderedDate,
         lastOrderStatus: row.lastOrderStatus,
@@ -418,10 +541,16 @@ async function procurementCatalog(organizationId: string, locationScope: Procure
   const assessmentByProductId = new Map<string, ReturnType<typeof assessPurchasingProduct>>();
   const demandProducts = (productRows.results ?? []).map((row) => {
     const scopedInventory = locationScope
-      ? scopedInventoryByProduct.get(`${row.provider}:${row.sku}`) ?? scopedInventoryByProduct.get(`*:${row.sku}`)
+      ? scopedInventoryByProduct.get(`${row.connectionId}:${row.sku}`)
       : null;
-    const scopedSales = locationScope ? scopedSalesByProduct.get(`${row.provider}:${row.externalProductId}`) : null;
-    const scopedOrder = locationScope ? scopedOrdersBySku.get(row.sku) : null;
+    const scopedSales = locationScope ? scopedSalesByProduct.get(`${row.connectionId}:${row.externalProductId}`) : null;
+    const duplicateSku = (productRows.results ?? []).some((candidate) =>
+      candidate.sku === row.sku && candidate.id !== row.id,
+    );
+    const scopedOrder = locationScope
+      ? scopedOrdersByProduct.get(`${row.provider}:${row.externalProductId}`)
+        ?? (!duplicateSku ? scopedOrdersByProduct.get(`legacy:${row.sku}`) : undefined)
+      : null;
     const onHandQuantity = Number(locationScope ? scopedInventory?.onHandQuantity ?? 0 : row.onHandQuantity ?? 0);
     const reorderPoint = Number(locationScope ? scopedInventory?.reorderPoint ?? 0 : row.reorderPoint ?? 0);
     const incomingUnits = Number(locationScope ? scopedOrder?.incomingUnits ?? 0 : row.incomingUnits ?? 0);
@@ -483,16 +612,16 @@ async function procurementCatalog(organizationId: string, locationScope: Procure
         ...assessment,
         sku: productId,
       })),
-      cashContext.verifiedPurchasingCapacityCents,
+      cashContext?.verifiedPurchasingCapacityCents ?? null,
     ).map((assessment) => [assessment.sku, assessment]),
   );
   const products = demandProducts.map((product) => {
     const allocation = allocationByProductId.get(product.id);
     return {
       ...product,
-      cashConstrainedQuantity: allocation?.cashConstrainedUnits ?? null,
-      cashAllocatedCents: allocation?.cashAllocatedCents ?? null,
-      cashDecision: allocation?.cashDecision ?? "needs_verified_cash",
+      cashConstrainedQuantity: cashContext ? allocation?.cashConstrainedUnits ?? null : null,
+      cashAllocatedCents: cashContext ? allocation?.cashAllocatedCents ?? null : null,
+      cashDecision: cashContext ? allocation?.cashDecision ?? "needs_verified_cash" : "restricted",
     };
   });
 
@@ -500,7 +629,7 @@ async function procurementCatalog(organizationId: string, locationScope: Procure
     suppliers: supplierRows,
     products,
     cashContext,
-    locationScope: locationScope ? { id: locationScope.id, name: locationScope.name } : null,
+    locationScope: locationScope ? { id: locationScope.selectedId ?? "accessible", name: locationScope.name } : null,
     method: {
       periodStart: thirtyDayStart,
       periodEnd: today,
@@ -513,52 +642,87 @@ async function procurementCatalog(organizationId: string, locationScope: Procure
   };
 }
 
-async function list(organizationId: string, locationScope: ProcurementLocationScope | null = null) {
-  const [orders, lines, receipts, matches, catalog, bills, invoices] = await Promise.all([
-    getDb()
-      .select()
-      .from(purchaseOrders)
-      .where(eq(purchaseOrders.organizationId, organizationId))
-      .orderBy(desc(purchaseOrders.updatedAt))
-      .limit(200),
-    getDb()
+async function requirePurchaseOrderInScope(
+  organizationId: string,
+  purchaseOrderId: string,
+  locationScope: ProcurementLocationScope | null,
+) {
+  const [order] = await getDb().select().from(purchaseOrders).where(and(
+    eq(purchaseOrders.organizationId, organizationId),
+    eq(purchaseOrders.id, purchaseOrderId),
+  )).limit(1);
+  if (!order) throw new ApiError(404, "PURCHASE_ORDER_NOT_FOUND", "Purchase order not found.");
+  if (locationScope && (!order.deliveryLocationId || !locationScope.ids.includes(order.deliveryLocationId))) {
+    throw new ApiError(403, "LOCATION_ACCESS_DENIED", "This purchase order belongs to a location that is not available to your account.");
+  }
+  return order;
+}
+
+async function list(
+  organizationId: string,
+  locationScope: ProcurementLocationScope | null = null,
+  visibility: PurchasingVisibility = { cashDetails: false, financeCalendar: false },
+) {
+  const orders = await getDb()
+    .select()
+    .from(purchaseOrders)
+    .where(locationScope
+      ? and(eq(purchaseOrders.organizationId, organizationId), inArray(purchaseOrders.deliveryLocationId, locationScope.ids))
+      : eq(purchaseOrders.organizationId, organizationId))
+    .orderBy(desc(purchaseOrders.updatedAt))
+    .limit(200);
+  const orderIds = orders.map((order) => order.id);
+  const [lines, receipts, matches, catalog, bills, invoices] = await Promise.all([
+    orderIds.length ? getDb()
       .select()
       .from(purchaseOrderLines)
-      .where(eq(purchaseOrderLines.organizationId, organizationId))
-      .orderBy(asc(purchaseOrderLines.lineNumber)),
-    getDb()
+      .where(and(eq(purchaseOrderLines.organizationId, organizationId), inArray(purchaseOrderLines.purchaseOrderId, orderIds)))
+      .orderBy(asc(purchaseOrderLines.lineNumber)) : Promise.resolve([]),
+    orderIds.length ? getDb()
       .select()
       .from(goodsReceipts)
-      .where(eq(goodsReceipts.organizationId, organizationId))
-      .orderBy(desc(goodsReceipts.createdAt)),
-    getDb()
+      .where(and(eq(goodsReceipts.organizationId, organizationId), inArray(goodsReceipts.purchaseOrderId, orderIds)))
+      .orderBy(desc(goodsReceipts.createdAt)) : Promise.resolve([]),
+    orderIds.length ? getDb()
       .select()
       .from(invoiceMatches)
-      .where(eq(invoiceMatches.organizationId, organizationId))
-      .orderBy(desc(invoiceMatches.createdAt)),
-    procurementCatalog(organizationId, locationScope),
-    getDb().select({
+      .where(and(eq(invoiceMatches.organizationId, organizationId), inArray(invoiceMatches.purchaseOrderId, orderIds)))
+      .orderBy(desc(invoiceMatches.createdAt)) : Promise.resolve([]),
+    procurementCatalog(organizationId, locationScope, visibility.cashDetails),
+    locationScope || !visibility.financeCalendar ? Promise.resolve([]) : getDb().select({
       id: supplierBills.id,
       reference: supplierBills.billNumber,
       dueDate: supplierBills.dueDate,
       status: supplierBills.status,
       totalCents: supplierBills.totalCents,
       currency: supplierBills.currency,
+      locationRef: supplierBills.locationRef,
     }).from(supplierBills).where(eq(supplierBills.organizationId, organizationId)).orderBy(asc(supplierBills.dueDate)).limit(200),
-    getDb().select({
+    locationScope || !visibility.financeCalendar ? Promise.resolve([]) : getDb().select({
       id: customerInvoices.id,
       reference: customerInvoices.invoiceNumber,
       dueDate: customerInvoices.dueDate,
       status: customerInvoices.status,
       totalCents: customerInvoices.totalCents,
       currency: customerInvoices.currency,
+      locationRef: customerInvoices.locationRef,
     }).from(customerInvoices).where(eq(customerInvoices.organizationId, organizationId)).orderBy(asc(customerInvoices.dueDate)).limit(200),
   ]);
-  const commitments = orders
+  const scopedOrders = locationScope
+    ? orders.filter((order) => order.deliveryLocationId !== null && locationScope.ids.includes(order.deliveryLocationId))
+    : orders;
+  const scopedOrderIds = new Set(scopedOrders.map((order) => order.id));
+  const scopedBills = locationScope
+    ? bills.filter((bill) => locationScope.refs.includes(bill.locationRef))
+    : bills;
+  const scopedInvoices = locationScope
+    ? invoices.filter((invoice) => locationScope.refs.includes(invoice.locationRef))
+    : invoices;
+  const commitments = scopedOrders
     .filter((order) => !["closed", "cancelled"].includes(order.status))
     .reduce((sum, order) => sum + order.totalCents, 0);
   return {
-    orders: orders.map((order) => ({
+    orders: scopedOrders.map((order) => ({
       ...order,
       lines: lines.filter((line) => line.purchaseOrderId === order.id),
       receipts: receipts.filter(
@@ -567,30 +731,30 @@ async function list(organizationId: string, locationScope: ProcurementLocationSc
       matches: matches.filter((match) => match.purchaseOrderId === order.id),
     })),
     summary: {
-      openOrders: orders.filter(
+      openOrders: scopedOrders.filter(
         (order) => !["closed", "cancelled"].includes(order.status),
       ).length,
-      awaitingApproval: orders.filter(
+      awaitingApproval: scopedOrders.filter(
         (order) => order.status === "awaiting_approval",
       ).length,
       openCommitmentsCents: commitments,
       discrepancies:
-        receipts.filter((receipt) => receipt.discrepancyStatus !== "matched")
+        receipts.filter((receipt) => scopedOrderIds.has(receipt.purchaseOrderId) && receipt.discrepancyStatus !== "matched")
           .length +
-        matches.filter((match) => match.status !== "matched").length,
+        matches.filter((match) => scopedOrderIds.has(match.purchaseOrderId) && match.status !== "matched").length,
       redAlerts: catalog.products.filter((product) => product.health.tone === "red").length,
       healthyProducts: catalog.products.filter((product) => product.health.tone === "green").length,
       deadStockProducts: catalog.products.filter((product) => product.health.label === "Dead stock").length,
     },
     catalog,
     calendar: [
-      ...orders.flatMap((order) => [
+      ...scopedOrders.flatMap((order) => [
         { id: `ordered:${order.id}`, kind: "purchase_ordered", date: order.orderDate, title: `${order.orderNumber} ordered`, detail: order.supplierName, status: order.status, amountCents: order.totalCents, currency: order.currency },
         ...(order.expectedDeliveryDate ? [{ id: `expected:${order.id}`, kind: "purchase_expected", date: order.expectedDeliveryDate, title: `${order.orderNumber} expected`, detail: order.supplierName, status: order.status, amountCents: order.totalCents, currency: order.currency }] : []),
         ...(order.committedCashDate ? [{ id: `cash:${order.id}`, kind: "purchase_cash_due", date: order.committedCashDate, title: `${order.orderNumber} cash commitment`, detail: order.supplierName, status: order.status, amountCents: order.totalCents, currency: order.currency }] : []),
       ]),
-      ...bills.filter((bill) => !["paid", "reconciled", "void"].includes(bill.status)).map((bill) => ({ id: `bill:${bill.id}`, kind: "supplier_bill_due", date: bill.dueDate, title: `${bill.reference} due`, detail: "Supplier bill", status: bill.status, amountCents: bill.totalCents, currency: bill.currency })),
-      ...invoices.filter((invoice) => !["paid", "written_off", "void"].includes(invoice.status)).map((invoice) => ({ id: `invoice:${invoice.id}`, kind: "customer_invoice_due", date: invoice.dueDate, title: `${invoice.reference} due`, detail: "Customer invoice", status: invoice.status, amountCents: invoice.totalCents, currency: invoice.currency })),
+      ...scopedBills.filter((bill) => !["paid", "reconciled", "void"].includes(bill.status)).map((bill) => ({ id: `bill:${bill.id}`, kind: "supplier_bill_due", date: bill.dueDate, title: `${bill.reference} due`, detail: "Supplier bill", status: bill.status, amountCents: bill.totalCents, currency: bill.currency })),
+      ...scopedInvoices.filter((invoice) => !["paid", "written_off", "void"].includes(invoice.status)).map((invoice) => ({ id: `invoice:${invoice.id}`, kind: "customer_invoice_due", date: invoice.dueDate, title: `${invoice.reference} due`, detail: "Customer invoice", status: invoice.status, amountCents: invoice.totalCents, currency: invoice.currency })),
     ].sort((left, right) => left.date.localeCompare(right.date)),
   };
 }
@@ -601,7 +765,16 @@ export async function GET(request: Request) {
     await requirePermission(context, "purchasing.view");
     await enforceRateLimit("purchasing:read", context.userId, 90, 60);
     const locationScope = await requestLocationScope(request, context);
-    return jsonResponse(await list(context.organizationId, locationScope));
+    const [permissions, bookloqAddonActive] = await Promise.all([
+      effectivePermissions(context),
+      hasAddon(context, "bookloq"),
+    ]);
+    const organizationWide = locationScope === null;
+    const visibility = {
+      cashDetails: organizationWide && bookloqAddonActive && permissions.includes("finance.bank_balances") && permissions.includes("finance.ap_ar"),
+      financeCalendar: organizationWide && permissions.includes("finance.ap_ar"),
+    };
+    return jsonResponse(await list(context.organizationId, locationScope, visibility));
   });
 }
 
@@ -610,6 +783,15 @@ export async function POST(request: Request) {
     requireSameOrigin(request);
     const context = await requireAccess(request, users);
     const locationScope = await requestLocationScope(request, context);
+    const [permissions, bookloqAddonActive] = await Promise.all([
+      effectivePermissions(context),
+      hasAddon(context, "bookloq"),
+    ]);
+    const organizationWide = locationScope === null;
+    const visibility = {
+      cashDetails: organizationWide && bookloqAddonActive && permissions.includes("finance.bank_balances") && permissions.includes("finance.ap_ar"),
+      financeCalendar: organizationWide && permissions.includes("finance.ap_ar"),
+    };
     await enforceRateLimit("purchasing:write", context.userId, 40, 3_600);
     const input = await readJsonObject(request, 256_000);
     const action = text(input.action, "action", 50);
@@ -631,7 +813,7 @@ export async function POST(request: Request) {
           "INVALID_LINES",
           "Add between one and 100 purchase-order lines.",
         );
-      const catalog = await procurementCatalog(context.organizationId, locationScope);
+      const catalog = await procurementCatalog(context.organizationId, locationScope, visibility.cashDetails);
       const productById = new Map(
         catalog.products.map((product) => [product.id, product]),
       );
@@ -688,6 +870,8 @@ export async function POST(request: Request) {
         return {
           id: crypto.randomUUID(),
           lineNumber: index + 1,
+          provider: selectedProduct?.provider ?? null,
+          externalProductRef: selectedProduct?.externalProductId ?? null,
           sku: selectedProduct?.sku ?? text(row.sku, "SKU", 80, false),
           description:
             selectedProduct?.name ??
@@ -734,6 +918,24 @@ export async function POST(request: Request) {
       const status =
         input.submitForApproval === true ? "awaiting_approval" : "draft";
       const totalCents = subtotalCents + taxCents - discountCents;
+      const requestedDeliveryLocationId = text(input.deliveryLocationId, "delivery location", 200, false) || null;
+      let deliveryLocationId: string;
+      if (locationScope?.selectedId) {
+        if (requestedDeliveryLocationId && requestedDeliveryLocationId !== locationScope.selectedId) {
+          throw new ApiError(403, "LOCATION_ACCESS_DENIED", "The delivery location must match the selected location.");
+        }
+        deliveryLocationId = locationScope.selectedId;
+      } else if (requestedDeliveryLocationId) {
+        const deliveryLocation = await requireAccessibleLocation(context, requestedDeliveryLocationId);
+        if (locationScope && !locationScope.ids.includes(deliveryLocation.id)) {
+          throw new ApiError(403, "LOCATION_ACCESS_DENIED", "This delivery location is not available to your account.");
+        }
+        deliveryLocationId = deliveryLocation.id;
+      } else if (locationScope?.ids.length === 1) {
+        deliveryLocationId = locationScope.ids[0];
+      } else {
+        throw new ApiError(400, "DELIVERY_LOCATION_REQUIRED", "Select one accessible location before creating a purchase order.");
+      }
       const statements = [
         database
           .prepare(
@@ -746,8 +948,7 @@ export async function POST(request: Request) {
             context.organizationId,
             text(input.orderNumber, "order number", 80),
             supplierName,
-            text(input.deliveryLocationId, "delivery location", 200, false) ||
-              null,
+            deliveryLocationId,
             orderDate,
             expected || null,
             text(input.currency, "currency", 3).toUpperCase(),
@@ -770,14 +971,16 @@ export async function POST(request: Request) {
           database
             .prepare(
               `INSERT INTO purchase_order_lines
-        (id, organization_id, purchase_order_id, line_number, sku, description, quantity, received_quantity, invoiced_quantity, unit_cost_cents, previous_cost_cents, current_inventory, reorder_point, forecast_demand, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?, ?)`,
+        (id, organization_id, purchase_order_id, line_number, provider, external_product_ref, sku, description, quantity, received_quantity, invoiced_quantity, unit_cost_cents, previous_cost_cents, current_inventory, reorder_point, forecast_demand, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?, ?)`,
             )
             .bind(
               line.id,
               context.organizationId,
               id,
               line.lineNumber,
+              line.provider,
+              line.externalProductRef,
               line.sku,
               line.description,
               line.quantity,
@@ -803,6 +1006,7 @@ export async function POST(request: Request) {
     } else if (action === "approve") {
       await requirePermission(context, "purchasing.approve");
       const id = text(input.purchaseOrderId, "purchase order", 200);
+      await requirePurchaseOrderInScope(context.organizationId, id, locationScope);
       const result = await database
         .prepare(
           "UPDATE purchase_orders SET status = 'approved', approved_by_user_id = ?, updated_at = ? WHERE id = ? AND organization_id = ? AND status = 'awaiting_approval'",
@@ -820,6 +1024,7 @@ export async function POST(request: Request) {
     } else if (action === "mark_sent") {
       await requirePermission(context, "purchasing.send");
       const id = text(input.purchaseOrderId, "purchase order", 200);
+      await requirePurchaseOrderInScope(context.organizationId, id, locationScope);
       if (input.confirmExternalSend !== true)
         throw new ApiError(
           400,
@@ -838,6 +1043,7 @@ export async function POST(request: Request) {
     } else if (action === "receive") {
       await requirePermission(context, "purchasing.receive");
       const id = text(input.purchaseOrderId, "purchase order", 200);
+      await requirePurchaseOrderInScope(context.organizationId, id, locationScope);
       const lines = await getDb()
         .select()
         .from(purchaseOrderLines)
@@ -923,16 +1129,7 @@ export async function POST(request: Request) {
       await requirePermission(context, "purchasing.match");
       const id = text(input.purchaseOrderId, "purchase order", 200);
       const documentId = text(input.documentId, "invoice document", 200);
-      const [order] = await getDb()
-        .select()
-        .from(purchaseOrders)
-        .where(
-          and(
-            eq(purchaseOrders.id, id),
-            eq(purchaseOrders.organizationId, context.organizationId),
-          ),
-        )
-        .limit(1);
+      const order = await requirePurchaseOrderInScope(context.organizationId, id, locationScope);
       const [document] = await getDb()
         .select()
         .from(workspaceDocuments)
@@ -949,6 +1146,13 @@ export async function POST(request: Request) {
           "NOT_FOUND",
           "Select an invoice and purchase order from this organization.",
         );
+      if (document.scanStatus !== "clean" || !document.scannedAt || !document.scanProvider) {
+        throw new ApiError(
+          423,
+          "DOCUMENT_SCAN_REQUIRED",
+          "This invoice cannot be matched until its independent security scan is complete.",
+        );
+      }
       const invoiceTotalCents = integer(
         input.invoiceTotalCents,
         "invoice total",
@@ -1018,7 +1222,7 @@ export async function POST(request: Request) {
       resourceId,
       details,
     });
-    return jsonResponse(await list(context.organizationId, locationScope), {
+    return jsonResponse(await list(context.organizationId, locationScope, visibility), {
       status: action === "create" ? 201 : 200,
     });
   });

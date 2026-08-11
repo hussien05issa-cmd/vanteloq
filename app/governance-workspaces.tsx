@@ -143,7 +143,7 @@ function useGovernance() {
       const body = await response.json();
       if (!response.ok)
         throw new Error(message(body, "Unable to load team and settings."));
-      setData(body);
+      setData(body.governance as Governance);
       setError("");
     } catch (caught) {
       setError(
@@ -888,7 +888,7 @@ function EmployeeWizard({
                 }
               />
               <small>
-                6–8 digits. Stored as a salted PBKDF2 hash, expires in 24 hours,
+                6 to 8 digits. Stored as a salted PBKDF2 hash, expires in 24 hours,
                 and must be changed on first use. PIN never grants banking,
                 payroll, export or permission-management access.
               </small>
@@ -1186,7 +1186,7 @@ export function SettingsWorkspace({ showNotice, onBrandChange }: Props) {
                 ["Active session", data.security.sessions, "Active"],
                 [
                   "Workplace PIN policy",
-                  "6–8 digits, hashed, rate-limited, temporary on reset and never sufficient for sensitive actions.",
+                  "6 to 8 digits, hashed, rate-limited, temporary on reset and never sufficient for sensitive actions.",
                   "Enforced",
                 ],
                 [
@@ -1203,7 +1203,7 @@ export function SettingsWorkspace({ showNotice, onBrandChange }: Props) {
               items={[
                 [
                   "POS and commerce",
-                  "Provider cards remain disabled until authorization, webhooks, idempotency, reconciliation and recovery pass.",
+                  "Provider cards remain disabled until authorization, verified updates, duplicate protection, reconciliation, and recovery checks pass.",
                   "Gated",
                 ],
                 [

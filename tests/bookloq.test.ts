@@ -8,8 +8,10 @@ import {
   journalInput,
   reconciliationDifference,
   reverseJournalLines,
+  verifiedBookLoQBankBalance,
   type LedgerAccountRow,
 } from "../server/bookloq.ts";
+import * as bookloqModule from "../server/bookloq.ts";
 
 test("balanced journal validation uses integer minor units", () => {
   const input = journalInput({
@@ -66,4 +68,92 @@ test("health score and cash forecast expose assumptions", () => {
   assert.equal(result[1].closingCashCents, 85_000);
   assert.equal(result[1].confirmedNetCents, -40_000);
   assert.equal(result[1].probableNetCents, 25_000);
+});
+
+test("BookLoQ bank totals only use fresh healthy non-demonstration balances", () => {
+  const now = Date.parse("2026-08-11T12:00:00Z");
+  const banks = [
+    { accountType: "chequing", liveBalanceCents: 120_000, currency: "CAD", connectionStatus: "healthy", lastSyncAt: now - 60_000, demoRecord: false },
+    { accountType: "chequing", liveBalanceCents: 900_000, currency: "CAD", connectionStatus: "healthy", lastSyncAt: now - 60_000, demoRecord: true },
+    { accountType: "savings", liveBalanceCents: 600_000, currency: "USD", connectionStatus: "healthy", lastSyncAt: now - 60_000, demoRecord: false },
+    { accountType: "credit_card", liveBalanceCents: -20_000, currency: "CAD", connectionStatus: "healthy", lastSyncAt: now - 60_000, demoRecord: false },
+  ];
+  assert.equal(verifiedBookLoQBankBalance(banks, "CAD", now), 120_000);
+  assert.equal(verifiedBookLoQBankBalance([
+    ...banks,
+    { accountType: "savings", liveBalanceCents: 800_000, currency: "CAD", connectionStatus: "error", lastSyncAt: now - 60_000, demoRecord: false },
+  ], "CAD", now), null);
+  assert.equal(verifiedBookLoQBankBalance([
+    { accountType: "chequing", liveBalanceCents: 700_000, currency: "CAD", connectionStatus: "healthy", lastSyncAt: now - 72 * 60 * 60 * 1_000, demoRecord: false },
+  ], "CAD", now), null);
+  assert.equal(verifiedBookLoQBankBalance([
+    { accountType: "chequing", liveBalanceCents: 700_000, currency: "CAD", connectionStatus: "healthy", lastSyncAt: now + 1_000, demoRecord: false },
+  ], "CAD", now), null);
+});
+
+test("BookLoQ normalizes SQLite timestamps before freshness checks", () => {
+  const normalizeBookLoQTimestamp = (
+    bookloqModule as Record<string, unknown>
+  ).normalizeBookLoQTimestamp as ((value: number | Date | null) => number | null) | undefined;
+  const nowMs = Date.parse("2026-08-11T12:00:00Z");
+
+  assert.equal(normalizeBookLoQTimestamp?.(Math.floor(nowMs / 1_000)), nowMs);
+  assert.equal(normalizeBookLoQTimestamp?.(nowMs), nowMs);
+  assert.equal(normalizeBookLoQTimestamp?.(new Date(nowMs)), nowMs);
+  assert.equal(normalizeBookLoQTimestamp?.(null), null);
+});
+
+test("financial statement access does not imply banking, payroll, contacts, or audit access", async () => {
+  const bookloq = await import("../server/bookloq.ts") as Record<string, unknown>;
+  assert.equal(typeof bookloq.bookloqAccessForPermissions, "function");
+  const accessFor = bookloq.bookloqAccessForPermissions as (permissions: readonly string[]) => Record<string, boolean>;
+
+  assert.deepEqual(accessFor(["finance.statements"]), {
+    statements: true,
+    bankBalances: false,
+    bankTransactions: false,
+    accountsPayableReceivable: false,
+    costs: false,
+    payrollTotals: false,
+    payrollIndividuals: false,
+    contactIdentity: false,
+    audit: false,
+    export: false,
+  });
+});
+
+test("BookLoQ sensitive response sections follow their exact permissions", async () => {
+  const bookloq = await import("../server/bookloq.ts") as Record<string, unknown>;
+  assert.equal(typeof bookloq.bookloqAccessForPermissions, "function");
+  const accessFor = bookloq.bookloqAccessForPermissions as (permissions: readonly string[]) => Record<string, boolean>;
+  const access = accessFor([
+    "finance.statements",
+    "finance.bank_balances",
+    "finance.bank_transactions",
+    "finance.ap_ar",
+    "finance.costs",
+    "payroll.totals",
+    "customers.identity",
+    "audit.view",
+  ]);
+
+  assert.equal(access.bankBalances, true);
+  assert.equal(access.bankTransactions, true);
+  assert.equal(access.accountsPayableReceivable, true);
+  assert.equal(access.costs, true);
+  assert.equal(access.payrollTotals, true);
+  assert.equal(access.payrollIndividuals, false);
+  assert.equal(access.contactIdentity, true);
+  assert.equal(access.audit, true);
+});
+
+test("BookLoQ presentation never serializes missing metrics as null text", async () => {
+  const presentation = await import("../domain/bookloq-presentation.ts").catch(() => ({})) as Record<string, unknown>;
+  const metricCount = presentation.bookloqMetricCount as ((value: number | null) => string) | undefined;
+  const health = presentation.bookloqHealthPresentation as ((value: number | null) => { score: number; degrees: number } | null) | undefined;
+
+  assert.equal(metricCount?.(null), "Not available");
+  assert.equal(metricCount?.(4), "4");
+  assert.equal(health?.(null), null);
+  assert.deepEqual(health?.(87), { score: 87, degrees: 313.2 });
 });

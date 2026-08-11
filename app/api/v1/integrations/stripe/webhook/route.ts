@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 import { getDb } from "../../../../../../db";
 import { integrationConnections, integrationWebhookEvents } from "../../../../../../db/schema";
 import { ApiError, handleApi, jsonResponse } from "../../../../../../server/api";
@@ -37,11 +37,18 @@ export async function POST(request: Request) {
     if (!eventId.startsWith("evt_") || !eventType || !accountId.startsWith("acct_")) {
       throw new ApiError(400, "STRIPE_WEBHOOK_PAYLOAD_INVALID", "The Stripe webhook is missing its connected-account identity.");
     }
-    const [connection] = await getDb().select({ organizationId: integrationConnections.organizationId }).from(integrationConnections).where(and(
+    const connections = await getDb().select({
+      id: integrationConnections.id,
+      organizationId: integrationConnections.organizationId,
+    }).from(integrationConnections).where(and(
       eq(integrationConnections.provider, STRIPE_PROVIDER),
       eq(integrationConnections.externalAccountRef, accountId),
       eq(integrationConnections.status, "connected"),
-    )).limit(1);
+    )).limit(2);
+    if (connections.length > 1) {
+      throw new ApiError(409, "STRIPE_CONNECTION_AMBIGUOUS", "The Stripe webhook could not be matched to one verified connection.");
+    }
+    const [connection] = connections;
     if (!connection) throw new ApiError(404, "STRIPE_CONNECTION_NOT_FOUND", "No verified Stripe connection matches this webhook.");
     const data = event.data && typeof event.data === "object" && !Array.isArray(event.data)
       ? event.data as Record<string, unknown>
@@ -51,24 +58,39 @@ export async function POST(request: Request) {
       : {};
     const externalObjectRef = typeof object.id === "string" ? object.id.slice(0, 128) : null;
     const payloadHash = await sha256Hex(bytes);
+    const receivedAt = new Date();
     const result = await getDb().insert(integrationWebhookEvents).values({
       id: crypto.randomUUID(),
       organizationId: connection.organizationId,
       provider: STRIPE_PROVIDER,
+      connectionId: connection.id,
       payloadHash,
       signatureHash: signature.signatureHash,
       eventType: eventType.slice(0, 160),
       externalObjectRef,
-      status: "queued",
-      receivedAt: new Date(),
-      processedAt: null,
+      status: "processed",
+      receivedAt,
+      processedAt: receivedAt,
     }).onConflictDoNothing({
       target: [
         integrationWebhookEvents.organizationId,
         integrationWebhookEvents.provider,
+        integrationWebhookEvents.connectionId,
         integrationWebhookEvents.payloadHash,
       ],
     }).returning({ id: integrationWebhookEvents.id });
-    return jsonResponse({ received: true, duplicate: result.length === 0, queued: result.length > 0 }, { status: 200 });
+    if (result.length === 0) {
+      await getDb().update(integrationWebhookEvents).set({
+        status: "processed",
+        processedAt: receivedAt,
+      }).where(and(
+        eq(integrationWebhookEvents.organizationId, connection.organizationId),
+        eq(integrationWebhookEvents.provider, STRIPE_PROVIDER),
+        eq(integrationWebhookEvents.connectionId, connection.id),
+        eq(integrationWebhookEvents.payloadHash, payloadHash),
+        ne(integrationWebhookEvents.status, "processed"),
+      ));
+    }
+    return jsonResponse({ received: true, duplicate: result.length === 0, processed: true, queued: false }, { status: 200 });
   });
 }

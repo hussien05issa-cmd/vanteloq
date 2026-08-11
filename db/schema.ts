@@ -322,6 +322,11 @@ export const dailyBusinessMetrics = sqliteTable(
     inventoryValueCents: integer("inventory_value_cents"),
     cashBalanceCents: integer("cash_balance_cents"),
     accountsPayableCents: integer("accounts_payable_cents"),
+    // Connector facts retain their publication owner. Manual/imported rows keep
+    // these fields null so a revoked or staging connection cannot be mistaken
+    // for owner-entered data after the provider row is hidden.
+    sourceProvider: text("source_provider"),
+    sourceConnectionId: text("source_connection_id"),
     sourceImportId: text("source_import_id").references(() => dataImports.id, { onDelete: "set null" }),
     createdByUserId: text("created_by_user_id").notNull().references(() => users.id),
     createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
@@ -330,6 +335,7 @@ export const dailyBusinessMetrics = sqliteTable(
   (table) => [
     uniqueIndex("daily_metrics_workspace_date_location_unique").on(table.organizationId, table.businessDate, table.locationRef),
     index("daily_metrics_workspace_date_idx").on(table.organizationId, table.businessDate),
+    index("daily_metrics_workspace_source_idx").on(table.organizationId, table.sourceConnectionId),
     check("daily_metrics_nonnegative_amounts_check", sql`${table.grossSalesCents} >= 0 and ${table.netSalesCents} >= 0 and ${table.costOfGoodsCents} >= 0 and ${table.refundsCents} >= 0 and ${table.discountsCents} >= 0 and ${table.labourCostCents} >= 0`),
     check("daily_metrics_nonnegative_counts_check", sql`${table.transactionCount} >= 0 and ${table.unitsSold} >= 0`),
   ],
@@ -500,11 +506,14 @@ export const inventoryBalances = sqliteTable(
     onHandQuantity: integer("on_hand_quantity").notNull().default(0),
     reorderPoint: integer("reorder_point").notNull().default(0),
     version: integer("version").notNull().default(1),
+    sourceProvider: text("source_provider"),
+    sourceConnectionId: text("source_connection_id"),
     updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
   },
   (table) => [
     uniqueIndex("inventory_balances_workspace_location_sku_unique").on(table.organizationId, table.locationRef, table.sku),
     index("inventory_balances_workspace_stock_idx").on(table.organizationId, table.onHandQuantity),
+    index("inventory_balances_workspace_source_idx").on(table.organizationId, table.sourceConnectionId),
     check("inventory_balances_reorder_check", sql`${table.reorderPoint} >= 0`),
   ],
 );
@@ -631,6 +640,7 @@ export const integrationConnections = sqliteTable(
     id: text("id").primaryKey(),
     organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
     provider: text("provider").notNull(),
+    sourceNamespace: text("source_namespace").notNull().default("legacy"),
     status: text("status", { enum: ["not_connected", "pending", "connected", "error", "revoked"] }).notNull().default("not_connected"),
     externalAccountRef: text("external_account_ref"),
     externalAccountName: text("external_account_name"),
@@ -642,11 +652,16 @@ export const integrationConnections = sqliteTable(
     lastSuccessfulSyncAt: integer("last_successful_sync_at", { mode: "timestamp" }),
     lastSyncCursor: text("last_sync_cursor"),
     lastErrorCode: text("last_error_code"),
+    syncLeaseOwner: text("sync_lease_owner"),
+    syncLeaseExpiresAt: integer("sync_lease_expires_at", { mode: "timestamp" }),
+    syncVersion: integer("sync_version").notNull().default(0),
     createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
     updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
   },
   (table) => [
-    uniqueIndex("integration_connections_workspace_provider_unique").on(table.organizationId, table.provider),
+    index("integration_connections_workspace_provider_idx").on(table.organizationId, table.provider),
+    uniqueIndex("integration_connections_workspace_account_unique").on(table.organizationId, table.provider, table.externalAccountRef),
+    uniqueIndex("integration_connections_workspace_namespace_unique").on(table.organizationId, table.provider, table.sourceNamespace),
     uniqueIndex("integration_connections_provider_domain_unique").on(table.provider, table.domainPrefix),
     check("integration_connections_status_check", sql`${table.status} in ('not_connected', 'pending', 'connected', 'error', 'revoked')`),
     check("integration_connections_promotion_check", sql`${table.dataPromotionStatus} in ('blocked', 'staging', 'approved')`),
@@ -661,6 +676,7 @@ export const integrationSecrets = sqliteTable(
     id: text("id").primaryKey(),
     organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
     provider: text("provider").notNull(),
+    connectionId: text("connection_id").notNull().default("legacy"),
     accessTokenCiphertext: text("access_token_ciphertext").notNull(),
     refreshTokenCiphertext: text("refresh_token_ciphertext").notNull(),
     tokenExpiresAt: integer("token_expires_at", { mode: "timestamp" }).notNull(),
@@ -668,7 +684,8 @@ export const integrationSecrets = sqliteTable(
     updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
   },
   (table) => [
-    uniqueIndex("integration_secrets_workspace_provider_unique").on(table.organizationId, table.provider),
+    uniqueIndex("integration_secrets_connection_unique").on(table.connectionId),
+    index("integration_secrets_workspace_provider_idx").on(table.organizationId, table.provider),
     index("integration_secrets_expiry_idx").on(table.provider, table.tokenExpiresAt),
   ],
 );
@@ -680,6 +697,7 @@ export const integrationOAuthStates = sqliteTable(
     organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
     actorUserId: text("actor_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
     provider: text("provider").notNull(),
+    connectionId: text("connection_id").notNull().default("legacy"),
     expiresAt: integer("expires_at", { mode: "timestamp" }).notNull(),
     consumedAt: integer("consumed_at", { mode: "timestamp" }),
     createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
@@ -693,6 +711,7 @@ export const integrationLocationMappings = sqliteTable(
     id: text("id").primaryKey(),
     organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
     provider: text("provider").notNull(),
+    connectionId: text("connection_id").notNull().default("legacy"),
     externalLocationRef: text("external_location_ref").notNull(),
     externalName: text("external_name").notNull(),
     // The mapping is tenant-scoped in application queries. It stays nullable so
@@ -704,8 +723,8 @@ export const integrationLocationMappings = sqliteTable(
     updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
   },
   (table) => [
-    uniqueIndex("integration_location_mappings_external_unique").on(table.organizationId, table.provider, table.externalLocationRef),
-    index("integration_location_mappings_status_idx").on(table.organizationId, table.provider, table.status),
+    uniqueIndex("integration_location_mappings_external_unique").on(table.organizationId, table.provider, table.connectionId, table.externalLocationRef),
+    index("integration_location_mappings_status_idx").on(table.organizationId, table.provider, table.connectionId, table.status),
     check("integration_location_mappings_status_check", sql`${table.status} in ('unmapped', 'mapped', 'ignored')`),
   ],
 );
@@ -716,6 +735,7 @@ export const integrationSyncRuns = sqliteTable(
     id: text("id").primaryKey(),
     organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
     provider: text("provider").notNull(),
+    connectionId: text("connection_id").notNull().default("legacy"),
     mode: text("mode", { enum: ["discovery", "sample", "incremental", "webhook_recovery"] }).notNull(),
     status: text("status", { enum: ["running", "completed", "failed"] }).notNull(),
     cursorBefore: text("cursor_before"),
@@ -730,7 +750,7 @@ export const integrationSyncRuns = sqliteTable(
     createdByUserId: text("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
   },
   (table) => [
-    index("integration_sync_runs_workspace_provider_idx").on(table.organizationId, table.provider, table.startedAt),
+    index("integration_sync_runs_workspace_provider_idx").on(table.organizationId, table.provider, table.connectionId, table.startedAt),
     check("integration_sync_runs_mode_check", sql`${table.mode} in ('discovery', 'sample', 'incremental', 'webhook_recovery')`),
     check("integration_sync_runs_status_check", sql`${table.status} in ('running', 'completed', 'failed')`),
   ],
@@ -742,6 +762,7 @@ export const integrationStagedSales = sqliteTable(
     id: text("id").primaryKey(),
     organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
     provider: text("provider").notNull(),
+    connectionId: text("connection_id").notNull().default("legacy"),
     externalSaleId: text("external_sale_id").notNull(),
     externalVersion: text("external_version").notNull(),
     outletRef: text("outlet_ref"),
@@ -757,8 +778,8 @@ export const integrationStagedSales = sqliteTable(
     stagedAt: integer("staged_at", { mode: "timestamp" }).notNull(),
   },
   (table) => [
-    uniqueIndex("integration_staged_sales_version_unique").on(table.organizationId, table.provider, table.externalSaleId, table.externalVersion),
-    index("integration_staged_sales_outlet_date_idx").on(table.organizationId, table.provider, table.outletRef, table.soldAt),
+    uniqueIndex("integration_staged_sales_version_unique").on(table.organizationId, table.provider, table.connectionId, table.externalSaleId, table.externalVersion),
+    index("integration_staged_sales_outlet_date_idx").on(table.organizationId, table.provider, table.connectionId, table.outletRef, table.soldAt),
     check("integration_staged_sales_counts_check", sql`${table.lineCount} >= 0`),
   ],
 );
@@ -773,6 +794,7 @@ export const commerceProducts = sqliteTable(
     id: text("id").primaryKey(),
     organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
     provider: text("provider").notNull(),
+    connectionId: text("connection_id").notNull().default("legacy"),
     externalProductId: text("external_product_id").notNull(),
     sku: text("sku").notNull(),
     name: text("name").notNull(),
@@ -787,7 +809,7 @@ export const commerceProducts = sqliteTable(
     updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
   },
   (table) => [
-    uniqueIndex("commerce_products_external_unique").on(table.organizationId, table.provider, table.externalProductId),
+    uniqueIndex("commerce_products_external_unique").on(table.organizationId, table.provider, table.connectionId, table.externalProductId),
     index("commerce_products_sku_idx").on(table.organizationId, table.sku),
     index("commerce_products_supplier_idx").on(table.organizationId, table.provider, table.supplierRef),
   ],
@@ -799,6 +821,7 @@ export const commerceCustomers = sqliteTable(
     id: text("id").primaryKey(),
     organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
     provider: text("provider").notNull(),
+    connectionId: text("connection_id").notNull().default("legacy"),
     externalCustomerId: text("external_customer_id").notNull(),
     displayName: text("display_name").notNull(),
     firstName: text("first_name"),
@@ -812,7 +835,7 @@ export const commerceCustomers = sqliteTable(
     updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
   },
   (table) => [
-    uniqueIndex("commerce_customers_external_unique").on(table.organizationId, table.provider, table.externalCustomerId),
+    uniqueIndex("commerce_customers_external_unique").on(table.organizationId, table.provider, table.connectionId, table.externalCustomerId),
     index("commerce_customers_name_idx").on(table.organizationId, table.displayName),
   ],
 );
@@ -823,6 +846,7 @@ export const commerceSuppliers = sqliteTable(
     id: text("id").primaryKey(),
     organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
     provider: text("provider").notNull(),
+    connectionId: text("connection_id").notNull().default("legacy"),
     externalSupplierId: text("external_supplier_id").notNull(),
     name: text("name").notNull(),
     accountNumber: text("account_number"),
@@ -836,7 +860,7 @@ export const commerceSuppliers = sqliteTable(
     updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
   },
   (table) => [
-    uniqueIndex("commerce_suppliers_external_unique").on(table.organizationId, table.provider, table.externalSupplierId),
+    uniqueIndex("commerce_suppliers_external_unique").on(table.organizationId, table.provider, table.connectionId, table.externalSupplierId),
     index("commerce_suppliers_name_idx").on(table.organizationId, table.name),
   ],
 );
@@ -847,6 +871,7 @@ export const commerceSaleLines = sqliteTable(
     id: text("id").primaryKey(),
     organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
     provider: text("provider").notNull(),
+    connectionId: text("connection_id").notNull().default("legacy"),
     externalSaleId: text("external_sale_id").notNull(),
     externalLineId: text("external_line_id").notNull(),
     productRef: text("product_ref"),
@@ -864,7 +889,7 @@ export const commerceSaleLines = sqliteTable(
     updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
   },
   (table) => [
-    uniqueIndex("commerce_sale_lines_external_unique").on(table.organizationId, table.provider, table.externalSaleId, table.externalLineId),
+    uniqueIndex("commerce_sale_lines_external_unique").on(table.organizationId, table.provider, table.connectionId, table.externalSaleId, table.externalLineId),
     index("commerce_sale_lines_product_date_idx").on(table.organizationId, table.provider, table.productRef, table.soldAt),
     index("commerce_sale_lines_customer_date_idx").on(table.organizationId, table.provider, table.customerRef, table.soldAt),
   ],
@@ -879,6 +904,7 @@ export const commercePayments = sqliteTable(
     id: text("id").primaryKey(),
     organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
     provider: text("provider").notNull(),
+    connectionId: text("connection_id").notNull().default("legacy"),
     externalPaymentId: text("external_payment_id").notNull(),
     externalSaleId: text("external_sale_id").notNull(),
     paymentTypeRef: text("payment_type_ref"),
@@ -892,7 +918,7 @@ export const commercePayments = sqliteTable(
     updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
   },
   (table) => [
-    uniqueIndex("commerce_payments_external_unique").on(table.organizationId, table.provider, table.externalPaymentId),
+    uniqueIndex("commerce_payments_external_unique").on(table.organizationId, table.provider, table.connectionId, table.externalPaymentId),
     index("commerce_payments_sale_idx").on(table.organizationId, table.provider, table.externalSaleId),
     index("commerce_payments_date_idx").on(table.organizationId, table.provider, table.paidAt),
     check("commerce_payments_category_check", sql`${table.category} in ('cash','card','gift_card','store_credit','other')`),
@@ -908,6 +934,7 @@ export const integrationStagedFinancialRecords = sqliteTable(
     id: text("id").primaryKey(),
     organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
     provider: text("provider").notNull(),
+    connectionId: text("connection_id").notNull().default("legacy"),
     externalRecordId: text("external_record_id").notNull(),
     recordType: text("record_type", { enum: ["balance_transaction", "payout"] }).notNull(),
     category: text("category").notNull(),
@@ -928,6 +955,7 @@ export const integrationStagedFinancialRecords = sqliteTable(
     uniqueIndex("integration_staged_financial_record_unique").on(
       table.organizationId,
       table.provider,
+      table.connectionId,
       table.externalRecordId,
       table.sourcePayloadHash,
     ),
@@ -948,6 +976,7 @@ export const integrationWebhookEvents = sqliteTable(
     id: text("id").primaryKey(),
     organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
     provider: text("provider").notNull(),
+    connectionId: text("connection_id").notNull().default("legacy"),
     payloadHash: text("payload_hash").notNull(),
     signatureHash: text("signature_hash").notNull(),
     eventType: text("event_type").notNull(),
@@ -957,8 +986,8 @@ export const integrationWebhookEvents = sqliteTable(
     processedAt: integer("processed_at", { mode: "timestamp" }),
   },
   (table) => [
-    uniqueIndex("integration_webhook_events_replay_unique").on(table.organizationId, table.provider, table.payloadHash),
-    index("integration_webhook_events_status_idx").on(table.organizationId, table.provider, table.status, table.receivedAt),
+    uniqueIndex("integration_webhook_events_replay_unique").on(table.organizationId, table.provider, table.connectionId, table.payloadHash),
+    index("integration_webhook_events_status_idx").on(table.organizationId, table.provider, table.connectionId, table.status, table.receivedAt),
     check("integration_webhook_events_status_check", sql`${table.status} in ('queued', 'processed', 'rejected')`),
   ],
 );
@@ -1117,6 +1146,9 @@ export const workspaceDocuments = sqliteTable(
     sizeBytes: integer("size_bytes").notNull(),
     sha256Hex: text("sha256_hex").notNull(),
     status: text("status", { enum: ["uploaded", "review_required", "approved", "rejected"] }).notNull().default("uploaded"),
+    scanStatus: text("scan_status", { enum: ["pending", "clean", "blocked", "failed"] }).notNull().default("pending"),
+    scannedAt: integer("scanned_at", { mode: "timestamp" }),
+    scanProvider: text("scan_provider"),
     extractionStatus: text("extraction_status", { enum: ["not_configured", "pending", "complete", "failed"] }).notNull().default("not_configured"),
     extractedJson: text("extracted_json").notNull().default("{}"),
     uploadedByUserId: text("uploaded_by_user_id").notNull().references(() => users.id),
@@ -1126,7 +1158,9 @@ export const workspaceDocuments = sqliteTable(
   (table) => [
     uniqueIndex("workspace_documents_hash_unique").on(table.organizationId, table.sha256Hex),
     index("workspace_documents_status_idx").on(table.organizationId, table.status),
+    index("workspace_documents_scan_idx").on(table.organizationId, table.scanStatus),
     check("workspace_documents_size_check", sql`${table.sizeBytes} > 0 and ${table.sizeBytes} <= 10485760`),
+    check("workspace_documents_scan_status_check", sql`${table.scanStatus} in ('pending', 'clean', 'blocked', 'failed')`),
   ],
 );
 
@@ -1168,6 +1202,9 @@ export const purchaseOrderLines = sqliteTable(
     organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
     purchaseOrderId: text("purchase_order_id").notNull().references(() => purchaseOrders.id, { onDelete: "cascade" }),
     lineNumber: integer("line_number").notNull(),
+    provider: text("provider"),
+    connectionId: text("connection_id").references(() => integrationConnections.id, { onDelete: "set null" }),
+    externalProductRef: text("external_product_ref"),
     sku: text("sku").notNull().default(""),
     description: text("description").notNull(),
     quantity: integer("quantity").notNull(),
@@ -1185,6 +1222,7 @@ export const purchaseOrderLines = sqliteTable(
   (table) => [
     uniqueIndex("purchase_order_lines_number_unique").on(table.purchaseOrderId, table.lineNumber),
     index("purchase_order_lines_workspace_idx").on(table.organizationId, table.purchaseOrderId),
+    index("purchase_order_lines_product_idx").on(table.organizationId, table.provider, table.connectionId, table.externalProductRef),
     check("purchase_order_lines_quantity_check", sql`${table.quantity} > 0 and ${table.receivedQuantity} >= 0 and ${table.invoicedQuantity} >= 0`),
     check("purchase_order_lines_cost_check", sql`${table.unitCostCents} >= 0`),
   ],

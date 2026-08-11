@@ -221,7 +221,7 @@ export default function SecureOnboardingFlow({
               }
               key={label}
             >
-              <b>{step > index + 1 ? "✓" : index + 1}</b>
+              <b>{step > index + 1 ? "Done" : index + 1}</b>
               <span>
                 {label}
                 <small>
@@ -230,10 +230,10 @@ export default function SecureOnboardingFlow({
                       "Trusted account identity",
                       "Identity & reporting",
                       "Operating context",
-                      "Optional tenant logo",
+                      "Optional company logo",
                       "Provider boundaries",
                       "POS or CSV",
-                      "Create tenant boundary",
+                      "Create protected workspace",
                     ][index]
                   }
                 </small>
@@ -242,7 +242,7 @@ export default function SecureOnboardingFlow({
           ))}
         </ol>
         <small className="setup-security">
-          Trusted identity · Server-derived ownership · Tenant-isolated records
+          Trusted identity · Verified ownership · Organization-separated records
         </small>
       </aside>
       <section className="setup-panel">
@@ -260,7 +260,7 @@ export default function SecureOnboardingFlow({
             copy="Your sign-in identity is supplied by the hosted authentication service and cannot be replaced by a browser-supplied email."
           >
             <div className="verified-identity">
-              <span>✓</span>
+              <span>ID</span>
               <div>
                 <b>Email verified by secure sign-in</b>
                 <small>
@@ -609,7 +609,7 @@ export default function SecureOnboardingFlow({
             copy="Hosted sign-in owns passwords, passkeys, MFA, recovery and active sessions. Vanteloq owns organization authorization, financial privacy and append-only access records."
           >
             <div className="verified-identity">
-              <span>✓</span>
+              <span>ID</span>
               <div>
                 <b>Verified hosted authentication</b>
                 <small>
@@ -683,7 +683,7 @@ export default function SecureOnboardingFlow({
                     <b>{title}</b>
                     <small>{copy}</small>
                   </span>
-                  <em>{form.sourceMode === id ? "✓" : "○"}</em>
+                  <em>{form.sourceMode === id ? "●" : "○"}</em>
                 </button>
               ))}
             </div>
@@ -722,8 +722,8 @@ export default function SecureOnboardingFlow({
         {step === 7 && (
           <Step
             eyebrow="REVIEW"
-            title="Create the tenant boundary."
-            copy="Vanteloq will create an owner membership and an empty organization-scoped workspace."
+            title="Create your protected workspace."
+            copy="Vanteloq will create the owner account and an empty workspace for this organization."
           >
             <div className="review-grid">
               <article>
@@ -763,7 +763,7 @@ export default function SecureOnboardingFlow({
               </article>
             </div>
             <div className="launch-note">
-              <i>✓</i>
+              <i>OK</i>
               <span>
                 <b>Ready for a clean launch</b>
                 <small>

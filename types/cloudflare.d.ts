@@ -28,6 +28,7 @@ interface R2ObjectBody {
   httpEtag: string;
   size: number;
   httpMetadata?: { contentType?: string; cacheControl?: string };
+  customMetadata?: Record<string, string>;
 }
 
 interface R2Bucket {

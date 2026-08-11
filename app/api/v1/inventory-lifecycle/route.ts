@@ -6,6 +6,8 @@ import { recordAudit } from "../../../../server/audit";
 import { requireAccess } from "../../../../server/authorization";
 import { ApiError, enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameOrigin } from "../../../../server/api";
 import { requirePermission } from "../../../../server/permissions";
+import { authorizedLocationDataScope } from "../../../../server/location-access";
+import { approvedFactSource } from "../../../../server/integrations/trusted-data";
 
 const roles = ["owner", "admin", "manager", "employee", "read_only"] as const;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -71,7 +73,24 @@ function lotInput(input: Record<string, unknown>) {
   };
 }
 
-async function lifecycleDto(organizationId: string) {
+type LifecycleScope = {
+  id: string;
+  name: string;
+  refs: Set<string>;
+} | null;
+
+async function requestScope(request: Request, context: Awaited<ReturnType<typeof requireAccess>>): Promise<LifecycleScope> {
+  const requested = new URL(request.url).searchParams.get("location");
+  const access = await authorizedLocationDataScope(context, requested);
+  if (access.locationRefs === null) return null;
+  return {
+    id: access.selectedLocation?.id ?? "accessible",
+    name: access.selectedLocation?.name ?? "Accessible locations",
+    refs: new Set(access.locationRefs),
+  };
+}
+
+async function lifecycleDto(organizationId: string, scope: LifecycleScope) {
   const [lots, posBalances] = await Promise.all([
     getDb().select().from(inventoryLots)
       .where(eq(inventoryLots.organizationId, organizationId)).limit(1_000),
@@ -83,7 +102,10 @@ async function lifecycleDto(organizationId: string) {
       reorderPoint: inventoryBalances.reorderPoint,
       updatedAt: inventoryBalances.updatedAt,
     }).from(inventoryBalances)
-      .where(eq(inventoryBalances.organizationId, organizationId)).limit(1_000),
+      .where(and(
+        eq(inventoryBalances.organizationId, organizationId),
+        approvedFactSource(inventoryBalances.organizationId, inventoryBalances.sourceProvider, inventoryBalances.sourceConnectionId),
+      )).limit(1_000),
   ]);
   const velocityResult = await getD1().prepare(`SELECT sku, location_ref AS locationRef,
       SUM(CASE WHEN occurred_at >= ? AND quantity_delta < 0 THEN -quantity_delta ELSE 0 END) AS unitsSold30Days,
@@ -92,9 +114,13 @@ async function lifecycleDto(organizationId: string) {
     WHERE organization_id = ? AND reason = 'sale'
     GROUP BY sku, location_ref`).bind(Date.now() - 30 * 86_400_000, organizationId)
     .all<{ sku: string; locationRef: string; unitsSold30Days: number; firstMovementAt: number | null }>();
-  const velocity = new Map((velocityResult.results ?? []).map(row => [`${row.locationRef}\u0000${row.sku}`, row]));
+  const visibleLots = scope ? lots.filter((lot) => scope.refs.has(lot.locationRef)) : lots;
+  const visibleBalances = scope ? posBalances.filter((balance) => scope.refs.has(balance.locationRef)) : posBalances;
+  const velocity = new Map((velocityResult.results ?? [])
+    .filter((row) => !scope || scope.refs.has(row.locationRef))
+    .map(row => [`${row.locationRef}\u0000${row.sku}`, row]));
   const now = new Date();
-  const assessed = lots.map(lot => {
+  const assessed = visibleLots.map(lot => {
     const movement = velocity.get(`${lot.locationRef}\u0000${lot.sku}`);
     const historyDays = movement?.firstMovementAt
       ? Math.max(1, Math.floor((Date.now() - Number(movement.firstMovementAt)) / 86_400_000) + 1)
@@ -126,7 +152,7 @@ async function lifecycleDto(organizationId: string) {
   const riskCounts = { healthy: 0, monitor: 0, at_risk: 0, urgent: 0, expired: 0, untracked: 0 };
   for (const lot of assessed) riskCounts[lot.assessment.risk] += 1;
   return {
-    posBalances: posBalances.sort((left, right) =>
+    posBalances: visibleBalances.sort((left, right) =>
       left.onHandQuantity - right.onHandQuantity || left.name.localeCompare(right.name)),
     lots: assessed.sort((a, b) => b.updatedAt.valueOf() - a.updatedAt.valueOf()),
     fefo: ordered.filter(lot => lot.quantityRemaining > 0 && lot.status === "active").map((lot, index) => ({ ...lot, fefoRank: index + 1 })),
@@ -137,12 +163,15 @@ async function lifecycleDto(organizationId: string) {
       costAtRiskCents: assessed.reduce((sum, lot) => sum + (lot.assessment.inventoryCostAtRiskCents ?? 0), 0),
       costRiskKnownLots: assessed.filter(lot => lot.assessment.inventoryCostAtRiskCents !== null).length,
       riskCounts,
-      posSkus: posBalances.length,
-      posUnits: posBalances.reduce((sum, balance) => sum + balance.onHandQuantity, 0),
-      lowStockSkus: posBalances.filter((balance) => balance.onHandQuantity <= balance.reorderPoint).length,
+      posSkus: visibleBalances.length,
+      posUnits: visibleBalances.reduce((sum, balance) => sum + balance.onHandQuantity, 0),
+      lowStockSkus: visibleBalances.filter((balance) => balance.onHandQuantity <= balance.reorderPoint).length,
     },
+    locationScope: scope ? { id: scope.id, name: scope.name } : null,
     source: {
-      calculation: "Recorded lot quantities joined to tenant-scoped SKU sale movements; no missing demand, cost, margin, or dates are imputed.",
+      calculation: scope
+        ? `Recorded lot quantities and POS balances mapped to ${scope.name}, joined to location-tagged SKU sale movements. Missing demand, cost, margin, and dates are never imputed.`
+        : "Recorded lot quantities joined to tenant-scoped SKU sale movements; no missing demand, cost, margin, or dates are imputed.",
       generatedAt: now.toISOString(),
     },
   };
@@ -153,7 +182,8 @@ export async function GET(request: Request) {
     const context = await requireAccess(request, roles);
     await requirePermission(context, "inventory.view");
     await enforceRateLimit("inventory-lifecycle:read", context.userId, 90, 60);
-    return jsonResponse(await lifecycleDto(context.organizationId));
+    const scope = await requestScope(request, context);
+    return jsonResponse(await lifecycleDto(context.organizationId, scope));
   });
 }
 
@@ -166,6 +196,10 @@ export async function POST(request: Request) {
     const input = await readJsonObject(request, 64_000);
     const action = cleanText(input.action, "action", 20);
     const data = lotInput(input);
+    const scope = await requestScope(request, context);
+    if (scope && !scope.refs.has(data.locationRef)) {
+      throw new ApiError(403, "LOCATION_ACCESS_DENIED", "Save this lot to the selected location or switch the dashboard location first.");
+    }
     const now = new Date();
     const database = getD1();
 
@@ -206,6 +240,9 @@ export async function POST(request: Request) {
         .where(and(eq(inventoryLots.id, id), eq(inventoryLots.organizationId, context.organizationId))).limit(1);
       const before = existing[0];
       if (!before) throw new ApiError(404, "LOT_NOT_FOUND", "This inventory lot was not found.");
+      if (scope && !scope.refs.has(before.locationRef)) {
+        throw new ApiError(403, "LOCATION_ACCESS_DENIED", "This inventory lot is not available in the selected location scope.");
+      }
       if (before.version !== version) {
         throw new ApiError(409, "STALE_RECORD", "This lot changed after you opened it. Reload and review the latest values.");
       }
@@ -238,6 +275,6 @@ export async function POST(request: Request) {
     } else {
       throw new ApiError(400, "UNKNOWN_ACTION", "Select a supported inventory-lot action.");
     }
-    return jsonResponse(await lifecycleDto(context.organizationId), { status: action === "create" ? 201 : 200 });
+    return jsonResponse(await lifecycleDto(context.organizationId, scope), { status: action === "create" ? 201 : 200 });
   });
 }

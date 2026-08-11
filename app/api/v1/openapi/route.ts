@@ -108,7 +108,7 @@ const specification = {
       post: { summary: "Create, approve, send-confirm, receive or match a purchase order", responses: { "200": { description: "Workflow updated and audited" }, "201": { description: "Purchase order created" }, "400": { description: "Invalid input" }, "403": { description: "Action permission required" }, "409": { description: "Invalid lifecycle transition" } } },
     },
     "/documents": {
-      get: { summary: "List or download tenant documents", responses: { "200": { description: "Document list or attachment" }, "403": { description: "Document permission required" } } },
+      get: { summary: "List or download tenant documents", responses: { "200": { description: "Document list or security-cleared attachment" }, "403": { description: "Document permission required" }, "423": { description: "Original remains quarantined until an independent security scan marks it clean" } } },
       post: { summary: "Verify and quarantine a tenant invoice or receipt", responses: { "201": { description: "Document stored for review" }, "400": { description: "Invalid file" }, "409": { description: "Duplicate document" }, "413": { description: "File too large" } } },
       delete: { summary: "Remove an unprocessed tenant document", responses: { "200": { description: "Document removed" }, "403": { description: "Retention permission required" }, "409": { description: "Protected record" } } },
     },

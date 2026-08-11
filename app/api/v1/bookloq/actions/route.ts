@@ -4,6 +4,8 @@ import { requireAccess } from "../../../../../server/authorization";
 import { enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameOrigin } from "../../../../../server/api";
 import { requireBookLoQPermission } from "../../../../../server/bookloq";
 import { requirePermission } from "../../../../../server/permissions";
+import { requireAddon } from "../../../../../server/entitlements/engine";
+import { requireOrganizationWideLocationAccess } from "../../../../../server/location-access";
 
 const writers = ["owner", "admin", "manager", "employee", "read_only"] as const;
 
@@ -15,6 +17,8 @@ export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
     const context = await requireAccess(request, writers);
+    await requireAddon(context, "bookloq");
+    await requireOrganizationWideLocationAccess(context);
     await enforceRateLimit("bookloq:actions", context.userId, 60, 60);
     const body = await readJsonObject(request, 16_000);
     const allowed = ["type", "itemId", "status", "alertId", "periodId", "reason"];

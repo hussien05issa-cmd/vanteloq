@@ -1,18 +1,20 @@
-import { and, eq } from "drizzle-orm";
-import { getD1, getDb } from "../../../../db";
-import { integrationLocationMappings } from "../../../../db/schema";
+import { getD1 } from "../../../../db";
 import { requireAccess } from "../../../../server/authorization";
-import { clientSource, enforceRateLimit, handleApi, jsonResponse } from "../../../../server/api";
+import { ApiError, clientSource, enforceRateLimit, handleApi, jsonResponse } from "../../../../server/api";
 import {
   buildFinancialStatements,
+  bookloqAccessForPermissions,
   bookkeepingHealthScore,
   effectiveBookLoQPermissions,
   forecastCash,
+  normalizeBookLoQTimestamp,
+  verifiedBookLoQBankBalance,
   type LedgerAccountRow,
 } from "../../../../server/bookloq";
-import { requirePermission } from "../../../../server/permissions";
+import { effectivePermissions, requirePermission } from "../../../../server/permissions";
 import { calculateCashFlowIntelligence, type CashFlowItem } from "../../../../domain/cash-flow-intelligence";
-import { requireAccessibleLocation } from "../../../../server/location-access";
+import { authorizedLocationDataScope } from "../../../../server/location-access";
+import { requireAddon } from "../../../../server/entitlements/engine";
 
 const readers = ["owner", "admin", "manager", "employee", "read_only"] as const;
 
@@ -33,6 +35,26 @@ type CashFlowRecord = {
   certainty: "confirmed" | "probable" | "estimated";
 };
 
+type BankRow = {
+  id: string;
+  name: string;
+  accountType: string;
+  institutionName: string;
+  maskedNumber: string;
+  currency: string;
+  provider: string;
+  liveBalanceCents: number | null;
+  availableBalanceCents: number | null;
+  bookBalanceCents: number;
+  availableCreditCents: number | null;
+  connectionStatus: string;
+  lastSyncAt: number | null;
+  lastReconciledAt: number | null;
+  demoRecord: number;
+  accountCode: string;
+  accountName: string;
+};
+
 function rows<T>(result: D1Result<T>): T[] {
   return result.results ?? [];
 }
@@ -40,26 +62,27 @@ function rows<T>(result: D1Result<T>): T[] {
 export async function GET(request: Request) {
   return handleApi(request, async () => {
     const context = await requireAccess(request, readers);
+    await requireAddon(context, "bookloq");
     await requirePermission(context, "finance.statements");
+    const permissions = await effectivePermissions(context);
+    const access = bookloqAccessForPermissions(permissions);
     await enforceRateLimit("bookloq:read", `${context.userId}:${clientSource(request)}`, 90, 60);
     const database = getD1();
     const organizationId = context.organizationId;
     const requestedLocationId = new URL(request.url).searchParams.get("location");
-    const selectedLocation = requestedLocationId ? await requireAccessibleLocation(context, requestedLocationId) : null;
-    const selectedMappings = selectedLocation ? await getDb().select({
-      provider: integrationLocationMappings.provider,
-      externalLocationRef: integrationLocationMappings.externalLocationRef,
-    }).from(integrationLocationMappings).where(and(
-      eq(integrationLocationMappings.organizationId, organizationId),
-      eq(integrationLocationMappings.localLocationId, selectedLocation.id),
-      eq(integrationLocationMappings.status, "mapped"),
-    )) : [];
-    const locationRefs = new Set<string>(selectedLocation ? [selectedLocation.id, selectedLocation.name] : []);
-    for (const mapping of selectedMappings) locationRefs.add(`${mapping.provider}:${mapping.externalLocationRef}`);
-    const locationPlaceholders = [...locationRefs].map(() => "?").join(", ");
-    const transactionLocationClause = selectedLocation ? ` AND t.location_ref IN (${locationPlaceholders})` : "";
-    const budgetLocationClause = selectedLocation ? ` AND b.location_ref IN (${locationPlaceholders})` : "";
-    const locationBindings = selectedLocation ? [...locationRefs] : [];
+    const locationAccess = await authorizedLocationDataScope(context, requestedLocationId);
+    if (!locationAccess.organizationWide) {
+      throw new ApiError(403, "BOOKLOQ_ORGANIZATION_SCOPE_REQUIRED", "BookLoQ organization-wide records are unavailable to location-limited accounts.");
+    }
+    const locationRefs = locationAccess.locationRefs;
+    const locationPlaceholders = locationRefs?.map(() => "?").join(", ") ?? "";
+    const transactionLocationClause = locationRefs === null
+      ? ""
+      : locationRefs.length ? ` AND t.location_ref IN (${locationPlaceholders})` : " AND 1 = 0";
+    const budgetLocationClause = locationRefs === null
+      ? ""
+      : locationRefs.length ? ` AND b.location_ref IN (${locationPlaceholders})` : " AND 1 = 0";
+    const locationBindings = locationRefs ?? [];
 
     const [
       settingsResult,
@@ -101,15 +124,32 @@ export async function GET(request: Request) {
         FROM financial_transactions t
         LEFT JOIN financial_accounts a ON a.id = t.account_id AND a.organization_id = t.organization_id
         LEFT JOIN bookloq_contacts c ON c.id = t.contact_id AND c.organization_id = t.organization_id
-        WHERE t.organization_id = ?${transactionLocationClause} ORDER BY t.posting_date DESC, t.created_at DESC LIMIT 200`).bind(organizationId, ...locationBindings).all(),
+        WHERE t.organization_id = ?
+          AND (t.source_system <> 'plaid' OR EXISTS (
+            SELECT 1 FROM integration_connections c
+            WHERE c.organization_id = t.organization_id AND c.provider = 'plaid'
+              AND c.status = 'connected' AND c.data_promotion_status = 'approved'
+              AND (c.sync_lease_owner IS NULL OR c.sync_lease_expires_at IS NULL
+                OR c.sync_lease_expires_at <= CAST(strftime('%s', 'now') AS INTEGER))
+          ))${transactionLocationClause}
+        ORDER BY t.posting_date DESC, t.created_at DESC LIMIT 200`).bind(organizationId, ...locationBindings).all(),
       database.prepare(`SELECT b.id, b.name, b.account_type accountType, b.institution_name institutionName,
         b.masked_number maskedNumber, b.live_balance_cents liveBalanceCents,
         b.available_balance_cents availableBalanceCents, b.book_balance_cents bookBalanceCents,
         b.available_credit_cents availableCreditCents, b.connection_status connectionStatus,
         b.last_sync_at lastSyncAt, b.last_reconciled_at lastReconciledAt, b.demo_record demoRecord,
+        b.currency, b.provider,
         a.code accountCode, a.name accountName
         FROM bank_accounts b JOIN financial_accounts a ON a.id = b.financial_account_id
-        WHERE b.organization_id = ? ORDER BY b.name`).bind(organizationId).all(),
+        WHERE b.organization_id = ?
+          AND (b.provider <> 'plaid' OR EXISTS (
+            SELECT 1 FROM integration_connections c
+            WHERE c.organization_id = b.organization_id AND c.provider = 'plaid'
+              AND c.status = 'connected' AND c.data_promotion_status = 'approved'
+              AND (c.sync_lease_owner IS NULL OR c.sync_lease_expires_at IS NULL
+                OR c.sync_lease_expires_at <= CAST(strftime('%s', 'now') AS INTEGER))
+          ))
+        ORDER BY b.name`).bind(organizationId).all(),
       database.prepare(`SELECT r.id, r.reconciliation_type reconciliationType, r.start_date startDate,
         r.end_date endDate, r.opening_balance_cents openingBalanceCents,
         r.closing_balance_cents closingBalanceCents, r.book_balance_cents bookBalanceCents,
@@ -171,19 +211,27 @@ export async function GET(request: Request) {
     const accountRows = rows(accountsResult);
     const statements = buildFinancialStatements(accountRows);
     const transactions = rows(transactionsResult);
-    const banks = rows(banksResult);
+    const banks = rows(banksResult) as BankRow[];
     const reconciliations = rows(reconciliationsResult);
     const bills = rows(billsResult) as Array<{ id: string; billNumber: string; supplierName: string; dueDate: string; totalCents: number; paidCents: number; status: string }>;
     const invoices = rows(invoicesResult) as Array<{ id: string; invoiceNumber: string; customerName: string; dueDate: string; totalCents: number; paidCents: number; status: string }>;
-    const alerts = rows(alertsResult) as Array<{ severity: string; status: string }>;
+    const alerts = rows(alertsResult) as Array<{ severity: string; status: string; alertType: string }>;
     const closeItems = rows(closeResult) as Array<{ status: string }>;
     const completeItems = closeItems.filter((item) => item.status === "complete").length;
     const monthEndCompletionRate = closeItems.length ? completeItems / closeItems.length : 0;
     const uncategorizedCount = (transactions as Array<{ categorizationStatus: string }>).filter((transaction) => transaction.categorizationStatus !== "confirmed").length;
     const unreconciledCount = (transactions as Array<{ reconciliationStatus: string }>).filter((transaction) => transaction.reconciliationStatus !== "reconciled").length;
-    const unbalancedJournalCount = (rows(journalsResult) as Array<{ totalDebitCents: number; totalCreditCents: number }>).filter((entry) => entry.totalDebitCents !== entry.totalCreditCents).length;
+    const journalRows = rows(journalsResult) as Array<{ status: string; totalDebitCents: number; totalCreditCents: number }>;
+    const ledgerAvailable = journalRows.some((entry) => entry.status === "posted" || entry.status === "reversed");
+    const unbalancedJournalCount = journalRows.filter((entry) => entry.totalDebitCents !== entry.totalCreditCents).length;
     const openCriticalAlerts = alerts.filter((alert) => alert.status === "open" && alert.severity === "critical").length;
-    const healthScore = bookkeepingHealthScore({ unbalancedJournalCount, uncategorizedCount, unreconciledCount, openCriticalAlerts, missingReceiptCount: 0, monthEndCompletionRate });
+    const receiptEvidenceAlerts = alerts.filter((alert) => alert.alertType === "receipt_missing");
+    const missingReceiptCount = receiptEvidenceAlerts.length
+      ? receiptEvidenceAlerts.filter((alert) => alert.status === "open").length
+      : null;
+    const healthScore = missingReceiptCount === null
+      ? null
+      : bookkeepingHealthScore({ unbalancedJournalCount, uncategorizedCount, unreconciledCount, openCriticalAlerts, missingReceiptCount, monthEndCompletionRate });
     const asOf = new Date().toISOString().slice(0, 10);
     const cashFlowItems: CashFlowRecord[] = [
       ...bills.filter((bill) => !["paid", "reconciled", "void"].includes(bill.status)).map((bill) => ({ dueDate: bill.dueDate, amountCents: bill.totalCents - bill.paidCents, direction: "out" as const, certainty: "confirmed" as const })),
@@ -199,61 +247,128 @@ export async function GET(request: Request) {
     const integrationRows = rows(integrationsResult) as Array<{ provider: string; status: string; dataPromotionStatus: string; lastSuccessfulSyncAt: number | null }>;
     const documentRows = rows(documentsResult) as Array<{ documentType: string; status: string; extractionStatus: string; createdAt: number }>;
     const plaidConnection = integrationRows.find((item) => item.provider === "plaid");
+    const canReconcile = permissions.includes("finance.reconcile");
+    const uiPermissions = effectiveBookLoQPermissions(context.role).filter((permission) => {
+      if (permission === "view_banking") return access.bankBalances;
+      if (permission === "view_payroll") return access.payrollTotals;
+      if (permission === "view_audit_logs") return access.audit;
+      if (permission === "export_data") return access.export;
+      if (permission === "reconcile_accounts") return canReconcile;
+      if (permission === "post_journals") return permissions.includes("finance.journal_post");
+      if (permission === "manage_integrations") return permissions.includes("finance.connections");
+      return true;
+    });
+    const baseCurrency = settings?.baseCurrency ?? context.organization.currency;
+    const dataMode = settings?.dataMode ?? "live";
+    const nowMs = Date.now();
+    const cashAccountTypes = new Set(["chequing", "savings", "merchant"]);
+    const visibleBanks = access.bankBalances ? banks
+      .filter((bank) => dataMode === "demonstration" ? Boolean(bank.demoRecord) : !Boolean(bank.demoRecord))
+      .map((bank) => {
+        const synchronizedAt = normalizeBookLoQTimestamp(bank.lastSyncAt);
+        const reconciledAt = normalizeBookLoQTimestamp(bank.lastReconciledAt);
+        const ageMs = synchronizedAt === null ? null : nowMs - synchronizedAt;
+        const current = !Boolean(bank.demoRecord)
+          && cashAccountTypes.has(bank.accountType)
+          && bank.currency.toUpperCase() === baseCurrency.toUpperCase()
+          && bank.connectionStatus === "healthy"
+          && bank.liveBalanceCents !== null
+          && ageMs !== null
+          && ageMs >= 0
+          && ageMs <= 48 * 60 * 60 * 1_000;
+        const balanceState = Boolean(bank.demoRecord)
+          ? "demonstration"
+          : current ? "current" : ageMs !== null && ageMs > 48 * 60 * 60 * 1_000 ? "stale" : "unavailable";
+        return { ...bank, lastSyncAt: synchronizedAt, lastReconciledAt: reconciledAt, balanceState };
+      }) : [];
+    const visibleBills = access.accountsPayableReceivable ? rows(billsResult) : [];
+    const visibleInvoices = access.accountsPayableReceivable ? rows(invoicesResult) : [];
+    const visibleContacts = access.contactIdentity ? rows(contactsResult) : [];
+    const cashProjectionAllowed = ledgerAvailable && access.bankBalances && access.accountsPayableReceivable;
+    const demonstrationCashBanks = visibleBanks.filter((bank) =>
+      cashAccountTypes.has(bank.accountType)
+      && bank.currency.toUpperCase() === baseCurrency.toUpperCase(),
+    );
+    const bankBalanceCents = dataMode === "demonstration"
+      ? demonstrationCashBanks.length
+        ? demonstrationCashBanks.reduce((sum, bank) => sum + Number(bank.liveBalanceCents ?? 0), 0)
+        : null
+      : verifiedBookLoQBankBalance(visibleBanks, baseCurrency, nowMs);
+    const availableStatements = ledgerAvailable ? statements : {
+      accounts: [],
+      trialBalance: { totalDebitCents: null, totalCreditCents: null },
+      profitAndLoss: { revenueCents: null, expenseCents: null, cogsCents: null, grossProfitCents: null, operatingProfitCents: null },
+      balanceSheet: { assetCents: null, liabilityCents: null, equityCents: null },
+      cashCents: null,
+      accountsReceivableCents: null,
+      accountsPayableCents: null,
+      netSalesTaxCents: null,
+    };
 
     return jsonResponse({
       bookloq: {
-        configured: Boolean(settings || banks.length || documentRows.length),
+        configured: ledgerAvailable,
         settings,
         role: context.role,
-        permissions: effectiveBookLoQPermissions(context.role),
+        permissions: uiPermissions,
         organization: { name: context.organization.businessName, currency: settings?.baseCurrency ?? context.organization.currency },
         summary: {
-          currentCashCents: statements.cashCents,
-          availableCashCents: statements.cashCents - dueNext30Cents,
-          bankBalanceCents: banks.some((bank) => (bank as { liveBalanceCents?: number | null }).liveBalanceCents !== null)
-            ? banks.reduce((sum, bank) => sum + Number((bank as { liveBalanceCents?: number | null }).liveBalanceCents ?? 0), 0)
+          currentCashCents: ledgerAvailable ? statements.cashCents : null,
+          availableCashCents: ledgerAvailable ? statements.cashCents - dueNext30Cents : null,
+          bankBalanceCents,
+          bookBalanceCents: ledgerAvailable ? statements.cashCents : null,
+          revenueCents: ledgerAvailable ? statements.profitAndLoss.revenueCents : null,
+          grossProfitCents: ledgerAvailable ? statements.profitAndLoss.grossProfitCents : null,
+          grossMarginBasisPoints: ledgerAvailable && statements.profitAndLoss.revenueCents ? Math.round(statements.profitAndLoss.grossProfitCents * 10_000 / statements.profitAndLoss.revenueCents) : null,
+          operatingProfitCents: ledgerAvailable ? statements.profitAndLoss.operatingProfitCents : null,
+          totalExpensesCents: ledgerAvailable ? statements.profitAndLoss.expenseCents : null,
+          accountsReceivableCents: ledgerAvailable && access.accountsPayableReceivable ? statements.accountsReceivableCents : null,
+          accountsPayableCents: ledgerAvailable && access.accountsPayableReceivable ? statements.accountsPayableCents : null,
+          salesTaxPayableCents: ledgerAvailable ? statements.netSalesTaxCents : null,
+          payrollObligationsCents: ledgerAvailable && access.payrollTotals
+            ? statements.accounts.filter((account) => account.systemKey === "payroll_payable").reduce((sum, account) => sum + account.balanceCents, 0)
             : null,
-          bookBalanceCents: statements.cashCents,
-          revenueCents: statements.profitAndLoss.revenueCents,
-          grossProfitCents: statements.profitAndLoss.grossProfitCents,
-          grossMarginBasisPoints: statements.profitAndLoss.revenueCents ? Math.round(statements.profitAndLoss.grossProfitCents * 10_000 / statements.profitAndLoss.revenueCents) : null,
-          operatingProfitCents: statements.profitAndLoss.operatingProfitCents,
-          totalExpensesCents: statements.profitAndLoss.expenseCents,
-          accountsReceivableCents: statements.accountsReceivableCents,
-          accountsPayableCents: statements.accountsPayableCents,
-          salesTaxPayableCents: statements.netSalesTaxCents,
-          payrollObligationsCents: statements.accounts.filter((account) => account.systemKey === "payroll_payable").reduce((sum, account) => sum + account.balanceCents, 0),
-          debtObligationsCents: statements.accounts.filter((account) => account.systemKey === "loan_payable").reduce((sum, account) => sum + account.balanceCents, 0),
-          upcomingBillsCount: bills.filter((bill) => !["paid", "reconciled", "void"].includes(bill.status)).length,
-          overdueInvoicesCount: invoices.filter((invoice) => invoice.dueDate < asOf && !["paid", "written_off", "void"].includes(invoice.status)).length,
-          unreconciledCount,
-          uncategorizedCount,
-          missingReceiptsCount: 0,
-          monthEndCompletionRate,
-          healthScore,
+          debtObligationsCents: ledgerAvailable ? statements.accounts.filter((account) => account.systemKey === "loan_payable").reduce((sum, account) => sum + account.balanceCents, 0) : null,
+          upcomingBillsCount: ledgerAvailable && access.accountsPayableReceivable ? bills.filter((bill) => !["paid", "reconciled", "void"].includes(bill.status)).length : null,
+          overdueInvoicesCount: ledgerAvailable && access.accountsPayableReceivable ? invoices.filter((invoice) => invoice.dueDate < asOf && !["paid", "written_off", "void"].includes(invoice.status)).length : null,
+          unreconciledCount: ledgerAvailable && canReconcile ? unreconciledCount : null,
+          uncategorizedCount: ledgerAvailable && access.bankTransactions ? uncategorizedCount : null,
+          missingReceiptsCount: ledgerAvailable ? missingReceiptCount : null,
+          monthEndCompletionRate: ledgerAvailable ? monthEndCompletionRate : null,
+          healthScore: ledgerAvailable ? healthScore : null,
         },
-        statements,
-        locationScope: selectedLocation ? {
-          id: selectedLocation.id,
-          name: selectedLocation.name,
+        statements: availableStatements,
+        locationScope: locationRefs !== null ? {
+          id: locationAccess.selectedLocation?.id ?? "accessible",
+          name: locationAccess.selectedLocation?.name ?? "Accessible locations",
           filteredRecords: ["transactions", "budgets"],
           organizationWideRecords: ["bank balances", "financial statements", "bills", "invoices", "tax", "reconciliations"],
           boundary: "Transactions and budgets are filtered to records tagged to the selected location. Shared bank balances, statements, bills, invoices, tax and reconciliations remain organization-wide until an approved allocation exists.",
         } : null,
-        forecasts,
-        cashIntelligence,
-        transactions,
-        banks,
-        reconciliations,
-        bills: rows(billsResult),
-        invoices: rows(invoicesResult),
-        contacts: rows(contactsResult),
+        forecasts: cashProjectionAllowed ? forecasts : [],
+        cashIntelligence: cashProjectionAllowed ? cashIntelligence : {
+          status: "unavailable",
+          liquidity30Cents: null,
+          liquidity60Cents: null,
+          purchasingCapacityCents: null,
+          risk: "unavailable",
+          minimumCashCents: null,
+          minimumCashDate: null,
+          warning: "Bank balance and accounts payable or receivable permissions are required for cash intelligence.",
+          evidence: [],
+        },
+        transactions: access.bankTransactions ? transactions : [],
+        banks: visibleBanks,
+        reconciliations: canReconcile ? reconciliations : [],
+        bills: visibleBills,
+        invoices: visibleInvoices,
+        contacts: visibleContacts,
         alerts: rows(alertsResult),
-        journals: rows(journalsResult),
+        journals: ledgerAvailable ? journalRows : [],
         periods: rows(periodsResult),
         closeItems,
         budgets: rows(budgetsResult),
-        audit: rows(auditResult),
+        audit: access.audit ? rows(auditResult) : [],
         documentSummary: {
           total: documentRows.length,
           invoices: documentRows.filter((document) => document.documentType === "invoice").length,
@@ -262,7 +377,11 @@ export async function GET(request: Request) {
           extractionConfigured: documentRows.some((document) => document.extractionStatus !== "not_configured"),
         },
         integrations: {
-          banking: plaidConnection?.status === "connected" ? (plaidConnection.dataPromotionStatus === "approved" ? "connected_and_synced" : "connected_needs_sync") : "not_connected",
+          banking: dataMode === "demonstration" && visibleBanks.length
+            ? "demonstration"
+            : plaidConnection?.status === "connected"
+              ? (plaidConnection.dataPromotionStatus === "approved" && bankBalanceCents !== null ? "connected_and_synced" : "connected_needs_sync")
+              : "not_connected",
           pos: integrationRows.some((item) => item.status === "connected" && ["lightspeed", "lightspeed-r", "shopify", "shopify-pos", "square", "clover"].includes(item.provider)) ? "connected" : "not_connected",
           payroll: "not_connected",
           receiptCapture: documentRows.length ? "review_queue_active" : "upload_available",

@@ -1,6 +1,6 @@
 import { and, asc, eq, gte, inArray, lte } from "drizzle-orm";
 import { getD1, getDb } from "../../../../db";
-import { dailyBusinessMetrics, integrationConnections, integrationLocationMappings } from "../../../../db/schema";
+import { dailyBusinessMetrics, integrationConnections } from "../../../../db/schema";
 import { requireAccess } from "../../../../server/authorization";
 import {
   ApiError,
@@ -12,7 +12,8 @@ import {
   effectivePermissions,
   requirePermission,
 } from "../../../../server/permissions";
-import { requireAccessibleLocation } from "../../../../server/location-access";
+import { authorizedLocationDataScope } from "../../../../server/location-access";
+import { approvedFactSource } from "../../../../server/integrations/trusted-data";
 
 const users = ["owner", "admin", "manager", "employee", "read_only"] as const;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -90,6 +91,9 @@ export async function GET(request: Request) {
         "This report requires a deeper source contract and is not yet available.",
       );
     const permissions = await effectivePermissions(context);
+    const canViewProfit = permissions.includes("metrics.profit");
+    const canViewRefunds = permissions.includes("sales.refunds");
+    const canViewPayroll = permissions.includes("payroll.totals");
     await requirePermission(context, "metrics.revenue");
     if (report === "gross_profit_summary")
       await requirePermission(context, "metrics.profit");
@@ -100,49 +104,44 @@ export async function GET(request: Request) {
     const start = url.searchParams.get("start");
     const end = url.searchParams.get("end");
     const requestedLocationId = url.searchParams.get("location");
-    const selectedLocation = requestedLocationId ? await requireAccessibleLocation(context, requestedLocationId) : null;
-    const selectedMappings = selectedLocation ? await getDb().select({
-      provider: integrationLocationMappings.provider,
-      externalLocationRef: integrationLocationMappings.externalLocationRef,
-    }).from(integrationLocationMappings).where(and(
-      eq(integrationLocationMappings.organizationId, context.organizationId),
-      eq(integrationLocationMappings.localLocationId, selectedLocation.id),
-      eq(integrationLocationMappings.status, "mapped"),
-    )) : [];
-    const locationRefs = new Set<string>(selectedLocation ? [selectedLocation.id, selectedLocation.name] : []);
-    for (const mapping of selectedMappings) {
-      locationRefs.add(`${mapping.provider}:${mapping.externalLocationRef}`);
-    }
+    const locationAccess = await authorizedLocationDataScope(context, requestedLocationId);
+    const selectedLocation = locationAccess.selectedLocation;
+    const locationRefs = locationAccess.locationRefs;
+    const locationRestricted = locationRefs !== null;
     if ((start && !DATE.test(start)) || (end && !DATE.test(end)))
       throw new ApiError(400, "INVALID_DATE", "Enter valid report dates.");
     if (start && end && start > end)
       throw new ApiError(400, "INVALID_DATE_RANGE", "The start date must be on or before the end date.");
-    const connectedRows = await getDb().select({ provider: integrationConnections.provider }).from(integrationConnections).where(and(
-      eq(integrationConnections.organizationId, context.organizationId),
-      eq(integrationConnections.status, "connected"),
-    ));
+    const connectedRows = await getDb().select({
+      id: integrationConnections.id,
+      provider: integrationConnections.provider,
+      sourceNamespace: integrationConnections.sourceNamespace,
+      status: integrationConnections.status,
+      dataPromotionStatus: integrationConnections.dataPromotionStatus,
+      syncLeaseOwner: integrationConnections.syncLeaseOwner,
+    }).from(integrationConnections)
+      .where(eq(integrationConnections.organizationId, context.organizationId));
     const posProviders = new Set(["lightspeed", "lightspeed-r", "shopify", "shopify-pos", "square", "clover", "moneris"]);
-    const connectedPosProviders = new Set(connectedRows.map((row) => row.provider).filter((provider) => posProviders.has(provider)));
+    const posRows = connectedRows.filter((row) => posProviders.has(row.provider));
+    const connectedPosRows = posRows.filter((row) => row.status === "connected");
+    const approvedPosRows = connectedPosRows.filter((row) => row.dataPromotionStatus === "approved" && !row.syncLeaseOwner);
+    const connectedPosProviders = new Set(approvedPosRows.map((row) => row.provider));
+    const approvedConnectionIds = approvedPosRows.map((row) => row.id);
     const filters = [
       eq(dailyBusinessMetrics.organizationId, context.organizationId),
+      approvedFactSource(dailyBusinessMetrics.organizationId, dailyBusinessMetrics.sourceProvider, dailyBusinessMetrics.sourceConnectionId),
     ];
     if (start) filters.push(gte(dailyBusinessMetrics.businessDate, start));
     if (end) filters.push(lte(dailyBusinessMetrics.businessDate, end));
-    if (selectedLocation)
-      filters.push(inArray(dailyBusinessMetrics.locationRef, [...locationRefs]));
+    if (locationRefs !== null)
+      filters.push(inArray(dailyBusinessMetrics.locationRef, locationRefs));
     const unscopedRows = await getDb()
       .select()
       .from(dailyBusinessMetrics)
       .where(and(...filters))
       .orderBy(asc(dailyBusinessMetrics.businessDate))
       .limit(1000);
-    const hasConnectedProviderRows = unscopedRows.some((row) => {
-      const provider = row.locationRef.split(":", 1)[0];
-      return connectedPosProviders.has(provider);
-    });
-    const rows = !selectedLocation && hasConnectedProviderRows
-      ? unscopedRows.filter((row) => connectedPosProviders.has(row.locationRef.split(":", 1)[0]))
-      : unscopedRows;
+    const rows = unscopedRows;
     const generatedAt = new Date().toISOString();
     const distinctDates = [...new Set(rows.map((row) => row.businessDate))];
     const resolvedStart = start ?? distinctDates.at(0) ?? null;
@@ -160,7 +159,7 @@ export async function GET(request: Request) {
       latestBusinessDate: rows.at(-1)?.businessDate ?? null,
       generatedAt,
       organizationId: context.organizationId,
-      location: selectedLocation?.name ?? "All locations",
+      location: selectedLocation?.name ?? (locationRestricted ? "Accessible locations" : "All locations"),
       locationId: selectedLocation?.id ?? null,
       periodStart: resolvedStart,
       periodEnd: resolvedEnd,
@@ -189,13 +188,13 @@ export async function GET(request: Request) {
           row.netSalesCents,
           row.transactionCount,
           row.unitsSold,
-          row.discountsCents,
-          row.refundsCents,
-          permissions.includes("metrics.profit") ? row.costOfGoodsCents : null,
-          permissions.includes("metrics.profit")
+          canViewRefunds ? row.discountsCents : null,
+          canViewRefunds ? row.refundsCents : null,
+          canViewProfit ? row.costOfGoodsCents : null,
+          canViewProfit
             ? row.netSalesCents - row.costOfGoodsCents
             : null,
-          row.labourCostCents,
+          canViewPayroll ? row.labourCostCents : null,
         ]
           .map(csvCell)
           .join(","),
@@ -219,32 +218,35 @@ export async function GET(request: Request) {
       comparisonPeriod = { start: comparisonStart, end: comparisonEnd };
       const comparisonFilters = [
         eq(dailyBusinessMetrics.organizationId, context.organizationId),
+        approvedFactSource(dailyBusinessMetrics.organizationId, dailyBusinessMetrics.sourceProvider, dailyBusinessMetrics.sourceConnectionId),
         gte(dailyBusinessMetrics.businessDate, comparisonStart),
         lte(dailyBusinessMetrics.businessDate, comparisonEnd),
       ];
-      if (selectedLocation) comparisonFilters.push(inArray(dailyBusinessMetrics.locationRef, [...locationRefs]));
-      const unscopedComparisonRows = await getDb().select().from(dailyBusinessMetrics).where(and(...comparisonFilters)).orderBy(asc(dailyBusinessMetrics.businessDate)).limit(1000);
-      comparisonRows = !selectedLocation && hasConnectedProviderRows
-        ? unscopedComparisonRows.filter((row) => connectedPosProviders.has(row.locationRef.split(":", 1)[0]))
-        : unscopedComparisonRows;
+      if (locationRefs !== null) comparisonFilters.push(inArray(dailyBusinessMetrics.locationRef, locationRefs));
+      comparisonRows = await getDb().select().from(dailyBusinessMetrics).where(and(...comparisonFilters)).orderBy(asc(dailyBusinessMetrics.businessDate)).limit(1000);
     }
     const comparisonTotals = totalsFor(comparisonRows);
-    const paymentOutletRefs = selectedMappings.map((mapping) => mapping.externalLocationRef);
-    const paymentLocationClause = selectedLocation
-      ? ` AND outlet_ref IN (${paymentOutletRefs.map(() => "?").join(", ") || "NULL"})`
+    const paymentLocations = locationAccess.providerLocations ?? [];
+    const paymentLocationClause = locationRestricted
+      ? ` AND (${paymentLocations.map(() => "(provider = ? AND connection_id = ? AND outlet_ref = ?)").join(" OR ") || "0 = 1"})`
       : "";
-    const paymentMixResult = connectedPosProviders.size && resolvedStart && resolvedEnd && (!selectedLocation || paymentOutletRefs.length)
+    const paymentLocationBindings = paymentLocations.flatMap((location) => [
+      location.provider,
+      location.connectionId,
+      location.externalLocationRef,
+    ]);
+    const paymentMixResult = connectedPosProviders.size && resolvedStart && resolvedEnd && (!locationRestricted || paymentLocations.length)
       ? await getD1().prepare(`
           SELECT provider, category, payment_type_name AS paymentTypeName,
                  SUM(CASE WHEN amount_cents > 0 THEN amount_cents ELSE 0 END) AS amountCents,
                  COUNT(DISTINCT CASE WHEN amount_cents > 0 THEN external_sale_id END) AS transactionCount
           FROM commerce_payments
-          WHERE organization_id = ? AND paid_at IS NOT NULL
+          WHERE organization_id = ? AND connection_id IN (${approvedConnectionIds.map(() => "?").join(", ")}) AND paid_at IS NOT NULL
             AND substr(paid_at, 1, 10) BETWEEN ? AND ?
             ${paymentLocationClause}
           GROUP BY provider, category, payment_type_name
           ORDER BY amountCents DESC
-        `).bind(context.organizationId, resolvedStart, resolvedEnd, ...paymentOutletRefs).all<{
+        `).bind(context.organizationId, ...approvedConnectionIds, resolvedStart, resolvedEnd, ...paymentLocationBindings).all<{
           provider: string;
           category: string;
           paymentTypeName: string | null;
@@ -270,13 +272,15 @@ export async function GET(request: Request) {
       canExport: permissions.includes("reports.export"),
       totals: {
         ...totals,
-        costOfGoodsCents: permissions.includes("metrics.profit")
+        discountsCents: canViewRefunds ? totals.discountsCents : null,
+        refundsCents: canViewRefunds ? totals.refundsCents : null,
+        costOfGoodsCents: canViewProfit
           ? totals.costOfGoodsCents
           : null,
-        labourCostCents: permissions.includes("payroll.totals")
+        labourCostCents: canViewPayroll
           ? totals.labourCostCents
           : null,
-        grossProfitCents: permissions.includes("metrics.profit") ? totals.grossProfitCents : null,
+        grossProfitCents: canViewProfit ? totals.grossProfitCents : null,
       },
       comparison: comparisonPeriod && comparisonRows.length ? {
         periodStart: comparisonPeriod.start,
@@ -284,13 +288,13 @@ export async function GET(request: Request) {
         verifiedDays: new Set(comparisonRows.map((row) => row.businessDate)).size,
         totals: {
           netSalesCents: comparisonTotals.netSalesCents,
-          grossProfitCents: permissions.includes("metrics.profit") ? comparisonTotals.grossProfitCents : null,
+          grossProfitCents: canViewProfit ? comparisonTotals.grossProfitCents : null,
           transactionCount: comparisonTotals.transactionCount,
           averageTransactionCents: comparisonTotals.averageTransactionCents,
         },
         changes: {
           netSalesRate: change(totals.netSalesCents, comparisonTotals.netSalesCents),
-          grossProfitRate: permissions.includes("metrics.profit") ? change(totals.grossProfitCents, comparisonTotals.grossProfitCents) : null,
+          grossProfitRate: canViewProfit ? change(totals.grossProfitCents, comparisonTotals.grossProfitCents) : null,
           transactionRate: change(totals.transactionCount, comparisonTotals.transactionCount),
           averageTransactionRate: totals.averageTransactionCents !== null && comparisonTotals.averageTransactionCents !== null
             ? change(totals.averageTransactionCents, comparisonTotals.averageTransactionCents)
@@ -302,7 +306,7 @@ export async function GET(request: Request) {
         businessDate: row.businessDate,
         locationRef: row.locationRef,
         netSalesCents: row.netSalesCents,
-        costOfGoodsCents: permissions.includes("metrics.profit") ? row.costOfGoodsCents : 0,
+        costOfGoodsCents: canViewProfit ? row.costOfGoodsCents : null,
         transactionCount: row.transactionCount,
       })),
       explainAndAct: {

@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArticleCard, Breadcrumbs, ResourceShell, ResourceVisual } from "../components";
@@ -195,13 +194,16 @@ function ArticleHero({ article }: { article: ResourceArticle }) {
       className={`resource-visual visual-${article.category}`}
       style={{ aspectRatio: `${article.hero.width} / ${article.hero.height}`, display: "block", minHeight: 0, padding: 0 }}
     >
-      <Image
+      {/* The pre-compressed WebP is served directly because this Worker runtime has no image transformation binding. */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
         src={article.hero.src}
         alt={article.hero.alt}
         width={article.hero.width}
         height={article.hero.height}
-        priority
-        sizes="(max-width: 700px) calc(100vw - 36px), (max-width: 1050px) calc(100vw - 48px), 430px"
+        loading="eager"
+        decoding="async"
+        fetchPriority="high"
         style={{ display: "block", height: "100%", objectFit: "cover", position: "relative", width: "100%", zIndex: 1 }}
       />
     </div>

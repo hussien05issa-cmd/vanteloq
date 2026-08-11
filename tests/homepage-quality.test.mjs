@@ -37,11 +37,13 @@ test("homepage keeps every crawlable internal link on a working route", async ()
 test("homepage copy stays within the verified product boundary", async () => {
   const html = await (await fetchRoute("/")).text();
   assert.doesNotMatch(html, /Start (?:Your )?Free Trial/i);
-  for (const provider of ["Square", "Moneris", "QuickBooks", "Xero", "Plaid"]) {
+  for (const provider of ["Square", "Moneris", "QuickBooks", "Xero"]) {
     assert.match(html, new RegExp(`<strong>${provider}</strong>[\\s\\S]{0,180}<small>PLANNED</small>`));
   }
+  assert.match(html, /<strong>Plaid<\/strong>[\s\S]{0,240}<small>SETUP REQUIRED<\/small>/);
+  assert.match(html, /Plaid still requires hosted credentials, provider approval, and institution testing/);
   for (const provider of ["Google", "Meta"]) {
-    assert.match(html, new RegExp(`<strong>${provider}</strong>[\\s\\S]{0,220}<small>COMING SOON!</small>`));
+    assert.match(html, new RegExp(`<strong>${provider}</strong>[\\s\\S]{0,220}<small>PLANNED</small>`));
   }
   assert.doesNotMatch(html, /(?:Square|Moneris|QuickBooks|Xero|Plaid|Google|Meta) (?:is )?(?:connected|available now|live)/i);
   assert.doesNotMatch(html, /\b(?:SOC 2|ISO 27001|HIPAA|PCI)\s+(?:certified|compliant|accredited)\b/i);
@@ -73,6 +75,7 @@ test("homepage preserves responsive and keyboard interaction safeguards", async 
   assert.match(css, /overflow-x:\s*clip/);
   assert.match(css, /@media \(max-width: 620px\)/);
   assert.match(css, /@media \(max-width: 390px\)/);
+  assert.match(css, /\.home-connection-grid \{ display: grid; grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
   assert.match(css, /:focus-visible/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
   assert.doesNotMatch(css, /\.public-nav-actions\s+\.nav-login\s*\{\s*display:\s*none/);

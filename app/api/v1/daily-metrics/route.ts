@@ -6,6 +6,7 @@ import { requireAccess } from "../../../../server/authorization";
 import { ApiError, enforceRateLimit, handleApi, hashIdentifier, jsonResponse, readJsonObject, requireSameOrigin } from "../../../../server/api";
 import { dailyMetricImportInput, idempotencyKey } from "../../../../server/validation";
 import { requirePermission } from "../../../../server/permissions";
+import { authorizedLocationDataScope, requireOrganizationWideLocationAccess } from "../../../../server/location-access";
 
 const readers = ["owner", "admin", "manager", "employee", "read_only"] as const;
 const writers = ["owner", "admin", "manager", "employee", "read_only"] as const;
@@ -14,6 +15,7 @@ export async function GET(request: Request) {
   return handleApi(request, async () => {
     const context = await requireAccess(request, readers);
     await requirePermission(context, "integrations.view");
+    await requireOrganizationWideLocationAccess(context);
     await enforceRateLimit("daily-metrics:read", context.userId, 60, 60);
     const imports = await getDb().select({
       id: dataImports.id,
@@ -35,11 +37,34 @@ export async function POST(request: Request) {
     await enforceRateLimit("daily-metrics:write", context.userId, 12, 3_600);
     const key = idempotencyKey(request);
     const input = dailyMetricImportInput(await readJsonObject(request, 512_000));
+    const scope = await authorizedLocationDataScope(context, new URL(request.url).searchParams.get("location"));
+    if (scope.locationRefs !== null) {
+      const allowed = new Set(scope.locationRefs);
+      if (input.rows.some((row) => !allowed.has(row.locationRef))) {
+        throw new ApiError(403, "LOCATION_ACCESS_DENIED", "The import contains a location that is not available to your account.");
+      }
+    }
     const [existing] = await getDb().select().from(dataImports).where(and(
       eq(dataImports.organizationId, context.organizationId),
       eq(dataImports.idempotencyKey, key),
     )).limit(1);
-    if (existing?.status === "completed") return jsonResponse({ import: existing, replayed: true });
+    if (existing?.status === "completed") {
+      if (existing.importedByUserId !== context.userId) {
+        throw new ApiError(
+          409,
+          "IDEMPOTENCY_KEY_CONFLICT",
+          "This idempotency key is already associated with another import request.",
+        );
+      }
+      return jsonResponse({
+        import: {
+          id: existing.id,
+          status: existing.status,
+          rowCount: existing.rowCount,
+        },
+        replayed: true,
+      });
+    }
 
     const importHash = (await hashIdentifier(`${context.organizationId}:${key}`)).slice(0, 40);
     const importId = `import-${importHash}`;

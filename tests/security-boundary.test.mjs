@@ -65,6 +65,10 @@ test("Lightspeed management routes reject anonymous same-origin writes", async (
     "/api/v1/integrations/stripe/authorize",
     "/api/v1/integrations/stripe/sync",
     "/api/v1/integrations/stripe/disconnect",
+    "/api/v1/integrations/plaid/link-token",
+    "/api/v1/integrations/plaid/exchange",
+    "/api/v1/integrations/plaid/sync",
+    "/api/v1/integrations/plaid/disconnect",
     "/api/v1/billing/checkout",
     "/api/v1/billing/portal",
   ]) {
@@ -114,14 +118,14 @@ test("the R-Series callback binds the provider redirect to a one-time initiating
   assert.match(source, /returning\(\{ stateHash: integrationOAuthStates\.stateHash \}\)/);
 });
 
-test("the Stripe callback requires the initiating signed-in owner", async () => {
+test("the Stripe callback rejects malformed one-time state before database access", async () => {
   const worker = await loadWorker();
   const response = await worker.fetch(new Request(
-    "https://vanteloq.example/api/v1/integrations/stripe/callback?code=test-code&state=state-with-enough-entropy-for-validation",
+    "https://vanteloq.example/api/v1/integrations/stripe/callback?code=test-code&state=too-short",
     { headers: { accept: "application/json" } },
   ), environment, context);
-  assert.equal(response.status, 401);
-  assert.equal((await response.json()).error.code, "AUTHENTICATION_REQUIRED");
+  assert.equal(response.status, 400);
+  assert.equal((await response.json()).error.code, "STRIPE_CALLBACK_INVALID");
 });
 
 test("the Stripe webhook rejects unsigned requests before database access", async () => {
@@ -152,6 +156,20 @@ test("the Stripe Billing webhook rejects unsigned requests before database acces
   assert.equal((await response.json()).error.code, "STRIPE_BILLING_SIGNATURE_INVALID");
 });
 
+test("the Plaid webhook rejects unsigned requests before database access", async () => {
+  const worker = await loadWorker();
+  const response = await worker.fetch(new Request(
+    "https://vanteloq.example/api/v1/integrations/plaid/webhook",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: '{"item_id":"item_unsigned","webhook_type":"TRANSACTIONS","webhook_code":"SYNC_UPDATES_AVAILABLE"}',
+    },
+  ), environment, context);
+  assert.equal(response.status, 401);
+  assert.equal((await response.json()).error.code, "PLAID_WEBHOOK_SIGNATURE_REQUIRED");
+});
+
 test("the Lightspeed webhook rejects unsigned requests before database access", async () => {
   const worker = await loadWorker();
   const response = await worker.fetch(new Request(
@@ -164,6 +182,40 @@ test("the Lightspeed webhook rejects unsigned requests before database access", 
   ), environment, context);
   assert.equal(response.status, 401);
   assert.equal((await response.json()).error.code, "LIGHTSPEED_WEBHOOK_SIGNATURE_INVALID");
+});
+
+test("signed provider webhook replay keys stay connection-scoped after the multi-account migration", async () => {
+  const { readFile } = await import("node:fs/promises");
+  for (const route of ["lightspeed", "stripe"]) {
+    const source = await readFile(
+      `${process.cwd()}/app/api/v1/integrations/${route}/webhook/route.ts`,
+      "utf8",
+    );
+    assert.match(source, /id:\s*integrationConnections\.id/);
+    assert.match(source, /connectionId:\s*connection\.id/);
+    assert.match(source, /integrationWebhookEvents\.connectionId/);
+  }
+});
+
+test("every cursor-bearing provider sync uses the connection lease and version fence", async () => {
+  const { readFile } = await import("node:fs/promises");
+  for (const route of ["lightspeed", "lightspeed-r", "stripe"]) {
+    const source = await readFile(
+      `${process.cwd()}/app/api/v1/integrations/${route}/sync/route.ts`,
+      "utf8",
+    );
+    assert.match(source, /acquireIntegrationSyncLease/);
+    assert.match(source, /renewIntegrationSyncLease/);
+    assert.match(source, /integrationConnections\.syncLeaseOwner/);
+    assert.match(source, /integrationConnections\.syncVersion/);
+  }
+  const plaid = await readFile(`${process.cwd()}/server/integrations/plaid.ts`, "utf8");
+  assert.match(plaid, /acquireIntegrationSyncLease/);
+  assert.match(plaid, /renewIntegrationSyncLease/);
+  assert.match(plaid, /integrationConnections\.syncLeaseOwner/);
+  assert.match(plaid, /integrationConnections\.syncVersion/);
+  assert.match(plaid, /dataPromotionStatus: "staging"[\s\S]{0,500}syncLeaseOwner/);
+  assert.match(plaid, /PLAID_WEBHOOK_SYNC_DEFERRED/);
 });
 
 test("state-changing onboarding rejects a cross-site origin before data access", async () => {
@@ -254,6 +306,10 @@ test("imports and business-memory writes reject cross-site origins before data a
     "/api/v1/integrations/stripe/authorize",
     "/api/v1/integrations/stripe/sync",
     "/api/v1/integrations/stripe/disconnect",
+    "/api/v1/integrations/plaid/link-token",
+    "/api/v1/integrations/plaid/exchange",
+    "/api/v1/integrations/plaid/sync",
+    "/api/v1/integrations/plaid/disconnect",
     "/api/v1/billing/checkout",
     "/api/v1/billing/portal",
   ]) {

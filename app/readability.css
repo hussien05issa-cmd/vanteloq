@@ -201,7 +201,7 @@ body {
 }
 
 /* Product-wide legibility floor.
-   Older high-density modules used 6–10px text to imitate desktop software.
+   Older high-density modules used 6 to 10 px text to imitate desktop software.
    Keep the compact layout, but never make operational copy depend on zoom. */
 .operating-shell :is(p, label, dt, dd) {
   font-size: max(13px, 1em) !important;

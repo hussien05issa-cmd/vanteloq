@@ -1,5 +1,5 @@
 import { getDb } from "../../../../../../db";
-import { integrationOAuthStates } from "../../../../../../db/schema";
+import { integrationConnections, integrationOAuthStates } from "../../../../../../db/schema";
 import { recordAudit } from "../../../../../../server/audit";
 import { requireAccess } from "../../../../../../server/authorization";
 import {
@@ -12,6 +12,7 @@ import {
   buildLightspeedAuthorizationUrl,
   LIGHTSPEED_PROVIDER,
   LIGHTSPEED_SCOPES,
+  lightspeedReadiness,
   newOAuthState,
   sha256Hex,
 } from "../../../../../../server/integrations/lightspeed";
@@ -25,13 +26,36 @@ export async function POST(request: Request) {
     await enforceRateLimit("lightspeed:authorize", context.userId, 10, 3_600);
     const state = newOAuthState();
     const stateHash = await sha256Hex(state);
+    const connectionId = crypto.randomUUID();
     const now = new Date();
     const expiresAt = new Date(now.getTime() + 10 * 60_000);
+    const readiness = lightspeedReadiness();
+    const authorizationUrl = buildLightspeedAuthorizationUrl(state);
+    await getDb().insert(integrationConnections).values({
+      id: connectionId,
+      organizationId: context.organizationId,
+      provider: LIGHTSPEED_PROVIDER,
+      sourceNamespace: connectionId,
+      status: "pending",
+      externalAccountRef: null,
+      externalAccountName: "New X-Series account",
+      domainPrefix: null,
+      apiVersion: readiness.apiVersion,
+      scopesJson: JSON.stringify(LIGHTSPEED_SCOPES),
+      dataPromotionStatus: "blocked",
+      connectedAt: null,
+      lastSuccessfulSyncAt: null,
+      lastSyncCursor: null,
+      lastErrorCode: null,
+      createdAt: now,
+      updatedAt: now,
+    });
     await getDb().insert(integrationOAuthStates).values({
       stateHash,
       organizationId: context.organizationId,
       actorUserId: context.userId,
       provider: LIGHTSPEED_PROVIDER,
+      connectionId,
       expiresAt,
       consumedAt: null,
       createdAt: now,
@@ -44,11 +68,12 @@ export async function POST(request: Request) {
       action: "integration.authorization_started",
       resourceType: "integration",
       resourceId: LIGHTSPEED_PROVIDER,
-      details: { provider: LIGHTSPEED_PROVIDER, mode: "read_only", expiresInSeconds: 600 },
+      details: { provider: LIGHTSPEED_PROVIDER, connectionId, mode: "read_only", expiresInSeconds: 600 },
     });
     return jsonResponse({
-      authorizationUrl: buildLightspeedAuthorizationUrl(state),
+      authorizationUrl,
       expiresAt: expiresAt.toISOString(),
+      connectionId,
       scopes: [...LIGHTSPEED_SCOPES],
       mode: "read_only_staging",
     });

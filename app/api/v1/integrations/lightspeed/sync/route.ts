@@ -12,6 +12,7 @@ import {
   enforceRateLimit,
   handleApi,
   jsonResponse,
+  readJsonObject,
   requireSameOrigin,
 } from "../../../../../../server/api";
 import {
@@ -20,6 +21,12 @@ import {
   normalizeLightspeedSale,
 } from "../../../../../../server/integrations/lightspeed";
 import { requirePermission } from "../../../../../../server/permissions";
+import {
+  acquireIntegrationSyncLease,
+  releaseIntegrationSyncLease,
+  renewIntegrationSyncLease,
+  requireOwnedIntegrationConnection,
+} from "../../../../../../server/integrations/connection";
 
 export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
@@ -27,19 +34,24 @@ export async function POST(request: Request) {
     const context = await requireAccess(request, ["owner", "admin"]);
     await requirePermission(context, "integrations.manage");
     await enforceRateLimit("lightspeed:sample-sync", context.userId, 12, 3_600);
-    const [connection] = await getDb().select().from(integrationConnections).where(and(
-      eq(integrationConnections.organizationId, context.organizationId),
-      eq(integrationConnections.provider, LIGHTSPEED_PROVIDER),
-      eq(integrationConnections.status, "connected"),
-    )).limit(1);
-    if (!connection) throw new ApiError(409, "LIGHTSPEED_NOT_CONNECTED", "Authorize and verify Lightspeed before staging a sample.");
+    const input = await readJsonObject(request);
+    const connection = await requireOwnedIntegrationConnection(
+      context.organizationId,
+      LIGHTSPEED_PROVIDER,
+      typeof input.connectionId === "string" ? input.connectionId : null,
+      { connected: true },
+    );
+    const syncLease = await acquireIntegrationSyncLease(context.organizationId, LIGHTSPEED_PROVIDER, connection.id);
+    if (!syncLease) throw new ApiError(409, "LIGHTSPEED_SYNC_IN_PROGRESS", "A sample sync is already running for this X-Series account.");
 
     const runId = crypto.randomUUID();
     const startedAt = new Date();
-    await getDb().insert(integrationSyncRuns).values({
+    try {
+      await getDb().insert(integrationSyncRuns).values({
       id: runId,
       organizationId: context.organizationId,
       provider: LIGHTSPEED_PROVIDER,
+      connectionId: connection.id,
       mode: "sample",
       status: "running",
       cursorBefore: connection.lastSyncCursor,
@@ -52,9 +64,13 @@ export async function POST(request: Request) {
       startedAt,
       completedAt: null,
       createdByUserId: context.userId,
-    });
+      });
+    } catch (error) {
+      await releaseIntegrationSyncLease(syncLease);
+      throw error;
+    }
     try {
-      const page = await fetchLightspeedCollection(context.organizationId, "sales", {
+      const page = await fetchLightspeedCollection(context.organizationId, connection.id, "sales", {
         after: connection.lastSyncCursor,
         maxPages: 3,
       });
@@ -71,12 +87,12 @@ export async function POST(request: Request) {
       for (const sale of normalized) {
         const result = await getD1().prepare(`
           INSERT OR IGNORE INTO integration_staged_sales
-            (id, organization_id, provider, external_sale_id, external_version,
+            (id, organization_id, provider, connection_id, external_sale_id, external_version,
              outlet_ref, sold_at, state, total_cents, tax_cents, cost_cents,
              discount_cents, line_count, source_payload_hash, sync_run_id, staged_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).bind(
-          crypto.randomUUID(), context.organizationId, LIGHTSPEED_PROVIDER,
+          crypto.randomUUID(), context.organizationId, LIGHTSPEED_PROVIDER, connection.id,
           sale.externalSaleId, sale.externalVersion, sale.outletRef, sale.soldAt,
           sale.state, sale.totalCents, sale.taxCents, sale.costCents,
           sale.discountCents, sale.lineCount, sale.sourcePayloadHash, runId,
@@ -89,6 +105,7 @@ export async function POST(request: Request) {
       // Never advance past records that could not be normalized. A later retry
       // must see the same provider page until every record is understood.
       const safeCursor = warnings > 0 ? connection.lastSyncCursor : page.cursor;
+      await renewIntegrationSyncLease(syncLease);
       await getDb().update(integrationSyncRuns).set({
         status: "completed",
         cursorAfter: safeCursor,
@@ -98,16 +115,22 @@ export async function POST(request: Request) {
         warningCount: warnings,
         completedAt,
       }).where(eq(integrationSyncRuns.id, runId));
-      await getDb().update(integrationConnections).set({
+      const completed = await getDb().update(integrationConnections).set({
         lastSuccessfulSyncAt: completedAt,
         lastSyncCursor: safeCursor,
         dataPromotionStatus: "staging",
         lastErrorCode: null,
+        syncLeaseOwner: null,
+        syncLeaseExpiresAt: null,
         updatedAt: completedAt,
       }).where(and(
         eq(integrationConnections.organizationId, context.organizationId),
         eq(integrationConnections.provider, LIGHTSPEED_PROVIDER),
-      ));
+        eq(integrationConnections.id, connection.id),
+        eq(integrationConnections.syncLeaseOwner, syncLease.owner),
+        eq(integrationConnections.syncVersion, syncLease.version),
+      )).returning({ id: integrationConnections.id });
+      if (!completed.length) throw new ApiError(409, "INTEGRATION_SYNC_LEASE_LOST", "This sample sync was superseded before its cursor could be saved.");
       const [locationCounts] = await getDb().select({
         total: sql<number>`count(*)`,
         mapped: sql<number>`sum(case when ${integrationLocationMappings.status} = 'mapped' then 1 else 0 end)`,
@@ -115,6 +138,7 @@ export async function POST(request: Request) {
       }).from(integrationLocationMappings).where(and(
         eq(integrationLocationMappings.organizationId, context.organizationId),
         eq(integrationLocationMappings.provider, LIGHTSPEED_PROVIDER),
+        eq(integrationLocationMappings.connectionId, connection.id),
       ));
       const sourceTotalCents = normalized.reduce((sum, sale) => sum + sale.totalCents, 0);
       await recordAudit({
@@ -173,7 +197,11 @@ export async function POST(request: Request) {
       }).where(and(
         eq(integrationConnections.organizationId, context.organizationId),
         eq(integrationConnections.provider, LIGHTSPEED_PROVIDER),
+        eq(integrationConnections.id, connection.id),
+        eq(integrationConnections.syncLeaseOwner, syncLease.owner),
+        eq(integrationConnections.syncVersion, syncLease.version),
       ));
+      await releaseIntegrationSyncLease(syncLease);
       throw error;
     }
   });

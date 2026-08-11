@@ -3,7 +3,7 @@ import { getD1, getDb } from "../../../../../../db";
 import { integrationConnections, integrationSyncRuns } from "../../../../../../db/schema";
 import { recordAudit } from "../../../../../../server/audit";
 import { requireAccess } from "../../../../../../server/authorization";
-import { ApiError, enforceRateLimit, handleApi, jsonResponse, requireSameOrigin } from "../../../../../../server/api";
+import { ApiError, enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameOrigin } from "../../../../../../server/api";
 import {
   fetchStripeFinancialCollection,
   normalizeStripeBalanceTransaction,
@@ -12,6 +12,12 @@ import {
   type NormalizedStripeFinancialRecord,
 } from "../../../../../../server/integrations/stripe";
 import { requirePermission } from "../../../../../../server/permissions";
+import {
+  acquireIntegrationSyncLease,
+  releaseIntegrationSyncLease,
+  renewIntegrationSyncLease,
+  requireOwnedIntegrationConnection,
+} from "../../../../../../server/integrations/connection";
 
 type StripeCursor = { balanceTransactions: string | null; payouts: string | null };
 
@@ -34,19 +40,24 @@ export async function POST(request: Request) {
     const context = await requireAccess(request, ["owner", "admin"]);
     await requirePermission(context, "integrations.manage");
     await enforceRateLimit("stripe:sample-sync", context.userId, 12, 3_600);
-    const [connection] = await getDb().select().from(integrationConnections).where(and(
-      eq(integrationConnections.organizationId, context.organizationId),
-      eq(integrationConnections.provider, STRIPE_PROVIDER),
-      eq(integrationConnections.status, "connected"),
-    )).limit(1);
-    if (!connection) throw new ApiError(409, "STRIPE_NOT_CONNECTED", "Authorize and verify Stripe before staging a sample.");
+    const input = await readJsonObject(request);
+    const connection = await requireOwnedIntegrationConnection(
+      context.organizationId,
+      STRIPE_PROVIDER,
+      typeof input.connectionId === "string" ? input.connectionId : null,
+      { connected: true },
+    );
+    const syncLease = await acquireIntegrationSyncLease(context.organizationId, STRIPE_PROVIDER, connection.id);
+    if (!syncLease) throw new ApiError(409, "STRIPE_SYNC_IN_PROGRESS", "A sample sync is already running for this Stripe account.");
     const cursorBefore = parseCursor(connection.lastSyncCursor);
     const runId = crypto.randomUUID();
     const startedAt = new Date();
-    await getDb().insert(integrationSyncRuns).values({
+    try {
+      await getDb().insert(integrationSyncRuns).values({
       id: runId,
       organizationId: context.organizationId,
       provider: STRIPE_PROVIDER,
+      connectionId: connection.id,
       mode: "sample",
       status: "running",
       cursorBefore: connection.lastSyncCursor,
@@ -59,14 +70,18 @@ export async function POST(request: Request) {
       startedAt,
       completedAt: null,
       createdByUserId: context.userId,
-    });
+      });
+    } catch (error) {
+      await releaseIntegrationSyncLease(syncLease);
+      throw error;
+    }
     try {
       const [transactions, payouts] = await Promise.all([
-        fetchStripeFinancialCollection(context.organizationId, "balance_transactions", {
+        fetchStripeFinancialCollection(context.organizationId, connection.id, "balance_transactions", {
           after: cursorBefore.balanceTransactions,
           maxPages: 3,
         }),
-        fetchStripeFinancialCollection(context.organizationId, "payouts", {
+        fetchStripeFinancialCollection(context.organizationId, connection.id, "payouts", {
           after: cursorBefore.payouts,
           maxPages: 3,
         }),
@@ -83,13 +98,13 @@ export async function POST(request: Request) {
       for (const record of normalized) {
         const result = await getD1().prepare(`
           INSERT OR IGNORE INTO integration_staged_financial_records
-            (id, organization_id, provider, external_record_id, record_type,
+            (id, organization_id, provider, connection_id, external_record_id, record_type,
              category, source_ref, occurred_at, available_at, currency,
              gross_cents, fee_cents, net_cents, state, livemode,
              source_payload_hash, sync_run_id, staged_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).bind(
-          crypto.randomUUID(), context.organizationId, STRIPE_PROVIDER,
+          crypto.randomUUID(), context.organizationId, STRIPE_PROVIDER, connection.id,
           record.externalRecordId, record.recordType, record.category,
           record.sourceRef, record.occurredAt, record.availableAt, record.currency,
           record.grossCents, record.feeCents, record.netCents, record.state,
@@ -105,6 +120,7 @@ export async function POST(request: Request) {
       };
       const cursorAfterJson = JSON.stringify(cursorAfter);
       const completedAt = new Date();
+      await renewIntegrationSyncLease(syncLease);
       await getDb().update(integrationSyncRuns).set({
         status: "completed",
         cursorAfter: cursorAfterJson,
@@ -114,16 +130,22 @@ export async function POST(request: Request) {
         warningCount: warnings,
         completedAt,
       }).where(eq(integrationSyncRuns.id, runId));
-      await getDb().update(integrationConnections).set({
+      const completed = await getDb().update(integrationConnections).set({
         lastSuccessfulSyncAt: completedAt,
         lastSyncCursor: cursorAfterJson,
         dataPromotionStatus: "staging",
         lastErrorCode: null,
+        syncLeaseOwner: null,
+        syncLeaseExpiresAt: null,
         updatedAt: completedAt,
       }).where(and(
         eq(integrationConnections.organizationId, context.organizationId),
         eq(integrationConnections.provider, STRIPE_PROVIDER),
-      ));
+        eq(integrationConnections.id, connection.id),
+        eq(integrationConnections.syncLeaseOwner, syncLease.owner),
+        eq(integrationConnections.syncVersion, syncLease.version),
+      )).returning({ id: integrationConnections.id });
+      if (!completed.length) throw new ApiError(409, "INTEGRATION_SYNC_LEASE_LOST", "This sample sync was superseded before its cursor could be saved.");
       const totals = normalized.reduce((sum, record) => ({
         grossCents: sum.grossCents + record.grossCents,
         feeCents: sum.feeCents + record.feeCents,
@@ -172,7 +194,11 @@ export async function POST(request: Request) {
       await getDb().update(integrationConnections).set({ lastErrorCode: code, updatedAt: new Date() }).where(and(
         eq(integrationConnections.organizationId, context.organizationId),
         eq(integrationConnections.provider, STRIPE_PROVIDER),
+        eq(integrationConnections.id, connection.id),
+        eq(integrationConnections.syncLeaseOwner, syncLease.owner),
+        eq(integrationConnections.syncVersion, syncLease.version),
       ));
+      await releaseIntegrationSyncLease(syncLease);
       throw error;
     }
   });

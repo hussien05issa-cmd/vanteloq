@@ -11,6 +11,7 @@ import {
   requireSameOrigin,
 } from "../../../../server/api";
 import { requirePermission } from "../../../../server/permissions";
+import { requireOrganizationWideLocationAccess } from "../../../../server/location-access";
 
 const users = ["owner", "admin", "manager", "employee", "read_only"] as const;
 const maximumBytes = 10 * 1024 * 1024;
@@ -80,6 +81,8 @@ async function list(organizationId: string) {
       contentType: workspaceDocuments.contentType,
       sizeBytes: workspaceDocuments.sizeBytes,
       status: workspaceDocuments.status,
+      scanStatus: workspaceDocuments.scanStatus,
+      scannedAt: workspaceDocuments.scannedAt,
       extractionStatus: workspaceDocuments.extractionStatus,
       createdAt: workspaceDocuments.createdAt,
       updatedAt: workspaceDocuments.updatedAt,
@@ -107,6 +110,7 @@ export async function GET(request: Request) {
   return handleApi(request, async () => {
     const context = await requireAccess(request, users);
     await requirePermission(context, "documents.view");
+    await requireOrganizationWideLocationAccess(context);
     await enforceRateLimit("documents:read", context.userId, 90, 60);
     const id = new URL(request.url).searchParams.get("id");
     if (!id) return jsonResponse(await list(context.organizationId));
@@ -125,6 +129,13 @@ export async function GET(request: Request) {
     const object = await getR2().get(document.objectKey);
     if (!object)
       throw new ApiError(404, "NOT_FOUND", "Document file not found.");
+    if (document.scanStatus !== "clean" || object.customMetadata?.securityState !== "clean") {
+      throw new ApiError(
+        423,
+        "DOCUMENT_QUARANTINED",
+        "This document cannot be downloaded until its independent security scan is complete.",
+      );
+    }
     return new Response(object.body, {
       headers: {
         "Content-Type": document.contentType,
@@ -141,6 +152,7 @@ export async function POST(request: Request) {
     requireSameOrigin(request);
     const context = await requireAccess(request, users);
     await requirePermission(context, "documents.upload");
+    await requireOrganizationWideLocationAccess(context);
     await enforceRateLimit("documents:write", context.userId, 30, 3_600);
     const contentLength = Number(request.headers.get("content-length") || 0);
     if (contentLength > maximumBytes + 100_000)
@@ -205,8 +217,8 @@ export async function POST(request: Request) {
       await getD1()
         .prepare(
           `INSERT INTO workspace_documents
-      (id, organization_id, document_type, file_name, object_key, content_type, size_bytes, sha256_hex, status, extraction_status, extracted_json, uploaded_by_user_id, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'review_required', 'not_configured', '{}', ?, ?, ?)`,
+      (id, organization_id, document_type, file_name, object_key, content_type, size_bytes, sha256_hex, status, scan_status, extraction_status, extracted_json, uploaded_by_user_id, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'review_required', 'pending', 'not_configured', '{}', ?, ?, ?)`,
         )
         .bind(
           id,
@@ -250,6 +262,7 @@ export async function DELETE(request: Request) {
     requireSameOrigin(request);
     const context = await requireAccess(request, users);
     await requirePermission(context, "documents.retention");
+    await requireOrganizationWideLocationAccess(context);
     const id = new URL(request.url).searchParams.get("id");
     if (!id) throw new ApiError(400, "INVALID_FIELD", "Select a document.");
     const [document] = await getDb()

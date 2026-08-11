@@ -390,8 +390,9 @@ export function measureEventImpact(rows: MetricRow[], eventDate: string) {
   const beforeStart = dateOffset(eventDate, -14);
   const beforeEnd = dateOffset(eventDate, -1);
   const afterEnd = dateOffset(eventDate, 13);
-  const before = rows.filter((row) => row.businessDate >= beforeStart && row.businessDate <= beforeEnd);
-  const after = rows.filter((row) => row.businessDate >= eventDate && row.businessDate <= afterEnd);
+  const dailyRows = aggregateDaily(rows);
+  const before = dailyRows.filter((row) => row.businessDate >= beforeStart && row.businessDate <= beforeEnd);
+  const after = dailyRows.filter((row) => row.businessDate >= eventDate && row.businessDate <= afterEnd);
   if (before.length < 7 || after.length < 7) return { measurable: false, reason: "At least seven verified days are required on both sides of the event." };
   const beforeAverage = sum(before).netSalesCents / before.length;
   const afterAverage = sum(after).netSalesCents / after.length;

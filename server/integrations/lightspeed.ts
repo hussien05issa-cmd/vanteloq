@@ -247,6 +247,7 @@ export async function decryptIntegrationSecret(value: string): Promise<string> {
 
 export async function loadValidAccessToken(
   organizationId: string,
+  connectionId: string,
   fetcher: typeof fetch = fetch,
 ): Promise<{ accessToken: string; domainPrefix: string; apiVersion: string }> {
   const db = getDb();
@@ -262,6 +263,7 @@ export async function loadValidAccessToken(
     .innerJoin(
       integrationSecrets,
       and(
+        eq(integrationSecrets.connectionId, integrationConnections.id),
         eq(integrationSecrets.organizationId, integrationConnections.organizationId),
         eq(integrationSecrets.provider, integrationConnections.provider),
       ),
@@ -270,6 +272,7 @@ export async function loadValidAccessToken(
       and(
         eq(integrationConnections.organizationId, organizationId),
         eq(integrationConnections.provider, LIGHTSPEED_PROVIDER),
+        eq(integrationConnections.id, connectionId),
       ),
     )
     .limit(1);
@@ -309,6 +312,7 @@ export async function loadValidAccessToken(
       and(
         eq(integrationSecrets.organizationId, organizationId),
         eq(integrationSecrets.provider, LIGHTSPEED_PROVIDER),
+        eq(integrationSecrets.connectionId, connectionId),
       ),
     );
   return {
@@ -320,11 +324,12 @@ export async function loadValidAccessToken(
 
 export async function fetchLightspeedCollection(
   organizationId: string,
+  connectionId: string,
   resource: "outlets" | "sales",
   options: { after?: string | null; maxPages?: number; fetcher?: typeof fetch } = {},
 ): Promise<{ data: Record<string, unknown>[]; cursor: string | null; pages: number }> {
   const fetcher = options.fetcher ?? fetch;
-  const authorization = await loadValidAccessToken(organizationId, fetcher);
+  const authorization = await loadValidAccessToken(organizationId, connectionId, fetcher);
   const data: Record<string, unknown>[] = [];
   let after = options.after ?? null;
   let pages = 0;

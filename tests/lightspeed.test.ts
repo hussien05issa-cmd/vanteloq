@@ -29,6 +29,7 @@ import {
   lightspeedRPaymentTypeMap,
   normalizeLightspeedRSupplier,
 } from "../server/integrations/lightspeed-r.ts";
+import { sqliteTimestampSeconds } from "../server/integrations/connection.ts";
 
 const clientSecret = "test-client-secret";
 (globalThis as typeof globalThis & { __vanteloqEnv?: Record<string, string> }).__vanteloqEnv = {
@@ -43,6 +44,10 @@ const clientSecret = "test-client-secret";
     Uint8Array.from({ length: 32 }, (_, index) => index + 1),
   ).toString("base64"),
 };
+
+test("integration lease timestamps use SQLite epoch seconds", () => {
+  assert.equal(sqliteTimestampSeconds(1_753_733_400_123), 1_753_733_400);
+});
 
 test("authorization is read-only and bound to an exact callback and state", () => {
   const state = "state-value-with-entropy";
@@ -83,7 +88,7 @@ test("R-Series readiness exposes the verified read-only live sync", () => {
   assert.equal(readiness.apiVersion, "V3");
   assert.deepEqual(readiness.scopes, ["employee:register_read", "employee:inventory_read"]);
   assert.equal(readiness.mode, "read_only_live_sync");
-  assert.equal(readiness.dataPromotionEnabled, true);
+  assert.equal(readiness.dataPromotionEnabled, false);
 });
 
 test("R-Series tokens use provider-bound authenticated encryption", async () => {
