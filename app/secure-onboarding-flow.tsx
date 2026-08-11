@@ -614,7 +614,7 @@ export default function SecureOnboardingFlow({
                 <b>Verified hosted authentication</b>
                 <small>
                   Password changes, MFA enrollment, passkeys and recovery stay
-                  with the identity provider—Vanteloq never stores those
+                  with the identity provider. Vanteloq never stores those
                   secrets.
                 </small>
               </div>

@@ -86,14 +86,14 @@ test("live sales and report time frames stay connected to real API filters", asy
 });
 
 test("public resources always expose Home and Sign in navigation", async () => {
-  const navigation = await readFile(new URL("../app/public-navigation.tsx", import.meta.url), "utf8");
+  const navigation = await readFile(new URL("../app/resources/components.tsx", import.meta.url), "utf8");
   const resources = await readFile(new URL("../app/resources/page.tsx", import.meta.url), "utf8");
-  const article = await readFile(new URL("../app/resources/[slug]/page.tsx", import.meta.url), "utf8");
-  assert.match(navigation, /href="\/"[^>]*>Home/);
-  assert.match(navigation, /href="\/\?auth=signin"[^>]*>Sign in/);
-  assert.match(resources, /PublicNavigation/);
-  assert.match(article, /PublicNavigation/);
-  assert.match(article, /All resources/);
+  const article = await readFile(new URL("../app/resources/[segment]/page.tsx", import.meta.url), "utf8");
+  assert.match(navigation, /href="\/">Home/);
+  assert.match(navigation, /href="\/\?start=signin">Sign in/);
+  assert.match(resources, /ResourceShell/);
+  assert.match(article, /ResourceShell/);
+  assert.match(article, /Breadcrumbs/);
 });
 
 test("commerce charts expose exact-date and exact-hour keyboard tooltips", async () => {

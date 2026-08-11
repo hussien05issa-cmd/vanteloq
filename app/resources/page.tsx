@@ -1,32 +1,95 @@
-/* eslint-disable @next/next/no-html-link-for-pages -- native links avoid a vinext hydration failure on server-rendered public pages */
 import type { Metadata } from "next";
-import PublicNavigation from "../public-navigation";
-import { resourceArticles } from "./articles";
+import Link from "next/link";
+import { ArticleCard, ResourceShell, ResourceVisual } from "./components";
+import { RESOURCE_ARTICLES, RESOURCE_CATEGORIES, getArticlesByCategory } from "./content";
+import { DEFAULT_SOCIAL_IMAGE } from "../seo";
 
 export const metadata: Metadata = {
-  title: "Resources · Vanteloq",
-  description: "Practical guides for retail sales, inventory, cash and connected data operations.",
+  title: "Small Business Operations Resources | Vanteloq",
+  description: "Practical guides to inventory, business analytics, finance, POS data, marketing measurement, operations and responsible AI for small businesses.",
+  alternates: { canonical: "/resources" },
+  openGraph: {
+    type: "website",
+    url: "/resources",
+    title: "Small Business Operations Resources | Vanteloq",
+    description: "Actionable, source-aware guides for business owners and operators.",
+    images: [{ url: DEFAULT_SOCIAL_IMAGE, width: 1487, height: 1058, alt: "Vanteloq business operating view" }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Small Business Operations Resources | Vanteloq",
+    description: "Actionable, source-aware guides for business owners and operators.",
+    images: [DEFAULT_SOCIAL_IMAGE],
+  },
 };
 
 export default function ResourcesPage() {
+  const featured = RESOURCE_ARTICLES[0];
   return (
-    <main className="resource-site">
-      <PublicNavigation />
-      <section className="resource-hero">
-        <p>VANTELOQ FIELD NOTES</p>
-        <h1>Clear operating ideas<br />for independent retail.</h1>
-        <span>Practical guidance for using sales, inventory, cash and connected records without losing the source, limits or decision trail.</span>
-      </section>
-      <section className="resource-grid" aria-label="Vanteloq resources">
-        {resourceArticles.map((article, index) => (
-          <a href={`/resources/${article.slug}`} key={article.slug} className="resource-card">
-            <span className="resource-index">{String(index + 1).padStart(2, "0")}</span>
-            <div><small>{article.category} · {article.readTime}</small><h2>{article.title}</h2><p>{article.summary}</p></div>
-            <b aria-hidden="true">Read</b>
-          </a>
-        ))}
-      </section>
-      <footer className="resource-footer"><a href="/">Vanteloq home</a><span>Source-aware operating intelligence for independent retail.</span><a href="/?auth=signin">Sign in</a></footer>
-    </main>
+    <ResourceShell>
+      <main>
+        <section className="resource-hero">
+          <div>
+            <p className="resource-eyebrow">VANTELOQ FIELD GUIDES</p>
+            <h1>Make better business decisions with clearer operating data.</h1>
+            <p>Practical explanations for owners and managers, without invented benchmarks, vague promises or unexplained formulas.</p>
+          </div>
+          <aside aria-label="Editorial standard">
+            <figure>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/brand/vanteloq-command-ledger.webp" alt="Vanteloq command centre with sales, margin, cash, inventory and decision views." width={1487} height={1058} loading="eager" fetchPriority="high" />
+              <figcaption>Real Vanteloq interface · Illustrative values</figcaption>
+            </figure>
+            <div><span>OUR EDITORIAL STANDARD</span><strong>Evidence before advice.</strong><p>Each guide separates facts, formulas, assumptions and limitations so you can see what a decision actually depends on.</p></div>
+          </aside>
+        </section>
+
+        <section className="resource-category-strip" aria-labelledby="browse-topics">
+          <div className="resource-section-heading">
+            <p className="resource-eyebrow">TOPIC CLUSTERS</p>
+            <h2 id="browse-topics">Browse by operating question</h2>
+          </div>
+          <div className="resource-category-grid">
+            {RESOURCE_CATEGORIES.map((category) => (
+              <Link href={`/resources/${category.slug}`} key={category.slug}>
+                <ResourceVisual category={category.slug} compact />
+                <span>{getArticlesByCategory(category.slug).length ? `${getArticlesByCategory(category.slug).length} guide` : "Guides planned"}</span>
+                <strong>{category.name}</strong>
+                <p>{category.description}</p>
+              </Link>
+            ))}
+          </div>
+        </section>
+
+        {featured && (
+          <section className="resource-latest" aria-labelledby="latest-guides">
+            <div className="resource-section-heading">
+              <p className="resource-eyebrow">LATEST GUIDES</p>
+              <h2 id="latest-guides">Start with the fundamentals</h2>
+            </div>
+            <div className="resource-card-grid">
+              {RESOURCE_ARTICLES.map((article, index) => <ArticleCard article={article} featured={index === 0} key={article.slug} />)}
+            </div>
+          </section>
+        )}
+
+        <section className="resource-method">
+          <div>
+            <p className="resource-eyebrow">HOW THESE GUIDES WORK</p>
+            <h2>Useful enough to apply. Careful enough to trust.</h2>
+          </div>
+          <ol>
+            <li><span>01</span><div><strong>Answer first</strong><p>The direct answer appears before the background.</p></div></li>
+            <li><span>02</span><div><strong>Show the calculation</strong><p>Formulas include inputs, boundaries and worked examples.</p></div></li>
+            <li><span>03</span><div><strong>Keep the limits visible</strong><p>Unknown or missing data is not silently treated as zero.</p></div></li>
+          </ol>
+        </section>
+
+        <section className="resource-wide-cta">
+          <div><p className="resource-eyebrow">VANTELOQ</p><h2>Bring the operating view together.</h2><p>Organize source-backed sales, cash, inventory and daily work while your team keeps approval over decisions.</p></div>
+          <div><Link href="/?start=signup">Create your workspace</Link><Link className="secondary" href="/#platform">See the operating model</Link></div>
+        </section>
+      </main>
+    </ResourceShell>
   );
 }

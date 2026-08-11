@@ -675,7 +675,7 @@ export function PurchaseOrdersWorkspace({
         <div>
           <p>PURCHASE-ORDER CENTRE</p>
           <h2>
-            Order, approve, receive and match—without losing the cash picture.
+            Order, approve, receive and match without losing the cash picture.
           </h2>
           <span>
             Amounts use integer minor units. Sending and payment never happen
@@ -1569,7 +1569,7 @@ export function DocumentsWorkspace({ showNotice }: SharedProps) {
           <div className="control-empty">
             <b>No documents uploaded.</b>
             <span>
-              The document centre begins empty—no sample invoices are created.
+              The document centre begins empty. No sample invoices are created.
             </span>
           </div>
         )}
