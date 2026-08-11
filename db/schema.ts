@@ -648,6 +648,7 @@ export const integrationConnections = sqliteTable(
   (table) => [
     uniqueIndex("integration_connections_workspace_provider_unique").on(table.organizationId, table.provider),
     uniqueIndex("integration_connections_provider_domain_unique").on(table.provider, table.domainPrefix),
+    uniqueIndex("integration_connections_provider_external_account_unique").on(table.provider, table.externalAccountRef),
     check("integration_connections_status_check", sql`${table.status} in ('not_connected', 'pending', 'connected', 'error', 'revoked')`),
     check("integration_connections_promotion_check", sql`${table.dataPromotionStatus} in ('blocked', 'staging', 'approved')`),
   ],
@@ -1116,6 +1117,7 @@ export const workspaceDocuments = sqliteTable(
     contentType: text("content_type").notNull(),
     sizeBytes: integer("size_bytes").notNull(),
     sha256Hex: text("sha256_hex").notNull(),
+    securityState: text("security_state", { enum: ["quarantined", "clean", "rejected"] }).notNull().default("quarantined"),
     status: text("status", { enum: ["uploaded", "review_required", "approved", "rejected"] }).notNull().default("uploaded"),
     extractionStatus: text("extraction_status", { enum: ["not_configured", "pending", "complete", "failed"] }).notNull().default("not_configured"),
     extractedJson: text("extracted_json").notNull().default("{}"),
@@ -1125,6 +1127,7 @@ export const workspaceDocuments = sqliteTable(
   },
   (table) => [
     uniqueIndex("workspace_documents_hash_unique").on(table.organizationId, table.sha256Hex),
+    check("workspace_documents_security_state_check", sql`${table.securityState} in ('quarantined', 'clean', 'rejected')`),
     index("workspace_documents_status_idx").on(table.organizationId, table.status),
     check("workspace_documents_size_check", sql`${table.sizeBytes} > 0 and ${table.sizeBytes} <= 10485760`),
   ],

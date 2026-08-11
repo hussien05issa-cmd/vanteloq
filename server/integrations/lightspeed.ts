@@ -21,6 +21,30 @@ export type LightspeedTokenResponse = {
   token_type?: string;
 };
 
+export function validateLightspeedGrantedScopes(scope: string | undefined): string[] {
+  const granted = [...new Set((scope ?? "").split(/\s+/).filter(Boolean))].sort();
+  const required = [...LIGHTSPEED_SCOPES].sort();
+  const missing = required.filter((permission) => !granted.includes(permission));
+  if (missing.length) {
+    throw new ApiError(
+      409,
+      "LIGHTSPEED_SCOPES_INCOMPLETE",
+      "Lightspeed did not grant every read-only scope required by the pilot.",
+    );
+  }
+  const unexpected = granted.filter(
+    (permission) => !required.includes(permission as (typeof LIGHTSPEED_SCOPES)[number]),
+  );
+  if (unexpected.length) {
+    throw new ApiError(
+      409,
+      "LIGHTSPEED_SCOPES_EXCESSIVE",
+      "Lightspeed granted unexpected OAuth permissions. Reconnect with the read-only permission set.",
+    );
+  }
+  return required;
+}
+
 export type NormalizedLightspeedSale = {
   externalSaleId: string;
   externalVersion: string;

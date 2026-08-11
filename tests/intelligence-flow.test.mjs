@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
+import { createServer } from "node:http";
 import test from "node:test";
 import { Miniflare } from "miniflare";
 
@@ -13,11 +14,10 @@ function dateOffset(iso, days) {
 }
 
 function identityHeaders(email, fullName, write = false) {
+  const payload = Buffer.from(JSON.stringify({ email, aal: "aal2", session_id: `session:${email}` })).toString("base64url");
   const headers = {
     accept: "application/json",
-    "oai-authenticated-user-email": email,
-    "oai-authenticated-user-full-name": encodeURIComponent(fullName),
-    "oai-authenticated-user-full-name-encoding": "percent-encoded-utf-8",
+    authorization: `Bearer test.${payload}.signature`,
   };
   if (write) {
     headers["content-type"] = "application/json";
@@ -53,7 +53,7 @@ function onboardingBody(ownerName, businessName) {
   };
 }
 
-async function createEnvironment() {
+async function createEnvironment(supabaseUrl) {
   const miniflare = new Miniflare({
     modules: true,
     script: "export default { fetch() { return new Response('ok') } }",
@@ -72,7 +72,13 @@ async function createEnvironment() {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
   workerUrl.searchParams.set("flow-test", crypto.randomUUID());
   const worker = (await import(workerUrl.href)).default;
-  const environment = { DB: database, BOOKLOQ_DEMO_ENABLED: "true", ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) } };
+  const environment = {
+    DB: database,
+    BOOKLOQ_DEMO_ENABLED: "true",
+    SUPABASE_URL: supabaseUrl,
+    SUPABASE_PUBLISHABLE_KEY: "test-publishable-key",
+    ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) },
+  };
   return { miniflare, worker, environment };
 }
 
@@ -84,7 +90,21 @@ async function dispatch(worker, environment, path, { method = "GET", email, name
 }
 
 test("migrations, tenant isolation and the complete intelligence-to-action flow work", async () => {
-  const { miniflare, worker, environment } = await createEnvironment();
+  const authServer = createServer((request, response) => {
+    const token = request.headers.authorization?.replace(/^Bearer\s+/i, "") ?? "";
+    const payload = JSON.parse(Buffer.from(token.split(".")[1] ?? "", "base64url").toString("utf8"));
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({
+      id: `test-user:${payload.email}`,
+      email: payload.email,
+      email_confirmed_at: "2026-08-01T00:00:00.000Z",
+      user_metadata: { full_name: payload.email },
+    }));
+  });
+  await new Promise((resolve) => authServer.listen(0, "127.0.0.1", resolve));
+  const address = authServer.address();
+  assert.ok(address && typeof address !== "string");
+  const { miniflare, worker, environment } = await createEnvironment(`http://127.0.0.1:${address.port}`);
   try {
     const owner = { email: "owner-one@example.invalid", name: "Owner One" };
     const secondOwner = { email: "owner-two@example.invalid", name: "Owner Two" };
@@ -211,6 +231,7 @@ test("migrations, tenant isolation and the complete intelligence-to-action flow 
     assert.equal(secondBookLoqBody.bookloq.configured, false);
     assert.equal(secondBookLoqBody.bookloq.transactions.length, 0);
   } finally {
+    await new Promise((resolve) => authServer.close(resolve));
     await miniflare.dispose();
   }
 });

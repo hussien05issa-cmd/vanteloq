@@ -17,11 +17,11 @@ import {
   exchangeAuthorizationCode,
   fetchLightspeedCollection,
   LIGHTSPEED_PROVIDER,
-  LIGHTSPEED_SCOPES,
   lightspeedReadiness,
   sha256Hex,
   tokenExpiry,
   validateDomainPrefix,
+  validateLightspeedGrantedScopes,
 } from "../../../../../../server/integrations/lightspeed";
 import { requirePermission } from "../../../../../../server/permissions";
 
@@ -128,11 +128,7 @@ export async function GET(request: Request) {
 
     try {
     const token = await exchangeAuthorizationCode(code, domainPrefix);
-    const grantedScopes = (token.scope ?? "").split(/\s+/).filter(Boolean);
-    const missingScopes = LIGHTSPEED_SCOPES.filter((scope) => !grantedScopes.includes(scope));
-    if (missingScopes.length) {
-      throw new ApiError(409, "LIGHTSPEED_SCOPES_INCOMPLETE", "Lightspeed did not grant every read-only scope required by the pilot.");
-    }
+    const grantedScopes = validateLightspeedGrantedScopes(token.scope);
     const connectionId = crypto.randomUUID();
     const secretId = crypto.randomUUID();
     const readiness = lightspeedReadiness();

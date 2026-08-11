@@ -9,6 +9,7 @@ import {
   lightspeedReadiness,
   normalizeLightspeedSale,
   validateDomainPrefix,
+  validateLightspeedGrantedScopes,
   verifyLightspeedWebhookSignature,
 } from "../server/integrations/lightspeed.ts";
 import {
@@ -54,6 +55,18 @@ test("authorization is read-only and bound to an exact callback and state", () =
   assert.equal(url.searchParams.get("state"), state);
   assert.deepEqual(url.searchParams.get("scope")?.split(" "), [...LIGHTSPEED_SCOPES]);
   assert.doesNotMatch(url.toString(), /test-client-secret/);
+});
+
+test("X-Series callback rejects missing and additional OAuth scopes", () => {
+  assert.deepEqual(validateLightspeedGrantedScopes("outlets:read sales:read"), [...LIGHTSPEED_SCOPES]);
+  assert.throws(
+    () => validateLightspeedGrantedScopes("outlets:read"),
+    /every read-only scope required/i,
+  );
+  assert.throws(
+    () => validateLightspeedGrantedScopes("outlets:read sales:read products:write"),
+    /unexpected OAuth permissions/i,
+  );
 });
 
 test("R-Series authorization uses the official multi-account OAuth endpoint and read-only scopes", () => {

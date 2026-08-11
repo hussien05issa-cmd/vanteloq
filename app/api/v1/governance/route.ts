@@ -1,10 +1,10 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { getD1, getDb } from "../../../../db";
 import { accountPreferences, accessRoles, organizationLocations, organizationProfiles, teamMembers, users } from "../../../../db/schema";
 import { recordAudit } from "../../../../server/audit";
 import { requireAccess } from "../../../../server/authorization";
 import { ApiError, enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameOrigin } from "../../../../server/api";
-import { allPermissions, permissionCatalogDto, roleTemplates } from "../../../../server/permissions";
+import { allPermissions, effectivePermissions, permissionCatalogDto, requirePermission, roleTemplates, type PermissionKey } from "../../../../server/permissions";
 import { hashPin, validateTemporaryPin } from "../../../../server/pin";
 import { canAddLocation, canAddUser } from "../../../../server/entitlements/engine";
 
@@ -43,7 +43,84 @@ function string(value: unknown, label: string, maximum: number, required = true)
 function boolean(value: unknown): boolean { return value === true; }
 function jsonArray(value: unknown): string[] { return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string").slice(0, 100) : []; }
 
-async function bootstrap(organizationId: string, userId: string, ownerName: string, businessName: string, country: string, province: string, city: string, address: string, postalCode: string, timezone: string, currency: string) {
+type GovernanceContext = Awaited<ReturnType<typeof requireAccess>>;
+
+const actionPermissions: Partial<Record<string, PermissionKey>> = {
+  update_organization: "organization.settings",
+  create_location: "locations.manage",
+  create_employee: "team.create",
+  update_employee: "team.edit",
+  save_role: "team.roles",
+  reset_pin: "team.pin_reset",
+};
+
+async function requireGovernancePermission(context: GovernanceContext, action: string) {
+  const permission = actionPermissions[action];
+  if (permission) await requirePermission(context, permission);
+}
+
+async function validateEmployeeRelationships(
+  organizationId: string,
+  managerMemberId: string,
+  primaryLocationId: string,
+  permittedLocations: string[],
+) {
+  if (managerMemberId) {
+    const [manager] = await getDb().select({ id: teamMembers.id, status: teamMembers.status }).from(teamMembers).where(and(
+      eq(teamMembers.id, managerMemberId),
+      eq(teamMembers.organizationId, organizationId),
+    )).limit(1);
+    if (!manager || manager.status === "archived") throw new ApiError(400, "INVALID_FIELD", "Select a valid manager from this organization.");
+  }
+
+  const locationIds = [...new Set([primaryLocationId, ...permittedLocations].filter(Boolean))];
+  if (locationIds.length) {
+    const locations = await getDb().select({ id: organizationLocations.id }).from(organizationLocations).where(and(
+      eq(organizationLocations.organizationId, organizationId),
+      eq(organizationLocations.status, "active"),
+      inArray(organizationLocations.id, locationIds),
+    ));
+    if (locations.length !== locationIds.length) throw new ApiError(400, "INVALID_FIELD", "Select active locations from this organization.");
+  }
+  return { managerMemberId: managerMemberId || null, primaryLocationId: primaryLocationId || null, permittedLocations: [...new Set(permittedLocations)] };
+}
+
+async function validateRoleDelegation(context: GovernanceContext, permissions: string[], locationScope: string[]) {
+  const allowed = new Set(await effectivePermissions(context));
+  const requested = permissions.filter((permission): permission is PermissionKey => allPermissions.includes(permission as PermissionKey));
+  if (requested.length !== permissions.length || requested.some((permission) => !allowed.has(permission))) {
+    throw new ApiError(403, "ROLE_DELEGATION_EXCEEDED", "A role cannot grant permissions you do not hold.");
+  }
+  if (context.role !== "owner" && requested.includes("organization.ownership")) {
+    throw new ApiError(403, "OWNERSHIP_PERMISSION_PROTECTED", "Only the account owner can delegate ownership controls.");
+  }
+  const relationships = await validateEmployeeRelationships(context.organizationId, "", "", locationScope);
+  return { permissions: requested, locationScope: relationships.permittedLocations };
+}
+
+async function assignableRole(context: GovernanceContext, roleId: string) {
+  const [role] = await getDb().select({ id: accessRoles.id, systemKey: accessRoles.systemKey, permissionsJson: accessRoles.permissionsJson }).from(accessRoles).where(and(
+    eq(accessRoles.id, roleId),
+    eq(accessRoles.organizationId, context.organizationId),
+    eq(accessRoles.archived, false),
+  )).limit(1);
+  if (!role) throw new ApiError(400, "INVALID_FIELD", "Select a valid role.");
+  if (role.systemKey === "account_owner") throw new ApiError(409, "OWNER_ROLE_PROTECTED", "Account ownership must use the dedicated ownership-transfer workflow.");
+  const delegated = jsonArray(JSON.parse(role.permissionsJson));
+  await validateRoleDelegation(context, delegated, []);
+  return { ...role, permissions: delegated };
+}
+
+function coarseRoleFor(role: { systemKey: string | null; permissions: string[] }) {
+  if (role.systemKey === "organization_administrator") return "admin" as const;
+  if (["external_advisor", "read_only_reviewer"].includes(role.systemKey ?? "")) return "read_only" as const;
+  if (["employee", "team_lead"].includes(role.systemKey ?? "")) return "employee" as const;
+  if (role.permissions.some((permission) => ["organization.settings", "organization.billing", "team.roles", "team.create", "team.edit", "locations.manage", "integrations.manage"].includes(permission))) return "admin" as const;
+  if (role.permissions.some((permission) => !permission.includes(".view") && !permission.startsWith("metrics.") && !permission.startsWith("reports."))) return "manager" as const;
+  return "read_only" as const;
+}
+
+async function bootstrap(organizationId: string, userId: string, actorRole: GovernanceContext["role"], ownerName: string, businessName: string, country: string, province: string, city: string, address: string, postalCode: string, timezone: string, currency: string) {
   const now = Date.now();
   const database = getD1();
   const roleStatements = Object.entries(roleTemplates).map(([key, permissions]) => {
@@ -56,7 +133,7 @@ async function bootstrap(organizationId: string, userId: string, ownerName: stri
   const parts = ownerName.trim().split(/\s+/);
   const firstName = parts.shift() || "Account";
   const lastName = parts.join(" ") || "Owner";
-  await database.batch([
+  const statements = [
     database.prepare(`INSERT OR IGNORE INTO organization_profiles
       (organization_id, display_name, organization_type, business_structure, locale, language, brand_color, logo_alt_text, logo_version, created_at, updated_at)
       VALUES (?, ?, 'business', '', ?, 'en', '#2368c4', 'Organization logo', 0, ?, ?)`)
@@ -66,15 +143,16 @@ async function bootstrap(organizationId: string, userId: string, ownerName: stri
       VALUES (?, ?, 'Primary location', 'active', ?, ?, '', '', ?, '', ?, ?, ?, ?, ?, '', 'entered', ?, ?)`)
       .bind(`${organizationId}:location:primary`, organizationId, country, address, city, province, postalCode, timezone, currency, country === "US" ? "en-US" : "en-CA", now, now),
     ...roleStatements,
-    database.prepare(`INSERT OR IGNORE INTO team_members
+  ];
+  if (actorRole === "owner") statements.push(database.prepare(`INSERT OR IGNORE INTO team_members
       (id, organization_id, user_id, role_id, first_name, last_name, preferred_name, email, mobile, employee_code, job_title, department, employment_type, start_date, permitted_locations_json, status, remote_login, require_mfa, pin_enabled, notes, created_by_user_id, created_at, updated_at)
       SELECT ?, ?, ?, ?, ?, ?, ?, email, '', 'OWNER', 'Account Owner', 'Executive', 'owner', date('now'), ?, 'active', 1, 1, 0, '', ?, ?, ? FROM users WHERE id = ?`)
-      .bind(`${organizationId}:member:owner`, organizationId, userId, `${organizationId}:role:account_owner`, firstName, lastName, ownerName, JSON.stringify([`${organizationId}:location:primary`]), userId, now, now, userId),
-  ]);
+      .bind(`${organizationId}:member:owner`, organizationId, userId, `${organizationId}:role:account_owner`, firstName, lastName, ownerName, JSON.stringify([`${organizationId}:location:primary`]), userId, now, now, userId));
+  await database.batch(statements);
 }
 
 async function responseBody(context: Awaited<ReturnType<typeof requireAccess>>) {
-  await bootstrap(context.organizationId, context.userId, context.organization.ownerName, context.organization.businessName, context.organization.country, context.organization.province, context.organization.city, context.organization.address, context.organization.postalCode, context.organization.timezone, context.organization.currency);
+  await bootstrap(context.organizationId, context.userId, context.role, context.organization.ownerName, context.organization.businessName, context.organization.country, context.organization.province, context.organization.city, context.organization.address, context.organization.postalCode, context.organization.timezone, context.organization.currency);
   const [profile] = await getDb().select().from(organizationProfiles).where(eq(organizationProfiles.organizationId, context.organizationId)).limit(1);
   const [preferences] = await getDb().select().from(accountPreferences).where(eq(accountPreferences.userId, context.userId)).limit(1);
   const [account] = await getDb().select({ displayName: users.displayName, email: users.email }).from(users).where(eq(users.id, context.userId)).limit(1);
@@ -107,6 +185,8 @@ async function responseBody(context: Awaited<ReturnType<typeof requireAccess>>) 
 export async function GET(request: Request) {
   return handleApi(request, async () => {
     const context = await requireAccess(request, readers);
+    await requirePermission(context, "team.directory");
+    await requirePermission(context, "team.contacts");
     await enforceRateLimit("governance:read", context.userId, 90, 60);
     return jsonResponse(await responseBody(context));
   });
@@ -117,9 +197,10 @@ export async function POST(request: Request) {
     requireSameOrigin(request);
     const context = await requireAccess(request, managers);
     await enforceRateLimit("governance:write", context.userId, 40, 3_600);
-    await bootstrap(context.organizationId, context.userId, context.organization.ownerName, context.organization.businessName, context.organization.country, context.organization.province, context.organization.city, context.organization.address, context.organization.postalCode, context.organization.timezone, context.organization.currency);
+    await bootstrap(context.organizationId, context.userId, context.role, context.organization.ownerName, context.organization.businessName, context.organization.country, context.organization.province, context.organization.city, context.organization.address, context.organization.postalCode, context.organization.timezone, context.organization.currency);
     const input = await readJsonObject(request, 128_000);
     const action = string(input.action, "action", 60);
+    await requireGovernancePermission(context, action);
     const database = getD1();
     const now = Date.now();
     let resourceType = "governance";
@@ -167,6 +248,7 @@ export async function POST(request: Request) {
         .bind(id, context.organizationId, string(input.name, "location name", 120), countryCode, string(input.addressLine1, "address", 180), string(input.addressLine2, "address line 2", 180, false), string(input.addressLine3, "address line 3", 180, false), string(input.locality, "locality", 100), string(input.district, "district", 100, false), string(input.administrativeArea, "administrative area", 100), string(input.postalCode, "postal code", 20, false), string(input.timezone, "timezone", 80), currency, string(input.locale, "locale", 20), string(input.taxJurisdiction, "tax jurisdiction", 100, false), now, now).run();
       resourceType = "location"; resourceId = id;
     } else if (action === "create_employee") {
+      await requirePermission(context, "team.roles");
       const id = crypto.randomUUID();
       const remoteLogin = boolean(input.remoteLogin);
       if (remoteLogin) {
@@ -181,16 +263,21 @@ export async function POST(request: Request) {
       const mobile = string(input.mobile, "mobile number", 30, false); if (!PHONE.test(mobile)) throw new ApiError(400, "INVALID_FIELD", "Enter a valid mobile number.");
       const startDate = string(input.startDate, "start date", 10, false); if (startDate && !DATE.test(startDate)) throw new ApiError(400, "INVALID_FIELD", "Enter a valid start date.");
       const roleId = string(input.roleId, "role", 200);
-      const [role] = await getDb().select({ id: accessRoles.id }).from(accessRoles).where(and(eq(accessRoles.id, roleId), eq(accessRoles.organizationId, context.organizationId), eq(accessRoles.archived, false))).limit(1);
-      if (!role) throw new ApiError(400, "INVALID_FIELD", "Select a valid role.");
+      await assignableRole(context, roleId);
       const pinValue = string(input.temporaryPin, "temporary PIN", 8, false);
       const pin = pinValue ? validateTemporaryPin(pinValue) : "";
       const firstName = string(input.firstName, "first name", 80); const lastName = string(input.lastName, "last name", 80);
       const employeeCode = string(input.employeeCode, "employee identifier", 40);
+      const relationships = await validateEmployeeRelationships(
+        context.organizationId,
+        string(input.managerMemberId, "manager", 200, false),
+        string(input.primaryLocationId, "primary location", 200, false),
+        jsonArray(input.permittedLocations),
+      );
       await database.prepare(`INSERT INTO team_members
         (id, organization_id, role_id, first_name, last_name, preferred_name, email, mobile, employee_code, job_title, department, employment_type, start_date, manager_member_id, primary_location_id, permitted_locations_json, status, remote_login, require_mfa, pin_enabled, notes, created_by_user_id, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?)`)
-        .bind(id, context.organizationId, roleId, firstName, lastName, string(input.preferredName, "preferred name", 80, false), email, mobile, employeeCode, string(input.jobTitle, "job title", 100, false), string(input.department, "department", 100, false), string(input.employmentType, "employment type", 60, false) || "employee", startDate || null, string(input.managerMemberId, "manager", 200, false) || null, string(input.primaryLocationId, "primary location", 200, false) || null, JSON.stringify(jsonArray(input.permittedLocations)), remoteLogin ? 1 : 0, boolean(input.requireMfa) ? 1 : 0, pin ? 1 : 0, string(input.notes, "notes", 1000, false), context.userId, now, now).run();
+        .bind(id, context.organizationId, roleId, firstName, lastName, string(input.preferredName, "preferred name", 80, false), email, mobile, employeeCode, string(input.jobTitle, "job title", 100, false), string(input.department, "department", 100, false), string(input.employmentType, "employment type", 60, false) || "employee", startDate || null, relationships.managerMemberId, relationships.primaryLocationId, JSON.stringify(relationships.permittedLocations), remoteLogin ? 1 : 0, boolean(input.requireMfa) ? 1 : 0, pin ? 1 : 0, string(input.notes, "notes", 1000, false), context.userId, now, now).run();
       if (pin) {
         const credential = await hashPin(pin);
         await database.prepare(`INSERT INTO employee_pin_credentials
@@ -203,23 +290,35 @@ export async function POST(request: Request) {
       const memberId = string(input.memberId, "employee", 200);
       const status = string(input.status, "status", 40);
       if (!["draft", "active", "suspended", "archived"].includes(status)) throw new ApiError(400, "INVALID_FIELD", "Select a valid employee status.");
-      const [member] = await getDb().select({ userId: teamMembers.userId }).from(teamMembers).where(and(eq(teamMembers.id, memberId), eq(teamMembers.organizationId, context.organizationId))).limit(1);
+      const [member] = await getDb().select({ userId: teamMembers.userId, roleId: teamMembers.roleId }).from(teamMembers).where(and(eq(teamMembers.id, memberId), eq(teamMembers.organizationId, context.organizationId))).limit(1);
       if (!member) throw new ApiError(404, "NOT_FOUND", "Employee profile not found.");
       if (member.userId === context.userId && status !== "active") throw new ApiError(409, "LAST_OWNER_PROTECTED", "The active account owner cannot suspend or archive their own profile.");
       const roleId = string(input.roleId, "role", 200, false);
-      await database.prepare("UPDATE team_members SET role_id = COALESCE(?, role_id), status = ?, updated_at = ? WHERE id = ? AND organization_id = ?").bind(roleId || null, status, now, memberId, context.organizationId).run();
+      const [currentRole] = member.roleId ? await getDb().select({ systemKey: accessRoles.systemKey }).from(accessRoles).where(and(eq(accessRoles.id, member.roleId), eq(accessRoles.organizationId, context.organizationId))).limit(1) : [];
+      if (currentRole?.systemKey === "account_owner") throw new ApiError(409, "OWNER_ROLE_PROTECTED", "Account ownership must use the dedicated ownership-transfer workflow.");
+      if (roleId) await requirePermission(context, "team.roles");
+      const nextRole = roleId ? await assignableRole(context, roleId) : null;
+      const statements = [database.prepare("UPDATE team_members SET role_id = COALESCE(?, role_id), status = ?, updated_at = ? WHERE id = ? AND organization_id = ?").bind(roleId || null, status, now, memberId, context.organizationId)];
+      if (member.userId) statements.push(database.prepare("UPDATE memberships SET role = COALESCE(?, role), status = ?, updated_at = ? WHERE user_id = ? AND organization_id = ?").bind(nextRole ? coarseRoleFor(nextRole) : null, status === "active" ? "active" : "suspended", now, member.userId, context.organizationId));
+      await database.batch(statements);
       resourceType = "team_member"; resourceId = memberId; details = { action, status };
     } else if (action === "save_role") {
-      const roleId = string(input.roleId, "role", 200, false) || crypto.randomUUID();
-      const permissions = jsonArray(input.permissions).filter((permission) => allPermissions.includes(permission as never));
-      const [existing] = await getDb().select({ systemKey: accessRoles.systemKey }).from(accessRoles).where(and(eq(accessRoles.id, roleId), eq(accessRoles.organizationId, context.organizationId))).limit(1);
-      if (existing?.systemKey === "account_owner") throw new ApiError(409, "OWNER_ROLE_PROTECTED", "The Account Owner role cannot be changed.");
-      await database.prepare(`INSERT INTO access_roles
-        (id, organization_id, name, description, color, system_key, permissions_json, location_scope_json, archived, created_by_user_id, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, NULL, ?, ?, 0, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET name = excluded.name, description = excluded.description, color = excluded.color, permissions_json = excluded.permissions_json, location_scope_json = excluded.location_scope_json, updated_at = excluded.updated_at`)
-        .bind(roleId, context.organizationId, string(input.name, "role name", 100), string(input.description, "role description", 500, false), string(input.color, "role colour", 7), JSON.stringify(permissions), JSON.stringify(jsonArray(input.locationScope)), context.userId, now, now).run();
-      resourceType = "access_role"; resourceId = roleId; details = { action, permissionCount: permissions.length };
+      const suppliedRoleId = string(input.roleId, "role", 200, false);
+      const roleId = suppliedRoleId || crypto.randomUUID();
+      const delegated = await validateRoleDelegation(context, jsonArray(input.permissions), jsonArray(input.locationScope));
+      const values = [string(input.name, "role name", 100), string(input.description, "role description", 500, false), string(input.color, "role colour", 7), JSON.stringify(delegated.permissions), JSON.stringify(delegated.locationScope), now];
+      if (suppliedRoleId) {
+        const [existing] = await getDb().select({ systemKey: accessRoles.systemKey }).from(accessRoles).where(and(eq(accessRoles.id, roleId), eq(accessRoles.organizationId, context.organizationId))).limit(1);
+        if (!existing) throw new ApiError(404, "NOT_FOUND", "Role not found in this organization.");
+        if (existing.systemKey) throw new ApiError(409, "SYSTEM_ROLE_PROTECTED", "Built-in roles cannot be changed. Create a custom role instead.");
+        await database.prepare("UPDATE access_roles SET name = ?, description = ?, color = ?, permissions_json = ?, location_scope_json = ?, updated_at = ? WHERE id = ? AND organization_id = ? AND system_key IS NULL").bind(...values, roleId, context.organizationId).run();
+      } else {
+        await database.prepare(`INSERT INTO access_roles
+          (id, organization_id, name, description, color, system_key, permissions_json, location_scope_json, archived, created_by_user_id, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, NULL, ?, ?, 0, ?, ?, ?)`)
+          .bind(roleId, context.organizationId, values[0], values[1], values[2], values[3], values[4], context.userId, now, now).run();
+      }
+      resourceType = "access_role"; resourceId = roleId; details = { action, permissionCount: delegated.permissions.length };
     } else if (action === "reset_pin") {
       const memberId = string(input.memberId, "employee", 200); const pin = validateTemporaryPin(input.temporaryPin);
       const [member] = await getDb().select({ id: teamMembers.id }).from(teamMembers).where(and(eq(teamMembers.id, memberId), eq(teamMembers.organizationId, context.organizationId))).limit(1);

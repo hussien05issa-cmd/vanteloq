@@ -284,7 +284,7 @@ test("authorization is server-bound to immutable identity and Supabase AAL2", as
 
   assert.match(authorization, /row\.authSubject !== identity\.subject/);
   assert.match(authorization, /requireAal2\(identity\)/);
-  assert.match(api, /identity\.provider === "supabase" && identity\.assuranceLevel !== "aal2"/);
+  assert.match(api, /identity\.provider !== "supabase" \|\| identity\.assuranceLevel !== "aal2"/);
   assert.match(internalAccess, /mfa_required = 1/);
   assert.doesNotMatch(internalAccess, /mfa_required[\s\S]{0,20}VALUES[\s\S]{0,80}, 0,/);
 });

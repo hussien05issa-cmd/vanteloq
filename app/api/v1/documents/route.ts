@@ -79,6 +79,7 @@ async function list(organizationId: string) {
       fileName: workspaceDocuments.fileName,
       contentType: workspaceDocuments.contentType,
       sizeBytes: workspaceDocuments.sizeBytes,
+      securityState: workspaceDocuments.securityState,
       status: workspaceDocuments.status,
       extractionStatus: workspaceDocuments.extractionStatus,
       createdAt: workspaceDocuments.createdAt,
@@ -122,6 +123,13 @@ export async function GET(request: Request) {
       )
       .limit(1);
     if (!document) throw new ApiError(404, "NOT_FOUND", "Document not found.");
+    if (document.securityState !== "clean") {
+      throw new ApiError(
+        409,
+        "DOCUMENT_QUARANTINED",
+        "This document remains quarantined until malware scanning confirms it is safe.",
+      );
+    }
     const object = await getR2().get(document.objectKey);
     if (!object)
       throw new ApiError(404, "NOT_FOUND", "Document file not found.");
@@ -205,8 +213,8 @@ export async function POST(request: Request) {
       await getD1()
         .prepare(
           `INSERT INTO workspace_documents
-      (id, organization_id, document_type, file_name, object_key, content_type, size_bytes, sha256_hex, status, extraction_status, extracted_json, uploaded_by_user_id, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'review_required', 'not_configured', '{}', ?, ?, ?)`,
+      (id, organization_id, document_type, file_name, object_key, content_type, size_bytes, sha256_hex, security_state, status, extraction_status, extracted_json, uploaded_by_user_id, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'quarantined', 'review_required', 'not_configured', '{}', ?, ?, ?)`,
         )
         .bind(
           id,

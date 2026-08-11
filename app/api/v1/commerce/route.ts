@@ -14,6 +14,11 @@ export async function GET(request: Request) {
     await requirePermission(context, "dashboard.view");
     const permissions = await effectivePermissions(context);
     const canReadCustomerIdentity = permissions.includes("customers.identity");
+    const canReadCustomerTotals = permissions.includes("customers.totals") || canReadCustomerIdentity;
+    const canReadProductCosts = permissions.includes("inventory.value") || permissions.includes("finance.costs");
+    const canReadProfit = permissions.includes("metrics.profit");
+    const canReadSuppliers = permissions.includes("purchasing.view");
+    const canReadInventory = permissions.includes("inventory.view");
     const database = getD1();
     const requestedLocationId = new URL(request.url).searchParams.get("location");
     const selectedLocation = requestedLocationId ? await requireAccessibleLocation(context, requestedLocationId) : null;
@@ -97,18 +102,30 @@ export async function GET(request: Request) {
       suppliers: Number(supplierCount?.value ?? 0),
       saleLines: Number(saleCount?.value ?? 0),
     };
-    const safeCustomers = (customers.results ?? []).map((row) => canReadCustomerIdentity
+    const safeProducts = canReadInventory ? (products.results ?? []).map((row) => ({
+      ...row,
+      supplierRef: canReadSuppliers ? row.supplierRef : null,
+      defaultCostCents: canReadProductCosts ? row.defaultCostCents : null,
+    })) : [];
+    const safeCustomers = canReadCustomerTotals ? (customers.results ?? []).map((row) => canReadCustomerIdentity
       ? row
-      : { ...row, firstName: null, lastName: null, email: null, phone: null });
+      : { ...row, externalCustomerId: null, displayName: null, firstName: null, lastName: null, email: null, phone: null }) : [];
+    const safeTopProducts = (topProducts.results ?? []).map((row) => ({
+      ...row,
+      grossProfitCents: canReadProfit ? row.grossProfitCents : null,
+    }));
     return jsonResponse({
       source: "normalized-commerce",
       sources,
       counts,
-      products: products.results ?? [],
+      products: safeProducts,
       customers: safeCustomers,
-      suppliers: suppliers.results ?? [],
-      topProducts: topProducts.results ?? [],
+      suppliers: canReadSuppliers ? suppliers.results ?? [] : [],
+      topProducts: safeTopProducts,
       customerIdentityAvailable: canReadCustomerIdentity,
+      productCostsAvailable: canReadProductCosts,
+      profitAvailable: canReadProfit,
+      supplierDetailsAvailable: canReadSuppliers,
       locationScope: selectedLocation ? { id: selectedLocation.id, name: selectedLocation.name, mappedProviders: [...new Set(mappings.map((mapping) => mapping.provider))] } : null,
       scopeBoundary: selectedLocation
         ? blockedScope

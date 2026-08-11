@@ -108,24 +108,24 @@ export async function GET(request: Request) {
         b.available_credit_cents availableCreditCents, b.connection_status connectionStatus,
         b.last_sync_at lastSyncAt, b.last_reconciled_at lastReconciledAt, b.demo_record demoRecord,
         a.code accountCode, a.name accountName
-        FROM bank_accounts b JOIN financial_accounts a ON a.id = b.financial_account_id
+        FROM bank_accounts b JOIN financial_accounts a ON a.id = b.financial_account_id AND a.organization_id = b.organization_id
         WHERE b.organization_id = ? ORDER BY b.name`).bind(organizationId).all(),
       database.prepare(`SELECT r.id, r.reconciliation_type reconciliationType, r.start_date startDate,
         r.end_date endDate, r.opening_balance_cents openingBalanceCents,
         r.closing_balance_cents closingBalanceCents, r.book_balance_cents bookBalanceCents,
         r.difference_cents differenceCents, r.status, a.code accountCode, a.name accountName
-        FROM reconciliations r JOIN financial_accounts a ON a.id = r.account_id
+        FROM reconciliations r JOIN financial_accounts a ON a.id = r.account_id AND a.organization_id = r.organization_id
         WHERE r.organization_id = ? ORDER BY r.end_date DESC LIMIT 60`).bind(organizationId).all(),
       database.prepare(`SELECT b.id, b.bill_number billNumber, b.invoice_date invoiceDate, b.due_date dueDate,
         b.status, b.subtotal_cents subtotalCents, b.tax_cents taxCents, b.total_cents totalCents,
         b.paid_cents paidCents, b.currency, b.purchase_order_ref purchaseOrderRef,
         b.approval_status approvalStatus, b.demo_record demoRecord, c.name supplierName
-        FROM supplier_bills b JOIN bookloq_contacts c ON c.id = b.supplier_id
+        FROM supplier_bills b JOIN bookloq_contacts c ON c.id = b.supplier_id AND c.organization_id = b.organization_id
         WHERE b.organization_id = ? ORDER BY b.due_date LIMIT 200`).bind(organizationId).all(),
       database.prepare(`SELECT i.id, i.invoice_number invoiceNumber, i.invoice_date invoiceDate, i.due_date dueDate,
         i.status, i.subtotal_cents subtotalCents, i.tax_cents taxCents, i.total_cents totalCents,
         i.paid_cents paidCents, i.currency, i.demo_record demoRecord, c.name customerName
-        FROM customer_invoices i JOIN bookloq_contacts c ON c.id = i.customer_id
+        FROM customer_invoices i JOIN bookloq_contacts c ON c.id = i.customer_id AND c.organization_id = i.organization_id
         WHERE i.organization_id = ? ORDER BY i.due_date LIMIT 200`).bind(organizationId).all(),
       database.prepare(`SELECT id, contact_type contactType, name, email, phone, billing_address billingAddress,
         payment_terms_days paymentTermsDays, credit_limit_cents creditLimitCents, notes, active
@@ -152,7 +152,7 @@ export async function GET(request: Request) {
         b.location_ref locationRef, b.department_ref departmentRef, b.budget_cents budgetCents,
         b.committed_cents committedCents, b.forecast_cents forecastCents,
         a.code accountCode, a.name accountName, a.account_type accountType
-        FROM bookloq_budgets b JOIN financial_accounts a ON a.id = b.account_id
+        FROM bookloq_budgets b JOIN financial_accounts a ON a.id = b.account_id AND a.organization_id = b.organization_id
         WHERE b.organization_id = ?${budgetLocationClause} ORDER BY a.code`).bind(organizationId, ...locationBindings).all(),
       database.prepare(`SELECT action, resource_type resourceType, resource_id resourceId,
         outcome, details_json detailsJson, created_at createdAt
