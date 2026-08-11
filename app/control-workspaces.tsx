@@ -154,6 +154,7 @@ const liveReports: Record<string, string> = {
   "Sales over time": "sales_over_time",
   "Average transaction value": "sales_totals",
   "Units per transaction": "sales_totals",
+  "Payment-method performance": "sales_totals",
   Discounts: "discounts_refunds",
   Refunds: "discounts_refunds",
   "Labour cost percentage": "labour_summary",
@@ -171,6 +172,26 @@ function reportRange(days: number) {
   const start = new Date(end);
   start.setDate(start.getDate() - Math.max(0, days - 1));
   return { start: localIsoDate(start), end: localIsoDate(end) };
+}
+
+function monthRange(offset = 0, throughToday = false) {
+  const today = new Date();
+  const start = new Date(today.getFullYear(), today.getMonth() + offset, 1);
+  const end = throughToday
+    ? today
+    : new Date(today.getFullYear(), today.getMonth() + offset + 1, 0);
+  return { start: localIsoDate(start), end: localIsoDate(end) };
+}
+
+function reportChange(value: unknown) {
+  return typeof value === "number"
+    ? new Intl.NumberFormat("en-CA", { style: "percent", maximumFractionDigits: 1, signDisplay: "exceptZero" }).format(value)
+    : "No matched baseline";
+}
+
+function readableReportDate(value: unknown) {
+  if (typeof value !== "string" || !value) return "Unavailable";
+  return new Intl.DateTimeFormat("en-CA", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }).format(new Date(`${value}T00:00:00Z`));
 }
 
 function money(cents: number | null | undefined, currency: string) {
@@ -237,15 +258,27 @@ export function ReportsWorkspace({
     setEnd(next.end);
   };
   const totals = report?.totals as Record<string, number | null> | undefined;
+  const comparison = report?.comparison as {
+    periodStart: string;
+    periodEnd: string;
+    verifiedDays: number;
+    totals: Record<string, number | null>;
+    changes: Record<string, number | null>;
+  } | null | undefined;
+  const paymentMix = (report?.paymentMix as Array<{ category: string; paymentTypeName: string | null; amountCents: number; transactionCount: number }> | undefined) ?? [];
   const explain = report?.explainAndAct as Record<string, unknown> | undefined;
   const source = report?.source as Record<string, unknown> | undefined;
-  const rows = (report?.rows as Array<{ businessDate: string; netSalesCents: number; costOfGoodsCents: number }> | undefined) ?? [];
+  const rows = useMemo(
+    () => (report?.rows as Array<{ businessDate: string; netSalesCents: number; costOfGoodsCents: number; transactionCount: number }> | undefined) ?? [],
+    [report],
+  );
   const trendRows = useMemo(() => {
-    const daily = new Map<string, { date: string; netSalesCents: number; grossProfitCents: number }>();
+    const daily = new Map<string, { date: string; netSalesCents: number; grossProfitCents: number; transactionCount: number }>();
     for (const row of rows) {
-      const current = daily.get(row.businessDate) ?? { date: row.businessDate, netSalesCents: 0, grossProfitCents: 0 };
+      const current = daily.get(row.businessDate) ?? { date: row.businessDate, netSalesCents: 0, grossProfitCents: 0, transactionCount: 0 };
       current.netSalesCents += row.netSalesCents;
       current.grossProfitCents += row.netSalesCents - row.costOfGoodsCents;
+      current.transactionCount += row.transactionCount;
       daily.set(row.businessDate, current);
     }
     return [...daily.values()].sort((left, right) => left.date.localeCompare(right.date));
@@ -274,7 +307,7 @@ export function ReportsWorkspace({
             [1, "Today"],
             [7, "7 days"],
             [30, "30 days"],
-            [90, "90 days"],
+            [365, "12 months"],
           ].map(([days, label]) => (
             <button
               type="button"
@@ -291,6 +324,8 @@ export function ReportsWorkspace({
               {label}
             </button>
           ))}
+          <button type="button" className={preset === "mtd" ? "active" : ""} onClick={() => { const next = monthRange(0, true); setPreset("mtd"); setStart(next.start); setEnd(next.end); }}>Month to date</button>
+          <button type="button" className={preset === "last-month" ? "active" : ""} onClick={() => { const next = monthRange(-1); setPreset("last-month"); setStart(next.start); setEnd(next.end); }}>Last month</button>
         </div>
         <div className="report-date-fields">
           <label>
@@ -391,33 +426,35 @@ export function ReportsWorkspace({
                 <article>
                   <small>NET SALES</small>
                   <b>{money(totals?.netSalesCents, currency)}</b>
+                  <span>{reportChange(comparison?.changes.netSalesRate)} vs matched period</span>
                 </article>
                 <article>
-                  <small>TRANSACTIONS</small>
-                  <b>{totals?.transactionCount?.toLocaleString() || "0"}</b>
+                  <small>GROSS PROFIT</small>
+                  <b>{money(totals?.grossProfitCents, currency)}</b>
+                  <span>{reportChange(comparison?.changes.grossProfitRate)} vs matched period</span>
                 </article>
                 <article>
                   <small>AVERAGE TRANSACTION</small>
                   <b>{money(totals?.averageTransactionCents, currency)}</b>
+                  <span>{reportChange(comparison?.changes.averageTransactionRate)} vs matched period</span>
                 </article>
                 <article>
-                  <small>DISCOUNTS & REFUNDS</small>
-                  <b>
-                    {money(
-                      (totals?.discountsCents || 0) +
-                        (totals?.refundsCents || 0),
-                      currency,
-                    )}
-                  </b>
+                  <small>TRANSACTIONS</small>
+                  <b>{totals?.transactionCount?.toLocaleString() || "0"}</b>
+                  <span>{reportChange(comparison?.changes.transactionRate)} vs matched period</span>
                 </article>
               </div>
+              <section className="report-comparison-strip" aria-label="Matched period comparison">
+                <div><small>SELECTED PERIOD</small><b>{readableReportDate(source?.periodStart || source?.earliestBusinessDate)} – {readableReportDate(source?.periodEnd || source?.latestBusinessDate)}</b><span>{String(source?.verifiedDays ?? 0)} verified days · {Math.round(Number(source?.completenessRate ?? 0) * 100)}% date coverage</span></div>
+                <div><small>PREVIOUS MATCHED PERIOD</small><b>{comparison ? `${readableReportDate(comparison.periodStart)} – ${readableReportDate(comparison.periodEnd)}` : "Not available"}</b><span>{comparison ? `${comparison.verifiedDays} verified days` : "A complete baseline has not been imported"}</span></div>
+              </section>
               <section className="report-period-chart" aria-label="Sales over the selected time frame">
                 <header>
                   <div>
                     <p>SELECTED TIME FRAME</p>
                     <h3>Net sales and gross profit</h3>
                   </div>
-                  <span>{rows.length} daily records</span>
+                  <span>{String(source?.verifiedDays ?? trendRows.length)} verified days · {rows.length} source records</span>
                 </header>
                 {trendRows.length ? (
                   <BusinessTrendChart
@@ -428,6 +465,12 @@ export function ReportsWorkspace({
                   <div className="report-chart-empty">No verified sales records match this time frame.</div>
                 )}
               </section>
+              {selected === "Payment-method performance" && (
+                <section className="report-payment-mix" aria-label="Payment method performance">
+                  <header><div><p>VERIFIED TENDERS</p><h3>Payment method mix</h3></div><span>{paymentMix.length ? `${paymentMix.length} payment types` : "Backfill required"}</span></header>
+                  {paymentMix.length ? paymentMix.map((row) => <div key={`${row.category}:${row.paymentTypeName ?? "unknown"}`}><span><i className={`payment-${row.category}`} /><b>{row.paymentTypeName || row.category.replaceAll("_", " ")}</b><small>{Number(row.transactionCount).toLocaleString()} recorded payments</small></span><strong>{money(Number(row.amountCents), currency)}</strong></div>) : <p>No verified R-Series SalePayment records match this period. Vanteloq will not infer cash or card mix from sales totals.</p>}
+                </section>
+              )}
               <section className="explain-act">
                 <p>EXPLAIN & ACT</p>
                 <h3>

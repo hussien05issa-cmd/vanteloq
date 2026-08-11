@@ -45,6 +45,24 @@ test("the engine detects supported sales, margin and labour exceptions", () => {
   assert.ok(result.insights.some(insight => insight.id === "sales-trend" && insight.severity === "attention"));
   assert.ok(result.insights.some(insight => insight.id === "margin-trend" && insight.missingInformation.includes("SKU-level cost changes")));
   assert.ok(result.insights.every(insight => insight.evidence.length > 0 && insight.suggestedTask.title.length > 0));
+  assert.equal(result.source.verifiedDays, 60);
+  assert.equal(result.forecast?.available, true);
+  assert.equal(result.forecast?.points.length, 7);
+  assert.equal(result.periodComparisons?.sevenDays.comparable, true);
+});
+
+test("multiple locations on one business date count as one verified day", () => {
+  const rows = [
+    { ...row("2026-08-01", "current"), locationRef: "lightspeed-r:1" },
+    { ...row("2026-08-01", "current"), locationRef: "lightspeed-r:2" },
+    { ...row("2026-08-02", "current"), locationRef: "lightspeed-r:1" },
+  ];
+  const result = buildCommandCentre(rows, "CAD");
+  assert.equal(result.source.rowCount, 3);
+  assert.equal(result.source.verifiedDays, 2);
+  assert.equal(result.current?.days, 2);
+  assert.equal(result.current?.netSalesCents, 240_000);
+  assert.equal(result.forecast?.available, false);
 });
 
 test("business memory requires enough verified days on both sides", () => {

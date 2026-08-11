@@ -86,6 +86,103 @@ function percentChange(current: number, previous: number): number | null {
   return previous === 0 ? null : (current - previous) / Math.abs(previous);
 }
 
+function aggregateDaily(rows: MetricRow[]): MetricRow[] {
+  const daily = new Map<string, MetricRow>();
+  for (const row of rows) {
+    const current = daily.get(row.businessDate);
+    if (!current) {
+      daily.set(row.businessDate, { ...row, locationRef: "all" });
+      continue;
+    }
+    current.grossSalesCents += row.grossSalesCents;
+    current.netSalesCents += row.netSalesCents;
+    current.costOfGoodsCents += row.costOfGoodsCents;
+    current.transactionCount += row.transactionCount;
+    current.unitsSold += row.unitsSold;
+    current.refundsCents += row.refundsCents;
+    current.discountsCents += row.discountsCents;
+    current.labourCostCents += row.labourCostCents;
+    if (row.inventoryValueCents !== null) current.inventoryValueCents = (current.inventoryValueCents ?? 0) + row.inventoryValueCents;
+    if (row.cashBalanceCents !== null) current.cashBalanceCents = (current.cashBalanceCents ?? 0) + row.cashBalanceCents;
+    if (row.accountsPayableCents !== null) current.accountsPayableCents = (current.accountsPayableCents ?? 0) + row.accountsPayableCents;
+    const currentUpdated = current.updatedAt instanceof Date ? current.updatedAt.getTime() : current.updatedAt ? new Date(current.updatedAt).getTime() : 0;
+    const candidateUpdated = row.updatedAt instanceof Date ? row.updatedAt.getTime() : row.updatedAt ? new Date(row.updatedAt).getTime() : 0;
+    if (candidateUpdated >= currentUpdated) {
+      current.updatedAt = row.updatedAt;
+      current.sourceImportId = row.sourceImportId;
+    }
+  }
+  return [...daily.values()].sort((left, right) => left.businessDate.localeCompare(right.businessDate));
+}
+
+function windowComparison(rows: MetricRow[], latestBusinessDate: string, days: number) {
+  const currentStart = dateOffset(latestBusinessDate, -(days - 1));
+  const previousEnd = dateOffset(currentStart, -1);
+  const previousStart = dateOffset(previousEnd, -(days - 1));
+  const current = sum(rows.filter((row) => row.businessDate >= currentStart && row.businessDate <= latestBusinessDate));
+  const previous = sum(rows.filter((row) => row.businessDate >= previousStart && row.businessDate <= previousEnd));
+  return {
+    days,
+    periodStart: currentStart,
+    periodEnd: latestBusinessDate,
+    comparisonStart: previousStart,
+    comparisonEnd: previousEnd,
+    current,
+    previous,
+    changes: {
+      netSalesRate: percentChange(current.netSalesCents, previous.netSalesCents),
+      grossProfitRate: percentChange(current.grossProfitCents, previous.grossProfitCents),
+      transactionRate: percentChange(current.transactionCount, previous.transactionCount),
+      averageTransactionRate: current.averageTransactionCents !== null && previous.averageTransactionCents !== null
+        ? percentChange(current.averageTransactionCents, previous.averageTransactionCents)
+        : null,
+    },
+    comparable: current.days === days && previous.days === days,
+  };
+}
+
+function sevenDayForecast(rows: MetricRow[], latestBusinessDate: string) {
+  if (rows.length < 28) {
+    return { available: false as const, requiredDays: 28, verifiedDays: rows.length, points: [], totalNetSalesCents: null, lowCents: null, highCents: null, confidence: "unavailable" as const, method: "Same-weekday weighted average" };
+  }
+  const byWeekday = new Map<number, MetricRow[]>();
+  for (const row of rows.slice(-84)) {
+    const weekday = new Date(`${row.businessDate}T00:00:00Z`).getUTCDay();
+    byWeekday.set(weekday, [...(byWeekday.get(weekday) ?? []), row]);
+  }
+  const points = Array.from({ length: 7 }, (_, index) => {
+    const date = dateOffset(latestBusinessDate, index + 1);
+    const weekday = new Date(`${date}T00:00:00Z`).getUTCDay();
+    const history = (byWeekday.get(weekday) ?? []).slice(-8);
+    const weighted = (key: "netSalesCents" | "costOfGoodsCents") => {
+      const denominator = history.reduce((total, _row, itemIndex) => total + itemIndex + 1, 0);
+      return denominator ? Math.round(history.reduce((total, row, itemIndex) => total + row[key] * (itemIndex + 1), 0) / denominator) : 0;
+    };
+    const netSalesCents = weighted("netSalesCents");
+    const grossProfitCents = Math.max(0, netSalesCents - weighted("costOfGoodsCents"));
+    return { date, netSalesCents, grossProfitCents, observations: history.length };
+  });
+  const totalNetSalesCents = points.reduce((total, point) => total + point.netSalesCents, 0);
+  const historicalWeeks = Array.from({ length: Math.min(8, Math.floor(rows.length / 7)) }, (_, index) => {
+    const end = rows.length - index * 7;
+    return rows.slice(Math.max(0, end - 7), end).reduce((total, row) => total + row.netSalesCents, 0);
+  }).filter((value) => value > 0);
+  const mean = historicalWeeks.reduce((total, value) => total + value, 0) / Math.max(1, historicalWeeks.length);
+  const deviation = Math.sqrt(historicalWeeks.reduce((total, value) => total + (value - mean) ** 2, 0) / Math.max(1, historicalWeeks.length));
+  const uncertainty = Math.max(0.08, Math.min(0.3, mean ? deviation / mean : 0.2));
+  return {
+    available: true as const,
+    requiredDays: 28,
+    verifiedDays: rows.length,
+    points,
+    totalNetSalesCents,
+    lowCents: Math.round(totalNetSalesCents * (1 - uncertainty)),
+    highCents: Math.round(totalNetSalesCents * (1 + uncertainty)),
+    confidence: rows.length >= 56 ? "medium" as const : "low" as const,
+    method: "Same-weekday weighted average of up to eight prior observations; range reflects recent weekly variation.",
+  };
+}
+
 function money(cents: number, currency: string): string {
   return new Intl.NumberFormat("en-CA", { style: "currency", currency, maximumFractionDigits: 0 }).format(cents / 100);
 }
@@ -208,11 +305,12 @@ function buildInsights(current: Totals, previous: Totals, currency: string): Ins
 }
 
 export function buildCommandCentre(rows: MetricRow[], currency: string) {
-  const sorted = [...rows].sort((a, b) => a.businessDate.localeCompare(b.businessDate));
+  const sourceRecordCount = rows.length;
+  const sorted = aggregateDaily(rows);
   if (!sorted.length) {
     return {
       ready: false,
-      source: { rowCount: 0, latestBusinessDate: null, freshness: "missing" },
+      source: { rowCount: 0, verifiedDays: 0, latestBusinessDate: null, earliestBusinessDate: null, freshness: "missing" },
       current: null,
       previous: null,
       comparisons: null,
@@ -271,13 +369,18 @@ export function buildCommandCentre(rows: MetricRow[], currency: string) {
   });
   return {
     ready: true,
-    source: { rowCount: sorted.length, latestBusinessDate, freshness, ageDays: latestAgeDays },
+    source: { rowCount: sourceRecordCount, verifiedDays: sorted.length, earliestBusinessDate: sorted[0].businessDate, latestBusinessDate, freshness, ageDays: latestAgeDays },
     current,
     previous,
     comparisons,
     balances: { inventoryValueCents: latestWith("inventoryValueCents"), cashBalanceCents: latestWith("cashBalanceCents"), accountsPayableCents: latestWith("accountsPayableCents") },
     metrics,
-    trend: currentRows.slice(-14).map((row) => ({ date: row.businessDate, netSalesCents: row.netSalesCents, grossProfitCents: row.netSalesCents - row.costOfGoodsCents })),
+    trend: sorted.slice(-90).map((row) => ({ date: row.businessDate, netSalesCents: row.netSalesCents, grossProfitCents: row.netSalesCents - row.costOfGoodsCents, transactionCount: row.transactionCount })),
+    periodComparisons: {
+      sevenDays: windowComparison(sorted, latestBusinessDate, 7),
+      thirtyDays: windowComparison(sorted, latestBusinessDate, 30),
+    },
+    forecast: sevenDayForecast(sorted, latestBusinessDate),
     insights: buildInsights(current, previous, currency),
     dataQuality: { status: previous.days >= 7 ? "usable" : "limited", verifiedFields: 10, missingDimensions: ["Product and category detail", "Customer identity", "Marketing attribution", "Hourly traffic", "Supplier invoices"] },
   };

@@ -19,7 +19,9 @@ import {
   normalizeLightspeedRSale,
   normalizeLightspeedRSaleLine,
   normalizeLightspeedRSaleLines,
+  normalizeLightspeedRPayments,
   normalizeLightspeedRSupplier,
+  lightspeedRPaymentTypeMap,
   lightspeedRSha256,
   type NormalizedLightspeedRSale,
 } from "../../../../../../server/integrations/lightspeed-r";
@@ -28,7 +30,7 @@ import { requirePermission } from "../../../../../../server/permissions";
 const IMPORT_LABEL = "Lightspeed R-Series live sync";
 
 type SyncCheckpoint = {
-  version: 3;
+  version: 4;
   watermark: string | null;
   salesCursor: string | null;
   saleLinesCursor: string | null;
@@ -49,7 +51,7 @@ type StagedSaleRow = Pick<NormalizedLightspeedRSale,
 
 function checkpoint(value: string | null): SyncCheckpoint {
   const empty: SyncCheckpoint = {
-    version: 3,
+    version: 4,
     watermark: null,
     salesCursor: null,
     saleLinesCursor: null,
@@ -69,9 +71,9 @@ function checkpoint(value: string | null): SyncCheckpoint {
   if (!Number.isNaN(Date.parse(value))) return { ...empty, watermark: value };
   try {
     const parsed = JSON.parse(value) as Record<string, unknown>;
-    if (parsed.version !== 1 && parsed.version !== 2 && parsed.version !== 3) return empty;
+    if (parsed.version !== 1 && parsed.version !== 2 && parsed.version !== 3 && parsed.version !== 4) return empty;
     return {
-      version: 3,
+      version: 4,
       watermark: typeof parsed.watermark === "string" ? parsed.watermark : null,
       salesCursor: typeof parsed.salesCursor === "string" ? parsed.salesCursor : null,
       saleLinesCursor: typeof parsed.saleLinesCursor === "string" ? parsed.saleLinesCursor : null,
@@ -105,7 +107,7 @@ function nextCheckpoint(
 ) {
   if (salesComplete && saleLinesComplete && itemsComplete && customersComplete && suppliersComplete) {
     return JSON.stringify({
-      version: 3,
+      version: 4,
       watermark: completedAt.toISOString(),
       salesCursor: null,
       saleLinesCursor: null,
@@ -120,7 +122,7 @@ function nextCheckpoint(
     } satisfies SyncCheckpoint);
   }
   return JSON.stringify({
-    version: 3,
+    version: 4,
     watermark: previous.watermark,
     salesCursor,
     saleLinesCursor,
@@ -207,20 +209,22 @@ export async function POST(request: Request) {
           (SELECT count(*) FROM commerce_products WHERE organization_id = ? AND provider = ?) AS products,
           (SELECT count(*) FROM commerce_customers WHERE organization_id = ? AND provider = ?) AS customers,
           (SELECT count(*) FROM commerce_suppliers WHERE organization_id = ? AND provider = ?) AS suppliers,
-          (SELECT count(*) FROM commerce_sale_lines WHERE organization_id = ? AND provider = ?) AS saleLines
+          (SELECT count(*) FROM commerce_sale_lines WHERE organization_id = ? AND provider = ?) AS saleLines,
+          (SELECT count(*) FROM commerce_payments WHERE organization_id = ? AND provider = ?) AS payments
       `).bind(
         context.organizationId, LIGHTSPEED_R_PROVIDER,
         context.organizationId, LIGHTSPEED_R_PROVIDER,
         context.organizationId, LIGHTSPEED_R_PROVIDER,
         context.organizationId, LIGHTSPEED_R_PROVIDER,
-      ).first<{ products: number; customers: number; suppliers: number; saleLines: number }>();
+        context.organizationId, LIGHTSPEED_R_PROVIDER,
+      ).first<{ products: number; customers: number; suppliers: number; saleLines: number; payments: number }>();
       const salesPage = reason === "auto" || previous.salesComplete
         ? { data: [], pages: 0, cursor: null as string | null }
         : await fetchLightspeedRCollection(context.organizationId, connection.externalAccountRef, "Sale", {
             maxPages: 3,
             cursor: previous.salesCursor,
             modifiedSince: previous.salesCursor ? null : previous.watermark,
-            loadRelations: ["SaleLines"],
+            loadRelations: ["SaleLines", "SalePayments"],
           });
       // Do not make today's dashboard wait behind a long historical backfill.
       // R-Series supports timestamp filters on collection reads, so every run
@@ -232,8 +236,14 @@ export async function POST(request: Request) {
         {
           maxPages: 1,
           modifiedSince: new Date(Date.now() - 24 * 60 * 60 * 1_000).toISOString(),
-          loadRelations: ["SaleLines"],
+          loadRelations: ["SaleLines", "SalePayments"],
         },
+      );
+      const paymentTypesPage = await fetchLightspeedRCollection(
+        context.organizationId,
+        connection.externalAccountRef,
+        "PaymentType",
+        { maxPages: 3 },
       );
       const saleLinesPage = reason === "auto" || (previous.saleLinesComplete && Number(existingCommerce?.saleLines ?? 0) > 0)
         ? { data: [], pages: 0, cursor: null as string | null }
@@ -279,11 +289,14 @@ export async function POST(request: Request) {
       const products = [];
       const customers = [];
       const suppliers = [];
+      const payments = [];
+      const paymentTypes = lightspeedRPaymentTypeMap(paymentTypesPage.data);
       let warnings = 0;
       for (const source of [...recentSalesPage.data, ...salesPage.data]) {
         try {
           normalizedSales.push(await normalizeLightspeedRSale(source));
           normalizedSaleLines.push(...await normalizeLightspeedRSaleLines(source));
+          payments.push(...await normalizeLightspeedRPayments(source, paymentTypes));
         } catch { warnings += 1; }
       }
       for (const source of saleLinesPage.data) {
@@ -303,6 +316,7 @@ export async function POST(request: Request) {
       }
       const uniqueSales = [...new Map(normalizedSales.map((sale) => [`${sale.externalSaleId}:${sale.externalVersion}`, sale])).values()];
       const uniqueSaleLines = [...new Map(normalizedSaleLines.map((line) => [`${line.externalSaleId}:${line.externalLineId}`, line])).values()];
+      const uniquePayments = [...new Map(payments.map((payment) => [payment.externalPaymentId, payment])).values()];
       // SaleLine is also a trustworthy catalog identity source. Preserve sold
       // products even if R-Series omits Item rows or a shop relation is partial;
       // later Item pages enrich these records with names, cost, price and stock.
@@ -362,6 +376,27 @@ export async function POST(request: Request) {
           line.discountCents, line.sourcePayloadHash, runId, Date.now(),
         ).run();
         importedSaleLines += Number(result.meta.changes ?? 0);
+      }
+      let importedPayments = 0;
+      for (const payment of uniquePayments) {
+        const result = await database.prepare(`
+          INSERT INTO commerce_payments
+            (id, organization_id, provider, external_payment_id, external_sale_id, payment_type_ref,
+             payment_type_name, category, amount_cents, paid_at, outlet_ref, source_payload_hash,
+             sync_run_id, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(organization_id, provider, external_payment_id) DO UPDATE SET
+            external_sale_id = excluded.external_sale_id, payment_type_ref = excluded.payment_type_ref,
+            payment_type_name = excluded.payment_type_name, category = excluded.category,
+            amount_cents = excluded.amount_cents, paid_at = excluded.paid_at, outlet_ref = excluded.outlet_ref,
+            source_payload_hash = excluded.source_payload_hash, sync_run_id = excluded.sync_run_id,
+            updated_at = excluded.updated_at
+        `).bind(
+          crypto.randomUUID(), context.organizationId, LIGHTSPEED_R_PROVIDER, payment.externalPaymentId,
+          payment.externalSaleId, payment.paymentTypeRef, payment.paymentTypeName, payment.category,
+          payment.amountCents, payment.paidAt, payment.outletRef, payment.sourcePayloadHash, runId, Date.now(),
+        ).run();
+        importedPayments += Number(result.meta.changes ?? 0);
       }
 
       const ignoredMappings = await getDb().select({ externalLocationRef: integrationLocationMappings.externalLocationRef })
@@ -514,7 +549,7 @@ export async function POST(request: Request) {
       await database.prepare(`
         UPDATE data_imports SET status = 'completed', row_count = ?
         WHERE id = ? AND organization_id = ?
-      `).bind(dailyMetrics.length + importedInventory + importedProducts + importedCustomers + importedSuppliers + importedSaleLines, importId, context.organizationId).run();
+      `).bind(dailyMetrics.length + importedInventory + importedProducts + importedCustomers + importedSuppliers + importedSaleLines + importedPayments, importId, context.organizationId).run();
 
       const completedAt = new Date();
       const salesComplete = previous.salesComplete || salesPage.cursor === null;
@@ -537,14 +572,14 @@ export async function POST(request: Request) {
         suppliersComplete,
       );
       const safeCheckpoint = reason === "auto" || warnings > 0 ? connection.lastSyncCursor : computedCheckpoint;
-      const recordsRead = recentSalesPage.data.length + salesPage.data.length + saleLinesPage.data.length + itemsPage.data.length + customersPage.data.length + suppliersPage.data.length;
-      const recordsImported = dailyMetrics.length + importedInventory + importedProducts + importedCustomers + importedSuppliers + importedSaleLines;
+      const recordsRead = recentSalesPage.data.length + salesPage.data.length + saleLinesPage.data.length + itemsPage.data.length + customersPage.data.length + suppliersPage.data.length + paymentTypesPage.data.length;
+      const recordsImported = dailyMetrics.length + importedInventory + importedProducts + importedCustomers + importedSuppliers + importedSaleLines + importedPayments;
       const duplicatesSkipped = uniqueSales.length - stagedSales;
       await getDb().update(integrationSyncRuns).set({
         status: "completed",
         cursorAfter: safeCheckpoint,
         recordsRead,
-        recordsStaged: stagedSales + importedInventory + importedProducts + importedCustomers + importedSuppliers + importedSaleLines,
+        recordsStaged: stagedSales + importedInventory + importedProducts + importedCustomers + importedSuppliers + importedSaleLines + importedPayments,
         duplicatesSkipped,
         warningCount: warnings,
         completedAt,
@@ -578,6 +613,7 @@ export async function POST(request: Request) {
           customers: importedCustomers,
           suppliers: importedSuppliers,
           saleLines: importedSaleLines,
+          payments: importedPayments,
           duplicatesSkipped,
           warningCount: warnings,
           dataPromotionEnabled: warnings === 0,
@@ -590,10 +626,10 @@ export async function POST(request: Request) {
           id: runId,
           status: "completed",
           recordsRead,
-          recordsStaged: stagedSales + importedInventory + importedProducts + importedCustomers + importedSuppliers + importedSaleLines,
+          recordsStaged: stagedSales + importedInventory + importedProducts + importedCustomers + importedSuppliers + importedSaleLines + importedPayments,
           duplicatesSkipped,
           warningCount: warnings,
-          pages: recentSalesPage.pages + salesPage.pages + saleLinesPage.pages + itemsPage.pages + customersPage.pages + suppliersPage.pages,
+          pages: recentSalesPage.pages + salesPage.pages + saleLinesPage.pages + itemsPage.pages + customersPage.pages + suppliersPage.pages + paymentTypesPage.pages,
           cursorPreserved: safeCheckpoint,
         },
         reconciliation: {
@@ -609,6 +645,7 @@ export async function POST(request: Request) {
           customers: importedCustomers,
           suppliers: importedSuppliers,
           saleLines: importedSaleLines,
+          payments: importedPayments,
         },
         imported: {
           dailyMetrics: dailyMetrics.length,
@@ -617,6 +654,7 @@ export async function POST(request: Request) {
           customers: importedCustomers,
           suppliers: importedSuppliers,
           saleLines: importedSaleLines,
+          payments: importedPayments,
         },
         stagingOnly: false,
         dataPromotionEnabled: warnings === 0,

@@ -419,6 +419,8 @@ type CommandCentre = {
   ready: boolean;
   source: {
     rowCount: number;
+    verifiedDays: number;
+    earliestBusinessDate: string | null;
     latestBusinessDate: string | null;
     freshness: string;
     ageDays?: number;
@@ -438,7 +440,22 @@ type CommandCentre = {
     accountsPayableCents: number | null;
   } | null;
   metrics: Record<string, MetricProvenance>;
-  trend: { date: string; netSalesCents: number; grossProfitCents: number }[];
+  trend: { date: string; netSalesCents: number; grossProfitCents: number; transactionCount?: number }[];
+  periodComparisons: {
+    sevenDays: PeriodComparison;
+    thirtyDays: PeriodComparison;
+  };
+  forecast: {
+    available: boolean;
+    requiredDays: number;
+    verifiedDays: number;
+    totalNetSalesCents: number | null;
+    lowCents: number | null;
+    highCents: number | null;
+    confidence: "medium" | "low" | "unavailable";
+    method: string;
+    points: Array<{ date: string; netSalesCents: number; grossProfitCents: number; observations: number }>;
+  };
   insights: Insight[];
   dataQuality: {
     status: string;
@@ -460,6 +477,22 @@ type CommandCentre = {
       label: string;
       netSalesCents: number;
       grossProfitCents: number;
+      transactionCount: number;
+    }>;
+  };
+  todayComparison: {
+    baselineDate: string;
+    currentDate: string;
+    baseline: { netSalesCents: number; grossProfitCents: number; transactionCount: number };
+    changes: { netSalesRate: number | null; grossProfitRate: number | null; transactionRate: number | null };
+  } | null;
+  paymentMix: {
+    period: string;
+    sourceAvailable: boolean;
+    rows: Array<{
+      category: "cash" | "card" | "gift_card" | "store_credit" | "other";
+      paymentTypeName: string;
+      amountCents: number;
       transactionCount: number;
     }>;
   };
@@ -492,6 +525,23 @@ type CommandCentre = {
     }[];
     guardrails: string[];
   };
+};
+
+type PeriodComparison = {
+  days: number;
+  periodStart: string;
+  periodEnd: string;
+  comparisonStart: string;
+  comparisonEnd: string;
+  current: Totals;
+  previous: Totals;
+  changes: {
+    netSalesRate: number | null;
+    grossProfitRate: number | null;
+    transactionRate: number | null;
+    averageTransactionRate: number | null;
+  };
+  comparable: boolean;
 };
 type TaskSeed = {
   title: string;
@@ -1095,15 +1145,80 @@ function formatRelativeSync(value: string) {
   return new Intl.DateTimeFormat("en-CA", { hour: "numeric", minute: "2-digit" }).format(new Date(value));
 }
 
+function formatBusinessDate(value: string) {
+  return new Intl.DateTimeFormat("en-CA", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(`${value}T00:00:00Z`));
+}
+
+function comparisonCopy(rate: number | null | undefined, label: string) {
+  if (rate === null || rate === undefined) return `No ${label} baseline`;
+  return `${new Intl.NumberFormat("en-CA", { style: "percent", maximumFractionDigits: 1, signDisplay: "exceptZero" }).format(rate)} vs ${label}`;
+}
+
+function PaymentMixCard({ data, currency }: { data: CommandCentre["paymentMix"]; currency: string }) {
+  const categories = data.rows.reduce((map, row) => {
+    const current = map.get(row.category) ?? { category: row.category, amountCents: 0, transactionCount: 0 };
+    current.amountCents += Number(row.amountCents);
+    current.transactionCount += Number(row.transactionCount);
+    map.set(row.category, current);
+    return map;
+  }, new Map<string, { category: string; amountCents: number; transactionCount: number }>());
+  const rows = [...categories.values()].sort((left, right) => right.amountCents - left.amountCents);
+  const total = rows.reduce((sum, row) => sum + row.amountCents, 0);
+  const labels: Record<string, string> = { card: "Card", cash: "Cash", gift_card: "Gift card", store_credit: "Store credit", other: "Other" };
+  return (
+    <article className="card commerce-intel-card payment-mix-card">
+      <header><div><p className="card-kicker">PAYMENT MIX</p><h3>How customers paid</h3></div><span>{data.period}</span></header>
+      {data.sourceAvailable && total > 0 ? <>
+        <div className="payment-stack" aria-label={`Payment mix totaling ${money(total, currency)}`}>
+          {rows.map((row) => <i key={row.category} className={`payment-${row.category}`} style={{ width: `${Math.max(2, row.amountCents / total * 100)}%` }} />)}
+        </div>
+        <dl className="payment-breakdown">
+          {rows.map((row) => <div key={row.category}><dt><i className={`payment-${row.category}`} />{labels[row.category] || row.category}</dt><dd><b>{money(row.amountCents, currency)}</b><span>{new Intl.NumberFormat("en-CA", { style: "percent", maximumFractionDigits: 1 }).format(row.amountCents / total)}</span></dd></div>)}
+        </dl>
+      </> : <div className="intel-empty"><b>Payment types are still backfilling</b><span>Cash, card and other tenders will appear only after R-Series returns verified SalePayment records.</span></div>}
+    </article>
+  );
+}
+
+function CommerceIntelligenceRail({ data, currency }: { data: CommandCentre; currency: string }) {
+  const comparisons = [
+    { label: "Today vs same weekday", period: data.todayComparison ? formatBusinessDate(data.todayComparison.baselineDate) : "Baseline unavailable", value: money(data.today.netSalesCents, currency), rate: data.todayComparison?.changes.netSalesRate ?? null },
+    { label: "Last 7 days", period: `${formatBusinessDate(data.periodComparisons.sevenDays.periodStart)} – ${formatBusinessDate(data.periodComparisons.sevenDays.periodEnd)}`, value: money(data.periodComparisons.sevenDays.current.netSalesCents, currency), rate: data.periodComparisons.sevenDays.comparable ? data.periodComparisons.sevenDays.changes.netSalesRate : null },
+    { label: "Last 30 days", period: `${formatBusinessDate(data.periodComparisons.thirtyDays.periodStart)} – ${formatBusinessDate(data.periodComparisons.thirtyDays.periodEnd)}`, value: money(data.periodComparisons.thirtyDays.current.netSalesCents, currency), rate: data.periodComparisons.thirtyDays.comparable ? data.periodComparisons.thirtyDays.changes.netSalesRate : null },
+  ];
+  return (
+    <>
+      <section className="sales-comparison-grid" aria-label="Matched sales comparisons">
+        {comparisons.map((item) => <article key={item.label}><p>{item.label}</p><strong>{item.value}</strong><span className={item.rate == null ? "neutral" : item.rate >= 0 ? "positive" : "negative"}>{comparisonCopy(item.rate, item.label === "Today vs same weekday" ? item.period : "prior matched period")}</span><small>{item.period}</small></article>)}
+      </section>
+      <section className="commerce-intel-grid">
+        <PaymentMixCard data={data.paymentMix} currency={currency} />
+        <article className="card commerce-intel-card forecast-card">
+          <header><div><p className="card-kicker">7-DAY OUTLOOK</p><h3>Expected net sales</h3></div><span>{data.forecast.confidence === "unavailable" ? "Not ready" : `${data.forecast.confidence} confidence`}</span></header>
+          {data.forecast.available ? <>
+            <strong>{money(data.forecast.lowCents, currency)} – {money(data.forecast.highCents, currency)}</strong>
+            <p>Central estimate {money(data.forecast.totalNetSalesCents, currency)}</p>
+            <div className="forecast-bars" aria-label="Seven-day sales forecast">
+              {data.forecast.points.map((point) => <i key={point.date} style={{ height: `${Math.max(12, point.netSalesCents / Math.max(...data.forecast.points.map((item) => item.netSalesCents), 1) * 100)}%` }} title={`${formatBusinessDate(point.date)}: ${money(point.netSalesCents, currency)}`} />)}
+            </div>
+            <small>{data.forecast.method}</small>
+          </> : <div className="intel-empty"><b>{Math.max(0, data.forecast.requiredDays - data.forecast.verifiedDays)} more verified days needed</b><span>Vanteloq will not forecast until at least {data.forecast.requiredDays} distinct sales days are available.</span></div>}
+        </article>
+      </section>
+    </>
+  );
+}
+
 function LiveSalesPanel({ data, currency, compact = false }: { data: CommandCentre; currency: string; compact?: boolean }) {
   const today = data.today;
+  const baselineLabel = data.todayComparison ? formatBusinessDate(data.todayComparison.baselineDate) : "same weekday";
   return (
     <>
       <section className="today-metric-grid">
-        <Metric label="Today's net sales" value={money(today.netSalesCents, currency)} delta="Current day" detail={`${today.businessDate} · completed sales`} tone="indigo" />
-        <Metric label="Today's gross profit" value={money(today.grossProfitCents, currency)} delta="Current day" detail="Net sales less product cost" tone="emerald" />
-        <Metric label="Average transaction" value={today.averageTransactionCents == null ? "—" : money(today.averageTransactionCents, currency, 2)} delta="Current day" detail="Net sales ÷ completed transactions" tone="amber" />
-        <Metric label="Number of sales" value={today.transactionCount.toLocaleString()} delta="Current day" detail={`${today.unitsSold.toLocaleString()} line items recorded`} tone="cyan" />
+        <Metric label="Today's net sales" value={money(today.netSalesCents, currency)} delta={comparisonCopy(data.todayComparison?.changes.netSalesRate, baselineLabel)} detail={`${today.businessDate} · completed sales`} tone="indigo" />
+        <Metric label="Today's gross profit" value={money(today.grossProfitCents, currency)} delta={comparisonCopy(data.todayComparison?.changes.grossProfitRate, baselineLabel)} detail="Net sales less product cost" tone="emerald" />
+        <Metric label="Average transaction" value={today.averageTransactionCents == null ? "—" : money(today.averageTransactionCents, currency, 2)} delta="Live basket value" detail="Net sales ÷ completed transactions" tone="amber" />
+        <Metric label="Number of sales" value={today.transactionCount.toLocaleString()} delta={comparisonCopy(data.todayComparison?.changes.transactionRate, baselineLabel)} detail={`${today.unitsSold.toLocaleString()} line items recorded`} tone="cyan" />
       </section>
       <section className={compact ? "live-sales-grid compact" : "live-sales-grid"}>
         <article className="card live-sales-chart-card">
@@ -1132,6 +1247,7 @@ function LiveSalesPanel({ data, currency, compact = false }: { data: CommandCent
           </article>
         )}
       </section>
+      <CommerceIntelligenceRail data={data} currency={currency} />
     </>
   );
 }

@@ -12,6 +12,23 @@ const readers = ["owner", "admin", "manager", "employee", "read_only"] as const;
 
 type LiveSaleRow = LightspeedRLiveSale;
 
+type PaymentMixRow = {
+  category: "cash" | "card" | "gift_card" | "store_credit" | "other";
+  paymentTypeName: string;
+  amountCents: number;
+  transactionCount: number;
+};
+
+function dateOffset(iso: string, days: number) {
+  const date = new Date(`${iso}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function percentageChange(current: number, previous: number) {
+  return previous === 0 ? null : (current - previous) / Math.abs(previous);
+}
+
 export async function GET(request: Request) {
   return handleApi(request, async () => {
     const context = await requireAccess(request, readers);
@@ -80,11 +97,56 @@ export async function GET(request: Request) {
       (staged.results ?? []).filter((sale) => !sale.outletRef || !ignored.has(sale.outletRef)),
       context.organization.timezone,
     );
+    const hasLightspeedMetrics = rows.some((row) => row.locationRef.startsWith(`${LIGHTSPEED_R_PROVIDER}:`));
+    const trustedRows = connection && hasLightspeedMetrics
+      ? rows.filter((row) => row.locationRef.startsWith(`${LIGHTSPEED_R_PROVIDER}:`))
+      : rows;
+    const baseCommandCentre = buildCommandCentre(trustedRows, context.organization.currency);
+    const comparisonDate = dateOffset(today.businessDate, -7);
+    const comparisonRows = trustedRows.filter((row) => row.businessDate === comparisonDate);
+    const comparisonBaseline = comparisonRows.reduce((total, row) => ({
+      netSalesCents: total.netSalesCents + row.netSalesCents,
+      grossProfitCents: total.grossProfitCents + row.netSalesCents - row.costOfGoodsCents,
+      transactionCount: total.transactionCount + row.transactionCount,
+    }), { netSalesCents: 0, grossProfitCents: 0, transactionCount: 0 });
+    const paymentRows = connection ? await getD1().prepare(`
+      SELECT category, payment_type_name AS paymentTypeName,
+             SUM(CASE WHEN amount_cents > 0 THEN amount_cents ELSE 0 END) AS amountCents,
+             COUNT(DISTINCT CASE WHEN amount_cents > 0 THEN external_sale_id END) AS transactionCount
+      FROM commerce_payments
+      WHERE organization_id = ? AND provider = ? AND paid_at IS NOT NULL
+        AND substr(paid_at, 1, 10) >= ?
+      GROUP BY category, payment_type_name
+      ORDER BY amountCents DESC
+    `).bind(
+      context.organizationId,
+      LIGHTSPEED_R_PROVIDER,
+      baseCommandCentre.source.earliestBusinessDate
+        ? dateOffset(baseCommandCentre.source.latestBusinessDate!, -29)
+        : today.businessDate,
+    ).all<PaymentMixRow>() : { results: [] as PaymentMixRow[] };
     const commandCentre = {
-      ...buildCommandCentre(rows, context.organization.currency),
+      ...baseCommandCentre,
       today: {
         ...today,
         grossProfitCents: permissions.includes("metrics.profit") ? today.grossProfitCents : null,
+      },
+      todayComparison: comparisonRows.length ? {
+        baselineDate: comparisonDate,
+        currentDate: today.businessDate,
+        baseline: comparisonBaseline,
+        changes: {
+          netSalesRate: percentageChange(today.netSalesCents, comparisonBaseline.netSalesCents),
+          grossProfitRate: permissions.includes("metrics.profit")
+            ? percentageChange(today.grossProfitCents, comparisonBaseline.grossProfitCents)
+            : null,
+          transactionRate: percentageChange(today.transactionCount, comparisonBaseline.transactionCount),
+        },
+      } : null,
+      paymentMix: {
+        period: "Last 30 verified days",
+        rows: paymentRows.results ?? [],
+        sourceAvailable: Boolean((paymentRows.results ?? []).length),
       },
       liveSource: {
         provider: connection ? LIGHTSPEED_R_PROVIDER : null,

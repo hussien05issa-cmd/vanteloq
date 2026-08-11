@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import type { Session } from "@supabase/supabase-js";
 import SecureOnboardingFlow from "./secure-onboarding-flow";
 import VanteloqApp from "./vanteloq-app";
@@ -102,7 +103,9 @@ export default function Home() {
   useEffect(() => {
     if (canonicalDestination) return;
     let active = true;
-    const recoveryRequested = new URLSearchParams(window.location.search).get("recovery") === "1";
+    const query = new URLSearchParams(window.location.search);
+    const recoveryRequested = query.get("recovery") === "1";
+    const requestedAuth = query.get("auth");
     if (recoveryRequested) {
       queueMicrotask(() => {
         if (!active) return;
@@ -112,7 +115,18 @@ export default function Home() {
       });
     } else {
       void currentSession()
-        .then(session => { if (active) void loadWorkspace(session); })
+        .then(session => {
+          if (!active) return;
+          if (session) {
+            void loadWorkspace(session);
+            return;
+          }
+          setEntry("landing");
+          if (requestedAuth === "signin" || requestedAuth === "signup") {
+            setAuthMode(requestedAuth);
+            setAuthOpen(true);
+          }
+        })
         .catch(() => {
           if (!active) return;
           setLoadError("Vanteloq could not check your sign-in. Check your connection and try again.");
@@ -177,12 +191,12 @@ export default function Home() {
 
 function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) {
   return <main className="public-site">
-    <header className="public-nav"><button className="public-brand" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}><ProductBrandLogo product="vanteloq" priority/><span>Vanteloq<small>BUSINESS OPERATING SYSTEM</small></span></button><nav><a href="#platform">Platform</a><a href="#engines">Workspaces</a><a href="#connect">Connections</a><a href="#how">How it works</a></nav><div><button className="nav-login" onClick={() => start("signin")}>Sign in</button><button onClick={() => start("signup")}>Create workspace</button></div></header>
+    <header className="public-nav"><button className="public-brand" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}><ProductBrandLogo product="vanteloq" priority/><span>Vanteloq<small>BUSINESS OPERATING SYSTEM</small></span></button><nav><a href="#platform">Platform</a><a href="#engines">Workspaces</a><a href="#connect">Connections</a><Link href="/resources">Resources</Link></nav><div><button className="nav-login" onClick={() => start("signin")}>Sign in</button><button onClick={() => start("signup")}>Create workspace</button></div></header>
     <section className="public-hero"><div className="hero-grid"/><div className="public-copy"><span className="public-pill"><i/> Built for independent retail</span><h1>Run the business from<br/><em>one clear operating view.</em></h1><p>Vanteloq brings sales, cash, inventory and daily work into one place. It shows what changed, why it matters and which action needs an owner&apos;s approval.</p><div className="public-actions"><button onClick={() => start("signup")}>Create your workspace <span>→</span></button><a href="#platform">See the platform</a></div><div className="public-trust"><span>✓ Verified source data</span><span>✓ Your team keeps approval</span><span>✓ Separate data for every business</span></div></div>
       <figure className="product-visual product-visual-reference">
         {/* This static, local design reference is already sized and compressed for the exact visual slot. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/brand/vanteloq-command-ledger.png" alt="Vanteloq command centre showing verified sales, profit, cash, inventory and decision queue data in a structured operational ledger." width={1487} height={1058} />
+        <img src="/brand/vanteloq-executive-dashboard.png" alt="Illustrative Vanteloq command centre showing live sales, gross profit, payment mix, matched-period comparisons and a seven-day outlook." width={1586} height={992} />
         <figcaption>Illustrative workspace · Connected accounts determine the data shown</figcaption>
       </figure>
     </section>
@@ -198,7 +212,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
     <section className="product-family-section" id="products"><div className="product-family-intro"><p>THE VANTELOQ PRODUCT FAMILY</p><h2>Operations and accounting,<br/>connected by design.</h2><span>Vanteloq manages the operating view. BookLoQ keeps the financial records in a focused workspace while staying connected to sales, inventory, purchasing and assigned work.</span></div><div className="product-family-grid"><article><div className="product-family-logo-panel"><ProductBrandLogo product="vanteloq" variant="full"/></div><div><small>CORE OPERATING PLATFORM</small><h3>See the business clearly.</h3><p>Performance, exceptions, decisions and assigned work in one command centre.</p><span>Sales · Inventory · Customers · Team · Operations</span></div></article><article className="bookloq-product-card"><div className="product-family-logo-panel bookloq-logo-panel"><ProductBrandLogo product="bookloq" variant="full"/></div><div><small>CONNECTED ACCOUNTING</small><h3>Keep the books connected.</h3><p>Ledger, cash, reconciliation, tax, reports and month-end controls built into Vanteloq.</p><span>Books · Cash · Bills · Reports · Audit</span></div></article></div></section>
     <section className="connection-section" id="connect"><p>CONNECT THE TOOLS YOU ALREADY USE</p><h2>Your existing systems keep the records. Vanteloq organizes the operation.</h2><div>{["Daily CSV","Lightspeed","Shopify","Square","Moneris","QuickBooks","Plaid"].map(item => <span key={item}><IntegrationBrandLogo name={item} compact/>{item}</span>)}</div><small>Each connection is separated by business. New data stays in review until the account, totals and recovery controls are verified.</small></section>
     <section className="how-section" id="how"><div><p>THE DAILY LOOP</p><h2>See. Decide.<br/>Assign. Follow through.</h2></div><ol><li><b>01</b><span><strong>Check the source</strong><small>Confirm ownership, completeness, totals and freshness.</small></span></li><li><b>02</b><span><strong>Understand the change</strong><small>Separate verified facts from estimates and missing context.</small></span></li><li><b>03</b><span><strong>Approve the next step</strong><small>Apply the right role, location and spending limit.</small></span></li><li><b>04</b><span><strong>Record the result</strong><small>Compare the expected outcome with what actually happened.</small></span></li></ol></section>
-    <footer className="public-footer"><div><ProductBrandLogo product="vanteloq"/><strong>Vanteloq</strong><span className="footer-product-divider"/><ProductBrandLogo product="bookloq"/><strong>BookLoQ</strong></div><p>One operating view for independent retail.</p><button onClick={() => start("signup")}>Create your workspace →</button></footer>
+    <footer className="public-footer"><div><ProductBrandLogo product="vanteloq"/><strong>Vanteloq</strong><span className="footer-product-divider"/><ProductBrandLogo product="bookloq"/><strong>BookLoQ</strong></div><p><Link href="/resources">Resources</Link> · One operating view for independent retail.</p><button onClick={() => start("signup")}>Create your workspace →</button></footer>
   </main>;
 }
 

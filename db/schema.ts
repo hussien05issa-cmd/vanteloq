@@ -823,6 +823,35 @@ export const commerceSaleLines = sqliteTable(
   ],
 );
 
+// Tender facts are deliberately stored without card, bank-account, gateway or
+// customer details.  They support sales reconciliation and payment-mix
+// reporting while keeping the analytics surface outside PCI scope.
+export const commercePayments = sqliteTable(
+  "commerce_payments",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    provider: text("provider").notNull(),
+    externalPaymentId: text("external_payment_id").notNull(),
+    externalSaleId: text("external_sale_id").notNull(),
+    paymentTypeRef: text("payment_type_ref"),
+    paymentTypeName: text("payment_type_name").notNull().default("Other"),
+    category: text("category", { enum: ["cash", "card", "gift_card", "store_credit", "other"] }).notNull().default("other"),
+    amountCents: integer("amount_cents").notNull(),
+    paidAt: text("paid_at"),
+    outletRef: text("outlet_ref"),
+    sourcePayloadHash: text("source_payload_hash").notNull(),
+    syncRunId: text("sync_run_id").notNull().references(() => integrationSyncRuns.id, { onDelete: "cascade" }),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("commerce_payments_external_unique").on(table.organizationId, table.provider, table.externalPaymentId),
+    index("commerce_payments_sale_idx").on(table.organizationId, table.provider, table.externalSaleId),
+    index("commerce_payments_date_idx").on(table.organizationId, table.provider, table.paidAt),
+    check("commerce_payments_category_check", sql`${table.category} in ('cash','card','gift_card','store_credit','other')`),
+  ],
+);
+
 // Stripe financial facts remain in an isolated staging ledger until a
 // reconciliation review explicitly promotes them. Customer, card and bank
 // account details are intentionally excluded from this table.

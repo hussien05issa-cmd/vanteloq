@@ -92,6 +92,20 @@ export type NormalizedLightspeedRSaleLine = {
   sourcePayloadHash: string;
 };
 
+export type LightspeedRPaymentCategory = "cash" | "card" | "gift_card" | "store_credit" | "other";
+
+export type NormalizedLightspeedRPayment = {
+  externalPaymentId: string;
+  externalSaleId: string;
+  paymentTypeRef: string | null;
+  paymentTypeName: string;
+  category: LightspeedRPaymentCategory;
+  amountCents: number;
+  paidAt: string | null;
+  outletRef: string | null;
+  sourcePayloadHash: string;
+};
+
 export type LightspeedRDailyMetric = {
   businessDate: string;
   locationRef: string;
@@ -329,7 +343,7 @@ export async function fetchLightspeedRAccount(organizationId: string, fetcher: t
 export async function fetchLightspeedRCollection(
   organizationId: string,
   accountId: string,
-  resource: "Shop" | "Sale" | "SaleLine" | "Item" | "Customer" | "Vendor" | "Order" | "OrderLine",
+  resource: "Shop" | "Sale" | "SaleLine" | "SalePayment" | "PaymentType" | "Item" | "Customer" | "Vendor" | "Order" | "OrderLine",
   options: {
     maxPages?: number;
     fetcher?: typeof fetch;
@@ -547,6 +561,54 @@ export async function normalizeLightspeedRSaleLine(line: Record<string, unknown>
     discountCents: Math.abs(money(line.calcDiscount)),
   };
   return { ...normalized, sourcePayloadHash: await lightspeedRSha256(JSON.stringify(normalized)) };
+}
+
+function paymentCategory(name: string): LightspeedRPaymentCategory {
+  const normalized = name.toLowerCase();
+  if (/\bcash\b/.test(normalized)) return "cash";
+  if (/gift|voucher/.test(normalized)) return "gift_card";
+  if (/store\s*credit|account\s*credit|credit\s*account/.test(normalized)) return "store_credit";
+  if (/card|visa|mastercard|master card|amex|debit|interac|discover/.test(normalized)) return "card";
+  return "other";
+}
+
+export function lightspeedRPaymentTypeMap(paymentTypes: Record<string, unknown>[]) {
+  const result = new Map<string, string>();
+  for (const type of paymentTypes) {
+    const id = limitedText(type.paymentTypeID, 120);
+    const name = limitedText(type.name ?? type.description, 120);
+    if (id && name) result.set(id, name);
+  }
+  return result;
+}
+
+export async function normalizeLightspeedRPayments(
+  sale: Record<string, unknown>,
+  paymentTypes: ReadonlyMap<string, string> = new Map(),
+): Promise<NormalizedLightspeedRPayment[]> {
+  const externalSaleId = stringValue(sale.saleID);
+  if (!externalSaleId) throw new Error("Sale ID is missing.");
+  const payments = records(objectValue(sale.SalePayments ?? sale.Payments).SalePayment);
+  return Promise.all(payments.map(async (payment, index) => {
+    const externalPaymentId = stringValue(payment.salePaymentID ?? payment.paymentID) || `${externalSaleId}:${index}`;
+    const paymentTypeRef = limitedText(payment.paymentTypeID, 120);
+    const paymentTypeName = (
+      limitedText(paymentTypeRef ? paymentTypes.get(paymentTypeRef) : null, 120) ||
+      limitedText(payment.paymentTypeName ?? payment.name, 120) ||
+      "Other"
+    );
+    const normalized = {
+      externalPaymentId,
+      externalSaleId,
+      paymentTypeRef,
+      paymentTypeName,
+      category: paymentCategory(paymentTypeName),
+      amountCents: money(payment.amount),
+      paidAt: limitedText(payment.createTime ?? payment.paymentTime ?? payment.timeStamp ?? sale.completeTime, 80),
+      outletRef: limitedText(payment.shopID ?? sale.shopID, 120),
+    };
+    return { ...normalized, sourcePayloadHash: await lightspeedRSha256(JSON.stringify(normalized)) };
+  }));
 }
 
 export function buildLightspeedRDailyMetrics(

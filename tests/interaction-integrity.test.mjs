@@ -73,11 +73,38 @@ test("live sales and report time frames stay connected to real API filters", asy
   assert.match(reports, /params\.set\("end", end\)/);
   assert.match(reports, /format=csv/);
   assert.match(reportRoute, /INVALID_DATE_RANGE/);
-  assert.match(reportRoute, /periodStart: start/);
-  assert.match(reportRoute, /periodEnd: end/);
+  assert.match(reportRoute, /periodStart: resolvedStart/);
+  assert.match(reportRoute, /periodEnd: resolvedEnd/);
+  assert.match(reportRoute, /commerce_payments/);
+  assert.match(reportRoute, /comparisonPeriod/);
+  assert.match(reports, /Month to date/);
+  assert.match(reports, /Last month/);
+  assert.match(reports, /Payment-method performance/);
   assert.match(rSeriesSync, /recentSalesPage/);
   assert.match(rSeriesSync, /24 \* 60 \* 60 \* 1_000/);
   assert.match(rSeriesSync, /\.\.\.recentSalesPage\.data, \.\.\.salesPage\.data/);
+});
+
+test("public resources always expose Home and Sign in navigation", async () => {
+  const navigation = await readFile(new URL("../app/public-navigation.tsx", import.meta.url), "utf8");
+  const resources = await readFile(new URL("../app/resources/page.tsx", import.meta.url), "utf8");
+  const article = await readFile(new URL("../app/resources/[slug]/page.tsx", import.meta.url), "utf8");
+  assert.match(navigation, /href="\/"[^>]*>Home/);
+  assert.match(navigation, /href="\/\?auth=signin"[^>]*>Sign in/);
+  assert.match(resources, /PublicNavigation/);
+  assert.match(article, /PublicNavigation/);
+  assert.match(article, /All resources/);
+});
+
+test("commerce charts expose exact-date and exact-hour keyboard tooltips", async () => {
+  const charts = await readFile(new URL("../app/dashboard-charts.tsx", import.meta.url), "utf8");
+  const app = await readFile(new URL("../app/vanteloq-app.tsx", import.meta.url), "utf8");
+  assert.match(charts, /chart-tooltip/);
+  assert.match(charts, /onFocus=\{\(\) => setActiveIndex\(index\)\}/);
+  assert.match(charts, /Net sales.*Gross profit.*transactions/s);
+  assert.match(app, /Today vs same weekday/);
+  assert.match(app, /PAYMENT MIX/);
+  assert.match(app, /7-DAY OUTLOOK/);
 });
 
 test("the banking catalogue uses Plaid's standalone mark and omits removed aggregators", async () => {

@@ -95,10 +95,14 @@ test("R-Series completes a browser callback using the initiating one-time state"
               saleID: "sale-100", timeStamp: "2026-08-09T16:00:00Z", completeTime: "2026-08-09T15:58:00-06:00",
               completed: "true", voided: "false", shopID: "1", total: "105.00", taxTotal: "5.00",
               calcFIFOCost: "40.00", calcDiscount: "2.00", SaleLines: { SaleLine: [{ saleLineID: "line-1" }, { saleLineID: "line-2" }] },
+              SalePayments: { SalePayment: [{ salePaymentID: "payment-1", paymentTypeID: "card-1", amount: "105.00" }] },
             },
           ],
           "@attributes": {},
         });
+      }
+      if (url.origin === "https://api.lightspeedapp.com" && url.pathname === "/API/V3/Account/123/PaymentType.json") {
+        return Response.json({ PaymentType: [{ paymentTypeID: "card-1", name: "Visa" }], "@attributes": {} });
       }
       if (url.origin === "https://api.lightspeedapp.com" && url.pathname === "/API/V3/Account/123/Item.json") {
         return Response.json({
@@ -165,6 +169,7 @@ test("R-Series completes a browser callback using the initiating one-time state"
       customers: 1,
       suppliers: 1,
       saleLines: 2,
+      payments: 1,
     });
 
     const metric = await database.prepare(`
@@ -183,6 +188,8 @@ test("R-Series completes a browser callback using the initiating one-time state"
     assert.deepEqual(balance, {
       location_ref: "lightspeed-r:1", sku: "CRE-A", name: "Creatine A", on_hand_quantity: 45, reorder_point: 24,
     });
+    const payment = await database.prepare("SELECT external_sale_id, payment_type_name, category, amount_cents FROM commerce_payments").first();
+    assert.deepEqual(payment, { external_sale_id: "sale-100", payment_type_name: "Visa", category: "card", amount_cents: 10_500 });
     const promoted = await database.prepare(
       "SELECT data_promotion_status FROM integration_connections WHERE provider = 'lightspeed-r'",
     ).first();

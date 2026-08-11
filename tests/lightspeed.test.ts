@@ -25,6 +25,8 @@ import {
   normalizeLightspeedRSale,
   normalizeLightspeedRSaleLine,
   normalizeLightspeedRSaleLines,
+  normalizeLightspeedRPayments,
+  lightspeedRPaymentTypeMap,
   normalizeLightspeedRSupplier,
 } from "../server/integrations/lightspeed-r.ts";
 
@@ -170,6 +172,27 @@ test("R-Series commerce normalization produces provider-neutral catalog, custome
   assert.equal(relatedItemLine.productRef, "901");
   assert.equal(relatedItemLine.sku, "PRE-B");
   assert.equal(relatedItemLine.productName, "Pre-workout B");
+});
+
+test("R-Series payment normalization records tender totals without card or customer details", async () => {
+  const types = lightspeedRPaymentTypeMap([
+    { paymentTypeID: "1", name: "Cash" },
+    { paymentTypeID: "2", name: "Visa" },
+  ]);
+  const normalized = await normalizeLightspeedRPayments({
+    saleID: "sale-100",
+    shopID: "8",
+    completeTime: "2026-08-09T10:00:00-06:00",
+    SalePayments: { SalePayment: [
+      { salePaymentID: "pay-1", paymentTypeID: "1", amount: "20.00", cardNumber: "4111111111111111" },
+      { salePaymentID: "pay-2", paymentTypeID: "2", amount: "42.50", customerName: "Do not store" },
+    ] },
+  }, types);
+  assert.deepEqual(normalized.map((payment) => ({ id: payment.externalPaymentId, category: payment.category, amount: payment.amountCents })), [
+    { id: "pay-1", category: "cash", amount: 2000 },
+    { id: "pay-2", category: "card", amount: 4250 },
+  ]);
+  assert.doesNotMatch(JSON.stringify(normalized), /4111111111111111|Do not store/);
 });
 
 test("R-Series daily metrics aggregate completed sales and refunds by source shop", async () => {
