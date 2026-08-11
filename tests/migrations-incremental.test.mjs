@@ -53,7 +53,7 @@ test("the founder migration preserves populated foreign-key relationships", asyn
   }
 });
 
-test("connector lineage and document quarantine survive migrations 0023 through 0025", async () => {
+test("deployed migrations 0023 and 0024 upgrade cleanly into the composite connector migration", async () => {
   const miniflare = new Miniflare({
     modules: true,
     script: "export default { fetch() { return new Response('ok') } }",
@@ -131,7 +131,15 @@ test("connector lineage and document quarantine survive migrations 0023 through 
          'application/pdf', 128, 'document-hash', 'review_required', 'not_configured', '{}', 'connector-user', ?, ?)`).bind(now, now),
     ]);
 
-    await applyMigration(database, migrations.find((file) => file.startsWith("0023_")));
+    const canonicalMigrations = [
+      "0023_careless_shooting_star.sql",
+      "0024_thick_mysterio.sql",
+      "0025_dry_frank_castle.sql",
+    ];
+    for (const migration of canonicalMigrations) {
+      assert.ok(migrations.includes(migration), `${migration} must remain in the deployed migration history`);
+      await applyMigration(database, migration);
+    }
 
     await database.batch([
       database.prepare(`INSERT INTO integration_connections
@@ -195,15 +203,25 @@ test("connector lineage and document quarantine survive migrations 0023 through 
          source_payload_hash, sync_run_id, updated_at)
         VALUES ('second-payment', 'connector-workspace', 'lightspeed-r', 'second-connection', 'payment-1',
          'sale-1', 1000, 'payment-hash', 'second-run', ?)`).bind(now),
+      database.prepare(`INSERT INTO integration_consents
+        (id, organization_id, actor_user_id, provider, status, notice_version, privacy_policy_version,
+         data_categories_json, purposes_json, consent_source, accepted_at, created_at, updated_at)
+        VALUES ('plaid-consent', 'connector-workspace', 'connector-user', 'plaid', 'accepted', 'notice-v1',
+         'privacy-v1', '["accounts","transactions"]', '["cash_intelligence"]', 'in_app', ?, ?, ?)`).bind(now, now, now),
+      database.prepare(`UPDATE integration_connections SET privacy_data_deleted_at = ? WHERE id = 'legacy-connection'`).bind(now),
     ]);
 
-    await applyMigration(database, migrations.find((file) => file.startsWith("0024_")));
-    await applyMigration(database, migrations.find((file) => file.startsWith("0025_")));
-
     assert.deepEqual(
-      await database.prepare(`SELECT source_namespace, sync_lease_owner, sync_lease_expires_at, sync_version
+      await database.prepare(`SELECT source_namespace, sync_lease_owner, sync_lease_expires_at, sync_version,
+        privacy_data_deleted_at
         FROM integration_connections WHERE id = 'legacy-connection'`).first(),
-      { source_namespace: "legacy", sync_lease_owner: null, sync_lease_expires_at: null, sync_version: 0 },
+      {
+        source_namespace: "legacy",
+        sync_lease_owner: null,
+        sync_lease_expires_at: null,
+        sync_version: 0,
+        privacy_data_deleted_at: now,
+      },
     );
     for (const table of [
       "integration_secrets", "integration_location_mappings", "integration_sync_runs",
@@ -242,6 +260,24 @@ test("connector lineage and document quarantine survive migrations 0023 through 
         WHERE id = 'legacy-document'`).first(),
       { scan_status: "pending", scanned_at: null, scan_provider: null },
     );
+    const documentColumns = await database.prepare("PRAGMA table_info(workspace_documents)").all();
+    const documentColumnNames = new Set(documentColumns.results.map((column) => column.name));
+    assert.equal(documentColumnNames.has("scan_status"), true);
+    assert.equal(documentColumnNames.has("scanned_at"), true);
+    assert.equal(documentColumnNames.has("scan_provider"), true);
+    assert.equal(documentColumnNames.has("security_state"), false, "the superseded quarantine column is removed");
+    assert.deepEqual(
+      await database.prepare(`SELECT organization_id, actor_user_id, provider, status, notice_version,
+        privacy_policy_version FROM integration_consents WHERE id = 'plaid-consent'`).first(),
+      {
+        organization_id: "connector-workspace",
+        actor_user_id: "connector-user",
+        provider: "plaid",
+        status: "accepted",
+        notice_version: "notice-v1",
+        privacy_policy_version: "privacy-v1",
+      },
+    );
     assert.deepEqual(
       await database.prepare(`SELECT external_location_ref, connection_id FROM integration_location_mappings
         WHERE id = 'legacy-mapping'`).first(),
@@ -253,7 +289,7 @@ test("connector lineage and document quarantine survive migrations 0023 through 
   }
 });
 
-test("purchase-order lineage migration backfills only unambiguous connector products", async () => {
+test("the composite schema stores explicit purchase-order lineage and leaves ambiguous or manual lines unbound", async () => {
   const miniflare = new Miniflare({
     modules: true,
     script: "export default { fetch() { return new Response('ok') } }",
@@ -264,9 +300,9 @@ test("purchase-order lineage migration backfills only unambiguous connector prod
     const migrations = (await readdir(new URL("../drizzle/", import.meta.url)))
       .filter((file) => /^\d{4}.*\.sql$/.test(file))
       .sort();
-    const lineageMigration = migrations.find((file) => file.startsWith("0027_"));
-    assert.ok(lineageMigration, "a migration after 0026 must add exact purchase-order connection lineage");
-    for (const migration of migrations.filter((file) => file < lineageMigration)) {
+    const compositeMigration = "0025_dry_frank_castle.sql";
+    assert.ok(migrations.includes(compositeMigration), "the composite migration must add exact purchase-order connection lineage");
+    for (const migration of migrations.filter((file) => file <= compositeMigration)) {
       await applyMigration(database, migration);
     }
 
@@ -320,14 +356,14 @@ test("purchase-order lineage migration backfills only unambiguous connector prod
         VALUES ('legacy-po', 'lineage-workspace', 'PO-LEGACY', 'Legacy Supplier', '2026-08-11',
           'CAD', 'draft', 300, 0, 0, 300, 'lineage-user', ?, ?)`).bind(now, now),
       database.prepare(`INSERT INTO purchase_order_lines
-        (id, organization_id, purchase_order_id, line_number, provider, external_product_ref,
+        (id, organization_id, purchase_order_id, line_number, provider, connection_id, external_product_ref,
          sku, description, quantity, unit_cost_cents, created_at, updated_at)
-        VALUES ('unique-line', 'lineage-workspace', 'legacy-po', 1, 'lightspeed-r', 'unique-ref',
+        VALUES ('unique-line', 'lineage-workspace', 'legacy-po', 1, 'lightspeed-r', 'lineage-account-a', 'unique-ref',
           'UNIQUE-A', 'Unique product', 1, 100, ?, ?)`).bind(now, now),
       database.prepare(`INSERT INTO purchase_order_lines
-        (id, organization_id, purchase_order_id, line_number, provider, external_product_ref,
+        (id, organization_id, purchase_order_id, line_number, provider, connection_id, external_product_ref,
          sku, description, quantity, unit_cost_cents, created_at, updated_at)
-        VALUES ('ambiguous-line', 'lineage-workspace', 'legacy-po', 2, 'lightspeed-r', 'shared-ref',
+        VALUES ('ambiguous-line', 'lineage-workspace', 'legacy-po', 2, 'lightspeed-r', NULL, 'shared-ref',
           'SHARED-A', 'Ambiguous shared product', 1, 100, ?, ?)`).bind(now, now),
       database.prepare(`INSERT INTO purchase_order_lines
         (id, organization_id, purchase_order_id, line_number, sku, description, quantity,
@@ -335,8 +371,6 @@ test("purchase-order lineage migration backfills only unambiguous connector prod
         VALUES ('manual-line', 'lineage-workspace', 'legacy-po', 3, 'MANUAL', 'Manual product',
           1, 100, ?, ?)`).bind(now, now),
     ]);
-
-    await applyMigration(database, lineageMigration);
 
     const rows = await database.prepare(`SELECT id, connection_id AS connectionId
       FROM purchase_order_lines ORDER BY id`).all();

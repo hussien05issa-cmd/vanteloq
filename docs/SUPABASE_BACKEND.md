@@ -3,8 +3,9 @@
 Public account sessions use Supabase Auth. The browser receives only
 `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`; API routes
 validate bearer sessions against Supabase before resolving the existing
-workspace and role. Set `SUPABASE_AUTH_MODE=public` only after the Sites access
-policy is public and the production variables are deployed.
+workspace and role. `SUPABASE_AUTH_MODE=public` is required: protected requests
+must present a verified Supabase bearer session, and legacy Sites identity
+headers are intentionally ignored.
 
 Vanteloq currently keeps its operating source of truth in Sites-managed D1 and
 its files in R2. Supabase is introduced behind a server-only readiness boundary

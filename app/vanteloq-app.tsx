@@ -14,7 +14,7 @@ import {
   type IntegrationCatalogEntry,
 } from "./integration-catalog";
 import ProductBrandLogo from "./product-brand-logo";
-import PlaidLinkButton from "./plaid-link-button";
+import PlaidLinkButton, { PLAID_REDIRECT_STORAGE_KEY } from "./plaid-link-button";
 import { apiFetch, signOut } from "./supabase-browser";
 import {
   BusinessTrendChart,
@@ -723,18 +723,29 @@ export default function VanteloqApp({
   useEffect(() => {
     const parameters = new URLSearchParams(window.location.search);
     const integration = parameters.get("integration");
-    if (integration !== "lightspeed" && integration !== "lightspeed-r") return;
+    if (integration !== "lightspeed" && integration !== "lightspeed-r" && integration !== "stripe" && integration !== "plaid") return;
     const timer = window.setTimeout(() => {
       setView("Integrations");
       const state = parameters.get("connection");
+      if (integration === "plaid") {
+        if (parameters.has("oauth_state_id")) {
+          sessionStorage.setItem(PLAID_REDIRECT_STORAGE_KEY, window.location.href);
+          setNotice("Finish the secure bank connection in Plaid Link");
+        } else {
+          setNotice("Open the Plaid card to continue the bank connection");
+        }
+        return;
+      }
       setNotice(
         state === "connected"
           ? integration === "lightspeed-r"
             ? "Lightspeed R-Series is connected. Review its shops, then start a sync from Connections."
+            : integration === "stripe"
+              ? "Stripe is connected in read-only staging mode"
             : "Lightspeed X-Series is verified in read-only staging mode"
-          : state === "declined"
-            ? `${integration === "lightspeed-r" ? "R-Series" : "X-Series"} authorization was declined`
-            : `${integration === "lightspeed-r" ? "R-Series" : "X-Series"} authorization needs to be restarted`,
+        : state === "declined"
+          ? `${integration === "stripe" ? "Stripe" : integration === "lightspeed-r" ? "R-Series" : "X-Series"} authorization was declined`
+          : `${integration === "stripe" ? "Stripe" : integration === "lightspeed-r" ? "R-Series" : "X-Series"} authorization needs to be restarted`,
       );
       window.history.replaceState({}, "", window.location.pathname);
     }, 0);
@@ -2189,14 +2200,17 @@ type IntegrationConnection = IntegrationCatalogEntry & {
     connectedAt: string | null;
     dataPromotionStatus: string;
   }>;
+  privacyDataDeletedAt: string | null;
+  canManage: boolean;
   providerReadiness: null | {
-    adapterBuilt: boolean;
+    adapterBuilt?: boolean;
     credentialsConfigured: boolean;
     missingConfiguration: string[];
-    apiVersion: string;
-    scopes: string[];
+    apiVersion?: string;
+    scopes?: string[];
     mode: string;
-    dataPromotionEnabled: boolean;
+    dataPromotionEnabled?: boolean;
+    liveDataEligible?: boolean;
   };
   canonicalCoverage: CanonicalCommerceCoverage;
   featureCoverage: ProviderFeatureCoverage[];
@@ -2468,6 +2482,8 @@ function DataHub({
         dataPromotionStatus: "blocked",
         connectionCount: 0,
         connections: [],
+        privacyDataDeletedAt: null,
+        canManage: false,
         providerReadiness: null,
         canonicalCoverage: emptyCommerceCoverage,
         featureCoverage: buildProviderFeatureCoverage(provider.id, emptyCommerceCoverage),
@@ -2577,14 +2593,19 @@ function DataHub({
               const isPlaid = provider.id === "plaid";
               const supportsMultipleAccounts = supportsMultipleProviderAccounts(provider.id);
               const isPlanned = provider.availability === "provider_build_required" || provider.availability === "provider_selection_required";
+              const repairRequired = isPlaid && provider.status === "error" && Boolean(provider.maskedAccountRef);
+              const canManageProvider = provider.id === "plaid"
+                ? provider.canManage ?? canManageBankConnections
+                : provider.canManage ?? canManage;
+              const isComingSoon = provider.id === "google" || provider.id === "meta";
               const actionableProvider = provider.id as "lightspeed" | "lightspeed-r" | "stripe";
               const providerAction = providerActions[integrationActionKey(provider.id)] ?? "";
               const anyProviderAction = Object.keys(providerActions).some((key) => key.startsWith(`${provider.id}:`));
               const configured = provider.providerReadiness?.credentialsConfigured === true;
-              const disabledReason = !canManage
+              const disabledReason = !canManageProvider
                 ? "Your role can view connection status but cannot manage integrations."
                 : !configured
-                  ? `Add the ${isPlaid ? "Plaid client ID, secret, webhook URL and encryption key" : isStripe ? "Stripe Connect credentials and webhook secret" : provider.id === "lightspeed-r" ? "R-Series OAuth client ID and secret" : "X-Series OAuth client ID and secret"} to Vanteloq's hosted secrets first.`
+                  ? `Add the ${isPlaid ? "Plaid client ID, environment secret, approved redirect and webhook URLs, and encryption key" : isStripe ? "Stripe Connect credentials and webhook secret" : provider.id === "lightspeed-r" ? "R-Series OAuth client ID and secret" : "X-Series OAuth client ID and secret"} to Vanteloq's hosted secrets first.`
                   : "";
               return (
               <article className="integration-card" key={provider.id}>
@@ -2592,18 +2613,19 @@ function DataHub({
                   <IntegrationBrandLogo name={provider.name} />
                   <div className="integration-card-labels">
                     <span className="integration-type">{provider.category}</span>
-                    {isPlanned && <span className="integration-coming-soon">Planned</span>}
+                    {isPlanned && <span className="integration-coming-soon">{isComingSoon ? "Coming soon" : "Planned"}</span>}
                   </div>
                 </div>
                 <h3>{provider.name}</h3>
                 <p>{provider.activationRequirement}</p>
                 <details className="integration-enablement"><summary>What this connection enables</summary><p><b>Features</b><span>{integrationCategoryGuide[provider.category].enables}</span></p><p><b>Data required</b><span>{integrationCategoryGuide[provider.category].data}</span></p></details>
                 {provider.category === "Point of sale" && <details className="integration-feature-checklist"><summary>Feature and data checklist</summary>{provider.featureCoverage.map((feature) => <div key={feature.id}><span className={`feature-state ${feature.status === "ready" ? "available" : "needs-data"}`}>{feature.status === "ready" ? "Available" : "Needs data"}</span><p><b>{feature.label}</b><small>{feature.insight}</small><em>{feature.status === "ready" ? `Verified: ${feature.dataUsed.join(", ")}` : `Missing: ${feature.dataNeeded.join(", ")}`}</em></p></div>)}</details>}
-                {connected && provider.maskedAccountRef && (
+                {(connected || repairRequired) && provider.maskedAccountRef && (
                   <div className="connected-source" role="status">
-                    <span>Connected source</span>
+                    <span>{repairRequired ? "Connection needs attention" : "Connected source"}</span>
                     <b>{provider.externalAccountName || "Verified provider account"}</b>
                     <small>Protected reference {provider.maskedAccountRef}</small>
+                    {provider.lastSuccessfulSyncAt && <small>Last synchronized {new Date(provider.lastSuccessfulSyncAt).toLocaleString("en-CA")}</small>}
                   </div>
                 )}
                 {isLightspeed && !configured && provider.providerReadiness && (
@@ -2639,34 +2661,39 @@ function DataHub({
                             <button
                               type="button"
                               onClick={() => void stageProviderSample(actionableProvider, connection.id)}
-                              disabled={!canManage || Boolean(connectionAction)}
+                              disabled={!canManageProvider || Boolean(connectionAction)}
                             >{connectionAction === "sync" || connectionAction === "sample" ? "Working…" : provider.id === "lightspeed-r" ? "Sync" : "Stage sample"}</button>
                             {isLightspeed && <button
                               type="button"
                               onClick={() => void loadLightspeedLocations(actionableProvider as "lightspeed" | "lightspeed-r", connection.id)}
-                              disabled={!canManage || Boolean(connectionAction)}
+                              disabled={!canManageProvider || Boolean(connectionAction)}
                             >{connectionAction === "locations" ? "Loading…" : `Map ${provider.id === "lightspeed-r" ? "shops" : "outlets"}`}</button>}
                             {provider.id === "lightspeed-r" && connection.dataPromotionStatus === "staging" && connection.lastSuccessfulSyncAt && <button
                               type="button"
                               onClick={() => void approveConnectionData(provider.id, connection.id)}
-                              disabled={!canManage || Boolean(connectionAction)}
+                              disabled={!canManageProvider || Boolean(connectionAction)}
                             >{connectionAction === "approve" ? "Approving…" : "Approve reviewed data"}</button>}
                           </>}
                           <button
                             type="button"
                             className="danger-text"
                             onClick={() => void disconnectProvider(actionableProvider, connection.id, accountLabel)}
-                            disabled={!canManage || Boolean(connectionAction)}
+                            disabled={!canManageProvider || Boolean(connectionAction)}
                           >{connectionAction === "disconnect" ? "Disconnecting…" : "Disconnect"}</button>
                         </div>
                       </article>;
                     })}
                   </div>
                 )}
+                {isPlaid && configured && provider.providerReadiness?.mode !== "production" && (
+                  <div className="provider-setup-needed" role="note"><b>Plaid sandbox</b><span>Test institutions only. Real bank authorization remains locked until Plaid approves Vanteloq for production access.</span></div>
+                )}
                 <div className="integration-card-footer">
                   <div>
-                    <span className={`status ${connected ? "" : "planned"}`}>
-                      {connected
+                    <span className={`status ${connected ? "" : repairRequired ? "repair" : "planned"}`}>
+                      {repairRequired
+                        ? "Repair required"
+                        : connected
                         ? "Read-only connected"
                         : isPlanned
                           ? "Planned"
@@ -2677,12 +2704,14 @@ function DataHub({
                     <span className="connection-lock">
                       {connectionsLoading
                         ? "Checking…"
+                        : repairRequired
+                        ? "Re-authentication required · sync paused"
                         : connected
                         ? provider.dataPromotionStatus === "approved"
                           ? provider.id === "lightspeed-r"
                             ? "Sales, catalog, customers and suppliers available"
                             : provider.id === "plaid"
-                              ? "Reviewed bank data is available"
+                              ? "Reviewed bank data is available · fresh balances power cash analysis · transactions await review"
                               : "Reviewed source data is available"
                           : "Staging only · metrics locked"
                           : configured
@@ -2694,9 +2723,17 @@ function DataHub({
                     {connected && provider.dataPromotionStatus === "staging" && provider.connections?.[0]?.lastSuccessfulSyncAt && <button
                       type="button"
                       onClick={() => void approveConnectionData(provider.id, provider.connections![0].id)}
-                      disabled={!canManageBankConnections || anyProviderAction}
+                      disabled={!canManageProvider || anyProviderAction}
                     >Approve reviewed data</button>}
-                    <PlaidLinkButton connected={connected} configured={configured} canManage={canManageBankConnections} onChanged={loadConnections} showNotice={showNotice} />
+                    <PlaidLinkButton
+                      connected={connected}
+                      repairRequired={repairRequired}
+                      configured={configured}
+                      canManage={canManageProvider}
+                      deletionAvailable={provider.status === "revoked" && !provider.privacyDataDeletedAt}
+                      onChanged={loadConnections}
+                      showNotice={showNotice}
+                    />
                   </div> : supportsMultipleAccounts ? <div className="provider-actions">
                     <button
                       type="button"
@@ -2791,7 +2828,9 @@ function lightspeedConfigurationLabel(value: string) {
     INTEGRATION_ENCRYPTION_KEY: "Encrypted token storage key",
     PLAID_CLIENT_ID: "Plaid client ID",
     PLAID_SECRET: "Plaid secret",
+    PLAID_ENV: "Plaid environment",
     PLAID_WEBHOOK_URL: "Verified Plaid webhook URL",
+    PLAID_REDIRECT_URI: "Approved Plaid redirect URL",
   };
   return labels[value] ?? "Provider configuration";
 }
@@ -3916,6 +3955,7 @@ function ModuleWorkspace({
     "Latest aggregate value now": data.balances?.inventoryValueCents != null,
     "Location-tagged daily summaries": data.ready,
     "Every verified Vanteloq data source": data.ready,
+    "Bank feeds": data.metrics.operating_cash?.sourceSystem === "Plaid read-only bank feed",
   };
   const sourceAvailable = (item: string) => {
     return sourceRules[item] ?? false;
@@ -3935,7 +3975,7 @@ function ModuleWorkspace({
           <div className="module-signal">
             <small>AVAILABLE NOW</small>
             <b>{value}</b>
-            <span>From verified daily summaries</span>
+            <span>{name === "Cash" ? data.metrics.operating_cash?.sourceSystem ?? "Verified cash source" : "From verified daily summaries"}</span>
           </div>
         )}
       </section>

@@ -36,6 +36,12 @@ test("location manager defaults cannot enter organization or team governance", (
   assert.equal(permissions.has("sales.view"), true);
 });
 
+test("read-only reviewers cannot export reports", () => {
+  const permissions = new Set(roleTemplates.read_only_reviewer);
+  assert.equal(permissions.has("reports.operational"), true);
+  assert.equal(permissions.has("reports.export"), false);
+});
+
 test("temporary workplace PINs reject common and sequential values", () => {
   for (const pin of ["123456", "654321", "111111", "01234567", "12345", "123456789", "12ab5678"]) {
     assert.throws(() => validateTemporaryPin(pin));

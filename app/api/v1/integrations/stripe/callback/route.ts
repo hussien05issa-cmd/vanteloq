@@ -182,7 +182,7 @@ export async function GET(request: Request) {
         externalAccountName: account.id,
         domainPrefix: null,
         apiVersion: readiness.apiVersion,
-        scopesJson: JSON.stringify([authorization.scope || "connected_account_financial_data"]),
+        scopesJson: JSON.stringify([authorization.scope]),
         dataPromotionStatus: "blocked",
         connectedAt: now,
         lastSuccessfulSyncAt: null,

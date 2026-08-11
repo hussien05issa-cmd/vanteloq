@@ -183,7 +183,7 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
     category: "Banking",
     availability: "credentials_required",
     activationRequirement:
-      "The BookLoQ bank-feed foundation uses provider-hosted consent, protected credentials, reliable updates, and reviewed transactions. Production still requires Plaid approval, Canadian institution testing, and hosted credentials.",
+      "The BookLoQ bank-feed adapter uses resumable Plaid Link, encrypted tokens, signed webhooks, repair mode, cursor sync, balances, and reviewed transactions. Production access still requires Plaid approval, Canadian institution testing, and hosted credentials.",
   },
   {
     id: "manual-bank",
@@ -231,19 +231,19 @@ export const preSyncControls = [
   {
     id: "authorization",
     label: "Provider authorization",
-    detail: "Lightspeed X-Series and R-Series request only the required access and protect their credentials. Providers without a working connection remain disabled.",
+    detail: "Lightspeed X-Series, R-Series, and Stripe use state-bound authorization with only the required access; Plaid uses short-lived Link sessions. Provider credentials stay server-side and encrypted where stored, and providers without a working connection remain disabled.",
     status: "verified",
   },
   {
     id: "webhooks",
     label: "Verified provider updates",
-    detail: "X-Series verifies provider updates and rejects duplicates. Scheduled refresh remains the reliable fallback while delivery recovery is still gated.",
+    detail: "Built X-Series, Stripe, and Plaid endpoints verify signed events, reject oversized payloads, and preserve idempotent webhook receipts. Scheduled refresh remains the fallback while durable delivery recovery is still gated.",
     status: "verified",
   },
   {
     id: "normalization",
-    label: "Historical import and mapping",
-    detail: "Both Lightspeed connections import history in safe batches, map locations, and recover from interrupted updates. Reviewed R-Series sales and inventory can then support dashboard features.",
+    label: "Backfill and normalization",
+    detail: "Both Lightspeed connections import history in safe batches, map locations, and recover from interrupted updates; Stripe and Plaid use bounded pagination, retries, or resumable cursors. Only reviewed and approved records can reach dependent metrics.",
     status: "verified",
   },
   {

@@ -59,7 +59,7 @@ export function stripeReadiness() {
     credentialsConfigured: missing.length === 0,
     missingConfiguration: missing,
     apiVersion: validApiVersion(env.STRIPE_API_VERSION) ?? "account_default",
-    scopes: ["connected_account_financial_data"],
+    scopes: ["read_only"],
     mode: "read_only_staging" as const,
     dataPromotionEnabled: false,
   };
@@ -163,6 +163,9 @@ export async function exchangeStripeAuthorizationCode(
   const body = await response.json() as Partial<StripeOAuthResponse>;
   if (typeof body.stripe_user_id !== "string" || !ACCOUNT_ID.test(body.stripe_user_id)) {
     throw new ApiError(502, "STRIPE_TOKEN_RESPONSE_INVALID", "Stripe returned an incomplete account authorization response.");
+  }
+  if (body.scope !== "read_only") {
+    throw new ApiError(403, "STRIPE_SCOPE_NOT_READ_ONLY", "Stripe did not return the required read-only authorization. No account was connected.");
   }
   return body as StripeOAuthResponse;
 }

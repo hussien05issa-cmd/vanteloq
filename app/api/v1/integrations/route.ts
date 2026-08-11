@@ -37,6 +37,7 @@ export async function GET(request: Request) {
         lastErrorCode: integrationConnections.lastErrorCode,
         connectedAt: integrationConnections.connectedAt,
         dataPromotionStatus: integrationConnections.dataPromotionStatus,
+        privacyDataDeletedAt: integrationConnections.privacyDataDeletedAt,
       })
       .from(integrationConnections)
       .where(eq(integrationConnections.organizationId, context.organizationId));
@@ -109,8 +110,16 @@ export async function GET(request: Request) {
           ...connection,
           lastSuccessfulSyncAt: connection.lastSuccessfulSyncAt?.toISOString() ?? null,
         })));
+        const canManageProvider = provider.id === "plaid"
+          ? permissions.includes("finance.connections")
+          : permissions.includes("integrations.manage");
+        const privacyDataDeletedAt = providerConnections
+          .map((connection) => connection.privacyDataDeletedAt)
+          .filter((value): value is Date => Boolean(value))
+          .sort((left, right) => right.getTime() - left.getTime())[0] ?? null;
         return ({
         ...provider,
+        canManage: canManageProvider,
         status: aggregate.status,
         maskedAccountRef: providerConnections.length === 1 ? maskedAccountRef(providerConnections[0]?.externalAccountRef) : null,
         externalAccountName: providerConnections.length === 1 ? providerConnections[0]?.externalAccountName ?? null : providerConnections.length ? `${providerConnections.length} provider accounts` : null,
@@ -118,6 +127,7 @@ export async function GET(request: Request) {
         lastErrorCode: aggregate.lastErrorCode,
         connectedAt: providerConnections.map((connection) => connection.connectedAt).filter((value): value is Date => Boolean(value)).sort((left, right) => right.getTime() - left.getTime())[0]?.toISOString() ?? null,
         dataPromotionStatus: aggregate.dataPromotionStatus,
+        privacyDataDeletedAt: privacyDataDeletedAt?.toISOString() ?? null,
         connectionCount: providerConnections.length,
         connections: providerConnections.map((connection) => ({
           id: connection.id,
@@ -128,6 +138,7 @@ export async function GET(request: Request) {
           lastErrorCode: connection.lastErrorCode,
           connectedAt: connection.connectedAt?.toISOString() ?? null,
           dataPromotionStatus: connection.dataPromotionStatus,
+          privacyDataDeletedAt: connection.privacyDataDeletedAt?.toISOString() ?? null,
         })),
         providerReadiness: provider.id === "lightspeed"
           ? lightspeedReadiness()

@@ -1,5 +1,5 @@
 import { and, eq, inArray } from "drizzle-orm";
-import { getDb, getRuntimeEnv, type VanteloqRuntimeEnv } from "../../db/index.ts";
+import { getD1, getDb, getRuntimeEnv, type VanteloqRuntimeEnv } from "../../db/index.ts";
 import {
   bankAccounts,
   financialAccounts,
@@ -17,6 +17,13 @@ import {
 } from "./connection.ts";
 
 export const PLAID_PROVIDER = "plaid";
+
+export function plaidRequiresUserRepair(code: string) {
+  return code === "ITEM_LOGIN_REQUIRED"
+    || code === "PENDING_EXPIRATION"
+    || code === "PENDING_DISCONNECT"
+    || code === "USER_PERMISSION_REVOKED";
+}
 
 export function plaidConnectionClaimErrorCode(status: string) {
   if (status === "pending") return "PLAID_CONNECTION_IN_PROGRESS" as const;
@@ -66,15 +73,28 @@ type PlaidAccount = {
   balances: { available?: number | null; current?: number | null; iso_currency_code?: string | null };
 };
 
-const requiredConfiguration = ["PLAID_CLIENT_ID", "PLAID_SECRET", "PLAID_WEBHOOK_URL", "INTEGRATION_ENCRYPTION_KEY"] as const;
+const requiredConfiguration = [
+  "PLAID_CLIENT_ID",
+  "PLAID_SECRET",
+  "PLAID_ENV",
+  "PLAID_WEBHOOK_URL",
+  "PLAID_REDIRECT_URI",
+  "INTEGRATION_ENCRYPTION_KEY",
+] as const;
 
 export function plaidReadiness(env: PlaidEnv = getRuntimeEnv()) {
   const missingConfiguration = requiredConfiguration.filter((key) => !env[key]?.trim());
-  const mode = ["sandbox", "development", "production"].includes(env.PLAID_ENV ?? "") ? env.PLAID_ENV! : "sandbox";
+  const configuredMode = env.PLAID_ENV?.trim();
+  const modeValid = configuredMode === "sandbox" || configuredMode === "development" || configuredMode === "production";
+  if (configuredMode && !modeValid && !missingConfiguration.includes("PLAID_ENV")) missingConfiguration.push("PLAID_ENV");
+  const mode = modeValid ? configuredMode : "unconfigured";
   return {
+    adapterBuilt: true,
     credentialsConfigured: missingConfiguration.length === 0,
     missingConfiguration,
     mode,
+    scopes: ["transactions", "balances"],
+    dataPromotionEnabled: false,
     liveDataEligible: missingConfiguration.length === 0 && mode === "production",
   };
 }
@@ -93,12 +113,25 @@ function configuration() {
   return {
     clientId: env.PLAID_CLIENT_ID!,
     secret: env.PLAID_SECRET!,
-    webhookUrl: env.PLAID_WEBHOOK_URL!,
-    redirectUri: env.PLAID_REDIRECT_URI?.trim() || null,
+    webhookUrl: cleanPlaidHttpsUrl(env.PLAID_WEBHOOK_URL!, "PLAID_WEBHOOK_URL_INVALID"),
+    redirectUri: cleanPlaidHttpsUrl(env.PLAID_REDIRECT_URI!, "PLAID_REDIRECT_URI_INVALID"),
     encryptionKey: env.INTEGRATION_ENCRYPTION_KEY!,
     mode: readiness.mode as keyof typeof hosts,
     host: hosts[readiness.mode as keyof typeof hosts],
   };
+}
+
+function cleanPlaidHttpsUrl(value: string, code: string) {
+  let parsed: URL;
+  try {
+    parsed = new URL(value.trim());
+  } catch {
+    throw new ApiError(503, code, "The configured Plaid URL is invalid.");
+  }
+  if (parsed.protocol !== "https:" || parsed.username || parsed.password || parsed.hash) {
+    throw new ApiError(503, code, "The configured Plaid URL must be a clean HTTPS URL.");
+  }
+  return parsed.toString();
 }
 
 async function plaidRequest<T>(path: string, payload: Record<string, unknown>, fetcher: typeof fetch = fetch): Promise<T> {
@@ -186,17 +219,42 @@ export function missingPlaidAccountRefs(
     .filter((accountRef) => !knownAccountRefs.has(accountRef)))];
 }
 
-export async function createPlaidLinkToken(userId: string, organizationId: string, fetcher: typeof fetch = fetch) {
+async function plaidClientUserId(userId: string, organizationId: string) {
+  const digest = new Uint8Array(await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(`vanteloq:plaid:${organizationId}:${userId}`),
+  ));
+  return encodeBase64(digest);
+}
+
+export async function createPlaidLinkToken(
+  userId: string,
+  organizationId: string,
+  modeOrFetcher: "connect" | "update" | typeof fetch = "connect",
+  fetcher: typeof fetch = fetch,
+) {
+  const mode = typeof modeOrFetcher === "function" ? "connect" : modeOrFetcher;
+  const requestFetcher = typeof modeOrFetcher === "function" ? modeOrFetcher : fetcher;
   const config = configuration();
-  return plaidRequest<{ link_token: string; expiration: string }>("/link/token/create", {
-    user: { client_user_id: `${organizationId}:${userId}` },
+  const shared = {
+    user: { client_user_id: await plaidClientUserId(userId, organizationId) },
     client_name: "Vanteloq BookLoQ",
-    products: ["transactions"],
     country_codes: ["CA"],
     language: "en",
     webhook: config.webhookUrl,
-    ...(config.redirectUri ? { redirect_uri: config.redirectUri } : {}),
-  }, fetcher);
+    redirect_uri: config.redirectUri,
+  };
+  if (mode === "update") {
+    const current = await credentials(organizationId, ["connected", "error"]);
+    return plaidRequest<{ link_token: string; expiration: string }>("/link/token/create", {
+      ...shared,
+      access_token: current.accessToken,
+    }, requestFetcher);
+  }
+  return plaidRequest<{ link_token: string; expiration: string }>("/link/token/create", {
+    ...shared,
+    products: ["transactions"],
+  }, requestFetcher);
 }
 
 function accountType(account: PlaidAccount): "chequing" | "savings" | "credit_card" | "line_of_credit" | "merchant" | "loan" | null {
@@ -210,6 +268,7 @@ async function syncAccounts(
   organizationId: string,
   itemId: string,
   accessToken: string,
+  institutionName: string,
   fetcher: typeof fetch = fetch,
   syncLease?: IntegrationSyncLease,
 ) {
@@ -260,7 +319,7 @@ async function syncAccounts(
       financialAccountId: ledgerId,
       name: (account.name || "Connected account").slice(0, 160),
       accountType: mappedType,
-      institutionName: "Plaid-connected institution",
+      institutionName,
       maskedNumber: account.mask ? `•••• ${account.mask.slice(-4)}` : "Protected",
       currency: (account.balances.iso_currency_code || "CAD").slice(0, 3).toUpperCase(),
       provider: PLAID_PROVIDER,
@@ -277,6 +336,7 @@ async function syncAccounts(
     }).onConflictDoUpdate({ target: [bankAccounts.organizationId, bankAccounts.provider, bankAccounts.externalAccountRef], set: {
       financialAccountId: ledgerId,
       name: (account.name || "Connected account").slice(0, 160),
+      institutionName,
       externalItemRef: itemId,
       maskedNumber: account.mask ? `•••• ${account.mask.slice(-4)}` : "Protected",
       currency: (account.balances.iso_currency_code || "CAD").slice(0, 3).toUpperCase(),
@@ -409,6 +469,17 @@ export async function exchangePlaidPublicToken(organizationId: string, publicTok
   const database = getDb();
   try {
     exchange = await plaidRequest<{ access_token: string; item_id: string }>("/item/public_token/exchange", { public_token: publicToken }, fetcher);
+    const item = await plaidRequest<{ item?: { institution_id?: string | null } }>("/item/get", { access_token: exchange.access_token }, fetcher);
+    const institutionId = item.item?.institution_id?.trim() ?? "";
+    let institutionName = "Connected financial institution";
+    if (institutionId) {
+      const institution = await plaidRequest<{ institution?: { name?: string | null } }>("/institutions/get_by_id", {
+        institution_id: institutionId,
+        country_codes: ["CA"],
+      }, fetcher);
+      const providerName = institution.institution?.name?.trim();
+      if (providerName) institutionName = providerName.slice(0, 160);
+    }
     const accessTokenCiphertext = await encrypt(exchange.access_token);
     const itemIdCiphertext = await encrypt(exchange.item_id);
     await database.insert(integrationSecrets).values({
@@ -430,9 +501,10 @@ export async function exchangePlaidPublicToken(organizationId: string, publicTok
     const updated = await database.update(integrationConnections).set({
       status: "connected",
       externalAccountRef: exchange.item_id,
-      externalAccountName: "Plaid bank feed",
+      externalAccountName: institutionName,
       scopesJson: JSON.stringify(["transactions", "balance"]),
       dataPromotionStatus: "staging",
+      privacyDataDeletedAt: null,
       connectedAt: now,
       lastErrorCode: null,
       lastSyncCursor: null,
@@ -444,8 +516,7 @@ export async function exchangePlaidPublicToken(organizationId: string, publicTok
       eq(integrationConnections.status, "pending"),
     )).returning({ id: integrationConnections.id });
     if (!updated[0]) throw new ApiError(409, "PLAID_CONNECTION_CLAIM_LOST", "The Plaid connection could not be finalized safely.");
-    const accountsImported = await syncAccounts(organizationId, exchange.item_id, exchange.access_token, fetcher);
-    return { accountsImported };
+    return { connectionId: claim.id, itemId: exchange.item_id, institutionName };
   } catch (error) {
     if (!exchange) {
       await restorePlaidConnectionClaim(organizationId, claim);
@@ -484,6 +555,8 @@ async function credentials(organizationId: string, statuses: Array<"connected" |
     accessToken: integrationSecrets.accessTokenCiphertext,
     itemId: integrationSecrets.refreshTokenCiphertext,
     cursor: integrationConnections.lastSyncCursor,
+    institutionName: integrationConnections.externalAccountName,
+    status: integrationConnections.status,
   }).from(integrationSecrets).innerJoin(integrationConnections, and(
     eq(integrationConnections.id, integrationSecrets.connectionId),
     eq(integrationConnections.organizationId, integrationSecrets.organizationId),
@@ -494,7 +567,14 @@ async function credentials(organizationId: string, statuses: Array<"connected" |
     inArray(integrationConnections.status, statuses),
   )).limit(1);
   if (!row) throw new ApiError(409, "PLAID_NOT_CONNECTED", "Connect a financial institution before synchronizing BookLoQ.");
-  return { connectionId: row.connectionId, accessToken: await decrypt(row.accessToken), itemId: await decrypt(row.itemId), cursor: row.cursor };
+  return {
+    connectionId: row.connectionId,
+    accessToken: await decrypt(row.accessToken),
+    itemId: await decrypt(row.itemId),
+    cursor: row.cursor,
+    institutionName: row.institutionName?.trim() || "Connected financial institution",
+    status: row.status,
+  };
 }
 
 export async function syncPlaidTransactions(organizationId: string, fetcher: typeof fetch = fetch) {
@@ -521,6 +601,14 @@ export async function syncPlaidTransactions(organizationId: string, fetcher: typ
   if (!staged.length) {
     throw new ApiError(409, "INTEGRATION_SYNC_LEASE_LOST", "This synchronization was superseded before it could safely stage data.");
   }
+  const accountsImported = await syncAccounts(
+    organizationId,
+    current.itemId,
+    current.accessToken,
+    current.institutionName,
+    fetcher,
+    syncLease,
+  );
   let cursor = current.cursor || undefined;
   let hasMore = true;
   let pages = 0;
@@ -561,7 +649,6 @@ export async function syncPlaidTransactions(organizationId: string, fetcher: typ
 
   const database = getDb();
   const now = new Date();
-  const accountsImported = await syncAccounts(organizationId, current.itemId, current.accessToken, fetcher, syncLease);
   const accountRows = await database.select({ externalAccountRef: bankAccounts.externalAccountRef, accountId: bankAccounts.financialAccountId })
     .from(bankAccounts).where(and(eq(bankAccounts.organizationId, organizationId), eq(bankAccounts.provider, PLAID_PROVIDER)));
   const accountMap = new Map(accountRows.map((account) => [account.externalAccountRef, account.accountId]));
@@ -656,7 +743,14 @@ export async function syncPlaidTransactions(organizationId: string, fetcher: typ
   if (!completed.length) {
     throw new ApiError(409, "INTEGRATION_SYNC_LEASE_LOST", "This synchronization was superseded before it could safely publish data.");
   }
-  return { added: added.length, modified: modified.length, removed: removed.length, pages, accountsImported };
+  return {
+    added: added.length,
+    modified: modified.length,
+    removed: removed.length,
+    pages,
+    accountsImported,
+    dataPromotionStatus: "staging" as const,
+  };
   } catch (error) {
     const failureCode = error instanceof ApiError ? error.code : "PLAID_SYNC_FAILED";
     await getDb().update(integrationConnections).set({
@@ -720,6 +814,69 @@ export async function disconnectPlaid(organizationId: string, fetcher: typeof fe
   } finally {
     await releaseIntegrationSyncLease(syncLease);
   }
+}
+
+export async function deletePlaidConsumerData(organizationId: string) {
+  const database = getD1();
+  const connection = await database.prepare(
+    "SELECT status FROM integration_connections WHERE organization_id = ? AND provider = 'plaid' LIMIT 1",
+  ).bind(organizationId).first<{ status: string }>();
+  if (connection?.status === "connected" || connection?.status === "error" || connection?.status === "pending") {
+    throw new ApiError(409, "PLAID_DISCONNECT_REQUIRED", "Disconnect Plaid before deleting retained financial data.");
+  }
+
+  const results = await database.batch([
+    database.prepare(`
+      DELETE FROM financial_transactions
+      WHERE organization_id = ? AND source_system = 'plaid'
+        AND journal_entry_id IS NULL
+        AND reconciliation_status = 'unreconciled'
+        AND approval_status != 'approved'
+    `).bind(organizationId),
+    database.prepare(`
+      UPDATE financial_transactions
+      SET description = 'Retained accounting transaction',
+          original_description = '',
+          source_system = 'retained_accounting',
+          external_source_id = 'retained:' || id,
+          pending_external_source_id = NULL,
+          updated_at = unixepoch()
+      WHERE organization_id = ? AND source_system = 'plaid'
+    `).bind(organizationId),
+    database.prepare(`
+      UPDATE financial_accounts
+      SET name = 'Disconnected financial account',
+          system_key = 'retained:' || id,
+          description = '',
+          plain_language = 'Retained only where required for an approved, reconciled, or posted accounting record.',
+          active = 0,
+          archived_at = unixepoch(),
+          updated_at = unixepoch()
+      WHERE organization_id = ? AND id IN (
+        SELECT financial_account_id FROM bank_accounts
+        WHERE organization_id = ? AND provider = 'plaid'
+      )
+    `).bind(organizationId, organizationId),
+    database.prepare("DELETE FROM bank_accounts WHERE organization_id = ? AND provider = 'plaid'").bind(organizationId),
+    database.prepare("DELETE FROM integration_secrets WHERE organization_id = ? AND provider = 'plaid'").bind(organizationId),
+    database.prepare(`
+      UPDATE integration_connections
+      SET status = 'revoked', external_account_ref = NULL, external_account_name = NULL,
+          scopes_json = '[]', data_promotion_status = 'blocked', connected_at = NULL,
+          last_successful_sync_at = NULL, last_sync_cursor = NULL, last_error_code = NULL,
+          sync_lease_owner = NULL, sync_lease_expires_at = NULL,
+          sync_version = sync_version + 1,
+          privacy_data_deleted_at = unixepoch(), updated_at = unixepoch()
+      WHERE organization_id = ? AND provider = 'plaid'
+    `).bind(organizationId),
+  ]);
+  return {
+    importedTransactionsDeleted: Number(results[0]?.meta.changes ?? 0),
+    retainedTransactionsDeidentified: Number(results[1]?.meta.changes ?? 0),
+    financialAccountsDeidentified: Number(results[2]?.meta.changes ?? 0),
+    bankAccountsDeleted: Number(results[3]?.meta.changes ?? 0),
+    encryptedCredentialsDeleted: Number(results[4]?.meta.changes ?? 0),
+  };
 }
 
 export async function settlePlaidWebhookEvent(

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 async function loadWorker() {
@@ -39,6 +40,68 @@ test("task APIs reject missing identity before database access", async () => {
   assert.doesNotMatch(JSON.stringify(body), /stack|sql|owner@vanteloq\.local|default-workspace/i);
 });
 
+test("caller-supplied legacy Sites headers never authenticate a protected route", async () => {
+  const worker = await loadWorker();
+  const response = await worker.fetch(new Request("https://vanteloq.example/api/v1/onboarding", {
+    headers: {
+      accept: "application/json",
+      "oai-authenticated-user-email": "owner@example.com",
+      "oai-authenticated-user-full-name": "Forged Owner",
+    },
+  }), { ...environment, SUPABASE_AUTH_MODE: "legacy" }, context);
+  assert.equal(response.status, 401);
+  assert.equal((await response.json()).authenticated, false);
+});
+
+test("high-risk tenant and privilege boundaries remain enforced in source", async () => {
+  const [api, governance, permissions, schema, documents, purchasing, bookloq, commerce, inventoryLifecycle] = await Promise.all([
+    readFile(`${process.cwd()}/server/api.ts`, "utf8"),
+    readFile(`${process.cwd()}/app/api/v1/governance/route.ts`, "utf8"),
+    readFile(`${process.cwd()}/server/permissions.ts`, "utf8"),
+    readFile(`${process.cwd()}/db/schema.ts`, "utf8"),
+    readFile(`${process.cwd()}/app/api/v1/documents/route.ts`, "utf8"),
+    readFile(`${process.cwd()}/app/api/v1/purchasing/route.ts`, "utf8"),
+    readFile(`${process.cwd()}/app/api/v1/bookloq/route.ts`, "utf8"),
+    readFile(`${process.cwd()}/app/api/v1/commerce/route.ts`, "utf8"),
+    readFile(`${process.cwd()}/app/api/v1/inventory-lifecycle/route.ts`, "utf8"),
+  ]);
+
+  assert.doesNotMatch(api, /sitesIdentity\(/);
+  assert.doesNotMatch(api, /identity\.provider === "supabase" &&/);
+  assert.match(api, /identity\.provider !== "supabase" \|\| identity\.assuranceLevel !== "aal2"/);
+
+  assert.match(governance, /const permission = governanceActionPermissions\[action as keyof typeof governanceActionPermissions\]/);
+  assert.match(governance, /await requirePermission\(context, permission\)/);
+  assert.match(governance, /validateEmployeeRelationships\(/);
+  assert.match(governance, /validateRoleDelegation\(/);
+  assert.doesNotMatch(governance, /ON CONFLICT\(id\) DO UPDATE/);
+  assert.match(governance, /context\.role !== "owner" && requested\.includes\("organization\.ownership"\)/);
+  assert.match(governance, /role\.systemKey === "account_owner"/);
+  assert.match(governance, /if \(member\.userId\) statements\.push\(database\.prepare\("UPDATE memberships SET role = COALESCE\(\?, role\), status = \?, updated_at = \?/);
+  assert.match(permissions, /eq\(teamMembers\.status, "active"\)/);
+
+  assert.match(schema, /integration_connections_provider_external_account_unique/);
+  assert.match(documents, /document\.scanStatus !== "clean"/);
+  assert.match(purchasing, /document\.scanStatus !== "clean" \|\| !document\.scannedAt \|\| !document\.scanProvider/);
+  assert.match(purchasing, /created_by_user_id != \?/);
+  assert.match(purchasing, /Number\(result\.meta\.changes \?\? 0\) !== 1/);
+  assert.match(commerce, /canReadProductCosts/);
+  assert.match(commerce, /grossProfitCents: canReadProfit \? row\.grossProfitCents : null/);
+  assert.match(commerce, /displayName: null/);
+  assert.match(commerce, /canReadSuppliers \? suppliers\.results \?\? \[\] : \[\]/);
+  assert.match(inventoryLifecycle, /canViewValue/);
+  assert.match(inventoryLifecycle, /unitCostCents: canViewValue \? lot\.unitCostCents : null/);
+  assert.match(inventoryLifecycle, /costAtRiskCents: canViewValue/);
+
+  for (const tenantJoin of [
+    /a\.id = b\.financial_account_id AND a\.organization_id = b\.organization_id/,
+    /a\.id = r\.account_id AND a\.organization_id = r\.organization_id/,
+    /c\.id = b\.supplier_id AND c\.organization_id = b\.organization_id/,
+    /c\.id = i\.customer_id AND c\.organization_id = i\.organization_id/,
+    /a\.id = b\.account_id AND a\.organization_id = b\.organization_id/,
+  ]) assert.match(bookloq, tenantJoin);
+});
+
 test("business intelligence APIs reject anonymous access before database reads", async () => {
   const worker = await loadWorker();
   for (const path of ["/api/v1/command-centre", "/api/v1/daily-metrics", "/api/v1/events", "/api/v1/operations", "/api/v1/inventory-lifecycle", "/api/v1/bookloq", "/api/v1/governance", "/api/v1/reports", "/api/v1/purchasing", "/api/v1/documents", "/api/v1/data-quality", "/api/v1/integrations", "/api/v1/commerce", "/api/v1/backend", "/api/v1/billing"]) {
@@ -69,6 +132,7 @@ test("Lightspeed management routes reject anonymous same-origin writes", async (
     "/api/v1/integrations/plaid/exchange",
     "/api/v1/integrations/plaid/sync",
     "/api/v1/integrations/plaid/disconnect",
+    "/api/v1/integrations/plaid/delete-data",
     "/api/v1/billing/checkout",
     "/api/v1/billing/portal",
   ]) {

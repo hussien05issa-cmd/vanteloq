@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
+import { createServer } from "node:http";
 import test from "node:test";
 import { Miniflare } from "miniflare";
 
@@ -7,11 +8,15 @@ const origin = "https://vanteloq.example";
 const context = { waitUntil() {}, passThroughOnException() {} };
 
 function ownerHeaders(email, name, write = false) {
+  const payload = Buffer.from(JSON.stringify({
+    email,
+    full_name: name,
+    aal: "aal2",
+    session_id: `session:${email}`,
+  })).toString("base64url");
   const headers = {
     accept: "application/json",
-    "oai-authenticated-user-email": email,
-    "oai-authenticated-user-full-name": encodeURIComponent(name),
-    "oai-authenticated-user-full-name-encoding": "percent-encoded-utf-8",
+    authorization: `Bearer test.${payload}.signature`,
   };
   if (write) {
     headers["content-type"] = "application/json";
@@ -70,11 +75,32 @@ async function createEnvironment() {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
   workerUrl.searchParams.set("governance-capacity-test", crypto.randomUUID());
   const worker = (await import(workerUrl.href)).default;
+  const authServer = createServer((request, response) => {
+    const token = request.headers.authorization?.replace(/^Bearer\s+/i, "") ?? "";
+    const payload = JSON.parse(Buffer.from(token.split(".")[1] ?? "", "base64url").toString("utf8"));
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({
+      id: `test-user:${payload.email}`,
+      email: payload.email,
+      email_confirmed_at: "2026-08-01T00:00:00.000Z",
+      user_metadata: { full_name: payload.full_name },
+    }));
+  });
+  await new Promise((resolve) => authServer.listen(0, "127.0.0.1", resolve));
+  const authAddress = authServer.address();
+  assert.ok(authAddress && typeof authAddress !== "string");
   const environment = {
     DB: database,
+    SUPABASE_URL: `http://127.0.0.1:${authAddress.port}`,
+    SUPABASE_PUBLISHABLE_KEY: "test-publishable-key",
     ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) },
   };
-  return { miniflare, database, worker, environment };
+  const dispose = async () => {
+    await miniflare.dispose();
+    authServer.closeAllConnections();
+    await new Promise((resolve, reject) => authServer.close((error) => error ? reject(error) : resolve()));
+  };
+  return { database, worker, environment, dispose };
 }
 
 async function dispatch(worker, environment, path, { method = "GET", email, name, body } = {}) {
@@ -199,7 +225,7 @@ function employeeBody(roleId, suffix) {
 }
 
 test("simultaneous location creates cannot exceed the owner plan", async () => {
-  const { miniflare, database, worker, environment } = await createEnvironment();
+  const { database, worker, environment, dispose } = await createEnvironment();
   try {
     const owner = await createWorkspace(worker, environment, database, {
       email: "location-owner@example.invalid",
@@ -229,12 +255,12 @@ test("simultaneous location creates cannot exceed the owner plan", async () => {
     assert.equal((await database.prepare(`SELECT COUNT(*) count FROM organization_locations
       WHERE organization_id = ? AND status = 'active'`).bind(owner.organizationId).first()).count, 3);
   } finally {
-    await miniflare.dispose();
+    await dispose();
   }
 });
 
 test("simultaneous remote employee creates cannot exceed the owner plan", async () => {
-  const { miniflare, database, worker, environment } = await createEnvironment();
+  const { database, worker, environment, dispose } = await createEnvironment();
   try {
     const owner = await createWorkspace(worker, environment, database, {
       email: "employee-owner@example.invalid",
@@ -272,12 +298,12 @@ test("simultaneous remote employee creates cannot exceed the owner plan", async 
         AND status IN ('draft', 'invited', 'pending_verification', 'active')`)
       .bind(owner.organizationId).first()).count, 3);
   } finally {
-    await miniflare.dispose();
+    await dispose();
   }
 });
 
 test("owner subscription messaging remains distinct from an exhausted quota", async () => {
-  const { miniflare, database, worker, environment } = await createEnvironment();
+  const { database, worker, environment, dispose } = await createEnvironment();
   try {
     const owner = await createWorkspace(worker, environment, database, {
       email: "unsubscribed-owner@example.invalid",
@@ -305,12 +331,12 @@ test("owner subscription messaging remains distinct from an exhausted quota", as
     assert.equal(employeeError.code, "TEAM_SEAT_LIMIT_REACHED");
     assert.match(employeeError.message, /active owner subscription is required/i);
   } finally {
-    await miniflare.dispose();
+    await dispose();
   }
 });
 
 test("governance authorization follows assigned permissions instead of coarse membership roles", async () => {
-  const { miniflare, database, worker, environment } = await createEnvironment();
+  const { database, worker, environment, dispose } = await createEnvironment();
   try {
     const owner = await createWorkspace(worker, environment, database, {
       email: "permission-owner@example.invalid",
@@ -491,7 +517,7 @@ test("governance authorization follows assigned permissions instead of coarse me
       },
     });
     assert.equal(escalatedRole.status, 403, await escalatedRole.clone().text());
-    assert.equal((await escalatedRole.json()).error.code, "INSUFFICIENT_PERMISSION");
+    assert.equal((await escalatedRole.json()).error.code, "ROLE_DELEGATION_EXCEEDED");
 
     const boundedRole = await dispatch(worker, environment, "/api/v1/governance", {
       method: "POST",
@@ -528,7 +554,7 @@ test("governance authorization follows assigned permissions instead of coarse me
       body: { action: "update_employee", memberId: safeEmployeeMember.id, roleId: financeRole.id, status: "active" },
     });
     assert.equal(privilegedAssignment.status, 403, await privilegedAssignment.clone().text());
-    assert.equal((await privilegedAssignment.json()).error.code, "INSUFFICIENT_PERMISSION");
+    assert.equal((await privilegedAssignment.json()).error.code, "ROLE_DELEGATION_EXCEEDED");
 
     const boundedAssignment = await dispatch(worker, environment, "/api/v1/governance", {
       method: "POST",
@@ -563,6 +589,6 @@ test("governance authorization follows assigned permissions instead of coarse me
     assert.equal(locationManagerGovernance.status, 403, await locationManagerGovernance.clone().text());
     assert.equal((await locationManagerGovernance.json()).error.code, "INSUFFICIENT_PERMISSION");
   } finally {
-    await miniflare.dispose();
+    await dispose();
   }
 });

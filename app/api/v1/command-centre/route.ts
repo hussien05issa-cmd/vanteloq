@@ -1,6 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
 import { getD1, getDb } from "../../../../db";
-import { dailyBusinessMetrics, integrationConnections, integrationLocationMappings, organizationProfiles } from "../../../../db/schema";
+import { bankAccounts, dailyBusinessMetrics, integrationConnections, integrationLocationMappings, organizationProfiles } from "../../../../db/schema";
 import { requireAccess } from "../../../../server/authorization";
 import { ApiError, clientSource, enforceRateLimit, handleApi, jsonResponse } from "../../../../server/api";
 import { buildCommandCentre } from "../../../../server/intelligence";
@@ -10,6 +10,7 @@ import { buildLightspeedRLiveSalesSnapshot, LIGHTSPEED_R_PROVIDER, type Lightspe
 import { authorizedLocationDataScope } from "../../../../server/location-access";
 import { scopeExternalRef } from "../../../../domain/integration-source";
 import { approvedFactSource, noActiveIntegrationLease } from "../../../../server/integrations/trusted-data";
+import { calculateVerifiedPurchasingCapacity } from "../../../../domain/purchasing-intelligence";
 
 const readers = ["owner", "admin", "manager", "employee", "read_only"] as const;
 
@@ -149,6 +150,17 @@ export async function GET(request: Request) {
     })
       .from(integrationConnections)
       .where(eq(integrationConnections.organizationId, context.organizationId));
+    const plaidAccountRows = await getDb().select({
+      accountType: bankAccounts.accountType,
+      currency: bankAccounts.currency,
+      connectionStatus: bankAccounts.connectionStatus,
+      availableBalanceCents: bankAccounts.availableBalanceCents,
+      liveBalanceCents: bankAccounts.liveBalanceCents,
+      lastSyncAt: bankAccounts.lastSyncAt,
+    }).from(bankAccounts).where(and(
+      eq(bankAccounts.organizationId, context.organizationId),
+      eq(bankAccounts.provider, "plaid"),
+    ));
     const supportedPosProviders = new Set(["lightspeed", "lightspeed-r", "shopify", "shopify-pos", "square", "clover", "moneris"]);
     const posConnectionRows = connectionRows.filter((row) => supportedPosProviders.has(row.provider));
     const connectedSourceConnections = posConnectionRows.filter((row) => row.status === "connected");
@@ -211,6 +223,59 @@ export async function GET(request: Request) {
         }
       : buildDailySourceSnapshot(trustedRows, context.organization.timezone);
     const baseCommandCentre = buildCommandCentre(trustedRows, context.organization.currency);
+    const plaidConnection = connectionRows.find((row) => row.provider === "plaid");
+    const plaidCash = calculateVerifiedPurchasingCapacity({
+      connectionVerified: plaidConnection?.status === "connected" && plaidConnection.dataPromotionStatus === "approved",
+      nowMs: Date.now(),
+      maximumAgeMs: 48 * 60 * 60 * 1000,
+      baseCurrency: context.organization.currency,
+      cashSafetyReserveCents: 0,
+      outstandingBillsCents: 0,
+      openPurchaseCommitmentsCents: 0,
+      accounts: plaidAccountRows.map((account) => ({
+        ...account,
+        lastSyncAtMs: account.lastSyncAt?.getTime() ?? null,
+      })),
+    });
+    if (plaidCash.status === "available" && plaidCash.verifiedCashCents !== null) {
+      const latestBankSync = plaidAccountRows
+        .map((account) => account.lastSyncAt)
+        .filter((value): value is Date => Boolean(value))
+        .sort((left, right) => right.getTime() - left.getTime())[0] ?? null;
+      const balanceDate = (latestBankSync ?? new Date()).toISOString().slice(0, 10);
+      baseCommandCentre.balances = {
+        inventoryValueCents: baseCommandCentre.balances?.inventoryValueCents ?? null,
+        cashBalanceCents: plaidCash.verifiedCashCents,
+        accountsPayableCents: baseCommandCentre.balances?.accountsPayableCents ?? null,
+      };
+      Object.assign(baseCommandCentre.metrics, { operating_cash: {
+        metricId: "operating_cash",
+        metricName: "Operating cash",
+        value: plaidCash.verifiedCashCents,
+        unit: "minor_currency",
+        currency: context.organization.currency,
+        actuality: "actual",
+        periodStart: balanceDate,
+        periodEnd: balanceDate,
+        comparisonPeriodStart: null,
+        comparisonPeriodEnd: null,
+        sourceSystem: "Plaid read-only bank feed",
+        sourceAccount: `${plaidCash.accountsUsed} organization-wide depository account${plaidCash.accountsUsed === 1 ? "" : "s"}`,
+        sourceRecords: plaidCash.accountsUsed,
+        sourceTimestamp: latestBankSync?.toISOString() ?? null,
+        calculationMethod: "Sum fresh base-currency depository available balances, falling back to current balance. Credit availability is excluded.",
+        calculationVersion: "plaid-cash.v1",
+        freshnessStatus: "current",
+        confidenceLevel: "high",
+        confidenceBasis: [
+          `${plaidCash.accountsUsed} healthy owner-authorized account${plaidCash.accountsUsed === 1 ? "" : "s"}`,
+          "Balances synchronized within 48 hours",
+          "Provider connection and token exchange verified",
+        ],
+        limitations: ["Organization-wide balance; no unverified location allocation", "Pending bank transactions do not post to the ledger automatically"],
+        generatedAt: new Date().toISOString(),
+      }});
+    }
     const comparisonDate = dateOffset(today.businessDate, -7);
     const comparisonRows = trustedRows.filter((row) => row.businessDate === comparisonDate);
     const comparisonBaseline = comparisonRows.reduce((total, row) => ({

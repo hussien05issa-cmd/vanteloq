@@ -224,7 +224,7 @@ export const roleTemplates: Record<string, readonly PermissionKey[]> = {
     (permission) =>
       permission.includes(".view") ||
       permission.startsWith("metrics.") ||
-      permission.startsWith("reports."),
+      (permission.startsWith("reports.") && permission !== "reports.export"),
   ),
 };
 
@@ -257,6 +257,7 @@ export async function effectivePermissions(
       and(
         eq(teamMembers.organizationId, context.organizationId),
         eq(teamMembers.userId, context.userId),
+        eq(teamMembers.status, "active"),
       ),
     )
     .limit(1);

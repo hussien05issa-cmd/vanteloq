@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import { readFile, readdir } from "node:fs/promises";
+import { createServer } from "node:http";
 import test from "node:test";
 import { Miniflare } from "miniflare";
 
@@ -8,11 +9,15 @@ const origin = "https://vanteloq.example";
 const context = { waitUntil() {}, passThroughOnException() {} };
 
 function ownerHeaders(write = false, email = "stripe-owner@example.invalid") {
+  const payload = Buffer.from(JSON.stringify({
+    email,
+    full_name: "Stripe Owner",
+    aal: "aal2",
+    session_id: `session:${email}`,
+  })).toString("base64url");
   const headers = {
     accept: "application/json",
-    "oai-authenticated-user-email": email,
-    "oai-authenticated-user-full-name": encodeURIComponent("Stripe Owner"),
-    "oai-authenticated-user-full-name-encoding": "percent-encoded-utf-8",
+    authorization: `Bearer test.${payload}.signature`,
   };
   if (write) {
     headers["content-type"] = "application/json";
@@ -61,6 +66,21 @@ async function applyMigrations(database) {
 }
 
 test("Stripe callback ownership and signed webhooks preserve unambiguous tenant lineage", async () => {
+  const authServer = createServer((request, response) => {
+    const token = request.headers.authorization?.replace(/^Bearer\s+/i, "") ?? "";
+    const payload = JSON.parse(Buffer.from(token.split(".")[1] ?? "", "base64url").toString("utf8"));
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({
+      id: `test-user:${payload.email}`,
+      email: payload.email,
+      email_confirmed_at: "2026-08-01T00:00:00.000Z",
+      user_metadata: { full_name: payload.full_name },
+    }));
+  });
+  await new Promise((resolve) => authServer.listen(0, "127.0.0.1", resolve));
+  const authAddress = authServer.address();
+  assert.ok(authAddress && typeof authAddress !== "string");
+  const authOrigin = `http://127.0.0.1:${authAddress.port}`;
   const miniflare = new Miniflare({
     modules: true,
     script: "export default { fetch() { return new Response('ok') } }",
@@ -80,6 +100,8 @@ test("Stripe callback ownership and signed webhooks preserve unambiguous tenant 
       STRIPE_SECRET_KEY: "sk_test_platform_12345678",
       STRIPE_REDIRECT_URI: `${origin}/api/v1/integrations/stripe/callback`,
       STRIPE_WEBHOOK_SECRET: "whsec_test_webhook_12345678",
+      SUPABASE_URL: authOrigin,
+      SUPABASE_PUBLISHABLE_KEY: "test-publishable-key",
     };
 
     const onboarding = await worker.fetch(new Request(`${origin}/api/v1/onboarding`, {
@@ -99,8 +121,9 @@ test("Stripe callback ownership and signed webhooks preserve unambiguous tenant 
 
     globalThis.fetch = async (input, init) => {
       const url = new URL(typeof input === "string" || input instanceof URL ? input : input.url);
+      if (url.origin === authOrigin) return originalFetch(input, init);
       if (url.origin === "https://connect.stripe.com" && url.pathname === "/oauth/token") {
-        return Response.json({ stripe_user_id: "acct_12345678", scope: "read_write", livemode: false, token_type: "bearer" });
+        return Response.json({ stripe_user_id: "acct_12345678", scope: "read_only", livemode: false, token_type: "bearer" });
       }
       if (url.origin === "https://api.stripe.com" && url.pathname === "/v1/account") {
         assert.equal(new Headers(init?.headers).get("stripe-account"), "acct_12345678");
@@ -232,6 +255,7 @@ test("Stripe callback ownership and signed webhooks preserve unambiguous tenant 
 
     const historicalConnectionId = crypto.randomUUID();
     const now = Date.now();
+    await database.prepare("DROP INDEX integration_connections_provider_external_account_unique").run();
     await database.prepare(`
       INSERT INTO integration_connections (
         id, organization_id, provider, source_namespace, status, external_account_ref,
@@ -256,6 +280,11 @@ test("Stripe callback ownership and signed webhooks preserve unambiguous tenant 
     ).first()).count, 1);
   } finally {
     globalThis.fetch = originalFetch;
-    await miniflare.dispose();
+    try {
+      await miniflare.dispose();
+    } finally {
+      authServer.closeAllConnections();
+      await new Promise((resolve, reject) => authServer.close((error) => error ? reject(error) : resolve()));
+    }
   }
 });

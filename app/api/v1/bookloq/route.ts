@@ -15,6 +15,7 @@ import { effectivePermissions, requirePermission } from "../../../../server/perm
 import { calculateCashFlowIntelligence, type CashFlowItem } from "../../../../domain/cash-flow-intelligence";
 import { authorizedLocationDataScope } from "../../../../server/location-access";
 import { requireAddon } from "../../../../server/entitlements/engine";
+import { calculateVerifiedPurchasingCapacity } from "../../../../domain/purchasing-intelligence";
 
 const readers = ["owner", "admin", "manager", "employee", "read_only"] as const;
 
@@ -151,7 +152,7 @@ export async function GET(request: Request) {
         b.last_sync_at lastSyncAt, b.last_reconciled_at lastReconciledAt, b.demo_record demoRecord,
         b.currency, b.provider,
         a.code accountCode, a.name accountName
-        FROM bank_accounts b JOIN financial_accounts a ON a.id = b.financial_account_id
+        FROM bank_accounts b JOIN financial_accounts a ON a.id = b.financial_account_id AND a.organization_id = b.organization_id
         WHERE b.organization_id = ?
           AND (b.provider <> 'plaid' OR EXISTS (
             SELECT 1 FROM integration_connections c
@@ -165,18 +166,18 @@ export async function GET(request: Request) {
         r.end_date endDate, r.opening_balance_cents openingBalanceCents,
         r.closing_balance_cents closingBalanceCents, r.book_balance_cents bookBalanceCents,
         r.difference_cents differenceCents, r.status, a.code accountCode, a.name accountName
-        FROM reconciliations r JOIN financial_accounts a ON a.id = r.account_id
+        FROM reconciliations r JOIN financial_accounts a ON a.id = r.account_id AND a.organization_id = r.organization_id
         WHERE r.organization_id = ? ORDER BY r.end_date DESC LIMIT 60`).bind(organizationId).all(),
       database.prepare(`SELECT b.id, b.bill_number billNumber, b.invoice_date invoiceDate, b.due_date dueDate,
         b.status, b.subtotal_cents subtotalCents, b.tax_cents taxCents, b.total_cents totalCents,
         b.paid_cents paidCents, b.currency, b.purchase_order_ref purchaseOrderRef,
         b.approval_status approvalStatus, b.demo_record demoRecord, c.name supplierName
-        FROM supplier_bills b JOIN bookloq_contacts c ON c.id = b.supplier_id
+        FROM supplier_bills b JOIN bookloq_contacts c ON c.id = b.supplier_id AND c.organization_id = b.organization_id
         WHERE b.organization_id = ? ORDER BY b.due_date LIMIT 200`).bind(organizationId).all(),
       database.prepare(`SELECT i.id, i.invoice_number invoiceNumber, i.invoice_date invoiceDate, i.due_date dueDate,
         i.status, i.subtotal_cents subtotalCents, i.tax_cents taxCents, i.total_cents totalCents,
         i.paid_cents paidCents, i.currency, i.demo_record demoRecord, c.name customerName
-        FROM customer_invoices i JOIN bookloq_contacts c ON c.id = i.customer_id
+        FROM customer_invoices i JOIN bookloq_contacts c ON c.id = i.customer_id AND c.organization_id = i.organization_id
         WHERE i.organization_id = ? ORDER BY i.due_date LIMIT 200`).bind(organizationId).all(),
       database.prepare(`SELECT id, contact_type contactType, name, email, phone, billing_address billingAddress,
         payment_terms_days paymentTermsDays, credit_limit_cents creditLimitCents, notes, active
@@ -239,7 +240,7 @@ export async function GET(request: Request) {
         b.location_ref locationRef, b.department_ref departmentRef, b.budget_cents budgetCents,
         b.committed_cents committedCents, b.forecast_cents forecastCents,
         a.code accountCode, a.name accountName, a.account_type accountType
-        FROM bookloq_budgets b JOIN financial_accounts a ON a.id = b.account_id
+        FROM bookloq_budgets b JOIN financial_accounts a ON a.id = b.account_id AND a.organization_id = b.organization_id
         WHERE b.organization_id = ?${budgetLocationClause} ORDER BY a.code`).bind(organizationId, ...locationBindings).all(),
       database.prepare(`SELECT action, resource_type resourceType, resource_id resourceId,
         outcome, details_json detailsJson, created_at createdAt
@@ -291,20 +292,57 @@ export async function GET(request: Request) {
       ? null
       : bookkeepingHealthScore({ unbalancedJournalCount, uncategorizedCount, unreconciledCount, openCriticalAlerts, missingReceiptCount, monthEndCompletionRate });
     const asOf = new Date().toISOString().slice(0, 10);
+    const integrationRows = rows(integrationsResult) as Array<{ provider: string; status: string; dataPromotionStatus: string; lastSuccessfulSyncAt: number | null }>;
+    const documentRows = rows(documentsResult) as Array<{ documentType: string; status: string; extractionStatus: string; createdAt: number }>;
+    const plaidConnection = integrationRows.find((item) => item.provider === "plaid");
+    const baseCurrency = (settings?.baseCurrency ?? context.organization.currency).toUpperCase();
+    const plaidBanks = banks as Array<{
+      provider: string;
+      accountType: "chequing" | "savings" | "credit_card" | "line_of_credit" | "merchant" | "loan";
+      currency: string;
+      connectionStatus: "manual" | "healthy" | "delayed" | "error";
+      availableBalanceCents: number | null;
+      liveBalanceCents: number | null;
+      lastSyncAt: number | null;
+    }>;
+    const verifiedBankCash = calculateVerifiedPurchasingCapacity({
+      connectionVerified: plaidConnection?.status === "connected" && plaidConnection.dataPromotionStatus === "approved",
+      nowMs: Date.now(),
+      maximumAgeMs: 48 * 60 * 60 * 1000,
+      baseCurrency,
+      cashSafetyReserveCents: 0,
+      outstandingBillsCents: 0,
+      openPurchaseCommitmentsCents: 0,
+      accounts: plaidBanks.filter((bank) => bank.provider === "plaid").map((bank) => ({
+        accountType: bank.accountType,
+        currency: bank.currency,
+        connectionStatus: bank.connectionStatus,
+        availableBalanceCents: bank.availableBalanceCents,
+        liveBalanceCents: bank.liveBalanceCents,
+        lastSyncAtMs: bank.lastSyncAt === null ? null : bank.lastSyncAt * 1_000,
+      })),
+    });
+    const verifiedBankCashCents = verifiedBankCash.status === "available" ? verifiedBankCash.verifiedCashCents : null;
+    const cashOpeningBalanceCents = verifiedBankCashCents ?? (settings ? statements.cashCents : null);
+    const cashSource = verifiedBankCashCents !== null
+      ? "plaid_available_balance"
+      : settings
+        ? "posted_ledger"
+        : "unavailable";
+    const cashLastSyncAt = plaidBanks.some((bank) => bank.provider === "plaid" && bank.lastSyncAt !== null)
+      ? Math.max(...plaidBanks.filter((bank) => bank.provider === "plaid" && bank.lastSyncAt !== null).map((bank) => Number(bank.lastSyncAt)))
+      : null;
     const cashFlowItems: CashFlowRecord[] = [
       ...bills.filter((bill) => !["paid", "reconciled", "void"].includes(bill.status)).map((bill) => ({ dueDate: bill.dueDate, amountCents: bill.totalCents - bill.paidCents, direction: "out" as const, certainty: "confirmed" as const })),
       ...invoices.filter((invoice) => !["paid", "written_off", "void"].includes(invoice.status)).map((invoice) => ({ dueDate: invoice.dueDate, amountCents: invoice.totalCents - invoice.paidCents, direction: "in" as const, certainty: "probable" as const })),
     ];
-    const forecasts = forecastCash(statements.cashCents, cashFlowItems, asOf);
+    const forecasts = forecastCash(cashOpeningBalanceCents ?? statements.cashCents, cashFlowItems, asOf);
     const intelligenceItems: CashFlowItem[] = [
       ...bills.filter((bill) => !["paid", "reconciled", "void"].includes(bill.status)).map((bill) => ({ id: bill.id, label: `${bill.supplierName} bill ${bill.billNumber}`, dueDate: bill.dueDate, amountCents: bill.totalCents - bill.paidCents, direction: "out" as const, certainty: "confirmed" as const, category: "supplier" as const })),
       ...invoices.filter((invoice) => !["paid", "written_off", "void"].includes(invoice.status)).map((invoice) => ({ id: invoice.id, label: `${invoice.customerName} invoice ${invoice.invoiceNumber}`, dueDate: invoice.dueDate, amountCents: invoice.totalCents - invoice.paidCents, direction: "in" as const, certainty: "probable" as const, category: "other" as const })),
     ];
-    const cashIntelligence = calculateCashFlowIntelligence({ openingCashCents: settings ? statements.cashCents : null, safetyThresholdCents: settings?.cashSafetyThresholdCents ?? 0, items: intelligenceItems, asOf });
+    const cashIntelligence = calculateCashFlowIntelligence({ openingCashCents: cashOpeningBalanceCents, safetyThresholdCents: settings?.cashSafetyThresholdCents ?? 0, items: intelligenceItems, asOf });
     const dueNext30Cents = cashFlowItems.filter((item) => item.direction === "out" && item.dueDate <= forecasts[1].endDate).reduce((sum, item) => sum + item.amountCents, 0);
-    const integrationRows = rows(integrationsResult) as Array<{ provider: string; status: string; dataPromotionStatus: string; lastSuccessfulSyncAt: number | null }>;
-    const documentRows = rows(documentsResult) as Array<{ documentType: string; status: string; extractionStatus: string; createdAt: number }>;
-    const plaidConnection = integrationRows.find((item) => item.provider === "plaid");
     const canReconcile = permissions.includes("finance.reconcile");
     const uiPermissions = effectiveBookLoQPermissions(context.role).filter((permission) => {
       if (permission === "view_banking") return access.bankBalances;
@@ -316,7 +354,6 @@ export async function GET(request: Request) {
       if (permission === "manage_integrations") return permissions.includes("finance.connections");
       return true;
     });
-    const baseCurrency = settings?.baseCurrency ?? context.organization.currency;
     const dataMode = settings?.dataMode ?? "live";
     const nowMs = Date.now();
     const cashAccountTypes = new Set(["chequing", "savings", "merchant"]);
@@ -363,6 +400,9 @@ export async function GET(request: Request) {
       netSalesTaxCents: null,
     };
 
+    const visibleVerifiedBankCashCents = access.bankBalances ? verifiedBankCashCents : null;
+    const summaryCashCents = visibleVerifiedBankCashCents ?? (ledgerAvailable ? statements.cashCents : null);
+
     return jsonResponse({
       bookloq: {
         configured: ledgerAvailable,
@@ -371,10 +411,13 @@ export async function GET(request: Request) {
         permissions: uiPermissions,
         organization: { name: context.organization.businessName, currency: settings?.baseCurrency ?? context.organization.currency },
         summary: {
-          currentCashCents: ledgerAvailable ? statements.cashCents : null,
-          availableCashCents: ledgerAvailable ? statements.cashCents - dueNext30Cents : null,
+          currentCashCents: summaryCashCents,
+          availableCashCents: cashProjectionAllowed && cashOpeningBalanceCents !== null ? cashOpeningBalanceCents - dueNext30Cents : null,
           bankBalanceCents,
           bookBalanceCents: ledgerAvailable ? statements.cashCents : null,
+          cashSource: visibleVerifiedBankCashCents !== null ? cashSource : ledgerAvailable ? "posted_ledger" : "unavailable",
+          cashLastSyncAt: access.bankBalances ? cashLastSyncAt : null,
+          bankCashStatus: access.bankBalances ? verifiedBankCash.status : "unavailable",
           revenueCents: ledgerAvailable ? statements.profitAndLoss.revenueCents : null,
           grossProfitCents: ledgerAvailable ? statements.profitAndLoss.grossProfitCents : null,
           grossMarginBasisPoints: ledgerAvailable && statements.profitAndLoss.revenueCents ? Math.round(statements.profitAndLoss.grossProfitCents * 10_000 / statements.profitAndLoss.revenueCents) : null,

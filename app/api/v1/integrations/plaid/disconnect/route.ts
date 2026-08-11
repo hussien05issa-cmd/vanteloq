@@ -5,6 +5,7 @@ import { disconnectPlaid, PLAID_PROVIDER, plaidReadiness } from "../../../../../
 import { requirePermission } from "../../../../../../server/permissions";
 import { requireAddon } from "../../../../../../server/entitlements/engine";
 import { requireOrganizationWideLocationAccess } from "../../../../../../server/location-access";
+import { withdrawPlaidConsents } from "../../../../../../server/privacy";
 
 export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
@@ -16,6 +17,7 @@ export async function POST(request: Request) {
     await enforceRateLimit("plaid:disconnect", context.userId, 6, 3_600);
     try {
       await disconnectPlaid(context.organizationId);
+      await withdrawPlaidConsents(context.organizationId, context.userId);
       await recordAudit({
         request,
         requestId,
@@ -29,6 +31,7 @@ export async function POST(request: Request) {
           mode: plaidReadiness().mode,
           providerAuthorizationRevoked: true,
           localCredentialsDeleted: true,
+          consentWithdrawn: true,
           historyRetained: true,
           dataPromotionEnabled: false,
         },
