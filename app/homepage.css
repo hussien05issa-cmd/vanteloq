@@ -622,7 +622,15 @@
   .public-nav { height: 70px; padding-inline: 14px; gap: 8px; }
   .public-brand { font-size: 16px; }
   .public-brand small { display: none; }
-  .public-nav-actions .nav-login { display: none; }
+  .public-nav-actions { gap: 4px; }
+  .public-nav-actions .nav-login {
+    display: inline-flex;
+    min-height: 42px;
+    align-items: center;
+    padding: 0 9px;
+    white-space: nowrap;
+    font-size: 12px;
+  }
   .public-nav-actions button:last-child { min-height: 42px; padding: 0 11px; font-size: 12px; }
   .nav-menu-toggle { padding-inline: 10px; }
   .home-hero,
@@ -696,8 +704,16 @@
   .home-footer-brand { grid-column: 1 / -1; }
 }
 
-@media (max-width: 390px) {
+@media (max-width: 480px) {
   .public-brand > span { display: none; }
+}
+
+@media (max-width: 390px) {
+  .public-nav { padding-inline: 10px; gap: 5px; }
+  .public-nav-actions { gap: 2px; }
+  .public-nav-actions .nav-login { padding-inline: 7px; }
+  .public-nav-actions button:last-child { padding-inline: 8px; }
+  .nav-menu-toggle { padding-inline: 8px; }
   .home-product-family-grid article { grid-template-columns: 1fr; }
   .home-footer { grid-template-columns: 1fr; }
   .home-footer-brand,

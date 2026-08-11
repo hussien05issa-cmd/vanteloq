@@ -68,6 +68,8 @@ test("homepage preserves responsive and keyboard interaction safeguards", async 
   assert.match(css, /@media \(max-width: 390px\)/);
   assert.match(css, /:focus-visible/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
+  assert.doesNotMatch(css, /\.public-nav-actions\s+\.nav-login\s*\{\s*display:\s*none/);
+  assert.match(css, /\.public-nav-actions\s+\.nav-login\s*\{[\s\S]*?display:\s*inline-flex/);
 });
 
 test("the above-the-fold product image is compact and dimensioned", async () => {
