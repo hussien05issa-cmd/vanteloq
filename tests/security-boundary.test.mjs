@@ -314,7 +314,9 @@ test("R-Series shop mutations share the sync lease and revoke pending publicatio
   );
   assert.match(source, /acquireIntegrationSyncLease/);
   assert.match(source, /releaseIntegrationSyncLease/);
-  assert.match(source, /connection\.dataPromotionStatus === "approved"\s*\|\|\s*connection\.promotionAuthorizedAt !== null/);
+  assert.match(source, /or\(\s*eq\(integrationConnections\.dataPromotionStatus, "approved"\),\s*isNotNull\(integrationConnections\.promotionAuthorizedAt\)/);
+  assert.match(source, /integrationConnections\.syncLeaseOwner/);
+  assert.match(source, /integrationConnections\.syncVersion/);
 });
 
 test("state-changing onboarding rejects a cross-site origin before data access", async () => {
