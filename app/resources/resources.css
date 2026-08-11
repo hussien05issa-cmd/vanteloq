@@ -176,14 +176,15 @@
 .article-toc ol { margin: 17px 0 0; padding: 0; list-style: none; }
 .article-toc li { margin-top: 10px; color: #506079; font-size: 12px; line-height: 1.45; }
 .article-body { min-width: 0; color: #27364c; font-size: 17px; line-height: 1.82; }
-.article-body > section { position: relative; scroll-margin-top: 110px; margin-top: 58px; }
+.resource-site .article-body > section { position: relative; display: block; grid-template-columns: none; gap: normal; scroll-margin-top: 110px; margin-top: 58px; padding: 0; border-bottom: 0; }
+.resource-site .article-body > section > * { grid-column: auto; }
 .article-body > section:not(.quick-answer, .article-sources)::before { position: absolute; top: 5px; left: -30px; width: 7px; height: 7px; border-radius: 50%; content: ""; background: #6fa5e6; box-shadow: 0 0 0 6px #eef5fd; }
 .article-body > section:first-child { margin-top: 0; }
 .article-body h2 { margin: 0 0 18px; color: var(--vql-ink); font-size: 31px; line-height: 1.18; letter-spacing: -.03em; }
 .article-body p { margin: 18px 0 0; }
 .article-body ul, .article-body ol { margin: 20px 0 0; padding-left: 24px; }
 .article-body li { margin: 10px 0; padding-left: 5px; }
-.quick-answer { padding: 30px; border: 1px solid #b9cde7; border-left: 5px solid var(--vql-blue-700); border-radius: 7px; background: #f4f8fd; }
+.resource-site .article-body > section.quick-answer { padding: 30px; border: 1px solid #b9cde7; border-left: 5px solid var(--vql-blue-700); border-radius: 7px; background: #f4f8fd; }
 .quick-answer h2 { font-size: 25px; }
 .quick-answer p:last-child { margin-top: 10px; }
 .formula-card { margin-top: 24px; padding: 24px; border: 1px solid #bdd0e8; border-radius: 7px; background: #f6f9fd; }
@@ -199,7 +200,7 @@
 .article-table-wrap :is(th, td) { padding: 14px 16px; border-top: 1px solid var(--vql-line-soft); text-align: left; vertical-align: top; }
 .article-table-wrap thead th { color: #40516a; background: #fafbfd; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
 .article-table-wrap tbody th { color: var(--vql-ink); font-weight: 700; }
-.article-sources { padding-top: 56px; border-top: 1px solid var(--vql-line); }
+.resource-site .article-body > section.article-sources { padding-top: 56px; border-top: 1px solid var(--vql-line); }
 .article-sources > p { color: var(--vql-muted); font-size: 14px; }
 .article-sources ul { padding: 0; list-style: none; }
 .article-sources li { display: flex; justify-content: space-between; gap: 24px; padding: 14px 0; border-bottom: 1px solid var(--vql-line-soft); }
@@ -259,7 +260,7 @@
   .article-body { font-size: 16px; }
   .article-body h2 { font-size: 28px; }
   .article-body > section:not(.quick-answer, .article-sources)::before { display: none; }
-  .quick-answer { padding: 23px; }
+  .resource-site .article-body > section.quick-answer { padding: 23px; }
   .article-sources li { display: block; }
   .article-sources span { display: block; margin-top: 3px; text-align: left; }
 }

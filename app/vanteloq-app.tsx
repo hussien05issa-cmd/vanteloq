@@ -13,7 +13,7 @@ import {
   type IntegrationCatalogEntry,
 } from "./integration-catalog";
 import ProductBrandLogo from "./product-brand-logo";
-import PlaidLinkButton from "./plaid-link-button";
+import PlaidLinkButton, { PLAID_REDIRECT_STORAGE_KEY } from "./plaid-link-button";
 import { apiFetch, signOut } from "./supabase-browser";
 import {
   BusinessTrendChart,
@@ -728,19 +728,28 @@ export default function VanteloqApp({
   useEffect(() => {
     const parameters = new URLSearchParams(window.location.search);
     const integration = parameters.get("integration");
-    if (integration !== "lightspeed" && integration !== "lightspeed-r") return;
+    if (integration !== "lightspeed" && integration !== "lightspeed-r" && integration !== "stripe" && integration !== "plaid") return;
     const timer = window.setTimeout(() => {
       setView("Integrations");
       const state = parameters.get("connection");
-      setNotice(
-        state === "connected"
-          ? integration === "lightspeed-r"
-            ? "Lightspeed R-Series is connected. Live sales import is starting."
+      if (integration === "plaid") {
+        if (parameters.has("oauth_state_id")) {
+          sessionStorage.setItem(PLAID_REDIRECT_STORAGE_KEY, window.location.href);
+          setNotice("Finish the secure bank connection in Plaid Link");
+        } else {
+          setNotice("Open the Plaid card to continue the bank connection");
+        }
+        return;
+      }
+      setNotice(state === "connected"
+        ? integration === "lightspeed-r"
+          ? "Lightspeed R-Series is connected. Live sales import is starting."
+          : integration === "stripe"
+            ? "Stripe is connected in read-only staging mode"
             : "Lightspeed X-Series is verified in read-only staging mode"
-          : state === "declined"
-            ? `${integration === "lightspeed-r" ? "R-Series" : "X-Series"} authorization was declined`
-            : `${integration === "lightspeed-r" ? "R-Series" : "X-Series"} authorization needs to be restarted`,
-      );
+        : state === "declined"
+          ? `${integration === "stripe" ? "Stripe" : integration === "lightspeed-r" ? "R-Series" : "X-Series"} authorization was declined`
+          : `${integration === "stripe" ? "Stripe" : integration === "lightspeed-r" ? "R-Series" : "X-Series"} authorization needs to be restarted`);
       window.history.replaceState({}, "", window.location.pathname);
     }, 0);
     return () => window.clearTimeout(timer);
@@ -2142,14 +2151,16 @@ type IntegrationConnection = IntegrationCatalogEntry & {
   lastErrorCode: string | null;
   connectedAt: string | null;
   dataPromotionStatus: string;
+  canManage: boolean;
   providerReadiness: null | {
-    adapterBuilt: boolean;
+    adapterBuilt?: boolean;
     credentialsConfigured: boolean;
     missingConfiguration: string[];
-    apiVersion: string;
-    scopes: string[];
+    apiVersion?: string;
+    scopes?: string[];
     mode: string;
-    dataPromotionEnabled: boolean;
+    dataPromotionEnabled?: boolean;
+    liveDataEligible?: boolean;
   };
   canonicalCoverage: CanonicalCommerceCoverage;
   featureCoverage: ProviderFeatureCoverage[];
@@ -2370,6 +2381,7 @@ function DataHub({
         lastErrorCode: null,
         connectedAt: null,
         dataPromotionStatus: "blocked",
+        canManage: false,
         providerReadiness: null,
         canonicalCoverage: emptyCommerceCoverage,
         featureCoverage: buildProviderFeatureCoverage(provider.id, emptyCommerceCoverage),
@@ -2480,14 +2492,16 @@ function DataHub({
               const isLightspeed = provider.id === "lightspeed" || provider.id === "lightspeed-r";
               const isStripe = provider.id === "stripe";
               const isPlaid = provider.id === "plaid";
+              const repairRequired = isPlaid && provider.status === "error" && Boolean(provider.maskedAccountRef);
+              const canManageProvider = provider.canManage ?? canManage;
               const isComingSoon = provider.id === "google" || provider.id === "meta";
               const actionableProvider = provider.id as "lightspeed" | "lightspeed-r" | "stripe";
               const providerAction = providerActions[provider.id] ?? "";
               const configured = provider.providerReadiness?.credentialsConfigured === true;
-              const disabledReason = !canManage
+              const disabledReason = !canManageProvider
                 ? "Your role can view connection status but cannot manage integrations."
                 : !configured
-                  ? `Add the ${isPlaid ? "Plaid client ID, secret, webhook URL and encryption key" : isStripe ? "Stripe Connect credentials and webhook secret" : provider.id === "lightspeed-r" ? "R-Series OAuth client ID and secret" : "X-Series OAuth client ID and secret"} to Vanteloq's hosted secrets first.`
+                  ? `Add the ${isPlaid ? "Plaid client ID, environment secret, approved redirect and webhook URLs, and encryption key" : isStripe ? "Stripe Connect credentials and webhook secret" : provider.id === "lightspeed-r" ? "R-Series OAuth client ID and secret" : "X-Series OAuth client ID and secret"} to Vanteloq's hosted secrets first.`
                   : "";
               return (
               <article className="integration-card" key={provider.id}>
@@ -2501,11 +2515,12 @@ function DataHub({
                 <h3>{provider.name}</h3>
                 <p>{provider.activationRequirement}</p>
                 {provider.category === "Point of sale" && <details className="integration-feature-checklist"><summary>Feature and data checklist</summary>{provider.featureCoverage.map((feature) => <div key={feature.id}><span className={`feature-state ${feature.status === "ready" ? "available" : "needs-data"}`}>{feature.status === "ready" ? "Available" : "Needs data"}</span><p><b>{feature.label}</b><small>{feature.insight}</small><em>{feature.status === "ready" ? `Verified: ${feature.dataUsed.join(", ")}` : `Missing: ${feature.dataNeeded.join(", ")}`}</em></p></div>)}</details>}
-                {connected && provider.maskedAccountRef && (
+                {(connected || repairRequired) && provider.maskedAccountRef && (
                   <div className="connected-source" role="status">
-                    <span>Connected source</span>
+                    <span>{repairRequired ? "Connection needs attention" : "Connected source"}</span>
                     <b>{provider.externalAccountName || "Verified provider account"}</b>
                     <small>Protected reference {provider.maskedAccountRef}</small>
+                    {provider.lastSuccessfulSyncAt && <small>Last synchronized {new Date(provider.lastSuccessfulSyncAt).toLocaleString("en-CA")}</small>}
                   </div>
                 )}
                 {isLightspeed && !configured && provider.providerReadiness && (
@@ -2523,8 +2538,10 @@ function DataHub({
                 )}
                 <div className="integration-card-footer">
                   <div>
-                    <span className={`status ${connected ? "" : "planned"}`}>
-                      {connected
+                    <span className={`status ${connected ? "" : repairRequired ? "repair" : "planned"}`}>
+                      {repairRequired
+                        ? "Repair required"
+                        : connected
                         ? "Read-only connected"
                         : isComingSoon
                           ? "Coming soon!"
@@ -2535,6 +2552,8 @@ function DataHub({
                     <span className="connection-lock">
                       {connectionsLoading
                         ? "Checking…"
+                        : repairRequired
+                        ? "Re-authentication required · sync paused"
                         : connected
                         ? provider.id === "lightspeed-r" && provider.dataPromotionStatus === "approved"
                           ? "Sales, catalog, customers and suppliers imported"
@@ -2544,7 +2563,7 @@ function DataHub({
                             : "Sync disabled"}
                     </span>
                   </div>
-                  {isPlaid ? <PlaidLinkButton connected={connected} configured={configured} canManage={canManage} onChanged={loadConnections} showNotice={showNotice} /> : (isLightspeed || isStripe) && <div className="provider-actions">
+                  {isPlaid ? <PlaidLinkButton connected={connected} repairRequired={repairRequired} configured={configured} canManage={canManageProvider} onChanged={loadConnections} showNotice={showNotice} /> : (isLightspeed || isStripe) && <div className="provider-actions">
                     {!connected ? <button
                       onClick={() => void connectProvider(actionableProvider)}
                       disabled={Boolean(disabledReason) || Boolean(providerAction)}
@@ -2552,26 +2571,26 @@ function DataHub({
                     >{providerAction === "authorize" ? "Opening…" : "Connect"}</button> : <>
                       <button
                         onClick={() => void stageProviderSample(actionableProvider)}
-                        disabled={!canManage || Boolean(providerAction)}
-                        title={!canManage ? "Your role cannot run provider synchronization." : provider.id === "lightspeed-r" ? "Import current R-Series sales, catalog, inventory, customers and suppliers into Vanteloq." : "Read and review a limited sample without changing dashboard metrics."}
+                        disabled={!canManageProvider || Boolean(providerAction)}
+                        title={!canManageProvider ? "Your role cannot run provider synchronization." : provider.id === "lightspeed-r" ? "Import current R-Series sales, catalog, inventory, customers and suppliers into Vanteloq." : "Read and review a limited sample without changing dashboard metrics."}
                       >{providerAction === (provider.id === "lightspeed-r" ? "sync" : "sample") ? (provider.id === "lightspeed-r" ? "Syncing…" : "Staging…") : provider.id === "lightspeed-r" ? "Sync data" : "Stage sample"}</button>
                       {isLightspeed && <button
                         className="secondary-provider-action"
                         onClick={() => void loadLightspeedLocations(actionableProvider as "lightspeed" | "lightspeed-r")}
-                        disabled={!canManage || Boolean(providerAction)}
-                        title={!canManage ? "Your role cannot manage location mappings." : `Discover and map Lightspeed ${provider.id === "lightspeed-r" ? "shops" : "outlets"} before reconciliation.`}
+                        disabled={!canManageProvider || Boolean(providerAction)}
+                        title={!canManageProvider ? "Your role cannot manage location mappings." : `Discover and map Lightspeed ${provider.id === "lightspeed-r" ? "shops" : "outlets"} before reconciliation.`}
                       >{providerAction === "locations" ? "Loading…" : `Map ${provider.id === "lightspeed-r" ? "shops" : "outlets"}`}</button>}
                       {provider.id === "lightspeed-r" && <button
                         className="secondary-provider-action"
                         onClick={() => void connectProvider("lightspeed-r")}
-                        disabled={!canManage || Boolean(providerAction)}
+                        disabled={!canManageProvider || Boolean(providerAction)}
                         title="Authorize a different R-Series account without deleting the current connection first."
                       >{providerAction === "authorize" ? "Opening…" : "Change account"}</button>}
                       <button
                         className="danger-text"
                         onClick={() => void disconnectProvider(actionableProvider)}
-                        disabled={!canManage || Boolean(providerAction)}
-                        title={!canManage ? "Your role cannot disconnect integrations." : isStripe ? "Revoke Stripe authorization while retaining staged audit history." : "Delete local encrypted tokens while retaining staged audit history."}
+                        disabled={!canManageProvider || Boolean(providerAction)}
+                        title={!canManageProvider ? "Your role cannot disconnect integrations." : isStripe ? "Revoke Stripe authorization while retaining staged audit history." : "Delete local encrypted tokens while retaining staged audit history."}
                       >Disconnect</button>
                     </>}
                   </div>}
@@ -2652,7 +2671,9 @@ function lightspeedConfigurationLabel(value: string) {
     INTEGRATION_ENCRYPTION_KEY: "Encrypted token storage key",
     PLAID_CLIENT_ID: "Plaid client ID",
     PLAID_SECRET: "Plaid secret",
+    PLAID_ENV: "Plaid environment",
     PLAID_WEBHOOK_URL: "Verified Plaid webhook URL",
+    PLAID_REDIRECT_URI: "Approved Plaid redirect URL",
   };
   return labels[value] ?? "Provider configuration";
 }

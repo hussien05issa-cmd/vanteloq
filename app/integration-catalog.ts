@@ -170,7 +170,7 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
     category: "Banking",
     availability: "credentials_required",
     activationRequirement:
-      "The BookLoQ bank-feed foundation uses server-created Link sessions, encrypted tokens, cursor sync and reviewed transactions. Production still requires Plaid approval, Canadian institution testing and hosted credentials.",
+      "The BookLoQ bank-feed adapter uses resumable Plaid Link, encrypted tokens, signed webhooks, repair mode, cursor sync, balances and reviewed transactions. Production access still requires Plaid approval and hosted credentials.",
   },
   {
     id: "manual-bank",
@@ -218,19 +218,19 @@ export const preSyncControls = [
   {
     id: "authorization",
     label: "Provider authorization",
-    detail: "Lightspeed X-Series and R-Series use scoped OAuth, one-time state and encrypted rotating credentials; providers without an adapter remain disabled.",
+    detail: "Lightspeed and Stripe use state-bound OAuth; Plaid uses short-lived Link sessions. Provider credentials stay server-side and encrypted where stored.",
     status: "verified",
   },
   {
     id: "webhooks",
     label: "Change-signal security",
-    detail: "X-Series verifies signed webhooks and rejects replays; verified polling remains authoritative while durable delivery recovery is gated.",
+    detail: "Built Lightspeed, Stripe and Plaid endpoints verify signed events, reject oversized payloads and preserve idempotent webhook receipts.",
     status: "verified",
   },
   {
     id: "normalization",
     label: "Backfill and normalization",
-    detail: "Both Lightspeed adapters use bounded pagination, mapping, retries and resumable cursors; R-Series additionally promotes verified sales and inventory into the operating model.",
+    detail: "Lightspeed, Stripe and Plaid adapters use bounded pagination, mapping, retries or resumable cursors; only reconciled records can reach dependent metrics.",
     status: "verified",
   },
   {

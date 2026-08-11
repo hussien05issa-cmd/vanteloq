@@ -1,6 +1,16 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { normalizePlaidTransaction, plaidReadiness } from "../server/integrations/plaid.ts";
+import { createPlaidLinkToken, normalizePlaidTransaction, plaidReadiness } from "../server/integrations/plaid.ts";
+
+(globalThis as typeof globalThis & { __vanteloqEnv?: Record<string, string> }).__vanteloqEnv = {
+  PLAID_CLIENT_ID: "plaid-client-test",
+  PLAID_SECRET: "plaid-secret-test",
+  PLAID_ENV: "sandbox",
+  PLAID_WEBHOOK_URL: "https://vanteloq.example/api/v1/integrations/plaid/webhook",
+  PLAID_REDIRECT_URI: "https://vanteloq.example/?integration=plaid",
+  INTEGRATION_ENCRYPTION_KEY: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+};
 
 test("Plaid readiness fails closed when any hosted secret or webhook setting is missing", () => {
   const readiness = plaidReadiness({
@@ -8,10 +18,29 @@ test("Plaid readiness fails closed when any hosted secret or webhook setting is 
     PLAID_SECRET: "secret",
     PLAID_ENV: "sandbox",
     PLAID_WEBHOOK_URL: "",
+    PLAID_REDIRECT_URI: "https://vanteloq.example/?integration=plaid",
     INTEGRATION_ENCRYPTION_KEY: "key",
   });
   assert.equal(readiness.credentialsConfigured, false);
   assert.ok(readiness.missingConfiguration.includes("PLAID_WEBHOOK_URL"));
+});
+
+test("Plaid Link uses a pseudonymous user reference and only the required Canadian transaction product", async () => {
+  let target = "";
+  let payload: Record<string, unknown> = {};
+  const fetcher = async (input: RequestInfo | URL, init?: RequestInit) => {
+    target = String(input);
+    payload = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    return Response.json({ link_token: "link-sandbox-test", expiration: "2026-08-11T12:00:00Z" });
+  };
+  const result = await createPlaidLinkToken("user-sensitive", "org-sensitive", "connect", fetcher as typeof fetch);
+  assert.equal(result.link_token, "link-sandbox-test");
+  assert.equal(target, "https://sandbox.plaid.com/link/token/create");
+  assert.deepEqual(payload.products, ["transactions"]);
+  assert.deepEqual(payload.country_codes, ["CA"]);
+  assert.equal(payload.redirect_uri, "https://vanteloq.example/?integration=plaid");
+  assert.equal(payload.webhook, "https://vanteloq.example/api/v1/integrations/plaid/webhook");
+  assert.doesNotMatch(JSON.stringify(payload), /user-sensitive|org-sensitive/);
 });
 
 test("Plaid transaction normalization preserves bank-feed uncertainty", () => {
@@ -30,4 +59,12 @@ test("Plaid transaction normalization preserves bank-feed uncertainty", () => {
   assert.equal(pending.sourceState, "pending");
   assert.equal(pending.categorizationStatus, "missing");
   assert.equal(pending.confidenceBasisPoints, 0);
+});
+
+test("Plaid creates financial accounts before advancing the first transaction cursor", async () => {
+  const source = await readFile(new URL("../server/integrations/plaid.ts", import.meta.url), "utf8");
+  const syncStart = source.indexOf("export async function syncPlaidTransactions");
+  const accountSync = source.indexOf("const accountsImported = await syncAccounts", syncStart);
+  const transactionLoop = source.indexOf("while (hasMore", syncStart);
+  assert.ok(syncStart >= 0 && accountSync > syncStart && transactionLoop > accountSync);
 });

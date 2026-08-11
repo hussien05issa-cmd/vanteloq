@@ -37,9 +37,10 @@ test("homepage keeps every crawlable internal link on a working route", async ()
 test("homepage copy stays within the verified product boundary", async () => {
   const html = await (await fetchRoute("/")).text();
   assert.doesNotMatch(html, /Start (?:Your )?Free Trial/i);
-  for (const provider of ["Square", "Moneris", "QuickBooks", "Xero", "Plaid"]) {
+  for (const provider of ["Square", "Moneris", "QuickBooks", "Xero"]) {
     assert.match(html, new RegExp(`<strong>${provider}</strong>[\\s\\S]{0,180}<small>PLANNED</small>`));
   }
+  assert.match(html, /<strong>Plaid<\/strong>[\s\S]{0,220}<small>ADAPTER BUILT<\/small>/);
   for (const provider of ["Google", "Meta"]) {
     assert.match(html, new RegExp(`<strong>${provider}</strong>[\\s\\S]{0,220}<small>COMING SOON!</small>`));
   }

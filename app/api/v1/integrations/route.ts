@@ -88,8 +88,12 @@ export async function GET(request: Request) {
       canManage: permissions.includes("integrations.manage"),
       integrations: integrationCatalog.map((provider) => {
         const canonicalCoverage = coverageByProvider.get(provider.id)!;
+        const canManageProvider = provider.id === "plaid"
+          ? permissions.includes("finance.connections")
+          : permissions.includes("integrations.manage");
         return ({
         ...provider,
+        canManage: canManageProvider,
         status: byProvider.get(provider.id)?.status ?? "not_connected",
         maskedAccountRef: maskedAccountRef(byProvider.get(provider.id)?.externalAccountRef),
         externalAccountName: byProvider.get(provider.id)?.externalAccountName ?? null,

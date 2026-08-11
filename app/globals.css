@@ -113,7 +113,10 @@
 /* Integration actions stay inside the card rhythm and never look like detached controls. */
 .integration-card-footer{display:flex;flex-direction:column;align-items:stretch!important;gap:11px}
 .integration-card-labels{display:flex;align-items:flex-end;flex-direction:column;gap:6px}.integration-coming-soon{border:1px solid #bfd9f6;border-radius:999px;background:#e7f2ff;color:#105eb7;padding:4px 7px;font-size:7px;font-weight:850;letter-spacing:.35px;text-transform:uppercase}.integration-card-labels+.integration-coming-soon{white-space:nowrap}
-.integration-card-footer>div:first-child{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.integration-card-footer>div:first-child{display:flex;min-width:0;align-items:flex-start;flex-direction:column;justify-content:flex-start;gap:7px}
+.integration-card-footer .connection-lock{max-width:100%;line-height:1.45;overflow-wrap:anywhere}
+.status.repair{color:#8a5512;background:#fff1d8}
+.connected-source small+small{margin-top:4px}
 .provider-actions{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
 .provider-actions button{border:1px solid #ccd9e7;border-radius:8px;background:#155ba8;color:#fff;padding:8px 11px;font-size:8px;font-weight:760;cursor:pointer;transition:background .16s ease,border-color .16s ease,opacity .16s ease}
 .provider-actions button:hover:not(:disabled){background:#104d90;border-color:#104d90}
