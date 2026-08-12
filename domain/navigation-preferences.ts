@@ -10,10 +10,7 @@ export const NAVIGATION_VIEW_IDS = [
   "Suppliers",
   "Purchase Orders",
   "Operations",
-  "Profit",
-  "Cash",
   "BookLoQ",
-  "Bookkeeping",
   "Reports",
   "Marketing",
   "Communications",
@@ -23,7 +20,6 @@ export const NAVIGATION_VIEW_IDS = [
   "Locations",
   "Decision Journal",
   "Scenario Planner",
-  "Industry Modules",
   "Integrations",
   "Settings",
 ] as const;

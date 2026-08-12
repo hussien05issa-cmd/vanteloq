@@ -226,10 +226,11 @@
   display: grid;
   grid-template-columns: minmax(260px, .78fr) minmax(0, 1.22fr);
   gap: 60px;
-  align-items: center;
+  align-items: start;
   padding-block: 78px;
   border-bottom: 1px solid #e5eaf0;
 }
+.home-connection-intro { position: sticky; top: 106px; display: grid; gap: 28px; min-width: 0; }
 .home-connections .home-section-heading h2 { font-size: clamp(30px, 3vw, 40px); }
 .home-connection-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .home-connection-grid article {
@@ -266,6 +267,32 @@
 .home-connection-grid article > div { min-width: 0; display: flex; flex-direction: column; gap: 5px; }
 .home-connection-grid strong { font-size: 14px; }
 .home-connection-grid article > div span { color: #627187; font-size: 11px; line-height: 1.4; }
+
+/* Responsive motion reel: an accessible, controllable product tour using a
+   generated high-resolution master plate rather than floating callout bubbles. */
+.feature-reel { overflow: hidden; border: 1px solid #b8c9dd; border-radius: 16px; background: #071f3d; color: #fff; box-shadow: 0 24px 58px rgba(7,31,61,.16); }
+.feature-reel > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; padding: 18px 18px 15px; border-bottom: 1px solid rgba(255,255,255,.12); }
+.feature-reel > header p { margin: 0 0 5px; color: #79b8ff; font-size: 9px; font-weight: 850; letter-spacing: .13em; }
+.feature-reel > header h3 { margin: 0; max-width: 330px; font-size: 18px; line-height: 1.24; letter-spacing: -.025em; }
+.feature-reel-play { display: inline-flex; min-width: 82px; min-height: 38px; align-items: center; justify-content: center; gap: 7px; border: 1px solid rgba(255,255,255,.24); border-radius: 7px; background: rgba(255,255,255,.07); color: #fff; font-size: 11px; font-weight: 750; cursor: pointer; }
+.feature-reel-play:hover { background: rgba(255,255,255,.13); }
+.feature-reel figure { margin: 0; overflow: hidden; background: #eaf1f8; }
+.feature-reel figure > img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; transform-origin: center; transition: transform .9s cubic-bezier(.22,.61,.36,1), object-position .9s ease; animation: reelDrift 4.6s ease-in-out infinite; }
+.feature-reel.scene-commerce figure > img { object-position: 50% 48%; transform: scale(1.035); }
+.feature-reel.scene-inventory figure > img { object-position: 72% 48%; transform: scale(1.16); }
+.feature-reel.scene-bookloq figure > img { object-position: 48% 76%; transform: scale(1.13); }
+.feature-reel.scene-reports figure > img { object-position: 72% 23%; transform: scale(1.15); }
+.feature-reel figcaption { min-height: 130px; display: grid; align-content: center; gap: 5px; padding: 17px 18px 19px; border-top: 1px solid rgba(255,255,255,.12); background: linear-gradient(112deg,#0a284a,#0e3762); }
+.feature-reel figcaption small { color: #6fb3ff; font-size: 9px; font-weight: 850; letter-spacing: .11em; }
+.feature-reel figcaption strong { font-size: 16px; line-height: 1.3; }
+.feature-reel figcaption span { color: #c1d2e4; font-size: 12px; line-height: 1.5; }
+.feature-reel > nav { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid rgba(255,255,255,.12); }
+.feature-reel > nav button { min-height: 52px; display: flex; align-items: center; gap: 8px; padding: 9px 12px; border: 0; border-right: 1px solid rgba(255,255,255,.1); border-bottom: 1px solid rgba(255,255,255,.1); background: transparent; color: #aebfd1; text-align: left; font-size: 10px; cursor: pointer; }
+.feature-reel > nav button:nth-child(even) { border-right: 0; }
+.feature-reel > nav button:nth-child(n+3) { border-bottom: 0; }
+.feature-reel > nav button span { color: #68aef7; font: 750 9px/1 var(--font-geist-mono), monospace; }
+.feature-reel > nav button.active { background: #0f3b69; color: #fff; box-shadow: inset 3px 0 #3d8cff; }
+@keyframes reelDrift { 0%,100% { filter: saturate(.96); } 50% { filter: saturate(1.08) contrast(1.02); } }
 
 .home-problem { padding-block: 108px; background: #f4f7fb; }
 .home-problem-intro { display: grid; grid-template-columns: minmax(0, .82fr) minmax(360px, 1.18fr); gap: 64px; align-items: center; }
@@ -603,6 +630,7 @@
   .home-problem-visual { max-width: 760px; }
   .home-hero { min-height: 0; gap: 46px; padding-block: 62px 72px; }
   .home-connections { gap: 34px; }
+  .home-connection-intro { position: static; }
   .home-connection-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .home-platform { gap: 54px; }
   .home-product-family-grid { grid-template-columns: 1fr; }
@@ -673,6 +701,9 @@
   .home-resource-grid,
   .home-security-grid { grid-template-columns: 1fr; }
   .home-connection-grid article { grid-template-columns: auto minmax(0, 1fr); }
+  .feature-reel > header { padding: 16px; }
+  .feature-reel > header h3 { font-size: 17px; }
+  .feature-reel figcaption { min-height: 0; }
   .home-problem-grid,
   .home-capability-grid,
   .home-use-case-grid,
@@ -730,6 +761,7 @@
   .home-problem-visual::after,
   .home-product-family-grid article::after { animation: none; }
   .tour-focus{animation:none}
+  .feature-reel figure > img { animation: none; transition: none; }
   .home-connection-grid article,
   .home-problem-grid article,
   .home-capability-grid article,

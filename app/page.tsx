@@ -202,6 +202,67 @@ function AuthenticatedLoading() {
   return <div className="entry-loading" role="status" aria-live="polite"><ProductBrandLogo product="vanteloq" priority/><p>Preparing your workspace…</p></div>;
 }
 
+const featureReelScenes = [
+  {
+    id: "commerce",
+    label: "Commerce pulse",
+    kicker: "LIVE OPERATING VIEW",
+    title: "See sales, margin and demand move together.",
+    copy: "Review the current trading picture with the source period and data coverage kept visible.",
+  },
+  {
+    id: "inventory",
+    label: "Inventory decisions",
+    kicker: "STOCK AND PURCHASING",
+    title: "Move from stock counts to a supported order decision.",
+    copy: "Bring sales velocity, supplier timing, on-hand inventory and cash constraints into one review.",
+  },
+  {
+    id: "bookloq",
+    label: "BookLoQ control",
+    kicker: "FINANCIAL CONTROL",
+    title: "Turn financial records into cash context.",
+    copy: "Categorize activity, review receipts and invoices, and compare commitments with available cash.",
+  },
+  {
+    id: "reports",
+    label: "Owner reports",
+    kicker: "TRACEABLE REPORTING",
+    title: "Understand what changed before deciding what to do.",
+    copy: "Compare periods and follow every supported result back to its source, definition and freshness.",
+  },
+] as const;
+
+function FeatureReel() {
+  const [active, setActive] = useState(0);
+  const [playing, setPlaying] = useState(true);
+
+  useEffect(() => {
+    if (!playing || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const timer = window.setInterval(() => setActive((scene) => (scene + 1) % featureReelScenes.length), 4600);
+    return () => window.clearInterval(timer);
+  }, [playing]);
+
+  const scene = featureReelScenes[active];
+  return <div className={`feature-reel scene-${scene.id}`} role="region" aria-labelledby="feature-reel-title">
+    <header>
+      <div><p>VANTELOQ IN MOTION</p><h3 id="feature-reel-title">One operating picture, from source to decision.</h3></div>
+      <button type="button" className="feature-reel-play" aria-label={playing ? "Pause feature tour" : "Play feature tour"} aria-pressed={!playing} onClick={() => setPlaying((value) => !value)}>
+        <span aria-hidden="true">{playing ? "Ⅱ" : "▶"}</span>{playing ? "Pause" : "Play"}
+      </button>
+    </header>
+    <figure>
+      {/* Generated editorial interface art; no customer or provider data is represented. */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/brand/vanteloq-feature-reel-v1.webp" alt="Vanteloq interface tour showing commerce performance, inventory decisions, BookLoQ cash controls and reports." width={1672} height={941} loading="lazy" />
+      <figcaption aria-live="polite"><small>{scene.kicker}</small><strong>{scene.title}</strong><span>{scene.copy}</span></figcaption>
+    </figure>
+    <nav aria-label="Feature tour scenes">
+      {featureReelScenes.map((item, index) => <button type="button" key={item.id} className={index === active ? "active" : ""} aria-current={index === active ? "step" : undefined} onClick={() => { setActive(index); setPlaying(false); }}><span>{String(index + 1).padStart(2, "0")}</span>{item.label}</button>)}
+    </nav>
+  </div>;
+}
+
 function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const closeMobileNav = () => setMobileNavOpen(false);
@@ -276,10 +337,13 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
       </section>
 
       <section className="home-connections" id="connections" aria-labelledby="connections-title">
-        <div className="home-section-heading compact">
-          <p>CONNECTED BUSINESS</p>
-          <h2 id="connections-title">Connect the tools that already run your business.</h2>
-          <span>Bring sales, inventory, payments, banking, accounting, delivery and marketing into one operating view, so every dashboard, forecast and recommendation starts from the same business records.</span>
+        <div className="home-connection-intro">
+          <div className="home-section-heading compact">
+            <p>CONNECTED BUSINESS</p>
+            <h2 id="connections-title">Connect the tools that already run your business.</h2>
+            <span>Bring sales, inventory, payments, banking, accounting, delivery and marketing into one operating view, so every dashboard, forecast and recommendation starts from the same business records.</span>
+          </div>
+          <FeatureReel />
         </div>
         <div className="home-connection-grid">
           {publicIntegrations.map(provider => <article key={provider.id}><IntegrationBrandLogo name={provider.name} compact/><div><strong>{provider.name}</strong><span>{provider.detail}</span></div></article>)}
@@ -339,25 +403,6 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
           </figure></div>
           <footer><span>Example workflow · confirm with source records</span><b>Owner approval required</b></footer>
         </article>
-      </section>
-
-      <section className="home-bookloq-tour" aria-labelledby="bookloq-tour-title">
-        <div className="home-section-heading compact">
-          <p>BOOKLOQ PRODUCT TOUR</p>
-          <h2 id="bookloq-tour-title">See records become a cash decision.</h2>
-          <span>A guided, silent walkthrough of receipt and invoice capture, categorized cash movement, forecast ranges and spend-control review.</span>
-        </div>
-        <div className="bookloq-tour-stage">
-          <figure>
-            {/* This generated product visual contains no customer values or provider claims. */}
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/brand/bookloq-cash-control-v1.png" alt="BookLoQ cash-control flow from captured source records through categorized cash movement, forecast and spend review." width={1774} height={887} loading="lazy"/>
-            <span className="tour-focus capture"><b>01</b> Capture evidence</span>
-            <span className="tour-focus classify"><b>02</b> Confirm categories</span>
-            <span className="tour-focus forecast"><b>03</b> Review liquidity</span>
-          </figure>
-          <aside><ProductBrandLogo product="bookloq" variant="full"/><h3>Financial control that starts with the source.</h3><p>Create and send invoices, photograph receipts, review transactions, compare budgets with commitments and maintain a rolling 13-week cash view.</p><ul><li>Opening and closing cash</li><li>Cash inflow and outflow categories</li><li>Historical and forecast views</li><li>Spend headroom and projected overage</li></ul><Link href="/resources/small-business-cash-flow-management-guide">Read the cash-flow guide →</Link></aside>
-        </div>
       </section>
 
       <section className="home-capabilities" id="capabilities" aria-labelledby="capabilities-title">

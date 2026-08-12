@@ -63,7 +63,6 @@ type View =
   | "Decision Journal"
   | "Scenario Planner"
   | "Reports"
-  | "Industry Modules"
   | "Integrations"
   | "Settings";
 
@@ -81,8 +80,8 @@ const nav: [string, View[]][] = [
     ["Inventory", "Suppliers", "Purchase Orders"],
   ],
   [
-    "Finance and books",
-    ["Profit", "Cash", "BookLoQ", "Bookkeeping", "Reports"],
+    "BookLoQ finance",
+    ["BookLoQ", "Reports"],
   ],
   [
     "Growth and relationships",
@@ -122,7 +121,6 @@ const navigationGuide: Record<View, { outcome: string; data: string }> = {
   Locations: { outcome: "Compares each mapped store and switches the whole workspace scope.", data: "Organization locations, provider mappings and location-tagged metrics." },
   "Decision Journal": { outcome: "Records what was decided, why and what happened next.", data: "Decision evidence, owner, date, expected result and review outcome." },
   "Scenario Planner": { outcome: "Tests assumptions without changing live books or metrics.", data: "Owner-entered assumptions plus verified baseline figures." },
-  "Industry Modules": { outcome: "Explains optional industry-specific source and metric models.", data: "A tested industry adapter is required before activation." },
   Integrations: { outcome: "Connects and maps sources only after their safety gates pass.", data: "Authorization, scopes, locations, sync history and reconciliation." },
   Settings: { outcome: "Controls organization, security, locations and personal navigation.", data: "Account preferences, roles, billing and organization records." },
 };
@@ -171,7 +169,6 @@ const viewPermission: Partial<Record<View, string>> = {
   "Decision Journal": "insights.view",
   "Scenario Planner": "metrics.cash",
   Reports: "reports.operational",
-  "Industry Modules": "dashboard.view",
   Integrations: "integrations.view",
   Settings: "organization.settings",
 };
@@ -906,9 +903,9 @@ export default function VanteloqApp({
                 {items.map((item) => (
                   <button
                     key={item}
-                    className={`${view === item ? "nav-item active" : "nav-item"}${item === "BookLoQ" ? " bookloq-main-nav" : ""}`}
+                    className={`${view === item || (item === "BookLoQ" && (view === "Profit" || view === "Cash" || view === "Bookkeeping")) ? "nav-item active" : "nav-item"}${item === "BookLoQ" ? " bookloq-main-nav" : ""}`}
                     onClick={() => navigate(item)}
-                    aria-current={view === item ? "page" : undefined}
+                    aria-current={view === item || (item === "BookLoQ" && (view === "Profit" || view === "Cash" || view === "Bookkeeping")) ? "page" : undefined}
                   >
                     {item === "BookLoQ" ? (
                       <ProductBrandLogo
@@ -923,16 +920,6 @@ export default function VanteloqApp({
             ))}
         </nav>
         <div className="side-bottom">
-          {!hiddenNavigation.includes("Industry Modules") && <button
-            className={
-              view === "Industry Modules" ? "nav-item active" : "nav-item"
-            }
-            onClick={() => navigate("Industry Modules")}
-            aria-current={view === "Industry Modules" ? "page" : undefined}
-          >
-            <span className="nav-dot" />
-            Industry modules
-          </button>}
           {appPermissions.includes("integrations.view") && !hiddenNavigation.includes("Integrations") && (
             <button
               className={
@@ -992,13 +979,11 @@ export default function VanteloqApp({
           >
             ☰
           </button>
-          <div>
+          <div className="topbar-title">
             <p className="eyebrow">
-              {view === "Dashboard"
-                ? "OWNER COMMAND CENTRE"
-                : "VANTELOQ WORKSPACE"}
+              {view === "Dashboard" ? "OWNER COMMAND CENTRE" : view === "BookLoQ" || view === "Profit" || view === "Cash" || view === "Bookkeeping" ? "BOOKLOQ FINANCE" : "VANTELOQ WORKSPACE"}
             </p>
-            <h1>{view === "Dashboard" ? "Unified Workspace" : view}</h1>
+            <h1>{view === "Dashboard" ? "Unified Workspace" : view === "Profit" ? "BookLoQ · Reports" : view === "Cash" ? "BookLoQ · Cash Flow" : view === "Bookkeeping" ? "BookLoQ · Transactions" : view}</h1>
           </div>
           <div className="top-actions">
             <button className="command-trigger" onClick={() => setCommandOpen(true)} aria-label="Open workspace search"><span>Search workspace</span><kbd>⌘K</kbd></button>
@@ -1017,7 +1002,7 @@ export default function VanteloqApp({
               aria-label="Open alerts"
               onClick={() => setNotificationsOpen((value) => !value)}
             >
-              !
+              <span aria-hidden="true">Alerts</span>
             </button>
             <button
               className="primary"
@@ -1111,7 +1096,7 @@ export default function VanteloqApp({
 
 function GlobalCommand({ permissions, navigate, close }: { permissions: string[]; navigate: (view: View) => void; close: () => void }) {
   const [query, setQuery] = useState("");
-  const options = useMemo(() => ([...nav.flatMap(([, items]) => items), "Industry Modules", "Integrations", "Settings"] as View[])
+  const options = useMemo(() => ([...nav.flatMap(([, items]) => items), "Integrations", "Settings"] as View[])
     .filter((item, index, list) => list.indexOf(item) === index)
     .filter((item) => !viewPermission[item] || permissions.includes(viewPermission[item]!))
     .filter((item) => !query || item.toLowerCase().includes(query.toLowerCase())), [permissions, query]);
@@ -1131,7 +1116,7 @@ function NavigationSettingsPanel({
 }) {
   const sections: [string, View[]][] = [
     ...nav,
-    ["Workspace controls", ["Industry Modules", "Integrations", "Settings"]],
+    ["Workspace controls", ["Integrations", "Settings"]],
   ];
   return (
     <section className="navigation-settings-panel" aria-labelledby="navigation-settings-title">
@@ -1244,8 +1229,10 @@ function Workspace({
         }
       />
     );
-  if (view === "BookLoQ")
-    return <BookLoQWorkspace createTask={createTask} showNotice={showNotice} navigate={navigate} activeLocationId={activeLocationId} />;
+  if (view === "BookLoQ" || view === "Profit" || view === "Cash" || view === "Bookkeeping") {
+    const initialSection = view === "Profit" ? "Reports" : view === "Cash" ? "Cash Flow" : view === "Bookkeeping" ? "Transactions" : "Overview";
+    return <BookLoQWorkspace key={initialSection} initialSection={initialSection} createTask={createTask} showNotice={showNotice} navigate={navigate} activeLocationId={activeLocationId} />;
+  }
   if (view === "Communications") return <CommunicationsWorkspace activeLocationId={activeLocationId} />;
   if (view === "Marketing")
     return <GrowthWorkspace currency={currency} navigate={navigate} activeLocationId={activeLocationId} />;
@@ -1266,7 +1253,6 @@ function Workspace({
     );
   if (view === "Advisor")
     return <Advisor data={data} navigate={navigate} createTask={createTask} />;
-  if (view === "Industry Modules") return <IndustryModules />;
   if (view === "Reports")
     return (
       <ReportsWorkspace
@@ -4275,72 +4261,6 @@ function ModuleWorkspace({
           <InsightCard insight={data.insights[0]} createTask={createTask} />
         </section>
       )}
-    </div>
-  );
-}
-
-function IndustryModules() {
-  const industries = [
-    [
-      "Supplement retail",
-      "Replenishment cycles, expiry, product stacks, samples and trainer referrals",
-    ],
-    [
-      "Restaurants",
-      "Food cost, waste, delivery fees, table turnover and menu profit",
-    ],
-    ["Salons", "Utilization, rebooking, stylist context and no-shows"],
-    ["Gyms", "Membership churn, attendance, trainer use and recurring revenue"],
-    ["Auto shops", "Technician productivity, parts margin and job profit"],
-    [
-      "Professional services",
-      "Billable utilization, project margin and receivables",
-    ],
-    ["E-commerce", "Conversion, abandoned carts, returns and fulfilment cost"],
-    [
-      "Property management",
-      "Rent, vacancy, maintenance and unit profitability",
-    ],
-    [
-      "Medical clinics",
-      "Utilization, cancellations and practitioner productivity",
-    ],
-    [
-      "Construction",
-      "Budgets, labour, materials, change orders and job profit",
-    ],
-  ];
-  return (
-    <div className="content industry-page">
-      <section className="page-intro">
-        <div>
-          <p>OPTIONAL OPERATING MODELS</p>
-          <h2>Universal core. Industry-specific intelligence.</h2>
-          <span>
-            Modules extend the shared metric and action engine; they keep the
-            same organization protections and never invent missing business data.
-          </span>
-        </div>
-      </section>
-      <section className="industry-visual-hero card">
-        <div>
-          <p>ONE INTELLIGENCE CORE</p>
-          <h3>Different businesses. The same trusted operating foundation.</h3>
-          <span>Each model adds the vocabulary, source contracts, operating signals and recommended actions that matter to that industry.</span>
-          <div><b>{industries.length}</b><small>industry models</small><b>1</b><small>security boundary</small><b>Reviewed</b><small>source required</small></div>
-        </div>
-        <Image src="/brand/industry-models-v2.png" alt="Connected scenes representing retail, restaurants, fitness, property, professional services and distribution" width={1823} height={863} sizes="(max-width: 900px) 100vw, 64vw" />
-      </section>
-      <div className="industry-grid">
-        {industries.map(([name, detail], index) => (
-          <article key={name}>
-            <span>{String(index + 1).padStart(2, "0")}</span>
-            <h3>{name}</h3>
-            <p>{detail}</p>
-            <button disabled title="This module requires a tested industry source model, calculation registry, permissions and reconciliation path before activation.">Requires source adapter</button>
-          </article>
-        ))}
-      </div>
     </div>
   );
 }
