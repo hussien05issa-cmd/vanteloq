@@ -30,6 +30,9 @@ test("empty workspaces never receive invented metrics or insights", () => {
   const result = buildCommandCentre([], "CAD");
   assert.equal(result.ready, false);
   assert.equal(result.current, null);
+  assert.equal(result.periodComparisons, null);
+  assert.equal(result.forecast.available, false);
+  assert.equal(result.forecast.totalNetSalesCents, null);
   assert.deepEqual(result.insights, []);
   assert.equal(result.dataQuality.status, "blocked");
 });

@@ -484,8 +484,8 @@ type CommandCentre = {
   periodComparisons: {
     sevenDays: PeriodComparison;
     thirtyDays: PeriodComparison;
-  };
-  forecast: {
+  } | null;
+  forecast?: {
     available: boolean;
     requiredDays: number;
     verifiedDays: number;
@@ -1399,11 +1399,31 @@ function PaymentMixCard({ data, currency, paymentRange, setPaymentRange }: { dat
 }
 
 function CommerceIntelligenceRail({ data, currency, paymentRange, setPaymentRange }: { data: CommandCentre; currency: string; paymentRange: PaymentRange; setPaymentRange: (range: PaymentRange) => void }) {
-  const comparisons = [
+  const comparisons: Array<{ label: string; period: string; value: string; rate: number | null }> = [
     { label: "Today vs same weekday", period: data.todayComparison ? formatBusinessDate(data.todayComparison.baselineDate) : "Baseline unavailable", value: money(data.today.netSalesCents, currency), rate: data.todayComparison?.changes.netSalesRate ?? null },
-    { label: "Last 7 days", period: `${formatBusinessDate(data.periodComparisons.sevenDays.periodStart)} to ${formatBusinessDate(data.periodComparisons.sevenDays.periodEnd)}`, value: money(data.periodComparisons.sevenDays.current.netSalesCents, currency), rate: data.periodComparisons.sevenDays.comparable ? data.periodComparisons.sevenDays.changes.netSalesRate : null },
-    { label: "Last 30 days", period: `${formatBusinessDate(data.periodComparisons.thirtyDays.periodStart)} to ${formatBusinessDate(data.periodComparisons.thirtyDays.periodEnd)}`, value: money(data.periodComparisons.thirtyDays.current.netSalesCents, currency), rate: data.periodComparisons.thirtyDays.comparable ? data.periodComparisons.thirtyDays.changes.netSalesRate : null },
   ];
+  if (data.periodComparisons) {
+    comparisons.push(
+      { label: "Last 7 days", period: `${formatBusinessDate(data.periodComparisons.sevenDays.periodStart)} to ${formatBusinessDate(data.periodComparisons.sevenDays.periodEnd)}`, value: money(data.periodComparisons.sevenDays.current.netSalesCents, currency), rate: data.periodComparisons.sevenDays.comparable ? data.periodComparisons.sevenDays.changes.netSalesRate : null },
+      { label: "Last 30 days", period: `${formatBusinessDate(data.periodComparisons.thirtyDays.periodStart)} to ${formatBusinessDate(data.periodComparisons.thirtyDays.periodEnd)}`, value: money(data.periodComparisons.thirtyDays.current.netSalesCents, currency), rate: data.periodComparisons.thirtyDays.comparable ? data.periodComparisons.thirtyDays.changes.netSalesRate : null },
+    );
+  } else {
+    comparisons.push(
+      { label: "Last 7 days", period: "No verified period", value: "Not available", rate: null },
+      { label: "Last 30 days", period: "No verified period", value: "Not available", rate: null },
+    );
+  }
+  const forecast = data.forecast ?? {
+    available: false,
+    requiredDays: 28,
+    verifiedDays: data.source.verifiedDays,
+    totalNetSalesCents: null,
+    lowCents: null,
+    highCents: null,
+    confidence: "unavailable" as const,
+    method: "Same-weekday weighted average",
+    points: [],
+  };
   return (
     <>
       <section className="sales-comparison-grid" aria-label="Matched sales comparisons">
@@ -1412,15 +1432,15 @@ function CommerceIntelligenceRail({ data, currency, paymentRange, setPaymentRang
       <section className="commerce-intel-grid">
         <PaymentMixCard data={data.paymentMix} currency={currency} paymentRange={paymentRange} setPaymentRange={setPaymentRange} />
         <article className="card commerce-intel-card forecast-card">
-          <header><div><p className="card-kicker">7-DAY OUTLOOK</p><h3>Expected net sales</h3></div><span>{data.forecast.confidence === "unavailable" ? "Not ready" : `${data.forecast.confidence} confidence`}</span></header>
-          {data.forecast.available ? <>
-            <strong>{money(data.forecast.lowCents, currency)} to {money(data.forecast.highCents, currency)}</strong>
-            <p>Central estimate {money(data.forecast.totalNetSalesCents, currency)}</p>
+          <header><div><p className="card-kicker">7-DAY OUTLOOK</p><h3>Expected net sales</h3></div><span>{forecast.confidence === "unavailable" ? "Not ready" : `${forecast.confidence} confidence`}</span></header>
+          {forecast.available ? <>
+            <strong>{money(forecast.lowCents, currency)} to {money(forecast.highCents, currency)}</strong>
+            <p>Central estimate {money(forecast.totalNetSalesCents, currency)}</p>
             <div className="forecast-bars" aria-label="Seven-day sales forecast">
-              {data.forecast.points.map((point) => <i key={point.date} style={{ height: `${Math.max(12, point.netSalesCents / Math.max(...data.forecast.points.map((item) => item.netSalesCents), 1) * 100)}%` }} title={`${formatBusinessDate(point.date)}: ${money(point.netSalesCents, currency)}`} />)}
+              {forecast.points.map((point) => <i key={point.date} style={{ height: `${Math.max(12, point.netSalesCents / Math.max(...forecast.points.map((item) => item.netSalesCents), 1) * 100)}%` }} title={`${formatBusinessDate(point.date)}: ${money(point.netSalesCents, currency)}`} />)}
             </div>
-            <small>{data.forecast.method}</small>
-          </> : <div className="intel-empty"><b>{Math.max(0, data.forecast.requiredDays - data.forecast.verifiedDays)} more verified days needed</b><span>Vanteloq will not forecast until at least {data.forecast.requiredDays} distinct sales days are available.</span></div>}
+            <small>{forecast.method}</small>
+          </> : <div className="intel-empty"><b>{Math.max(0, forecast.requiredDays - forecast.verifiedDays)} more verified days needed</b><span>Vanteloq will not forecast until at least {forecast.requiredDays} distinct sales days are available.</span></div>}
         </article>
       </section>
     </>

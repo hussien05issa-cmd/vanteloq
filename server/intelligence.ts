@@ -317,6 +317,18 @@ export function buildCommandCentre(rows: MetricRow[], currency: string) {
       balances: null,
       metrics: {},
       trend: [],
+      periodComparisons: null,
+      forecast: {
+        available: false,
+        requiredDays: 28,
+        verifiedDays: 0,
+        totalNetSalesCents: null,
+        lowCents: null,
+        highCents: null,
+        confidence: "unavailable" as const,
+        method: "Same-weekday weighted average",
+        points: [],
+      },
       insights: [],
       dataQuality: { status: "blocked", verifiedFields: 0, missingDimensions: ["Daily sales summaries", "Product and category detail", "Inventory movement", "Customer identity", "Marketing spend", "Shift-level labour"] },
     };
