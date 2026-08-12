@@ -66,7 +66,7 @@ Vanteloq does not receive the online-banking password entered in Plaid Link, doe
 
 - Vanteloq redirects the legacy preview hostname to the canonical HTTPS origin.
 - The Worker sets one-year HSTS and `upgrade-insecure-requests` in the Content Security Policy.
-- A protocol check performed August 11, 2026 confirmed TLS 1.2 succeeds but also found TLS 1.1 succeeds. Cloudflare Minimum TLS must be changed to 1.2 and both tests rerun before this control is marked complete or Plaid production access is enabled.
+- Protocol checks performed August 11, 2026 confirmed TLS 1.2 succeeds but also found TLS 1.1 succeeds. The Cloudflare customer-zone dashboard was set to a TLS 1.2 minimum and even temporarily raised to TLS 1.3, but the Sites/custom-hostname edge continued to negotiate TLS 1.1. The dashboard was restored to TLS 1.2. This control remains blocked until the hosting edge is corrected and both tests are rerun; a dashboard screenshot alone is not completion evidence.
 
 Required release evidence:
 
@@ -104,7 +104,7 @@ The following checks passed on August 11, 2026:
 
 ## Remaining launch conditions
 
-1. Sign in to the Cloudflare account for `vanteloq.com`, set SSL/TLS -> Edge Certificates -> Minimum TLS Version to 1.2, and rerun the negative/positive protocol tests.
+1. Escalate the Sites/custom-hostname edge TLS policy to the hosting provider. The Cloudflare customer zone is already set to TLS 1.2, but live traffic still negotiates TLS 1.1. Rerun the negative/positive protocol tests after the provider-side correction.
 2. Obtain qualified Alberta/Canadian privacy counsel review of the public policy, retention periods, cross-border disclosures, customer/controller terms, and response procedure.
 3. Keep Plaid in sandbox/development until Plaid approves production access and the conditions above are recorded as complete.
 4. Capture a clean MFA challenge screenshot for the Plaid questionnaire. Do not submit the QR enrollment screen or any setup secret.

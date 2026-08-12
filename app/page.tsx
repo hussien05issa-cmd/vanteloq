@@ -205,15 +205,21 @@ function AuthenticatedLoading() {
 function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const closeMobileNav = () => setMobileNavOpen(false);
-  const publicIntegrations = integrationCatalog.map(provider => {
-    if (provider.id === "lightspeed-r") return { ...provider, status: "AVAILABLE", statusClass: "current", detail: "Sales and inventory connection" };
-    if (provider.id === "lightspeed") return { ...provider, status: "LIMITED PILOT", statusClass: "current", detail: "Sales and inventory pilot" };
-    if (provider.id === "stripe") return { ...provider, status: "STAGING", statusClass: "current", detail: "Payout and balance staging" };
-    if (provider.id === "plaid") return { ...provider, status: "SETUP REQUIRED", statusClass: "current", detail: "Built secure Link, balances, and reviewed transactions; production institution access awaits Plaid approval" };
-    if (provider.id === "google") return { ...provider, status: "SETUP REQUIRED", statusClass: "current", detail: "Resource selection, location mapping, and sample approval are required before measurement import" };
-    if (provider.id === "meta") return { ...provider, status: "SETUP REQUIRED", statusClass: "current", detail: "Ad account selection and sample approval are required before measurement import" };
-    return { ...provider, status: "PLANNED", statusClass: "planned", detail: provider.category };
-  });
+  const connectorBenefits: Record<string, string> = {
+    "Point of sale": "Unify sales, returns, products and inventory movement",
+    Commerce: "Connect orders, customers, products and channel performance",
+    Payments: "Reconcile payouts, fees, refunds and cash timing",
+    Accounting: "Keep books, balances and operating records aligned",
+    Marketplace: "Bring marketplace demand and settlement records into view",
+    Delivery: "Compare delivery revenue, commissions and order activity",
+    Marketing: "Connect discovery, campaigns and attributable customer action",
+    Banking: "Use owner-authorized balances and transactions in cash planning",
+    "File import": "Turn structured operating files into verified records",
+  };
+  const publicIntegrations = integrationCatalog.map(provider => ({
+    ...provider,
+    detail: connectorBenefits[provider.category] ?? "Bring source records into one operating view",
+  }));
 
   useEffect(() => {
     if (!mobileNavOpen) return;
@@ -271,13 +277,13 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
 
       <section className="home-connections" id="connections" aria-labelledby="connections-title">
         <div className="home-section-heading compact">
-          <p>CONNECTION DIRECTORY</p>
-          <h2 id="connections-title">See every connector and its honest availability.</h2>
-          <span>Lightspeed R-Series, the limited X-Series pilot, Stripe staging, Plaid sandbox bank feeds, Google and Meta marketing measurement, and structured CSV import have built paths. Plaid, Google and Meta require hosted credentials and provider setup before customers can authorize them. Every other connector stays planned until its production adapter is built and verified.</span>
+          <p>CONNECTED BUSINESS</p>
+          <h2 id="connections-title">Connect the tools that already run your business.</h2>
+          <span>Bring sales, inventory, payments, banking, accounting, delivery and marketing into one operating view, so every dashboard, forecast and recommendation starts from the same business records.</span>
         </div>
         <div className="home-connection-grid">
-          {publicIntegrations.map(provider => <article className={provider.statusClass} key={provider.id}><IntegrationBrandLogo name={provider.name} compact/><div><strong>{provider.name}</strong><span>{provider.detail}</span></div><small>{provider.status}</small></article>)}
-          <article className="current"><IntegrationBrandLogo name="Daily CSV" compact/><div><strong>CSV import</strong><span>Structured daily operating records</span></div><small>AVAILABLE</small></article>
+          {publicIntegrations.map(provider => <article key={provider.id}><IntegrationBrandLogo name={provider.name} compact/><div><strong>{provider.name}</strong><span>{provider.detail}</span></div></article>)}
+          <article><IntegrationBrandLogo name="Daily CSV" compact/><div><strong>CSV import</strong><span>Turn structured operating files into verified records</span></div></article>
         </div>
       </section>
 

@@ -1716,6 +1716,14 @@ export const customerInvoices = sqliteTable(
     paidCents: integer("paid_cents").notNull().default(0),
     currency: text("currency").notNull().default("CAD"),
     locationRef: text("location_ref").notNull().default("all"),
+    purchaseOrderRef: text("purchase_order_ref").notNull().default(""),
+    issuerSnapshotJson: text("issuer_snapshot_json").notNull().default("{}"),
+    customerSnapshotJson: text("customer_snapshot_json").notNull().default("{}"),
+    notes: text("notes").notNull().default(""),
+    paymentInstructions: text("payment_instructions").notNull().default(""),
+    documentId: text("document_id").references(() => workspaceDocuments.id, { onDelete: "set null" }),
+    sentAt: integer("sent_at", { mode: "timestamp" }),
+    emailedTo: text("emailed_to"),
     journalEntryId: text("journal_entry_id").references(() => journalEntries.id),
     demoRecord: integer("demo_record", { mode: "boolean" }).notNull().default(false),
     createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
@@ -1724,7 +1732,33 @@ export const customerInvoices = sqliteTable(
   (table) => [
     uniqueIndex("customer_invoices_workspace_number_unique").on(table.organizationId, table.invoiceNumber),
     index("customer_invoices_workspace_due_idx").on(table.organizationId, table.dueDate, table.status),
+    uniqueIndex("customer_invoices_document_unique").on(table.organizationId, table.documentId),
     check("customer_invoices_amount_check", sql`${table.subtotalCents} >= 0 and ${table.taxCents} >= 0 and ${table.totalCents} = ${table.subtotalCents} + ${table.taxCents} and ${table.paidCents} >= 0 and ${table.paidCents} <= ${table.totalCents}`),
+  ],
+);
+
+export const customerInvoiceLines = sqliteTable(
+  "customer_invoice_lines",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    invoiceId: text("invoice_id").notNull().references(() => customerInvoices.id, { onDelete: "cascade" }),
+    lineNumber: integer("line_number").notNull(),
+    description: text("description").notNull(),
+    quantityMilli: integer("quantity_milli").notNull(),
+    unitPriceCents: integer("unit_price_cents").notNull(),
+    taxRateBasisPoints: integer("tax_rate_basis_points").notNull().default(0),
+    subtotalCents: integer("subtotal_cents").notNull(),
+    taxCents: integer("tax_cents").notNull().default(0),
+    totalCents: integer("total_cents").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("customer_invoice_lines_invoice_line_unique").on(table.organizationId, table.invoiceId, table.lineNumber),
+    index("customer_invoice_lines_invoice_idx").on(table.organizationId, table.invoiceId),
+    check("customer_invoice_lines_quantity_check", sql`${table.quantityMilli} > 0 and ${table.quantityMilli} <= 1000000000`),
+    check("customer_invoice_lines_amount_check", sql`${table.unitPriceCents} >= 0 and ${table.subtotalCents} >= 0 and ${table.taxCents} >= 0 and ${table.totalCents} = ${table.subtotalCents} + ${table.taxCents}`),
+    check("customer_invoice_lines_tax_check", sql`${table.taxRateBasisPoints} between 0 and 10000`),
   ],
 );
 

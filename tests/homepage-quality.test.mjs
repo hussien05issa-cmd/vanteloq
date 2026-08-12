@@ -36,21 +36,14 @@ test("homepage keeps every crawlable internal link on a working route", async ()
 
 test("homepage copy stays within the verified product boundary", async () => {
   const html = await (await fetchRoute("/")).text();
+  const connections = html.match(/<section class="home-connections"[\s\S]*?<\/section>/)?.[0] ?? "";
+  assert.ok(connections, "homepage should render the public connector section");
   assert.doesNotMatch(html, /Start (?:Your )?Free Trial/i);
-  for (const provider of ["Square", "Moneris", "QuickBooks", "Xero"]) {
-    assert.match(html, new RegExp(`<strong>${provider}</strong>[\\s\\S]{0,180}<small>PLANNED</small>`));
-  }
-  assert.match(html, /<strong>Plaid<\/strong>[\s\S]{0,240}<small>SETUP REQUIRED<\/small>/);
-  assert.match(html, /Plaid, Google and Meta require hosted credentials and provider setup before customers can authorize them/);
-  for (const provider of ["Google", "Meta"]) {
-    assert.match(html, new RegExp(`<strong>${provider}</strong>[\\s\\S]{0,220}<small>SETUP REQUIRED</small>`));
-  }
-  assert.doesNotMatch(html, /(?:Square|Moneris|QuickBooks|Xero|Plaid|Google|Meta) (?:is )?(?:connected|available now|live)/i);
+  for (const provider of ["Lightspeed R-Series", "Lightspeed X-Series", "Square", "Moneris", "QuickBooks", "Xero", "Plaid", "Google", "Meta"]) assert.match(connections, new RegExp(`<strong>${provider}</strong>`));
+  assert.match(connections, /Connect the tools that already run your business/);
+  assert.match(connections, /Use owner-authorized balances and transactions in cash planning/);
+  assert.doesNotMatch(connections, /(?:PLANNED|COMING SOON|STAGING|LIMITED PILOT|ADAPTER BUILT|honest availability)/i);
   assert.doesNotMatch(html, /\b(?:SOC 2|ISO 27001|HIPAA|PCI)\s+(?:certified|compliant|accredited)\b/i);
-  assert.match(html, /Lightspeed R-Series/);
-  assert.match(html, /LIMITED PILOT/);
-  assert.match(html, /STAGING/);
-  assert.match(html, /PLANNED/);
   assert.doesNotMatch(html, /\u2014/u, "homepage prose should not contain an em dash");
   assert.match(html, /home-intelligence-map/);
   assert.match(html, /home-resource-art/);

@@ -188,7 +188,8 @@ export async function GET(request: Request) {
         WHERE b.organization_id = ? ORDER BY b.due_date LIMIT 200`).bind(organizationId).all(),
       database.prepare(`SELECT i.id, i.invoice_number invoiceNumber, i.invoice_date invoiceDate, i.due_date dueDate,
         i.status, i.subtotal_cents subtotalCents, i.tax_cents taxCents, i.total_cents totalCents,
-        i.paid_cents paidCents, i.currency, i.demo_record demoRecord, c.name customerName
+        i.paid_cents paidCents, i.currency, i.document_id documentId, i.sent_at sentAt,
+        i.emailed_to emailedTo, i.demo_record demoRecord, c.name customerName, c.email customerEmail
         FROM customer_invoices i JOIN bookloq_contacts c ON c.id = i.customer_id AND c.organization_id = i.organization_id
         WHERE i.organization_id = ? ORDER BY i.due_date LIMIT 200`).bind(organizationId).all(),
       database.prepare(`SELECT id, contact_type contactType, name, email, phone, billing_address billingAddress,
@@ -640,7 +641,19 @@ export async function GET(request: Request) {
         settings,
         role: context.role,
         permissions: uiPermissions,
-        organization: { name: context.organization.businessName, currency: settings?.baseCurrency ?? context.organization.currency },
+        organization: {
+          name: context.organization.businessName,
+          legalName: context.organization.legalName,
+          email: context.organization.businessEmail,
+          phone: context.organization.phone,
+          address: context.organization.address,
+          city: context.organization.city,
+          province: context.organization.province,
+          postalCode: context.organization.postalCode,
+          country: context.organization.country,
+          taxNumber: context.organization.taxNumber,
+          currency: settings?.baseCurrency ?? context.organization.currency,
+        },
         summary: {
           currentCashCents: cashFactsAllowed ? cashOpeningBalanceCents : null,
           availableCashCents: decisionCashAllowed && cashOpeningBalanceCents !== null
