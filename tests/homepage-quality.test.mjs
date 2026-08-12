@@ -68,7 +68,9 @@ test("homepage preserves responsive and keyboard interaction safeguards", async 
   assert.match(css, /overflow-x:\s*clip/);
   assert.match(css, /@media \(max-width: 620px\)/);
   assert.match(css, /@media \(max-width: 390px\)/);
-  assert.match(source, /vanteloq-feature-reel-v1\.webp/);
+  assert.match(source, /function FeatureReelStage/);
+  assert.match(source, /Illustrative interface/);
+  assert.doesNotMatch(source, /vanteloq-feature-reel-v1\.webp/);
   assert.match(source, /Pause feature tour/);
   assert.match(css, /prefers-reduced-motion: reduce/);
   assert.doesNotMatch(source, /className="tour-focus/);

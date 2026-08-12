@@ -209,6 +209,7 @@ const featureReelScenes = [
     kicker: "LIVE OPERATING VIEW",
     title: "See sales, margin and demand move together.",
     copy: "Review the current trading picture with the source period and data coverage kept visible.",
+    steps: ["Receive verified sales", "Build the hourly trend", "Compare the baseline", "Surface the decision"],
   },
   {
     id: "inventory",
@@ -216,6 +217,7 @@ const featureReelScenes = [
     kicker: "STOCK AND PURCHASING",
     title: "Move from stock counts to a supported order decision.",
     copy: "Bring sales velocity, supplier timing, on-hand inventory and cash constraints into one review.",
+    steps: ["Read stock by location", "Calculate demand cover", "Apply supplier constraints", "Prioritize the order"],
   },
   {
     id: "bookloq",
@@ -223,6 +225,7 @@ const featureReelScenes = [
     kicker: "FINANCIAL CONTROL",
     title: "Turn financial records into cash context.",
     copy: "Categorize activity, review receipts and invoices, and compare commitments with available cash.",
+    steps: ["Capture source records", "Confirm categories", "Project cash timing", "Flag the pressure point"],
   },
   {
     id: "reports",
@@ -230,20 +233,54 @@ const featureReelScenes = [
     kicker: "TRACEABLE REPORTING",
     title: "Understand what changed before deciding what to do.",
     copy: "Compare periods and follow every supported result back to its source, definition and freshness.",
+    steps: ["Choose a period", "Compare like for like", "Inspect the variance", "Trace the evidence"],
   },
 ] as const;
 
+function FeatureReelStage({ scene, phase }: { scene: (typeof featureReelScenes)[number]["id"]; phase: number }) {
+  const commerceBars = [35, 48, 42, 67, 82, 58, 74, 91, 62, 46];
+  const comparison = [62, 78, 55, 88, 70, 94];
+  return <div className={`feature-reel-stage stage-${scene} phase-${phase}`} aria-hidden="true">
+    <div className="reel-window-bar"><i/><i/><i/><span>Vanteloq workspace</span><b>Verified source</b></div>
+    {scene === "commerce" && <div className="reel-commerce">
+      <div className="reel-kpis"><article><span>Net sales</span><strong>$4,860</strong><small>Current day</small></article><article><span>Transactions</span><strong>96</strong><small>Completed</small></article><article><span>Average basket</span><strong>$50.63</strong><small>Net sales ÷ sales</small></article></div>
+      <div className="reel-chart-card"><header><div><b>Sales by hour</b><span>Today compared with same weekday</span></div><em>Source time zone</em></header><div className="reel-bar-chart">{commerceBars.map((height, index) => <i key={index} style={{ height: `${height}%` }}><span>{index + 8}:00</span></i>)}</div></div>
+      <div className="reel-decision"><span>Detected change</span><b>Lunch-period demand is ahead of the same-weekday baseline.</b><em>Open source evidence →</em></div>
+    </div>}
+    {scene === "inventory" && <div className="reel-inventory">
+      <header><div><b>Reorder review</b><span>Demand, stock, lead time and cash in one queue</span></div><em>3 products reviewed</em></header>
+      <div className="reel-stock-head"><span>Product</span><span>On hand</span><span>Velocity</span><span>Decision</span></div>
+      {[["Creatine A", "45", "12 / week", "Order 36", "stable"], ["Pre-workout B", "18", "2 / week", "Hold", "hold"], ["Protein C", "11", "15 / week", "Order 60", "urgent"]].map(([name, stock, velocity, decision, state]) => <article className={`reel-stock-row ${state}`} key={name}><b>{name}</b><span>{stock}</span><span>{velocity}</span><em>{decision}</em></article>)}
+      <div className="reel-constraint"><span>Order logic</span><b>Velocity + lead time + supplier minimum + available cash</b><i>Recommendation remains reviewable</i></div>
+    </div>}
+    {scene === "bookloq" && <div className="reel-bookloq">
+      <div className="reel-record-stream"><article><span>Bank</span><b>Deposit received</b><i>Matched</i></article><article><span>Receipt</span><b>Operating expense</b><i>Review</i></article><article><span>Invoice</span><b>Supplier bill</b><i>Due soon</i></article></div>
+      <div className="reel-cash-panel"><header><div><b>13-week cash view</b><span>Opening balance, inflows, outflows and commitments</span></div><em>Range shown</em></header><div className="reel-cash-bars">{[62, 74, 68, 54, 49, 57, 45, 39, 48, 52].map((height, index) => <i key={index} style={{ height: `${height}%` }}><span/></i>)}</div><div className="reel-cash-floor"><span>Cash floor</span></div></div>
+      <div className="reel-cash-alert"><span>Timing risk</span><b>A supplier payment overlaps payroll week.</b><em>Review payment timing →</em></div>
+    </div>}
+    {scene === "reports" && <div className="reel-reports">
+      <header><div><b>Performance report</b><span>Period, comparison and source coverage stay together</span></div><div><i>7 days</i><i className="active">30 days</i><i>Quarter</i></div></header>
+      <div className="reel-report-body"><section><b>Net sales comparison</b><div className="reel-comparison-chart">{comparison.map((height, index) => <i key={index}><span style={{ height: `${Math.max(20, height - 18)}%` }}/><b style={{ height: `${height}%` }}/></i>)}</div></section><aside><span>Change</span><strong>+8.4%</strong><small>versus prior matched period</small><hr/><span>Coverage</span><b>30 of 30 days</b><small>Latest import verified</small></aside></div>
+      <div className="reel-lineage"><span>Metric definition</span><i>→</i><span>Matched period</span><i>→</i><span>Source records</span><b>Export CSV</b></div>
+    </div>}
+    <div className="reel-stage-note"><span>Product tour</span><b>Illustrative interface</b></div>
+  </div>;
+}
+
 function FeatureReel() {
-  const [active, setActive] = useState(0);
+  const [playhead, setPlayhead] = useState({ scene: 0, phase: 0 });
   const [playing, setPlaying] = useState(true);
 
   useEffect(() => {
-    if (!playing || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const timer = window.setInterval(() => setActive((scene) => (scene + 1) % featureReelScenes.length), 4600);
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (!playing) return;
+    const timer = window.setInterval(() => setPlayhead((current) => current.phase < 3
+      ? { ...current, phase: current.phase + 1 }
+      : { scene: (current.scene + 1) % featureReelScenes.length, phase: 0 }), 1450);
     return () => window.clearInterval(timer);
   }, [playing]);
 
-  const scene = featureReelScenes[active];
+  const scene = featureReelScenes[playhead.scene];
   return <div className={`feature-reel scene-${scene.id}`} role="region" aria-labelledby="feature-reel-title">
     <header>
       <div><p>VANTELOQ IN MOTION</p><h3 id="feature-reel-title">One operating picture, from source to decision.</h3></div>
@@ -251,14 +288,10 @@ function FeatureReel() {
         <span aria-hidden="true">{playing ? "Ⅱ" : "▶"}</span>{playing ? "Pause" : "Play"}
       </button>
     </header>
-    <figure>
-      {/* Generated editorial interface art; no customer or provider data is represented. */}
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/brand/vanteloq-feature-reel-v1.webp" alt="Vanteloq interface tour showing commerce performance, inventory decisions, BookLoQ cash controls and reports." width={1672} height={941} loading="lazy" />
-      <figcaption aria-live="polite"><small>{scene.kicker}</small><strong>{scene.title}</strong><span>{scene.copy}</span></figcaption>
-    </figure>
+    <div className="feature-reel-screen"><FeatureReelStage scene={scene.id} phase={playhead.phase}/></div>
+    <div className="feature-reel-caption" aria-live="polite"><small>{scene.kicker}</small><strong>{scene.title}</strong><span>{scene.copy}</span><div className="feature-reel-progress"><i style={{ width: `${((playhead.phase + 1) / 4) * 100}%` }}/></div><em>{scene.steps[playhead.phase]}</em></div>
     <nav aria-label="Feature tour scenes">
-      {featureReelScenes.map((item, index) => <button type="button" key={item.id} className={index === active ? "active" : ""} aria-current={index === active ? "step" : undefined} onClick={() => { setActive(index); setPlaying(false); }}><span>{String(index + 1).padStart(2, "0")}</span>{item.label}</button>)}
+      {featureReelScenes.map((item, index) => <button type="button" key={item.id} className={index === playhead.scene ? "active" : ""} aria-current={index === playhead.scene ? "step" : undefined} onClick={() => { setPlayhead({ scene: index, phase: 0 }); setPlaying(true); }}><span>{String(index + 1).padStart(2, "0")}</span>{item.label}</button>)}
     </nav>
   </div>;
 }

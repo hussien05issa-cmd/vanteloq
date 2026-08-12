@@ -68,6 +68,22 @@ test("X-Series and R-Series are distinct, actionable connection choices", async 
   assert.doesNotMatch(app, /disabled=\{[^}]*Boolean\(providerActions\)[^}]*\}/);
 });
 
+test("the feature tour advances meaningful interface phases and scene controls restart playback", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.match(source, /function FeatureReelStage/);
+  assert.match(source, /current\.phase < 3/);
+  assert.match(source, /setPlayhead\(\{ scene: index, phase: 0 \}\); setPlaying\(true\)/);
+  assert.doesNotMatch(source, /setActive\(index\); setPlaying\(false\)/);
+  assert.doesNotMatch(source, /vanteloq-feature-reel-v1\.webp/);
+});
+
+test("R-Series warnings keep source records out of live metrics and preserve the retry cursor", async () => {
+  const sync = await readFile(new URL("../app/api/v1/integrations/lightspeed-r/sync/route.ts", import.meta.url), "utf8");
+  assert.match(sync, /const publishCanonical = publicationAuthorized && warnings === 0/);
+  assert.match(sync, /for \(const sale of warnings === 0 \? uniqueSales : \[\]\)/);
+  assert.match(sync, /warnings > 0 \? connection\.lastSyncCursor/);
+});
+
 test("provider location discovery uses a same-origin write request", async () => {
   const app = await readFile(new URL("../app/vanteloq-app.tsx", import.meta.url), "utf8");
   for (const routePath of [
@@ -283,12 +299,11 @@ test("POS integrations use one clean capability view and follow active R-Series 
   assert.match(css, /\.operating-shell \.sidebar>nav\{[^}]*flex:1 1 0!important;[^}]*overflow-y:auto!important/);
 });
 
-test("industry models use the generated operating-model visual without inventing active modules", async () => {
+test("removed industry modules stay out of the authenticated workspace", async () => {
   const workspace = await readFile(new URL("../app/vanteloq-app.tsx", import.meta.url), "utf8");
-  assert.match(workspace, /industry-models-v2\.png/);
-  assert.match(workspace, /Requires source adapter/);
-  assert.match(workspace, /\{industries\.length\}<\/b><small>industry models/);
-  assert.match(workspace, /Reviewed<\/b><small>source required/);
+  assert.doesNotMatch(workspace, /industry-models-v2\.png/);
+  assert.doesNotMatch(workspace, /Requires source adapter/);
+  assert.doesNotMatch(workspace, /\{industries\.length\}<\/b><small>industry models/);
 });
 
 test("the banking catalogue uses Plaid's standalone mark and omits removed aggregators", async () => {
