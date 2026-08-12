@@ -2458,6 +2458,11 @@ function DataHub({
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error?.message ?? "The reviewed data could not be approved.");
+      if (provider === "lightspeed-r" && body.publicationPending === true) {
+        showNotice("Reviewed R-Series data approved. Publishing it to the workspace now.");
+        await stageProviderSample("lightspeed-r", connectionId);
+        return;
+      }
       showNotice(body.nextStep ?? "Reviewed provider data is now available to dashboard features.");
       await loadConnections();
       await refresh();

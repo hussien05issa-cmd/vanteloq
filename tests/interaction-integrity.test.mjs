@@ -110,6 +110,8 @@ test("R-Series location setup cannot silently leave dashboard data locked", asyn
   assert.match(shops, /activeLocalLocations\.length === 1/);
   assert.match(sync, /unmappedLocations/);
   assert.match(sync, /Map or ignore/);
+  assert.match(app, /provider === "lightspeed-r" && body\.publicationPending === true/);
+  assert.match(app, /stageProviderSample\("lightspeed-r", connectionId\)/);
 });
 
 test("live sales and report time frames stay connected to real API filters", async () => {
