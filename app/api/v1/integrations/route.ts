@@ -195,6 +195,7 @@ export async function GET(request: Request) {
           lastErrorCode: connection.lastErrorCode,
           connectedAt: connection.connectedAt?.toISOString() ?? null,
           dataPromotionStatus: connection.dataPromotionStatus,
+          syncActive: Boolean(connection.syncLeaseOwner && connection.syncLeaseExpiresAt && connection.syncLeaseExpiresAt.getTime() > Date.now()),
           resourceSelectionVersion: connection.resourceSelectionVersion,
           resourceSelections: selections.map((selection) => ({
             id: selection.id,

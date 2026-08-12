@@ -10,7 +10,6 @@ import {
   integrationCatalog,
   integrationCategoryGuide,
   integrationCategoryOrder,
-  preSyncControls,
   type IntegrationCatalogEntry,
 } from "./integration-catalog";
 import ProductBrandLogo from "./product-brand-logo";
@@ -2160,6 +2159,7 @@ type IntegrationConnection = IntegrationCatalogEntry & {
       warnings: string[];
       resourceResults: Array<{ resourceSelectionId: string; recordsRead: number; warningCodes: string[] }>;
     };
+    syncActive: boolean;
     canonicalCoverage: CanonicalCommerceCoverage;
     featureCoverage: ProviderFeatureCoverage[];
     reportCatalog: {
@@ -2297,6 +2297,38 @@ function DataHub({
       setConnectionsLoading(false);
     }
   }, []);
+  const waitForConnectionSync = useCallback(async (
+    provider: "lightspeed-r",
+    connectionId: string,
+    startedFrom: string | null,
+  ) => {
+    const deadline = Date.now() + 90_000;
+    while (Date.now() < deadline) {
+      await new Promise((resolve) => window.setTimeout(resolve, 2_000));
+      const response = await apiFetch("/api/v1/integrations", { headers: { Accept: "application/json" } });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error?.message ?? "Connection status could not be refreshed.");
+      const source = (body.integrations ?? []).find((item: IntegrationConnection) => item.id === provider);
+      const connection = source?.connections?.find((item: NonNullable<IntegrationConnection["connections"]>[number]) => item.id === connectionId);
+      if (!connection) throw new Error("The connected R-Series account is no longer available.");
+      if (!connection.syncActive) {
+        setConnections(body.integrations ?? []);
+        setCanManage(body.canManage === true);
+        setCanManageBankConnections(body.canManageBankConnections === true);
+        if (connection.lastSuccessfulSyncAt && connection.lastSuccessfulSyncAt !== startedFrom) {
+          showNotice("R-Series is current. The dashboard has been refreshed with the latest verified records.");
+        } else if (connection.lastErrorCode) {
+          showNotice(`R-Series needs attention: ${connection.lastErrorCode.replaceAll("_", " ")}.`);
+        } else {
+          showNotice("R-Series finished checking for updates. No newer verified records were returned.");
+        }
+        await refresh();
+        return;
+      }
+    }
+    await loadConnections();
+    showNotice("R-Series is still updating in the background. This page will show the new sync time when it finishes.");
+  }, [loadConnections, refresh, showNotice]);
   useEffect(() => {
     if (tab !== "connections" || connections.length || connectionsLoading) return;
     const timer = window.setTimeout(() => void loadConnections(), 0);
@@ -2343,7 +2375,11 @@ function DataHub({
     );
     if (body?.authorizationUrl) window.location.assign(body.authorizationUrl);
   };
-  const stageProviderSample = async (provider: "lightspeed" | "lightspeed-r" | "stripe", connectionId?: string) => {
+  const stageProviderSample = async (
+    provider: "lightspeed" | "lightspeed-r" | "stripe",
+    connectionId?: string,
+    previousSyncAt: string | null = null,
+  ) => {
     const body = await providerPost(
       provider,
       providerSyncRoutes[provider],
@@ -2352,9 +2388,12 @@ function DataHub({
     );
     if (!body) return;
     if (body.coalesced) {
-      showNotice(body.nextStep ?? "The current R-Series sync is already in progress.");
-      await loadConnections();
-      if (provider === "lightspeed-r") await refresh();
+      showNotice("R-Series is already updating. I’ll refresh this workspace when it finishes.");
+      if (provider === "lightspeed-r" && connectionId) {
+        await waitForConnectionSync(provider, connectionId, previousSyncAt);
+      } else {
+        await loadConnections();
+      }
       return;
     }
     setActiveSampleProvider(provider);
@@ -2625,12 +2664,6 @@ function DataHub({
         canonicalCoverage: emptyCommerceCoverage,
         featureCoverage: buildProviderFeatureCoverage(provider.id, emptyCommerceCoverage),
       }));
-  const verifiedControls = preSyncControls.filter(
-    (control) => control.status === "verified",
-  ).length;
-  const rSeriesLive = providerRows.some(
-    (provider) => provider.id === "lightspeed-r" && provider.dataPromotionStatus === "approved",
-  );
   return (
     <div className="content data-hub">
       <section className="page-intro">
@@ -2666,40 +2699,6 @@ function DataHub({
         <DailyImport refresh={refresh} showNotice={showNotice} />
       ) : (
         <>
-          <section className="connection-readiness" aria-labelledby="pre-sync-title">
-            <header>
-              <div>
-                <p>BEFORE DATA REACHES YOUR DASHBOARD</p>
-                <h3 id="pre-sync-title">Review the checks applied to each connection.</h3>
-                <span>
-                  {verifiedControls} of {preSyncControls.length} shared checks are built and tested. Each provider must also pass its own authorization, data, and reconciliation checks.
-                </span>
-              </div>
-              <strong>{rSeriesLive ? "R-SERIES AVAILABLE" : "REVIEW REQUIRED"}</strong>
-            </header>
-            <div>
-              {preSyncControls.map((control) => (
-                <article key={control.id} className={control.status}>
-                  <span>{control.status === "verified" ? "Verified" : "Required"}</span>
-                  <b>{control.label}</b>
-                  <small>{control.detail}</small>
-                </article>
-              ))}
-            </div>
-            <footer>
-              Only reviewed data from a supported connection can affect dashboard results.
-            </footer>
-          </section>
-          <div className="integration-notice">
-            <div>
-              <b>
-                Every provider account keeps separate credentials, locations, and sync history.
-              </b>
-              <p>
-                Vanteloq shows authorization, imported data, and dashboard availability separately. A connection must pass its provider review before its records can affect business metrics.
-              </p>
-            </div>
-          </div>
           {connectionError && (
             <div className="connection-error" role="alert">
               <span>{connectionError}</span>
@@ -2708,16 +2707,13 @@ function DataHub({
           )}
           <section className="provider-parity-contract" aria-labelledby="provider-parity-title">
             <header>
-              <div><p>SAME FEATURES ACROSS SUPPORTED POS SYSTEMS</p><h3 id="provider-parity-title">Available records decide what Vanteloq can show.</h3><span>Lightspeed, Shopify POS, Square, Clover, and future supported providers unlock the same features when they supply the same reviewed records. If a dataset is missing, Vanteloq identifies the affected feature and the data it needs.</span></div>
-              <strong>{universalPosContract.length} shared capabilities</strong>
+              <div><p>ONE COMMERCE INTELLIGENCE MODEL</p><h3 id="provider-parity-title">The same operating view across supported POS systems.</h3><span>Connect a supported point-of-sale account and Vanteloq organizes its available sales, payments, inventory, customer, supplier and location records into one consistent workspace.</span></div>
+              <strong>{universalPosContract.length} commerce capabilities</strong>
             </header>
-            <div>{universalPosContract.map((feature) => <article key={feature.id}><span>Shared contract</span><b>{feature.label}</b><p>{feature.insight}</p><small><strong>Required data:</strong> {feature.dataUsed.join(", ")}</small></article>)}</div>
-            <footer className="provider-coverage-matrix">
-              {providerRows.filter((provider) => provider.category === "Point of sale").map((provider) => {
-                const ready = provider.featureCoverage.filter((feature) => feature.status === "ready").length;
-                return <article key={provider.id}><div><b>{provider.name}</b><span>{provider.status === "connected" ? `${ready} of ${provider.featureCoverage.length} ready from verified records` : "Connection and verified records required"}</span></div><div>{provider.featureCoverage.map((feature) => <span className={feature.status} key={feature.id}>{feature.label}<b>{feature.status === "ready" ? "Ready" : `Needs ${feature.dataNeeded.join(", ")}`}</b></span>)}</div></article>;
-              })}
-            </footer>
+            <div className="provider-parity-body">
+              <Image src="/brand/pos-commerce-intelligence.png" alt="Supported point-of-sale sources organized into sales, payment, inventory and customer intelligence" width={1774} height={887} unoptimized />
+              <div className="provider-capability-list">{universalPosContract.map((feature) => <article key={feature.id}><span>{feature.label}</span><p>{feature.insight}</p></article>)}</div>
+            </div>
           </section>
           <div className="integration-groups">
             {integrationCategoryOrder.filter((category) => providerRows.some((provider) => provider.category === category)).map((category) => <section className="integration-category" key={category}>
@@ -2833,9 +2829,9 @@ function DataHub({
                               >{connectionAction === "approve" ? "Approving…" : "Approve reviewed sample"}</button>}
                             </> : <button
                               type="button"
-                              onClick={() => void stageProviderSample(actionableProvider as "lightspeed" | "lightspeed-r" | "stripe", connection.id)}
-                              disabled={!canManageProvider || Boolean(connectionAction)}
-                            >{connectionAction === "sync" || connectionAction === "sample" ? "Working…" : provider.id === "lightspeed-r" ? "Sync" : "Stage sample"}</button>}
+                              onClick={() => void stageProviderSample(actionableProvider as "lightspeed" | "lightspeed-r" | "stripe", connection.id, connection.lastSuccessfulSyncAt)}
+                              disabled={!canManageProvider || Boolean(connectionAction) || connection.syncActive}
+                            >{connectionAction === "sync" || connection.syncActive ? "Syncing…" : connectionAction === "sample" ? "Working…" : provider.id === "lightspeed-r" ? "Re-sync now" : "Stage sample"}</button>}
                             {isLightspeed && <button
                               type="button"
                               onClick={() => void loadLightspeedLocations(actionableProvider as "lightspeed" | "lightspeed-r", connection.id)}

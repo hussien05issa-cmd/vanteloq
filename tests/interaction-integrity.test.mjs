@@ -267,6 +267,22 @@ test("sidebar scrolling is bounded and navigation customization lives in Setting
   assert.doesNotMatch(css, /sidebar>nav\{overflow-y:visible\}/);
 });
 
+test("POS integrations use one clean capability view and follow active R-Series syncs", async () => {
+  const [app, api, css] = await Promise.all([
+    readFile(new URL("../app/vanteloq-app.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/v1/integrations/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/operating.css", import.meta.url), "utf8"),
+  ]);
+
+  assert.doesNotMatch(app, /BEFORE DATA REACHES YOUR DASHBOARD/);
+  assert.doesNotMatch(app, /provider-coverage-matrix/);
+  assert.match(app, /pos-commerce-intelligence\.png/);
+  assert.match(app, /waitForConnectionSync/);
+  assert.match(app, /connection\.syncActive/);
+  assert.match(api, /syncActive:/);
+  assert.match(css, /\.operating-shell \.sidebar>nav\{[^}]*flex:1 1 0!important;[^}]*overflow-y:auto!important/);
+});
+
 test("industry models use the generated operating-model visual without inventing active modules", async () => {
   const workspace = await readFile(new URL("../app/vanteloq-app.tsx", import.meta.url), "utf8");
   assert.match(workspace, /industry-models-v2\.png/);
