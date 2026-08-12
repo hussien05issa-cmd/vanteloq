@@ -24,6 +24,8 @@ test("13-week cash flow separates actual, confirmed, and expected movements", ()
   assert.equal(result.weeks.length, 13);
   assert.equal(result.weeks[0].weekStart, "2026-08-10");
   assert.equal(result.weeks[0].actualNetCents, 55_000);
+  assert.equal(result.weeks[0].actualInflowCents, 75_000);
+  assert.equal(result.weeks[0].actualOutflowCents, 20_000);
   assert.equal(result.weeks[0].confirmedNetCents, -120_000);
   assert.equal(result.weeks[0].overdueItemCount, 1);
   assert.equal(result.weeks[0].expectedNetCents, 60_000);
@@ -31,6 +33,9 @@ test("13-week cash flow separates actual, confirmed, and expected movements", ()
   assert.equal(result.weeks[0].planningClosingCashCents, 440_000);
   assert.equal(result.weeks[1].confirmedNetCents, -80_000);
   assert.equal(result.purchasingCapacityCents, 150_000);
+  assert.equal(result.actualPeriodOpeningCashCents, 445_000);
+  assert.equal(result.actualPeriodClosingCashCents, 500_000);
+  assert.equal(result.actualNetChangeCents, 55_000);
 });
 
 test("cash flow fails closed without a verified opening cash balance", () => {

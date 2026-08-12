@@ -142,9 +142,11 @@ export async function GET(request: Request) {
         t.external_source_id externalSourceId, t.location_ref locationRef,
         t.reconciliation_status reconciliationStatus, t.categorization_status categorizationStatus,
         t.confidence_basis_points confidenceBasisPoints, t.approval_status approvalStatus,
-        t.demo_record demoRecord, t.source_state sourceState, a.code accountCode, a.name accountName, c.name contactName
+        t.demo_record demoRecord, t.source_state sourceState, a.code accountCode, a.name accountName,
+        a.account_type categoryAccountType, a.account_subtype categoryAccountSubtype, a.system_key categorySystemKey,
+        c.name contactName
         FROM financial_transactions t
-        LEFT JOIN financial_accounts a ON a.id = t.account_id AND a.organization_id = t.organization_id
+        LEFT JOIN financial_accounts a ON a.id = t.category_account_id AND a.organization_id = t.organization_id
         LEFT JOIN bookloq_contacts c ON c.id = t.contact_id AND c.organization_id = t.organization_id
         WHERE t.organization_id = ?
           AND (t.source_system <> 'plaid' OR EXISTS (
@@ -249,7 +251,7 @@ export async function GET(request: Request) {
       database.prepare(`SELECT m.id, m.period_id periodId, m.item_key itemKey, m.title, m.status,
         m.due_date dueDate, m.blocker, m.completed_at completedAt
         FROM month_end_items m WHERE m.organization_id = ? ORDER BY m.title`).bind(organizationId).all(),
-      database.prepare(`SELECT b.id, b.period_start periodStart, b.period_end periodEnd,
+      database.prepare(`SELECT b.id, b.account_id accountId, b.period_start periodStart, b.period_end periodEnd,
         b.location_ref locationRef, b.department_ref departmentRef, b.budget_cents budgetCents,
         b.committed_cents committedCents, b.forecast_cents forecastCents,
         a.code accountCode, a.name accountName, a.account_type accountType
@@ -637,7 +639,7 @@ export async function GET(request: Request) {
     };
     return jsonResponse({
       bookloq: {
-        configured: ledgerAvailable,
+        configured: Boolean(settings) || ledgerAvailable || visibleBanks.length > 0 || documentRows.length > 0 || invoices.length > 0,
         settings,
         role: context.role,
         permissions: uiPermissions,

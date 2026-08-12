@@ -413,6 +413,7 @@
 .home-workflow-preview footer b { color: #1557d0; }
 
 .home-capabilities { padding-block: 108px; color: #fff; background: #071a35; }
+.home-bookloq-tour{padding-block:108px;background:linear-gradient(180deg,#f4f8fc,#fff);color:#0b2745}.bookloq-tour-stage{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(290px,.65fr);gap:20px;margin-top:38px}.bookloq-tour-stage figure{position:relative;margin:0;min-height:420px;overflow:hidden;border:1px solid #bfcfe1;border-radius:20px;background:#eaf2f8;box-shadow:0 25px 65px rgba(7,35,66,.14)}.bookloq-tour-stage figure img{display:block;width:100%;height:100%;min-height:420px;object-fit:cover}.tour-focus{position:absolute;display:flex;align-items:center;gap:8px;border:1px solid rgba(255,255,255,.8);border-radius:999px;background:rgba(8,39,71,.9);box-shadow:0 10px 30px rgba(5,30,60,.24);color:#fff;padding:9px 12px;font-size:11px;font-weight:750;animation:tourPulse 8s ease-in-out infinite}.tour-focus b{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;background:#1769e0;font-size:9px}.tour-focus.capture{left:5%;top:16%}.tour-focus.classify{left:39%;top:43%;animation-delay:2.3s}.tour-focus.forecast{right:7%;bottom:18%;animation-delay:4.6s}.bookloq-tour-stage aside{border:1px solid #c7d7e4;border-radius:20px;background:#082747;color:#fff;padding:27px;box-shadow:0 25px 65px rgba(7,35,66,.15)}.bookloq-tour-stage .product-brand-logo.full{width:180px;height:80px;border:0;border-radius:10px;background:#fff}.bookloq-tour-stage h3{font-size:24px;line-height:1.12;margin:27px 0 12px}.bookloq-tour-stage p{font-size:13px;line-height:1.65;color:#bed0e2}.bookloq-tour-stage ul{list-style:none;padding:0;margin:22px 0}.bookloq-tour-stage li{border-top:1px solid rgba(255,255,255,.12);padding:11px 0;color:#e1ebf4;font-size:12px}.bookloq-tour-stage li:before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:#46c99a;margin-right:10px}.bookloq-tour-stage aside>a{display:inline-flex;border-radius:8px;background:#fff;color:#1054a5;text-decoration:none;padding:11px 13px;font-size:12px;font-weight:800}@keyframes tourPulse{0%,16%,100%{transform:translateY(0);opacity:.72}8%{transform:translateY(-7px);opacity:1}}
 .home-capabilities .home-section-heading h2 { color: #fff; }
 .home-capabilities .home-section-heading > p { color: #78b0ff; }
 .home-capabilities .home-section-heading > span { color: #b5c3d6; }
@@ -605,6 +606,7 @@
   .home-connection-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .home-platform { gap: 54px; }
   .home-product-family-grid { grid-template-columns: 1fr; }
+  .bookloq-tour-stage{grid-template-columns:1fr}.bookloq-tour-stage figure,.bookloq-tour-stage figure img{min-height:360px}
   .home-resource-grid { grid-template-columns: 1fr 1fr; }
   .home-resource-grid > a:last-child { grid-column: 1 / -1; min-height: 240px; }
   .home-final-cta { align-items: flex-start; flex-direction: column; }
@@ -686,6 +688,7 @@
   .home-step-visual,
   .home-step-review-visual { width: 78px; height: 64px; }
   .home-product-family-grid article { grid-template-columns: 1fr; gap: 18px; padding: 20px; }
+  .home-bookloq-tour{padding-inline:18px}.bookloq-tour-stage figure,.bookloq-tour-stage figure img{min-height:260px}.tour-focus{padding:7px 9px;font-size:9px}.tour-focus b{width:18px;height:18px}.tour-focus.classify{left:26%}.bookloq-tour-stage aside{padding:22px}
   .home-product-logo-shell { width: 100%; max-width: 240px; height: 110px; }
   .home-faq-visual { display: block; }
   .home-faq-visual .product-brand-logo.full { width: 145px; height: 84px; }
@@ -726,6 +729,7 @@
   .home-workflow-preview::before,
   .home-problem-visual::after,
   .home-product-family-grid article::after { animation: none; }
+  .tour-focus{animation:none}
   .home-connection-grid article,
   .home-problem-grid article,
   .home-capability-grid article,

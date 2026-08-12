@@ -814,6 +814,134 @@ const articles: readonly ResourceArticle[] = [
     ],
     related: ["how-to-calculate-gross-margin-small-business", "how-to-analyze-business-data-for-growth", "what-should-small-business-dashboard-show"],
   },
+  {
+    slug: "small-business-cash-flow-management-guide",
+    title: "Small-Business Cash Flow: A Practical Control and Forecasting Guide",
+    seoTitle: "Small-Business Cash Flow Management and Forecasting Guide",
+    description: "Learn how to build a source-backed cash-flow statement, 13-week forecast, category budget and receipt-review routine without confusing profit with cash.",
+    dek: "Cash control is not a single bank balance. It is a repeatable view of opening cash, categorized inflows and outflows, committed obligations, expected receipts, budget pressure and the evidence behind each number.",
+    quickAnswer: "Start with a verified opening balance. Record cash inflows and outflows by category, reconcile them to source records, and calculate closing cash as opening cash plus inflows minus outflows. Build a rolling 13-week direct forecast that keeps confirmed obligations separate from expected receipts. Compare actual plus committed spend with the approved category budget, preserve receipts and invoices, and review forecast error every period instead of treating a prediction as a fact.",
+    searchIntent: "Informational: the reader wants formulas, controls and a practical routine for cash-flow planning, spend management and receipt evidence.",
+    category: "finance",
+    author: "Vanteloq Editorial Team",
+    published: "2026-08-11",
+    updated: "2026-08-11",
+    hero: {
+      src: "/brand/bookloq-cash-control-v1.png",
+      alt: "A BookLoQ finance illustration showing source records moving through categorized cash flow, a forecast band and spend-control review.",
+      width: 1774,
+      height: 887,
+    },
+    sections: [
+      {
+        id: "cash-statement",
+        heading: "1. Build a cash statement that reconciles",
+        paragraphs: [
+          "A useful cash statement explains the movement between opening and closing cash for a defined period. Record inflows such as sales receipts, investment income and other income separately from outflows such as operating expenses, debt payments, capital expenditures and one-time costs. Transfers between owned accounts should not inflate income or expense.",
+          "IAS 7 classifies cash flows as operating, investing and financing activities and requires cash and cash equivalents to reconcile between the beginning and end of the period. A small-business operating view can add practical subcategories while preserving that underlying classification.",
+        ],
+        formula: {
+          label: "Closing cash",
+          value: "Opening cash + Total cash inflows - Total cash outflows",
+          example: "$42,184 opening + $31,500 inflows - $27,584 outflows = $46,100 closing cash. Each component must trace to a supported record or remain visibly provisional.",
+        },
+      },
+      {
+        id: "cash-categories",
+        heading: "2. Categorize movement without guessing",
+        paragraphs: [
+          "A bank description is not an accounting category. Confirm the source account, counterparty, business purpose, tax treatment and supporting document before assigning a ledger category. Keep uncertain items in a review queue rather than forcing them into a miscellaneous account.",
+          "Use a controlled chart of accounts. Sales receipts, investment or interest income, other income, operating expenses, principal repayments, financing cost, fixed-asset purchases and non-recurring costs should remain distinguishable because they support different decisions.",
+        ],
+        bullets: [
+          "Sales revenue: cash collected from ordinary trade after refunds are handled consistently.",
+          "Investment income: interest, dividends or investment proceeds supported by the source statement.",
+          "Operating expenses: recurring costs used to run the business.",
+          "Debt payments: separate principal from interest so profit and cash are not distorted.",
+          "Capital expenditures: cash used to acquire or improve long-lived assets.",
+          "One-time costs: supported non-recurring outflows, not a permanent hiding place for unusual spend.",
+        ],
+      },
+      {
+        id: "forecast",
+        heading: "3. Use a rolling 13-week direct forecast",
+        paragraphs: [
+          "A direct forecast lists expected cash receipts and payments by date. Begin with a current verified balance, add confirmed inflows and outflows, and maintain a separate planning path for probable receipts. Do not increase purchasing capacity with an expected customer payment that has not arrived.",
+          "Update the forecast at least weekly. Compare the previous forecast with actual closing cash to learn whether dates, values or missing obligations are driving error. Forecasts become more useful through disciplined revision, not by hiding uncertainty.",
+        ],
+        formula: {
+          label: "Forecast error",
+          value: "Actual closing cash - Previously forecast closing cash",
+          example: "If actual closing cash is $46,100 and the prior forecast was $49,000, the error is -$2,900. Investigate timing, value and missing-record causes before changing the model.",
+        },
+      },
+      {
+        id: "spend-controls",
+        heading: "4. Put budget pressure in front of the purchase",
+        paragraphs: [
+          "A useful spend control compares the approved category budget with posted actuals, approved commitments and the reviewed forecast. It should warn the owner before approval and show the amount of headroom or projected overage. It should not silently reject a valid emergency purchase or pretend to know obligations that were never recorded.",
+        ],
+        formula: {
+          label: "Projected budget pressure",
+          value: "max(Actual spend + Committed spend, Reviewed forecast) / Approved budget",
+          example: "$8,000 actual + $2,400 committed against a $10,000 budget is 104% utilization and a $400 projected overage, before any unrecorded obligation.",
+        },
+      },
+      {
+        id: "liquidity",
+        heading: "5. Separate liquidity from the bank balance",
+        paragraphs: [
+          "Available bank cash is not the same as safe purchasing capacity. Subtract confirmed obligations and the business's approved safety reserve. Keep foreign-currency obligations, undated commitments, taxes, payroll and debt schedules visible because missing dates or conversions can make a precise-looking number unreliable.",
+        ],
+        formula: {
+          label: "Reviewed purchasing capacity",
+          value: "Verified available cash - Confirmed obligations - Approved safety reserve",
+          example: "If a required date or currency conversion is missing, the capacity should be withheld for review rather than calculated from an invented assumption.",
+        },
+      },
+      {
+        id: "receipts",
+        heading: "6. Capture receipts as evidence, not as automatic truth",
+        paragraphs: [
+          "The Canada Revenue Agency says businesses should keep daily income and expense records and retain supporting documents such as sales invoices, contracts, receipts and bank deposit slips. A secure capture process should preserve the original file, verify its type, detect duplicates, restrict access and record who uploaded and reviewed it.",
+          "A photographed receipt can support an expense, but the image does not approve its amount, business purpose, category or tax treatment. If extraction is enabled, compare the proposed fields with the original before posting the accounting entry.",
+        ],
+      },
+      {
+        id: "faq",
+        heading: "Common cash-flow questions",
+        table: {
+          caption: "Practical answers for owners and managers",
+          headers: ["Question", "Answer"],
+          rows: [
+            ["Why can profit rise while cash falls?", "Revenue and expense recognition, inventory purchases, loan principal, capital spending, receivables and payables affect profit and cash differently."],
+            ["Should expected invoices count as available cash?", "No. Show expected receipts in a planning path, but do not use them as current cash or confirmed purchasing capacity."],
+            ["How often should I update the forecast?", "Weekly is a practical minimum for a 13-week direct forecast; update sooner when a material receipt, payment or commitment changes."],
+            ["What if a receipt is missing?", "Keep the item in review, record the missing evidence and owner, and obtain professional guidance before relying on the expense or tax treatment."],
+            ["Can software decide whether I can afford a purchase?", "It can calculate pressure from recorded cash, obligations, reserves and forecasts. The owner still reviews missing data, timing, operating need and uncertainty."],
+          ],
+        },
+      },
+    ],
+    sources: [
+      {
+        title: "IAS 7 Statement of Cash Flows",
+        publisher: "IFRS Foundation",
+        url: "https://www.ifrs.org/issued-standards/list-of-standards/ias-7-statement-of-cash-flows.html/",
+      },
+      {
+        title: "Business records",
+        publisher: "Canada Revenue Agency",
+        url: "https://www.canada.ca/en/revenue-agency/services/tax/businesses/topics/sole-proprietorships-partnerships/business-records.html",
+      },
+      {
+        title: "What are business expenses?",
+        publisher: "Canada Revenue Agency",
+        url: "https://www.canada.ca/en/revenue-agency/services/tax/businesses/small-businesses-self-employed-income/business-income-tax-reporting/business-expenses/what-business-expenses.html",
+      },
+    ],
+    related: ["small-business-bookkeeping-system", "how-to-calculate-gross-margin-small-business", "what-should-small-business-dashboard-show"],
+  },
 ];
 
 export const RESOURCE_ARTICLES = articles;

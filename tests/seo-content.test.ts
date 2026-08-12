@@ -34,7 +34,7 @@ test("resource catalogue uses unique, stable and internally valid records", () =
 });
 
 test("requested analytics and bookkeeping guides are published with article heroes", () => {
-  for (const slug of ["how-to-analyze-business-data-for-growth", "small-business-bookkeeping-system"]) {
+  for (const slug of ["how-to-analyze-business-data-for-growth", "small-business-bookkeeping-system", "small-business-cash-flow-management-guide"]) {
     const article = getArticle(slug);
     assert.ok(article, `${slug} is missing`);
     assert.ok(article.hero, `${slug} needs its generated editorial hero`);

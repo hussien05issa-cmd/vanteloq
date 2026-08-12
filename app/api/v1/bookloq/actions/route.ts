@@ -13,6 +13,16 @@ function identifier(value: unknown): string | null {
   return typeof value === "string" && value.length >= 3 && value.length <= 180 && !/[\u0000-\u001f\u007f]/.test(value) ? value : null;
 }
 
+function isoDate(value: unknown): string | null {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value ? value : null;
+}
+
+function nonNegativeCents(value: unknown): number | null {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && value <= 9_000_000_000_000 ? value : null;
+}
+
 export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
@@ -21,11 +31,59 @@ export async function POST(request: Request) {
     await requireOrganizationWideLocationAccess(context);
     await enforceRateLimit("bookloq:actions", context.userId, 60, 60);
     const body = await readJsonObject(request, 16_000);
-    const allowed = ["type", "itemId", "status", "alertId", "periodId", "reason"];
+    const allowed = ["type", "itemId", "status", "alertId", "periodId", "reason", "transactionId", "accountId", "periodStart", "periodEnd", "budgetCents", "committedCents", "forecastCents", "locationRef", "departmentRef"];
     const unknown = Object.keys(body).find((field) => !allowed.includes(field));
     if (unknown) return jsonResponse({ error: { code: "UNKNOWN_FIELD", message: `Unexpected field: ${unknown}.` } }, { status: 400 });
     const database = getD1();
     const timestamp = Math.floor(Date.now() / 1_000);
+
+    if (body.type === "categorize_transaction") {
+      await requirePermission(context, "finance.statements");
+      requireBookLoQPermission(context.role, "create_transactions");
+      const transactionId = identifier(body.transactionId);
+      const accountId = identifier(body.accountId);
+      if (!transactionId || !accountId) return jsonResponse({ error: { code: "INVALID_CATEGORY", message: "Select a transaction and an active ledger category." } }, { status: 400 });
+      const [transaction, account] = await Promise.all([
+        database.prepare(`SELECT category_account_id categoryAccountId, categorization_status categorizationStatus FROM financial_transactions WHERE organization_id = ? AND id = ?`).bind(context.organizationId, transactionId).first<{ categoryAccountId: string | null; categorizationStatus: string }>(),
+        database.prepare(`SELECT id, code, name, account_type accountType FROM financial_accounts WHERE organization_id = ? AND id = ? AND active = 1`).bind(context.organizationId, accountId).first<{ id: string; code: string; name: string; accountType: string }>(),
+      ]);
+      if (!transaction) return jsonResponse({ error: { code: "TRANSACTION_NOT_FOUND", message: "Transaction not found." } }, { status: 404 });
+      if (!account) return jsonResponse({ error: { code: "CATEGORY_NOT_FOUND", message: "The ledger category is unavailable." } }, { status: 404 });
+      await database.prepare(`UPDATE financial_transactions SET category_account_id = ?, categorization_status = 'confirmed', confidence_basis_points = 10000, updated_at = ? WHERE organization_id = ? AND id = ?`)
+        .bind(account.id, timestamp, context.organizationId, transactionId).run();
+      await recordAudit({ request, requestId, organizationId: context.organizationId, actorUserId: context.userId,
+        action: "financial_transaction.categorized", resourceType: "financial_transaction", resourceId: transactionId,
+        details: { previousAccountId: transaction.categoryAccountId, previousStatus: transaction.categorizationStatus, accountId: account.id, accountCode: account.code, accountName: account.name, accountType: account.accountType, status: "confirmed" } });
+      return jsonResponse({ updated: true, type: body.type, id: transactionId, category: account });
+    }
+
+    if (body.type === "upsert_budget") {
+      await requirePermission(context, "finance.journal_post");
+      requireBookLoQPermission(context.role, "edit_drafts");
+      const accountId = identifier(body.accountId);
+      const periodStart = isoDate(body.periodStart);
+      const periodEnd = isoDate(body.periodEnd);
+      const budgetCents = nonNegativeCents(body.budgetCents);
+      const committedCents = nonNegativeCents(body.committedCents);
+      const forecastCents = nonNegativeCents(body.forecastCents);
+      const locationRef = identifier(body.locationRef) ?? "all";
+      const departmentRef = identifier(body.departmentRef) ?? "all";
+      if (!accountId || !periodStart || !periodEnd || periodEnd < periodStart || budgetCents === null || committedCents === null || forecastCents === null) {
+        return jsonResponse({ error: { code: "INVALID_BUDGET", message: "Account, valid dates and non-negative budget amounts are required." } }, { status: 400 });
+      }
+      const account = await database.prepare(`SELECT id, code, name FROM financial_accounts WHERE organization_id = ? AND id = ? AND active = 1 AND account_type IN ('revenue', 'expense')`).bind(context.organizationId, accountId).first<{ id: string; code: string; name: string }>();
+      if (!account) return jsonResponse({ error: { code: "BUDGET_ACCOUNT_NOT_FOUND", message: "Choose an active revenue or expense account." } }, { status: 404 });
+      const budgetId = crypto.randomUUID();
+      await database.prepare(`INSERT INTO bookloq_budgets (id, organization_id, account_id, period_start, period_end, location_ref, department_ref, budget_cents, committed_cents, forecast_cents, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(organization_id, account_id, period_start, period_end, location_ref, department_ref)
+        DO UPDATE SET budget_cents = excluded.budget_cents, committed_cents = excluded.committed_cents, forecast_cents = excluded.forecast_cents, updated_at = excluded.updated_at`)
+        .bind(budgetId, context.organizationId, accountId, periodStart, periodEnd, locationRef, departmentRef, budgetCents, committedCents, forecastCents, timestamp, timestamp).run();
+      await recordAudit({ request, requestId, organizationId: context.organizationId, actorUserId: context.userId,
+        action: "bookloq_budget.saved", resourceType: "bookloq_budget", resourceId: budgetId,
+        details: { accountId, accountCode: account.code, accountName: account.name, periodStart, periodEnd, budgetCents, committedCents, forecastCents, locationRef, departmentRef } });
+      return jsonResponse({ updated: true, type: body.type, id: budgetId });
+    }
 
     if (body.type === "month_end_status") {
       await requirePermission(context, "finance.reconcile");

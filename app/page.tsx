@@ -341,6 +341,25 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
         </article>
       </section>
 
+      <section className="home-bookloq-tour" aria-labelledby="bookloq-tour-title">
+        <div className="home-section-heading compact">
+          <p>BOOKLOQ PRODUCT TOUR</p>
+          <h2 id="bookloq-tour-title">See records become a cash decision.</h2>
+          <span>A guided, silent walkthrough of receipt and invoice capture, categorized cash movement, forecast ranges and spend-control review.</span>
+        </div>
+        <div className="bookloq-tour-stage">
+          <figure>
+            {/* This generated product visual contains no customer values or provider claims. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/brand/bookloq-cash-control-v1.png" alt="BookLoQ cash-control flow from captured source records through categorized cash movement, forecast and spend review." width={1774} height={887} loading="lazy"/>
+            <span className="tour-focus capture"><b>01</b> Capture evidence</span>
+            <span className="tour-focus classify"><b>02</b> Confirm categories</span>
+            <span className="tour-focus forecast"><b>03</b> Review liquidity</span>
+          </figure>
+          <aside><ProductBrandLogo product="bookloq" variant="full"/><h3>Financial control that starts with the source.</h3><p>Create and send invoices, photograph receipts, review transactions, compare budgets with commitments and maintain a rolling 13-week cash view.</p><ul><li>Opening and closing cash</li><li>Cash inflow and outflow categories</li><li>Historical and forecast views</li><li>Spend headroom and projected overage</li></ul><Link href="/resources/small-business-cash-flow-management-guide">Read the cash-flow guide →</Link></aside>
+        </div>
+      </section>
+
       <section className="home-capabilities" id="capabilities" aria-labelledby="capabilities-title">
         <div className="home-section-heading">
           <p>IMPLEMENTED CAPABILITIES</p>

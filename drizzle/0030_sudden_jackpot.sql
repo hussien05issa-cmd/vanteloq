@@ -1,0 +1,2 @@
+ALTER TABLE `financial_transactions` ADD `category_account_id` text REFERENCES financial_accounts(id);--> statement-breakpoint
+CREATE INDEX `financial_transactions_workspace_category_idx` ON `financial_transactions` (`organization_id`,`category_account_id`,`posting_date`);

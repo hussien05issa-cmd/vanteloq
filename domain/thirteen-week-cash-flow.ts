@@ -56,9 +56,11 @@ export function buildThirteenWeekCashFlow(input: {
   const weeks = Array.from({ length: 13 }, (_, index) => {
     const weekStart = isoDate(Date.parse(`${firstWeekStart}T00:00:00Z`) + index * 7 * DAY);
     const weekEnd = isoDate(Date.parse(`${weekStart}T00:00:00Z`) + 6 * DAY);
-    const actualNetCents = input.actualTransactions
-      .filter((item) => item.postingDate >= weekStart && item.postingDate <= weekEnd && item.postingDate <= input.asOf)
-      .reduce((sum, item) => sum + item.amountCents, 0);
+    const weekActuals = input.actualTransactions
+      .filter((item) => item.postingDate >= weekStart && item.postingDate <= weekEnd && item.postingDate <= input.asOf);
+    const actualInflowCents = weekActuals.reduce((sum, item) => sum + Math.max(0, item.amountCents), 0);
+    const actualOutflowCents = weekActuals.reduce((sum, item) => sum + Math.max(0, -item.amountCents), 0);
+    const actualNetCents = actualInflowCents - actualOutflowCents;
     const items = input.forecastItems.filter((item) => {
       const effectiveDueDate = item.dueDate < input.asOf ? input.asOf : item.dueDate;
       return effectiveDueDate >= weekStart && effectiveDueDate <= weekEnd;
@@ -71,6 +73,8 @@ export function buildThirteenWeekCashFlow(input: {
       index: index + 1,
       weekStart,
       weekEnd,
+      actualInflowCents,
+      actualOutflowCents,
       actualNetCents,
       confirmedNetCents,
       expectedNetCents,
@@ -83,6 +87,9 @@ export function buildThirteenWeekCashFlow(input: {
   const confirmedOutflows = input.forecastItems
     .filter((item) => item.certainty === "confirmed" && item.direction === "out" && item.dueDate <= weeks.at(-1)!.weekEnd)
     .reduce((sum, item) => sum + Math.max(0, item.amountCents), 0);
+  const actualInflowCents = weeks.reduce((sum, week) => sum + week.actualInflowCents, 0);
+  const actualOutflowCents = weeks.reduce((sum, week) => sum + week.actualOutflowCents, 0);
+  const actualNetChangeCents = actualInflowCents - actualOutflowCents;
   const excludedCurrencyItemCount = Math.max(0, input.excludedCurrencyItemCount ?? 0);
   const undatedCommittedItemCount = Math.max(0, input.undatedCommittedItemCount ?? 0);
   const currencyReviewRequired = decisionBlocks.includes("foreign_currency_obligations") || excludedCurrencyItemCount > 0;
@@ -109,6 +116,11 @@ export function buildThirteenWeekCashFlow(input: {
     asOf: input.asOf,
     openingCashCents: decisionOpeningCashCents,
     observedOpeningCashCents: input.openingCashCents,
+    actualPeriodOpeningCashCents: input.openingCashCents === null ? null : input.openingCashCents - actualNetChangeCents,
+    actualPeriodClosingCashCents: input.openingCashCents,
+    actualInflowCents,
+    actualOutflowCents,
+    actualNetChangeCents,
     safetyThresholdCents: Math.max(0, input.safetyThresholdCents),
     purchasingCapacityCents,
     capacityStatus,

@@ -211,6 +211,13 @@
       "when": 1786496479807,
       "tag": "0029_shallow_calypso",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "6",
+      "when": 1786504994797,
+      "tag": "0030_sudden_jackpot",
+      "breakpoints": true
     }
   ]
 }
