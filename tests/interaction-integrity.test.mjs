@@ -98,6 +98,20 @@ test("provider location discovery uses a same-origin write request", async () =>
   assert.match(app, /method: "POST"[\s\S]{0,180}action: "discover"/);
 });
 
+test("R-Series location setup cannot silently leave dashboard data locked", async () => {
+  const [app, shops, sync] = await Promise.all([
+    readFile(new URL("../app/vanteloq-app.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/v1/integrations/lightspeed-r/shops/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/v1/integrations/lightspeed-r/sync/route.ts", import.meta.url), "utf8"),
+  ]);
+  assert.doesNotMatch(app, /Keep as a separate R-Series location/);
+  assert.match(app, /Not mapped — dashboard data stays locked/);
+  assert.match(shops, /autoMapped/);
+  assert.match(shops, /activeLocalLocations\.length === 1/);
+  assert.match(sync, /unmappedLocations/);
+  assert.match(sync, /Map or ignore/);
+});
+
 test("live sales and report time frames stay connected to real API filters", async () => {
   const app = await readFile(new URL("../app/vanteloq-app.tsx", import.meta.url), "utf8");
   const reports = await readFile(new URL("../app/control-workspaces.tsx", import.meta.url), "utf8");

@@ -2262,6 +2262,7 @@ function DataHub({
       customers?: number;
       suppliers?: number;
       saleLines?: number;
+      unmappedLocations?: number;
     };
     readyForReview?: boolean;
     nextStep: string;
@@ -2278,6 +2279,7 @@ function DataHub({
       status: "mapped" | "unmapped" | "ignored";
     }>;
     localLocations: Array<{ id: string; name: string; status: string }>;
+    autoMapped?: number;
   }>(null);
   const loadConnections = useCallback(async () => {
     setConnectionsLoading(true);
@@ -2607,6 +2609,10 @@ function DataHub({
       if (!response.ok) throw new Error(body.error?.message ?? "Lightspeed locations could not be loaded.");
       setActiveSampleProvider(provider);
       setOutletData({ ...body, provider, locationLabel: provider === "lightspeed-r" ? "shop" : "outlet" });
+      if (provider === "lightspeed-r" && Number(body.autoMapped ?? 0) > 0) {
+        showNotice("The only R-Series shop was matched to your only active location. Starting its verified data sync now.");
+        await stageProviderSample(provider, connectionId);
+      }
     } catch (error) {
       showNotice(error instanceof Error ? error.message : "Lightspeed locations could not be loaded.");
     } finally {
@@ -2998,7 +3004,7 @@ function DataHub({
                   disabled={Boolean(providerActions[integrationActionKey(outletData.provider ?? "lightspeed", outletData.connectionId)])}
                   aria-label={`Map ${mapping.externalName}`}
                 >
-                  <option value="">{outletData.provider === "lightspeed-r" ? "Keep as a separate R-Series location" : "Unmapped: keeps dashboard data locked"}</option>
+                  <option value="">{outletData.provider === "lightspeed-r" ? "Not mapped — dashboard data stays locked" : "Unmapped: keeps dashboard data locked"}</option>
                   {outletData.localLocations.filter((location) => location.status === "active").map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}
                   <option value="__ignored__">Ignore this outlet</option>
                 </select>
@@ -3035,6 +3041,7 @@ function DataHub({
               <span><small>DUPLICATES SKIPPED</small><b>{sampleResult.run.duplicatesSkipped}</b></span>
               <span><small>{activeSampleProvider === "stripe" ? "PAYOUTS READ" : activeSampleProvider === "lightspeed-r" ? "DAILY SUMMARIES" : "UNMAPPED LOCATIONS"}</small><b>{activeSampleProvider === "stripe" ? sampleResult.reconciliation.payouts ?? 0 : activeSampleProvider === "lightspeed-r" ? sampleResult.reconciliation.dailyMetrics ?? 0 : sampleResult.reconciliation.unmappedOutlets ?? 0}</b></span>
               {activeSampleProvider === "lightspeed-r" && <>
+                <span><small>UNMAPPED SHOPS</small><b>{sampleResult.reconciliation.unmappedLocations ?? 0}</b></span>
                 <span><small>COMPLETED SALES</small><b>{sampleResult.reconciliation.completedSales ?? 0}</b></span>
                 <span><small>INVENTORY BALANCES</small><b>{sampleResult.reconciliation.inventoryBalances ?? 0}</b></span>
                 <span><small>OPEN SALES SKIPPED</small><b>{sampleResult.reconciliation.openSales ?? 0}</b></span>

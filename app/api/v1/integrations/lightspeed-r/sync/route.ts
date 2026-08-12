@@ -395,7 +395,8 @@ export async function POST(request: Request) {
         ));
       const mappedRaw = new Set(locationMappings.filter((row) => row.status === "mapped").map((row) => row.externalLocationRef));
       const mapped = new Set([...mappedRaw].map((value) => scopedRef(value)).filter((value): value is string => Boolean(value)));
-      warnings += locationMappings.filter((row) => row.status === "unmapped").length;
+      const unmappedLocations = locationMappings.filter((row) => row.status === "unmapped").length;
+      warnings += unmappedLocations;
       const publicationAuthorized = connection.dataPromotionStatus === "approved" || connection.promotionAuthorizedAt !== null;
       const publishCanonical = publicationAuthorized && warnings === 0;
       let stagedSales = 0;
@@ -722,6 +723,7 @@ export async function POST(request: Request) {
           suppliers: importedSuppliers,
           saleLines: importedSaleLines,
           payments: importedPayments,
+          unmappedLocations,
           duplicatesSkipped,
           warningCount: warnings,
           publishedCanonical: publishCanonical,
@@ -772,7 +774,9 @@ export async function POST(request: Request) {
         publishedCanonical: publishCanonical,
         usingLastApprovedData: promotionStatus === "approved" && !publishCanonical,
         readyForReview: warnings === 0 && backfillComplete && promotionStatus !== "approved",
-        nextStep: warnings > 0
+        nextStep: unmappedLocations > 0
+          ? `Map or ignore ${unmappedLocations} R-Series shop${unmappedLocations === 1 ? "" : "s"}, then re-sync. Dashboard data remains locked until every discovered shop has an explicit destination.`
+          : warnings > 0
           ? `Imported ${recordsImported} verified records. ${warnings} source record${warnings === 1 ? " needs" : "s need"} attention before the sync cursor can advance.`
           : promotionStatus === "approved"
             ? "R-Series is current and the approved records are available to dashboard features."

@@ -14,7 +14,12 @@ import {
 import { requirePermission } from "../../../../../../server/permissions";
 import { requireOrganizationWideLocationAccess } from "../../../../../../server/location-access";
 
-async function list(organizationId: string, connectionId: string, accountName: string | null) {
+async function list(
+  organizationId: string,
+  connectionId: string,
+  accountName: string | null,
+  autoMapped = 0,
+) {
   const mappings = await getDb().select().from(integrationLocationMappings).where(and(
     eq(integrationLocationMappings.organizationId, organizationId), eq(integrationLocationMappings.provider, LIGHTSPEED_R_PROVIDER),
     eq(integrationLocationMappings.connectionId, connectionId),
@@ -26,7 +31,7 @@ async function list(organizationId: string, connectionId: string, accountName: s
     eq(integrationSyncRuns.connectionId, connectionId),
     eq(integrationSyncRuns.mode, "discovery"),
   )).orderBy(desc(integrationSyncRuns.startedAt)).limit(1);
-  return { provider: LIGHTSPEED_R_PROVIDER, connectionId, accountName, locationLabel: "shop", mappings, localLocations, lastDiscovery: lastDiscovery ?? null };
+  return { provider: LIGHTSPEED_R_PROVIDER, connectionId, accountName, locationLabel: "shop", mappings, localLocations, lastDiscovery: lastDiscovery ?? null, autoMapped };
 }
 
 async function revokePublicationAuthorization(
@@ -107,6 +112,7 @@ export async function POST(request: Request) {
         try {
           const shops = await fetchLightspeedRCollection(context.organizationId, connection.id, connection.externalAccountRef, "Shop", { maxPages: 10 });
           let staged = 0;
+          const discoveredRefs: string[] = [];
           for (const shop of shops.data) {
             const ref = typeof shop.shopID === "string" || typeof shop.shopID === "number" ? String(shop.shopID) : "";
             if (!ref) continue;
@@ -119,7 +125,45 @@ export async function POST(request: Request) {
               target: [integrationLocationMappings.organizationId, integrationLocationMappings.provider, integrationLocationMappings.connectionId, integrationLocationMappings.externalLocationRef],
               set: { externalName: name, lastSeenAt: now, updatedAt: now },
             });
+            discoveredRefs.push(ref);
             staged += 1;
+          }
+          let autoMapped = 0;
+          const currentMappings = await getDb().select({
+            externalLocationRef: integrationLocationMappings.externalLocationRef,
+            status: integrationLocationMappings.status,
+          }).from(integrationLocationMappings).where(and(
+            eq(integrationLocationMappings.organizationId, context.organizationId),
+            eq(integrationLocationMappings.provider, LIGHTSPEED_R_PROVIDER),
+            eq(integrationLocationMappings.connectionId, connection.id),
+          ));
+          const activeLocalLocations = await getDb().select({ id: organizationLocations.id })
+            .from(organizationLocations).where(and(
+              eq(organizationLocations.organizationId, context.organizationId),
+              eq(organizationLocations.status, "active"),
+            ));
+          const discoveredMappings = currentMappings.filter((mapping) => discoveredRefs.includes(mapping.externalLocationRef));
+          // A single-shop retailer with a single Vanteloq location has no
+          // ambiguous choice. Map that exact pair so a connected account does
+          // not remain silently blocked behind a redundant setup step.
+          if (
+            discoveredRefs.length === 1
+            && discoveredMappings.length === 1
+            && discoveredMappings[0].status === "unmapped"
+            && activeLocalLocations.length === 1
+          ) {
+            const result = await getDb().update(integrationLocationMappings).set({
+              localLocationId: activeLocalLocations[0].id,
+              status: "mapped",
+              updatedAt: now,
+            }).where(and(
+              eq(integrationLocationMappings.organizationId, context.organizationId),
+              eq(integrationLocationMappings.provider, LIGHTSPEED_R_PROVIDER),
+              eq(integrationLocationMappings.connectionId, connection.id),
+              eq(integrationLocationMappings.externalLocationRef, discoveredRefs[0]),
+              eq(integrationLocationMappings.status, "unmapped"),
+            ));
+            autoMapped = Number(result.meta.changes ?? 0);
           }
           const [unmapped] = await getDb().select({ id: integrationLocationMappings.id })
             .from(integrationLocationMappings).where(and(
@@ -128,11 +172,11 @@ export async function POST(request: Request) {
               eq(integrationLocationMappings.connectionId, connection.id),
               eq(integrationLocationMappings.status, "unmapped"),
             )).limit(1);
-          if (unmapped) {
+          if (unmapped || autoMapped > 0) {
             await revokePublicationAuthorization(context.organizationId, connection.id, syncLease);
           }
           await getDb().update(integrationSyncRuns).set({ status: "completed", cursorAfter: shops.cursor, recordsRead: shops.data.length, recordsStaged: staged, completedAt: new Date() }).where(eq(integrationSyncRuns.id, runId));
-          return jsonResponse(await list(context.organizationId, connection.id, connection.externalAccountName));
+          return jsonResponse(await list(context.organizationId, connection.id, connection.externalAccountName, autoMapped));
         } catch (error) {
           await getDb().update(integrationSyncRuns).set({ status: "failed", errorCode: error instanceof ApiError ? error.code : "DISCOVERY_FAILED", completedAt: new Date() }).where(eq(integrationSyncRuns.id, runId));
           throw error;

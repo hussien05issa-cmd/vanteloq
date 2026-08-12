@@ -288,6 +288,22 @@ test("R-Series completes a browser callback using the initiating one-time state"
       WHERE c.id = ?`).bind(connection.id).first();
     assert.deepEqual(preservedConnection, originalConnection);
 
+    const automaticDiscovery = await worker.fetch(new Request(`${origin}/api/v1/integrations/lightspeed-r/shops`, {
+      method: "POST",
+      headers: ownerHeaders(true),
+      body: JSON.stringify({ action: "discover", connectionId: connection.id }),
+    }), environment, context);
+    assert.equal(automaticDiscovery.status, 200, await automaticDiscovery.clone().text());
+    const automaticDiscoveryBody = await automaticDiscovery.json();
+    assert.equal(automaticDiscoveryBody.autoMapped, 1);
+    assert.equal(automaticDiscoveryBody.mappings[0].status, "mapped");
+    assert.equal(automaticDiscoveryBody.mappings[0].localLocationId, automaticDiscoveryBody.localLocations[0].id);
+    // Preserve this test's explicit warning-gate scenario after verifying the
+    // single-shop/single-location production convenience path.
+    await database.prepare(`UPDATE integration_location_mappings
+      SET local_location_id = NULL, status = 'unmapped'
+      WHERE connection_id = ?`).bind(connection.id).run();
+
     const sync = await worker.fetch(new Request(`${origin}/api/v1/integrations/lightspeed-r/sync`, {
       method: "POST", headers: ownerHeaders(true), body: JSON.stringify({ reason: "manual", connectionId: connection.id }),
     }), environment, context);
