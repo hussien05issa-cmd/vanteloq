@@ -1611,6 +1611,28 @@ export const financialTransactions = sqliteTable(
   ],
 );
 
+export const bookloqCategoryRules = sqliteTable(
+  "bookloq_category_rules",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    matchText: text("match_text").notNull(),
+    direction: text("direction", { enum: ["any", "inflow", "outflow"] }).notNull().default("any"),
+    accountId: text("account_id").notNull().references(() => financialAccounts.id),
+    active: integer("active", { mode: "boolean" }).notNull().default(true),
+    createdByUserId: text("created_by_user_id").notNull().references(() => users.id),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("bookloq_category_rules_workspace_name_unique").on(table.organizationId, table.name),
+    index("bookloq_category_rules_workspace_active_idx").on(table.organizationId, table.active),
+    check("bookloq_category_rules_direction_check", sql`${table.direction} in ('any', 'inflow', 'outflow')`),
+    check("bookloq_category_rules_match_text_check", sql`length(${table.matchText}) between 3 and 120`),
+  ],
+);
+
 export const bankAccounts = sqliteTable(
   "bank_accounts",
   {
@@ -1761,6 +1783,38 @@ export const customerInvoiceLines = sqliteTable(
     check("customer_invoice_lines_quantity_check", sql`${table.quantityMilli} > 0 and ${table.quantityMilli} <= 1000000000`),
     check("customer_invoice_lines_amount_check", sql`${table.unitPriceCents} >= 0 and ${table.subtotalCents} >= 0 and ${table.taxCents} >= 0 and ${table.totalCents} = ${table.subtotalCents} + ${table.taxCents}`),
     check("customer_invoice_lines_tax_check", sql`${table.taxRateBasisPoints} between 0 and 10000`),
+  ],
+);
+
+export const bookloqTransactionMatches = sqliteTable(
+  "bookloq_transaction_matches",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    transactionId: text("transaction_id").notNull().references(() => financialTransactions.id, { onDelete: "cascade" }),
+    supplierBillId: text("supplier_bill_id").references(() => supplierBills.id, { onDelete: "cascade" }),
+    customerInvoiceId: text("customer_invoice_id").references(() => customerInvoices.id, { onDelete: "cascade" }),
+    documentId: text("document_id").references(() => workspaceDocuments.id, { onDelete: "cascade" }),
+    status: text("status", { enum: ["suggested", "confirmed", "rejected"] }).notNull().default("suggested"),
+    method: text("method", { enum: ["manual", "amount_reference_date"] }).notNull().default("manual"),
+    confidenceBasisPoints: integer("confidence_basis_points").notNull().default(0),
+    matchedAmountCents: integer("matched_amount_cents").notNull(),
+    reasonsJson: text("reasons_json").notNull().default("[]"),
+    note: text("note").notNull().default(""),
+    matchedByUserId: text("matched_by_user_id").references(() => users.id),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    index("bookloq_transaction_matches_workspace_transaction_idx").on(table.organizationId, table.transactionId, table.status),
+    uniqueIndex("bookloq_transaction_matches_bill_unique").on(table.organizationId, table.transactionId, table.supplierBillId),
+    uniqueIndex("bookloq_transaction_matches_invoice_unique").on(table.organizationId, table.transactionId, table.customerInvoiceId),
+    uniqueIndex("bookloq_transaction_matches_document_unique").on(table.organizationId, table.transactionId, table.documentId),
+    check("bookloq_transaction_matches_target_check", sql`((${table.supplierBillId} is not null) + (${table.customerInvoiceId} is not null) + (${table.documentId} is not null)) = 1`),
+    check("bookloq_transaction_matches_status_check", sql`${table.status} in ('suggested', 'confirmed', 'rejected')`),
+    check("bookloq_transaction_matches_method_check", sql`${table.method} in ('manual', 'amount_reference_date')`),
+    check("bookloq_transaction_matches_confidence_check", sql`${table.confidenceBasisPoints} between 0 and 10000`),
+    check("bookloq_transaction_matches_amount_check", sql`${table.matchedAmountCents} > 0`),
   ],
 );
 

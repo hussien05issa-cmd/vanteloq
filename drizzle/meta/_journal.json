@@ -218,6 +218,13 @@
       "when": 1786504994797,
       "tag": "0030_sudden_jackpot",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "6",
+      "when": 1786596281119,
+      "tag": "0031_sad_dreadnoughts",
+      "breakpoints": true
     }
   ]
 }

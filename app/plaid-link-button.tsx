@@ -211,15 +211,15 @@ export default function PlaidLinkButton({ connected, repairRequired, configured,
           <div><span>FINANCIAL DATA AUTHORIZATION</span><h3 id="plaid-consent-title">Choose what Vanteloq may use.</h3></div>
           <button type="button" aria-label="Close financial data notice" onClick={() => setConsentDialog(null)}>×</button>
         </header>
-        <p id="plaid-consent-summary">Plaid will ask you to choose a financial institution and eligible business accounts. Vanteloq receives read-only records only after you authorize them in Plaid Link. Vanteloq cannot move money or make payments.</p>
+        <p id="plaid-consent-summary">Plaid will ask you to choose a financial institution, eligible business accounts, and the information you agree to share. Vanteloq receives read-only records only after you authorize them in Plaid Link. Vanteloq cannot move money or make payments.</p>
         <div className="plaid-consent-grid">
           <div><h4>Data requested</h4><ul>{PLAID_DATA_CATEGORIES.map((item) => <li key={item}>{item}</li>)}</ul></div>
           <div><h4>Why it is used</h4><ul>{PLAID_PROCESSING_PURPOSES.map((item) => <li key={item}>{item}</li>)}</ul></div>
         </div>
-        <p className="plaid-consent-retention">Encrypted provider credentials are deleted when you disconnect. You can then request deletion of unreviewed imported data. Approved, reconciled, or posted accounting fields may be retained where required, with bank identifiers and descriptions removed.</p>
+        <p className="plaid-consent-retention">Your authorization supports an initial history import and ongoing refreshes until you disconnect or your institution requires renewal. Encrypted provider credentials are deleted when you disconnect. You can then request deletion of unreviewed imported data. Approved, reconciled, or posted accounting fields may be retained where required, with bank identifiers and descriptions removed.</p>
         <label className="plaid-consent-check">
           <input type="checkbox" checked={consentChecked} onChange={(event) => setConsentChecked(event.target.checked)} />
-          <span>I authorize Vanteloq to collect, process, and store the selected read-only financial data for the purposes above. I understand that I can withdraw access.</span>
+          <span>I authorize Vanteloq to collect, process, store, and refresh the selected read-only financial data for the purposes above. I understand that I can withdraw access and delete eligible imported data.</span>
         </label>
         <p className="plaid-consent-links"><a href="/privacy#financial-connections" target="_blank" rel="noreferrer">Privacy Policy</a><a href="/privacy#retention" target="_blank" rel="noreferrer">Retention and deletion</a></p>
         <footer><button type="button" onClick={() => setConsentDialog(null)}>Cancel</button><button type="button" className="primary" disabled={!consentChecked} title={!consentChecked ? "Accept the financial data authorization to continue." : "Continue to Plaid Link."} onClick={authorizeAfterConsent}>Continue to Plaid</button></footer>

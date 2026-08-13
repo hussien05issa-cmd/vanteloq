@@ -146,7 +146,7 @@ test("successful Plaid balance syncs remain staged until reviewed without postin
   assert.match(source, /dataPromotionStatus: "staging"/);
   assert.match(source, /approvalStatus: "pending"/);
   assert.match(source, /reconciliationStatus: "unreconciled"/);
-  assert.match(source, /categorizationStatus: record\.categorizationStatus/);
+  assert.match(source, /categorizationStatus: matchedRule \? "suggested" : record\.categorizationStatus/);
 });
 
 test("repair-required initial Plaid sync remains blocked", async () => {

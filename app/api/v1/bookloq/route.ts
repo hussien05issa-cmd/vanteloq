@@ -20,6 +20,7 @@ import {
   type CashFlowDecisionBlock,
   type ThirteenWeekCashFlowItem,
 } from "../../../../domain/thirteen-week-cash-flow";
+import { buildBusinessCashSummary, rankTransactionMatches } from "../../../../domain/bookloq-cash-management";
 
 const readers = ["owner", "admin", "manager", "employee", "read_only"] as const;
 
@@ -123,6 +124,8 @@ export async function GET(request: Request) {
       auditResult,
       integrationsResult,
       documentsResult,
+      transactionMatchesResult,
+      categoryRulesResult,
     ] = await Promise.all([
       database.prepare(`SELECT base_currency baseCurrency, country_code countryCode, province_code provinceCode,
         accounting_basis accountingBasis, cash_safety_threshold_cents cashSafetyThresholdCents,
@@ -156,7 +159,7 @@ export async function GET(request: Request) {
               AND (c.sync_lease_owner IS NULL OR c.sync_lease_expires_at IS NULL
                 OR c.sync_lease_expires_at <= CAST(strftime('%s', 'now') AS INTEGER))
           ))${transactionLocationClause}
-        ORDER BY t.posting_date DESC, t.created_at DESC LIMIT 200`).bind(organizationId, ...locationBindings).all(),
+        ORDER BY t.posting_date DESC, t.created_at DESC LIMIT 1000`).bind(organizationId, ...locationBindings).all(),
       database.prepare(`SELECT b.id, b.name, b.account_type accountType, b.institution_name institutionName,
         b.masked_number maskedNumber, b.live_balance_cents liveBalanceCents,
         b.available_balance_cents availableBalanceCents, b.book_balance_cents bookBalanceCents,
@@ -265,15 +268,35 @@ export async function GET(request: Request) {
       database.prepare(`SELECT provider, status, data_promotion_status dataPromotionStatus,
         last_successful_sync_at lastSuccessfulSyncAt
         FROM integration_connections WHERE organization_id = ?`).bind(organizationId).all(),
-      database.prepare(`SELECT document_type documentType, status, extraction_status extractionStatus,
+      database.prepare(`SELECT id, document_type documentType, file_name fileName, status,
+        security_state securityState, extraction_status extractionStatus, extracted_json extractedJson,
         created_at createdAt FROM workspace_documents WHERE organization_id = ?
         ORDER BY created_at DESC LIMIT 200`).bind(organizationId).all(),
+      database.prepare(`SELECT m.id, m.transaction_id transactionId, m.status, m.method,
+        m.confidence_basis_points confidenceBasisPoints, m.matched_amount_cents matchedAmountCents,
+        m.reasons_json reasonsJson, m.note, m.supplier_bill_id supplierBillId,
+        m.customer_invoice_id customerInvoiceId, m.document_id documentId,
+        COALESCE(sb.bill_number, ci.invoice_number, wd.file_name) targetLabel
+        FROM bookloq_transaction_matches m
+        LEFT JOIN supplier_bills sb ON sb.id = m.supplier_bill_id AND sb.organization_id = m.organization_id
+        LEFT JOIN customer_invoices ci ON ci.id = m.customer_invoice_id AND ci.organization_id = m.organization_id
+        LEFT JOIN workspace_documents wd ON wd.id = m.document_id AND wd.organization_id = m.organization_id
+        WHERE m.organization_id = ? ORDER BY m.updated_at DESC LIMIT 500`).bind(organizationId).all(),
+      database.prepare(`SELECT r.id, r.name, r.match_text matchText, r.direction, r.account_id accountId,
+        a.code accountCode, a.name accountName
+        FROM bookloq_category_rules r JOIN financial_accounts a
+          ON a.id = r.account_id AND a.organization_id = r.organization_id
+        WHERE r.organization_id = ? AND r.active = 1 ORDER BY r.name LIMIT 200`).bind(organizationId).all(),
     ]);
 
     const settings = rows(settingsResult)[0] ?? null;
     const accountRows = rows(accountsResult);
     const statements = buildFinancialStatements(accountRows);
-    const transactions = rows(transactionsResult);
+    const transactions = rows(transactionsResult) as Array<{
+      id: string; postingDate: string; description: string; originalDescription: string;
+      amountCents: number; currency: string; categorizationStatus: string;
+      reconciliationStatus: string; accountName: string | null;
+    }>;
     const banks = rows(banksResult) as BankRow[];
     const reconciliations = rows(reconciliationsResult);
     const bills = rows(billsResult) as Array<{ id: string; billNumber: string; supplierName: string; dueDate: string; totalCents: number; paidCents: number; status: string; currency: string; approvalStatus: string; demoRecord: number; purchaseOrderRef: string | null }>;
@@ -308,7 +331,9 @@ export async function GET(request: Request) {
       : bookkeepingHealthScore({ unbalancedJournalCount, uncategorizedCount, unreconciledCount, openCriticalAlerts, missingReceiptCount, monthEndCompletionRate });
     const asOf = new Date().toISOString().slice(0, 10);
     const integrationRows = rows(integrationsResult) as Array<{ provider: string; status: string; dataPromotionStatus: string; lastSuccessfulSyncAt: number | null }>;
-    const documentRows = rows(documentsResult) as Array<{ documentType: string; status: string; extractionStatus: string; createdAt: number }>;
+    const documentRows = rows(documentsResult) as Array<{ id: string; documentType: string; fileName: string; status: string; securityState: string; extractionStatus: string; extractedJson: string; createdAt: number }>;
+    const transactionMatches = rows(transactionMatchesResult) as Array<{ id: string; transactionId: string; status: string; method: string; confidenceBasisPoints: number; matchedAmountCents: number; reasonsJson: string; note: string; supplierBillId: string | null; customerInvoiceId: string | null; documentId: string | null; targetLabel: string }>;
+    const categoryRules = rows(categoryRulesResult);
     const plaidConnection = integrationRows.find((item) => item.provider === "plaid" && item.status === "connected")
       ?? integrationRows.find((item) => item.provider === "plaid");
     const canReconcile = permissions.includes("finance.reconcile");
@@ -390,6 +415,30 @@ export async function GET(request: Request) {
       .filter((value): value is number => value !== null)
       .sort((left, right) => right - left)[0] ?? null;
     const cashLastSyncAt = cashLastSyncMs === null ? null : Math.floor(cashLastSyncMs / 1_000);
+    const visibleBillsForCash = access.accountsPayableReceivable ? bills.filter((bill) => matchesDataMode(bill.demoRecord)) : [];
+    const visibleInvoicesForCash = access.accountsPayableReceivable ? invoices.filter((invoice) => matchesDataMode(invoice.demoRecord)) : [];
+    const confirmedTransactionIds = new Set(transactionMatches.filter((match) => match.status === "confirmed").map((match) => match.transactionId));
+    const cashTransactions = (access.bankTransactions ? transactions : []).filter((transaction) => transaction.currency.toUpperCase() === baseCurrency).map((transaction) => ({
+      postingDate: transaction.postingDate,
+      amountCents: Number(transaction.amountCents),
+      category: transaction.accountName ?? (transaction.amountCents >= 0 ? "Uncategorized income" : "Uncategorized spending"),
+      categorized: transaction.categorizationStatus === "confirmed",
+      matched: transaction.reconciliationStatus === "matched" || transaction.reconciliationStatus === "reconciled" || confirmedTransactionIds.has(transaction.id),
+    }));
+    const cashActivity = {
+      days30: buildBusinessCashSummary(cashTransactions, asOf, 30),
+      days90: buildBusinessCashSummary(cashTransactions, asOf, 90),
+      months12: buildBusinessCashSummary(cashTransactions, asOf, 366),
+    };
+    const matchCandidates = transactions.flatMap((transaction) => rankTransactionMatches({
+      id: transaction.id,
+      postingDate: transaction.postingDate,
+      amountCents: transaction.amountCents,
+      description: `${transaction.description} ${transaction.originalDescription}`,
+    }, [
+      ...visibleBillsForCash.map((bill) => ({ id: bill.id, kind: "supplier_bill" as const, date: bill.dueDate, amountCents: bill.totalCents - bill.paidCents, label: `${bill.supplierName} · ${bill.billNumber}`, reference: bill.billNumber })),
+      ...visibleInvoicesForCash.map((invoice) => ({ id: invoice.id, kind: "customer_invoice" as const, date: invoice.dueDate, amountCents: invoice.totalCents - invoice.paidCents, label: `${invoice.customerName} · ${invoice.invoiceNumber}`, reference: invoice.invoiceNumber })),
+    ])).filter((candidate) => !confirmedTransactionIds.has(candidate.transactionId)).slice(0, 100);
     const cashProjectionAllowed = access.bankBalances && access.accountsPayableReceivable && cashOpeningBalanceCents !== null;
     const thirteenWeekAllowed = cashProjectionAllowed && access.bankTransactions;
     const asOfMilliseconds = Date.parse(`${asOf}T00:00:00Z`);
@@ -707,7 +756,11 @@ export async function GET(request: Request) {
           warning: "Bank balance and accounts payable or receivable permissions are required for cash intelligence.",
           evidence: [],
         },
+        cashActivity,
         transactions: access.bankTransactions ? transactions : [],
+        transactionMatches: access.bankTransactions ? transactionMatches : [],
+        matchCandidates: access.bankTransactions && access.accountsPayableReceivable ? matchCandidates : [],
+        categoryRules: access.bankTransactions ? categoryRules : [],
         banks: visibleBanks,
         reconciliations: canReconcile ? reconciliations : [],
         bills: visibleBills,
@@ -726,6 +779,15 @@ export async function GET(request: Request) {
           needsReview: documentRows.filter((document) => document.status === "review_required" || document.status === "uploaded").length,
           extractionConfigured: documentRows.some((document) => document.extractionStatus !== "not_configured"),
         },
+        documents: access.bankTransactions ? documentRows.map((document) => ({
+          id: document.id,
+          documentType: document.documentType,
+          fileName: document.fileName,
+          status: document.status,
+          securityState: document.securityState,
+          extractionStatus: document.extractionStatus,
+          createdAt: document.createdAt,
+        })) : [],
         integrations: {
           banking: dataMode === "demonstration" && visibleBanks.length
             ? "demonstration"

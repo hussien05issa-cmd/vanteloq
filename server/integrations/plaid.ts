@@ -1,13 +1,15 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { getD1, getDb, getRuntimeEnv, type VanteloqRuntimeEnv } from "../../db/index.ts";
 import {
   bankAccounts,
+  bookloqCategoryRules,
   financialAccounts,
   financialTransactions,
   integrationConnections,
   integrationSecrets,
   integrationWebhookEvents,
 } from "../../db/schema.ts";
+import { normalizeCategoryRuleText } from "../../domain/bookloq-cash-management.ts";
 import { ApiError } from "../api.ts";
 import {
   acquireIntegrationSyncLease,
@@ -664,6 +666,14 @@ export async function syncPlaidTransactions(organizationId: string, fetcher: typ
       eq(bankAccounts.externalItemRef, current.itemId),
     ));
   const accountMap = new Map(accountRows.map((account) => [account.externalAccountRef, account.accountId]));
+  const categoryRules = await database.select({
+    accountId: bookloqCategoryRules.accountId,
+    matchText: bookloqCategoryRules.matchText,
+    direction: bookloqCategoryRules.direction,
+  }).from(bookloqCategoryRules).where(and(
+    eq(bookloqCategoryRules.organizationId, organizationId),
+    eq(bookloqCategoryRules.active, true),
+  ));
   const normalizedRecords = [
     ...added.map((input) => ({ state: "posted" as const, record: normalizePlaidTransaction(input) })),
     ...modified.map((input) => ({ state: "modified" as const, record: normalizePlaidTransaction(input) })),
@@ -679,6 +689,12 @@ export async function syncPlaidTransactions(organizationId: string, fetcher: typ
   for (const { state, record } of normalizedRecords) {
       const accountId = accountMap.get(record.externalAccountRef);
       if (!accountId) throw new ApiError(502, "PLAID_ACCOUNT_MAPPING_MISSING", "Plaid account mapping became unavailable during synchronization. The cursor was not advanced.");
+      const normalizedDescription = normalizeCategoryRuleText(`${record.description} ${record.originalDescription}`);
+      const transactionDirection = record.amountCents >= 0 ? "inflow" : "outflow";
+      const matchedRule = categoryRules.find((rule) =>
+        (rule.direction === "any" || rule.direction === transactionDirection)
+        && normalizedDescription.includes(rule.matchText),
+      );
       await renewIntegrationSyncLease(syncLease);
       await database.insert(financialTransactions).values({
         id: crypto.randomUUID(),
@@ -692,13 +708,14 @@ export async function syncPlaidTransactions(organizationId: string, fetcher: typ
         exchangeRatePpm: 1_000_000,
         taxAmountCents: 0,
         accountId,
+        categoryAccountId: matchedRule?.accountId ?? null,
         sourceSystem: PLAID_PROVIDER,
         externalSourceId: record.externalSourceId,
         sourceState: record.sourceState === "pending" ? "pending" : state,
         pendingExternalSourceId: record.pendingExternalSourceId,
         reconciliationStatus: "unreconciled",
-        categorizationStatus: record.categorizationStatus,
-        confidenceBasisPoints: record.confidenceBasisPoints,
+        categorizationStatus: matchedRule ? "suggested" : record.categorizationStatus,
+        confidenceBasisPoints: matchedRule ? 8_500 : record.confidenceBasisPoints,
         approvalStatus: "pending",
         demoRecord: !plaidReadiness().liveDataEligible,
         createdAt: now,
@@ -713,8 +730,9 @@ export async function syncPlaidTransactions(organizationId: string, fetcher: typ
         accountId,
         sourceState: record.sourceState === "pending" ? "pending" : state,
         pendingExternalSourceId: record.pendingExternalSourceId,
-        categorizationStatus: "missing",
-        confidenceBasisPoints: 0,
+        categoryAccountId: sql`CASE WHEN ${financialTransactions.categorizationStatus} = 'confirmed' THEN ${financialTransactions.categoryAccountId} ELSE ${matchedRule?.accountId ?? null} END`,
+        categorizationStatus: sql`CASE WHEN ${financialTransactions.categorizationStatus} = 'confirmed' THEN 'confirmed' ELSE ${matchedRule ? "suggested" : "missing"} END`,
+        confidenceBasisPoints: sql`CASE WHEN ${financialTransactions.categorizationStatus} = 'confirmed' THEN 10000 ELSE ${matchedRule ? 8500 : 0} END`,
         updatedAt: now,
       }});
       if (record.pendingExternalSourceId) {

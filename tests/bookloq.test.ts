@@ -12,6 +12,11 @@ import {
   type LedgerAccountRow,
 } from "../server/bookloq.ts";
 import * as bookloqModule from "../server/bookloq.ts";
+import {
+  buildBusinessCashSummary,
+  rankTransactionMatches,
+  normalizeCategoryRuleText,
+} from "../domain/bookloq-cash-management.ts";
 
 test("balanced journal validation uses integer minor units", () => {
   const input = journalInput({
@@ -156,4 +161,44 @@ test("BookLoQ presentation never serializes missing metrics as null text", async
   assert.equal(metricCount?.(4), "4");
   assert.equal(health?.(null), null);
   assert.deepEqual(health?.(87), { score: 87, degrees: 313.2 });
+});
+
+test("business cash summary uses integer cents and keeps inflows separate from outflows", () => {
+  const summary = buildBusinessCashSummary([
+    { postingDate: "2026-08-01", amountCents: 240_000, category: "Sales revenue", categorized: true, matched: true },
+    { postingDate: "2026-08-02", amountCents: -75_000, category: "Inventory purchases", categorized: true, matched: true },
+    { postingDate: "2026-08-03", amountCents: -25_000, category: "Rent", categorized: false, matched: false },
+  ], "2026-08-12", 30);
+
+  assert.equal(summary.inflowCents, 240_000);
+  assert.equal(summary.outflowCents, 100_000);
+  assert.equal(summary.netCashFlowCents, 140_000);
+  assert.equal(summary.categorizedBasisPoints, 6_667);
+  assert.equal(summary.matchedBasisPoints, 6_667);
+  assert.deepEqual(summary.categories.map((item) => [item.name, item.amountCents]), [
+    ["Inventory purchases", 75_000],
+    ["Rent", 25_000],
+  ]);
+});
+
+test("invoice matching is explainable and never silently auto-confirms", () => {
+  const matches = rankTransactionMatches({
+    id: "txn-1",
+    postingDate: "2026-08-12",
+    amountCents: -12_500,
+    description: "ACME SUPPLY INV 4421",
+  }, [{
+    id: "bill-1",
+    kind: "supplier_bill",
+    date: "2026-08-10",
+    amountCents: 12_500,
+    label: "Acme Supply · invoice 4421",
+    reference: "4421",
+  }]);
+
+  assert.equal(matches[0]?.candidateId, "bill-1");
+  assert.equal(matches[0]?.requiresConfirmation, true);
+  assert.equal(matches[0]?.confidenceBasisPoints, 10_000);
+  assert.deepEqual(matches[0]?.reasons, ["Exact amount", "Reference found", "Date within 7 days", "Name overlap"]);
+  assert.equal(normalizeCategoryRuleText("  ACME–Supply #4421  "), "acme supply 4421");
 });
