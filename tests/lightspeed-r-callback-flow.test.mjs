@@ -112,6 +112,7 @@ test("R-Series completes a browser callback using the initiating one-time state"
     assert.match(state ?? "", /^[A-Za-z0-9_-]{43}$/);
 
     let failShopVerification = false;
+    let failOptionalVendorRead = false;
     let injectSyncWarning = false;
     const mockLightspeedFetch = async (input, init) => {
       const request = input instanceof Request ? input : new Request(input, init);
@@ -173,6 +174,9 @@ test("R-Series completes a browser callback using the initiating one-time state"
         });
       }
       if (url.origin === "https://api.lightspeedapp.com" && url.pathname === "/API/V3/Account/123/Vendor.json") {
+        if (failOptionalVendorRead) {
+          return Response.json({ error: "temporary vendor endpoint outage" }, { status: 503 });
+        }
         return Response.json({
           Vendor: [{ vendorID: "vendor-1", name: "North Supply", accountNumber: "NS-14", Contact: { email: "orders@example.invalid" } }],
           "@attributes": {},
@@ -537,6 +541,31 @@ test("R-Series completes a browser callback using the initiating one-time state"
     assert.deepEqual(balance, {
       location_ref: `lightspeed-r:${connection.id}:1`, sku: "CRE-A", name: "Creatine A", on_hand_quantity: 45, reorder_point: 24,
     });
+
+    failOptionalVendorRead = true;
+    const partialCoverageSync = await worker.fetch(new Request(`${origin}/api/v1/integrations/lightspeed-r/sync`, {
+      method: "POST", headers: ownerHeaders(true), body: JSON.stringify({ reason: "manual", connectionId: connection.id }),
+    }), environment, context);
+    assert.equal(partialCoverageSync.status, 200, await partialCoverageSync.clone().text());
+    const partialCoverageBody = await partialCoverageSync.json();
+    assert.equal(partialCoverageBody.dataPromotionEnabled, true);
+    assert.equal(partialCoverageBody.publishedCanonical, true);
+    assert.equal(partialCoverageBody.run.warningCount, 0);
+    assert.deepEqual(partialCoverageBody.coverageWarnings, ["suppliers"]);
+    const partialCheckpoint = JSON.parse(partialCoverageBody.run.cursorPreserved);
+    assert.equal(partialCheckpoint.salesComplete, false, "a secondary outage must not let later sales fall outside the retry window");
+    assert.equal(partialCheckpoint.suppliersComplete, false);
+    assert.deepEqual(
+      await database.prepare(`SELECT data_promotion_status dataPromotionStatus, last_error_code lastErrorCode
+        FROM integration_connections WHERE id = ?`).bind(connection.id).first(),
+      { dataPromotionStatus: "approved", lastErrorCode: null },
+    );
+    assert.deepEqual(await database.prepare(`
+      SELECT business_date, location_ref, gross_sales_cents, net_sales_cents, cost_of_goods_cents,
+             transaction_count, units_sold, refunds_cents, discounts_cents
+      FROM daily_business_metrics WHERE source_connection_id = ?
+    `).bind(connection.id).first(), metric);
+    failOptionalVendorRead = false;
 
     const beforeWarning = await database.prepare(`
       SELECT data_promotion_status dataPromotionStatus,

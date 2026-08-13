@@ -57,6 +57,8 @@ type StagedSaleRow = Pick<NormalizedLightspeedRSale,
   "taxCents" | "costCents" | "discountCents" | "lineCount"
 >;
 
+type LightspeedRCollectionPage = Awaited<ReturnType<typeof fetchLightspeedRCollection>> & { failed?: boolean };
+
 function checkpoint(value: string | null): SyncCheckpoint {
   const empty: SyncCheckpoint = {
     version: 4,
@@ -281,16 +283,38 @@ export async function POST(request: Request) {
           loadRelations: ["SaleLines", "SalePayments"],
         },
       );
-      const paymentTypesPage = await fetchLightspeedRCollection(
-        context.organizationId,
-        connection.id,
-        connection.externalAccountRef,
-        "PaymentType",
-        { maxPages: 3 },
-      );
+      const coverageWarnings = new Set<string>();
+      let optionalReadsUnavailable = false;
+      const optionalCollection = async (
+        dataset: string,
+        resource: Parameters<typeof fetchLightspeedRCollection>[3],
+        options: Parameters<typeof fetchLightspeedRCollection>[4],
+      ): Promise<LightspeedRCollectionPage> => {
+        if (optionalReadsUnavailable) {
+          coverageWarnings.add(dataset);
+          return { data: [], pages: 0, cursor: null, failed: true };
+        }
+        try {
+          return await fetchLightspeedRCollection(
+            context.organizationId,
+            connection.id,
+            connection.externalAccountRef!,
+            resource,
+            options,
+          );
+        } catch (error) {
+          if (!(error instanceof ApiError) || !["LIGHTSPEED_R_PROVIDER_ERROR", "LIGHTSPEED_R_RATE_LIMITED"].includes(error.code)) {
+            throw error;
+          }
+          coverageWarnings.add(dataset);
+          optionalReadsUnavailable = error.code === "LIGHTSPEED_R_RATE_LIMITED";
+          return { data: [], pages: 0, cursor: null, failed: true };
+        }
+      };
+      const paymentTypesPage = await optionalCollection("payment types", "PaymentType", { maxPages: 3 });
       const saleLinesPage = previous.saleLinesComplete && Number(existingCommerce?.saleLines ?? 0) > 0
         ? { data: [], pages: 0, cursor: null as string | null }
-        : await fetchLightspeedRCollection(context.organizationId, connection.id, connection.externalAccountRef, "SaleLine", {
+        : await optionalCollection("sale line details", "SaleLine", {
             maxPages: 3,
             cursor: previous.saleLinesCursor,
             modifiedSince: previous.saleLinesCursor || Number(existingCommerce?.saleLines ?? 0) === 0
@@ -299,7 +323,7 @@ export async function POST(request: Request) {
           });
       const itemsPage = previous.itemsComplete && Number(existingCommerce?.products ?? 0) > 0
         ? { data: [], pages: 0, cursor: null as string | null }
-        : await fetchLightspeedRCollection(context.organizationId, connection.id, connection.externalAccountRef, "Item", {
+        : await optionalCollection("products and inventory", "Item", {
             maxPages: 3,
             cursor: previous.itemsCursor,
             modifiedSince: previous.itemsCursor || Number(existingCommerce?.products ?? 0) === 0
@@ -309,7 +333,7 @@ export async function POST(request: Request) {
           });
       const customersPage = previous.customersComplete && Number(existingCommerce?.customers ?? 0) > 0
         ? { data: [], pages: 0, cursor: null as string | null }
-        : await fetchLightspeedRCollection(context.organizationId, connection.id, connection.externalAccountRef, "Customer", {
+        : await optionalCollection("customers", "Customer", {
             maxPages: 2,
             cursor: previous.customersCursor,
             modifiedSince: previous.customersCursor || Number(existingCommerce?.customers ?? 0) === 0
@@ -318,7 +342,7 @@ export async function POST(request: Request) {
           });
       const suppliersPage = previous.suppliersComplete && Number(existingCommerce?.suppliers ?? 0) > 0
         ? { data: [], pages: 0, cursor: null as string | null }
-        : await fetchLightspeedRCollection(context.organizationId, connection.id, connection.externalAccountRef, "Vendor", {
+        : await optionalCollection("suppliers", "Vendor", {
             maxPages: 2,
             cursor: previous.suppliersCursor,
             modifiedSince: previous.suppliersCursor || Number(existingCommerce?.suppliers ?? 0) === 0
@@ -649,11 +673,16 @@ export async function POST(request: Request) {
 
       const completedAt = new Date();
       const salesComplete = previous.salesComplete || salesPage.cursor === null;
-      const saleLinesComplete = previous.saleLinesComplete || saleLinesPage.cursor === null;
-      const itemsComplete = previous.itemsComplete || itemsPage.cursor === null;
-      const customersComplete = previous.customersComplete || customersPage.cursor === null;
-      const suppliersComplete = previous.suppliersComplete || suppliersPage.cursor === null;
+      const saleLinesComplete = previous.saleLinesComplete || (!saleLinesPage.failed && saleLinesPage.cursor === null);
+      const itemsComplete = previous.itemsComplete || (!itemsPage.failed && itemsPage.cursor === null);
+      const customersComplete = previous.customersComplete || (!customersPage.failed && customersPage.cursor === null);
+      const suppliersComplete = previous.suppliersComplete || (!suppliersPage.failed && suppliersPage.cursor === null);
       const backfillComplete = salesComplete && saleLinesComplete && itemsComplete && customersComplete && suppliersComplete;
+      // Keep the primary sales cursor eligible for another incremental read
+      // while any secondary dataset is unavailable. The 24-hour fast path
+      // updates today's dashboard, and the preserved watermark prevents older
+      // sales from being skipped during a longer provider-side outage.
+      const checkpointSalesComplete = coverageWarnings.size > 0 ? false : salesComplete;
       const computedCheckpoint = nextCheckpoint(
         previous,
         completedAt,
@@ -662,7 +691,7 @@ export async function POST(request: Request) {
         itemsPage.cursor,
         customersPage.cursor,
         suppliersPage.cursor,
-        salesComplete,
+        checkpointSalesComplete,
         saleLinesComplete,
         itemsComplete,
         customersComplete,
@@ -726,6 +755,8 @@ export async function POST(request: Request) {
           unmappedLocations,
           duplicatesSkipped,
           warningCount: warnings,
+          coverageWarningCount: coverageWarnings.size,
+          coverageWarningDatasets: [...coverageWarnings].join(","),
           publishedCanonical: publishCanonical,
           usingLastApprovedData: promotionStatus === "approved" && !publishCanonical,
           dataPromotionEnabled: promotionStatus === "approved",
@@ -745,6 +776,7 @@ export async function POST(request: Request) {
           pages: recentSalesPage.pages + salesPage.pages + saleLinesPage.pages + itemsPage.pages + customersPage.pages + suppliersPage.pages + paymentTypesPage.pages,
           cursorPreserved: safeCheckpoint,
         },
+        coverageWarnings: [...coverageWarnings],
         reconciliation: {
           sourceRecords: recordsRead,
           stagedRecords: stagedSales,
@@ -779,7 +811,9 @@ export async function POST(request: Request) {
           : warnings > 0
           ? `Imported ${recordsImported} verified records. ${warnings} source record${warnings === 1 ? " needs" : "s need"} attention before the sync cursor can advance.`
           : promotionStatus === "approved"
-            ? "R-Series is current and the approved records are available to dashboard features."
+            ? coverageWarnings.size
+              ? `Verified sales are current. ${[...coverageWarnings].join(", ")} will retry on the next sync.`
+              : "R-Series is current and the approved records are available to dashboard features."
           : backfillComplete
             ? `R-Series is current. Review the reconciliation, then approve this account before its records affect dashboard results.`
             : `Imported ${recordsImported} records. Run sync again to continue the remaining R-Series backfill before approval.` ,
