@@ -264,7 +264,10 @@ export async function POST(request: Request) {
       const salesPage = previous.salesComplete
         ? { data: [], pages: 0, cursor: null as string | null }
         : await fetchLightspeedRCollection(context.organizationId, connection.id, connection.externalAccountRef, "Sale", {
-            maxPages: 3,
+            // A large retailer backfill advances through the persisted cursor
+            // one provider page per Worker invocation. This keeps the edge
+            // request bounded while still making resumable progress.
+            maxPages: 1,
             cursor: previous.salesCursor,
             modifiedSince: previous.salesCursor ? null : previous.watermark,
             loadRelations: ["SaleLines", "SalePayments"],
@@ -311,11 +314,11 @@ export async function POST(request: Request) {
           return { data: [], pages: 0, cursor: null, failed: true };
         }
       };
-      const paymentTypesPage = await optionalCollection("payment types", "PaymentType", { maxPages: 3 });
+      const paymentTypesPage = await optionalCollection("payment types", "PaymentType", { maxPages: 1 });
       const saleLinesPage = previous.saleLinesComplete && Number(existingCommerce?.saleLines ?? 0) > 0
         ? { data: [], pages: 0, cursor: null as string | null }
         : await optionalCollection("sale line details", "SaleLine", {
-            maxPages: 3,
+            maxPages: 1,
             cursor: previous.saleLinesCursor,
             modifiedSince: previous.saleLinesCursor || Number(existingCommerce?.saleLines ?? 0) === 0
               ? null
@@ -324,7 +327,7 @@ export async function POST(request: Request) {
       const itemsPage = previous.itemsComplete && Number(existingCommerce?.products ?? 0) > 0
         ? { data: [], pages: 0, cursor: null as string | null }
         : await optionalCollection("products and inventory", "Item", {
-            maxPages: 3,
+            maxPages: 1,
             cursor: previous.itemsCursor,
             modifiedSince: previous.itemsCursor || Number(existingCommerce?.products ?? 0) === 0
               ? null
@@ -334,7 +337,7 @@ export async function POST(request: Request) {
       const customersPage = previous.customersComplete && Number(existingCommerce?.customers ?? 0) > 0
         ? { data: [], pages: 0, cursor: null as string | null }
         : await optionalCollection("customers", "Customer", {
-            maxPages: 2,
+            maxPages: 1,
             cursor: previous.customersCursor,
             modifiedSince: previous.customersCursor || Number(existingCommerce?.customers ?? 0) === 0
               ? null
@@ -343,7 +346,7 @@ export async function POST(request: Request) {
       const suppliersPage = previous.suppliersComplete && Number(existingCommerce?.suppliers ?? 0) > 0
         ? { data: [], pages: 0, cursor: null as string | null }
         : await optionalCollection("suppliers", "Vendor", {
-            maxPages: 2,
+            maxPages: 1,
             cursor: previous.suppliersCursor,
             modifiedSince: previous.suppliersCursor || Number(existingCommerce?.suppliers ?? 0) === 0
               ? null
@@ -408,6 +411,15 @@ export async function POST(request: Request) {
       await renewIntegrationSyncLease(syncLease);
 
       const database = getD1();
+      const runWriteBatches = async (statements: D1PreparedStatement[]) => {
+        let changes = 0;
+        for (let index = 0; index < statements.length; index += 50) {
+          await renewIntegrationSyncLease(syncLease);
+          const results = await database.batch(statements.slice(index, index + 50));
+          changes += results.reduce((sum, result) => sum + Number(result.meta.changes ?? 0), 0);
+        }
+        return changes;
+      };
       const locationMappings = await getDb().select({
         externalLocationRef: integrationLocationMappings.externalLocationRef,
         status: integrationLocationMappings.status,
@@ -423,10 +435,7 @@ export async function POST(request: Request) {
       warnings += unmappedLocations;
       const publicationAuthorized = connection.dataPromotionStatus === "approved" || connection.promotionAuthorizedAt !== null;
       const publishCanonical = publicationAuthorized && warnings === 0;
-      let stagedSales = 0;
-      for (const sale of warnings === 0 ? uniqueSales : []) {
-        await renewIntegrationSyncLease(syncLease);
-        const result = await database.prepare(`
+      const stagedSaleStatements = (warnings === 0 ? uniqueSales : []).map((sale) => database.prepare(`
           INSERT OR IGNORE INTO integration_staged_sales
             (id, organization_id, provider, connection_id, external_sale_id, external_version, outlet_ref, sold_at, state,
              total_cents, tax_cents, cost_cents, discount_cents, line_count, source_payload_hash, sync_run_id, staged_at)
@@ -436,9 +445,8 @@ export async function POST(request: Request) {
           scopedRef(sale.externalSaleId), sale.externalVersion, scopedRef(sale.outletRef), sale.soldAt, sale.state,
           sale.totalCents, sale.taxCents, sale.costCents, sale.discountCents, sale.lineCount,
           sale.sourcePayloadHash, runId, Date.now(),
-        ).run();
-        stagedSales += Number(result.meta.changes ?? 0);
-      }
+        ));
+      const stagedSales = await runWriteBatches(stagedSaleStatements);
       if (publishCanonical && connection.dataPromotionStatus === "approved") {
         const hidden = await getDb().update(integrationConnections).set({
           dataPromotionStatus: "staging",
@@ -457,10 +465,7 @@ export async function POST(request: Request) {
         }
         publicationPointerDemoted = true;
       }
-      let importedSaleLines = 0;
-      for (const line of warnings === 0 ? uniqueSaleLines.filter((row) => !row.outletRef || mappedRaw.has(row.outletRef)) : []) {
-        await renewIntegrationSyncLease(syncLease);
-        const result = await database.prepare(`
+      const saleLineStatements = (warnings === 0 ? uniqueSaleLines.filter((row) => !row.outletRef || mappedRaw.has(row.outletRef)) : []).map((line) => database.prepare(`
           INSERT INTO commerce_sale_lines
             (id, organization_id, provider, connection_id, external_sale_id, external_line_id, product_ref, customer_ref,
              outlet_ref, sold_at, sku, product_name, quantity_milli, net_sales_cents, cost_cents,
@@ -478,13 +483,9 @@ export async function POST(request: Request) {
           scopedRef(line.externalLineId), scopedRef(line.productRef), scopedRef(line.customerRef), scopedRef(line.outletRef), line.soldAt,
           line.sku, line.productName, line.quantityMilli, line.netSalesCents, line.costCents,
           line.discountCents, line.sourcePayloadHash, runId, Date.now(),
-        ).run();
-        importedSaleLines += Number(result.meta.changes ?? 0);
-      }
-      let importedPayments = 0;
-      for (const payment of warnings === 0 ? uniquePayments.filter((row) => !row.outletRef || mappedRaw.has(row.outletRef)) : []) {
-        await renewIntegrationSyncLease(syncLease);
-        const result = await database.prepare(`
+        ));
+      const importedSaleLines = await runWriteBatches(saleLineStatements);
+      const paymentStatements = (warnings === 0 ? uniquePayments.filter((row) => !row.outletRef || mappedRaw.has(row.outletRef)) : []).map((payment) => database.prepare(`
           INSERT INTO commerce_payments
             (id, organization_id, provider, connection_id, external_payment_id, external_sale_id, payment_type_ref,
              payment_type_name, category, amount_cents, paid_at, outlet_ref, source_payload_hash,
@@ -500,9 +501,8 @@ export async function POST(request: Request) {
           crypto.randomUUID(), context.organizationId, LIGHTSPEED_R_PROVIDER, connection.id, scopedRef(payment.externalPaymentId),
           scopedRef(payment.externalSaleId), scopedRef(payment.paymentTypeRef), payment.paymentTypeName, payment.category,
           payment.amountCents, payment.paidAt, scopedRef(payment.outletRef), payment.sourcePayloadHash, runId, Date.now(),
-        ).run();
-        importedPayments += Number(result.meta.changes ?? 0);
-      }
+        ));
+      const importedPayments = await runWriteBatches(paymentStatements);
 
       const latest = await database.prepare(`
         SELECT external_sale_id AS externalSaleId, outlet_ref AS outletRef, sold_at AS soldAt, state,
@@ -578,10 +578,9 @@ export async function POST(request: Request) {
 
       let importedInventory = 0;
       if (warnings === 0) {
-        for (const balance of inventoryBalances) {
-          if (!mappedRaw.has(balance.outletRef)) continue;
-          await renewIntegrationSyncLease(syncLease);
-          const result = await database.prepare(`
+        const inventoryStatements = inventoryBalances
+          .filter((balance) => mappedRaw.has(balance.outletRef))
+          .map((balance) => database.prepare(`
           INSERT INTO inventory_balances
             (id, organization_id, location_ref, sku, name, on_hand_quantity, reorder_point, version,
              source_provider, source_connection_id, updated_at)
@@ -598,14 +597,10 @@ export async function POST(request: Request) {
             crypto.randomUUID(), context.organizationId, `${LIGHTSPEED_R_PROVIDER}:${scopedRef(balance.outletRef)}`,
             balance.sku, balance.name, balance.onHandQuantity, balance.reorderPoint,
             LIGHTSPEED_R_PROVIDER, connection.id, now,
-          ).run();
-          importedInventory += Number(result.meta.changes ?? 0);
-        }
+          ));
+        importedInventory = await runWriteBatches(inventoryStatements);
       }
-      let importedProducts = 0;
-      for (const product of warnings === 0 ? products : []) {
-        await renewIntegrationSyncLease(syncLease);
-        const result = await database.prepare(`
+      const productStatements = (warnings === 0 ? products : []).map((product) => database.prepare(`
           INSERT INTO commerce_products
             (id, organization_id, provider, connection_id, external_product_id, sku, name, category_ref, supplier_ref,
              default_cost_cents, default_price_cents, archived, source_updated_at, source_payload_hash,
@@ -622,13 +617,9 @@ export async function POST(request: Request) {
           product.sku, product.name, scopedRef(product.categoryRef), scopedRef(product.supplierRef), product.defaultCostCents,
           product.defaultPriceCents, product.archived ? 1 : 0, product.sourceUpdatedAt,
           product.sourcePayloadHash, runId, now,
-        ).run();
-        importedProducts += Number(result.meta.changes ?? 0);
-      }
-      let importedCustomers = 0;
-      for (const customer of warnings === 0 ? customers : []) {
-        await renewIntegrationSyncLease(syncLease);
-        const result = await database.prepare(`
+        ));
+      const importedProducts = await runWriteBatches(productStatements);
+      const customerStatements = (warnings === 0 ? customers : []).map((customer) => database.prepare(`
           INSERT INTO commerce_customers
             (id, organization_id, provider, connection_id, external_customer_id, display_name, first_name, last_name,
              email, phone, archived, source_updated_at, source_payload_hash, sync_run_id, updated_at)
@@ -642,13 +633,9 @@ export async function POST(request: Request) {
           crypto.randomUUID(), context.organizationId, LIGHTSPEED_R_PROVIDER, connection.id, scopedRef(customer.externalCustomerId),
           customer.displayName, customer.firstName, customer.lastName, customer.email, customer.phone,
           customer.archived ? 1 : 0, customer.sourceUpdatedAt, customer.sourcePayloadHash, runId, now,
-        ).run();
-        importedCustomers += Number(result.meta.changes ?? 0);
-      }
-      let importedSuppliers = 0;
-      for (const supplier of warnings === 0 ? suppliers : []) {
-        await renewIntegrationSyncLease(syncLease);
-        const result = await database.prepare(`
+        ));
+      const importedCustomers = await runWriteBatches(customerStatements);
+      const supplierStatements = (warnings === 0 ? suppliers : []).map((supplier) => database.prepare(`
           INSERT INTO commerce_suppliers
             (id, organization_id, provider, connection_id, external_supplier_id, name, account_number, contact_name,
              email, phone, archived, source_updated_at, source_payload_hash, sync_run_id, updated_at)
@@ -662,9 +649,8 @@ export async function POST(request: Request) {
           crypto.randomUUID(), context.organizationId, LIGHTSPEED_R_PROVIDER, connection.id, scopedRef(supplier.externalSupplierId),
           supplier.name, supplier.accountNumber, supplier.contactName, supplier.email, supplier.phone,
           supplier.archived ? 1 : 0, supplier.sourceUpdatedAt, supplier.sourcePayloadHash, runId, now,
-        ).run();
-        importedSuppliers += Number(result.meta.changes ?? 0);
-      }
+        ));
+      const importedSuppliers = await runWriteBatches(supplierStatements);
       await renewIntegrationSyncLease(syncLease);
       await database.prepare(`
         UPDATE data_imports SET status = 'completed', row_count = ?

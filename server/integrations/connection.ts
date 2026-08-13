@@ -41,7 +41,7 @@ export async function acquireIntegrationSyncLease(
   organizationId: string,
   provider: string,
   connectionId: string,
-  ttlMs = 30 * 60_000,
+  ttlMs = 5 * 60_000,
 ): Promise<IntegrationSyncLease | null> {
   const owner = crypto.randomUUID();
   const now = Date.now();
@@ -67,7 +67,7 @@ export async function acquireIntegrationSyncLease(
 
 export async function renewIntegrationSyncLease(
   lease: IntegrationSyncLease,
-  ttlMs = 30 * 60_000,
+  ttlMs = 5 * 60_000,
 ) {
   const now = Date.now();
   const expiresAt = new Date(now + ttlMs);

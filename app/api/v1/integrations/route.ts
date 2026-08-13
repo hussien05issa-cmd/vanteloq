@@ -42,10 +42,37 @@ export async function GET(request: Request) {
         privacyDataDeletedAt: integrationConnections.privacyDataDeletedAt,
         syncLeaseOwner: integrationConnections.syncLeaseOwner,
         syncLeaseExpiresAt: integrationConnections.syncLeaseExpiresAt,
+        updatedAt: integrationConnections.updatedAt,
         resourceSelectionVersion: integrationConnections.resourceSelectionVersion,
       })
       .from(integrationConnections)
       .where(eq(integrationConnections.organizationId, context.organizationId));
+    const now = Date.now();
+    const staleLeaseCutoff = now - (4 * 60 * 1_000);
+    const staleLeases = rows.filter((connection) =>
+      connection.syncLeaseOwner
+      && (
+        !connection.syncLeaseExpiresAt
+        || connection.syncLeaseExpiresAt.getTime() <= now
+        || connection.updatedAt.getTime() <= staleLeaseCutoff
+      )
+    );
+    if (staleLeases.length) {
+      for (const connection of staleLeases) {
+        await getDb().update(integrationConnections).set({
+          syncLeaseOwner: null,
+          syncLeaseExpiresAt: null,
+          updatedAt: new Date(),
+        }).where(and(
+          eq(integrationConnections.id, connection.id),
+          eq(integrationConnections.organizationId, context.organizationId),
+          eq(integrationConnections.provider, connection.provider),
+          eq(integrationConnections.syncLeaseOwner, connection.syncLeaseOwner!),
+        ));
+        connection.syncLeaseOwner = null;
+        connection.syncLeaseExpiresAt = null;
+      }
+    }
     const [marketingSelections, completedMarketingSamples, marketingMetricCounts] = await Promise.all([
       getDb().select({
         id: marketingResourceSelections.id,

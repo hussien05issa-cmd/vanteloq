@@ -80,8 +80,23 @@ test("the feature tour advances meaningful interface phases and scene controls r
 test("R-Series warnings keep source records out of live metrics and preserve the retry cursor", async () => {
   const sync = await readFile(new URL("../app/api/v1/integrations/lightspeed-r/sync/route.ts", import.meta.url), "utf8");
   assert.match(sync, /const publishCanonical = publicationAuthorized && warnings === 0/);
-  assert.match(sync, /for \(const sale of warnings === 0 \? uniqueSales : \[\]\)/);
+  assert.match(sync, /warnings === 0 \? uniqueSales : \[\]/);
   assert.match(sync, /warnings > 0 \? connection\.lastSyncCursor/);
+});
+
+test("R-Series backfills are bounded, resumable and recover from expired locks", async () => {
+  const [sync, connection, integrations] = await Promise.all([
+    readFile(new URL("../app/api/v1/integrations/lightspeed-r/sync/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../server/integrations/connection.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/v1/integrations/route.ts", import.meta.url), "utf8"),
+  ]);
+  assert.equal((sync.match(/maxPages:\s*1/g) ?? []).length >= 6, true);
+  assert.doesNotMatch(sync, /maxPages:\s*[2-9]/);
+  assert.match(sync, /database\.batch\(statements\.slice\(index, index \+ 50\)\)/);
+  assert.match(connection, /ttlMs = 5 \* 60_000/);
+  assert.match(integrations, /staleLeases/);
+  assert.match(integrations, /syncLeaseExpiresAt\.getTime\(\) <= now/);
+  assert.match(integrations, /updatedAt\.getTime\(\) <= staleLeaseCutoff/);
 });
 
 test("provider location discovery uses a same-origin write request", async () => {
