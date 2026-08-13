@@ -26,7 +26,6 @@ export async function POST(request: Request) {
     // Clover's one-time dashboard verification carries no merchant data and
     // cannot schedule work. It is safe to acknowledge without provider auth.
     if (typeof payload.verificationCode === "string" && payload.verificationCode.length <= 256 && Object.keys(payload).length === 1) {
-      console.info("Clover webhook verification code", payload.verificationCode);
       return jsonResponse({ received: true, verification: true }, { status: 200 });
     }
     const auth = request.headers.get("x-clover-auth");
