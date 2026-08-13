@@ -11,14 +11,14 @@ This document records the verified Stripe Billing and entitlement boundary. It i
 
 ## Central server catalogue
 
-`server/entitlements/catalog.ts` is the sole plan/add-on definition. It contains stable internal keys, inherited feature sets, exact CAD prices, Stripe lookup keys, and user/location limits.
+`server/entitlements/catalog.ts` is the sole plan/add-on definition. It contains stable internal keys, inherited feature sets, exact CAD prices, Stripe lookup keys, and user/location limits. New purchases are monthly only. Historical annual catalogue entries remain solely so previously created Stripe subscriptions can still be validated and synchronized safely.
 
-| Access | Monthly | Annual | Users | Active locations |
-| --- | ---: | ---: | ---: | ---: |
-| Starter | $49 CAD | $490 CAD | 3 | 1 |
-| Growth | $99 CAD | $990 CAD | 10 | 3 |
-| Pro | $179 CAD | $1,790 CAD | 25 | 10 |
-| BookLoq add-on | $39 CAD | $390 CAD | Not applicable | Not applicable |
+| Access | Month-to-month | Users | Active locations |
+| --- | ---: | ---: | ---: |
+| Starter | $49 CAD | 3 | 1 |
+| Growth | $99 CAD | 10 | 3 |
+| Pro | $179 CAD | 25 | 10 |
+| BookLoQ add-on | $39 CAD | Not applicable | Not applicable |
 
 The Pro location value of 10 is an initial centralized policy value, not an unlimited claim. AI capability levels are represented, but numerical quotas remain `null` until reliable metering exists.
 
@@ -49,18 +49,21 @@ Bootstrap uses insert-if-absent semantics so a revoked record is not silently re
 
 - The owner/admin Billing screen reads synchronized subscription facts and the central catalogue; it never invents a billing state.
 - Checkout sessions are created only on the server. Client-supplied Price IDs are not accepted.
-- Stripe prices are resolved by stable lookup key and verified against exact CAD amount, interval, active state, and catalogue definition before Checkout opens.
+- Checkout accepts month-to-month purchases only and rejects annual selections before any Stripe request.
+- Monthly Stripe prices are resolved by stable lookup key and verified against exact CAD amount, interval, active state, and catalogue definition before Checkout opens.
 - Stripe-hosted Checkout requires a payment method. Existing customers are sent to the Stripe-hosted customer portal for changes and cancellation.
 - The dedicated Billing webhook verifies the raw-body Stripe HMAC with a five-minute replay window, enforces a 256 KB body limit, records a payload hash, atomically claims events, and ignores duplicates.
 - Webhook processing retrieves the current authoritative subscription from Stripe, validates every recognized plan/add-on price against the catalogue, rejects multiple base plans, ignores stale events, and synchronizes subscription and BookLoq entitlement state.
 - Vanteloq stores Stripe customer, subscription, item, and price identifiers plus billing status and periods. It does not store card details or payment-method payloads.
 
-Expected Stripe Price lookup keys:
+Active purchase lookup keys:
 
-- `vanteloq_starter_monthly_cad`, `vanteloq_starter_yearly_cad`
-- `vanteloq_growth_monthly_cad`, `vanteloq_growth_yearly_cad`
-- `vanteloq_pro_monthly_cad`, `vanteloq_pro_yearly_cad`
-- `bookloq_monthly_cad`, `bookloq_yearly_cad`
+- `vanteloq_starter_monthly_cad`
+- `vanteloq_growth_monthly_cad`
+- `vanteloq_pro_monthly_cad`
+- `bookloq_monthly_cad`
+
+The corresponding `*_yearly_cad` lookup keys are archived legacy records. They are not offered for new checkout but remain recognized by webhook normalization so historical subscriptions are not broken.
 
 ## Tests passed at this boundary
 
@@ -81,7 +84,7 @@ Expected Stripe Price lookup keys:
 
 The application fails closed until the following are configured in the hosted environment and Stripe Dashboard:
 
-- create the Stripe products/prices with the exact lookup keys and exact catalogue amounts above;
+- keep the exact monthly Stripe prices active and their stable lookup keys unique;
 - set `STRIPE_SECRET_KEY` and the dedicated `STRIPE_BILLING_WEBHOOK_SECRET` securely in the hosted environment;
 - register `/api/v1/billing/stripe/webhook` in Stripe for Checkout Session and customer subscription events;
 - configure and activate the Stripe customer portal;

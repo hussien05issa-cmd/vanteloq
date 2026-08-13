@@ -7,6 +7,10 @@ export type AddonKey = (typeof ADDON_KEYS)[number];
 export const BILLING_INTERVALS = ["month", "year"] as const;
 export type BillingInterval = (typeof BILLING_INTERVALS)[number];
 
+/** New purchases are month-to-month. Annual entries remain for legacy webhook reconciliation. */
+export const PURCHASE_INTERVALS = ["month"] as const;
+export type PurchaseBillingInterval = (typeof PURCHASE_INTERVALS)[number];
+
 export const FEATURE_KEYS = [
   "dashboard.core",
   "business.profile",

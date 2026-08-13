@@ -1,23 +1,16 @@
-.billing-cycle {
+.billing-monthly-note {
   display: flex;
-  gap: 5px;
+  align-items: baseline;
+  gap: 10px;
   margin: 24px 0 12px;
+  color: #223b55;
 }
 
-.billing-cycle button {
-  border: 1px solid #dce4ed;
-  background: #fff;
-  border-radius: 8px;
-  padding: 9px 14px;
+.billing-monthly-note b { font-size: 10px; }
+.billing-monthly-note span {
+  color: #65768a;
   font-size: 8px;
-  color: #66788c;
-}
-
-.billing-cycle button.active {
-  background: #eaf3fd;
-  border-color: #8eb9e7;
-  color: #1f65b1;
-  font-weight: 750;
+  line-height: 1.5;
 }
 
 .billing-plans {

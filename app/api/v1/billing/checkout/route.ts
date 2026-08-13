@@ -4,7 +4,7 @@ import { tenantSubscriptions } from "../../../../../db/schema";
 import { requireAccess } from "../../../../../server/authorization";
 import { enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameOrigin, ApiError } from "../../../../../server/api";
 import { createStripeCheckout } from "../../../../../server/billing/stripe";
-import { BILLING_INTERVALS, isPlanKey } from "../../../../../server/entitlements/catalog";
+import { isPlanKey } from "../../../../../server/entitlements/catalog";
 import { requirePermission } from "../../../../../server/permissions";
 
 export async function POST(request: Request) {
@@ -16,8 +16,8 @@ export async function POST(request: Request) {
     const input = await readJsonObject(request, 4_096);
     const plan = input.plan;
     const interval = input.interval;
-    if (!isPlanKey(plan) || typeof interval !== "string" || !BILLING_INTERVALS.includes(interval as "month" | "year")) {
-      throw new ApiError(400, "BILLING_SELECTION_INVALID", "Select a valid Vanteloq plan and billing interval.");
+    if (!isPlanKey(plan) || interval !== "month") {
+      throw new ApiError(400, "BILLING_SELECTION_INVALID", "Select a valid Vanteloq monthly plan.");
     }
     const [subscription] = await getDb().select().from(tenantSubscriptions).where(eq(tenantSubscriptions.organizationId, context.organizationId)).limit(1);
     if (subscription && ["active", "trialing"].includes(subscription.status)) {
@@ -28,7 +28,7 @@ export async function POST(request: Request) {
       organizationId: context.organizationId,
       email: context.identity.email,
       plan,
-      interval: interval as "month" | "year",
+      interval: "month",
       includeBookloq: input.includeBookloq === true,
       customerId: subscription?.stripeCustomerId ?? null,
       origin,

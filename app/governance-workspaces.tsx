@@ -1800,8 +1800,9 @@ type BillingData = {
   configured: boolean;
   accessType: "internal" | "subscription" | "none";
   current: { plan: "starter" | "growth" | "pro" | null; status: string | null; addons: string[]; billingInterval: "month" | "year" | null; currentPeriodEndsAt: string | null; cancelAtPeriodEnd: boolean; hasCustomer: boolean };
-  plans: Array<{ key: "starter" | "growth" | "pro"; name: string; description: string; mostPopular: boolean; prices: { month: number; year: number } }>;
-  addon: { key: "bookloq"; name: string; prices: { month: number; year: number } };
+  plans: Array<{ key: "starter" | "growth" | "pro"; name: string; description: string; mostPopular: boolean; price: number }>;
+  addon: { key: "bookloq"; name: string; price: number };
+  purchaseInterval: "month";
 };
 
 function BillingSettings() {
@@ -1809,14 +1810,13 @@ function BillingSettings() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [plan, setPlan] = useState<"starter" | "growth" | "pro">("growth");
-  const [interval, setInterval] = useState<"month" | "year">("month");
   const [bookloq, setBookloq] = useState(false);
   useEffect(() => {
     let active = true;
     void apiFetch("/api/v1/billing", { headers: { Accept: "application/json" } }).then(async (response) => {
       const body = await response.json();
       if (!response.ok) throw new Error(message(body, "Billing status could not be loaded."));
-      if (active) { setData(body); if (body.current?.plan) setPlan(body.current.plan); if (body.current?.billingInterval) setInterval(body.current.billingInterval); setBookloq(body.current?.addons?.includes("bookloq") === true); }
+      if (active) { setData(body); if (body.current?.plan) setPlan(body.current.plan); setBookloq(body.current?.addons?.includes("bookloq") === true); }
     }).catch((reason) => { if (active) setError(reason instanceof Error ? reason.message : "Billing status could not be loaded."); });
     return () => { active = false; };
   }, []);
@@ -1834,11 +1834,11 @@ function BillingSettings() {
   return <section className="settings-form billing-settings"><header><p>STRIPE BILLING</p><h2>Billing & subscription</h2><span>Stripe hosts payment collection, invoices, renewals and cancellation. Vanteloq stores only synchronized subscription identifiers and entitlement status. It never stores card details.</span></header>
     {error && <p className="form-error">{error}</p>}
     {data?.accessType === "internal" ? <div className="billing-internal"><b>Founder access active</b><span>This workspace has verified internal full access and does not require a Stripe subscription.</span></div> : <>
-      <div className="billing-cycle"><button className={interval === "month" ? "active" : ""} onClick={() => setInterval("month")}>Monthly</button><button className={interval === "year" ? "active" : ""} onClick={() => setInterval("year")}>Annual</button></div>
-      <div className="billing-plans">{data?.plans.map((item) => <button key={item.key} className={plan === item.key ? "selected" : ""} onClick={() => setPlan(item.key)} disabled={managed}><span>{item.mostPopular ? "MOST POPULAR" : "PLAN"}</span><b>{item.name}</b><strong>${((item.prices[interval] ?? 0) / 100).toLocaleString("en-CA")}</strong><small>CAD / {interval === "month" ? "month" : "year"}</small><p>{item.description}</p></button>)}</div>
-      <label className="billing-addon"><input type="checkbox" checked={bookloq} onChange={(event) => setBookloq(event.target.checked)} disabled={managed}/><span><b>Add BookLoQ</b><small>${((data?.addon.prices[interval] ?? 0) / 100).toLocaleString("en-CA")} CAD / {interval === "month" ? "month" : "year"}</small></span></label>
+      <p className="billing-monthly-note"><b>Monthly billing</b><span>Plans renew month to month. Cancel before renewal to stop the next charge.</span></p>
+      <div className="billing-plans">{data?.plans.map((item) => <button key={item.key} className={plan === item.key ? "selected" : ""} onClick={() => setPlan(item.key)} disabled={managed}><span>{item.mostPopular ? "MOST POPULAR" : "PLAN"}</span><b>{item.name}</b><strong>${(item.price / 100).toLocaleString("en-CA")}</strong><small>CAD / month</small><p>{item.description}</p></button>)}</div>
+      <label className="billing-addon"><input type="checkbox" checked={bookloq} onChange={(event) => setBookloq(event.target.checked)} disabled={managed}/><span><b>Add BookLoQ</b><small>${((data?.addon.price ?? 0) / 100).toLocaleString("en-CA")} CAD / month</small></span></label>
       <div className="provider-settings"><article><div><b>Current access</b><p>{data?.current.plan ? `${data.current.plan} · ${data.current.status}` : "No synchronized paid subscription."}</p></div><span>{data?.current.cancelAtPeriodEnd ? "Cancels at renewal" : data?.current.status ?? "Not subscribed"}</span></article></div>
-      <footer>{managed ? <button className="primary" disabled={busy || !data?.configured} onClick={() => void open("/api/v1/billing/portal")}>{busy ? "Opening…" : "Manage billing in Stripe"}</button> : <button className="primary" disabled={busy || !data?.configured} title={!data?.configured ? "Stripe products, prices and webhook secret must be configured first." : "Open secure Stripe Checkout"} onClick={() => void open("/api/v1/billing/checkout", { plan, interval, includeBookloq: bookloq })}>{busy ? "Opening…" : data?.configured ? "Continue to secure checkout" : "Stripe setup required"}</button>}</footer>
+      <footer>{managed ? <button className="primary" disabled={busy || !data?.configured} onClick={() => void open("/api/v1/billing/portal")}>{busy ? "Opening…" : "Manage billing in Stripe"}</button> : <button className="primary" disabled={busy || !data?.configured} title={!data?.configured ? "Stripe products, prices and webhook secret must be configured first." : "Open secure Stripe Checkout"} onClick={() => void open("/api/v1/billing/checkout", { plan, interval: "month", includeBookloq: bookloq })}>{busy ? "Opening…" : data?.configured ? "Continue to secure checkout" : "Stripe setup required"}</button>}</footer>
     </>}
   </section>;
 }

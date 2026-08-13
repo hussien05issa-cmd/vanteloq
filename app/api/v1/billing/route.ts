@@ -35,12 +35,10 @@ export async function GET(request: Request) {
         name: plan.displayName,
         description: plan.description,
         mostPopular: plan.mostPopular,
-        prices: {
-          month: plan.prices.month.amountCents,
-          year: plan.prices.year.amountCents,
-        },
+        price: plan.prices.month.amountCents,
       })),
-      addon: { key: "bookloq", name: ADDONS.bookloq.displayName, prices: { month: ADDONS.bookloq.prices.month.amountCents, year: ADDONS.bookloq.prices.year.amountCents } },
+      addon: { key: "bookloq", name: ADDONS.bookloq.displayName, price: ADDONS.bookloq.prices.month.amountCents },
+      purchaseInterval: "month",
       synchronizedAddonRows: addons.length,
       currency: "CAD",
     });

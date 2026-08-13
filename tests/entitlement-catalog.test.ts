@@ -5,6 +5,7 @@ import {
   ALL_NORMAL_PAID_FEATURES,
   FEATURE_KEYS,
   PLANS,
+  PURCHASE_INTERVALS,
   planIncludesFeature,
 } from "../server/entitlements/catalog.ts";
 
@@ -23,6 +24,12 @@ test("the central catalogue contains the exact approved CAD prices", () => {
       bookloq: [3_900, 39_000],
     },
   );
+});
+
+test("new purchases are monthly while legacy annual prices remain reconcilable", () => {
+  assert.deepEqual(PURCHASE_INTERVALS, ["month"]);
+  assert.equal(PLANS.starter.prices.year.interval, "year");
+  assert.equal(ADDONS.bookloq.prices.year.interval, "year");
 });
 
 test("plan inheritance is monotonic without leaking Growth or Pro features", () => {

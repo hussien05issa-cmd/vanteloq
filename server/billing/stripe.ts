@@ -1,5 +1,5 @@
 import { getRuntimeEnv } from "../../db";
-import { ADDONS, PLANS, type AddonKey, type BillingInterval, type PlanKey } from "../entitlements/catalog";
+import { ADDONS, PLANS, type AddonKey, type BillingInterval, type PlanKey, type PurchaseBillingInterval } from "../entitlements/catalog";
 import { SUBSCRIPTION_STATUSES, type SubscriptionStatus } from "../entitlements/engine";
 import { ApiError } from "../api";
 
@@ -105,12 +105,15 @@ export async function createStripeCheckout(input: {
   organizationId: string;
   email: string;
   plan: PlanKey;
-  interval: BillingInterval;
+  interval: PurchaseBillingInterval;
   includeBookloq: boolean;
   customerId: string | null;
   origin: string;
   fetcher?: typeof fetch;
 }) {
+  if (input.interval !== "month") {
+    throw new ApiError(400, "BILLING_INTERVAL_UNAVAILABLE", "Vanteloq plans are available month to month.");
+  }
   if (!stripeBillingReadiness().configured) throw new ApiError(503, "STRIPE_BILLING_CONFIGURATION_REQUIRED", "Stripe Billing must be configured before checkout can begin.");
   const fetcher = input.fetcher ?? fetch;
   const [basePriceId, addonPriceId] = await Promise.all([

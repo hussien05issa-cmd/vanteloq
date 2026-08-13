@@ -58,8 +58,8 @@ export default function TermsPage() {
       </PolicySection>
 
       <PolicySection id="fees" title="7. Fees and subscriptions">
-        <p>If a paid plan is offered, its fees, billing interval, taxes, included features, trial terms, and renewal details will be shown before purchase or stated in an order. The customer authorizes the payment provider to charge the selected payment method according to that order.</p>
-        <p>Unless an order says otherwise, subscriptions renew for the selected interval until cancelled. Access continues through the paid period after cancellation. Fees already charged are non-refundable except where the order, these terms, or applicable law requires otherwise.</p>
+        <p>If a paid plan is offered, its monthly fee, taxes, included features, trial terms, and renewal details will be shown before purchase or stated in an order. The customer authorizes the payment provider to charge the selected payment method according to that order.</p>
+        <p>New subscriptions renew month to month until cancelled. Access continues through the paid period after cancellation. Fees already charged are non-refundable except where the order, these terms, or applicable law requires otherwise. Historical annual subscriptions, if any, remain governed by the order under which they were purchased.</p>
         <p>No public price, free trial, or paid subscription is promised unless it is shown in an active checkout or signed order.</p>
       </PolicySection>
 

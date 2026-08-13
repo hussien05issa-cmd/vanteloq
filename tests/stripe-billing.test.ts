@@ -65,20 +65,31 @@ test("Checkout uses only verified catalogue prices and binds the organization", 
   const body = requests[0].body;
   assert.equal(body.get("client_reference_id"), "org_verified_123");
   assert.equal(body.get("metadata[vanteloq_organization_id]"), "org_verified_123");
+  assert.equal(body.get("metadata[vanteloq_interval]"), "month");
   assert.equal(body.get("customer_email"), "owner@example.com");
   assert.equal(body.get("line_items[0][price]"), verifiedPrice(PLANS.growth.prices.month.lookupKey).id);
   assert.equal(body.get("line_items[1][price]"), verifiedPrice(ADDONS.bookloq.prices.month.lookupKey).id);
   assert.doesNotMatch(body.toString(), /sk_test|whsec_|card/i);
 });
 
-test("Checkout fails closed when a Stripe price differs from the catalogue", async () => {
+test("Checkout rejects annual purchases before contacting Stripe", async () => {
+  let requested = false;
+  const fetcher: typeof fetch = async () => { requested = true; return Response.json({}); };
+  await assert.rejects(
+    createStripeCheckout({ organizationId: "org_verified_123", email: "owner@example.com", plan: "starter", interval: "year", includeBookloq: false, customerId: null, origin: "https://vanteloq.example", fetcher } as unknown as Parameters<typeof createStripeCheckout>[0]),
+    (error: unknown) => error instanceof ApiError && error.code === "BILLING_INTERVAL_UNAVAILABLE",
+  );
+  assert.equal(requested, false);
+});
+
+test("Checkout fails closed when a Stripe monthly price differs from the catalogue", async () => {
   const fetcher: typeof fetch = async (input) => {
     const url = new URL(typeof input === "string" ? input : input instanceof URL ? input : input.url);
     const lookup = url.searchParams.get("lookup_keys[]") ?? "";
     return Response.json({ data: [{ ...verifiedPrice(lookup), unit_amount: 1 }] });
   };
   await assert.rejects(
-    createStripeCheckout({ organizationId: "org_verified_123", email: "owner@example.com", plan: "starter", interval: "year", includeBookloq: false, customerId: null, origin: "https://vanteloq.example", fetcher }),
+    createStripeCheckout({ organizationId: "org_verified_123", email: "owner@example.com", plan: "starter", interval: "month", includeBookloq: false, customerId: null, origin: "https://vanteloq.example", fetcher }),
     (error: unknown) => error instanceof ApiError && error.code === "STRIPE_PRICE_CONFIGURATION_INVALID",
   );
 });
