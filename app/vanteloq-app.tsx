@@ -4,6 +4,7 @@ import Image from "next/image";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import BookLoQWorkspace from "./bookloq-workspace";
 import CommunicationsWorkspace from "./communications-workspace";
+import CommerceIntelligenceWorkspace from "./commerce-intelligence-workspace";
 import GrowthWorkspace from "./growth-workspace";
 import IntegrationBrandLogo from "./integration-brand-logo";
 import {
@@ -25,7 +26,6 @@ import { SettingsWorkspace, TeamWorkspace } from "./governance-workspaces";
 import {
   DataQualityWorkspace,
   DocumentsWorkspace,
-  InventoryWorkspace,
   PurchaseOrdersWorkspace,
   ReportsWorkspace,
 } from "./control-workspaces";
@@ -1262,17 +1262,8 @@ function Workspace({
         activeLocationId={activeLocationId}
       />
     );
-  if (view === "Sales")
-    return (
-      <SalesWorkspace
-        data={data}
-        currency={currency}
-        navigate={navigate}
-        refresh={refresh}
-        paymentRange={paymentRange}
-        setPaymentRange={setPaymentRange}
-      />
-    );
+  if (view === "Sales" || view === "Inventory" || view === "Customers" || view === "Suppliers")
+    return <CommerceIntelligenceWorkspace mode={view} currency={currency} activeLocationId={activeLocationId} navigate={navigate} createTask={createTask} />;
   if (view === "Purchase Orders")
     return (
       <PurchaseOrdersWorkspace
@@ -1282,21 +1273,6 @@ function Workspace({
         activeLocationId={activeLocationId}
       />
     );
-  if (view === "Inventory")
-    return (
-      <InventoryWorkspace
-        currency={currency}
-        showNotice={showNotice}
-        createTask={createTask}
-        sourceCashCents={data.balances?.cashBalanceCents ?? null}
-        sourceAccountsPayableCents={data.balances?.accountsPayableCents ?? null}
-        sourceDataAgeHours={(data.source.ageDays ?? 0) * 24}
-        sourceHistoryDays={data.current?.days ?? 0}
-        activeLocationId={activeLocationId}
-      />
-    );
-  if (view === "Customers" || view === "Suppliers")
-    return <CommerceRecordsWorkspace kind={view} navigate={navigate} activeLocationId={activeLocationId} />;
   if (view === "Locations")
     return <LocationsWorkspace currency={currency} activeLocationId={activeLocationId} selectLocation={selectLocation} navigate={navigate} />;
   if (view === "Documents")
@@ -1456,6 +1432,8 @@ function LiveSalesPanel({ data, currency, paymentRange, setPaymentRange, compact
       <section className="today-metric-grid">
         <Metric label="Today's net sales" value={money(today.netSalesCents, currency)} delta={comparisonCopy(data.todayComparison?.changes.netSalesRate, baselineLabel)} detail={`${today.businessDate} · completed sales`} tone="indigo" />
         <Metric label="Today's gross profit" value={money(today.grossProfitCents, currency)} delta={comparisonCopy(data.todayComparison?.changes.grossProfitRate, baselineLabel)} detail="Net sales less product cost" tone="emerald" />
+        <Metric label="Gross margin" value={today.netSalesCents && today.grossProfitCents != null ? `${(today.grossProfitCents / today.netSalesCents * 100).toFixed(1)}%` : "Not available"} delta="Product economics" detail="Gross profit ÷ net sales" tone="emerald" />
+        <Metric label="Discounts" value={money(today.discountsCents, currency)} delta={today.netSalesCents + today.discountsCents ? `${(today.discountsCents / (today.netSalesCents + today.discountsCents) * 100).toFixed(1)}% of pre-discount value` : "No discount activity"} detail="Verified line and sale discounts" tone="amber" />
         <Metric label="Average transaction" value={today.averageTransactionCents == null ? "Not available" : money(today.averageTransactionCents, currency, 2)} delta="Live basket value" detail="Net sales ÷ completed transactions" tone="amber" />
         <Metric label="Number of sales" value={today.transactionCount.toLocaleString()} delta={comparisonCopy(data.todayComparison?.changes.transactionRate, baselineLabel)} detail={`${today.unitsSold.toLocaleString()} line items recorded`} tone="cyan" />
       </section>

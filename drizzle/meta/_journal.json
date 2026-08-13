@@ -225,6 +225,13 @@
       "when": 1786596281119,
       "tag": "0031_sad_dreadnoughts",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "6",
+      "when": 1786600007076,
+      "tag": "0032_loving_secret_warriors",
+      "breakpoints": true
     }
   ]
 }

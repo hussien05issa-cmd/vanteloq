@@ -191,7 +191,10 @@ function AlertRow({ alert, currency, createTask, refresh, showNotice }: { alert:
 
 function TransactionCentre({ data, refresh, showNotice }: { data: BookLoQData; refresh: () => Promise<void>; showNotice: (message: string) => void }) {
   const [query, setQuery] = useState(""); const [review, setReview] = useState("all"); const [period, setPeriod] = useState<"30" | "90" | "365" | "all">("90"); const [selected, setSelected] = useState<Transaction | null>(null);
-  const start = period === "all" ? "0000-00-00" : new Date(Date.now() - (Number(period) - 1) * 86_400_000).toISOString().slice(0, 10);
+  const latestPostingDate = data.transactions.reduce((latest, transaction) => transaction.postingDate > latest ? transaction.postingDate : latest, "0000-00-00");
+  const anchor = latestPostingDate === "0000-00-00" ? new Date("1970-01-01T00:00:00Z") : new Date(`${latestPostingDate}T00:00:00Z`);
+  const startDate = new Date(anchor); startDate.setUTCDate(startDate.getUTCDate() - (Number(period) - 1));
+  const start = period === "all" ? "0000-00-00" : startDate.toISOString().slice(0, 10);
   const filtered = data.transactions.filter((transaction) => transaction.postingDate >= start && `${transaction.description} ${transaction.originalDescription} ${transaction.contactName ?? ""} ${transaction.accountName ?? ""}`.toLowerCase().includes(query.toLowerCase()) && (review === "all" || review === "matched" && ["matched", "reconciled"].includes(transaction.reconciliationStatus) || review === "needs_review" && transaction.categorizationStatus !== "confirmed" || transaction.categorizationStatus === review || transaction.reconciliationStatus === review));
   const matchedCount = data.transactions.filter((transaction) => ["matched", "reconciled"].includes(transaction.reconciliationStatus)).length;
   return <div className="bookloq-content"><PageIntro eyebrow="BUSINESS TRANSACTIONS" title="Review, categorize and match every cash movement" copy="Search bank and commerce records, assign your own ledger categories, and link evidence without changing the original source record."/>

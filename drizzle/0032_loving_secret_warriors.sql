@@ -1,0 +1,2 @@
+CREATE INDEX `commerce_sale_lines_workspace_date_idx` ON `commerce_sale_lines` (`organization_id`,`sold_at`);--> statement-breakpoint
+CREATE INDEX `commerce_sale_lines_source_date_idx` ON `commerce_sale_lines` (`organization_id`,`provider`,`connection_id`,`sold_at`);

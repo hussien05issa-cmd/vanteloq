@@ -287,16 +287,11 @@ export async function POST(request: Request) {
         },
       );
       const coverageWarnings = new Set<string>();
-      let optionalReadsUnavailable = false;
       const optionalCollection = async (
         dataset: string,
         resource: Parameters<typeof fetchLightspeedRCollection>[3],
         options: Parameters<typeof fetchLightspeedRCollection>[4],
       ): Promise<LightspeedRCollectionPage> => {
-        if (optionalReadsUnavailable) {
-          coverageWarnings.add(dataset);
-          return { data: [], pages: 0, cursor: null, failed: true };
-        }
         try {
           return await fetchLightspeedRCollection(
             context.organizationId,
@@ -310,11 +305,12 @@ export async function POST(request: Request) {
             throw error;
           }
           coverageWarnings.add(dataset);
-          optionalReadsUnavailable = error.code === "LIGHTSPEED_R_RATE_LIMITED";
           return { data: [], pages: 0, cursor: null, failed: true };
         }
       };
-      const paymentTypesPage = await optionalCollection("payment types", "PaymentType", { maxPages: 1 });
+      // Import decision-critical datasets before optional tender labels. A
+      // provider error in one collection must never suppress valid pages from
+      // another collection in the same sync run.
       const saleLinesPage = previous.saleLinesComplete && Number(existingCommerce?.saleLines ?? 0) > 0
         ? { data: [], pages: 0, cursor: null as string | null }
         : await optionalCollection("sale line details", "SaleLine", {
@@ -352,6 +348,7 @@ export async function POST(request: Request) {
               ? null
               : previous.watermark,
           });
+      const paymentTypesPage = await optionalCollection("payment types", "PaymentType", { maxPages: 1 });
 
       const normalizedSales: NormalizedLightspeedRSale[] = [];
       const normalizedSaleLines = [];
@@ -361,29 +358,30 @@ export async function POST(request: Request) {
       const suppliers = [];
       const payments = [];
       const paymentTypes = lightspeedRPaymentTypeMap(paymentTypesPage.data);
-      let warnings = 0;
+      const normalizationWarnings = { sales: 0, saleLines: 0, products: 0, inventory: 0, customers: 0, suppliers: 0 };
       for (const source of [...recentSalesPage.data, ...salesPage.data]) {
         try {
           normalizedSales.push(await normalizeLightspeedRSale(source));
           normalizedSaleLines.push(...await normalizeLightspeedRSaleLines(source));
           payments.push(...await normalizeLightspeedRPayments(source, paymentTypes));
-        } catch { warnings += 1; }
+        } catch { normalizationWarnings.sales += 1; }
       }
       for (const source of saleLinesPage.data) {
-        try { normalizedSaleLines.push(await normalizeLightspeedRSaleLine(source)); } catch { warnings += 1; }
+        try { normalizedSaleLines.push(await normalizeLightspeedRSaleLine(source)); } catch { normalizationWarnings.saleLines += 1; }
       }
       for (const source of itemsPage.data) {
         // Catalog identity remains valid even when a particular shop-level
         // quantity relation is incomplete. Validate the two facts separately.
-        try { products.push(await normalizeLightspeedRProduct(source)); } catch { warnings += 1; }
-        try { inventoryBalances.push(...normalizeLightspeedRInventoryItem(source)); } catch { warnings += 1; }
+        try { products.push(await normalizeLightspeedRProduct(source)); } catch { normalizationWarnings.products += 1; }
+        try { inventoryBalances.push(...normalizeLightspeedRInventoryItem(source)); } catch { normalizationWarnings.inventory += 1; }
       }
       for (const source of customersPage.data) {
-        try { customers.push(await normalizeLightspeedRCustomer(source)); } catch { warnings += 1; }
+        try { customers.push(await normalizeLightspeedRCustomer(source)); } catch { normalizationWarnings.customers += 1; }
       }
       for (const source of suppliersPage.data) {
-        try { suppliers.push(await normalizeLightspeedRSupplier(source)); } catch { warnings += 1; }
+        try { suppliers.push(await normalizeLightspeedRSupplier(source)); } catch { normalizationWarnings.suppliers += 1; }
       }
+      const warnings = Object.values(normalizationWarnings).reduce((sum, value) => sum + value, 0);
       const uniqueSales = [...new Map(normalizedSales.map((sale) => [`${sale.externalSaleId}:${sale.externalVersion}`, sale])).values()];
       const uniqueSaleLines = [...new Map(normalizedSaleLines.map((line) => [`${line.externalSaleId}:${line.externalLineId}`, line])).values()];
       const uniquePayments = [...new Map(payments.map((payment) => [payment.externalPaymentId, payment])).values()];
@@ -391,7 +389,7 @@ export async function POST(request: Request) {
       // products even if R-Series omits Item rows or a shop relation is partial;
       // later Item pages enrich these records with names, cost, price and stock.
       const knownProductRefs = new Set(products.map((product) => product.externalProductId));
-      for (const line of warnings === 0 ? uniqueSaleLines : []) {
+      for (const line of uniqueSaleLines) {
         if (!line.productRef || knownProductRefs.has(line.productRef)) continue;
         const fallback = {
           externalProductId: line.productRef,
@@ -432,10 +430,10 @@ export async function POST(request: Request) {
       const mappedRaw = new Set(locationMappings.filter((row) => row.status === "mapped").map((row) => row.externalLocationRef));
       const mapped = new Set([...mappedRaw].map((value) => scopedRef(value)).filter((value): value is string => Boolean(value)));
       const unmappedLocations = locationMappings.filter((row) => row.status === "unmapped").length;
-      warnings += unmappedLocations;
       const publicationAuthorized = connection.dataPromotionStatus === "approved" || connection.promotionAuthorizedAt !== null;
-      const publishCanonical = publicationAuthorized && warnings === 0;
-      const stagedSaleStatements = (warnings === 0 ? uniqueSales : []).map((sale) => database.prepare(`
+      const publicationWarnings = normalizationWarnings.sales + unmappedLocations;
+      const publishCanonical = publicationAuthorized && publicationWarnings === 0;
+      const stagedSaleStatements = uniqueSales.map((sale) => database.prepare(`
           INSERT OR IGNORE INTO integration_staged_sales
             (id, organization_id, provider, connection_id, external_sale_id, external_version, outlet_ref, sold_at, state,
              total_cents, tax_cents, cost_cents, discount_cents, line_count, source_payload_hash, sync_run_id, staged_at)
@@ -465,7 +463,7 @@ export async function POST(request: Request) {
         }
         publicationPointerDemoted = true;
       }
-      const saleLineStatements = (warnings === 0 ? uniqueSaleLines.filter((row) => !row.outletRef || mappedRaw.has(row.outletRef)) : []).map((line) => database.prepare(`
+      const saleLineStatements = uniqueSaleLines.filter((row) => !row.outletRef || mappedRaw.has(row.outletRef)).map((line) => database.prepare(`
           INSERT INTO commerce_sale_lines
             (id, organization_id, provider, connection_id, external_sale_id, external_line_id, product_ref, customer_ref,
              outlet_ref, sold_at, sku, product_name, quantity_milli, net_sales_cents, cost_cents,
@@ -485,7 +483,7 @@ export async function POST(request: Request) {
           line.discountCents, line.sourcePayloadHash, runId, Date.now(),
         ));
       const importedSaleLines = await runWriteBatches(saleLineStatements);
-      const paymentStatements = (warnings === 0 ? uniquePayments.filter((row) => !row.outletRef || mappedRaw.has(row.outletRef)) : []).map((payment) => database.prepare(`
+      const paymentStatements = uniquePayments.filter((row) => !row.outletRef || mappedRaw.has(row.outletRef)).map((payment) => database.prepare(`
           INSERT INTO commerce_payments
             (id, organization_id, provider, connection_id, external_payment_id, external_sale_id, payment_type_ref,
              payment_type_name, category, amount_cents, paid_at, outlet_ref, source_payload_hash,
@@ -517,7 +515,7 @@ export async function POST(request: Request) {
         )
         WHERE version_rank = 1
       `).bind(context.organizationId, LIGHTSPEED_R_PROVIDER, connection.id).all<StagedSaleRow>();
-      const dailyMetrics = warnings === 0
+      const dailyMetrics = normalizationWarnings.sales === 0
         ? buildLightspeedRDailyMetrics(
             (latest.results ?? []).filter((sale) => !sale.outletRef || mapped.has(sale.outletRef)),
           )
@@ -578,7 +576,7 @@ export async function POST(request: Request) {
       }
 
       let importedInventory = 0;
-      if (warnings === 0) {
+      {
         const inventoryStatements = inventoryBalances
           .filter((balance) => mappedRaw.has(balance.outletRef))
           .map((balance) => database.prepare(`
@@ -601,7 +599,7 @@ export async function POST(request: Request) {
           ));
         importedInventory = await runWriteBatches(inventoryStatements);
       }
-      const productStatements = (warnings === 0 ? products : []).map((product) => database.prepare(`
+      const productStatements = products.map((product) => database.prepare(`
           INSERT INTO commerce_products
             (id, organization_id, provider, connection_id, external_product_id, sku, name, category_ref, supplier_ref,
              default_cost_cents, default_price_cents, archived, source_updated_at, source_payload_hash,
@@ -620,7 +618,7 @@ export async function POST(request: Request) {
           product.sourcePayloadHash, runId, now,
         ));
       const importedProducts = await runWriteBatches(productStatements);
-      const customerStatements = (warnings === 0 ? customers : []).map((customer) => database.prepare(`
+      const customerStatements = customers.map((customer) => database.prepare(`
           INSERT INTO commerce_customers
             (id, organization_id, provider, connection_id, external_customer_id, display_name, first_name, last_name,
              email, phone, archived, source_updated_at, source_payload_hash, sync_run_id, updated_at)
@@ -636,7 +634,7 @@ export async function POST(request: Request) {
           customer.archived ? 1 : 0, customer.sourceUpdatedAt, customer.sourcePayloadHash, runId, now,
         ));
       const importedCustomers = await runWriteBatches(customerStatements);
-      const supplierStatements = (warnings === 0 ? suppliers : []).map((supplier) => database.prepare(`
+      const supplierStatements = suppliers.map((supplier) => database.prepare(`
           INSERT INTO commerce_suppliers
             (id, organization_id, provider, connection_id, external_supplier_id, name, account_number, contact_name,
              email, phone, archived, source_updated_at, source_payload_hash, sync_run_id, updated_at)
@@ -684,7 +682,7 @@ export async function POST(request: Request) {
         customersComplete,
         suppliersComplete,
       );
-      const safeCheckpoint = warnings > 0 ? connection.lastSyncCursor : computedCheckpoint;
+      const safeCheckpoint = computedCheckpoint;
       const recordsRead = recentSalesPage.data.length + salesPage.data.length + saleLinesPage.data.length + itemsPage.data.length + customersPage.data.length + suppliersPage.data.length + paymentTypesPage.data.length;
       const recordsImported = publishedDailyMetrics.length + importedInventory + importedProducts + importedCustomers + importedSuppliers + importedSaleLines + importedPayments;
       const duplicatesSkipped = uniqueSales.length - stagedSales;
@@ -696,16 +694,25 @@ export async function POST(request: Request) {
         recordsRead,
         recordsStaged: stagedSales + importedInventory + importedProducts + importedCustomers + importedSuppliers + importedSaleLines + importedPayments,
         duplicatesSkipped,
-        warningCount: warnings,
+        // Missing optional catalog datasets remain visible as coverage warnings,
+        // but they must not invalidate an otherwise reconciled sales run.
+        warningCount: warnings + unmappedLocations,
         completedAt,
       }).where(eq(integrationSyncRuns.id, runId));
       const promoted = await getDb().update(integrationConnections).set({
         externalAccountName: sourceAccount?.name ?? connection.externalAccountName,
-        lastSuccessfulSyncAt: warnings > 0 ? connection.lastSuccessfulSyncAt : completedAt,
-        lastSyncCursor: safeCheckpoint,
+        // A reconciliation warning may still contribute valid independent
+        // catalog records, but it must not replace the last approved sales
+        // pointer or advance the canonical sales cursor.
+        lastSuccessfulSyncAt: publicationWarnings > 0 ? connection.lastSuccessfulSyncAt : completedAt,
+        lastSyncCursor: publicationWarnings > 0 ? connection.lastSyncCursor : safeCheckpoint,
         dataPromotionStatus: promotionStatus,
         promotionAuthorizedAt: promotionStatus === "approved" ? null : connection.promotionAuthorizedAt,
-        lastErrorCode: warnings > 0 ? "LIGHTSPEED_R_RECONCILIATION_WARNINGS" : null,
+        lastErrorCode: publicationWarnings > 0
+          ? "LIGHTSPEED_R_RECONCILIATION_WARNINGS"
+          : warnings > 0
+            ? "LIGHTSPEED_R_PARTIAL_COVERAGE"
+            : null,
         syncLeaseOwner: null,
         syncLeaseExpiresAt: null,
         updatedAt: completedAt,

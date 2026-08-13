@@ -973,6 +973,8 @@ export const commerceSaleLines = sqliteTable(
   },
   (table) => [
     uniqueIndex("commerce_sale_lines_external_unique").on(table.organizationId, table.provider, table.connectionId, table.externalSaleId, table.externalLineId),
+    index("commerce_sale_lines_workspace_date_idx").on(table.organizationId, table.soldAt),
+    index("commerce_sale_lines_source_date_idx").on(table.organizationId, table.provider, table.connectionId, table.soldAt),
     index("commerce_sale_lines_product_date_idx").on(table.organizationId, table.provider, table.productRef, table.soldAt),
     index("commerce_sale_lines_customer_date_idx").on(table.organizationId, table.provider, table.customerRef, table.soldAt),
   ],

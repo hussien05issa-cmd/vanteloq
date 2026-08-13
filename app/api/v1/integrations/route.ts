@@ -1,4 +1,4 @@
-import { and, eq, gt, isNull } from "drizzle-orm";
+import { and, eq, gt, isNull, or } from "drizzle-orm";
 import { getD1, getDb } from "../../../../db";
 import { integrationConnections, integrationSyncRuns, marketingResourceSelections } from "../../../../db/schema";
 import { requireAccess } from "../../../../server/authorization";
@@ -350,7 +350,9 @@ export async function POST(request: Request) {
       connection.syncLeaseOwner = null;
       connection.syncLeaseExpiresAt = null;
     }
-    if (connection.lastErrorCode) {
+    const nonBlockingCoverageWarning = connection.provider === "lightspeed-r"
+      && connection.lastErrorCode === "LIGHTSPEED_R_PARTIAL_COVERAGE";
+    if (connection.lastErrorCode && !nonBlockingCoverageWarning) {
       throw new ApiError(409, "INTEGRATION_SYNC_ERROR", "Resolve the latest sync error before approving this data.");
     }
 
@@ -468,7 +470,9 @@ export async function POST(request: Request) {
       connection.lastSyncCursor === null
         ? isNull(integrationConnections.lastSyncCursor)
         : eq(integrationConnections.lastSyncCursor, connection.lastSyncCursor),
-      isNull(integrationConnections.lastErrorCode),
+      nonBlockingCoverageWarning
+        ? or(isNull(integrationConnections.lastErrorCode), eq(integrationConnections.lastErrorCode, "LIGHTSPEED_R_PARTIAL_COVERAGE"))
+        : isNull(integrationConnections.lastErrorCode),
       isNull(integrationConnections.syncLeaseOwner),
     )).returning({ id: integrationConnections.id });
     if (!approved.length) {

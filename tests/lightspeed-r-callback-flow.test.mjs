@@ -318,12 +318,27 @@ test("R-Series completes a browser callback using the initiating one-time state"
     assert.deepEqual(syncBody.imported, {
       dailyMetrics: 0,
       inventoryBalances: 0,
-      products: 0,
-      customers: 0,
-      suppliers: 0,
+      products: 1,
+      customers: 1,
+      suppliers: 1,
       saleLines: 0,
       payments: 0,
     });
+    assert.equal(
+      (await database.prepare("SELECT COUNT(*) count FROM commerce_products").first()).count,
+      1,
+      "valid catalog records remain normalized even while sale publication is staged",
+    );
+    assert.equal(
+      (await database.prepare("SELECT COUNT(*) count FROM commerce_customers").first()).count,
+      1,
+      "valid customer records remain normalized independently of a sale-page warning",
+    );
+    assert.equal(
+      (await database.prepare("SELECT COUNT(*) count FROM commerce_suppliers").first()).count,
+      1,
+      "valid supplier records remain normalized independently of a sale-page warning",
+    );
 
     assert.equal(
       (await database.prepare("SELECT COUNT(*) count FROM daily_business_metrics").first()).count,
@@ -610,7 +625,8 @@ test("R-Series completes a browser callback using the initiating one-time state"
     assert.deepEqual(await database.prepare(`
       SELECT COUNT(*) count, MAX(total_cents) maximumTotalCents
       FROM integration_staged_sales WHERE connection_id = ?
-    `).bind(connection.id).first(), { count: 1, maximumTotalCents: 10_500 });
+    `).bind(connection.id).first(), { count: 2, maximumTotalCents: 20_500 },
+    "warning runs may stage valid source versions for review, but must not publish them as approved dashboard data");
     injectSyncWarning = false;
 
     const command = await worker.fetch(new Request(`${origin}/api/v1/command-centre`, {
