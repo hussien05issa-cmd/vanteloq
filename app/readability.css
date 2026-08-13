@@ -26,6 +26,45 @@ body {
 .workspace-switcher small, .profile small { font-size: 11px; color: #aebaca; }
 .side-bottom { border-top-color: rgba(255,255,255,.14); }
 
+/* Compact account context: keep the business and location legible without a
+   bright native select interrupting the commerce navigation. */
+.operating-shell .workspace-switcher {
+  grid-template-columns: 26px minmax(0, 1fr) 76px;
+  gap: 7px;
+  min-height: 42px !important;
+  margin-bottom: 11px;
+  padding: 6px 7px;
+  border-color: #284968;
+  border-radius: 7px;
+  background: #0d2b4a;
+}
+.operating-shell .workspace-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  font-size: 10px;
+}
+.operating-shell .workspace-switcher b { font-size: 11px; line-height: 1.25; }
+.operating-shell .workspace-switcher small { margin-top: 1px; font-size: 9px; line-height: 1.25; }
+.operating-shell .location-switcher select {
+  width: 76px;
+  height: 27px;
+  border: 1px solid #365c7d;
+  border-radius: 6px;
+  background: #0b2b4b;
+  color: #d9e8f6;
+  padding: 0 20px 0 7px;
+  font-size: 9px;
+  font-weight: 700;
+  color-scheme: dark;
+}
+
+@media (max-width: 430px) {
+  .operating-shell .workspace-switcher { grid-template-columns: 26px minmax(0, 1fr) 76px; }
+  .operating-shell .location-switcher { grid-column: auto; }
+  .operating-shell .location-switcher select { width: 76px; height: 27px; font-size: 9px; }
+}
+
 /* Shared type floor across the authenticated product */
 .app-shell .eyebrow,
 .app-shell .card-kicker,

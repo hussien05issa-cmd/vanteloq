@@ -522,6 +522,7 @@ export async function POST(request: Request) {
             (latest.results ?? []).filter((sale) => !sale.outletRef || mapped.has(sale.outletRef)),
           )
         : [];
+      const verifiedSalesReady = dailyMetrics.length > 0 && unmappedLocations === 0;
       const publishedDailyMetrics = publishCanonical ? dailyMetrics : [];
 
       const now = Date.now();
@@ -791,7 +792,8 @@ export async function POST(request: Request) {
         dataPromotionEnabled: promotionStatus === "approved",
         publishedCanonical: publishCanonical,
         usingLastApprovedData: promotionStatus === "approved" && !publishCanonical,
-        readyForReview: warnings === 0 && backfillComplete && promotionStatus !== "approved",
+        backfillComplete,
+        readyForReview: warnings === 0 && verifiedSalesReady && promotionStatus !== "approved",
         nextStep: unmappedLocations > 0
           ? `Map or ignore ${unmappedLocations} R-Series shop${unmappedLocations === 1 ? "" : "s"}, then re-sync. Dashboard data remains locked until every discovered shop has an explicit destination.`
           : warnings > 0
@@ -800,6 +802,10 @@ export async function POST(request: Request) {
             ? coverageWarnings.size
               ? `Verified sales are current. ${[...coverageWarnings].join(", ")} will retry on the next sync.`
               : "R-Series is current and the approved records are available to dashboard features."
+          : verifiedSalesReady
+            ? coverageWarnings.size || !backfillComplete
+              ? `Verified sales are ready for review. Approve them to populate the dashboard while ${[...coverageWarnings, ...(!backfillComplete ? ["remaining history"] : [])].join(" and ")} continue syncing.`
+              : `R-Series is current. Review the reconciliation, then approve this account before its records affect dashboard results.`
           : backfillComplete
             ? `R-Series is current. Review the reconciliation, then approve this account before its records affect dashboard results.`
             : `Imported ${recordsImported} records. Run sync again to continue the remaining R-Series backfill before approval.` ,

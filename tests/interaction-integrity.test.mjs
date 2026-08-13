@@ -169,6 +169,8 @@ test("an unavailable provider report clears its source-specific label before con
 test("connector and document controls reflect real workflow readiness", async () => {
   const app = await readFile(new URL("../app/vanteloq-app.tsx", import.meta.url), "utf8");
   const controls = await readFile(new URL("../app/control-workspaces.tsx", import.meta.url), "utf8");
+  const integrationsRoute = await readFile(new URL("../app/api/v1/integrations/route.ts", import.meta.url), "utf8");
+  const readability = await readFile(new URL("../app/readability.css", import.meta.url), "utf8");
   assert.match(app, /Review its shops, then start a sync from Connections/);
   assert.doesNotMatch(app, /Live sales import is starting/);
   assert.match(app, /sampleResult\.readyForReview/);
@@ -176,6 +178,10 @@ test("connector and document controls reflect real workflow readiness", async ()
   assert.match(app, /canUpload=\{permissions\.includes\("documents\.upload"\)\}/);
   assert.match(controls, /if \(!canUpload \|\| !file\) return/);
   assert.match(controls, /Document upload access required/);
+  assert.doesNotMatch(integrationsRoute, /INTEGRATION_BACKFILL_INCOMPLETE/);
+  assert.match(integrationsRoute, /integration_staged_sales/);
+  assert.match(readability, /\.operating-shell \.location-switcher select/);
+  assert.match(readability, /background:\s*#0b2b4b/);
 });
 
 test("team controls follow effective governance permissions", async () => {

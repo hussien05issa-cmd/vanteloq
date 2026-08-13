@@ -7,7 +7,7 @@ import { recordAudit } from "../../../../server/audit";
 import { effectivePermissions, requirePermission } from "../../../../server/permissions";
 import { integrationCatalog, preSyncControls } from "../../../integration-catalog";
 import { lightspeedReadiness } from "../../../../server/integrations/lightspeed";
-import { lightspeedRCheckpointReadyForApproval, lightspeedRReadiness } from "../../../../server/integrations/lightspeed-r";
+import { lightspeedRReadiness } from "../../../../server/integrations/lightspeed-r";
 import { stripeReadiness } from "../../../../server/integrations/stripe";
 import { plaidReadiness } from "../../../../server/integrations/plaid";
 import { marketingReadiness } from "../../../../server/integrations/marketing";
@@ -373,19 +373,22 @@ export async function POST(request: Request) {
       if (!reviewedRun) {
         throw new ApiError(409, "INTEGRATION_SYNC_STALE", "The reviewed R-Series sync no longer matches this account. Sync and review it again.");
       }
-      if (!lightspeedRCheckpointReadyForApproval(connection.lastSyncCursor)) {
-        throw new ApiError(409, "INTEGRATION_BACKFILL_INCOMPLETE", "Continue the R-Series backfill before approving this data.");
-      }
       const review = await getD1().prepare(`
         SELECT
           (SELECT COUNT(*) FROM integration_location_mappings
             WHERE organization_id = ? AND provider = ? AND connection_id = ? AND status = 'unmapped') AS unmapped,
           (SELECT COUNT(*) FROM integration_location_mappings
-            WHERE organization_id = ? AND provider = ? AND connection_id = ?) AS locationCount
+            WHERE organization_id = ? AND provider = ? AND connection_id = ?) AS locationCount,
+          (SELECT COUNT(*) FROM integration_staged_sales
+            WHERE organization_id = ? AND provider = ? AND connection_id = ?) AS stagedSaleCount
       `).bind(
         context.organizationId, connection.provider, connection.id,
         context.organizationId, connection.provider, connection.id,
-      ).first<{ unmapped: number; locationCount: number }>();
+        context.organizationId, connection.provider, connection.id,
+      ).first<{ unmapped: number; locationCount: number; stagedSaleCount: number }>();
+      if (Number(review?.stagedSaleCount ?? 0) === 0) {
+        throw new ApiError(409, "INTEGRATION_SALES_REQUIRED", "Sync at least one verified R-Series sale before making dashboard results available.");
+      }
       if (Number(review?.locationCount ?? 0) === 0) {
         throw new ApiError(409, "INTEGRATION_LOCATIONS_REQUIRED", "Discover and review the R-Series shops before making its data available.");
       }

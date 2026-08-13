@@ -502,17 +502,22 @@ test("R-Series completes a browser callback using the initiating one-time state"
       { dataPromotionStatus: "staging", promotionAuthorizedAt: null },
     );
 
+    failOptionalVendorRead = true;
     const reReviewedSync = await worker.fetch(new Request(`${origin}/api/v1/integrations/lightspeed-r/sync`, {
       method: "POST", headers: ownerHeaders(true), body: JSON.stringify({ reason: "manual", connectionId: connection.id }),
     }), environment, context);
     assert.equal(reReviewedSync.status, 200, await reReviewedSync.clone().text());
-    assert.equal((await reReviewedSync.json()).run.warningCount, 0);
+    const reReviewedBody = await reReviewedSync.json();
+    assert.equal(reReviewedBody.run.warningCount, 0);
+    assert.deepEqual(reReviewedBody.coverageWarnings, ["suppliers"]);
+    assert.equal(reReviewedBody.readyForReview, true, `verified staged sales should be reviewable while an optional catalog backfill retries: ${JSON.stringify(reReviewedBody)}`);
     const reapproval = await worker.fetch(new Request(`${origin}/api/v1/integrations`, {
       method: "POST",
       headers: ownerHeaders(true),
       body: JSON.stringify({ action: "approve_data", connectionId: connection.id, confirmed: true }),
     }), environment, context);
     assert.equal(reapproval.status, 200, await reapproval.clone().text());
+    failOptionalVendorRead = false;
 
     const promotedSync = await worker.fetch(new Request(`${origin}/api/v1/integrations/lightspeed-r/sync`, {
       method: "POST", headers: ownerHeaders(true), body: JSON.stringify({ reason: "manual", connectionId: connection.id }),
