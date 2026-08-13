@@ -1,5 +1,10 @@
 # Vanteloq Plaid submission checklist
 
+> Superseded for the current Plaid security questionnaire by
+> `docs/compliance/PLAID_SECURITY_QUESTIONNAIRE_ANSWER_GUIDE.md`. Use that
+> guide and the current PDFs under `output/pdf/` for the active submission.
+> This file remains as historical launch-planning context.
+
 Updated: 2026-08-11
 
 Plaid's Launch Center is personalized. Upload only the evidence requested by the question on screen; do not upload credentials, access tokens, QR enrollment screens, recovery codes, or customer financial data.
@@ -11,7 +16,7 @@ Plaid's Launch Center is personalized. Upload only the evidence requested by the
 | `01-Vanteloq-Privacy-Policy.pdf` | Public page: `https://vanteloq.com/privacy` | Consumer notice, purposes of processing, sharing, rights, retention and contact details. Export the live page to PDF if the questionnaire requires a file. |
 | `02-Vanteloq-Data-Retention-and-Deletion-Policy.pdf` | `docs/DATA_RETENTION.md` | Retention schedule, account deletion, provider disconnection, legal holds and periodic review. |
 | `03-Vanteloq-Plaid-Privacy-and-Security-Control-Evidence.pdf` | `output/pdf/Vanteloq-Plaid-Privacy-Security-Evidence.pdf` and `docs/PLAID_PRIVACY_SECURITY_EVIDENCE.md` | Consolidated control evidence for consent, encryption, tenant isolation, deletion, MFA, logging and incident handling. |
-| `04-Vanteloq-Identity-and-Access-Control-Summary.pdf` | `docs/AUTH_SECURITY.md` and `docs/AUTHORIZATION_MATRIX.md` | Supabase identity, AAL2/TOTP, role permissions, session handling and production access boundaries. |
+| `04-Vanteloq-Identity-and-Access-Control-Evidence.pdf` | `output/pdf/Vanteloq-Identity-and-Access-Control-Evidence.pdf` | Supabase identity, AAL2/TOTP, RBAC, OAuth service authentication, session handling, administrator MFA inventory and production access boundaries. |
 | `05-Vanteloq-Incident-Response-Plan.pdf` | `docs/INCIDENT_RESPONSE.md` | Detection, containment, escalation, recovery, notification and post-incident review. |
 | `06-Vanteloq-Security-Controls-and-Vulnerability-Management.pdf` | `docs/SECURITY_CONTROLS.md`, `docs/SECURITY_RUNBOOKS.md`, `docs/SECURITY_AUDIT.md` | Secure development, dependency review, vulnerability response, monitoring and operational controls. |
 | `07-Vanteloq-Architecture-and-Data-Flow.pdf` | `docs/ARCHITECTURE.md` and `docs/SUPABASE_BACKEND.md` | Trust boundaries and data flow among browser, Cloudflare, Supabase, D1/R2 and Plaid. |

@@ -93,9 +93,9 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
     id: "clover",
     name: "Clover",
     category: "Point of sale",
-    availability: "provider_build_required",
+    availability: "credentials_required",
     activationRequirement:
-      "Not available yet. A production connection still needs merchant approval, authorization, item and location mapping, historical import, and settlement reconciliation tests.",
+      "Authorize each merchant with read-only access, map its business location, stage orders, items, inventory, customers and tender activity, then review the reconciliation before publishing dashboards.",
   },
   {
     id: "stripe",
@@ -231,7 +231,7 @@ export const preSyncControls = [
   {
     id: "authorization",
     label: "Provider authorization",
-    detail: "Lightspeed, Stripe, Google, and Meta use state-bound authorization with only the required access; Plaid uses short-lived Link sessions. Provider credentials stay server-side and encrypted where stored, and providers without a working connection remain disabled.",
+    detail: "Lightspeed, Clover, Stripe, Google, and Meta use state-bound authorization with only the required access; Plaid uses short-lived Link sessions. Provider credentials stay server-side and encrypted where stored, and providers without a working connection remain disabled.",
     status: "verified",
   },
   {

@@ -8,6 +8,7 @@ import { effectivePermissions, requirePermission } from "../../../../server/perm
 import { integrationCatalog, preSyncControls } from "../../../integration-catalog";
 import { lightspeedReadiness } from "../../../../server/integrations/lightspeed";
 import { lightspeedRReadiness } from "../../../../server/integrations/lightspeed-r";
+import { cloverReadiness } from "../../../../server/integrations/clover";
 import { stripeReadiness } from "../../../../server/integrations/stripe";
 import { plaidReadiness } from "../../../../server/integrations/plaid";
 import { marketingReadiness } from "../../../../server/integrations/marketing";
@@ -262,6 +263,8 @@ export async function GET(request: Request) {
           ? lightspeedReadiness()
           : provider.id === "lightspeed-r"
             ? lightspeedRReadiness()
+            : provider.id === "clover"
+              ? cloverReadiness()
             : provider.id === "stripe"
               ? stripeReadiness()
               : provider.id === "plaid"
@@ -357,7 +360,8 @@ export async function POST(request: Request) {
     }
 
     let reviewedMarketingRunId: string | null = null;
-    if (connection.provider === "lightspeed-r") {
+    const isReviewedCommerceImport = connection.provider === "lightspeed-r" || connection.provider === "clover";
+    if (isReviewedCommerceImport) {
       const [reviewedRun] = await getDb().select().from(integrationSyncRuns).where(and(
         eq(integrationSyncRuns.organizationId, context.organizationId),
         eq(integrationSyncRuns.provider, connection.provider),
@@ -373,7 +377,7 @@ export async function POST(request: Request) {
           : eq(integrationSyncRuns.cursorAfter, connection.lastSyncCursor),
       )).limit(1);
       if (!reviewedRun) {
-        throw new ApiError(409, "INTEGRATION_SYNC_STALE", "The reviewed R-Series sync no longer matches this account. Sync and review it again.");
+        throw new ApiError(409, "INTEGRATION_SYNC_STALE", `The reviewed ${connection.provider === "clover" ? "Clover" : "R-Series"} sync no longer matches this account. Sync and review it again.`);
       }
       const review = await getD1().prepare(`
         SELECT
@@ -389,13 +393,13 @@ export async function POST(request: Request) {
         context.organizationId, connection.provider, connection.id,
       ).first<{ unmapped: number; locationCount: number; stagedSaleCount: number }>();
       if (Number(review?.stagedSaleCount ?? 0) === 0) {
-        throw new ApiError(409, "INTEGRATION_SALES_REQUIRED", "Sync at least one verified R-Series sale before making dashboard results available.");
+        throw new ApiError(409, "INTEGRATION_SALES_REQUIRED", `Sync at least one verified ${connection.provider === "clover" ? "Clover" : "R-Series"} sale before making dashboard results available.`);
       }
       if (Number(review?.locationCount ?? 0) === 0) {
-        throw new ApiError(409, "INTEGRATION_LOCATIONS_REQUIRED", "Discover and review the R-Series shops before making its data available.");
+        throw new ApiError(409, "INTEGRATION_LOCATIONS_REQUIRED", `Discover and review the ${connection.provider === "clover" ? "Clover merchant location" : "R-Series shops"} before making its data available.`);
       }
       if (Number(review?.unmapped ?? 0) > 0) {
-        throw new ApiError(409, "INTEGRATION_LOCATIONS_UNMAPPED", "Map or intentionally ignore every R-Series shop before making its data available.");
+        throw new ApiError(409, "INTEGRATION_LOCATIONS_UNMAPPED", `Map or intentionally ignore every ${connection.provider === "clover" ? "Clover merchant location" : "R-Series shop"} before making its data available.`);
       }
     } else if (isMarketingProvider) {
       if (typeof body.sampleRunId !== "string" || !Number.isInteger(body.expectedSelectionVersion)) {
@@ -454,8 +458,8 @@ export async function POST(request: Request) {
 
     const approvedAt = new Date();
     const approved = await getDb().update(integrationConnections).set({
-      dataPromotionStatus: connection.provider === "lightspeed-r" ? "staging" : "approved",
-      promotionAuthorizedAt: connection.provider === "lightspeed-r" ? approvedAt : null,
+      dataPromotionStatus: isReviewedCommerceImport ? "staging" : "approved",
+      promotionAuthorizedAt: isReviewedCommerceImport ? approvedAt : null,
       lastErrorCode: null,
       updatedAt: approvedAt,
     }).where(and(
@@ -493,14 +497,14 @@ export async function POST(request: Request) {
         resourceSelectionVersion: isMarketingProvider ? connection.resourceSelectionVersion : null,
       },
     });
-    const publicationPending = connection.provider === "lightspeed-r";
+    const publicationPending = isReviewedCommerceImport;
     return jsonResponse({
       approved: true,
       connectionId: connection.id,
       provider: connection.provider,
       publicationPending,
       nextStep: publicationPending
-        ? "Run one final R-Series sync to publish the reviewed data to dashboard features."
+        ? `Run one final ${connection.provider === "clover" ? "Clover" : "R-Series"} sync to publish the reviewed data to dashboard features.`
         : "Reviewed provider data is now available to dashboard features.",
     });
   });

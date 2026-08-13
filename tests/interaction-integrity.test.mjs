@@ -61,7 +61,7 @@ test("X-Series and R-Series are distinct, actionable connection choices", async 
   assert.match(catalog, /id: "lightspeed"[\s\S]*name: "Lightspeed X-Series"/);
   assert.match(catalog, /id: "lightspeed-r"[\s\S]*name: "Lightspeed R-Series"/);
   assert.match(app, /integrations\/\$\{provider\}\/authorize/);
-  assert.match(app, /provider === "lightspeed-r" \? "shops" : "outlets"/);
+  assert.match(app, /provider === "lightspeed-r" \? "shops" : provider === "clover" \? "locations" : "outlets"/);
   assert.match(app, /providerActions\[integrationActionKey\(provider\.id, connection\.id\)\]/);
   assert.match(app, /integrationActionKey\(provider, connectionId\)/);
   assert.match(app, /delete next\[actionKey\]/);
@@ -77,11 +77,12 @@ test("the feature tour advances meaningful interface phases and scene controls r
   assert.doesNotMatch(source, /vanteloq-feature-reel-v1\.webp/);
 });
 
-test("R-Series warnings keep source records out of live metrics and preserve the retry cursor", async () => {
+test("R-Series reconciliation warnings keep source records out of live metrics and preserve the retry cursor", async () => {
   const sync = await readFile(new URL("../app/api/v1/integrations/lightspeed-r/sync/route.ts", import.meta.url), "utf8");
-  assert.match(sync, /const publishCanonical = publicationAuthorized && warnings === 0/);
-  assert.match(sync, /warnings === 0 \? uniqueSales : \[\]/);
-  assert.match(sync, /warnings > 0 \? connection\.lastSyncCursor/);
+  assert.match(sync, /const publicationWarnings = normalizationWarnings\.sales \+ unmappedLocations/);
+  assert.match(sync, /const publishCanonical = publicationAuthorized && publicationWarnings === 0/);
+  assert.match(sync, /const publishedDailyMetrics = publishCanonical \? dailyMetrics : \[\]/);
+  assert.match(sync, /publicationWarnings > 0 \? connection\.lastSyncCursor/);
 });
 
 test("R-Series backfills are bounded, resumable and recover from expired locks", async () => {
@@ -125,8 +126,8 @@ test("R-Series location setup cannot silently leave dashboard data locked", asyn
   assert.match(shops, /activeLocalLocations\.length === 1/);
   assert.match(sync, /unmappedLocations/);
   assert.match(sync, /Map or ignore/);
-  assert.match(app, /provider === "lightspeed-r" && body\.publicationPending === true/);
-  assert.match(app, /stageProviderSample\("lightspeed-r", connectionId\)/);
+  assert.match(app, /\(provider === "lightspeed-r" \|\| provider === "clover"\) && body\.publicationPending === true/);
+  assert.match(app, /stageProviderSample\(provider, connectionId\)/);
 });
 
 test("live sales and report time frames stay connected to real API filters", async () => {

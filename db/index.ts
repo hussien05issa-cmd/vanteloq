@@ -16,6 +16,11 @@ export type VanteloqRuntimeEnv = {
   LIGHTSPEED_R_CLIENT_ID?: string;
   LIGHTSPEED_R_CLIENT_SECRET?: string;
   LIGHTSPEED_R_REDIRECT_URI?: string;
+  CLOVER_CLIENT_ID?: string;
+  CLOVER_CLIENT_SECRET?: string;
+  CLOVER_REDIRECT_URI?: string;
+  CLOVER_ENV?: string;
+  CLOVER_WEBHOOK_AUTH?: string;
   STRIPE_CLIENT_ID?: string;
   STRIPE_SECRET_KEY?: string;
   STRIPE_REDIRECT_URI?: string;

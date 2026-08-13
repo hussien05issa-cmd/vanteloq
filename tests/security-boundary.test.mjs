@@ -125,6 +125,10 @@ test("provider management routes reject anonymous same-origin writes", async () 
     "/api/v1/integrations/lightspeed-r/shops",
     "/api/v1/integrations/lightspeed-r/sync",
     "/api/v1/integrations/lightspeed-r/disconnect",
+    "/api/v1/integrations/clover/authorize",
+    "/api/v1/integrations/clover/locations",
+    "/api/v1/integrations/clover/sync",
+    "/api/v1/integrations/clover/disconnect",
     "/api/v1/integrations/stripe/authorize",
     "/api/v1/integrations/stripe/sync",
     "/api/v1/integrations/stripe/disconnect",
@@ -176,6 +180,25 @@ test("the R-Series callback rejects malformed one-time state before database acc
   ), environment, context);
   assert.equal(response.status, 400);
   assert.equal((await response.json()).error.code, "LIGHTSPEED_R_CALLBACK_INVALID");
+});
+
+test("the Clover callback rejects malformed one-time state before database access", async () => {
+  const worker = await loadWorker();
+  const response = await worker.fetch(new Request(
+    "https://vanteloq.example/api/v1/integrations/clover/callback?code=test-code&merchant_id=merchant-test&state=too-short",
+    { headers: { accept: "application/json" } },
+  ), environment, context);
+  assert.equal(response.status, 400);
+  assert.equal((await response.json()).error.code, "CLOVER_CALLBACK_INVALID");
+});
+
+test("the Clover callback binds the provider redirect to a one-time initiating owner", async () => {
+  const source = await readFile(`${process.cwd()}/app/api/v1/integrations/clover/callback/route.ts`, "utf8");
+  assert.doesNotMatch(source, /requireAccess\(request/);
+  assert.match(source, /eq\(users\.id, stored\.actorUserId\)/);
+  assert.match(source, /eq\(memberships\.organizationId, stored\.organizationId\)/);
+  assert.match(source, /isNull\(integrationOAuthStates\.consumedAt\)/);
+  assert.match(source, /returning\(\{ stateHash: integrationOAuthStates\.stateHash \}\)/);
 });
 
 test("the R-Series callback binds the provider redirect to a one-time initiating owner", async () => {
@@ -309,9 +332,23 @@ test("the Lightspeed webhook rejects unsigned requests before database access", 
   assert.equal((await response.json()).error.code, "LIGHTSPEED_WEBHOOK_SIGNATURE_INVALID");
 });
 
+test("the Clover webhook rejects unsigned merchant events before database access", async () => {
+  const worker = await loadWorker();
+  const response = await worker.fetch(new Request(
+    "https://vanteloq.example/api/v1/integrations/clover/webhook",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: '{"appId":"test-app","merchants":{"merchant-test":[{"objectId":"O:order-test","type":"CREATE"}]}}',
+    },
+  ), environment, context);
+  assert.equal(response.status, 401);
+  assert.equal((await response.json()).error.code, "CLOVER_WEBHOOK_AUTH_INVALID");
+});
+
 test("signed provider webhook replay keys stay connection-scoped after the multi-account migration", async () => {
   const { readFile } = await import("node:fs/promises");
-  for (const route of ["lightspeed", "stripe"]) {
+  for (const route of ["lightspeed", "clover", "stripe"]) {
     const source = await readFile(
       `${process.cwd()}/app/api/v1/integrations/${route}/webhook/route.ts`,
       "utf8",
@@ -324,7 +361,7 @@ test("signed provider webhook replay keys stay connection-scoped after the multi
 
 test("every cursor-bearing provider sync uses the connection lease and version fence", async () => {
   const { readFile } = await import("node:fs/promises");
-  for (const route of ["lightspeed", "lightspeed-r", "stripe"]) {
+  for (const route of ["lightspeed", "lightspeed-r", "clover", "stripe"]) {
     const source = await readFile(
       `${process.cwd()}/app/api/v1/integrations/${route}/sync/route.ts`,
       "utf8",
@@ -440,6 +477,10 @@ test("imports and business-memory writes reject cross-site origins before data a
     "/api/v1/integrations/lightspeed-r/shops",
     "/api/v1/integrations/lightspeed-r/sync",
     "/api/v1/integrations/lightspeed-r/disconnect",
+    "/api/v1/integrations/clover/authorize",
+    "/api/v1/integrations/clover/locations",
+    "/api/v1/integrations/clover/sync",
+    "/api/v1/integrations/clover/disconnect",
     "/api/v1/integrations/stripe/authorize",
     "/api/v1/integrations/stripe/sync",
     "/api/v1/integrations/stripe/disconnect",
