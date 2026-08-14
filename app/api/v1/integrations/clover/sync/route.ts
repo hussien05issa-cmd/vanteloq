@@ -110,7 +110,7 @@ export async function POST(request: Request) {
       const queryBase = { limit: PAGE_SIZE };
       const [ordersPage, itemsPage, customersPage, paymentsPage] = await Promise.all([
         previous.ordersComplete ? Promise.resolve({ elements: [] as Record<string, unknown>[] }) : fetchCloverConnectionCollection(context.organizationId, connection.id, connection.externalAccountRef, "orders", { ...queryBase, offset: previous.ordersOffset, expand: "lineItems,payments,customers,refunds" }),
-        previous.itemsComplete ? Promise.resolve({ elements: [] as Record<string, unknown>[] }) : fetchCloverConnectionCollection(context.organizationId, connection.id, connection.externalAccountRef, "inventory/items", { ...queryBase, offset: previous.itemsOffset, expand: "categories,itemStock" }),
+        previous.itemsComplete ? Promise.resolve({ elements: [] as Record<string, unknown>[] }) : fetchCloverConnectionCollection(context.organizationId, connection.id, connection.externalAccountRef, "items", { ...queryBase, offset: previous.itemsOffset, expand: "categories,itemStock" }),
         previous.customersComplete ? Promise.resolve({ elements: [] as Record<string, unknown>[] }) : fetchCloverConnectionCollection(context.organizationId, connection.id, connection.externalAccountRef, "customers", { ...queryBase, offset: previous.customersOffset, expand: "emailAddresses,phoneNumbers" }),
         previous.paymentsComplete ? Promise.resolve({ elements: [] as Record<string, unknown>[] }) : fetchCloverConnectionCollection(context.organizationId, connection.id, connection.externalAccountRef, "payments", { ...queryBase, offset: previous.paymentsOffset, expand: "tender,order" }),
       ]);

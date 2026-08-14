@@ -343,7 +343,7 @@ export async function fetchCloverConnectionCollection(
   organizationId: string,
   connectionId: string,
   merchantId: string,
-  resource: "orders" | "payments" | "inventory/items" | "customers",
+  resource: "orders" | "payments" | "items" | "customers",
   query: Record<string, string | number | null | undefined> = {},
   fetcher: typeof fetch = fetch,
 ) {

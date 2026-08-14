@@ -104,6 +104,24 @@ test("Clover collection paging stays on the configured API origin", async () => 
   assert.equal(url.searchParams.get("limit"), "100");
 });
 
+test("Clover inventory reads use the official merchant items collection", async () => {
+  const seen: string[] = [];
+  const fetcher = (async (input: RequestInfo | URL) => {
+    seen.push(String(input));
+    return Response.json({ elements: [] });
+  }) as typeof fetch;
+  await fetchCloverCollection(
+    "merchant-1",
+    "access-token",
+    "/v3/merchants/merchant-1/items",
+    { limit: 100, offset: 0, expand: "categories,itemStock" },
+    fetcher,
+  );
+  const url = new URL(seen[0]);
+  assert.equal(url.pathname, "/v3/merchants/merchant-1/items");
+  assert.equal(url.searchParams.get("expand"), "categories,itemStock");
+});
+
 test("Clover order normalization preserves cents, fixed-point quantities, and source identity", async () => {
   const order = await normalizeCloverOrder("merchant-1", {
     id: "order-1",
