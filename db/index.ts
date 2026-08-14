@@ -21,6 +21,12 @@ export type VanteloqRuntimeEnv = {
   CLOVER_REDIRECT_URI?: string;
   CLOVER_ENV?: string;
   CLOVER_WEBHOOK_AUTH?: string;
+  SQUARE_APPLICATION_ID?: string;
+  SQUARE_APPLICATION_SECRET?: string;
+  SQUARE_REDIRECT_URI?: string;
+  SQUARE_ENV?: string;
+  SQUARE_WEBHOOK_SIGNATURE_KEY?: string;
+  SQUARE_WEBHOOK_URL?: string;
   STRIPE_CLIENT_ID?: string;
   STRIPE_SECRET_KEY?: string;
   STRIPE_REDIRECT_URI?: string;

@@ -9,6 +9,7 @@ import { integrationCatalog, preSyncControls } from "../../../integration-catalo
 import { lightspeedReadiness } from "../../../../server/integrations/lightspeed";
 import { lightspeedRReadiness } from "../../../../server/integrations/lightspeed-r";
 import { cloverReadiness } from "../../../../server/integrations/clover";
+import { squareReadiness } from "../../../../server/integrations/square";
 import { stripeReadiness } from "../../../../server/integrations/stripe";
 import { plaidReadiness } from "../../../../server/integrations/plaid";
 import { marketingReadiness } from "../../../../server/integrations/marketing";
@@ -265,6 +266,8 @@ export async function GET(request: Request) {
             ? lightspeedRReadiness()
             : provider.id === "clover"
               ? cloverReadiness()
+            : provider.id === "square"
+              ? squareReadiness()
             : provider.id === "stripe"
               ? stripeReadiness()
               : provider.id === "plaid"
@@ -353,14 +356,22 @@ export async function POST(request: Request) {
       connection.syncLeaseOwner = null;
       connection.syncLeaseExpiresAt = null;
     }
-    const nonBlockingCoverageWarning = connection.provider === "lightspeed-r"
-      && connection.lastErrorCode === "LIGHTSPEED_R_PARTIAL_COVERAGE";
+    const nonBlockingCoverageWarning = (
+      connection.provider === "lightspeed-r"
+      && connection.lastErrorCode === "LIGHTSPEED_R_PARTIAL_COVERAGE"
+    ) || (
+      connection.provider === "square"
+      && connection.lastErrorCode === "SQUARE_PRODUCT_COST_UNAVAILABLE"
+    );
     if (connection.lastErrorCode && !nonBlockingCoverageWarning) {
       throw new ApiError(409, "INTEGRATION_SYNC_ERROR", "Resolve the latest sync error before approving this data.");
     }
 
     let reviewedMarketingRunId: string | null = null;
-    const isReviewedCommerceImport = connection.provider === "lightspeed-r" || connection.provider === "clover";
+    const isReviewedCommerceImport = connection.provider === "lightspeed-r" || connection.provider === "clover" || connection.provider === "square";
+    const commerceProviderLabel = connection.provider === "clover" ? "Clover" : connection.provider === "square" ? "Square" : "R-Series";
+    const commerceLocationLabel = connection.provider === "clover" ? "Clover merchant location" : connection.provider === "square" ? "Square locations" : "R-Series shops";
+    const commerceLocationSingular = connection.provider === "clover" ? "Clover merchant location" : connection.provider === "square" ? "Square location" : "R-Series shop";
     if (isReviewedCommerceImport) {
       const [reviewedRun] = await getDb().select().from(integrationSyncRuns).where(and(
         eq(integrationSyncRuns.organizationId, context.organizationId),
@@ -377,7 +388,7 @@ export async function POST(request: Request) {
           : eq(integrationSyncRuns.cursorAfter, connection.lastSyncCursor),
       )).limit(1);
       if (!reviewedRun) {
-        throw new ApiError(409, "INTEGRATION_SYNC_STALE", `The reviewed ${connection.provider === "clover" ? "Clover" : "R-Series"} sync no longer matches this account. Sync and review it again.`);
+        throw new ApiError(409, "INTEGRATION_SYNC_STALE", `The reviewed ${commerceProviderLabel} sync no longer matches this account. Sync and review it again.`);
       }
       const review = await getD1().prepare(`
         SELECT
@@ -393,13 +404,13 @@ export async function POST(request: Request) {
         context.organizationId, connection.provider, connection.id,
       ).first<{ unmapped: number; locationCount: number; stagedSaleCount: number }>();
       if (Number(review?.stagedSaleCount ?? 0) === 0) {
-        throw new ApiError(409, "INTEGRATION_SALES_REQUIRED", `Sync at least one verified ${connection.provider === "clover" ? "Clover" : "R-Series"} sale before making dashboard results available.`);
+        throw new ApiError(409, "INTEGRATION_SALES_REQUIRED", `Sync at least one verified ${commerceProviderLabel} sale before making dashboard results available.`);
       }
       if (Number(review?.locationCount ?? 0) === 0) {
-        throw new ApiError(409, "INTEGRATION_LOCATIONS_REQUIRED", `Discover and review the ${connection.provider === "clover" ? "Clover merchant location" : "R-Series shops"} before making its data available.`);
+        throw new ApiError(409, "INTEGRATION_LOCATIONS_REQUIRED", `Discover and review the ${commerceLocationLabel} before making its data available.`);
       }
       if (Number(review?.unmapped ?? 0) > 0) {
-        throw new ApiError(409, "INTEGRATION_LOCATIONS_UNMAPPED", `Map or intentionally ignore every ${connection.provider === "clover" ? "Clover merchant location" : "R-Series shop"} before making its data available.`);
+        throw new ApiError(409, "INTEGRATION_LOCATIONS_UNMAPPED", `Map or intentionally ignore every ${commerceLocationSingular} before making its data available.`);
       }
     } else if (isMarketingProvider) {
       if (typeof body.sampleRunId !== "string" || !Number.isInteger(body.expectedSelectionVersion)) {
@@ -475,7 +486,7 @@ export async function POST(request: Request) {
         ? isNull(integrationConnections.lastSyncCursor)
         : eq(integrationConnections.lastSyncCursor, connection.lastSyncCursor),
       nonBlockingCoverageWarning
-        ? or(isNull(integrationConnections.lastErrorCode), eq(integrationConnections.lastErrorCode, "LIGHTSPEED_R_PARTIAL_COVERAGE"))
+        ? or(isNull(integrationConnections.lastErrorCode), eq(integrationConnections.lastErrorCode, connection.lastErrorCode!))
         : isNull(integrationConnections.lastErrorCode),
       isNull(integrationConnections.syncLeaseOwner),
     )).returning({ id: integrationConnections.id });
@@ -504,7 +515,7 @@ export async function POST(request: Request) {
       provider: connection.provider,
       publicationPending,
       nextStep: publicationPending
-        ? `Run one final ${connection.provider === "clover" ? "Clover" : "R-Series"} sync to publish the reviewed data to dashboard features.`
+        ? `Run one final ${commerceProviderLabel} sync to publish the reviewed data to dashboard features.`
         : "Reviewed provider data is now available to dashboard features.",
     });
   });

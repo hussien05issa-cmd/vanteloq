@@ -168,6 +168,9 @@ export async function GET(request: Request) {
     const now = Date.now();
     const sourceConnections = connectedSourceConnections.filter((row) => row.dataPromotionStatus === "approved"
       && (!row.syncLeaseOwner || !row.syncLeaseExpiresAt || row.syncLeaseExpiresAt.getTime() <= now));
+    const canViewVerifiedProfit = permissions.includes("metrics.profit") && !sourceConnections.some((row) =>
+      row.provider === "square" && row.lastErrorCode === "SQUARE_PRODUCT_COST_UNAVAILABLE"
+    );
     const sourceConnection = sourceConnections[0] ?? null;
     const rSeriesConnections = sourceConnections.filter((row) => row.provider === LIGHTSPEED_R_PROVIDER);
     const rSeriesIntraday = rSeriesConnections.length > 0 && rSeriesConnections.length === sourceConnections.length;
@@ -305,7 +308,7 @@ export async function GET(request: Request) {
       ...baseCommandCentre,
       today: {
         ...today,
-        grossProfitCents: permissions.includes("metrics.profit") ? today.grossProfitCents : null,
+        grossProfitCents: canViewVerifiedProfit ? today.grossProfitCents : null,
       },
       todayComparison: comparisonRows.length ? {
         baselineDate: comparisonDate,
@@ -313,7 +316,7 @@ export async function GET(request: Request) {
         baseline: comparisonBaseline,
         changes: {
           netSalesRate: percentageChange(today.netSalesCents, comparisonBaseline.netSalesCents),
-          grossProfitRate: permissions.includes("metrics.profit")
+          grossProfitRate: canViewVerifiedProfit
             ? percentageChange(today.grossProfitCents, comparisonBaseline.grossProfitCents)
             : null,
           transactionRate: percentageChange(today.transactionCount, comparisonBaseline.transactionCount),
@@ -348,7 +351,7 @@ export async function GET(request: Request) {
         refreshIntervalSeconds: sourceConnections.length ? 300 : null,
       },
     };
-    if (commandCentre.current && !permissions.includes("metrics.profit")) {
+    if (commandCentre.current && !canViewVerifiedProfit) {
       Object.assign(commandCentre.current, { costOfGoodsCents: null, grossProfitCents: null, contributionCents: null, grossMarginRate: null });
       if (commandCentre.previous) Object.assign(commandCentre.previous, { costOfGoodsCents: null, grossProfitCents: null, contributionCents: null, grossMarginRate: null });
       if (commandCentre.comparisons) Object.assign(commandCentre.comparisons, { grossProfitRate: null, marginPointChange: null });

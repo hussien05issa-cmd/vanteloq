@@ -61,6 +61,25 @@ const specification = {
     "/integrations/lightspeed-r/disconnect": {
       post: { summary: "Delete tenant R-Series credentials while retaining staged audit history", responses: { "200": { description: "Connection revoked" }, "403": { description: "Integration-management permission required" } } },
     },
+    "/integrations/square/authorize": {
+      post: { summary: "Begin tenant-bound Square read-only OAuth", responses: { "200": { description: "Short-lived authorization URL" }, "403": { description: "Integration-management permission required" }, "503": { description: "Square credentials not configured" } } },
+    },
+    "/integrations/square/callback": {
+      get: { summary: "Consume single-use Square OAuth state, verify the seller and discover locations", responses: { "303": { description: "Return to the integration workspace" }, "400": { description: "Invalid or expired callback" } } },
+    },
+    "/integrations/square/locations": {
+      get: { summary: "Discover Square seller locations and tenant mappings", responses: { "200": { description: "Location mappings" }, "409": { description: "Square is not connected" } } },
+      post: { summary: "Map a Square location to a tenant-owned location", responses: { "200": { description: "Mapping saved and audited" }, "404": { description: "Square or local location not found" } } },
+    },
+    "/integrations/square/sync": {
+      post: { summary: "Import bounded Square orders, payments, catalog, customers and inventory into staged operating data", responses: { "200": { description: "Import, reconciliation and checkpoint result" }, "409": { description: "Provider authorization or location mapping needs recovery" } } },
+    },
+    "/integrations/square/disconnect": {
+      post: { summary: "Revoke Square access and delete encrypted tenant credentials", responses: { "200": { description: "Connection revoked" }, "403": { description: "Integration-management permission required" } } },
+    },
+    "/integrations/square/webhook": {
+      post: { summary: "Validate a signed Square change notification and record a refresh signal", responses: { "204": { description: "Verified signal accepted" }, "401": { description: "Square signature invalid" }, "413": { description: "Payload too large" } } },
+    },
     "/command-centre": {
       get: { summary: "Calculate the tenant's evidence-bound owner command centre", responses: { "200": { description: "Verified metrics, comparisons, source freshness and recommendations" }, "401": { description: "Authentication required" }, "403": { description: "Membership required" }, "429": { description: "Rate limited" } } },
     },

@@ -85,9 +85,9 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
     id: "square",
     name: "Square",
     category: "Point of sale",
-    availability: "provider_build_required",
+    availability: "credentials_required",
     activationRequirement:
-      "Not available yet. A production connection still needs authorization, location mapping, signed updates, catalog and payment history, recovery, and reconciliation tests.",
+      "Authorize each seller with read-only access, map locations, then securely import and reconcile completed orders, tenders, catalog, customers and inventory. Signed Square updates trigger recoverable refreshes without exposing card data.",
   },
   {
     id: "clover",

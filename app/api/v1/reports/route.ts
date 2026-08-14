@@ -150,6 +150,7 @@ export async function GET(request: Request) {
       sourceNamespace: integrationConnections.sourceNamespace,
       status: integrationConnections.status,
       dataPromotionStatus: integrationConnections.dataPromotionStatus,
+      lastErrorCode: integrationConnections.lastErrorCode,
       syncLeaseOwner: integrationConnections.syncLeaseOwner,
       syncLeaseExpiresAt: integrationConnections.syncLeaseExpiresAt,
     }).from(integrationConnections)
@@ -160,6 +161,9 @@ export async function GET(request: Request) {
     const now = Date.now();
     const approvedPosRows = connectedPosRows.filter((row) => row.dataPromotionStatus === "approved"
       && (!row.syncLeaseOwner || !row.syncLeaseExpiresAt || row.syncLeaseExpiresAt.getTime() <= now));
+    const canViewVerifiedProfit = canViewProfit && !approvedPosRows.some((row) =>
+      row.provider === "square" && row.lastErrorCode === "SQUARE_PRODUCT_COST_UNAVAILABLE"
+    );
     const connectedPosProviders = new Set(approvedPosRows.map((row) => row.provider));
     const localLocationIds = locationAccess.locationIds ?? locationAccess.locations.map((location) => location.id);
     const [salesAuthority, paymentAuthority] = await Promise.all([
@@ -414,8 +418,8 @@ export async function GET(request: Request) {
           row.unitsSold,
           canViewRefunds ? row.discountsCents : null,
           canViewRefunds ? row.refundsCents : null,
-          canViewProfit ? row.costOfGoodsCents : null,
-          canViewProfit
+          canViewVerifiedProfit ? row.costOfGoodsCents : null,
+          canViewVerifiedProfit
             ? row.netSalesCents - row.costOfGoodsCents
             : null,
           canViewPayroll ? row.labourCostCents : null,
@@ -605,13 +609,13 @@ export async function GET(request: Request) {
         ...totals,
         discountsCents: canViewRefunds ? totals.discountsCents : null,
         refundsCents: canViewRefunds ? totals.refundsCents : null,
-        costOfGoodsCents: canViewProfit
+        costOfGoodsCents: canViewVerifiedProfit
           ? totals.costOfGoodsCents
           : null,
         labourCostCents: canViewPayroll
           ? totals.labourCostCents
           : null,
-        grossProfitCents: canViewProfit ? totals.grossProfitCents : null,
+        grossProfitCents: canViewVerifiedProfit ? totals.grossProfitCents : null,
       },
       comparison: !consolidationBlocked && comparisonPeriod && comparisonRows.length ? {
         periodStart: comparisonPeriod.start,
@@ -619,13 +623,13 @@ export async function GET(request: Request) {
         verifiedDays: new Set(comparisonRows.map((row) => row.businessDate)).size,
         totals: {
           netSalesCents: comparisonTotals.netSalesCents,
-          grossProfitCents: canViewProfit ? comparisonTotals.grossProfitCents : null,
+          grossProfitCents: canViewVerifiedProfit ? comparisonTotals.grossProfitCents : null,
           transactionCount: comparisonTotals.transactionCount,
           averageTransactionCents: comparisonTotals.averageTransactionCents,
         },
         changes: {
           netSalesRate: change(totals.netSalesCents, comparisonTotals.netSalesCents),
-          grossProfitRate: canViewProfit ? change(totals.grossProfitCents, comparisonTotals.grossProfitCents) : null,
+          grossProfitRate: canViewVerifiedProfit ? change(totals.grossProfitCents, comparisonTotals.grossProfitCents) : null,
           transactionRate: change(totals.transactionCount, comparisonTotals.transactionCount),
           averageTransactionRate: totals.averageTransactionCents !== null && comparisonTotals.averageTransactionCents !== null
             ? change(totals.averageTransactionCents, comparisonTotals.averageTransactionCents)
@@ -641,7 +645,7 @@ export async function GET(request: Request) {
         sourceImportId: canViewImportMetadata ? row.sourceImportId : null,
         sourceKind: sourceKind(row),
         netSalesCents: row.netSalesCents,
-        costOfGoodsCents: canViewProfit ? row.costOfGoodsCents : null,
+        costOfGoodsCents: canViewVerifiedProfit ? row.costOfGoodsCents : null,
         transactionCount: row.transactionCount,
       })),
       explainAndAct: consolidationBlocked ? {

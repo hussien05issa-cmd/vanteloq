@@ -16,7 +16,7 @@ export async function GET(request: Request) {
     await requirePermission(context, "dashboard.view");
     await enforceRateLimit("locations:read", context.userId, 90, 60);
     const permissions = await effectivePermissions(context);
-    const [locations, mappings, rows] = await Promise.all([
+    const [locations, mappings, rows, squareCostConnections] = await Promise.all([
       accessibleLocations(context),
       getDb().select({
         provider: integrationLocationMappings.provider,
@@ -47,7 +47,15 @@ export async function GET(request: Request) {
         ))
         .orderBy(desc(dailyBusinessMetrics.businessDate))
         .limit(2_500),
+      getDb().select({ id: integrationConnections.id }).from(integrationConnections).where(and(
+        eq(integrationConnections.organizationId, context.organizationId),
+        eq(integrationConnections.provider, "square"),
+        eq(integrationConnections.status, "connected"),
+        eq(integrationConnections.dataPromotionStatus, "approved"),
+        eq(integrationConnections.lastErrorCode, "SQUARE_PRODUCT_COST_UNAVAILABLE"),
+      )).limit(1),
     ]);
+    const canViewVerifiedProfit = permissions.includes("metrics.profit") && squareCostConnections.length === 0;
     const accessibleIds = new Set(locations.map((location) => location.id));
     const visibleMappings = mappings.filter((mapping) =>
       mapping.localLocationId !== null && accessibleIds.has(mapping.localLocationId),
@@ -96,7 +104,7 @@ export async function GET(request: Request) {
           period: latestDate ? `30 days through ${latestDate}` : null,
           days: new Set(scopedRows.map((row) => row.businessDate)).size,
           netSalesCents: permissions.includes("metrics.revenue") && scopedRows.length ? netSalesCents : null,
-          grossProfitCents: permissions.includes("metrics.profit") && scopedRows.length ? netSalesCents - costOfGoodsCents : null,
+          grossProfitCents: canViewVerifiedProfit && scopedRows.length ? netSalesCents - costOfGoodsCents : null,
           transactionCount: permissions.includes("metrics.revenue") && scopedRows.length ? scopedRows.reduce((sum, row) => sum + row.transactionCount, 0) : null,
           inventoryValueCents: permissions.includes("inventory.value") ? latestInventory : null,
           lastUpdatedAt: scopedRows.at(-1)?.updatedAt.toISOString() ?? null,
@@ -108,6 +116,7 @@ export async function GET(request: Request) {
     return jsonResponse({
       scopeLabel: canManageMappings ? "All locations" : "All accessible locations",
       latestBusinessDate: latestDate,
+      profitAvailability: canViewVerifiedProfit ? "verified" : squareCostConnections.length ? "Square product cost is unavailable, so profit is withheld." : "permission_required",
       locations: result,
       unmappedSourceLocations: canManageMappings
         ? mappings.filter((mapping) => mapping.status === "unmapped").length

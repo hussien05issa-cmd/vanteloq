@@ -18,6 +18,13 @@ export async function GET(request: Request) {
     const canReadSuppliers = permissions.includes("purchasing.view");
     const canReadInventory = permissions.includes("inventory.view");
     const database = getD1();
+    const squareCostGap = await database.prepare(`
+      SELECT 1 AS value FROM integration_connections
+      WHERE organization_id = ? AND provider = 'square' AND status = 'connected'
+        AND data_promotion_status = 'approved' AND last_error_code = 'SQUARE_PRODUCT_COST_UNAVAILABLE'
+      LIMIT 1
+    `).bind(context.organizationId).first<{ value: number }>();
+    const canViewVerifiedProfit = canReadProfit && !squareCostGap;
     const requestedLocationId = new URL(request.url).searchParams.get("location");
     const locationAccess = await authorizedLocationDataScope(context, requestedLocationId);
     const selectedLocation = locationAccess.selectedLocation;
@@ -122,7 +129,7 @@ export async function GET(request: Request) {
       : { ...row, externalCustomerId: null, displayName: null, firstName: null, lastName: null, email: null, phone: null }) : [];
     const safeTopProducts = (topProducts.results ?? []).map((row) => ({
       ...row,
-      grossProfitCents: canReadProfit ? row.grossProfitCents : null,
+      grossProfitCents: canViewVerifiedProfit ? row.grossProfitCents : null,
     }));
     return jsonResponse({
       source: "normalized-commerce",
@@ -134,7 +141,8 @@ export async function GET(request: Request) {
       topProducts: safeTopProducts,
       customerIdentityAvailable: canReadCustomerIdentity,
       productCostsAvailable: canReadProductCosts,
-      profitAvailable: canReadProfit,
+      profitAvailable: canViewVerifiedProfit,
+      profitAvailability: canViewVerifiedProfit ? "verified" : squareCostGap ? "Square does not supply verified product cost in this connection; profit and margin are withheld." : "permission_required",
       supplierDetailsAvailable: canReadSuppliers,
       locationScope: locationRestricted ? {
         id: selectedLocation?.id ?? "accessible",

@@ -63,6 +63,13 @@ export async function GET(request: Request) {
     )`;
     const salePeriodSql = " AND l.sold_at >= ? AND l.sold_at < ?";
     const database = getD1();
+    const squareCostGap = await database.prepare(`
+      SELECT 1 AS value FROM integration_connections
+      WHERE organization_id = ? AND provider = 'square' AND status = 'connected'
+        AND data_promotion_status = 'approved' AND last_error_code = 'SQUARE_PRODUCT_COST_UNAVAILABLE'
+      LIMIT 1
+    `).bind(context.organizationId).first<{ value: number }>();
+    const canViewVerifiedProfit = canReadProfit && !squareCostGap;
     const metrics = async (from: string, toExclusive: string) => database.prepare(`
       SELECT coalesce(sum(l.net_sales_cents), 0) AS netSalesCents,
              coalesce(sum(l.cost_cents), 0) AS costCents,
@@ -160,8 +167,8 @@ export async function GET(request: Request) {
       return {
         netSalesCents,
         costCents: canReadProductCosts ? costCents : null,
-        grossProfitCents: canReadProfit ? netSalesCents - costCents : null,
-        grossMarginRate: canReadProfit && netSalesCents ? (netSalesCents - costCents) / netSalesCents : null,
+        grossProfitCents: canViewVerifiedProfit ? netSalesCents - costCents : null,
+        grossMarginRate: canViewVerifiedProfit && netSalesCents ? (netSalesCents - costCents) / netSalesCents : null,
         discountsCents,
         discountRate: netSalesCents + discountsCents ? discountsCents / (netSalesCents + discountsCents) : null,
         transactions,
@@ -208,8 +215,8 @@ export async function GET(request: Request) {
         customerEmail: canReadCustomerIdentity ? row.customerEmail : null,
         customerPhone: canReadCustomerIdentity ? row.customerPhone : null,
         costCents: canReadProductCosts ? cost : null,
-        grossProfitCents: canReadProfit ? net - cost : null,
-        marginRate: canReadProfit && net ? (net - cost) / net : null,
+        grossProfitCents: canViewVerifiedProfit ? net - cost : null,
+        marginRate: canViewVerifiedProfit && net ? (net - cost) / net : null,
       };
     });
     const customers = (customerRows.results ?? []).map((row) => {
@@ -222,7 +229,7 @@ export async function GET(request: Request) {
         displayName: canReadCustomerIdentity ? row.displayName : "Known customer",
         email: canReadCustomerIdentity ? row.email : null,
         phone: canReadCustomerIdentity ? row.phone : null,
-        grossProfitCents: canReadProfit ? net - cost : null,
+        grossProfitCents: canViewVerifiedProfit ? net - cost : null,
         averageTransactionCents: transactions ? Math.round(net / transactions) : null,
       };
     });
@@ -232,8 +239,8 @@ export async function GET(request: Request) {
       return {
         ...row,
         periodCostCents: canReadProductCosts ? cost : null,
-        periodGrossProfitCents: canReadProfit ? net - cost : null,
-        periodMarginRate: canReadProfit && net ? (net - cost) / net : null,
+        periodGrossProfitCents: canViewVerifiedProfit ? net - cost : null,
+        periodMarginRate: canViewVerifiedProfit && net ? (net - cost) / net : null,
         lowStockItems: inventory.filter((item) => item.provider === row.provider && item.supplierRef === row.externalSupplierId && item.stockStatus !== "healthy").length,
       };
     });
@@ -249,8 +256,8 @@ export async function GET(request: Request) {
         discountCents: discounts,
         transactionCount: Number(row.transactionCount ?? 0),
         costCents: canReadProductCosts ? cost : null,
-        grossProfitCents: canReadProfit ? net - cost : null,
-        marginRate: canReadProfit && net ? (net - cost) / net : null,
+        grossProfitCents: canViewVerifiedProfit ? net - cost : null,
+        marginRate: canViewVerifiedProfit && net ? (net - cost) / net : null,
         discountRate: net + discounts ? discounts / (net + discounts) : null,
       };
     });
@@ -282,7 +289,8 @@ export async function GET(request: Request) {
       suppliers,
       products,
       alerts,
-      permissions: { customerIdentity: canReadCustomerIdentity, productCosts: canReadProductCosts, profit: canReadProfit, suppliers: canReadSuppliers, inventory: canReadInventory },
+      permissions: { customerIdentity: canReadCustomerIdentity, productCosts: canReadProductCosts, profit: canViewVerifiedProfit, suppliers: canReadSuppliers, inventory: canReadInventory },
+      profitAvailability: canViewVerifiedProfit ? "verified" : squareCostGap ? "Square does not supply verified product cost in this connection; profit and margin are withheld." : "permission_required",
       locationScope: restricted ? { id: locationAccess.selectedLocation?.id ?? "accessible", name: locationAccess.selectedLocation?.name ?? "Accessible locations" } : null,
     });
   });

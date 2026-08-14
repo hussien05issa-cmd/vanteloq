@@ -86,7 +86,7 @@ test("high-risk tenant and privilege boundaries remain enforced in source", asyn
   assert.match(purchasing, /created_by_user_id != \?/);
   assert.match(purchasing, /Number\(result\.meta\.changes \?\? 0\) !== 1/);
   assert.match(commerce, /canReadProductCosts/);
-  assert.match(commerce, /grossProfitCents: canReadProfit \? row\.grossProfitCents : null/);
+  assert.match(commerce, /grossProfitCents: canViewVerifiedProfit \? row\.grossProfitCents : null/);
   assert.match(commerce, /displayName: null/);
   assert.match(commerce, /canReadSuppliers \? suppliers\.results \?\? \[\] : \[\]/);
   assert.match(inventoryLifecycle, /canViewValue/);
@@ -129,6 +129,10 @@ test("provider management routes reject anonymous same-origin writes", async () 
     "/api/v1/integrations/clover/locations",
     "/api/v1/integrations/clover/sync",
     "/api/v1/integrations/clover/disconnect",
+    "/api/v1/integrations/square/authorize",
+    "/api/v1/integrations/square/locations",
+    "/api/v1/integrations/square/sync",
+    "/api/v1/integrations/square/disconnect",
     "/api/v1/integrations/stripe/authorize",
     "/api/v1/integrations/stripe/sync",
     "/api/v1/integrations/stripe/disconnect",
@@ -192,8 +196,27 @@ test("the Clover callback rejects malformed one-time state before database acces
   assert.equal((await response.json()).error.code, "CLOVER_CALLBACK_INVALID");
 });
 
+test("the Square callback rejects malformed one-time state before database access", async () => {
+  const worker = await loadWorker();
+  const response = await worker.fetch(new Request(
+    "https://vanteloq.example/api/v1/integrations/square/callback?code=test-code&state=too-short",
+    { headers: { accept: "application/json" } },
+  ), environment, context);
+  assert.equal(response.status, 400);
+  assert.equal((await response.json()).error.code, "SQUARE_CALLBACK_INVALID");
+});
+
 test("the Clover callback binds the provider redirect to a one-time initiating owner", async () => {
   const source = await readFile(`${process.cwd()}/app/api/v1/integrations/clover/callback/route.ts`, "utf8");
+  assert.doesNotMatch(source, /requireAccess\(request/);
+  assert.match(source, /eq\(users\.id, stored\.actorUserId\)/);
+  assert.match(source, /eq\(memberships\.organizationId, stored\.organizationId\)/);
+  assert.match(source, /isNull\(integrationOAuthStates\.consumedAt\)/);
+  assert.match(source, /returning\(\{ stateHash: integrationOAuthStates\.stateHash \}\)/);
+});
+
+test("the Square callback binds the provider redirect to a one-time initiating owner", async () => {
+  const source = await readFile(`${process.cwd()}/app/api/v1/integrations/square/callback/route.ts`, "utf8");
   assert.doesNotMatch(source, /requireAccess\(request/);
   assert.match(source, /eq\(users\.id, stored\.actorUserId\)/);
   assert.match(source, /eq\(memberships\.organizationId, stored\.organizationId\)/);
@@ -346,9 +369,23 @@ test("the Clover webhook rejects unsigned merchant events before database access
   assert.equal((await response.json()).error.code, "CLOVER_WEBHOOK_AUTH_INVALID");
 });
 
+test("the Square webhook rejects unsigned seller events before database access", async () => {
+  const worker = await loadWorker();
+  const response = await worker.fetch(new Request(
+    "https://vanteloq.example/api/v1/integrations/square/webhook",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: '{"event_id":"evt_unsigned","merchant_id":"merchant-test","type":"order.updated"}',
+    },
+  ), environment, context);
+  assert.equal(response.status, 401);
+  assert.equal((await response.json()).error.code, "SQUARE_WEBHOOK_SIGNATURE_INVALID");
+});
+
 test("signed provider webhook replay keys stay connection-scoped after the multi-account migration", async () => {
   const { readFile } = await import("node:fs/promises");
-  for (const route of ["lightspeed", "clover", "stripe"]) {
+  for (const route of ["lightspeed", "clover", "square", "stripe"]) {
     const source = await readFile(
       `${process.cwd()}/app/api/v1/integrations/${route}/webhook/route.ts`,
       "utf8",
