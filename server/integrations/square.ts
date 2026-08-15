@@ -34,6 +34,14 @@ export type SquareToken = {
   merchantId: string;
 };
 
+export function buildSquareCustomerSearchBody(cursor?: string) {
+  return {
+    limit: 100,
+    cursor: cursor || undefined,
+    query: { sort: { field: "CREATED_AT", order: "ASC" } },
+  } as const;
+}
+
 function environmentFrom(value?: string): SquareEnvironment {
   return value?.trim().toLowerCase() === "production" ? "production" : "sandbox";
 }

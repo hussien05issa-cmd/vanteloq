@@ -5,7 +5,7 @@ import { scopeExternalRef, unscopedExternalRef } from "../../../../../../domain/
 import { recordAudit } from "../../../../../../server/audit";
 import { requireAccess } from "../../../../../../server/authorization";
 import { ApiError, enforceRateLimit, handleApi, jsonResponse, requireSameOrigin } from "../../../../../../server/api";
-import { record, records, SQUARE_PROVIDER, squareRequest, squareSha256 } from "../../../../../../server/integrations/square";
+import { buildSquareCustomerSearchBody, record, records, SQUARE_PROVIDER, squareRequest, squareSha256 } from "../../../../../../server/integrations/square";
 import { acquireIntegrationSyncLease, releaseIntegrationSyncLease, requireOwnedIntegrationConnection, sqliteTimestampSeconds } from "../../../../../../server/integrations/connection";
 import { requirePermission } from "../../../../../../server/permissions";
 
@@ -63,7 +63,7 @@ export async function POST(request: Request) {
       const startAt = previous.watermark ?? new Date(Date.now() - 2 * 365 * 24 * 60 * 60_000).toISOString();
       const [catalogBody, customerBody, orderBody, paymentBody] = await Promise.all([
         squareRequest(context.organizationId, connection.id, "/v2/catalog/search", { method: "POST", body: { object_types: ["ITEM", "ITEM_VARIATION"], include_deleted_objects: true, limit: PAGE_SIZE, cursor: previous.catalog || undefined } }),
-        squareRequest(context.organizationId, connection.id, "/v2/customers/search", { method: "POST", body: { limit: PAGE_SIZE, cursor: previous.customers || undefined, query: { sort: { field: "UPDATED_AT", order: "ASC" } } } }),
+        squareRequest(context.organizationId, connection.id, "/v2/customers/search", { method: "POST", body: buildSquareCustomerSearchBody(previous.customers) }),
         squareRequest(context.organizationId, connection.id, "/v2/orders/search", { method: "POST", body: { location_ids: mappedLocations.length ? mappedLocations : mappings.map((mapping) => mapping.externalLocationRef), cursor: previous.orders || undefined, limit: PAGE_SIZE, query: { filter: { state_filter: { states: ["COMPLETED"] }, date_time_filter: { created_at: { start_at: startAt } } }, sort: { sort_field: "CREATED_AT", sort_order: "ASC" } } } }),
         squareRequest(context.organizationId, connection.id, `/v2/payments?begin_time=${encodeURIComponent(startAt)}&limit=${PAGE_SIZE}${previous.payments ? `&cursor=${encodeURIComponent(previous.payments)}` : ""}`),
       ]);

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  buildSquareCustomerSearchBody,
   buildSquareAuthorizationUrl,
   exchangeSquareCode,
   record,
@@ -93,4 +94,13 @@ test("Square response shaping rejects arrays as records and empty collection ent
   assert.deepEqual(record({ id: "one" }), { id: "one" });
   assert.deepEqual(record(["not-a-record"]), {});
   assert.deepEqual(records([{ id: "one" }, null, [], {}]), [{ id: "one" }]);
+});
+
+test("Square customer sync uses the supported creation-time sort field", () => {
+  assert.deepEqual(buildSquareCustomerSearchBody("next-page"), {
+    limit: 100,
+    cursor: "next-page",
+    query: { sort: { field: "CREATED_AT", order: "ASC" } },
+  });
+  assert.equal(buildSquareCustomerSearchBody().cursor, undefined);
 });
