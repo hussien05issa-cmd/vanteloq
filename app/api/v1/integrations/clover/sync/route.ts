@@ -15,6 +15,7 @@ import {
   requireOwnedIntegrationConnection, sqliteTimestampSeconds,
 } from "../../../../../../server/integrations/connection";
 import { requirePermission } from "../../../../../../server/permissions";
+import { applyOwnerInventoryCosts } from "../../../../../../server/inventory-costs";
 
 const PAGE_SIZE = 100;
 const IMPORT_LABEL = "Clover read-only sync";
@@ -237,12 +238,14 @@ export async function POST(request: Request) {
         WHERE sale.organization_id=? AND sale.provider=? AND sale.connection_id=?
       `).bind(context.organizationId, CLOVER_PROVIDER, connection.id).run();
 
+      await applyOwnerInventoryCosts(context.organizationId, connection.id, now);
+
       const missingCost = await database.prepare(`
         SELECT COUNT(*) count FROM commerce_sale_lines line
         LEFT JOIN commerce_products product ON product.organization_id=line.organization_id AND product.provider=line.provider
           AND product.connection_id=line.connection_id AND product.external_product_id=line.product_ref
         WHERE line.organization_id=? AND line.provider=? AND line.connection_id=? AND line.net_sales_cents>0
-          AND (line.product_ref IS NULL OR product.default_cost_cents IS NULL)
+          AND (line.product_ref IS NULL OR (product.owner_cost_cents IS NULL AND product.default_cost_cents IS NULL))
       `).bind(context.organizationId, CLOVER_PROVIDER, connection.id).first<{ count: number }>();
       const missingCostCount = Number(missingCost?.count ?? 0);
       const publishRequested = Boolean(connection.promotionAuthorizedAt || connection.dataPromotionStatus === "approved");

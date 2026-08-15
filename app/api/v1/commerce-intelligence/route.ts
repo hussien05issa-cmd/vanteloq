@@ -27,6 +27,8 @@ export async function GET(request: Request) {
     const canReadProfit = permissions.includes("metrics.profit");
     const canReadSuppliers = permissions.includes("purchasing.view");
     const canReadInventory = permissions.includes("inventory.view");
+    const canManageCosts = permissions.includes("inventory.adjust");
+    const canImportCosts = canManageCosts && permissions.includes("data.import");
     const url = new URL(request.url);
     let period;
     try {
@@ -102,6 +104,9 @@ export async function GET(request: Request) {
                b.sku, b.name, b.on_hand_quantity AS onHandQuantity, b.reorder_point AS reorderPoint,
                b.updated_at AS updatedAt, p.external_product_id AS externalProductId, p.category_ref AS categoryRef,
                p.supplier_ref AS supplierRef, p.default_cost_cents AS defaultCostCents, p.default_price_cents AS defaultPriceCents,
+               p.owner_cost_cents AS ownerCostCents, p.owner_cost_source AS ownerCostSource,
+               p.owner_cost_updated_at AS ownerCostUpdatedAt,
+               coalesce(p.owner_cost_cents, p.default_cost_cents) AS effectiveCostCents,
                coalesce(sales.quantity_milli, 0) AS periodQuantityMilli,
                coalesce(sales.net_sales_cents, 0) AS periodNetSalesCents,
                coalesce(sales.cost_cents, 0) AS periodCostCents,
@@ -200,6 +205,16 @@ export async function GET(request: Request) {
         periodDiscountCents: Number(row.periodDiscountCents ?? 0),
         supplierRef: canReadSuppliers ? row.supplierRef : null,
         defaultCostCents: canReadProductCosts ? row.defaultCostCents : null,
+        ownerCostCents: canReadProductCosts ? row.ownerCostCents : null,
+        effectiveCostCents: canReadProductCosts ? row.effectiveCostCents : null,
+        costSource: canReadProductCosts
+          ? row.ownerCostCents != null
+            ? row.ownerCostSource
+            : row.defaultCostCents != null
+              ? "provider"
+              : null
+          : null,
+        costUpdatedAt: canReadProductCosts ? row.ownerCostUpdatedAt : null,
         periodCostCents: canReadProductCosts ? row.periodCostCents : null,
         unitsSold,
         ...decision,
@@ -289,7 +304,15 @@ export async function GET(request: Request) {
       suppliers,
       products,
       alerts,
-      permissions: { customerIdentity: canReadCustomerIdentity, productCosts: canReadProductCosts, profit: canViewVerifiedProfit, suppliers: canReadSuppliers, inventory: canReadInventory },
+      permissions: {
+        customerIdentity: canReadCustomerIdentity,
+        productCosts: canReadProductCosts,
+        profit: canViewVerifiedProfit,
+        suppliers: canReadSuppliers,
+        inventory: canReadInventory,
+        manageCosts: canManageCosts,
+        importCosts: canImportCosts,
+      },
       profitAvailability: canViewVerifiedProfit ? "verified" : squareCostGap ? "Square does not supply verified product cost in this connection; profit and margin are withheld." : "permission_required",
       locationScope: restricted ? { id: locationAccess.selectedLocation?.id ?? "accessible", name: locationAccess.selectedLocation?.name ?? "Accessible locations" } : null,
     });

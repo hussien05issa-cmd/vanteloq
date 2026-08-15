@@ -34,6 +34,7 @@ import {
   sqliteTimestampSeconds,
 } from "../../../../../../server/integrations/connection";
 import { scopeExternalRef } from "../../../../../../domain/integration-source";
+import { applyOwnerInventoryCosts } from "../../../../../../server/inventory-costs";
 
 const IMPORT_LABEL = "Lightspeed R-Series live sync";
 
@@ -650,6 +651,7 @@ export async function POST(request: Request) {
           supplier.archived ? 1 : 0, supplier.sourceUpdatedAt, supplier.sourcePayloadHash, runId, now,
         ));
       const importedSuppliers = await runWriteBatches(supplierStatements);
+      await applyOwnerInventoryCosts(context.organizationId, connection.id, now);
       await renewIntegrationSyncLease(syncLease);
       await database.prepare(`
         UPDATE data_imports SET status = 'completed', row_count = ?

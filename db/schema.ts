@@ -884,6 +884,12 @@ export const commerceProducts = sqliteTable(
     categoryRef: text("category_ref"),
     supplierRef: text("supplier_ref"),
     defaultCostCents: integer("default_cost_cents"),
+    // Provider cost remains untouched. An owner-supplied cost is stored
+    // separately so connector refreshes cannot silently erase or overwrite it.
+    ownerCostCents: integer("owner_cost_cents"),
+    ownerCostSource: text("owner_cost_source", { enum: ["manual", "csv"] }),
+    ownerCostUpdatedByUserId: text("owner_cost_updated_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    ownerCostUpdatedAt: integer("owner_cost_updated_at", { mode: "timestamp" }),
     defaultPriceCents: integer("default_price_cents"),
     archived: integer("archived", { mode: "boolean" }).notNull().default(false),
     sourceUpdatedAt: text("source_updated_at"),
@@ -895,6 +901,9 @@ export const commerceProducts = sqliteTable(
     uniqueIndex("commerce_products_external_unique").on(table.organizationId, table.provider, table.connectionId, table.externalProductId),
     index("commerce_products_sku_idx").on(table.organizationId, table.sku),
     index("commerce_products_supplier_idx").on(table.organizationId, table.provider, table.supplierRef),
+    index("commerce_products_owner_cost_idx").on(table.organizationId, table.ownerCostUpdatedAt),
+    check("commerce_products_owner_cost_check", sql`${table.ownerCostCents} is null or ${table.ownerCostCents} >= 0`),
+    check("commerce_products_owner_cost_source_check", sql`${table.ownerCostSource} is null or ${table.ownerCostSource} in ('manual','csv')`),
   ],
 );
 
