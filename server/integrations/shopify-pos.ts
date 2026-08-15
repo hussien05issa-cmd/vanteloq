@@ -5,7 +5,7 @@ import { ApiError } from "../api";
 
 export const SHOPIFY_POS_PROVIDER = "shopify-pos";
 export const SHOPIFY_API_VERSION = "2026-07";
-export const SHOPIFY_POS_READ_SCOPES = ["read_orders", "read_products", "read_inventory", "read_locations", "read_customers"] as const;
+export const SHOPIFY_POS_READ_SCOPES = ["read_all_orders", "read_orders", "read_products", "read_inventory", "read_locations", "read_customers"] as const;
 const SECRET_AAD = "vanteloq:shopify-pos:v1";
 
 function env() { return getRuntimeEnv(); }

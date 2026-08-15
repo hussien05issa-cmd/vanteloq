@@ -27,7 +27,7 @@ test("Shopify POS readiness exposes the exact read-only adapter boundary", () =>
   assert.equal(readiness.apiVersion, SHOPIFY_API_VERSION);
   assert.equal(readiness.mode, "read_only_staged_sync");
   assert.equal(readiness.dataPromotionEnabled, false);
-  assert.deepEqual(new Set(readiness.permissions), new Set(["read_orders", "read_products", "read_inventory", "read_locations", "read_customers"]));
+  assert.deepEqual(new Set(readiness.permissions), new Set(["read_all_orders", "read_orders", "read_products", "read_inventory", "read_locations", "read_customers"]));
 });
 
 test("Shopify authorization is state-bound and limited to permanent store domains", () => {
@@ -38,7 +38,7 @@ test("Shopify authorization is state-bound and limited to permanent store domain
   assert.equal(url.searchParams.get("client_id"), "shopify-test-client");
   assert.equal(url.searchParams.get("redirect_uri"), "https://vanteloq.com/api/v1/integrations/shopify-pos/callback");
   assert.equal(url.searchParams.get("state"), state);
-  assert.deepEqual(new Set(url.searchParams.get("scope")?.split(",")), new Set(["read_orders", "read_products", "read_inventory", "read_locations", "read_customers"]));
+  assert.deepEqual(new Set(url.searchParams.get("scope")?.split(",")), new Set(["read_all_orders", "read_orders", "read_products", "read_inventory", "read_locations", "read_customers"]));
   assert.doesNotMatch(url.toString(), /shopify-test-secret/);
   assert.equal(normalizeShopDomain("https://TEST-STORE.myshopify.com/"), "test-store.myshopify.com");
   assert.throws(() => normalizeShopDomain("shopify.example.com"), /permanent .myshopify.com domain/i);
