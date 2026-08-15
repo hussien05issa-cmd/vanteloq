@@ -80,6 +80,20 @@ const specification = {
     "/integrations/square/webhook": {
       post: { summary: "Validate a signed Square change notification and record a refresh signal", responses: { "204": { description: "Verified signal accepted" }, "401": { description: "Square signature invalid" }, "413": { description: "Payload too large" } } },
     },
+    "/integrations/google/authorize": {
+      post: { summary: "Begin tenant-bound Google visibility OAuth for Search Console, Analytics, Business Profile and configured Ads reporting", responses: { "200": { description: "Short-lived authorization URL" }, "403": { description: "Integration-management permission required" }, "503": { description: "Google credentials not configured" } } },
+    },
+    "/integrations/google/resources": {
+      get: { summary: "Discover and read tenant selections for Google visibility resources", responses: { "200": { description: "Available and selected Google resources" }, "403": { description: "Marketing visibility permission required" }, "409": { description: "Google connection requires recovery" } } },
+      post: { summary: "Save tenant-scoped Google resource selections and location mappings", responses: { "200": { description: "Resource selections saved and audited" }, "400": { description: "Invalid selection" }, "403": { description: "Marketing-management permission required" } } },
+    },
+    "/integrations/google/sync": {
+      post: { summary: "Import selected Google visibility and advertising metrics into verified daily records", responses: { "200": { description: "Metric import and source lineage" }, "403": { description: "Marketing-management permission required" }, "409": { description: "Resource selection or authorization needs recovery" } } },
+    },
+    "/integrations/google/business-profile/reviews": {
+      get: { summary: "Fetch the selected Business Profile review queue on demand without persisting review content", responses: { "200": { description: "Current Google review page" }, "403": { description: "Marketing visibility permission required" }, "409": { description: "Business Profile location selection required" } } },
+      post: { summary: "Publish one human-written Business Profile reply after exact confirmation", responses: { "200": { description: "Google accepted the reply" }, "400": { description: "Invalid or unconfirmed reply" }, "403": { description: "Marketing-management permission required" }, "409": { description: "Review does not belong to the selected location" } } },
+    },
     "/command-centre": {
       get: { summary: "Calculate the tenant's evidence-bound owner command centre", responses: { "200": { description: "Verified metrics, comparisons, source freshness and recommendations" }, "401": { description: "Authentication required" }, "403": { description: "Membership required" }, "429": { description: "Rate limited" } } },
     },

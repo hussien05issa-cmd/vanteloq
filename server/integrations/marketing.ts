@@ -10,7 +10,7 @@ import {
 } from "./lightspeed";
 
 export type MarketingProvider = "google" | "meta";
-export type MarketingDataset = "google_analytics" | "google_search_console" | "meta_ads";
+export type MarketingDataset = "google_analytics" | "google_search_console" | "google_business_profile" | "google_ads" | "meta_ads";
 
 export type SelectedMarketingResource = {
   id: string;
@@ -33,7 +33,16 @@ export const GOOGLE_MARKETING_SCOPES = [
   "email",
   "https://www.googleapis.com/auth/webmasters.readonly",
   "https://www.googleapis.com/auth/analytics.readonly",
+  "https://www.googleapis.com/auth/business.manage",
 ] as const;
+
+export const GOOGLE_ADS_SCOPE = "https://www.googleapis.com/auth/adwords" as const;
+
+export function googleMarketingScopes() {
+  return getRuntimeEnv().GOOGLE_ADS_DEVELOPER_TOKEN?.trim()
+    ? [...GOOGLE_MARKETING_SCOPES, GOOGLE_ADS_SCOPE]
+    : [...GOOGLE_MARKETING_SCOPES];
+}
 
 export const META_MARKETING_SCOPES = [
   "ads_read",
@@ -97,7 +106,7 @@ export function marketingReadiness(provider: MarketingProvider) {
     credentialsConfigured: missingConfiguration.length === 0,
     missingConfiguration,
     apiVersion: provider === "google" ? "Google APIs v1" : metaVersion(),
-    scopes: provider === "google" ? [...GOOGLE_MARKETING_SCOPES] : [...META_MARKETING_SCOPES],
+    scopes: provider === "google" ? googleMarketingScopes() : [...META_MARKETING_SCOPES],
     mode: "measurement" as const,
     resourceSelectionStatus: "required" as const,
     resourceSelectionRequired: true,
@@ -105,7 +114,9 @@ export function marketingReadiness(provider: MarketingProvider) {
     dataPromotionEnabled: false,
     liveDataEligible: false,
     supportedDatasets: provider === "google"
-      ? ["google_analytics", "google_search_console"] as const
+      ? (env.GOOGLE_ADS_DEVELOPER_TOKEN?.trim()
+          ? ["google_analytics", "google_search_console", "google_business_profile", "google_ads"] as const
+          : ["google_analytics", "google_search_console", "google_business_profile"] as const)
       : ["meta_ads"] as const,
   };
 }
@@ -159,7 +170,7 @@ export function buildMarketingAuthorizationUrl(provider: MarketingProvider, stat
     url.searchParams.set("access_type", "offline");
     url.searchParams.set("include_granted_scopes", "true");
     url.searchParams.set("prompt", "consent");
-    url.searchParams.set("scope", GOOGLE_MARKETING_SCOPES.join(" "));
+    url.searchParams.set("scope", googleMarketingScopes().join(" "));
     url.searchParams.set("state", state);
     return url.toString();
   }
@@ -200,7 +211,7 @@ export async function exchangeMarketingAuthorizationCode(provider: MarketingProv
     );
     if (!token.access_token || !token.refresh_token) throw new ApiError(409, "GOOGLE_OFFLINE_ACCESS_REQUIRED", "Google did not return the continuing access required for scheduled measurement. Reconnect and approve access.");
     const scopes = [...new Set((token.scope ?? "").split(/\s+/).filter(Boolean))];
-    const missing = GOOGLE_MARKETING_SCOPES.filter((scope) => !scopes.includes(scope));
+    const missing = googleMarketingScopes().filter((scope) => !scopes.includes(scope));
     if (missing.length) throw new ApiError(409, "GOOGLE_SCOPES_INCOMPLETE", "Google did not grant every measurement permission required by this connection.");
     return {
       accessToken: token.access_token,
@@ -375,8 +386,101 @@ async function discoverGoogleAnalyticsResources(accessToken: string) {
   throw new ApiError(502, "GOOGLE_ANALYTICS_PAGINATION_LIMIT", "Google Analytics returned too many resource pages to verify safely.");
 }
 
+async function discoverGoogleBusinessProfileResources(accessToken: string) {
+  const resources: DiscoveredMarketingResource[] = [];
+  const accounts: Array<{ name?: string; accountName?: string }> = [];
+  let accountPageToken = "";
+  const seenAccountTokens = new Set<string>();
+  for (let page = 0; page < DISCOVERY_PAGE_LIMIT; page += 1) {
+    const accountUrl = new URL("https://mybusinessaccountmanagement.googleapis.com/v1/accounts");
+    accountUrl.searchParams.set("pageSize", "20");
+    if (accountPageToken) accountUrl.searchParams.set("pageToken", accountPageToken);
+    const result = await providerJson<{ accounts?: Array<{ name?: string; accountName?: string }>; nextPageToken?: string }>(
+      accountUrl.toString(),
+      { headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" } },
+      "GOOGLE_BUSINESS_ACCOUNTS_FAILED",
+      "Google Business Profile accounts could not be loaded.",
+    );
+    accounts.push(...(result.accounts ?? []));
+    const next = result.nextPageToken?.trim() ?? "";
+    if (!next) {
+      accountPageToken = "";
+      break;
+    }
+    if (next.length > 2_048 || seenAccountTokens.has(next)) throw new ApiError(502, "GOOGLE_BUSINESS_ACCOUNT_PAGINATION_INVALID", "Google Business Profile returned an invalid account page sequence.");
+    seenAccountTokens.add(next);
+    accountPageToken = next;
+  }
+  if (accountPageToken) throw new ApiError(502, "GOOGLE_BUSINESS_ACCOUNT_PAGINATION_LIMIT", "Google Business Profile returned too many account pages to verify safely.");
+  for (const account of accounts) {
+    if (!/^accounts\/[A-Za-z0-9_-]+$/.test(account.name ?? "")) continue;
+    let pageToken = "";
+    const seen = new Set<string>();
+    for (let page = 0; page < DISCOVERY_PAGE_LIMIT; page += 1) {
+      const url = new URL(`https://mybusinessbusinessinformation.googleapis.com/v1/${account.name}/locations`);
+      url.searchParams.set("readMask", "name,title,storeCode,metadata,websiteUri,phoneNumbers,regularHours,categories");
+      url.searchParams.set("pageSize", "100");
+      if (pageToken) url.searchParams.set("pageToken", pageToken);
+      const result = await providerJson<{ locations?: Array<{ name?: string; title?: string; storeCode?: string }>; nextPageToken?: string }>(
+        url.toString(),
+        { headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" } },
+        "GOOGLE_BUSINESS_LOCATIONS_FAILED",
+        "Google Business Profile locations could not be loaded.",
+      );
+      for (const location of result.locations ?? []) {
+        const locationName = location.name ?? "";
+        if (!/^locations\/[A-Za-z0-9_-]+$/.test(locationName)) continue;
+        resources.push({
+          dataset: "google_business_profile",
+          externalResourceRef: `${account.name}/${locationName}`,
+          name: `${location.title || locationName}${location.storeCode ? ` · ${location.storeCode}` : ""}`,
+          syncCapability: "metrics",
+        });
+      }
+      assertDiscoveryCapacity(resources);
+      const next = result.nextPageToken?.trim() ?? "";
+      if (!next) break;
+      if (next.length > 2_048 || seen.has(next)) throw new ApiError(502, "GOOGLE_BUSINESS_PAGINATION_INVALID", "Google Business Profile returned an invalid location page sequence.");
+      seen.add(next);
+      pageToken = next;
+    }
+  }
+  return resources;
+}
+
+function googleAdsVersion() {
+  const configured = getRuntimeEnv().GOOGLE_ADS_API_VERSION?.trim() || "v25";
+  return /^v\d{1,2}$/.test(configured) ? configured : "v25";
+}
+
+function googleAdsHeaders(accessToken: string) {
+  const env = getRuntimeEnv();
+  const developerToken = env.GOOGLE_ADS_DEVELOPER_TOKEN?.trim();
+  if (!developerToken) throw new ApiError(503, "GOOGLE_ADS_CONFIGURATION_REQUIRED", "Google Ads reporting requires a configured developer token.");
+  const headers: Record<string, string> = { Authorization: `Bearer ${accessToken}`, "developer-token": developerToken, Accept: "application/json" };
+  const loginCustomerId = env.GOOGLE_ADS_LOGIN_CUSTOMER_ID?.replace(/\D/g, "");
+  if (loginCustomerId) headers["login-customer-id"] = loginCustomerId;
+  return headers;
+}
+
+async function discoverGoogleAdsResources(accessToken: string) {
+  if (!getRuntimeEnv().GOOGLE_ADS_DEVELOPER_TOKEN?.trim()) return [];
+  const result = await providerJson<{ resourceNames?: string[] }>(
+    `https://googleads.googleapis.com/${googleAdsVersion()}/customers:listAccessibleCustomers`,
+    { headers: googleAdsHeaders(accessToken) },
+    "GOOGLE_ADS_ACCOUNTS_FAILED",
+    "Google Ads accounts could not be loaded.",
+  );
+  return (result.resourceNames ?? []).flatMap((resourceName) => /^customers\/\d+$/.test(resourceName) ? [{
+    dataset: "google_ads" as const,
+    externalResourceRef: resourceName,
+    name: `Google Ads · ${resourceName.slice("customers/".length).replace(/(\d{3})(\d{3})(\d+)/, "$1-$2-$3")}`,
+    syncCapability: "metrics" as const,
+  }] : []);
+}
+
 export async function discoverGoogleMarketingResources(accessToken: string): Promise<DiscoveredMarketingResource[]> {
-  const [searchResult, analyticsResources] = await Promise.all([
+  const [searchResult, analyticsResources, businessResources, adsResources] = await Promise.all([
     providerJson<{ siteEntry?: Array<{ siteUrl?: string }> }>(
       "https://www.googleapis.com/webmasters/v3/sites",
       { headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" } },
@@ -384,6 +488,8 @@ export async function discoverGoogleMarketingResources(accessToken: string): Pro
       "Search Console resources could not be loaded.",
     ),
     discoverGoogleAnalyticsResources(accessToken),
+    discoverGoogleBusinessProfileResources(accessToken),
+    discoverGoogleAdsResources(accessToken),
   ]);
   const searchResources = (searchResult.siteEntry ?? []).flatMap((site) => site.siteUrl ? [{
     dataset: "google_search_console" as const,
@@ -391,7 +497,7 @@ export async function discoverGoogleMarketingResources(accessToken: string): Pro
     name: site.siteUrl,
     syncCapability: "metrics" as const,
   }] : []);
-  const resources = [...searchResources, ...analyticsResources];
+  const resources = [...searchResources, ...analyticsResources, ...businessResources, ...adsResources];
   assertDiscoveryCapacity(resources);
   return resources;
 }
@@ -494,19 +600,150 @@ async function googleAnalyticsMetrics(accessToken: string, selection: SelectedMa
   }
 }
 
+const GBP_METRICS = [
+  "BUSINESS_IMPRESSIONS_DESKTOP_SEARCH",
+  "BUSINESS_IMPRESSIONS_MOBILE_SEARCH",
+  "BUSINESS_IMPRESSIONS_DESKTOP_MAPS",
+  "BUSINESS_IMPRESSIONS_MOBILE_MAPS",
+  "WEBSITE_CLICKS",
+  "CALL_CLICKS",
+  "BUSINESS_DIRECTION_REQUESTS",
+  "BUSINESS_BOOKINGS",
+  "BUSINESS_FOOD_ORDERS",
+  "BUSINESS_CONVERSATIONS",
+] as const;
+
+const gbpMetricKeys: Record<string, string> = {
+  BUSINESS_IMPRESSIONS_DESKTOP_SEARCH: "gbp_search_desktop_impressions",
+  BUSINESS_IMPRESSIONS_MOBILE_SEARCH: "gbp_search_mobile_impressions",
+  BUSINESS_IMPRESSIONS_DESKTOP_MAPS: "gbp_maps_desktop_impressions",
+  BUSINESS_IMPRESSIONS_MOBILE_MAPS: "gbp_maps_mobile_impressions",
+  WEBSITE_CLICKS: "gbp_website_clicks",
+  CALL_CLICKS: "gbp_call_clicks",
+  BUSINESS_DIRECTION_REQUESTS: "gbp_direction_requests",
+  BUSINESS_BOOKINGS: "gbp_bookings",
+  BUSINESS_FOOD_ORDERS: "gbp_food_orders",
+  BUSINESS_CONVERSATIONS: "gbp_conversations",
+};
+
+function businessProfileLocationId(parent: string) {
+  const match = /^accounts\/[A-Za-z0-9_-]+\/locations\/([A-Za-z0-9_-]+)$/.exec(parent);
+  if (!match) throw new ApiError(409, "GOOGLE_BUSINESS_SELECTION_INVALID", "The selected Business Profile location is invalid.");
+  return `locations/${match[1]}`;
+}
+
+async function googleBusinessProfileMetrics(accessToken: string, selection: SelectedMarketingResource, add: Awaited<ReturnType<typeof metricCollector>>["add"]) {
+  const { start, end } = dateWindow();
+  const url = new URL(`https://businessprofileperformance.googleapis.com/v1/${businessProfileLocationId(selection.externalResourceRef)}:fetchMultiDailyMetricsTimeSeries`);
+  for (const metric of GBP_METRICS) url.searchParams.append("dailyMetrics", metric);
+  const [startYear, startMonth, startDay] = start.split("-");
+  const [endYear, endMonth, endDay] = end.split("-");
+  url.searchParams.set("dailyRange.startDate.year", startYear);
+  url.searchParams.set("dailyRange.startDate.month", String(Number(startMonth)));
+  url.searchParams.set("dailyRange.startDate.day", String(Number(startDay)));
+  url.searchParams.set("dailyRange.endDate.year", endYear);
+  url.searchParams.set("dailyRange.endDate.month", String(Number(endMonth)));
+  url.searchParams.set("dailyRange.endDate.day", String(Number(endDay)));
+  const report = await providerJson<{ multiDailyMetricTimeSeries?: Array<{ dailyMetricTimeSeries?: Array<{ dailyMetric?: string; timeSeries?: { datedValues?: Array<{ date?: unknown; value?: string }> } }> }> }>(
+    url.toString(),
+    { headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" } },
+    "GOOGLE_BUSINESS_PERFORMANCE_FAILED",
+    "Google Business Profile performance could not be loaded.",
+  );
+  for (const group of report.multiDailyMetricTimeSeries ?? []) {
+    for (const series of group.dailyMetricTimeSeries ?? []) {
+      const metricKey = series.dailyMetric ? gbpMetricKeys[series.dailyMetric] : null;
+      if (!metricKey) continue;
+      for (const point of series.timeSeries?.datedValues ?? []) add(selection.id, isoDate(point.date), metricKey, point.value);
+    }
+  }
+}
+
+async function googleAdsMetrics(accessToken: string, selection: SelectedMarketingResource, add: Awaited<ReturnType<typeof metricCollector>>["add"]) {
+  if (!/^customers\/\d+$/.test(selection.externalResourceRef)) throw new ApiError(409, "GOOGLE_ADS_SELECTION_INVALID", "The selected Google Ads account is invalid.");
+  const { start, end } = dateWindow();
+  const query = `SELECT segments.date, metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions, metrics.conversions_value FROM customer WHERE segments.date BETWEEN '${start}' AND '${end}' ORDER BY segments.date`;
+  const result = await providerJson<Array<{ results?: Array<{ segments?: { date?: string }; metrics?: Record<string, string | number> }> }>>(
+    `https://googleads.googleapis.com/${googleAdsVersion()}/${selection.externalResourceRef}/googleAds:searchStream`,
+    { method: "POST", headers: { ...googleAdsHeaders(accessToken), "Content-Type": "application/json" }, body: JSON.stringify({ query }) },
+    "GOOGLE_ADS_REPORT_FAILED",
+    "The selected Google Ads report could not be loaded.",
+  );
+  for (const row of result.flatMap((batch) => batch.results ?? [])) {
+    const date = isoDate(row.segments?.date);
+    add(selection.id, date, "google_ads_impressions", row.metrics?.impressions);
+    add(selection.id, date, "google_ads_clicks", row.metrics?.clicks);
+    add(selection.id, date, "google_ads_spend", Number(row.metrics?.costMicros ?? 0) / 1_000_000);
+    add(selection.id, date, "google_ads_conversions", row.metrics?.conversions);
+    add(selection.id, date, "google_ads_conversion_value", row.metrics?.conversionsValue);
+  }
+}
+
+export type GoogleBusinessReview = {
+  name: string;
+  reviewerName: string;
+  starRating: string;
+  comment: string;
+  createTime: string;
+  updateTime: string;
+  reply: { comment: string; updateTime: string } | null;
+};
+
+export async function fetchGoogleBusinessReviews(accessToken: string, parent: string, pageToken = "") {
+  businessProfileLocationId(parent);
+  const url = new URL(`https://mybusiness.googleapis.com/v4/${parent}/reviews`);
+  url.searchParams.set("pageSize", "50");
+  url.searchParams.set("orderBy", "updateTime desc");
+  if (pageToken) {
+    if (pageToken.length > 2_048) throw new ApiError(400, "GOOGLE_REVIEW_PAGE_INVALID", "The review page token is invalid.");
+    url.searchParams.set("pageToken", pageToken);
+  }
+  const result = await providerJson<{ reviews?: Array<{ name?: string; reviewer?: { displayName?: string }; starRating?: string; comment?: string; createTime?: string; updateTime?: string; reviewReply?: { comment?: string; updateTime?: string } }>; nextPageToken?: string }>(
+    url.toString(),
+    { headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json", "Cache-Control": "no-store" } },
+    "GOOGLE_REVIEWS_FAILED",
+    "Google Business Profile reviews could not be loaded.",
+  );
+  const prefix = `${parent}/reviews/`;
+  return {
+    reviews: (result.reviews ?? []).flatMap((review): GoogleBusinessReview[] => review.name?.startsWith(prefix) ? [{
+      name: review.name,
+      reviewerName: review.reviewer?.displayName || "Google user",
+      starRating: review.starRating || "STAR_RATING_UNSPECIFIED",
+      comment: review.comment || "",
+      createTime: review.createTime || "",
+      updateTime: review.updateTime || "",
+      reply: review.reviewReply ? { comment: review.reviewReply.comment || "", updateTime: review.reviewReply.updateTime || "" } : null,
+    }] : []),
+    nextPageToken: result.nextPageToken || null,
+  };
+}
+
+export async function publishGoogleBusinessReviewReply(accessToken: string, reviewName: string, comment: string) {
+  if (!/^accounts\/[A-Za-z0-9_-]+\/locations\/[A-Za-z0-9_-]+\/reviews\/[A-Za-z0-9_-]+$/.test(reviewName)) throw new ApiError(400, "GOOGLE_REVIEW_INVALID", "The selected Google review is invalid.");
+  return providerJson<{ comment?: string; updateTime?: string }>(
+    `https://mybusiness.googleapis.com/v4/${reviewName}/reply`,
+    { method: "PUT", headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" }, body: JSON.stringify({ comment }) },
+    "GOOGLE_REVIEW_REPLY_FAILED",
+    "Google could not publish the review reply.",
+  );
+}
+
 export async function syncGoogleMarketing(accessToken: string, selections: readonly SelectedMarketingResource[]): Promise<MarketingSyncSnapshot> {
   const collector = await metricCollector("google");
   const warnings: string[] = [];
   let resourcesRead = 0;
   const resourceResults: MarketingSyncSnapshot["resourceResults"] = [];
-  const supported = selections.filter((selection) => selection.provider === "google" && ["google_search_console", "google_analytics"].includes(selection.dataset));
+  const supported = selections.filter((selection) => selection.provider === "google" && ["google_search_console", "google_analytics", "google_business_profile", "google_ads"].includes(selection.dataset));
   if (!supported.length) throw new ApiError(409, "MARKETING_RESOURCE_SELECTION_REQUIRED", "Choose at least one metrics-capable Google resource before synchronization.");
   for (const selection of supported) {
     const before = (await collector.finish()).length;
     const warningCodes: string[] = [];
     try {
       if (selection.dataset === "google_search_console") await googleSearchMetrics(accessToken, selection, collector.add);
-      else await googleAnalyticsMetrics(accessToken, selection, collector.add);
+      else if (selection.dataset === "google_analytics") await googleAnalyticsMetrics(accessToken, selection, collector.add);
+      else if (selection.dataset === "google_business_profile") await googleBusinessProfileMetrics(accessToken, selection, collector.add);
+      else await googleAdsMetrics(accessToken, selection, collector.add);
       resourcesRead += 1;
     } catch (error) {
       const code = error instanceof ApiError ? error.code : "GOOGLE_MARKETING_RESOURCE_FAILED";

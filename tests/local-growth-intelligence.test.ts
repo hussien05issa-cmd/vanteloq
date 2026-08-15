@@ -13,7 +13,7 @@ test("Google readiness recognizes selected resources but never silently combines
     analyticsScopeRef: "organization",
     searchConsoleSiteRef: "sc-domain:vanteloq.ca",
     searchConsoleScopeRef: "north",
-    businessProfileLocationRef: null,
+    businessProfileLocationRef: "accounts/123/locations/456",
   });
   assert.equal(readiness.status, "ready");
   assert.deepEqual(readiness.missing, []);
@@ -30,7 +30,7 @@ test("Google resource readiness identifies a missing selected dataset", () => {
     businessProfileLocationRef: null,
   });
   assert.equal(missing.status, "selection_required");
-  assert.deepEqual(missing.missing, ["Search Console site"]);
+  assert.deepEqual(missing.missing, ["Search Console site", "Google Business Profile location"]);
   assert.equal(missing.canCombineMeasurements, false);
 });
 

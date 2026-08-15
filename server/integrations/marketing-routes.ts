@@ -38,11 +38,13 @@ import {
   marketingAccessToken,
   marketingReadiness,
   marketingStateHash,
+  fetchGoogleBusinessReviews,
   newMarketingOAuthState,
   revokeMarketingAccess,
   storedMarketingAccessToken,
   syncGoogleMarketing,
   syncMetaMarketing,
+  publishGoogleBusinessReviewReply,
   verifyMarketingIdentity,
   type MarketingProvider,
   type MarketingDataset,
@@ -374,7 +376,7 @@ async function batchStatements(statements: D1PreparedStatement[]) {
 }
 
 const providerDatasets: Record<MarketingProvider, readonly MarketingDataset[]> = {
-  google: ["google_analytics", "google_search_console"],
+  google: ["google_analytics", "google_search_console", "google_business_profile", "google_ads"],
   meta: ["meta_ads"],
 };
 
@@ -897,5 +899,58 @@ export function marketingDisconnect(request: Request, provider: MarketingProvide
       providerRevoked,
       nextStep: providerRevoked ? null : `Local access was removed. Revoke Vanteloq in your ${providerName(provider)} account settings to finish provider-side disconnection.`,
     });
+  });
+}
+
+async function requireBusinessProfileSelection(organizationId: string, selectionId: string) {
+  const [selection] = await getDb().select().from(marketingResourceSelections).where(and(
+    eq(marketingResourceSelections.id, selectionId),
+    eq(marketingResourceSelections.organizationId, organizationId),
+    eq(marketingResourceSelections.provider, "google"),
+    eq(marketingResourceSelections.dataset, "google_business_profile"),
+  )).limit(1);
+  if (!selection) throw new ApiError(404, "GOOGLE_BUSINESS_SELECTION_NOT_FOUND", "The selected Google Business Profile location was not found.");
+  await requireOwnedIntegrationConnection(organizationId, "google", selection.connectionId, { connected: true });
+  return selection;
+}
+
+export function googleBusinessReviews(request: Request) {
+  return handleApi(request, async ({ requestId }) => {
+    const context = await requireAccess(request, ["owner", "admin", "manager"]);
+    await requirePermission(context, "marketing.view");
+    const url = new URL(request.url);
+    const selectionId = url.searchParams.get("selectionId")?.trim() ?? "";
+    if (!/^[A-Za-z0-9_-]{8,80}$/.test(selectionId)) throw new ApiError(400, "GOOGLE_BUSINESS_SELECTION_INVALID", "Choose a valid Business Profile location.");
+    const selection = await requireBusinessProfileSelection(context.organizationId, selectionId);
+    const accessToken = await marketingAccessToken(context.organizationId, selection.connectionId, "google");
+
+    if (request.method === "GET") {
+      await enforceRateLimit("google:business-reviews:read", context.organizationId, 60, 60);
+      const result = await fetchGoogleBusinessReviews(accessToken, selection.externalResourceRef, url.searchParams.get("pageToken")?.trim() ?? "");
+      return jsonResponse({ ...result, profileName: selection.externalResourceName, fetchedAt: new Date().toISOString(), storage: "not_persisted" });
+    }
+
+    if (request.method !== "POST") throw new ApiError(405, "METHOD_NOT_ALLOWED", "Use GET to read reviews or POST to publish a confirmed reply.");
+    requireSameOrigin(request);
+    await requirePermission(context, "marketing.manage");
+    await enforceRateLimit("google:business-reviews:reply", context.userId, 20, 3_600);
+    const body = await readJsonObject(request, 16_384);
+    const reviewName = typeof body.reviewName === "string" ? body.reviewName.trim() : "";
+    const comment = typeof body.comment === "string" ? body.comment.trim() : "";
+    if (body.confirmPublish !== true) throw new ApiError(400, "GOOGLE_REVIEW_CONFIRMATION_REQUIRED", "Confirm this exact reply before publishing it to Google.");
+    if (!reviewName.startsWith(`${selection.externalResourceRef}/reviews/`)) throw new ApiError(400, "GOOGLE_REVIEW_SCOPE_INVALID", "That review does not belong to the selected business location.");
+    if (!comment || comment.length > 4_096) throw new ApiError(400, "GOOGLE_REVIEW_REPLY_INVALID", "A review reply must contain 1 to 4,096 characters.");
+    const reply = await publishGoogleBusinessReviewReply(accessToken, reviewName, comment);
+    await recordAudit({
+      request,
+      requestId,
+      organizationId: context.organizationId,
+      actorUserId: context.userId,
+      action: "google_business.review_reply_published",
+      resourceType: "google_business_review",
+      resourceId: reviewName.slice(-120),
+      details: { selectionId, connectionId: selection.connectionId, confirmed: true, commentLength: comment.length },
+    });
+    return jsonResponse({ published: true, reply: { updateTime: reply.updateTime || new Date().toISOString() } });
   });
 }

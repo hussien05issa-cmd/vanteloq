@@ -167,7 +167,7 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
     category: "Marketing",
     availability: "credentials_required",
     activationRequirement:
-      "Google setup is staged until an owner selects the exact Search Console site and Analytics property, maps the business location, and approves a sample. Business Profile review content is not accessed, stored, or aggregated.",
+      "Connect an owned Business Profile location, Search Console site and Analytics property for verified visibility reporting. Current reviews load only when requested and a reply is sent only after explicit confirmation. Google Ads reporting activates separately when its developer token is configured.",
   },
   {
     id: "meta",

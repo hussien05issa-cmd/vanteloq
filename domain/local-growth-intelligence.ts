@@ -9,6 +9,7 @@ export function buildGoogleResourceReadiness(input: {
   const missing = [
     !input.analyticsPropertyRef ? "Google Analytics property" : null,
     !input.searchConsoleSiteRef ? "Search Console site" : null,
+    !input.businessProfileLocationRef ? "Google Business Profile location" : null,
   ].filter((value): value is string => Boolean(value));
   const scopeMatches = (scopeRef: string | null | undefined) => scopeRef === "organization" || scopeRef === input.locationId;
   const scopeReady = scopeMatches(input.analyticsScopeRef) && scopeMatches(input.searchConsoleScopeRef);
@@ -69,13 +70,13 @@ export function buildProfileHealthChecklist(input: {
     item("phone", "Record the public phone number", input.profile.phoneRecorded, "Calls should reach the active business."),
     item("special-hours", "Review special hours", null, "Review holiday and exceptional hours directly in Google."),
     item("attributes-photos", "Review attributes and current photos", null, "Review these directly in Google without copying content into Vanteloq."),
-    item("review-response", "Review customer replies in Google", null, "Vanteloq does not import or store review or reply content."),
+    item("review-response", "Respond to new customer reviews", null, "Use the on-demand response queue. Every reply requires confirmation before it is published to Google."),
   ];
   return {
     businessType: input.businessType,
     completedCount: items.filter((entry) => entry.status === "complete").length,
     actionRequiredCount: items.filter((entry) => entry.status === "action_required").length,
     items,
-    disclaimer: "This checklist supports profile completeness and customer experience. It does not guarantee search ranking, placement, traffic, or revenue.",
+    disclaimer: "This checklist supports profile completeness and customer experience. Review content is fetched on demand and is not retained by Vanteloq. Completion does not guarantee ranking, placement, traffic, or revenue.",
   };
 }

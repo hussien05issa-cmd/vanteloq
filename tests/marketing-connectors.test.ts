@@ -6,7 +6,9 @@ import {
   buildMarketingAuthorizationUrl,
   discoverGoogleMarketingResources,
   discoverMetaMarketingResources,
+  fetchGoogleBusinessReviews,
   marketingReadiness,
+  publishGoogleBusinessReviewReply,
   syncGoogleMarketing,
   syncMetaMarketing,
 } from "../server/integrations/marketing.ts";
@@ -91,7 +93,68 @@ test("marketing sync calls only exact selected resources and preserves selection
   }
 });
 
-test("Google resource discovery fails closed when either required dataset is unavailable", async () => {
+test("Business Profile performance, review access, reply confirmation target, and Google Ads reporting preserve provider lineage", async () => {
+  runtime.__vanteloqEnv = {
+    GOOGLE_ADS_DEVELOPER_TOKEN: "developer-token",
+    GOOGLE_ADS_LOGIN_CUSTOMER_ID: "123-456-7890",
+    GOOGLE_ADS_API_VERSION: "v25",
+  };
+  const originalFetch = globalThis.fetch;
+  const requests: Array<{ url: string; method: string; headers: Headers; body: string }> = [];
+  globalThis.fetch = async (input, init) => {
+    const url = String(input);
+    const method = init?.method ?? "GET";
+    requests.push({ url, method, headers: new Headers(init?.headers), body: typeof init?.body === "string" ? init.body : "" });
+    if (url.includes("businessprofileperformance.googleapis.com")) return Response.json({
+      multiDailyMetricTimeSeries: [{
+        dailyMetricTimeSeries: [{
+          dailyMetric: "CALL_CLICKS",
+          timeSeries: { datedValues: [{ date: { year: 2026, month: 8, day: 1 }, value: "12" }] },
+        }],
+      }],
+    });
+    if (url.includes("googleAds:searchStream")) return Response.json([{ results: [{
+      segments: { date: "2026-08-01" },
+      metrics: { impressions: "100", clicks: "10", costMicros: "12500000", conversions: "2", conversionsValue: "30" },
+    }] }]);
+    if (url.endsWith("/reviews?pageSize=50&orderBy=updateTime+desc")) return Response.json({
+      reviews: [{
+        name: "accounts/123/locations/456/reviews/789",
+        reviewer: { displayName: "Customer" },
+        starRating: "FIVE",
+        comment: "Great service",
+        createTime: "2026-08-01T12:00:00Z",
+        updateTime: "2026-08-01T12:00:00Z",
+      }],
+    });
+    if (url.endsWith("/reviews/789/reply")) return Response.json({ comment: "Thank you for visiting.", updateTime: "2026-08-02T12:00:00Z" });
+    throw new Error(`Unexpected provider request: ${url}`);
+  };
+  try {
+    const snapshot = await syncGoogleMarketing("google-token", [
+      { id: "profile-selection", provider: "google", dataset: "google_business_profile", externalResourceRef: "accounts/123/locations/456", scopeKind: "location", localLocationId: "north" },
+      { id: "ads-selection", provider: "google", dataset: "google_ads", externalResourceRef: "customers/9876543210", scopeKind: "organization", localLocationId: null },
+    ]);
+    const reviews = await fetchGoogleBusinessReviews("google-token", "accounts/123/locations/456");
+    const reply = await publishGoogleBusinessReviewReply("google-token", reviews.reviews[0]!.name, "Thank you for visiting.");
+
+    assert.ok(snapshot.metrics.some((metric) => metric.resourceSelectionId === "profile-selection" && metric.metricKey === "gbp_call_clicks" && metric.valueMilli === 12_000));
+    assert.ok(snapshot.metrics.some((metric) => metric.resourceSelectionId === "ads-selection" && metric.metricKey === "google_ads_spend" && metric.valueMilli === 12_500));
+    assert.equal(reviews.reviews[0]?.reviewerName, "Customer");
+    assert.equal(reply.comment, "Thank you for visiting.");
+    const adsRequest = requests.find((request) => request.url.includes("googleAds:searchStream"));
+    assert.equal(adsRequest?.headers.get("developer-token"), "developer-token");
+    assert.equal(adsRequest?.headers.get("login-customer-id"), "1234567890");
+    const replyRequest = requests.find((request) => request.url.endsWith("/reviews/789/reply"));
+    assert.equal(replyRequest?.method, "PUT");
+    assert.deepEqual(JSON.parse(replyRequest?.body ?? "{}"), { comment: "Thank you for visiting." });
+  } finally {
+    globalThis.fetch = originalFetch;
+    runtime.__vanteloqEnv = {};
+  }
+});
+
+test("Google resource discovery fails closed when a required visibility dataset is unavailable", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async (input) => {
     const url = String(input);
@@ -99,6 +162,7 @@ test("Google resource discovery fails closed when either required dataset is una
     if (url.includes("/accountSummaries")) return Response.json({
       accountSummaries: [{ propertySummaries: [{ property: "properties/123", displayName: "Main website" }] }],
     });
+    if (url.includes("mybusinessaccountmanagement.googleapis.com")) return Response.json({ accounts: [] });
     throw new Error(`Unexpected provider request: ${url}`);
   };
   try {
@@ -134,6 +198,12 @@ test("resource discovery paginates fixed Google Analytics and Meta account endpo
         nextPageToken: "ga-page-2",
       });
     }
+    if (url.hostname === "mybusinessaccountmanagement.googleapis.com" && url.pathname === "/v1/accounts") {
+      return Response.json({ accounts: [{ name: "accounts/123", accountName: "Main business" }] });
+    }
+    if (url.hostname === "mybusinessbusinessinformation.googleapis.com" && url.pathname === "/v1/accounts/123/locations") {
+      return Response.json({ locations: [{ name: "locations/456", title: "Main store", storeCode: "EDM" }] });
+    }
     if (url.pathname === "/v25.0/me/adaccounts") {
       if (url.searchParams.get("after") === "meta-page-2") return Response.json({
         data: [{ id: "act_222", name: "Second account" }],
@@ -148,7 +218,7 @@ test("resource discovery paginates fixed Google Analytics and Meta account endpo
   try {
     const google = await discoverGoogleMarketingResources("google-token");
     const meta = await discoverMetaMarketingResources("meta-token");
-    assert.deepEqual(google.map((resource) => resource.externalResourceRef), ["sc-domain:example.ca", "properties/111", "properties/222"]);
+    assert.deepEqual(google.map((resource) => resource.externalResourceRef), ["sc-domain:example.ca", "properties/111", "properties/222", "accounts/123/locations/456"]);
     assert.deepEqual(meta.map((resource) => resource.externalResourceRef), ["act_111", "act_222"]);
     assert.ok(calls.every((url) => !url.startsWith("https://untrusted.example/")));
   } finally {

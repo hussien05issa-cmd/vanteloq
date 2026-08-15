@@ -73,7 +73,7 @@ type GrowthData = {
   measurementSeries: {
     selectionId: string;
     provider: "google" | "meta";
-    dataset: "google_analytics" | "google_search_console" | "meta_ads";
+    dataset: "google_analytics" | "google_search_console" | "google_business_profile" | "google_ads" | "meta_ads";
     resourceName: string;
     scopeKind: "organization" | "location";
     localLocationId: string | null;
@@ -85,6 +85,7 @@ type GrowthData = {
   localOpportunityModel: { status: "coordinates_required" | "provider_not_configured"; centre: { latitude: number; longitude: number } | null; source: { name: string; attributionUrl: string; live: false }; candidates: []; boundary: string };
   importCounts: { touchpoints: number; transactions: number; searchObservations: number };
   connections: { provider: string; providerId: "google" | "meta"; status: "connected" | "selection_required" | "sample_required" | "approval_required" | "ready_to_connect" | "configuration_required"; label: string; availableNow: string; connectionId: string | null }[];
+  googleBusinessProfiles: { selectionId: string; connectionId: string; name: string; scopeKind: "organization" | "location"; localLocationId: string | null; canRespond: boolean }[];
   canManage: boolean;
   period: { since: string; through: string };
   sourceBoundary: string;
@@ -196,6 +197,17 @@ const measurementLabels: Record<string, string> = {
   meta_spend: "Spend",
   meta_ctr: "Click-through rate",
   meta_cpc: "Cost per click",
+  gbp_search_desktop_impressions: "Desktop search views",
+  gbp_search_mobile_impressions: "Mobile search views",
+  gbp_maps_desktop_impressions: "Desktop Maps views",
+  gbp_maps_mobile_impressions: "Mobile Maps views",
+  gbp_website_clicks: "Website clicks",
+  gbp_call_clicks: "Call clicks",
+  gbp_direction_requests: "Direction requests",
+  google_ads_impressions: "Ad impressions",
+  google_ads_clicks: "Ad clicks",
+  google_ads_spend: "Ad spend",
+  google_ads_conversions: "Conversions",
 };
 
 function metricTotal(rows: GrowthData["measurementSeries"], metric: string) {
@@ -244,18 +256,22 @@ function ProviderMeasurementCard({ provider, rows }: { provider: "google" | "met
     const resourceRows = providerRows.filter((row) => row.selectionId === selectionId);
     const resource = resourceRows[0];
     if (!resource) return null;
-    const primaryMetric = resource.dataset === "google_analytics" ? "analytics_sessions" : resource.dataset === "google_search_console" ? "search_clicks" : "meta_link_clicks";
+    const primaryMetric = resource.dataset === "google_analytics" ? "analytics_sessions" : resource.dataset === "google_search_console" ? "search_clicks" : resource.dataset === "google_business_profile" ? "gbp_search_mobile_impressions" : resource.dataset === "google_ads" ? "google_ads_clicks" : "meta_link_clicks";
     const metricKeys = resource.dataset === "google_analytics"
       ? ["analytics_sessions", "analytics_engaged_sessions", "analytics_key_events"]
       : resource.dataset === "google_search_console"
         ? ["search_clicks", "search_impressions"]
-        : ["meta_impressions", "meta_reach", "meta_link_clicks", "meta_spend"];
+        : resource.dataset === "google_business_profile"
+          ? ["gbp_search_mobile_impressions", "gbp_maps_mobile_impressions", "gbp_call_clicks", "gbp_direction_requests"]
+          : resource.dataset === "google_ads"
+            ? ["google_ads_impressions", "google_ads_clicks", "google_ads_spend", "google_ads_conversions"]
+            : ["meta_impressions", "meta_reach", "meta_link_clicks", "meta_spend"];
     return <article className={`card marketing-measurement-card ${provider}`} key={selectionId}>
       <header><div><IntegrationBrandLogo name={google ? "Google" : "Meta"} compact /><span><small>{label(resource.dataset)}</small><h3>{resource.resourceName}</h3></span></div><em>{`Through ${resourceRows.at(-1)?.metricDate}`}</em></header>
       <p className="marketing-resource-lineage">{resource.scopeKind === "organization" ? "Organization-wide resource" : `Location resource · ${resource.localLocationId}`}</p>
       <div className="marketing-measurement-summary">{metricKeys.map((metric) => {
         const value = metricTotal(resourceRows, metric);
-        return <span key={metric}><small>{measurementLabels[metric]}</small><b>{metric === "meta_spend" ? providerCurrency(value) : Math.round(value).toLocaleString("en-CA")}</b></span>;
+        return <span key={metric}><small>{measurementLabels[metric]}</small><b>{metric === "meta_spend" || metric === "google_ads_spend" ? providerCurrency(value) : Math.round(value).toLocaleString("en-CA")}</b></span>;
       })}</div>
       <MeasurementTrend rows={resourceRows} metric={primaryMetric} labelText={measurementLabels[primaryMetric]} />
       <footer>{resource.dataset === "google_search_console" ? <><span>Search CTR <b>{(metricTotal(resourceRows, "search_impressions") > 0 ? metricTotal(resourceRows, "search_clicks") / metricTotal(resourceRows, "search_impressions") * 100 : 0).toFixed(1)}%</b></span><span>Impression-weighted position <b>{weightedMetricAverage(resourceRows, "search_position", "search_impressions").toFixed(1)}</b></span></> : resource.dataset === "meta_ads" ? <><span>Derived CTR <b>{(metricTotal(resourceRows, "meta_impressions") > 0 ? metricTotal(resourceRows, "meta_link_clicks") / metricTotal(resourceRows, "meta_impressions") * 100 : 0).toFixed(2)}%</b></span><span>Derived CPC <b>{providerCurrency(metricTotal(resourceRows, "meta_link_clicks") > 0 ? metricTotal(resourceRows, "meta_spend") / metricTotal(resourceRows, "meta_link_clicks") : 0)}</b></span></> : <span>Source lineage <b>{resource.selectionId.slice(0, 8)}</b></span>}</footer>
@@ -291,6 +307,68 @@ function LocalOpportunityMap({ model }: { model: GrowthData["localOpportunityMod
   if (!model.centre) return <div className="local-map-preview local-map-unavailable" role="note"><b>Location coordinates required</b><span>Confirm an owned location&apos;s coordinates before loading a map.</span></div>;
   if (!configuredLocalMapStyleUrl) return <div className="local-map-preview local-map-unavailable" role="note"><b>Map provider not configured</b><span>Nearby candidates are unavailable. Vanteloq does not connect to public map tiles or geocoders automatically.</span><small>{model.centre.latitude.toFixed(5)}, {model.centre.longitude.toFixed(5)}</small></div>;
   return <div ref={container} className="local-map-preview" role="img" aria-label="Map showing the confirmed owner location; nearby business candidates are not configured" />;
+}
+
+type GoogleReview = { name: string; reviewerName: string; starRating: string; comment: string; createTime: string; updateTime: string; reply: { comment: string; updateTime: string } | null };
+
+function GoogleVisibilityCommandCentre({ data, navigate }: { data: GrowthData; navigate: (view: "Integrations") => void }) {
+  const profile = data.googleBusinessProfiles[0];
+  const profileRows = data.measurementSeries.filter((row) => row.dataset === "google_business_profile");
+  const adsRows = data.measurementSeries.filter((row) => row.dataset === "google_ads");
+  const [reviews, setReviews] = useState<GoogleReview[]>([]);
+  const [reviewBusy, setReviewBusy] = useState(false);
+  const [reviewError, setReviewError] = useState("");
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [confirmed, setConfirmed] = useState<Record<string, boolean>>({});
+  const fetchReviews = async () => {
+    if (!profile) return;
+    setReviewBusy(true); setReviewError("");
+    try {
+      const response = await apiFetch(`/api/v1/integrations/google/business-profile/reviews?selectionId=${encodeURIComponent(profile.selectionId)}`, { headers: { Accept: "application/json" }, cache: "no-store" });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error?.message ?? "Google reviews could not be loaded.");
+      setReviews(body.reviews ?? []);
+    } catch (error) { setReviewError(error instanceof Error ? error.message : "Google reviews could not be loaded."); }
+    finally { setReviewBusy(false); }
+  };
+  const publishReply = async (review: GoogleReview) => {
+    const comment = drafts[review.name]?.trim() ?? "";
+    if (!profile || !comment || !confirmed[review.name]) return;
+    setReviewBusy(true); setReviewError("");
+    try {
+      const response = await apiFetch(`/api/v1/integrations/google/business-profile/reviews?selectionId=${encodeURIComponent(profile.selectionId)}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reviewName: review.name, comment, confirmPublish: true }) });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error?.message ?? "The reply could not be published.");
+      setDrafts((current) => ({ ...current, [review.name]: "" }));
+      setConfirmed((current) => ({ ...current, [review.name]: false }));
+      await fetchReviews();
+    } catch (error) { setReviewError(error instanceof Error ? error.message : "The reply could not be published."); setReviewBusy(false); }
+  };
+  const visibility = [
+    ["Search views", metricTotal(profileRows, "gbp_search_desktop_impressions") + metricTotal(profileRows, "gbp_search_mobile_impressions")],
+    ["Maps views", metricTotal(profileRows, "gbp_maps_desktop_impressions") + metricTotal(profileRows, "gbp_maps_mobile_impressions")],
+    ["Calls", metricTotal(profileRows, "gbp_call_clicks")],
+    ["Directions", metricTotal(profileRows, "gbp_direction_requests")],
+    ["Website clicks", metricTotal(profileRows, "gbp_website_clicks")],
+  ] as const;
+  return <section className="google-command-centre" aria-label="Google visibility command centre">
+    <article className="card google-visibility-card">
+      <header><div><p className="card-kicker">GOOGLE VISIBILITY</p><h3>{profile?.name ?? "Business Profile connection required"}</h3></div><a href="https://business.google.com/" target="_blank" rel="noreferrer">Open Business Profile ↗</a></header>
+      <div className="google-visibility-kpis">{visibility.map(([name, value]) => <span key={name}><small>{name}</small><b>{profileRows.length ? Math.round(value).toLocaleString("en-CA") : "—"}</b></span>)}</div>
+      <div className="visibility-checklist"><b>Visibility checklist</b><ul><li className={profile ? "done" : ""}>Authorized and mapped Business Profile location</li><li className={profileRows.length ? "done" : ""}>Fresh search, Maps and customer-action measurements</li><li className={data.profileChecklist.actionRequiredCount === 0 ? "done" : ""}>Website, phone and business-hours records reviewed</li><li className={adsRows.length ? "done" : ""}>Google Ads performance connected for spend and conversion review</li></ul></div>
+      <footer><button onClick={() => navigate("Integrations")}>{profile ? "Manage Google sources" : "Connect Google"}</button><a href="https://search.google.com/search-console/" target="_blank" rel="noreferrer">Search Console</a><a href="https://ads.google.com/" target="_blank" rel="noreferrer">Google Ads</a></footer>
+    </article>
+    <article className="card google-review-centre">
+      <header><div><p className="card-kicker">REVIEW RESPONSE CENTRE</p><h3>Reply with a human check</h3></div><button disabled={!profile || reviewBusy} onClick={() => void fetchReviews()}>{reviewBusy ? "Loading…" : reviews.length ? "Refresh" : "Load reviews"}</button></header>
+      <p>Reviews are fetched from Google only when requested and are not saved in Vanteloq. A reply is published only after you confirm its exact text.</p>
+      {reviewError && <div className="growth-message error" role="alert">{reviewError}</div>}
+      {!profile ? <div className="marketing-metric-empty"><b>Choose a Business Profile location</b><span>Connect Google, select the exact owned location and approve its sample.</span></div> : !reviews.length && !reviewBusy ? <div className="marketing-metric-empty"><b>No reviews loaded</b><span>Load the current response queue when you are ready to review it.</span></div> : <div className="google-review-list">{reviews.map((review) => <section key={review.name}>
+        <div><b>{review.reviewerName}</b><span>{review.starRating.replaceAll("_", " ")} · {review.updateTime ? new Date(review.updateTime).toLocaleDateString("en-CA") : "Date unavailable"}</span></div>
+        <p>{review.comment || "This reviewer left a rating without written feedback."}</p>
+        {review.reply ? <aside><b>Published reply</b><span>{review.reply.comment}</span></aside> : profile.canRespond && <form onSubmit={(event) => { event.preventDefault(); void publishReply(review); }}><label>Reply<textarea maxLength={4096} value={drafts[review.name] ?? ""} onChange={(event) => setDrafts((current) => ({ ...current, [review.name]: event.target.value }))} placeholder="Write a specific, factual response in your own voice." /></label><label className="google-reply-confirm"><input type="checkbox" checked={confirmed[review.name] ?? false} onChange={(event) => setConfirmed((current) => ({ ...current, [review.name]: event.target.checked }))} /> I reviewed this exact reply and authorize Vanteloq to publish it to Google.</label><button disabled={reviewBusy || !confirmed[review.name] || !(drafts[review.name]?.trim())}>Publish reply</button></form>}
+      </section>)}</div>}
+    </article>
+  </section>;
 }
 
 function LocalReadinessPanels({ data }: { data: GrowthData }) {
@@ -466,6 +544,7 @@ export default function GrowthWorkspace({ currency, navigate, activeLocationId }
         <ProviderMeasurementCard provider="meta" rows={data?.measurementSeries ?? []} />
       </section>
       {data && <LocalReadinessPanels data={data} />}
+      {data && <GoogleVisibilityCommandCentre data={data} navigate={navigate} />}
 
       <section className="growth-overview-grid">
         <article className="card growth-recommendations">

@@ -112,11 +112,13 @@ test("exact marketing resources remain versioned, approval-bound, separated, and
         access_token: "google-access-token",
         refresh_token: "google-refresh-token",
         expires_in: 3600,
-        scope: "openid email https://www.googleapis.com/auth/webmasters.readonly https://www.googleapis.com/auth/analytics.readonly",
+        scope: "openid email https://www.googleapis.com/auth/webmasters.readonly https://www.googleapis.com/auth/analytics.readonly https://www.googleapis.com/auth/business.manage",
       });
       if (url === "https://openidconnect.googleapis.com/v1/userinfo") return Response.json({ sub: "google-account-123", name: "Main Google account" });
       if (url === "https://www.googleapis.com/webmasters/v3/sites") return Response.json({ siteEntry: [{ siteUrl: "sc-domain:example.ca" }, { siteUrl: "sc-domain:unselected.ca" }] });
       if (url.startsWith("https://analyticsadmin.googleapis.com/v1beta/accountSummaries")) return Response.json({ accountSummaries: [{ propertySummaries: [{ property: "properties/123", displayName: "Main website" }, { property: "properties/999", displayName: "Unselected website" }] }] });
+      if (url.startsWith("https://mybusinessaccountmanagement.googleapis.com/v1/accounts")) return Response.json({ accounts: [{ name: "accounts/123", accountName: "Main business" }] });
+      if (url.startsWith("https://mybusinessbusinessinformation.googleapis.com/v1/accounts/123/locations")) return Response.json({ locations: [{ name: "locations/456", title: "Main store", storeCode: "EDM" }] });
       if (url.includes("sites/sc-domain%3Aexample.ca/searchAnalytics/query")) return Response.json({ rows: [{ keys: ["2026-08-01"], clicks: 4, impressions: 40, ctr: 0.1, position: 3.5 }] });
       if (url.includes("properties/123:runReport")) return Response.json({ rows: [{ dimensionValues: [{ value: "20260801" }], metricValues: [{ value: "10" }, { value: "8" }, { value: "2" }, { value: "20" }] }] });
       if (url.startsWith("https://oauth2.googleapis.com/revoke")) return new Response("revocation unavailable", { status: 503 });
@@ -140,7 +142,7 @@ test("exact marketing resources remain versioned, approval-bound, separated, and
     assert.equal(discovered.status, 200, await discovered.clone().text());
     const resourceList = await discovered.json();
     assert.equal(resourceList.selectionVersion, 0);
-    assert.equal(resourceList.datasets.flatMap((entry) => entry.resources).length, 4);
+    assert.equal(resourceList.datasets.flatMap((entry) => entry.resources).length, 5);
 
     const replaced = await dispatch(worker, environment, "/api/v1/integrations/google/resources", {
       method: "POST",

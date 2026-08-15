@@ -360,7 +360,7 @@ export async function GET(request: Request) {
         status: readiness.credentialsConfigured ? "ready_to_connect" as const : "configuration_required" as const,
         label: readiness.credentialsConfigured ? "Ready to connect" : "Configuration required",
         availableNow: provider === "google"
-          ? "Connect, then choose exact Search Console sites and Analytics properties"
+          ? "Connect, then choose the Business Profile locations, Search Console sites, Analytics properties and available Ads accounts you own"
           : "Connect, then choose exact ad accounts",
         connectionId: null,
       }];
@@ -393,6 +393,7 @@ export async function GET(request: Request) {
     ));
     const googleAnalyticsSelection = googleSelections.find((selection) => selection.dataset === "google_analytics") ?? null;
     const googleSearchConsoleSelection = googleSelections.find((selection) => selection.dataset === "google_search_console") ?? null;
+    const googleBusinessProfileSelection = googleSelections.find((selection) => selection.dataset === "google_business_profile") ?? null;
     const googleReadinessScope = locationDataRestricted
       ? selectedLocation?.id ?? scopedLocations[0]?.id ?? "location-required"
       : "organization";
@@ -430,7 +431,7 @@ export async function GET(request: Request) {
         analyticsScopeRef: selectionScopeRef(googleAnalyticsSelection),
         searchConsoleSiteRef: googleSearchConsoleSelection?.externalResourceRef ?? null,
         searchConsoleScopeRef: selectionScopeRef(googleSearchConsoleSelection),
-        businessProfileLocationRef: null,
+        businessProfileLocationRef: googleBusinessProfileSelection?.externalResourceRef ?? null,
       }),
       profileChecklist: buildProfileHealthChecklist({ businessType: organization?.industry || "local_business", profile: { verified: profile.googleProfileStatus === "verified", websiteRecorded: Boolean(profile.websiteUrl || organization?.website), phoneRecorded: Boolean(organization?.phone), hoursRecorded: Boolean(organization?.hoursJson && organization.hoursJson !== "{}" && organization.hoursJson !== "[]") } }),
       localOpportunityModel: buildLocalOpportunityModel({ centre: (() => { const location = selectedLocation ?? scopedLocations[0]; return location?.latitudeE6 !== null && location?.latitudeE6 !== undefined && location?.longitudeE6 !== null && location?.longitudeE6 !== undefined ? { latitude: location.latitudeE6 / 1_000_000, longitude: location.longitudeE6 / 1_000_000 } : null; })() }),
@@ -439,10 +440,18 @@ export async function GET(request: Request) {
         transactions: authorizedTransactions.length,
         searchObservations: authorizedVisibility.length,
       },
+      googleBusinessProfiles: googleSelections.filter((selection) => selection.dataset === "google_business_profile").map((selection) => ({
+        selectionId: selection.id,
+        connectionId: selection.connectionId,
+        name: selection.externalResourceName,
+        scopeKind: selection.scopeKind,
+        localLocationId: selection.localLocationId,
+        canRespond: context.role === "owner" || context.role === "admin",
+      })),
       canManage: context.role === "owner" || context.role === "admin",
       connections: authorizationRestricted ? [] : connectionSummaries,
       period: { since, through: new Date().toISOString().slice(0, 10) },
-      sourceBoundary: "Recommendations use saved owner context, approved tenant operating records, recorded observations, and measurements from explicitly selected provider resources after sample approval. Resource series remain separate unless an owner-approved model combines them. No Business Profile review content is stored or aggregated. Association is not proof of causation.",
+      sourceBoundary: "Recommendations use saved owner context, approved tenant operating records, recorded observations, and measurements from explicitly selected provider resources after sample approval. Resource series remain separate unless an owner-approved model combines them. Business Profile reviews are fetched on demand and are not persisted; replies publish only after the user confirms the exact text. Association is not proof of causation.",
       scopeBoundary: locationDataRestricted
         ? `Inventory and daily operating evidence are filtered to ${selectedLocation?.name ?? "accessible locations"}. Marketing journeys and customer outcomes are not location-tagged, so location-specific promotion confidence remains limited.`
         : "All authorized organization evidence is included.",
