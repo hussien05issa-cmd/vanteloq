@@ -109,9 +109,9 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
     id: "moneris",
     name: "Moneris",
     category: "Payments",
-    availability: "provider_build_required",
+    availability: "credentials_required",
     activationRequirement:
-      "Not available yet. A production connection still needs merchant approval, protected credentials, settlement mapping, recovery controls, and reconciliation tests.",
+      "Connect each merchant with its own read-only Moneris client credentials. Vanteloq imports payment amounts, status and timing for reconciliation without storing raw card data.",
   },
   {
     id: "quickbooks",

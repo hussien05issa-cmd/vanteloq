@@ -160,3 +160,14 @@
 
 /* Search and resource fallbacks use the same quiet commerce language. */
 .site-not-found{min-height:100vh;display:grid;place-content:center;justify-items:center;gap:12px;padding:28px;text-align:center;background:#f5f7fb;color:#0d1b38}.site-not-found>p{margin:10px 0 0;color:#1557d0;font:800 12px var(--font-geist-mono);letter-spacing:.14em}.site-not-found h1{max-width:660px;margin:0;font-size:clamp(36px,6vw,62px);line-height:1.05;letter-spacing:-.045em}.site-not-found>span{max-width:480px;color:#53627a;font-size:16px}.site-not-found>div{display:flex;gap:10px;margin-top:20px}.site-not-found a{display:inline-flex;min-height:46px;align-items:center;padding:0 18px;border:1px solid #1557d0;border-radius:7px;background:#1557d0;color:#fff;text-decoration:none;font-weight:750}.site-not-found a:last-child{background:#fff;color:#0d1b38;border-color:#cbd6e4}
+/* Merchant-supplied credentials stay inside a compact, explicit connection surface. */
+.moneris-connect-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; padding: 1rem; border: 1px solid #cbd8e8; border-radius: 14px; background: #f8fbff; }
+.moneris-connect-form header, .moneris-connect-form footer, .moneris-connect-form .moneris-consent { grid-column: 1 / -1; }
+.moneris-connect-form header { display: flex; flex-direction: column; gap: .2rem; color: #0a284b; }
+.moneris-connect-form label { display: flex; flex-direction: column; gap: .35rem; color: #17395d; font-size: .86rem; font-weight: 700; }
+.moneris-connect-form input, .moneris-connect-form select { min-height: 44px; padding: .65rem .75rem; border: 1px solid #aebfd3; border-radius: 9px; background: #fff; color: #071e3b; font: inherit; }
+.moneris-connect-form small { color: #526b86; font-weight: 500; }
+.moneris-connect-form .moneris-consent { flex-direction: row; align-items: flex-start; line-height: 1.45; font-weight: 500; }
+.moneris-connect-form .moneris-consent input { min-height: auto; margin-top: .2rem; }
+.moneris-connect-form footer { display: flex; justify-content: flex-end; gap: .6rem; }
+@media (max-width: 720px) { .moneris-connect-form { grid-template-columns: 1fr; } }

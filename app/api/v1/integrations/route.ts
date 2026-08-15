@@ -13,6 +13,7 @@ import { squareReadiness } from "../../../../server/integrations/square";
 import { stripeReadiness } from "../../../../server/integrations/stripe";
 import { plaidReadiness } from "../../../../server/integrations/plaid";
 import { marketingReadiness } from "../../../../server/integrations/marketing";
+import { monerisReadiness, MONERIS_PROVIDER } from "../../../../server/integrations/moneris";
 import { buildProviderFeatureCoverage, type CanonicalCommerceCoverage } from "../../../../domain/provider-feature-coverage";
 import { aggregateConnectionStatus } from "../../../../domain/integration-source";
 import { requireOrganizationWideLocationAccess } from "../../../../server/location-access";
@@ -270,6 +271,8 @@ export async function GET(request: Request) {
               ? squareReadiness()
             : provider.id === "stripe"
               ? stripeReadiness()
+            : provider.id === MONERIS_PROVIDER
+              ? monerisReadiness()
               : provider.id === "plaid"
                 ? plaidReadiness()
                 : provider.id === "google" || provider.id === "meta"
@@ -462,6 +465,16 @@ export async function POST(request: Request) {
         throw new ApiError(409, "MARKETING_SAMPLE_INCOMPLETE", "Every selected resource must have current evidence from this exact sample before approval.");
       }
       reviewedMarketingRunId = reviewedRun.id;
+    } else if (connection.provider === MONERIS_PROVIDER) {
+      const proof = await getD1().prepare(`
+        SELECT COUNT(*) paymentCount, COALESCE(SUM(amount_cents), 0) amountCents
+        FROM commerce_payments
+        WHERE organization_id = ? AND provider = ? AND connection_id = ?
+          AND paid_at IS NOT NULL AND amount_cents >= 0
+      `).bind(context.organizationId, MONERIS_PROVIDER, connection.id).first<{ paymentCount: number; amountCents: number }>();
+      if (Number(proof?.paymentCount ?? 0) === 0) {
+        throw new ApiError(409, "MONERIS_PAYMENTS_REQUIRED", "Sync and review at least one successful Moneris payment before approving reconciliation data.");
+      }
     } else if (connection.provider !== "plaid") {
       throw new ApiError(409, "INTEGRATION_PROMOTION_UNAVAILABLE", "This provider remains staging-only until its reconciliation workflow is available.");
     }

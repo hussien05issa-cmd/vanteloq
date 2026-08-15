@@ -43,6 +43,7 @@ test("repeatable connector controls include Stripe and both Lightspeed editions"
   assert.equal(supportsMultipleProviderAccounts?.("stripe"), true);
   assert.equal(supportsMultipleProviderAccounts?.("lightspeed"), true);
   assert.equal(supportsMultipleProviderAccounts?.("lightspeed-r"), true);
+  assert.equal(supportsMultipleProviderAccounts?.("moneris"), true);
   assert.equal(supportsMultipleProviderAccounts?.("plaid"), false);
 });
 
