@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
 import {
   buildSquareCustomerSearchBody,
   buildSquareAuthorizationUrl,
@@ -103,4 +104,14 @@ test("Square customer sync uses the supported creation-time sort field", () => {
     query: { sort: { field: "CREATED_AT", order: "ASC" } },
   });
   assert.equal(buildSquareCustomerSearchBody().cursor, undefined);
+});
+
+test("commerce approval accepts a clean no-op sync and validates durable staged sales separately", () => {
+  const approvalRoute = readFileSync(`${process.cwd()}/app/api/v1/integrations/route.ts`, "utf8");
+  const reviewedRunQuery = approvalRoute.slice(
+    approvalRoute.indexOf("const [reviewedRun]"),
+    approvalRoute.indexOf("if (!reviewedRun)"),
+  );
+  assert.doesNotMatch(reviewedRunQuery, /gt\(integrationSyncRuns\.recordsStaged,\s*0\)/);
+  assert.match(approvalRoute, /Number\(review\?\.stagedSaleCount \?\? 0\) === 0/);
 });

@@ -381,7 +381,6 @@ export async function POST(request: Request) {
         eq(integrationSyncRuns.status, "completed"),
         isNull(integrationSyncRuns.errorCode),
         eq(integrationSyncRuns.warningCount, 0),
-        gt(integrationSyncRuns.recordsStaged, 0),
         eq(integrationSyncRuns.completedAt, connection.lastSuccessfulSyncAt),
         connection.lastSyncCursor === null
           ? isNull(integrationSyncRuns.cursorAfter)
