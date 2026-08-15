@@ -41,7 +41,7 @@ export type IntegrationCatalogEntry = {
 
 export const salesChannelGroups = [
   { label: "Point of Sale", providers: ["Lightspeed", "Square", "Clover", "Shopify POS", "Moneris"] },
-  { label: "E-commerce", providers: ["Shopify", "Amazon", "WooCommerce"] },
+  { label: "E-commerce", providers: ["Shopify"] },
   { label: "Delivery", providers: ["DoorDash", "Uber Eats"] },
   { label: "Payments", providers: ["Stripe", "Square", "Moneris"] },
   { label: "Accounting", providers: ["QuickBooks", "Xero"] },
@@ -130,22 +130,6 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
       "Not available yet. A production connection still needs authorization, tenant selection, account and tax mapping, incremental import, and conflict recovery tests.",
   },
   {
-    id: "woocommerce",
-    name: "WooCommerce",
-    category: "Commerce",
-    availability: "provider_build_required",
-    activationRequirement:
-      "Not available yet. A production connection still needs verified store credentials, signed updates, order and refund mapping, historical import, and replay tests.",
-  },
-  {
-    id: "amazon",
-    name: "Amazon",
-    category: "Marketplace",
-    availability: "provider_build_required",
-    activationRequirement:
-      "Not available yet. A production connection still needs seller approval, marketplace permissions, report import, fee mapping, and settlement reconciliation tests.",
-  },
-  {
     id: "doordash",
     name: "DoorDash",
     category: "Delivery",
@@ -175,7 +159,7 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
     category: "Marketing",
     availability: "credentials_required",
     activationRequirement:
-      "Meta setup is staged until an owner selects the exact ad account and approves a sample. No account-level measurement is imported before that review.",
+      "Authorize Meta, select the exact ad account, and approve a sample before reporting begins. Spend, reach, clicks, CTR and CPC remain source-linked; campaign status and supported daily-budget changes require an explicit owner confirmation.",
   },
   {
     id: "plaid",

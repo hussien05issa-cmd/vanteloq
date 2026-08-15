@@ -86,6 +86,7 @@ type GrowthData = {
   importCounts: { touchpoints: number; transactions: number; searchObservations: number };
   connections: { provider: string; providerId: "google" | "meta"; status: "connected" | "selection_required" | "sample_required" | "approval_required" | "ready_to_connect" | "configuration_required"; label: string; availableNow: string; connectionId: string | null }[];
   googleBusinessProfiles: { selectionId: string; connectionId: string; name: string; scopeKind: "organization" | "location"; localLocationId: string | null; canRespond: boolean }[];
+  metaAdAccounts: { selectionId: string; connectionId: string; name: string; scopeKind: "organization" | "location"; localLocationId: string | null; canManage: boolean }[];
   canManage: boolean;
   period: { since: string; through: string };
   sourceBoundary: string;
@@ -310,6 +311,8 @@ function LocalOpportunityMap({ model }: { model: GrowthData["localOpportunityMod
 }
 
 type GoogleReview = { name: string; reviewerName: string; starRating: string; comment: string; createTime: string; updateTime: string; reply: { comment: string; updateTime: string } | null };
+type MetaCampaign = { id: string; name: string; status: "ACTIVE" | "PAUSED" | "ARCHIVED" | "DELETED" | "UNKNOWN"; effectiveStatus: string; objective: string | null; dailyBudgetMinor: number | null; lifetimeBudgetMinor: number | null; budgetRemainingMinor: number | null; updatedTime: string | null };
+type MetaCampaignDirectory = { selectionId: string; accountRef: string; accountName: string; currency: string; currencyExponent: number; timezoneName: string; campaigns: MetaCampaign[]; fetchedAt: string };
 
 function GoogleVisibilityCommandCentre({ data, navigate }: { data: GrowthData; navigate: (view: "Integrations") => void }) {
   const profile = data.googleBusinessProfiles[0];
@@ -368,6 +371,75 @@ function GoogleVisibilityCommandCentre({ data, navigate }: { data: GrowthData; n
         {review.reply ? <aside><b>Published reply</b><span>{review.reply.comment}</span></aside> : profile.canRespond && <form onSubmit={(event) => { event.preventDefault(); void publishReply(review); }}><label>Reply<textarea maxLength={4096} value={drafts[review.name] ?? ""} onChange={(event) => setDrafts((current) => ({ ...current, [review.name]: event.target.value }))} placeholder="Write a specific, factual response in your own voice." /></label><label className="google-reply-confirm"><input type="checkbox" checked={confirmed[review.name] ?? false} onChange={(event) => setConfirmed((current) => ({ ...current, [review.name]: event.target.checked }))} /> I reviewed this exact reply and authorize Vanteloq to publish it to Google.</label><button disabled={reviewBusy || !confirmed[review.name] || !(drafts[review.name]?.trim())}>Publish reply</button></form>}
       </section>)}</div>}
     </article>
+  </section>;
+}
+
+function MetaAdsCommandCentre({ data, navigate }: { data: GrowthData; navigate: (view: "Integrations") => void }) {
+  const selection = data.metaAdAccounts[0];
+  const metricRows = data.measurementSeries.filter((row) => row.dataset === "meta_ads");
+  const [directory, setDirectory] = useState<MetaCampaignDirectory | null>(null);
+  const [busyCampaignId, setBusyCampaignId] = useState("");
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [confirmed, setConfirmed] = useState<Record<string, boolean>>({});
+  const [budgetDrafts, setBudgetDrafts] = useState<Record<string, string>>({});
+
+  const loadCampaigns = async () => {
+    if (!selection) return;
+    setBusyCampaignId("loading"); setError(""); setNotice("");
+    try {
+      const response = await apiFetch(`/api/v1/integrations/meta/campaigns?selectionId=${encodeURIComponent(selection.selectionId)}`, { headers: { Accept: "application/json" }, cache: "no-store" });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error?.message ?? "Meta campaigns could not be loaded.");
+      setDirectory(body as MetaCampaignDirectory);
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "Meta campaigns could not be loaded."); }
+    finally { setBusyCampaignId(""); }
+  };
+
+  const applyChange = async (campaign: MetaCampaign, payload: Record<string, unknown>) => {
+    if (!selection || !confirmed[campaign.id]) return;
+    setBusyCampaignId(campaign.id); setError(""); setNotice("");
+    try {
+      const response = await apiFetch("/api/v1/integrations/meta/campaigns", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ selectionId: selection.selectionId, campaignId: campaign.id, expectedCampaignName: campaign.name, confirmChange: true, ...payload }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error?.message ?? "Meta did not apply the campaign change.");
+      setConfirmed((current) => ({ ...current, [campaign.id]: false }));
+      await loadCampaigns();
+      setNotice(`${campaign.name} was updated and recorded in the audit trail.`);
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "Meta did not apply the campaign change."); }
+    finally { setBusyCampaignId(""); }
+  };
+
+  const changeBudget = (campaign: MetaCampaign) => {
+    if (!directory) return;
+    const major = Number(budgetDrafts[campaign.id]);
+    const minor = Math.round(major * 10 ** directory.currencyExponent);
+    if (!Number.isFinite(major) || major <= 0 || !Number.isSafeInteger(minor)) { setError("Enter a positive daily budget using the advertising account currency."); return; }
+    void applyChange(campaign, { action: "set_daily_budget", dailyBudgetMinor: minor });
+  };
+
+  const spend = metricTotal(metricRows, "meta_spend");
+  const impressions = metricTotal(metricRows, "meta_impressions");
+  const clicks = metricTotal(metricRows, "meta_clicks");
+  const cpc = weightedMetricAverage(metricRows, "meta_cpc", "meta_clicks");
+  const accountCurrency = directory?.currency ?? "CAD";
+  const formatProviderMoney = (minor: number | null) => minor === null ? "Managed at ad-set level" : new Intl.NumberFormat("en-CA", { style: "currency", currency: accountCurrency }).format(minor / 10 ** (directory?.currencyExponent ?? 2));
+
+  return <section className="meta-command-centre card" aria-label="Meta advertising command centre">
+    <header><div><p className="card-kicker">META ADS CONTROL</p><h3>{directory?.accountName ?? selection?.name ?? "Meta advertising connection required"}</h3><span>{directory ? `${directory.currency} · ${directory.timezoneName}` : "Spend intelligence and owner-confirmed campaign controls"}</span></div><div><button onClick={() => navigate("Integrations")}>{selection ? "Manage connection" : "Connect Meta"}</button><button disabled={!selection || Boolean(busyCampaignId)} onClick={() => void loadCampaigns()}>{busyCampaignId === "loading" ? "Loading…" : directory ? "Refresh campaigns" : "Load campaigns"}</button></div></header>
+    <div className="meta-ad-kpis"><span><small>Recorded spend</small><b>{metricRows.length ? money(Math.round(spend * 100), accountCurrency) : "—"}</b></span><span><small>Impressions</small><b>{metricRows.length ? Math.round(impressions).toLocaleString("en-CA") : "—"}</b></span><span><small>Clicks</small><b>{metricRows.length ? Math.round(clicks).toLocaleString("en-CA") : "—"}</b></span><span><small>Average CPC</small><b>{metricRows.length && clicks > 0 && cpc !== null ? money(Math.round(cpc * 100), accountCurrency) : "—"}</b></span></div>
+    {error && <div className="growth-message error" role="alert">{error}</div>}
+    {notice && <div className="growth-message success" role="status">{notice}</div>}
+    {!selection ? <div className="marketing-metric-empty"><b>Select a Meta ad account</b><span>Authorize Meta, choose the exact account and approve its sample before Vanteloq displays or changes campaign data.</span></div> : !directory ? <div className="marketing-metric-empty"><b>Campaigns load only when requested</b><span>Use Load campaigns to retrieve the current account state directly from Meta. Vanteloq does not invent or cache campaign controls.</span></div> : !directory.campaigns.length ? <div className="marketing-metric-empty"><b>No campaigns returned</b><span>The selected advertising account did not return any campaigns.</span></div> : <div className="meta-campaign-list">{directory.campaigns.map((campaign) => <article key={campaign.id}>
+      <div className="meta-campaign-identity"><span className={`meta-status ${campaign.status.toLowerCase()}`}>{campaign.status}</span><div><b>{campaign.name}</b><small>{campaign.objective?.replaceAll("_", " ") ?? "Objective unavailable"} · Effective status: {campaign.effectiveStatus.replaceAll("_", " ")}</small></div></div>
+      <dl><div><dt>Daily budget</dt><dd>{formatProviderMoney(campaign.dailyBudgetMinor)}</dd></div><div><dt>Budget remaining</dt><dd>{formatProviderMoney(campaign.budgetRemainingMinor)}</dd></div><div><dt>Last provider update</dt><dd>{campaign.updatedTime ? new Date(campaign.updatedTime).toLocaleString("en-CA") : "Unavailable"}</dd></div></dl>
+      {selection.canManage && campaign.status !== "ARCHIVED" && campaign.status !== "DELETED" && <div className="meta-campaign-controls"><label className="google-reply-confirm"><input type="checkbox" checked={confirmed[campaign.id] ?? false} onChange={(event) => setConfirmed((current) => ({ ...current, [campaign.id]: event.target.checked }))} /> I reviewed this exact campaign and authorize one change.</label><div><button disabled={!confirmed[campaign.id] || busyCampaignId === campaign.id} onClick={() => void applyChange(campaign, { action: "set_status", status: campaign.status === "ACTIVE" ? "PAUSED" : "ACTIVE" })}>{campaign.status === "ACTIVE" ? "Pause" : "Activate"}</button>{campaign.dailyBudgetMinor !== null && <><label>Daily budget ({directory.currency})<input inputMode="decimal" value={budgetDrafts[campaign.id] ?? ""} onChange={(event) => setBudgetDrafts((current) => ({ ...current, [campaign.id]: event.target.value }))} /></label><button disabled={!confirmed[campaign.id] || !budgetDrafts[campaign.id] || busyCampaignId === campaign.id} onClick={() => changeBudget(campaign)}>Update budget</button></>}</div></div>}
+    </article>)}</div>}
+    <footer>Reporting uses approved Meta measurements. Campaign changes are sent only after an authorized owner confirms the exact campaign and action; every change is audited.</footer>
   </section>;
 }
 
@@ -545,6 +617,7 @@ export default function GrowthWorkspace({ currency, navigate, activeLocationId }
       </section>
       {data && <LocalReadinessPanels data={data} />}
       {data && <GoogleVisibilityCommandCentre data={data} navigate={navigate} />}
+      {data && <MetaAdsCommandCentre data={data} navigate={navigate} />}
 
       <section className="growth-overview-grid">
         <article className="card growth-recommendations">

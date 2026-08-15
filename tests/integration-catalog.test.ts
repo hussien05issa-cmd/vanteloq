@@ -13,7 +13,7 @@ test("the shared provider gate matches the implemented provider staging boundary
 test("the integration directory uses the approved sales-channel taxonomy", () => {
   assert.deepEqual(salesChannelGroups, [
     { label: "Point of Sale", providers: ["Lightspeed", "Square", "Clover", "Shopify POS", "Moneris"] },
-    { label: "E-commerce", providers: ["Shopify", "Amazon", "WooCommerce"] },
+    { label: "E-commerce", providers: ["Shopify"] },
     { label: "Delivery", providers: ["DoorDash", "Uber Eats"] },
     { label: "Payments", providers: ["Stripe", "Square", "Moneris"] },
     { label: "Accounting", providers: ["QuickBooks", "Xero"] },
@@ -22,6 +22,7 @@ test("the integration directory uses the approved sales-channel taxonomy", () =>
   for (const provider of ["shopify-pos", "google", "meta"]) {
     assert.ok(integrationCatalog.some((entry) => entry.id === provider));
   }
+  assert.ok(integrationCatalog.every((entry) => entry.id !== "amazon" && entry.id !== "woocommerce"));
 });
 
 test("only built pilots may claim that credentials are the remaining connection prerequisite", () => {

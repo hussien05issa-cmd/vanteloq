@@ -46,6 +46,7 @@ export function googleMarketingScopes() {
 
 export const META_MARKETING_SCOPES = [
   "ads_read",
+  "ads_management",
 ] as const;
 
 const META_VERSION = /^v\d{1,2}\.\d$/;
@@ -71,6 +72,27 @@ export type MarketingSyncSnapshot = {
   resourcesRead: number;
   warnings: string[];
   resourceResults: Array<{ resourceSelectionId: string; recordsRead: number; warningCodes: string[] }>;
+};
+
+export type MetaCampaign = {
+  id: string;
+  name: string;
+  status: "ACTIVE" | "PAUSED" | "ARCHIVED" | "DELETED" | "UNKNOWN";
+  effectiveStatus: string;
+  objective: string | null;
+  dailyBudgetMinor: number | null;
+  lifetimeBudgetMinor: number | null;
+  budgetRemainingMinor: number | null;
+  updatedTime: string | null;
+};
+
+export type MetaCampaignDirectory = {
+  accountRef: string;
+  accountName: string;
+  currency: string;
+  currencyExponent: number;
+  timezoneName: string;
+  campaigns: MetaCampaign[];
 };
 
 type TokenResponse = {
@@ -755,6 +777,125 @@ export async function syncGoogleMarketing(accessToken: string, selections: reado
   }
   if (!resourcesRead) throw new ApiError(502, "GOOGLE_MARKETING_SYNC_FAILED", "Google did not return data for any selected resource.");
   return { metrics: await collector.finish(), resourcesRead, warnings, resourceResults };
+}
+
+const ZERO_DECIMAL_CURRENCIES = new Set(["BIF", "CLP", "DJF", "GNF", "ISK", "JPY", "KMF", "KRW", "PYG", "RWF", "UGX", "VND", "VUV", "XAF", "XOF", "XPF"]);
+const THREE_DECIMAL_CURRENCIES = new Set(["BHD", "IQD", "JOD", "KWD", "LYD", "OMR", "TND"]);
+
+export function currencyExponent(currency: string) {
+  const code = currency.trim().toUpperCase();
+  return ZERO_DECIMAL_CURRENCIES.has(code) ? 0 : THREE_DECIMAL_CURRENCIES.has(code) ? 3 : 2;
+}
+
+function optionalProviderInteger(value: unknown) {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
+}
+
+export async function fetchMetaCampaignDirectory(accessToken: string, adAccountRef: string): Promise<MetaCampaignDirectory> {
+  const current = config("meta");
+  if (!/^act_\d+$/.test(adAccountRef)) throw new ApiError(400, "META_AD_SELECTION_INVALID", "Choose a valid selected Meta advertising account.");
+  const accountUrl = new URL(`https://graph.facebook.com/${current.apiVersion}/${adAccountRef}`);
+  accountUrl.searchParams.set("fields", "id,name,currency,timezone_name");
+  accountUrl.searchParams.set("access_token", accessToken);
+  const account = await providerJson<{ id?: string; name?: string; currency?: string; timezone_name?: string }>(
+    accountUrl.toString(),
+    { headers: { Accept: "application/json" } },
+    "META_AD_ACCOUNT_FAILED",
+    "The selected Meta advertising account could not be loaded.",
+  );
+  if (account.id !== adAccountRef || !account.currency) throw new ApiError(502, "META_AD_ACCOUNT_INVALID", "Meta returned an invalid advertising account response.");
+
+  const campaignUrl = new URL(`https://graph.facebook.com/${current.apiVersion}/${adAccountRef}/campaigns`);
+  campaignUrl.searchParams.set("fields", "id,name,status,effective_status,objective,daily_budget,lifetime_budget,budget_remaining,updated_time");
+  campaignUrl.searchParams.set("limit", "100");
+  campaignUrl.searchParams.set("access_token", accessToken);
+  const campaignResult = await providerJson<{ data?: Array<Record<string, unknown>> }>(
+    campaignUrl.toString(),
+    { headers: { Accept: "application/json" } },
+    "META_CAMPAIGNS_FAILED",
+    "Meta campaigns could not be loaded.",
+  );
+  const allowedStatus = new Set(["ACTIVE", "PAUSED", "ARCHIVED", "DELETED"]);
+  return {
+    accountRef: adAccountRef,
+    accountName: account.name?.trim() || adAccountRef,
+    currency: account.currency.toUpperCase(),
+    currencyExponent: currencyExponent(account.currency),
+    timezoneName: account.timezone_name?.trim() || "Account timezone",
+    campaigns: (campaignResult.data ?? []).slice(0, 100).flatMap((row) => {
+      const id = typeof row.id === "string" ? row.id : "";
+      const name = typeof row.name === "string" ? row.name.trim() : "";
+      if (!/^\d+$/.test(id) || !name) return [];
+      const rawStatus = typeof row.status === "string" ? row.status.toUpperCase() : "UNKNOWN";
+      return [{
+        id,
+        name,
+        status: allowedStatus.has(rawStatus) ? rawStatus as MetaCampaign["status"] : "UNKNOWN",
+        effectiveStatus: typeof row.effective_status === "string" ? row.effective_status : rawStatus,
+        objective: typeof row.objective === "string" ? row.objective : null,
+        dailyBudgetMinor: optionalProviderInteger(row.daily_budget),
+        lifetimeBudgetMinor: optionalProviderInteger(row.lifetime_budget),
+        budgetRemainingMinor: optionalProviderInteger(row.budget_remaining),
+        updatedTime: typeof row.updated_time === "string" ? row.updated_time : null,
+      }];
+    }),
+  };
+}
+
+export async function updateMetaCampaign(input: {
+  accessToken: string;
+  adAccountRef: string;
+  campaignId: string;
+  expectedCampaignName: string;
+  status?: "ACTIVE" | "PAUSED";
+  dailyBudgetMinor?: number;
+}) {
+  const current = config("meta");
+  if (!/^act_\d+$/.test(input.adAccountRef) || !/^\d+$/.test(input.campaignId)) throw new ApiError(400, "META_CAMPAIGN_INVALID", "Choose a valid campaign from the selected Meta advertising account.");
+  const expectedName = input.expectedCampaignName.trim();
+  if (!expectedName || expectedName.length > 400) throw new ApiError(400, "META_CAMPAIGN_CONFIRMATION_INVALID", "Confirm the exact campaign name before changing it.");
+  const changes = Number(Boolean(input.status)) + Number(input.dailyBudgetMinor !== undefined);
+  if (changes !== 1) throw new ApiError(400, "META_CAMPAIGN_CHANGE_INVALID", "Submit exactly one campaign status or daily-budget change.");
+  if (input.dailyBudgetMinor !== undefined && (!Number.isSafeInteger(input.dailyBudgetMinor) || input.dailyBudgetMinor <= 0 || input.dailyBudgetMinor > 100_000_000_000)) {
+    throw new ApiError(400, "META_CAMPAIGN_BUDGET_INVALID", "Enter a positive daily budget within the supported provider range.");
+  }
+
+  const verifyUrl = new URL(`https://graph.facebook.com/${current.apiVersion}/${input.campaignId}`);
+  verifyUrl.searchParams.set("fields", "id,name,account_id,status,daily_budget");
+  verifyUrl.searchParams.set("access_token", input.accessToken);
+  const campaign = await providerJson<{ id?: string; name?: string; account_id?: string; status?: string; daily_budget?: string }>(
+    verifyUrl.toString(),
+    { headers: { Accept: "application/json" } },
+    "META_CAMPAIGN_VERIFY_FAILED",
+    "Meta could not verify the selected campaign before the change.",
+  );
+  if (campaign.id !== input.campaignId || campaign.account_id !== input.adAccountRef.slice(4) || campaign.name !== expectedName) {
+    throw new ApiError(409, "META_CAMPAIGN_CHANGED", "The campaign identity changed. Refresh the campaign list before confirming again.");
+  }
+  if (input.dailyBudgetMinor !== undefined && campaign.daily_budget === undefined) {
+    throw new ApiError(409, "META_CAMPAIGN_BUDGET_LEVEL_UNSUPPORTED", "This campaign does not expose a campaign-level daily budget. Change its ad-set budget in Meta Ads Manager.");
+  }
+
+  const updateUrl = new URL(`https://graph.facebook.com/${current.apiVersion}/${input.campaignId}`);
+  updateUrl.searchParams.set("access_token", input.accessToken);
+  const body = new URLSearchParams(input.status ? { status: input.status } : { daily_budget: String(input.dailyBudgetMinor) });
+  const result = await providerJson<{ success?: boolean }>(
+    updateUrl.toString(),
+    { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" }, body },
+    "META_CAMPAIGN_UPDATE_FAILED",
+    "Meta did not apply the confirmed campaign change.",
+  );
+  if (result.success !== true) throw new ApiError(502, "META_CAMPAIGN_UPDATE_UNCONFIRMED", "Meta did not confirm that the campaign change was applied.");
+  return {
+    campaignId: input.campaignId,
+    campaignName: campaign.name,
+    previousStatus: campaign.status ?? null,
+    previousDailyBudgetMinor: optionalProviderInteger(campaign.daily_budget),
+    status: input.status ?? null,
+    dailyBudgetMinor: input.dailyBudgetMinor ?? null,
+  };
 }
 
 export async function syncMetaMarketing(accessToken: string, selections: readonly SelectedMarketingResource[]): Promise<MarketingSyncSnapshot> {

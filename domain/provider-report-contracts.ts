@@ -10,8 +10,6 @@ export const reportCapableCommerceProviders = [
   "square",
   "clover",
   "moneris",
-  "woocommerce",
-  "amazon",
   "doordash",
   "uber-eats",
 ] as const;
@@ -46,8 +44,6 @@ const vocabularies: Record<string, ProviderVocabulary> = {
   square: { sale: "Order", sales: "Orders", location: "Location", product: "Catalog item", customer: "Customer", payment: "Tender" },
   clover: { sale: "Order", sales: "Orders", location: "Merchant location", product: "Item", customer: "Customer", payment: "Tender" },
   moneris: { sale: "Transaction", sales: "Transactions", location: "Merchant location", product: "Product", customer: "Customer", payment: "Settlement" },
-  woocommerce: { sale: "Order", sales: "Orders", location: "Store", product: "Product", customer: "Customer", payment: "Payment" },
-  amazon: { sale: "Marketplace order", sales: "Marketplace orders", location: "Marketplace", product: "Listing", customer: "Buyer", payment: "Settlement" },
   doordash: { sale: "Delivery order", sales: "Delivery orders", location: "Store", product: "Menu item", customer: "Customer", payment: "Payout" },
   "uber-eats": { sale: "Delivery order", sales: "Delivery orders", location: "Store", product: "Menu item", customer: "Customer", payment: "Payout" },
 };
@@ -79,15 +75,6 @@ function providerContracts(provider: string, vocabulary: ProviderVocabulary) {
   ];
   if (provider === "moneris") {
     generic.push(report("moneris_settlement_reconciliation", "Settlement reconciliation", "Compares imported Moneris settlement facts with canonical sales and bank evidence.", ["payments"]));
-  }
-  if (provider === "woocommerce") {
-    generic.push(report("woocommerce_fulfilment_refunds", "Fulfilment and refund review", "Reconciles WooCommerce order outcomes with canonical sales and payment facts.", ["sales", "payments", "products"]));
-  }
-  if (provider === "amazon") {
-    generic.push(
-      report("amazon_marketplace_fees", "Marketplace fees and net proceeds", "Separates Amazon order value, marketplace deductions, and settlement evidence without changing canonical revenue.", ["sales", "payments"]),
-      report("amazon_fulfilment_performance", "Fulfilment performance", "Reviews listing demand and fulfilment outcomes after the required marketplace facts are normalized.", ["sales", "products", "inventory"]),
-    );
   }
   if (provider === "doordash" || provider === "uber-eats") {
     generic.push(

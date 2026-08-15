@@ -43,8 +43,6 @@ test("normalized coverage unlocks the same canonical reports for every POS while
 
 test("marketplace and delivery connectors have explicit report vocabulary and native planned contracts", () => {
   const expected = [
-    ["woocommerce", "Orders"],
-    ["amazon", "Marketplace orders"],
     ["doordash", "Delivery orders"],
     ["uber-eats", "Delivery orders"],
   ] as const;

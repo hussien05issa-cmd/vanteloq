@@ -391,6 +391,10 @@ export async function GET(request: Request) {
       selection.scopeKind === "organization"
       || Boolean(selection.localLocationId && accessibleLocationIds.has(selection.localLocationId))
     ));
+    const metaSelections = marketingSelections.filter((selection) => selection.provider === "meta" && selection.dataset === "meta_ads" && (
+      selection.scopeKind === "organization"
+      || Boolean(selection.localLocationId && accessibleLocationIds.has(selection.localLocationId))
+    ));
     const googleAnalyticsSelection = googleSelections.find((selection) => selection.dataset === "google_analytics") ?? null;
     const googleSearchConsoleSelection = googleSelections.find((selection) => selection.dataset === "google_search_console") ?? null;
     const googleBusinessProfileSelection = googleSelections.find((selection) => selection.dataset === "google_business_profile") ?? null;
@@ -447,6 +451,14 @@ export async function GET(request: Request) {
         scopeKind: selection.scopeKind,
         localLocationId: selection.localLocationId,
         canRespond: context.role === "owner" || context.role === "admin",
+      })),
+      metaAdAccounts: metaSelections.map((selection) => ({
+        selectionId: selection.id,
+        connectionId: selection.connectionId,
+        name: selection.externalResourceName,
+        scopeKind: selection.scopeKind,
+        localLocationId: selection.localLocationId,
+        canManage: context.role === "owner" || context.role === "admin",
       })),
       canManage: context.role === "owner" || context.role === "admin",
       connections: authorizationRestricted ? [] : connectionSummaries,

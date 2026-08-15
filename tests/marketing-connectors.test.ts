@@ -6,11 +6,13 @@ import {
   buildMarketingAuthorizationUrl,
   discoverGoogleMarketingResources,
   discoverMetaMarketingResources,
+  fetchMetaCampaignDirectory,
   fetchGoogleBusinessReviews,
   marketingReadiness,
   publishGoogleBusinessReviewReply,
   syncGoogleMarketing,
   syncMetaMarketing,
+  updateMetaCampaign,
 } from "../server/integrations/marketing.ts";
 
 const runtime = globalThis as typeof globalThis & { __vanteloqEnv?: Record<string, string> };
@@ -47,13 +49,48 @@ test("marketing authorization uses state-bound provider URLs and least-purpose s
   const state = "A".repeat(43);
   const google = new URL(buildMarketingAuthorizationUrl("google", state));
   const meta = new URL(buildMarketingAuthorizationUrl("meta", state));
-  assert.deepEqual([...META_MARKETING_SCOPES], ["ads_read"]);
+  assert.deepEqual([...META_MARKETING_SCOPES], ["ads_read", "ads_management"]);
   assert.equal(google.searchParams.get("state"), state);
   assert.equal(google.searchParams.get("access_type"), "offline");
   for (const scope of GOOGLE_MARKETING_SCOPES) assert.ok(google.searchParams.get("scope")?.includes(scope));
   assert.equal(meta.pathname, "/v25.0/dialog/oauth");
   assert.equal(meta.searchParams.get("state"), state);
-  assert.equal(meta.searchParams.get("scope"), "ads_read");
+  assert.equal(meta.searchParams.get("scope"), "ads_read,ads_management");
+});
+
+test("Meta campaign review and owner-confirmed changes remain bound to the selected ad account", async () => {
+  runtime.__vanteloqEnv = {
+    META_MARKETING_APP_ID: "meta-app",
+    META_MARKETING_APP_SECRET: "meta-secret",
+    META_MARKETING_REDIRECT_URI: "https://vanteloq.com/api/v1/integrations/meta/callback",
+    META_GRAPH_API_VERSION: "v25.0",
+    INTEGRATION_ENCRYPTION_KEY: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+  };
+  const originalFetch = globalThis.fetch;
+  const calls: Array<{ url: string; init?: RequestInit }> = [];
+  globalThis.fetch = async (input, init) => {
+    const url = String(input);
+    calls.push({ url, init });
+    if (url.includes("act_456/campaigns")) return Response.json({ data: [{ id: "789", name: "Local awareness", status: "ACTIVE", effective_status: "ACTIVE", objective: "OUTCOME_AWARENESS", daily_budget: "2500", budget_remaining: "1800", updated_time: "2026-08-15T12:00:00Z" }] });
+    if (url.includes("/act_456?")) return Response.json({ id: "act_456", name: "Main account", currency: "CAD", timezone_name: "America/Edmonton" });
+    if (url.includes("/789?") && init?.method !== "POST") return Response.json({ id: "789", name: "Local awareness", account_id: "456", status: "ACTIVE", daily_budget: "2500" });
+    if (url.includes("/789?") && init?.method === "POST") return Response.json({ success: true });
+    throw new Error(`Unexpected provider request: ${url}`);
+  };
+  try {
+    const directory = await fetchMetaCampaignDirectory("meta-token", "act_456");
+    assert.equal(directory.accountName, "Main account");
+    assert.equal(directory.currencyExponent, 2);
+    assert.equal(directory.campaigns[0]?.dailyBudgetMinor, 2500);
+    const result = await updateMetaCampaign({ accessToken: "meta-token", adAccountRef: "act_456", campaignId: "789", expectedCampaignName: "Local awareness", status: "PAUSED" });
+    assert.equal(result.previousStatus, "ACTIVE");
+    assert.equal(result.status, "PAUSED");
+    const update = calls.find((call) => call.init?.method === "POST");
+    assert.ok(update);
+    assert.equal(String(update.init?.body), "status=PAUSED");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("marketing sync calls only exact selected resources and preserves selection lineage", async () => {

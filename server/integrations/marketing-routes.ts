@@ -39,12 +39,14 @@ import {
   marketingReadiness,
   marketingStateHash,
   fetchGoogleBusinessReviews,
+  fetchMetaCampaignDirectory,
   newMarketingOAuthState,
   revokeMarketingAccess,
   storedMarketingAccessToken,
   syncGoogleMarketing,
   syncMetaMarketing,
   publishGoogleBusinessReviewReply,
+  updateMetaCampaign,
   verifyMarketingIdentity,
   type MarketingProvider,
   type MarketingDataset,
@@ -912,6 +914,73 @@ async function requireBusinessProfileSelection(organizationId: string, selection
   if (!selection) throw new ApiError(404, "GOOGLE_BUSINESS_SELECTION_NOT_FOUND", "The selected Google Business Profile location was not found.");
   await requireOwnedIntegrationConnection(organizationId, "google", selection.connectionId, { connected: true });
   return selection;
+}
+
+async function requireMetaAdSelection(organizationId: string, selectionId: string) {
+  const [selection] = await getDb().select().from(marketingResourceSelections).where(and(
+    eq(marketingResourceSelections.id, selectionId),
+    eq(marketingResourceSelections.organizationId, organizationId),
+    eq(marketingResourceSelections.provider, "meta"),
+    eq(marketingResourceSelections.dataset, "meta_ads"),
+  )).limit(1);
+  if (!selection) throw new ApiError(404, "META_AD_SELECTION_NOT_FOUND", "The selected Meta advertising account was not found.");
+  await requireOwnedIntegrationConnection(organizationId, "meta", selection.connectionId, { connected: true });
+  return selection;
+}
+
+export function metaCampaigns(request: Request) {
+  return handleApi(request, async ({ requestId }) => {
+    const context = await requireAccess(request, ["owner", "admin", "manager"]);
+    await requirePermission(context, "marketing.view");
+    const url = new URL(request.url);
+    const selectionId = (request.method === "GET" ? url.searchParams.get("selectionId") : null)?.trim() ?? "";
+
+    if (request.method === "GET") {
+      if (!/^[A-Za-z0-9_-]{8,80}$/.test(selectionId)) throw new ApiError(400, "META_AD_SELECTION_INVALID", "Choose a valid Meta advertising account.");
+      await enforceRateLimit("meta:campaigns:read", context.organizationId, 60, 60);
+      const selection = await requireMetaAdSelection(context.organizationId, selectionId);
+      const accessToken = await marketingAccessToken(context.organizationId, selection.connectionId, "meta");
+      const directory = await fetchMetaCampaignDirectory(accessToken, selection.externalResourceRef);
+      return jsonResponse({ ...directory, selectionId, fetchedAt: new Date().toISOString(), storage: "not_persisted" });
+    }
+
+    if (request.method !== "POST") throw new ApiError(405, "METHOD_NOT_ALLOWED", "Use GET to review campaigns or POST to apply one confirmed campaign change.");
+    requireSameOrigin(request);
+    await requirePermission(context, "marketing.manage");
+    await enforceRateLimit("meta:campaigns:change", context.userId, 20, 3_600);
+    const body = await readJsonObject(request, 16_384);
+    const postedSelectionId = typeof body.selectionId === "string" ? body.selectionId.trim() : "";
+    const campaignId = typeof body.campaignId === "string" ? body.campaignId.trim() : "";
+    const expectedCampaignName = typeof body.expectedCampaignName === "string" ? body.expectedCampaignName.trim() : "";
+    if (body.confirmChange !== true) throw new ApiError(400, "META_CAMPAIGN_CONFIRMATION_REQUIRED", "Confirm this exact campaign change before sending it to Meta.");
+    if (!/^[A-Za-z0-9_-]{8,80}$/.test(postedSelectionId)) throw new ApiError(400, "META_AD_SELECTION_INVALID", "Choose a valid Meta advertising account.");
+    const selection = await requireMetaAdSelection(context.organizationId, postedSelectionId);
+    const accessToken = await marketingAccessToken(context.organizationId, selection.connectionId, "meta");
+    const status = body.action === "set_status" && (body.status === "ACTIVE" || body.status === "PAUSED") ? body.status : undefined;
+    const dailyBudgetMinor = body.action === "set_daily_budget" && Number.isSafeInteger(body.dailyBudgetMinor) ? Number(body.dailyBudgetMinor) : undefined;
+    if (!status && dailyBudgetMinor === undefined) throw new ApiError(400, "META_CAMPAIGN_ACTION_INVALID", "Choose pause, resume, or a supported daily-budget change.");
+    const result = await updateMetaCampaign({ accessToken, adAccountRef: selection.externalResourceRef, campaignId, expectedCampaignName, status, dailyBudgetMinor });
+    await recordAudit({
+      request,
+      requestId,
+      organizationId: context.organizationId,
+      actorUserId: context.userId,
+      action: status ? "meta_ads.campaign_status_changed" : "meta_ads.campaign_budget_changed",
+      resourceType: "meta_campaign",
+      resourceId: campaignId,
+      details: {
+        selectionId: postedSelectionId,
+        connectionId: selection.connectionId,
+        campaignName: expectedCampaignName,
+        confirmed: true,
+        status: result.status,
+        dailyBudgetMinor: result.dailyBudgetMinor,
+        previousStatus: result.previousStatus,
+        previousDailyBudgetMinor: result.previousDailyBudgetMinor,
+      },
+    });
+    return jsonResponse({ applied: true, ...result, appliedAt: new Date().toISOString() });
+  });
 }
 
 export function googleBusinessReviews(request: Request) {
