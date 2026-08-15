@@ -171,3 +171,4 @@
 .moneris-connect-form .moneris-consent input { min-height: auto; margin-top: .2rem; }
 .moneris-connect-form footer { display: flex; justify-content: flex-end; gap: .6rem; }
 @media (max-width: 720px) { .moneris-connect-form { grid-template-columns: 1fr; } }
+.data-approval-dialog{width:min(520px,100%);border:1px solid #d4dee8}.data-approval-dialog .modal-head{margin-bottom:12px}.data-approval-dialog .card-kicker{margin:0 0 7px;color:#216bc0;font-size:8px;letter-spacing:1.1px;font-weight:800}.data-approval-copy{margin:0 0 20px;color:#566c82;font-size:11px;line-height:1.65}.data-approval-dialog .modal-actions button{min-height:42px;border:1px solid #ccd8e3;border-radius:8px;background:#fff;padding:0 15px;color:#3c5670;font-size:10px;font-weight:750;cursor:pointer}.data-approval-dialog .modal-actions .primary{border-color:#1b66bc;background:#1b66bc;color:#fff}.data-approval-dialog:focus{outline:3px solid rgba(37,116,204,.24);outline-offset:3px}

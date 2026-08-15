@@ -23,11 +23,13 @@ test("Moneris client credentials use form encoding and never a query secret", as
     return new Response(JSON.stringify({ access_token: "temporary-token", expires_in: 900 }), { status: 200, headers: { "Content-Type": "application/json" } });
   };
   const token = await requestMonerisAccessToken(credentials, fetcher);
+  const request = captured as { url: string; init?: RequestInit } | null;
+  assert.ok(request);
   assert.equal(token.accessToken, "temporary-token");
-  assert.equal(captured?.url, "https://api.sb.moneris.io/oauth2/token");
-  assert.equal(captured?.init?.method, "POST");
-  assert.ok(String(captured?.init?.body).includes("grant_type=client_credentials"));
-  assert.ok(!captured?.url.includes(credentials.clientSecret));
+  assert.equal(request.url, "https://api.sb.moneris.io/oauth2/token");
+  assert.equal(request.init?.method, "POST");
+  assert.ok(String(request.init?.body).includes("grant_type=client_credentials"));
+  assert.ok(!request.url.includes(credentials.clientSecret));
 });
 
 test("Moneris normalization retains only successful non-cardholder payment facts", async () => {

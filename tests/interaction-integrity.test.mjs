@@ -21,6 +21,15 @@ test("visible controls do not use known no-op interaction patterns", async () =>
   }
 });
 
+test("provider data approval uses an accessible in-app confirmation", async () => {
+  const source = await readFile(new URL("../app/vanteloq-app.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /window\.confirm\("Make the reviewed records/);
+  assert.match(source, /role="dialog"/);
+  assert.match(source, /aria-labelledby="data-approval-title"/);
+  assert.match(source, /requestConnectionDataApproval/);
+  assert.match(source, /Approve reviewed data/);
+});
+
 test("literal disabled buttons explain why they are unavailable", async () => {
   for (const { file, source } of await applicationSource()) {
     const literalDisabledButtons = source.match(/<button\b(?=[^>]*\bdisabled(?:\s|>))[^>]*>/g) ?? [];

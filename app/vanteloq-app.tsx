@@ -2193,6 +2193,12 @@ type MarketingResourcePanel = {
   locations: Array<{ id: string; name: string }>;
 };
 
+type PendingDataApproval = {
+  provider: string;
+  connectionId: string;
+  marketingReview?: { sampleRunId: string; expectedSelectionVersion: number };
+};
+
 function DataHub({
   refresh,
   showNotice,
@@ -2212,6 +2218,9 @@ function DataHub({
   const [marketingResourcePanel, setMarketingResourcePanel] = useState<MarketingResourcePanel | null>(null);
   const marketingResourcePanelRef = useRef<HTMLElement | null>(null);
   const marketingResourceTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const [pendingDataApproval, setPendingDataApproval] = useState<PendingDataApproval | null>(null);
+  const dataApprovalDialogRef = useRef<HTMLElement | null>(null);
+  const dataApprovalTriggerRef = useRef<HTMLElement | null>(null);
   const [marketingSampleResult, setMarketingSampleResult] = useState<null | {
     provider: "google" | "meta";
     connectionId: string;
@@ -2438,12 +2447,34 @@ function DataHub({
     await loadConnections();
     await refresh();
   };
-  const approveConnectionData = async (
+  const requestConnectionDataApproval = (
     provider: string,
     connectionId: string,
     marketingReview?: { sampleRunId: string; expectedSelectionVersion: number },
   ) => {
-    if (!window.confirm("Make the reviewed records from this provider account available to dashboard features?")) return;
+    dataApprovalTriggerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setPendingDataApproval({ provider, connectionId, marketingReview });
+  };
+  const closeDataApproval = useCallback(() => {
+    setPendingDataApproval(null);
+    window.requestAnimationFrame(() => dataApprovalTriggerRef.current?.focus());
+  }, []);
+  useEffect(() => {
+    if (!pendingDataApproval) return;
+    const frame = window.requestAnimationFrame(() => dataApprovalDialogRef.current?.focus());
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeDataApproval();
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [closeDataApproval, pendingDataApproval]);
+  const approveConnectionData = async () => {
+    if (!pendingDataApproval) return;
+    const { provider, connectionId, marketingReview } = pendingDataApproval;
+    setPendingDataApproval(null);
     const actionKey = integrationActionKey(provider, connectionId);
     setProviderActions((current) => ({ ...current, [actionKey]: "approve" }));
     try {
@@ -2470,6 +2501,7 @@ function DataHub({
         delete next[actionKey];
         return next;
       });
+      window.requestAnimationFrame(() => dataApprovalTriggerRef.current?.focus());
     }
   };
   useEffect(() => {
@@ -2845,7 +2877,7 @@ function DataHub({
                               >{connectionAction === "sync" ? "Syncing…" : connection.dataPromotionStatus === "approved" ? "Sync now" : "Run sample"}</button>
                               {connection.dataPromotionStatus === "staging" && connection.sampleSummary && <button
                                 type="button"
-                                onClick={() => void approveConnectionData(provider.id, connection.id, {
+                                onClick={() => requestConnectionDataApproval(provider.id, connection.id, {
                                   sampleRunId: connection.sampleSummary!.runId,
                                   expectedSelectionVersion: connection.resourceSelectionVersion,
                                 })}
@@ -2864,12 +2896,12 @@ function DataHub({
                             >{connectionAction === "locations" ? "Loading…" : `Map ${provider.id === "lightspeed-r" ? "shops" : provider.id === "clover" ? "merchant" : provider.id === "square" ? "locations" : "outlets"}`}</button>}
                             {(provider.id === "lightspeed-r" || provider.id === "square" || provider.id === "clover") && connection.dataPromotionStatus === "staging" && connection.lastSuccessfulSyncAt && <button
                               type="button"
-                              onClick={() => void approveConnectionData(provider.id, connection.id)}
+                              onClick={() => requestConnectionDataApproval(provider.id, connection.id)}
                               disabled={!canManageProvider || Boolean(connectionAction)}
                             >{connectionAction === "approve" ? "Approving…" : "Approve reviewed data"}</button>}
                             {provider.id === "moneris" && connection.dataPromotionStatus === "staging" && connection.lastSuccessfulSyncAt && <button
                               type="button"
-                              onClick={() => void approveConnectionData(provider.id, connection.id)}
+                              onClick={() => requestConnectionDataApproval(provider.id, connection.id)}
                               disabled={!canManageProvider || Boolean(connectionAction)}
                             >{connectionAction === "approve" ? "Approving…" : "Approve reconciliation"}</button>}
                           </>}
@@ -2925,7 +2957,7 @@ function DataHub({
                   {isPlaid ? <div className="provider-actions">
                     {connected && provider.dataPromotionStatus === "staging" && provider.connections?.[0]?.lastSuccessfulSyncAt && <button
                       type="button"
-                      onClick={() => void approveConnectionData(provider.id, provider.connections![0].id)}
+                      onClick={() => requestConnectionDataApproval(provider.id, provider.connections![0].id)}
                       disabled={!canManageProvider || anyProviderAction}
                     >Approve reviewed data</button>}
                     <PlaidLinkButton
@@ -3074,6 +3106,35 @@ function DataHub({
           </section>}
         </>
       )}
+      {pendingDataApproval && <div
+        className="modal-backdrop"
+        onMouseDown={(event) => { if (event.target === event.currentTarget) closeDataApproval(); }}
+      >
+        <section
+          ref={dataApprovalDialogRef}
+          tabIndex={-1}
+          className="task-modal data-approval-dialog"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="data-approval-title"
+          aria-describedby="data-approval-description"
+        >
+          <div className="modal-head">
+            <div>
+              <p className="card-kicker">RECONCILIATION REVIEW</p>
+              <h2 id="data-approval-title">Make these reviewed records available?</h2>
+            </div>
+            <button type="button" aria-label="Close approval dialog" onClick={closeDataApproval}>×</button>
+          </div>
+          <p id="data-approval-description" className="data-approval-copy">
+            Vanteloq will allow dashboard and BookLoQ features to use the reviewed records from this provider account. The source, connection, and audit history remain traceable.
+          </p>
+          <div className="modal-actions">
+            <button type="button" onClick={closeDataApproval}>Cancel</button>
+            <button type="button" className="primary" onClick={() => void approveConnectionData()}>Approve reviewed data</button>
+          </div>
+        </section>
+      </div>}
     </div>
   );
 }
