@@ -5,7 +5,6 @@ embedded = false
 
 [build]
 automatically_update_urls_on_dev = false
-include_config_on_deploy = true
 
 [access_scopes]
 scopes = "read_customers,read_inventory,read_locations,read_orders,read_products"
@@ -29,17 +28,10 @@ uri = "https://vanteloq.com/api/v1/integrations/shopify-pos/webhook"
 [[webhooks.subscriptions]]
 topics = [
   "app/uninstalled",
-  "orders/create",
-  "orders/updated",
-  "orders/cancelled",
-  "refunds/create",
   "products/create",
   "products/update",
   "products/delete",
   "inventory_levels/update",
-  "customers/create",
-  "customers/update",
-  "customers/delete",
   "locations/create",
   "locations/update",
   "locations/delete"
