@@ -1,0 +1,47 @@
+client_id = "1e62317af62ab9a74c426da205506a43"
+name = "Vanteloq"
+application_url = "https://vanteloq.com"
+embedded = false
+
+[build]
+automatically_update_urls_on_dev = false
+include_config_on_deploy = true
+
+[access_scopes]
+scopes = "read_customers,read_inventory,read_locations,read_orders,read_products"
+
+[auth]
+redirect_urls = [
+  "https://vanteloq.com/api/v1/integrations/shopify-pos/callback"
+]
+
+[webhooks]
+api_version = "2026-07"
+
+[[webhooks.subscriptions]]
+compliance_topics = [
+  "customers/data_request",
+  "customers/redact",
+  "shop/redact"
+]
+uri = "https://vanteloq.com/api/v1/integrations/shopify-pos/webhook"
+
+[[webhooks.subscriptions]]
+topics = [
+  "app/uninstalled",
+  "orders/create",
+  "orders/updated",
+  "orders/cancelled",
+  "refunds/create",
+  "products/create",
+  "products/update",
+  "products/delete",
+  "inventory_levels/update",
+  "customers/create",
+  "customers/update",
+  "customers/delete",
+  "locations/create",
+  "locations/update",
+  "locations/delete"
+]
+uri = "https://vanteloq.com/api/v1/integrations/shopify-pos/webhook"

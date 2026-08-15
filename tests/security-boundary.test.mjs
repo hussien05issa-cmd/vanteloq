@@ -133,6 +133,10 @@ test("provider management routes reject anonymous same-origin writes", async () 
     "/api/v1/integrations/square/locations",
     "/api/v1/integrations/square/sync",
     "/api/v1/integrations/square/disconnect",
+    "/api/v1/integrations/shopify-pos/authorize",
+    "/api/v1/integrations/shopify-pos/locations",
+    "/api/v1/integrations/shopify-pos/sync",
+    "/api/v1/integrations/shopify-pos/disconnect",
     "/api/v1/integrations/stripe/authorize",
     "/api/v1/integrations/stripe/sync",
     "/api/v1/integrations/stripe/disconnect",
@@ -209,6 +213,16 @@ test("the Square callback rejects malformed one-time state before database acces
   assert.equal((await response.json()).error.code, "SQUARE_CALLBACK_INVALID");
 });
 
+test("the Shopify POS callback rejects malformed one-time state before database access", async () => {
+  const worker = await loadWorker();
+  const response = await worker.fetch(new Request(
+    "https://vanteloq.example/api/v1/integrations/shopify-pos/callback?code=test-code&shop=test-store.myshopify.com&state=too-short",
+    { headers: { accept: "application/json" } },
+  ), environment, context);
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error.code, /^SHOPIFY_/u);
+});
+
 test("the Clover callback binds the provider redirect to a one-time initiating owner", async () => {
   const source = await readFile(`${process.cwd()}/app/api/v1/integrations/clover/callback/route.ts`, "utf8");
   assert.doesNotMatch(source, /requireAccess\(request/);
@@ -220,6 +234,15 @@ test("the Clover callback binds the provider redirect to a one-time initiating o
 
 test("the Square callback binds the provider redirect to a one-time initiating owner", async () => {
   const source = await readFile(`${process.cwd()}/app/api/v1/integrations/square/callback/route.ts`, "utf8");
+  assert.doesNotMatch(source, /requireAccess\(request/);
+  assert.match(source, /eq\(users\.id, stored\.actorUserId\)/);
+  assert.match(source, /eq\(memberships\.organizationId, stored\.organizationId\)/);
+  assert.match(source, /isNull\(integrationOAuthStates\.consumedAt\)/);
+  assert.match(source, /returning\(\{ stateHash: integrationOAuthStates\.stateHash \}\)/);
+});
+
+test("the Shopify POS callback binds the provider redirect to a one-time initiating owner", async () => {
+  const source = await readFile(`${process.cwd()}/app/api/v1/integrations/shopify-pos/callback/route.ts`, "utf8");
   assert.doesNotMatch(source, /requireAccess\(request/);
   assert.match(source, /eq\(users\.id, stored\.actorUserId\)/);
   assert.match(source, /eq\(memberships\.organizationId, stored\.organizationId\)/);
@@ -521,6 +544,10 @@ test("imports and business-memory writes reject cross-site origins before data a
     "/api/v1/integrations/clover/locations",
     "/api/v1/integrations/clover/sync",
     "/api/v1/integrations/clover/disconnect",
+    "/api/v1/integrations/shopify-pos/authorize",
+    "/api/v1/integrations/shopify-pos/locations",
+    "/api/v1/integrations/shopify-pos/sync",
+    "/api/v1/integrations/shopify-pos/disconnect",
     "/api/v1/integrations/stripe/authorize",
     "/api/v1/integrations/stripe/sync",
     "/api/v1/integrations/stripe/disconnect",

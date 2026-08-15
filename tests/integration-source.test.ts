@@ -35,7 +35,7 @@ test("provider state aggregates multiple accounts without hiding an error", () =
   });
 });
 
-test("repeatable connector controls include Stripe and both Lightspeed editions", () => {
+test("repeatable connector controls include Stripe, Shopify POS, and both Lightspeed editions", () => {
   const supportsMultipleProviderAccounts = (
     integrationSource as Record<string, unknown>
   ).supportsMultipleProviderAccounts as ((providerId: string) => boolean) | undefined;
@@ -43,6 +43,7 @@ test("repeatable connector controls include Stripe and both Lightspeed editions"
   assert.equal(supportsMultipleProviderAccounts?.("stripe"), true);
   assert.equal(supportsMultipleProviderAccounts?.("lightspeed"), true);
   assert.equal(supportsMultipleProviderAccounts?.("lightspeed-r"), true);
+  assert.equal(supportsMultipleProviderAccounts?.("shopify-pos"), true);
   assert.equal(supportsMultipleProviderAccounts?.("moneris"), true);
   assert.equal(supportsMultipleProviderAccounts?.("plaid"), false);
 });

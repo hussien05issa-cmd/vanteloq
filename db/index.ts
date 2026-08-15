@@ -38,6 +38,10 @@ export type VanteloqRuntimeEnv = {
   PLAID_ENV?: string;
   PLAID_WEBHOOK_URL?: string;
   PLAID_REDIRECT_URI?: string;
+  SHOPIFY_CLIENT_ID?: string;
+  SHOPIFY_CLIENT_SECRET?: string;
+  SHOPIFY_REDIRECT_URI?: string;
+  SHOPIFY_WEBHOOK_URL?: string;
   GOOGLE_MARKETING_CLIENT_ID?: string;
   GOOGLE_MARKETING_CLIENT_SECRET?: string;
   GOOGLE_MARKETING_REDIRECT_URI?: string;
