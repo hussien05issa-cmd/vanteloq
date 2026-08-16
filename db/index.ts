@@ -50,6 +50,11 @@ export type VanteloqRuntimeEnv = {
   GOOGLE_ADS_DEVELOPER_TOKEN?: string;
   GOOGLE_ADS_LOGIN_CUSTOMER_ID?: string;
   GOOGLE_ADS_API_VERSION?: string;
+  GOOGLE_GEMINI_API_KEY?: string;
+  VERTEX_AI_PROJECT_ID?: string;
+  VERTEX_AI_LOCATION?: string;
+  VERTEX_AI_MODEL?: string;
+  VERTEX_AI_SERVICE_ACCOUNT_JSON?: string;
   META_MARKETING_APP_ID?: string;
   META_MARKETING_APP_SECRET?: string;
   META_MARKETING_REDIRECT_URI?: string;

@@ -456,6 +456,21 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
         </div>
       </section>
 
+      <section className="home-gemini" id="gemini" aria-labelledby="gemini-title">
+        <div className="home-gemini-mark"><IntegrationBrandLogo name="Google"/><span>GOOGLE GEMINI</span><small>AI EXPLANATIONS IN VANTELOQ</small></div>
+        <div className="home-gemini-copy">
+          <p>GROUNDED BUSINESS INTELLIGENCE</p>
+          <h2 id="gemini-title">Gemini explains the business behind the numbers.</h2>
+          <span>Vanteloq uses Google Gemini to turn verified sales, inventory, cash and marketing evidence into a clear explanation, with the source, freshness and missing inputs kept visible.</span>
+          <div className="home-gemini-grid">
+            <article><strong>Ask in plain language</strong><span>Ask why sales changed, where margin is leaking or what deserves attention next.</span></article>
+            <article><strong>Evidence stays visible</strong><span>Every answer is grounded in the records your workspace has approved. Missing data stays unavailable.</span></article>
+            <article><strong>Memory stays in your workspace</strong><span>Conversation context is scoped to your organization and user, with no raw customer or bank details sent to the model.</span></article>
+          </div>
+          <small className="home-gemini-note">Gemini is an explanation layer, not an autonomous operator. Actions remain behind Vanteloq permissions and your approval.</small>
+        </div>
+      </section>
+
       <section className="home-product-family" aria-labelledby="product-family-title">
         <div className="home-section-heading compact">
           <p>PRODUCT FAMILY</p>

@@ -3962,24 +3962,39 @@ function Advisor({
   createTask: (seed: TaskSeed) => void;
 }) {
   const [question, setQuestion] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [conversationId, setConversationId] = useState<string | null>(null);
   const [answer, setAnswer] = useState<{
     title: string;
     body: string;
     limitation: string;
     seed?: TaskSeed;
   } | null>(null);
-  const ask = (event: FormEvent) => {
+  const ask = async (event: FormEvent) => {
     event.preventDefault();
+    if (!question.trim() || loading) return;
+    setLoading(true);
     const normalized = question.toLowerCase();
-    if (!data.ready) {
-      setAnswer({
-        title: "Verified operating data is required",
-        body: "I cannot answer from company performance yet because no daily source has been imported or connected.",
-        limitation:
-          "Add daily summaries or connect a provider before using financial figures.",
-      });
+    try {
+      const response = await apiFetch("/api/v1/advisor/chat", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ question, conversationId }) });
+      const payload = await response.json() as { status?: string; answer?: string | null; conversationId?: string; message?: string; error?: { message?: string } };
+      if (!response.ok) throw new Error(payload.error?.message ?? "The advisor could not answer right now.");
+      if (payload.conversationId) setConversationId(payload.conversationId);
+      if (payload.status === "configuration_required") {
+        setAnswer({ title: "Gemini is ready to connect", body: "The evidence-bound advisor is installed, but the server still needs its protected Google Gemini credential.", limitation: payload.message ?? "No business data was sent to an external model." });
+        return;
+      }
+      if (payload.answer) {
+        setAnswer({ title: "Gemini explanation", body: payload.answer, limitation: "Grounded in the verified Vanteloq evidence snapshot. Numbers remain unavailable when their source is missing." });
+        return;
+      }
+    } catch (error) {
+      setAnswer({ title: "The advisor could not answer", body: error instanceof Error ? error.message : "Try again shortly.", limitation: "No decision or business value was inferred from unavailable data." });
       return;
+    } finally {
+      setLoading(false);
     }
+    /* Local evidence fallback keeps the surface useful while Gemini is being configured. */
     const insight =
       normalized.includes("margin") ||
       normalized.includes("profit") ||
@@ -4010,15 +4025,14 @@ function Advisor({
           "Product, customer, campaign, supplier or hourly questions need their corresponding feeds.",
       });
   };
+  const clearConversation = () => { setConversationId(null); setAnswer(null); setQuestion(""); };
   return (
     <div className="content advisor-page">
       <section className="advisor-hero">
-        <p>EVIDENCE-BOUND ADVISOR</p>
+        <p>EVIDENCE-BOUND ADVISOR · GOOGLE GEMINI</p>
         <h2>Ask the business. See the limits.</h2>
         <span>
-          Answers use the same verified calculation engine as the command
-          centre. Unsupported questions return the missing source instead of a
-          fabricated answer.
+          Gemini explains the same verified calculation engine used by the command centre. Your workspace memory stays scoped to your organization, and unsupported questions return the missing source instead of a fabricated answer.
         </span>
         <form onSubmit={ask}>
           <input
@@ -4026,8 +4040,9 @@ function Advisor({
             onChange={(event) => setQuestion(event.target.value)}
             placeholder="Why were sales lower? Where is margin leaking?"
           />
-          <button>Analyze →</button>
+          <button disabled={loading}>{loading ? "Thinking…" : "Ask Gemini →"}</button>
         </form>
+        <div className="advisor-provider-note"><IntegrationBrandLogo name="Google" compact/><span><strong>Gemini on Google’s AI platform</strong><small>Evidence first · No actions without your approval</small></span>{answer && <button type="button" onClick={clearConversation}>Clear</button>}</div>
         <div className="suggested-questions">
           {[
             "Why did sales change?",

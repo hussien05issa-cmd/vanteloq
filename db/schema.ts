@@ -1932,3 +1932,32 @@ export const rateLimitBuckets = sqliteTable("rate_limit_buckets", {
   requestCount: integer("request_count").notNull().default(1),
   expiresAt: integer("expires_at").notNull(),
 });
+
+export const assistantConversations = sqliteTable(
+  "assistant_conversations",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    title: text("title").notNull().default(""),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [index("assistant_conversations_workspace_idx").on(table.organizationId, table.updatedAt), index("assistant_conversations_user_idx").on(table.userId, table.updatedAt)],
+);
+
+export const assistantMessages = sqliteTable(
+  "assistant_messages",
+  {
+    id: text("id").primaryKey(),
+    conversationId: text("conversation_id").notNull().references(() => assistantConversations.id, { onDelete: "cascade" }),
+    organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    role: text("role", { enum: ["user", "assistant"] }).notNull(),
+    content: text("content").notNull(),
+    evidenceJson: text("evidence_json").notNull().default("[]"),
+    model: text("model"),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [index("assistant_messages_conversation_idx").on(table.conversationId, table.createdAt), index("assistant_messages_workspace_idx").on(table.organizationId, table.createdAt), check("assistant_messages_role_check", sql`${table.role} in ('user','assistant')`)],
+);

@@ -230,6 +230,8 @@
   padding-block: 78px;
   border-bottom: 1px solid #e5eaf0;
 }
+.home-gemini{display:grid;grid-template-columns:minmax(190px,.42fr) minmax(0,1fr);gap:70px;align-items:start;padding:92px 0;border-bottom:1px solid #e5eaf0;background:linear-gradient(135deg,#f7fbff 0%,#fff 58%,#f1faf7 100%)}
+.home-gemini-mark{display:flex;flex-direction:column;align-items:flex-start;gap:10px;padding-top:5px;color:#0d1b38}.home-gemini-mark .integration-logo{width:64px;height:64px;margin:0;border-radius:18px;box-shadow:0 12px 28px rgba(42,92,160,.14)}.home-gemini-mark .integration-logo svg{width:38px;height:38px}.home-gemini-mark>span{font-size:12px;font-weight:850;letter-spacing:.14em}.home-gemini-mark>small{color:#2871bf;font-size:9px;font-weight:800;letter-spacing:.1em;line-height:1.5}.home-gemini-copy>p{margin:0;color:#2871bf;font:800 10px var(--font-geist-mono);letter-spacing:.16em}.home-gemini-copy h2{max-width:720px;margin:14px 0;color:#0d1b38;font-size:clamp(35px,4vw,54px);line-height:1.06;letter-spacing:-.045em}.home-gemini-copy>span{display:block;max-width:760px;color:#53627a;font-size:16px;line-height:1.7}.home-gemini-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:30px}.home-gemini-grid article{min-height:150px;padding:20px;border:1px solid #d8e3ed;border-radius:12px;background:rgba(255,255,255,.78);box-shadow:0 8px 24px rgba(7,26,53,.04)}.home-gemini-grid strong{display:block;color:#17385a;font-size:14px}.home-gemini-grid span{display:block;margin-top:12px;color:#627187;font-size:12px;line-height:1.55}.home-gemini-note{display:block;margin-top:20px;color:#64768a;font-size:11px;line-height:1.55}
 .home-connection-intro { position: sticky; top: 106px; display: grid; gap: 28px; min-width: 0; }
 .home-connections .home-section-heading h2 { font-size: clamp(30px, 3vw, 40px); }
 .home-connection-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
@@ -790,6 +792,11 @@
 
 @media (max-width: 480px) {
   .public-brand > span { display: none; }
+}
+
+@media (max-width: 760px) {
+  .home-gemini { grid-template-columns: 1fr; gap: 28px; padding-block: 70px; }
+  .home-gemini-grid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 390px) {
