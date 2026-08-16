@@ -162,7 +162,10 @@ export async function GET(request: Request) {
       eq(bankAccounts.provider, "plaid"),
       approvedBankSource(bankAccounts.organizationId, bankAccounts.provider, bankAccounts.externalItemRef),
     ));
-    const supportedPosProviders = new Set(["lightspeed", "lightspeed-r", "shopify", "shopify-pos", "square", "clover", "moneris"]);
+    // Only providers that produce canonical sale facts belong in the live sales
+    // source set. Payment-only connectors such as Moneris are reconciled in
+    // BookLoQ and must never make the dashboard claim another POS is live.
+    const supportedPosProviders = new Set(["lightspeed", "lightspeed-r", "shopify", "shopify-pos", "square", "clover"]);
     const posConnectionRows = connectionRows.filter((row) => supportedPosProviders.has(row.provider));
     const connectedSourceConnections = posConnectionRows.filter((row) => row.status === "connected");
     const now = Date.now();

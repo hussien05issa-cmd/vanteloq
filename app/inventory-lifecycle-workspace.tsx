@@ -2,6 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "./supabase-browser";
+import { providerDisplayName } from "../domain/display-labels";
 
 type Risk = "healthy" | "monitor" | "at_risk" | "urgent" | "expired" | "untracked";
 type Lot = {
@@ -219,7 +220,7 @@ export function InventoryLifecycleWorkspace({ currency, showNotice, createTask, 
         <div className="pos-stock-head"><span>Product</span><span>Location</span><span>On hand</span><span>Reorder point</span></div>
         {data.posBalances.slice(0, 100).map(balance => <div className="pos-stock-row" key={`${balance.locationRef}:${balance.sku}`}>
           <span><b>{balance.name}</b><small>{balance.sku}</small></span>
-          <span>{balance.locationRef.replace(/^([^:]+):/, (_, provider: string) => `${provider.replaceAll("-", " ")} location `)}</span>
+          <span>{balance.locationRef.replace(/^([^:]+):/, (_, provider: string) => `${providerDisplayName(provider)} location `)}</span>
           <strong>{balance.onHandQuantity}</strong>
           <em className={balance.onHandQuantity <= balance.reorderPoint ? "low" : "ok"}>{balance.reorderPoint}</em>
         </div>)}

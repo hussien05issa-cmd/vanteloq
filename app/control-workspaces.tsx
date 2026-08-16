@@ -8,6 +8,7 @@ import {
   calculateReorderRecommendation,
   type ReorderInputs,
 } from "../domain/reorder-engine";
+import { humanizeIdentifier, providerDisplayName } from "../domain/display-labels";
 
 type TaskSeed = {
   title: string;
@@ -409,21 +410,21 @@ export function ReportsWorkspace({
         </header>
         <div className="report-source-buttons">
           <button className={!sourceConnectionId ? "active" : ""} onClick={() => { setSourceConnectionId(""); setSourceReportLabel(""); }}><b>Vanteloq consolidated</b><small>Canonical definitions and owner-selected authorities</small></button>
-          {providerCatalogs.map((catalog) => <button key={catalog.connectionId} className={sourceConnectionId === catalog.connectionId ? "active" : ""} onClick={() => { setSourceConnectionId(catalog.connectionId); setSourceReportLabel(""); }}><b>{catalog.accountName || catalog.provider.replaceAll("-", " ")}</b><small>{catalog.provider.replaceAll("-", " ")} · {catalog.vocabulary.sales} from this account only</small></button>)}
+          {providerCatalogs.map((catalog) => <button key={catalog.connectionId} className={sourceConnectionId === catalog.connectionId ? "active" : ""} onClick={() => { setSourceConnectionId(catalog.connectionId); setSourceReportLabel(""); }}><b>{catalog.accountName || providerDisplayName(catalog.provider)}</b><small>{providerDisplayName(catalog.provider)} · {catalog.vocabulary.sales} from this account only</small></button>)}
         </div>
         {sourceLineage && <div className="report-source-lineage" aria-label="Authoritative source coverage">
-          {[...(sourceLineage.sales ?? []).map((item) => ({ ...item, family: "Sales" })), ...(selected === "Payment-method performance" ? (sourceLineage.payments ?? []).map((item) => ({ ...item, family: "Payments" })) : [])].map((item) => <span key={`${item.family}:${item.locationId}:${item.connectionId}`}><small>{item.family} · {item.locationName}</small><b>{item.accountName || item.provider.replaceAll("-", " ")}</b><em>{item.channel.replaceAll("_", " ")} · {item.mode.replaceAll("_", " ")} · {String(source?.periodStart ?? source?.earliestBusinessDate ?? "no date")} to {String(source?.periodEnd ?? source?.latestBusinessDate ?? "no date")}</em></span>)}
+          {[...(sourceLineage.sales ?? []).map((item) => ({ ...item, family: "Sales" })), ...(selected === "Payment-method performance" ? (sourceLineage.payments ?? []).map((item) => ({ ...item, family: "Payments" })) : [])].map((item) => <span key={`${item.family}:${item.locationId}:${item.connectionId}`}><small>{item.family} · {item.locationName}</small><b>{item.accountName || providerDisplayName(item.provider)}</b><em>{humanizeIdentifier(item.channel)} · {humanizeIdentifier(item.mode)} · {String(source?.periodStart ?? source?.earliestBusinessDate ?? "no date")} to {String(source?.periodEnd ?? source?.latestBusinessDate ?? "no date")}</em></span>)}
           {Number(sourceLineage.manual?.rowCount ?? 0) > 0 && <span><small>Owner-reviewed summaries</small><b>{Number(sourceLineage.manual?.rowCount)} manual rows</b><em>{(sourceLineage.manual?.locationRefs ?? []).length} location scope{(sourceLineage.manual?.locationRefs ?? []).length === 1 ? "" : "s"} · {String(source?.periodStart ?? source?.earliestBusinessDate ?? "no date")} to {String(source?.periodEnd ?? source?.latestBusinessDate ?? "no date")}</em></span>}
         </div>}
         {authorityEntries.flatMap(({ factFamily, authority }) => authority.conflicts.map((conflict) => <article className="report-source-conflict" key={`${factFamily}:${conflict.localLocationId}:${conflict.channel}`}>
           <div><b>Choose the authoritative {conflict.channel} {factFamily} source for {conflict.locationName || conflict.localLocationId}</b><span>Overlapping feeds are excluded from consolidated totals until an owner or admin chooses one.</span></div>
           {canResolveAuthority ? <div>{conflict.candidates.map((candidate) => {
             const ready = candidate.availability === "ready";
-            return <button key={candidate.connectionId} disabled={Boolean(savingAuthority) || !ready} onClick={() => void chooseAuthority(conflict.localLocationId, candidate.connectionId, factFamily, conflict.expectedVersion)}><b>{candidate.accountName || candidate.provider.replaceAll("-", " ")}</b><small>{candidate.provider.replaceAll("-", " ")} · {ready && candidate.lastSuccessfulSyncAt ? `Synced ${new Date(candidate.lastSuccessfulSyncAt).toLocaleDateString("en-CA")}` : reportSourceAvailability(candidate.availability)}</small><span>{savingAuthority === candidate.connectionId ? "Saving..." : ready ? `Use for ${factFamily}` : reportSourceAvailability(candidate.availability)}</span></button>;
+            return <button key={candidate.connectionId} disabled={Boolean(savingAuthority) || !ready} onClick={() => void chooseAuthority(conflict.localLocationId, candidate.connectionId, factFamily, conflict.expectedVersion)}><b>{candidate.accountName || providerDisplayName(candidate.provider)}</b><small>{providerDisplayName(candidate.provider)} · {ready && candidate.lastSuccessfulSyncAt ? `Synced ${new Date(candidate.lastSuccessfulSyncAt).toLocaleDateString("en-CA")}` : reportSourceAvailability(candidate.availability)}</small><span>{savingAuthority === candidate.connectionId ? "Saving…" : ready ? `Use for ${factFamily}` : reportSourceAvailability(candidate.availability)}</span></button>;
           })}</div> : <p>An owner or admin must choose this source.</p>}
         </article>))}
-        {canonicalReports.length > 0 && <details className="provider-report-list" open><summary>Vanteloq report definitions</summary><section><div><b>Canonical intelligence</b><small>Consistent definitions across approved provider accounts. Planned reports stay unavailable until their exact query and required facts exist.</small></div>{canonicalReports.map((item) => <button key={item.id} disabled={item.status !== "ready" || item.queryReportId === null} onClick={() => { setSourceConnectionId(""); setSourceReportLabel(""); setSelected(item.presentation === "payment_mix" ? "Payment-method performance" : "Sales totals"); }}><span><b>{item.label}</b><small>{item.description}</small></span><em>{item.implementationStatus === "planned" ? "Query planned" : item.status === "ready" ? "Open canonical report" : `Needs ${item.dataNeeded.join(", ")}`}</em></button>)}</section></details>}
-        {providerCatalogs.length > 0 && <details className="provider-report-list"><summary>Provider-specific report catalogue</summary>{providerCatalogs.map((catalog) => <section key={catalog.connectionId}><div><b>{catalog.accountName || catalog.provider.replaceAll("-", " ")}</b><small>{catalog.boundary}</small></div>{catalog.providerReports.map((item) => <button key={item.id} disabled={item.status !== "ready" || item.queryReportId === null} onClick={() => { setSourceConnectionId(catalog.connectionId); setSourceReportLabel(item.label); setSelected(item.presentation === "payment_mix" ? "Payment-method performance" : "Sales totals"); }}><span><b>{item.label}</b><small>{item.description}</small></span><em>{item.status === "ready" ? "Open source view" : item.implementationStatus === "planned" ? "Query planned" : `Needs ${item.dataNeeded.join(", ")}`}</em></button>)}</section>)}</details>}
+        {canonicalReports.length > 0 && <details className="provider-report-list" open><summary>Vanteloq report definitions</summary><section><div><b>Canonical intelligence</b><small>Consistent definitions across approved provider accounts. A report remains unavailable until its exact query and required facts exist.</small></div>{canonicalReports.map((item) => <button key={item.id} disabled={item.status !== "ready" || item.queryReportId === null} onClick={() => { setSourceConnectionId(""); setSourceReportLabel(""); setSelected(item.presentation === "payment_mix" ? "Payment-method performance" : "Sales totals"); }}><span><b>{item.label}</b><small>{item.description}</small></span><em>{item.implementationStatus === "planned" ? "Not available" : item.status === "ready" ? "Open canonical report" : `Needs ${item.dataNeeded.join(", ")}`}</em></button>)}</section></details>}
+        {providerCatalogs.length > 0 && <details className="provider-report-list"><summary>Provider-specific report catalogue</summary>{providerCatalogs.map((catalog) => <section key={catalog.connectionId}><div><b>{catalog.accountName || providerDisplayName(catalog.provider)}</b><small>{catalog.boundary}</small></div>{catalog.providerReports.map((item) => <button key={item.id} disabled={item.status !== "ready" || item.queryReportId === null} onClick={() => { setSourceConnectionId(catalog.connectionId); setSourceReportLabel(item.label); setSelected(item.presentation === "payment_mix" ? "Payment-method performance" : "Sales totals"); }}><span><b>{item.label}</b><small>{item.description}</small></span><em>{item.status === "ready" ? "Open source view" : item.implementationStatus === "planned" ? "Not available" : `Needs ${item.dataNeeded.join(", ")}`}</em></button>)}</section>)}</details>}
       </section>
       <section className="report-period-control" aria-label="Report time frame">
         <div className="report-period-presets" aria-label="Time frame presets">
@@ -597,7 +598,7 @@ export function ReportsWorkspace({
               {selected === "Payment-method performance" && (
                 <section className="report-payment-mix" aria-label="Payment method performance">
                   <header><div><p>VERIFIED TENDERS</p><h3>Payment method mix</h3></div><span>{paymentMix.length ? `${paymentMix.length} payment types` : "Backfill required"}</span></header>
-                  {paymentMix.length ? paymentMix.map((row) => <div key={`${row.category}:${row.paymentTypeName ?? "unknown"}`}><span><i className={`payment-${row.category}`} /><b>{row.paymentTypeName || row.category.replaceAll("_", " ")}</b><small>{Number(row.transactionCount).toLocaleString()} recorded payments</small></span><strong>{money(Number(row.amountCents), currency)}</strong></div>) : <p>No verified payment records match this period. Vanteloq will not infer cash or card mix from sales totals.</p>}
+                  {paymentMix.length ? paymentMix.map((row) => <div key={`${row.category}:${row.paymentTypeName ?? "unknown"}`}><span><i className={`payment-${row.category}`} /><b>{row.paymentTypeName || humanizeIdentifier(row.category)}</b><small>{Number(row.transactionCount).toLocaleString()} recorded payments</small></span><strong>{money(Number(row.amountCents), currency)}</strong></div>) : <p>No verified payment records match this period. Vanteloq will not infer cash or card mix from sales totals.</p>}
                 </section>
               )}
               <section className="explain-act">
@@ -1006,7 +1007,7 @@ export function PurchaseOrdersWorkspace({
                   <span>{order.expectedDeliveryDate || "Not set"}</span>
                   <span>
                     <em className={`po-status ${order.status}`}>
-                      {order.status.replaceAll("_", " ")}
+                      {humanizeIdentifier(order.status)}
                     </em>
                   </span>
                   <span>{money(order.totalCents, order.currency)}</span>
@@ -1325,7 +1326,7 @@ function OrderInspector({
           <h3>{order.supplierName}</h3>
         </div>
         <span className={`po-status ${order.status}`}>
-          {order.status.replaceAll("_", " ")}
+          {humanizeIdentifier(order.status)}
         </span>
       </header>
       <div className="order-facts">
@@ -2035,7 +2036,7 @@ function RecommendationLab({
         {calculation.error || !result ? <p className="form-error">{calculation.error}</p> : <>
           <div className="reorder-verdict">
             <span className={result.status === "blocked" ? "breach" : "safe"}>
-              {result.status.replaceAll("_", " ")}
+              {humanizeIdentifier(result.status)}
             </span>
             <small>{result.confidence} confidence</small>
           </div>
@@ -2150,8 +2151,8 @@ export function DocumentsWorkspace({ showNotice, canUpload }: SharedProps & { ca
       <section className="document-pipeline">
         {Object.entries(data.pipeline).map(([key, state]) => (
           <article key={key}>
-            <span className={state}>{state.replaceAll("_", " ")}</span>
-            <b>{key.replaceAll(/([A-Z_])/g, " $1").replaceAll("_", " ")}</b>
+            <span className={state}>{humanizeIdentifier(state)}</span>
+            <b>{humanizeIdentifier(key.replaceAll(/([A-Z])/g, " $1"))}</b>
           </article>
         ))}
       </section>
@@ -2181,7 +2182,7 @@ export function DocumentsWorkspace({ showNotice, canUpload }: SharedProps & { ca
                     void upload(event.target.files?.[0] || null, type)
                   }
                 />
-                {type.replaceAll("_", " ")}
+                {humanizeIdentifier(type)}
               </label>
             ),
           )}
@@ -2209,13 +2210,13 @@ export function DocumentsWorkspace({ showNotice, canUpload }: SharedProps & { ca
                 {document.contentType}
               </small>
             </span>
-            <span>{document.documentType.replaceAll("_", " ")}</span>
+            <span>{humanizeIdentifier(document.documentType)}</span>
             <span>
-              <em>{document.status.replaceAll("_", " ")}</em>
+              <em>{humanizeIdentifier(document.status)}</em>
             </span>
             <span>
               <em className="gated">
-                {document.extractionStatus.replaceAll("_", " ")}
+                {humanizeIdentifier(document.extractionStatus)}
               </em>
             </span>
             <span>
@@ -2378,8 +2379,8 @@ export function DataQualityWorkspace({ showNotice, createTask, activeLocationId 
           {data.sources.connections.length ? (
             data.sources.connections.map((source) => (
               <p key={source.provider}>
-                <b>{source.provider}</b>
-                <span>{source.status}</span>
+                <b>{providerDisplayName(source.provider)}</b>
+                <span>{humanizeIdentifier(source.status)}</span>
               </p>
             ))
           ) : (

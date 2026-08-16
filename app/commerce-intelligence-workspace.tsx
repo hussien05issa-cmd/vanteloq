@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "./supabase-browser";
+import { providerDisplayName } from "../domain/display-labels";
 
 type Mode = "Sales" | "Inventory" | "Customers" | "Suppliers";
 type TaskSeed = { title: string; detail: string; priority: "high" | "medium" | "low"; sourceType?: "alert"; sourceRef?: string };
@@ -285,7 +286,7 @@ export default function CommerceIntelligenceWorkspace({ mode, currency, activeLo
         {costError && <div className="commerce-cost-error" role="alert">{costError}</div>}
         {costPreview.length > 0 && <div className="commerce-cost-preview">
           <div><b>{costFileName}</b><span>{costPreview.length} {costPreview.length === 1 ? "cost" : "costs"} ready for review</span></div>
-          <div className="commerce-cost-preview-rows">{costPreview.slice(0, 6).map((row) => <span key={`${row.row}:${row.sku}`}><b>{row.sku}</b><small>{row.provider || "Any matching provider"}</small><strong>{preciseMoney(row.unitCostCents, currency)}</strong></span>)}</div>
+          <div className="commerce-cost-preview-rows">{costPreview.slice(0, 6).map((row) => <span key={`${row.row}:${row.sku}`}><b>{row.sku}</b><small>{row.provider ? providerDisplayName(row.provider) : "Any matching provider"}</small><strong>{preciseMoney(row.unitCostCents, currency)}</strong></span>)}</div>
           {costPreview.length > 6 && <small>+ {costPreview.length - 6} more rows</small>}
           <div className="commerce-cost-confirm"><button type="button" onClick={() => { setCostPreview([]); setCostFileName(""); }}>Cancel</button><button type="button" disabled={costSaving} onClick={() => void saveCosts("csv", costPreview.map((row) => ({ sku: row.sku, provider: row.provider, unitCostCents: row.unitCostCents })))}>{costSaving ? "Saving…" : `Save ${costPreview.length} costs`}</button></div>
         </div>}

@@ -64,17 +64,39 @@ test("product branding uses the supplied BookLoQ assets and a shared trademark g
   assert.match(homepageCss, /\.product-brand-logo\.bookloq\.full \{[^}]*background:\s*transparent/);
 });
 
-test("X-Series and R-Series are distinct, actionable connection choices", async () => {
+test("Lightspeed Retail X-Series and R-Series are distinct, actionable connection choices", async () => {
   const catalog = await readFile(new URL("../app/integration-catalog.ts", import.meta.url), "utf8");
   const app = await readFile(new URL("../app/vanteloq-app.tsx", import.meta.url), "utf8");
-  assert.match(catalog, /id: "lightspeed"[\s\S]*name: "Lightspeed X-Series"/);
-  assert.match(catalog, /id: "lightspeed-r"[\s\S]*name: "Lightspeed R-Series"/);
+  assert.match(catalog, /id: "lightspeed"[\s\S]*name: "Lightspeed Retail X-Series"/);
+  assert.match(catalog, /id: "lightspeed-r"[\s\S]*name: "Lightspeed Retail R-Series"/);
   assert.match(app, /integrations\/\$\{provider\}\/authorize/);
   assert.match(app, /provider === "lightspeed-r" \? "shops" : provider === "clover" \|\| provider === "square" \|\| provider === "shopify" \|\| provider === "shopify-pos" \? "locations" : "outlets"/);
   assert.match(app, /providerActions\[integrationActionKey\(provider\.id, connection\.id\)\]/);
   assert.match(app, /integrationActionKey\(provider, connectionId\)/);
   assert.match(app, /delete next\[actionKey\]/);
   assert.doesNotMatch(app, /disabled=\{[^}]*Boolean\(providerActions\)[^}]*\}/);
+});
+
+test("payment-only connections cannot make the command centre claim a live POS source", async () => {
+  const commandCentre = await readFile(new URL("../app/api/v1/command-centre/route.ts", import.meta.url), "utf8");
+  assert.match(commandCentre, /new Set\(\["lightspeed", "lightspeed-r", "shopify", "shopify-pos", "square", "clover"\]\)/);
+  assert.doesNotMatch(commandCentre, /supportedPosProviders[^;]*"moneris"/);
+  assert.match(commandCentre, /Payment-only connectors such as Moneris/);
+});
+
+test("invoice files stay behind authenticated document downloads", async () => {
+  const [invoiceRoute, workspace, documentsRoute] = await Promise.all([
+    readFile(new URL("../app/api/v1/bookloq/invoices/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/bookloq-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/v1/documents/route.ts", import.meta.url), "utf8"),
+  ]);
+  assert.doesNotMatch(invoiceRoute, /downloadUrl/);
+  assert.match(invoiceRoute, /securityState: "clean", source: "application-generated"/);
+  assert.match(invoiceRoute, /'clean', 'approved', 'clean'/);
+  assert.match(workspace, /apiFetch\(`\/api\/v1\/documents\?id=/);
+  assert.doesNotMatch(workspace, /window\.open\([^)]*documents/);
+  assert.match(documentsRoute, /eq\(workspaceDocuments\.organizationId, context\.organizationId\)/);
+  assert.match(documentsRoute, /Cache-Control": "private, no-store"/);
 });
 
 test("the feature tour advances meaningful interface phases and scene controls restart playback", async () => {
@@ -386,7 +408,7 @@ test("account access includes confirmation recovery and a complete password-rese
 
   assert.match(authPanel, /resetPasswordForEmail/);
   assert.match(authPanel, /resetPasswordForEmail[\s\S]{0,250}captchaToken: turnstileToken/);
-  assert.match(authPanel, /auth\.signUp\([\s\S]{0,400}canonicalAuthUrl/);
+  assert.match(authPanel, /auth\.signUp\([\s\S]{0,900}canonicalAuthUrl/);
   assert.match(authPanel, /fetch\("\/api\/v1\/auth\/signin"[\s\S]{0,400}turnstileToken/);
   assert.match(authPanel, /auth\.setSession/);
   assert.match(authPanel, /auth\.resend[\s\S]{0,300}captchaToken: turnstileToken/);

@@ -39,7 +39,7 @@ test("homepage copy stays within the verified product boundary", async () => {
   const connections = html.match(/<section class="home-connections"[\s\S]*?<\/section>/)?.[0] ?? "";
   assert.ok(connections, "homepage should render the public connector section");
   assert.doesNotMatch(html, /Start (?:Your )?Free Trial/i);
-  for (const provider of ["Lightspeed R-Series", "Lightspeed X-Series", "Square", "Moneris", "QuickBooks", "Xero", "Plaid", "Google", "Meta"]) assert.match(connections, new RegExp(`<strong>${provider}</strong>`));
+  for (const provider of ["Lightspeed Retail R-Series", "Lightspeed Retail X-Series", "Square", "Moneris", "QuickBooks", "Xero", "Plaid", "Google", "Meta"]) assert.match(connections, new RegExp(`<strong>${provider}</strong>`));
   assert.match(connections, /Connect the tools that already run your business/);
   assert.match(connections, /Use owner-authorized balances and transactions in cash planning/);
   assert.doesNotMatch(connections, /(?:PLANNED|COMING SOON|STAGING|LIMITED PILOT|ADAPTER BUILT|honest availability)/i);

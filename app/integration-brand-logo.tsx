@@ -30,7 +30,7 @@ const simpleMarks: Record<string, SimpleIcon> = {
 };
 
 export default function IntegrationBrandLogo({ name, compact = false }: { name: string; compact?: boolean }) {
-  if (name === "Lightspeed" || name === "Lightspeed X-Series" || name === "Lightspeed R-Series") {
+  if (name === "Lightspeed" || name.startsWith("Lightspeed ")) {
     return <span className={`integration-logo brand-lightspeed${compact ? " compact" : ""}`} role="img" aria-label="Lightspeed logo">
       {/* Standalone Lightspeed flame artwork; the wordmark is intentionally excluded. */}
       {/* eslint-disable-next-line @next/next/no-img-element */}

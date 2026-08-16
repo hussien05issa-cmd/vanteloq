@@ -103,6 +103,10 @@ function onboardingBody() {
     hours: days.map((day) => ({ day, open: "10:00", close: "21:00", closed: false })),
     sourceMode: "connect_later",
     selectedPos: "",
+    legalAccepted: true,
+    termsVersion: "2026-08-16",
+    privacyPolicyVersion: "2026-08-16",
+    legalNoticeVersion: "account-creation-v1",
   };
 }
 

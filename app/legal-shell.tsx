@@ -1,8 +1,9 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import ProductBrandLogo from "./product-brand-logo";
+import { LEGAL_DOCUMENT_UPDATED_LABEL } from "../shared/legal-versions";
 
-export const LEGAL_UPDATED = "August 11, 2026";
+export const LEGAL_UPDATED = LEGAL_DOCUMENT_UPDATED_LABEL;
 export const LEGAL_EMAIL = "hussienissa@lexedgeconsulting.com";
 
 export function LegalShell({

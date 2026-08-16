@@ -50,6 +50,10 @@ function onboardingBody(ownerName, businessName) {
     hours: days.map(day => ({ day, open: "10:00", close: "21:00", closed: false })),
     sourceMode: "csv",
     selectedPos: "",
+    legalAccepted: true,
+    termsVersion: "2026-08-16",
+    privacyPolicyVersion: "2026-08-16",
+    legalNoticeVersion: "account-creation-v1",
   };
 }
 

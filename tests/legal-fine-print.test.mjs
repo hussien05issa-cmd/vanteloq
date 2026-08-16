@@ -19,6 +19,10 @@ test("privacy notice explains financial connections, document review, and consen
     "financial-data authorization",
     "TLS 1.2",
     "additional application-level AES-GCM encryption layer",
+    "Gemini Advisor data-use acceptance",
+    "The checkbox is not preselected",
+    "Clear conversation",
+    "full account numbers",
   ]) assert.match(privacy, new RegExp(phrase));
 });
 
@@ -39,6 +43,7 @@ test("legal and retention documents keep professional review and deletion limits
   const legal = read("../app/legal/page.tsx");
   const retention = read("../docs/DATA_RETENTION.md");
   const shell = read("../app/legal-shell.tsx");
+  const versions = read("../shared/legal-versions.ts");
 
   assert.match(legal, /no website notice can guarantee that every legal issue has been resolved/);
   assert.match(retention, /Disconnection is not the same as deletion of lawfully retained accounting records/);
@@ -46,7 +51,8 @@ test("legal and retention documents keep professional review and deletion limits
   assert.match(retention, /six years from the end of the last tax year/);
   assert.match(retention, /DELETE PLAID DATA/);
   assert.match(retention, /quarterly operational review/);
-  assert.match(shell, /August 11, 2026/);
+  assert.match(shell, /LEGAL_DOCUMENT_UPDATED_LABEL/);
+  assert.match(versions, /August 16, 2026/);
 
-  for (const document of [legal, retention, shell]) assert.doesNotMatch(document, /\u2014/);
+  for (const document of [legal, retention, shell, versions]) assert.doesNotMatch(document, /\u2014/);
 });

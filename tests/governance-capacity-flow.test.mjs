@@ -47,6 +47,10 @@ function onboardingPayload(ownerName, businessName, businessEmail) {
     taxNumber: "",
     sourceMode: "connect_later",
     selectedPos: "",
+    legalAccepted: true,
+    termsVersion: "2026-08-16",
+    privacyPolicyVersion: "2026-08-16",
+    legalNoticeVersion: "account-creation-v1",
     hours: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
       .map((day) => ({ day, open: "09:00", close: "17:00", closed: false })),
   };

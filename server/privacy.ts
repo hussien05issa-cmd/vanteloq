@@ -2,6 +2,9 @@ import { and, eq } from "drizzle-orm";
 import { getDb } from "../db";
 import { integrationConsents } from "../db/schema";
 import {
+  GEMINI_CONSENT_NOTICE_VERSION,
+  GEMINI_DATA_CATEGORIES,
+  GEMINI_PROCESSING_PURPOSES,
   PLAID_CONSENT_MAX_AGE_MS,
   PLAID_CONSENT_NOTICE_VERSION,
   PLAID_DATA_CATEGORIES,
@@ -9,6 +12,52 @@ import {
   PRIVACY_POLICY_VERSION,
 } from "../domain/privacy-controls";
 import { ApiError } from "./api";
+
+export async function recordGeminiConsent(input: {
+  organizationId: string;
+  actorUserId: string;
+  noticeVersion: string;
+  privacyPolicyVersion: string;
+}) {
+  if (
+    input.noticeVersion !== GEMINI_CONSENT_NOTICE_VERSION
+    || input.privacyPolicyVersion !== PRIVACY_POLICY_VERSION
+  ) {
+    throw new ApiError(409, "GEMINI_CONSENT_NOTICE_STALE", "The Gemini data-use notice changed. Review it again before asking a question.");
+  }
+
+  const [existing] = await getDb().select({
+    id: integrationConsents.id,
+    acceptedAt: integrationConsents.acceptedAt,
+  }).from(integrationConsents).where(and(
+    eq(integrationConsents.organizationId, input.organizationId),
+    eq(integrationConsents.actorUserId, input.actorUserId),
+    eq(integrationConsents.provider, "google_gemini"),
+    eq(integrationConsents.status, "accepted"),
+    eq(integrationConsents.noticeVersion, GEMINI_CONSENT_NOTICE_VERSION),
+    eq(integrationConsents.privacyPolicyVersion, PRIVACY_POLICY_VERSION),
+  )).limit(1);
+  if (existing) return existing;
+
+  const now = new Date();
+  const id = crypto.randomUUID();
+  await getDb().insert(integrationConsents).values({
+    id,
+    organizationId: input.organizationId,
+    actorUserId: input.actorUserId,
+    provider: "google_gemini",
+    status: "accepted",
+    noticeVersion: GEMINI_CONSENT_NOTICE_VERSION,
+    privacyPolicyVersion: PRIVACY_POLICY_VERSION,
+    dataCategoriesJson: JSON.stringify(GEMINI_DATA_CATEGORIES),
+    purposesJson: JSON.stringify(GEMINI_PROCESSING_PURPOSES),
+    consentSource: "in_app",
+    acceptedAt: now,
+    createdAt: now,
+    updatedAt: now,
+  });
+  return { id, acceptedAt: now };
+}
 
 export async function recordPlaidConsent(input: {
   organizationId: string;

@@ -20,6 +20,7 @@ import { commerceSourceAuthority, defaultCommerceChannel } from "../../../../ser
 import { buildCanonicalReportCatalog, buildProviderReportCatalog, reportCapableCommerceProviders } from "../../../../domain/provider-report-contracts";
 import type { CanonicalCommerceCoverage } from "../../../../domain/provider-feature-coverage";
 import { scopeExternalRef } from "../../../../domain/integration-source";
+import { providerDisplayName } from "../../../../domain/display-labels";
 import { recordAudit } from "../../../../server/audit";
 
 const users = ["owner", "admin", "manager", "employee", "read_only"] as const;
@@ -316,11 +317,11 @@ export async function GET(request: Request) {
       type: !canViewIntegrationMetadata && returnedProviders.length
         ? manualRows.length ? "Approved authoritative records plus owner-reviewed summaries" : "Approved authoritative records"
         : selectedConnection
-        ? `${selectedConnection.provider.replaceAll("-", " ")} account records`
+        ? `${providerDisplayName(selectedConnection.provider)} account records`
         : returnedProviders.length && manualRows.length
-          ? `${returnedProviders.map((provider) => provider.replaceAll("-", " ")).join(", ")} authoritative records plus owner-reviewed summaries`
+          ? `${returnedProviders.map((provider) => providerDisplayName(provider)).join(", ")} authoritative records plus owner-reviewed summaries`
           : returnedProviders.length
-          ? `${returnedProviders.map((provider) => provider.replaceAll("-", " ")).join(", ")} authoritative records`
+          ? `${returnedProviders.map((provider) => providerDisplayName(provider)).join(", ")} authoritative records`
           : "Owner-reviewed daily summaries",
       rowCount: rows.length,
       verifiedDays: distinctDates.length,

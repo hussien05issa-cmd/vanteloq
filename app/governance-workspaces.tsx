@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { FormEvent, type ReactNode, useCallback, useEffect, useState } from "react";
 import { apiFetch } from "./supabase-browser";
+import { humanizeIdentifier } from "../domain/display-labels";
 
 type Permission = {
   key: string;
@@ -339,7 +340,7 @@ export function TeamWorkspace({ showNotice, permissions }: Props & { permissions
                 </div>
                 <div>
                   <span className={`member-status ${member.status}`}>
-                    {member.status.replaceAll("_", " ")}
+                    {humanizeIdentifier(member.status)}
                   </span>
                   {member.status === "draft" && (
                     <small>Email delivery not connected</small>

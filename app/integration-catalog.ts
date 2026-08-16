@@ -54,7 +54,7 @@ export const salesChannelGroups = [
 export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
   {
     id: "lightspeed",
-    name: "Lightspeed X-Series",
+    name: "Lightspeed Retail X-Series",
     category: "Point of sale",
     availability: "credentials_required",
     activationRequirement:
@@ -62,7 +62,7 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
   },
   {
     id: "lightspeed-r",
-    name: "Lightspeed R-Series",
+    name: "Lightspeed Retail R-Series",
     category: "Point of sale",
     availability: "credentials_required",
     activationRequirement:
@@ -174,14 +174,6 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
     availability: "credentials_required",
     activationRequirement:
       "The BookLoQ bank-feed adapter uses resumable Plaid Link, encrypted tokens, signed webhooks, repair mode, cursor sync, balances, and reviewed transactions. Production access still requires Plaid approval, Canadian institution testing, and hosted credentials.",
-  },
-  {
-    id: "manual-bank",
-    name: "Bank feeds",
-    category: "Manual imports",
-    availability: "provider_build_required",
-    activationRequirement:
-      "Not available yet. A safe bank import still needs format validation, duplicate detection, a review queue, rollback, and statement-to-ledger reconciliation tests.",
   },
   {
     id: "payroll",

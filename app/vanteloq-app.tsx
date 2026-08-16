@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import BookLoQWorkspace from "./bookloq-workspace";
 import CommunicationsWorkspace from "./communications-workspace";
@@ -37,6 +38,11 @@ import {
 } from "../domain/navigation-preferences";
 import { buildProviderFeatureCoverage, type CanonicalCommerceCoverage, type ProviderFeatureCoverage } from "../domain/provider-feature-coverage";
 import { integrationActionKey, supportsMultipleProviderAccounts } from "../domain/integration-source";
+import { humanizeIdentifier, providerDisplayName, workspaceViewLabel } from "../domain/display-labels";
+import {
+  GEMINI_CONSENT_NOTICE_VERSION,
+  PRIVACY_POLICY_VERSION,
+} from "../domain/privacy-controls";
 
 type View =
   | "Dashboard"
@@ -926,7 +932,7 @@ export default function VanteloqApp({
                         variant="full"
                         className="bookloq-nav-lockup"
                       />
-                    ) : <><span className="nav-dot" />{item}</>}
+                    ) : <><span className="nav-dot" />{workspaceViewLabel(item)}</>}
                   </button>
                 ))}
               </section>
@@ -966,7 +972,7 @@ export default function VanteloqApp({
             </span>
             <span>
               <b>{accountName}</b>
-              <small>{appRole.replaceAll("_", " ")}</small>
+              <small>{humanizeIdentifier(appRole)}</small>
             </span>
             <button className="profile-signout" aria-label="Sign out" onClick={() => void signOut()}>
               Sign out
@@ -996,7 +1002,7 @@ export default function VanteloqApp({
             <p className="eyebrow">
               {view === "Dashboard" ? "OWNER COMMAND CENTRE" : view === "BookLoQ" || view === "Profit" || view === "Cash" || view === "Bookkeeping" ? "BOOKLOQ FINANCE" : "VANTELOQ WORKSPACE"}
             </p>
-            <h1>{view === "Dashboard" ? "Unified Workspace" : view === "Profit" ? "BookLoQ · Reports" : view === "Cash" ? "BookLoQ · Cash Flow" : view === "Bookkeeping" ? "BookLoQ · Transactions" : view}</h1>
+            <h1>{view === "Dashboard" ? "Unified Workspace" : view === "Profit" ? "BookLoQ · Reports" : view === "Cash" ? "BookLoQ · Cash Flow" : view === "Bookkeeping" ? "BookLoQ · Transactions" : workspaceViewLabel(view)}</h1>
           </div>
           <div className="top-actions">
             <button className="command-trigger" onClick={() => setCommandOpen(true)} aria-label="Open workspace search"><span>Search workspace</span><kbd>⌘K</kbd></button>
@@ -1005,10 +1011,10 @@ export default function VanteloqApp({
             >
               <i />
               {data?.liveSource.lastSuccessfulSyncAt
-                ? "live sales"
+                ? "Live sales"
                 : data?.source.latestBusinessDate
-                ? `${data.source.freshness} data`
-                : "no data"}
+                ? `${humanizeIdentifier(data.source.freshness)} data`
+                : "No data"}
             </span>
             <button
               className="icon-button notification"
@@ -1547,10 +1553,11 @@ function Metric({
   sparkline?: number[];
   provenance?: MetricProvenance;
 }) {
+  const unavailable = value === "Not connected" || value === "Not available";
   return (
-    <article className={`metric-card metric-${tone}`}>
+    <article className={`metric-card metric-${tone}${unavailable ? " metric-unavailable" : ""}`}>
       <p>{label}</p>
-      <h3>{value}</h3>
+      <h3 className={unavailable ? "metric-unavailable-value" : undefined}>{value}</h3>
       <span>{delta}</span>
       {sparkline?.length ? <MetricSparkline values={sparkline} tone={tone} /> : <i className="metric-accent" aria-hidden="true" />}
       <small>{detail}</small>
@@ -2333,7 +2340,7 @@ function DataHub({
         if (connection.lastSuccessfulSyncAt && connection.lastSuccessfulSyncAt !== startedFrom) {
           showNotice("R-Series is current. The dashboard has been refreshed with the latest verified records.");
         } else if (connection.lastErrorCode) {
-          showNotice(`R-Series needs attention: ${connection.lastErrorCode.replaceAll("_", " ")}.`);
+          showNotice(`R Series needs attention: ${humanizeIdentifier(connection.lastErrorCode)}.`);
         } else {
           showNotice("R-Series finished checking for updates. No newer verified records were returned.");
         }
@@ -2627,7 +2634,7 @@ function DataHub({
     connectionId?: string,
     accountLabel?: string | null,
   ) => {
-    const providerLabel = provider === "stripe" ? "Stripe" : provider === "moneris" ? "Moneris" : provider === "shopify" ? "Shopify e-commerce" : provider === "shopify-pos" ? "Shopify POS" : provider === "lightspeed-r" ? "Lightspeed R-Series" : provider === "square" ? "Square" : provider === "clover" ? "Clover" : provider === "lightspeed" ? "Lightspeed X-Series" : provider === "google" ? "Google" : "Meta";
+    const providerLabel = provider === "shopify" ? "Shopify e-commerce" : providerDisplayName(provider);
     const targetLabel = accountLabel ? ` account “${accountLabel}”` : "";
     if (!window.confirm(`Disconnect ${providerLabel}${targetLabel}? Staged audit history will be retained.`)) return;
     const body = await providerPost(
@@ -2787,7 +2794,8 @@ function DataHub({
               const isPlaid = provider.id === "plaid";
               const isMarketingProvider = provider.id === "google" || provider.id === "meta";
               const supportsMultipleAccounts = supportsMultipleProviderAccounts(provider.id);
-              const isPlanned = provider.availability === "provider_build_required" || provider.availability === "provider_selection_required";
+              const providerSetupRequired = provider.availability === "provider_selection_required";
+              const providerUnavailable = provider.availability === "provider_build_required";
               const repairRequired = isPlaid && provider.status === "error" && Boolean(provider.maskedAccountRef);
               const canManageProvider = provider.id === "plaid"
                 ? provider.canManage ?? canManageBankConnections
@@ -2807,7 +2815,8 @@ function DataHub({
                   <IntegrationBrandLogo name={provider.name} />
                   <div className="integration-card-labels">
                     <span className="integration-type">{provider.category}</span>
-                    {isPlanned && <span className="integration-coming-soon">Planned</span>}
+                    {providerSetupRequired && <span className="integration-coming-soon">Provider required</span>}
+                    {providerUnavailable && <span className="integration-coming-soon">Unavailable</span>}
                   </div>
                 </div>
                 <h3>{provider.name}</h3>
@@ -2865,19 +2874,19 @@ function DataHub({
                           <b>{connection.externalAccountName || `${provider.name} account`}</b>
                           <small>{connection.maskedAccountRef ? `Protected reference ${connection.maskedAccountRef}` : connection.status === "pending" ? "Authorization pending" : "Protected provider identity"}</small>
                           {connection.lastSuccessfulSyncAt && <small>Last synced {formatRelativeSync(connection.lastSuccessfulSyncAt)}</small>}
-                          {connection.dataPromotionStatus !== "blocked" && <small>Data {connection.dataPromotionStatus.replaceAll("_", " ")}</small>}
+                          {connection.dataPromotionStatus !== "blocked" && <small>Data {humanizeIdentifier(connection.dataPromotionStatus)}</small>}
                           {isMarketingProvider && <small>{connection.resourceSelections.length
                             ? `${connection.resourceSelections.length} exact resource${connection.resourceSelections.length === 1 ? "" : "s"} selected`
                             : "No provider resources selected"}</small>}
                           {(provider.category === "Point of sale" || provider.id === "shopify") && <small>{connection.reportCatalog.providerReports.filter((report) => report.status === "ready").length} of {connection.reportCatalog.providerReports.length} source-specific reports ready</small>}
-                          {connection.lastErrorCode && <small role="alert">Needs attention: {connection.lastErrorCode.replaceAll("_", " ")}</small>}
+                          {connection.lastErrorCode && <small role="alert">Needs attention: {humanizeIdentifier(connection.lastErrorCode)}</small>}
                         </div>
-                        <span className={`provider-account-state ${connection.status}`}>{connection.status.replaceAll("_", " ")}</span>
+                        <span className={`provider-account-state ${connection.status}`}>{humanizeIdentifier(connection.status)}</span>
                         {isMarketingProvider && connection.sampleSummary && <section className="marketing-sample-review" aria-label={`Warning-free ${provider.name} sample review`}>
                           <header><div><b>Warning-free exact-resource sample</b><small>Completed {connection.sampleSummary.completedAt ? new Date(connection.sampleSummary.completedAt).toLocaleString("en-CA") : "recently"} · version {connection.sampleSummary.selectionVersion}</small></div><strong>{connection.sampleSummary.recordsStaged} measurements</strong></header>
                           <div>{connection.resourceSelections.map((selection) => {
                             const result = connection.sampleSummary?.resourceResults.find((item) => item.resourceSelectionId === selection.id);
-                            return <span key={selection.id}><b>{selection.name}</b><small>{selection.dataset.replaceAll("_", " ")} · {selection.scopeKind === "location" ? "Owned location scope" : "Organization-wide scope"}</small><em>{result?.recordsRead ?? 0} records · {result?.warningCodes.length ?? 0} warnings</em></span>;
+                            return <span key={selection.id}><b>{selection.name}</b><small>{humanizeIdentifier(selection.dataset)} · {selection.scopeKind === "location" ? "Owned location scope" : "Organization-wide scope"}</small><em>{result?.recordsRead ?? 0} records · {result?.warningCodes.length ?? 0} warnings</em></span>;
                           })}</div>
                           <label><input type="checkbox" checked={reviewedMarketingSamples[connection.sampleSummary.runId] === true} onChange={(event) => setReviewedMarketingSamples((current) => ({ ...current, [connection.sampleSummary!.runId]: event.target.checked }))} />I reviewed every selected resource, scope, record count, and warning total above.</label>
                         </section>}
@@ -2946,8 +2955,10 @@ function DataHub({
                         ? "Repair required"
                         : connected
                         ? "Connected"
-                        : isPlanned
-                          ? "Planned"
+                        : providerSetupRequired
+                          ? "Provider required"
+                        : providerUnavailable
+                          ? "Unavailable"
                         : configured
                           ? "Ready to authorize"
                           : availabilityLabel(provider.availability)}
@@ -2969,9 +2980,13 @@ function DataHub({
                                   : "Resource selection required · measurements unavailable"
                               : "Reviewed source data is available"
                           : "Staging only · metrics locked"
+                          : providerSetupRequired
+                            ? "Choose a supported provider before synchronization"
+                            : providerUnavailable
+                              ? "Connection not available"
                           : configured
                             ? "Authorization required · metrics locked"
-                            : "Sync disabled"}
+                            : "Synchronization unavailable"}
                     </span>
                   </div>
                   {isPlaid ? <div className="provider-actions">
@@ -3015,7 +3030,7 @@ function DataHub({
             </header>
             <div className="outlet-mapping-list">
               {marketingResourcePanel.datasets.map((group) => <div key={group.dataset} className="marketing-resource-group">
-                <h4>{group.dataset.replaceAll("_", " ")}</h4>
+                <h4>{humanizeIdentifier(group.dataset)}</h4>
                 {group.resources.length ? group.resources.map((resource) => <article key={`${group.dataset}:${resource.externalResourceRef}`} className="marketing-resource-row">
                   <label>
                     <input
@@ -3090,8 +3105,8 @@ function DataHub({
           {marketingSampleResult && marketingSampleResult.run.warningCount > 0 && <section className="sample-sync-result marketing-sample-warning" aria-live="polite">
             <header><div><p>{marketingSampleResult.provider === "google" ? "GOOGLE" : "META"} EXACT-RESOURCE SAMPLE</p><h3>This sample remains staged and cannot be approved.</h3></div><strong>REVIEW WARNINGS</strong></header>
             <div><span><small>RECORDS READ</small><b>{marketingSampleResult.run.recordsRead}</b></span><span><small>RECORDS STAGED</small><b>{marketingSampleResult.run.recordsImported}</b></span><span><small>RESOURCES</small><b>{marketingSampleResult.resourceResults.length}</b></span><span><small>WARNINGS</small><b>{marketingSampleResult.run.warningCount}</b></span></div>
-            <section className="marketing-sample-result-list">{marketingSampleResult.resourceResults.map((result) => <span key={result.resourceSelectionId}><b>{result.resourceName}</b><small>{result.dataset.replaceAll("_", " ")} · {result.scope}</small><em>{result.recordsRead} records · {result.warningCodes.length ? result.warningCodes.join(", ").replaceAll("_", " ") : "No resource warning"}</em></span>)}</section>
-            <p>{marketingSampleResult.nextStep} {marketingSampleResult.warnings.length ? `Warnings: ${marketingSampleResult.warnings.join(", ").replaceAll("_", " ")}.` : ""}</p>
+            <section className="marketing-sample-result-list">{marketingSampleResult.resourceResults.map((result) => <span key={result.resourceSelectionId}><b>{result.resourceName}</b><small>{humanizeIdentifier(result.dataset)} · {result.scope}</small><em>{result.recordsRead} records · {result.warningCodes.length ? result.warningCodes.map((code) => humanizeIdentifier(code)).join(", ") : "No resource warning"}</em></span>)}</section>
+            <p>{marketingSampleResult.nextStep} {marketingSampleResult.warnings.length ? `Warnings: ${marketingSampleResult.warnings.map((warning) => humanizeIdentifier(warning)).join(", ")}.` : ""}</p>
           </section>}
           {sampleResult && <section className={`sample-sync-result ${sampleResult.readyForReview ? "review-ready" : ""}`} aria-live="polite">
             <header>
@@ -3963,6 +3978,7 @@ function Advisor({
 }) {
   const [question, setQuestion] = useState("");
   const [loading, setLoading] = useState(false);
+  const [dataUseAccepted, setDataUseAccepted] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [answer, setAnswer] = useState<{
     title: string;
@@ -3976,7 +3992,17 @@ function Advisor({
     setLoading(true);
     const normalized = question.toLowerCase();
     try {
-      const response = await apiFetch("/api/v1/advisor/chat", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ question, conversationId }) });
+      const response = await apiFetch("/api/v1/advisor/chat", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          question,
+          conversationId,
+          dataUseAccepted,
+          noticeVersion: GEMINI_CONSENT_NOTICE_VERSION,
+          privacyPolicyVersion: PRIVACY_POLICY_VERSION,
+        }),
+      });
       const payload = await response.json() as { status?: string; answer?: string | null; conversationId?: string; message?: string; error?: { message?: string } };
       if (!response.ok) throw new Error(payload.error?.message ?? "The advisor could not answer right now.");
       if (payload.conversationId) setConversationId(payload.conversationId);
@@ -4025,7 +4051,33 @@ function Advisor({
           "Product, customer, campaign, supplier or hourly questions need their corresponding feeds.",
       });
   };
-  const clearConversation = () => { setConversationId(null); setAnswer(null); setQuestion(""); };
+  const clearConversation = async () => {
+    if (loading) return;
+    if (conversationId) {
+      setLoading(true);
+      try {
+        const response = await apiFetch("/api/v1/advisor/chat", {
+          method: "DELETE",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ conversationId }),
+        });
+        const payload = await response.json() as { error?: { message?: string } };
+        if (!response.ok) throw new Error(payload.error?.message ?? "The conversation could not be deleted.");
+      } catch (error) {
+        setAnswer({
+          title: "The conversation was not cleared",
+          body: error instanceof Error ? error.message : "Try again shortly.",
+          limitation: "The existing conversation remains available until deletion succeeds.",
+        });
+        return;
+      } finally {
+        setLoading(false);
+      }
+    }
+    setConversationId(null);
+    setAnswer(null);
+    setQuestion("");
+  };
   return (
     <div className="content advisor-page">
       <section className="advisor-hero">
@@ -4040,9 +4092,19 @@ function Advisor({
             onChange={(event) => setQuestion(event.target.value)}
             placeholder="Why were sales lower? Where is margin leaking?"
           />
-          <button disabled={loading}>{loading ? "Thinking…" : "Ask Gemini →"}</button>
+          <button disabled={loading || !dataUseAccepted}>{loading ? "Thinking…" : "Ask Gemini →"}</button>
         </form>
-        <div className="advisor-provider-note"><IntegrationBrandLogo name="Google" compact/><span><strong>Gemini on Google’s AI platform</strong><small>Evidence first · No actions without your approval</small></span>{answer && <button type="button" onClick={clearConversation}>Clear</button>}</div>
+        <label className="advisor-data-consent">
+          <input
+            type="checkbox"
+            checked={dataUseAccepted}
+            onChange={(event) => setDataUseAccepted(event.target.checked)}
+          />
+          <span>
+            I understand that my question, verified aggregate business metrics, source status, permitted aggregate cash, and short conversation context are sent to Google Gemini to produce this explanation. Raw credentials, account numbers, customer names, invoice files, and raw transactions are excluded. <Link href="/privacy#automation">Review the Privacy Policy.</Link>
+          </span>
+        </label>
+        <div className="advisor-provider-note"><IntegrationBrandLogo name="Google" compact/><span><strong>Gemini on Google’s AI platform</strong><small>Evidence first · No actions without your approval</small></span>{answer && <button type="button" onClick={() => void clearConversation()}>Clear conversation</button>}</div>
         <div className="suggested-questions">
           {[
             "Why did sales change?",
@@ -4088,17 +4150,7 @@ type CommerceSnapshot = {
 };
 
 function providerLabel(provider: string) {
-  const labels: Record<string, string> = {
-    "lightspeed-r": "Lightspeed R-Series",
-    lightspeed: "Lightspeed X-Series",
-    "shopify-pos": "Shopify POS",
-    shopify: "Shopify",
-    square: "Square",
-    clover: "Clover",
-    moneris: "Moneris",
-    multiple: "Multiple POS sources",
-  };
-  return labels[provider] ?? provider.replaceAll("-", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+  return providerDisplayName(provider);
 }
 
 function CommerceRecordsWorkspace({ kind, navigate, activeLocationId }: { kind: "Customers" | "Suppliers"; navigate: (view: View) => void; activeLocationId: string | null }) {
@@ -4245,7 +4297,7 @@ function LocationsWorkspace({
               <div className="location-source-list">
                 <b>Mapped data sources</b>
                 {location.sourceMappings.length
-                  ? location.sourceMappings.map((mapping) => <span key={`${mapping.provider}:${mapping.name}`}>{mapping.name}<small>{mapping.provider.replaceAll("-", " ")}</small></span>)
+                  ? location.sourceMappings.map((mapping) => <span key={`${mapping.provider}:${mapping.name}`}>{mapping.name}<small>{providerDisplayName(mapping.provider)}</small></span>)
                   : <p>No provider location is mapped yet. Organization records remain available, but store metrics stay blocked.</p>}
               </div>
               <footer>

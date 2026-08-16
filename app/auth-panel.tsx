@@ -9,6 +9,11 @@ import TurnstileField from "./turnstile-field";
 import { MINIMUM_PASSWORD_LENGTH, passwordRules, strongPasswordError } from "../shared/password-security";
 import { canonicalAuthUrl } from "../shared/auth-urls";
 import { passwordExposureStatus } from "../shared/password-exposure";
+import {
+  ACCOUNT_ACCEPTANCE_NOTICE_VERSION,
+  PRIVACY_POLICY_VERSION,
+  TERMS_OF_SERVICE_VERSION,
+} from "../shared/legal-versions";
 
 export type AuthPanelMode = "signin" | "signup" | "request-reset" | "reset-password";
 
@@ -36,6 +41,7 @@ export default function AuthPanel({
   const [turnstileAction, setTurnstileAction] = useState("");
   const [turnstileToken, setTurnstileToken] = useState("");
   const [turnstileResetSignal, setTurnstileResetSignal] = useState(0);
+  const [legalAccepted, setLegalAccepted] = useState(false);
   const protectedMode = mode === "signup" || mode === "signin" || mode === "request-reset";
 
   useEffect(() => {
@@ -106,6 +112,12 @@ export default function AuthPanel({
     setNeedsConfirmation(false);
 
     if (mode === "signup") {
+      if (!legalAccepted) {
+        setBusy(false);
+        setMessageIsError(true);
+        setMessage("Review and accept the Terms of Service and Privacy Policy to create an account.");
+        return;
+      }
       const passwordError = strongPasswordError(password);
       if (passwordError) {
         setBusy(false);
@@ -127,7 +139,13 @@ export default function AuthPanel({
           email: email.trim().toLowerCase(),
           password,
           options: {
-            data: { full_name: name.trim() },
+            data: {
+              full_name: name.trim(),
+              legal_terms_version: TERMS_OF_SERVICE_VERSION,
+              legal_privacy_version: PRIVACY_POLICY_VERSION,
+              legal_notice_version: ACCOUNT_ACCEPTANCE_NOTICE_VERSION,
+              legal_accepted_at: new Date().toISOString(),
+            },
             emailRedirectTo: canonicalAuthUrl("/"),
             captchaToken: turnstileToken,
           },
@@ -291,6 +309,7 @@ export default function AuthPanel({
     setNeedsConfirmation(false);
     setPassword("");
     setPasswordConfirmation("");
+    setLegalAccepted(false);
   }
 
   const title = mode === "signup" ? "Create your workspace"
@@ -331,8 +350,8 @@ export default function AuthPanel({
         />}
         {message && <div className={`auth-message${messageIsError ? " error" : ""}`} aria-live="polite">{message}</div>}
         {needsConfirmation && <button className="auth-secondary" type="button" onClick={() => void resendConfirmation()} disabled={busy}>Resend confirmation email</button>}
-        <button className="auth-submit" disabled={busy || configured !== true || (protectedMode && (!siteKey || !turnstileToken)) || (mode === "reset-password" && recoveryReady !== true)}>{busy || configured === null || (mode === "reset-password" && recoveryReady === null) ? "Please wait…" : submitLabel}</button>
-        {mode === "signup" && <p className="auth-legal">By creating an account, you agree to the <Link href="/terms" target="_blank">Terms of Service</Link> and acknowledge the <Link href="/privacy" target="_blank">Privacy Policy</Link>.</p>}
+        {mode === "signup" && <label className="auth-legal-consent"><input type="checkbox" checked={legalAccepted} onChange={event => setLegalAccepted(event.target.checked)} required/><span>I agree to the <Link href="/terms" target="_blank">Terms of Service</Link> and acknowledge the <Link href="/privacy" target="_blank">Privacy Policy</Link>.</span></label>}
+        <button className="auth-submit" disabled={busy || configured !== true || (protectedMode && (!siteKey || !turnstileToken)) || (mode === "signup" && !legalAccepted) || (mode === "reset-password" && recoveryReady !== true)}>{busy || configured === null || (mode === "reset-password" && recoveryReady === null) ? "Please wait…" : submitLabel}</button>
       </form>
       {mode === "signin" && <button className="auth-switch" type="button" onClick={() => changeMode("request-reset")}>Forgot your password?</button>}
       {mode === "request-reset" && <button className="auth-switch" type="button" onClick={() => changeMode("signin")}>Back to sign in</button>}

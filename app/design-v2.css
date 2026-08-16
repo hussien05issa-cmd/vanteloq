@@ -190,7 +190,7 @@ button, a, input, select, textarea, summary { -webkit-tap-highlight-color: trans
 }
 .operating-shell .bookloq-main-nav { min-height: 48px; padding-block: 4px; }
 .operating-shell .bookloq-nav-lockup { flex: 0 0 auto; width: 132px; height: 38px; overflow: hidden; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
-.operating-shell .bookloq-nav-lockup img { width: 100% !important; height: 100% !important; margin: 0 !important; padding: 1px 4px !important; object-fit: contain !important; filter: brightness(0) invert(1); }
+.operating-shell .bookloq-nav-lockup img { width: 100% !important; height: 100% !important; margin: 0 !important; padding: 1px 4px !important; object-fit: contain !important; object-position: center !important; transform: none !important; filter: brightness(0) invert(1); }
 .operating-shell .bookloq-nav-lockup .brand-trademark { display: none; }
 .operating-shell .provider-setup-needed {
   display: grid;
@@ -351,6 +351,17 @@ button, a, input, select, textarea, summary { -webkit-tap-highlight-color: trans
   color: var(--vql-ink);
   font-size: clamp(22px, 2vw, 28px);
   letter-spacing: -.6px;
+}
+.operating-shell .metric-card.metric-unavailable h3 {
+  color: #425a75;
+  font-family: var(--font-geist-sans), Arial, sans-serif !important;
+  font-size: 16px !important;
+  font-weight: 720;
+  line-height: 1.35;
+  letter-spacing: -.12px;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
 }
 .operating-shell .metric-card > span { color: var(--vql-success); font-size: 13px !important; font-weight: 700; }
 .operating-shell .metric-card > small { color: var(--vql-muted); font-size: 12px !important; }
@@ -807,14 +818,16 @@ button, a, input, select, textarea, summary { -webkit-tap-highlight-color: trans
   overflow: hidden;
 }
 .bookloq-logo-panel .product-brand-logo.full img {
-  width: 118%;
-  height: 118%;
-  max-width: none;
-  margin: -9% 0 0 -9%;
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  margin: 0;
   padding: 0;
   object-fit: contain;
+  object-position: center;
+  transform: none;
 }
-.bookloq-logo-panel .brand-trademark { top: 43%; right: 4%; }
+.bookloq-logo-panel .brand-trademark { top: 14%; right: 5%; }
 
 @media (max-width: 900px) {
   .engine-grid article { min-height: 330px; }
@@ -868,6 +881,12 @@ button, a, input, select, textarea, summary { -webkit-tap-highlight-color: trans
 .auth-message.error { color: #8f2632; background: var(--vql-danger-bg); border-color: #e5b6bc; }
 .auth-legal { margin: -3px 0 0; color: #65758b; font-size: 11px; line-height: 1.55; text-align: center; }
 .auth-legal a { color: var(--vql-blue-700); font-weight: 750; text-underline-offset: 2px; }
+.auth-legal-consent { display: grid !important; grid-template-columns: 18px 1fr; align-items: start; gap: 10px; margin: 2px 0 4px; color: #52657c; font-size: 12px !important; line-height: 1.5; text-align: left; }
+.auth-legal-consent input { width: 18px !important; height: 18px !important; margin: 1px 0 0; accent-color: var(--vql-blue-700); }
+.auth-legal-consent a { color: var(--vql-blue-700); font-weight: 750; text-underline-offset: 2px; }
+.onboarding-legal-consent { display: grid; grid-template-columns: 18px 1fr; align-items: start; gap: 10px; margin-top: 14px; padding: 14px; border: 1px solid #d6e1ec; background: #fff; border-radius: 9px; color: #52657c; font-size: 12px; line-height: 1.5; }
+.onboarding-legal-consent input { width: 18px; height: 18px; margin: 1px 0 0; accent-color: #1f6fcf; }
+.onboarding-legal-consent a { color: #135fb9; font-weight: 750; text-underline-offset: 2px; }
 
 /* Onboarding */
 .onboarding { grid-template-columns: 330px minmax(0, 1fr); background: var(--vql-canvas); color: var(--vql-ink); }
@@ -971,4 +990,66 @@ button, a, input, select, textarea, summary { -webkit-tap-highlight-color: trans
 }
 @media (prefers-reduced-motion: reduce) {
   .skeleton-heading i, .skeleton-summary i, .skeleton-ledger b, .skeleton-ledger span i { animation: none; }
+}
+
+/* Readable, consistent application type scale. Legacy workspaces used display-sized
+   miniatures that became illegible on normal browser zoom levels. */
+.operating-shell {
+  font-family: var(--font-geist-sans), Arial, sans-serif;
+  font-size: 15px;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+.operating-shell :where(button, input, select, textarea, summary, label) {
+  font-family: inherit;
+  letter-spacing: normal;
+}
+.operating-shell :where(small, .card-kicker, .verified-tag, .provider-setup-needed span) {
+  font-size: 12px !important;
+  line-height: 1.45;
+}
+.operating-shell :where(.source-pill, .integration-coming-soon, .connection-lock, .provider-account-state, .member-status) {
+  font-size: 12px !important;
+  line-height: 1.35;
+}
+.operating-shell :where(.governance-page, .bookloq-shell) :where(button, input, select, textarea, summary, label) {
+  font-size: 13px !important;
+  line-height: 1.4;
+}
+.governance-page :where(p, small, em, time, th, td),
+.governance-page :where(.governance-loading span, .security-flags span, .permission-summary span, .permission-save span, .employee-review span, .settings-form > header span, .setting-toggles span, .branding-preview span, .logo-drop span, .location-list span, .provider-settings article > span) {
+  font-size: 12px !important;
+  line-height: 1.5;
+}
+.governance-page :where(.employee-row, .role-list, .permission-groups, .provider-settings, .location-list, .setting-toggles) b {
+  font-size: 13px !important;
+  line-height: 1.35;
+}
+.bookloq-shell :where(p, small, em, time, dt, dd, th, td),
+.bookloq-shell :where(.bookloq-demo-banner span, .bookloq-start > span:not(.product-brand-logo), .bookloq-side-foot span, .permission-list span, .line-text span, .cash-legend, .cash-empty) {
+  font-size: 12px !important;
+  line-height: 1.5;
+}
+.bookloq-shell :where(.bookloq-side nav button, .bookloq-primary, .provider-state, .state, .close-state, .confidence) {
+  font-size: 12px !important;
+  line-height: 1.35;
+}
+.bookloq-shell :where(.bookloq-side nav p, .bookloq-top > div:first-child p, .bookloq-card-head p, .bookloq-page-intro p, .bookloq-promise p) {
+  font-size: 11px !important;
+  line-height: 1.4;
+  letter-spacing: .09em;
+}
+.resource-brand small,
+.resource-card small {
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+@media (max-width: 900px) {
+  .governance-page .employee-table,
+  .governance-page .permission-groups,
+  .bookloq-shell .bookloq-table {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
 }

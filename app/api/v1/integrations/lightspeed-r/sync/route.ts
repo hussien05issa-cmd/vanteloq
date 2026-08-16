@@ -384,7 +384,24 @@ export async function POST(request: Request) {
       }
       const warnings = Object.values(normalizationWarnings).reduce((sum, value) => sum + value, 0);
       const uniqueSales = [...new Map(normalizedSales.map((sale) => [`${sale.externalSaleId}:${sale.externalVersion}`, sale])).values()];
-      const uniqueSaleLines = [...new Map(normalizedSaleLines.map((line) => [`${line.externalSaleId}:${line.externalLineId}`, line])).values()];
+      const saleContext = new Map(normalizedSales.map((sale) => [sale.externalSaleId, sale]));
+      const uniqueSaleLines = await Promise.all(
+        [...new Map(normalizedSaleLines.map((line) => [`${line.externalSaleId}:${line.externalLineId}`, line])).values()]
+          .map(async (line) => {
+            const sale = saleContext.get(line.externalSaleId);
+            if (!sale || (line.outletRef && line.soldAt)) return line;
+            const { sourcePayloadHash: _sourcePayloadHash, ...source } = line;
+            const enriched = {
+              ...source,
+              outletRef: source.outletRef || sale.outletRef,
+              soldAt: source.soldAt || sale.soldAt,
+            };
+            return {
+              ...enriched,
+              sourcePayloadHash: await lightspeedRSha256(JSON.stringify(enriched)),
+            };
+          }),
+      );
       const uniquePayments = [...new Map(payments.map((payment) => [payment.externalPaymentId, payment])).values()];
       // SaleLine is also a trustworthy catalog identity source. Preserve sold
       // products even if R-Series omits Item rows or a shop relation is partial;

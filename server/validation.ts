@@ -1,5 +1,10 @@
 import { ApiError } from "./api";
 import { ISO_COUNTRY_CODES } from "../app/address-data";
+import {
+  ACCOUNT_ACCEPTANCE_NOTICE_VERSION,
+  PRIVACY_POLICY_VERSION,
+  TERMS_OF_SERVICE_VERSION,
+} from "../shared/legal-versions";
 
 const EMAIL = /^[^\s@]{1,64}@[^\s@]{1,190}$/;
 const PHONE = /^[0-9+().\-\s]{0,30}$/;
@@ -310,7 +315,24 @@ export function onboardingInput(value: Record<string, unknown>) {
     "sourceMode",
     "selectedPos",
     "emailNotifications",
+    "legalAccepted",
+    "termsVersion",
+    "privacyPolicyVersion",
+    "legalNoticeVersion",
   ]);
+
+  if (
+    value.legalAccepted !== true
+    || value.termsVersion !== TERMS_OF_SERVICE_VERSION
+    || value.privacyPolicyVersion !== PRIVACY_POLICY_VERSION
+    || value.legalNoticeVersion !== ACCOUNT_ACCEPTANCE_NOTICE_VERSION
+  ) {
+    throw new ApiError(
+      409,
+      "LEGAL_ACCEPTANCE_REQUIRED",
+      "Review and accept the current Terms of Service and Privacy Policy before creating the workspace.",
+    );
+  }
 
   const businessEmail = requiredString(
     value.businessEmail,
@@ -394,6 +416,10 @@ export function onboardingInput(value: Record<string, unknown>) {
     sourceMode,
     selectedPos,
     emailNotifications: value.emailNotifications !== false,
+    legalAccepted: true as const,
+    termsVersion: TERMS_OF_SERVICE_VERSION,
+    privacyPolicyVersion: PRIVACY_POLICY_VERSION,
+    legalNoticeVersion: ACCOUNT_ACCEPTANCE_NOTICE_VERSION,
   };
 }
 

@@ -78,7 +78,9 @@ test("R-Series completes a browser callback using the initiating one-time state"
         country: "CA", province: "AB", city: "Edmonton", address: "1 Test Avenue",
         postalCode: "T5A 1A1", emailNotifications: true, timezone: "America/Edmonton",
         currency: "CAD", fiscalYearStart: "January", taxNumber: "", sourceMode: "connect_later",
-        selectedPos: "", hours: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        selectedPos: "", legalAccepted: true, termsVersion: "2026-08-16",
+        privacyPolicyVersion: "2026-08-16", legalNoticeVersion: "account-creation-v1",
+        hours: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
           .map((day) => ({ day, open: "09:00", close: "17:00", closed: false })),
       }),
     }), environment, context);

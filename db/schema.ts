@@ -772,6 +772,32 @@ export const integrationConsents = sqliteTable(
   ],
 );
 
+// Immutable, versioned evidence of an authenticated account holder's
+// affirmative acceptance when a workspace is created. Network identifiers are
+// stored only as keyed hashes so this record does not retain raw addresses or
+// browser fingerprints.
+export const legalAcceptances = sqliteTable(
+  "legal_acceptances",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    termsVersion: text("terms_version").notNull(),
+    privacyPolicyVersion: text("privacy_policy_version").notNull(),
+    noticeVersion: text("notice_version").notNull(),
+    acceptanceSource: text("acceptance_source").notNull().default("onboarding_review"),
+    sourceHash: text("source_hash"),
+    userAgentHash: text("user_agent_hash"),
+    requestId: text("request_id").notNull(),
+    acceptedAt: integer("accepted_at", { mode: "timestamp" }).notNull(),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("legal_acceptances_user_versions_unique").on(table.userId, table.termsVersion, table.privacyPolicyVersion),
+    index("legal_acceptances_workspace_idx").on(table.organizationId, table.acceptedAt),
+  ],
+);
+
 export const integrationOAuthStates = sqliteTable(
   "integration_oauth_states",
   {

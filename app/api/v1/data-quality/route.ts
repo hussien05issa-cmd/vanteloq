@@ -18,6 +18,7 @@ import {
 import { effectivePermissions, requirePermission } from "../../../../server/permissions";
 import { authorizedLocationDataScope } from "../../../../server/location-access";
 import { approvedFactSource } from "../../../../server/integrations/trusted-data";
+import { humanizeIdentifier } from "../../../../domain/display-labels";
 
 const users = ["owner", "admin", "manager", "employee", "read_only"] as const;
 const day = 86_400_000;
@@ -216,7 +217,7 @@ export async function GET(request: Request) {
         .map((item) => ({
           severity: "attention",
           type: "invoice_match",
-          title: `Invoice match ${item.id} has a ${item.status.replaceAll("_", " ")}`,
+          title: `Invoice match ${item.id} has a ${humanizeIdentifier(item.status).toLowerCase()}`,
           affectedMetrics: ["Accounts payable", "Committed cash"],
           correction:
             "Review purchase order, receipt and supplier invoice before approval.",

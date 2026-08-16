@@ -63,6 +63,27 @@ const shortDate = (value: string) => new Intl.DateTimeFormat("en-CA", { month: "
 const label = (value: string) => value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 const parseJsonList = (value: string) => { try { const parsed: unknown = JSON.parse(value); return Array.isArray(parsed) ? parsed.map(String) : []; } catch { return []; } };
 
+async function downloadPrivateInvoice(documentId: string, invoiceNumber: string) {
+  const response = await apiFetch(`/api/v1/documents?id=${encodeURIComponent(documentId)}`, {
+    headers: { Accept: "application/pdf" },
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => null) as { error?: { message?: string } } | null;
+    throw new Error(body?.error?.message ?? "The invoice PDF could not be downloaded.");
+  }
+  const pdf = await response.blob();
+  if (pdf.type !== "application/pdf") throw new Error("The invoice download did not return a PDF.");
+  const objectUrl = URL.createObjectURL(pdf);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = `${invoiceNumber.replace(/[^A-Za-z0-9._-]/g, "-")}.pdf`;
+  link.rel = "noopener";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(objectUrl);
+}
+
 export default function BookLoQWorkspace({ initialSection = "Overview", createTask, showNotice, navigate, activeLocationId }: { initialSection?: Section; createTask: (seed: TaskSeed) => void; showNotice: (message: string) => void; navigate: (view: "Integrations" | "Documents") => void; activeLocationId: string | null }) {
   const [data, setData] = useState<BookLoQData | null>(null);
   const [section, setSection] = useState<Section>(initialSection);
@@ -261,9 +282,22 @@ function BankingPanel({ data, reconciliation }: { data: BookLoQData; reconciliat
 
 function ReceivablesPanel({ data, refresh, showNotice }: { data: BookLoQData; refresh: () => Promise<void>; showNotice: (message: string) => void }) {
   const [creating, setCreating] = useState(false);
+  const [downloadingDocumentId, setDownloadingDocumentId] = useState<string | null>(null);
   const today = new Date().toISOString().slice(0, 10);
   const canCreate = data.permissions.includes("edit_drafts");
-  return <div className="bookloq-content"><PageIntro eyebrow="SALES AND ACCOUNTS RECEIVABLE" title="Create, send and track professional invoices" copy="Build a branded invoice, save its PDF to Files and email the exact saved document to your customer." action={canCreate ? <button className="bookloq-primary" onClick={() => setCreating(true)}>+ New invoice</button> : undefined}/><section className="bookloq-kpis compact"><FinancialKpi label="Posted revenue" value={money(data.summary.revenueCents)} note="Revenue accounts"/><FinancialKpi label="Outstanding A/R" value={money(data.summary.accountsReceivableCents)} note="Posted receivable balance"/><FinancialKpi label="Overdue" value={String(data.invoices.filter((invoice) => invoice.dueDate < today && invoice.status !== "paid").length)} note="Past due date"/></section><DataTable headings={["Invoice", "Customer", "Issued", "Due", "State", "Outstanding", "File"]} rows={data.invoices.map((invoice) => [invoice.invoiceNumber, invoice.customerName, shortDate(invoice.invoiceDate), shortDate(invoice.dueDate), label(invoice.status), money(invoice.totalCents - invoice.paidCents, invoice.currency), invoice.documentId ? <a className="table-action invoice-download" href={`/api/v1/documents?id=${encodeURIComponent(invoice.documentId)}`}>PDF</a> : "Not generated"])}/>{!canCreate && <ProviderGate title="Invoice creation requires finance access" detail="An owner or manager can grant draft-editing permission. Existing invoices remain available according to your role."/>}{creating && <InvoiceComposer data={data} close={() => setCreating(false)} saved={async (message) => { setCreating(false); await refresh(); showNotice(message); }}/>}</div>;
+  const downloadInvoice = async (invoice: Invoice) => {
+    if (!invoice.documentId) return;
+    setDownloadingDocumentId(invoice.documentId);
+    try {
+      await downloadPrivateInvoice(invoice.documentId, invoice.invoiceNumber);
+      showNotice(`${invoice.invoiceNumber} downloaded securely.`);
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : "The invoice PDF could not be downloaded.");
+    } finally {
+      setDownloadingDocumentId(null);
+    }
+  };
+  return <div className="bookloq-content"><PageIntro eyebrow="SALES AND ACCOUNTS RECEIVABLE" title="Create, send and track professional invoices" copy="Build a branded invoice, save its PDF to Files and email the exact saved document to your customer." action={canCreate ? <button className="bookloq-primary" onClick={() => setCreating(true)}>+ New invoice</button> : undefined}/><section className="bookloq-kpis compact"><FinancialKpi label="Posted revenue" value={money(data.summary.revenueCents)} note="Revenue accounts"/><FinancialKpi label="Outstanding A/R" value={money(data.summary.accountsReceivableCents)} note="Posted receivable balance"/><FinancialKpi label="Overdue" value={String(data.invoices.filter((invoice) => invoice.dueDate < today && invoice.status !== "paid").length)} note="Past due date"/></section><DataTable headings={["Invoice", "Customer", "Issued", "Due", "State", "Outstanding", "File"]} rows={data.invoices.map((invoice) => [invoice.invoiceNumber, invoice.customerName, shortDate(invoice.invoiceDate), shortDate(invoice.dueDate), label(invoice.status), money(invoice.totalCents - invoice.paidCents, invoice.currency), invoice.documentId ? <button type="button" className="table-action invoice-download" disabled={downloadingDocumentId === invoice.documentId} onClick={() => void downloadInvoice(invoice)}>{downloadingDocumentId === invoice.documentId ? "Downloading…" : "Download PDF"}</button> : "Not generated"])}/>{!canCreate && <ProviderGate title="Invoice creation requires finance access" detail="An owner or manager can grant draft-editing permission. Existing invoices remain available according to your role."/>}{creating && <InvoiceComposer data={data} close={() => setCreating(false)} saved={async (message) => { setCreating(false); await refresh(); showNotice(message); }}/>}</div>;
 }
 
 type InvoiceLineDraft = { id: string; description: string; quantity: string; price: string; tax: string };

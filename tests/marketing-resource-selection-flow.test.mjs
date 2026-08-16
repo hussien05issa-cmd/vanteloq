@@ -42,6 +42,10 @@ function onboardingBody() {
     hours: days.map((day) => ({ day, open: "10:00", close: "18:00", closed: false })),
     sourceMode: "connect_later",
     selectedPos: "",
+    legalAccepted: true,
+    termsVersion: "2026-08-16",
+    privacyPolicyVersion: "2026-08-16",
+    legalNoticeVersion: "account-creation-v1",
   };
 }
 
@@ -103,6 +107,23 @@ test("exact marketing resources remain versioned, approval-bound, separated, and
   try {
     const onboarding = await dispatch(worker, environment, "/api/v1/onboarding", { method: "POST", body: onboardingBody() });
     assert.equal(onboarding.status, 201, await onboarding.clone().text());
+    const legalAcceptance = await database.prepare(`
+      SELECT terms_version, privacy_policy_version, notice_version, acceptance_source,
+             source_hash, user_agent_hash, request_id
+      FROM legal_acceptances
+      LIMIT 1
+    `).first();
+    assert.ok(legalAcceptance);
+    assert.deepEqual(legalAcceptance, {
+      terms_version: "2026-08-16",
+      privacy_policy_version: "2026-08-16",
+      notice_version: "account-creation-v1",
+      acceptance_source: "onboarding_review",
+      source_hash: null,
+      user_agent_hash: null,
+      request_id: legalAcceptance.request_id,
+    });
+    assert.equal(typeof legalAcceptance.request_id, "string");
     restoreFetch = globalThis.fetch;
     globalThis.fetch = async (input, init) => {
       const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;

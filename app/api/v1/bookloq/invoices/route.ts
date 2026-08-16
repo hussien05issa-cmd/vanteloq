@@ -82,7 +82,7 @@ export async function POST(request: Request) {
     const objectKey = `${context.organizationId}/documents/generated/${documentId}.pdf`;
     await getR2().put(objectKey, new Uint8Array(pdf).buffer, {
       httpMetadata: { contentType: "application/pdf", cacheControl: "private, no-store" },
-      customMetadata: { organizationId: context.organizationId, generatedBy: context.userId, invoiceId: id, securityState: "application-generated" },
+      customMetadata: { organizationId: context.organizationId, generatedBy: context.userId, invoiceId: id, securityState: "clean", source: "application-generated" },
     });
 
     const statements = [];
@@ -93,9 +93,9 @@ export async function POST(request: Request) {
         .bind(customerId, context.organizationId, invoice.customer.name, invoice.customer.email, invoice.customer.phone, invoice.customer.address, nowSeconds, nowSeconds));
     }
     statements.push(database.prepare(`INSERT INTO workspace_documents
-      (id, organization_id, document_type, file_name, object_key, content_type, size_bytes, sha256_hex, security_state, status, extraction_status, extracted_json, uploaded_by_user_id, created_at, updated_at)
-      VALUES (?, ?, 'invoice', ?, ?, 'application/pdf', ?, ?, 'clean', 'approved', 'complete', ?, ?, ?, ?)`)
-      .bind(documentId, context.organizationId, `${safeFilePart(invoice.invoiceNumber)}.pdf`, objectKey, pdf.byteLength, digest, JSON.stringify({ source: "bookloq_generated", invoiceId: id }), context.userId, nowMs, nowMs));
+      (id, organization_id, document_type, file_name, object_key, content_type, size_bytes, sha256_hex, security_state, status, scan_status, scanned_at, scan_provider, extraction_status, extracted_json, uploaded_by_user_id, created_at, updated_at)
+      VALUES (?, ?, 'invoice', ?, ?, 'application/pdf', ?, ?, 'clean', 'approved', 'clean', ?, 'vanteloq-internal-pdf-generator', 'complete', ?, ?, ?, ?)`)
+      .bind(documentId, context.organizationId, `${safeFilePart(invoice.invoiceNumber)}.pdf`, objectKey, pdf.byteLength, digest, nowSeconds, JSON.stringify({ source: "bookloq_generated", invoiceId: id }), context.userId, nowMs, nowMs));
     statements.push(database.prepare(`INSERT INTO customer_invoices
       (id, organization_id, customer_id, invoice_number, invoice_date, due_date, status, subtotal_cents, tax_cents, total_cents, paid_cents, currency, location_ref, purchase_order_ref, issuer_snapshot_json, customer_snapshot_json, notes, payment_instructions, document_id, demo_record, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`)
@@ -111,6 +111,6 @@ export async function POST(request: Request) {
       throw error;
     }
     await recordAudit({ request, requestId, organizationId: context.organizationId, actorUserId: context.userId, action: "customer_invoice.created", resourceType: "customer_invoice", resourceId: id, details: { invoiceNumber: invoice.invoiceNumber, customerId, currency: invoice.currency, totalCents: invoice.totalCents, lineCount: invoice.lines.length, documentId } });
-    return jsonResponse({ invoice: { id, invoiceNumber: invoice.invoiceNumber, documentId, downloadUrl: `/api/v1/documents?id=${encodeURIComponent(documentId)}`, status: "draft", customerEmail: invoice.customer.email, totalCents: invoice.totalCents, currency: invoice.currency } }, { status: 201 });
+    return jsonResponse({ invoice: { id, invoiceNumber: invoice.invoiceNumber, documentId, status: "draft", customerEmail: invoice.customer.email, totalCents: invoice.totalCents, currency: invoice.currency } }, { status: 201 });
   });
 }

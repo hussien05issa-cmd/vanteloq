@@ -44,6 +44,8 @@ The Canada Revenue Agency generally requires relevant records and supporting doc
 | Normalized POS records | Customer policy plus applicable recordkeeping duties | Export, correct, delete, or de-identify through a provider-specific workflow |
 | Audit and security events | 24 months by default, longer only for a documented incident or legal hold | Delete or anonymize after review period |
 | Marketing consent evidence | While relied upon and for the period needed to answer a compliance question | Retain minimum proof only |
+| Gemini Advisor consent evidence | While relied upon and for up to 24 months after withdrawal or account closure when needed to demonstrate authorization or answer a complaint | Retain the minimum versioned consent record; do not copy the question or model response into the consent record |
+| Gemini Advisor conversations and messages | Until the user clears the conversation or 90 days after the conversation was last updated | Clear conversation deletes the scoped messages and conversation immediately; stale conversations are deleted when that user next uses the Advisor |
 | Unsubscribe and suppression records | As long as needed to prevent prohibited contact | Keep only a minimal suppression value and never use it for marketing enrichment |
 | Import staging files | 7 days after accepted or rejected import | Delete from private staging storage |
 

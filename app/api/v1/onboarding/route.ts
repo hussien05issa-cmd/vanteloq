@@ -54,6 +54,9 @@ export async function POST(request: Request) {
     await enforceRateLimit("onboarding:user", identity.email, 5, 3_600);
     const source = clientSource(request);
     if (source !== "unknown") await enforceRateLimit("onboarding:source", source, 20, 3_600);
+    const sourceHash = source === "unknown" ? null : await hashIdentifier(`legal-source:${source}`);
+    const userAgent = request.headers.get("user-agent")?.slice(0, 512) ?? "";
+    const userAgentHash = userAgent ? await hashIdentifier(`legal-user-agent:${userAgent}`) : null;
 
     const existingAccess = await findAccessContext(identity);
     if (existingAccess) throw new ApiError(409, "WORKSPACE_EXISTS", "This account already belongs to a workspace.");
@@ -113,6 +116,7 @@ export async function POST(request: Request) {
     const organizationId = `workspace-${stableIdentityHash}`;
     const membershipId = `membership-${stableIdentityHash}`;
     const auditId = `audit-workspace-created-${stableIdentityHash}`;
+    const legalAcceptanceId = `legal-${stableIdentityHash}-${input.termsVersion}`;
     const primaryLocationId = `${organizationId}:location:primary`;
 
     try {
@@ -168,11 +172,22 @@ export async function POST(request: Request) {
           input.country === "US" ? "en-US" : "en-CA", now, now,
         ),
         database.prepare(`
+          INSERT OR IGNORE INTO legal_acceptances (
+            id, organization_id, user_id, terms_version, privacy_policy_version,
+            notice_version, acceptance_source, source_hash, user_agent_hash,
+            request_id, accepted_at, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, 'onboarding_review', ?, ?, ?, ?, ?)
+        `).bind(
+          legalAcceptanceId, organizationId, userId, input.termsVersion,
+          input.privacyPolicyVersion, input.legalNoticeVersion, sourceHash,
+          userAgentHash, requestId, now, now,
+        ),
+        database.prepare(`
           INSERT OR IGNORE INTO audit_events (
             id, organization_id, actor_user_id, action, resource_type, resource_id,
             outcome, request_id, source_hash, details_json, created_at
           ) VALUES (?, ?, ?, 'workspace.created', 'workspace', ?, 'success', ?, NULL, ?, ?)
-        `).bind(auditId, organizationId, userId, organizationId, requestId, JSON.stringify({ sourceMode: input.sourceMode }), now),
+        `).bind(auditId, organizationId, userId, organizationId, requestId, JSON.stringify({ sourceMode: input.sourceMode, legalAcceptanceId }), now),
         database.prepare(`
           INSERT INTO account_preferences (
             user_id, email_notifications, remembered_profile, hidden_navigation_json,

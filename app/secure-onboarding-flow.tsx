@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import {
   COUNTRIES,
   formatPostalCode,
@@ -9,6 +10,11 @@ import {
 } from "./address-data";
 import ProductBrandLogo from "./product-brand-logo";
 import { apiFetch } from "./supabase-browser";
+import {
+  ACCOUNT_ACCEPTANCE_NOTICE_VERSION,
+  PRIVACY_POLICY_VERSION,
+  TERMS_OF_SERVICE_VERSION,
+} from "../shared/legal-versions";
 
 type Hour = { day: string; open: string; close: string; closed: boolean };
 type SourceMode = "connect_later" | "csv" | "live";
@@ -118,6 +124,7 @@ export default function SecureOnboardingFlow({
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [legalAccepted, setLegalAccepted] = useState(false);
   const set = <K extends keyof Setup>(key: K, value: Setup[K]) =>
     setForm((current) => ({ ...current, [key]: value }));
 
@@ -150,13 +157,24 @@ export default function SecureOnboardingFlow({
   };
 
   const submit = async () => {
+    if (!legalAccepted) {
+      setError("Review and accept the Terms of Service and Privacy Policy before creating the workspace.");
+      return;
+    }
     setSaving(true);
     setError("");
     try {
       const response = await apiFetch("/api/v1/onboarding", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, hours }),
+        body: JSON.stringify({
+          ...form,
+          hours,
+          legalAccepted: true,
+          termsVersion: TERMS_OF_SERVICE_VERSION,
+          privacyPolicyVersion: PRIVACY_POLICY_VERSION,
+          legalNoticeVersion: ACCOUNT_ACCEPTANCE_NOTICE_VERSION,
+        }),
       });
       const data: unknown = await response.json();
       if (!response.ok)
@@ -689,7 +707,7 @@ export default function SecureOnboardingFlow({
             </div>
             {form.sourceMode === "live" && (
               <div className="pos-picker">
-                <b>Planned POS provider</b>
+                <b>Preferred POS provider</b>
                 <div>
                   {[
                     "Lightspeed",
@@ -772,6 +790,16 @@ export default function SecureOnboardingFlow({
                 </small>
               </span>
             </div>
+            <label className="onboarding-legal-consent">
+              <input
+                type="checkbox"
+                checked={legalAccepted}
+                onChange={(event) => setLegalAccepted(event.target.checked)}
+              />
+              <span>
+                I agree to the <Link href="/terms" target="_blank">Terms of Service</Link> and acknowledge the <Link href="/privacy" target="_blank">Privacy Policy</Link>. This acceptance is recorded with the current document versions when the workspace is created.
+              </span>
+            </label>
           </Step>
         )}
         {error && (
@@ -794,7 +822,7 @@ export default function SecureOnboardingFlow({
           ) : (
             <button
               className="continue"
-              disabled={saving}
+              disabled={saving || !legalAccepted}
               onClick={() => void submit()}
             >
               {saving ? "Creating secure workspace…" : "Create workspace →"}

@@ -5,6 +5,12 @@ import { requireAccess } from "../../../../../server/authorization";
 import { ApiError, clientSource, enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameOrigin } from "../../../../../server/api";
 import { effectivePermissions, requirePermission } from "../../../../../server/permissions";
 import { approvedBankSource, approvedFactSource } from "../../../../../server/integrations/trusted-data";
+import { recordAudit } from "../../../../../server/audit";
+import { recordGeminiConsent } from "../../../../../server/privacy";
+import {
+  GEMINI_CONSENT_NOTICE_VERSION,
+  PRIVACY_POLICY_VERSION,
+} from "../../../../../domain/privacy-controls";
 
 const readers = ["owner", "admin", "manager", "employee", "read_only"] as const;
 const model = () => getRuntimeEnv().VERTEX_AI_MODEL?.trim() || "gemini-2.5-flash";
@@ -21,6 +27,13 @@ function cleanQuestion(value: unknown) {
   const question = value.trim();
   if (!question || question.length > 800) throw new ApiError(400, "QUESTION_INVALID", "Use a question between 1 and 800 characters.");
   return question;
+}
+
+function cleanConversationId(value: unknown) {
+  if (typeof value !== "string" || !/^[a-zA-Z0-9_-]{8,80}$/.test(value)) {
+    throw new ApiError(400, "CONVERSATION_ID_INVALID", "Choose a valid advisor conversation.");
+  }
+  return value;
 }
 
 async function evidenceFor(organizationId: string, includeCash: boolean): Promise<Evidence> {
@@ -80,10 +93,20 @@ export async function POST(request: Request) {
     await enforceRateLimit("advisor:chat", `${context.userId}:${clientSource(request)}`, 20, 60);
     const body = await readJsonObject(request);
     const question = cleanQuestion(body.question);
+    if (body.dataUseAccepted !== true) {
+      throw new ApiError(409, "GEMINI_CONSENT_REQUIRED", "Review and accept the Gemini data-use notice before asking a question.");
+    }
+    await recordGeminiConsent({
+      organizationId: context.organizationId,
+      actorUserId: context.userId,
+      noticeVersion: typeof body.noticeVersion === "string" ? body.noticeVersion : "",
+      privacyPolicyVersion: typeof body.privacyPolicyVersion === "string" ? body.privacyPolicyVersion : "",
+    });
     const permissions = await effectivePermissions(context);
     const evidence = await evidenceFor(context.organizationId, permissions.includes("finance.bank_balances"));
     const conversationId = typeof body.conversationId === "string" && /^[a-zA-Z0-9_-]{8,80}$/.test(body.conversationId) ? body.conversationId : crypto.randomUUID();
     const now = new Date();
+    await getD1().prepare("DELETE FROM assistant_conversations WHERE organization_id = ? AND user_id = ? AND updated_at < ?").bind(context.organizationId, context.userId, Date.now() - 90 * 24 * 60 * 60 * 1_000).run();
     const memoryRows = await getD1().prepare("SELECT role, content FROM assistant_messages WHERE conversation_id = ? AND organization_id = ? AND user_id = ? ORDER BY created_at DESC LIMIT 6").bind(conversationId, context.organizationId, context.userId).all<{ role: string; content: string }>();
     const memory = [...(memoryRows.results ?? [])].reverse();
     const result = await callGemini(prompt(question, evidence, memory));
@@ -99,3 +122,37 @@ export async function POST(request: Request) {
   });
 }
 
+export async function DELETE(request: Request) {
+  return handleApi(request, async ({ requestId }) => {
+    requireSameOrigin(request);
+    const context = await requireAccess(request, readers);
+    await requirePermission(context, "insights.view");
+    await enforceRateLimit("advisor:delete", `${context.userId}:${clientSource(request)}`, 12, 60);
+    const body = await readJsonObject(request, 1_000);
+    const conversationId = cleanConversationId(body.conversationId);
+    const database = getD1();
+    const [, deletion] = await database.batch([
+      database.prepare("DELETE FROM assistant_messages WHERE conversation_id = ? AND organization_id = ? AND user_id = ?").bind(conversationId, context.organizationId, context.userId),
+      database.prepare("DELETE FROM assistant_conversations WHERE id = ? AND organization_id = ? AND user_id = ?").bind(conversationId, context.organizationId, context.userId),
+    ]);
+    if (Number(deletion.meta.changes ?? 0) !== 1) {
+      throw new ApiError(404, "CONVERSATION_NOT_FOUND", "This advisor conversation is no longer available.");
+    }
+    await recordAudit({
+      request,
+      requestId,
+      organizationId: context.organizationId,
+      actorUserId: context.userId,
+      action: "privacy.gemini_conversation_deleted",
+      resourceType: "assistant_conversation",
+      resourceId: conversationId,
+      details: { provider: "google_gemini", contentDeleted: true },
+    });
+    return jsonResponse({ deleted: true, conversationId });
+  });
+}
+
+export const GEMINI_CONSENT_VERSIONS = {
+  noticeVersion: GEMINI_CONSENT_NOTICE_VERSION,
+  privacyPolicyVersion: PRIVACY_POLICY_VERSION,
+};
