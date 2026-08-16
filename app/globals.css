@@ -119,6 +119,7 @@
 .connected-source small+small{margin-top:4px}
 .provider-actions{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
 .provider-actions button{border:1px solid #ccd9e7;border-radius:8px;background:#155ba8;color:#fff;padding:8px 11px;font-size:8px;font-weight:760;cursor:pointer;transition:background .16s ease,border-color .16s ease,opacity .16s ease}
+.provider-actions a{display:inline-flex;align-items:center;justify-content:center;min-height:32px;border:1px solid #155ba8;border-radius:8px;background:#155ba8;color:#fff;padding:8px 11px;font-size:8px;font-weight:760;text-decoration:none;line-height:1.2;transition:background .16s ease,border-color .16s ease}.provider-actions a:hover{background:#104d90;border-color:#104d90}.provider-actions a:focus-visible{outline:3px solid rgba(33,101,181,.3);outline-offset:2px}
 .provider-actions button:hover:not(:disabled){background:#104d90;border-color:#104d90}
 .provider-actions button:disabled{cursor:not-allowed;opacity:.52}
 .provider-actions button.danger-text{background:#fff;color:#a24848;border-color:#ead1d1}

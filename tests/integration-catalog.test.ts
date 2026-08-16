@@ -31,6 +31,15 @@ test("only built pilots may claim that credentials are the remaining connection 
   assert.ok(integrationCatalog.filter((provider) => !credentialReady.includes(provider)).every((provider) => provider.availability !== "credentials_required"));
 });
 
+test("DoorDash is gated by Marketplace approval and never represented as a Drive reporting connection", () => {
+  const doorDash = integrationCatalog.find((provider) => provider.id === "doordash");
+  assert.ok(doorDash);
+  assert.equal(doorDash.availability, "provider_access_required");
+  assert.match(doorDash.activationRequirement, /Marketplace access is approval-only/i);
+  assert.match(doorDash.activationRequirement, /Drive API does not provide this merchant reporting feed/i);
+  assert.match(doorDash.externalApplicationUrl ?? "", /^https:\/\/docs\.google\.com\/forms\//);
+});
+
 test("integration cards use one canonical ordered category taxonomy", () => {
   const categories = integrationCatalog.map((provider) => provider.category);
   assert.ok(categories.every((category) => integrationCategoryOrder.includes(category)));

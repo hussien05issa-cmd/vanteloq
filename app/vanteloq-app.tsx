@@ -2990,6 +2990,8 @@ function DataHub({
                       disabled={Boolean(disabledReason) || Boolean(providerAction)}
                       title={disabledReason || `Authorize another ${provider.name} account with its own credentials and import history.`}
                     >{providerAction === "authorize" ? "Opening…" : connected ? "Connect another account" : "Connect"}</button>
+                  </div> : provider.externalApplicationUrl ? <div className="provider-actions">
+                    <a href={provider.externalApplicationUrl} target="_blank" rel="noreferrer">{provider.externalApplicationLabel ?? "Request provider access"}</a>
                   </div> : null}
                 </div>
               </article>
@@ -3157,6 +3159,8 @@ function DataHub({
 function availabilityLabel(value: IntegrationCatalogEntry["availability"]) {
   return value === "provider_selection_required"
     ? "Provider selection required"
+    : value === "provider_access_required"
+      ? "Provider approval required"
     : value === "credentials_required"
       ? "Credentials required"
       : "Provider build required";

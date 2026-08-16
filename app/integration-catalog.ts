@@ -1,5 +1,6 @@
 export type IntegrationAvailability =
   | "provider_build_required"
+  | "provider_access_required"
   | "credentials_required"
   | "provider_selection_required";
 
@@ -37,6 +38,8 @@ export type IntegrationCatalogEntry = {
   category: IntegrationCategory;
   availability: IntegrationAvailability;
   activationRequirement: string;
+  externalApplicationUrl?: string;
+  externalApplicationLabel?: string;
 };
 
 export const salesChannelGroups = [
@@ -133,9 +136,12 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
     id: "doordash",
     name: "DoorDash",
     category: "Delivery",
-    availability: "provider_build_required",
+    availability: "provider_access_required",
     activationRequirement:
-      "Not available yet. A production connection still needs partner access, store mapping, order and fee handling, recovery, and reconciliation tests.",
+      "DoorDash Marketplace access is approval-only. Request partner access for Marketplace orders, menus, stores, fees and payout reconciliation; the separate Drive API does not provide this merchant reporting feed.",
+    externalApplicationUrl:
+      "https://docs.google.com/forms/d/e/1FAIpQLSfggU_NjGWCdi9vyWUicrnzJmtu9vC4zgbfSC3ROwSvW4eV2g/viewform",
+    externalApplicationLabel: "Request Marketplace access",
   },
   {
     id: "uber-eats",
