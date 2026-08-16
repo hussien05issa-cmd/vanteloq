@@ -24,14 +24,6 @@ compliance_topics = [
   "customers/redact",
   "shop/redact"
 ]
-uri = "https://vanteloq.com/api/v1/integrations/shopify-pos/webhook"
-
-[[webhooks.subscriptions]]
-compliance_topics = [
-  "customers/data_request",
-  "customers/redact",
-  "shop/redact"
-]
 uri = "https://vanteloq.com/api/v1/integrations/shopify/webhook"
 
 [[webhooks.subscriptions]]

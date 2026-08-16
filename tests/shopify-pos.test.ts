@@ -92,4 +92,5 @@ test("Shopify e-commerce routes preserve online-order lineage separately from Sh
   assert.match(wrapper, /shopify-pos\/sync\/route/);
   assert.match(configuration, /integrations\/shopify\/callback/);
   assert.match(configuration, /integrations\/shopify\/webhook/);
+  assert.equal(configuration.match(/compliance_topics/g)?.length, 1, "Shopify permits one subscription per compliance topic");
 });

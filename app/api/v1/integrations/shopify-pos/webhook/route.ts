@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { getD1, getDb } from "../../../../../../db";
 import { integrationConnections, integrationSecrets, integrationWebhookEvents } from "../../../../../../db/schema";
 import { scopeExternalRef } from "../../../../../../domain/integration-source";
@@ -29,49 +29,56 @@ export async function POST(request: Request) {
     let payload: Record<string, unknown>;
     try { payload = record(JSON.parse(new TextDecoder().decode(bytes))); }
     catch { throw new ApiError(400, "SHOPIFY_WEBHOOK_PAYLOAD_INVALID", "The Shopify webhook payload is invalid."); }
+    const terminalTopic = PRIVACY_TOPICS.has(topic) || topic === "app/uninstalled";
     const connections = await getDb().select().from(integrationConnections).where(and(
-      eq(integrationConnections.provider, provider),
+      terminalTopic
+        ? inArray(integrationConnections.provider, ["shopify", "shopify-pos"])
+        : eq(integrationConnections.provider, provider),
       eq(integrationConnections.domainPrefix, shop),
       eq(integrationConnections.status, "connected"),
-    )).limit(2);
-    if (connections.length !== 1) return jsonResponse({ received: true, queued: false }, { status: 200 });
-    const connection = connections[0];
+    )).limit(10);
+    if (!connections.length) return jsonResponse({ received: true, queued: false }, { status: 200 });
     const payloadHash = await shopifySha256(webhookId || bytes);
     const signatureHash = await shopifySha256(signature ?? "");
     const objectId = String(payload.id ?? record(payload.customer).id ?? webhookId ?? "event").slice(0, 160);
-    const inserted = await getDb().insert(integrationWebhookEvents).values({
-      id: crypto.randomUUID(), organizationId: connection.organizationId, provider,
-      connectionId: connection.id, payloadHash, signatureHash, eventType: topic, externalObjectRef: objectId,
-      status: "queued", receivedAt: new Date(), processedAt: null,
-    }).onConflictDoNothing({ target: [integrationWebhookEvents.organizationId, integrationWebhookEvents.provider, integrationWebhookEvents.connectionId, integrationWebhookEvents.payloadHash] }).returning({ id: integrationWebhookEvents.id });
+    let insertedCount = 0;
+    for (const connection of connections) {
+      const connectionProvider = connection.provider === "shopify-pos" ? "shopify-pos" : "shopify";
+      const inserted = await getDb().insert(integrationWebhookEvents).values({
+        id: crypto.randomUUID(), organizationId: connection.organizationId, provider: connectionProvider,
+        connectionId: connection.id, payloadHash, signatureHash, eventType: topic, externalObjectRef: objectId,
+        status: "queued", receivedAt: new Date(), processedAt: null,
+      }).onConflictDoNothing({ target: [integrationWebhookEvents.organizationId, integrationWebhookEvents.provider, integrationWebhookEvents.connectionId, integrationWebhookEvents.payloadHash] }).returning({ id: integrationWebhookEvents.id });
+      insertedCount += inserted.length;
 
-    if (inserted.length && topic === "customers/redact") {
-      const rawCustomerId = String(record(payload.customer).id ?? payload.customer_id ?? payload.id ?? "").trim();
-      if (rawCustomerId) {
-        const customerRef = scopeExternalRef(connection.sourceNamespace, `gid://shopify/Customer/${rawCustomerId}`);
+      if (inserted.length && topic === "customers/redact") {
+        const rawCustomerId = String(record(payload.customer).id ?? payload.customer_id ?? payload.id ?? "").trim();
+        if (rawCustomerId) {
+          const customerRef = scopeExternalRef(connection.sourceNamespace, `gid://shopify/Customer/${rawCustomerId}`);
+          const database = getD1();
+          await database.batch([
+            database.prepare("UPDATE commerce_sale_lines SET customer_ref=NULL WHERE organization_id=? AND provider=? AND connection_id=? AND customer_ref=?").bind(connection.organizationId, connectionProvider, connection.id, customerRef),
+            database.prepare("DELETE FROM commerce_customers WHERE organization_id=? AND provider=? AND connection_id=? AND external_customer_id=?").bind(connection.organizationId, connectionProvider, connection.id, customerRef),
+          ]);
+        }
+      }
+      if (inserted.length && (topic === "shop/redact" || topic === "app/uninstalled")) {
         const database = getD1();
         await database.batch([
-          database.prepare("UPDATE commerce_sale_lines SET customer_ref=NULL WHERE organization_id=? AND provider=? AND connection_id=? AND customer_ref=?").bind(connection.organizationId, provider, connection.id, customerRef),
-          database.prepare("DELETE FROM commerce_customers WHERE organization_id=? AND provider=? AND connection_id=? AND external_customer_id=?").bind(connection.organizationId, provider, connection.id, customerRef),
+          database.prepare("DELETE FROM commerce_sale_lines WHERE organization_id=? AND provider=? AND connection_id=?").bind(connection.organizationId, connectionProvider, connection.id),
+          database.prepare("DELETE FROM commerce_payments WHERE organization_id=? AND provider=? AND connection_id=?").bind(connection.organizationId, connectionProvider, connection.id),
+          database.prepare("DELETE FROM commerce_customers WHERE organization_id=? AND provider=? AND connection_id=?").bind(connection.organizationId, connectionProvider, connection.id),
+          database.prepare("DELETE FROM commerce_products WHERE organization_id=? AND provider=? AND connection_id=?").bind(connection.organizationId, connectionProvider, connection.id),
+          database.prepare("DELETE FROM commerce_suppliers WHERE organization_id=? AND provider=? AND connection_id=?").bind(connection.organizationId, connectionProvider, connection.id),
+          database.prepare("DELETE FROM inventory_balances WHERE organization_id=? AND source_connection_id=?").bind(connection.organizationId, connection.id),
+          database.prepare("DELETE FROM daily_business_metrics WHERE organization_id=? AND source_connection_id=?").bind(connection.organizationId, connection.id),
+          database.prepare("DELETE FROM integration_staged_sales WHERE organization_id=? AND provider=? AND connection_id=?").bind(connection.organizationId, connectionProvider, connection.id),
         ]);
+        await getDb().delete(integrationSecrets).where(and(eq(integrationSecrets.organizationId, connection.organizationId), eq(integrationSecrets.connectionId, connection.id)));
+        await getDb().update(integrationConnections).set({ status: "revoked", dataPromotionStatus: "blocked", privacyDataDeletedAt: new Date(), externalAccountRef: null, domainPrefix: null, updatedAt: new Date() }).where(and(eq(integrationConnections.id, connection.id), eq(integrationConnections.organizationId, connection.organizationId)));
       }
+      if (inserted.length) await getDb().update(integrationWebhookEvents).set({ status: terminalTopic ? "processed" : "queued", processedAt: terminalTopic ? new Date() : null }).where(eq(integrationWebhookEvents.id, inserted[0].id));
     }
-    if (inserted.length && (topic === "shop/redact" || topic === "app/uninstalled")) {
-      const database = getD1();
-      await database.batch([
-        database.prepare("DELETE FROM commerce_sale_lines WHERE organization_id=? AND provider=? AND connection_id=?").bind(connection.organizationId, provider, connection.id),
-        database.prepare("DELETE FROM commerce_payments WHERE organization_id=? AND provider=? AND connection_id=?").bind(connection.organizationId, provider, connection.id),
-        database.prepare("DELETE FROM commerce_customers WHERE organization_id=? AND provider=? AND connection_id=?").bind(connection.organizationId, provider, connection.id),
-        database.prepare("DELETE FROM commerce_products WHERE organization_id=? AND provider=? AND connection_id=?").bind(connection.organizationId, provider, connection.id),
-        database.prepare("DELETE FROM commerce_suppliers WHERE organization_id=? AND provider=? AND connection_id=?").bind(connection.organizationId, provider, connection.id),
-        database.prepare("DELETE FROM inventory_balances WHERE organization_id=? AND source_connection_id=?").bind(connection.organizationId, connection.id),
-        database.prepare("DELETE FROM daily_business_metrics WHERE organization_id=? AND source_connection_id=?").bind(connection.organizationId, connection.id),
-        database.prepare("DELETE FROM integration_staged_sales WHERE organization_id=? AND provider=? AND connection_id=?").bind(connection.organizationId, provider, connection.id),
-      ]);
-      await getDb().delete(integrationSecrets).where(and(eq(integrationSecrets.organizationId, connection.organizationId), eq(integrationSecrets.connectionId, connection.id)));
-      await getDb().update(integrationConnections).set({ status: "revoked", dataPromotionStatus: "blocked", privacyDataDeletedAt: new Date(), externalAccountRef: null, domainPrefix: null, updatedAt: new Date() }).where(and(eq(integrationConnections.id, connection.id), eq(integrationConnections.organizationId, connection.organizationId)));
-    }
-    if (inserted.length) await getDb().update(integrationWebhookEvents).set({ status: PRIVACY_TOPICS.has(topic) || topic === "app/uninstalled" ? "processed" : "queued", processedAt: PRIVACY_TOPICS.has(topic) || topic === "app/uninstalled" ? new Date() : null }).where(eq(integrationWebhookEvents.id, inserted[0].id));
-    return jsonResponse({ received: true, queued: Boolean(inserted.length) && !PRIVACY_TOPICS.has(topic), duplicate: !inserted.length }, { status: 200 });
+    return jsonResponse({ received: true, queued: insertedCount > 0 && !terminalTopic, duplicate: insertedCount === 0 }, { status: 200 });
   });
 }
