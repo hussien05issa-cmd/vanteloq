@@ -40,7 +40,7 @@ const vocabularies: Record<string, ProviderVocabulary> = {
   "lightspeed-r": { sale: "Sale", sales: "Sales", location: "Shop", product: "Item", customer: "Customer", payment: "Payment" },
   lightspeed: { sale: "Sale", sales: "Sales", location: "Outlet", product: "Product", customer: "Customer", payment: "Payment" },
   "shopify-pos": { sale: "Order", sales: "Orders", location: "Location", product: "Product", customer: "Customer", payment: "Payment" },
-  shopify: { sale: "Order", sales: "Orders", location: "Location", product: "Product", customer: "Customer", payment: "Payment" },
+  shopify: { sale: "Order", sales: "Orders", location: "Channel", product: "Product", customer: "Customer", payment: "Payment" },
   square: { sale: "Order", sales: "Orders", location: "Location", product: "Catalog item", customer: "Customer", payment: "Tender" },
   clover: { sale: "Order", sales: "Orders", location: "Merchant location", product: "Item", customer: "Customer", payment: "Tender" },
   moneris: { sale: "Transaction", sales: "Transactions", location: "Merchant location", product: "Product", customer: "Customer", payment: "Settlement" },

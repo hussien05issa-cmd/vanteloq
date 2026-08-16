@@ -6,6 +6,8 @@ import {
   buildShopifyAuthorizationUrl,
   normalizeShopDomain,
   SHOPIFY_API_VERSION,
+  SHOPIFY_PROVIDER,
+  shopifyReadiness,
   shopifyPosReadiness,
   verifyShopifyCallback,
   verifyShopifyWebhook,
@@ -16,6 +18,8 @@ import {
   SHOPIFY_CLIENT_SECRET: "shopify-test-secret",
   SHOPIFY_REDIRECT_URI: "https://vanteloq.com/api/v1/integrations/shopify-pos/callback",
   SHOPIFY_WEBHOOK_URL: "https://vanteloq.com/api/v1/integrations/shopify-pos/webhook",
+  SHOPIFY_COMMERCE_REDIRECT_URI: "https://vanteloq.com/api/v1/integrations/shopify/callback",
+  SHOPIFY_COMMERCE_WEBHOOK_URL: "https://vanteloq.com/api/v1/integrations/shopify/webhook",
   INTEGRATION_ENCRYPTION_KEY: Buffer.from(Uint8Array.from({ length: 32 }, (_, index) => index + 1)).toString("base64"),
 };
 
@@ -28,6 +32,16 @@ test("Shopify POS readiness exposes the exact read-only adapter boundary", () =>
   assert.equal(readiness.mode, "read_only_staged_sync");
   assert.equal(readiness.dataPromotionEnabled, false);
   assert.deepEqual(new Set(readiness.permissions), new Set(["read_all_orders", "read_orders", "read_products", "read_inventory", "read_locations", "read_customers"]));
+});
+
+test("Shopify e-commerce has a distinct ready OAuth and webhook boundary", () => {
+  const readiness = shopifyReadiness();
+  assert.equal(readiness.credentialsConfigured, true);
+  assert.equal(readiness.webhookConfigured, true);
+  const state = "b".repeat(43);
+  const url = new URL(buildShopifyAuthorizationUrl("online-store.myshopify.com", state, SHOPIFY_PROVIDER));
+  assert.equal(url.searchParams.get("redirect_uri"), "https://vanteloq.com/api/v1/integrations/shopify/callback");
+  assert.doesNotMatch(url.toString(), /shopify-pos/);
 });
 
 test("Shopify authorization is state-bound and limited to permanent store domains", () => {
@@ -66,4 +80,16 @@ test("Shopify compliance and uninstall topics terminate at the verified webhook 
   for (const topic of ["customers/data_request", "customers/redact", "shop/redact", "app/uninstalled"]) assert.match(route, new RegExp(topic.replace("/", "\\/")));
   assert.match(route, /verifyShopifyWebhook/);
   assert.match(route, /privacyDataDeletedAt/);
+});
+
+test("Shopify e-commerce routes preserve online-order lineage separately from Shopify POS", () => {
+  const sync = readFileSync(`${process.cwd()}/app/api/v1/integrations/shopify-pos/sync/route.ts`, "utf8");
+  const wrapper = readFileSync(`${process.cwd()}/app/api/v1/integrations/shopify/sync/route.ts`, "utf8");
+  const configuration = readFileSync(`${process.cwd()}/shopify.app.toml`, "utf8");
+  assert.match(sync, /isCommerce \? "source_name:web" : "source_name:pos"/);
+  assert.match(sync, /SHOPIFY_ONLINE_LOCATION_REF/);
+  assert.match(sync, /currentTotalRefundedSet/);
+  assert.match(wrapper, /shopify-pos\/sync\/route/);
+  assert.match(configuration, /integrations\/shopify\/callback/);
+  assert.match(configuration, /integrations\/shopify\/webhook/);
 });

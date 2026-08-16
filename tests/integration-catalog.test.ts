@@ -19,7 +19,7 @@ test("the integration directory uses the approved sales-channel taxonomy", () =>
     { label: "Accounting", providers: ["QuickBooks", "Xero"] },
     { label: "Marketing", providers: ["Google", "Meta"] },
   ]);
-  for (const provider of ["shopify-pos", "google", "meta"]) {
+  for (const provider of ["shopify", "shopify-pos", "google", "meta"]) {
     assert.ok(integrationCatalog.some((entry) => entry.id === provider));
   }
   assert.ok(integrationCatalog.every((entry) => entry.id !== "amazon" && entry.id !== "woocommerce"));
@@ -27,7 +27,7 @@ test("the integration directory uses the approved sales-channel taxonomy", () =>
 
 test("only built pilots may claim that credentials are the remaining connection prerequisite", () => {
   const credentialReady = integrationCatalog.filter((provider) => provider.availability === "credentials_required");
-  assert.deepEqual(credentialReady.map((provider) => provider.id).sort(), ["clover", "google", "lightspeed", "lightspeed-r", "meta", "moneris", "plaid", "shopify-pos", "square", "stripe"]);
+  assert.deepEqual(credentialReady.map((provider) => provider.id).sort(), ["clover", "google", "lightspeed", "lightspeed-r", "meta", "moneris", "plaid", "shopify", "shopify-pos", "square", "stripe"]);
   assert.ok(integrationCatalog.filter((provider) => !credentialReady.includes(provider)).every((provider) => provider.availability !== "credentials_required"));
 });
 

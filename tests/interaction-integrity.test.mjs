@@ -70,7 +70,7 @@ test("X-Series and R-Series are distinct, actionable connection choices", async 
   assert.match(catalog, /id: "lightspeed"[\s\S]*name: "Lightspeed X-Series"/);
   assert.match(catalog, /id: "lightspeed-r"[\s\S]*name: "Lightspeed R-Series"/);
   assert.match(app, /integrations\/\$\{provider\}\/authorize/);
-  assert.match(app, /provider === "lightspeed-r" \? "shops" : provider === "clover" \|\| provider === "square" \|\| provider === "shopify-pos" \? "locations" : "outlets"/);
+  assert.match(app, /provider === "lightspeed-r" \? "shops" : provider === "clover" \|\| provider === "square" \|\| provider === "shopify" \|\| provider === "shopify-pos" \? "locations" : "outlets"/);
   assert.match(app, /providerActions\[integrationActionKey\(provider\.id, connection\.id\)\]/);
   assert.match(app, /integrationActionKey\(provider, connectionId\)/);
   assert.match(app, /delete next\[actionKey\]/);
@@ -135,8 +135,8 @@ test("R-Series location setup cannot silently leave dashboard data locked", asyn
   assert.match(shops, /activeLocalLocations\.length === 1/);
   assert.match(sync, /unmappedLocations/);
   assert.match(sync, /Map or ignore/);
-  assert.match(app, /\(provider === "lightspeed-r" \|\| provider === "shopify-pos" \|\| provider === "square" \|\| provider === "clover"\) && body\.publicationPending === true/);
-  assert.match(app, /stageProviderSample\(provider, connectionId\)/);
+  assert.match(app, /\(provider === "lightspeed-r" \|\| provider === "shopify" \|\| provider === "shopify-pos" \|\| provider === "square" \|\| provider === "clover"\) && body\.publicationPending === true/);
+  assert.match(app, /stageProviderSample\(provider as [^,]+, connectionId\)/);
 });
 
 test("live sales and report time frames stay connected to real API filters", async () => {

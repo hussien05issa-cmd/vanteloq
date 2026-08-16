@@ -135,10 +135,11 @@ const emptyCommerceCoverage: CanonicalCommerceCoverage = {
   locations: false,
 };
 const universalPosContract = buildProviderFeatureCoverage("normalized-pos", emptyCommerceCoverage);
-type DirectIntegrationProvider = "lightspeed" | "lightspeed-r" | "shopify-pos" | "square" | "clover" | "stripe" | "moneris" | "google" | "meta";
+type DirectIntegrationProvider = "lightspeed" | "lightspeed-r" | "shopify" | "shopify-pos" | "square" | "clover" | "stripe" | "moneris" | "google" | "meta";
 const providerSyncRoutes = {
   lightspeed: "/api/v1/integrations/lightspeed/sync",
   "lightspeed-r": "/api/v1/integrations/lightspeed-r/sync",
+  shopify: "/api/v1/integrations/shopify/sync",
   "shopify-pos": "/api/v1/integrations/shopify-pos/sync",
   square: "/api/v1/integrations/square/sync",
   clover: "/api/v1/integrations/clover/sync",
@@ -724,7 +725,7 @@ export default function VanteloqApp({
   useEffect(() => {
     const parameters = new URLSearchParams(window.location.search);
     const integration = parameters.get("integration");
-    if (integration !== "lightspeed" && integration !== "lightspeed-r" && integration !== "shopify-pos" && integration !== "square" && integration !== "clover" && integration !== "stripe" && integration !== "plaid" && integration !== "google" && integration !== "meta") return;
+    if (integration !== "lightspeed" && integration !== "lightspeed-r" && integration !== "shopify" && integration !== "shopify-pos" && integration !== "square" && integration !== "clover" && integration !== "stripe" && integration !== "plaid" && integration !== "google" && integration !== "meta") return;
     const timer = window.setTimeout(() => {
       setView("Integrations");
       const state = parameters.get("connection");
@@ -747,6 +748,8 @@ export default function VanteloqApp({
         state === "connected"
           ? integration === "lightspeed-r"
             ? "Lightspeed R-Series is connected. Review its shops, then start a sync from Connections."
+            : integration === "shopify"
+              ? "Shopify e-commerce is connected. Review its Online Store mapping, then start a sync from Connections."
             : integration === "shopify-pos"
               ? "Shopify POS is connected. Review its retail locations, then start a sync from Connections."
             : integration === "clover"
@@ -757,8 +760,8 @@ export default function VanteloqApp({
               ? "Stripe is connected."
             : "Lightspeed X-Series is connected."
         : state === "declined"
-          ? `${integration === "stripe" ? "Stripe" : integration === "lightspeed-r" ? "R-Series" : integration === "shopify-pos" ? "Shopify POS" : integration === "clover" ? "Clover" : integration === "square" ? "Square" : "X-Series"} authorization was declined`
-          : `${integration === "stripe" ? "Stripe" : integration === "lightspeed-r" ? "R-Series" : integration === "shopify-pos" ? "Shopify POS" : integration === "clover" ? "Clover" : integration === "square" ? "Square" : "X-Series"} authorization needs to be restarted`,
+          ? `${integration === "stripe" ? "Stripe" : integration === "lightspeed-r" ? "R-Series" : integration === "shopify" ? "Shopify e-commerce" : integration === "shopify-pos" ? "Shopify POS" : integration === "clover" ? "Clover" : integration === "square" ? "Square" : "X-Series"} authorization was declined`
+          : `${integration === "stripe" ? "Stripe" : integration === "lightspeed-r" ? "R-Series" : integration === "shopify" ? "Shopify e-commerce" : integration === "shopify-pos" ? "Shopify POS" : integration === "clover" ? "Clover" : integration === "square" ? "Square" : "X-Series"} authorization needs to be restarted`,
       );
       window.history.replaceState({}, "", window.location.pathname);
     }, 0);
@@ -2233,8 +2236,8 @@ function DataHub({
     nextStep: string;
   }>(null);
   const [reviewedMarketingSamples, setReviewedMarketingSamples] = useState<Record<string, boolean>>({});
-  const [activeSampleProvider, setActiveSampleProvider] = useState<"lightspeed" | "lightspeed-r" | "shopify-pos" | "square" | "clover" | "stripe" | "moneris">("lightspeed");
-  const [shopifyFormOpen, setShopifyFormOpen] = useState(false);
+  const [activeSampleProvider, setActiveSampleProvider] = useState<"lightspeed" | "lightspeed-r" | "shopify" | "shopify-pos" | "square" | "clover" | "stripe" | "moneris">("lightspeed");
+  const [shopifyConnectProvider, setShopifyConnectProvider] = useState<"shopify" | "shopify-pos" | null>(null);
   const [shopifyShop, setShopifyShop] = useState("");
   const [monerisFormOpen, setMonerisFormOpen] = useState(false);
   const [monerisDraft, setMonerisDraft] = useState({ accountName: "", environment: "sandbox", merchantId: "", clientId: "", clientSecret: "", scope: "payment.read", accepted: false });
@@ -2251,6 +2254,8 @@ function DataHub({
       feeCents?: number;
       netCents?: number;
       completedSales?: number;
+      orders?: number;
+      refunds?: number;
       openSales?: number;
       voidedSales?: number;
       salesCents?: number;
@@ -2270,7 +2275,7 @@ function DataHub({
     nextStep: string;
   }>(null);
   const [outletData, setOutletData] = useState<null | {
-    provider?: "lightspeed" | "lightspeed-r" | "shopify-pos" | "square" | "clover";
+    provider?: "lightspeed" | "lightspeed-r" | "shopify" | "shopify-pos" | "square" | "clover";
     connectionId?: string;
     accountName?: string | null;
     locationLabel?: "outlet" | "shop" | "location" | "merchant";
@@ -2358,7 +2363,7 @@ function DataHub({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          reason: (provider === "lightspeed-r" || provider === "shopify-pos" || provider === "square" || provider === "clover") && action === "sync" ? "manual" : undefined,
+          reason: (provider === "lightspeed-r" || provider === "shopify" || provider === "shopify-pos" || provider === "square" || provider === "clover") && action === "sync" ? "manual" : undefined,
           connectionId,
           ...extraBody,
         }),
@@ -2385,8 +2390,8 @@ function DataHub({
     );
     if (body?.authorizationUrl) window.location.assign(body.authorizationUrl);
   };
-  const connectShopifyPos = async () => {
-    const body = await providerPost("shopify-pos", "/api/v1/integrations/shopify-pos/authorize", "authorize", undefined, { shop: shopifyShop });
+  const connectShopify = async (provider: "shopify" | "shopify-pos") => {
+    const body = await providerPost(provider, `/api/v1/integrations/${provider}/authorize`, "authorize", undefined, { shop: shopifyShop });
     if (body?.authorizationUrl) window.location.assign(body.authorizationUrl);
   };
   const connectMoneris = async () => {
@@ -2398,19 +2403,19 @@ function DataHub({
     await loadConnections();
   };
   const stageProviderSample = async (
-    provider: "lightspeed" | "lightspeed-r" | "shopify-pos" | "square" | "clover" | "stripe" | "moneris",
+    provider: "lightspeed" | "lightspeed-r" | "shopify" | "shopify-pos" | "square" | "clover" | "stripe" | "moneris",
     connectionId?: string,
     previousSyncAt: string | null = null,
   ) => {
     const body = await providerPost(
       provider,
       providerSyncRoutes[provider],
-      provider === "lightspeed-r" || provider === "shopify-pos" || provider === "square" || provider === "clover" || provider === "moneris" ? "sync" : "sample",
+      provider === "lightspeed-r" || provider === "shopify" || provider === "shopify-pos" || provider === "square" || provider === "clover" || provider === "moneris" ? "sync" : "sample",
       connectionId,
     );
     if (!body) return;
     if (body.coalesced) {
-      showNotice(`${provider === "clover" ? "Clover" : provider === "square" ? "Square" : provider === "shopify-pos" ? "Shopify POS" : "R-Series"} is already updating. Refresh Connections when it finishes.`);
+      showNotice(`${provider === "clover" ? "Clover" : provider === "square" ? "Square" : provider === "shopify" ? "Shopify e-commerce" : provider === "shopify-pos" ? "Shopify POS" : "R-Series"} is already updating. Refresh Connections when it finishes.`);
       if (provider === "lightspeed-r" && connectionId) {
         await waitForConnectionSync(provider, connectionId, previousSyncAt);
       } else {
@@ -2420,11 +2425,11 @@ function DataHub({
     }
     setActiveSampleProvider(provider);
     setSampleResult(body);
-    showNotice(body.nextStep ?? (provider === "lightspeed-r" || provider === "shopify-pos" || provider === "square" || provider === "clover" || provider === "moneris"
-      ? `The ${provider === "clover" ? "Clover" : provider === "square" ? "Square" : provider === "shopify-pos" ? "Shopify POS" : "R-Series"} sync finished. Review its reconciliation before approval.`
+    showNotice(body.nextStep ?? (provider === "lightspeed-r" || provider === "shopify" || provider === "shopify-pos" || provider === "square" || provider === "clover" || provider === "moneris"
+      ? `The ${provider === "clover" ? "Clover" : provider === "square" ? "Square" : provider === "shopify" ? "Shopify e-commerce" : provider === "shopify-pos" ? "Shopify POS" : "R-Series"} sync finished. Review its reconciliation before approval.`
       : `${provider === "stripe" ? "Stripe" : "X-Series"} sample staged; dashboard metrics remain unchanged`));
     await loadConnections();
-    if (provider === "lightspeed-r" || provider === "shopify-pos" || provider === "square" || provider === "clover" || provider === "moneris") await refresh();
+    if (provider === "lightspeed-r" || provider === "shopify" || provider === "shopify-pos" || provider === "square" || provider === "clover" || provider === "moneris") await refresh();
   };
   const syncMarketingProvider = async (
     provider: "google" | "meta",
@@ -2494,9 +2499,10 @@ function DataHub({
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error?.message ?? "The reviewed data could not be approved.");
-      if ((provider === "lightspeed-r" || provider === "shopify-pos" || provider === "square" || provider === "clover") && body.publicationPending === true) {
-        showNotice(`Reviewed ${provider === "clover" ? "Clover" : provider === "square" ? "Square" : "R-Series"} data approved. Publishing it to the workspace now.`);
-        await stageProviderSample(provider as "lightspeed-r" | "shopify-pos" | "square" | "clover", connectionId);
+      if ((provider === "lightspeed-r" || provider === "shopify" || provider === "shopify-pos" || provider === "square" || provider === "clover") && body.publicationPending === true) {
+        const label = provider === "clover" ? "Clover" : provider === "square" ? "Square" : provider === "shopify" ? "Shopify e-commerce" : provider === "shopify-pos" ? "Shopify POS" : "R-Series";
+        showNotice(`Reviewed ${label} data approved. Publishing it to the workspace now.`);
+        await stageProviderSample(provider as "lightspeed-r" | "shopify" | "shopify-pos" | "square" | "clover", connectionId);
         return;
       }
       showNotice(body.nextStep ?? "Reviewed provider data is now available to dashboard features.");
@@ -2621,7 +2627,7 @@ function DataHub({
     connectionId?: string,
     accountLabel?: string | null,
   ) => {
-    const providerLabel = provider === "stripe" ? "Stripe" : provider === "moneris" ? "Moneris" : provider === "shopify-pos" ? "Shopify POS" : provider === "lightspeed-r" ? "Lightspeed R-Series" : provider === "square" ? "Square" : provider === "clover" ? "Clover" : provider === "lightspeed" ? "Lightspeed X-Series" : provider === "google" ? "Google" : "Meta";
+    const providerLabel = provider === "stripe" ? "Stripe" : provider === "moneris" ? "Moneris" : provider === "shopify" ? "Shopify e-commerce" : provider === "shopify-pos" ? "Shopify POS" : provider === "lightspeed-r" ? "Lightspeed R-Series" : provider === "square" ? "Square" : provider === "clover" ? "Clover" : provider === "lightspeed" ? "Lightspeed X-Series" : provider === "google" ? "Google" : "Meta";
     const targetLabel = accountLabel ? ` account “${accountLabel}”` : "";
     if (!window.confirm(`Disconnect ${providerLabel}${targetLabel}? Staged audit history will be retained.`)) return;
     const body = await providerPost(
@@ -2631,18 +2637,18 @@ function DataHub({
       connectionId,
     );
     if (!body) return;
-    if ((provider === "lightspeed" || provider === "lightspeed-r" || provider === "shopify-pos" || provider === "square" || provider === "clover" || provider === "stripe" || provider === "moneris") && activeSampleProvider === provider) {
+    if ((provider === "lightspeed" || provider === "lightspeed-r" || provider === "shopify" || provider === "shopify-pos" || provider === "square" || provider === "clover" || provider === "stripe" || provider === "moneris") && activeSampleProvider === provider) {
       setSampleResult(null);
       if (provider !== "stripe") setOutletData(null);
     }
     showNotice(`${providerLabel} disconnected`);
     await loadConnections();
   };
-  const loadProviderLocations = async (provider: "lightspeed" | "lightspeed-r" | "shopify-pos" | "square" | "clover", connectionId?: string) => {
+  const loadProviderLocations = async (provider: "lightspeed" | "lightspeed-r" | "shopify" | "shopify-pos" | "square" | "clover", connectionId?: string) => {
     const actionKey = integrationActionKey(provider, connectionId);
     setProviderActions((current) => ({ ...current, [actionKey]: "locations" }));
     try {
-      const response = await apiFetch(`/api/v1/integrations/${provider}/${provider === "lightspeed-r" ? "shops" : provider === "clover" || provider === "square" || provider === "shopify-pos" ? "locations" : "outlets"}`, {
+      const response = await apiFetch(`/api/v1/integrations/${provider}/${provider === "lightspeed-r" ? "shops" : provider === "clover" || provider === "square" || provider === "shopify" || provider === "shopify-pos" ? "locations" : "outlets"}`, {
         method: "POST",
         headers: { Accept: "application/json", "Content-Type": "application/json" },
         body: JSON.stringify({ action: "discover", connectionId }),
@@ -2650,7 +2656,7 @@ function DataHub({
       const body = await response.json();
       if (!response.ok) throw new Error(body.error?.message ?? "Provider locations could not be loaded.");
       setActiveSampleProvider(provider);
-      setOutletData({ ...body, provider, locationLabel: provider === "lightspeed-r" ? "shop" : provider === "clover" ? "merchant" : provider === "square" || provider === "shopify-pos" ? "location" : "outlet" });
+      setOutletData({ ...body, provider, locationLabel: provider === "lightspeed-r" ? "shop" : provider === "clover" ? "merchant" : provider === "square" || provider === "shopify" || provider === "shopify-pos" ? "location" : "outlet" });
       if (provider === "lightspeed-r" && Number(body.autoMapped ?? 0) > 0) {
         showNotice("The only R-Series shop was matched to your only active location. Starting its verified data sync now.");
         await stageProviderSample(provider, connectionId);
@@ -2675,7 +2681,7 @@ function DataHub({
     try {
       const status = selection === "__ignored__" ? "ignored" : selection ? "mapped" : "unmapped";
       const provider = mappingProvider;
-      const response = await apiFetch(`/api/v1/integrations/${provider}/${provider === "lightspeed-r" ? "shops" : provider === "clover" || provider === "square" || provider === "shopify-pos" ? "locations" : "outlets"}`, {
+      const response = await apiFetch(`/api/v1/integrations/${provider}/${provider === "lightspeed-r" ? "shops" : provider === "clover" || provider === "square" || provider === "shopify" || provider === "shopify-pos" ? "locations" : "outlets"}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -2687,8 +2693,8 @@ function DataHub({
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error?.message ?? "The outlet mapping could not be saved.");
-      setOutletData({ ...body, provider, locationLabel: provider === "lightspeed-r" ? "shop" : provider === "clover" ? "merchant" : provider === "square" || provider === "shopify-pos" ? "location" : "outlet" });
-      showNotice(`${provider === "clover" ? "Clover merchant" : provider === "shopify-pos" ? "Shopify POS location" : provider === "square" ? "Square location" : provider === "lightspeed-r" ? "R-Series shop" : "X-Series outlet"} mapping saved`);
+      setOutletData({ ...body, provider, locationLabel: provider === "lightspeed-r" ? "shop" : provider === "clover" ? "merchant" : provider === "square" || provider === "shopify" || provider === "shopify-pos" ? "location" : "outlet" });
+      showNotice(`${provider === "clover" ? "Clover merchant" : provider === "shopify" ? "Shopify e-commerce channel" : provider === "shopify-pos" ? "Shopify POS location" : provider === "square" ? "Square location" : provider === "lightspeed-r" ? "R-Series shop" : "X-Series outlet"} mapping saved`);
     } catch (error) {
       showNotice(error instanceof Error ? error.message : "The outlet mapping could not be saved.");
     } finally {
@@ -2775,7 +2781,7 @@ function DataHub({
               <div className="integration-grid">
             {providerRows.filter((provider) => provider.category === category).map((provider) => {
               const connected = provider.status === "connected";
-              const hasLocationMapping = provider.id === "lightspeed" || provider.id === "lightspeed-r" || provider.id === "shopify-pos" || provider.id === "square" || provider.id === "clover";
+              const hasLocationMapping = provider.id === "lightspeed" || provider.id === "lightspeed-r" || provider.id === "shopify" || provider.id === "shopify-pos" || provider.id === "square" || provider.id === "clover";
               const isStripe = provider.id === "stripe";
               const isMoneris = provider.id === "moneris";
               const isPlaid = provider.id === "plaid";
@@ -2793,7 +2799,7 @@ function DataHub({
               const disabledReason = !canManageProvider
                 ? "Your role can view connection status but cannot manage integrations."
                 : !configured
-                  ? `Add the ${isPlaid ? "Plaid client ID, environment secret, approved redirect and webhook URLs, and encryption key" : isStripe ? "Stripe Connect credentials and webhook secret" : isMoneris ? "integration encryption key" : provider.id === "google" ? "Google OAuth client, approved callback, and encryption key" : provider.id === "meta" ? "Meta app credentials, approved callback, and encryption key" : provider.id === "shopify-pos" ? "Shopify client ID, client secret, approved callback, webhook URL, and encryption key" : provider.id === "lightspeed-r" ? "R-Series OAuth client ID and secret" : provider.id === "square" ? "Square application ID, application secret, approved redirect, webhook signature key, and encryption key" : provider.id === "clover" ? "Clover app ID, app secret, approved redirect, webhook authorization secret, and encryption key" : "X-Series OAuth client ID and secret"} to Vanteloq's hosted secrets first.`
+                  ? `Add the ${isPlaid ? "Plaid client ID, environment secret, approved redirect and webhook URLs, and encryption key" : isStripe ? "Stripe Connect credentials and webhook secret" : isMoneris ? "integration encryption key" : provider.id === "google" ? "Google OAuth client, approved callback, and encryption key" : provider.id === "meta" ? "Meta app credentials, approved callback, and encryption key" : provider.id === "shopify" || provider.id === "shopify-pos" ? "Shopify client ID, client secret, approved callback, webhook URL, and encryption key" : provider.id === "lightspeed-r" ? "R-Series OAuth client ID and secret" : provider.id === "square" ? "Square application ID, application secret, approved redirect, webhook signature key, and encryption key" : provider.id === "clover" ? "Clover app ID, app secret, approved redirect, webhook authorization secret, and encryption key" : "X-Series OAuth client ID and secret"} to Vanteloq's hosted secrets first.`
                   : "";
               return (
               <article className="integration-card" key={provider.id}>
@@ -2807,7 +2813,7 @@ function DataHub({
                 <h3>{provider.name}</h3>
                 <p>{provider.activationRequirement}</p>
                 <details className="integration-enablement"><summary>What this connection enables</summary><p><b>Features</b><span>{integrationCategoryGuide[provider.category].enables}</span></p><p><b>Data required</b><span>{integrationCategoryGuide[provider.category].data}</span></p></details>
-                {provider.category === "Point of sale" && <details className="integration-feature-checklist"><summary>Feature and data checklist</summary>{provider.featureCoverage.map((feature) => <div key={feature.id}><span className={`feature-state ${feature.status === "ready" ? "available" : "needs-data"}`}>{feature.status === "ready" ? "Available" : "Needs data"}</span><p><b>{feature.label}</b><small>{feature.insight}</small><em>{feature.status === "ready" ? `Verified: ${feature.dataUsed.join(", ")}` : `Missing: ${feature.dataNeeded.join(", ")}`}</em></p></div>)}</details>}
+                {(provider.category === "Point of sale" || provider.id === "shopify") && <details className="integration-feature-checklist"><summary>Feature and data checklist</summary>{provider.featureCoverage.map((feature) => <div key={feature.id}><span className={`feature-state ${feature.status === "ready" ? "available" : "needs-data"}`}>{feature.status === "ready" ? "Available" : "Needs data"}</span><p><b>{feature.label}</b><small>{feature.insight}</small><em>{feature.status === "ready" ? `Verified: ${feature.dataUsed.join(", ")}` : `Missing: ${feature.dataNeeded.join(", ")}`}</em></p></div>)}</details>}
                 {(connected || repairRequired) && provider.maskedAccountRef && (
                   <div className="connected-source" role="status">
                     <span>{repairRequired ? "Connection needs attention" : "Connected source"}</span>
@@ -2843,10 +2849,10 @@ function DataHub({
                   <label className="moneris-consent"><input type="checkbox" checked={monerisDraft.accepted} required onChange={(event) => setMonerisDraft((current) => ({ ...current, accepted: event.target.checked }))} /><span>I authorize Vanteloq to retrieve payment amounts, currency, status, timestamps and settlement references for reconciliation. No raw card data is requested or stored.</span></label>
                   <footer><button type="button" onClick={() => setMonerisFormOpen(false)}>Cancel</button><button type="submit" className="primary" disabled={!canManageProvider || providerAction === "connect" || !monerisDraft.accepted}>{providerAction === "connect" ? "Validating…" : "Validate and connect"}</button></footer>
                 </form>}
-                {provider.id === "shopify-pos" && shopifyFormOpen && <form className="moneris-connect-form" onSubmit={(event) => { event.preventDefault(); void connectShopifyPos(); }}>
-                  <header><b>Connect a Shopify POS store</b><span>Use the permanent store domain shown in Shopify admin—not a storefront or custom domain.</span></header>
-                  <label><span>Store domain</span><input value={shopifyShop} inputMode="url" autoComplete="url" maxLength={255} placeholder="your-store.myshopify.com" pattern="[A-Za-z0-9][A-Za-z0-9-]*\.myshopify\.com" required onChange={(event) => setShopifyShop(event.target.value.trim().toLowerCase())} /><small>Vanteloq requests read-only access to POS orders, products, inventory, locations, and customers.</small></label>
-                  <footer><button type="button" onClick={() => setShopifyFormOpen(false)}>Cancel</button><button type="submit" className="primary" disabled={!canManageProvider || providerAction === "authorize"}>{providerAction === "authorize" ? "Opening Shopify…" : "Continue to Shopify"}</button></footer>
+                {(provider.id === "shopify" || provider.id === "shopify-pos") && shopifyConnectProvider === provider.id && <form className="moneris-connect-form" onSubmit={(event) => { event.preventDefault(); void connectShopify(provider.id as "shopify" | "shopify-pos"); }}>
+                  <header><b>Connect {provider.id === "shopify" ? "Shopify e-commerce" : "a Shopify POS store"}</b><span>Use the permanent store domain shown in Shopify admin—not a storefront or custom domain.</span></header>
+                  <label><span>Store domain</span><input value={shopifyShop} inputMode="url" autoComplete="url" maxLength={255} placeholder="your-store.myshopify.com" pattern="[A-Za-z0-9][A-Za-z0-9-]*\.myshopify\.com" required onChange={(event) => setShopifyShop(event.target.value.trim().toLowerCase())} /><small>Vanteloq requests read-only access to {provider.id === "shopify" ? "online orders, refunds, products, inventory, locations, and authorized customers" : "POS orders, products, inventory, locations, and authorized customers"}.</small></label>
+                  <footer><button type="button" onClick={() => setShopifyConnectProvider(null)}>Cancel</button><button type="submit" className="primary" disabled={!canManageProvider || providerAction === "authorize"}>{providerAction === "authorize" ? "Opening Shopify…" : "Continue to Shopify"}</button></footer>
                 </form>}
                 {supportsMultipleAccounts && Boolean(provider.connections?.length) && (
                   <div className="provider-account-list" aria-label={`${provider.name} provider accounts`}>
@@ -2863,7 +2869,7 @@ function DataHub({
                           {isMarketingProvider && <small>{connection.resourceSelections.length
                             ? `${connection.resourceSelections.length} exact resource${connection.resourceSelections.length === 1 ? "" : "s"} selected`
                             : "No provider resources selected"}</small>}
-                          {provider.category === "Point of sale" && <small>{connection.reportCatalog.providerReports.filter((report) => report.status === "ready").length} of {connection.reportCatalog.providerReports.length} source-specific reports ready</small>}
+                          {(provider.category === "Point of sale" || provider.id === "shopify") && <small>{connection.reportCatalog.providerReports.filter((report) => report.status === "ready").length} of {connection.reportCatalog.providerReports.length} source-specific reports ready</small>}
                           {connection.lastErrorCode && <small role="alert">Needs attention: {connection.lastErrorCode.replaceAll("_", " ")}</small>}
                         </div>
                         <span className={`provider-account-state ${connection.status}`}>{connection.status.replaceAll("_", " ")}</span>
@@ -2900,15 +2906,15 @@ function DataHub({
                               >{connectionAction === "approve" ? "Approving…" : "Approve reviewed sample"}</button>}
                             </> : <button
                               type="button"
-                              onClick={() => void stageProviderSample(actionableProvider as "lightspeed" | "lightspeed-r" | "shopify-pos" | "square" | "clover" | "stripe" | "moneris", connection.id, connection.lastSuccessfulSyncAt)}
+                              onClick={() => void stageProviderSample(actionableProvider as "lightspeed" | "lightspeed-r" | "shopify" | "shopify-pos" | "square" | "clover" | "stripe" | "moneris", connection.id, connection.lastSuccessfulSyncAt)}
                               disabled={!canManageProvider || Boolean(connectionAction) || connection.syncActive}
-                            >{connectionAction === "sync" || connection.syncActive ? "Syncing…" : connectionAction === "sample" ? "Working…" : provider.id === "moneris" ? "Sync payments" : provider.id === "lightspeed-r" || provider.id === "shopify-pos" || provider.id === "square" || provider.id === "clover" ? "Re-sync now" : "Stage sample"}</button>}
+                            >{connectionAction === "sync" || connection.syncActive ? "Syncing…" : connectionAction === "sample" ? "Working…" : provider.id === "moneris" ? "Sync payments" : provider.id === "lightspeed-r" || provider.id === "shopify" || provider.id === "shopify-pos" || provider.id === "square" || provider.id === "clover" ? "Re-sync now" : "Stage sample"}</button>}
                             {hasLocationMapping && <button
                               type="button"
-                              onClick={() => void loadProviderLocations(actionableProvider as "lightspeed" | "lightspeed-r" | "shopify-pos" | "square" | "clover", connection.id)}
+                              onClick={() => void loadProviderLocations(actionableProvider as "lightspeed" | "lightspeed-r" | "shopify" | "shopify-pos" | "square" | "clover", connection.id)}
                               disabled={!canManageProvider || Boolean(connectionAction)}
-                            >{connectionAction === "locations" ? "Loading…" : `Map ${provider.id === "lightspeed-r" ? "shops" : provider.id === "clover" ? "merchant" : provider.id === "square" || provider.id === "shopify-pos" ? "locations" : "outlets"}`}</button>}
-                            {(provider.id === "lightspeed-r" || provider.id === "shopify-pos" || provider.id === "square" || provider.id === "clover") && connection.dataPromotionStatus === "staging" && connection.lastSuccessfulSyncAt && <button
+                            >{connectionAction === "locations" ? "Loading…" : `Map ${provider.id === "lightspeed-r" ? "shops" : provider.id === "clover" ? "merchant" : provider.id === "shopify" ? "channels" : provider.id === "square" || provider.id === "shopify-pos" ? "locations" : "outlets"}`}</button>}
+                            {(provider.id === "lightspeed-r" || provider.id === "shopify" || provider.id === "shopify-pos" || provider.id === "square" || provider.id === "clover") && connection.dataPromotionStatus === "staging" && connection.lastSuccessfulSyncAt && <button
                               type="button"
                               onClick={() => requestConnectionDataApproval(provider.id, connection.id)}
                               disabled={!canManageProvider || Boolean(connectionAction)}
@@ -2953,7 +2959,7 @@ function DataHub({
                         ? "Re-authentication required · sync paused"
                         : connected
                         ? provider.dataPromotionStatus === "approved"
-                          ? provider.id === "lightspeed-r" || provider.id === "shopify-pos" || provider.id === "square" || provider.id === "clover"
+                          ? provider.id === "lightspeed-r" || provider.id === "shopify" || provider.id === "shopify-pos" || provider.id === "square" || provider.id === "clover"
                             ? "Approved sales, catalog, customers and suppliers are available"
                             : provider.id === "plaid"
                               ? "Reviewed bank data is available · fresh balances power cash analysis · transactions await review"
@@ -2986,7 +2992,7 @@ function DataHub({
                   </div> : supportsMultipleAccounts ? <div className="provider-actions">
                     <button
                       type="button"
-                      onClick={() => isMoneris ? setMonerisFormOpen(true) : provider.id === "shopify-pos" ? setShopifyFormOpen(true) : void connectProvider(actionableProvider)}
+                      onClick={() => isMoneris ? setMonerisFormOpen(true) : provider.id === "shopify" || provider.id === "shopify-pos" ? setShopifyConnectProvider(provider.id) : void connectProvider(actionableProvider)}
                       disabled={Boolean(disabledReason) || Boolean(providerAction)}
                       title={disabledReason || `Authorize another ${provider.name} account with its own credentials and import history.`}
                     >{providerAction === "authorize" ? "Opening…" : connected ? "Connect another account" : "Connect"}</button>
@@ -3077,7 +3083,7 @@ function DataHub({
               </label>)}
             </div> : <p className="outlet-empty">No {outletData.locationLabel === "shop" ? "shops" : outletData.locationLabel === "merchant" ? "merchant location" : outletData.locationLabel === "location" ? "Square locations" : "outlets"} were returned. Confirm the retailer has an active location, then retry discovery.</p>}
             <footer>
-              <span>{outletData.provider === "lightspeed-r" ? "Each authorized R-Series account keeps its own credentials, shop mappings, last sync position, and import history. Ignored shops stay excluded from future imports." : outletData.provider === "clover" ? "Each authorized Clover merchant keeps separate encrypted credentials, a location mapping, rotating refresh state, and staged import history. Card data is never imported." : outletData.provider === "square" ? "Each authorized Square seller keeps separate encrypted credentials, location mappings, refresh state and staged import history. Vanteloq imports tender categories, never raw card data." : "Each authorized X-Series account keeps its own credentials, outlet mappings, last sync position, and staged import history. Ignored outlets stay excluded and visible during review."}</span>
+              <span>{outletData.provider === "lightspeed-r" ? "Each authorized R-Series account keeps its own credentials, shop mappings, last sync position, and import history. Ignored shops stay excluded from future imports." : outletData.provider === "clover" ? "Each authorized Clover merchant keeps separate encrypted credentials, a location mapping, rotating refresh state, and staged import history. Card data is never imported." : outletData.provider === "square" ? "Each authorized Square seller keeps separate encrypted credentials, location mappings, refresh state and staged import history. Vanteloq imports tender categories, never raw card data." : outletData.provider === "shopify" ? "Each authorized Shopify store keeps separate encrypted credentials, an online-store mapping, refresh state, and import history. Online orders remain distinct from Shopify POS activity." : outletData.provider === "shopify-pos" ? "Each authorized Shopify store keeps separate encrypted credentials, retail-location mappings, refresh state, and Shopify POS import history. Raw card data is never imported." : "Each authorized X-Series account keeps its own credentials, outlet mappings, last sync position, and staged import history. Ignored outlets stay excluded and visible during review."}</span>
               <button type="button" onClick={() => navigate("Settings")}>Add organization location</button>
             </footer>
           </section>}
@@ -3090,25 +3096,25 @@ function DataHub({
           {sampleResult && <section className={`sample-sync-result ${sampleResult.readyForReview ? "review-ready" : ""}`} aria-live="polite">
             <header>
               <div>
-                <p>{activeSampleProvider === "stripe" ? "STRIPE SAMPLE RECONCILIATION" : activeSampleProvider === "moneris" ? "MONERIS PAYMENT RECONCILIATION" : activeSampleProvider === "lightspeed-r" ? "R-SERIES DATA SYNC" : activeSampleProvider === "shopify-pos" ? "SHOPIFY POS DATA SYNC" : activeSampleProvider === "square" ? "SQUARE DATA SYNC" : activeSampleProvider === "clover" ? "CLOVER DATA SYNC" : "X-SERIES SAMPLE RECONCILIATION"}</p>
-                <h3>{activeSampleProvider === "lightspeed-r" || activeSampleProvider === "shopify-pos" || activeSampleProvider === "square" || activeSampleProvider === "clover"
+                <p>{activeSampleProvider === "stripe" ? "STRIPE SAMPLE RECONCILIATION" : activeSampleProvider === "moneris" ? "MONERIS PAYMENT RECONCILIATION" : activeSampleProvider === "lightspeed-r" ? "R-SERIES DATA SYNC" : activeSampleProvider === "shopify" ? "SHOPIFY E-COMMERCE DATA SYNC" : activeSampleProvider === "shopify-pos" ? "SHOPIFY POS DATA SYNC" : activeSampleProvider === "square" ? "SQUARE DATA SYNC" : activeSampleProvider === "clover" ? "CLOVER DATA SYNC" : "X-SERIES SAMPLE RECONCILIATION"}</p>
+                <h3>{activeSampleProvider === "lightspeed-r" || activeSampleProvider === "shopify" || activeSampleProvider === "shopify-pos" || activeSampleProvider === "square" || activeSampleProvider === "clover"
                   ? sampleResult.readyForReview
-                    ? `The ${activeSampleProvider === "clover" ? "Clover" : activeSampleProvider === "square" ? "Square" : activeSampleProvider === "shopify-pos" ? "Shopify POS" : "R-Series"} import is ready for your review.`
+                    ? `The ${activeSampleProvider === "clover" ? "Clover" : activeSampleProvider === "square" ? "Square" : activeSampleProvider === "shopify" ? "Shopify e-commerce" : activeSampleProvider === "shopify-pos" ? "Shopify POS" : "R-Series"} import is ready for your review.`
                     : sampleResult.run.warningCount > 0
-                      ? `The ${activeSampleProvider === "clover" ? "Clover" : activeSampleProvider === "square" ? "Square" : activeSampleProvider === "shopify-pos" ? "Shopify POS" : "R-Series"} import needs attention before review.`
-                      : `The ${activeSampleProvider === "clover" ? "Clover" : activeSampleProvider === "square" ? "Square" : activeSampleProvider === "shopify-pos" ? "Shopify POS" : "R-Series"} backfill is still in progress.`
+                      ? `The ${activeSampleProvider === "clover" ? "Clover" : activeSampleProvider === "square" ? "Square" : activeSampleProvider === "shopify" ? "Shopify e-commerce" : activeSampleProvider === "shopify-pos" ? "Shopify POS" : "R-Series"} import needs attention before review.`
+                      : `The ${activeSampleProvider === "clover" ? "Clover" : activeSampleProvider === "square" ? "Square" : activeSampleProvider === "shopify" ? "Shopify e-commerce" : activeSampleProvider === "shopify-pos" ? "Shopify POS" : "R-Series"} backfill is still in progress.`
                   : "Staged safely. Nothing has entered live metrics."}</h3>
               </div>
-              <strong>{(activeSampleProvider === "lightspeed-r" || activeSampleProvider === "shopify-pos" || activeSampleProvider === "square" || activeSampleProvider === "clover") && sampleResult.readyForReview ? "READY TO REVIEW" : sampleResult.readyForReview ? "READY TO VERIFY" : "DASHBOARD DATA LOCKED"}</strong>
+              <strong>{(activeSampleProvider === "lightspeed-r" || activeSampleProvider === "shopify" || activeSampleProvider === "shopify-pos" || activeSampleProvider === "square" || activeSampleProvider === "clover") && sampleResult.readyForReview ? "READY TO REVIEW" : sampleResult.readyForReview ? "READY TO VERIFY" : "DASHBOARD DATA LOCKED"}</strong>
             </header>
             <div>
               <span><small>RECORDS READ</small><b>{sampleResult.run.recordsRead}</b></span>
-              <span><small>{activeSampleProvider === "lightspeed-r" || activeSampleProvider === "shopify-pos" || activeSampleProvider === "square" || activeSampleProvider === "clover" ? "RECORDS IMPORTED" : "NEWLY STAGED"}</small><b>{sampleResult.run.recordsStaged}</b></span>
-              <span><small>DUPLICATES SKIPPED</small><b>{sampleResult.run.duplicatesSkipped}</b></span>
-              <span><small>{activeSampleProvider === "stripe" ? "PAYOUTS READ" : activeSampleProvider === "moneris" ? "PAYMENTS READ" : activeSampleProvider === "lightspeed-r" || activeSampleProvider === "shopify-pos" || activeSampleProvider === "square" || activeSampleProvider === "clover" ? "DAILY SUMMARIES" : "UNMAPPED LOCATIONS"}</small><b>{activeSampleProvider === "stripe" ? sampleResult.reconciliation.payouts ?? 0 : activeSampleProvider === "moneris" ? sampleResult.reconciliation.payments ?? 0 : activeSampleProvider === "lightspeed-r" || activeSampleProvider === "shopify-pos" || activeSampleProvider === "square" || activeSampleProvider === "clover" ? sampleResult.reconciliation.dailyMetrics ?? 0 : sampleResult.reconciliation.unmappedOutlets ?? 0}</b></span>
-              {(activeSampleProvider === "lightspeed-r" || activeSampleProvider === "shopify-pos" || activeSampleProvider === "square" || activeSampleProvider === "clover") && <>
+              <span><small>{activeSampleProvider === "lightspeed-r" || activeSampleProvider === "shopify" || activeSampleProvider === "shopify-pos" || activeSampleProvider === "square" || activeSampleProvider === "clover" ? "RECORDS IMPORTED" : "NEWLY STAGED"}</small><b>{sampleResult.run.recordsStaged}</b></span>
+              <span><small>DUPLICATES SKIPPED</small><b>{sampleResult.run.duplicatesSkipped ?? 0}</b></span>
+              <span><small>{activeSampleProvider === "stripe" ? "PAYOUTS READ" : activeSampleProvider === "moneris" ? "PAYMENTS READ" : activeSampleProvider === "lightspeed-r" || activeSampleProvider === "shopify" || activeSampleProvider === "shopify-pos" || activeSampleProvider === "square" || activeSampleProvider === "clover" ? "DAILY SUMMARIES" : "UNMAPPED LOCATIONS"}</small><b>{activeSampleProvider === "stripe" ? sampleResult.reconciliation.payouts ?? 0 : activeSampleProvider === "moneris" ? sampleResult.reconciliation.payments ?? 0 : activeSampleProvider === "lightspeed-r" || activeSampleProvider === "shopify" || activeSampleProvider === "shopify-pos" || activeSampleProvider === "square" || activeSampleProvider === "clover" ? sampleResult.reconciliation.dailyMetrics ?? 0 : sampleResult.reconciliation.unmappedOutlets ?? 0}</b></span>
+              {(activeSampleProvider === "lightspeed-r" || activeSampleProvider === "shopify" || activeSampleProvider === "shopify-pos" || activeSampleProvider === "square" || activeSampleProvider === "clover") && <>
                 <span><small>UNMAPPED SHOPS</small><b>{sampleResult.reconciliation.unmappedLocations ?? 0}</b></span>
-                <span><small>COMPLETED SALES</small><b>{sampleResult.reconciliation.completedSales ?? 0}</b></span>
+                <span><small>{activeSampleProvider === "shopify" ? "ONLINE ORDERS" : "COMPLETED SALES"}</small><b>{sampleResult.reconciliation.completedSales ?? sampleResult.reconciliation.orders ?? 0}</b></span>
                 <span><small>INVENTORY BALANCES</small><b>{sampleResult.reconciliation.inventoryBalances ?? 0}</b></span>
                 <span><small>OPEN SALES SKIPPED</small><b>{sampleResult.reconciliation.openSales ?? 0}</b></span>
                 <span><small>VOIDED SALES SKIPPED</small><b>{sampleResult.reconciliation.voidedSales ?? 0}</b></span>
@@ -3116,6 +3122,7 @@ function DataHub({
             </div>
             <p>{sampleResult.nextStep}</p>
             {activeSampleProvider === "lightspeed-r" && <small className="sample-contract-note">Vanteloq imports completed sales and per-shop inventory from the authorized R-Series account. Open, voided and ignored-shop records stay excluded and visible in this reconciliation.</small>}
+            {activeSampleProvider === "shopify" && <small className="sample-contract-note">Vanteloq imports online-store orders, refunds, tender categories, products, stock and authorized customer records from this Shopify store. Shopify POS activity remains separate. Raw card data is never requested, and profit stays unavailable for products without a verified unit cost.</small>}
             {activeSampleProvider === "shopify-pos" && <small className="sample-contract-note">Vanteloq imports completed Shopify POS orders, tenders, retail locations, products, stock and authorized customer records from this store. Raw card data is never requested. Profit remains unavailable for products without a verified unit cost.</small>}
             {activeSampleProvider === "square" && <small className="sample-contract-note">Vanteloq imports completed Square orders, line items, tender categories, customers, catalog and inventory from the authorized seller. It never imports raw card data. Because Square does not provide a dependable product-cost field, profit remains unavailable until a verified cost source is connected.</small>}
             {activeSampleProvider === "clover" && <small className="sample-contract-note">Vanteloq imports completed Clover orders, line items, tender categories, customers, catalog and inventory from the authorized merchant. It never imports raw card data, and missing item cost keeps profit unavailable.</small>}

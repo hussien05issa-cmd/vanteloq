@@ -72,9 +72,9 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
     id: "shopify",
     name: "Shopify",
     category: "Commerce",
-    availability: "provider_build_required",
+    availability: "credentials_required",
     activationRequirement:
-      "Not available yet. A production connection still needs authorization, store and location mapping, order and refund handling, payout reconciliation, and recovery tests.",
+      "Authorize each Shopify store, map its online storefront and fulfilment locations, then import and review e-commerce orders, refunds, products, stock, customers and payment activity before results reach Vanteloq.",
   },
   {
     id: "shopify-pos",

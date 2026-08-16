@@ -11,7 +11,8 @@ scopes = "read_all_orders,read_customers,read_inventory,read_locations,read_orde
 
 [auth]
 redirect_urls = [
-  "https://vanteloq.com/api/v1/integrations/shopify-pos/callback"
+  "https://vanteloq.com/api/v1/integrations/shopify-pos/callback",
+  "https://vanteloq.com/api/v1/integrations/shopify/callback"
 ]
 
 [webhooks]
@@ -26,6 +27,14 @@ compliance_topics = [
 uri = "https://vanteloq.com/api/v1/integrations/shopify-pos/webhook"
 
 [[webhooks.subscriptions]]
+compliance_topics = [
+  "customers/data_request",
+  "customers/redact",
+  "shop/redact"
+]
+uri = "https://vanteloq.com/api/v1/integrations/shopify/webhook"
+
+[[webhooks.subscriptions]]
 topics = [
   "app/uninstalled",
   "products/create",
@@ -37,3 +46,20 @@ topics = [
   "locations/delete"
 ]
 uri = "https://vanteloq.com/api/v1/integrations/shopify-pos/webhook"
+
+[[webhooks.subscriptions]]
+topics = [
+  "app/uninstalled",
+  "orders/create",
+  "orders/updated",
+  "orders/cancelled",
+  "refunds/create",
+  "products/create",
+  "products/update",
+  "products/delete",
+  "inventory_levels/update",
+  "locations/create",
+  "locations/update",
+  "locations/delete"
+]
+uri = "https://vanteloq.com/api/v1/integrations/shopify/webhook"

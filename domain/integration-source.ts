@@ -1,6 +1,6 @@
 export const LEGACY_SOURCE_NAMESPACE = "legacy";
 
-const MULTI_ACCOUNT_PROVIDER_IDS = new Set(["lightspeed", "lightspeed-r", "shopify-pos", "square", "clover", "stripe", "moneris", "google", "meta"]);
+const MULTI_ACCOUNT_PROVIDER_IDS = new Set(["lightspeed", "lightspeed-r", "shopify", "shopify-pos", "square", "clover", "stripe", "moneris", "google", "meta"]);
 
 export function supportsMultipleProviderAccounts(providerId: string) {
   return MULTI_ACCOUNT_PROVIDER_IDS.has(providerId);

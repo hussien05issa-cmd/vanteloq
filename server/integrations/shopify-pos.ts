@@ -4,29 +4,43 @@ import { integrationSecrets } from "../../db/schema";
 import { ApiError } from "../api";
 
 export const SHOPIFY_POS_PROVIDER = "shopify-pos";
+export const SHOPIFY_PROVIDER = "shopify";
+export const SHOPIFY_ONLINE_LOCATION_REF = "online-store";
+export type ShopifyProvider = typeof SHOPIFY_PROVIDER | typeof SHOPIFY_POS_PROVIDER;
 export const SHOPIFY_API_VERSION = "2026-07";
 export const SHOPIFY_POS_READ_SCOPES = ["read_all_orders", "read_orders", "read_products", "read_inventory", "read_locations", "read_customers"] as const;
-const SECRET_AAD = "vanteloq:shopify-pos:v1";
+export function shopifyProviderFromRequest(request: Request): ShopifyProvider {
+  return new URL(request.url).pathname.includes("/integrations/shopify-pos/") ? SHOPIFY_POS_PROVIDER : SHOPIFY_PROVIDER;
+}
 
 function env() { return getRuntimeEnv(); }
-export function shopifyPosReadiness() {
+function redirectUri(runtime: ReturnType<typeof env>, provider: ShopifyProvider) {
+  return provider === SHOPIFY_PROVIDER ? runtime.SHOPIFY_COMMERCE_REDIRECT_URI : runtime.SHOPIFY_REDIRECT_URI;
+}
+function webhookUrl(runtime: ReturnType<typeof env>, provider: ShopifyProvider) {
+  return provider === SHOPIFY_PROVIDER ? runtime.SHOPIFY_COMMERCE_WEBHOOK_URL : runtime.SHOPIFY_WEBHOOK_URL;
+}
+export function shopifyReadiness(provider: ShopifyProvider = SHOPIFY_PROVIDER) {
   const runtime = env();
+  const redirectKey = provider === SHOPIFY_PROVIDER ? "SHOPIFY_COMMERCE_REDIRECT_URI" : "SHOPIFY_REDIRECT_URI";
+  const webhookKey = provider === SHOPIFY_PROVIDER ? "SHOPIFY_COMMERCE_WEBHOOK_URL" : "SHOPIFY_WEBHOOK_URL";
   const missingConfiguration = [
     ["SHOPIFY_CLIENT_ID", runtime.SHOPIFY_CLIENT_ID],
     ["SHOPIFY_CLIENT_SECRET", runtime.SHOPIFY_CLIENT_SECRET],
-    ["SHOPIFY_REDIRECT_URI", runtime.SHOPIFY_REDIRECT_URI],
-    ["SHOPIFY_WEBHOOK_URL", runtime.SHOPIFY_WEBHOOK_URL],
+    [redirectKey, redirectUri(runtime, provider)],
+    [webhookKey, webhookUrl(runtime, provider)],
     ["INTEGRATION_ENCRYPTION_KEY", runtime.INTEGRATION_ENCRYPTION_KEY],
   ].filter(([, value]) => !value?.trim()).map(([key]) => key);
-  return { adapterBuilt: true, credentialsConfigured: missingConfiguration.length === 0, missingConfiguration, apiVersion: SHOPIFY_API_VERSION, permissions: [...SHOPIFY_POS_READ_SCOPES], mode: "read_only_staged_sync" as const, webhookConfigured: Boolean(runtime.SHOPIFY_WEBHOOK_URL?.trim()), dataPromotionEnabled: false };
+  return { adapterBuilt: true, credentialsConfigured: missingConfiguration.length === 0, missingConfiguration, apiVersion: SHOPIFY_API_VERSION, permissions: [...SHOPIFY_POS_READ_SCOPES], mode: "read_only_staged_sync" as const, webhookConfigured: Boolean(webhookUrl(runtime, provider)?.trim()), dataPromotionEnabled: false };
 }
+export function shopifyPosReadiness() { return shopifyReadiness(SHOPIFY_POS_PROVIDER); }
 
-function config() {
+function config(provider: ShopifyProvider) {
   const runtime = env();
-  const readiness = shopifyPosReadiness();
+  const readiness = shopifyReadiness(provider);
   if (!readiness.credentialsConfigured) throw new ApiError(503, "SHOPIFY_CONFIGURATION_REQUIRED", "Shopify developer credentials must be configured before authorization can begin.");
   let redirect: URL;
-  try { redirect = new URL(runtime.SHOPIFY_REDIRECT_URI!.trim()); } catch { throw new ApiError(503, "SHOPIFY_REDIRECT_INVALID", "The Shopify callback URL is invalid."); }
+  try { redirect = new URL(redirectUri(runtime, provider)!.trim()); } catch { throw new ApiError(503, "SHOPIFY_REDIRECT_INVALID", "The Shopify callback URL is invalid."); }
   if (redirect.protocol !== "https:" || redirect.username || redirect.password || redirect.hash) throw new ApiError(503, "SHOPIFY_REDIRECT_INVALID", "The Shopify callback must be a clean HTTPS URL.");
   return { clientId: runtime.SHOPIFY_CLIENT_ID!.trim(), clientSecret: runtime.SHOPIFY_CLIENT_SECRET!, redirectUri: redirect.toString(), encryptionKey: runtime.INTEGRATION_ENCRYPTION_KEY! };
 }
@@ -39,10 +53,10 @@ export function normalizeShopDomain(value: string) {
 export function newShopifyState() { return base64Url(crypto.getRandomValues(new Uint8Array(32))); }
 export async function shopifySha256(value: string | Uint8Array) { const bytes = typeof value === "string" ? new TextEncoder().encode(value) : value; return hex(new Uint8Array(await crypto.subtle.digest("SHA-256", toArrayBuffer(bytes)))); }
 
-export function buildShopifyAuthorizationUrl(shop: string, state: string) {
+export function buildShopifyAuthorizationUrl(shop: string, state: string, provider: ShopifyProvider = SHOPIFY_POS_PROVIDER) {
   const domain = normalizeShopDomain(shop);
   if (!/^[A-Za-z0-9_-]{43}$/u.test(state)) throw new ApiError(400, "SHOPIFY_STATE_INVALID", "The Shopify authorization state is invalid.");
-  const current = config();
+  const current = config(provider);
   const url = new URL(`https://${domain}/admin/oauth/authorize`);
   url.searchParams.set("client_id", current.clientId);
   url.searchParams.set("scope", SHOPIFY_POS_READ_SCOPES.join(","));
@@ -51,39 +65,44 @@ export function buildShopifyAuthorizationUrl(shop: string, state: string) {
   return url.toString();
 }
 
-export async function verifyShopifyCallback(url: URL) {
+export async function verifyShopifyCallback(url: URL, provider: ShopifyProvider = SHOPIFY_POS_PROVIDER) {
   const supplied = url.searchParams.get("hmac") ?? "";
   if (!/^[a-f0-9]{64}$/iu.test(supplied)) return false;
   const message = [...url.searchParams.entries()].filter(([key]) => key !== "hmac" && key !== "signature").sort(([a], [b]) => a.localeCompare(b)).map(([key, value]) => `${key}=${value}`).join("&");
-  return constantTimeEqual(await hmacHex(config().clientSecret, message), supplied.toLowerCase());
+  return constantTimeEqual(await hmacHex(config(provider).clientSecret, message), supplied.toLowerCase());
 }
 
-export async function exchangeShopifyCode(shop: string, code: string, fetcher: typeof fetch = fetch) {
+export async function exchangeShopifyCode(shop: string, code: string, fetcher: typeof fetch = fetch, provider: ShopifyProvider = SHOPIFY_POS_PROVIDER) {
   const domain = normalizeShopDomain(shop);
   if (!code || code.length > 4096) throw new ApiError(400, "SHOPIFY_CODE_INVALID", "Shopify returned an invalid authorization code.");
-  const current = config();
-  const response = await fetcher(`https://${domain}/admin/oauth/access_token`, { method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json" }, body: JSON.stringify({ client_id: current.clientId, client_secret: current.clientSecret, code }), signal: AbortSignal.timeout(15_000) });
+  const current = config(provider);
+  const response = await fetcher(`https://${domain}/admin/oauth/access_token`, { method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json" }, body: JSON.stringify({ client_id: current.clientId, client_secret: current.clientSecret, code, expiring: 1 }), signal: AbortSignal.timeout(15_000) });
   const payload = await response.json().catch(() => ({})) as Record<string, unknown>;
   const accessToken = text(payload.access_token);
   if (!response.ok || !accessToken) throw new ApiError(502, "SHOPIFY_TOKEN_EXCHANGE_FAILED", "Shopify did not accept the authorization request. Start a new connection attempt.");
   const scopes = text(payload.scope)?.split(",").map((item) => item.trim()).filter(Boolean) ?? [];
-  return { accessToken, scopes };
+  const refreshToken = text(payload.refresh_token);
+  const expiresIn = Number(payload.expires_in ?? 0);
+  if (!refreshToken || !Number.isFinite(expiresIn) || expiresIn <= 0) throw new ApiError(502, "SHOPIFY_EXPIRING_TOKEN_REQUIRED", "Shopify did not return the required refreshable offline token. Start a new connection attempt.");
+  return { accessToken, refreshToken, expiresAt: new Date(Date.now() + expiresIn * 1_000), scopes };
 }
 
 async function cryptoKey(encoded: string) { let raw: Uint8Array; try { raw = fromBase64(encoded); } catch { throw new ApiError(503, "INTEGRATION_ENCRYPTION_KEY_INVALID", "The integration encryption key is invalid."); } if (raw.byteLength !== 32) throw new ApiError(503, "INTEGRATION_ENCRYPTION_KEY_INVALID", "The integration encryption key must decode to 32 bytes."); return crypto.subtle.importKey("raw", toArrayBuffer(raw), "AES-GCM", false, ["encrypt", "decrypt"]); }
-async function encrypt(value: string) { const iv = crypto.getRandomValues(new Uint8Array(12)); const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData: new TextEncoder().encode(SECRET_AAD) }, await cryptoKey(config().encryptionKey), new TextEncoder().encode(value)); return `v1.${base64Url(iv)}.${base64Url(new Uint8Array(ciphertext))}`; }
-async function decrypt(value: string) { const [version, iv, ciphertext] = value.split("."); if (version !== "v1" || !iv || !ciphertext) throw new ApiError(500, "INTEGRATION_SECRET_INVALID", "Stored Shopify credentials could not be read."); try { const plaintext = await crypto.subtle.decrypt({ name: "AES-GCM", iv: fromBase64(iv), additionalData: new TextEncoder().encode(SECRET_AAD) }, await cryptoKey(config().encryptionKey), toArrayBuffer(fromBase64(ciphertext))); return new TextDecoder().decode(plaintext); } catch { throw new ApiError(500, "INTEGRATION_SECRET_DECRYPTION_FAILED", "Stored Shopify credentials could not be decrypted."); } }
+function secretAad(provider: ShopifyProvider) { return `vanteloq:${provider}:v1`; }
+async function encrypt(value: string, provider: ShopifyProvider) { const iv = crypto.getRandomValues(new Uint8Array(12)); const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData: new TextEncoder().encode(secretAad(provider)) }, await cryptoKey(config(provider).encryptionKey), new TextEncoder().encode(value)); return `v1.${base64Url(iv)}.${base64Url(new Uint8Array(ciphertext))}`; }
+async function decrypt(value: string, provider: ShopifyProvider) { const [version, iv, ciphertext] = value.split("."); if (version !== "v1" || !iv || !ciphertext) throw new ApiError(500, "INTEGRATION_SECRET_INVALID", "Stored Shopify credentials could not be read."); try { const plaintext = await crypto.subtle.decrypt({ name: "AES-GCM", iv: fromBase64(iv), additionalData: new TextEncoder().encode(secretAad(provider)) }, await cryptoKey(config(provider).encryptionKey), toArrayBuffer(fromBase64(ciphertext))); return new TextDecoder().decode(plaintext); } catch { throw new ApiError(500, "INTEGRATION_SECRET_DECRYPTION_FAILED", "Stored Shopify credentials could not be decrypted."); } }
 
-export async function saveShopifyToken(organizationId: string, connectionId: string, accessToken: string) {
+export async function saveShopifyToken(organizationId: string, connectionId: string, accessToken: string, refreshToken: string, tokenExpiresAt: Date, provider: ShopifyProvider = SHOPIFY_POS_PROVIDER) {
   const now = new Date();
-  const encrypted = await encrypt(accessToken);
-  await getDb().insert(integrationSecrets).values({ id: crypto.randomUUID(), organizationId, provider: SHOPIFY_POS_PROVIDER, connectionId, accessTokenCiphertext: encrypted, refreshTokenCiphertext: encrypted, tokenExpiresAt: new Date("2099-01-01T00:00:00.000Z"), createdAt: now, updatedAt: now }).onConflictDoUpdate({ target: integrationSecrets.connectionId, set: { accessTokenCiphertext: encrypted, refreshTokenCiphertext: encrypted, tokenExpiresAt: new Date("2099-01-01T00:00:00.000Z"), updatedAt: now } });
+  const encryptedAccess = await encrypt(accessToken, provider);
+  const encryptedRefresh = await encrypt(refreshToken, provider);
+  await getDb().insert(integrationSecrets).values({ id: crypto.randomUUID(), organizationId, provider, connectionId, accessTokenCiphertext: encryptedAccess, refreshTokenCiphertext: encryptedRefresh, tokenExpiresAt, createdAt: now, updatedAt: now }).onConflictDoUpdate({ target: integrationSecrets.connectionId, set: { provider, accessTokenCiphertext: encryptedAccess, refreshTokenCiphertext: encryptedRefresh, tokenExpiresAt, updatedAt: now } });
 }
-async function accessToken(organizationId: string, connectionId: string) { const [row] = await getDb().select({ value: integrationSecrets.accessTokenCiphertext }).from(integrationSecrets).where(and(eq(integrationSecrets.organizationId, organizationId), eq(integrationSecrets.provider, SHOPIFY_POS_PROVIDER), eq(integrationSecrets.connectionId, connectionId))).limit(1); if (!row) throw new ApiError(409, "SHOPIFY_NOT_CONNECTED", "Authorize a Shopify store before accessing its data."); return decrypt(row.value); }
+async function accessToken(organizationId: string, connectionId: string, shop: string, provider: ShopifyProvider, fetcher: typeof fetch) { const [row] = await getDb().select().from(integrationSecrets).where(and(eq(integrationSecrets.organizationId, organizationId), eq(integrationSecrets.provider, provider), eq(integrationSecrets.connectionId, connectionId))).limit(1); if (!row) throw new ApiError(409, "SHOPIFY_NOT_CONNECTED", "Authorize a Shopify store before accessing its data."); if (row.tokenExpiresAt.getTime() > Date.now() + 60_000) return decrypt(row.accessTokenCiphertext, provider); const current = config(provider); const refresh = await decrypt(row.refreshTokenCiphertext, provider); const response = await fetcher(`https://${normalizeShopDomain(shop)}/admin/oauth/access_token`, { method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json" }, body: JSON.stringify({ client_id: current.clientId, client_secret: current.clientSecret, grant_type: "refresh_token", refresh_token: refresh }), signal: AbortSignal.timeout(15_000) }); const payload = await response.json().catch(() => ({})) as Record<string, unknown>; const nextAccess = text(payload.access_token); const nextRefresh = text(payload.refresh_token); const expiresIn = Number(payload.expires_in ?? 0); if (!response.ok || !nextAccess || !nextRefresh || !Number.isFinite(expiresIn) || expiresIn <= 0) throw new ApiError(409, "SHOPIFY_AUTHORIZATION_EXPIRED", "Shopify authorization expired and could not be refreshed. Reconnect the store."); await saveShopifyToken(organizationId, connectionId, nextAccess, nextRefresh, new Date(Date.now() + expiresIn * 1_000), provider); return nextAccess; }
 
-export async function shopifyGraphql<T>(organizationId: string, connectionId: string, shop: string, query: string, variables: Record<string, unknown> = {}, fetcher: typeof fetch = fetch): Promise<T> {
+export async function shopifyGraphql<T>(organizationId: string, connectionId: string, shop: string, query: string, variables: Record<string, unknown> = {}, fetcher: typeof fetch = fetch, provider: ShopifyProvider = SHOPIFY_POS_PROVIDER): Promise<T> {
   const domain = normalizeShopDomain(shop);
-  const response = await fetcher(`https://${domain}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`, { method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json", "X-Shopify-Access-Token": await accessToken(organizationId, connectionId) }, body: JSON.stringify({ query, variables }), signal: AbortSignal.timeout(25_000) });
+  const response = await fetcher(`https://${domain}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`, { method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json", "X-Shopify-Access-Token": await accessToken(organizationId, connectionId, shop, provider, fetcher) }, body: JSON.stringify({ query, variables }), signal: AbortSignal.timeout(25_000) });
   if (response.status === 429) throw new ApiError(503, "SHOPIFY_RATE_LIMITED", "Shopify is rate-limiting this store. The sync checkpoint is preserved; retry shortly.");
   if (response.status === 401 || response.status === 403) throw new ApiError(409, "SHOPIFY_AUTHORIZATION_EXPIRED", "Shopify authorization is no longer valid. Reconnect the store.");
   const payload = await response.json().catch(() => ({})) as { data?: T; errors?: Array<{ message?: string }> };
@@ -91,17 +110,17 @@ export async function shopifyGraphql<T>(organizationId: string, connectionId: st
   return payload.data;
 }
 
-export async function fetchShopifyIdentity(organizationId: string, connectionId: string, shop: string) {
-  return shopifyGraphql<{ shop: { id: string; name: string; myshopifyDomain: string } }>(organizationId, connectionId, shop, `query VanteloqShop { shop { id name myshopifyDomain } }`);
+export async function fetchShopifyIdentity(organizationId: string, connectionId: string, shop: string, provider: ShopifyProvider = SHOPIFY_POS_PROVIDER) {
+  return shopifyGraphql<{ shop: { id: string; name: string; myshopifyDomain: string } }>(organizationId, connectionId, shop, `query VanteloqShop { shop { id name myshopifyDomain } }`, {}, fetch, provider);
 }
-export async function fetchShopifyLocations(organizationId: string, connectionId: string, shop: string) {
-  const data = await shopifyGraphql<{ locations: { nodes: Array<{ id: string; name: string; isActive: boolean }> } }>(organizationId, connectionId, shop, `query VanteloqLocations { locations(first: 100) { nodes { id name isActive } } }`);
+export async function fetchShopifyLocations(organizationId: string, connectionId: string, shop: string, provider: ShopifyProvider = SHOPIFY_POS_PROVIDER) {
+  const data = await shopifyGraphql<{ locations: { nodes: Array<{ id: string; name: string; isActive: boolean }> } }>(organizationId, connectionId, shop, `query VanteloqLocations { locations(first: 100) { nodes { id name isActive } } }`, {}, fetch, provider);
   return data.locations.nodes.filter((location) => location.isActive);
 }
 
-export async function verifyShopifyWebhook(bytes: Uint8Array, signature: string | null) {
+export async function verifyShopifyWebhook(bytes: Uint8Array, signature: string | null, provider: ShopifyProvider = SHOPIFY_POS_PROVIDER) {
   if (!signature) return false;
-  const digest = await hmacBytes(config().clientSecret, bytes);
+  const digest = await hmacBytes(config(provider).clientSecret, bytes);
   return constantTimeEqual(base64(digest), signature);
 }
 
