@@ -4,6 +4,7 @@ import { SUBSCRIPTION_STATUSES, type SubscriptionStatus } from "../entitlements/
 import { ApiError } from "../api";
 
 const STRIPE_API = "https://api.stripe.com";
+const CHECKOUT_INTEGRATION_IDENTIFIER = "vanteloq_checkout_hpxqzrma";
 const PRICE_ID = /^price_[A-Za-z0-9]{8,128}$/;
 const CUSTOMER_ID = /^cus_[A-Za-z0-9]{8,128}$/;
 const SUBSCRIPTION_ID = /^sub_[A-Za-z0-9]{8,128}$/;
@@ -122,6 +123,7 @@ export async function createStripeCheckout(input: {
   ]);
   const fields = new URLSearchParams({
     mode: "subscription",
+    integration_identifier: CHECKOUT_INTEGRATION_IDENTIFIER,
     client_reference_id: input.organizationId,
     success_url: `${input.origin}/?billing=success&session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${input.origin}/?billing=canceled`,

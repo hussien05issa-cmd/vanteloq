@@ -63,6 +63,7 @@ test("Checkout uses only verified catalogue prices and binds the organization", 
   assert.match(result.url, /^https:\/\/checkout\.stripe\.com\//);
   assert.equal(requests.length, 1);
   const body = requests[0].body;
+  assert.equal(body.get("integration_identifier"), "vanteloq_checkout_hpxqzrma");
   assert.equal(body.get("client_reference_id"), "org_verified_123");
   assert.equal(body.get("metadata[vanteloq_organization_id]"), "org_verified_123");
   assert.equal(body.get("metadata[vanteloq_interval]"), "month");
