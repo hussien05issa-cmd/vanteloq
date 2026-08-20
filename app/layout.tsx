@@ -34,9 +34,6 @@ export const metadata: Metadata = {
     description: "Bring verified sales, inventory, cash and operational records into clearer views for independent retail.",
     images: [DEFAULT_SOCIAL_IMAGE],
   },
-  other: {
-    "codex-preview": "development",
-  },
   icons: {
     icon: { url: "/brand/vanteloq-mark.png", type: "image/png" },
     shortcut: "/brand/vanteloq-mark.png",

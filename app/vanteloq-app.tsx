@@ -1519,6 +1519,8 @@ function Overview({ data, currency, navigate, createTask, paymentRange, setPayme
   );
 }
 
+// Kept as a complete view for the next navigation slice.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function SalesWorkspace({ data, currency, navigate, refresh, paymentRange, setPaymentRange }: { data: CommandCentre; currency: string; navigate: (view: View) => void; refresh: () => Promise<void>; paymentRange: PaymentRange; setPaymentRange: (range: PaymentRange) => void }) {
   const sourceName = data.liveSource.accountName || (data.liveSource.provider ? providerLabel(data.liveSource.provider) : "the connected commerce source");
   return (
@@ -4153,6 +4155,8 @@ function providerLabel(provider: string) {
   return providerDisplayName(provider);
 }
 
+// Kept as a complete view for the next navigation slice.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function CommerceRecordsWorkspace({ kind, navigate, activeLocationId }: { kind: "Customers" | "Suppliers"; navigate: (view: View) => void; activeLocationId: string | null }) {
   const [snapshot, setSnapshot] = useState<CommerceSnapshot | null>(null);
   const [query, setQuery] = useState("");
