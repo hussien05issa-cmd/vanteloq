@@ -37,6 +37,7 @@ export default function AuthPanel({
   const [configured, setConfigured] = useState<boolean | null>(null);
   const [recoveryReady, setRecoveryReady] = useState<boolean | null>(initialMode === "reset-password" ? null : true);
   const [needsConfirmation, setNeedsConfirmation] = useState(false);
+  const [signupSubmitted, setSignupSubmitted] = useState(false);
   const [siteKey, setSiteKey] = useState("");
   const [turnstileAction, setTurnstileAction] = useState("");
   const [turnstileToken, setTurnstileToken] = useState("");
@@ -110,6 +111,7 @@ export default function AuthPanel({
     setMessage("");
     setMessageIsError(false);
     setNeedsConfirmation(false);
+    setSignupSubmitted(false);
 
     if (mode === "signup") {
       if (!legalAccepted) {
@@ -163,7 +165,8 @@ export default function AuthPanel({
           return;
         }
         resetTurnstile();
-        setMessage("Check your email and open the newest verification link. Vanteloq will securely finish this sign-in for you.");
+        setSignupSubmitted(true);
+        setMessage("If this is a new account, a verification email is on its way. If you have used this email before, no new verification email is sent; sign in or reset your password instead.");
       } catch {
         resetTurnstile();
         setMessageIsError(true);
@@ -307,6 +310,7 @@ export default function AuthPanel({
     setMessage("");
     setMessageIsError(false);
     setNeedsConfirmation(false);
+    setSignupSubmitted(false);
     setPassword("");
     setPasswordConfirmation("");
     setLegalAccepted(false);
@@ -350,8 +354,9 @@ export default function AuthPanel({
         />}
         {message && <div className={`auth-message${messageIsError ? " error" : ""}`} aria-live="polite">{message}</div>}
         {needsConfirmation && <button className="auth-secondary" type="button" onClick={() => void resendConfirmation()} disabled={busy}>Resend confirmation email</button>}
-        {mode === "signup" && <label className="auth-legal-consent"><input type="checkbox" checked={legalAccepted} onChange={event => setLegalAccepted(event.target.checked)} required/><span>I agree to the <Link href="/terms" target="_blank">Terms of Service</Link> and acknowledge the <Link href="/privacy" target="_blank">Privacy Policy</Link>.</span></label>}
-        <button className="auth-submit" disabled={busy || configured !== true || (protectedMode && (!siteKey || !turnstileToken)) || (mode === "signup" && !legalAccepted) || (mode === "reset-password" && recoveryReady !== true)}>{busy || configured === null || (mode === "reset-password" && recoveryReady === null) ? "Please wait…" : submitLabel}</button>
+        {signupSubmitted && <div className="auth-signup-next" aria-label="Account access options"><button className="auth-secondary" type="button" onClick={() => changeMode("signin")}>Sign in</button><button className="auth-secondary" type="button" onClick={() => changeMode("request-reset")}>Reset password</button></div>}
+        {mode === "signup" && !signupSubmitted && <label className="auth-legal-consent"><input type="checkbox" checked={legalAccepted} onChange={event => setLegalAccepted(event.target.checked)} required/><span>I agree to the <Link href="/terms" target="_blank">Terms of Service</Link> and acknowledge the <Link href="/privacy" target="_blank">Privacy Policy</Link>.</span></label>}
+        {!signupSubmitted && <button className="auth-submit" disabled={busy || configured !== true || (protectedMode && (!siteKey || !turnstileToken)) || (mode === "signup" && !legalAccepted) || (mode === "reset-password" && recoveryReady !== true)}>{busy || configured === null || (mode === "reset-password" && recoveryReady === null) ? "Please wait…" : submitLabel}</button>}
       </form>
       {mode === "signin" && <button className="auth-switch" type="button" onClick={() => changeMode("request-reset")}>Forgot your password?</button>}
       {mode === "request-reset" && <button className="auth-switch" type="button" onClick={() => changeMode("signin")}>Back to sign in</button>}

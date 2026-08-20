@@ -390,8 +390,8 @@ export async function POST(request: Request) {
           .map(async (line) => {
             const sale = saleContext.get(line.externalSaleId);
             if (!sale || (line.outletRef && line.soldAt)) return line;
-            const source = { ...line };
-            delete source.sourcePayloadHash;
+            const { sourcePayloadHash: discardedSourcePayloadHash, ...source } = line;
+            void discardedSourcePayloadHash;
             const enriched = {
               ...source,
               outletRef: source.outletRef || sale.outletRef,

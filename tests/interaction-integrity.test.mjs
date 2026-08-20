@@ -429,6 +429,17 @@ test("account access includes confirmation recovery and a complete password-rese
   assert.match(home, /entry === "load-error"/);
 });
 
+test("signup success does not promise an email when the address may already exist", async () => {
+  const authPanel = await readFile(new URL("../app/auth-panel.tsx", import.meta.url), "utf8");
+
+  assert.match(authPanel, /If this is a new account/i);
+  assert.match(authPanel, /If you have used this email before/i);
+  assert.match(authPanel, /setSignupSubmitted\(true\)/);
+  assert.match(authPanel, /signupSubmitted[\s\S]{0,700}changeMode\("signin"\)/);
+  assert.match(authPanel, /signupSubmitted[\s\S]{0,900}changeMode\("request-reset"\)/);
+  assert.doesNotMatch(authPanel, /Check your email and open the newest verification link/);
+});
+
 test("authenticated accounts require Supabase TOTP and a confirmed AAL2 session", async () => {
   const source = await readFile(new URL("../app/founder-mfa-gate.tsx", import.meta.url), "utf8");
   assert.match(source, /auth\.mfa\.getAuthenticatorAssuranceLevel/);
