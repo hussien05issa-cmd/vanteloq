@@ -10,6 +10,7 @@ Vanteloq uses Supabase Auth for public email/password identity and Cloudflare fo
 - TOTP enrollment and challenge use Supabase MFA. The application confirms the upgraded AAL after verification.
 - Sign-in is same-origin, Turnstile-protected, body-bounded, and limited to five attempts per account/source pair and fifteen attempts per source per fifteen-minute window.
 - Sign-up and password reset require at least 12 characters with uppercase, lowercase, number, and symbol checks. The same policy is now saved in the live Supabase Email provider, and secure password change is enabled.
+- Signup detects a provider password minimum that exceeds the application policy and returns a safe operational message without exposing the raw provider error.
 - Passwords are sent only to Supabase Auth and are never persisted by Vanteloq.
 - The browser persists a rotating Supabase refresh token so separate phone and desktop sessions work. Business data and memory remain server-side and tenant-scoped; they are not copied into browser storage.
 - Access JWTs are short-lived and refresh tokens use Supabase rotation/reuse detection. Global sign-out is used after a password change.

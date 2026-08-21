@@ -10,7 +10,6 @@ import AuthPanel, { type AuthPanelMode } from "./auth-panel";
 import { currentSession, getSupabase, signOut } from "./supabase-browser";
 import { canonicalLocation } from "../shared/auth-urls";
 import { RESOURCE_ARTICLES, getCategory, getReadingTime } from "./resources/content";
-import LexedgeLanding from "./lexedge-landing";
 
 const SecureOnboardingFlow = lazy(() => import("./secure-onboarding-flow"));
 const VanteloqApp = lazy(() => import("./vanteloq-app"));
@@ -298,7 +297,6 @@ function FeatureReel() {
 }
 
 function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) {
-  return <LexedgeLanding start={start}/>;
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const closeMobileNav = () => setMobileNavOpen(false);
   const connectorBenefits: Record<string, string> = {
