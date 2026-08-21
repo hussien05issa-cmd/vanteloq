@@ -414,6 +414,7 @@ test("account access includes confirmation recovery and a complete password-rese
   assert.match(authPanel, /auth\.resend[\s\S]{0,300}captchaToken: turnstileToken/);
   assert.match(authPanel, /updateUser\(\{ password \}\)/);
   assert.match(authPanel, /strongPasswordError\(password\)/);
+  assert.match(authPanel, /signupErrorMessage\(result\.error\)/);
   assert.match(authPanel, /passwordExposureStatus\(password\)/);
   assert.match(authPanel, /known breach data/i);
   assert.match(authPanel, /auth\.resend/);
