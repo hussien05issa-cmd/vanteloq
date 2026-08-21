@@ -16,6 +16,19 @@ type VerificationClient<TSession> = {
   };
 };
 
+export const MINIMUM_EMAIL_VERIFICATION_CODE_LENGTH = 6;
+export const MAXIMUM_EMAIL_VERIFICATION_CODE_LENGTH = 10;
+
+export function normalizeEmailVerificationCode(value: string) {
+  return value.replace(/\D/g, "");
+}
+
+export function isCompleteEmailVerificationCode(value: string) {
+  const token = normalizeEmailVerificationCode(value);
+  return token.length >= MINIMUM_EMAIL_VERIFICATION_CODE_LENGTH
+    && token.length <= MAXIMUM_EMAIL_VERIFICATION_CODE_LENGTH;
+}
+
 function verificationFailure(error: VerificationError) {
   if (error?.status === 429) {
     return "Too many verification attempts. Wait a moment, then request a new code.";
@@ -31,9 +44,9 @@ export async function verifySignupCode<TSession>(
   email: string,
   value: string,
 ): Promise<TSession> {
-  const token = value.replace(/\D/g, "").slice(0, 6);
-  if (!/^\d{6}$/.test(token)) {
-    throw new Error("Enter the six-digit verification code from your email.");
+  const token = normalizeEmailVerificationCode(value);
+  if (!isCompleteEmailVerificationCode(token)) {
+    throw new Error("Enter the verification code from your email (6 to 10 digits).");
   }
 
   const result = await client.auth.verifyOtp({

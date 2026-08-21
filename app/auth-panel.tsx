@@ -10,7 +10,13 @@ import { MINIMUM_PASSWORD_LENGTH, passwordRules, strongPasswordError } from "../
 import { canonicalAuthUrl } from "../shared/auth-urls";
 import { signupErrorMessage } from "../shared/auth-error-messages";
 import { passwordExposureStatus } from "../shared/password-exposure";
-import { verifySignupCode } from "../shared/signup-verification";
+import {
+  isCompleteEmailVerificationCode,
+  MAXIMUM_EMAIL_VERIFICATION_CODE_LENGTH,
+  MINIMUM_EMAIL_VERIFICATION_CODE_LENGTH,
+  normalizeEmailVerificationCode,
+  verifySignupCode,
+} from "../shared/signup-verification";
 import {
   ACCOUNT_ACCEPTANCE_NOTICE_VERSION,
   PRIVACY_POLICY_VERSION,
@@ -165,7 +171,7 @@ export default function AuthPanel({
         resetTurnstile();
         setVerificationCode("");
         setMode("verify-signup");
-        setMessage("We sent a six-digit verification code to your email. Enter the newest code here to continue.");
+        setMessage("We sent a verification code to your email. Enter the newest code here to continue.");
       } catch {
         resetTurnstile();
         setMessageIsError(true);
@@ -276,7 +282,7 @@ export default function AuthPanel({
       if (result.error.code === "EMAIL_NOT_CONFIRMED") {
         setMode("verify-signup");
         setMessageIsError(false);
-        return setMessage("Your email has not been verified. Enter the newest six-digit code, or request a new one below.");
+        return setMessage("Your email has not been verified. Enter the newest verification code, or request a new one below.");
       }
       if (result.error.code === "INVALID_CREDENTIALS") {
         return setMessage("The email or password is incorrect. If you registered more than once, use the original password or reset it below.");
@@ -314,7 +320,7 @@ export default function AuthPanel({
       return;
     }
     setMessageIsError(false);
-    setMessage("A new six-digit verification code is on its way. Enter the newest code; earlier codes will no longer work.");
+    setMessage("A new verification code is on its way. Enter the newest code; earlier codes will no longer work.");
   }
 
   function changeMode(nextMode: AuthPanelMode) {
@@ -338,7 +344,7 @@ export default function AuthPanel({
   const description = mode === "signup"
     ? "Start with a verified owner account. Business data stays separated by workspace."
     : mode === "verify-signup"
-      ? `Enter the six-digit code sent to ${email.trim().toLowerCase() || "your email"}. You will continue directly to two-factor authentication.`
+      ? `Enter the verification code sent to ${email.trim().toLowerCase() || "your email"}. You will continue directly to two-factor authentication.`
     : mode === "signin"
       ? "Sign in with your verified Vanteloq account."
       : mode === "request-reset"
@@ -360,7 +366,7 @@ export default function AuthPanel({
       <form onSubmit={submit}>
         {mode === "signup" && <label>Full name<input autoComplete="name" value={name} onChange={event => setName(event.target.value)} minLength={2} maxLength={120} required/></label>}
         {mode !== "reset-password" && mode !== "verify-signup" && <label>Email address<input type="email" autoComplete="email" value={email} onChange={event => setEmail(event.target.value)} required/></label>}
-        {mode === "verify-signup" && <label>Six-digit verification code<input autoFocus value={verificationCode} onChange={event => setVerificationCode(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required/></label>}
+        {mode === "verify-signup" && <label>Verification code<input autoFocus value={verificationCode} onChange={event => setVerificationCode(normalizeEmailVerificationCode(event.target.value).slice(0, MAXIMUM_EMAIL_VERIFICATION_CODE_LENGTH))} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6,10}" minLength={MINIMUM_EMAIL_VERIFICATION_CODE_LENGTH} maxLength={MAXIMUM_EMAIL_VERIFICATION_CODE_LENGTH} required/></label>}
         {(mode === "signup" || mode === "signin" || mode === "reset-password") && <label>{mode === "reset-password" ? "New password" : "Password"}<input type="password" autoComplete={mode === "signin" ? "current-password" : "new-password"} value={password} onChange={event => setPassword(event.target.value)} minLength={mode === "signin" ? 1 : MINIMUM_PASSWORD_LENGTH} required/></label>}
         {mode === "reset-password" && <label>Confirm new password<input type="password" autoComplete="new-password" value={passwordConfirmation} onChange={event => setPasswordConfirmation(event.target.value)} minLength={MINIMUM_PASSWORD_LENGTH} required/></label>}
         {(mode === "signup" || mode === "reset-password") && <div className="auth-password-rules" aria-label="Password requirements">{passwordRules(password).map(rule => <span className={rule.met ? "met" : ""} key={rule.id}>{rule.met ? "Met" : "Required"}: {rule.label}</span>)}<span>Known breached passwords are rejected when you submit.</span></div>}
@@ -374,7 +380,7 @@ export default function AuthPanel({
         {message && <div className={`auth-message${messageIsError ? " error" : ""}`} aria-live="polite">{message}</div>}
         {mode === "verify-signup" && <button className="auth-secondary" type="button" onClick={() => void resendConfirmation()} disabled={busy || !siteKey || !turnstileToken}>Send a new code</button>}
         {mode === "signup" && <label className="auth-legal-consent"><input type="checkbox" checked={legalAccepted} onChange={event => setLegalAccepted(event.target.checked)} required/><span>I agree to the <Link href="/terms" target="_blank">Terms of Service</Link> and acknowledge the <Link href="/privacy" target="_blank">Privacy Policy</Link>.</span></label>}
-        <button className="auth-submit" disabled={busy || configured !== true || (protectedMode && (!siteKey || !turnstileToken)) || (mode === "verify-signup" && verificationCode.length !== 6) || (mode === "signup" && !legalAccepted) || (mode === "reset-password" && recoveryReady !== true)}>{busy || configured === null || (mode === "reset-password" && recoveryReady === null) ? "Please wait…" : submitLabel}</button>
+        <button className="auth-submit" disabled={busy || configured !== true || (protectedMode && (!siteKey || !turnstileToken)) || (mode === "verify-signup" && !isCompleteEmailVerificationCode(verificationCode)) || (mode === "signup" && !legalAccepted) || (mode === "reset-password" && recoveryReady !== true)}>{busy || configured === null || (mode === "reset-password" && recoveryReady === null) ? "Please wait…" : submitLabel}</button>
       </form>
       {mode === "signin" && <button className="auth-switch" type="button" onClick={() => changeMode("request-reset")}>Forgot your password?</button>}
       {mode === "request-reset" && <button className="auth-switch" type="button" onClick={() => changeMode("signin")}>Back to sign in</button>}

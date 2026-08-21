@@ -435,7 +435,8 @@ test("signup success continues with in-place email code verification", async () 
 
   assert.match(authPanel, /"verify-signup"/);
   assert.match(authPanel, /verifySignupCode\(supabase, email, verificationCode\)/);
-  assert.match(authPanel, /Six-digit verification code/);
+  assert.match(authPanel, /Verification code/);
+  assert.doesNotMatch(authPanel, /Six-digit verification code/);
   assert.match(authPanel, /autoComplete="one-time-code"/);
   assert.match(authPanel, /auth\.resend[\s\S]{0,500}captchaToken: turnstileToken/);
   assert.match(authPanel, /authenticated\(session\)/);
