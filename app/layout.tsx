@@ -13,31 +13,32 @@ import "./design-v2.css";
 import "./homepage.css";
 import "./legal.css";
 import "./readability.css";
+import "./lexedge.css";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_ORIGIN),
-  title: "Vanteloq | Business Analytics for Independent Retail",
-  description: "Bring verified sales, inventory, cash and operational records into clearer views with Vanteloq, a source-aware platform for independent retail.",
+  title: "Lexedge Consulting | Make your next move matter",
+  description: "Lexedge Consulting helps ambitious businesses sharpen positioning, improve conversion and build growth systems that scale.",
   alternates: { canonical: "/" },
   robots: { index: true, follow: true },
   openGraph: {
     type: "website",
     url: "/",
-    siteName: "Vanteloq",
-    title: "Vanteloq | Business Analytics for Independent Retail",
-    description: "Bring verified sales, inventory, cash and operational records into clearer views for independent retail.",
-    images: [{ url: DEFAULT_SOCIAL_IMAGE, width: 1487, height: 1058, alt: "Vanteloq business operating view" }],
+    siteName: "Lexedge Consulting",
+    title: "Lexedge Consulting | Make your next move matter",
+    description: "Premium growth strategy, conversion and operating systems for businesses ready for their next edge.",
+    images: [{ url: "/brand/lexedge-logo.png", width: 1536, height: 1024, alt: "Lexedge Consulting" }],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Vanteloq | Business Analytics for Independent Retail",
-    description: "Bring verified sales, inventory, cash and operational records into clearer views for independent retail.",
-    images: [DEFAULT_SOCIAL_IMAGE],
+    title: "Lexedge Consulting | Make your next move matter",
+    description: "Premium growth strategy, conversion and operating systems for businesses ready for their next edge.",
+    images: ["/brand/lexedge-logo.png"],
   },
   icons: {
-    icon: { url: "/brand/vanteloq-mark.png", type: "image/png" },
-    shortcut: "/brand/vanteloq-mark.png",
-    apple: "/brand/vanteloq-mark.png",
+    icon: { url: "/brand/lexedge-logo.png", type: "image/png" },
+    shortcut: "/brand/lexedge-logo.png",
+    apple: "/brand/lexedge-logo.png",
   },
 };
 
