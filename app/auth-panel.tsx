@@ -8,6 +8,7 @@ import { getSupabase } from "./supabase-browser";
 import TurnstileField from "./turnstile-field";
 import { MINIMUM_PASSWORD_LENGTH, passwordRules, strongPasswordError } from "../shared/password-security";
 import { canonicalAuthUrl } from "../shared/auth-urls";
+import { signupErrorMessage } from "../shared/auth-error-messages";
 import { passwordExposureStatus } from "../shared/password-exposure";
 import {
   ACCOUNT_ACCEPTANCE_NOTICE_VERSION,
@@ -155,9 +156,7 @@ export default function AuthPanel({
         if (result.error) {
           resetTurnstile();
           setMessageIsError(true);
-          setMessage(result.error.status === 429
-            ? "Too many account-creation attempts. Wait a moment and try again."
-            : "Account creation could not be completed. Check your details and try again.");
+          setMessage(signupErrorMessage(result.error));
           return;
         }
         if (result.data.session) {
