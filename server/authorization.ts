@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { getDb } from "../db";
 import { memberships, users, workspaces } from "../db/schema";
 import { ApiError, requireAal2, requireIdentity, type TrustedIdentity } from "./api";
+import { getTenantEntitlements, requireTenantServiceAccess } from "./entitlements/engine";
 import { bootstrapFounderInternalAccess } from "./internal-access";
 
 export type Role = "owner" | "admin" | "manager" | "employee" | "read_only" | "integration";
@@ -65,7 +66,7 @@ export async function findAccessContext(identity: TrustedIdentity): Promise<Acce
   return context;
 }
 
-export async function requireAccess(
+async function requireWorkspaceMembership(
   request: Request,
   allowedRoles: readonly Role[],
 ): Promise<AccessContext> {
@@ -77,4 +78,27 @@ export async function requireAccess(
     throw new ApiError(403, "INSUFFICIENT_PERMISSION", "You do not have permission to perform this action.");
   }
   return context;
+}
+
+export async function requireAccess(
+  request: Request,
+  allowedRoles: readonly Role[],
+): Promise<AccessContext> {
+  const context = await requireWorkspaceMembership(request, allowedRoles);
+  requireTenantServiceAccess(await getTenantEntitlements(context));
+  return context;
+}
+
+export async function requireBillingAccess(
+  request: Request,
+  allowedRoles: readonly Role[],
+): Promise<AccessContext> {
+  return requireWorkspaceMembership(request, allowedRoles);
+}
+
+export async function requirePrivacyAccess(
+  request: Request,
+  allowedRoles: readonly Role[],
+): Promise<AccessContext> {
+  return requireWorkspaceMembership(request, allowedRoles);
 }

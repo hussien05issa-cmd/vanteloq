@@ -3,6 +3,7 @@ import { readFile, readdir } from "node:fs/promises";
 import { createServer } from "node:http";
 import test from "node:test";
 import { Miniflare } from "miniflare";
+import { activateTestSubscription } from "./helpers/subscription-fixture.mjs";
 
 const origin = "https://vanteloq.example";
 const context = { waitUntil() {}, passThroughOnException() {} };
@@ -85,6 +86,7 @@ test("R-Series completes a browser callback using the initiating one-time state"
       }),
     }), environment, context);
     assert.equal(onboarding.status, 201);
+    await activateTestSubscription(database, (await onboarding.json()).organization.id);
 
     const misconfiguredEnvironment = { ...environment };
     delete misconfiguredEnvironment.LIGHTSPEED_R_CLIENT_SECRET;

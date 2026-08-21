@@ -6,7 +6,7 @@ import {
   integrationSecrets,
 } from "../../../../../../db/schema";
 import { recordAudit } from "../../../../../../server/audit";
-import { requireAccess } from "../../../../../../server/authorization";
+import { requirePrivacyAccess } from "../../../../../../server/authorization";
 import {
   enforceRateLimit,
   handleApi,
@@ -21,7 +21,7 @@ import { requireOwnedIntegrationConnection } from "../../../../../../server/inte
 export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
-    const context = await requireAccess(request, ["owner", "admin"]);
+    const context = await requirePrivacyAccess(request, ["owner", "admin"]);
     await requirePermission(context, "integrations.manage");
     await enforceRateLimit("lightspeed:disconnect", context.userId, 10, 3_600);
     const input = await readJsonObject(request);

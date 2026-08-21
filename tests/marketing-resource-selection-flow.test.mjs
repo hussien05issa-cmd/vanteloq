@@ -3,6 +3,7 @@ import { readFile, readdir } from "node:fs/promises";
 import { createServer } from "node:http";
 import test from "node:test";
 import { Miniflare } from "miniflare";
+import { activateTestSubscription } from "./helpers/subscription-fixture.mjs";
 
 const origin = "https://vanteloq.example";
 const owner = { email: "marketing-flow-owner@example.invalid", name: "Marketing Flow Owner" };
@@ -148,6 +149,7 @@ test("exact marketing resources remain versioned, approval-bound, separated, and
     const identity = await database.prepare(`SELECT m.organization_id organizationId FROM users u JOIN memberships m ON m.user_id = u.id WHERE u.email = ?`).bind(owner.email).first();
     const location = await database.prepare(`SELECT id FROM organization_locations WHERE organization_id = ? AND status = 'active' LIMIT 1`).bind(identity.organizationId).first();
     assert.ok(identity?.organizationId && location?.id);
+    await activateTestSubscription(database, identity.organizationId);
 
     const authorize = await dispatch(worker, environment, "/api/v1/integrations/google/authorize", { method: "POST", body: {} });
     assert.equal(authorize.status, 200, await authorize.clone().text());

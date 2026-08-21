@@ -35,9 +35,15 @@ async function readTemplate(file) {
 }
 
 const payload = {};
+let confirmationUsesCode = false;
 for (const [key, subject, file] of templates) {
+  const content = await readTemplate(file);
+  if (key === "confirmation") {
+    confirmationUsesCode = content.includes("{{ .Token }}") && !content.includes("{{ .ConfirmationURL }}");
+    if (!confirmationUsesCode) throw new Error("confirmation.html must use a six-digit code without a consumable email link");
+  }
   payload[`mailer_subjects_${key}`] = subject;
-  payload[`mailer_templates_${key}_content`] = await readTemplate(file);
+  payload[`mailer_templates_${key}_content`] = content;
 }
 for (const [key, subject, file] of notifications) {
   payload[`mailer_notifications_${key}_enabled`] = true;
@@ -51,6 +57,7 @@ const summary = {
   securityNotifications: notifications.length,
   sender: "Vanteloq <noreply@vanteloq.com>",
   replyTo: "support@vanteloq.com",
+  confirmationDelivery: confirmationUsesCode ? "six_digit_code" : "invalid",
 };
 
 if (process.argv.includes("--dry-run")) {

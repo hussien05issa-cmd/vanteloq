@@ -193,7 +193,8 @@ test("Plaid authorization is bound to durable, versioned consent evidence", asyn
 test("Plaid deletion fails closed and preserves only de-identified accounting evidence", async () => {
   const route = await readFile(new URL("../app/api/v1/integrations/plaid/delete-data/route.ts", import.meta.url), "utf8");
   const source = await readFile(new URL("../server/integrations/plaid.ts", import.meta.url), "utf8");
-  assert.match(route, /requireAccess\(request, \["owner"\]\)/);
+  assert.match(route, /requirePrivacyAccess\(request, \["owner"\]\)/);
+  assert.doesNotMatch(route, /requireAddon\(/);
   assert.match(route, /DELETE PLAID DATA/);
   assert.match(route, /plaid:delete-data/);
   assert.match(source, /PLAID_DISCONNECT_REQUIRED/);

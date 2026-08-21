@@ -2,7 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { getDb } from "../../../../../../db";
 import { integrationConnections, integrationOAuthStates, integrationSecrets } from "../../../../../../db/schema";
 import { recordAudit } from "../../../../../../server/audit";
-import { requireAccess } from "../../../../../../server/authorization";
+import { requirePrivacyAccess } from "../../../../../../server/authorization";
 import { enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameOrigin } from "../../../../../../server/api";
 import { LIGHTSPEED_R_PROVIDER } from "../../../../../../server/integrations/lightspeed-r";
 import { requireOwnedIntegrationConnection } from "../../../../../../server/integrations/connection";
@@ -11,7 +11,7 @@ import { requirePermission } from "../../../../../../server/permissions";
 export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
-    const context = await requireAccess(request, ["owner", "admin"]);
+    const context = await requirePrivacyAccess(request, ["owner", "admin"]);
     await requirePermission(context, "integrations.manage");
     await enforceRateLimit("lightspeed-r:disconnect", context.userId, 10, 3600);
     const input = await readJsonObject(request);

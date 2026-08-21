@@ -3,6 +3,7 @@ import { readFile, readdir } from "node:fs/promises";
 import { createServer } from "node:http";
 import test from "node:test";
 import { Miniflare } from "miniflare";
+import { activateTestSubscription } from "./helpers/subscription-fixture.mjs";
 
 const origin = "https://vanteloq.example";
 const owner = { email: "lineage-owner@example.invalid", name: "Lineage Owner" };
@@ -121,6 +122,7 @@ async function onboardFixture(worker, environment, database) {
   const location = await database.prepare(`SELECT id FROM organization_locations
     WHERE organization_id = ? AND status = 'active' ORDER BY created_at LIMIT 1`).bind(identity.organizationId).first();
   assert.ok(identity?.userId && identity?.organizationId && location?.id);
+  await activateTestSubscription(database, identity.organizationId);
   return { ...identity, locationId: location.id };
 }
 
@@ -198,6 +200,7 @@ test("purchase history stays isolated when same-provider accounts reuse a produc
     const location = await database.prepare(`SELECT id FROM organization_locations
       WHERE organization_id = ? AND status = 'active' ORDER BY created_at LIMIT 1`).bind(identity.organizationId).first();
     assert.ok(identity?.userId && identity?.organizationId && location?.id);
+    await activateTestSubscription(database, identity.organizationId);
 
     const now = Date.now();
     await database.batch([

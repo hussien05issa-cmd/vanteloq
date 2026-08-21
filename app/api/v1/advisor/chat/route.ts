@@ -1,7 +1,7 @@
 import { and, desc, eq } from "drizzle-orm";
 import { getDb, getD1, getRuntimeEnv } from "../../../../../db";
 import { dailyBusinessMetrics, integrationConnections, bankAccounts } from "../../../../../db/schema";
-import { requireAccess } from "../../../../../server/authorization";
+import { requireAccess, requirePrivacyAccess } from "../../../../../server/authorization";
 import { ApiError, clientSource, enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameOrigin } from "../../../../../server/api";
 import { effectivePermissions, requirePermission } from "../../../../../server/permissions";
 import { approvedBankSource, approvedFactSource } from "../../../../../server/integrations/trusted-data";
@@ -125,7 +125,7 @@ export async function POST(request: Request) {
 export async function DELETE(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
-    const context = await requireAccess(request, readers);
+    const context = await requirePrivacyAccess(request, readers);
     await requirePermission(context, "insights.view");
     await enforceRateLimit("advisor:delete", `${context.userId}:${clientSource(request)}`, 12, 60);
     const body = await readJsonObject(request, 1_000);

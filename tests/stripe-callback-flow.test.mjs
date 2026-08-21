@@ -4,6 +4,7 @@ import { readFile, readdir } from "node:fs/promises";
 import { createServer } from "node:http";
 import test from "node:test";
 import { Miniflare } from "miniflare";
+import { activateTestSubscription } from "./helpers/subscription-fixture.mjs";
 
 const origin = "https://vanteloq.example";
 const context = { waitUntil() {}, passThroughOnException() {} };
@@ -114,6 +115,7 @@ test("Stripe callback ownership and signed webhooks preserve unambiguous tenant 
       body: JSON.stringify(onboardingPayload("Stripe Store", "stripe-store@example.invalid")),
     }), environment, context);
     assert.equal(onboarding.status, 201);
+    await activateTestSubscription(database, (await onboarding.json()).organization.id);
 
     const authorization = await worker.fetch(new Request(`${origin}/api/v1/integrations/stripe/authorize`, {
       method: "POST", headers: ownerHeaders(true), body: "{}",
@@ -232,6 +234,7 @@ test("Stripe callback ownership and signed webhooks preserve unambiguous tenant 
     }), environment, context);
     assert.equal(secondOnboarding.status, 201, await secondOnboarding.clone().text());
     const secondOrganizationId = (await secondOnboarding.json()).organization.id;
+    await activateTestSubscription(database, secondOrganizationId);
     const crossTenantAuthorization = await worker.fetch(new Request(`${origin}/api/v1/integrations/stripe/authorize`, {
       method: "POST", headers: ownerHeaders(true, secondEmail), body: "{}",
     }), environment, context);

@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../../db";
 import { tenantAddons, tenantSubscriptions } from "../../../../db/schema";
-import { requireAccess } from "../../../../server/authorization";
+import { requireBillingAccess } from "../../../../server/authorization";
 import { handleApi, jsonResponse } from "../../../../server/api";
 import { stripeBillingReadiness } from "../../../../server/billing/stripe";
 import { ADDONS, PLANS } from "../../../../server/entitlements/catalog";
@@ -10,7 +10,7 @@ import { requirePermission } from "../../../../server/permissions";
 
 export async function GET(request: Request) {
   return handleApi(request, async () => {
-    const context = await requireAccess(request, ["owner", "admin"]);
+    const context = await requireBillingAccess(request, ["owner", "admin"]);
     await requirePermission(context, "organization.billing");
     const [subscriptions, addons, entitlements] = await Promise.all([
       getDb().select().from(tenantSubscriptions).where(eq(tenantSubscriptions.organizationId, context.organizationId)).limit(1),

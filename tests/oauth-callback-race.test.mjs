@@ -3,6 +3,7 @@ import { readFile, readdir } from "node:fs/promises";
 import { createServer } from "node:http";
 import test from "node:test";
 import { Miniflare } from "miniflare";
+import { activateTestSubscription } from "./helpers/subscription-fixture.mjs";
 
 const origin = "https://vanteloq.example";
 const context = { waitUntil() {}, passThroughOnException() {} };
@@ -109,6 +110,7 @@ async function createHarness(label) {
       }),
     }), environment, context);
     assert.equal(onboarding.status, 201, await onboarding.clone().text());
+    await activateTestSubscription(database, (await onboarding.json()).organization.id);
     return { authOrigin, database, worker, environment, dispose };
   } catch (error) {
     await dispose();

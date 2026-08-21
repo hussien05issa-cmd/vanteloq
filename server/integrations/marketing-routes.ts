@@ -13,7 +13,7 @@ import {
 } from "../../db/schema";
 import { recordAudit } from "../audit";
 import type { AccessContext } from "../authorization";
-import { requireAccess } from "../authorization";
+import { requireAccess, requirePrivacyAccess } from "../authorization";
 import {
   ApiError,
   enforceRateLimit,
@@ -833,7 +833,7 @@ export function marketingSync(request: Request, provider: MarketingProvider) {
 export function marketingDisconnect(request: Request, provider: MarketingProvider) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
-    const context = await requireAccess(request, ["owner", "admin"]);
+    const context = await requirePrivacyAccess(request, ["owner", "admin"]);
     await requireMarketingPermissions(context);
     await enforceRateLimit(`${provider}:marketing:disconnect`, context.userId, 20, 3_600);
     const body = await readJsonObject(request, 8_192);

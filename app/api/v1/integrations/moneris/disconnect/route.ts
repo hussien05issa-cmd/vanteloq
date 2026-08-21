@@ -2,7 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { getDb } from "../../../../../../db";
 import { integrationConnections, integrationSecrets } from "../../../../../../db/schema";
 import { recordAudit } from "../../../../../../server/audit";
-import { requireAccess } from "../../../../../../server/authorization";
+import { requirePrivacyAccess } from "../../../../../../server/authorization";
 import { enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameOrigin } from "../../../../../../server/api";
 import { requireOwnedIntegrationConnection } from "../../../../../../server/integrations/connection";
 import { MONERIS_PROVIDER } from "../../../../../../server/integrations/moneris";
@@ -11,7 +11,7 @@ import { requirePermission } from "../../../../../../server/permissions";
 export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
-    const context = await requireAccess(request, ["owner", "admin"]);
+    const context = await requirePrivacyAccess(request, ["owner", "admin"]);
     await requirePermission(context, "integrations.manage");
     await enforceRateLimit("moneris:disconnect", context.userId, 10, 3_600);
     const body = await readJsonObject(request);

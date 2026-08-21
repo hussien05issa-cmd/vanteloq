@@ -14,6 +14,7 @@ import { RESOURCE_ARTICLES, getCategory, getReadingTime } from "./resources/cont
 const SecureOnboardingFlow = lazy(() => import("./secure-onboarding-flow"));
 const VanteloqApp = lazy(() => import("./vanteloq-app"));
 const AccountMfaGate = lazy(() => import("./founder-mfa-gate"));
+const BillingOnboardingGate = lazy(() => import("./billing-onboarding-gate"));
 
 export default function Home() {
   const canonicalDestination = typeof window === "undefined" ? null : canonicalLocation(window.location);
@@ -195,7 +196,7 @@ export default function Home() {
 
   if (entry === "landing") return <><LandingPage start={openAuth}/>{authOpen && <AuthPanel initialMode={authMode} close={closeAuth} authenticated={session => void loadWorkspace(session)}/>}</>;
   if (entry === "signup") return <Suspense fallback={<AuthenticatedLoading/>}><AccountMfaGate><SecureOnboardingFlow accountName={accountName} accountEmail={accountEmail} signOut={() => void signOut()} complete={(business, owner) => { setOrganizationName(business); setAccountName(owner); setEntry("app"); }}/></AccountMfaGate></Suspense>;
-  return <Suspense fallback={<AuthenticatedLoading/>}><AccountMfaGate><VanteloqApp organizationName={organizationName} accountName={accountName}/></AccountMfaGate></Suspense>;
+  return <Suspense fallback={<AuthenticatedLoading/>}><AccountMfaGate><BillingOnboardingGate><VanteloqApp organizationName={organizationName} accountName={accountName}/></BillingOnboardingGate></AccountMfaGate></Suspense>;
 }
 
 function AuthenticatedLoading() {

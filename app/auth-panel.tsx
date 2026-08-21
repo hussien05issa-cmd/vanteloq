@@ -10,13 +10,14 @@ import { MINIMUM_PASSWORD_LENGTH, passwordRules, strongPasswordError } from "../
 import { canonicalAuthUrl } from "../shared/auth-urls";
 import { signupErrorMessage } from "../shared/auth-error-messages";
 import { passwordExposureStatus } from "../shared/password-exposure";
+import { verifySignupCode } from "../shared/signup-verification";
 import {
   ACCOUNT_ACCEPTANCE_NOTICE_VERSION,
   PRIVACY_POLICY_VERSION,
   TERMS_OF_SERVICE_VERSION,
 } from "../shared/legal-versions";
 
-export type AuthPanelMode = "signin" | "signup" | "request-reset" | "reset-password";
+export type AuthPanelMode = "signin" | "signup" | "verify-signup" | "request-reset" | "reset-password";
 
 export default function AuthPanel({
   close,
@@ -32,19 +33,19 @@ export default function AuthPanel({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [passwordConfirmation, setPasswordConfirmation] = useState("");
+  const [verificationCode, setVerificationCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [messageIsError, setMessageIsError] = useState(false);
   const [configured, setConfigured] = useState<boolean | null>(null);
   const [recoveryReady, setRecoveryReady] = useState<boolean | null>(initialMode === "reset-password" ? null : true);
-  const [needsConfirmation, setNeedsConfirmation] = useState(false);
-  const [signupSubmitted, setSignupSubmitted] = useState(false);
   const [siteKey, setSiteKey] = useState("");
   const [turnstileAction, setTurnstileAction] = useState("");
   const [turnstileToken, setTurnstileToken] = useState("");
   const [turnstileResetSignal, setTurnstileResetSignal] = useState(0);
   const [legalAccepted, setLegalAccepted] = useState(false);
   const protectedMode = mode === "signup" || mode === "signin" || mode === "request-reset";
+  const showsTurnstile = protectedMode || mode === "verify-signup";
 
   useEffect(() => {
     void getSupabase().then(async client => {
@@ -65,7 +66,7 @@ export default function AuthPanel({
   }, [initialMode]);
 
   useEffect(() => {
-    if (!protectedMode) return;
+    if (!showsTurnstile) return;
     const requestedAction = mode === "signin" ? "signin" : mode === "request-reset" ? "password-recovery" : "signup";
     const controller = new AbortController();
     void fetch(`/api/v1/auth/signup?action=${encodeURIComponent(requestedAction)}`, { headers: { accept: "application/json" }, signal: controller.signal })
@@ -82,7 +83,7 @@ export default function AuthPanel({
         }
       });
     return () => controller.abort();
-  }, [mode, protectedMode]);
+  }, [mode, showsTurnstile]);
 
   function resetTurnstile() {
     setTurnstileToken("");
@@ -111,8 +112,6 @@ export default function AuthPanel({
     setBusy(true);
     setMessage("");
     setMessageIsError(false);
-    setNeedsConfirmation(false);
-    setSignupSubmitted(false);
 
     if (mode === "signup") {
       if (!legalAccepted) {
@@ -164,14 +163,30 @@ export default function AuthPanel({
           return;
         }
         resetTurnstile();
-        setSignupSubmitted(true);
-        setMessage("If this is a new account, a verification email is on its way. If you have used this email before, no new verification email is sent; sign in or reset your password instead.");
+        setVerificationCode("");
+        setMode("verify-signup");
+        setMessage("We sent a six-digit verification code to your email. Enter the newest code here to continue.");
       } catch {
         resetTurnstile();
         setMessageIsError(true);
         setMessage("Secure signup is temporarily unavailable. Please try again shortly.");
       } finally {
         setBusy(false);
+      }
+      return;
+    }
+
+    if (mode === "verify-signup") {
+      try {
+        const session = await verifySignupCode(supabase, email, verificationCode);
+        setBusy(false);
+        setVerificationCode("");
+        authenticated(session);
+      } catch (error) {
+        setBusy(false);
+        setVerificationCode("");
+        setMessageIsError(true);
+        setMessage(error instanceof Error ? error.message : "Email verification could not be completed.");
       }
       return;
     }
@@ -259,8 +274,9 @@ export default function AuthPanel({
     if (result.error) {
       setMessageIsError(true);
       if (result.error.code === "EMAIL_NOT_CONFIRMED") {
-        setNeedsConfirmation(true);
-        return setMessage("Your email has not been verified. Open the newest confirmation email, or resend it below.");
+        setMode("verify-signup");
+        setMessageIsError(false);
+        return setMessage("Your email has not been verified. Enter the newest six-digit code, or request a new one below.");
       }
       if (result.error.code === "INVALID_CREDENTIALS") {
         return setMessage("The email or password is incorrect. If you registered more than once, use the original password or reset it below.");
@@ -298,7 +314,7 @@ export default function AuthPanel({
       return;
     }
     setMessageIsError(false);
-    setMessage("A new confirmation email is on its way. Open the newest email; earlier links will no longer work.");
+    setMessage("A new six-digit verification code is on its way. Enter the newest code; earlier codes will no longer work.");
   }
 
   function changeMode(nextMode: AuthPanelMode) {
@@ -308,25 +324,28 @@ export default function AuthPanel({
     setTurnstileToken("");
     setMessage("");
     setMessageIsError(false);
-    setNeedsConfirmation(false);
-    setSignupSubmitted(false);
     setPassword("");
     setPasswordConfirmation("");
+    setVerificationCode("");
     setLegalAccepted(false);
   }
 
   const title = mode === "signup" ? "Create your workspace"
+    : mode === "verify-signup" ? "Verify your email"
     : mode === "signin" ? "Welcome back"
     : mode === "request-reset" ? "Reset your password"
     : "Choose a new password";
   const description = mode === "signup"
     ? "Start with a verified owner account. Business data stays separated by workspace."
+    : mode === "verify-signup"
+      ? `Enter the six-digit code sent to ${email.trim().toLowerCase() || "your email"}. You will continue directly to two-factor authentication.`
     : mode === "signin"
       ? "Sign in with your verified Vanteloq account."
       : mode === "request-reset"
         ? "Enter your account email. We will send one secure reset link to open on this device."
         : "Enter a new password for your Vanteloq account.";
   const submitLabel = mode === "signup" ? "Create secure account"
+    : mode === "verify-signup" ? "Verify and continue"
     : mode === "signin" ? "Sign in"
     : mode === "request-reset" ? "Send reset link"
     : "Update password";
@@ -340,11 +359,12 @@ export default function AuthPanel({
       {configured === false && <div className="auth-message error">Account service is temporarily unavailable.</div>}
       <form onSubmit={submit}>
         {mode === "signup" && <label>Full name<input autoComplete="name" value={name} onChange={event => setName(event.target.value)} minLength={2} maxLength={120} required/></label>}
-        {mode !== "reset-password" && <label>Email address<input type="email" autoComplete="email" value={email} onChange={event => setEmail(event.target.value)} required/></label>}
+        {mode !== "reset-password" && mode !== "verify-signup" && <label>Email address<input type="email" autoComplete="email" value={email} onChange={event => setEmail(event.target.value)} required/></label>}
+        {mode === "verify-signup" && <label>Six-digit verification code<input autoFocus value={verificationCode} onChange={event => setVerificationCode(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required/></label>}
         {(mode === "signup" || mode === "signin" || mode === "reset-password") && <label>{mode === "reset-password" ? "New password" : "Password"}<input type="password" autoComplete={mode === "signin" ? "current-password" : "new-password"} value={password} onChange={event => setPassword(event.target.value)} minLength={mode === "signin" ? 1 : MINIMUM_PASSWORD_LENGTH} required/></label>}
         {mode === "reset-password" && <label>Confirm new password<input type="password" autoComplete="new-password" value={passwordConfirmation} onChange={event => setPasswordConfirmation(event.target.value)} minLength={MINIMUM_PASSWORD_LENGTH} required/></label>}
         {(mode === "signup" || mode === "reset-password") && <div className="auth-password-rules" aria-label="Password requirements">{passwordRules(password).map(rule => <span className={rule.met ? "met" : ""} key={rule.id}>{rule.met ? "Met" : "Required"}: {rule.label}</span>)}<span>Known breached passwords are rejected when you submit.</span></div>}
-        {protectedMode && siteKey && turnstileAction && <TurnstileField
+        {showsTurnstile && siteKey && turnstileAction && <TurnstileField
           siteKey={siteKey}
           action={turnstileAction}
           resetSignal={turnstileResetSignal}
@@ -352,14 +372,14 @@ export default function AuthPanel({
           onError={error => { setTurnstileToken(""); setMessageIsError(true); setMessage(error); }}
         />}
         {message && <div className={`auth-message${messageIsError ? " error" : ""}`} aria-live="polite">{message}</div>}
-        {needsConfirmation && <button className="auth-secondary" type="button" onClick={() => void resendConfirmation()} disabled={busy}>Resend confirmation email</button>}
-        {signupSubmitted && <div className="auth-signup-next" aria-label="Account access options"><button className="auth-secondary" type="button" onClick={() => changeMode("signin")}>Sign in</button><button className="auth-secondary" type="button" onClick={() => changeMode("request-reset")}>Reset password</button></div>}
-        {mode === "signup" && !signupSubmitted && <label className="auth-legal-consent"><input type="checkbox" checked={legalAccepted} onChange={event => setLegalAccepted(event.target.checked)} required/><span>I agree to the <Link href="/terms" target="_blank">Terms of Service</Link> and acknowledge the <Link href="/privacy" target="_blank">Privacy Policy</Link>.</span></label>}
-        {!signupSubmitted && <button className="auth-submit" disabled={busy || configured !== true || (protectedMode && (!siteKey || !turnstileToken)) || (mode === "signup" && !legalAccepted) || (mode === "reset-password" && recoveryReady !== true)}>{busy || configured === null || (mode === "reset-password" && recoveryReady === null) ? "Please wait…" : submitLabel}</button>}
+        {mode === "verify-signup" && <button className="auth-secondary" type="button" onClick={() => void resendConfirmation()} disabled={busy || !siteKey || !turnstileToken}>Send a new code</button>}
+        {mode === "signup" && <label className="auth-legal-consent"><input type="checkbox" checked={legalAccepted} onChange={event => setLegalAccepted(event.target.checked)} required/><span>I agree to the <Link href="/terms" target="_blank">Terms of Service</Link> and acknowledge the <Link href="/privacy" target="_blank">Privacy Policy</Link>.</span></label>}
+        <button className="auth-submit" disabled={busy || configured !== true || (protectedMode && (!siteKey || !turnstileToken)) || (mode === "verify-signup" && verificationCode.length !== 6) || (mode === "signup" && !legalAccepted) || (mode === "reset-password" && recoveryReady !== true)}>{busy || configured === null || (mode === "reset-password" && recoveryReady === null) ? "Please wait…" : submitLabel}</button>
       </form>
       {mode === "signin" && <button className="auth-switch" type="button" onClick={() => changeMode("request-reset")}>Forgot your password?</button>}
       {mode === "request-reset" && <button className="auth-switch" type="button" onClick={() => changeMode("signin")}>Back to sign in</button>}
       {mode === "reset-password" && recoveryReady === false && <button className="auth-switch" type="button" onClick={() => changeMode("request-reset")}>Request a new reset link</button>}
+      {mode === "verify-signup" && <button className="auth-switch" type="button" onClick={() => changeMode("signup")}>Use a different email address</button>}
       {(mode === "signup" || mode === "signin") && <button className="auth-switch auth-switch-secondary" type="button" onClick={() => { changeMode(mode === "signup" ? "signin" : "signup"); setSiteKey(""); }}>
         {mode === "signup" ? "Already have an account? Sign in" : "New to Vanteloq? Create an account"}
       </button>}

@@ -430,15 +430,17 @@ test("account access includes confirmation recovery and a complete password-rese
   assert.match(home, /entry === "load-error"/);
 });
 
-test("signup success does not promise an email when the address may already exist", async () => {
+test("signup success continues with in-place email code verification", async () => {
   const authPanel = await readFile(new URL("../app/auth-panel.tsx", import.meta.url), "utf8");
 
-  assert.match(authPanel, /If this is a new account/i);
-  assert.match(authPanel, /If you have used this email before/i);
-  assert.match(authPanel, /setSignupSubmitted\(true\)/);
-  assert.match(authPanel, /signupSubmitted[\s\S]{0,700}changeMode\("signin"\)/);
-  assert.match(authPanel, /signupSubmitted[\s\S]{0,900}changeMode\("request-reset"\)/);
+  assert.match(authPanel, /"verify-signup"/);
+  assert.match(authPanel, /verifySignupCode\(supabase, email, verificationCode\)/);
+  assert.match(authPanel, /Six-digit verification code/);
+  assert.match(authPanel, /autoComplete="one-time-code"/);
+  assert.match(authPanel, /auth\.resend[\s\S]{0,500}captchaToken: turnstileToken/);
+  assert.match(authPanel, /authenticated\(session\)/);
   assert.doesNotMatch(authPanel, /Check your email and open the newest verification link/);
+  assert.doesNotMatch(authPanel, /setSignupSubmitted\(true\)/);
 });
 
 test("authenticated accounts require Supabase TOTP and a confirmed AAL2 session", async () => {
@@ -497,6 +499,56 @@ test("authorization is server-bound to immutable identity and Supabase AAL2", as
   assert.match(api, /identity\.provider !== "supabase" \|\| identity\.assuranceLevel !== "aal2"/);
   assert.match(internalAccess, /mfa_required = 1/);
   assert.doesNotMatch(internalAccess, /mfa_required[\s\S]{0,20}VALUES[\s\S]{0,80}, 0,/);
+});
+
+test("paid API access is server-enforced with narrow billing and privacy exceptions", async () => {
+  const authorization = await readFile(new URL("../server/authorization.ts", import.meta.url), "utf8");
+  const entitlements = await readFile(new URL("../server/entitlements/engine.ts", import.meta.url), "utf8");
+  const marketingRoutes = await readFile(new URL("../server/integrations/marketing-routes.ts", import.meta.url), "utf8");
+
+  assert.match(authorization, /requireTenantServiceAccess\(await getTenantEntitlements\(context\)\)/);
+  assert.match(entitlements, /accessType === "none"[\s\S]{0,180}402,[\s\S]{0,80}"SUBSCRIPTION_REQUIRED"/);
+  assert.match(marketingRoutes, /marketingDisconnect[\s\S]{0,300}requirePrivacyAccess\(request, \["owner", "admin"\]\)/);
+
+  const apiRoot = new URL("../app/api/v1/", import.meta.url);
+  const routePaths = (await readdir(apiRoot, { recursive: true }))
+    .filter((path) => path.endsWith("route.ts"))
+    .sort();
+  const billingExceptions = [];
+  const privacyExceptions = [];
+  for (const path of routePaths) {
+    const source = await readFile(new URL(path, apiRoot), "utf8");
+    if (source.includes("requireBillingAccess")) billingExceptions.push(path);
+    if (source.includes("requirePrivacyAccess")) privacyExceptions.push(path);
+  }
+
+  assert.deepEqual(billingExceptions, [
+    "billing/checkout/route.ts",
+    "billing/portal/route.ts",
+    "billing/route.ts",
+  ]);
+  assert.deepEqual(privacyExceptions, [
+    "advisor/chat/route.ts",
+    "integrations/clover/disconnect/route.ts",
+    "integrations/lightspeed-r/disconnect/route.ts",
+    "integrations/lightspeed/disconnect/route.ts",
+    "integrations/moneris/disconnect/route.ts",
+    "integrations/plaid/delete-data/route.ts",
+    "integrations/plaid/disconnect/route.ts",
+    "integrations/shopify-pos/disconnect/route.ts",
+    "integrations/square/disconnect/route.ts",
+    "integrations/stripe/disconnect/route.ts",
+  ]);
+
+  for (const path of ["integrations/plaid/delete-data/route.ts", "integrations/plaid/disconnect/route.ts"]) {
+    const source = await readFile(new URL(path, apiRoot), "utf8");
+    assert.doesNotMatch(source, /requireAddon\(/, path);
+  }
+  for (const path of ["reports/route.ts", "growth/route.ts", "tasks/route.ts"]) {
+    const source = await readFile(new URL(path, apiRoot), "utf8");
+    assert.match(source, /requireAccess\(request,/, path);
+    assert.doesNotMatch(source, /requireBillingAccess|requirePrivacyAccess/, path);
+  }
 });
 
 test("critical product surfaces preserve the readability and focus floor", async () => {

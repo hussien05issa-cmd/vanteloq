@@ -143,6 +143,11 @@ async function createWorkspace(worker, environment, database, {
     email,
     name: ownerName,
   });
+  if (!plan) {
+    assert.equal(governance.status, 402, await governance.clone().text());
+    assert.equal((await governance.json()).error.code, "SUBSCRIPTION_REQUIRED");
+    return { organizationId, email, name: ownerName };
+  }
   assert.equal(governance.status, 200, await governance.clone().text());
   return { organizationId, email, name: ownerName };
 }
@@ -309,7 +314,7 @@ test("simultaneous remote employee creates cannot exceed the owner plan", async 
   }
 });
 
-test("owner subscription messaging remains distinct from an exhausted quota", async () => {
+test("unsubscribed owners are stopped at the shared paid-access boundary", async () => {
   const { database, worker, environment, dispose } = await createEnvironment();
   try {
     const owner = await createWorkspace(worker, environment, database, {
@@ -318,25 +323,19 @@ test("owner subscription messaging remains distinct from an exhausted quota", as
       businessName: "Unsubscribed Capacity",
       plan: null,
     });
-    const role = await database.prepare(`SELECT id FROM access_roles
-      WHERE organization_id = ? AND system_key = 'employee' LIMIT 1`).bind(owner.organizationId).first();
-    assert.ok(role?.id);
-
     const locationResponse = await dispatch(worker, environment, "/api/v1/governance", {
       method: "POST", ...owner, body: locationBody("Unsubscribed location"),
     });
-    assert.equal(locationResponse.status, 409);
+    assert.equal(locationResponse.status, 402);
     const locationError = (await locationResponse.json()).error;
-    assert.equal(locationError.code, "LOCATION_LIMIT_REACHED");
-    assert.match(locationError.message, /active owner subscription is required/i);
+    assert.equal(locationError.code, "SUBSCRIPTION_REQUIRED");
 
     const employeeResponse = await dispatch(worker, environment, "/api/v1/governance", {
-      method: "POST", ...owner, body: employeeBody(role.id, "UNSUBSCRIBED"),
+      method: "POST", ...owner, body: employeeBody(crypto.randomUUID(), "UNSUBSCRIBED"),
     });
-    assert.equal(employeeResponse.status, 409);
+    assert.equal(employeeResponse.status, 402);
     const employeeError = (await employeeResponse.json()).error;
-    assert.equal(employeeError.code, "TEAM_SEAT_LIMIT_REACHED");
-    assert.match(employeeError.message, /active owner subscription is required/i);
+    assert.equal(employeeError.code, "SUBSCRIPTION_REQUIRED");
   } finally {
     await dispose();
   }

@@ -343,7 +343,7 @@ test("the Plaid webhook rejects unsigned requests before database access", async
 });
 
 test("Plaid lifecycle routes keep delegated finance access and repair failures fail closed", async () => {
-  for (const action of ["link-token", "exchange", "sync", "disconnect"]) {
+  for (const action of ["link-token", "exchange", "sync"]) {
     const source = await readFile(
       `${process.cwd()}/app/api/v1/integrations/plaid/${action}/route.ts`,
       "utf8",
@@ -351,6 +351,12 @@ test("Plaid lifecycle routes keep delegated finance access and repair failures f
     assert.match(source, /requireAccess\(request, \["owner", "admin", "manager"\]\)/, action);
     assert.match(source, /requirePermission\(context, "finance\.connections"\)/, action);
   }
+  const disconnect = await readFile(
+    `${process.cwd()}/app/api/v1/integrations/plaid/disconnect/route.ts`,
+    "utf8",
+  );
+  assert.match(disconnect, /requirePrivacyAccess\(request, \["owner", "admin", "manager"\]\)/);
+  assert.match(disconnect, /requirePermission\(context, "finance\.connections"\)/);
   const exchange = await readFile(
     `${process.cwd()}/app/api/v1/integrations/plaid/exchange/route.ts`,
     "utf8",

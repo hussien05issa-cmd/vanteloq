@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { ApiError } from "../server/api.ts";
 import { PLANS } from "../server/entitlements/catalog.ts";
 import {
+  requireTenantServiceAccess,
+  resolveInternalEntitlements,
   resolveSubscriptionEntitlements,
   subscriptionGrantsAccess,
   type SubscriptionSnapshot,
@@ -73,6 +76,33 @@ test("non-entitled billing states fail closed and retain no add-on leakage", () 
     assert.deepEqual(effective.addons, []);
     assert.equal(effective.limits, null);
   }
+});
+
+test("the shared server access boundary rejects every non-access-bearing billing state", () => {
+  for (const status of ["incomplete", "incomplete_expired", "past_due", "canceled", "unpaid", "paused", null] as const) {
+    const entitlements = resolveSubscriptionEntitlements(snapshot({
+      basePlan: status === null ? null : "pro",
+      status,
+      addons: ["bookloq"],
+    }));
+    assert.throws(
+      () => requireTenantServiceAccess(entitlements),
+      (error: unknown) => error instanceof ApiError
+        && error.status === 402
+        && error.code === "SUBSCRIPTION_REQUIRED",
+      String(status),
+    );
+  }
+});
+
+test("the shared server access boundary allows active, trialing, and verified internal entitlements", () => {
+  for (const status of ["active", "trialing"] as const) {
+    assert.doesNotThrow(() => requireTenantServiceAccess(resolveSubscriptionEntitlements(snapshot({ status }))));
+  }
+  assert.doesNotThrow(() => requireTenantServiceAccess(resolveInternalEntitlements({
+    accessLevel: "founder",
+    mfaRequired: true,
+  })));
 });
 
 test("resolved limits always come from the central plan catalogue", () => {

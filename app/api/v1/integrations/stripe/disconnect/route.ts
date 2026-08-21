@@ -2,7 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { getDb } from "../../../../../../db";
 import { integrationConnections, integrationOAuthStates } from "../../../../../../db/schema";
 import { recordAudit } from "../../../../../../server/audit";
-import { requireAccess } from "../../../../../../server/authorization";
+import { requirePrivacyAccess } from "../../../../../../server/authorization";
 import { ApiError, enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameOrigin } from "../../../../../../server/api";
 import { revokeStripeConnection, STRIPE_PROVIDER } from "../../../../../../server/integrations/stripe";
 import { requirePermission } from "../../../../../../server/permissions";
@@ -11,7 +11,7 @@ import { requireOwnedIntegrationConnection } from "../../../../../../server/inte
 export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
-    const context = await requireAccess(request, ["owner", "admin"]);
+    const context = await requirePrivacyAccess(request, ["owner", "admin"]);
     await requirePermission(context, "integrations.manage");
     await enforceRateLimit("stripe:disconnect", context.userId, 10, 3_600);
     const input = await readJsonObject(request);

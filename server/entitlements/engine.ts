@@ -73,6 +73,16 @@ export function subscriptionGrantsAccess(status: SubscriptionStatus | null): boo
   return status !== null && accessBearingStatuses.has(status);
 }
 
+export function requireTenantServiceAccess(entitlements: EffectiveEntitlements): void {
+  if (entitlements.accessType === "none") {
+    throw new ApiError(
+      402,
+      "SUBSCRIPTION_REQUIRED",
+      "Choose a Vanteloq plan or restore billing to continue.",
+    );
+  }
+}
+
 export function resolveSubscriptionEntitlements(snapshot: SubscriptionSnapshot): EffectiveEntitlements {
   if (!snapshot.basePlan || !subscriptionGrantsAccess(snapshot.status)) {
     return Object.freeze({

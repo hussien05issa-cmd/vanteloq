@@ -85,3 +85,106 @@
 @media (max-width: 680px) {
   .billing-plans { grid-template-columns: 1fr; }
 }
+
+.billing-onboarding-gate {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+  background: radial-gradient(circle at 12% 4%, #e8f2ff 0, transparent 32%), #f3f6f9;
+  color: #183650;
+}
+
+.billing-onboarding-gate > section {
+  width: min(920px, 100%);
+  overflow: hidden;
+  border: 1px solid #cfdae6;
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: 0 26px 80px rgba(19, 46, 76, .14);
+}
+
+.billing-onboarding-gate > section > header,
+.billing-onboarding-gate > section > footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 24px;
+  border-bottom: 1px solid #e2e8ef;
+  background: #f8fafc;
+}
+
+.billing-onboarding-gate > section > header {
+  justify-content: flex-start;
+}
+
+.billing-onboarding-gate > section > header img { width: 34px; height: 34px; }
+.billing-onboarding-gate > section > header span { display: flex; flex-direction: column; }
+.billing-onboarding-gate > section > header b { font-size: 15px; }
+.billing-onboarding-gate > section > header small { margin-top: 2px; color: #62778d; font-size: 11px; letter-spacing: .6px; }
+
+.billing-onboarding-copy,
+.billing-onboarding-gate .billing-plans,
+.billing-onboarding-gate .billing-addon,
+.billing-onboarding-security,
+.billing-onboarding-submit,
+.billing-onboarding-message,
+.billing-onboarding-unavailable {
+  margin-right: 36px;
+  margin-left: 36px;
+}
+
+.billing-onboarding-copy { padding: 36px 0 22px; }
+.billing-onboarding-copy p { margin: 0; color: #1767b6; font-size: 11px; font-weight: 800; letter-spacing: 1px; }
+.billing-onboarding-copy h1 { margin: 8px 0 10px; color: #173a5d; font-size: clamp(29px, 4vw, 42px); letter-spacing: -1.2px; }
+.billing-onboarding-copy span { display: block; max-width: 720px; color: #526a82; font-size: 15px; line-height: 1.65; }
+.billing-onboarding-gate .billing-plans { margin-top: 8px; }
+.billing-onboarding-gate .billing-plans > button { cursor: pointer; }
+.billing-onboarding-gate .billing-plans b { font-size: 17px; }
+.billing-onboarding-gate .billing-plans strong { font-size: 28px; }
+.billing-onboarding-gate .billing-plans span,
+.billing-onboarding-gate .billing-plans small,
+.billing-onboarding-gate .billing-plans p,
+.billing-onboarding-gate .billing-addon b,
+.billing-onboarding-gate .billing-addon small { font-size: 13px; }
+.billing-onboarding-gate .billing-addon { flex-direction: row; align-items: center; cursor: pointer; }
+.billing-onboarding-gate .billing-addon input { width: 18px; height: 18px; accent-color: #1767b6; }
+.billing-onboarding-gate .billing-addon span { display: flex; flex-direction: column; gap: 3px; }
+
+.billing-onboarding-security,
+.billing-onboarding-unavailable {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 14px;
+  padding: 15px;
+  border: 1px solid #cce0f3;
+  border-radius: 10px;
+  background: #f2f7fc;
+}
+
+.billing-onboarding-security b,
+.billing-onboarding-unavailable b { font-size: 14px; }
+.billing-onboarding-security span,
+.billing-onboarding-unavailable span { color: #587087; font-size: 13px; line-height: 1.55; }
+.billing-onboarding-submit { display: block; width: calc(100% - 72px); margin-top: 18px; margin-bottom: 30px; border: 0; border-radius: 10px; background: #1767b6; color: #fff; padding: 15px 20px; font-size: 15px; font-weight: 780; cursor: pointer; }
+.billing-onboarding-submit:disabled { cursor: not-allowed; opacity: .55; }
+.billing-onboarding-message { margin-top: 0; margin-bottom: 14px; padding: 12px 14px; border: 1px solid #cfe0f1; border-radius: 9px; background: #f1f6fb; color: #2c587f; font-size: 13px; }
+.billing-onboarding-message.error { border-color: #efd0cd; background: #fff2f1; color: #93443f; }
+.billing-onboarding-gate > section > footer { justify-content: flex-end; border-top: 1px solid #e2e8ef; border-bottom: 0; }
+.billing-onboarding-gate > section > footer button { border: 0; background: transparent; color: #1d609f; font-size: 13px; font-weight: 700; cursor: pointer; }
+.billing-onboarding-gate > section > footer button:disabled { opacity: .5; }
+
+@media (max-width: 680px) {
+  .billing-onboarding-gate { padding: 12px; }
+  .billing-onboarding-copy,
+  .billing-onboarding-gate .billing-plans,
+  .billing-onboarding-gate .billing-addon,
+  .billing-onboarding-security,
+  .billing-onboarding-submit,
+  .billing-onboarding-message,
+  .billing-onboarding-unavailable { margin-right: 20px; margin-left: 20px; }
+  .billing-onboarding-submit { width: calc(100% - 40px); }
+  .billing-onboarding-gate > section > footer { align-items: flex-start; flex-direction: column; }
+}

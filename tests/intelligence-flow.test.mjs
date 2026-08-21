@@ -3,6 +3,7 @@ import { readFile, readdir } from "node:fs/promises";
 import { createServer } from "node:http";
 import test, { describe } from "node:test";
 import { Miniflare } from "miniflare";
+import { activateTestSubscription } from "./helpers/subscription-fixture.mjs";
 
 const origin = "https://vanteloq.example";
 const context = { waitUntil() {}, passThroughOnException() {} };
@@ -120,16 +121,12 @@ async function grantBookLoqForFlow(database, businessName) {
   const workspace = await database.prepare("SELECT id FROM workspaces WHERE business_name = ? LIMIT 1").bind(businessName).first();
   assert.ok(workspace?.id, `Expected ${businessName} workspace before granting the test entitlement.`);
   const now = Date.now();
-  await database.batch([
-    database.prepare(`INSERT INTO tenant_subscriptions
-      (organization_id, base_plan, billing_interval, status, cancel_at_period_end, version, created_at, updated_at)
-      VALUES (?, 'pro', 'month', 'active', 0, 1, ?, ?)`)
-      .bind(workspace.id, now, now),
-    database.prepare(`INSERT INTO tenant_addons
-      (id, organization_id, addon_key, status, created_at, updated_at)
-      VALUES (?, ?, 'bookloq', 'active', ?, ?)`)
-      .bind(crypto.randomUUID(), workspace.id, now, now),
-  ]);
+  await activateTestSubscription(database, workspace.id);
+  await database.prepare(`INSERT INTO tenant_addons
+    (id, organization_id, addon_key, status, created_at, updated_at)
+    VALUES (?, ?, 'bookloq', 'active', ?, ?)`)
+    .bind(crypto.randomUUID(), workspace.id, now, now)
+    .run();
 }
 
 async function createReportWorkspace(worker, environment, database, label) {
@@ -150,6 +147,7 @@ async function createReportWorkspace(worker, environment, database, label) {
   const location = await database.prepare(`SELECT id FROM organization_locations
     WHERE organization_id = ? AND status = 'active' ORDER BY created_at LIMIT 1`).bind(identity.organizationId).first();
   assert.ok(identity?.userId && identity?.organizationId && location?.id);
+  await activateTestSubscription(database, identity.organizationId);
   return { owner, userId: identity.userId, organizationId: identity.organizationId, locationId: location.id };
 }
 
@@ -235,6 +233,7 @@ test("migrations, tenant isolation and the complete intelligence-to-action flow 
 
     const onboarding = await dispatch(worker, environment, "/api/v1/onboarding", { method: "POST", ...owner, body: onboardingBody(owner.name, "North Store") });
     assert.equal(onboarding.status, 201);
+    await activateTestSubscription(database, (await onboarding.json()).organization.id);
 
     const gatedBookLoq = await dispatch(worker, environment, "/api/v1/bookloq", owner);
     assert.equal(gatedBookLoq.status, 403);
@@ -583,6 +582,7 @@ test("migrations, tenant isolation and the complete intelligence-to-action flow 
 
     const secondOnboarding = await dispatch(worker, environment, "/api/v1/onboarding", { method: "POST", ...secondOwner, body: onboardingBody(secondOwner.name, "South Store") });
     assert.equal(secondOnboarding.status, 201);
+    await activateTestSubscription(database, (await secondOnboarding.json()).organization.id);
     const ownerGovernance = await dispatch(worker, environment, "/api/v1/governance", owner);
     const secondGovernance = await dispatch(worker, environment, "/api/v1/governance", secondOwner);
     assert.equal(ownerGovernance.status, 200);
@@ -928,13 +928,14 @@ test("location-limited purchasing cannot list or approve another location's orde
       body: onboardingBody(owner.name, "Scoped Purchasing"),
     });
     assert.equal(onboarding.status, 201);
-    assert.equal((await dispatch(worker, environment, "/api/v1/command-centre", owner)).status, 200);
 
     const ownerRecord = await database.prepare(`SELECT u.id userId, m.organization_id organizationId
       FROM users u JOIN memberships m ON m.user_id = u.id WHERE u.email = ?`).bind(owner.email).first();
     const north = await database.prepare(`SELECT id FROM organization_locations
       WHERE organization_id = ? AND status = 'active' ORDER BY created_at LIMIT 1`).bind(ownerRecord.organizationId).first();
     assert.ok(ownerRecord?.userId && ownerRecord?.organizationId && north?.id);
+    await activateTestSubscription(database, ownerRecord.organizationId);
+    assert.equal((await dispatch(worker, environment, "/api/v1/command-centre", owner)).status, 200);
     const southId = crypto.randomUUID();
     const managerUserId = crypto.randomUUID();
     const managerRoleId = crypto.randomUUID();

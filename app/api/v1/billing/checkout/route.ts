@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../../../db";
 import { tenantSubscriptions } from "../../../../../db/schema";
-import { requireAccess } from "../../../../../server/authorization";
+import { requireBillingAccess } from "../../../../../server/authorization";
 import { enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameOrigin, ApiError } from "../../../../../server/api";
 import { createStripeCheckout } from "../../../../../server/billing/stripe";
 import { isPlanKey } from "../../../../../server/entitlements/catalog";
@@ -10,7 +10,7 @@ import { requirePermission } from "../../../../../server/permissions";
 export async function POST(request: Request) {
   return handleApi(request, async () => {
     requireSameOrigin(request);
-    const context = await requireAccess(request, ["owner", "admin"]);
+    const context = await requireBillingAccess(request, ["owner", "admin"]);
     await requirePermission(context, "organization.billing");
     await enforceRateLimit("billing:checkout", context.userId, 10, 3_600);
     const input = await readJsonObject(request, 4_096);

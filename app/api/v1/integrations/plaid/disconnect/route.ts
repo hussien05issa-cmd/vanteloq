@@ -1,7 +1,6 @@
-import { requireAccess } from "../../../../../../server/authorization";
+import { requirePrivacyAccess } from "../../../../../../server/authorization";
 import { recordAudit } from "../../../../../../server/audit";
 import { ApiError, enforceRateLimit, handleApi, jsonResponse, requireSameOrigin } from "../../../../../../server/api";
-import { requireAddon } from "../../../../../../server/entitlements/engine";
 import { disconnectPlaid, PLAID_PROVIDER, plaidReadiness } from "../../../../../../server/integrations/plaid";
 import { requireOrganizationWideLocationAccess } from "../../../../../../server/location-access";
 import { requirePermission } from "../../../../../../server/permissions";
@@ -10,8 +9,7 @@ import { withdrawPlaidConsents } from "../../../../../../server/privacy";
 export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
-    const context = await requireAccess(request, ["owner", "admin", "manager"]);
-    await requireAddon(context, "bookloq");
+    const context = await requirePrivacyAccess(request, ["owner", "admin", "manager"]);
     await requirePermission(context, "finance.connections");
     await requireOrganizationWideLocationAccess(context);
     await enforceRateLimit("plaid:disconnect", context.userId, 6, 3_600);
