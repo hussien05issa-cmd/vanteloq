@@ -68,6 +68,7 @@ test("Checkout uses only verified catalogue prices and binds the organization", 
   assert.equal(body.get("metadata[vanteloq_organization_id]"), "org_verified_123");
   assert.equal(body.get("metadata[vanteloq_interval]"), "month");
   assert.equal(body.get("payment_method_collection"), "always");
+  assert.equal(body.get("billing_address_collection"), "required");
   assert.equal(body.get("customer_email"), "owner@example.com");
   assert.equal(body.get("line_items[0][price]"), verifiedPrice(PLANS.growth.prices.month.lookupKey).id);
   assert.equal(body.get("line_items[1][price]"), verifiedPrice(ADDONS.bookloq.prices.month.lookupKey).id);

@@ -1,8 +1,49 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import test from "node:test";
+import { onboardingIdentityDisposition } from "../server/onboarding-identity.ts";
 import { billingGateState } from "../shared/signup-funnel.ts";
 import { verifySignupCode } from "../shared/signup-verification.ts";
+
+test("a verified Supabase identity can reclaim only an orphaned account row with the same email", () => {
+  assert.equal(onboardingIdentityDisposition({
+    existingStatus: "active",
+    existingAuthSubject: "old-supabase-user",
+    existingAuthProvider: "supabase",
+    hasMembership: false,
+    identity: {
+      email: "owner@example.com",
+      displayName: "Owner",
+      subject: "new-supabase-user",
+      provider: "supabase",
+      emailVerified: true,
+      assuranceLevel: "aal2",
+      sessionId: "session-new",
+    },
+  }), "rebind");
+});
+
+test("a mismatched Supabase identity cannot reclaim an account that owns workspace data", () => {
+  assert.throws(() => onboardingIdentityDisposition({
+    existingStatus: "active",
+    existingAuthSubject: "old-supabase-user",
+    existingAuthProvider: "supabase",
+    hasMembership: true,
+    identity: {
+      email: "owner@example.com",
+      displayName: "Owner",
+      subject: "new-supabase-user",
+      provider: "supabase",
+      emailVerified: true,
+      assuranceLevel: "aal2",
+      sessionId: "session-new",
+    },
+  }), (error: unknown) => (
+    error instanceof Error
+    && "code" in error
+    && error.code === "IDENTITY_CONFLICT"
+  ));
+});
 
 test("signup verification accepts the emailed code and returns the authenticated session", async () => {
   const calls: unknown[] = [];

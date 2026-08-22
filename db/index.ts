@@ -33,6 +33,7 @@ export type VanteloqRuntimeEnv = {
   STRIPE_WEBHOOK_SECRET?: string;
   STRIPE_BILLING_WEBHOOK_SECRET?: string;
   STRIPE_API_VERSION?: string;
+  ADDRESSCOMPLETE_API_KEY?: string;
   PLAID_CLIENT_ID?: string;
   PLAID_SECRET?: string;
   PLAID_ENV?: string;

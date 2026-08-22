@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   COUNTRIES,
@@ -18,6 +18,20 @@ import {
 
 type Hour = { day: string; open: string; close: string; closed: boolean };
 type SourceMode = "connect_later" | "csv" | "live";
+type AddressSuggestion = {
+  id: string;
+  text: string;
+  description: string;
+  next: "Find" | "Retrieve";
+};
+type VerifiedAddress = {
+  address: string;
+  city: string;
+  province: string;
+  postalCode: string;
+  country: string;
+  validationStatus: "validated";
+};
 
 type Setup = {
   ownerName: string;
@@ -32,6 +46,7 @@ type Setup = {
   city: string;
   address: string;
   postalCode: string;
+  addressVerificationToken: string;
   timezone: string;
   currency: string;
   fiscalYearStart: string;
@@ -69,6 +84,7 @@ const initialSetup = (accountName: string): Setup => ({
   city: "",
   address: "",
   postalCode: "",
+  addressVerificationToken: "",
   timezone: "America/Edmonton",
   currency: "CAD",
   fiscalYearStart: "January",
@@ -125,8 +141,97 @@ export default function SecureOnboardingFlow({
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [legalAccepted, setLegalAccepted] = useState(false);
+  const [addressProvider, setAddressProvider] = useState<"checking" | "ready" | "manual">("checking");
+  const [addressSearch, setAddressSearch] = useState("");
+  const [addressSuggestions, setAddressSuggestions] = useState<AddressSuggestion[]>([]);
+  const [addressBusy, setAddressBusy] = useState(false);
+  const [addressMessage, setAddressMessage] = useState("");
   const set = <K extends keyof Setup>(key: K, value: Setup[K]) =>
     setForm((current) => ({ ...current, [key]: value }));
+
+  useEffect(() => {
+    let active = true;
+    void apiFetch("/api/v1/address", { headers: { Accept: "application/json" } })
+      .then(async (response) => {
+        const data = await response.json() as { configured?: unknown };
+        if (active) setAddressProvider(response.ok && data.configured === true ? "ready" : "manual");
+      })
+      .catch(() => {
+        if (active) setAddressProvider("manual");
+      });
+    return () => { active = false; };
+  }, []);
+
+  const setAddressField = (key: "country" | "province" | "city" | "address" | "postalCode", value: string) => {
+    setForm((current) => ({ ...current, [key]: value, addressVerificationToken: "" }));
+    setAddressSuggestions([]);
+    setAddressMessage("");
+  };
+
+  const findAddress = async (lastId?: string) => {
+    if (addressSearch.trim().length < 3 && !lastId) {
+      setAddressMessage("Enter at least three characters of the business address.");
+      return;
+    }
+    setAddressBusy(true);
+    setAddressMessage("");
+    try {
+      const response = await apiFetch("/api/v1/address", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ action: "find", search: addressSearch, country: form.country, ...(lastId ? { lastId } : {}) }),
+      });
+      const data = await response.json() as { suggestions?: unknown; error?: unknown };
+      if (!response.ok) throw new Error(messageFrom(data, "Address search is temporarily unavailable."));
+      const suggestions = Array.isArray(data.suggestions) ? data.suggestions as AddressSuggestion[] : [];
+      setAddressSuggestions(suggestions);
+      if (!suggestions.length) setAddressMessage("No matching premises were found. Add more of the street address and try again.");
+    } catch (caught) {
+      setAddressMessage(caught instanceof Error ? caught.message : "Address search is temporarily unavailable.");
+    } finally {
+      setAddressBusy(false);
+    }
+  };
+
+  const selectAddress = async (suggestion: AddressSuggestion) => {
+    if (suggestion.next === "Find") {
+      await findAddress(suggestion.id);
+      return;
+    }
+    setAddressBusy(true);
+    setAddressMessage("");
+    try {
+      const response = await apiFetch("/api/v1/address", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ action: "retrieve", id: suggestion.id }),
+      });
+      const data = await response.json() as { address?: VerifiedAddress; verificationToken?: unknown; error?: unknown };
+      if (!response.ok || !data.address || typeof data.verificationToken !== "string") {
+        throw new Error(messageFrom(data, "The selected address could not be verified."));
+      }
+      const address = data.address;
+      const verificationToken = data.verificationToken;
+      const defaults = countryDefaults(address.country);
+      setForm((current) => ({
+        ...current,
+        country: address.country,
+        province: address.province,
+        city: address.city,
+        address: address.address,
+        postalCode: address.postalCode,
+        addressVerificationToken: verificationToken,
+        ...defaults,
+      }));
+      setAddressSearch(`${address.address}, ${address.city}, ${address.province} ${address.postalCode}`);
+      setAddressSuggestions([]);
+      setAddressMessage("Verified against Canada Post AddressComplete.");
+    } catch (caught) {
+      setAddressMessage(caught instanceof Error ? caught.message : "The selected address could not be verified.");
+    } finally {
+      setAddressBusy(false);
+    }
+  };
 
   const next = () => {
     setError("");
@@ -151,6 +256,8 @@ export default function SecureOnboardingFlow({
       return setError(
         `Complete the primary business address and enter a valid ${form.country === "CA" ? "Canadian postal code" : form.country === "US" ? "U.S. ZIP code" : "postal code"}.`,
       );
+    if (step === 3 && addressProvider === "ready" && !form.addressVerificationToken)
+      return setError("Select a complete business address verified by Canada Post AddressComplete.");
     if (step === 6 && form.sourceMode === "live" && !form.selectedPos)
       return setError("Select the POS system you plan to connect.");
     setStep((current) => Math.min(7, current + 1));
@@ -379,8 +486,49 @@ export default function SecureOnboardingFlow({
           <Step
             eyebrow="LOCATION & REPORTING"
             title="Set the operating context."
-            copy="Country names use ISO 3166-1 reference codes. Canada and the United States include complete subdivision lists and strict postal formatting; other countries preserve confirmed manual address fields until a regional validation provider is connected."
+            copy="Search the Canada Post AddressComplete database to confirm the business premise. The provider key stays on Vanteloq's server and the verified result is saved with the workspace."
           >
+            {addressProvider === "checking" && (
+              <p className="address-provider-state" role="status">Checking secure address verification…</p>
+            )}
+            {addressProvider === "ready" && (
+              <div className="address-finder">
+                <label>
+                  <span>Find the business address</span>
+                  <div>
+                    <input
+                      value={addressSearch}
+                      onChange={(event) => {
+                        setAddressSearch(event.target.value);
+                        setForm((current) => ({ ...current, addressVerificationToken: "" }));
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          void findAddress();
+                        }
+                      }}
+                      placeholder="Start typing the street address"
+                      autoComplete="off"
+                    />
+                    <button type="button" disabled={addressBusy} onClick={() => void findAddress()}>
+                      {addressBusy ? "Checking…" : "Find address"}
+                    </button>
+                  </div>
+                </label>
+                {addressSuggestions.length > 0 && (
+                  <div className="address-suggestions" role="listbox" aria-label="Canada Post address suggestions">
+                    {addressSuggestions.map((suggestion) => (
+                      <button type="button" role="option" aria-selected="false" onClick={() => void selectAddress(suggestion)} key={`${suggestion.id}:${suggestion.text}`}>
+                        <b>{suggestion.text}</b>
+                        <span>{suggestion.description || (suggestion.next === "Find" ? "Show matching premises" : "Select this premise")}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {addressMessage && <p className={form.addressVerificationToken ? "address-verified" : "address-provider-message"} aria-live="polite">{addressMessage}</p>}
+              </div>
+            )}
             <div className="form-grid">
               <Select
                 label="Country"
@@ -391,9 +539,15 @@ export default function SecureOnboardingFlow({
                     ...current,
                     country,
                     province: "",
+                    city: "",
+                    address: "",
                     postalCode: "",
+                    addressVerificationToken: "",
                     ...defaults,
                   }));
+                  setAddressSearch("");
+                  setAddressSuggestions([]);
+                  setAddressMessage("");
                 }}
                 options={COUNTRIES.map((item) => ({
                   value: item.code,
@@ -408,7 +562,7 @@ export default function SecureOnboardingFlow({
                       : "State or territory"
                   }
                   value={form.province}
-                  onChange={(value) => set("province", value)}
+                  onChange={(value) => setAddressField("province", value)}
                   options={[
                     {
                       value: "",
@@ -424,7 +578,7 @@ export default function SecureOnboardingFlow({
                 <Field
                   label="Administrative area / region"
                   value={form.province}
-                  onChange={(value) => set("province", value)}
+                  onChange={(value) => setAddressField("province", value)}
                   placeholder="Province, state, region or prefecture"
                   autoComplete="address-level1"
                 />
@@ -432,7 +586,7 @@ export default function SecureOnboardingFlow({
               <Field
                 label="Street address"
                 value={form.address}
-                onChange={(value) => set("address", value)}
+                onChange={(value) => setAddressField("address", value)}
                 placeholder="Street and building"
                 full
                 autoComplete="street-address"
@@ -440,7 +594,7 @@ export default function SecureOnboardingFlow({
               <Field
                 label="City / locality"
                 value={form.city}
-                onChange={(value) => set("city", value)}
+                onChange={(value) => setAddressField("city", value)}
                 autoComplete="address-level2"
               />
               <Field
@@ -452,13 +606,11 @@ export default function SecureOnboardingFlow({
                       : "Postal code"
                 }
                 value={form.postalCode}
-                onChange={(value) => set("postalCode", value.toUpperCase())}
-                onBlur={() =>
-                  set(
-                    "postalCode",
-                    formatPostalCode(form.country, form.postalCode),
-                  )
-                }
+                onChange={(value) => setAddressField("postalCode", value.toUpperCase())}
+                onBlur={() => {
+                  const formatted = formatPostalCode(form.country, form.postalCode);
+                  if (formatted !== form.postalCode) setAddressField("postalCode", formatted);
+                }}
                 placeholder={
                   form.country === "CA"
                     ? "T5J 0N3"
@@ -512,12 +664,8 @@ export default function SecureOnboardingFlow({
                 placeholder="Optional"
               />
             </div>
-            <p className="address-note">
-              Manual entry is always available and never silently replaced.
-              Street autocomplete, deliverability and verified coordinates
-              remain disabled until a configured regional provider confirms
-              them.
-            </p>
+            {addressProvider === "manual" && <p className="address-note">Canada Post AddressComplete is not activated yet. Manual entry remains available and is stored as entered, not presented as provider verified.</p>}
+            {addressProvider === "ready" && <p className="address-note">Selecting a result verifies the premise and fills the fields above. Editing any verified address field clears the verification and requires another selection.</p>}
             <div className="hours-editor">
               <div>
                 <b>Business hours</b>

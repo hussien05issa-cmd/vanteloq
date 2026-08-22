@@ -130,6 +130,7 @@ export async function createStripeCheckout(input: {
     "line_items[0][price]": basePriceId,
     "line_items[0][quantity]": "1",
     payment_method_collection: "always",
+    billing_address_collection: "required",
     "metadata[vanteloq_organization_id]": input.organizationId,
     "metadata[vanteloq_plan]": input.plan,
     "metadata[vanteloq_interval]": input.interval,

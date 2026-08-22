@@ -307,6 +307,7 @@ export function onboardingInput(value: Record<string, unknown>) {
     "city",
     "address",
     "postalCode",
+    "addressVerificationToken",
     "timezone",
     "currency",
     "fiscalYearStart",
@@ -404,6 +405,7 @@ export function onboardingInput(value: Record<string, unknown>) {
     city: requiredString(value.city, "city", 100),
     address: requiredString(value.address, "street address", 180),
     postalCode,
+    addressVerificationToken: optionalString(value.addressVerificationToken, "address verification", 8_192),
     timezone: validTimezone(value.timezone),
     currency: validCurrency(value.currency),
     fiscalYearStart: selected(

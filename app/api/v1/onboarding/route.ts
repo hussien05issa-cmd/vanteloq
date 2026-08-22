@@ -17,6 +17,11 @@ import {
 } from "../../../../server/api";
 import { onboardingInput } from "../../../../server/validation";
 import { bootstrapSupabaseOrganization } from "../../../../server/supabase";
+import { onboardingIdentityDisposition } from "../../../../server/onboarding-identity";
+import {
+  addressCompleteReadiness,
+  verifyAddressVerificationToken,
+} from "../../../../server/address/address-complete";
 
 function organizationDto(context: NonNullable<Awaited<ReturnType<typeof findAccessContext>>>) {
   return {
@@ -62,33 +67,46 @@ export async function POST(request: Request) {
     if (existingAccess) throw new ApiError(409, "WORKSPACE_EXISTS", "This account already belongs to a workspace.");
 
     const input = onboardingInput(await readJsonObject(request));
-    try {
-      await bootstrapSupabaseOrganization(request, input.businessName, identity.subject);
-    } catch {
-      throw new ApiError(503, "ACCOUNT_DATA_UNAVAILABLE", "Secure account setup is temporarily unavailable.");
-    }
     const [existingUser] = await getDb()
       .select({ id: users.id, status: users.status, authSubject: users.authSubject, authProvider: users.authProvider })
       .from(users)
       .where(eq(users.email, identity.email))
       .limit(1);
-    if (existingUser?.status === "suspended") {
-      throw new ApiError(403, "ACCOUNT_SUSPENDED", "This account cannot create a workspace.");
-    }
-    if (identity.provider === "supabase" && existingUser?.authSubject && (
-      existingUser.authSubject !== identity.subject || existingUser.authProvider !== "supabase"
-    )) {
-      throw new ApiError(403, "IDENTITY_CONFLICT", "This verified identity does not match the existing Vanteloq account.");
-    }
-    if (existingUser) {
-      const [existingMembership] = await getDb()
+    const [existingMembership] = existingUser
+      ? await getDb()
         .select({ id: memberships.id })
         .from(memberships)
         .where(eq(memberships.userId, existingUser.id))
-        .limit(1);
-      if (existingMembership) {
-        throw new ApiError(409, "WORKSPACE_EXISTS", "This account already belongs to a workspace.");
-      }
+        .limit(1)
+      : [];
+    const identityDisposition = onboardingIdentityDisposition({
+      existingStatus: existingUser?.status ?? null,
+      existingAuthSubject: existingUser?.authSubject ?? null,
+      existingAuthProvider: existingUser?.authProvider ?? null,
+      hasMembership: Boolean(existingMembership),
+      identity,
+    });
+
+    const addressReadiness = addressCompleteReadiness();
+    const verifiedAddress = addressReadiness.configured
+      ? await verifyAddressVerificationToken(input.addressVerificationToken)
+      : null;
+    if (verifiedAddress && verifiedAddress.country !== input.country) {
+      throw new ApiError(409, "ADDRESS_COUNTRY_MISMATCH", "The verified address does not match the selected country.");
+    }
+    const businessAddress = verifiedAddress ?? {
+      address: input.address,
+      city: input.city,
+      province: input.province,
+      postalCode: input.postalCode,
+      country: input.country,
+      validationStatus: "entered" as const,
+    };
+
+    try {
+      await bootstrapSupabaseOrganization(request, input.businessName, identity.subject);
+    } catch {
+      throw new ApiError(503, "ACCOUNT_DATA_UNAVAILABLE", "Secure account setup is temporarily unavailable.");
     }
 
     const now = Date.now();
@@ -97,8 +115,8 @@ export async function POST(request: Request) {
       INSERT INTO users (id, email, auth_subject, auth_provider, display_name, status, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, 'active', ?, ?)
       ON CONFLICT(email) DO UPDATE SET
-        auth_subject = COALESCE(users.auth_subject, excluded.auth_subject),
-        auth_provider = COALESCE(users.auth_provider, excluded.auth_provider),
+        auth_subject = excluded.auth_subject,
+        auth_provider = excluded.auth_provider,
         display_name = excluded.display_name,
         updated_at = excluded.updated_at
       RETURNING id, status
@@ -155,8 +173,8 @@ export async function POST(request: Request) {
             updated_at = excluded.updated_at
         `).bind(
           organizationId, input.ownerName, input.businessName, input.legalName, input.businessEmail,
-          input.phone, input.website, input.industry, input.country, input.province, input.city,
-          input.address, input.postalCode, input.timezone, input.currency, input.fiscalYearStart,
+          input.phone, input.website, input.industry, businessAddress.country, businessAddress.province, businessAddress.city,
+          businessAddress.address, businessAddress.postalCode, input.timezone, input.currency, input.fiscalYearStart,
           input.taxNumber, input.hoursJson, input.sourceMode, input.selectedPos, now, now,
         ),
         database.prepare(`
@@ -165,11 +183,11 @@ export async function POST(request: Request) {
             address_line_2, address_line_3, locality, district, administrative_area,
             postal_code, timezone, currency, locale, tax_jurisdiction,
             validation_status, created_at, updated_at
-          ) VALUES (?, ?, 'Primary location', 'active', ?, ?, '', '', ?, '', ?, ?, ?, ?, ?, '', 'entered', ?, ?)
+          ) VALUES (?, ?, 'Primary location', 'active', ?, ?, '', '', ?, '', ?, ?, ?, ?, ?, '', ?, ?, ?)
         `).bind(
-          primaryLocationId, organizationId, input.country, input.address, input.city,
-          input.province, input.postalCode, input.timezone, input.currency,
-          input.country === "US" ? "en-US" : "en-CA", now, now,
+          primaryLocationId, organizationId, businessAddress.country, businessAddress.address, businessAddress.city,
+          businessAddress.province, businessAddress.postalCode, input.timezone, input.currency,
+          businessAddress.country === "US" ? "en-US" : "en-CA", businessAddress.validationStatus, now, now,
         ),
         database.prepare(`
           INSERT OR IGNORE INTO legal_acceptances (
@@ -187,7 +205,12 @@ export async function POST(request: Request) {
             id, organization_id, actor_user_id, action, resource_type, resource_id,
             outcome, request_id, source_hash, details_json, created_at
           ) VALUES (?, ?, ?, 'workspace.created', 'workspace', ?, 'success', ?, NULL, ?, ?)
-        `).bind(auditId, organizationId, userId, organizationId, requestId, JSON.stringify({ sourceMode: input.sourceMode, legalAcceptanceId }), now),
+        `).bind(auditId, organizationId, userId, organizationId, requestId, JSON.stringify({
+          sourceMode: input.sourceMode,
+          legalAcceptanceId,
+          identityDisposition,
+          addressValidationStatus: businessAddress.validationStatus,
+        }), now),
         database.prepare(`
           INSERT INTO account_preferences (
             user_id, email_notifications, remembered_profile, hidden_navigation_json,
