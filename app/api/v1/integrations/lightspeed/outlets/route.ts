@@ -50,7 +50,7 @@ async function list(organizationId: string, connectionId: string) {
 
 export async function GET(request: Request) {
   return handleApi(request, async () => {
-    const context = await requireAccess(request, roles);
+    const context = await requireAccess(request, roles, "pos.reporting.core");
     await requirePermission(context, "integrations.manage");
     await requireOrganizationWideLocationAccess(context);
     await enforceRateLimit("lightspeed:outlets:list", context.userId, 120, 3_600);
@@ -64,7 +64,7 @@ export async function POST(request: Request) {
     requireSameOrigin(request);
     const input = await readJsonObject(request);
     const discovering = input.action === "discover";
-    const context = await requireAccess(request, discovering ? roles : ["owner", "admin"]);
+    const context = await requireAccess(request, discovering ? roles : ["owner", "admin"], "pos.reporting.core");
     await requirePermission(context, "integrations.manage");
     await requireOrganizationWideLocationAccess(context);
     await enforceRateLimit(discovering ? "lightspeed:outlet-discover" : "lightspeed:outlet-map", context.userId, discovering ? 20 : 60, 3_600);

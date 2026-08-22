@@ -22,6 +22,7 @@ import type { CanonicalCommerceCoverage } from "../../../../domain/provider-feat
 import { scopeExternalRef } from "../../../../domain/integration-source";
 import { providerDisplayName } from "../../../../domain/display-labels";
 import { recordAudit } from "../../../../server/audit";
+import { reportRequestFeature } from "../../../../domain/paid-feature-routing";
 
 const users = ["owner", "admin", "manager", "employee", "read_only"] as const;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -94,12 +95,12 @@ async function loadAllDailyMetricRows(where: SQL | undefined) {
 
 export async function GET(request: Request) {
   return handleApi(request, async () => {
-    const context = await requireAccess(request, users);
+    const url = new URL(request.url);
+    const format = url.searchParams.get("format") || "json";
+    const context = await requireAccess(request, users, reportRequestFeature(format));
     await requirePermission(context, "reports.operational");
     await enforceRateLimit("reports:read", context.userId, 60, 60);
-    const url = new URL(request.url);
     const report = url.searchParams.get("report") as ReportId | null;
-    const format = url.searchParams.get("format") || "json";
     if (!report)
       return jsonResponse({
         supportedReports: supported,
@@ -678,7 +679,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
-    const context = await requireAccess(request, ["owner", "admin"]);
+    const context = await requireAccess(request, ["owner", "admin"], "reporting.basic");
     await requirePermission(context, "integrations.manage");
     await enforceRateLimit("reports:source-authority", context.userId, 30, 3_600);
     const body = await readJsonObject(request, 8_192);

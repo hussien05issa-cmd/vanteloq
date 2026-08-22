@@ -22,6 +22,7 @@ import {
 } from "../../../../domain/purchasing-intelligence";
 import { recordAudit } from "../../../../server/audit";
 import { requireAccess, type AccessContext } from "../../../../server/authorization";
+import { requireFeature } from "../../../../server/entitlements/engine";
 import {
   ApiError,
   enforceRateLimit,
@@ -847,7 +848,7 @@ async function list(
 
 export async function GET(request: Request) {
   return handleApi(request, async () => {
-    const context = await requireAccess(request, users);
+    const context = await requireAccess(request, users, "inventory.reorder_ai");
     await requirePermission(context, "purchasing.view");
     await enforceRateLimit("purchasing:read", context.userId, 90, 60);
     const locationScope = await requestLocationScope(request, context);
@@ -868,7 +869,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
-    const context = await requireAccess(request, users);
+    const context = await requireAccess(request, users, "inventory.reorder_ai");
     const locationScope = await requestLocationScope(request, context);
     const [permissions, bookloqAddonActive] = await Promise.all([
       effectivePermissions(context),
@@ -883,6 +884,7 @@ export async function POST(request: Request) {
     await enforceRateLimit("purchasing:write", context.userId, 40, 3_600);
     const input = await readJsonObject(request, 256_000);
     const action = text(input.action, "action", 50);
+    if (action === "match_invoice") await requireFeature(context, "invoice.matching");
     const database = getD1();
     const now = Date.now();
     let resourceId = "";

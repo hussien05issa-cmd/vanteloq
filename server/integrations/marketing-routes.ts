@@ -12,6 +12,8 @@ import {
   workspaces,
 } from "../../db/schema";
 import { recordAudit } from "../audit";
+import { marketingDatasetFeature, marketingProviderFeature } from "../../domain/paid-feature-routing";
+import { requireFeature } from "../entitlements/engine";
 import type { AccessContext } from "../authorization";
 import { requireAccess, requirePrivacyAccess } from "../authorization";
 import {
@@ -70,7 +72,9 @@ async function requireMarketingPermissions(context: AccessContext) {
 export function marketingAuthorize(request: Request, provider: MarketingProvider) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
-    const context = await requireAccess(request, ["owner", "admin"]);
+    const requiredFeature = marketingProviderFeature(provider);
+    if (!requiredFeature) throw new ApiError(400, "MARKETING_PROVIDER_INVALID", "Choose Google or Meta.");
+    const context = await requireAccess(request, ["owner", "admin"], requiredFeature);
     await requireMarketingPermissions(context);
     await enforceRateLimit(`${provider}:marketing:authorize`, context.userId, 10, 3_600);
     const state = newMarketingOAuthState();
@@ -391,7 +395,9 @@ async function discoverResources(provider: MarketingProvider, accessToken: strin
 export function marketingResources(request: Request, provider: MarketingProvider) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
-    const context = await requireAccess(request, ["owner", "admin"]);
+    const requiredFeature = marketingProviderFeature(provider);
+    if (!requiredFeature) throw new ApiError(400, "MARKETING_PROVIDER_INVALID", "Choose Google or Meta.");
+    const context = await requireAccess(request, ["owner", "admin"], requiredFeature);
     await requireMarketingPermissions(context);
     await enforceRateLimit(`${provider}:marketing:resources`, context.organizationId, 30, 3_600);
     const body = await readJsonObject(request, 65_536);
@@ -473,6 +479,9 @@ export function marketingResources(request: Request, provider: MarketingProvider
         throw new ApiError(400, "MARKETING_SELECTION_INVALID", "A selected resource does not belong to this provider.");
       }
       const dataset = item.dataset as MarketingDataset;
+      const datasetFeature = marketingDatasetFeature(dataset);
+      if (!datasetFeature) throw new ApiError(400, "MARKETING_DATASET_INVALID", "A selected marketing dataset is unavailable.");
+      await requireFeature(context, datasetFeature);
       const externalResourceRef = item.externalResourceRef.trim();
       const key = `${dataset}\u0000${externalResourceRef}`;
       const canonical = discoveredByKey.get(key);
@@ -633,7 +642,9 @@ async function persistSnapshot(
 export function marketingSync(request: Request, provider: MarketingProvider) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
-    const context = await requireAccess(request, ["owner", "admin"]);
+    const requiredFeature = marketingProviderFeature(provider);
+    if (!requiredFeature) throw new ApiError(400, "MARKETING_PROVIDER_INVALID", "Choose Google or Meta.");
+    const context = await requireAccess(request, ["owner", "admin"], requiredFeature);
     await requireMarketingPermissions(context);
     await enforceRateLimit(`${provider}:marketing:sync`, context.organizationId, 20, 3_600);
     const body = await readJsonObject(request, 8_192);
@@ -661,6 +672,11 @@ export function marketingSync(request: Request, provider: MarketingProvider) {
         eq(marketingResourceSelections.connectionId, connection.id),
         eq(marketingResourceSelections.provider, provider),
       ));
+      for (const selection of selectionRows) {
+        const datasetFeature = marketingDatasetFeature(selection.dataset);
+        if (!datasetFeature) throw new ApiError(409, "MARKETING_DATASET_INVALID", "A saved marketing dataset is unavailable.");
+        await requireFeature(context, datasetFeature);
+      }
       const selections: SelectedMarketingResource[] = selectionRows.map((selection) => ({
         id: selection.id,
         provider: selection.provider,
@@ -930,7 +946,7 @@ async function requireMetaAdSelection(organizationId: string, selectionId: strin
 
 export function metaCampaigns(request: Request) {
   return handleApi(request, async ({ requestId }) => {
-    const context = await requireAccess(request, ["owner", "admin", "manager"]);
+    const context = await requireAccess(request, ["owner", "admin", "manager"], "marketing.meta_ads");
     await requirePermission(context, "marketing.view");
     const url = new URL(request.url);
     const selectionId = (request.method === "GET" ? url.searchParams.get("selectionId") : null)?.trim() ?? "";
@@ -946,6 +962,7 @@ export function metaCampaigns(request: Request) {
 
     if (request.method !== "POST") throw new ApiError(405, "METHOD_NOT_ALLOWED", "Use GET to review campaigns or POST to apply one confirmed campaign change.");
     requireSameOrigin(request);
+    await requireFeature(context, "marketing.optimization");
     await requirePermission(context, "marketing.manage");
     await enforceRateLimit("meta:campaigns:change", context.userId, 20, 3_600);
     const body = await readJsonObject(request, 16_384);
@@ -985,7 +1002,7 @@ export function metaCampaigns(request: Request) {
 
 export function googleBusinessReviews(request: Request) {
   return handleApi(request, async ({ requestId }) => {
-    const context = await requireAccess(request, ["owner", "admin", "manager"]);
+    const context = await requireAccess(request, ["owner", "admin", "manager"], "marketing.google_business");
     await requirePermission(context, "marketing.view");
     const url = new URL(request.url);
     const selectionId = url.searchParams.get("selectionId")?.trim() ?? "";

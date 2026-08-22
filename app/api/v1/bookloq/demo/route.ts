@@ -37,7 +37,7 @@ export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
     if (getRuntimeEnv().BOOKLOQ_DEMO_ENABLED !== "true") return jsonResponse({ error: { code: "NOT_FOUND", message: "Demonstration data is disabled." } }, { status: 404 });
-    const context = await requireAccess(request, writers);
+    const context = await requireAccess(request, writers, "bookloq");
     await requireAddon(context, "bookloq");
     await requireOrganizationWideLocationAccess(context);
     await requirePermission(context, "finance.journal_post");

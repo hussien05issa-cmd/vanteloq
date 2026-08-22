@@ -37,7 +37,7 @@ function verifiedLogo(file: File): Promise<{ bytes: Uint8Array; contentType: "im
 export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
-    const context = await requireAccess(request, writers);
+    const context = await requireAccess(request, writers, "bookloq.ar");
     await requirePermission(context, "finance.ap_ar");
     requireBookLoQPermission(context.role, "edit_drafts");
     await enforceRateLimit("bookloq:invoice:create", context.userId, 60, 3_600);

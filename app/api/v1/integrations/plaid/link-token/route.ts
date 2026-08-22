@@ -10,7 +10,7 @@ import { recordPlaidConsent } from "../../../../../../server/privacy";
 export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
-    const context = await requireAccess(request, ["owner", "admin", "manager"]);
+    const context = await requireAccess(request, ["owner", "admin", "manager"], "bookloq.reconciliation");
     await requireAddon(context, "bookloq");
     await requirePermission(context, "finance.connections");
     await requireOrganizationWideLocationAccess(context);

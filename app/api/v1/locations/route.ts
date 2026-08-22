@@ -12,7 +12,7 @@ const readers = ["owner", "admin", "manager", "employee", "read_only"] as const;
 
 export async function GET(request: Request) {
   return handleApi(request, async () => {
-    const context = await requireAccess(request, readers);
+    const context = await requireAccess(request, readers, "multi_location.basic");
     await requirePermission(context, "dashboard.view");
     await enforceRateLimit("locations:read", context.userId, 90, 60);
     const permissions = await effectivePermissions(context);

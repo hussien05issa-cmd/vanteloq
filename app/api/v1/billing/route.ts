@@ -8,6 +8,12 @@ import { ADDONS, PLANS } from "../../../../server/entitlements/catalog";
 import { getTenantEntitlements } from "../../../../server/entitlements/engine";
 import { requirePermission } from "../../../../server/permissions";
 
+const planHighlights = {
+  starter: ["Core dashboard", "Sales and inventory basics", "Operations and reports", "Up to 1 active location and 3 users"],
+  growth: ["Everything in Starter", "Advanced sales and inventory intelligence", "Suppliers, customers, and marketing", "Up to 5 active locations and 15 users"],
+  pro: ["Everything in Growth", "Scenario planning and forecasting", "Advanced reports and CSV exports", "Advanced multi-location workflows"],
+} as const;
+
 export async function GET(request: Request) {
   return handleApi(request, async () => {
     const context = await requireBillingAccess(request, ["owner", "admin"]);
@@ -29,6 +35,8 @@ export async function GET(request: Request) {
         currentPeriodEndsAt: entitlements.currentPeriodEndsAt,
         cancelAtPeriodEnd: entitlements.cancelAtPeriodEnd,
         hasCustomer: Boolean(subscription?.stripeCustomerId),
+        features: entitlements.features,
+        limits: entitlements.limits,
       },
       plans: Object.values(PLANS).map((plan) => ({
         key: plan.key,
@@ -36,6 +44,7 @@ export async function GET(request: Request) {
         description: plan.description,
         mostPopular: plan.mostPopular,
         price: plan.prices.month.amountCents,
+        included: planHighlights[plan.key],
       })),
       addon: { key: "bookloq", name: ADDONS.bookloq.displayName, price: ADDONS.bookloq.prices.month.amountCents },
       purchaseInterval: "month",

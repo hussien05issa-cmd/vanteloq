@@ -348,7 +348,7 @@ test("governance authorization follows assigned permissions instead of coarse me
       email: "permission-owner@example.invalid",
       ownerName: "Permission Owner",
       businessName: "Permission Governance",
-      plan: "growth",
+      plan: "pro",
     });
     const manager = await createGovernanceUser(database, owner.organizationId, {
       email: "permission-manager@example.invalid",

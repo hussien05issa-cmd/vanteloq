@@ -19,6 +19,8 @@ import { buildProviderFeatureCoverage, type CanonicalCommerceCoverage } from "..
 import { aggregateConnectionStatus } from "../../../../domain/integration-source";
 import { requireOrganizationWideLocationAccess } from "../../../../server/location-access";
 import { buildProviderReportCatalog } from "../../../../domain/provider-report-contracts";
+import { integrationProviderFeature } from "../../../../domain/paid-feature-routing";
+import { requireFeature } from "../../../../server/entitlements/engine";
 
 function maskedAccountRef(value: string | null | undefined) {
   if (!value) return null;
@@ -28,7 +30,7 @@ function maskedAccountRef(value: string | null | undefined) {
 
 export async function GET(request: Request) {
   return handleApi(request, async () => {
-    const context = await requireAccess(request, ["owner", "admin", "manager", "employee", "read_only"]);
+    const context = await requireAccess(request, ["owner", "admin", "manager", "employee", "read_only"], "business.settings");
     await requirePermission(context, "integrations.view");
     await requireOrganizationWideLocationAccess(context);
     const permissions = await effectivePermissions(context);
@@ -299,7 +301,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
-    const context = await requireAccess(request, ["owner", "admin", "manager"]);
+    const context = await requireAccess(request, ["owner", "admin", "manager"], "business.settings");
     await requireOrganizationWideLocationAccess(context);
     const permissions = await effectivePermissions(context);
     if (!permissions.includes("integrations.manage") && !permissions.includes("finance.connections")) {
@@ -322,6 +324,9 @@ export async function POST(request: Request) {
     if (!connection || connection.status !== "connected") {
       throw new ApiError(404, "INTEGRATION_CONNECTION_NOT_FOUND", "The selected connected provider account is unavailable.");
     }
+    const requiredFeature = integrationProviderFeature(connection.provider);
+    if (!requiredFeature) throw new ApiError(400, "INTEGRATION_PROVIDER_UNAVAILABLE", "This provider does not have an enabled subscription feature.");
+    await requireFeature(context, requiredFeature);
     if (connection.provider === "plaid") {
       await requirePermission(context, "finance.connections");
     } else {

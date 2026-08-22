@@ -34,7 +34,7 @@ function validReason(value: unknown): string {
 export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
-    const context = await requireAccess(request, writers);
+    const context = await requireAccess(request, writers, "bookloq.transactions");
     await requireAddon(context, "bookloq");
     await requireOrganizationWideLocationAccess(context);
     await requirePermission(context, "finance.journal_post");
@@ -93,7 +93,7 @@ export async function POST(request: Request) {
 export async function PATCH(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
-    const context = await requireAccess(request, writers);
+    const context = await requireAccess(request, writers, "bookloq.transactions");
     await requireAddon(context, "bookloq");
     await requireOrganizationWideLocationAccess(context);
     await requirePermission(context, "finance.journal_post");

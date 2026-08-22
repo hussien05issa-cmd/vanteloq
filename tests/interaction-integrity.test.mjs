@@ -507,7 +507,7 @@ test("paid API access is server-enforced with narrow billing and privacy excepti
   const entitlements = await readFile(new URL("../server/entitlements/engine.ts", import.meta.url), "utf8");
   const marketingRoutes = await readFile(new URL("../server/integrations/marketing-routes.ts", import.meta.url), "utf8");
 
-  assert.match(authorization, /requireTenantServiceAccess\(await getTenantEntitlements\(context\)\)/);
+  assert.match(authorization, /const entitlements = await getTenantEntitlements\(context\);[\s\S]{0,120}requireTenantServiceAccess\(entitlements\);[\s\S]{0,120}requireFeatureEntitlement\(entitlements, requiredFeature\)/);
   assert.match(entitlements, /accessType === "none"[\s\S]{0,180}402,[\s\S]{0,80}"SUBSCRIPTION_REQUIRED"/);
   assert.match(marketingRoutes, /marketingDisconnect[\s\S]{0,300}requirePrivacyAccess\(request, \["owner", "admin"\]\)/);
 

@@ -205,10 +205,17 @@ export async function requireAddon(context: AccessContext, addon: AddonKey): Pro
   requireAddonEntitlement(await getTenantEntitlements(context), addon);
 }
 
-export async function requireFeature(context: AccessContext, feature: FeatureKey): Promise<void> {
-  if (!(await hasFeature(context, feature))) {
+export function requireFeatureEntitlement(entitlements: EffectiveEntitlements, feature: FeatureKey): void {
+  if (!entitlements.features.includes(feature)) {
+    if (feature === "bookloq" || feature.startsWith("bookloq.")) {
+      throw new ApiError(403, "ADDON_NOT_INCLUDED", "The BookLoQ add-on is not included in the workspace's current access.");
+    }
     throw new ApiError(403, "FEATURE_NOT_INCLUDED", "This feature is not included in the workspace's current access.");
   }
+}
+
+export async function requireFeature(context: AccessContext, feature: FeatureKey): Promise<void> {
+  requireFeatureEntitlement(await getTenantEntitlements(context), feature);
 }
 
 function capacity(current: number, limit: number | null): CapacityDecision {

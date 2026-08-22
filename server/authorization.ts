@@ -2,7 +2,8 @@ import { and, eq } from "drizzle-orm";
 import { getDb } from "../db";
 import { memberships, users, workspaces } from "../db/schema";
 import { ApiError, requireAal2, requireIdentity, type TrustedIdentity } from "./api";
-import { getTenantEntitlements, requireTenantServiceAccess } from "./entitlements/engine";
+import type { FeatureKey } from "./entitlements/catalog";
+import { getTenantEntitlements, requireFeatureEntitlement, requireTenantServiceAccess } from "./entitlements/engine";
 import { bootstrapFounderInternalAccess } from "./internal-access";
 
 export type Role = "owner" | "admin" | "manager" | "employee" | "read_only" | "integration";
@@ -83,9 +84,12 @@ async function requireWorkspaceMembership(
 export async function requireAccess(
   request: Request,
   allowedRoles: readonly Role[],
+  requiredFeature: FeatureKey,
 ): Promise<AccessContext> {
   const context = await requireWorkspaceMembership(request, allowedRoles);
-  requireTenantServiceAccess(await getTenantEntitlements(context));
+  const entitlements = await getTenantEntitlements(context);
+  requireTenantServiceAccess(entitlements);
+  requireFeatureEntitlement(entitlements, requiredFeature);
   return context;
 }
 

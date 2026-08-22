@@ -15,7 +15,7 @@ const writers = ["owner", "admin", "manager"] as const;
 
 export async function GET(request: Request) {
   return handleApi(request, async () => {
-    const context = await requireAccess(request, readers);
+    const context = await requireAccess(request, readers, "growth.strategy");
     await requirePermission(context, "insights.view");
     await requireOrganizationWideLocationAccess(context);
     await enforceRateLimit("events:read", context.userId, 60, 60);
@@ -46,7 +46,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
-    const context = await requireAccess(request, writers);
+    const context = await requireAccess(request, writers, "growth.strategy");
     await requirePermission(context, "insights.view");
     await requireOrganizationWideLocationAccess(context);
     await enforceRateLimit("events:create", context.userId, 30, 3_600);

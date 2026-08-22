@@ -87,7 +87,7 @@ export async function GET(request: Request) {
       throw new ApiError(400, "PAYMENT_PERIOD_INVALID", "Choose today, the last 7 days, or the last 30 days.");
     }
     const paymentDays = Number(paymentDaysValue);
-    const context = await requireAccess(request, readers);
+    const context = await requireAccess(request, readers, "dashboard.core");
     await requirePermission(context, "dashboard.view");
     await enforceRateLimit("command-centre:read", `${context.userId}:${clientSource(request)}`, 120, 60);
     const permissions = await effectivePermissions(context);

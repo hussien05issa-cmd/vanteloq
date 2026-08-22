@@ -43,6 +43,9 @@ import {
   GEMINI_CONSENT_NOTICE_VERSION,
   PRIVACY_POLICY_VERSION,
 } from "../domain/privacy-controls";
+import { navigationEntitlement } from "../domain/navigation-entitlements";
+import { integrationProviderFeature } from "../domain/paid-feature-routing";
+import { useBillingEntitlements } from "./billing-entitlements-context";
 
 type View =
   | "Dashboard"
@@ -634,6 +637,8 @@ export default function VanteloqApp({
   organizationName: string;
   accountName: string;
 }) {
+  const billingEntitlements = useBillingEntitlements();
+  const subscriptionFeatures = billingEntitlements.features;
   const [view, setView] = useState<View>("Dashboard");
   const [workspaceName, setWorkspaceName] = useState(organizationName);
   const [logoVersion, setLogoVersion] = useState<number | null>(null);
@@ -733,6 +738,11 @@ export default function VanteloqApp({
     const integration = parameters.get("integration");
     if (integration !== "lightspeed" && integration !== "lightspeed-r" && integration !== "shopify" && integration !== "shopify-pos" && integration !== "square" && integration !== "clover" && integration !== "stripe" && integration !== "plaid" && integration !== "google" && integration !== "meta") return;
     const timer = window.setTimeout(() => {
+      const integrationEntitlement = navigationEntitlement("Integrations", subscriptionFeatures);
+      if (!integrationEntitlement.allowed) {
+        setNotice(`${integrationEntitlement.upgradeLabel ?? "A paid plan"} is required to manage integrations.`);
+        return;
+      }
       setView("Integrations");
       const state = parameters.get("connection");
       if (integration === "plaid") {
@@ -772,7 +782,7 @@ export default function VanteloqApp({
       window.history.replaceState({}, "", window.location.pathname);
     }, 0);
     return () => window.clearTimeout(timer);
-  }, []);
+  }, [subscriptionFeatures]);
   useEffect(() => {
     const shortcut = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
@@ -792,6 +802,13 @@ export default function VanteloqApp({
     window.setTimeout(() => setNotice(""), 3000);
   };
   const navigate = (next: View) => {
+    const subscriptionAccess = navigationEntitlement(next, subscriptionFeatures);
+    if (!subscriptionAccess.allowed) {
+      showNotice(subscriptionAccess.upgradeLabel === "BookLoQ add-on"
+        ? "Add BookLoQ to open this workspace."
+        : `${subscriptionAccess.upgradeLabel ?? "A different plan"} is required to open this workspace.`);
+      return;
+    }
     const requiredPermission = viewPermission[next];
     if (
       requiredPermission &&
@@ -803,6 +820,14 @@ export default function VanteloqApp({
     setView(next);
     setMobileNavOpen(false);
   };
+  useEffect(() => {
+    if (navigationEntitlement(view, subscriptionFeatures).allowed) return;
+    const timer = window.setTimeout(() => {
+      setView("Dashboard");
+      setMobileNavOpen(false);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [subscriptionFeatures, view]);
   const savePreferences = (patch: Partial<{ hiddenNavigation: View[]; activeLocationId: string | null }>) => {
     const current = preferenceStateRef.current;
     const next = {
@@ -902,6 +927,10 @@ export default function VanteloqApp({
             </select>
           </label>
         </div>
+        <div className="subscription-summary" aria-label="Current subscription">
+          <span>{billingEntitlements.accessType === "internal" ? "Founder access" : `${billingEntitlements.plan ? humanizeIdentifier(billingEntitlements.plan) : "Paid"} plan`}</span>
+          {billingEntitlements.addons.includes("bookloq") && <small>BookLoQ active</small>}
+        </div>
         <nav aria-label="Primary navigation">
           {nav
             .map(
@@ -919,12 +948,14 @@ export default function VanteloqApp({
             .map(([group, items]) => (
               <section className="nav-group" key={group}>
                 <p>{group}</p>
-                {items.map((item) => (
-                  <button
+                {items.map((item) => {
+                  const subscriptionAccess = navigationEntitlement(item, subscriptionFeatures);
+                  return <button
                     key={item}
-                    className={`${view === item || (item === "BookLoQ" && (view === "Profit" || view === "Cash" || view === "Bookkeeping")) ? "nav-item active" : "nav-item"}${item === "BookLoQ" ? " bookloq-main-nav" : ""}`}
+                    className={`${view === item || (item === "BookLoQ" && (view === "Profit" || view === "Cash" || view === "Bookkeeping")) ? "nav-item active" : "nav-item"}${item === "BookLoQ" ? " bookloq-main-nav" : ""}${subscriptionAccess.allowed ? "" : " subscription-locked"}`}
                     onClick={() => navigate(item)}
                     aria-current={view === item || (item === "BookLoQ" && (view === "Profit" || view === "Cash" || view === "Bookkeeping")) ? "page" : undefined}
+                    title={subscriptionAccess.allowed ? undefined : `${subscriptionAccess.upgradeLabel} required`}
                   >
                     {item === "BookLoQ" ? (
                       <ProductBrandLogo
@@ -933,8 +964,9 @@ export default function VanteloqApp({
                         className="bookloq-nav-lockup"
                       />
                     ) : <><span className="nav-dot" />{workspaceViewLabel(item)}</>}
+                    {!subscriptionAccess.allowed && <small className="nav-plan-lock">{subscriptionAccess.upgradeLabel}</small>}
                   </button>
-                ))}
+                })}
               </section>
             ))}
         </nav>
@@ -942,23 +974,25 @@ export default function VanteloqApp({
           {appPermissions.includes("integrations.view") && !hiddenNavigation.includes("Integrations") && (
             <button
               className={
-                view === "Integrations" ? "nav-item active" : "nav-item"
+                `${view === "Integrations" ? "nav-item active" : "nav-item"}${navigationEntitlement("Integrations", subscriptionFeatures).allowed ? "" : " subscription-locked"}`
               }
               onClick={() => navigate("Integrations")}
               aria-current={view === "Integrations" ? "page" : undefined}
             >
               <span className="nav-dot" />
               Integrations & data
+              {!navigationEntitlement("Integrations", subscriptionFeatures).allowed && <small className="nav-plan-lock">{navigationEntitlement("Integrations", subscriptionFeatures).upgradeLabel}</small>}
             </button>
           )}
           {appPermissions.includes("organization.settings") && (
             <button
-              className={view === "Settings" ? "nav-item active" : "nav-item"}
+              className={`${view === "Settings" ? "nav-item active" : "nav-item"}${navigationEntitlement("Settings", subscriptionFeatures).allowed ? "" : " subscription-locked"}`}
               onClick={() => navigate("Settings")}
               aria-current={view === "Settings" ? "page" : undefined}
             >
               <span className="nav-dot" />
               Settings
+              {!navigationEntitlement("Settings", subscriptionFeatures).allowed && <small className="nav-plan-lock">{navigationEntitlement("Settings", subscriptionFeatures).upgradeLabel}</small>}
             </button>
           )}
           <div className="profile">
@@ -1047,6 +1081,7 @@ export default function VanteloqApp({
             view={view}
             data={data!}
             permissions={appPermissions}
+            subscriptionFeatures={subscriptionFeatures}
             currency={currency}
             navigate={navigate}
             refresh={refresh}
@@ -1183,6 +1218,7 @@ function Workspace({
   view,
   data,
   permissions,
+  subscriptionFeatures,
   currency,
   navigate,
   refresh,
@@ -1200,6 +1236,7 @@ function Workspace({
   view: View;
   data: CommandCentre;
   permissions: string[];
+  subscriptionFeatures: readonly string[];
   currency: string;
   navigate: (view: View) => void;
   refresh: () => Promise<void>;
@@ -1254,9 +1291,9 @@ function Workspace({
   }
   if (view === "Communications") return <CommunicationsWorkspace activeLocationId={activeLocationId} />;
   if (view === "Marketing")
-    return <GrowthWorkspace currency={currency} navigate={navigate} activeLocationId={activeLocationId} />;
+    return <GrowthWorkspace currency={currency} navigate={navigate} activeLocationId={activeLocationId} canOptimize={subscriptionFeatures.includes("marketing.optimization")} />;
   if (view === "Integrations")
-    return <DataHub refresh={refresh} showNotice={showNotice} navigate={navigate} />;
+    return <DataHub refresh={refresh} showNotice={showNotice} navigate={navigate} subscriptionFeatures={subscriptionFeatures} />;
   if (view === "Decision Journal")
     return <DecisionJournal currency={currency} showNotice={showNotice} />;
   if (view === "Scenario Planner")
@@ -1279,6 +1316,7 @@ function Workspace({
         showNotice={showNotice}
         createTask={createTask}
         activeLocationId={activeLocationId}
+        canExportFeature={subscriptionFeatures.includes("reporting.exports")}
       />
     );
   if (view === "Sales" || view === "Inventory" || view === "Customers" || view === "Suppliers")
@@ -2218,10 +2256,12 @@ function DataHub({
   refresh,
   showNotice,
   navigate,
+  subscriptionFeatures,
 }: {
   refresh: () => Promise<void>;
   showNotice: (message: string) => void;
   navigate: (view: View) => void;
+  subscriptionFeatures: readonly string[];
 }) {
   const [tab, setTab] = useState<"import" | "connections">("connections");
   const [connections, setConnections] = useState<IntegrationConnection[]>([]);
@@ -2789,6 +2829,13 @@ function DataHub({
               <header><div><p>{category.toUpperCase()}</p><h3>{category}</h3></div><span>{providerRows.filter((provider) => provider.category === category).length} providers</span></header>
               <div className="integration-grid">
             {providerRows.filter((provider) => provider.category === category).map((provider) => {
+              const providerFeature = integrationProviderFeature(provider.id);
+              const providerEntitled = providerFeature !== null && subscriptionFeatures.includes(providerFeature);
+              const providerPlanLabel = providerFeature?.startsWith("bookloq")
+                ? "BookLoQ add-on"
+                : providerFeature?.startsWith("marketing.")
+                  ? "Growth plan"
+                  : "Starter plan";
               const connected = provider.status === "connected";
               const hasLocationMapping = provider.id === "lightspeed" || provider.id === "lightspeed-r" || provider.id === "shopify" || provider.id === "shopify-pos" || provider.id === "square" || provider.id === "clover";
               const isStripe = provider.id === "stripe";
@@ -2799,26 +2846,29 @@ function DataHub({
               const providerSetupRequired = provider.availability === "provider_selection_required";
               const providerUnavailable = provider.availability === "provider_build_required";
               const repairRequired = isPlaid && provider.status === "error" && Boolean(provider.maskedAccountRef);
-              const canManageProvider = provider.id === "plaid"
+              const canManageProvider = providerEntitled && (provider.id === "plaid"
                 ? provider.canManage ?? canManageBankConnections
-                : provider.canManage ?? canManage;
+                : provider.canManage ?? canManage);
               const actionableProvider = provider.id as DirectIntegrationProvider;
               const providerAction = providerActions[integrationActionKey(provider.id)] ?? "";
               const anyProviderAction = Object.keys(providerActions).some((key) => key.startsWith(`${provider.id}:`));
               const configured = provider.providerReadiness?.credentialsConfigured === true;
-              const disabledReason = !canManageProvider
+              const disabledReason = !providerEntitled
+                ? `${providerPlanLabel} required for this connection.`
+                : !canManageProvider
                 ? "Your role can view connection status but cannot manage integrations."
                 : !configured
                   ? `Add the ${isPlaid ? "Plaid client ID, environment secret, approved redirect and webhook URLs, and encryption key" : isStripe ? "Stripe Connect credentials and webhook secret" : isMoneris ? "integration encryption key" : provider.id === "google" ? "Google OAuth client, approved callback, and encryption key" : provider.id === "meta" ? "Meta app credentials, approved callback, and encryption key" : provider.id === "shopify" || provider.id === "shopify-pos" ? "Shopify client ID, client secret, approved callback, webhook URL, and encryption key" : provider.id === "lightspeed-r" ? "R-Series OAuth client ID and secret" : provider.id === "square" ? "Square application ID, application secret, approved redirect, webhook signature key, and encryption key" : provider.id === "clover" ? "Clover app ID, app secret, approved redirect, webhook authorization secret, and encryption key" : "X-Series OAuth client ID and secret"} to Vanteloq's hosted secrets first.`
                   : "";
               return (
-              <article className="integration-card" key={provider.id}>
+              <article className={`integration-card${providerEntitled ? "" : " subscription-locked"}`} key={provider.id}>
                 <div className="integration-card-head">
                   <IntegrationBrandLogo name={provider.name} />
                   <div className="integration-card-labels">
                     <span className="integration-type">{provider.category}</span>
                     {providerSetupRequired && <span className="integration-coming-soon">Provider required</span>}
                     {providerUnavailable && <span className="integration-coming-soon">Unavailable</span>}
+                    {!providerEntitled && <span className="integration-coming-soon">{providerPlanLabel} required</span>}
                   </div>
                 </div>
                 <h3>{provider.name}</h3>
@@ -3013,9 +3063,9 @@ function DataHub({
                       disabled={Boolean(disabledReason) || Boolean(providerAction)}
                       title={disabledReason || `Authorize another ${provider.name} account with its own credentials and import history.`}
                     >{providerAction === "authorize" ? "Opening…" : connected ? "Connect another account" : "Connect"}</button>
-                  </div> : provider.externalApplicationUrl ? <div className="provider-actions">
+                  </div> : provider.externalApplicationUrl && providerEntitled ? <div className="provider-actions">
                     <a href={provider.externalApplicationUrl} target="_blank" rel="noreferrer">{provider.externalApplicationLabel ?? "Request provider access"}</a>
-                  </div> : null}
+                  </div> : !providerEntitled ? <div className="provider-actions"><button type="button" disabled title={disabledReason}>{providerPlanLabel} required</button></div> : null}
                 </div>
               </article>
             );})}

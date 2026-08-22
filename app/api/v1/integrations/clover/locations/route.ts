@@ -27,7 +27,7 @@ async function revoke(organizationId: string, connectionId: string, lease: Integ
 
 export async function GET(request: Request) {
   return handleApi(request, async () => {
-    const context = await requireAccess(request, ["owner", "admin", "manager"]);
+    const context = await requireAccess(request, ["owner", "admin", "manager"], "pos.reporting.core");
     await requirePermission(context, "integrations.manage");
     await requireOrganizationWideLocationAccess(context);
     const connection = await requireOwnedIntegrationConnection(context.organizationId, CLOVER_PROVIDER, new URL(request.url).searchParams.get("connection"), { connected: true });
@@ -39,7 +39,7 @@ export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
     const input = await readJsonObject(request);
-    const context = await requireAccess(request, input.action === "discover" ? ["owner", "admin", "manager"] : ["owner", "admin"]);
+    const context = await requireAccess(request, input.action === "discover" ? ["owner", "admin", "manager"] : ["owner", "admin"], "pos.reporting.core");
     await requirePermission(context, "integrations.manage");
     await requireOrganizationWideLocationAccess(context);
     await enforceRateLimit("clover:location", context.userId, 60, 3600);

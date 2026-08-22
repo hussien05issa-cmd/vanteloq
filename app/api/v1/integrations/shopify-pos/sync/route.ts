@@ -41,7 +41,7 @@ async function batches(statements: D1PreparedStatement[]) { let changed = 0; for
 export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     const provider = shopifyProviderFromRequest(request); const isCommerce = provider !== SHOPIFY_POS_PROVIDER; const providerLabel = isCommerce ? "Shopify e-commerce" : "Shopify POS";
-    requireSameOrigin(request); const context = await requireAccess(request, ["owner", "admin"]); await requirePermission(context, "integrations.manage"); const input = await request.json().catch(() => ({})) as { connectionId?: unknown; reason?: unknown }; const reason = input.reason === "manual" ? "manual" : "auto";
+    requireSameOrigin(request); const context = await requireAccess(request, ["owner", "admin"], "pos.reporting.core"); await requirePermission(context, "integrations.manage"); const input = await request.json().catch(() => ({})) as { connectionId?: unknown; reason?: unknown }; const reason = input.reason === "manual" ? "manual" : "auto";
     const connection = await requireOwnedIntegrationConnection(context.organizationId, provider, typeof input.connectionId === "string" ? input.connectionId : null, { connected: true });
     if (!connection.domainPrefix) throw new ApiError(409, "SHOPIFY_NOT_CONNECTED", "Reconnect the Shopify store before synchronizing it.");
     if (reason === "auto") return jsonResponse({ provider, connectionId: connection.id, skipped: true, nextStep: `${providerLabel} refreshes remain owner-initiated until the durable worker schedule is enabled.` });

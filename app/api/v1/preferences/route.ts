@@ -53,7 +53,7 @@ async function preferencePayload(context: Awaited<ReturnType<typeof requireAcces
 
 export async function GET(request: Request) {
   return handleApi(request, async () => {
-    const context = await requireAccess(request, readers);
+    const context = await requireAccess(request, readers, "business.settings");
     await enforceRateLimit("preferences:read", context.userId, 120, 60);
     return jsonResponse(await preferencePayload(context));
   });
@@ -62,7 +62,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   return handleApi(request, async () => {
     requireSameOrigin(request);
-    const context = await requireAccess(request, readers);
+    const context = await requireAccess(request, readers, "business.settings");
     await enforceRateLimit("preferences:write", context.userId, 60, 3_600);
     const input = await readJsonObject(request, 16_000);
     const hiddenNavigation = normalizeHiddenNavigation(

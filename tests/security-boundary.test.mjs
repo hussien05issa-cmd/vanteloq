@@ -348,7 +348,7 @@ test("Plaid lifecycle routes keep delegated finance access and repair failures f
       `${process.cwd()}/app/api/v1/integrations/plaid/${action}/route.ts`,
       "utf8",
     );
-    assert.match(source, /requireAccess\(request, \["owner", "admin", "manager"\]\)/, action);
+    assert.match(source, /requireAccess\(request, \["owner", "admin", "manager"\], "bookloq\.reconciliation"\)/, action);
     assert.match(source, /requirePermission\(context, "finance\.connections"\)/, action);
   }
   const disconnect = await readFile(
@@ -370,7 +370,8 @@ test("provider approval uses the permission for the selected connection type", a
     "utf8",
   );
   const post = source.slice(source.indexOf("export async function POST"));
-  assert.match(post, /requireAccess\(request, \["owner", "admin", "manager"\]\)/);
+  assert.match(post, /requireAccess\(request, \["owner", "admin", "manager"\], "business\.settings"\)/);
+  assert.match(post, /integrationProviderFeature\(connection\.provider\)[\s\S]*requireFeature\(context, requiredFeature\)/);
   assert.match(post, /connection\.provider === "plaid"[\s\S]*requirePermission\(context, "finance\.connections"\)/);
   assert.match(post, /\}\s*else\s*\{[\s\S]*requirePermission\(context, "integrations\.manage"\)/);
   assert.match(post, /isMarketingProvider[\s\S]*requirePermission\(context, "marketing\.manage"\)/);

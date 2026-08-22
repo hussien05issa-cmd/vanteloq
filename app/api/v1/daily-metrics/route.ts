@@ -13,7 +13,7 @@ const writers = ["owner", "admin", "manager", "employee", "read_only"] as const;
 
 export async function GET(request: Request) {
   return handleApi(request, async () => {
-    const context = await requireAccess(request, readers);
+    const context = await requireAccess(request, readers, "analytics.sales.basic");
     await requirePermission(context, "integrations.view");
     await requireOrganizationWideLocationAccess(context);
     await enforceRateLimit("daily-metrics:read", context.userId, 60, 60);
@@ -32,7 +32,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
-    const context = await requireAccess(request, writers);
+    const context = await requireAccess(request, writers, "analytics.sales.basic");
     await requirePermission(context, "data.import");
     await enforceRateLimit("daily-metrics:write", context.userId, 12, 3_600);
     const key = idempotencyKey(request);

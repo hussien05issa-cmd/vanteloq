@@ -96,7 +96,7 @@ const sourceFreshness = (value: Date | string | null | undefined, maxAgeDays: nu
 
 export async function GET(request: Request) {
   return handleApi(request, async () => {
-    const context = await requireAccess(request, readers);
+    const context = await requireAccess(request, readers, "growth.strategy");
     await requirePermission(context, "marketing.view");
     await enforceRateLimit("growth:read", context.userId, 60, 60);
     const permissions = await effectivePermissions(context);
@@ -474,7 +474,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
-    const context = await requireAccess(request, writers);
+    const context = await requireAccess(request, writers, "growth.strategy");
     await requirePermission(context, "marketing.manage");
     await requireOrganizationWideLocationAccess(context);
     await enforceRateLimit("growth:ingest", context.userId, 120, 60);

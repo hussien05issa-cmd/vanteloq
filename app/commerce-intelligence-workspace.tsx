@@ -171,7 +171,7 @@ export default function CommerceIntelligenceWorkspace({ mode, currency, activeLo
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ from: applied.from, to: applied.to });
+      const params = new URLSearchParams({ from: applied.from, to: applied.to, mode });
       if (activeLocationId) params.set("location", activeLocationId);
       const response = await apiFetch(`/api/v1/commerce-intelligence?${params}`, { headers: { Accept: "application/json" } });
       const body = await response.json();
@@ -181,7 +181,7 @@ export default function CommerceIntelligenceWorkspace({ mode, currency, activeLo
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Commerce intelligence could not be loaded.");
     } finally { setLoading(false); }
-  }, [activeLocationId, applied]);
+  }, [activeLocationId, applied, mode]);
   useEffect(() => {
     const timer = window.setTimeout(() => void load(), 0);
     return () => window.clearTimeout(timer);

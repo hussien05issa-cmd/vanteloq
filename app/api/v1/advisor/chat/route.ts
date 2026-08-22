@@ -88,7 +88,7 @@ async function callGemini(text: string) {
 export async function POST(request: Request) {
   return handleApi(request, async () => {
     requireSameOrigin(request);
-    const context = await requireAccess(request, readers);
+    const context = await requireAccess(request, readers, "ai.basic");
     await requirePermission(context, "insights.view");
     await enforceRateLimit("advisor:chat", `${context.userId}:${clientSource(request)}`, 20, 60);
     const body = await readJsonObject(request);

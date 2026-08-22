@@ -194,7 +194,7 @@ async function lifecycleDto(organizationId: string, scope: LifecycleScope, canVi
 
 export async function GET(request: Request) {
   return handleApi(request, async () => {
-    const context = await requireAccess(request, roles);
+    const context = await requireAccess(request, roles, "inventory.lots");
     await requirePermission(context, "inventory.view");
     await enforceRateLimit("inventory-lifecycle:read", context.userId, 90, 60);
     const scope = await requestScope(request, context);
@@ -206,7 +206,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
-    const context = await requireAccess(request, roles);
+    const context = await requireAccess(request, roles, "inventory.lots");
     await requirePermission(context, "inventory.adjust");
     await enforceRateLimit("inventory-lifecycle:write", context.userId, 50, 3_600);
     const input = await readJsonObject(request, 64_000);

@@ -26,7 +26,7 @@ function base64(bytes: Uint8Array) {
 export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
-    const context = await requireAccess(request, writers);
+    const context = await requireAccess(request, writers, "bookloq.ar");
     await requirePermission(context, "finance.ap_ar");
     requireBookLoQPermission(context.role, "edit_drafts");
     await enforceRateLimit("bookloq:invoice:email", context.userId, 30, 3_600);

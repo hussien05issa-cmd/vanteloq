@@ -264,7 +264,8 @@ export function ReportsWorkspace({
   showNotice,
   createTask,
   activeLocationId,
-}: SharedProps & { activeLocationId: string | null }) {
+  canExportFeature,
+}: SharedProps & { activeLocationId: string | null; canExportFeature: boolean }) {
   const [query, setQuery] = useState("");
   const [group, setGroup] = useState("All reports");
   const [selected, setSelected] = useState("Sales totals");
@@ -386,7 +387,7 @@ export function ReportsWorkspace({
     }
     return [...daily.values()].sort((left, right) => left.date.localeCompare(right.date));
   }, [rows]);
-  const canExport = report?.canExport === true;
+  const canExport = canExportFeature && report?.canExport === true;
   return (
     <div className="content control-page reports-centre">
       <section className="page-intro">
@@ -656,8 +657,8 @@ export function ReportsWorkspace({
                     Export CSV
                   </a>
                 ) : (
-                  <button disabled title="This role cannot export reports">
-                    CSV · restricted
+                  <button disabled title={canExportFeature ? "This role cannot export reports" : "CSV export requires the Pro plan"}>
+                    {canExportFeature ? "CSV · restricted" : "CSV · Pro required"}
                   </button>
                 )}
                 <button

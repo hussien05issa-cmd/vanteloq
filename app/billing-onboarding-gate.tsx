@@ -7,6 +7,10 @@ import {
   billingGateState,
   type BillingAccessType,
 } from "../shared/signup-funnel";
+import {
+  BillingEntitlementsProvider,
+  type BillingEntitlements,
+} from "./billing-entitlements-context";
 
 type Plan = {
   key: "starter" | "growth" | "pro";
@@ -14,6 +18,7 @@ type Plan = {
   description: string;
   mostPopular: boolean;
   price: number;
+  included: string[];
 };
 
 type BillingData = {
@@ -22,6 +27,9 @@ type BillingData = {
   current: {
     plan: string | null;
     status: string | null;
+    addons: string[];
+    features: string[];
+    limits: BillingEntitlements["limits"];
   };
   plans: Plan[];
   addon: {
@@ -143,7 +151,16 @@ export default function BillingOnboardingGate({ children }: { children: ReactNod
     return <div className="entry-loading" role="status" aria-live="polite"><ProductBrandLogo product="vanteloq" priority/><p>Checking subscription access…</p></div>;
   }
 
-  if (data && billingGateState(data) === "ready") return children;
+  if (data && (data.accessType === "internal" || data.accessType === "subscription")) {
+    return <BillingEntitlementsProvider value={{
+      accessType: data.accessType,
+      plan: data.current.plan as BillingEntitlements["plan"],
+      status: data.current.status,
+      addons: data.current.addons,
+      features: data.current.features,
+      limits: data.current.limits,
+    }}>{children}</BillingEntitlementsProvider>;
+  }
 
   const state = data ? billingGateState(data) : null;
   return <main className="billing-onboarding-gate">
@@ -165,6 +182,7 @@ export default function BillingOnboardingGate({ children }: { children: ReactNod
             <strong>{monthlyPrice(item.price, data.currency)}</strong>
             <small>per month</small>
             <p>{item.description}</p>
+            <ul>{item.included.map(feature => <li key={feature}>{feature}</li>)}</ul>
           </button>)}
         </div>
         <label className="billing-addon"><input type="checkbox" checked={includeBookloq} onChange={event => setIncludeBookloq(event.target.checked)}/><span><b>Add {data.addon.name} for {monthlyPrice(data.addon.price, data.currency)} per month</b><small>Include bookkeeping and cash control features in the same subscription.</small></span></label>

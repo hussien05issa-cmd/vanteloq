@@ -21,7 +21,7 @@ function extensionAndType(bytes: Uint8Array, declared: string): { extension: str
 
 export async function GET(request: Request) {
   return handleApi(request, async () => {
-    const context = await requireAccess(request, readers);
+    const context = await requireAccess(request, readers, "business.profile");
     const [profile] = await getDb().select({ objectKey: organizationProfiles.logoObjectKey, contentType: organizationProfiles.logoContentType, version: organizationProfiles.logoVersion })
       .from(organizationProfiles).where(eq(organizationProfiles.organizationId, context.organizationId)).limit(1);
     if (!profile?.objectKey) throw new ApiError(404, "NO_LOGO", "This organization has not uploaded a logo.");
@@ -34,7 +34,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
-    const context = await requireAccess(request, writers);
+    const context = await requireAccess(request, writers, "business.profile");
     await enforceRateLimit("organization-logo:write", context.userId, 10, 3_600);
     const contentLength = Number(request.headers.get("content-length") || 0);
     if (contentLength > maximumBytes + 64_000) throw new ApiError(413, "FILE_TOO_LARGE", "Organization logos must be 2 MB or smaller.");
@@ -63,7 +63,7 @@ export async function POST(request: Request) {
 export async function DELETE(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
-    const context = await requireAccess(request, writers);
+    const context = await requireAccess(request, writers, "business.profile");
     const [current] = await getDb().select({ objectKey: organizationProfiles.logoObjectKey }).from(organizationProfiles).where(eq(organizationProfiles.organizationId, context.organizationId)).limit(1);
     await getD1().prepare("UPDATE organization_profiles SET logo_object_key = NULL, logo_content_type = NULL, logo_version = logo_version + 1, updated_at = ? WHERE organization_id = ?").bind(Date.now(), context.organizationId).run();
     if (current?.objectKey) await getR2().delete(current.objectKey);

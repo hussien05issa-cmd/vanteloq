@@ -115,14 +115,45 @@ test("resolved limits always come from the central plan catalogue", () => {
 test("BookLoQ API entitlement fails closed without the independent add-on", async () => {
   const engine = await import("../server/entitlements/engine.ts") as Record<string, unknown>;
   assert.equal(typeof engine.requireAddonEntitlement, "function");
+  assert.equal(typeof engine.requireFeatureEntitlement, "function");
   const requireAddonEntitlement = engine.requireAddonEntitlement as (
     entitlements: ReturnType<typeof resolveSubscriptionEntitlements>,
     addon: "bookloq",
   ) => void;
+  const requireFeatureEntitlement = engine.requireFeatureEntitlement as (
+    entitlements: ReturnType<typeof resolveSubscriptionEntitlements>,
+    feature: "bookloq.dashboard",
+  ) => void;
 
   const withoutAddon = resolveSubscriptionEntitlements(snapshot({ basePlan: "pro", addons: [] }));
   assert.throws(() => requireAddonEntitlement(withoutAddon, "bookloq"), /not included/i);
+  assert.throws(
+    () => requireFeatureEntitlement(withoutAddon, "bookloq.dashboard"),
+    (error: unknown) => error instanceof ApiError
+      && error.status === 403
+      && error.code === "ADDON_NOT_INCLUDED",
+  );
 
   const withAddon = resolveSubscriptionEntitlements(snapshot({ basePlan: "starter", addons: ["bookloq"] }));
   assert.doesNotThrow(() => requireAddonEntitlement(withAddon, "bookloq"));
+  assert.doesNotThrow(() => requireFeatureEntitlement(withAddon, "bookloq.dashboard"));
+});
+
+test("server feature enforcement rejects lower tiers and accepts the subscribed feature", async () => {
+  const engine = await import("../server/entitlements/engine.ts") as Record<string, unknown>;
+  assert.equal(typeof engine.requireFeatureEntitlement, "function");
+  const requireFeatureEntitlement = engine.requireFeatureEntitlement as (
+    entitlements: ReturnType<typeof resolveSubscriptionEntitlements>,
+    feature: "inventory.lots",
+  ) => void;
+
+  const starter = resolveSubscriptionEntitlements(snapshot({ basePlan: "starter" }));
+  const growth = resolveSubscriptionEntitlements(snapshot({ basePlan: "growth" }));
+  assert.throws(
+    () => requireFeatureEntitlement(starter, "inventory.lots"),
+    (error: unknown) => error instanceof ApiError
+      && error.status === 403
+      && error.code === "FEATURE_NOT_INCLUDED",
+  );
+  assert.doesNotThrow(() => requireFeatureEntitlement(growth, "inventory.lots"));
 });

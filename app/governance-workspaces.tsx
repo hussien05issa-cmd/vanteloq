@@ -1801,7 +1801,7 @@ type BillingData = {
   configured: boolean;
   accessType: "internal" | "subscription" | "none";
   current: { plan: "starter" | "growth" | "pro" | null; status: string | null; addons: string[]; billingInterval: "month" | "year" | null; currentPeriodEndsAt: string | null; cancelAtPeriodEnd: boolean; hasCustomer: boolean };
-  plans: Array<{ key: "starter" | "growth" | "pro"; name: string; description: string; mostPopular: boolean; price: number }>;
+  plans: Array<{ key: "starter" | "growth" | "pro"; name: string; description: string; mostPopular: boolean; price: number; included: string[] }>;
   addon: { key: "bookloq"; name: string; price: number };
   purchaseInterval: "month";
 };
@@ -1836,7 +1836,7 @@ function BillingSettings() {
     {error && <p className="form-error">{error}</p>}
     {data?.accessType === "internal" ? <div className="billing-internal"><b>Founder access active</b><span>This workspace has verified internal full access and does not require a Stripe subscription.</span></div> : <>
       <p className="billing-monthly-note"><b>Monthly billing</b><span>Plans renew month to month. Cancel before renewal to stop the next charge.</span></p>
-      <div className="billing-plans">{data?.plans.map((item) => <button key={item.key} className={plan === item.key ? "selected" : ""} onClick={() => setPlan(item.key)} disabled={managed}><span>{item.mostPopular ? "MOST POPULAR" : "PLAN"}</span><b>{item.name}</b><strong>${(item.price / 100).toLocaleString("en-CA")}</strong><small>CAD / month</small><p>{item.description}</p></button>)}</div>
+      <div className="billing-plans">{data?.plans.map((item) => <button key={item.key} className={plan === item.key ? "selected" : ""} onClick={() => setPlan(item.key)} disabled={managed}><span>{item.mostPopular ? "MOST POPULAR" : "PLAN"}</span><b>{item.name}</b><strong>${(item.price / 100).toLocaleString("en-CA")}</strong><small>CAD / month</small><p>{item.description}</p><ul>{item.included.map(feature => <li key={feature}>{feature}</li>)}</ul></button>)}</div>
       <label className="billing-addon"><input type="checkbox" checked={bookloq} onChange={(event) => setBookloq(event.target.checked)} disabled={managed}/><span><b>Add BookLoQ</b><small>${((data?.addon.price ?? 0) / 100).toLocaleString("en-CA")} CAD / month</small></span></label>
       <div className="provider-settings"><article><div><b>Current access</b><p>{data?.current.plan ? `${data.current.plan} · ${data.current.status}` : "No synchronized paid subscription."}</p></div><span>{data?.current.cancelAtPeriodEnd ? "Cancels at renewal" : data?.current.status ?? "Not subscribed"}</span></article></div>
       <footer>{managed ? <button className="primary" disabled={busy || !data?.configured} onClick={() => void open("/api/v1/billing/portal")}>{busy ? "Opening…" : "Manage billing in Stripe"}</button> : <button className="primary" disabled={busy || !data?.configured} title={!data?.configured ? "Stripe products, prices and webhook secret must be configured first." : "Open secure Stripe Checkout"} onClick={() => void open("/api/v1/billing/checkout", { plan, interval: "month", includeBookloq: bookloq })}>{busy ? "Opening…" : data?.configured ? "Continue to secure checkout" : "Stripe setup required"}</button>}</footer>

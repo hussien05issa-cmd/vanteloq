@@ -109,7 +109,7 @@ async function list(organizationId: string) {
 
 export async function GET(request: Request) {
   return handleApi(request, async () => {
-    const context = await requireAccess(request, users);
+    const context = await requireAccess(request, users, "invoice.basic");
     await requirePermission(context, "documents.view");
     await requireOrganizationWideLocationAccess(context);
     await enforceRateLimit("documents:read", context.userId, 90, 60);
@@ -158,7 +158,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
-    const context = await requireAccess(request, users);
+    const context = await requireAccess(request, users, "invoice.basic");
     await requirePermission(context, "documents.upload");
     await requireOrganizationWideLocationAccess(context);
     await enforceRateLimit("documents:write", context.userId, 30, 3_600);
@@ -268,7 +268,7 @@ export async function POST(request: Request) {
 export async function DELETE(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
-    const context = await requireAccess(request, users);
+    const context = await requireAccess(request, users, "invoice.basic");
     await requirePermission(context, "documents.retention");
     await requireOrganizationWideLocationAccess(context);
     const id = new URL(request.url).searchParams.get("id");

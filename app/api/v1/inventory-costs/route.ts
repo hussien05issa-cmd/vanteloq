@@ -72,7 +72,7 @@ async function runBatches(statements: D1PreparedStatement[], size = 50): Promise
 export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
-    const context = await requireAccess(request, roles);
+    const context = await requireAccess(request, roles, "products.margin");
     await requirePermission(context, "inventory.adjust");
     await enforceRateLimit("inventory-costs:write", context.userId, 30, 3_600);
     const body = await readJsonObject(request, 128_000);

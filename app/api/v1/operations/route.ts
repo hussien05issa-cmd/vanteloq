@@ -5,13 +5,14 @@ import { ApiError, enforceRateLimit, handleApi, jsonResponse, readJsonObject, re
 import { buildInventoryWrites, confirmationCopy, eventKey, parsePaymentSettlement } from "../../../../server/operations";
 import { requirePermission } from "../../../../server/permissions";
 import { authorizedLocationDataScope } from "../../../../server/location-access";
+import { requireFeature } from "../../../../server/entitlements/engine";
 
 const readers = ["owner", "admin", "manager", "read_only"] as const;
 const writers = ["owner", "admin", "manager"] as const;
 
 export async function GET(request: Request) {
   return handleApi(request, async () => {
-    const context = await requireAccess(request, readers);
+    const context = await requireAccess(request, readers, "communications.basic");
     await requirePermission(context, "customers.identity");
     await enforceRateLimit("operations:feed", context.userId, 120, 60);
     const url = new URL(request.url);
@@ -103,10 +104,11 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
-    const context = await requireAccess(request, writers);
+    const context = await requireAccess(request, writers, "operations.basic");
     await requirePermission(context, "inventory.adjust");
     await enforceRateLimit("operations:settle", context.userId, 120, 60);
     const settlement = parsePaymentSettlement(await readJsonObject(request, 131_072));
+    if (settlement.lines.some((line) => Boolean(line.lotId))) await requireFeature(context, "inventory.lots");
     const scope = await authorizedLocationDataScope(context, new URL(request.url).searchParams.get("location"));
     if (scope.locationRefs !== null && !scope.locationRefs.includes(settlement.locationRef)) {
       throw new ApiError(403, "LOCATION_ACCESS_DENIED", "This settlement location is not available to your account.");

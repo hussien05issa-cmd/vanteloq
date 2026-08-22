@@ -83,7 +83,7 @@ function validIsoDate(value: string | null) {
 
 export async function GET(request: Request) {
   return handleApi(request, async () => {
-    const context = await requireAccess(request, readers);
+    const context = await requireAccess(request, readers, "bookloq.dashboard");
     await requireAddon(context, "bookloq");
     await requirePermission(context, "finance.statements");
     const permissions = await effectivePermissions(context);

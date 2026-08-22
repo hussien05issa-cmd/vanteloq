@@ -374,7 +374,7 @@ function GoogleVisibilityCommandCentre({ data, navigate }: { data: GrowthData; n
   </section>;
 }
 
-function MetaAdsCommandCentre({ data, navigate }: { data: GrowthData; navigate: (view: "Integrations") => void }) {
+function MetaAdsCommandCentre({ data, navigate, canOptimize }: { data: GrowthData; navigate: (view: "Integrations") => void; canOptimize: boolean }) {
   const selection = data.metaAdAccounts[0];
   const metricRows = data.measurementSeries.filter((row) => row.dataset === "meta_ads");
   const [directory, setDirectory] = useState<MetaCampaignDirectory | null>(null);
@@ -437,7 +437,7 @@ function MetaAdsCommandCentre({ data, navigate }: { data: GrowthData; navigate: 
     {!selection ? <div className="marketing-metric-empty"><b>Select a Meta ad account</b><span>Authorize Meta, choose the exact account and approve its sample before Vanteloq displays or changes campaign data.</span></div> : !directory ? <div className="marketing-metric-empty"><b>Campaigns load only when requested</b><span>Use Load campaigns to retrieve the current account state directly from Meta. Vanteloq does not invent or cache campaign controls.</span></div> : !directory.campaigns.length ? <div className="marketing-metric-empty"><b>No campaigns returned</b><span>The selected advertising account did not return any campaigns.</span></div> : <div className="meta-campaign-list">{directory.campaigns.map((campaign) => <article key={campaign.id}>
       <div className="meta-campaign-identity"><span className={`meta-status ${campaign.status.toLowerCase()}`}>{campaign.status}</span><div><b>{campaign.name}</b><small>{campaign.objective?.replaceAll("_", " ") ?? "Objective unavailable"} · Effective status: {campaign.effectiveStatus.replaceAll("_", " ")}</small></div></div>
       <dl><div><dt>Daily budget</dt><dd>{formatProviderMoney(campaign.dailyBudgetMinor)}</dd></div><div><dt>Budget remaining</dt><dd>{formatProviderMoney(campaign.budgetRemainingMinor)}</dd></div><div><dt>Last provider update</dt><dd>{campaign.updatedTime ? new Date(campaign.updatedTime).toLocaleString("en-CA") : "Unavailable"}</dd></div></dl>
-      {selection.canManage && campaign.status !== "ARCHIVED" && campaign.status !== "DELETED" && <div className="meta-campaign-controls"><label className="google-reply-confirm"><input type="checkbox" checked={confirmed[campaign.id] ?? false} onChange={(event) => setConfirmed((current) => ({ ...current, [campaign.id]: event.target.checked }))} /> I reviewed this exact campaign and authorize one change.</label><div><button disabled={!confirmed[campaign.id] || busyCampaignId === campaign.id} onClick={() => void applyChange(campaign, { action: "set_status", status: campaign.status === "ACTIVE" ? "PAUSED" : "ACTIVE" })}>{campaign.status === "ACTIVE" ? "Pause" : "Activate"}</button>{campaign.dailyBudgetMinor !== null && <><label>Daily budget ({directory.currency})<input inputMode="decimal" value={budgetDrafts[campaign.id] ?? ""} onChange={(event) => setBudgetDrafts((current) => ({ ...current, [campaign.id]: event.target.value }))} /></label><button disabled={!confirmed[campaign.id] || !budgetDrafts[campaign.id] || busyCampaignId === campaign.id} onClick={() => changeBudget(campaign)}>Update budget</button></>}</div></div>}
+      {selection.canManage && campaign.status !== "ARCHIVED" && campaign.status !== "DELETED" && (canOptimize ? <div className="meta-campaign-controls"><label className="google-reply-confirm"><input type="checkbox" checked={confirmed[campaign.id] ?? false} onChange={(event) => setConfirmed((current) => ({ ...current, [campaign.id]: event.target.checked }))} /> I reviewed this exact campaign and authorize one change.</label><div><button disabled={!confirmed[campaign.id] || busyCampaignId === campaign.id} onClick={() => void applyChange(campaign, { action: "set_status", status: campaign.status === "ACTIVE" ? "PAUSED" : "ACTIVE" })}>{campaign.status === "ACTIVE" ? "Pause" : "Activate"}</button>{campaign.dailyBudgetMinor !== null && <><label>Daily budget ({directory.currency})<input inputMode="decimal" value={budgetDrafts[campaign.id] ?? ""} onChange={(event) => setBudgetDrafts((current) => ({ ...current, [campaign.id]: event.target.value }))} /></label><button disabled={!confirmed[campaign.id] || !budgetDrafts[campaign.id] || busyCampaignId === campaign.id} onClick={() => changeBudget(campaign)}>Update budget</button></>}</div></div> : <div className="marketing-metric-empty"><b>Pro plan required for campaign changes</b><span>Growth can review campaign status and measurements. Pausing, activation, and budget changes require Pro.</span></div>)}
     </article>)}</div>}
     <footer>Reporting uses approved Meta measurements. Campaign changes are sent only after an authorized owner confirms the exact campaign and action; every change is audited.</footer>
   </section>;
@@ -455,7 +455,7 @@ function LocalReadinessPanels({ data }: { data: GrowthData }) {
   </section>;
 }
 
-export default function GrowthWorkspace({ currency, navigate, activeLocationId }: { currency: string; navigate: (view: "Integrations") => void; activeLocationId: string | null }) {
+export default function GrowthWorkspace({ currency, navigate, activeLocationId, canOptimize }: { currency: string; navigate: (view: "Integrations") => void; activeLocationId: string | null; canOptimize: boolean }) {
   const [data, setData] = useState<GrowthData | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [tab, setTab] = useState<Tab>("overview");
@@ -617,7 +617,7 @@ export default function GrowthWorkspace({ currency, navigate, activeLocationId }
       </section>
       {data && <LocalReadinessPanels data={data} />}
       {data && <GoogleVisibilityCommandCentre data={data} navigate={navigate} />}
-      {data && <MetaAdsCommandCentre data={data} navigate={navigate} />}
+      {data && <MetaAdsCommandCentre data={data} navigate={navigate} canOptimize={canOptimize} />}
 
       <section className="growth-overview-grid">
         <article className="card growth-recommendations">

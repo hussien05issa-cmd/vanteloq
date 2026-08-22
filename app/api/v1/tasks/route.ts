@@ -37,7 +37,7 @@ function taskDto(task: typeof workspaceTasks.$inferSelect) {
 
 export async function GET(request: Request) {
   return handleApi(request, async () => {
-    const context = await requireAccess(request, taskReaders);
+    const context = await requireAccess(request, taskReaders, "operations.basic");
     await requirePermission(context, "operations.tasks");
     await requireOrganizationWideLocationAccess(context);
     await enforceRateLimit("tasks:read", `${context.userId}:${clientSource(request)}`, 120, 60);
@@ -54,7 +54,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
-    const context = await requireAccess(request, taskWriters);
+    const context = await requireAccess(request, taskWriters, "operations.basic");
     await enforceRateLimit("tasks:create", context.userId, 60, 60);
     const key = idempotencyKey(request);
     const input = taskCreateInput(await readJsonObject(request));
@@ -106,7 +106,7 @@ export async function POST(request: Request) {
 export async function PATCH(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
-    const context = await requireAccess(request, taskWriters);
+    const context = await requireAccess(request, taskWriters, "operations.basic");
     await requirePermission(context, "operations.tasks");
     await requireOrganizationWideLocationAccess(context);
     await enforceRateLimit("tasks:update", context.userId, 120, 60);

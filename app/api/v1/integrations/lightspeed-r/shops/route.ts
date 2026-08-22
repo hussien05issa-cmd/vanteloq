@@ -71,7 +71,7 @@ async function revokePublicationAuthorization(
 
 export async function GET(request: Request) {
   return handleApi(request, async () => {
-    const context = await requireAccess(request, ["owner", "admin", "manager"]);
+    const context = await requireAccess(request, ["owner", "admin", "manager"], "pos.reporting.core");
     await requirePermission(context, "integrations.manage");
     await requireOrganizationWideLocationAccess(context);
     await enforceRateLimit("lightspeed-r:shops:list", context.userId, 120, 3600);
@@ -90,7 +90,7 @@ export async function POST(request: Request) {
     requireSameOrigin(request);
     const input = await readJsonObject(request);
     const discovering = input.action === "discover";
-    const context = await requireAccess(request, discovering ? ["owner", "admin", "manager"] : ["owner", "admin"]);
+    const context = await requireAccess(request, discovering ? ["owner", "admin", "manager"] : ["owner", "admin"], "pos.reporting.core");
     await requirePermission(context, "integrations.manage");
     await requireOrganizationWideLocationAccess(context);
     await enforceRateLimit(discovering ? "lightspeed-r:shop-discover" : "lightspeed-r:shop-map", context.userId, discovering ? 20 : 60, 3600);

@@ -6,7 +6,7 @@ import { requireAccess } from "../../../../server/authorization";
 import { ApiError, enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameOrigin } from "../../../../server/api";
 import { allPermissions, effectivePermissions, permissionCatalogDto, requirePermission, roleTemplates, type PermissionKey } from "../../../../server/permissions";
 import { hashPin, validateTemporaryPin } from "../../../../server/pin";
-import { canAddLocation, canAddUser } from "../../../../server/entitlements/engine";
+import { canAddLocation, canAddUser, requireFeature } from "../../../../server/entitlements/engine";
 
 const governanceUsers = ["owner", "admin", "manager", "employee", "read_only"] as const;
 const governanceReadPermissions = [
@@ -268,7 +268,7 @@ async function responseBody(context: Awaited<ReturnType<typeof requireAccess>>, 
 
 export async function GET(request: Request) {
   return handleApi(request, async () => {
-    const context = await requireAccess(request, governanceUsers);
+    const context = await requireAccess(request, governanceUsers, "permissions.standard");
     const permissions = await governancePermissions(context);
     await enforceRateLimit("governance:read", context.userId, 90, 60);
     return jsonResponse({ governance: await responseBody(context, permissions) });
@@ -278,10 +278,11 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
-    const context = await requireAccess(request, governanceUsers);
+    const context = await requireAccess(request, governanceUsers, "permissions.standard");
     await enforceRateLimit("governance:write", context.userId, 40, 3_600);
     const input = await readJsonObject(request, 128_000);
     const action = string(input.action, "action", 60);
+    if (action === "save_role") await requireFeature(context, "permissions.advanced");
     const permission = governanceActionPermissions[action as keyof typeof governanceActionPermissions];
     if (!permission) throw new ApiError(400, "UNKNOWN_ACTION", "Select a supported governance action.");
     await requirePermission(context, permission);

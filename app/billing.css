@@ -51,6 +51,8 @@
   color: #65768a;
   line-height: 1.5;
 }
+.billing-plans ul { margin: 9px 0 0; padding: 9px 0 0 17px; border-top: 1px solid #e4eaf0; color: #526a82; text-align: left; }
+.billing-plans li { margin: 4px 0; font-size: 11px; line-height: 1.35; }
 
 .billing-addon,
 .billing-internal {
@@ -143,6 +145,8 @@
 .billing-onboarding-gate .billing-plans > button { cursor: pointer; }
 .billing-onboarding-gate .billing-plans b { font-size: 17px; }
 .billing-onboarding-gate .billing-plans strong { font-size: 28px; }
+.billing-onboarding-gate .billing-plans ul { margin-top: 10px; padding-top: 10px; color: #42627f; }
+.billing-onboarding-gate .billing-plans li { margin: 5px 0; font-size: 12px; line-height: 1.35; }
 .billing-onboarding-gate .billing-plans span,
 .billing-onboarding-gate .billing-plans small,
 .billing-onboarding-gate .billing-plans p,

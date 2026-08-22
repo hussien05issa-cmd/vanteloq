@@ -12,7 +12,7 @@ export async function POST(request: Request) {
     const provider = shopifyProviderFromRequest(request);
     const providerLabel = provider === SHOPIFY_POS_PROVIDER ? "Shopify POS" : "Shopify e-commerce";
     requireSameOrigin(request);
-    const context = await requireAccess(request, ["owner", "admin"]);
+    const context = await requireAccess(request, ["owner", "admin"], "pos.reporting.core");
     await requirePermission(context, "integrations.manage");
     await enforceRateLimit(`${provider}:authorize`, context.userId, 10, 3600);
     const input = await readJsonObject(request);

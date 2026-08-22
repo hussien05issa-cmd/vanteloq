@@ -10,7 +10,7 @@ import { requirePermission } from "../../../../../../server/permissions";
 export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
-    const context = await requireAccess(request, ["owner", "admin"]);
+    const context = await requireAccess(request, ["owner", "admin"], "pos.reporting.core");
     await requirePermission(context, "integrations.manage");
     await enforceRateLimit("moneris:connect", context.userId, 6, 3_600);
     const body = await readJsonObject(request);

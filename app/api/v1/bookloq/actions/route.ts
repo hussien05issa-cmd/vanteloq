@@ -4,9 +4,10 @@ import { requireAccess } from "../../../../../server/authorization";
 import { enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameOrigin } from "../../../../../server/api";
 import { requireBookLoQPermission } from "../../../../../server/bookloq";
 import { requirePermission } from "../../../../../server/permissions";
-import { requireAddon } from "../../../../../server/entitlements/engine";
+import { requireAddon, requireFeature } from "../../../../../server/entitlements/engine";
 import { requireOrganizationWideLocationAccess } from "../../../../../server/location-access";
 import { normalizeCategoryRuleText } from "../../../../../domain/bookloq-cash-management";
+import { bookloqActionFeature } from "../../../../../domain/paid-feature-routing";
 
 const writers = ["owner", "admin", "manager", "employee", "read_only"] as const;
 
@@ -27,11 +28,14 @@ function nonNegativeCents(value: unknown): number | null {
 export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
-    const context = await requireAccess(request, writers);
+    const context = await requireAccess(request, writers, "bookloq");
     await requireAddon(context, "bookloq");
     await requireOrganizationWideLocationAccess(context);
     await enforceRateLimit("bookloq:actions", context.userId, 60, 60);
     const body = await readJsonObject(request, 16_000);
+    const actionFeature = typeof body.type === "string" ? bookloqActionFeature(body.type) : null;
+    if (!actionFeature) return jsonResponse({ error: { code: "UNKNOWN_ACTION", message: "Select a supported BookLoQ action." } }, { status: 400 });
+    await requireFeature(context, actionFeature);
     const allowed = ["type", "itemId", "status", "alertId", "periodId", "reason", "transactionId", "accountId", "periodStart", "periodEnd", "budgetCents", "committedCents", "forecastCents", "locationRef", "departmentRef", "categoryName", "categoryType", "matchText", "direction", "createRule", "targetType", "targetId", "note"];
     const unknown = Object.keys(body).find((field) => !allowed.includes(field));
     if (unknown) return jsonResponse({ error: { code: "UNKNOWN_FIELD", message: `Unexpected field: ${unknown}.` } }, { status: 400 });

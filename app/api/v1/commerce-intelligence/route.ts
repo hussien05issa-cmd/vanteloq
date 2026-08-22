@@ -4,6 +4,11 @@ import { ApiError, clientSource, enforceRateLimit, handleApi, jsonResponse } fro
 import { effectivePermissions, requirePermission } from "../../../../server/permissions";
 import { authorizedLocationDataScope } from "../../../../server/location-access";
 import { commerceChangeRate, inventoryDecision, parseCommercePeriod } from "../../../../domain/commerce-intelligence";
+import {
+  commerceResponseForMode,
+  commerceViewFeature,
+  type CommerceViewMode,
+} from "../../../../domain/paid-feature-routing";
 
 const readers = ["owner", "admin", "manager", "employee", "read_only"] as const;
 type MetricRow = {
@@ -17,7 +22,13 @@ type MetricRow = {
 
 export async function GET(request: Request) {
   return handleApi(request, async () => {
-    const context = await requireAccess(request, readers);
+    const url = new URL(request.url);
+    const mode = url.searchParams.get("mode");
+    const requiredFeature = commerceViewFeature(mode);
+    const context = await requireAccess(request, readers, requiredFeature ?? "dashboard.core");
+    if (!requiredFeature) {
+      throw new ApiError(400, "COMMERCE_MODE_INVALID", "Choose Sales, Inventory, Customers, or Suppliers.");
+    }
     await requirePermission(context, "dashboard.view");
     await enforceRateLimit("commerce-intelligence:read", `${context.userId}:${clientSource(request)}`, 90, 60);
     const permissions = await effectivePermissions(context);
@@ -29,7 +40,6 @@ export async function GET(request: Request) {
     const canReadInventory = permissions.includes("inventory.view");
     const canManageCosts = permissions.includes("inventory.adjust");
     const canImportCosts = canManageCosts && permissions.includes("data.import");
-    const url = new URL(request.url);
     let period;
     try {
       period = parseCommercePeriod(url.searchParams.get("from"), url.searchParams.get("to"));
@@ -285,7 +295,7 @@ export async function GET(request: Request) {
         ? [{ type: "basket", severity: "review", title: "Average basket is below the prior matched period", detail: `${((commerceChangeRate(current.averageTransactionCents, comparison.averageTransactionCents) ?? 0) * 100).toFixed(1)}% versus the preceding ${period.days}-day period.`, action: "Review attach-rate opportunities among frequently co-purchased items." }]
         : []),
     ];
-    return jsonResponse({
+    const response = {
       source: "normalized-commerce",
       period: { from: period.from, to: period.to, days: period.days, comparisonFrom: period.comparisonFrom, comparisonTo: period.comparisonTo },
       kpis: {
@@ -315,6 +325,7 @@ export async function GET(request: Request) {
       },
       profitAvailability: canViewVerifiedProfit ? "verified" : squareCostGap ? "Square does not supply verified product cost in this connection; profit and margin are withheld." : "permission_required",
       locationScope: restricted ? { id: locationAccess.selectedLocation?.id ?? "accessible", name: locationAccess.selectedLocation?.name ?? "Accessible locations" } : null,
-    });
+    };
+    return jsonResponse(commerceResponseForMode(mode as CommerceViewMode, response));
   });
 }
