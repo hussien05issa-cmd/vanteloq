@@ -73,6 +73,7 @@ export type VanteloqRuntimeEnv = {
   TURNSTILE_ALLOWED_HOSTNAMES?: string;
   SUPABASE_CAPTCHA_ENABLED?: string;
   BOOKLOQ_DEMO_ENABLED?: string;
+  VANTELOQ_INTERNAL_ACCESS_ENABLED?: string;
   RESEND_API_KEY?: string;
   INVOICE_EMAIL_FROM?: string;
   INVOICE_EMAIL_REPLY_TO?: string;

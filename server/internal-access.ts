@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import { getD1, getDb } from "../db/index.ts";
+import { getD1, getDb, getRuntimeEnv, type VanteloqRuntimeEnv } from "../db/index.ts";
 import { internalAccess } from "../db/schema.ts";
 import type { AccessContext } from "./authorization.ts";
 
@@ -10,6 +10,12 @@ export type InternalAccessGrant = {
   readonly accessLevel: InternalAccessLevel;
   readonly mfaRequired: boolean;
 };
+
+export function internalAccessEnabled(
+  env: VanteloqRuntimeEnv = getRuntimeEnv(),
+): boolean {
+  return env.VANTELOQ_INTERNAL_ACCESS_ENABLED?.trim().toLowerCase() === "true";
+}
 
 export function isAuthorizedFounderContext(context: AccessContext): boolean {
   return context.role === "owner"
@@ -23,6 +29,7 @@ export function isAuthorizedFounderContext(context: AccessContext): boolean {
 }
 
 export async function bootstrapFounderInternalAccess(context: AccessContext): Promise<void> {
+  if (!internalAccessEnabled()) return;
   if (!isAuthorizedFounderContext(context)) return;
   const now = Date.now();
   const accessId = `internal-founder-${context.userId}`;
@@ -51,6 +58,7 @@ export async function bootstrapFounderInternalAccess(context: AccessContext): Pr
 }
 
 export async function getInternalAccessGrant(context: AccessContext): Promise<InternalAccessGrant | null> {
+  if (!internalAccessEnabled()) return null;
   if (!isAuthorizedFounderContext(context)) return null;
   const [row] = await getDb().select({
     accessLevel: internalAccess.accessLevel,

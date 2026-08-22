@@ -7,12 +7,12 @@ import { Miniflare } from "miniflare";
 const origin = "https://vanteloq.example";
 const context = { waitUntil() {}, passThroughOnException() {} };
 
-function headers(email, subject) {
+function headers(email, subject, aal = "aal2") {
   const payload = Buffer.from(JSON.stringify({
     email,
     subject,
     full_name: "Verified Owner",
-    aal: "aal2",
+    aal,
     session_id: `session:${subject}`,
   })).toString("base64url");
   return {
@@ -67,7 +67,7 @@ async function applyMigrations(database) {
   }
 }
 
-test("onboarding safely rebinds only an orphaned Supabase account", async () => {
+test("onboarding safely recovers orphaned and existing Supabase accounts", async () => {
   const authServer = createServer((request, response) => {
     const token = request.headers.authorization?.replace(/^Bearer\s+/i, "") ?? "";
     const payload = JSON.parse(Buffer.from(token.split(".")[1] ?? "", "base64url").toString("utf8"));
@@ -129,15 +129,35 @@ test("onboarding safely rebinds only an orphaned Supabase account", async () => 
     }), environment, context);
     assert.equal(created.status, 201, await created.clone().text());
 
-    const takeover = await worker.fetch(new Request(`${origin}/api/v1/onboarding`, {
+    const blockedWithoutMfa = await worker.fetch(new Request(`${origin}/api/v1/onboarding`, {
       method: "POST",
-      headers: headers(protectedEmail, "protected-replacement-subject"),
-      body: JSON.stringify(onboardingPayload("Takeover Store", protectedEmail)),
+      headers: headers(protectedEmail, "protected-replacement-subject", "aal1"),
+      body: JSON.stringify(onboardingPayload("Protected Store", protectedEmail)),
     }), environment, context);
-    assert.equal(takeover.status, 403, await takeover.clone().text());
-    assert.equal((await takeover.json()).error.code, "IDENTITY_CONFLICT");
+    assert.equal(blockedWithoutMfa.status, 403, await blockedWithoutMfa.clone().text());
     assert.equal((await database.prepare(`SELECT auth_subject authSubject FROM users WHERE email = ?`)
       .bind(protectedEmail).first()).authSubject, "protected-original-subject");
+
+    const recoveredExisting = await worker.fetch(new Request(`${origin}/api/v1/onboarding`, {
+      method: "POST",
+      headers: headers(protectedEmail, "protected-replacement-subject"),
+      body: JSON.stringify(onboardingPayload("Replacement Input Must Not Overwrite", protectedEmail)),
+    }), environment, context);
+    assert.equal(recoveredExisting.status, 200, await recoveredExisting.clone().text());
+    const recoveredBody = await recoveredExisting.json();
+    assert.equal(recoveredBody.recovered, true);
+    assert.equal(recoveredBody.organization.businessName, "Protected Store");
+    assert.equal((await database.prepare(`SELECT auth_subject authSubject FROM users WHERE email = ?`)
+      .bind(protectedEmail).first()).authSubject, "protected-replacement-subject");
+    assert.equal((await database.prepare(`SELECT COUNT(*) count FROM memberships WHERE user_id = (
+        SELECT id FROM users WHERE email = ?
+      )`).bind(protectedEmail).first()).count, 1);
+    assert.equal((await database.prepare(`SELECT COUNT(*) count FROM workspaces WHERE business_name = ?`)
+      .bind("Replacement Input Must Not Overwrite").first()).count, 0);
+    assert.equal((await database.prepare(`SELECT COUNT(*) count FROM audit_events
+        WHERE action = 'account.identity_recovered' AND actor_user_id = (
+          SELECT id FROM users WHERE email = ?
+        )`).bind(protectedEmail).first()).count, 1);
   } finally {
     await miniflare.dispose();
     authServer.closeAllConnections();

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isAuthorizedFounderContext } from "../server/internal-access.ts";
+import { internalAccessEnabled, isAuthorizedFounderContext } from "../server/internal-access.ts";
 import { requireInternalAccessMfa, resolveInternalEntitlements } from "../server/entitlements/engine.ts";
 import { ApiError } from "../server/api.ts";
 import type { AccessContext } from "../server/authorization.ts";
@@ -34,6 +34,12 @@ test("founder bootstrap eligibility requires the exact verified and subject-boun
   assert.equal(isAuthorizedFounderContext(context({ identity: { ...context().identity, subject: "attacker" } })), false);
   assert.equal(isAuthorizedFounderContext(context({ authSubject: "different-subject" })), false);
   assert.equal(isAuthorizedFounderContext(context({ role: "admin" })), false);
+});
+
+test("internal billing bypass is disabled unless production explicitly enables it", () => {
+  assert.equal(internalAccessEnabled({}), false);
+  assert.equal(internalAccessEnabled({ VANTELOQ_INTERNAL_ACCESS_ENABLED: "false" }), false);
+  assert.equal(internalAccessEnabled({ VANTELOQ_INTERNAL_ACCESS_ENABLED: "true" }), true);
 });
 
 test("internal founder access includes all normal Pro and BookLoq capabilities without billing state", () => {
