@@ -102,9 +102,9 @@ test("high-risk tenant and privilege boundaries remain enforced in source", asyn
   ]) assert.match(bookloq, tenantJoin);
 });
 
-test("business intelligence APIs reject anonymous access before database reads", async () => {
+test("business intelligence and private management APIs reject anonymous access before database reads", async () => {
   const worker = await loadWorker();
-  for (const path of ["/api/v1/command-centre", "/api/v1/daily-metrics", "/api/v1/events", "/api/v1/operations", "/api/v1/inventory-lifecycle", "/api/v1/bookloq", "/api/v1/governance", "/api/v1/reports", "/api/v1/purchasing", "/api/v1/documents", "/api/v1/data-quality", "/api/v1/integrations", "/api/v1/commerce", "/api/v1/commerce-intelligence", "/api/v1/backend", "/api/v1/billing", "/api/v1/address"]) {
+  for (const path of ["/api/v1/command-centre", "/api/v1/daily-metrics", "/api/v1/events", "/api/v1/operations", "/api/v1/inventory-lifecycle", "/api/v1/bookloq", "/api/v1/governance", "/api/v1/reports", "/api/v1/purchasing", "/api/v1/documents", "/api/v1/data-quality", "/api/v1/integrations", "/api/v1/commerce", "/api/v1/commerce-intelligence", "/api/v1/backend", "/api/v1/billing", "/api/v1/address", "/api/v1/management-console"]) {
     const response = await worker.fetch(new Request(`https://vanteloq.example${path}`, {
       headers: { accept: "application/json" },
     }), environment, context);
