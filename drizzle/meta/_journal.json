@@ -260,13 +260,6 @@
       "when": 1786926000000,
       "tag": "0036_versioned_legal_acceptance",
       "breakpoints": true
-    },
-    {
-      "idx": 37,
-      "version": "6",
-      "when": 1787524500248,
-      "tag": "0037_tidy_war_machine",
-      "breakpoints": true
     }
   ]
 }
