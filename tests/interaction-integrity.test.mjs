@@ -419,6 +419,10 @@ test("account access includes confirmation recovery and a complete password-rese
   assert.match(authPanel, /signupErrorMessage\(result\.error\)/);
   assert.match(authPanel, /passwordExposureStatus\(password\)/);
   assert.match(authPanel, /known breach data/i);
+  assert.match(authPanel, /inspectRecoveryMfa/);
+  assert.match(authPanel, /verifyRecoveryMfa/);
+  assert.match(authPanel, /Recovery verification code/);
+  assert.match(authPanel, /recoveryMfaState === "challenge_required"/);
   assert.match(authPanel, /auth\.resend/);
   assert.match(authPanel, /scope: "global"/);
   assert.match(home, /event === "PASSWORD_RECOVERY"/);

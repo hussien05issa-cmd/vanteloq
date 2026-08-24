@@ -10,6 +10,7 @@ import { MINIMUM_PASSWORD_LENGTH, passwordRules, strongPasswordError } from "../
 import { canonicalAuthUrl } from "../shared/auth-urls";
 import { signupErrorMessage } from "../shared/auth-error-messages";
 import { passwordExposureStatus } from "../shared/password-exposure";
+import { inspectRecoveryMfa, verifyRecoveryMfa } from "../shared/recovery-mfa";
 import {
   isCompleteEmailVerificationCode,
   MAXIMUM_EMAIL_VERIFICATION_CODE_LENGTH,
@@ -45,6 +46,9 @@ export default function AuthPanel({
   const [messageIsError, setMessageIsError] = useState(false);
   const [configured, setConfigured] = useState<boolean | null>(null);
   const [recoveryReady, setRecoveryReady] = useState<boolean | null>(initialMode === "reset-password" ? null : true);
+  const [recoveryMfaState, setRecoveryMfaState] = useState<"checking" | "ready" | "challenge_required" | "error">(initialMode === "reset-password" ? "checking" : "ready");
+  const [recoveryMfaFactorId, setRecoveryMfaFactorId] = useState("");
+  const [recoveryMfaCode, setRecoveryMfaCode] = useState("");
   const [siteKey, setSiteKey] = useState("");
   const [turnstileAction, setTurnstileAction] = useState("");
   const [turnstileToken, setTurnstileToken] = useState("");
@@ -52,23 +56,51 @@ export default function AuthPanel({
   const [legalAccepted, setLegalAccepted] = useState(false);
   const protectedMode = mode === "signup" || mode === "signin" || mode === "request-reset";
   const showsTurnstile = protectedMode || mode === "verify-signup";
+  const recoveryMfaRequired = mode === "reset-password" && recoveryMfaState === "challenge_required";
 
   useEffect(() => {
+    let active = true;
     void getSupabase().then(async client => {
+      if (!active) return;
       setConfigured(Boolean(client));
       if (initialMode !== "reset-password") return;
       if (!client) {
         setRecoveryReady(false);
+        setRecoveryMfaState("error");
         return;
       }
       const { data, error } = await client.auth.getSession();
       const ready = Boolean(data.session) && !error;
+      if (!active) return;
       setRecoveryReady(ready);
       if (!ready) {
+        setRecoveryMfaState("error");
         setMessageIsError(true);
         setMessage("This password-reset link is invalid or has expired. Request a new link to continue.");
+        return;
       }
+      const mfa = await inspectRecoveryMfa(client.auth.mfa);
+      if (!active) return;
+      if (mfa.status === "challenge_required") {
+        setRecoveryMfaFactorId(mfa.factorId);
+        setRecoveryMfaState("challenge_required");
+        return;
+      }
+      if (mfa.status === "error") {
+        setRecoveryMfaState("error");
+        setMessageIsError(true);
+        setMessage(mfa.message);
+        return;
+      }
+      setRecoveryMfaState("ready");
+    }).catch(() => {
+      if (!active || initialMode !== "reset-password") return;
+      setRecoveryReady(false);
+      setRecoveryMfaState("error");
+      setMessageIsError(true);
+      setMessage("Vanteloq could not prepare secure password recovery. Request a new link and try again.");
     });
+    return () => { active = false; };
   }, [initialMode]);
 
   useEffect(() => {
@@ -218,6 +250,25 @@ export default function AuthPanel({
         setMessage("This password-reset link is invalid or has expired. Request a new link to continue.");
         return;
       }
+      if (recoveryMfaState === "challenge_required") {
+        const verification = await verifyRecoveryMfa(supabase.auth.mfa, recoveryMfaFactorId, recoveryMfaCode);
+        setBusy(false);
+        setRecoveryMfaCode("");
+        if (verification.status !== "ready") {
+          setMessageIsError(true);
+          setMessage(verification.message);
+          return;
+        }
+        setRecoveryMfaState("ready");
+        setMessage("Identity verified. Choose your new password to finish recovery.");
+        return;
+      }
+      if (recoveryMfaState !== "ready") {
+        setBusy(false);
+        setMessageIsError(true);
+        setMessage("Finish authenticator verification before changing the password.");
+        return;
+      }
       if (password !== passwordConfirmation) {
         setBusy(false);
         setMessageIsError(true);
@@ -254,6 +305,9 @@ export default function AuthPanel({
       setPassword("");
       setPasswordConfirmation("");
       setRecoveryReady(true);
+      setRecoveryMfaState("ready");
+      setRecoveryMfaFactorId("");
+      setRecoveryMfaCode("");
       setMessage("Your password has been updated. Sign in with the new password.");
       return;
     }
@@ -333,6 +387,9 @@ export default function AuthPanel({
     setPassword("");
     setPasswordConfirmation("");
     setVerificationCode("");
+    setRecoveryMfaCode("");
+    setRecoveryMfaFactorId("");
+    setRecoveryMfaState(nextMode === "reset-password" ? "checking" : "ready");
     setLegalAccepted(false);
   }
 
@@ -340,7 +397,7 @@ export default function AuthPanel({
     : mode === "verify-signup" ? "Verify your email"
     : mode === "signin" ? "Welcome back"
     : mode === "request-reset" ? "Reset your password"
-    : "Choose a new password";
+    : recoveryMfaRequired ? "Verify it's you" : "Choose a new password";
   const description = mode === "signup"
     ? "Start with a verified owner account. Business data stays separated by workspace."
     : mode === "verify-signup"
@@ -349,12 +406,14 @@ export default function AuthPanel({
       ? "Sign in with your verified Vanteloq account."
       : mode === "request-reset"
         ? "Enter your account email. We will send one secure reset link to open on this device."
-        : "Enter a new password for your Vanteloq account.";
+        : recoveryMfaRequired
+          ? "Enter the current six-digit code from your authenticator app before changing your password."
+          : "Enter a new password for your Vanteloq account.";
   const submitLabel = mode === "signup" ? "Create secure account"
     : mode === "verify-signup" ? "Verify and continue"
     : mode === "signin" ? "Sign in"
     : mode === "request-reset" ? "Send reset link"
-    : "Update password";
+    : recoveryMfaRequired ? "Verify and continue" : "Update password";
 
   return <div className="auth-backdrop" role="dialog" aria-modal="true" aria-labelledby="auth-title">
     <section className="auth-panel">
@@ -367,9 +426,10 @@ export default function AuthPanel({
         {mode === "signup" && <label>Full name<input autoComplete="name" value={name} onChange={event => setName(event.target.value)} minLength={2} maxLength={120} required/></label>}
         {mode !== "reset-password" && mode !== "verify-signup" && <label>Email address<input type="email" autoComplete="email" value={email} onChange={event => setEmail(event.target.value)} required/></label>}
         {mode === "verify-signup" && <label>Verification code<input autoFocus value={verificationCode} onChange={event => setVerificationCode(normalizeEmailVerificationCode(event.target.value).slice(0, MAXIMUM_EMAIL_VERIFICATION_CODE_LENGTH))} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6,10}" minLength={MINIMUM_EMAIL_VERIFICATION_CODE_LENGTH} maxLength={MAXIMUM_EMAIL_VERIFICATION_CODE_LENGTH} required/></label>}
-        {(mode === "signup" || mode === "signin" || mode === "reset-password") && <label>{mode === "reset-password" ? "New password" : "Password"}<input type="password" autoComplete={mode === "signin" ? "current-password" : "new-password"} value={password} onChange={event => setPassword(event.target.value)} minLength={mode === "signin" ? 1 : MINIMUM_PASSWORD_LENGTH} required/></label>}
-        {mode === "reset-password" && <label>Confirm new password<input type="password" autoComplete="new-password" value={passwordConfirmation} onChange={event => setPasswordConfirmation(event.target.value)} minLength={MINIMUM_PASSWORD_LENGTH} required/></label>}
-        {(mode === "signup" || mode === "reset-password") && <div className="auth-password-rules" aria-label="Password requirements">{passwordRules(password).map(rule => <span className={rule.met ? "met" : ""} key={rule.id}>{rule.met ? "Met" : "Required"}: {rule.label}</span>)}<span>Known breached passwords are rejected when you submit.</span></div>}
+        {recoveryMfaRequired && <label>Recovery verification code<input autoFocus value={recoveryMfaCode} onChange={event => setRecoveryMfaCode(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" minLength={6} maxLength={6} required/></label>}
+        {(mode === "signup" || mode === "signin" || (mode === "reset-password" && recoveryMfaState === "ready")) && <label>{mode === "reset-password" ? "New password" : "Password"}<input type="password" autoComplete={mode === "signin" ? "current-password" : "new-password"} value={password} onChange={event => setPassword(event.target.value)} minLength={mode === "signin" ? 1 : MINIMUM_PASSWORD_LENGTH} required/></label>}
+        {mode === "reset-password" && recoveryMfaState === "ready" && <label>Confirm new password<input type="password" autoComplete="new-password" value={passwordConfirmation} onChange={event => setPasswordConfirmation(event.target.value)} minLength={MINIMUM_PASSWORD_LENGTH} required/></label>}
+        {(mode === "signup" || (mode === "reset-password" && recoveryMfaState === "ready")) && <div className="auth-password-rules" aria-label="Password requirements">{passwordRules(password).map(rule => <span className={rule.met ? "met" : ""} key={rule.id}>{rule.met ? "Met" : "Required"}: {rule.label}</span>)}<span>Known breached passwords are rejected when you submit.</span></div>}
         {showsTurnstile && siteKey && turnstileAction && <TurnstileField
           siteKey={siteKey}
           action={turnstileAction}
@@ -380,7 +440,7 @@ export default function AuthPanel({
         {message && <div className={`auth-message${messageIsError ? " error" : ""}`} aria-live="polite">{message}</div>}
         {mode === "verify-signup" && <button className="auth-secondary" type="button" onClick={() => void resendConfirmation()} disabled={busy || !siteKey || !turnstileToken}>Send a new code</button>}
         {mode === "signup" && <label className="auth-legal-consent"><input type="checkbox" checked={legalAccepted} onChange={event => setLegalAccepted(event.target.checked)} required/><span>I agree to the <Link href="/terms" target="_blank">Terms of Service</Link> and acknowledge the <Link href="/privacy" target="_blank">Privacy Policy</Link>.</span></label>}
-        <button className="auth-submit" disabled={busy || configured !== true || (protectedMode && (!siteKey || !turnstileToken)) || (mode === "verify-signup" && !isCompleteEmailVerificationCode(verificationCode)) || (mode === "signup" && !legalAccepted) || (mode === "reset-password" && recoveryReady !== true)}>{busy || configured === null || (mode === "reset-password" && recoveryReady === null) ? "Please wait…" : submitLabel}</button>
+        <button className="auth-submit" disabled={busy || configured !== true || (protectedMode && (!siteKey || !turnstileToken)) || (mode === "verify-signup" && !isCompleteEmailVerificationCode(verificationCode)) || (mode === "signup" && !legalAccepted) || (mode === "reset-password" && (recoveryReady !== true || recoveryMfaState === "checking" || recoveryMfaState === "error" || (recoveryMfaState === "challenge_required" && recoveryMfaCode.length !== 6)))}>{busy || configured === null || (mode === "reset-password" && (recoveryReady === null || recoveryMfaState === "checking")) ? "Please wait…" : submitLabel}</button>
       </form>
       {mode === "signin" && <button className="auth-switch" type="button" onClick={() => changeMode("request-reset")}>Forgot your password?</button>}
       {mode === "request-reset" && <button className="auth-switch" type="button" onClick={() => changeMode("signin")}>Back to sign in</button>}
