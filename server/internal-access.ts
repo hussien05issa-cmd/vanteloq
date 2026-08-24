@@ -28,6 +28,15 @@ export function isAuthorizedFounderContext(context: AccessContext): boolean {
     && context.authSubject === context.identity.subject;
 }
 
+function isBoundSupabaseContext(context: AccessContext): boolean {
+  return context.identity.provider === "supabase"
+    && context.identity.emailVerified
+    && typeof context.identity.subject === "string"
+    && context.identity.subject.length > 0
+    && context.authProvider === "supabase"
+    && context.authSubject === context.identity.subject;
+}
+
 export async function bootstrapFounderInternalAccess(context: AccessContext): Promise<void> {
   if (!internalAccessEnabled()) return;
   if (!isAuthorizedFounderContext(context)) return;
@@ -59,14 +68,16 @@ export async function bootstrapFounderInternalAccess(context: AccessContext): Pr
 
 export async function getInternalAccessGrant(context: AccessContext): Promise<InternalAccessGrant | null> {
   if (!internalAccessEnabled()) return null;
-  if (!isAuthorizedFounderContext(context)) return null;
+  if (!isBoundSupabaseContext(context)) return null;
+  const founder = isAuthorizedFounderContext(context);
   const [row] = await getDb().select({
     accessLevel: internalAccess.accessLevel,
     mfaRequired: internalAccess.mfaRequired,
   }).from(internalAccess).where(and(
-    eq(internalAccess.userId, context.userId),
     eq(internalAccess.organizationId, context.organizationId),
+    eq(internalAccess.accessLevel, "founder"),
     eq(internalAccess.active, true),
+    ...(founder ? [eq(internalAccess.userId, context.userId)] : []),
   )).limit(1);
   return row ?? null;
 }

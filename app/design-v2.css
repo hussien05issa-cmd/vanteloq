@@ -926,6 +926,39 @@ button, a, input, select, textarea, summary { -webkit-tap-highlight-color: trans
 .onboarding-legal-consent { display: grid; grid-template-columns: 18px 1fr; align-items: start; gap: 10px; margin-top: 14px; padding: 14px; border: 1px solid #d6e1ec; background: #fff; border-radius: 9px; color: #52657c; font-size: 12px; line-height: 1.5; }
 .onboarding-legal-consent input { width: 18px; height: 18px; margin: 1px 0 0; accent-color: #1f6fcf; }
 .onboarding-legal-consent a { color: #135fb9; font-weight: 750; text-underline-offset: 2px; }
+.team-invitation-flow { min-height: 100vh; display: grid; place-items: center; padding: 32px; background: radial-gradient(circle at 12% 8%, #e9f3ff 0, transparent 32%), #eef3f8; color: #173a5d; }
+.team-invitation-flow > section { width: min(920px, 100%); overflow: hidden; border: 1px solid #d6e1ec; border-radius: 20px; background: #fff; box-shadow: 0 24px 70px rgba(20,48,78,.14); }
+.team-invitation-flow > section > header, .team-invitation-flow > section > footer { display: flex; align-items: center; gap: 16px; padding: 18px 26px; background: #f8fafc; }
+.team-invitation-flow > section > header { border-bottom: 1px solid #e4eaf0; }
+.team-invitation-flow > section > header span { display: flex; flex-direction: column; }
+.team-invitation-flow > section > header b { font-size: 15px; }
+.team-invitation-flow > section > header small { margin-top: 2px; color: #607991; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; }
+.team-invitation-copy { padding: 38px 42px 20px; }
+.team-invitation-copy p { margin: 0; color: #1767b6; font-size: 11px; font-weight: 800; letter-spacing: 1.2px; }
+.team-invitation-copy h1 { margin: 9px 0 10px; font-size: clamp(30px, 5vw, 45px); letter-spacing: -1.4px; }
+.team-invitation-copy span { color: #526a82; font-size: 14px; line-height: 1.65; }
+.team-invitation-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 0 42px 22px; }
+.team-invitation-summary article { display: flex; flex-direction: column; min-height: 112px; padding: 16px; border: 1px solid #dce5ee; border-radius: 11px; background: #f9fbfd; }
+.team-invitation-summary small { color: #2877d7; font-size: 9px; letter-spacing: 1px; }
+.team-invitation-summary b { margin: 12px 0 7px; font-size: 14px; text-transform: capitalize; overflow-wrap: anywhere; }
+.team-invitation-summary span { color: #6f8194; font-size: 11px; }
+.team-invitation-flow form { display: grid; gap: 14px; padding: 4px 42px 34px; }
+.team-invitation-flow form > div:not(.team-password-rules) { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.team-invitation-flow form label { display: grid; gap: 7px; color: #40566d; font-size: 12px; font-weight: 700; }
+.team-invitation-flow form input { min-height: 44px; border: 1px solid #ccd9e5; border-radius: 9px; padding: 10px 12px; color: #173a5d; outline: none; }
+.team-invitation-flow form input:focus { border-color: #4b92e9; box-shadow: 0 0 0 3px rgba(43,123,225,.09); }
+.team-password-rules { display: flex; flex-wrap: wrap; gap: 7px; }
+.team-password-rules span { padding: 5px 8px; border-radius: 20px; background: #edf1f5; color: #7a8999; font-size: 10px; }
+.team-password-rules span.met { background: #e4f4ed; color: #23815f; }
+.team-invitation-flow form .team-invitation-legal { grid-template-columns: 20px 1fr; align-items: start; gap: 10px; padding: 14px; border: 1px solid #d6e1ec; border-radius: 9px; background: #f8fafc; font-weight: 500; line-height: 1.5; }
+.team-invitation-legal input { min-height: 0 !important; width: 18px; height: 18px; margin-top: 1px; accent-color: #1f6fcf; }
+.team-invitation-legal a { color: #135fb9; font-weight: 750; }
+.team-invitation-flow form > p { margin: 0; padding: 11px 13px; border: 1px solid #f0cdcd; border-radius: 8px; background: #fff0f0; color: #9e4141; font-size: 12px; }
+.team-invitation-flow form > button { border: 0; border-radius: 10px; background: #1767b6; color: #fff; padding: 14px 18px; font-weight: 780; cursor: pointer; }
+.team-invitation-flow form > button:disabled { cursor: not-allowed; opacity: .55; }
+.team-invitation-flow > section > footer { justify-content: space-between; border-top: 1px solid #e4eaf0; color: #607991; font-size: 11px; }
+.team-invitation-flow > section > footer button { border: 0; background: transparent; color: #245f9f; font-weight: 700; cursor: pointer; }
+@media (max-width: 760px) { .team-invitation-flow { padding: 12px; } .team-invitation-copy, .team-invitation-flow form { padding-left: 22px; padding-right: 22px; } .team-invitation-summary { grid-template-columns: 1fr; padding-left: 22px; padding-right: 22px; } .team-invitation-flow form > div:not(.team-password-rules) { grid-template-columns: 1fr; } }
 
 /* Onboarding */
 .onboarding { grid-template-columns: 330px minmax(0, 1fr); background: var(--vql-canvas); color: var(--vql-ink); }

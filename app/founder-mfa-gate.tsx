@@ -84,7 +84,7 @@ export default function AccountMfaGate({ children }: { children: ReactNode }) {
       }
       const enrollment = await client.auth.mfa.enroll({
         factorType: "totp",
-        friendlyName: "Vanteloq owner account",
+        friendlyName: "Vanteloq account",
         issuer: "Vanteloq",
       });
       if (!active) return;

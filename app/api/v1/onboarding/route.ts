@@ -18,6 +18,7 @@ import {
 import { onboardingInput } from "../../../../server/validation";
 import { bootstrapSupabaseOrganization } from "../../../../server/supabase";
 import { onboardingIdentityDisposition } from "../../../../server/onboarding-identity";
+import { pendingTeamInvitation } from "../../../../server/team-invitations";
 import {
   addressCompleteReadiness,
   verifyAddressVerificationToken,
@@ -42,11 +43,13 @@ export async function GET(request: Request) {
     const identity = await optionalIdentity(request);
     if (!identity) return jsonResponse({ authenticated: false, organization: null }, { status: 401 });
     const context = await findAccessContext(identity);
+    const invitation = context ? null : await pendingTeamInvitation(request, identity);
     return jsonResponse({
       authenticated: true,
       user: { displayName: identity.displayName, email: identity.email, emailVerified: true },
       role: context?.role ?? null,
       organization: context ? organizationDto(context) : null,
+      invitation,
     });
   });
 }

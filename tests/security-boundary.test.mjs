@@ -104,7 +104,7 @@ test("high-risk tenant and privilege boundaries remain enforced in source", asyn
 
 test("business intelligence APIs reject anonymous access before database reads", async () => {
   const worker = await loadWorker();
-  for (const path of ["/api/v1/command-centre", "/api/v1/daily-metrics", "/api/v1/events", "/api/v1/operations", "/api/v1/inventory-lifecycle", "/api/v1/bookloq", "/api/v1/governance", "/api/v1/reports", "/api/v1/purchasing", "/api/v1/documents", "/api/v1/data-quality", "/api/v1/integrations", "/api/v1/commerce", "/api/v1/commerce-intelligence", "/api/v1/backend", "/api/v1/billing", "/api/v1/address"]) {
+  for (const path of ["/api/v1/command-centre", "/api/v1/daily-metrics", "/api/v1/events", "/api/v1/operations", "/api/v1/inventory-lifecycle", "/api/v1/bookloq", "/api/v1/governance", "/api/v1/reports", "/api/v1/purchasing", "/api/v1/documents", "/api/v1/data-quality", "/api/v1/integrations", "/api/v1/commerce", "/api/v1/commerce-intelligence", "/api/v1/backend", "/api/v1/billing", "/api/v1/address", "/api/v1/team-invitations"]) {
     const response = await worker.fetch(new Request(`https://vanteloq.example${path}`, {
       headers: { accept: "application/json" },
     }), environment, context);
@@ -112,6 +112,23 @@ test("business intelligence APIs reject anonymous access before database reads",
     const body = await response.json();
     assert.equal(body.error.code, "AUTHENTICATION_REQUIRED", path);
   }
+});
+
+test("team invitations remain identity bound and separate from Stripe billing", async () => {
+  const [route, invitations, internalAccess] = await Promise.all([
+    readFile(`${process.cwd()}/app/api/v1/team-invitations/route.ts`, "utf8"),
+    readFile(`${process.cwd()}/server/team-invitations.ts`, "utf8"),
+    readFile(`${process.cwd()}/server/internal-access.ts`, "utf8"),
+  ]);
+  assert.match(route, /requireIdentity/);
+  assert.match(route, /requireAal2/);
+  assert.match(route, /requireSameOrigin/);
+  assert.match(invitations, /team_access_invitations/);
+  assert.match(invitations, /identity\.subject/);
+  assert.match(invitations, /team_invitation/);
+  assert.match(invitations, /internal_no_stripe/);
+  assert.doesNotMatch(invitations, /STRIPE_SECRET_KEY|stripeCustomerId|stripeSubscriptionId/);
+  assert.match(internalAccess, /isBoundSupabaseContext/);
 });
 
 test("provider management routes reject anonymous same-origin writes", async () => {

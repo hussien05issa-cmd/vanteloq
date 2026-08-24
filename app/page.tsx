@@ -10,21 +10,24 @@ import AuthPanel, { type AuthPanelMode } from "./auth-panel";
 import { currentSession, getSupabase, signOut } from "./supabase-browser";
 import { canonicalLocation } from "../shared/auth-urls";
 import { RESOURCE_ARTICLES, getCategory, getReadingTime } from "./resources/content";
+import type { TeamInvitationDetails } from "./team-invitation-flow";
 
 const SecureOnboardingFlow = lazy(() => import("./secure-onboarding-flow"));
 const VanteloqApp = lazy(() => import("./vanteloq-app"));
 const AccountMfaGate = lazy(() => import("./founder-mfa-gate"));
 const BillingOnboardingGate = lazy(() => import("./billing-onboarding-gate"));
+const TeamInvitationFlow = lazy(() => import("./team-invitation-flow"));
 
 export default function Home() {
   const canonicalDestination = typeof window === "undefined" ? null : canonicalLocation(window.location);
-  const [entry, setEntry] = useState<"loading" | "load-error" | "landing" | "signup" | "app">("landing");
+  const [entry, setEntry] = useState<"loading" | "load-error" | "landing" | "signup" | "invitation" | "app">("landing");
   const [authOpen, setAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<AuthPanelMode>("signup");
   const [organizationName, setOrganizationName] = useState("");
   const [accountName, setAccountName] = useState("Account owner");
   const [accountEmail, setAccountEmail] = useState("");
   const [loadError, setLoadError] = useState("");
+  const [teamInvitation, setTeamInvitation] = useState<TeamInvitationDetails | null>(null);
   const loadSequence = useRef(0);
   const loadingUser = useRef<string | null>(null);
   const loadedUser = useRef<string | null>(null);
@@ -69,6 +72,7 @@ export default function Home() {
         authenticated?: boolean;
         user?: { email?: string; displayName?: string };
         organization?: { setupComplete?: boolean; businessName?: string; ownerName?: string } | null;
+        invitation?: TeamInvitationDetails | null;
       };
       if (sequence !== loadSequence.current) return;
 
@@ -78,6 +82,14 @@ export default function Home() {
         setOrganizationName(data.organization.businessName ?? "");
         setAccountName(data.organization.ownerName || data.user?.displayName || "Account owner");
         setEntry("app");
+        return;
+      }
+      if (response.ok && data.invitation) {
+        loadedUser.current = userId;
+        setAccountEmail(data.user?.email ?? "");
+        setAccountName(data.user?.displayName || "Team member");
+        setTeamInvitation(data.invitation);
+        setEntry("invitation");
         return;
       }
       if (response.ok && data.authenticated) {
@@ -161,6 +173,7 @@ export default function Home() {
           loadedUser.current = null;
           setOrganizationName("");
           setAccountEmail("");
+          setTeamInvitation(null);
           setEntry("landing");
         }
       });
@@ -196,6 +209,7 @@ export default function Home() {
 
   if (entry === "landing") return <><LandingPage start={openAuth}/>{authOpen && <AuthPanel initialMode={authMode} close={closeAuth} authenticated={session => void loadWorkspace(session)}/>}</>;
   if (entry === "signup") return <Suspense fallback={<AuthenticatedLoading/>}><AccountMfaGate><SecureOnboardingFlow accountName={accountName} accountEmail={accountEmail} signOut={() => void signOut()} complete={(business, owner) => { setOrganizationName(business); setAccountName(owner); setEntry("app"); }}/></AccountMfaGate></Suspense>;
+  if (entry === "invitation" && teamInvitation) return <Suspense fallback={<AuthenticatedLoading/>}><AccountMfaGate><TeamInvitationFlow invitation={teamInvitation} initialName={accountName} complete={(business, member) => { setOrganizationName(business); setAccountName(member); setTeamInvitation(null); setEntry("app"); }}/></AccountMfaGate></Suspense>;
   return <Suspense fallback={<AuthenticatedLoading/>}><AccountMfaGate><BillingOnboardingGate><VanteloqApp organizationName={organizationName} accountName={accountName}/></BillingOnboardingGate></AccountMfaGate></Suspense>;
 }
 

@@ -928,7 +928,7 @@ export default function VanteloqApp({
           </label>
         </div>
         <div className="subscription-summary" aria-label="Current subscription">
-          <span>{billingEntitlements.accessType === "internal" ? "Founder access" : `${billingEntitlements.plan ? humanizeIdentifier(billingEntitlements.plan) : "Paid"} plan`}</span>
+          <span>{billingEntitlements.accessType === "internal" ? "Internal access" : `${billingEntitlements.plan ? humanizeIdentifier(billingEntitlements.plan) : "Paid"} plan`}</span>
           {billingEntitlements.addons.includes("bookloq") && <small>BookLoQ active</small>}
         </div>
         <nav aria-label="Primary navigation">
