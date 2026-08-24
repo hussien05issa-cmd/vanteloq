@@ -24,10 +24,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
   return [
     { url: absoluteUrl("/"), lastModified: latestResourceUpdate, changeFrequency: "weekly", priority: 1 },
     { url: absoluteUrl("/resources"), lastModified: latestResourceUpdate, changeFrequency: "weekly", priority: 0.9 },
-    { url: absoluteUrl("/legal"), lastModified: "2026-08-11", changeFrequency: "monthly", priority: 0.4 },
-    { url: absoluteUrl("/privacy"), lastModified: "2026-08-11", changeFrequency: "monthly", priority: 0.5 },
-    { url: absoluteUrl("/terms"), lastModified: "2026-08-11", changeFrequency: "monthly", priority: 0.5 },
-    { url: absoluteUrl("/cookies"), lastModified: "2026-08-11", changeFrequency: "monthly", priority: 0.4 },
+    { url: absoluteUrl("/legal"), lastModified: "2026-08-24", changeFrequency: "monthly", priority: 0.4 },
+    { url: absoluteUrl("/privacy"), lastModified: "2026-08-24", changeFrequency: "monthly", priority: 0.5 },
+    { url: absoluteUrl("/terms"), lastModified: "2026-08-24", changeFrequency: "monthly", priority: 0.5 },
+    { url: absoluteUrl("/cookies"), lastModified: "2026-08-24", changeFrequency: "monthly", priority: 0.4 },
+    { url: absoluteUrl("/data-processing"), lastModified: "2026-08-24", changeFrequency: "monthly", priority: 0.4 },
+    { url: absoluteUrl("/subprocessors"), lastModified: "2026-08-24", changeFrequency: "monthly", priority: 0.4 },
     ...categoryEntries,
     ...articleEntries,
   ];

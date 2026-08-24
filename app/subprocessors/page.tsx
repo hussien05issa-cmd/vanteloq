@@ -1,0 +1,35 @@
+import type { Metadata } from "next";
+import { LEGAL_EMAIL, LegalShell, PolicySection } from "../legal-shell";
+
+export const metadata: Metadata = {
+  title: "Subprocessors and Connected Services | Vanteloq",
+  description: "Current Vanteloq infrastructure providers, subprocessors, optional connected services, purposes, and processing locations.",
+  alternates: { canonical: "/subprocessors" },
+};
+
+export default function SubprocessorsPage() {
+  return <LegalShell eyebrow="SERVICE PROVIDER NOTICE" title="Know where Vanteloq sends information." summary="This list separates core infrastructure from services a workspace chooses to connect.">
+    <PolicySection id="core" title="Core subprocessors">
+      <div className="legal-table"><table><thead><tr><th>Provider</th><th>Purpose and information</th><th>Location note</th></tr></thead><tbody>
+        <tr><td>Cloudflare, Inc.</td><td>Hosting, network delivery and protection, managed application database, and encrypted file storage. Processes service traffic, workspace records, uploaded files, and security information.</td><td>Canada and Cloudflare&apos;s global network, subject to its service configuration and terms.</td></tr>
+        <tr><td>Supabase, Inc.</td><td>Authentication, account verification, multifactor authentication, password recovery, and protected team invitations. Processes account identifiers, email, authentication records, and security metadata.</td><td>The configured project region and Supabase subprocessors.</td></tr>
+        <tr><td>Stripe, Inc. and affiliates</td><td>Subscription checkout, payment method collection, recurring billing, billing portal, tax related checkout fields, and payment status. Vanteloq receives references and status, not full card numbers.</td><td>Canada, the United States, and other locations described by Stripe.</td></tr>
+        <tr><td>Resend, Inc.</td><td>Transactional email delivery, such as an invoice email initiated by an authorized user. Processes recipient, sender, subject, message content, and delivery metadata.</td><td>The United States and provider locations described by Resend.</td></tr>
+        <tr><td>Canada Post AddressComplete</td><td>Customer directed business address search and validation. Processes the address search text, country, returned suggestion identifier, and requested address result.</td><td>Canada and locations identified in the AddressComplete service terms.</td></tr>
+      </tbody></table></div>
+    </PolicySection>
+    <PolicySection id="optional" title="Optional customer directed services">
+      <p>These services receive information only after an authorized user enables the relevant feature and completes the displayed provider and Vanteloq controls. Their own terms and privacy materials also apply.</p>
+      <ul>
+        <li><strong>Plaid:</strong> read only business financial account connection, balances, and transactions selected by a workspace owner.</li>
+        <li><strong>Google:</strong> selected marketing resources, Business Profile information, or limited Gemini Advisor prompts and aggregate evidence after the specific acceptance shown in Vanteloq.</li>
+        <li><strong>Meta:</strong> selected marketing account and measurement records.</li>
+        <li><strong>Shopify, Square, Clover, Lightspeed, Stripe Connect, and Moneris:</strong> customer directed commerce, payment reference, product, inventory, location, or reporting records available under the permissions shown during connection.</li>
+      </ul>
+      <p>Placeholder integrations shown as unavailable do not receive Customer Data.</p>
+    </PolicySection>
+    <PolicySection id="changes" title="Changes and questions">
+      <p>This notice is updated before a new core subprocessor begins materially different processing. Customers may contact <a href={`mailto:${LEGAL_EMAIL}`}>{LEGAL_EMAIL}</a> for current provider information or to raise a reasonable data protection objection.</p>
+    </PolicySection>
+  </LegalShell>;
+}

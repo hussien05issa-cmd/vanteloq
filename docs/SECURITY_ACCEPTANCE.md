@@ -1,6 +1,6 @@
 # Security acceptance status
 
-Date: 2026-08-09
+Date: 2026-08-24
 
 ## Passed in this phase
 
@@ -19,6 +19,10 @@ Date: 2026-08-09
 - Versioned route inventory
 - Additive migration review with preservation of prior workspace/task data
 - OpenAPI inventory and documented accounting invariants for each BookLoQ route and state change
+- Protected, recent-MFA account and workspace deletion controls with exact typed confirmation, rate limiting, Stripe cancellation, object deletion, local connector-secret deletion, Supabase account deletion, shared-account preservation, and de-identified time-limited receipts
+- Material legal-policy updates require new affirmative acceptance before billing status or workspace access is displayed
+- Public Terms of Service, Privacy Policy, Cookie Notice, Data Processing Addendum, and subprocessor notice reflect the current core and optional provider boundaries
+- Shopify privacy-compliance webhook topics and signed handlers are configured for data access and redaction requests
 
 ## Open findings
 
@@ -27,10 +31,12 @@ Date: 2026-08-09
 | High | Account-level WAF, backup retention, restore drill, error tracking, uptime, and alert delivery are not evidenced | Cloudflare operations | Site remains limited during development; health/readiness endpoints exist | Configure account controls and complete a recorded restore/alert exercise | SRE, before public launch |
 | High | Supabase leaked-password protection is disabled on the Free plan and session/device revocation UI is not exposed | Public identity lifecycle | Live 12-character/character-class policy, secure password change, Turnstile, rate limits, PKCE, token rotation and mandatory AAL2 are enforced | Upgrade Supabase, enable leaked-password protection, configure session timeouts, and add session/device management | Product/Security, before public launch |
 | Medium | Full CSP still uses report-only mode for script/style policy | Browser security | Enforced frame/base/form restrictions plus other headers | Remove inline requirements and enforce full nonce/hash-based CSP after violation review | Frontend, before public launch |
-| Medium | External bank/POS/payroll/OCR/payment/filing adapters, credential encryption, webhook security, queue retries, and sync reconciliation are absent | Integrations and BookLoQ | All provider-dependent controls remain explicitly disabled; no credential is collected | Implement and test one provider at a time behind an adapter boundary | Integrations, phased |
+| High | Independent Alberta legal review, vendor-contract review, and commercial-insurance confirmation are not evidenced | Legal and commercial operations | Public terms, privacy notices, DPA, deletion controls, subprocessor register, and internal compliance pack are prepared | Obtain written counsel review, approve the policies, register any required trade name, and confirm suitable coverage before broad paid launch | Owner, before broad paid launch |
+| High | Production account deletion has not yet been exercised through a disposable paid test workspace and independently verified across Stripe, D1, R2, and Supabase | Identity, billing, and privacy lifecycle | Source-level controls and tests fail closed; exact confirmation and recent MFA are required | Deploy the migration and code, run one documented end-to-end deletion drill, and retain the nonidentifying receipt | Product/Security, before broad paid launch |
+| Medium | Connector controls exist, but production provider contracts, app-review requirements, regional processing terms, and remote-revocation behaviour require recurring evidence | Integrations and BookLoQ | Read-only scopes, encrypted local credentials, signed webhooks, explicit selection, and fail-closed readiness checks are implemented | Complete the vendor register, accept current DPAs, test revocation and privacy webhooks, and review quarterly | Integrations/Privacy, before enabling each provider for customers |
 | Medium | Canadian jurisdiction content, foreign-currency remeasurement, full inventory subledger, depreciation schedules, and production financial-report rendering have not received professional accounting review | BookLoQ accounting content | The module is an evaluation core; demo data is labelled; unsupported functions are gated; tax disclaimer is displayed | Complete accountant/tax review, reference datasets, independent ledger validation, and report certification | Finance product, before live ledger use |
 | Medium | Full DAST, load, rollback, disaster recovery, and penetration testing are incomplete | Release assurance | Access remains restricted during development | Execute staging test plan and independent review | Security/SRE, before launch |
 
 ## Launch decision
 
-**Fail: restricted development milestone only.** The production dependency audit and the source-level authentication, MFA, tenant, migration, import, accounting, calculation, and execution tests pass. The provider leaked-password switch, session-management UI, account-level operations, restore, DAST, accounting-content review, and live-adapter findings still block admitting real customers or connecting live bank, payroll, tax, or customer data.
+**Fail pending launch evidence.** The source-level authentication, MFA, tenant, policy-acceptance, account-deletion, connector, migration, calculation, and application controls can pass automated verification, but broad paid onboarding remains blocked until the current build and migration are deployed, a disposable live deletion drill passes, the open Cloudflare and Supabase controls are evidenced, independent legal and accounting reviews are completed, provider contracts are accepted, and the required operational exercises are recorded.

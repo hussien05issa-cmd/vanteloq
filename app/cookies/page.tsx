@@ -38,6 +38,7 @@ export default function CookiesPage() {
 
       <PolicySection id="controls" title="5. Your controls">
         <p>You can use browser settings to inspect, delete, or block cookies and site data. Deleting authentication storage will usually sign you out. Browser privacy controls may also limit integration callbacks or account recovery.</p>
+        <p>Because Vanteloq currently uses only essential storage, there is no optional cookie category to enable or disable in the service. Optional analytics, advertising, or profiling tools will remain blocked unless and until the notice and any legally required consent control are deployed first.</p>
         <p>For questions about browser storage, contact <a href={`mailto:${LEGAL_EMAIL}`}>{LEGAL_EMAIL}</a>.</p>
       </PolicySection>
 

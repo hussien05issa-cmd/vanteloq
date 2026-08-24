@@ -6,6 +6,7 @@ import {
   createStripeCheckout,
   normalizeStripeSubscription,
   stripeBillingReadiness,
+  terminateStripeBilling,
   verifyStripeBillingSignature,
 } from "../server/billing/stripe.ts";
 import { ADDONS, PLANS } from "../server/entitlements/catalog.ts";
@@ -83,6 +84,24 @@ test("Checkout rejects annual purchases before contacting Stripe", async () => {
     (error: unknown) => error instanceof ApiError && error.code === "BILLING_INTERVAL_UNAVAILABLE",
   );
   assert.equal(requested, false);
+});
+
+test("Workspace deletion cancels the subscription and deletes the Stripe customer", async () => {
+  const requests: Array<{ path: string; method: string }> = [];
+  const fetcher: typeof fetch = async (input, init) => {
+    const url = new URL(typeof input === "string" ? input : input instanceof URL ? input : input.url);
+    requests.push({ path: url.pathname, method: init?.method ?? "GET" });
+    if (url.pathname.startsWith("/v1/subscriptions/")) return Response.json({ id: "sub_123456789", status: "canceled" });
+    return Response.json({ id: "cus_123456789", deleted: true });
+  };
+  assert.deepEqual(await terminateStripeBilling({ subscriptionId: "sub_123456789", customerId: "cus_123456789", fetcher }), {
+    subscriptionCanceled: true,
+    customerDeleted: true,
+  });
+  assert.deepEqual(requests, [
+    { path: "/v1/subscriptions/sub_123456789", method: "DELETE" },
+    { path: "/v1/customers/cus_123456789", method: "DELETE" },
+  ]);
 });
 
 test("Checkout fails closed when a Stripe monthly price differs from the catalogue", async () => {

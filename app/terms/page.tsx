@@ -25,6 +25,7 @@ export default function TermsPage() {
       <PolicySection id="accounts" title="3. Accounts and workspace administration">
         <p>You must provide accurate registration information, protect account credentials, and keep contact details current. Accounts are personal to the authorized user and may not be shared. You are responsible for activity performed through your account unless you promptly report unauthorized access.</p>
         <p>The customer controls workspace membership, roles, permissions, source connections, and exports. Workspace owners and administrators must only grant access that is appropriate for each user’s duties.</p>
+        <p>A workspace owner represents that they are authorized to make organization wide decisions, including inviting or removing users, accepting current service terms, connecting providers, managing billing, exporting records, and permanently deleting the workspace and every linked Vanteloq account. The customer must promptly change access when a user&apos;s duties or employment changes.</p>
       </PolicySection>
 
       <PolicySection id="data" title="4. Customer data and connected services">
@@ -34,6 +35,7 @@ export default function TermsPage() {
         <p>Disconnecting a provider stops future scheduled access and causes stored access credentials to be revoked or deleted. It does not automatically erase imported transactions, approved accounting entries, uploaded source documents, corrections, or audit evidence that remains subject to a customer policy or legal retention requirement. Customers should export required records before ending access.</p>
         <p>Uploaded invoices, receipts, statements, and other files remain Customer Data. The customer must have authority to store them and must not upload malicious, unlawful, irrelevant, or unnecessary personal information. Vanteloq may reject, quarantine, or restrict a file to protect the service or enforce configured document controls.</p>
         <p>Vanteloq may restrict or disconnect an integration that creates a security risk, violates provider rules, loses authorization, or cannot be reconciled reliably.</p>
+        <p>The <a href="/data-processing">Data Processing Addendum</a> forms part of these terms when Vanteloq processes personal information for the customer. Current core providers and optional connected services are listed in the <a href="/subprocessors">Subprocessor and Connected Service Notice</a>.</p>
       </PolicySection>
 
       <PolicySection id="acceptable-use" title="5. Acceptable use">
@@ -58,9 +60,9 @@ export default function TermsPage() {
       </PolicySection>
 
       <PolicySection id="fees" title="7. Fees and subscriptions">
-        <p>If a paid plan is offered, its monthly fee, taxes, included features, trial terms, and renewal details will be shown before purchase or stated in an order. The customer authorizes the payment provider to charge the selected payment method according to that order.</p>
-        <p>New subscriptions renew month to month until cancelled. Access continues through the paid period after cancellation. Fees already charged are non-refundable except where the order, these terms, or applicable law requires otherwise. Historical annual subscriptions, if any, remain governed by the order under which they were purchased.</p>
-        <p>No public price, free trial, or paid subscription is promised unless it is shown in an active checkout or signed order.</p>
+        <p>The selected monthly fee, included features, optional add-ons, taxes, total due, trial terms if any, and renewal details are shown in the Vanteloq plan screen and Stripe Checkout before purchase. Government imposed taxes may be added as shown in Checkout. The customer must enter a payment method and authorizes Stripe to charge it according to the displayed order.</p>
+        <p>New subscriptions renew month to month until cancelled. The customer can cancel in the Stripe billing portal. Access ordinarily continues through the paid period after cancellation. Deleting the entire Vanteloq workspace is different: it permanently removes access and instructs Vanteloq to cancel the subscription immediately before deleting the workspace. Fees already charged are nonrefundable except where the checkout terms, these terms, or applicable law requires otherwise.</p>
+        <p>A free trial applies only if its length, first charge date, renewal amount, and cancellation method are shown in the active Stripe Checkout or a signed order. No public price, discount, free trial, feature entitlement, or paid subscription is promised outside the current Vanteloq plan screen, active checkout, or signed order. If a display and Checkout differ, do not purchase and contact Vanteloq.</p>
       </PolicySection>
 
       <PolicySection id="availability" title="8. Availability and changes">
@@ -79,7 +81,8 @@ export default function TermsPage() {
 
       <PolicySection id="suspension" title="11. Suspension and termination">
         <p>We may suspend access when reasonably necessary to address a security threat, unauthorized use, non-payment, legal requirement, provider restriction, or material breach of these terms. Where practical, we will give notice and an opportunity to correct the issue.</p>
-        <p>Either party may end an unpaid service at any time. Paid services may be ended according to the order and cancellation controls. After termination, access ends and Customer Data will be handled under the Privacy Policy and applicable retention requirements. Customers should export needed records before access ends.</p>
+        <p>Either party may end an unpaid service at any time. Paid services may be ended according to the order and cancellation controls. Every user can use the protected account deletion control; an owner can use the separate workspace deletion control. Workspace deletion cancels billing immediately and permanently removes the active workspace, files, local credentials, memberships, and linked Vanteloq authentication accounts. A nonowner&apos;s deletion removes that person&apos;s account and personal profile while leaving customer business records with an anonymous authorship reference where needed for integrity. Customers should export records they must retain before deletion.</p>
+        <p>Limited records may remain when required by law, a documented legal hold, security, dispute resolution, or the customer&apos;s own recordkeeping instruction. Provider records retained independently are governed by that provider. Details appear in the Privacy Policy and Data Processing Addendum.</p>
       </PolicySection>
 
       <PolicySection id="warranties" title="12. Disclaimers">
@@ -103,12 +106,12 @@ export default function TermsPage() {
       </PolicySection>
 
       <PolicySection id="general" title="16. General terms">
-        <p>These terms, the Privacy Policy, an active order, and any referenced service terms form the entire agreement for the service. An order controls if it expressly conflicts with these terms. A failure to enforce a term is not a waiver. If one part is unenforceable, the rest remains effective.</p>
+        <p>These terms, the Privacy Policy, Cookie Notice, Data Processing Addendum, an active order, and any referenced service terms form the entire agreement for the service. An order controls if it expressly conflicts with these terms. A failure to enforce a term is not a waiver. If one part is unenforceable, the rest remains effective. Nothing in these terms waives a right or remedy that cannot lawfully be waived.</p>
         <p>You may not assign these terms without our written consent, except with a sale of substantially all relevant business assets. We may assign them as part of a reorganization, financing, or sale of the service. Neither party is responsible for delay caused by events beyond reasonable control, except payment obligations.</p>
       </PolicySection>
 
       <PolicySection id="changes-contact" title="17. Changes and contact">
-        <p>We may update these terms as the service or law changes. We will post the updated terms with a new date and provide additional notice where a material change affects an active paid service. Continued use after the effective date means acceptance where permitted by law.</p>
+        <p>We may update these terms as the service or law changes. We will post the updated terms with a new date. When a material change affects an authenticated user, Vanteloq requires a new affirmative acceptance before billing status or workspace access is shown. Continued use alone is not used as the only acceptance method for that material update.</p>
         <p>Questions or legal notices can be sent to <a href={`mailto:${LEGAL_EMAIL}`}>{LEGAL_EMAIL}</a>.</p>
       </PolicySection>
     </LegalShell>

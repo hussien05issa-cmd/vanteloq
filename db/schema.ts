@@ -811,6 +811,31 @@ export const legalAcceptances = sqliteTable(
   ],
 );
 
+// A deletion receipt proves that a privacy request was completed without
+// retaining the person's email, name, workspace name, network address, or raw
+// provider identifiers. Hashes are deliberately one-way and expire after the
+// documented dispute and compliance window.
+export const accountDeletionReceipts = sqliteTable(
+  "account_deletion_receipts",
+  {
+    id: text("id").primaryKey(),
+    accountHash: text("account_hash").notNull(),
+    organizationHash: text("organization_hash").notNull(),
+    scope: text("scope", { enum: ["account", "workspace"] }).notNull(),
+    result: text("result", { enum: ["completed", "auth_cleanup_pending"] }).notNull(),
+    retainedCategoriesJson: text("retained_categories_json").notNull().default("[]"),
+    providerOutcomesJson: text("provider_outcomes_json").notNull().default("{}"),
+    completedAt: integer("completed_at", { mode: "timestamp" }).notNull(),
+    expiresAt: integer("expires_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    index("account_deletion_receipts_expiry_idx").on(table.expiresAt),
+    index("account_deletion_receipts_account_idx").on(table.accountHash, table.completedAt),
+    check("account_deletion_receipts_scope_check", sql`${table.scope} in ('account','workspace')`),
+    check("account_deletion_receipts_result_check", sql`${table.result} in ('completed','auth_cleanup_pending')`),
+  ],
+);
+
 export const integrationOAuthStates = sqliteTable(
   "integration_oauth_states",
   {

@@ -18,6 +18,18 @@ test("account creation requires current legal versions and stores acceptance evi
   assert.match(schema, /legal_acceptances_user_versions_unique/);
 });
 
+test("material legal updates require a new affirmative acceptance before billing", () => {
+  const gate = read("../app/legal-acceptance-gate.tsx");
+  const route = read("../app/api/v1/legal/acceptance/route.ts");
+  const page = read("../app/page.tsx");
+  assert.match(gate, /type="checkbox"/);
+  assert.match(gate, /accepted: true/);
+  assert.match(route, /material_policy_update/);
+  assert.match(route, /requireSameOrigin\(request\)/);
+  assert.match(route, /TERMS_OF_SERVICE_VERSION/);
+  assert.match(page, /<LegalAcceptanceGate><BillingOnboardingGate>/);
+});
+
 test("Gemini requires explicit versioned consent and supports scoped deletion", () => {
   const route = read("../app/api/v1/advisor/chat/route.ts");
   const privacy = read("../server/privacy.ts");

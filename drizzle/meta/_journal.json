@@ -267,6 +267,13 @@
       "when": 1787544000000,
       "tag": "0037_shopify_store_ownership",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "6",
+      "when": 1787564614046,
+      "tag": "0038_nice_major_mapleleaf",
+      "breakpoints": true
     }
   ]
 }

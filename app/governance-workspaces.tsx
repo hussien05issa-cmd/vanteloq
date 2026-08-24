@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { FormEvent, type ReactNode, useCallback, useEffect, useState } from "react";
-import { apiFetch } from "./supabase-browser";
+import { apiFetch, signOut } from "./supabase-browser";
 import { humanizeIdentifier } from "../domain/display-labels";
 
 type Permission = {
@@ -1174,19 +1174,17 @@ export function SettingsWorkspace({ showNotice, onBrandChange, navigationSetting
             />
           )}
           {section === "account" && (
-            <ProviderSettings
-              title="Account & login"
-              items={[
-                ["Verified email", data.account.email, "Verified"],
-                ["Password", data.security.password, "Provider managed"],
-                ["Passkeys", data.security.passkeys, "Provider managed"],
-                [
-                  "Account deletion",
-                  "Requires verified ownership, retention review and export confirmation.",
-                  "Gated workflow",
-                ],
-              ]}
-            />
+            <>
+              <ProviderSettings
+                title="Account & login"
+                items={[
+                  ["Verified email", data.account.email, "Verified"],
+                  ["Password", data.security.password, "Provider managed"],
+                  ["Passkeys", data.security.passkeys, "Provider managed"],
+                ]}
+              />
+              <AccountDeletionSettings />
+            </>
           )}
           {section === "security" && (
             <ProviderSettings
@@ -1793,6 +1791,73 @@ function ProviderSettings({
           </article>
         ))}
       </div>
+    </section>
+  );
+}
+
+type AccountDeletionData = {
+  available: boolean;
+  scope: "account" | "workspace";
+  confirmation: string;
+  consequences: string[];
+};
+
+function AccountDeletionSettings() {
+  const [data, setData] = useState<AccountDeletionData | null>(null);
+  const [confirmation, setConfirmation] = useState("");
+  const [acknowledgeNoRecovery, setAcknowledgeNoRecovery] = useState(false);
+  const [acknowledgeBillingCancellation, setAcknowledgeBillingCancellation] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    let active = true;
+    void apiFetch("/api/v1/account/deletion", { headers: { Accept: "application/json" } })
+      .then(async (response) => {
+        const body = await response.json();
+        if (!response.ok) throw new Error(message(body, "Account deletion controls could not be loaded."));
+        if (active) setData(body as AccountDeletionData);
+      })
+      .catch((caught) => { if (active) setError(caught instanceof Error ? caught.message : "Account deletion controls could not be loaded."); });
+    return () => { active = false; };
+  }, []);
+  async function remove() {
+    if (!data || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const response = await apiFetch("/api/v1/account/deletion", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirmation, acknowledgeNoRecovery, acknowledgeBillingCancellation }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(message(body, "The deletion request could not be completed."));
+      await signOut().catch(() => undefined);
+      window.location.assign("/?account=deleted");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "The deletion request could not be completed.");
+      setBusy(false);
+    }
+  }
+  return (
+    <section className="settings-form account-deletion-control">
+      <header>
+        <p>PERMANENT DELETION</p>
+        <h2>{data?.scope === "workspace" ? "Delete this workspace and every linked account" : "Delete my Vanteloq account"}</h2>
+        <span>This protected action requires recent multifactor authentication. It cannot be undone.</span>
+      </header>
+      {data?.consequences?.length ? <ul>{data.consequences.map((item) => <li key={item}>{item}</li>)}</ul> : null}
+      {data && <div className="deletion-confirmation">
+        <label>
+          Type <strong>{data.confirmation}</strong>
+          <input autoComplete="off" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} />
+        </label>
+        <label className="deletion-check"><input type="checkbox" checked={acknowledgeNoRecovery} onChange={(event) => setAcknowledgeNoRecovery(event.target.checked)} /><span>I understand that deleted Vanteloq data and files cannot be recovered.</span></label>
+        {data.scope === "workspace" && <label className="deletion-check"><input type="checkbox" checked={acknowledgeBillingCancellation} onChange={(event) => setAcknowledgeBillingCancellation(event.target.checked)} /><span>I understand that the Stripe subscription will be canceled immediately.</span></label>}
+        <button type="button" className="danger" disabled={!data.available || confirmation !== data.confirmation || !acknowledgeNoRecovery || (data.scope === "workspace" && !acknowledgeBillingCancellation) || busy} onClick={() => void remove()}>{busy ? "Deleting securely…" : data.scope === "workspace" ? "Permanently delete workspace" : "Permanently delete my account"}</button>
+      </div>}
+      {data && !data.available && <p className="form-error">Secure deletion is temporarily unavailable. Contact the privacy officer at hussienissa@lexedgeconsulting.com.</p>}
+      {error && <p className="form-error">{error}</p>}
     </section>
   );
 }

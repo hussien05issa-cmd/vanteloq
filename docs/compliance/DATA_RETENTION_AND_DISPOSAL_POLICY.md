@@ -4,8 +4,8 @@
 | --- | --- |
 | Organization | LexEdge Consulting, operating Vanteloq |
 | Policy owner | Hussien Issa, Owner and Security Lead |
-| Version | 1.0 |
-| Prepared | 2026-08-13 |
+| Version | 1.1 |
+| Prepared | 2026-08-24 |
 | Review cycle | Quarterly enforcement review; full annual review |
 | Approval status | Awaiting owner approval |
 
@@ -31,7 +31,8 @@ Vanteloq retains data only while it is needed for a disclosed product purpose, s
 | Plaid Link consent and authorization evidence | Connection life plus 6 years | Delete or de-identify after expiry unless law or dispute requires continued retention |
 | POS, inventory, customer, supplier, and commerce records | Active service plus up to 7 years where required for accounting, tax, or audit support | Delete or de-identify after account closure and the applicable legal period |
 | Invoices, receipts, journal support, and tax records | 7 years unless a longer legal requirement applies | Securely delete after expiry and hold review |
-| Authentication and membership records | Active account plus 2 years | Delete or de-identify after account closure, except security evidence under hold |
+| Authentication and membership records | Active account | Delete the authentication account, membership, personal profile, preferences, and private Advisor history after verified account deletion. Preserve only anonymous authorship where a customer business record must remain |
+| Nonidentifying account-deletion receipts | 24 months | Automatically remove after expiry. The receipt must not contain a name, email, workspace name, network address, or raw provider identifier |
 | Security and administrative audit events | 2 years | Securely delete after expiry and incident/hold review |
 | Application and request logs | 90 days by default | Automated expiry; restricted incident copies follow the incident record period |
 | Support records | 2 years after closure | Delete or de-identify after expiry and dispute review |
@@ -62,7 +63,9 @@ If provider revocation cannot complete, Vanteloq must fail closed, retain the re
 
 ## 6. Account closure and inactivity
 
-Account closure starts a documented deletion workflow after billing, dispute, legal-hold, and export obligations are checked. Connected providers are disconnected and recurring synchronization stops. Inactive connections are reviewed at least quarterly; a connection that no longer has a valid purpose or authorization is disabled and scheduled for deletion.
+Account closure starts a documented deletion workflow after billing, dispute, legal-hold, and export obligations are checked. Every authenticated user can initiate their own account deletion after recent multifactor authentication and exact confirmation. A nonowner deletion removes the login, membership, personal profile, preferences, and private Advisor history while de-identifying authorship in customer records that must remain.
+
+A verified workspace-owner deletion cancels the Vanteloq Stripe subscription and customer before deleting the workspace, stored files, active records, local integration credentials, memberships, and authentication accounts that are not still used by another workspace. The owner must confirm authority to delete the workspace and should export records that the customer is required to retain. Connected providers are disconnected and recurring synchronization stops. Inactive connections are reviewed at least quarterly; a connection that no longer has a valid purpose or authorization is disabled and scheduled for deletion.
 
 ## 7. Backups, caches, and derived data
 
@@ -98,4 +101,3 @@ This policy takes effect only when the owner completes the approval record. The 
 | Approval date | ______________________________ |
 | Signature | ______________________________ |
 | Next annual review | ______________________________ |
-

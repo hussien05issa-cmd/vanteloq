@@ -52,9 +52,9 @@ function onboardingBody(ownerName, businessName) {
     sourceMode: "csv",
     selectedPos: "",
     legalAccepted: true,
-    termsVersion: "2026-08-16",
-    privacyPolicyVersion: "2026-08-16",
-    legalNoticeVersion: "account-creation-v1",
+    termsVersion: "2026-08-24",
+    privacyPolicyVersion: "2026-08-24",
+    legalNoticeVersion: "account-creation-v2",
   };
 }
 

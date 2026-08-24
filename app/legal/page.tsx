@@ -17,6 +17,8 @@ export default function LegalPage() {
           <Link href="/privacy"><small>PRIVACY</small><strong>Privacy Policy</strong><span>What we collect, why we use it, who may process it, and how to make a privacy request.</span></Link>
           <Link href="/terms"><small>SERVICE RULES</small><strong>Terms of Service</strong><span>Account responsibilities, acceptable use, connected data, service limits, and legal terms.</span></Link>
           <Link href="/cookies"><small>BROWSER STORAGE</small><strong>Cookie Notice</strong><span>The essential cookies and browser storage used for sign-in, security, and service preferences.</span></Link>
+          <Link href="/data-processing"><small>CUSTOMER DATA</small><strong>Data Processing Addendum</strong><span>Processing instructions, safeguards, rights assistance, incident support, and deletion commitments.</span></Link>
+          <Link href="/subprocessors"><small>PROVIDERS</small><strong>Subprocessors and Connected Services</strong><span>Core infrastructure and optional services that may receive data when a customer enables them.</span></Link>
           <Link href="/#security"><small>PRODUCT CONTROLS</small><strong>Security overview</strong><span>Verified application controls, including access boundaries, permissions, and protected connections.</span></Link>
         </div>
       </PolicySection>

@@ -44,9 +44,9 @@ function onboardingBody() {
     sourceMode: "connect_later",
     selectedPos: "",
     legalAccepted: true,
-    termsVersion: "2026-08-16",
-    privacyPolicyVersion: "2026-08-16",
-    legalNoticeVersion: "account-creation-v1",
+    termsVersion: "2026-08-24",
+    privacyPolicyVersion: "2026-08-24",
+    legalNoticeVersion: "account-creation-v2",
   };
 }
 
@@ -116,9 +116,9 @@ test("exact marketing resources remain versioned, approval-bound, separated, and
     `).first();
     assert.ok(legalAcceptance);
     assert.deepEqual(legalAcceptance, {
-      terms_version: "2026-08-16",
-      privacy_policy_version: "2026-08-16",
-      notice_version: "account-creation-v1",
+      terms_version: "2026-08-24",
+      privacy_policy_version: "2026-08-24",
+      notice_version: "account-creation-v2",
       acceptance_source: "onboarding_review",
       source_hash: null,
       user_agent_hash: null,

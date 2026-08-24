@@ -62,7 +62,7 @@ function billingWebhookSecret() {
   return value;
 }
 
-async function stripeFormRequest(path: string, fields?: URLSearchParams, method: "GET" | "POST" = "POST", fetcher: typeof fetch = fetch) {
+async function stripeFormRequest(path: string, fields?: URLSearchParams, method: "GET" | "POST" | "DELETE" = "POST", fetcher: typeof fetch = fetch) {
   const url = new URL(path, STRIPE_API);
   if (method === "GET" && fields) url.search = fields.toString();
   const response = await fetcher(url, {
@@ -70,10 +70,10 @@ async function stripeFormRequest(path: string, fields?: URLSearchParams, method:
     headers: {
       Accept: "application/json",
       Authorization: `Basic ${btoa(`${secretKey()}:`)}`,
-      ...(method === "POST" ? { "Content-Type": "application/x-www-form-urlencoded" } : {}),
+      ...(method !== "GET" ? { "Content-Type": "application/x-www-form-urlencoded" } : {}),
       "User-Agent": "Vanteloq-Stripe-Billing/1.0",
     },
-    body: method === "POST" ? fields : undefined,
+    body: method !== "GET" ? fields : undefined,
     signal: AbortSignal.timeout(15_000),
   });
   const body = await response.json().catch(() => ({})) as Record<string, unknown>;
@@ -161,6 +161,37 @@ export async function retrieveStripeSubscription(subscriptionId: string, fetcher
   const query = new URLSearchParams();
   query.append("expand[]", "items.data.price");
   return stripeFormRequest(`/v1/subscriptions/${encodeURIComponent(subscriptionId)}`, query, "GET", fetcher);
+}
+
+export async function terminateStripeBilling(input: {
+  subscriptionId: string | null;
+  customerId: string | null;
+  fetcher?: typeof fetch;
+}) {
+  const fetcher = input.fetcher ?? fetch;
+  let subscriptionCanceled = false;
+  let customerDeleted = false;
+  if (input.subscriptionId) {
+    if (!SUBSCRIPTION_ID.test(input.subscriptionId)) {
+      throw new ApiError(409, "STRIPE_SUBSCRIPTION_INVALID", "The stored Stripe subscription reference is invalid. Contact support before deleting this workspace.");
+    }
+    const canceled = await stripeFormRequest(`/v1/subscriptions/${encodeURIComponent(input.subscriptionId)}`, undefined, "DELETE", fetcher);
+    if (canceled.id !== input.subscriptionId || canceled.status !== "canceled") {
+      throw new ApiError(502, "STRIPE_SUBSCRIPTION_CANCELLATION_UNCONFIRMED", "Stripe did not confirm subscription cancellation. The workspace was not deleted.");
+    }
+    subscriptionCanceled = true;
+  }
+  if (input.customerId) {
+    if (!CUSTOMER_ID.test(input.customerId)) {
+      throw new ApiError(409, "STRIPE_CUSTOMER_INVALID", "The stored Stripe customer reference is invalid. Contact support before deleting this workspace.");
+    }
+    const deleted = await stripeFormRequest(`/v1/customers/${encodeURIComponent(input.customerId)}`, undefined, "DELETE", fetcher);
+    if (deleted.id !== input.customerId || deleted.deleted !== true) {
+      throw new ApiError(502, "STRIPE_CUSTOMER_DELETION_UNCONFIRMED", "Stripe did not confirm customer deletion. The workspace was not deleted.");
+    }
+    customerDeleted = true;
+  }
+  return { subscriptionCanceled, customerDeleted };
 }
 
 export function normalizeStripeSubscription(object: Record<string, unknown>): NormalizedBillingSubscription {

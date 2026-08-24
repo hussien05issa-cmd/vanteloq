@@ -29,6 +29,7 @@ export function LegalShell({
           <Link href="/privacy">Privacy</Link>
           <Link href="/terms">Terms</Link>
           <Link href="/cookies">Cookies</Link>
+          <Link href="/data-processing">Data processing</Link>
         </nav>
         <Link className="legal-home-link" href="/">Back to Vanteloq</Link>
       </header>
@@ -56,6 +57,8 @@ export function LegalShell({
             <Link href="/privacy">Privacy Policy</Link>
             <Link href="/terms">Terms of Service</Link>
             <Link href="/cookies">Cookie Notice</Link>
+            <Link href="/data-processing">Data Processing Addendum</Link>
+            <Link href="/subprocessors">Subprocessors</Link>
             <Link href="/legal">Legal Centre</Link>
           </aside>
           <article className="legal-document">{children}</article>
@@ -64,7 +67,7 @@ export function LegalShell({
 
       <footer className="legal-footer">
         <div><ProductBrandLogo product="vanteloq"/><span><strong>Vanteloq</strong><small>Operated by LexEdge Consulting</small></span></div>
-        <nav aria-label="Legal footer navigation"><Link href="/">Home</Link><Link href="/resources">Resources</Link><Link href="/privacy">Privacy</Link><Link href="/terms">Terms</Link><Link href="/cookies">Cookies</Link></nav>
+        <nav aria-label="Legal footer navigation"><Link href="/">Home</Link><Link href="/resources">Resources</Link><Link href="/privacy">Privacy</Link><Link href="/terms">Terms</Link><Link href="/cookies">Cookies</Link><Link href="/data-processing">Data processing</Link><Link href="/subprocessors">Subprocessors</Link></nav>
         <p>Questions about these documents can be sent to <a href={`mailto:${LEGAL_EMAIL}`}>{LEGAL_EMAIL}</a>.</p>
       </footer>
     </div>
