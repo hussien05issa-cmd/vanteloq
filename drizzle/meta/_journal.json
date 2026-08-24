@@ -260,6 +260,13 @@
       "when": 1786926000000,
       "tag": "0036_versioned_legal_acceptance",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "6",
+      "when": 1787544000000,
+      "tag": "0037_shopify_store_ownership",
+      "breakpoints": true
     }
   ]
 }

@@ -4,11 +4,12 @@ import { recordAudit } from "../../../../../server/audit";
 import { requireAccess } from "../../../../../server/authorization";
 import { ApiError, enforceRateLimit, handleApi, jsonResponse, requireSameOrigin } from "../../../../../server/api";
 import { requireBookLoQPermission } from "../../../../../server/bookloq";
+import { requireAddon } from "../../../../../server/entitlements/engine";
 import { createInvoicePdf } from "../../../../../server/invoice-pdf";
+import { requireOrganizationWideLocationAccess } from "../../../../../server/location-access";
 import { requirePermission } from "../../../../../server/permissions";
 
 const writers = ["owner", "admin", "manager"] as const;
-const maximumLogoBytes = 1_000_000;
 
 function hex(bytes: Uint8Array) {
   return Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
@@ -22,22 +23,12 @@ function safeFilePart(value: string) {
   return value.normalize("NFC").replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "invoice";
 }
 
-function verifiedLogo(file: File): Promise<{ bytes: Uint8Array; contentType: "image/png" | "image/jpeg" }> {
-  return file.arrayBuffer().then((buffer) => {
-    const bytes = new Uint8Array(buffer);
-    if (!bytes.length || bytes.length > maximumLogoBytes) throw new ApiError(400, "INVALID_LOGO", "Choose a PNG or JPEG logo up to 1 MB.");
-    const png = [137, 80, 78, 71, 13, 10, 26, 10].every((value, index) => bytes[index] === value);
-    const jpeg = bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
-    if (png && file.type === "image/png") return { bytes, contentType: "image/png" };
-    if (jpeg && ["image/jpeg", "image/jpg"].includes(file.type)) return { bytes, contentType: "image/jpeg" };
-    throw new ApiError(400, "INVALID_LOGO", "Choose a verified PNG or JPEG logo.");
-  });
-}
-
 export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
     const context = await requireAccess(request, writers, "bookloq.ar");
+    await requireAddon(context, "bookloq");
+    await requireOrganizationWideLocationAccess(context);
     await requirePermission(context, "finance.ap_ar");
     requireBookLoQPermission(context.role, "edit_drafts");
     await enforceRateLimit("bookloq:invoice:create", context.userId, 60, 3_600);
@@ -55,7 +46,13 @@ export async function POST(request: Request) {
     try { parsed = JSON.parse(rawInvoice); } catch { throw new ApiError(400, "INVALID_INVOICE", "Invoice details are not valid JSON."); }
     const invoice = parseCustomerInvoice(parsed);
     const logo = form.get("logo");
-    const verified = logo instanceof File && logo.size > 0 ? await verifiedLogo(logo) : null;
+    if (logo instanceof File && logo.size > 0) {
+      throw new ApiError(
+        409,
+        "INVOICE_LOGO_SCAN_UNAVAILABLE",
+        "Invoice logo uploads are unavailable until independent file scanning is configured.",
+      );
+    }
     const database = getD1();
     const duplicate = await database.prepare("SELECT id FROM customer_invoices WHERE organization_id = ? AND invoice_number = ?")
       .bind(context.organizationId, invoice.invoiceNumber).first<{ id: string }>();
@@ -76,13 +73,15 @@ export async function POST(request: Request) {
     const documentId = crypto.randomUUID();
     const nowMs = Date.now();
     const nowSeconds = Math.floor(nowMs / 1_000);
-    const pdf = await createInvoicePdf(invoice, verified?.bytes ?? null, verified?.contentType ?? null);
+    // Only validated text and application-owned fonts reach this trusted PDF
+    // generator. User-supplied file bytes are rejected above.
+    const pdf = await createInvoicePdf(invoice, null, null);
     if (pdf.byteLength > 10 * 1024 * 1024) throw new ApiError(413, "INVOICE_TOO_LARGE", "The generated invoice is too large to store.");
     const digest = await sha256(pdf);
     const objectKey = `${context.organizationId}/documents/generated/${documentId}.pdf`;
     await getR2().put(objectKey, new Uint8Array(pdf).buffer, {
       httpMetadata: { contentType: "application/pdf", cacheControl: "private, no-store" },
-      customMetadata: { organizationId: context.organizationId, generatedBy: context.userId, invoiceId: id, securityState: "clean", source: "application-generated" },
+      customMetadata: { organizationId: context.organizationId, generatedBy: context.userId, invoiceId: id, securityState: "clean", source: "application-generated-text-only" },
     });
 
     const statements = [];
@@ -94,7 +93,7 @@ export async function POST(request: Request) {
     }
     statements.push(database.prepare(`INSERT INTO workspace_documents
       (id, organization_id, document_type, file_name, object_key, content_type, size_bytes, sha256_hex, security_state, status, scan_status, scanned_at, scan_provider, extraction_status, extracted_json, uploaded_by_user_id, created_at, updated_at)
-      VALUES (?, ?, 'invoice', ?, ?, 'application/pdf', ?, ?, 'clean', 'approved', 'clean', ?, 'vanteloq-internal-pdf-generator', 'complete', ?, ?, ?, ?)`)
+      VALUES (?, ?, 'invoice', ?, ?, 'application/pdf', ?, ?, 'clean', 'approved', 'clean', ?, 'vanteloq-trusted-text-pdf-generator', 'complete', ?, ?, ?, ?)`)
       .bind(documentId, context.organizationId, `${safeFilePart(invoice.invoiceNumber)}.pdf`, objectKey, pdf.byteLength, digest, nowSeconds, JSON.stringify({ source: "bookloq_generated", invoiceId: id }), context.userId, nowMs, nowMs));
     statements.push(database.prepare(`INSERT INTO customer_invoices
       (id, organization_id, customer_id, invoice_number, invoice_date, due_date, status, subtotal_cents, tax_cents, total_cents, paid_cents, currency, location_ref, purchase_order_ref, issuer_snapshot_json, customer_snapshot_json, notes, payment_instructions, document_id, demo_record, created_at, updated_at)

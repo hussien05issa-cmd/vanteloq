@@ -4,6 +4,7 @@ import { integrationConnections, integrationSecrets, integrationWebhookEvents } 
 import { scopeExternalRef } from "../../../../../../domain/integration-source";
 import { ApiError, handleApi, jsonResponse } from "../../../../../../server/api";
 import { normalizeShopDomain, shopifyProviderFromRequest, shopifySha256, verifyShopifyWebhook } from "../../../../../../server/integrations/shopify-pos";
+import { releaseShopifyStoreIfUnused } from "../../../../../../server/integrations/shopify-store-lock";
 
 const MAXIMUM_WEBHOOK_BYTES = 256_000;
 const PRIVACY_TOPICS = new Set(["customers/data_request", "customers/redact", "shop/redact"]);
@@ -76,6 +77,7 @@ export async function POST(request: Request) {
         ]);
         await getDb().delete(integrationSecrets).where(and(eq(integrationSecrets.organizationId, connection.organizationId), eq(integrationSecrets.connectionId, connection.id)));
         await getDb().update(integrationConnections).set({ status: "revoked", dataPromotionStatus: "blocked", privacyDataDeletedAt: new Date(), externalAccountRef: null, domainPrefix: null, updatedAt: new Date() }).where(and(eq(integrationConnections.id, connection.id), eq(integrationConnections.organizationId, connection.organizationId)));
+        await releaseShopifyStoreIfUnused(connection.organizationId, shop);
       }
       if (inserted.length) await getDb().update(integrationWebhookEvents).set({ status: terminalTopic ? "processed" : "queued", processedAt: terminalTopic ? new Date() : null }).where(eq(integrationWebhookEvents.id, inserted[0].id));
     }

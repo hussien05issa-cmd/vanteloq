@@ -191,6 +191,8 @@ test("X-Series callback removes artifacts when disconnected during outlet verifi
     assert.equal(authorization.status, 200, await authorization.clone().text());
     const authorizationBody = await authorization.json();
     const state = new URL(authorizationBody.authorizationUrl).searchParams.get("state");
+    const cookie = authorization.headers.get("set-cookie")?.split(";")[0] ?? "";
+    assert.equal(cookie, `__Host-vanteloq_lightspeed_oauth=${state}`);
     let disconnected = false;
     globalThis.fetch = async (input, init) => {
       const url = new URL(typeof input === "string" || input instanceof URL ? input : input.url);
@@ -220,7 +222,7 @@ test("X-Series callback removes artifacts when disconnected during outlet verifi
 
     const callback = await worker.fetch(new Request(
       `${origin}/api/v1/integrations/lightspeed/callback?code=x-code&state=${state}&domain_prefix=race-store`,
-      { headers: { accept: "text/html" } },
+      { headers: { accept: "text/html", cookie } },
     ), environment, context);
     assert.equal(callback.status, 303, await callback.clone().text());
     assert.equal(callback.headers.get("location"), `${origin}/?integration=lightspeed&connection=failed`);

@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { getD1, getDb } from "../../../../db";
-import { memberships, users, workspaces } from "../../../../db/schema";
+import { memberships, users } from "../../../../db/schema";
 import { findAccessContext } from "../../../../server/authorization";
 import {
   ApiError,
@@ -94,107 +94,6 @@ export async function POST(request: Request) {
       hasMembership: Boolean(existingMembership),
       identity,
     });
-
-    if (identityDisposition === "recover") {
-      if (
-        !existingUser
-        || !existingMembership
-        || existingMembership.status !== "active"
-        || existingMembership.role !== "owner"
-        || !identity.subject
-        || !existingUser.authSubject
-      ) {
-        throw new ApiError(403, "IDENTITY_CONFLICT", "This verified identity cannot recover the existing Vanteloq account.");
-      }
-      const [existingWorkspace] = await getDb()
-        .select({ businessName: workspaces.businessName })
-        .from(workspaces)
-        .where(eq(workspaces.id, existingMembership.organizationId))
-        .limit(1);
-      if (!existingWorkspace) {
-        throw new ApiError(503, "DATABASE_UNAVAILABLE", "The existing workspace could not be recovered safely.");
-      }
-
-      try {
-        await bootstrapSupabaseOrganization(request, existingWorkspace.businessName, identity.subject);
-      } catch {
-        throw new ApiError(503, "ACCOUNT_DATA_UNAVAILABLE", "Secure account recovery is temporarily unavailable.");
-      }
-
-      const now = Date.now();
-      const database = getD1();
-      const previousSubjectHash = (await hashIdentifier(`identity:${existingUser.authSubject}`)).slice(0, 32);
-      const currentSubjectHash = (await hashIdentifier(`identity:${identity.subject}`)).slice(0, 32);
-      const recoveryHash = (await hashIdentifier(`identity-recovery:${existingUser.id}:${identity.subject}`)).slice(0, 32);
-      const stableIdentityHash = (await hashIdentifier(`onboarding:${existingUser.id}`)).slice(0, 32);
-      const recoveryAuditId = `audit-identity-recovered-${recoveryHash}`;
-      const legalAcceptanceId = `legal-${stableIdentityHash}-${input.termsVersion}`;
-      const recoveryDetails = JSON.stringify({
-        previousSubjectHash,
-        currentSubjectHash,
-        verification: "same_verified_email_and_supabase_aal2",
-      });
-
-      const [, updateResult] = await database.batch([
-        database.prepare(`
-          INSERT OR IGNORE INTO audit_events (
-            id, organization_id, actor_user_id, action, resource_type, resource_id,
-            outcome, request_id, source_hash, details_json, created_at
-          )
-          SELECT ?, ?, id, 'account.identity_recovered', 'user', id,
-            'success', ?, ?, ?, ?
-          FROM users
-          WHERE id = ? AND email = ? AND status = 'active'
-            AND auth_subject = ?
-            AND COALESCE(auth_provider, '') = COALESCE(?, '')
-        `).bind(
-          recoveryAuditId, existingMembership.organizationId, requestId, sourceHash,
-          recoveryDetails, now, existingUser.id, identity.email,
-          existingUser.authSubject, existingUser.authProvider,
-        ),
-        database.prepare(`
-          UPDATE users
-          SET auth_subject = ?, auth_provider = 'supabase', display_name = ?, updated_at = ?
-          WHERE id = ? AND email = ? AND status = 'active'
-            AND auth_subject = ?
-            AND COALESCE(auth_provider, '') = COALESCE(?, '')
-        `).bind(
-          identity.subject, input.ownerName, now, existingUser.id, identity.email,
-          existingUser.authSubject, existingUser.authProvider,
-        ),
-        database.prepare(`
-          INSERT OR IGNORE INTO legal_acceptances (
-            id, organization_id, user_id, terms_version, privacy_policy_version,
-            notice_version, acceptance_source, source_hash, user_agent_hash,
-            request_id, accepted_at, created_at
-          )
-          SELECT ?, ?, id, ?, ?, ?, 'account_recovery', ?, ?, ?, ?, ?
-          FROM users
-          WHERE id = ? AND email = ? AND auth_subject = ? AND auth_provider = 'supabase'
-        `).bind(
-          legalAcceptanceId, existingMembership.organizationId, input.termsVersion,
-          input.privacyPolicyVersion, input.legalNoticeVersion, sourceHash,
-          userAgentHash, requestId, now, now, existingUser.id, identity.email,
-          identity.subject,
-        ),
-      ]);
-
-      if (Number(updateResult.meta?.changes ?? 0) === 0) {
-        const concurrentRecovery = await findAccessContext(identity);
-        if (!concurrentRecovery) {
-          throw new ApiError(409, "IDENTITY_RECOVERY_RACE", "The account changed while recovery was in progress. Sign in again and retry.");
-        }
-      }
-      const recoveredAccess = await findAccessContext(identity);
-      if (!recoveredAccess) {
-        throw new ApiError(503, "ACCOUNT_DATA_UNAVAILABLE", "The recovered workspace could not be loaded safely.");
-      }
-      return jsonResponse({
-        recovered: true,
-        organization: organizationDto(recoveredAccess),
-        role: recoveredAccess.role,
-      });
-    }
 
     const addressReadiness = addressCompleteReadiness();
     const verifiedAddress = addressReadiness.configured

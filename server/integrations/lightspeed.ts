@@ -8,8 +8,28 @@ import { ApiError } from "../api";
 
 export const LIGHTSPEED_PROVIDER = "lightspeed";
 export const LIGHTSPEED_SCOPES = ["outlets:read", "sales:read"] as const;
+export const LIGHTSPEED_OAUTH_BINDING_COOKIE = "__Host-vanteloq_lightspeed_oauth";
 const DOMAIN_PREFIX = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 const API_VERSION = /^20\d{2}-(?:0[1-9]|1[0-2])$/;
+
+export function lightspeedOAuthBindingCookie(state: string, maximumAgeSeconds = 600): string {
+  if (!/^[A-Za-z0-9_-]{43}$/.test(state)) throw new Error("A valid Lightspeed OAuth state is required.");
+  const age = Math.max(0, Math.min(600, Math.trunc(maximumAgeSeconds)));
+  return `${LIGHTSPEED_OAUTH_BINDING_COOKIE}=${age === 0 ? "" : state}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${age}`;
+}
+
+export function requireLightspeedOAuthBrowserBinding(request: Request, state: string): void {
+  const cookie = request.headers.get("cookie") ?? "";
+  const boundState = cookie.split(";").map((part) => part.trim()).find((part) => part.startsWith(`${LIGHTSPEED_OAUTH_BINDING_COOKIE}=`))
+    ?.slice(LIGHTSPEED_OAUTH_BINDING_COOKIE.length + 1) ?? "";
+  if (boundState !== state) {
+    throw new ApiError(
+      400,
+      "LIGHTSPEED_BROWSER_BINDING_INVALID",
+      "This Lightspeed authorization did not return to the browser that started it. Start again.",
+    );
+  }
+}
 
 export type LightspeedTokenResponse = {
   access_token: string;

@@ -1492,7 +1492,7 @@ function LiveSalesPanel({ data, currency, paymentRange, setPaymentRange, compact
         <Metric label="Gross margin" value={today.netSalesCents && today.grossProfitCents != null ? `${(today.grossProfitCents / today.netSalesCents * 100).toFixed(1)}%` : "Not available"} delta="Product economics" detail="Gross profit ÷ net sales" tone="emerald" />
         <Metric label="Discounts" value={money(today.discountsCents, currency)} delta={today.netSalesCents + today.discountsCents ? `${(today.discountsCents / (today.netSalesCents + today.discountsCents) * 100).toFixed(1)}% of pre-discount value` : "No discount activity"} detail="Verified line and sale discounts" tone="amber" />
         <Metric label="Average transaction" value={today.averageTransactionCents == null ? "Not available" : money(today.averageTransactionCents, currency, 2)} delta="Live basket value" detail="Net sales ÷ completed transactions" tone="amber" />
-        <Metric label="Number of sales" value={today.transactionCount.toLocaleString()} delta={comparisonCopy(data.todayComparison?.changes.transactionRate, baselineLabel)} detail={`${today.unitsSold.toLocaleString()} line items recorded`} tone="cyan" />
+        <Metric label="Number of sales" value={today.transactionCount == null ? "Not available" : today.transactionCount.toLocaleString()} delta={comparisonCopy(data.todayComparison?.changes.transactionRate, baselineLabel)} detail={today.unitsSold == null ? "Revenue permission required" : `${today.unitsSold.toLocaleString()} line items recorded`} tone="cyan" />
       </section>
       <section className={compact ? "live-sales-grid compact" : "live-sales-grid"}>
         <article className="card live-sales-chart-card">
@@ -1504,8 +1504,8 @@ function LiveSalesPanel({ data, currency, paymentRange, setPaymentRange, compact
             ? <IntradaySalesChart data={today.hourly} currency={currency} />
             : <div className="intel-empty"><b>Hourly detail is not provided by this source</b><span>The totals above come from the latest verified daily summary. Connect a provider with transaction timestamps to unlock the intraday chart.</span></div>}
           <div className="chart-foot">
-            <span><b>{today.transactionCount.toLocaleString()}</b> completed sales</span>
-            <span><b>{today.unitsSold.toLocaleString()}</b> line items</span>
+            <span><b>{today.transactionCount == null ? "Not available" : today.transactionCount.toLocaleString()}</b> completed sales</span>
+            <span><b>{today.unitsSold == null ? "Not available" : today.unitsSold.toLocaleString()}</b> line items</span>
             <span><b>{money(today.discountsCents, currency)}</b> discounts</span>
             <span><b>{money(today.refundsCents, currency)}</b> refunds</span>
           </div>
@@ -1518,7 +1518,7 @@ function LiveSalesPanel({ data, currency, paymentRange, setPaymentRange, compact
               <div><dt>Net sales</dt><dd>{money(data.current.netSalesCents, currency)}</dd></div>
               <div><dt>Gross profit</dt><dd>{money(data.current.grossProfitCents, currency)}</dd></div>
               <div><dt>Average transaction</dt><dd>{money(data.current.averageTransactionCents, currency, 2)}</dd></div>
-              <div><dt>Transactions</dt><dd>{data.current.transactionCount.toLocaleString()}</dd></div>
+              <div><dt>Transactions</dt><dd>{data.current.transactionCount == null ? "Not available" : data.current.transactionCount.toLocaleString()}</dd></div>
             </dl>
           </article>
         )}

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { buildCommandCentre, measureEventImpact, type MetricRow } from "../server/intelligence.ts";
+import { businessEventCreateInput } from "../server/validation.ts";
 
 function dateOffset(iso: string, days: number) {
   const date = new Date(`${iso}T00:00:00Z`);
@@ -88,4 +89,22 @@ test("business memory counts distinct dates rather than location rows", () => {
   }
 
   assert.equal(measureEventImpact(rows, eventDate).measurable, false);
+});
+
+test("business events reject impossible calendar dates and existing bad rows fail safely", () => {
+  assert.throws(() => businessEventCreateInput({
+    eventType: "decision",
+    title: "Invalid date",
+    detail: "Regression test",
+    eventDate: "2026-13-01",
+    expectedOutcome: "None",
+    reviewDate: "",
+  }), (error: unknown) => (
+    error instanceof Error
+    && "code" in error
+    && error.code === "INVALID_FIELD"
+  ));
+  const result = measureEventImpact([], "2026-13-01");
+  assert.equal(result.measurable, false);
+  assert.match(result.reason ?? "", /invalid/i);
 });

@@ -180,7 +180,12 @@ export async function GET(request: Request) {
       ? locationMappings
       : locationMappings.filter((mapping) => Boolean(mapping.localLocationId && locationAccess.locationIds?.includes(mapping.localLocationId)));
     const authorizedTouchpoints = authorizationRestricted ? [] : touchpoints;
-    const authorizedTransactions = authorizationRestricted ? [] : transactions;
+    const authorizedTransactions = authorizationRestricted
+      ? []
+      : transactions.map((transaction) => ({
+          ...transaction,
+          grossProfitCents: permissions.includes("metrics.profit") ? transaction.grossProfitCents : null,
+        }));
     const authorizedVisibility = authorizationRestricted ? [] : visibility;
     const accessibleLocationIds = new Set(locationAccess.locationIds ?? scopedLocations.map((location) => location.id));
     const authorizedProviderMetrics = locationDataRestricted

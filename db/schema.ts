@@ -672,6 +672,19 @@ export const integrationConnections = sqliteTable(
   ],
 );
 
+export const shopifyStoreLocks = sqliteTable(
+  "shopify_store_locks",
+  {
+    shopDomain: text("shop_domain").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    index("shopify_store_locks_workspace_idx").on(table.organizationId),
+  ],
+);
+
 export const marketingResourceSelections = sqliteTable(
   "marketing_resource_selections",
   {

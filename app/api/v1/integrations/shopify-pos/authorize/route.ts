@@ -1,10 +1,10 @@
 import { getDb } from "../../../../../../db";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { integrationConnections, integrationOAuthStates } from "../../../../../../db/schema";
 import { recordAudit } from "../../../../../../server/audit";
 import { requireAccess } from "../../../../../../server/authorization";
 import { ApiError, enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameOrigin } from "../../../../../../server/api";
-import { buildShopifyAuthorizationUrl, newShopifyState, normalizeShopDomain, SHOPIFY_API_VERSION, SHOPIFY_POS_PROVIDER, SHOPIFY_POS_READ_SCOPES, shopifyProviderFromRequest, shopifySha256 } from "../../../../../../server/integrations/shopify-pos";
+import { buildShopifyAuthorizationUrl, newShopifyState, normalizeShopDomain, SHOPIFY_API_VERSION, SHOPIFY_POS_PROVIDER, SHOPIFY_POS_READ_SCOPES, SHOPIFY_PROVIDER, shopifyProviderFromRequest, shopifySha256 } from "../../../../../../server/integrations/shopify-pos";
 import { requirePermission } from "../../../../../../server/permissions";
 
 export async function POST(request: Request) {
@@ -19,8 +19,9 @@ export async function POST(request: Request) {
     if (typeof input.shop !== "string") throw new ApiError(400, "SHOPIFY_SHOP_REQUIRED", "Enter the store's permanent .myshopify.com domain.");
     const shop = normalizeShopDomain(input.shop);
     const state = newShopifyState();
-    const [existing] = await getDb().select({ id: integrationConnections.id, organizationId: integrationConnections.organizationId, status: integrationConnections.status }).from(integrationConnections).where(and(eq(integrationConnections.provider, provider), eq(integrationConnections.domainPrefix, shop))).limit(1);
-    if (existing?.organizationId !== undefined && existing.organizationId !== context.organizationId) throw new ApiError(409, "SHOPIFY_STORE_ALREADY_CONNECTED", "This Shopify store is already connected to another Vanteloq workspace.");
+    const linkedStores = await getDb().select({ id: integrationConnections.id, organizationId: integrationConnections.organizationId, provider: integrationConnections.provider, status: integrationConnections.status }).from(integrationConnections).where(and(inArray(integrationConnections.provider, [SHOPIFY_PROVIDER, SHOPIFY_POS_PROVIDER]), eq(integrationConnections.domainPrefix, shop))).limit(10);
+    if (linkedStores.some((connection) => connection.organizationId !== context.organizationId && (connection.status === "pending" || connection.status === "connected"))) throw new ApiError(409, "SHOPIFY_STORE_ALREADY_CONNECTED", "This Shopify store is already connected to another Vanteloq workspace.");
+    const existing = linkedStores.find((connection) => connection.organizationId === context.organizationId && connection.provider === provider);
     if (existing?.status === "connected") throw new ApiError(409, "SHOPIFY_STORE_ALREADY_CONNECTED", "This Shopify store is already connected. Use Re-sync now instead of authorizing it again.");
     const connectionId = existing?.id ?? crypto.randomUUID();
     const now = new Date();

@@ -6,6 +6,7 @@ import type { AccessContext } from "../../../../../../server/authorization";
 import { ApiError, handleApi } from "../../../../../../server/api";
 import { exchangeShopifyCode, fetchShopifyIdentity, fetchShopifyLocations, normalizeShopDomain, saveShopifyToken, SHOPIFY_API_VERSION, SHOPIFY_ONLINE_LOCATION_REF, SHOPIFY_POS_READ_SCOPES, SHOPIFY_PROVIDER, shopifyProviderFromRequest, shopifySha256, verifyShopifyCallback } from "../../../../../../server/integrations/shopify-pos";
 import { requirePermission } from "../../../../../../server/permissions";
+import { claimShopifyStore, releaseShopifyStoreIfUnused } from "../../../../../../server/integrations/shopify-store-lock";
 
 function returnUrl(request: Request, provider: string, status: "connected" | "declined" | "failed") { return new URL(`/?integration=${provider}&connection=${status}`, new URL(request.url).origin).toString(); }
 export async function GET(request: Request) {
@@ -33,6 +34,7 @@ export async function GET(request: Request) {
       await saveShopifyToken(context.organizationId, connectionId, token.accessToken, token.refreshToken, token.expiresAt, provider);
       const identity = await fetchShopifyIdentity(context.organizationId, connectionId, shop, provider);
       if (normalizeShopDomain(identity.shop.myshopifyDomain) !== shop) throw new ApiError(409, "SHOPIFY_STORE_CHANGED", "The authorized Shopify store changed. Start again.");
+      await claimShopifyStore(context.organizationId, shop);
       const locations = await fetchShopifyLocations(context.organizationId, connectionId, shop, provider);
       const localLocations = await getDb().select({ id: organizationLocations.id }).from(organizationLocations).where(and(eq(organizationLocations.organizationId, context.organizationId), eq(organizationLocations.status, "active")));
       const autoLocationId = locations.length === 1 && localLocations.length === 1 ? localLocations[0].id : null;
@@ -45,6 +47,7 @@ export async function GET(request: Request) {
     } catch (error) {
       await getDb().delete(integrationSecrets).where(and(eq(integrationSecrets.organizationId, context.organizationId), eq(integrationSecrets.connectionId, connectionId)));
       await getDb().update(integrationConnections).set({ status: "error", dataPromotionStatus: "blocked", lastErrorCode: error instanceof ApiError ? error.code : "SHOPIFY_CONNECTION_FAILED", updatedAt: new Date() }).where(eq(integrationConnections.id, connectionId));
+      await releaseShopifyStoreIfUnused(context.organizationId, shop);
       return Response.redirect(returnUrl(request, provider, "failed"), 303);
     }
   });

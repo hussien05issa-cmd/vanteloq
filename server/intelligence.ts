@@ -399,6 +399,10 @@ export function buildCommandCentre(rows: MetricRow[], currency: string) {
 }
 
 export function measureEventImpact(rows: MetricRow[], eventDate: string) {
+  const parsedEventDate = new Date(`${eventDate}T00:00:00.000Z`);
+  if (Number.isNaN(parsedEventDate.getTime()) || parsedEventDate.toISOString().slice(0, 10) !== eventDate) {
+    return { measurable: false as const, reason: "The recorded event date is invalid and must be corrected before impact can be measured." };
+  }
   const beforeStart = dateOffset(eventDate, -14);
   const beforeEnd = dateOffset(eventDate, -1);
   const afterEnd = dateOffset(eventDate, 13);

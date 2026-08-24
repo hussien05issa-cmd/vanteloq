@@ -341,7 +341,8 @@ function InvoiceComposer({ data, close, saved }: { data: BookLoQData; close: () 
       const requestedDelivery = ((event.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null)?.classList.contains("bookloq-primary") ? "email" : "save";
       if (requestedDelivery === "email" && !fields.customerEmail.trim()) throw new Error("Enter a customer email before sending the invoice.");
       const invoice = { invoiceNumber: fields.invoiceNumber, invoiceDate: fields.invoiceDate, dueDate: fields.dueDate, currency: fields.currency.toUpperCase(), locationRef: "all", purchaseOrderRef: fields.purchaseOrderRef, issuer: { name: fields.issuerName, address: fields.issuerAddress, email: fields.issuerEmail, phone: fields.issuerPhone, taxNumber: fields.issuerTaxNumber }, customerId: fields.customerId || null, customer: { name: fields.customerName, address: fields.customerAddress, email: fields.customerEmail, phone: fields.customerPhone, taxNumber: "" }, notes: fields.notes, paymentInstructions: fields.paymentInstructions, lines: lines.map((line) => ({ description: line.description, quantityMilli: Math.round(Number(line.quantity) * 1_000), unitPriceCents: Math.round(Number(line.price) * 100), taxRateBasisPoints: Math.round(Number(line.tax || 0) * 100) })) };
-      const form = new FormData(); form.set("invoice", JSON.stringify(invoice)); if (logo) form.set("logo", logo);
+      if (logo) throw new Error("Invoice logo uploads are temporarily unavailable while independent file scanning is being connected.");
+      const form = new FormData(); form.set("invoice", JSON.stringify(invoice));
       const response = await apiFetch("/api/v1/bookloq/invoices", { method: "POST", body: form });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error?.message ?? "The invoice could not be created.");

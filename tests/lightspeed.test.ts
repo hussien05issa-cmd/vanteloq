@@ -6,8 +6,10 @@ import {
   decryptIntegrationSecret,
   encryptIntegrationSecret,
   LIGHTSPEED_SCOPES,
+  lightspeedOAuthBindingCookie,
   lightspeedReadiness,
   normalizeLightspeedSale,
+  requireLightspeedOAuthBrowserBinding,
   validateDomainPrefix,
   validateLightspeedGrantedScopes,
   verifyLightspeedWebhookSignature,
@@ -60,6 +62,21 @@ test("authorization is read-only and bound to an exact callback and state", () =
   assert.equal(url.searchParams.get("state"), state);
   assert.deepEqual(url.searchParams.get("scope")?.split(" "), [...LIGHTSPEED_SCOPES]);
   assert.doesNotMatch(url.toString(), /test-client-secret/);
+});
+
+test("X-Series OAuth state is bound to the initiating browser", () => {
+  const state = "A".repeat(43);
+  const setCookie = lightspeedOAuthBindingCookie(state);
+  assert.match(setCookie, /^__Host-vanteloq_lightspeed_oauth=/);
+  assert.match(setCookie, /HttpOnly; Secure; SameSite=Lax; Max-Age=600$/);
+  assert.doesNotThrow(() => requireLightspeedOAuthBrowserBinding(
+    new Request("https://vanteloq.example/callback", { headers: { cookie: setCookie.split(";")[0] } }),
+    state,
+  ));
+  assert.throws(
+    () => requireLightspeedOAuthBrowserBinding(new Request("https://vanteloq.example/callback"), state),
+    /did not return to the browser that started it/i,
+  );
 });
 
 test("X-Series callback rejects missing and additional OAuth scopes", () => {

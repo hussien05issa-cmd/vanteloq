@@ -140,14 +140,16 @@ test("X-Series isolates two retailer accounts and every account action", async (
       const body = await authorization.json();
       const state = new URL(body.authorizationUrl).searchParams.get("state");
       assert.match(state ?? "", /^[A-Za-z0-9_-]{43}$/);
-      return { body, state };
+      const cookie = authorization.headers.get("set-cookie")?.split(";")[0] ?? "";
+      assert.equal(cookie, `__Host-vanteloq_lightspeed_oauth=${state}`);
+      return { body, state, cookie };
     };
 
     const connectAccount = async (domainPrefix) => {
-      const { body, state } = await startAuthorization();
+      const { body, state, cookie } = await startAuthorization();
       const callback = await worker.fetch(new Request(
         `${origin}/api/v1/integrations/lightspeed/callback?code=test-code&state=${state}&domain_prefix=${domainPrefix}`,
-        { headers: { accept: "text/html" } },
+        { headers: { accept: "text/html", cookie } },
       ), environment, context);
       assert.equal(callback.status, 303, await callback.clone().text());
       assert.equal(callback.headers.get("location"), `${origin}/?integration=lightspeed&connection=connected`);
@@ -169,7 +171,7 @@ test("X-Series isolates two retailer accounts and every account action", async (
     failNorthOutletVerification = true;
     const duplicateCallback = await worker.fetch(new Request(
       `${origin}/api/v1/integrations/lightspeed/callback?code=duplicate-code&state=${duplicate.state}&domain_prefix=north-store`,
-      { headers: { accept: "text/html" } },
+      { headers: { accept: "text/html", cookie: duplicate.cookie } },
     ), environment, context);
     failNorthOutletVerification = false;
     assert.equal(duplicateCallback.status, 303, await duplicateCallback.clone().text());
@@ -192,7 +194,7 @@ test("X-Series isolates two retailer accounts and every account action", async (
     const declined = await startAuthorization();
     const declinedCallbackUrl = `${origin}/api/v1/integrations/lightspeed/callback?error=access_denied&error_description=do-not-audit-me&state=${declined.state}`;
     const declinedCallback = await worker.fetch(new Request(declinedCallbackUrl, {
-      headers: { accept: "text/html" },
+      headers: { accept: "text/html", cookie: declined.cookie },
     }), environment, context);
     assert.equal(declinedCallback.status, 303, await declinedCallback.clone().text());
     assert.equal(declinedCallback.headers.get("location"), `${origin}/?integration=lightspeed&connection=declined`);
@@ -214,7 +216,7 @@ test("X-Series isolates two retailer accounts and every account action", async (
     });
     assert.equal(declineAudit.detailsJson.includes("do-not-audit-me"), false);
     const declinedReplay = await worker.fetch(new Request(declinedCallbackUrl, {
-      headers: { accept: "text/html" },
+      headers: { accept: "text/html", cookie: declined.cookie },
     }), environment, context);
     assert.equal(declinedReplay.status, 400);
 

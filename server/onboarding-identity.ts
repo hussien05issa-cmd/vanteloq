@@ -3,7 +3,7 @@ import { ApiError, type TrustedIdentity } from "./api.ts";
 type ExistingAccountStatus = "active" | "suspended" | null;
 type ExistingAuthProvider = "supabase" | "sites" | null;
 
-export type OnboardingIdentityDisposition = "create" | "reuse" | "rebind" | "recover";
+export type OnboardingIdentityDisposition = "create" | "reuse" | "rebind";
 
 export function onboardingIdentityDisposition(input: {
   existingStatus: ExistingAccountStatus;
@@ -30,10 +30,7 @@ export function onboardingIdentityDisposition(input: {
 
   if (input.hasMembership) {
     if (subjectMismatch) {
-      if (!canRecoverSupabaseIdentity) {
-        throw new ApiError(403, "IDENTITY_CONFLICT", "This verified identity does not match the existing Vanteloq account.");
-      }
-      return "recover";
+      throw new ApiError(403, "IDENTITY_CONFLICT", "This verified identity does not match the existing Vanteloq account.");
     }
     throw new ApiError(409, "WORKSPACE_EXISTS", "This account already belongs to a workspace.");
   }

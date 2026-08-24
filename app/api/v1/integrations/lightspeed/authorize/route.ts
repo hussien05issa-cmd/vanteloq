@@ -10,6 +10,7 @@ import {
 } from "../../../../../../server/api";
 import {
   buildLightspeedAuthorizationUrl,
+  lightspeedOAuthBindingCookie,
   LIGHTSPEED_PROVIDER,
   LIGHTSPEED_SCOPES,
   lightspeedReadiness,
@@ -76,6 +77,6 @@ export async function POST(request: Request) {
       connectionId,
       scopes: [...LIGHTSPEED_SCOPES],
       mode: "read_only_staging",
-    });
+    }, { headers: { "Set-Cookie": lightspeedOAuthBindingCookie(state) } });
   });
 }

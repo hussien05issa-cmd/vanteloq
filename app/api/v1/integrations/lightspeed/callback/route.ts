@@ -17,7 +17,9 @@ import {
   exchangeAuthorizationCode,
   fetchLightspeedCollection,
   LIGHTSPEED_PROVIDER,
+  lightspeedOAuthBindingCookie,
   lightspeedReadiness,
+  requireLightspeedOAuthBrowserBinding,
   sha256Hex,
   tokenExpiry,
   validateDomainPrefix,
@@ -30,6 +32,16 @@ function returnUrl(request: Request, status: "connected" | "declined" | "failed"
   return new URL(`/?integration=lightspeed&connection=${status}`, url.origin).toString();
 }
 
+function returnToVanteloq(request: Request, status: "connected" | "declined" | "failed") {
+  return new Response(null, {
+    status: 303,
+    headers: {
+      Location: returnUrl(request, status),
+      "Set-Cookie": lightspeedOAuthBindingCookie("A".repeat(43), 0),
+    },
+  });
+}
+
 export async function GET(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     const url = new URL(request.url);
@@ -39,6 +51,7 @@ export async function GET(request: Request) {
     if (!/^[A-Za-z0-9_-]{43}$/.test(state)) {
       throw new ApiError(400, "LIGHTSPEED_CALLBACK_INVALID", "Lightspeed returned an incomplete callback.");
     }
+    requireLightspeedOAuthBrowserBinding(request, state);
     const domainPrefix = providerError
       ? ""
       : validateDomainPrefix(url.searchParams.get("domain_prefix") ?? "");
@@ -170,7 +183,7 @@ export async function GET(request: Request) {
           dataPromotionEnabled: false,
         },
       });
-      return Response.redirect(returnUrl(request, "declined"), 303);
+      return returnToVanteloq(request, "declined");
     }
 
     const [existing] = await getDb().select({ id: integrationConnections.id }).from(integrationConnections).where(and(
@@ -210,7 +223,7 @@ export async function GET(request: Request) {
           dataPromotionEnabled: false,
         },
       });
-      return Response.redirect(returnUrl(request, "connected"), 303);
+      return returnToVanteloq(request, "connected");
     }
 
     let finalized = false;
@@ -326,7 +339,7 @@ export async function GET(request: Request) {
         connectionId: activeConnectionId,
       },
     });
-    return Response.redirect(returnUrl(request, "connected"), 303);
+    return returnToVanteloq(request, "connected");
     } catch (error) {
       if (finalized) throw error;
       const errorCode = error instanceof ApiError ? error.code : "LIGHTSPEED_CONNECTION_FAILED";
@@ -364,7 +377,7 @@ export async function GET(request: Request) {
         resourceId: activeConnectionId,
         details: { provider: LIGHTSPEED_PROVIDER, connectionId: activeConnectionId, errorCode, dataPromotionEnabled: false },
       });
-      return Response.redirect(returnUrl(request, "failed"), 303);
+      return returnToVanteloq(request, "failed");
     }
   });
 }

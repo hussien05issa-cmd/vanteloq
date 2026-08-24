@@ -147,6 +147,8 @@ export async function POST(request: Request) {
           // ambiguous choice. Map that exact pair so a connected account does
           // not remain silently blocked behind a redundant setup step.
           if (
+            (context.role === "owner" || context.role === "admin")
+            &&
             discoveredRefs.length === 1
             && discoveredMappings.length === 1
             && discoveredMappings[0].status === "unmapped"
@@ -164,6 +166,24 @@ export async function POST(request: Request) {
               eq(integrationLocationMappings.status, "unmapped"),
             ));
             autoMapped = Number(result.meta.changes ?? 0);
+            if (autoMapped > 0) {
+              await recordAudit({
+                request,
+                requestId,
+                organizationId: context.organizationId,
+                actorUserId: context.userId,
+                action: "integration.location_mapping_changed",
+                resourceType: "integration_location",
+                resourceId: `${connection.id}:${discoveredRefs[0]}`,
+                details: {
+                  provider: LIGHTSPEED_R_PROVIDER,
+                  connectionId: connection.id,
+                  status: "mapped",
+                  mapped: true,
+                  automatic: true,
+                },
+              });
+            }
           }
           const [unmapped] = await getDb().select({ id: integrationLocationMappings.id })
             .from(integrationLocationMappings).where(and(

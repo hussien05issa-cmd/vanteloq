@@ -91,8 +91,10 @@ test("invoice files stay behind authenticated document downloads", async () => {
     readFile(new URL("../app/api/v1/documents/route.ts", import.meta.url), "utf8"),
   ]);
   assert.doesNotMatch(invoiceRoute, /downloadUrl/);
-  assert.match(invoiceRoute, /securityState: "clean", source: "application-generated"/);
+  assert.match(invoiceRoute, /securityState: "clean", source: "application-generated-text-only"/);
   assert.match(invoiceRoute, /'clean', 'approved', 'clean'/);
+  assert.match(invoiceRoute, /INVOICE_LOGO_SCAN_UNAVAILABLE/);
+  assert.doesNotMatch(workspace, /form\.set\("logo"/);
   assert.match(workspace, /apiFetch\(`\/api\/v1\/documents\?id=/);
   assert.doesNotMatch(workspace, /window\.open\([^)]*documents/);
   assert.match(documentsRoute, /eq\(workspaceDocuments\.organizationId, context\.organizationId\)/);
@@ -116,7 +118,7 @@ test("R-Series reconciliation warnings keep source records out of live metrics a
   assert.match(sync, /publicationWarnings > 0 \? connection\.lastSyncCursor/);
 });
 
-test("R-Series backfills are bounded, resumable and recover from expired locks", async () => {
+test("R-Series backfills are bounded, resumable and recover expired locks without GET mutations", async () => {
   const [sync, connection, integrations] = await Promise.all([
     readFile(new URL("../app/api/v1/integrations/lightspeed-r/sync/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../server/integrations/connection.ts", import.meta.url), "utf8"),
@@ -126,9 +128,9 @@ test("R-Series backfills are bounded, resumable and recover from expired locks",
   assert.doesNotMatch(sync, /maxPages:\s*[2-9]/);
   assert.match(sync, /database\.batch\(statements\.slice\(index, index \+ 50\)\)/);
   assert.match(connection, /ttlMs = 5 \* 60_000/);
-  assert.match(integrations, /staleLeases/);
-  assert.match(integrations, /syncLeaseExpiresAt\.getTime\(\) <= now/);
-  assert.match(integrations, /updatedAt\.getTime\(\) <= staleLeaseCutoff/);
+  assert.match(connection, /sync_lease_expires_at <= \?/);
+  const getHandler = integrations.split("export async function GET")[1].split("export async function POST")[0];
+  assert.doesNotMatch(getHandler, /\.update\(|\.delete\(|\.insert\(/);
 });
 
 test("provider location discovery uses a same-origin write request", async () => {

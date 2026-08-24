@@ -69,15 +69,16 @@ export async function bootstrapFounderInternalAccess(context: AccessContext): Pr
 export async function getInternalAccessGrant(context: AccessContext): Promise<InternalAccessGrant | null> {
   if (!internalAccessEnabled()) return null;
   if (!isBoundSupabaseContext(context)) return null;
-  const founder = isAuthorizedFounderContext(context);
   const [row] = await getDb().select({
     accessLevel: internalAccess.accessLevel,
     mfaRequired: internalAccess.mfaRequired,
   }).from(internalAccess).where(and(
+    // Internal access is always subject-bound. An organization-level founder
+    // grant must never become a billing bypass for another workspace member.
+    eq(internalAccess.userId, context.userId),
     eq(internalAccess.organizationId, context.organizationId),
     eq(internalAccess.accessLevel, "founder"),
     eq(internalAccess.active, true),
-    ...(founder ? [eq(internalAccess.userId, context.userId)] : []),
   )).limit(1);
   return row ?? null;
 }

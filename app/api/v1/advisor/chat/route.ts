@@ -1,9 +1,10 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { getDb, getD1, getRuntimeEnv } from "../../../../../db";
 import { dailyBusinessMetrics, integrationConnections, bankAccounts } from "../../../../../db/schema";
 import { requireAccess, requirePrivacyAccess } from "../../../../../server/authorization";
 import { ApiError, clientSource, enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameOrigin } from "../../../../../server/api";
 import { effectivePermissions, requirePermission } from "../../../../../server/permissions";
+import { authorizedLocationDataScope } from "../../../../../server/location-access";
 import { approvedBankSource, approvedFactSource } from "../../../../../server/integrations/trusted-data";
 import { recordAudit } from "../../../../../server/audit";
 import { recordGeminiConsent } from "../../../../../server/privacy";
@@ -17,7 +18,7 @@ const model = () => getRuntimeEnv().VERTEX_AI_MODEL?.trim() || "gemini-2.5-flash
 
 type Evidence = {
   latestDate: string | null;
-  days: Array<{ date: string; netSalesCents: number; grossProfitCents: number; transactions: number; discountsCents: number; refundsCents: number }>;
+  days: Array<{ date: string; netSalesCents: number | null; grossProfitCents: number | null; transactions: number | null; discountsCents: number | null; refundsCents: number | null }>;
   sources: Array<{ provider: string; status: string; lastSyncAt: string | null }>;
   cashAvailableCents: number | null;
 };
@@ -36,7 +37,13 @@ function cleanConversationId(value: unknown) {
   return value;
 }
 
-async function evidenceFor(organizationId: string, includeCash: boolean): Promise<Evidence> {
+async function evidenceFor(
+  organizationId: string,
+  locationRefs: string[] | null,
+  includeRevenue: boolean,
+  includeProfit: boolean,
+  includeCash: boolean,
+): Promise<Evidence> {
   const db = getDb();
   const rows = await db.select({
     businessDate: dailyBusinessMetrics.businessDate,
@@ -45,14 +52,29 @@ async function evidenceFor(organizationId: string, includeCash: boolean): Promis
     transactionCount: dailyBusinessMetrics.transactionCount,
     discountsCents: dailyBusinessMetrics.discountsCents,
     refundsCents: dailyBusinessMetrics.refundsCents,
-  }).from(dailyBusinessMetrics).where(and(eq(dailyBusinessMetrics.organizationId, organizationId), approvedFactSource(dailyBusinessMetrics.organizationId, dailyBusinessMetrics.sourceProvider, dailyBusinessMetrics.sourceConnectionId))).orderBy(desc(dailyBusinessMetrics.businessDate)).limit(90);
+    locationRef: dailyBusinessMetrics.locationRef,
+  }).from(dailyBusinessMetrics).where(and(
+    eq(dailyBusinessMetrics.organizationId, organizationId),
+    locationRefs === null ? undefined : locationRefs.length ? inArray(dailyBusinessMetrics.locationRef, locationRefs) : sql`0 = 1`,
+    approvedFactSource(dailyBusinessMetrics.organizationId, dailyBusinessMetrics.sourceProvider, dailyBusinessMetrics.sourceConnectionId),
+  )).orderBy(desc(dailyBusinessMetrics.businessDate)).limit(90);
   const connections = await db.select({ provider: integrationConnections.provider, status: integrationConnections.status, lastSyncAt: integrationConnections.lastSuccessfulSyncAt }).from(integrationConnections).where(eq(integrationConnections.organizationId, organizationId));
   let cashAvailableCents: number | null = null;
   if (includeCash) {
     const accounts = await db.select({ available: bankAccounts.availableBalanceCents, live: bankAccounts.liveBalanceCents }).from(bankAccounts).where(and(eq(bankAccounts.organizationId, organizationId), eq(bankAccounts.provider, "plaid"), approvedBankSource(bankAccounts.organizationId, bankAccounts.provider, bankAccounts.externalItemRef)));
     if (accounts.length) cashAvailableCents = accounts.reduce((sum, row) => sum + (row.available ?? row.live ?? 0), 0);
   }
-  const days = [...rows].reverse().map((row) => ({ date: row.businessDate, netSalesCents: row.netSalesCents, grossProfitCents: Math.max(0, row.netSalesCents - row.costOfGoodsCents), transactions: row.transactionCount, discountsCents: row.discountsCents, refundsCents: row.refundsCents }));
+  const permittedRefs = locationRefs === null ? null : new Set(locationRefs);
+  const days = [...rows].reverse()
+    .filter((row) => permittedRefs === null || permittedRefs.has(row.locationRef))
+    .map((row) => ({
+      date: row.businessDate,
+      netSalesCents: includeRevenue ? row.netSalesCents : null,
+      grossProfitCents: includeProfit ? Math.max(0, row.netSalesCents - row.costOfGoodsCents) : null,
+      transactions: includeRevenue ? row.transactionCount : null,
+      discountsCents: includeRevenue ? row.discountsCents : null,
+      refundsCents: includeRevenue ? row.refundsCents : null,
+    }));
   return { latestDate: days.at(-1)?.date ?? null, days, sources: connections.map((row) => ({ provider: row.provider, status: row.status, lastSyncAt: row.lastSyncAt?.toISOString() ?? null })), cashAvailableCents };
 }
 
@@ -103,7 +125,14 @@ export async function POST(request: Request) {
       privacyPolicyVersion: typeof body.privacyPolicyVersion === "string" ? body.privacyPolicyVersion : "",
     });
     const permissions = await effectivePermissions(context);
-    const evidence = await evidenceFor(context.organizationId, permissions.includes("finance.bank_balances"));
+    const locationAccess = await authorizedLocationDataScope(context, null);
+    const evidence = await evidenceFor(
+      context.organizationId,
+      locationAccess.locationRefs,
+      permissions.includes("metrics.revenue"),
+      permissions.includes("metrics.profit"),
+      locationAccess.organizationWide && permissions.includes("finance.bank_balances"),
+    );
     const conversationId = typeof body.conversationId === "string" && /^[a-zA-Z0-9_-]{8,80}$/.test(body.conversationId) ? body.conversationId : crypto.randomUUID();
     const now = new Date();
     await getD1().prepare("DELETE FROM assistant_conversations WHERE organization_id = ? AND user_id = ? AND updated_at < ?").bind(context.organizationId, context.userId, Date.now() - 90 * 24 * 60 * 60 * 1_000).run();

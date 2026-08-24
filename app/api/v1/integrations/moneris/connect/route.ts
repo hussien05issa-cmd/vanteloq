@@ -30,7 +30,7 @@ export async function POST(request: Request) {
     if (existing) {
       await getDb().update(integrationConnections).set({
         sourceNamespace: `${credentials.environment}:${credentials.merchantId}`,
-        status: "connected", externalAccountName: name, domainPrefix: credentials.environment,
+        status: "connected", externalAccountName: name, domainPrefix: null,
         apiVersion: MONERIS_API_VERSION, scopesJson: JSON.stringify([credentials.scope]),
         dataPromotionStatus: "staging", connectedAt: now, lastErrorCode: null, updatedAt: now,
       }).where(and(eq(integrationConnections.id, connectionId), eq(integrationConnections.organizationId, context.organizationId)));
@@ -39,7 +39,7 @@ export async function POST(request: Request) {
         id: connectionId, organizationId: context.organizationId, provider: MONERIS_PROVIDER,
         sourceNamespace: `${credentials.environment}:${credentials.merchantId}`, status: "connected",
         externalAccountRef: credentials.merchantId, externalAccountName: name,
-        domainPrefix: credentials.environment, apiVersion: MONERIS_API_VERSION,
+        domainPrefix: null, apiVersion: MONERIS_API_VERSION,
         scopesJson: JSON.stringify([credentials.scope]), dataPromotionStatus: "staging",
         connectedAt: now, lastSuccessfulSyncAt: null, lastSyncCursor: null, lastErrorCode: null,
         createdAt: now, updatedAt: now,

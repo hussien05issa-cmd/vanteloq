@@ -127,8 +127,91 @@ test("team invitations remain identity bound and separate from Stripe billing", 
   assert.match(invitations, /identity\.subject/);
   assert.match(invitations, /team_invitation/);
   assert.match(invitations, /internal_no_stripe/);
+  assert.match(invitations, /INSERT OR IGNORE INTO internal_access/);
+  assert.match(invitations, /internalAccessId,[\s\S]*userId,[\s\S]*owner\.organization_id/);
   assert.doesNotMatch(invitations, /STRIPE_SECRET_KEY|stripeCustomerId|stripeSubscriptionId/);
   assert.match(internalAccess, /isBoundSupabaseContext/);
+  assert.match(internalAccess, /eq\(internalAccess\.userId, context\.userId\)/);
+  assert.doesNotMatch(internalAccess, /\.\.\.\(founder \?/);
+});
+
+test("reported high-risk routes keep their server-side security boundaries", async () => {
+  const [invoice, email, marketing, lightspeedAuthorize, lightspeedCallback] = await Promise.all([
+    readFile(`${process.cwd()}/app/api/v1/bookloq/invoices/route.ts`, "utf8"),
+    readFile(`${process.cwd()}/app/api/v1/bookloq/invoices/email/route.ts`, "utf8"),
+    readFile(`${process.cwd()}/server/integrations/marketing-routes.ts`, "utf8"),
+    readFile(`${process.cwd()}/app/api/v1/integrations/lightspeed/authorize/route.ts`, "utf8"),
+    readFile(`${process.cwd()}/app/api/v1/integrations/lightspeed/callback/route.ts`, "utf8"),
+  ]);
+  for (const route of [invoice, email]) {
+    assert.match(route, /requireAddon\(context, "bookloq"\)/);
+    assert.match(route, /requireOrganizationWideLocationAccess\(context\)/);
+  }
+  assert.match(invoice, /INVOICE_LOGO_SCAN_UNAVAILABLE/);
+  assert.match(invoice, /createInvoicePdf\(invoice, null, null\)/);
+  assert.match(email, /d\.scan_status = 'clean'/);
+  assert.match(email, /object\.customMetadata\?\.securityState !== "clean"/);
+  assert.match(marketing, /request\.method === "POST" \? \["owner", "admin"\] : \["owner", "admin", "manager"\]/);
+  assert.match(lightspeedAuthorize, /Set-Cookie/);
+  assert.match(lightspeedAuthorize, /lightspeedOAuthBindingCookie\(state\)/);
+  assert.match(lightspeedCallback, /requireLightspeedOAuthBrowserBinding\(request, state\)/);
+});
+
+test("reported medium-risk routes keep location, permission, and data-integrity boundaries", async () => {
+  const [advisor, marketing, shopifyAuthorize, shopifyCallback, shopifySync, shopifyLock, shopifyMigration, moneris, commerce, bookloq, integrations, rSeriesShops, commandCentre, growth, inventoryLifecycle, validation, intelligence] = await Promise.all([
+    readFile(`${process.cwd()}/app/api/v1/advisor/chat/route.ts`, "utf8"),
+    readFile(`${process.cwd()}/server/integrations/marketing-routes.ts`, "utf8"),
+    readFile(`${process.cwd()}/app/api/v1/integrations/shopify-pos/authorize/route.ts`, "utf8"),
+    readFile(`${process.cwd()}/app/api/v1/integrations/shopify-pos/callback/route.ts`, "utf8"),
+    readFile(`${process.cwd()}/app/api/v1/integrations/shopify-pos/sync/route.ts`, "utf8"),
+    readFile(`${process.cwd()}/server/integrations/shopify-store-lock.ts`, "utf8"),
+    readFile(`${process.cwd()}/drizzle/0037_shopify_store_ownership.sql`, "utf8"),
+    readFile(`${process.cwd()}/app/api/v1/integrations/moneris/connect/route.ts`, "utf8"),
+    readFile(`${process.cwd()}/app/api/v1/commerce-intelligence/route.ts`, "utf8"),
+    readFile(`${process.cwd()}/app/api/v1/bookloq/route.ts`, "utf8"),
+    readFile(`${process.cwd()}/app/api/v1/integrations/route.ts`, "utf8"),
+    readFile(`${process.cwd()}/app/api/v1/integrations/lightspeed-r/shops/route.ts`, "utf8"),
+    readFile(`${process.cwd()}/app/api/v1/command-centre/route.ts`, "utf8"),
+    readFile(`${process.cwd()}/app/api/v1/growth/route.ts`, "utf8"),
+    readFile(`${process.cwd()}/app/api/v1/inventory-lifecycle/route.ts`, "utf8"),
+    readFile(`${process.cwd()}/server/validation.ts`, "utf8"),
+    readFile(`${process.cwd()}/server/intelligence.ts`, "utf8"),
+  ]);
+
+  assert.match(advisor, /authorizedLocationDataScope\(context, null\)/);
+  assert.match(advisor, /permissions\.includes\("metrics\.profit"\)/);
+  assert.match(advisor, /locationAccess\.organizationWide && permissions\.includes\("finance\.bank_balances"\)/);
+  assert.match(marketing, /requireSelectionLocationAccess\(context, selection\)/);
+  assert.match(marketing, /requireAccessibleLocation\(context, selection\.localLocationId\)/);
+  assert.match(marketing, /requireOrganizationWideLocationAccess\(context\)/);
+
+  assert.match(shopifyAuthorize, /inArray\(integrationConnections\.provider, \[SHOPIFY_PROVIDER, SHOPIFY_POS_PROVIDER\]\)/);
+  assert.match(shopifyCallback, /claimShopifyStore\(context\.organizationId, shop\)/);
+  assert.match(shopifyLock, /ON CONFLICT\(shop_domain\) DO NOTHING/);
+  assert.match(shopifyLock, /owner\.organizationId !== organizationId/);
+  assert.match(shopifyMigration, /shop_domain.*PRIMARY KEY/s);
+  assert.match(shopifySync, /row_number\(\) OVER \(PARTITION BY external_sale_id ORDER BY staged_at DESC, id DESC\)/);
+  assert.match(moneris, /domainPrefix: null/);
+  assert.doesNotMatch(moneris, /domainPrefix: credentials\.environment/);
+
+  assert.match(commerce, /costCents: canReadProductCosts \? cost : null/);
+  assert.match(bookloq, /const canViewDocuments = permissions\.includes\("documents\.view"\)/);
+  assert.match(bookloq, /documents: canViewDocuments \?/);
+  assert.match(bookloq, /documentId: null, targetLabel: "Financial document"/);
+  const integrationGet = integrations.slice(integrations.indexOf("export async function GET"), integrations.indexOf("export async function POST"));
+  assert.doesNotMatch(integrationGet, /\.update\(integrationConnections\)/);
+  assert.doesNotMatch(integrationGet, /staleLeaseCutoff/);
+  assert.match(rSeriesShops, /context\.role === "owner" \|\| context\.role === "admin"/);
+  assert.match(rSeriesShops, /automatic: true/);
+
+  assert.match(commandCentre, /!locationRestricted && plaidCash\.status === "available"/);
+  assert.match(commandCentre, /for \(const hour of commandCentre\.today\.hourly\).*grossProfitCents: null/);
+  assert.match(commandCentre, /commandCentre\.periodComparisons = null/);
+  assert.match(commandCentre, /commandCentre\.paymentMix\.rows = \[\]/);
+  assert.match(growth, /grossProfitCents: permissions\.includes\("metrics\.profit"\) \? transaction\.grossProfitCents : null/);
+  assert.match(inventoryLifecycle, /grossMarginOpportunityAtRiskCents: canViewValue \? lot\.assessment\.grossMarginOpportunityAtRiskCents : null/);
+  assert.match(validation, /parsed\.toISOString\(\)\.slice\(0, 10\) === date/);
+  assert.match(intelligence, /The recorded event date is invalid/);
 });
 
 test("provider management routes reject anonymous same-origin writes", async () => {
@@ -647,4 +730,13 @@ test("operational health and API description expose no internal configuration", 
   assert.ok(specification.paths["/bookloq/journals"]);
   assert.ok(specification.paths["/bookloq/actions"]);
   assert.doesNotMatch(JSON.stringify(specification), /secret|token|database_id/i);
+});
+
+test("onboarding never rebinds an occupied workspace by email alone", async () => {
+  const identityPolicy = await readFile(new URL("../server/onboarding-identity.ts", import.meta.url), "utf8");
+  const onboardingRoute = await readFile(new URL("../app/api/v1/onboarding/route.ts", import.meta.url), "utf8");
+
+  assert.match(identityPolicy, /if \(input\.hasMembership\)[\s\S]*IDENTITY_CONFLICT/);
+  assert.doesNotMatch(onboardingRoute, /account\.identity_recovered/);
+  assert.doesNotMatch(onboardingRoute, /identityDisposition === "recover"/);
 });

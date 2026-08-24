@@ -254,6 +254,7 @@ export async function GET(request: Request) {
         displayName: canReadCustomerIdentity ? row.displayName : "Known customer",
         email: canReadCustomerIdentity ? row.email : null,
         phone: canReadCustomerIdentity ? row.phone : null,
+        costCents: canReadProductCosts ? cost : null,
         grossProfitCents: canViewVerifiedProfit ? net - cost : null,
         averageTransactionCents: transactions ? Math.round(net / transactions) : null,
       };

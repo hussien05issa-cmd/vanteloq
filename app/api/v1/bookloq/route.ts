@@ -88,6 +88,7 @@ export async function GET(request: Request) {
     await requirePermission(context, "finance.statements");
     const permissions = await effectivePermissions(context);
     const access = bookloqAccessForPermissions(permissions);
+    const canViewDocuments = permissions.includes("documents.view");
     await enforceRateLimit("bookloq:read", `${context.userId}:${clientSource(request)}`, 90, 60);
     const database = getD1();
     const organizationId = context.organizationId;
@@ -332,7 +333,9 @@ export async function GET(request: Request) {
     const asOf = new Date().toISOString().slice(0, 10);
     const integrationRows = rows(integrationsResult) as Array<{ provider: string; status: string; dataPromotionStatus: string; lastSuccessfulSyncAt: number | null }>;
     const documentRows = rows(documentsResult) as Array<{ id: string; documentType: string; fileName: string; status: string; securityState: string; extractionStatus: string; extractedJson: string; createdAt: number }>;
-    const transactionMatches = rows(transactionMatchesResult) as Array<{ id: string; transactionId: string; status: string; method: string; confidenceBasisPoints: number; matchedAmountCents: number; reasonsJson: string; note: string; supplierBillId: string | null; customerInvoiceId: string | null; documentId: string | null; targetLabel: string }>;
+    const transactionMatches = (rows(transactionMatchesResult) as Array<{ id: string; transactionId: string; status: string; method: string; confidenceBasisPoints: number; matchedAmountCents: number; reasonsJson: string; note: string; supplierBillId: string | null; customerInvoiceId: string | null; documentId: string | null; targetLabel: string }>).map((match) => (
+      !canViewDocuments && match.documentId ? { ...match, documentId: null, targetLabel: "Financial document" } : match
+    ));
     const categoryRules = rows(categoryRulesResult);
     const plaidConnection = integrationRows.find((item) => item.provider === "plaid" && item.status === "connected")
       ?? integrationRows.find((item) => item.provider === "plaid");
@@ -764,7 +767,7 @@ export async function GET(request: Request) {
         banks: visibleBanks,
         reconciliations: canReconcile ? reconciliations : [],
         bills: visibleBills,
-        invoices: visibleInvoices,
+        invoices: visibleInvoices.map((invoice) => canViewDocuments ? invoice : { ...invoice, documentId: null }),
         contacts: visibleContacts,
         alerts: rows(alertsResult),
         journals: ledgerAvailable ? journalRows : [],
@@ -773,13 +776,13 @@ export async function GET(request: Request) {
         budgets: rows(budgetsResult),
         audit: access.audit ? rows(auditResult) : [],
         documentSummary: {
-          total: documentRows.length,
-          invoices: documentRows.filter((document) => document.documentType === "invoice").length,
-          receipts: documentRows.filter((document) => document.documentType === "receipt").length,
-          needsReview: documentRows.filter((document) => document.status === "review_required" || document.status === "uploaded").length,
-          extractionConfigured: documentRows.some((document) => document.extractionStatus !== "not_configured"),
+          total: canViewDocuments ? documentRows.length : 0,
+          invoices: canViewDocuments ? documentRows.filter((document) => document.documentType === "invoice").length : 0,
+          receipts: canViewDocuments ? documentRows.filter((document) => document.documentType === "receipt").length : 0,
+          needsReview: canViewDocuments ? documentRows.filter((document) => document.status === "review_required" || document.status === "uploaded").length : 0,
+          extractionConfigured: canViewDocuments && documentRows.some((document) => document.extractionStatus !== "not_configured"),
         },
-        documents: access.bankTransactions ? documentRows.map((document) => ({
+        documents: canViewDocuments ? documentRows.map((document) => ({
           id: document.id,
           documentType: document.documentType,
           fileName: document.fileName,
@@ -796,7 +799,7 @@ export async function GET(request: Request) {
               : "not_connected",
           pos: integrationRows.some((item) => item.status === "connected" && ["lightspeed", "lightspeed-r", "shopify", "shopify-pos", "square", "clover"].includes(item.provider)) ? "connected" : "not_connected",
           payroll: "not_connected",
-          receiptCapture: documentRows.length ? "review_queue_active" : "upload_available",
+          receiptCapture: canViewDocuments ? (documentRows.length ? "review_queue_active" : "upload_available") : "permission_required",
           taxFiling: "not_available",
         },
         disclaimer: "BookLoQ organizes source records and assists with bookkeeping, reconciliation and tax preparation. Imported descriptions, categories, balances and document fields require review. It does not file returns, provide legal or tax advice, or replace a qualified accountant or tax professional.",

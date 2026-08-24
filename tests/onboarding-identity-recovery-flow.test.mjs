@@ -67,7 +67,7 @@ async function applyMigrations(database) {
   }
 }
 
-test("onboarding safely recovers orphaned and existing Supabase accounts", async () => {
+test("onboarding rebinds only orphaned Supabase rows and protects existing workspaces", async () => {
   const authServer = createServer((request, response) => {
     const token = request.headers.authorization?.replace(/^Bearer\s+/i, "") ?? "";
     const payload = JSON.parse(Buffer.from(token.split(".")[1] ?? "", "base64url").toString("utf8"));
@@ -138,17 +138,15 @@ test("onboarding safely recovers orphaned and existing Supabase accounts", async
     assert.equal((await database.prepare(`SELECT auth_subject authSubject FROM users WHERE email = ?`)
       .bind(protectedEmail).first()).authSubject, "protected-original-subject");
 
-    const recoveredExisting = await worker.fetch(new Request(`${origin}/api/v1/onboarding`, {
+    const blockedExisting = await worker.fetch(new Request(`${origin}/api/v1/onboarding`, {
       method: "POST",
       headers: headers(protectedEmail, "protected-replacement-subject"),
       body: JSON.stringify(onboardingPayload("Replacement Input Must Not Overwrite", protectedEmail)),
     }), environment, context);
-    assert.equal(recoveredExisting.status, 200, await recoveredExisting.clone().text());
-    const recoveredBody = await recoveredExisting.json();
-    assert.equal(recoveredBody.recovered, true);
-    assert.equal(recoveredBody.organization.businessName, "Protected Store");
+    assert.equal(blockedExisting.status, 403, await blockedExisting.clone().text());
+    assert.equal((await blockedExisting.json()).error.code, "IDENTITY_CONFLICT");
     assert.equal((await database.prepare(`SELECT auth_subject authSubject FROM users WHERE email = ?`)
-      .bind(protectedEmail).first()).authSubject, "protected-replacement-subject");
+      .bind(protectedEmail).first()).authSubject, "protected-original-subject");
     assert.equal((await database.prepare(`SELECT COUNT(*) count FROM memberships WHERE user_id = (
         SELECT id FROM users WHERE email = ?
       )`).bind(protectedEmail).first()).count, 1);
@@ -157,7 +155,7 @@ test("onboarding safely recovers orphaned and existing Supabase accounts", async
     assert.equal((await database.prepare(`SELECT COUNT(*) count FROM audit_events
         WHERE action = 'account.identity_recovered' AND actor_user_id = (
           SELECT id FROM users WHERE email = ?
-        )`).bind(protectedEmail).first()).count, 1);
+        )`).bind(protectedEmail).first()).count, 0);
   } finally {
     await miniflare.dispose();
     authServer.closeAllConnections();

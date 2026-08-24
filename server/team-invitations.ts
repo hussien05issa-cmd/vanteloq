@@ -167,6 +167,7 @@ export async function acceptTeamInvitation(
   const userId = emailUser?.id ?? `user-team-${userHash}`;
   const membershipId = `membership-team-${invitationHash}`;
   const memberId = `team-member-${invitationHash}`;
+  const internalAccessId = `internal-team-${invitationHash}`;
   const auditId = `audit-team-accepted-${invitationHash}`;
   const legalId = `legal-team-${invitationHash}-${TERMS_OF_SERVICE_VERSION}`;
   const existingMembership = await getD1().prepare("SELECT organization_id FROM memberships WHERE user_id = ? LIMIT 1")
@@ -220,6 +221,20 @@ export async function acceptTeamInvitation(
         last_login_at = excluded.last_login_at,
         updated_at = excluded.updated_at
     `).bind(memberId, owner.organization_id, userId, firstName, lastName, displayName, identity.email, `INT-${invitationHash.slice(0, 8).toUpperCase()}`, now, new Date(row.expires_at).getTime(), now, owner.owner_user_id, now, now),
+    database.prepare(`
+      INSERT OR IGNORE INTO internal_access (
+        id, user_id, organization_id, access_level, reason, active, mfa_required,
+        created_by_user_id, created_at, updated_at
+      ) VALUES (?, ?, ?, 'founder', ?, 1, 1, ?, ?, ?)
+    `).bind(
+      internalAccessId,
+      userId,
+      owner.organization_id,
+      "Owner-approved internal team access created through a verified invitation.",
+      owner.owner_user_id,
+      now,
+      now,
+    ),
     database.prepare(`
       INSERT OR IGNORE INTO legal_acceptances (
         id, organization_id, user_id, terms_version, privacy_policy_version,

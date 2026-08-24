@@ -646,7 +646,12 @@ export function businessEventCreateInput(value: Record<string, unknown>) {
   ]);
   const eventDate = requiredString(value.eventDate, "event date", 10);
   const reviewDate = optionalString(value.reviewDate, "review date", 10);
-  if (!DATE.test(eventDate) || (reviewDate && !DATE.test(reviewDate))) {
+  const validDate = (date: string) => {
+    if (!DATE.test(date)) return false;
+    const parsed = new Date(`${date}T00:00:00.000Z`);
+    return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === date;
+  };
+  if (!validDate(eventDate) || (reviewDate && !validDate(reviewDate))) {
     throw new ApiError(
       400,
       "INVALID_FIELD",

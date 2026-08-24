@@ -247,7 +247,7 @@ export async function GET(request: Request) {
         lastSyncAtMs: account.lastSyncAt?.getTime() ?? null,
       })),
     });
-    if (plaidCash.status === "available" && plaidCash.verifiedCashCents !== null) {
+    if (!locationRestricted && plaidCash.status === "available" && plaidCash.verifiedCashCents !== null) {
       const latestBankSync = plaidAccountRows
         .map((account) => account.lastSyncAt)
         .filter((value): value is Date => Boolean(value))
@@ -354,20 +354,53 @@ export async function GET(request: Request) {
         refreshIntervalSeconds: sourceConnections.length ? 300 : null,
       },
     };
-    if (commandCentre.current && !canViewVerifiedProfit) {
-      Object.assign(commandCentre.current, { costOfGoodsCents: null, grossProfitCents: null, contributionCents: null, grossMarginRate: null });
+    if (!canViewVerifiedProfit) {
+      if (commandCentre.current) Object.assign(commandCentre.current, { costOfGoodsCents: null, grossProfitCents: null, contributionCents: null, grossMarginRate: null });
       if (commandCentre.previous) Object.assign(commandCentre.previous, { costOfGoodsCents: null, grossProfitCents: null, contributionCents: null, grossMarginRate: null });
       if (commandCentre.comparisons) Object.assign(commandCentre.comparisons, { grossProfitRate: null, marginPointChange: null });
       commandCentre.trend = [];
-      for (const key of ["cost_of_goods", "gross_profit", "gross_margin", "contribution_after_labour", "labour_cost", "labour_rate"]) delete commandCentre.metrics[key];
+      for (const key of ["cost_of_goods", "gross_profit", "gross_margin", "contribution_after_labour", "labour_cost", "labour_rate"]) delete (commandCentre.metrics as Record<string, unknown>)[key];
       commandCentre.insights = commandCentre.insights.filter((insight) => insight.id !== "margin-trend" && insight.id !== "labour-pressure");
+      for (const hour of commandCentre.today.hourly) Object.assign(hour, { grossProfitCents: null });
+      if (commandCentre.todayComparison) Object.assign(commandCentre.todayComparison.baseline, { grossProfitCents: null });
+      if (commandCentre.periodComparisons) {
+        for (const comparison of [commandCentre.periodComparisons.sevenDays, commandCentre.periodComparisons.thirtyDays]) {
+          Object.assign(comparison.current, { costOfGoodsCents: null, grossProfitCents: null, contributionCents: null, grossMarginRate: null, labourCostCents: null, labourRate: null });
+          Object.assign(comparison.previous, { costOfGoodsCents: null, grossProfitCents: null, contributionCents: null, grossMarginRate: null, labourCostCents: null, labourRate: null });
+          Object.assign(comparison.changes, { grossProfitRate: null });
+        }
+      }
+      for (const point of commandCentre.forecast.points) Object.assign(point, { grossProfitCents: null });
     }
-    if (commandCentre.current && !permissions.includes("metrics.revenue")) {
-      Object.assign(commandCentre.current, { grossSalesCents: null, netSalesCents: null, transactionCount: null, unitsSold: null, refundsCents: null, discountsCents: null, averageTransactionCents: null, unitsPerTransaction: null, discountRate: null });
+    if (!permissions.includes("metrics.revenue")) {
+      if (commandCentre.current) Object.assign(commandCentre.current, { grossSalesCents: null, netSalesCents: null, transactionCount: null, unitsSold: null, refundsCents: null, discountsCents: null, averageTransactionCents: null, unitsPerTransaction: null, discountRate: null });
       if (commandCentre.previous) Object.assign(commandCentre.previous, { grossSalesCents: null, netSalesCents: null, transactionCount: null, unitsSold: null, refundsCents: null, discountsCents: null, averageTransactionCents: null, unitsPerTransaction: null, discountRate: null });
       commandCentre.trend = [];
       commandCentre.insights = [];
-      for (const key of ["gross_sales", "net_sales", "transactions", "average_transaction", "units", "units_per_transaction", "discounts", "refunds"]) delete commandCentre.metrics[key];
+      for (const key of ["gross_sales", "net_sales", "transactions", "average_transaction", "units", "units_per_transaction", "discounts", "refunds"]) delete (commandCentre.metrics as Record<string, unknown>)[key];
+      Object.assign(commandCentre.today, {
+        netSalesCents: null,
+        grossProfitCents: null,
+        averageTransactionCents: null,
+        transactionCount: null,
+        unitsSold: null,
+        refundsCents: null,
+        discountsCents: null,
+        hourly: [],
+      });
+      commandCentre.todayComparison = null;
+      commandCentre.periodComparisons = null;
+      Object.assign(commandCentre.forecast, {
+        available: false,
+        verifiedDays: 0,
+        totalNetSalesCents: null,
+        lowCents: null,
+        highCents: null,
+        confidence: "unavailable",
+        points: [],
+      });
+      commandCentre.paymentMix.rows = [];
+      commandCentre.paymentMix.sourceAvailable = false;
     }
     if (commandCentre.balances && !permissions.includes("metrics.cash")) {
       Object.assign(commandCentre.balances, { cashBalanceCents: null, accountsPayableCents: null });

@@ -3,6 +3,8 @@ import { recordAudit } from "../../../../../../server/audit";
 import { requireAccess } from "../../../../../../server/authorization";
 import { ApiError, enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameOrigin } from "../../../../../../server/api";
 import { requireBookLoQPermission } from "../../../../../../server/bookloq";
+import { requireAddon } from "../../../../../../server/entitlements/engine";
+import { requireOrganizationWideLocationAccess } from "../../../../../../server/location-access";
 import { requirePermission } from "../../../../../../server/permissions";
 
 const writers = ["owner", "admin", "manager"] as const;
@@ -27,6 +29,8 @@ export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
     const context = await requireAccess(request, writers, "bookloq.ar");
+    await requireAddon(context, "bookloq");
+    await requireOrganizationWideLocationAccess(context);
     await requirePermission(context, "finance.ap_ar");
     requireBookLoQPermission(context.role, "edit_drafts");
     await enforceRateLimit("bookloq:invoice:email", context.userId, 30, 3_600);
@@ -40,14 +44,17 @@ export async function POST(request: Request) {
     const database = getD1();
     const invoice = await database.prepare(`SELECT i.id, i.invoice_number invoiceNumber, i.invoice_date invoiceDate, i.due_date dueDate,
       i.total_cents totalCents, i.currency, i.status, i.issuer_snapshot_json issuerJson, i.customer_snapshot_json customerJson,
-      i.document_id documentId, d.object_key objectKey, d.file_name fileName
+      i.document_id documentId, d.object_key objectKey, d.file_name fileName, d.scan_status scanStatus
       FROM customer_invoices i JOIN workspace_documents d ON d.id = i.document_id AND d.organization_id = i.organization_id
-      WHERE i.organization_id = ? AND i.id = ? AND d.security_state = 'clean'`)
-      .bind(context.organizationId, invoiceId).first<{ id: string; invoiceNumber: string; invoiceDate: string; dueDate: string; totalCents: number; currency: string; status: string; issuerJson: string; customerJson: string; documentId: string; objectKey: string; fileName: string }>();
+      WHERE i.organization_id = ? AND i.id = ? AND d.security_state = 'clean' AND d.scan_status = 'clean'`)
+      .bind(context.organizationId, invoiceId).first<{ id: string; invoiceNumber: string; invoiceDate: string; dueDate: string; totalCents: number; currency: string; status: string; issuerJson: string; customerJson: string; documentId: string; objectKey: string; fileName: string; scanStatus: string }>();
     if (!invoice) throw new ApiError(404, "INVOICE_NOT_FOUND", "Invoice not found.");
     if (invoice.status === "void") throw new ApiError(409, "INVOICE_VOID", "A void invoice cannot be emailed.");
     const object = await getR2().get(invoice.objectKey);
     if (!object) throw new ApiError(404, "INVOICE_FILE_NOT_FOUND", "The saved invoice PDF could not be found.");
+    if (invoice.scanStatus !== "clean" || object.customMetadata?.securityState !== "clean") {
+      throw new ApiError(423, "INVOICE_QUARANTINED", "The invoice cannot be emailed until its security state is clean.");
+    }
     const pdfBytes = new Uint8Array(await new Response(object.body).arrayBuffer());
     const env = getRuntimeEnv();
     const apiKey = env.RESEND_API_KEY?.trim();

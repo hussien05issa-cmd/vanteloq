@@ -158,13 +158,21 @@ async function lifecycleDto(organizationId: string, scope: LifecycleScope, canVi
       ...lot,
       unitCostCents: canViewValue ? lot.unitCostCents : null,
       unitRetailCents: canViewValue ? lot.unitRetailCents : null,
-      assessment: { ...lot.assessment, inventoryCostAtRiskCents: canViewValue ? lot.assessment.inventoryCostAtRiskCents : null },
+      assessment: {
+        ...lot.assessment,
+        inventoryCostAtRiskCents: canViewValue ? lot.assessment.inventoryCostAtRiskCents : null,
+        grossMarginOpportunityAtRiskCents: canViewValue ? lot.assessment.grossMarginOpportunityAtRiskCents : null,
+      },
     })),
     fefo: ordered.filter(lot => lot.quantityRemaining > 0 && lot.status === "active").map((lot, index) => ({
       ...lot,
       unitCostCents: canViewValue ? lot.unitCostCents : null,
       unitRetailCents: canViewValue ? lot.unitRetailCents : null,
-      assessment: { ...lot.assessment, inventoryCostAtRiskCents: canViewValue ? lot.assessment.inventoryCostAtRiskCents : null },
+      assessment: {
+        ...lot.assessment,
+        inventoryCostAtRiskCents: canViewValue ? lot.assessment.inventoryCostAtRiskCents : null,
+        grossMarginOpportunityAtRiskCents: canViewValue ? lot.assessment.grossMarginOpportunityAtRiskCents : null,
+      },
       fefoRank: index + 1,
     })),
     summary: {

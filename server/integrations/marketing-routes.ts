@@ -25,6 +25,7 @@ import {
   requireSameOrigin,
 } from "../api";
 import { requirePermission } from "../permissions";
+import { requireAccessibleLocation, requireOrganizationWideLocationAccess } from "../location-access";
 import {
   acquireIntegrationSyncLease,
   releaseIntegrationSyncLease,
@@ -920,33 +921,47 @@ export function marketingDisconnect(request: Request, provider: MarketingProvide
   });
 }
 
-async function requireBusinessProfileSelection(organizationId: string, selectionId: string) {
+async function requireSelectionLocationAccess(context: AccessContext, selection: { scopeKind: string; localLocationId: string | null }) {
+  if (selection.scopeKind === "location" && selection.localLocationId) {
+    await requireAccessibleLocation(context, selection.localLocationId);
+    return;
+  }
+  await requireOrganizationWideLocationAccess(context);
+}
+
+async function requireBusinessProfileSelection(context: AccessContext, selectionId: string) {
   const [selection] = await getDb().select().from(marketingResourceSelections).where(and(
     eq(marketingResourceSelections.id, selectionId),
-    eq(marketingResourceSelections.organizationId, organizationId),
+    eq(marketingResourceSelections.organizationId, context.organizationId),
     eq(marketingResourceSelections.provider, "google"),
     eq(marketingResourceSelections.dataset, "google_business_profile"),
   )).limit(1);
   if (!selection) throw new ApiError(404, "GOOGLE_BUSINESS_SELECTION_NOT_FOUND", "The selected Google Business Profile location was not found.");
-  await requireOwnedIntegrationConnection(organizationId, "google", selection.connectionId, { connected: true });
+  await requireOwnedIntegrationConnection(context.organizationId, "google", selection.connectionId, { connected: true });
+  await requireSelectionLocationAccess(context, selection);
   return selection;
 }
 
-async function requireMetaAdSelection(organizationId: string, selectionId: string) {
+async function requireMetaAdSelection(context: AccessContext, selectionId: string) {
   const [selection] = await getDb().select().from(marketingResourceSelections).where(and(
     eq(marketingResourceSelections.id, selectionId),
-    eq(marketingResourceSelections.organizationId, organizationId),
+    eq(marketingResourceSelections.organizationId, context.organizationId),
     eq(marketingResourceSelections.provider, "meta"),
     eq(marketingResourceSelections.dataset, "meta_ads"),
   )).limit(1);
   if (!selection) throw new ApiError(404, "META_AD_SELECTION_NOT_FOUND", "The selected Meta advertising account was not found.");
-  await requireOwnedIntegrationConnection(organizationId, "meta", selection.connectionId, { connected: true });
+  await requireOwnedIntegrationConnection(context.organizationId, "meta", selection.connectionId, { connected: true });
+  await requireSelectionLocationAccess(context, selection);
   return selection;
 }
 
 export function metaCampaigns(request: Request) {
   return handleApi(request, async ({ requestId }) => {
-    const context = await requireAccess(request, ["owner", "admin", "manager"], "marketing.meta_ads");
+    const context = await requireAccess(
+      request,
+      request.method === "POST" ? ["owner", "admin"] : ["owner", "admin", "manager"],
+      "marketing.meta_ads",
+    );
     await requirePermission(context, "marketing.view");
     const url = new URL(request.url);
     const selectionId = (request.method === "GET" ? url.searchParams.get("selectionId") : null)?.trim() ?? "";
@@ -954,7 +969,7 @@ export function metaCampaigns(request: Request) {
     if (request.method === "GET") {
       if (!/^[A-Za-z0-9_-]{8,80}$/.test(selectionId)) throw new ApiError(400, "META_AD_SELECTION_INVALID", "Choose a valid Meta advertising account.");
       await enforceRateLimit("meta:campaigns:read", context.organizationId, 60, 60);
-      const selection = await requireMetaAdSelection(context.organizationId, selectionId);
+      const selection = await requireMetaAdSelection(context, selectionId);
       const accessToken = await marketingAccessToken(context.organizationId, selection.connectionId, "meta");
       const directory = await fetchMetaCampaignDirectory(accessToken, selection.externalResourceRef);
       return jsonResponse({ ...directory, selectionId, fetchedAt: new Date().toISOString(), storage: "not_persisted" });
@@ -971,7 +986,7 @@ export function metaCampaigns(request: Request) {
     const expectedCampaignName = typeof body.expectedCampaignName === "string" ? body.expectedCampaignName.trim() : "";
     if (body.confirmChange !== true) throw new ApiError(400, "META_CAMPAIGN_CONFIRMATION_REQUIRED", "Confirm this exact campaign change before sending it to Meta.");
     if (!/^[A-Za-z0-9_-]{8,80}$/.test(postedSelectionId)) throw new ApiError(400, "META_AD_SELECTION_INVALID", "Choose a valid Meta advertising account.");
-    const selection = await requireMetaAdSelection(context.organizationId, postedSelectionId);
+    const selection = await requireMetaAdSelection(context, postedSelectionId);
     const accessToken = await marketingAccessToken(context.organizationId, selection.connectionId, "meta");
     const status = body.action === "set_status" && (body.status === "ACTIVE" || body.status === "PAUSED") ? body.status : undefined;
     const dailyBudgetMinor = body.action === "set_daily_budget" && Number.isSafeInteger(body.dailyBudgetMinor) ? Number(body.dailyBudgetMinor) : undefined;
@@ -1007,7 +1022,7 @@ export function googleBusinessReviews(request: Request) {
     const url = new URL(request.url);
     const selectionId = url.searchParams.get("selectionId")?.trim() ?? "";
     if (!/^[A-Za-z0-9_-]{8,80}$/.test(selectionId)) throw new ApiError(400, "GOOGLE_BUSINESS_SELECTION_INVALID", "Choose a valid Business Profile location.");
-    const selection = await requireBusinessProfileSelection(context.organizationId, selectionId);
+    const selection = await requireBusinessProfileSelection(context, selectionId);
     const accessToken = await marketingAccessToken(context.organizationId, selection.connectionId, "google");
 
     if (request.method === "GET") {

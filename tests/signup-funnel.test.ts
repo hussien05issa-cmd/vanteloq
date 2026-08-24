@@ -23,8 +23,8 @@ test("a verified Supabase identity can reclaim only an orphaned account row with
   }), "rebind");
 });
 
-test("the same verified email at AAL2 can recover its existing workspace after Supabase identity recreation", () => {
-  assert.equal(onboardingIdentityDisposition({
+test("a replacement Supabase subject cannot take over an existing workspace by matching its email", () => {
+  assert.throws(() => onboardingIdentityDisposition({
     existingStatus: "active",
     existingAuthSubject: "old-supabase-user",
     existingAuthProvider: "supabase",
@@ -38,7 +38,11 @@ test("the same verified email at AAL2 can recover its existing workspace after S
       assuranceLevel: "aal2",
       sessionId: "session-new",
     },
-  }), "recover");
+  }), (error: unknown) => (
+    error instanceof Error
+    && "code" in error
+    && error.code === "IDENTITY_CONFLICT"
+  ));
 });
 
 test("an identity without completed MFA cannot recover workspace data", () => {
