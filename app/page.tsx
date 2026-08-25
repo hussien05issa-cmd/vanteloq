@@ -9,6 +9,11 @@ import ProductBrandLogo from "./product-brand-logo";
 import AuthPanel, { type AuthPanelMode } from "./auth-panel";
 import { currentSession, getSupabase, signOut } from "./supabase-browser";
 import { canonicalLocation } from "../shared/auth-urls";
+import {
+  clearTeamInviteCallback,
+  parseTeamInviteCallback,
+  type TeamInviteCallback,
+} from "../shared/team-invite-auth";
 import { RESOURCE_ARTICLES, getCategory, getReadingTime } from "./resources/content";
 import type { TeamInvitationDetails } from "./team-invitation-flow";
 
@@ -21,7 +26,7 @@ const TeamInvitationFlow = lazy(() => import("./team-invitation-flow"));
 
 export default function Home() {
   const canonicalDestination = typeof window === "undefined" ? null : canonicalLocation(window.location);
-  const [entry, setEntry] = useState<"loading" | "load-error" | "landing" | "signup" | "invitation" | "app">("landing");
+  const [entry, setEntry] = useState<"loading" | "load-error" | "landing" | "invite-review" | "signup" | "invitation" | "app">("landing");
   const [authOpen, setAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<AuthPanelMode>("signup");
   const [organizationName, setOrganizationName] = useState("");
@@ -29,6 +34,9 @@ export default function Home() {
   const [accountEmail, setAccountEmail] = useState("");
   const [loadError, setLoadError] = useState("");
   const [teamInvitation, setTeamInvitation] = useState<TeamInvitationDetails | null>(null);
+  const [inviteCallback, setInviteCallback] = useState<TeamInviteCallback | null>(null);
+  const [inviteVerificationBusy, setInviteVerificationBusy] = useState(false);
+  const [inviteVerificationError, setInviteVerificationError] = useState("");
   const loadSequence = useRef(0);
   const loadingUser = useRef<string | null>(null);
   const loadedUser = useRef<string | null>(null);
@@ -122,6 +130,8 @@ export default function Home() {
     let active = true;
     const query = new URLSearchParams(window.location.search);
     const recoveryRequested = query.get("recovery") === "1";
+    const inviteRequested = query.get("team_invite") === "1";
+    const callback = parseTeamInviteCallback(window.location.href);
     const requestedStart = query.get("start");
     const requestedAuth = query.get("auth");
     const requestedMode = requestedStart === "signup" || requestedStart === "signin"
@@ -129,7 +139,14 @@ export default function Home() {
       : requestedAuth === "signup" || requestedAuth === "signin"
         ? requestedAuth
         : null;
-    if (recoveryRequested) {
+    if (callback) {
+      queueMicrotask(() => {
+        if (!active) return;
+        setInviteCallback(callback);
+        setInviteVerificationError("");
+        setEntry("invite-review");
+      });
+    } else if (recoveryRequested) {
       queueMicrotask(() => {
         if (!active) return;
         setEntry("landing");
@@ -142,6 +159,11 @@ export default function Home() {
           if (!active) return;
           if (session) {
             void loadWorkspace(session);
+            return;
+          }
+          if (inviteRequested) {
+            setInviteVerificationError("This invitation link is incomplete, expired, or was already used. Ask the owner to send a new invitation.");
+            setEntry("invite-review");
             return;
           }
           setEntry("landing");
@@ -187,6 +209,28 @@ export default function Home() {
     };
   }, [cancelPendingLoad, loadWorkspace, canonicalDestination]);
 
+  async function verifyTeamInvite() {
+    if (!inviteCallback || inviteVerificationBusy) return;
+    setInviteVerificationBusy(true);
+    setInviteVerificationError("");
+    try {
+      const client = await getSupabase();
+      if (!client) throw new Error("Secure invitation verification is temporarily unavailable.");
+      const { data, error } = await client.auth.verifyOtp({
+        token_hash: inviteCallback.tokenHash,
+        type: inviteCallback.type,
+      });
+      if (error || !data.session) throw new Error("This invitation has expired or was already used. Ask the owner to send a new invitation.");
+      window.history.replaceState({}, document.title, clearTeamInviteCallback(window.location.href));
+      setInviteCallback(null);
+      await loadWorkspace(data.session);
+    } catch (error) {
+      setInviteVerificationError(error instanceof Error ? error.message : "The invitation could not be verified.");
+    } finally {
+      setInviteVerificationBusy(false);
+    }
+  }
+
   if (entry === "loading") return <div className="entry-loading" role="status" aria-live="polite"><ProductBrandLogo product="vanteloq" priority/><p>Preparing Vanteloq…</p></div>;
   if (entry === "load-error") return <main className="entry-loading entry-load-error">
     <ProductBrandLogo product="vanteloq" priority/>
@@ -196,6 +240,15 @@ export default function Home() {
       <button onClick={() => void currentSession().then(loadWorkspace)}>Try again</button>
       <button className="secondary" onClick={() => void signOut()}>Sign out</button>
     </div>
+  </main>;
+  if (entry === "invite-review") return <main className="entry-loading entry-load-error team-invite-review">
+    <ProductBrandLogo product="vanteloq" priority/>
+    <p className="eyebrow">OWNER APPROVED TEAM ACCESS</p>
+    <h1>Review your secure invitation</h1>
+    <p>This invitation provides internal Vanteloq workspace access without checkout and includes private console access when assigned by the owner.</p>
+    <p>No Stripe customer or paid subscription is created.</p>
+    {inviteVerificationError && <p role="alert">{inviteVerificationError}</p>}
+    {inviteCallback && <button disabled={inviteVerificationBusy} onClick={() => void verifyTeamInvite()}>{inviteVerificationBusy ? "Verifying securely…" : "Accept invitation and continue"}</button>}
   </main>;
   function openAuth(mode: "signin" | "signup") {
     setAuthMode(mode);

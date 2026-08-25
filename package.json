@@ -7,6 +7,7 @@
   },
   "scripts": {
     "install:ci": "bash scripts/install-ci.sh",
+    "test:team-invite": "node --experimental-transform-types --test tests/team-invite-auth.test.ts",
     "dev": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vite",
     "build": "bash scripts/build-verified.sh",
     "start": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext start",
