@@ -36,11 +36,16 @@ async function readTemplate(file) {
 
 const payload = {};
 let confirmationUsesCode = false;
+let recoveryUsesLinkAndCode = false;
 for (const [key, subject, file] of templates) {
   const content = await readTemplate(file);
   if (key === "confirmation") {
     confirmationUsesCode = content.includes("{{ .Token }}") && !content.includes("{{ .ConfirmationURL }}");
     if (!confirmationUsesCode) throw new Error("confirmation.html must use a numeric verification code without a consumable email link");
+  }
+  if (key === "recovery") {
+    recoveryUsesLinkAndCode = content.includes("{{ .ConfirmationURL }}") && content.includes("{{ .Token }}");
+    if (!recoveryUsesLinkAndCode) throw new Error("recovery.html must include both the secure reset link and a numeric recovery code");
   }
   payload[`mailer_subjects_${key}`] = subject;
   payload[`mailer_templates_${key}_content`] = content;
@@ -58,6 +63,7 @@ const summary = {
   sender: "Vanteloq <noreply@vanteloq.com>",
   replyTo: "support@vanteloq.com",
   confirmationDelivery: confirmationUsesCode ? "numeric_code" : "invalid",
+  recoveryDelivery: recoveryUsesLinkAndCode ? "secure_link_and_numeric_code" : "invalid",
 };
 
 if (process.argv.includes("--dry-run")) {

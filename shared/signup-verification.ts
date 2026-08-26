@@ -8,7 +8,7 @@ type VerificationClient<TSession> = {
     verifyOtp(input: {
       email: string;
       token: string;
-      type: "email";
+      type: "email" | "recovery";
     }): Promise<{
       data: { session: TSession | null };
       error: VerificationError;
@@ -57,6 +57,28 @@ export async function verifySignupCode<TSession>(
   if (result.error) throw new Error(verificationFailure(result.error));
   if (!result.data.session) {
     throw new Error("Your email was verified, but the secure session could not be opened. Sign in to continue.");
+  }
+  return result.data.session;
+}
+
+export async function verifyRecoveryCode<TSession>(
+  client: VerificationClient<TSession>,
+  email: string,
+  value: string,
+): Promise<TSession> {
+  const token = normalizeEmailVerificationCode(value);
+  if (!isCompleteEmailVerificationCode(token)) {
+    throw new Error("Enter the recovery code from your email (6 to 10 digits).");
+  }
+
+  const result = await client.auth.verifyOtp({
+    email: email.trim().toLowerCase(),
+    token,
+    type: "recovery",
+  });
+  if (result.error) throw new Error(verificationFailure(result.error));
+  if (!result.data.session) {
+    throw new Error("The recovery code was verified, but the secure password-reset session could not be opened. Request a new email and try again.");
   }
   return result.data.session;
 }

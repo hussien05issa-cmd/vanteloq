@@ -16,6 +16,7 @@ import {
   MAXIMUM_EMAIL_VERIFICATION_CODE_LENGTH,
   MINIMUM_EMAIL_VERIFICATION_CODE_LENGTH,
   normalizeEmailVerificationCode,
+  verifyRecoveryCode,
   verifySignupCode,
 } from "../shared/signup-verification";
 import {
@@ -24,7 +25,7 @@ import {
   TERMS_OF_SERVICE_VERSION,
 } from "../shared/legal-versions";
 
-export type AuthPanelMode = "signin" | "signup" | "verify-signup" | "request-reset" | "reset-password";
+export type AuthPanelMode = "signin" | "signup" | "verify-signup" | "request-reset" | "verify-recovery" | "reset-password";
 
 export default function AuthPanel({
   close,
@@ -229,6 +230,42 @@ export default function AuthPanel({
       return;
     }
 
+    if (mode === "verify-recovery") {
+      const previousLocation = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+      const recoveryLocation = new URL(window.location.href);
+      recoveryLocation.searchParams.set("recovery", "1");
+      window.history.replaceState({}, document.title, `${recoveryLocation.pathname}${recoveryLocation.search}${recoveryLocation.hash}`);
+      try {
+        await verifyRecoveryCode(supabase, email, verificationCode);
+        const mfa = await inspectRecoveryMfa(supabase.auth.mfa);
+        setBusy(false);
+        setVerificationCode("");
+        setRecoveryReady(true);
+        setMode("reset-password");
+        if (mfa.status === "challenge_required") {
+          setRecoveryMfaFactorId(mfa.factorId);
+          setRecoveryMfaState("challenge_required");
+          setMessage("Recovery email verified. Enter the current six-digit code from your authenticator app.");
+          return;
+        }
+        if (mfa.status === "error") {
+          setRecoveryMfaState("error");
+          setMessageIsError(true);
+          setMessage(mfa.message);
+          return;
+        }
+        setRecoveryMfaState("ready");
+        setMessage("Recovery email verified. Choose your new password.");
+      } catch (error) {
+        window.history.replaceState({}, document.title, previousLocation);
+        setBusy(false);
+        setVerificationCode("");
+        setMessageIsError(true);
+        setMessage(error instanceof Error ? error.message : "The recovery code could not be verified.");
+      }
+      return;
+    }
+
     if (mode === "request-reset") {
       const redirectTo = canonicalAuthUrl("/?recovery=1");
       const result = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), { redirectTo, captchaToken: turnstileToken });
@@ -239,7 +276,9 @@ export default function AuthPanel({
         setMessage("The reset email could not be sent. Wait a moment and try again.");
         return;
       }
-      setMessage("If an account exists for that email, a password-reset link is on its way. Open the newest email only; older links expire after use.");
+      setVerificationCode("");
+      setMode("verify-recovery");
+      setMessage("If an account exists for that email, the newest message includes both a secure reset link and a recovery email code.");
       return;
     }
 
@@ -390,13 +429,22 @@ export default function AuthPanel({
     setRecoveryMfaCode("");
     setRecoveryMfaFactorId("");
     setRecoveryMfaState(nextMode === "reset-password" ? "checking" : "ready");
+    setRecoveryReady(nextMode === "reset-password" ? null : true);
     setLegalAccepted(false);
+  }
+
+  function dismiss() {
+    if (mode === "verify-recovery" || mode === "reset-password") {
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+    close();
   }
 
   const title = mode === "signup" ? "Create your workspace"
     : mode === "verify-signup" ? "Verify your email"
     : mode === "signin" ? "Welcome back"
     : mode === "request-reset" ? "Reset your password"
+    : mode === "verify-recovery" ? "Check your email"
     : recoveryMfaRequired ? "Verify it's you" : "Choose a new password";
   const description = mode === "signup"
     ? "Start with a verified owner account. Business data stays separated by workspace."
@@ -405,19 +453,22 @@ export default function AuthPanel({
     : mode === "signin"
       ? "Sign in with your verified Vanteloq account."
       : mode === "request-reset"
-        ? "Enter your account email. We will send one secure reset link to open on this device."
+        ? "Enter your account email. We will send a secure reset link and a recovery email code."
+        : mode === "verify-recovery"
+          ? `Open the secure link in the newest message sent to ${email.trim().toLowerCase() || "your email"}, or enter its 6 to 10 digit recovery code below.`
         : recoveryMfaRequired
           ? "Enter the current six-digit code from your authenticator app before changing your password."
           : "Enter a new password for your Vanteloq account.";
   const submitLabel = mode === "signup" ? "Create secure account"
     : mode === "verify-signup" ? "Verify and continue"
     : mode === "signin" ? "Sign in"
-    : mode === "request-reset" ? "Send reset link"
+    : mode === "request-reset" ? "Send reset link and code"
+    : mode === "verify-recovery" ? "Verify recovery code"
     : recoveryMfaRequired ? "Verify and continue" : "Update password";
 
   return <div className="auth-backdrop" role="dialog" aria-modal="true" aria-labelledby="auth-title">
     <section className="auth-panel">
-      <header><ProductBrandLogo product="vanteloq"/><button type="button" onClick={close} aria-label="Close account form">×</button></header>
+      <header><ProductBrandLogo product="vanteloq"/><button type="button" onClick={dismiss} aria-label="Close account form">×</button></header>
       <small>SECURE VANTELOQ ACCOUNT</small>
       <h2 id="auth-title">{title}</h2>
       <p>{description}</p>
@@ -425,8 +476,8 @@ export default function AuthPanel({
       <form onSubmit={submit}>
         {mode === "signup" && <label>Full name<input autoComplete="name" value={name} onChange={event => setName(event.target.value)} minLength={2} maxLength={120} required/></label>}
         {mode !== "reset-password" && mode !== "verify-signup" && <label>Email address<input type="email" autoComplete="email" value={email} onChange={event => setEmail(event.target.value)} required/></label>}
-        {mode === "verify-signup" && <label>Verification code<input autoFocus value={verificationCode} onChange={event => setVerificationCode(normalizeEmailVerificationCode(event.target.value).slice(0, MAXIMUM_EMAIL_VERIFICATION_CODE_LENGTH))} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6,10}" minLength={MINIMUM_EMAIL_VERIFICATION_CODE_LENGTH} maxLength={MAXIMUM_EMAIL_VERIFICATION_CODE_LENGTH} required/></label>}
-        {recoveryMfaRequired && <label>Recovery verification code<input autoFocus value={recoveryMfaCode} onChange={event => setRecoveryMfaCode(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" minLength={6} maxLength={6} required/></label>}
+        {(mode === "verify-signup" || mode === "verify-recovery") && <label>{mode === "verify-recovery" ? "Recovery email code" : "Verification code"}<input autoFocus value={verificationCode} onChange={event => setVerificationCode(normalizeEmailVerificationCode(event.target.value).slice(0, MAXIMUM_EMAIL_VERIFICATION_CODE_LENGTH))} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6,10}" minLength={MINIMUM_EMAIL_VERIFICATION_CODE_LENGTH} maxLength={MAXIMUM_EMAIL_VERIFICATION_CODE_LENGTH} required/></label>}
+        {recoveryMfaRequired && <label>Authenticator app code<input autoFocus value={recoveryMfaCode} onChange={event => setRecoveryMfaCode(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" minLength={6} maxLength={6} required/></label>}
         {(mode === "signup" || mode === "signin" || (mode === "reset-password" && recoveryMfaState === "ready")) && <label>{mode === "reset-password" ? "New password" : "Password"}<input type="password" autoComplete={mode === "signin" ? "current-password" : "new-password"} value={password} onChange={event => setPassword(event.target.value)} minLength={mode === "signin" ? 1 : MINIMUM_PASSWORD_LENGTH} required/></label>}
         {mode === "reset-password" && recoveryMfaState === "ready" && <label>Confirm new password<input type="password" autoComplete="new-password" value={passwordConfirmation} onChange={event => setPasswordConfirmation(event.target.value)} minLength={MINIMUM_PASSWORD_LENGTH} required/></label>}
         {(mode === "signup" || (mode === "reset-password" && recoveryMfaState === "ready")) && <div className="auth-password-rules" aria-label="Password requirements">{passwordRules(password).map(rule => <span className={rule.met ? "met" : ""} key={rule.id}>{rule.met ? "Met" : "Required"}: {rule.label}</span>)}<span>Known breached passwords are rejected when you submit.</span></div>}
@@ -440,10 +491,12 @@ export default function AuthPanel({
         {message && <div className={`auth-message${messageIsError ? " error" : ""}`} aria-live="polite">{message}</div>}
         {mode === "verify-signup" && <button className="auth-secondary" type="button" onClick={() => void resendConfirmation()} disabled={busy || !siteKey || !turnstileToken}>Send a new code</button>}
         {mode === "signup" && <label className="auth-legal-consent"><input type="checkbox" checked={legalAccepted} onChange={event => setLegalAccepted(event.target.checked)} required/><span>I agree to the <Link href="/terms" target="_blank">Terms of Service</Link> and acknowledge the <Link href="/privacy" target="_blank">Privacy Policy</Link>.</span></label>}
-        <button className="auth-submit" disabled={busy || configured !== true || (protectedMode && (!siteKey || !turnstileToken)) || (mode === "verify-signup" && !isCompleteEmailVerificationCode(verificationCode)) || (mode === "signup" && !legalAccepted) || (mode === "reset-password" && (recoveryReady !== true || recoveryMfaState === "checking" || recoveryMfaState === "error" || (recoveryMfaState === "challenge_required" && recoveryMfaCode.length !== 6)))}>{busy || configured === null || (mode === "reset-password" && (recoveryReady === null || recoveryMfaState === "checking")) ? "Please wait…" : submitLabel}</button>
+        <button className="auth-submit" disabled={busy || configured !== true || (protectedMode && (!siteKey || !turnstileToken)) || ((mode === "verify-signup" || mode === "verify-recovery") && !isCompleteEmailVerificationCode(verificationCode)) || (mode === "signup" && !legalAccepted) || (mode === "reset-password" && (recoveryReady !== true || recoveryMfaState === "checking" || recoveryMfaState === "error" || (recoveryMfaState === "challenge_required" && recoveryMfaCode.length !== 6)))}>{busy || configured === null || (mode === "reset-password" && (recoveryReady === null || recoveryMfaState === "checking")) ? "Please wait…" : submitLabel}</button>
       </form>
       {mode === "signin" && <button className="auth-switch" type="button" onClick={() => changeMode("request-reset")}>Forgot your password?</button>}
       {mode === "request-reset" && <button className="auth-switch" type="button" onClick={() => changeMode("signin")}>Back to sign in</button>}
+      {mode === "verify-recovery" && <button className="auth-switch" type="button" onClick={() => changeMode("request-reset")}>Send a new recovery email</button>}
+      {mode === "verify-recovery" && <button className="auth-switch auth-switch-secondary" type="button" onClick={() => changeMode("signin")}>Back to sign in</button>}
       {mode === "reset-password" && recoveryReady === false && <button className="auth-switch" type="button" onClick={() => changeMode("request-reset")}>Request a new reset link</button>}
       {mode === "verify-signup" && <button className="auth-switch" type="button" onClick={() => changeMode("signup")}>Use a different email address</button>}
       {(mode === "signup" || mode === "signin") && <button className="auth-switch auth-switch-secondary" type="button" onClick={() => { changeMode(mode === "signup" ? "signin" : "signup"); setSiteKey(""); }}>

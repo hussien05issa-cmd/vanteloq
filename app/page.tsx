@@ -187,7 +187,7 @@ export default function Home() {
           setAuthMode("reset-password");
           setAuthOpen(true);
         }
-        if (event === "SIGNED_IN" && !recoveryRequested) {
+        if (event === "SIGNED_IN" && new URLSearchParams(window.location.search).get("recovery") !== "1") {
           setAuthOpen(false);
           window.setTimeout(() => { if (active) void loadWorkspace(session); }, 0);
         }

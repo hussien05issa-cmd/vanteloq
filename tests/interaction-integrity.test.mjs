@@ -421,7 +421,9 @@ test("account access includes confirmation recovery and a complete password-rese
   assert.match(authPanel, /known breach data/i);
   assert.match(authPanel, /inspectRecoveryMfa/);
   assert.match(authPanel, /verifyRecoveryMfa/);
-  assert.match(authPanel, /Recovery verification code/);
+  assert.match(authPanel, /verifyRecoveryCode/);
+  assert.match(authPanel, /Recovery email code/);
+  assert.match(authPanel, /Authenticator app code/);
   assert.match(authPanel, /recoveryMfaState === "challenge_required"/);
   assert.match(authPanel, /auth\.resend/);
   assert.match(authPanel, /scope: "global"/);
@@ -535,6 +537,7 @@ test("paid API access is server-enforced with narrow billing and privacy excepti
     "billing/route.ts",
   ]);
   assert.deepEqual(privacyExceptions, [
+    "account/deletion/route.ts",
     "advisor/chat/route.ts",
     "integrations/clover/disconnect/route.ts",
     "integrations/lightspeed-r/disconnect/route.ts",
@@ -545,6 +548,7 @@ test("paid API access is server-enforced with narrow billing and privacy excepti
     "integrations/shopify-pos/disconnect/route.ts",
     "integrations/square/disconnect/route.ts",
     "integrations/stripe/disconnect/route.ts",
+    "legal/acceptance/route.ts",
   ]);
 
   for (const path of ["integrations/plaid/delete-data/route.ts", "integrations/plaid/disconnect/route.ts"]) {

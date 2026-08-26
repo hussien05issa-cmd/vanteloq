@@ -33,3 +33,45 @@ test("a current six digit authenticator code elevates password recovery to AAL2"
 
   assert.deepEqual(result, { status: "ready" });
 });
+
+test("the emailed recovery code opens a password recovery session", async () => {
+  const verification = await import("../shared/signup-verification.ts");
+  assert.equal(typeof verification.verifyRecoveryCode, "function");
+
+  const calls: unknown[] = [];
+  const expectedSession = { access_token: "access", refresh_token: "refresh" };
+  const session = await verification.verifyRecoveryCode({
+    auth: {
+      verifyOtp: async (input: unknown) => {
+        calls.push(input);
+        return { data: { session: expectedSession }, error: null };
+      },
+    },
+  }, " Owner@Example.com ", "12 34-56 78");
+
+  assert.equal(session, expectedSession);
+  assert.deepEqual(calls, [{
+    email: "owner@example.com",
+    token: "12345678",
+    type: "recovery",
+  }]);
+});
+
+test("an incomplete recovery email code is rejected before contacting Supabase", async () => {
+  const verification = await import("../shared/signup-verification.ts");
+  assert.equal(typeof verification.verifyRecoveryCode, "function");
+
+  let called = false;
+  await assert.rejects(
+    verification.verifyRecoveryCode({
+      auth: {
+        verifyOtp: async () => {
+          called = true;
+          return { data: { session: null }, error: null };
+        },
+      },
+    }, "owner@example.com", "12345"),
+    /recovery code from your email/i,
+  );
+  assert.equal(called, false);
+});
