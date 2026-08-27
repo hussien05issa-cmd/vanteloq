@@ -1,5 +1,5 @@
 export { PRIVACY_POLICY_VERSION } from "../shared/legal-versions";
-export const PLAID_CONSENT_NOTICE_VERSION = "plaid-financial-data-v2";
+export const PLAID_CONSENT_NOTICE_VERSION = "plaid-financial-data-v3";
 export const GEMINI_CONSENT_NOTICE_VERSION = "gemini-evidence-advisor-v1";
 
 export const PLAID_DATA_CATEGORIES = [
@@ -11,10 +11,10 @@ export const PLAID_DATA_CATEGORIES = [
 ] as const;
 
 export const PLAID_PROCESSING_PURPOSES = [
-  "Bookkeeping review and reconciliation",
-  "Cash-position and liquidity analysis",
-  "Purchasing and reorder-capacity analysis",
-  "Financial reports, connection support, security, and audit evidence",
+  "Bookkeeping review, expense categorization, and bank reconciliation",
+  "Current cash, 13-week cash-flow forecasting, and liquidity analysis",
+  "Purchasing affordability and reorder-capacity analysis when combined with inventory and supplier records",
+  "Financial reports, tax working papers, connection support, security, and audit evidence",
 ] as const;
 
 export const GEMINI_DATA_CATEGORIES = [

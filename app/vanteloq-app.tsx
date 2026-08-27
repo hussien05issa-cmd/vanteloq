@@ -15,7 +15,7 @@ import {
   type IntegrationCatalogEntry,
 } from "./integration-catalog";
 import ProductBrandLogo from "./product-brand-logo";
-import PlaidLinkButton, { PLAID_REDIRECT_STORAGE_KEY } from "./plaid-link-button";
+import PlaidLinkButton, { PLAID_REDIRECT_STORAGE_KEY, PLAID_RETURN_VIEW_STORAGE_KEY } from "./plaid-link-button";
 import { apiFetch, signOut } from "./supabase-browser";
 import {
   BusinessTrendChart,
@@ -738,17 +738,22 @@ export default function VanteloqApp({
     const integration = parameters.get("integration");
     if (integration !== "lightspeed" && integration !== "lightspeed-r" && integration !== "shopify" && integration !== "shopify-pos" && integration !== "square" && integration !== "clover" && integration !== "stripe" && integration !== "plaid" && integration !== "google" && integration !== "meta") return;
     const timer = window.setTimeout(() => {
-      const integrationEntitlement = navigationEntitlement("Integrations", subscriptionFeatures);
-      if (!integrationEntitlement.allowed) {
-        setNotice(`${integrationEntitlement.upgradeLabel ?? "A paid plan"} is required to manage integrations.`);
+      const destination: View = integration === "plaid"
+        && parameters.has("oauth_state_id")
+        && sessionStorage.getItem(PLAID_RETURN_VIEW_STORAGE_KEY) === "BookLoQ"
+        ? "BookLoQ"
+        : "Integrations";
+      const destinationEntitlement = navigationEntitlement(destination, subscriptionFeatures);
+      if (!destinationEntitlement.allowed) {
+        setNotice(`${destinationEntitlement.upgradeLabel ?? "A paid plan"} is required to manage this connection.`);
         return;
       }
-      setView("Integrations");
+      setView(destination);
       const state = parameters.get("connection");
       if (integration === "plaid") {
         if (parameters.has("oauth_state_id")) {
           sessionStorage.setItem(PLAID_REDIRECT_STORAGE_KEY, window.location.href);
-          setNotice("Finish the secure bank connection in Plaid Link");
+          setNotice(destination === "BookLoQ" ? "Finish the secure bank connection in BookLoQ" : "Finish the secure bank connection in Plaid Link");
         } else {
           setNotice("Open the Plaid card to continue the bank connection");
         }

@@ -2,6 +2,7 @@
 
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import ProductBrandLogo from "./product-brand-logo";
+import PlaidLinkButton from "./plaid-link-button";
 import { apiFetch } from "./supabase-browser";
 import { bookloqHealthPresentation, bookloqMetricCount } from "../domain/bookloq-presentation";
 import type { ThirteenWeekCashFlow } from "../domain/thirteen-week-cash-flow";
@@ -56,6 +57,21 @@ type TransactionMatch = { id: string; transactionId: string; status: string; met
 type MatchCandidate = { transactionId: string; candidateId: string; kind: "supplier_bill" | "customer_invoice" | "receipt"; label: string; confidenceBasisPoints: number; reasons: string[]; requiresConfirmation: true };
 type BookDocument = { id: string; documentType: string; fileName: string; status: string; securityState: string; extractionStatus: string; createdAt: number };
 type BookLoQData = { configured: boolean; settings: null | { baseCurrency: string; countryCode: string; provinceCode: string; accountingBasis: string; cashSafetyThresholdCents: number; status: string; dataMode: "live" | "demonstration" }; role: string; permissions: Permission[]; organization: { name: string; currency: string }; summary: Summary; statements: { accounts: Account[]; trialBalance: { totalDebitCents: number; totalCreditCents: number }; profitAndLoss: { revenueCents: number; expenseCents: number; cogsCents: number; grossProfitCents: number; operatingProfitCents: number }; balanceSheet: { assetCents: number; liabilityCents: number; equityCents: number }; cashCents: number; accountsReceivableCents: number; accountsPayableCents: number; netSalesTaxCents: number }; locationScope: null | { id: string; name: string; filteredRecords: string[]; organizationWideRecords: string[]; boundary: string }; forecasts: { days: number; endDate: string; confirmedNetCents: number; probableNetCents: number; estimatedNetCents: number; closingCashCents: number }[]; thirteenWeekCashFlow: ThirteenWeekCashFlow; cashIntelligence: { status: "available" | "unavailable"; liquidity30Cents: number | null; liquidity60Cents: number | null; purchasingCapacityCents: number | null; risk: "low" | "moderate" | "high" | "unavailable"; minimumCashCents: number | null; minimumCashDate: string | null; warning: string | null; evidence: string[] }; cashActivity: { days30: CashPeriod; days90: CashPeriod; months12: CashPeriod }; transactions: Transaction[]; transactionMatches: TransactionMatch[]; matchCandidates: MatchCandidate[]; categoryRules: { id: string; name: string; matchText: string; direction: string; accountId: string; accountCode: string; accountName: string }[]; documents: BookDocument[]; banks: Bank[]; reconciliations: Reconciliation[]; bills: Bill[]; invoices: Invoice[]; contacts: Contact[]; alerts: Alert[]; journals: Journal[]; periods: Period[]; closeItems: CloseItem[]; budgets: Budget[]; audit: Audit[]; documentSummary: { total: number; invoices: number; receipts: number; needsReview: number; extractionConfigured: boolean }; integrations: Record<string, string>; disclaimer: string };
+type PlaidAccess = {
+  status: string;
+  maskedAccountRef: string | null;
+  externalAccountName: string | null;
+  privacyDataDeletedAt: string | null;
+  dataPromotionStatus: string;
+  connections: Array<{ id: string; lastSuccessfulSyncAt: string | null }>;
+  canManage?: boolean;
+  providerReadiness: null | {
+    credentialsConfigured: boolean;
+    missingConfiguration: string[];
+    mode: string;
+    liveDataEligible?: boolean;
+  };
+};
 
 const money = (value: number | null | undefined, currency = "CAD") => value == null ? "Not available" : new Intl.NumberFormat("en-CA", { style: "currency", currency, minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(value / 100);
 const rate = (basisPoints: number | null | undefined) => basisPoints == null ? "Not available" : `${(basisPoints / 100).toFixed(1)}%`;
@@ -92,6 +108,10 @@ export default function BookLoQWorkspace({ initialSection = "Overview", createTa
   const [navSearch, setNavSearch] = useState("");
   const [collapsed, setCollapsed] = useState(false);
   const [journalOpen, setJournalOpen] = useState(false);
+  const [plaidAccess, setPlaidAccess] = useState<PlaidAccess | null>(null);
+  const [plaidLoading, setPlaidLoading] = useState(true);
+  const [plaidError, setPlaidError] = useState("");
+  const [canManageBankConnections, setCanManageBankConnections] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -104,6 +124,28 @@ export default function BookLoQWorkspace({ initialSection = "Overview", createTa
     finally { setLoading(false); }
   }, [activeLocationId]);
   useEffect(() => { const timer = window.setTimeout(() => void refresh(), 0); return () => window.clearTimeout(timer); }, [refresh]);
+
+  const refreshPlaidAccess = useCallback(async () => {
+    setPlaidLoading(true);
+    try {
+      const response = await apiFetch("/api/v1/integrations", { headers: { Accept: "application/json" } });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error?.message ?? "Bank connection status could not be loaded.");
+      const plaid = (body.integrations ?? []).find((item: { id?: string }) => item.id === "plaid") as PlaidAccess | undefined;
+      setPlaidAccess(plaid ?? null);
+      setCanManageBankConnections(body.canManageBankConnections === true);
+      setPlaidError("");
+    } catch (caught) {
+      setPlaidError(caught instanceof Error ? caught.message : "Bank connection status could not be loaded.");
+    } finally {
+      setPlaidLoading(false);
+    }
+  }, []);
+  useEffect(() => { const timer = window.setTimeout(() => void refreshPlaidAccess(), 0); return () => window.clearTimeout(timer); }, [refreshPlaidAccess]);
+
+  const refreshFinancialSources = useCallback(async () => {
+    await Promise.all([refresh(), refreshPlaidAccess()]);
+  }, [refresh, refreshPlaidAccess]);
 
   const authorizedSections = useMemo(() => sectionDefinitions.filter((item) => data?.permissions.includes(item.permission)), [data]);
   const visible = useMemo(() => authorizedSections.filter((item) => item.name.toLowerCase().includes(navSearch.toLowerCase())), [authorizedSections, navSearch]);
@@ -125,6 +167,9 @@ export default function BookLoQWorkspace({ initialSection = "Overview", createTa
       {!data.configured && <BookLoQStart navigate={navigate} setSection={setSection}/>}
       {data.settings?.dataMode === "demonstration" && <div className="bookloq-demo-banner"><b>Demonstration workspace</b><span>Every figure below is clearly separated from live Vanteloq and exists only to evaluate BookLoQ workflows.</span></div>}
       {data.locationScope && <div className="bookloq-scope-banner"><b>{data.locationScope.name} scope</b><span>{data.locationScope.boundary}</span></div>}
+      {["Overview", "Banking", "Reconciliation", "Cash Flow"].includes(activeSection) && (
+        <BookLoQBankConnection plaid={plaidAccess} loading={plaidLoading} error={plaidError} canManage={canManageBankConnections} onChanged={refreshFinancialSources} retry={refreshPlaidAccess} showNotice={showNotice}/>
+      )}
       <BookLoQSection section={activeSection} data={data} setSection={setSection} createTask={createTask} showNotice={showNotice} refresh={refresh} openJournal={() => setJournalOpen(true)} navigate={navigate}/>
     </main>
     {journalOpen && data.statements.accounts.length > 0 && <JournalComposer data={data} close={() => setJournalOpen(false)} saved={async () => { setJournalOpen(false); await refresh(); showNotice("Balanced journal posted and added to the audit trail"); }}/>}
@@ -132,7 +177,45 @@ export default function BookLoQWorkspace({ initialSection = "Overview", createTa
 }
 
 function BookLoQStart({ navigate, setSection }: { navigate: (view: "Integrations" | "Documents") => void; setSection: (section: Section) => void }) {
-  return <div className="bookloq-activation"><div><p>BOOKLOQ IS READY</p><h3>Start with the work you need to do now.</h3><span>You can create invoices, capture receipts and open the complete workspace before a bank feed or first journal exists. Financial totals remain unavailable until supporting records arrive.</span></div><div><button onClick={() => setSection("Invoicing")}>Create an invoice</button><button onClick={() => setSection("Expenses")}>Capture a receipt</button><button onClick={() => navigate("Integrations")}>Connect a bank</button><button onClick={() => navigate("Documents")}>Open files</button></div></div>;
+  return <div className="bookloq-activation"><div><p>BOOKLOQ IS READY</p><h3>Start with the work you need to do now.</h3><span>You can create invoices, capture receipts and open the complete workspace before a bank feed or first journal exists. Financial totals remain unavailable until supporting records arrive.</span></div><div><button onClick={() => setSection("Invoicing")}>Create an invoice</button><button onClick={() => setSection("Expenses")}>Capture a receipt</button><button onClick={() => setSection("Banking")}>Connect a bank</button><button onClick={() => navigate("Documents")}>Open files</button></div></div>;
+}
+
+function BookLoQBankConnection({ plaid, loading, error, canManage, onChanged, retry, showNotice }: { plaid: PlaidAccess | null; loading: boolean; error: string; canManage: boolean; onChanged: () => Promise<void>; retry: () => Promise<void>; showNotice: (message: string) => void }) {
+  const [approvalOpen, setApprovalOpen] = useState(false);
+  const [approvalBusy, setApprovalBusy] = useState(false);
+  const connected = plaid?.status === "connected";
+  const repairRequired = plaid?.status === "error" && Boolean(plaid.maskedAccountRef);
+  const configured = plaid?.providerReadiness?.credentialsConfigured === true;
+  const managementAllowed = canManage && plaid?.canManage !== false;
+  const stagedConnection = connected && plaid?.dataPromotionStatus === "staging" && plaid.connections[0]?.lastSuccessfulSyncAt ? plaid.connections[0] : null;
+  const mode = plaid?.providerReadiness?.mode;
+  const status = connected ? "Connected" : repairRequired ? "Repair required" : configured ? "Ready to authorize" : "Setup required";
+  const approveStagedData = async () => {
+    if (!stagedConnection) return;
+    setApprovalBusy(true);
+    try {
+      const response = await apiFetch("/api/v1/integrations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "approve_data", connectionId: stagedConnection.id, confirmed: true }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error?.message ?? "The synchronized bank data could not be approved.");
+      setApprovalOpen(false);
+      await onChanged();
+      showNotice(body.nextStep ?? "Approved bank data is now available to BookLoQ calculations.");
+    } catch (caught) {
+      showNotice(caught instanceof Error ? caught.message : "The synchronized bank data could not be approved.");
+    } finally {
+      setApprovalBusy(false);
+    }
+  };
+  return <section className={`bookloq-bank-connection ${connected ? "connected" : repairRequired ? "repair" : ""}`} aria-labelledby="bookloq-bank-connection-title">
+    <div className="bookloq-bank-connection-copy"><span className="bookloq-bank-connection-icon" aria-hidden="true">▤</span><div><p>SECURE BANK DATA FOR BOOKLOQ</p><h3 id="bookloq-bank-connection-title">{connected ? "Your bank feed powers verified cash intelligence." : "Connect Plaid without leaving BookLoQ."}</h3><span>With your consent, read-only balances and transactions support current cash, 13-week cash flow, reconciliation, expense review, tax working papers, and cash-aware purchasing. Reorder demand still comes from approved POS, inventory, and supplier records.</span><div className="bookloq-bank-use-list"><small>Read only</small><small>No money movement</small><small>Review before posting</small><small>Disconnect and deletion controls</small></div></div></div>
+    <div className="bookloq-bank-connection-action"><strong>{loading ? "Checking secure connection…" : status}</strong>{mode && <small>{mode === "production" ? "Production bank access" : `${label(mode)} testing mode`}</small>}{loading ? null : error ? <><span role="alert">{error}</span><button type="button" onClick={() => void retry()}>Retry status check</button></> : plaid ? <><PlaidLinkButton connected={connected} repairRequired={repairRequired} configured={configured} canManage={managementAllowed} deletionAvailable={plaid.status === "revoked" && !plaid.privacyDataDeletedAt} onChanged={onChanged} showNotice={showNotice} returnView="BookLoQ"/>{stagedConnection && <button type="button" className="bookloq-approve-bank-data" disabled={!managementAllowed || approvalBusy} onClick={() => setApprovalOpen(true)}>Approve synchronized data</button>}</> : <span>Bank connection controls are unavailable for this workspace.</span>}{!loading && !error && !configured && plaid?.providerReadiness?.missingConfiguration.length ? <span>Hosted Plaid setup remaining: {plaid.providerReadiness.missingConfiguration.map(label).join(" · ")}</span> : null}</div>
+    <small className="bookloq-bank-legal">The authorization checkbox, exact data categories, purposes, retention choices, Privacy Policy, and deletion controls are shown before Plaid Link opens. BookLoQ does not receive or store your online banking password.</small>
+    {approvalOpen && stagedConnection && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !approvalBusy) setApprovalOpen(false); }}><section className="task-modal data-approval-dialog" role="dialog" aria-modal="true" aria-labelledby="bookloq-bank-approval-title" aria-describedby="bookloq-bank-approval-description"><div className="modal-head"><div><p className="card-kicker">BANK DATA REVIEW</p><h2 id="bookloq-bank-approval-title">Use the synchronized records in BookLoQ?</h2></div><button type="button" aria-label="Close bank data approval" onClick={() => setApprovalOpen(false)}>×</button></div><p id="bookloq-bank-approval-description" className="data-approval-copy">Confirm that the business accounts selected in Plaid Link are appropriate for this workspace. Approval makes their read-only balances and transactions available to cash, reconciliation, accounting, purchasing, and reorder-capacity calculations. Transactions remain unposted until an authorized person categorizes and reconciles them.</p><div className="modal-actions"><button type="button" onClick={() => setApprovalOpen(false)}>Cancel</button><button type="button" className="primary" disabled={approvalBusy} onClick={() => void approveStagedData()}>{approvalBusy ? "Approving…" : "Approve for BookLoQ"}</button></div></section></div>}
+  </section>;
 }
 
 function BookLoQSection(props: { section: Section; data: BookLoQData; setSection: (section: Section) => void; createTask: (seed: TaskSeed) => void; showNotice: (message: string) => void; refresh: () => Promise<void>; openJournal: () => void; navigate: (view: "Integrations" | "Documents") => void }) {
@@ -189,7 +272,7 @@ function OverviewPanel({ data, setSection, createTask, refresh, showNotice, navi
       <article className="bookloq-card bookloq-attention"><Header kicker="FINANCIAL ATTENTION CENTRE" title="What requires action" action={<button onClick={() => setSection("Transactions")}>Open transaction centre</button>}/>{openAlerts.length ? openAlerts.slice(0, 4).map((alert) => <AlertRow key={alert.id} alert={alert} currency={data.organization.currency} createTask={createTask} refresh={refresh} showNotice={showNotice}/>) : <EmptyLine text="No open alerts were produced by the current records."/>}</article>
       <article className="bookloq-card"><Header kicker="CASH OUTLOOK" title="Confirmed 13-week cash movement" action={<button onClick={() => setSection("Cash Flow")}>Open forecast</button>}/><div className="forecast-list">{cashOutlook.map((week) => <div key={week.index}><span><b>Week {week.index}</b><small>through {shortDate(week.weekEnd)}</small></span><strong className={week.conservativeClosingCashCents !== null && week.conservativeClosingCashCents < 0 ? "negative" : ""}>{money(week.conservativeClosingCashCents)}</strong><i style={{ width: `${Math.min(100, Math.max(8, Math.abs(week.conservativeClosingCashCents ?? 0) / Math.max(1, Math.abs(data.summary.currentCashCents ?? 0)) * 70))}%` }}/></div>)}</div><small className="calculation-note">Confirmed close uses verified opening cash, approved bills, and dated vendor commitments. Expected receipts stay separate.</small></article>
     </section>
-    <section className="bookloq-card bookloq-integrity"><Header kicker="CONTROL STATUS" title="What BookLoQ knows and what still needs review" action={<div className="bookloq-document-actions"><button onClick={() => navigate("Documents")}>Upload invoice or receipt</button><button onClick={() => navigate("Integrations")}>Manage bank feed</button></div>}/><div><Integrity label="Double-entry ledger" status={data.statements.trialBalance.totalDebitCents === data.statements.trialBalance.totalCreditCents ? "Verified" : "Issue"} detail={`${money(data.statements.trialBalance.totalDebitCents)} debits · ${money(data.statements.trialBalance.totalCreditCents)} credits`}/><Integrity label="Bank feed" status={data.integrations.banking.startsWith("connected") ? "Connected" : "Not connected"} detail={data.integrations.banking === "connected_and_synced" ? `${data.banks.length} owner-authorized accounts; ${bookloqMetricCount(data.summary.uncategorizedCount)} transactions require category review.` : "Connect Plaid in Integrations. Imported transactions remain unreviewed until categorized and reconciled."}/><Integrity label="Tax filing" status="Not connected" detail="Working-paper assistance only. No filing is represented as submitted."/><Integrity label="Document capture" status={data.documentSummary.total ? "Available" : "Ready"} detail={`${data.documentSummary.total} private documents stored; ${data.documentSummary.needsReview} require review. OCR and malware-clean claims remain disabled until those services are configured.`}/></div></section>
+    <section className="bookloq-card bookloq-integrity"><Header kicker="CONTROL STATUS" title="What BookLoQ knows and what still needs review" action={<div className="bookloq-document-actions"><button onClick={() => navigate("Documents")}>Upload invoice or receipt</button><button onClick={() => setSection("Banking")}>Manage bank feed</button></div>}/><div><Integrity label="Double-entry ledger" status={data.statements.trialBalance.totalDebitCents === data.statements.trialBalance.totalCreditCents ? "Verified" : "Issue"} detail={`${money(data.statements.trialBalance.totalDebitCents)} debits · ${money(data.statements.trialBalance.totalCreditCents)} credits`}/><Integrity label="Bank feed" status={data.integrations.banking.startsWith("connected") ? "Connected" : "Not connected"} detail={data.integrations.banking === "connected_and_synced" ? `${data.banks.length} owner-authorized accounts; ${bookloqMetricCount(data.summary.uncategorizedCount)} transactions require category review.` : "Connect Plaid directly above or in BookLoQ Banking. Imported transactions remain unreviewed until categorized and reconciled."}/><Integrity label="Tax filing" status="Not connected" detail="Working-paper assistance only. No filing is represented as submitted."/><Integrity label="Document capture" status={data.documentSummary.total ? "Available" : "Ready"} detail={`${data.documentSummary.total} private documents stored; ${data.documentSummary.needsReview} require review. OCR and malware-clean claims remain disabled until those services are configured.`}/></div></section>
   </div>;
 }
 
@@ -275,7 +358,7 @@ function BankingPanel({ data, reconciliation }: { data: BookLoQData; reconciliat
         ? "Plaid supplies read-only account names, masked identifiers, current balances, and transactions. Vanteloq stores encrypted provider tokens, never online-banking credentials, and imported transactions stay in review until categorized and reconciled."
         : bankingConnected
           ? "The bank connection needs a fresh, healthy balance sync before BookLoQ can treat balances as current."
-          : "Connect Plaid from Integrations to authorize read-only balances and transactions. BookLoQ never stores online-banking credentials."}
+          : "Use the secure Plaid control above to authorize read-only balances and transactions. BookLoQ never stores online banking credentials."}
     />
   </div>;
 }

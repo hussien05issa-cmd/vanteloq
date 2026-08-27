@@ -15,6 +15,7 @@ export const PLAID_LINK_MODE_STORAGE_KEY = "vanteloq:plaid-link-mode";
 export const PLAID_LINK_EXPIRATION_STORAGE_KEY = "vanteloq:plaid-link-expiration";
 export const PLAID_REDIRECT_STORAGE_KEY = "vanteloq:plaid-redirect-uri";
 export const PLAID_CONSENT_STORAGE_KEY = "vanteloq:plaid-consent-record";
+export const PLAID_RETURN_VIEW_STORAGE_KEY = "vanteloq:plaid-return-view";
 
 type LinkMode = "connect" | "update";
 
@@ -32,6 +33,7 @@ function clearPlaidLinkState() {
   sessionStorage.removeItem(PLAID_LINK_EXPIRATION_STORAGE_KEY);
   sessionStorage.removeItem(PLAID_REDIRECT_STORAGE_KEY);
   sessionStorage.removeItem(PLAID_CONSENT_STORAGE_KEY);
+  sessionStorage.removeItem(PLAID_RETURN_VIEW_STORAGE_KEY);
   const url = new URL(window.location.href);
   url.searchParams.delete("oauth_state_id");
   if (url.searchParams.get("integration") === "plaid") url.searchParams.delete("integration");
@@ -54,7 +56,7 @@ function readPlaidResumeState(): { token: string; mode: LinkMode; redirect: stri
   return { token, mode, redirect, consentRecordId };
 }
 
-export default function PlaidLinkButton({ connected, repairRequired, configured, canManage, deletionAvailable, onChanged, showNotice }: {
+export default function PlaidLinkButton({ connected, repairRequired, configured, canManage, deletionAvailable, onChanged, showNotice, returnView = "Integrations" }: {
   connected: boolean;
   repairRequired: boolean;
   configured: boolean;
@@ -62,6 +64,7 @@ export default function PlaidLinkButton({ connected, repairRequired, configured,
   deletionAvailable: boolean;
   onChanged: () => Promise<void>;
   showNotice: (message: string) => void;
+  returnView?: "BookLoQ" | "Integrations";
 }) {
   const [resumeState] = useState(readPlaidResumeState);
   const validResume = resumeState && "token" in resumeState ? resumeState : null;
@@ -147,6 +150,7 @@ export default function PlaidLinkButton({ connected, repairRequired, configured,
       sessionStorage.setItem(PLAID_LINK_MODE_STORAGE_KEY, mode);
       sessionStorage.setItem(PLAID_LINK_EXPIRATION_STORAGE_KEY, body.expiration);
       sessionStorage.setItem(PLAID_CONSENT_STORAGE_KEY, body.consentRecordId);
+      sessionStorage.setItem(PLAID_RETURN_VIEW_STORAGE_KEY, returnView);
       setLinkMode(mode);
       setConsentRecordId(body.consentRecordId);
       setReceivedRedirectUri(null);

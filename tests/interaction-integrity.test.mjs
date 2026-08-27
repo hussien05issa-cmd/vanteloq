@@ -30,6 +30,27 @@ test("provider data approval uses an accessible in-app confirmation", async () =
   assert.match(source, /Approve reviewed data/);
 });
 
+test("BookLoQ connects Plaid directly with versioned consent and guarded financial use", async () => {
+  const [workspace, plaidButton, privacy, purchasing] = await Promise.all([
+    readFile(new URL("../app/bookloq-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/plaid-link-button.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../domain/privacy-controls.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/v1/purchasing/route.ts", import.meta.url), "utf8"),
+  ]);
+  assert.match(workspace, /<PlaidLinkButton[\s\S]{0,500}returnView="BookLoQ"/);
+  assert.match(workspace, /setSection\("Banking"\)\}>Connect a bank/);
+  assert.match(workspace, /The authorization checkbox, exact data categories, purposes, retention choices/);
+  assert.match(workspace, /Transactions remain unposted until an authorized person categorizes and reconciles them/);
+  assert.match(workspace, /action: "approve_data", connectionId: stagedConnection\.id, confirmed: true/);
+  assert.match(plaidButton, /PLAID_RETURN_VIEW_STORAGE_KEY/);
+  assert.match(plaidButton, /disabled=\{!consentChecked\}/);
+  assert.match(privacy, /plaid-financial-data-v3/);
+  assert.match(privacy, /13-week cash-flow forecasting/);
+  assert.match(privacy, /reorder-capacity analysis when combined with inventory and supplier records/);
+  assert.match(purchasing, /Connect and synchronize Plaid in BookLoQ before cash can constrain reorder quantities/);
+  assert.match(purchasing, /Demand quantities use verified 30-day performance/);
+});
+
 test("literal disabled buttons explain why they are unavailable", async () => {
   for (const { file, source } of await applicationSource()) {
     const literalDisabledButtons = source.match(/<button\b(?=[^>]*\bdisabled(?:\s|>))[^>]*>/g) ?? [];
