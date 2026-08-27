@@ -566,6 +566,7 @@ test("paid API access is server-enforced with narrow billing and privacy excepti
     "integrations/moneris/disconnect/route.ts",
     "integrations/plaid/delete-data/route.ts",
     "integrations/plaid/disconnect/route.ts",
+    "integrations/quickbooks/disconnect/route.ts",
     "integrations/shopify-pos/disconnect/route.ts",
     "integrations/square/disconnect/route.ts",
     "integrations/stripe/disconnect/route.ts",

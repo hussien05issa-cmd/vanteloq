@@ -10,6 +10,9 @@ import {
   PLAID_DATA_CATEGORIES,
   PLAID_PROCESSING_PURPOSES,
   PRIVACY_POLICY_VERSION,
+  QUICKBOOKS_CONSENT_NOTICE_VERSION,
+  QUICKBOOKS_DATA_CATEGORIES,
+  QUICKBOOKS_PROCESSING_PURPOSES,
 } from "../domain/privacy-controls";
 import { ApiError } from "./api";
 
@@ -83,6 +86,38 @@ export async function recordPlaidConsent(input: {
     privacyPolicyVersion: PRIVACY_POLICY_VERSION,
     dataCategoriesJson: JSON.stringify(PLAID_DATA_CATEGORIES),
     purposesJson: JSON.stringify(PLAID_PROCESSING_PURPOSES),
+    consentSource: "in_app",
+    acceptedAt: now,
+    createdAt: now,
+    updatedAt: now,
+  });
+  return { id, acceptedAt: now };
+}
+
+export async function recordQuickBooksConsent(input: {
+  organizationId: string;
+  actorUserId: string;
+  noticeVersion: string;
+  privacyPolicyVersion: string;
+}) {
+  if (
+    input.noticeVersion !== QUICKBOOKS_CONSENT_NOTICE_VERSION
+    || input.privacyPolicyVersion !== PRIVACY_POLICY_VERSION
+  ) {
+    throw new ApiError(409, "QUICKBOOKS_CONSENT_NOTICE_STALE", "The QuickBooks data notice changed. Review it again before connecting.");
+  }
+  const now = new Date();
+  const id = crypto.randomUUID();
+  await getDb().insert(integrationConsents).values({
+    id,
+    organizationId: input.organizationId,
+    actorUserId: input.actorUserId,
+    provider: "quickbooks",
+    status: "accepted",
+    noticeVersion: QUICKBOOKS_CONSENT_NOTICE_VERSION,
+    privacyPolicyVersion: PRIVACY_POLICY_VERSION,
+    dataCategoriesJson: JSON.stringify(QUICKBOOKS_DATA_CATEGORIES),
+    purposesJson: JSON.stringify(QUICKBOOKS_PROCESSING_PURPOSES),
     consentSource: "in_app",
     acceptedAt: now,
     createdAt: now,

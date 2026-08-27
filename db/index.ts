@@ -33,6 +33,10 @@ export type VanteloqRuntimeEnv = {
   STRIPE_WEBHOOK_SECRET?: string;
   STRIPE_BILLING_WEBHOOK_SECRET?: string;
   STRIPE_API_VERSION?: string;
+  QUICKBOOKS_CLIENT_ID?: string;
+  QUICKBOOKS_CLIENT_SECRET?: string;
+  QUICKBOOKS_REDIRECT_URI?: string;
+  QUICKBOOKS_ENV?: string;
   ADDRESSCOMPLETE_API_KEY?: string;
   PLAID_CLIENT_ID?: string;
   PLAID_SECRET?: string;

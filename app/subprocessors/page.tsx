@@ -24,6 +24,7 @@ export default function SubprocessorsPage() {
         <li><strong>Plaid:</strong> read only business financial account connection, balances, and transactions selected by a workspace owner.</li>
         <li><strong>Google:</strong> selected marketing resources, Business Profile information, or limited Gemini Advisor prompts and aggregate evidence after the specific acceptance shown in Vanteloq.</li>
         <li><strong>Meta:</strong> selected marketing account and measurement records.</li>
+        <li><strong>Intuit QuickBooks Online:</strong> a customer selected company identifier, company name, authorization status, and accounting records only when the staged accounting import is later enabled and expressly authorized.</li>
         <li><strong>Shopify, Square, Clover, Lightspeed, Stripe Connect, and Moneris:</strong> customer directed commerce, payment reference, product, inventory, location, or reporting records available under the permissions shown during connection.</li>
       </ul>
       <p>Placeholder integrations shown as unavailable do not receive Customer Data.</p>

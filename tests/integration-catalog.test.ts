@@ -27,17 +27,29 @@ test("the integration directory uses the approved sales-channel taxonomy", () =>
 
 test("only built pilots may claim that credentials are the remaining connection prerequisite", () => {
   const credentialReady = integrationCatalog.filter((provider) => provider.availability === "credentials_required");
-  assert.deepEqual(credentialReady.map((provider) => provider.id).sort(), ["clover", "google", "lightspeed", "lightspeed-r", "meta", "moneris", "plaid", "shopify", "shopify-pos", "square", "stripe"]);
+  assert.deepEqual(credentialReady.map((provider) => provider.id).sort(), ["clover", "google", "lightspeed", "lightspeed-r", "meta", "moneris", "plaid", "quickbooks", "shopify", "shopify-pos", "square", "stripe"]);
   assert.ok(integrationCatalog.filter((provider) => !credentialReady.includes(provider)).every((provider) => provider.availability !== "credentials_required"));
 });
 
-test("DoorDash is gated by Marketplace approval and never represented as a Drive reporting connection", () => {
+test("DoorDash and Uber Eats are consistently non-interactive coming soon connectors", () => {
   const doorDash = integrationCatalog.find((provider) => provider.id === "doordash");
+  const uberEats = integrationCatalog.find((provider) => provider.id === "uber-eats");
   assert.ok(doorDash);
-  assert.equal(doorDash.availability, "provider_access_required");
-  assert.match(doorDash.activationRequirement, /Marketplace access is approval-only/i);
-  assert.match(doorDash.activationRequirement, /Drive API does not provide this merchant reporting feed/i);
-  assert.match(doorDash.externalApplicationUrl ?? "", /^https:\/\/docs\.google\.com\/forms\//);
+  assert.ok(uberEats);
+  for (const provider of [doorDash, uberEats]) {
+    assert.equal(provider.availability, "coming_soon");
+    assert.match(provider.activationRequirement, /^Coming soon\./i);
+    assert.equal(provider.externalApplicationUrl, undefined);
+  }
+});
+
+test("QuickBooks exposes only the built sandbox company-verification boundary", () => {
+  const quickBooks = integrationCatalog.find((provider) => provider.id === "quickbooks");
+  assert.ok(quickBooks);
+  assert.equal(quickBooks.availability, "credentials_required");
+  assert.match(quickBooks.activationRequirement, /read only/i);
+  assert.match(quickBooks.activationRequirement, /sandbox remains staging only/i);
+  assert.match(quickBooks.activationRequirement, /ledger import/i);
 });
 
 test("integration cards use one canonical ordered category taxonomy", () => {

@@ -14,6 +14,7 @@ import { stripeReadiness } from "../../../../server/integrations/stripe";
 import { plaidReadiness } from "../../../../server/integrations/plaid";
 import { marketingReadiness } from "../../../../server/integrations/marketing";
 import { monerisReadiness, MONERIS_PROVIDER } from "../../../../server/integrations/moneris";
+import { quickBooksReadiness, QUICKBOOKS_PROVIDER } from "../../../../server/integrations/quickbooks";
 import { shopifyPosReadiness, shopifyReadiness, SHOPIFY_POS_PROVIDER, SHOPIFY_PROVIDER } from "../../../../server/integrations/shopify-pos";
 import { buildProviderFeatureCoverage, type CanonicalCommerceCoverage } from "../../../../domain/provider-feature-coverage";
 import { aggregateConnectionStatus } from "../../../../domain/integration-source";
@@ -252,6 +253,8 @@ export async function GET(request: Request) {
               ? squareReadiness()
             : provider.id === "stripe"
               ? stripeReadiness()
+            : provider.id === QUICKBOOKS_PROVIDER
+              ? quickBooksReadiness()
             : provider.id === MONERIS_PROVIDER
               ? monerisReadiness()
               : provider.id === "plaid"

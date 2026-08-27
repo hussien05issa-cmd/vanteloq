@@ -2,7 +2,8 @@ export type IntegrationAvailability =
   | "provider_build_required"
   | "provider_access_required"
   | "credentials_required"
-  | "provider_selection_required";
+  | "provider_selection_required"
+  | "coming_soon";
 
 export const integrationCategoryOrder = [
   "Point of sale",
@@ -120,9 +121,9 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
     id: "quickbooks",
     name: "QuickBooks",
     category: "Accounting",
-    availability: "provider_build_required",
+    availability: "credentials_required",
     activationRequirement:
-      "Not available yet. A production connection still needs authorization, company selection, account and tax mapping, closed-period rules, and conflict recovery tests.",
+      "The read only QuickBooks Online authorization and company verification boundary is built. Sandbox remains staging only while ledger import, account and tax mapping, reconciliation, closed-period handling, recovery tests, and Intuit production review are completed.",
   },
   {
     id: "xero",
@@ -136,20 +137,17 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
     id: "doordash",
     name: "DoorDash",
     category: "Delivery",
-    availability: "provider_access_required",
+    availability: "coming_soon",
     activationRequirement:
-      "DoorDash Marketplace access is approval-only. Request partner access for Marketplace orders, menus, stores, fees and payout reconciliation; the separate Drive API does not provide this merchant reporting feed.",
-    externalApplicationUrl:
-      "https://docs.google.com/forms/d/e/1FAIpQLSfggU_NjGWCdi9vyWUicrnzJmtu9vC4zgbfSC3ROwSvW4eV2g/viewform",
-    externalApplicationLabel: "Request Marketplace access",
+      "Coming soon. DoorDash Marketplace orders, menus, stores, fees, and payout reconciliation will remain unavailable until partner access and Vanteloq reconciliation tests are complete.",
   },
   {
     id: "uber-eats",
     name: "Uber Eats",
     category: "Delivery",
-    availability: "provider_build_required",
+    availability: "coming_soon",
     activationRequirement:
-      "Not available yet. A production connection still needs partner access, store mapping, order and fee handling, recovery, and reconciliation tests.",
+      "Coming soon. Uber Eats orders, stores, fees, refunds, and settlement reconciliation will remain unavailable until partner access and Vanteloq reconciliation tests are complete.",
   },
   {
     id: "google",
@@ -213,7 +211,7 @@ export const preSyncControls = [
   {
     id: "authorization",
     label: "Provider authorization",
-    detail: "Lightspeed, Clover, Stripe, Google, and Meta use state-bound authorization with only the required access; Plaid uses short-lived Link sessions. Provider credentials stay server-side and encrypted where stored, and providers without a working connection remain disabled.",
+    detail: "Lightspeed, Clover, Stripe, QuickBooks, Google, and Meta use state-bound authorization with only the required access; Plaid uses short-lived Link sessions. Provider credentials stay server-side and encrypted where stored, and providers without a working connection remain disabled.",
     status: "verified",
   },
   {

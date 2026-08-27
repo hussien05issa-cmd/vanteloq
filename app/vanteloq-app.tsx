@@ -42,6 +42,7 @@ import { humanizeIdentifier, providerDisplayName, workspaceViewLabel } from "../
 import {
   GEMINI_CONSENT_NOTICE_VERSION,
   PRIVACY_POLICY_VERSION,
+  QUICKBOOKS_CONSENT_NOTICE_VERSION,
 } from "../domain/privacy-controls";
 import { navigationEntitlement } from "../domain/navigation-entitlements";
 import { integrationProviderFeature } from "../domain/paid-feature-routing";
@@ -144,7 +145,7 @@ const emptyCommerceCoverage: CanonicalCommerceCoverage = {
   locations: false,
 };
 const universalPosContract = buildProviderFeatureCoverage("normalized-pos", emptyCommerceCoverage);
-type DirectIntegrationProvider = "lightspeed" | "lightspeed-r" | "shopify" | "shopify-pos" | "square" | "clover" | "stripe" | "moneris" | "google" | "meta";
+type DirectIntegrationProvider = "lightspeed" | "lightspeed-r" | "shopify" | "shopify-pos" | "square" | "clover" | "stripe" | "moneris" | "quickbooks" | "google" | "meta";
 const providerSyncRoutes = {
   lightspeed: "/api/v1/integrations/lightspeed/sync",
   "lightspeed-r": "/api/v1/integrations/lightspeed-r/sync",
@@ -2295,6 +2296,8 @@ function DataHub({
   const [shopifyShop, setShopifyShop] = useState("");
   const [monerisFormOpen, setMonerisFormOpen] = useState(false);
   const [monerisDraft, setMonerisDraft] = useState({ accountName: "", environment: "sandbox", merchantId: "", clientId: "", clientSecret: "", scope: "payment.read", accepted: false });
+  const [quickBooksConsentOpen, setQuickBooksConsentOpen] = useState(false);
+  const [quickBooksConsentAccepted, setQuickBooksConsentAccepted] = useState(false);
   const [sampleResult, setSampleResult] = useState<null | {
     run: { recordsRead: number; recordsStaged: number; duplicatesSkipped: number; warningCount: number };
     reconciliation: {
@@ -2441,6 +2444,20 @@ function DataHub({
       provider,
       `/api/v1/integrations/${provider}/authorize`,
       "authorize",
+    );
+    if (body?.authorizationUrl) window.location.assign(body.authorizationUrl);
+  };
+  const connectQuickBooks = async () => {
+    const body = await providerPost(
+      "quickbooks",
+      "/api/v1/integrations/quickbooks/authorize",
+      "authorize",
+      undefined,
+      {
+        consentAcknowledged: quickBooksConsentAccepted,
+        noticeVersion: QUICKBOOKS_CONSENT_NOTICE_VERSION,
+        privacyPolicyVersion: PRIVACY_POLICY_VERSION,
+      },
     );
     if (body?.authorizationUrl) window.location.assign(body.authorizationUrl);
   };
@@ -2845,11 +2862,13 @@ function DataHub({
               const hasLocationMapping = provider.id === "lightspeed" || provider.id === "lightspeed-r" || provider.id === "shopify" || provider.id === "shopify-pos" || provider.id === "square" || provider.id === "clover";
               const isStripe = provider.id === "stripe";
               const isMoneris = provider.id === "moneris";
+              const isQuickBooks = provider.id === "quickbooks";
               const isPlaid = provider.id === "plaid";
               const isMarketingProvider = provider.id === "google" || provider.id === "meta";
               const supportsMultipleAccounts = supportsMultipleProviderAccounts(provider.id);
               const providerSetupRequired = provider.availability === "provider_selection_required";
               const providerUnavailable = provider.availability === "provider_build_required";
+              const providerComingSoon = provider.availability === "coming_soon";
               const repairRequired = isPlaid && provider.status === "error" && Boolean(provider.maskedAccountRef);
               const canManageProvider = providerEntitled && (provider.id === "plaid"
                 ? provider.canManage ?? canManageBankConnections
@@ -2863,7 +2882,7 @@ function DataHub({
                 : !canManageProvider
                 ? "Your role can view connection status but cannot manage integrations."
                 : !configured
-                  ? `Add the ${isPlaid ? "Plaid client ID, environment secret, approved redirect and webhook URLs, and encryption key" : isStripe ? "Stripe Connect credentials and webhook secret" : isMoneris ? "integration encryption key" : provider.id === "google" ? "Google OAuth client, approved callback, and encryption key" : provider.id === "meta" ? "Meta app credentials, approved callback, and encryption key" : provider.id === "shopify" || provider.id === "shopify-pos" ? "Shopify client ID, client secret, approved callback, webhook URL, and encryption key" : provider.id === "lightspeed-r" ? "R-Series OAuth client ID and secret" : provider.id === "square" ? "Square application ID, application secret, approved redirect, webhook signature key, and encryption key" : provider.id === "clover" ? "Clover app ID, app secret, approved redirect, webhook authorization secret, and encryption key" : "X-Series OAuth client ID and secret"} to Vanteloq's hosted secrets first.`
+                  ? `Add the ${isPlaid ? "Plaid client ID, environment secret, approved redirect and webhook URLs, and encryption key" : isStripe ? "Stripe Connect credentials and webhook secret" : isMoneris ? "integration encryption key" : isQuickBooks ? "QuickBooks client ID, client secret, approved callback, environment, and encryption key" : provider.id === "google" ? "Google OAuth client, approved callback, and encryption key" : provider.id === "meta" ? "Meta app credentials, approved callback, and encryption key" : provider.id === "shopify" || provider.id === "shopify-pos" ? "Shopify client ID, client secret, approved callback, webhook URL, and encryption key" : provider.id === "lightspeed-r" ? "R-Series OAuth client ID and secret" : provider.id === "square" ? "Square application ID, application secret, approved redirect, webhook signature key, and encryption key" : provider.id === "clover" ? "Clover app ID, app secret, approved redirect, webhook authorization secret, and encryption key" : "X-Series OAuth client ID and secret"} to Vanteloq's hosted secrets first.`
                   : "";
               return (
               <article className={`integration-card${providerEntitled ? "" : " subscription-locked"}`} key={provider.id}>
@@ -2873,6 +2892,7 @@ function DataHub({
                     <span className="integration-type">{provider.category}</span>
                     {providerSetupRequired && <span className="integration-coming-soon">Provider required</span>}
                     {providerUnavailable && <span className="integration-coming-soon">Unavailable</span>}
+                    {providerComingSoon && <span className="integration-coming-soon">Coming soon</span>}
                     {!providerEntitled && <span className="integration-coming-soon">{providerPlanLabel} required</span>}
                   </div>
                 </div>
@@ -2904,6 +2924,15 @@ function DataHub({
                 {isMarketingProvider && !configured && provider.providerReadiness && (
                   <div className="provider-setup-needed" role="note"><b>{provider.name} setup remaining</b><span>{provider.providerReadiness.missingConfiguration.map(lightspeedConfigurationLabel).join(" · ")}</span></div>
                 )}
+                {isQuickBooks && !configured && provider.providerReadiness && (
+                  <div className="provider-setup-needed" role="note"><b>QuickBooks setup remaining</b><span>{provider.providerReadiness.missingConfiguration.map(lightspeedConfigurationLabel).join(" · ")}</span></div>
+                )}
+                {isQuickBooks && quickBooksConsentOpen && <form className="moneris-connect-form" onSubmit={(event) => { event.preventDefault(); void connectQuickBooks(); }}>
+                  <header><b>Connect a QuickBooks Online company</b><span>The current connector verifies the company and stores refreshable authorization securely. Ledger records and dashboard calculations remain locked during the sandbox stage.</span></header>
+                  <label className="moneris-consent"><input type="checkbox" checked={quickBooksConsentAccepted} required onChange={(event) => setQuickBooksConsentAccepted(event.target.checked)} /><span>I authorize Vanteloq to receive the selected QuickBooks company identifier, company name, authorization status, and future read only accounting records for mapping, reconciliation, and reporting. Vanteloq will not create or change QuickBooks transactions during this stage.</span></label>
+                  <small>Intuit will show its own company selection and permission screen next. You can disconnect later to revoke the authorization and delete the stored token.</small>
+                  <footer><button type="button" onClick={() => { setQuickBooksConsentOpen(false); setQuickBooksConsentAccepted(false); }}>Cancel</button><button type="submit" className="primary" disabled={!canManageProvider || providerAction === "authorize" || !quickBooksConsentAccepted}>{providerAction === "authorize" ? "Opening QuickBooks…" : "Continue to Intuit"}</button></footer>
+                </form>}
                 {isMoneris && monerisFormOpen && <form className="moneris-connect-form" onSubmit={(event) => { event.preventDefault(); void connectMoneris(); }}>
                   <header><b>Connect a Moneris merchant</b><span>Read-only payment history for reconciliation and cash timing.</span></header>
                   <label><span>Account label</span><input value={monerisDraft.accountName} maxLength={120} placeholder="Main merchant account" onChange={(event) => setMonerisDraft((current) => ({ ...current, accountName: event.target.value }))} /></label>
@@ -2949,7 +2978,7 @@ function DataHub({
                         </section>}
                         <div className="provider-account-actions">
                           {connection.status === "connected" && <>
-                            {isMarketingProvider ? <>
+                            {isQuickBooks ? <small>Company verified. Ledger import and dashboard metrics remain locked during the sandbox stage.</small> : isMarketingProvider ? <>
                               <button
                                 type="button"
                                 onClick={(event) => void loadMarketingResources(provider.id as "google" | "meta", connection.id, event.currentTarget)}
@@ -3016,6 +3045,8 @@ function DataHub({
                           ? "Provider required"
                         : providerUnavailable
                           ? "Unavailable"
+                        : providerComingSoon
+                          ? "Coming soon"
                         : configured
                           ? "Ready to authorize"
                           : availabilityLabel(provider.availability)}
@@ -3041,6 +3072,8 @@ function DataHub({
                             ? "Choose a supported provider before synchronization"
                             : providerUnavailable
                               ? "Connection not available"
+                            : providerComingSoon
+                              ? "Planned connector · no data access"
                           : configured
                             ? "Authorization required · metrics locked"
                             : "Synchronization unavailable"}
@@ -3064,9 +3097,9 @@ function DataHub({
                   </div> : supportsMultipleAccounts ? <div className="provider-actions">
                     <button
                       type="button"
-                      onClick={() => isMoneris ? setMonerisFormOpen(true) : provider.id === "shopify" || provider.id === "shopify-pos" ? setShopifyConnectProvider(provider.id) : void connectProvider(actionableProvider)}
+                      onClick={() => isMoneris ? setMonerisFormOpen(true) : isQuickBooks ? setQuickBooksConsentOpen(true) : provider.id === "shopify" || provider.id === "shopify-pos" ? setShopifyConnectProvider(provider.id) : void connectProvider(actionableProvider)}
                       disabled={Boolean(disabledReason) || Boolean(providerAction)}
-                      title={disabledReason || `Authorize another ${provider.name} account with its own credentials and import history.`}
+                      title={disabledReason || (isQuickBooks ? "Authorize a QuickBooks Online company for secure sandbox verification." : `Authorize another ${provider.name} account with its own credentials and import history.`)}
                     >{providerAction === "authorize" ? "Opening…" : connected ? "Connect another account" : "Connect"}</button>
                   </div> : provider.externalApplicationUrl && providerEntitled ? <div className="provider-actions">
                     <a href={provider.externalApplicationUrl} target="_blank" rel="noreferrer">{provider.externalApplicationLabel ?? "Request provider access"}</a>
@@ -3238,6 +3271,8 @@ function DataHub({
 function availabilityLabel(value: IntegrationCatalogEntry["availability"]) {
   return value === "provider_selection_required"
     ? "Provider selection required"
+    : value === "coming_soon"
+      ? "Coming soon"
     : value === "provider_access_required"
       ? "Provider approval required"
     : value === "credentials_required"
@@ -3254,6 +3289,10 @@ function lightspeedConfigurationLabel(value: string) {
     LIGHTSPEED_R_CLIENT_ID: "R-Series client ID",
     LIGHTSPEED_R_CLIENT_SECRET: "R-Series client secret",
     LIGHTSPEED_R_REDIRECT_URI: "R-Series callback URL",
+    QUICKBOOKS_CLIENT_ID: "QuickBooks client ID",
+    QUICKBOOKS_CLIENT_SECRET: "QuickBooks client secret",
+    QUICKBOOKS_REDIRECT_URI: "Approved QuickBooks callback URL",
+    QUICKBOOKS_ENV: "QuickBooks environment",
     SHOPIFY_CLIENT_ID: "Shopify app client ID",
     SHOPIFY_CLIENT_SECRET: "Shopify app client secret",
     SHOPIFY_REDIRECT_URI: "Approved Shopify callback URL",

@@ -381,7 +381,9 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
   };
   const publicIntegrations = integrationCatalog.map(provider => ({
     ...provider,
-    detail: connectorBenefits[provider.category] ?? "Bring source records into one operating view",
+    detail: provider.availability === "coming_soon"
+      ? "Coming soon"
+      : connectorBenefits[provider.category] ?? "Bring source records into one operating view",
   }));
 
   useEffect(() => {
@@ -405,6 +407,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
         <a href="#platform" onClick={closeMobileNav}>Platform</a>
         <a href="#capabilities" onClick={closeMobileNav}>Capabilities</a>
         <a href="#connections" onClick={closeMobileNav}>Connections</a>
+        <a href="#company" onClick={closeMobileNav}>Company</a>
         <a href="#security" onClick={closeMobileNav}>Security</a>
         <Link href="/resources" onClick={closeMobileNav}>Resources</Link>
       </nav>
@@ -436,6 +439,26 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
           <img src="/brand/vanteloq-command-ledger.webp" alt="Vanteloq command centre interface with sales, gross profit, cash, inventory and a decision queue." width={1487} height={1058} loading="eager" fetchPriority="high" />
           <figcaption>Vanteloq command centre · Illustrative values · Available views depend on connected and verified source data</figcaption>
         </figure>
+      </section>
+
+      <section className="home-ownership" id="company" aria-labelledby="ownership-title">
+        <div className="home-ownership-brand">
+          <span>PRODUCT OWNERSHIP</span>
+          {/* This is the supplied LexEdge Consulting logo. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/brand/lexedge-consulting-logo.png" alt="LexEdge Consulting" width={1536} height={1024} loading="lazy" />
+          <p>Company ownership and operating responsibility</p>
+        </div>
+        <div className="home-ownership-copy">
+          <p>BUILT AND OPERATED BY LEXEDGE CONSULTING</p>
+          <h2 id="ownership-title">Vanteloq is a LexEdge Consulting product.</h2>
+          <span>LexEdge Consulting owns and operates Vanteloq. The company is responsible for the product direction, service operations, privacy commitments and customer support behind the platform.</span>
+          <div className="home-ownership-ledger" aria-label="LexEdge Consulting owns and operates Vanteloq">
+            <article><small>COMPANY</small><strong>LexEdge Consulting</strong><span>Product owner and operator</span></article>
+            <i aria-hidden="true">→</i>
+            <article><small>PRODUCT</small><strong>Vanteloq</strong><span>Business operations and analytics platform</span></article>
+          </div>
+        </div>
       </section>
 
       <section className="home-connections" id="connections" aria-labelledby="connections-title">
@@ -579,7 +602,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
           </div>
         </div>
         <div className="home-seo-columns">
-          <p>Vanteloq is a business operating and analytics platform designed for independent retailers that need a clearer view of day-to-day performance. It works with supported point-of-sale and payment sources, structured daily imports and operating records created inside the platform. The goal is not to collect data for its own sake. It is to help owners and managers understand how sales, inventory, cash commitments, purchasing decisions and assigned work relate to one another.</p>
+          <p>Vanteloq is a business operating and analytics platform owned and operated by LexEdge Consulting. It is designed for independent retailers that need a clearer view of daily performance. It works with supported point of sale and payment sources, structured daily imports and operating records created inside the platform. The goal is not to collect data for its own sake. It is to help owners and managers understand how sales, inventory, cash commitments, purchasing decisions and assigned work relate to one another.</p>
           <p>Most businesses already generate useful information. Transactions are recorded by a POS, stock changes appear in inventory records, supplier purchases affect cash and staff complete work across separate tools. The difficult part is often definition and context: whether two reports cover the same dates, whether cost data is complete, whether an estimate is being treated as a fact and whether anyone owns the next action. Vanteloq keeps those boundaries visible so a dashboard does not appear more certain than its source data allows.</p>
           <p>For a smaller organization, business intelligence should answer practical questions without requiring an enterprise reporting team. A useful operating view can show what changed, where the supporting record came from, what information is missing and which action needs approval. Vanteloq includes source-aware sales measures, gross-margin calculations, inventory lifecycle controls, cash context, purchasing tools, reporting and operational task workflows. The exact views available depend on the records and entitlements present in the workspace.</p>
           <p>Connected visibility does not replace sound accounting, physical inventory counts or management judgment. It makes comparison and follow-through easier. Vanteloq is built around that operating discipline: use supported sources, reconcile before promotion, preserve audit context and keep consequential actions in human hands.</p>
@@ -635,14 +658,25 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
             <strong>Clarity before commitment.</strong>
             <p>Know what connects, what needs verification and where a person stays in control.</p>
             <div><span>Supported sources</span><span>Visible data limits</span><span>Human approvals</span></div>
+            <div className="home-faq-owner">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/brand/lexedge-consulting-logo.png" alt="" width={1536} height={1024} loading="lazy" />
+              <span>Owned and operated by LexEdge Consulting</span>
+            </div>
           </aside>
           <div className="home-faq-list">
-            <details><summary>What is Vanteloq?</summary><p>Vanteloq is a business operating and analytics platform for independent retail. It organizes supported sales, inventory, cash and operational records into source-aware views and workflows.</p></details>
+            <details><summary>What is Vanteloq?</summary><p>Vanteloq is a business operations and analytics platform for independent retailers. It brings supported sales, inventory, cash, purchasing and operational records into one workspace, then shows where each result came from, what is missing and what needs attention. It is designed to help owners make better decisions without hiding uncertainty behind a polished dashboard.</p></details>
+            <details><summary>Who owns Vanteloq?</summary><p>Vanteloq is owned and operated by LexEdge Consulting. LexEdge Consulting is responsible for the product direction, service operations, privacy commitments and customer support behind Vanteloq.</p></details>
+            <details><summary>How are LexEdge Consulting and Vanteloq connected?</summary><p>LexEdge Consulting is the company. Vanteloq is the company&apos;s business software product. A Vanteloq subscription provides access to the software and does not create a separate consulting engagement unless the customer and LexEdge Consulting agree to one in writing.</p></details>
             <details><summary>Who is Vanteloq designed for?</summary><p>The current product and connection work are designed primarily for independent retailers and the owners or managers who oversee sales, inventory, purchasing, cash and daily operations.</p></details>
-            <details><summary>What systems can I connect?</summary><p>Implemented connection paths currently cover Lightspeed R-Series, a Lightspeed X-Series pilot, Stripe staging, Plaid Link, and Google and Meta marketing measurement. Google, Meta and Plaid remain disabled until their hosted credentials and provider setup are complete. Structured CSV import is also available.</p></details>
+            <details><summary>What systems can I connect?</summary><p>Vanteloq includes connection paths for supported point of sale, commerce, payment, banking, accounting and marketing providers. Availability is shown inside the Connections workspace. Stripe Connect and Canada Post AddressComplete are configured, QuickBooks is in sandbox staging, and DoorDash and Uber Eats are marked Coming soon. Other providers remain unavailable until their credentials, review and production setup are complete. Structured CSV import is also available.</p></details>
             <details><summary>Do I need to replace my POS?</summary><p>No. Vanteloq is designed to use supported source records while the POS remains the transaction system. Availability and depth depend on the connector and successful reconciliation.</p></details>
             <details><summary>Can Vanteloq help with inventory?</summary><p>Yes. Implemented inventory tools cover lots, expiry, shelf-life risk, first-expiring-first-out review and a constrained reorder calculation. Recommendations still require reliable demand, cost, lead-time, supplier and cash inputs.</p></details>
+            <details><summary>What is BookLoQ?</summary><p>BookLoQ is the accounting workspace inside the Vanteloq product family. It keeps journals, bills, documents, reconciliation and financial reporting separate from the main operating workspace. Access depends on the customer&apos;s plan and any required connection setup.</p></details>
+            <details><summary>Does Vanteloq make decisions or move money automatically?</summary><p>No. Vanteloq organizes evidence and prepares reviewable recommendations. Financial connections, accounting records and important operating actions stay behind user consent, role permissions and human approval.</p></details>
             <details><summary>How does Vanteloq protect workspace data?</summary><p>The application uses secure authentication, organization-separated records, role-based server permissions, protected provider authorization, and recorded security events. Vanteloq does not claim SOC 2, ISO, or other certifications that have not been obtained.</p></details>
+            <details><summary>Can I delete my account and data?</summary><p>Yes. An authorized account owner can request account and workspace deletion from the application. Vanteloq removes eligible application data and disconnects supported providers, while retaining only information that must be kept for security, billing, fraud prevention or legal obligations. The privacy notice explains the current process and retention limits.</p></details>
+            <details><summary>Is Vanteloq a replacement for an accountant or legal adviser?</summary><p>No. Vanteloq provides software, records and decision support. It does not provide legal, tax, audit or professional accounting advice. Customers remain responsible for reviewing their records and using qualified advisers where appropriate.</p></details>
           </div>
         </div>
       </section>
@@ -654,12 +688,16 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
     </main>
 
     <footer className="home-footer">
-      <div className="home-footer-brand"><div><ProductBrandLogo product="vanteloq"/><strong>Vanteloq</strong></div><p>Source-aware operations and analytics for independent retail.</p></div>
+      <div className="home-footer-brand"><div><ProductBrandLogo product="vanteloq"/><strong>Vanteloq</strong></div><p>Source-aware operations and analytics for independent retail.</p><div className="home-footer-owner">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/brand/lexedge-consulting-logo.png" alt="LexEdge Consulting" width={1536} height={1024} loading="lazy" />
+        <span>Owned and operated by LexEdge Consulting</span>
+      </div></div>
       <div><strong>PRODUCT</strong><a href="#platform">How it works</a><a href="#capabilities">Capabilities</a><a href="#connections">Connections</a><a href="#security">Security</a></div>
       <div><strong>RESOURCES</strong><Link href="/resources">All resources</Link><Link href="/resources/inventory">Inventory</Link><Link href="/resources/finance">Finance</Link><Link href="/resources/analytics">Analytics</Link></div>
       <div><strong>LEGAL</strong><Link href="/legal">Legal centre</Link><Link href="/privacy">Privacy</Link><Link href="/terms">Terms</Link><Link href="/cookies">Cookies</Link></div>
       <div><strong>ACCOUNT</strong><button type="button" onClick={() => start("signin")}>Sign in</button><button type="button" onClick={() => start("signup")}>Create workspace</button></div>
-      <p className="home-footer-note">© {new Date().getFullYear()} Vanteloq. Feature availability depends on workspace access, configured sources and verified records.</p>
+      <p className="home-footer-note">© {new Date().getFullYear()} LexEdge Consulting. Vanteloq is a product owned and operated by LexEdge Consulting. Feature availability depends on workspace access, configured sources and verified records.</p>
     </footer>
   </div>;
 }

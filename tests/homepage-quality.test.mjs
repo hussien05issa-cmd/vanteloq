@@ -40,9 +40,10 @@ test("homepage copy stays within the verified product boundary", async () => {
   assert.ok(connections, "homepage should render the public connector section");
   assert.doesNotMatch(html, /Start (?:Your )?Free Trial/i);
   for (const provider of ["Lightspeed Retail R-Series", "Lightspeed Retail X-Series", "Square", "Moneris", "QuickBooks", "Xero", "Plaid", "Google", "Meta"]) assert.match(connections, new RegExp(`<strong>${provider}</strong>`));
+  for (const provider of ["DoorDash", "Uber Eats"]) assert.match(connections, new RegExp(`<strong>${provider}</strong><span>Coming soon</span>`));
   assert.match(connections, /Connect the tools that already run your business/);
   assert.match(connections, /Use owner-authorized balances and transactions in cash planning/);
-  assert.doesNotMatch(connections, /(?:PLANNED|COMING SOON|STAGING|LIMITED PILOT|ADAPTER BUILT|honest availability)/i);
+  assert.doesNotMatch(connections, /(?:PLANNED|STAGING|LIMITED PILOT|ADAPTER BUILT|honest availability)/i);
   assert.doesNotMatch(html, /\b(?:SOC 2|ISO 27001|HIPAA|PCI)\s+(?:certified|compliant|accredited)\b/i);
   assert.doesNotMatch(html, /\u2014/u, "homepage prose should not contain an em dash");
   assert.match(html, /home-intelligence-map/);
@@ -55,6 +56,11 @@ test("homepage copy stays within the verified product boundary", async () => {
   assert.match(html, /href="\/privacy"/);
   assert.match(html, /href="\/terms"/);
   assert.match(html, /href="\/cookies"/);
+  assert.match(html, /Vanteloq is a LexEdge Consulting product/);
+  assert.match(html, /Vanteloq is owned and operated by LexEdge Consulting/);
+  assert.match(html, /lexedge-consulting-logo\.png/);
+  assert.match(html, /Can I delete my account and data\?/);
+  assert.match(html, /Is Vanteloq a replacement for an accountant or legal adviser\?/);
 });
 
 test("homepage preserves responsive and keyboard interaction safeguards", async () => {
@@ -138,4 +144,9 @@ test("generated editorial visuals stay compact and production-ready", async () =
   for (const [name, asset] of Object.entries({ inventory, margin, dashboard, growth, bookkeeping })) {
     assert.ok(asset.size < 160_000, `${name} article image should stay below 160 KB, received ${asset.size}`);
   }
+});
+
+test("the supplied LexEdge ownership mark is present and web ready", async () => {
+  const asset = await stat(new URL("../public/brand/lexedge-consulting-logo.png", import.meta.url));
+  assert.ok(asset.size < 500_000, `LexEdge logo should stay below 500 KB, received ${asset.size}`);
 });
