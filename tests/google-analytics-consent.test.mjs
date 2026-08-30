@@ -21,6 +21,8 @@ test("Google Analytics is gated behind an explicit visitor choice", async () => 
   assert.match(layout, /ad_personalization:\s*["']denied["']/);
 
   assert.match(consent, /NEXT_PUBLIC_GOOGLE_ANALYTICS_ID/);
+  assert.match(consent, /PUBLIC_GOOGLE_ANALYTICS_ID/);
+  assert.match(consent, /process\.env\.NEXT_PUBLIC_GOOGLE_ANALYTICS_ID\?\.trim\(\) \|\| PUBLIC_GOOGLE_ANALYTICS_ID/);
   assert.match(consent, /\^G-\[A-Z0-9\]\+\$/);
   assert.match(consent, /analytics_storage:\s*["']granted["']/);
   assert.match(consent, /Essential only/);

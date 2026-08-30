@@ -16,7 +16,9 @@ declare global {
   }
 }
 
-const ANALYTICS_ID = process.env.NEXT_PUBLIC_GOOGLE_ANALYTICS_ID?.trim() ?? "";
+const PUBLIC_GOOGLE_ANALYTICS_ID = "G-RVY9BP00R2";
+const ANALYTICS_ID =
+  process.env.NEXT_PUBLIC_GOOGLE_ANALYTICS_ID?.trim() || PUBLIC_GOOGLE_ANALYTICS_ID;
 const ANALYTICS_ID_PATTERN = /^G-[A-Z0-9]+$/;
 const CONSENT_STORAGE_KEY = "vanteloq:cookie-consent:v1";
 const SCRIPT_ID = "vanteloq-google-analytics";
