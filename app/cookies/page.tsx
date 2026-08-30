@@ -3,16 +3,16 @@ import { LEGAL_EMAIL, LegalShell, PolicySection } from "../legal-shell";
 
 export const metadata: Metadata = {
   title: "Cookie Notice | Vanteloq",
-  description: "Learn how Vanteloq uses essential cookies and browser storage for sign-in, security, and preferences.",
+  description: "Learn how Vanteloq uses essential browser storage and optional Google Analytics that runs only with consent.",
   alternates: { canonical: "/cookies" },
 };
 
 export default function CookiesPage() {
   return (
-    <LegalShell eyebrow="COOKIE NOTICE" title="Only the browser storage the service needs." summary="This notice explains the cookies and similar browser storage used for account access, security, and essential service behaviour.">
+    <LegalShell eyebrow="COOKIE NOTICE" title="Clear choices for browser storage and analytics." summary="This notice explains the essential storage Vanteloq needs and the optional analytics that a visitor may choose to allow.">
       <PolicySection id="overview" title="1. Overview">
         <p>Cookies are small files stored by a browser. Similar technologies include local storage and session storage. Vanteloq and its service providers may use these technologies when you visit the site or sign in.</p>
-        <p>Vanteloq does not currently use advertising cookies or third-party behavioural advertising trackers. If that changes, this notice and any required consent choices will be updated before those tools are activated.</p>
+        <p>Vanteloq does not currently use advertising cookies or third-party behavioural advertising trackers. Optional Google Analytics is blocked until a visitor makes an explicit choice to allow it.</p>
       </PolicySection>
 
       <PolicySection id="essential" title="2. Essential storage">
@@ -23,7 +23,7 @@ export default function CookiesPage() {
           <li>fraud, bot, abuse, and request protection;</li>
           <li>authorization callbacks for supported integrations;</li>
           <li>security settings and short-lived workflow state; and</li>
-          <li>preferences needed to operate the interface on your device.</li>
+          <li>preferences needed to operate the interface on your device, including the saved cookie choice.</li>
         </ul>
         <p>Blocking essential storage may prevent sign-in, account recovery, provider connections, or other protected features from working.</p>
       </PolicySection>
@@ -33,12 +33,14 @@ export default function CookiesPage() {
       </PolicySection>
 
       <PolicySection id="analytics" title="4. Analytics and marketing">
-        <p>Vanteloq does not currently activate a separate visitor analytics or advertising cookie system on the public site. Product records and security events inside an authenticated workspace are handled as service data under the Privacy Policy, not as advertising profiles.</p>
+        <p>If you select Allow analytics, Vanteloq loads Google Analytics to measure visits, page paths, device and browser context, approximate region, and interaction events made available by the configured web stream. We use this information to understand site performance and improve navigation and content.</p>
+        <p>The Vanteloq implementation excludes URL query strings from page view events, keeps Google advertising signals and ad personalization disabled, and does not intentionally send account details, form entries, email addresses, telephone numbers, or workspace records to Google Analytics. Google may set analytics cookies such as <code>_ga</code> after consent. Google processes the analytics information under its own terms and privacy materials.</p>
+        <p>Product records and security events inside an authenticated workspace remain service data under the Privacy Policy. They are not added to visitor analytics or used to create advertising profiles.</p>
       </PolicySection>
 
       <PolicySection id="controls" title="5. Your controls">
         <p>You can use browser settings to inspect, delete, or block cookies and site data. Deleting authentication storage will usually sign you out. Browser privacy controls may also limit integration callbacks or account recovery.</p>
-        <p>Because Vanteloq currently uses only essential storage, there is no optional cookie category to enable or disable in the service. Optional analytics, advertising, or profiling tools will remain blocked unless and until the notice and any legally required consent control are deployed first.</p>
+        <p>The first time the analytics choice is available, you can select Essential only or Allow analytics. The choice is not preselected. Use the Cookie settings button at any time to change it. Choosing Essential only or withdrawing analytics permission does not limit Vanteloq features. It stops new analytics events and removes Google Analytics cookies that this site can access.</p>
         <p>For questions about browser storage, contact <a href={`mailto:${LEGAL_EMAIL}`}>{LEGAL_EMAIL}</a>.</p>
       </PolicySection>
 

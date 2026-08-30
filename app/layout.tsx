@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "maplibre-gl/dist/maplibre-gl.css";
+import { GoogleAnalyticsConsent } from "./google-analytics-consent";
 import { DEFAULT_SOCIAL_IMAGE, organizationJsonLd, safeJsonLd, SITE_ORIGIN } from "./seo";
 import "./globals.css";
 import "./operating.css";
@@ -13,6 +14,18 @@ import "./design-v2.css";
 import "./homepage.css";
 import "./legal.css";
 import "./readability.css";
+import "./analytics-consent.css";
+
+const GOOGLE_ANALYTICS_CONSENT_DEFAULT = `
+window.dataLayer = window.dataLayer || [];
+window.gtag = window.gtag || function () { window.dataLayer.push(arguments); };
+window.gtag("consent", "default", {
+  analytics_storage: "denied",
+  ad_storage: "denied",
+  ad_user_data: "denied",
+  ad_personalization: "denied",
+  wait_for_update: 500
+});`;
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_ORIGIN),
@@ -48,9 +61,13 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
+      <head>
+        <script id="vanteloq-google-consent-default" dangerouslySetInnerHTML={{ __html: GOOGLE_ANALYTICS_CONSENT_DEFAULT }} />
+      </head>
       <body className="antialiased">
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(organizationJsonLd) }} />
         {children}
+        <GoogleAnalyticsConsent />
       </body>
     </html>
   );
