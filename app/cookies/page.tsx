@@ -9,7 +9,7 @@ export const metadata: Metadata = {
 
 export default function CookiesPage() {
   return (
-    <LegalShell eyebrow="COOKIE NOTICE" title="Clear choices for browser storage and analytics." summary="This notice explains the essential storage Vanteloq needs and the optional analytics that a visitor may choose to allow.">
+    <LegalShell eyebrow="PRIVACY AND STORAGE" title="Cookie Notice" summary="This notice explains the browser storage Vanteloq needs to operate, the optional analytics you can choose to allow, and how to change that choice.">
       <PolicySection id="overview" title="1. Overview">
         <p>Cookies are small files stored by a browser. Similar technologies include local storage and session storage. Vanteloq and its service providers may use these technologies when you visit the site or sign in.</p>
         <p>Vanteloq does not currently use advertising cookies or third-party behavioural advertising trackers. Optional Google Analytics is blocked until a visitor makes an explicit choice to allow it.</p>

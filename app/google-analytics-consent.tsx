@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { createCookieNoticeNavigation } from "./analytics-consent-navigation";
+import ProductBrandLogo from "./product-brand-logo";
 
 type ConsentChoice = "analytics" | "essential";
 type GtagCommand = [string, ...unknown[]];
@@ -167,16 +169,18 @@ export function GoogleAnalyticsConsent() {
     if (nextChoice === "essential") stopAnalytics();
   };
 
+  const cookieNoticeNavigation = createCookieNoticeNavigation(() => setPanelOpen(false));
+
   return (
     <>
       {panelOpen && (
         <section className="analytics-consent" role="dialog" aria-labelledby="analytics-consent-title" aria-describedby="analytics-consent-copy">
-          <div className="analytics-consent-mark" aria-hidden="true">V</div>
+          <ProductBrandLogo product="vanteloq" priority className="analytics-consent-brand" />
           <div className="analytics-consent-copy">
-            <span>YOUR PRIVACY CHOICE</span>
-            <h2 id="analytics-consent-title">Help improve Vanteloq with optional analytics.</h2>
-            <p id="analytics-consent-copy">With your permission, Google Analytics measures visits and page use so we can improve the site. Advertising signals stay disabled, and Vanteloq does not send account details, form entries, email addresses, or URL query text. Choosing essential only will not limit the service.</p>
-            <Link href="/cookies">Read the Cookie Notice</Link>
+            <span>PRIVACY CONTROLS</span>
+            <h2 id="analytics-consent-title">Help us improve Vanteloq with optional analytics.</h2>
+            <p id="analytics-consent-copy">With your permission, Google Analytics helps us understand how visitors use Vanteloq’s public pages so we can improve navigation and content. We do not send account information, form entries, email addresses, telephone numbers, workspace records, or URL query text. Advertising features remain off, and choosing Essential only will not limit Vanteloq.</p>
+            <Link {...cookieNoticeNavigation}>Read the Cookie Notice</Link>
           </div>
           <div className="analytics-consent-actions">
             <button type="button" onClick={() => applyChoice("essential")}>Essential only</button>
