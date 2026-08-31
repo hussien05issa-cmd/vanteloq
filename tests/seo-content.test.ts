@@ -41,6 +41,34 @@ test("requested analytics and bookkeeping guides are published with article hero
   }
 });
 
+test("data analytics guide answers small business search intent with research depth", () => {
+  const article = getArticle("data-analytics-for-small-business");
+  assert.ok(article, "data analytics guide is missing");
+  assert.equal(article.title, "Data Analytics for Small Business: A Practical Guide");
+  assert.equal(article.category, "analytics");
+  assert.match(article.description.toLowerCase(), /data analytics/);
+  assert.match(article.quickAnswer.toLowerCase(), /small business/);
+  assert.ok(article.sections.length >= 8, "data analytics guide needs a complete implementation path");
+  assert.ok(article.sources.length >= 5, "data analytics guide needs a broad research base");
+  assert.ok(article.related.length >= 3, "data analytics guide needs useful internal links");
+  assert.equal(article.hero?.src, "/brand/vanteloq-command-ledger.webp");
+
+  const articleWords = [
+    article.dek,
+    article.quickAnswer,
+    ...article.sections.flatMap((section) => [
+      section.heading,
+      ...(section.paragraphs ?? []),
+      ...(section.bullets ?? []),
+      ...(section.numbered ?? []),
+      section.formula?.example ?? "",
+      section.callout?.body ?? "",
+      ...(section.table?.rows.flat() ?? []),
+    ]),
+  ].join(" ").trim().split(/\s+/).length;
+  assert.ok(articleWords >= 1_600, `data analytics guide is too brief at ${articleWords} words`);
+});
+
 test("resource catalogue preserves one canonical route namespace", () => {
   const categories = new Set(RESOURCE_CATEGORIES.map((category) => category.slug));
   for (const article of RESOURCE_ARTICLES) {

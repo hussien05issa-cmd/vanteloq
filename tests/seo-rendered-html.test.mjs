@@ -31,6 +31,7 @@ test("homepage exposes the marketing page in initial HTML", async () => {
     "how-to-calculate-gross-margin-small-business",
     "what-should-small-business-dashboard-show",
     "how-to-analyze-business-data-for-growth",
+    "data-analytics-for-small-business",
     "small-business-bookkeeping-system",
   ]) assert.match(text, new RegExp(`href="/resources/${slug}"`));
   assert.match(text, /id="security"/);
@@ -72,6 +73,12 @@ test("new analytics and bookkeeping guides render their metadata, heroes, and sc
       alt: "An editorial still life with a payment terminal, product blocks, customer markers, coins and translucent planning panels.",
     },
     {
+      path: "/resources/data-analytics-for-small-business",
+      title: "Data Analytics for Small Business: A Practical Guide",
+      hero: "vanteloq-command-ledger.webp",
+      alt: "Vanteloq command centre showing sales, margin, cash, inventory, purchasing and accountable business decisions in one operating view.",
+    },
+    {
       path: "/resources/small-business-bookkeeping-system",
       title: "A Practical Bookkeeping System for a Small Business",
       hero: "bookkeeping-month-end-editorial.webp",
@@ -102,6 +109,7 @@ test("category, sitemap and robots routes expose canonical crawl paths", async (
   assert.match(sitemap.text, /https:\/\/vanteloq\.com\/resources\/how-to-track-inventory-small-business/);
   assert.match(sitemap.text, /https:\/\/vanteloq\.com\/resources\/what-should-small-business-dashboard-show/);
   assert.match(sitemap.text, /https:\/\/vanteloq\.com\/resources\/how-to-analyze-business-data-for-growth/);
+  assert.match(sitemap.text, /https:\/\/vanteloq\.com\/resources\/data-analytics-for-small-business/);
   assert.match(sitemap.text, /https:\/\/vanteloq\.com\/resources\/small-business-bookkeeping-system/);
   assert.match(sitemap.text, /https:\/\/vanteloq\.com\/resources\/inventory/);
   assert.match(sitemap.text, /https:\/\/vanteloq\.com\/privacy/);
