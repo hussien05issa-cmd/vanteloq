@@ -549,7 +549,6 @@ button, a, input, select, textarea, summary { -webkit-tap-highlight-color: trans
   color: #204f87;
   font-size: 12px;
 }
-.public-pill i { background: var(--vql-success); }
 .public-copy h1 { color: var(--vql-ink); font-size: clamp(45px, 5vw, 64px); line-height: 1.02; }
 .public-copy h1 em { color: var(--vql-blue-700); background: none; -webkit-text-fill-color: currentColor; }
 .public-copy > p { color: #45546a; font-size: 17px; line-height: 1.7; }

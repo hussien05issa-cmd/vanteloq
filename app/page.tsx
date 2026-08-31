@@ -360,7 +360,7 @@ function FeatureReel() {
     <div className="feature-reel-screen"><FeatureReelStage scene={scene.id} phase={playhead.phase}/></div>
     <div className="feature-reel-caption" aria-live="polite"><small>{scene.kicker}</small><strong>{scene.title}</strong><span>{scene.copy}</span><div className="feature-reel-progress"><i style={{ width: `${((playhead.phase + 1) / 4) * 100}%` }}/></div><em>{scene.steps[playhead.phase]}</em></div>
     <nav aria-label="Feature tour scenes">
-      {featureReelScenes.map((item, index) => <button type="button" key={item.id} className={index === playhead.scene ? "active" : ""} aria-current={index === playhead.scene ? "step" : undefined} onClick={() => { setPlayhead({ scene: index, phase: 0 }); setPlaying(true); }}><span>{String(index + 1).padStart(2, "0")}</span>{item.label}</button>)}
+      {featureReelScenes.map((item, index) => <button type="button" key={item.id} className={index === playhead.scene ? "active" : ""} aria-current={index === playhead.scene ? "step" : undefined} onClick={() => { setPlayhead({ scene: index, phase: 0 }); setPlaying(true); }}><span>{index + 1}</span>{item.label}</button>)}
     </nav>
   </div>;
 }
@@ -420,7 +420,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
     <main id="main-content">
       <section className="home-hero" aria-labelledby="home-title">
         <div className="home-hero-copy">
-          <span className="public-pill"><i/> Operations and analytics for independent retail</span>
+          <span className="public-pill">Operations and analytics for independent retail</span>
           <h1 id="home-title">Understand your business. <em>Make better decisions.</em></h1>
           <p>Bring supported sales, inventory, cash and operational records into one clear view. See what changed, understand the limits of the data and decide what needs attention.</p>
           <div className="public-actions">
@@ -504,17 +504,17 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
           <h2 id="platform-title">Move from source records to a decision you can explain.</h2>
           <span>Vanteloq keeps the source, calculation status and approval path visible. Missing inputs remain unavailable or provisional instead of being silently replaced with confident-looking numbers.</span>
           <ol className="home-step-list">
-            <li><b>01</b><div><strong>Connect or import</strong><span>Authorize a supported source or upload structured operating records.</span></div><span className="home-step-visual" aria-hidden="true">
+            <li><b>1</b><div><strong>Connect or import</strong><span>Authorize a supported source or upload structured operating records.</span></div><span className="home-step-visual" aria-hidden="true">
               {/* Decorative generated art is already compact and served directly without an image transformation binding. */}
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="/brand/connect-import-visual.webp" alt="" width={360} height={240}/>
             </span></li>
-            <li><b>02</b><div><strong>Verify and organize</strong><span>Map locations, reconcile totals and apply consistent metric definitions.</span></div><span className="home-step-visual" aria-hidden="true">
+            <li><b>2</b><div><strong>Verify and organize</strong><span>Map locations, reconcile totals and apply consistent metric definitions.</span></div><span className="home-step-visual" aria-hidden="true">
               {/* Decorative generated art is already compact and served directly without an image transformation binding. */}
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="/brand/verify-organize-visual.webp" alt="" width={360} height={240}/>
             </span></li>
-            <li><b>03</b><div><strong>Review and act</strong><span>Turn a supported finding into assigned work with the right approval.</span></div><span className="home-step-review-visual" aria-hidden="true"><i/><i/><i/></span></li>
+            <li><b>3</b><div><strong>Review and act</strong><span>Turn a supported finding into assigned work with the right approval.</span></div><span className="home-step-review-visual" aria-hidden="true"><i/><i/><i/></span></li>
           </ol>
         </div>
         <article className="home-workflow-preview" aria-label="Inventory decision example">
@@ -538,12 +538,12 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
         </div>
         <div className="home-capability-grid">
           {[
-            ["01","Sales performance","Review sales, transactions, basket size, discounts, refunds and trends using imported daily records or supported source data."],
-            ["02","Margin visibility","Calculate gross profit and gross margin from net sales and recorded cost, while marking incomplete cost coverage."],
-            ["03","Inventory lifecycle","Track lots, expiry dates, shelf-life risk, first-expiring-first-out order and inventory cost at risk."],
-            ["04","Cash context","Separate current cash from known obligations and model supported purchasing or operating scenarios."],
-            ["05","Purchasing decisions","Evaluate demand, lead time, case packs, supplier constraints, expiry and cash before reviewing an order quantity."],
-            ["06","Operational follow-through","Create tasks from supported findings, assign responsibility and preserve the event and audit context."],
+            ["1","Sales performance","Review sales, transactions, basket size, discounts, refunds and trends using imported daily records or supported source data."],
+            ["2","Margin visibility","Calculate gross profit and gross margin from net sales and recorded cost, while marking incomplete cost coverage."],
+            ["3","Inventory lifecycle","Track lots, expiry dates, shelf-life risk, first-expiring-first-out order and inventory cost at risk."],
+            ["4","Cash context","Separate current cash from known obligations and model supported purchasing or operating scenarios."],
+            ["5","Purchasing decisions","Evaluate demand, lead time, case packs, supplier constraints, expiry and cash before reviewing an order quantity."],
+            ["6","Operational follow-through","Create tasks from supported findings, assign responsibility and preserve the event and audit context."],
           ].map(([number, title, copy]) => <article key={number}><small>{number}</small><span className="home-capability-signal" aria-hidden="true"><i/><i/><i/></span><h3>{title}</h3><p>{copy}</p></article>)}
         </div>
       </section>

@@ -653,11 +653,6 @@ select:focus-visible {
   background: rgba(255, 255, 255, 0.72);
 }
 
-.public-pill i {
-  background: #059669;
-  box-shadow: 0 0 0 4px rgba(5, 150, 105, 0.1);
-}
-
 .public-copy h1 {
   color: #1e2033;
   font-size: 57px;

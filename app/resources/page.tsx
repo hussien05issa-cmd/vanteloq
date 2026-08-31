@@ -84,9 +84,9 @@ export default function ResourcesPage() {
             </figure>
           </div>
           <ol>
-            <li><span>01</span><div><strong>Answer first</strong><p>The direct answer appears before the background.</p></div></li>
-            <li><span>02</span><div><strong>Show the calculation</strong><p>Formulas include inputs, boundaries and worked examples.</p></div></li>
-            <li><span>03</span><div><strong>Keep the limits visible</strong><p>Unknown or missing data is not silently treated as zero.</p></div></li>
+            <li><span>1</span><div><strong>Answer first</strong><p>The direct answer appears before the background.</p></div></li>
+            <li><span>2</span><div><strong>Show the calculation</strong><p>Formulas include inputs, boundaries and worked examples.</p></div></li>
+            <li><span>3</span><div><strong>Keep the limits visible</strong><p>Unknown or missing data is not silently treated as zero.</p></div></li>
           </ol>
         </section>
 

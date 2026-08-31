@@ -63,6 +63,28 @@ test("homepage copy stays within the verified product boundary", async () => {
   assert.match(html, /Is Vanteloq a replacement for an accountant or legal adviser\?/);
 });
 
+test("homepage labels avoid decorative status dots", async () => {
+  const html = await (await fetchRoute("/")).text();
+  const operatingLabel = html.match(/<span class="public-pill">[\s\S]*?<\/span>/)?.[0] ?? "";
+
+  assert.match(operatingLabel, /Operations and analytics for independent retail/);
+  assert.doesNotMatch(operatingLabel, /<i\b/);
+});
+
+test("homepage sequence labels do not use leading zeroes", async () => {
+  const html = await (await fetchRoute("/")).text();
+  const platform = html.match(/<section class="home-platform"[\s\S]*?<\/section>/)?.[0] ?? "";
+  const capabilities = html.match(/<section class="home-capabilities"[\s\S]*?<\/section>/)?.[0] ?? "";
+
+  assert.ok(platform, "homepage should render the platform sequence");
+  assert.ok(capabilities, "homepage should render the capability sequence");
+  assert.match(platform, /<b>1<\/b>/);
+  assert.match(platform, /<b>2<\/b>/);
+  assert.match(platform, /<b>3<\/b>/);
+  for (const number of [1, 2, 3, 4, 5, 6]) assert.match(capabilities, new RegExp(`<small>${number}<\\/small>`));
+  assert.doesNotMatch(`${platform}${capabilities}`, />(?:01|02|03|04|05|06)</);
+});
+
 test("homepage preserves responsive and keyboard interaction safeguards", async () => {
   const [source, css] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),

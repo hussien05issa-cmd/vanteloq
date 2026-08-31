@@ -1668,14 +1668,14 @@ function EmptyCommandCentre({ navigate }: { navigate: (view: View) => void }) {
         </div>
         <div className="question-stack">
           {[
-            ["01", "What happened?", "Verified metrics and changes"],
-            ["02", "Why did it happen?", "Supported causes and missing inputs"],
+            ["1", "What happened?", "Verified metrics and changes"],
+            ["2", "Why did it happen?", "Supported causes and missing inputs"],
             [
-              "03",
+              "3",
               "What needs attention?",
               "Ranked exceptions and opportunities",
             ],
-            ["04", "What should I do next?", "Assigned actions with outcomes"],
+            ["4", "What should I do next?", "Assigned actions with outcomes"],
           ].map(([n, t, d]) => (
             <article key={n}>
               <b>{n}</b>
@@ -1784,7 +1784,7 @@ function Intelligence({
         <div className="section-heading"><div><p>TODAY&apos;S DECISION QUEUE</p><h2>Ranked by urgency, confidence and freshness</h2></div><button onClick={() => navigate("Action Centre")}>Open assigned work →</button></div>
         {operating.decisions.map((decision, index) => (
           <article key={decision.id}>
-            <b className={`decision-rank ${decision.priority}`}>{String(index + 1).padStart(2, "0")}</b>
+            <b className={`decision-rank ${decision.priority}`}>{index + 1}</b>
             <div>
               <span className="decision-meta">{decision.pillar} · {decision.priority} · {decision.confidence} confidence</span>
               <h3>{decision.title}</h3>
@@ -4040,7 +4040,7 @@ function BusinessBrief({
         <h3>Prioritized actions</h3>
         {data.insights.map((insight, index) => (
           <div className="brief-action" key={insight.id}>
-            <b>{String(index + 1).padStart(2, "0")}</b>
+            <b>{index + 1}</b>
             <span>
               <strong>{insight.recommendedAction}</strong>
               <small>{insight.financialImpact}</small>

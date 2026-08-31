@@ -318,7 +318,7 @@ export default function CommerceIntelligenceWorkspace({ mode, currency, activeLo
       </section>
       {mode === "Sales" && data.products.length > 0 && <section className="commerce-product-rank">
         <header><div><p>PRODUCT ECONOMICS</p><h3>Revenue, discount and margin leaders</h3></div><span>Selected date range</span></header>
-        <div>{data.products.slice(0, 12).map((product, index) => <article key={product.productRef}><i>{String(index + 1).padStart(2, "0")}</i><span><b>{product.name}</b><small>{(product.quantityMilli / 1000).toFixed(1)} units · {product.transactionCount} baskets</small></span><strong>{money(product.netSalesCents, currency)}</strong><em>{percent(product.marginRate)} margin</em><small>{money(product.discountCents, currency)} discounts</small></article>)}</div>
+        <div>{data.products.slice(0, 12).map((product, index) => <article key={product.productRef}><i>{index + 1}</i><span><b>{product.name}</b><small>{(product.quantityMilli / 1000).toFixed(1)} units · {product.transactionCount} baskets</small></span><strong>{money(product.netSalesCents, currency)}</strong><em>{percent(product.marginRate)} margin</em><small>{money(product.discountCents, currency)} discounts</small></article>)}</div>
       </section>}
     </> : loading ? <section className="commerce-loading-canvas" aria-label="Loading commerce intelligence"><i /><i /><i /></section> : null}
   </div>;
