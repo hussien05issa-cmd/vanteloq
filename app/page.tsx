@@ -549,7 +549,18 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
       </section>
 
       <section className="home-gemini" id="gemini" aria-labelledby="gemini-title">
-        <div className="home-gemini-mark"><IntegrationBrandLogo name="Google"/><span>GOOGLE GEMINI</span><small>AI EXPLANATIONS IN VANTELOQ</small></div>
+        <aside className="home-gemini-mark" aria-label="How Gemini supports a Vanteloq answer">
+          <div className="home-gemini-brand">
+            <IntegrationBrandLogo name="Google"/>
+            <div><span>GOOGLE GEMINI</span><small>AI EXPLANATIONS IN VANTELOQ</small></div>
+          </div>
+          <p>From verified business records to an explanation your team can review.</p>
+          <ol>
+            <li><b>1</b><span><strong>Verified records</strong><small>Vanteloq prepares the approved business context.</small></span></li>
+            <li><b>2</b><span><strong>Grounded explanation</strong><small>Gemini explains the evidence and identifies missing inputs.</small></span></li>
+            <li><b>3</b><span><strong>Human approval</strong><small>Your permissions still control every action.</small></span></li>
+          </ol>
+        </aside>
         <div className="home-gemini-copy">
           <p>GROUNDED BUSINESS INTELLIGENCE</p>
           <h2 id="gemini-title">Gemini explains the business behind the numbers.</h2>
