@@ -13,10 +13,11 @@ test("an invitation token opens the explicit acceptance step instead of the publ
 test("non-invitation and malformed links never enter the invitation flow", () => {
   assert.equal(parseTeamInviteCallback("https://vanteloq.com/"), null);
   assert.equal(parseTeamInviteCallback("https://vanteloq.com/?team_invite=1&type=invite"), null);
-  assert.equal(
+  assert.deepEqual(
     parseTeamInviteCallback("https://vanteloq.com/?team_invite=1&token_hash=secure-token&type=recovery"),
-    null,
+    { tokenHash: "secure-token", type: "recovery" },
   );
+  assert.equal(parseTeamInviteCallback("https://vanteloq.com/?team_invite=1&token_hash=secure-token&type=magiclink"), null);
 });
 
 test("a verified invitation removes the one time token from browser history", () => {
@@ -32,8 +33,9 @@ test("the invitation email opens a review page without consuming the Supabase co
     .replaceAll("{{ .RedirectTo }}", "https://vanteloq.com/?team_invite=1")
     .replaceAll("{{ .TokenHash }}", "secure-token")
     .replaceAll("{{ .ConfirmationURL }}", "https://project.supabase.co/auth/v1/verify?token=consumable");
-  const href = rendered.match(/href="([^"]+)"[^>]*>Review secure invitation<\/a>/)?.[1]?.replaceAll("&amp;", "&");
+  const hrefs = [...rendered.matchAll(/href="([^"]+)"[^>]*>Review secure invitation<\/a>/g)]
+    .map((match) => match[1]?.replaceAll("&amp;", "&"));
 
-  assert.equal(href, "https://vanteloq.com/?team_invite=1&token_hash=secure-token&type=invite");
-  assert.doesNotMatch(href ?? "", /supabase\.co\/auth\/v1\/verify/);
+  assert.ok(hrefs.includes("https://vanteloq.com/?team_invite=1&token_hash=secure-token&type=invite"));
+  assert.doesNotMatch(hrefs.join(" "), /supabase\.co\/auth\/v1\/verify/);
 });

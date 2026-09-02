@@ -127,12 +127,29 @@ test("team invitations remain identity bound and separate from Stripe billing", 
   assert.match(invitations, /identity\.subject/);
   assert.match(invitations, /team_invitation/);
   assert.match(invitations, /internal_no_stripe/);
-  assert.match(invitations, /INSERT OR IGNORE INTO internal_access/);
+  assert.match(invitations, /INSERT INTO internal_access/);
+  assert.match(invitations, /ON CONFLICT\(user_id, organization_id, access_level\) DO UPDATE SET[\s\S]*active = 1/);
   assert.match(invitations, /internalAccessId,[\s\S]*userId,[\s\S]*owner\.organization_id/);
   assert.doesNotMatch(invitations, /STRIPE_SECRET_KEY|stripeCustomerId|stripeSubscriptionId/);
   assert.match(internalAccess, /isBoundSupabaseContext/);
   assert.match(internalAccess, /eq\(internalAccess\.userId, context\.userId\)/);
   assert.doesNotMatch(internalAccess, /\.\.\.\(founder \?/);
+});
+
+test("private console employee removal is owner bound and disables every Vanteloq access record", async () => {
+  const [route, management] = await Promise.all([
+    readFile(`${process.cwd()}/app/api/v1/internal/team-access/route.ts`, "utf8"),
+    readFile(`${process.cwd()}/server/team-access-management.ts`, "utf8"),
+  ]);
+  assert.match(route, /requireIdentity/);
+  assert.match(route, /requireAal2/);
+  assert.match(management, /identity\.email !== FOUNDER_BOOTSTRAP_EMAIL/);
+  assert.match(management, /context\.role !== "owner"/);
+  assert.match(management, /UPDATE internal_access SET active = 0/);
+  assert.match(management, /UPDATE memberships SET status = 'suspended'/);
+  assert.match(management, /UPDATE team_members SET status = \?, remote_login = 0/);
+  assert.match(management, /UPDATE users SET status = 'suspended'/);
+  assert.doesNotMatch(management, /DELETE FROM users/);
 });
 
 test("reported high-risk routes keep their server-side security boundaries", async () => {

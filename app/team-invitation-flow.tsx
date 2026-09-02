@@ -70,10 +70,18 @@ export default function TeamInvitationFlow({
           legalNoticeVersion: ACCOUNT_ACCEPTANCE_NOTICE_VERSION,
         }),
       });
-      const payload = await response.json().catch(() => ({})) as { organization?: { businessName?: string }; error?: { message?: string } };
+      const payload = await response.json().catch(() => ({})) as {
+        organization?: { businessName?: string };
+        console?: { activationUrl?: string } | null;
+        error?: { message?: string };
+      };
       if (!response.ok || !payload.organization?.businessName) throw new Error(payload.error?.message || "The invitation could not be accepted.");
       setPassword("");
       setConfirmation("");
+      if (invitation.consoleAccess && payload.console?.activationUrl) {
+        window.location.assign(payload.console.activationUrl);
+        return;
+      }
       complete(payload.organization.businessName, normalizedName);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "The invitation could not be accepted.");
@@ -93,7 +101,7 @@ export default function TeamInvitationFlow({
         <div className="team-password-rules">{passwordRules(password).map((rule) => <span className={rule.met ? "met" : ""} key={rule.label}>{rule.label}</span>)}</div>
         <label className="team-invitation-legal"><input type="checkbox" checked={legalAccepted} onChange={(event) => setLegalAccepted(event.target.checked)}/><span>I agree to the <Link href="/terms" target="_blank">Terms of Service</Link> and acknowledge the <Link href="/privacy" target="_blank">Privacy Policy</Link>. This acceptance is recorded with the current document versions.</span></label>
         {message && <p role="alert">{message}</p>}
-        <button disabled={busy}>{busy ? "Creating secure access…" : "Accept invitation and enter Vanteloq"}</button>
+        <button disabled={busy}>{busy ? "Creating secure access…" : invitation.consoleAccess ? "Accept and continue to the private console" : "Accept invitation and enter Vanteloq"}</button>
       </form>
       <footer><button type="button" onClick={() => void signOut()}>Sign out</button><span>Two factor authentication is required for every internal team member.</span></footer>
     </section>

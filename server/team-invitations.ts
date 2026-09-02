@@ -8,6 +8,7 @@ import { ApiError, hashIdentifier, type TrustedIdentity } from "./api.ts";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const VANTELOQ_ROLES = new Set(["admin", "manager", "read_only"]);
+const PRIVATE_CONSOLE_ACTIVATION_URL = "https://wqiwmpqnthshgyxpettl.supabase.co/functions/v1/private-console-activation";
 
 type InvitationRow = {
   id: string;
@@ -136,7 +137,7 @@ export async function acceptTeamInvitation(
   identity: TrustedIdentity,
   body: Record<string, unknown>,
   requestId: string,
-): Promise<{ businessName: string; role: string }> {
+): Promise<{ businessName: string; role: string; consoleActivationUrl: string | null }> {
   acceptedLegalTerms(body);
   if (!identity.subject || identity.provider !== "supabase" || !identity.emailVerified) {
     throw new ApiError(401, "AUTHENTICATION_REQUIRED", "A verified Supabase account is required.");
@@ -222,10 +223,15 @@ export async function acceptTeamInvitation(
         updated_at = excluded.updated_at
     `).bind(memberId, owner.organization_id, userId, firstName, lastName, displayName, identity.email, `INT-${invitationHash.slice(0, 8).toUpperCase()}`, now, new Date(row.expires_at).getTime(), now, owner.owner_user_id, now, now),
     database.prepare(`
-      INSERT OR IGNORE INTO internal_access (
+      INSERT INTO internal_access (
         id, user_id, organization_id, access_level, reason, active, mfa_required,
         created_by_user_id, created_at, updated_at
       ) VALUES (?, ?, ?, 'founder', ?, 1, 1, ?, ?, ?)
+      ON CONFLICT(user_id, organization_id, access_level) DO UPDATE SET
+        active = 1,
+        mfa_required = 1,
+        reason = excluded.reason,
+        updated_at = excluded.updated_at
     `).bind(
       internalAccessId,
       userId,
@@ -266,5 +272,11 @@ export async function acceptTeamInvitation(
   });
   const acceptedRows = accepted.ok ? await accepted.json() as Array<{ id?: unknown }> : [];
   if (!accepted.ok || acceptedRows[0]?.id !== row.id) throw new ApiError(503, "INVITATION_FINALIZATION_FAILED", "Your workspace access is safe, but the invitation could not be finalized. Try once more.");
-  return { businessName: owner.business_name, role: row.vanteloq_role };
+  return {
+    businessName: owner.business_name,
+    role: row.vanteloq_role,
+    consoleActivationUrl: row.console_access
+      ? `${PRIVATE_CONSOLE_ACTIVATION_URL}?id=${encodeURIComponent(row.id)}`
+      : null,
+  };
 }
