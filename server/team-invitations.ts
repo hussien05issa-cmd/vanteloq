@@ -9,6 +9,7 @@ import { ApiError, hashIdentifier, type TrustedIdentity } from "./api.ts";
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const VANTELOQ_ROLES = new Set(["admin", "manager", "read_only"]);
 const PRIVATE_CONSOLE_ACTIVATION_URL = "https://wqiwmpqnthshgyxpettl.supabase.co/functions/v1/private-console-activation";
+const MANAGEMENT_CONSOLE_URL = "https://wqiwmpqnthshgyxpettl.supabase.co/functions/v1/management-console";
 
 type InvitationRow = {
   id: string;
@@ -257,21 +258,19 @@ export async function acceptTeamInvitation(
   ]);
 
   const config = supabaseConfiguration(request);
-  const acceptanceQuery = new URLSearchParams({ id: `eq.${row.id}`, status: "eq.pending" });
-  const accepted = await fetch(`${config.url}/rest/v1/team_access_invitations?${acceptanceQuery}`, {
-    method: "PATCH",
+  const accepted = await fetch(MANAGEMENT_CONSOLE_URL, {
+    method: "POST",
     headers: {
       apikey: config.publishableKey,
       authorization: config.authorization,
       accept: "application/json",
       "content-type": "application/json",
-      prefer: "return=representation",
     },
-    body: JSON.stringify({ status: "accepted", auth_user_id: identity.subject, accepted_at: new Date().toISOString(), updated_at: new Date().toISOString() }),
+    body: JSON.stringify({ action: "team.vanteloq.accept", invitationId: row.id }),
     signal: AbortSignal.timeout(7_500),
   });
-  const acceptedRows = accepted.ok ? await accepted.json() as Array<{ id?: unknown }> : [];
-  if (!accepted.ok || acceptedRows[0]?.id !== row.id) throw new ApiError(503, "INVITATION_FINALIZATION_FAILED", "Your workspace access is safe, but the invitation could not be finalized. Try once more.");
+  const acceptedBody = accepted.ok ? await accepted.json() as { accepted?: unknown } : null;
+  if (!accepted.ok || acceptedBody?.accepted !== true) throw new ApiError(503, "INVITATION_FINALIZATION_FAILED", "Your workspace access is safe, but the invitation could not be finalized. Try once more.");
   return {
     businessName: owner.business_name,
     role: row.vanteloq_role,

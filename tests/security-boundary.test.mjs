@@ -130,6 +130,9 @@ test("team invitations remain identity bound and separate from Stripe billing", 
   assert.match(invitations, /INSERT INTO internal_access/);
   assert.match(invitations, /ON CONFLICT\(user_id, organization_id, access_level\) DO UPDATE SET[\s\S]*active = 1/);
   assert.match(invitations, /internalAccessId,[\s\S]*userId,[\s\S]*owner\.organization_id/);
+  assert.match(invitations, /functions\/v1\/management-console/);
+  assert.match(invitations, /team\.vanteloq\.accept/);
+  assert.doesNotMatch(invitations, /method:\s*"PATCH"[\s\S]*team_access_invitations/);
   assert.doesNotMatch(invitations, /STRIPE_SECRET_KEY|stripeCustomerId|stripeSubscriptionId/);
   assert.match(internalAccess, /isBoundSupabaseContext/);
   assert.match(internalAccess, /eq\(internalAccess\.userId, context\.userId\)/);
