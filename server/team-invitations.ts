@@ -116,6 +116,28 @@ export async function pendingTeamInvitation(request: Request, identity: TrustedI
   };
 }
 
+export async function verifiedTeamProvisioning(request: Request, identity: TrustedIdentity, invitationId: string) {
+  if (!UUID_PATTERN.test(invitationId)) throw new ApiError(400, "INVITATION_INVALID", "The invitation could not be matched safely.");
+  const row = await invitationRow(request, identity);
+  if (!row || row.id !== invitationId) return false;
+  const owner = await inviterWorkspace(row);
+  const proof = await getD1().prepare(`
+    SELECT 1 AS provisioned
+    FROM users u
+    JOIN memberships m ON m.user_id = u.id AND m.organization_id = ? AND m.status = 'active'
+    JOIN team_members tm ON tm.user_id = u.id AND tm.organization_id = m.organization_id
+      AND tm.status = 'active' AND tm.remote_login = 1 AND tm.require_mfa = 1
+    JOIN internal_access ia ON ia.user_id = u.id AND ia.organization_id = m.organization_id
+      AND ia.active = 1 AND ia.mfa_required = 1
+    JOIN audit_events ae ON ae.organization_id = m.organization_id AND ae.actor_user_id = u.id
+      AND ae.action = 'team_invitation.accepted' AND ae.outcome = 'success'
+    WHERE u.auth_subject = ? AND u.email = ? AND u.status = 'active'
+      AND json_extract(ae.details_json, '$.invitationId') = ?
+    LIMIT 1
+  `).bind(owner.organization_id, identity.subject, identity.email, invitationId).first<{ provisioned: number }>();
+  return proof?.provisioned === 1;
+}
+
 function acceptedLegalTerms(body: Record<string, unknown>) {
   if (
     body.legalAccepted !== true

@@ -115,8 +115,9 @@ test("business intelligence APIs reject anonymous access before database reads",
 });
 
 test("team invitations remain identity bound and separate from Stripe billing", async () => {
-  const [route, invitations, internalAccess] = await Promise.all([
+  const [route, provisioningRoute, invitations, internalAccess] = await Promise.all([
     readFile(`${process.cwd()}/app/api/v1/team-invitations/route.ts`, "utf8"),
+    readFile(`${process.cwd()}/app/api/v1/internal/team-provisioning/route.ts`, "utf8"),
     readFile(`${process.cwd()}/server/team-invitations.ts`, "utf8"),
     readFile(`${process.cwd()}/server/internal-access.ts`, "utf8"),
   ]);
@@ -132,6 +133,10 @@ test("team invitations remain identity bound and separate from Stripe billing", 
   assert.match(invitations, /internalAccessId,[\s\S]*userId,[\s\S]*owner\.organization_id/);
   assert.match(invitations, /functions\/v1\/management-console/);
   assert.match(invitations, /team\.vanteloq\.accept/);
+  assert.match(invitations, /verifiedTeamProvisioning/);
+  assert.match(invitations, /json_extract\(ae\.details_json, '\$\.invitationId'\) = \?/);
+  assert.match(provisioningRoute, /requireIdentity/);
+  assert.match(provisioningRoute, /requireAal2/);
   assert.doesNotMatch(invitations, /method:\s*"PATCH"[\s\S]*team_access_invitations/);
   assert.doesNotMatch(invitations, /STRIPE_SECRET_KEY|stripeCustomerId|stripeSubscriptionId/);
   assert.match(internalAccess, /isBoundSupabaseContext/);
