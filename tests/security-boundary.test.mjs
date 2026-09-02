@@ -135,6 +135,9 @@ test("team invitations remain identity bound and separate from Stripe billing", 
   assert.match(invitations, /team\.vanteloq\.accept/);
   assert.match(invitations, /verifiedTeamProvisioning/);
   assert.match(invitations, /json_extract\(ae\.details_json, '\$\.invitationId'\) = \?/);
+  assert.match(invitations, /json_extract\(ae\.details_json, '\$\.invitationGeneration'\) = \?/);
+  assert.match(invitations, /team-invitation-generation:/);
+  assert.match(invitations, /m\.role = \?/);
   assert.match(provisioningRoute, /requireIdentity/);
   assert.match(provisioningRoute, /requireAal2/);
   assert.doesNotMatch(invitations, /method:\s*"PATCH"[\s\S]*team_access_invitations/);

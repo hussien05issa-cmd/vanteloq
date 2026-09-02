@@ -21,6 +21,7 @@ type InvitationRow = {
   console_access: boolean;
   console_role: "admin" | "viewer";
   console_scopes: string[];
+  invitation_generation: string;
   status: "pending" | "accepted";
   expires_at: string;
 };
@@ -50,7 +51,7 @@ function supabaseConfiguration(request: Request) {
 async function invitationRow(request: Request, identity: TrustedIdentity): Promise<InvitationRow | null> {
   const config = supabaseConfiguration(request);
   const query = new URLSearchParams({
-    select: "id,email,invited_by_user_id,invited_by_email,vanteloq_access,vanteloq_role,console_access,console_role,console_scopes,status,expires_at",
+    select: "id,email,invited_by_user_id,invited_by_email,vanteloq_access,vanteloq_role,console_access,console_role,console_scopes,invitation_generation,status,expires_at",
     email: `eq.${identity.email}`,
     vanteloq_access: "eq.true",
     status: "eq.pending",
@@ -71,6 +72,7 @@ async function invitationRow(request: Request, identity: TrustedIdentity): Promi
   if (
     !UUID_PATTERN.test(row.id)
     || !UUID_PATTERN.test(row.invited_by_user_id)
+    || !UUID_PATTERN.test(row.invitation_generation)
     || row.email !== identity.email
     || row.status !== "pending"
     || row.vanteloq_access !== true
@@ -124,7 +126,7 @@ export async function verifiedTeamProvisioning(request: Request, identity: Trust
   const proof = await getD1().prepare(`
     SELECT 1 AS provisioned
     FROM users u
-    JOIN memberships m ON m.user_id = u.id AND m.organization_id = ? AND m.status = 'active'
+    JOIN memberships m ON m.user_id = u.id AND m.organization_id = ? AND m.status = 'active' AND m.role = ?
     JOIN team_members tm ON tm.user_id = u.id AND tm.organization_id = m.organization_id
       AND tm.status = 'active' AND tm.remote_login = 1 AND tm.require_mfa = 1
     JOIN internal_access ia ON ia.user_id = u.id AND ia.organization_id = m.organization_id
@@ -133,8 +135,18 @@ export async function verifiedTeamProvisioning(request: Request, identity: Trust
       AND ae.action = 'team_invitation.accepted' AND ae.outcome = 'success'
     WHERE u.auth_subject = ? AND u.email = ? AND u.status = 'active'
       AND json_extract(ae.details_json, '$.invitationId') = ?
+      AND json_extract(ae.details_json, '$.invitationGeneration') = ?
+      AND json_extract(ae.details_json, '$.role') = ?
     LIMIT 1
-  `).bind(owner.organization_id, identity.subject, identity.email, invitationId).first<{ provisioned: number }>();
+  `).bind(
+    owner.organization_id,
+    row.vanteloq_role,
+    identity.subject,
+    identity.email,
+    invitationId,
+    row.invitation_generation,
+    row.vanteloq_role,
+  ).first<{ provisioned: number }>();
   return proof?.provisioned === 1;
 }
 
@@ -188,11 +200,12 @@ export async function acceptTeamInvitation(
   if (emailUser?.auth_subject && emailUser.auth_subject !== identity.subject) throw new ApiError(409, "IDENTITY_CONFLICT", "This email is already attached to another identity.");
   const userHash = (await hashIdentifier(`team-user:${identity.subject}`)).slice(0, 32);
   const invitationHash = (await hashIdentifier(`team-invitation:${row.id}`)).slice(0, 32);
+  const generationHash = (await hashIdentifier(`team-invitation-generation:${row.invitation_generation}`)).slice(0, 32);
   const userId = emailUser?.id ?? `user-team-${userHash}`;
   const membershipId = `membership-team-${invitationHash}`;
   const memberId = `team-member-${invitationHash}`;
   const internalAccessId = `internal-team-${invitationHash}`;
-  const auditId = `audit-team-accepted-${invitationHash}`;
+  const auditId = `audit-team-accepted-${generationHash}`;
   const legalId = `legal-team-${invitationHash}-${TERMS_OF_SERVICE_VERSION}`;
   const existingMembership = await getD1().prepare("SELECT organization_id FROM memberships WHERE user_id = ? LIMIT 1")
     .bind(userId).first<{ organization_id: string }>();
@@ -276,7 +289,7 @@ export async function acceptTeamInvitation(
         id, organization_id, actor_user_id, action, resource_type, resource_id,
         outcome, request_id, source_hash, details_json, created_at
       ) VALUES (?, ?, ?, 'team_invitation.accepted', 'team_member', ?, 'success', ?, ?, ?, ?)
-    `).bind(auditId, owner.organization_id, userId, memberId, requestId, sourceHash, JSON.stringify({ invitationId: row.id, role: row.vanteloq_role, mfaRequired: true, billingAccess: "internal_no_stripe" }), now),
+    `).bind(auditId, owner.organization_id, userId, memberId, requestId, sourceHash, JSON.stringify({ invitationId: row.id, invitationGeneration: row.invitation_generation, role: row.vanteloq_role, mfaRequired: true, billingAccess: "internal_no_stripe" }), now),
   ]);
 
   const config = supabaseConfiguration(request);
