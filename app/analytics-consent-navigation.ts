@@ -4,3 +4,13 @@ export function createCookieNoticeNavigation(closePanel: () => void) {
     onClick: closePanel,
   };
 }
+
+export function shouldShowConsentPanel(
+  pathname: string,
+  choice: "analytics" | "essential" | null | undefined,
+  settingsOpen: boolean,
+) {
+  if (settingsOpen) return true;
+  if (pathname === "/cookies") return false;
+  return choice === null;
+}

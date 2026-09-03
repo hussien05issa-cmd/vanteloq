@@ -1,6 +1,6 @@
 "use client";
 
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import Link from "next/link";
 import ProductBrandLogo from "./product-brand-logo";
@@ -24,6 +24,7 @@ import {
   PRIVACY_POLICY_VERSION,
   TERMS_OF_SERVICE_VERSION,
 } from "../shared/legal-versions";
+import { useModalFocus } from "./use-modal-focus";
 
 export type AuthPanelMode = "signin" | "signup" | "verify-signup" | "request-reset" | "verify-recovery" | "reset-password";
 
@@ -36,6 +37,7 @@ export default function AuthPanel({
   authenticated: (session: Session) => void;
   initialMode?: AuthPanelMode;
 }) {
+  const dialogRef = useRef<HTMLDivElement>(null);
   const [mode, setMode] = useState<AuthPanelMode>(initialMode);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -433,12 +435,14 @@ export default function AuthPanel({
     setLegalAccepted(false);
   }
 
-  function dismiss() {
+  const dismiss = useCallback(() => {
     if (mode === "verify-recovery" || mode === "reset-password") {
       window.history.replaceState({}, document.title, window.location.pathname);
     }
     close();
-  }
+  }, [close, mode]);
+
+  useModalFocus(dialogRef, true, dismiss);
 
   const title = mode === "signup" ? "Create your workspace"
     : mode === "verify-signup" ? "Verify your email"
@@ -466,12 +470,12 @@ export default function AuthPanel({
     : mode === "verify-recovery" ? "Verify recovery code"
     : recoveryMfaRequired ? "Verify and continue" : "Update password";
 
-  return <div className="auth-backdrop" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+  return <div ref={dialogRef} className="auth-backdrop" role="dialog" aria-modal="true" aria-labelledby="auth-title" aria-describedby="auth-description" tabIndex={-1}>
     <section className="auth-panel">
       <header><ProductBrandLogo product="vanteloq"/><button type="button" onClick={dismiss} aria-label="Close account form">×</button></header>
       <small>SECURE VANTELOQ ACCOUNT</small>
       <h2 id="auth-title">{title}</h2>
-      <p>{description}</p>
+      <p id="auth-description">{description}</p>
       {configured === false && <div className="auth-message error">Account service is temporarily unavailable.</div>}
       <form onSubmit={submit}>
         {mode === "signup" && <label>Full name<input autoComplete="name" value={name} onChange={event => setName(event.target.value)} minLength={2} maxLength={120} required/></label>}

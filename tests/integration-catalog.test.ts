@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { integrationCatalog, integrationCategoryOrder, preSyncControls, salesChannelGroups } from "../app/integration-catalog.ts";
+import {
+  integrationCatalog,
+  integrationCategoryOrder,
+  integrationPublicStatus,
+  preSyncControls,
+  salesChannelGroups,
+} from "../app/integration-catalog.ts";
 
 test("the shared provider gate matches the implemented provider staging boundary", () => {
   const verified = preSyncControls.filter((control) => control.status === "verified");
@@ -50,6 +56,15 @@ test("QuickBooks exposes only the built sandbox company-verification boundary", 
   assert.match(quickBooks.activationRequirement, /read only/i);
   assert.match(quickBooks.activationRequirement, /sandbox remains staging only/i);
   assert.match(quickBooks.activationRequirement, /ledger import/i);
+});
+
+test("public connector labels disclose the real activation boundary", () => {
+  assert.equal(integrationPublicStatus(integrationCatalog.find((provider) => provider.id === "quickbooks")!).label, "Sandbox only");
+  assert.equal(integrationPublicStatus(integrationCatalog.find((provider) => provider.id === "plaid")!).label, "Production approval needed");
+  assert.equal(integrationPublicStatus(integrationCatalog.find((provider) => provider.id === "xero")!).label, "In development");
+  assert.equal(integrationPublicStatus(integrationCatalog.find((provider) => provider.id === "doordash")!).label, "Coming soon");
+  assert.equal(integrationPublicStatus(integrationCatalog.find((provider) => provider.id === "payroll")!).label, "Provider selection needed");
+  assert.equal(integrationPublicStatus(integrationCatalog.find((provider) => provider.id === "stripe")!).label, "Setup required");
 });
 
 test("integration cards use one canonical ordered category taxonomy", () => {

@@ -67,6 +67,7 @@
 .public-nav nav a { white-space: nowrap; }
 .public-nav-actions { display: flex; align-items: center; gap: 8px; }
 .public-nav-actions button { cursor: pointer; }
+.public-nav-mobile-actions { display: none; }
 .nav-menu-toggle { display: none; }
 
 .home-hero,
@@ -177,6 +178,18 @@
   list-style: none;
 }
 .home-proof li::before { margin-right: 7px; color: #14805e; content: "✓"; font-weight: 900; }
+.home-account-steps {
+  max-width: 610px;
+  margin-top: 22px;
+  padding: 16px 18px;
+  border: 1px solid #d5e0ec;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, .72);
+}
+.home-account-steps > strong { display: block; color: #193757; font-size: 13px; }
+.home-account-steps ol { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px 18px; margin: 12px 0 0; padding: 0; counter-reset: account-step; list-style: none; }
+.home-account-steps li { position: relative; min-height: 22px; padding-left: 28px; color: #52647a; font-size: 12px; line-height: 1.45; counter-increment: account-step; }
+.home-account-steps li::before { position: absolute; top: 0; left: 0; display: grid; width: 20px; height: 20px; place-items: center; border-radius: 50%; color: #1557d0; background: #e9f1ff; content: counter(account-step); font-size: 10px; font-weight: 800; }
 .home-product-visual {
   transform: none;
   border-color: rgba(38, 103, 186, .28);
@@ -441,7 +454,22 @@
 .home-connection-grid .integration-logo { grid-row: auto; margin: 0; }
 .home-connection-grid article > div { min-width: 0; display: flex; flex-direction: column; gap: 5px; }
 .home-connection-grid strong { font-size: 14px; }
-.home-connection-grid article > div span { color: #627187; font-size: 11px; line-height: 1.4; }
+.home-connection-grid article > div span { color: #627187; font-size: 12px; line-height: 1.45; }
+.home-connection-grid article > div .home-connection-status {
+  align-self: flex-start;
+  padding: 3px 7px;
+  border: 1px solid #c8d8eb;
+  border-radius: 999px;
+  color: #385c85;
+  background: #f4f8fd;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+.home-connection-status.staging { border-color: #e0c98e; color: #765713; background: #fff9e8; }
+.home-connection-status.development,
+.home-connection-status.future { border-color: #d5dce5; color: #5b6776; background: #f7f8fa; }
+.home-connection-status.available { border-color: #acd9ca; color: #176b52; background: #eef9f5; }
 
 /* Responsive motion reel: an accessible, controllable product walkthrough.
    Each scene animates the actual decision sequence instead of cropping a poster. */
@@ -895,16 +923,10 @@
   .public-nav { height: 70px; padding-inline: 14px; gap: 8px; }
   .public-brand { font-size: 16px; }
   .public-brand small { display: none; }
-  .public-nav-actions { gap: 4px; }
-  .public-nav-actions .nav-login {
-    display: inline-flex;
-    min-height: 42px;
-    align-items: center;
-    padding: 0 9px;
-    white-space: nowrap;
-    font-size: 12px;
-  }
-  .public-nav-actions button:last-child { min-height: 42px; padding: 0 11px; font-size: 12px; }
+  .public-nav > .public-nav-actions { display: none; }
+  .public-nav-mobile-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; padding-top: 12px; border-top: 1px solid #e1e7ef; }
+  .public-nav-mobile-actions button { min-height: 44px; border: 1px solid #1557d0; border-radius: 7px; color: #fff; background: #1557d0; font-size: 13px; font-weight: 750; }
+  .public-nav-mobile-actions .nav-login { color: #0d1b38; border-color: #c8d3e0; background: #fff; }
   .nav-menu-toggle { padding-inline: 10px; }
   .home-hero,
   .home-ownership,
@@ -933,6 +955,7 @@
   .home-hero .public-actions button,
   .home-hero .public-actions a { width: 100%; justify-content: center; }
   .home-proof { display: grid; gap: 8px; }
+  .home-account-steps ol { grid-template-columns: 1fr; }
   .home-connections,
   .home-problem,
   .home-platform,
@@ -1005,9 +1028,6 @@
 
 @media (max-width: 390px) {
   .public-nav { padding-inline: 10px; gap: 5px; }
-  .public-nav-actions { gap: 2px; }
-  .public-nav-actions .nav-login { padding-inline: 7px; }
-  .public-nav-actions button:last-child { padding-inline: 8px; }
   .nav-menu-toggle { padding-inline: 8px; }
   .home-product-family-grid article { grid-template-columns: 1fr; }
   .home-footer { grid-template-columns: 1fr; }

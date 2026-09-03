@@ -4,7 +4,7 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react"
 import type { Session } from "@supabase/supabase-js";
 import Link from "next/link";
 import IntegrationBrandLogo from "./integration-brand-logo";
-import { integrationCatalog } from "./integration-catalog";
+import { integrationCatalog, integrationPublicStatus } from "./integration-catalog";
 import ProductBrandLogo from "./product-brand-logo";
 import AuthPanel, { type AuthPanelMode } from "./auth-panel";
 import { currentSession, getSupabase, signOut } from "./supabase-browser";
@@ -345,7 +345,7 @@ function FeatureReel() {
     if (!playing) return;
     const timer = window.setInterval(() => setPlayhead((current) => current.phase < 3
       ? { ...current, phase: current.phase + 1 }
-      : { scene: (current.scene + 1) % featureReelScenes.length, phase: 0 }), 1450);
+      : { scene: (current.scene + 1) % featureReelScenes.length, phase: 0 }), 2000);
     return () => window.clearInterval(timer);
   }, [playing]);
 
@@ -358,9 +358,9 @@ function FeatureReel() {
       </button>
     </header>
     <div className="feature-reel-screen"><FeatureReelStage scene={scene.id} phase={playhead.phase}/></div>
-    <div className="feature-reel-caption" aria-live="polite"><small>{scene.kicker}</small><strong>{scene.title}</strong><span>{scene.copy}</span><div className="feature-reel-progress"><i style={{ width: `${((playhead.phase + 1) / 4) * 100}%` }}/></div><em>{scene.steps[playhead.phase]}</em></div>
+    <div className="feature-reel-caption" aria-live="off"><small>{scene.kicker}</small><strong>{scene.title}</strong><span>{scene.copy}</span><div className="feature-reel-progress"><i style={{ width: `${((playhead.phase + 1) / 4) * 100}%` }}/></div><em>{scene.steps[playhead.phase]}</em></div>
     <nav aria-label="Feature tour scenes">
-      {featureReelScenes.map((item, index) => <button type="button" key={item.id} className={index === playhead.scene ? "active" : ""} aria-current={index === playhead.scene ? "step" : undefined} onClick={() => { setPlayhead({ scene: index, phase: 0 }); setPlaying(true); }}><span>{index + 1}</span>{item.label}</button>)}
+      {featureReelScenes.map((item, index) => <button type="button" key={item.id} className={index === playhead.scene ? "active" : ""} aria-current={index === playhead.scene ? "step" : undefined} onClick={() => { setPlayhead({ scene: index, phase: 0 }); setPlaying(false); }}><span>{index + 1}</span>{item.label}</button>)}
     </nav>
   </div>;
 }
@@ -381,9 +381,8 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
   };
   const publicIntegrations = integrationCatalog.map(provider => ({
     ...provider,
-    detail: provider.availability === "coming_soon"
-      ? "Coming soon"
-      : connectorBenefits[provider.category] ?? "Bring source records into one operating view",
+    detail: connectorBenefits[provider.category] ?? "Bring source records into one operating view",
+    publicStatus: integrationPublicStatus(provider),
   }));
 
   useEffect(() => {
@@ -410,6 +409,10 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
         <a href="#company" onClick={closeMobileNav}>Company</a>
         <a href="#security" onClick={closeMobileNav}>Security</a>
         <Link href="/resources" onClick={closeMobileNav}>Resources</Link>
+        <div className="public-nav-mobile-actions">
+          <button type="button" className="nav-login" onClick={() => { closeMobileNav(); start("signin"); }}>Sign in</button>
+          <button type="button" onClick={() => { closeMobileNav(); start("signup"); }}>Create workspace</button>
+        </div>
       </nav>
       <div className="public-nav-actions">
         <button type="button" className="nav-login" onClick={() => start("signin")}>Sign in</button>
@@ -432,6 +435,15 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
             <li>Role-based approvals</li>
             <li>Tenant-separated records</li>
           </ul>
+          <div className="home-account-steps">
+            <strong>What happens after you create an account</strong>
+            <ol>
+              <li>Verify your email</li>
+              <li>Protect your account with an authenticator app</li>
+              <li>Add your business details</li>
+              <li>Review a plan and continue to Stripe checkout</li>
+            </ol>
+          </div>
         </div>
         <figure className="product-visual product-visual-reference home-product-visual">
           {/* The image is a real Vanteloq interface composition; the values shown are illustrative. */}
@@ -439,26 +451,6 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
           <img src="/brand/vanteloq-command-ledger.webp" alt="Vanteloq command centre interface with sales, gross profit, cash, inventory and a decision queue." width={1487} height={1058} loading="eager" fetchPriority="high" />
           <figcaption>Vanteloq command centre · Illustrative values · Available views depend on connected and verified source data</figcaption>
         </figure>
-      </section>
-
-      <section className="home-ownership" id="company" aria-labelledby="ownership-title">
-        <div className="home-ownership-brand">
-          <span>PRODUCT OWNERSHIP</span>
-          {/* This is the supplied LexEdge Consulting logo. */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/brand/lexedge-consulting-logo.png" alt="LexEdge Consulting" width={1536} height={1024} loading="lazy" />
-          <p>Company ownership and operating responsibility</p>
-        </div>
-        <div className="home-ownership-copy">
-          <p>BUILT AND OPERATED BY LEXEDGE CONSULTING</p>
-          <h2 id="ownership-title">Vanteloq is a LexEdge Consulting product.</h2>
-          <span>LexEdge Consulting owns and operates Vanteloq. The company is responsible for the product direction, service operations, privacy commitments and customer support behind the platform.</span>
-          <div className="home-ownership-ledger" aria-label="LexEdge Consulting owns and operates Vanteloq">
-            <article><small>COMPANY</small><strong>LexEdge Consulting</strong><span>Product owner and operator</span></article>
-            <i aria-hidden="true">→</i>
-            <article><small>PRODUCT</small><strong>Vanteloq</strong><span>Business operations and analytics platform</span></article>
-          </div>
-        </div>
       </section>
 
       <section className="home-connections" id="connections" aria-labelledby="connections-title">
@@ -471,8 +463,8 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
           <FeatureReel />
         </div>
         <div className="home-connection-grid">
-          {publicIntegrations.map(provider => <article key={provider.id}><IntegrationBrandLogo name={provider.name} compact/><div><strong>{provider.name}</strong><span>{provider.detail}</span></div></article>)}
-          <article><IntegrationBrandLogo name="Daily CSV" compact/><div><strong>CSV import</strong><span>Turn structured operating files into verified records</span></div></article>
+          {publicIntegrations.map(provider => <article key={provider.id}><IntegrationBrandLogo name={provider.name} compact/><div><strong>{provider.name}</strong><span className={`home-connection-status ${provider.publicStatus.tone}`}>{provider.publicStatus.label}</span><span>{provider.detail}</span></div></article>)}
+          <article><IntegrationBrandLogo name="Daily CSV" compact/><div><strong>CSV import</strong><span className="home-connection-status available">Available</span><span>Turn structured operating files into verified records</span></div></article>
         </div>
       </section>
 
@@ -646,7 +638,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
 
       <section className="home-security" id="security" aria-labelledby="security-title">
         <div className="home-section-heading">
-          <p>VERIFIED SECURITY CONTROLS</p>
+          <p>IMPLEMENTED SECURITY CONTROLS</p>
           <h2 id="security-title">Business data is business-critical.</h2>
           <span>Authentication, authorization and audit controls are enforced within the current application, with sensitive actions kept behind server-side permission checks.</span>
         </div>
@@ -655,6 +647,26 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
           <article><strong>Role permissions</strong><p>Server-side permissions control sensitive integration, finance, export and workspace actions.</p></article>
           <article><strong>Protected connections</strong><p>Implemented provider flows use scoped authorization, one-time state and encrypted credentials.</p></article>
           <article><strong>Change history</strong><p>Important operating and connection actions are recorded, and duplicate requests are handled safely.</p></article>
+        </div>
+      </section>
+
+      <section className="home-ownership" id="company" aria-labelledby="ownership-title">
+        <div className="home-ownership-brand">
+          <span>PRODUCT OWNERSHIP</span>
+          {/* This is the supplied LexEdge Consulting logo. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/brand/lexedge-consulting-logo-web.png" alt="LexEdge Consulting" width={480} height={320} loading="lazy" />
+          <p>Company ownership and operating responsibility</p>
+        </div>
+        <div className="home-ownership-copy">
+          <p>BUILT AND OPERATED BY LEXEDGE CONSULTING</p>
+          <h2 id="ownership-title">Vanteloq is a LexEdge Consulting product.</h2>
+          <span>LexEdge Consulting owns and operates Vanteloq. The company is responsible for the product direction, service operations, privacy commitments and customer support behind the platform.</span>
+          <div className="home-ownership-ledger" aria-label="LexEdge Consulting owns and operates Vanteloq">
+            <article><small>COMPANY</small><strong>LexEdge Consulting</strong><span>Product owner and operator</span></article>
+            <i aria-hidden="true">→</i>
+            <article><small>PRODUCT</small><strong>Vanteloq</strong><span>Business operations and analytics platform</span></article>
+          </div>
         </div>
       </section>
 
@@ -671,7 +683,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
             <div><span>Supported sources</span><span>Visible data limits</span><span>Human approvals</span></div>
             <div className="home-faq-owner">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/brand/lexedge-consulting-logo.png" alt="" width={1536} height={1024} loading="lazy" />
+              <img src="/brand/lexedge-consulting-logo-web.png" alt="" width={480} height={320} loading="lazy" />
               <span>Owned and operated by LexEdge Consulting</span>
             </div>
           </aside>
@@ -680,7 +692,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
             <details><summary>Who owns Vanteloq?</summary><p>Vanteloq is owned and operated by LexEdge Consulting. LexEdge Consulting is responsible for the product direction, service operations, privacy commitments and customer support behind Vanteloq.</p></details>
             <details><summary>How are LexEdge Consulting and Vanteloq connected?</summary><p>LexEdge Consulting is the company. Vanteloq is the company&apos;s business software product. A Vanteloq subscription provides access to the software and does not create a separate consulting engagement unless the customer and LexEdge Consulting agree to one in writing.</p></details>
             <details><summary>Who is Vanteloq designed for?</summary><p>The current product and connection work are designed primarily for independent retailers and the owners or managers who oversee sales, inventory, purchasing, cash and daily operations.</p></details>
-            <details><summary>What systems can I connect?</summary><p>Vanteloq includes connection paths for supported point of sale, commerce, payment, banking, accounting and marketing providers. Availability is shown inside the Connections workspace. Stripe Connect and Canada Post AddressComplete are configured, QuickBooks is in sandbox staging, and DoorDash and Uber Eats are marked Coming soon. Other providers remain unavailable until their credentials, review and production setup are complete. Structured CSV import is also available.</p></details>
+            <details><summary>What systems can I connect?</summary><p>The Connections section shows the current status for every provider. Setup required means a connection path exists but customer or hosted provider setup is still required. Sandbox only and Production approval needed do not mean the provider is available for live production data. In development and Coming soon connections remain unavailable. Structured CSV import is available.</p></details>
             <details><summary>Do I need to replace my POS?</summary><p>No. Vanteloq is designed to use supported source records while the POS remains the transaction system. Availability and depth depend on the connector and successful reconciliation.</p></details>
             <details><summary>Can Vanteloq help with inventory?</summary><p>Yes. Implemented inventory tools cover lots, expiry, shelf-life risk, first-expiring-first-out review and a constrained reorder calculation. Recommendations still require reliable demand, cost, lead-time, supplier and cash inputs.</p></details>
             <details><summary>What is BookLoQ?</summary><p>BookLoQ is the accounting workspace inside the Vanteloq product family. It keeps journals, bills, documents, reconciliation and financial reporting separate from the main operating workspace. Access depends on the customer&apos;s plan and any required connection setup.</p></details>
@@ -701,7 +713,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
     <footer className="home-footer">
       <div className="home-footer-brand"><div><ProductBrandLogo product="vanteloq"/><strong>Vanteloq</strong></div><p>Source-aware operations and analytics for independent retail.</p><div className="home-footer-owner">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/brand/lexedge-consulting-logo.png" alt="LexEdge Consulting" width={1536} height={1024} loading="lazy" />
+        <img src="/brand/lexedge-consulting-logo-web.png" alt="LexEdge Consulting" width={480} height={320} loading="lazy" />
         <span>Owned and operated by LexEdge Consulting</span>
       </div></div>
       <div><strong>PRODUCT</strong><a href="#platform">How it works</a><a href="#capabilities">Capabilities</a><a href="#connections">Connections</a><a href="#security">Security</a></div>

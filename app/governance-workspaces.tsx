@@ -1833,7 +1833,7 @@ function AccountDeletionSettings() {
       const body = await response.json();
       if (!response.ok) throw new Error(message(body, "The deletion request could not be completed."));
       await signOut().catch(() => undefined);
-      window.location.assign("/?account=deleted");
+      window.location.replace("/?account=deleted");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "The deletion request could not be completed.");
       setBusy(false);

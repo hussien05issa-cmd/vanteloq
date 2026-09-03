@@ -122,12 +122,12 @@ test("invoice files stay behind authenticated document downloads", async () => {
   assert.match(documentsRoute, /Cache-Control": "private, no-store"/);
 });
 
-test("the feature tour advances meaningful interface phases and scene controls restart playback", async () => {
+test("the feature tour advances meaningful interface phases and preserves manual scene choices", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.match(source, /function FeatureReelStage/);
   assert.match(source, /current\.phase < 3/);
-  assert.match(source, /setPlayhead\(\{ scene: index, phase: 0 \}\); setPlaying\(true\)/);
-  assert.doesNotMatch(source, /setActive\(index\); setPlaying\(false\)/);
+  assert.match(source, /setPlayhead\(\{ scene: index, phase: 0 \}\); setPlaying\(false\)/);
+  assert.doesNotMatch(source, /setPlayhead\(\{ scene: index, phase: 0 \}\); setPlaying\(true\)/);
   assert.doesNotMatch(source, /vanteloq-feature-reel-v1\.webp/);
 });
 
@@ -457,6 +457,39 @@ test("account access includes confirmation recovery and a complete password-rese
   assert.doesNotMatch(browserClient, /window\.location\.reload\(\)/);
   assert.match(home, /event === "SIGNED_IN"[\s\S]{0,300}loadWorkspace\(session\)/);
   assert.match(home, /entry === "load-error"/);
+});
+
+test("authentication and analytics dialogs manage keyboard focus", async () => {
+  const [authPanel, analyticsConsent, modalFocus] = await Promise.all([
+    readFile(new URL("../app/auth-panel.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/google-analytics-consent.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/use-modal-focus.ts", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(authPanel, /useModalFocus/);
+  assert.match(authPanel, /aria-describedby="auth-description"/);
+  assert.match(analyticsConsent, /useModalFocus/);
+  assert.match(analyticsConsent, /aria-modal="true"/);
+  assert.match(analyticsConsent, /isPublicMeasurementPage\(pathname\)[\s\S]{0,300}setAnalyticsDisabled\(false\)/);
+  assert.match(modalFocus, /event\.key === "Escape"/);
+  assert.match(modalFocus, /event\.key !== "Tab"/);
+  assert.match(modalFocus, /sibling\.inert = true/);
+  assert.match(modalFocus, /getClientRects\(\)\.length > 0/);
+  assert.match(modalFocus, /!container\.contains\(document\.activeElement\)/);
+  assert.match(modalFocus, /opener\?\.focus/);
+});
+
+test("the hydrated missing page cannot restore homepage metadata", async () => {
+  const [notFound, metadataGuard] = await Promise.all([
+    readFile(new URL("../app/not-found.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/not-found-metadata-guard.tsx", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(notFound, /<NotFoundMetadataGuard \/>/);
+  assert.match(metadataGuard, /document\.title = TITLE/);
+  assert.match(metadataGuard, /link\[rel="canonical"\]/);
+  assert.match(metadataGuard, /openGraphUrl\?\.remove\(\)/);
+  assert.match(metadataGuard, /new MutationObserver\(enforceNotFoundMetadata\)/);
 });
 
 test("signup success continues with in-place email code verification", async () => {

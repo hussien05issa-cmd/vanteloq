@@ -43,6 +43,33 @@ export type IntegrationCatalogEntry = {
   externalApplicationLabel?: string;
 };
 
+export type IntegrationPublicStatus = {
+  label: string;
+  tone: "setup" | "staging" | "development" | "future";
+};
+
+/**
+ * Converts internal connector readiness into language that a prospective
+ * customer can understand without implying production availability.
+ */
+export function integrationPublicStatus(provider: IntegrationCatalogEntry): IntegrationPublicStatus {
+  if (provider.id === "quickbooks") return { label: "Sandbox only", tone: "staging" };
+  if (provider.id === "plaid") return { label: "Production approval needed", tone: "staging" };
+
+  switch (provider.availability) {
+    case "credentials_required":
+      return { label: "Setup required", tone: "setup" };
+    case "provider_access_required":
+      return { label: "Provider access needed", tone: "setup" };
+    case "provider_build_required":
+      return { label: "In development", tone: "development" };
+    case "provider_selection_required":
+      return { label: "Provider selection needed", tone: "development" };
+    case "coming_soon":
+      return { label: "Coming soon", tone: "future" };
+  }
+}
+
 export const salesChannelGroups = [
   { label: "Point of Sale", providers: ["Lightspeed", "Square", "Clover", "Shopify POS", "Moneris"] },
   { label: "E-commerce", providers: ["Shopify"] },

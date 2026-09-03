@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
-import { createCookieNoticeNavigation } from "./analytics-consent-navigation";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { createCookieNoticeNavigation, shouldShowConsentPanel } from "./analytics-consent-navigation";
 import ProductBrandLogo from "./product-brand-logo";
+import { useModalFocus } from "./use-modal-focus";
 
 type ConsentChoice = "analytics" | "essential";
 type GtagCommand = [string, ...unknown[]];
@@ -66,6 +67,7 @@ function isPublicMeasurementPage(pathname: string) {
 }
 
 function markAnalyticsReady() {
+  if (window.__vanteloqAnalyticsReady) return;
   configureAnalytics();
   window.__vanteloqAnalyticsReady = true;
   window.dispatchEvent(new Event(READY_EVENT));
@@ -82,8 +84,7 @@ function loadAnalytics() {
 
   const existing = document.getElementById(SCRIPT_ID) as HTMLScriptElement | null;
   if (existing) {
-    if (window.__vanteloqAnalyticsReady) markAnalyticsReady();
-    else existing.addEventListener("load", markAnalyticsReady, { once: true });
+    if (!window.__vanteloqAnalyticsReady) existing.addEventListener("load", markAnalyticsReady, { once: true });
     return;
   }
 
@@ -124,57 +125,71 @@ function saveChoice(choice: ConsentChoice) {
   }
 }
 
+const subscribeToHydration = () => () => undefined;
+const getClientHydrationSnapshot = () => true;
+const getServerHydrationSnapshot = () => false;
+
 export function GoogleAnalyticsConsent() {
   const pathname = usePathname();
-  const [choice, setChoice] = useState<ConsentChoice | null | undefined>(undefined);
-  const [panelOpen, setPanelOpen] = useState(false);
-  const [analyticsReady, setAnalyticsReady] = useState(false);
+  const hydrated = useSyncExternalStore(subscribeToHydration, getClientHydrationSnapshot, getServerHydrationSnapshot);
+  const [choiceOverride, setChoiceOverride] = useState<ConsentChoice | null>();
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const panelRef = useRef<HTMLElement>(null);
+  const storedChoice = hydrated ? readSavedChoice() : undefined;
+  const choice = choiceOverride === undefined ? storedChoice : choiceOverride;
+  const panelOpen = hydrated && shouldShowConsentPanel(pathname, choice, settingsOpen);
   const configured = ANALYTICS_ID_PATTERN.test(ANALYTICS_ID);
 
-  useEffect(() => {
-    if (!configured) return;
-    const saved = readSavedChoice();
-    setChoice(saved);
-    setPanelOpen(saved === null);
+  const applyChoice = useCallback((nextChoice: ConsentChoice) => {
+    saveChoice(nextChoice);
+    setChoiceOverride(nextChoice);
+    setSettingsOpen(false);
+    if (nextChoice === "essential") stopAnalytics();
+  }, []);
 
-    const handleReady = () => setAnalyticsReady(true);
-    window.addEventListener(READY_EVENT, handleReady);
-    if (saved === "essential") stopAnalytics();
-    return () => window.removeEventListener(READY_EVENT, handleReady);
-  }, [configured]);
+  const dismissPanel = useCallback(() => {
+    if (choice === null) applyChoice("essential");
+    else setSettingsOpen(false);
+  }, [applyChoice, choice]);
+
+  useModalFocus(panelRef, configured && panelOpen, dismissPanel);
 
   useEffect(() => {
-    if (!configured || choice !== "analytics" || !pathname) return;
+    if (!configured || choice === undefined) return;
+    if (choice === "essential") {
+      stopAnalytics();
+      return;
+    }
+    if (choice !== "analytics" || !pathname) return;
     if (!isPublicMeasurementPage(pathname)) {
       stopAnalytics();
-      setAnalyticsReady(false);
       return;
     }
-    if (!analyticsReady) {
-      loadAnalytics();
-      return;
-    }
-    runGtag("event", "page_view", {
-      page_location: `${window.location.origin}${pathname}`,
-      page_path: pathname,
-    });
-  }, [analyticsReady, choice, configured, pathname]);
+
+    setAnalyticsDisabled(false);
+    let pageViewSent = false;
+    const sendPageView = () => {
+      if (pageViewSent) return;
+      pageViewSent = true;
+      runGtag("event", "page_view", {
+        page_location: `${window.location.origin}${pathname}`,
+        page_path: pathname,
+      });
+    };
+    window.addEventListener(READY_EVENT, sendPageView);
+    if (window.__vanteloqAnalyticsReady) sendPageView();
+    else loadAnalytics();
+    return () => window.removeEventListener(READY_EVENT, sendPageView);
+  }, [choice, configured, pathname]);
 
   if (!configured || choice === undefined) return null;
 
-  const applyChoice = (nextChoice: ConsentChoice) => {
-    saveChoice(nextChoice);
-    setChoice(nextChoice);
-    setPanelOpen(false);
-    if (nextChoice === "essential") stopAnalytics();
-  };
-
-  const cookieNoticeNavigation = createCookieNoticeNavigation(() => setPanelOpen(false));
+  const cookieNoticeNavigation = createCookieNoticeNavigation(() => setSettingsOpen(false));
 
   return (
     <>
       {panelOpen && (
-        <section className="analytics-consent" role="dialog" aria-labelledby="analytics-consent-title" aria-describedby="analytics-consent-copy">
+        <section ref={panelRef} className="analytics-consent" role="dialog" aria-modal="true" aria-labelledby="analytics-consent-title" aria-describedby="analytics-consent-copy" tabIndex={-1}>
           <ProductBrandLogo product="vanteloq" priority className="analytics-consent-brand" />
           <div className="analytics-consent-copy">
             <span>PRIVACY CONTROLS</span>
@@ -189,7 +204,7 @@ export function GoogleAnalyticsConsent() {
         </section>
       )}
       {!panelOpen && (
-        <button type="button" className="analytics-settings-button" onClick={() => setPanelOpen(true)} aria-label="Open cookie settings">
+        <button type="button" className="analytics-settings-button" onClick={() => setSettingsOpen(true)} aria-label="Open cookie settings">
           Cookie settings
         </button>
       )}

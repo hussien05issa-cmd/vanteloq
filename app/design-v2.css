@@ -1124,3 +1124,14 @@ button, a, input, select, textarea, summary { -webkit-tap-highlight-color: trans
     -webkit-overflow-scrolling: touch;
   }
 }
+
+/* Authentication remains the top interaction layer and stays usable on short screens. */
+.auth-backdrop {
+  z-index: 2300;
+  overflow-y: auto;
+}
+
+.auth-panel {
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+}

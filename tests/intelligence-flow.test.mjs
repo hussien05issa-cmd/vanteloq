@@ -280,7 +280,8 @@ test("migrations, tenant isolation and the complete intelligence-to-action flow 
     assert.equal(empty.status, 200);
     assert.equal((await empty.json()).commandCentre.ready, false);
 
-    const latest = "2026-08-03";
+    // Keep the operating fixture current so rolling comparisons remain valid.
+    const latest = new Date().toISOString().slice(0, 10);
     const rows = [];
     for (let offset = -59; offset <= 0; offset++) {
       const current = offset >= -29;
@@ -342,6 +343,9 @@ test("migrations, tenant isolation and the complete intelligence-to-action flow 
     assert.equal(bookloq.cashIntelligence.purchasingCapacityCents, null);
     assert.equal(bookloq.summary.availableCashCents, null);
     assert.deepEqual(bookloq.forecasts, []);
+    const openAccountingPeriod = bookloq.periods.find(period => period.status === "open");
+    assert.ok(openAccountingPeriod?.startDate);
+    const journalDate = openAccountingPeriod.startDate;
 
     const ownerRecord = await database.prepare(`SELECT u.id userId, m.organization_id organizationId
       FROM users u JOIN memberships m ON m.user_id = u.id WHERE u.email = ?`).bind(owner.email).first();
@@ -546,7 +550,7 @@ test("migrations, tenant isolation and the complete intelligence-to-action flow 
     const creditAccount = bookloq.statements.accounts.find(account => account.systemKey === "accounts_payable");
     const journalKey = crypto.randomUUID();
     const manualJournal = await dispatch(worker, environment, "/api/v1/bookloq/journals", { method: "POST", ...owner, idempotencyKey: journalKey, body: {
-      entryDate: latest, memo: "Verified manual journal", currency: "CAD",
+      entryDate: journalDate, memo: "Verified manual journal", currency: "CAD",
       lines: [
         { accountId: debitAccount.id, description: "Supplies", debitCents: 10_000, creditCents: 0, locationRef: "Main" },
         { accountId: creditAccount.id, description: "Supplier payable", debitCents: 0, creditCents: 10_000, locationRef: "Main" },
@@ -556,7 +560,7 @@ test("migrations, tenant isolation and the complete intelligence-to-action flow 
     const manualJournalBody = await manualJournal.json();
     assert.equal(manualJournalBody.journal.totalDebitCents, 10_000);
     const journalReplay = await dispatch(worker, environment, "/api/v1/bookloq/journals", { method: "POST", ...owner, idempotencyKey: journalKey, body: {
-      entryDate: latest, memo: "Verified manual journal", currency: "CAD",
+      entryDate: journalDate, memo: "Verified manual journal", currency: "CAD",
       lines: [
         { accountId: debitAccount.id, debitCents: 10_000, creditCents: 0 },
         { accountId: creditAccount.id, debitCents: 0, creditCents: 10_000 },
@@ -565,7 +569,7 @@ test("migrations, tenant isolation and the complete intelligence-to-action flow 
     assert.equal(journalReplay.status, 200);
     assert.equal((await journalReplay.json()).replayed, true);
 
-    const reversal = await dispatch(worker, environment, "/api/v1/bookloq/journals", { method: "PATCH", ...owner, idempotencyKey: crypto.randomUUID(), body: { entryId: manualJournalBody.journal.id, reason: "Correct the verified test entry", reversalDate: latest } });
+    const reversal = await dispatch(worker, environment, "/api/v1/bookloq/journals", { method: "PATCH", ...owner, idempotencyKey: crypto.randomUUID(), body: { entryId: manualJournalBody.journal.id, reason: "Correct the verified test entry", reversalDate: journalDate } });
     assert.equal(reversal.status, 201);
     assert.equal((await reversal.json()).journal.reversalOfEntryId, manualJournalBody.journal.id);
 

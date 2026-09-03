@@ -60,7 +60,7 @@ export async function generateMetadata({ params }: SegmentProps): Promise<Metada
 
   const category = getCategory(segment);
   if (category) {
-    const title = `${category.name} Guides for Small Businesses | Vanteloq`;
+    const title = category.seoTitle;
     return {
       title,
       description: category.description,

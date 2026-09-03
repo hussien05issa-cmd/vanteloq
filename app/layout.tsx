@@ -32,7 +32,6 @@ export const metadata: Metadata = {
   title: "Vanteloq | Business Analytics for Independent Retail",
   description: "Bring verified sales, inventory, cash and operational records into clearer views with Vanteloq, a source-aware platform for independent retail.",
   alternates: { canonical: "/" },
-  robots: { index: true, follow: true },
   openGraph: {
     type: "website",
     url: "/",
