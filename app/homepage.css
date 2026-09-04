@@ -548,28 +548,50 @@
 
 .home-problem { padding-block: 108px; background: #f4f7fb; }
 .home-problem-intro { display: grid; grid-template-columns: minmax(0, .82fr) minmax(360px, 1.18fr); gap: 64px; align-items: center; }
-.home-record-review { overflow: hidden; margin: 0; border: 1px solid #cad7e6; border-radius: 14px; color: #10233f; background: #fff; box-shadow: 0 24px 54px rgba(7, 26, 53, .1); }
-.home-record-review > header { display: grid; gap: 7px; padding: 20px 22px; border-bottom: 1px solid #dce5ef; background: #f8fafc; }
+.home-record-review { width: 100%; max-width: 650px; justify-self: end; overflow: hidden; margin: 0; border: 1px solid #c4d3e3; border-radius: 14px; color: #10233f; background: #fff; box-shadow: 0 24px 54px rgba(7, 26, 53, .11); }
+.home-record-review > header { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 17px 19px; border-bottom: 1px solid #dce5ef; background: linear-gradient(110deg, #f8fafc 20%, #edf5ff); }
+.home-record-review > header > div { display: grid; gap: 5px; }
 .home-record-review > header span,
-.home-record-review aside > span { color: #2567c6; font-size: 9px; font-weight: 850; letter-spacing: .13em; }
-.home-record-review > header strong { font-size: 16px; line-height: 1.35; }
-.home-record-review-body { display: grid; grid-template-columns: minmax(0, 1fr) 42px minmax(150px, .72fr); gap: 14px; align-items: center; padding: 22px; }
+.home-review-status { color: #2567c6; font-size: 8px; font-weight: 850; letter-spacing: .13em; }
+.home-record-review > header strong { font-size: 14px; line-height: 1.35; }
+.home-record-review > header > small { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; padding: 6px 8px; border: 1px solid #bcd9ce; border-radius: 999px; color: #176b52; background: #eef9f5; font-size: 8px; font-weight: 750; }
+.home-record-review > header > small i { width: 6px; height: 6px; border-radius: 50%; background: #20976f; }
+.home-record-review-body { display: grid; grid-template-columns: minmax(0, 1.22fr) 32px minmax(155px, .78fr); gap: 11px; align-items: center; padding: 18px; }
 .home-record-sources { display: grid; gap: 8px; }
-.home-record-sources article { display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; gap: 10px; align-items: center; min-width: 0; padding: 11px 12px; border: 1px solid #dce5ef; border-radius: 8px; background: #fbfcfe; }
-.home-record-sources article > span { color: #58708d; font-size: 8px; font-weight: 850; letter-spacing: .1em; }
-.home-record-sources article > strong { overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-.home-record-sources article > small { color: #187053; font-size: 9px; font-weight: 750; }
+.home-record-sources article { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; gap: 9px; align-items: center; min-width: 0; padding: 9px 10px; border: 1px solid #dce5ef; border-left-width: 3px; border-radius: 8px; background: #fff; }
+.home-record-sources article.sale { border-left-color: #2b72dc; background: #f7faff; }
+.home-record-sources article.stock { border-left-color: #10a7a1; background: #f5fbfb; }
+.home-record-sources article.cost { border-left-color: #e09a24; background: #fffaf2; }
+.home-record-sources article.work { border-left-color: #7c61d8; background: #faf8ff; }
+.home-record-source-mark { display: grid; width: 28px; height: 28px; place-items: center; border-radius: 7px; color: #fff; background: #2b72dc; font-size: 11px; font-weight: 850; }
+.stock .home-record-source-mark { background: #10a7a1; }
+.cost .home-record-source-mark { background: #e09a24; }
+.work .home-record-source-mark { background: #7c61d8; }
+.home-record-sources article > div { display: grid; min-width: 0; gap: 2px; }
+.home-record-sources article > div small { color: #58708d; font-size: 7px; font-weight: 850; letter-spacing: .1em; }
+.home-record-sources article > div strong { overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.home-record-sources article > div em { overflow: hidden; color: #708198; font-size: 8px; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
+.home-record-sources article > p { display: grid; justify-items: end; gap: 3px; margin: 0; }
+.home-record-sources article > p b { font-size: 9px; }
+.home-record-sources article > p span { color: #187053; font-size: 8px; font-weight: 750; }
 .home-record-path { display: grid; justify-items: center; gap: 15px; }
-.home-record-path i { display: block; width: 100%; height: 1px; background: #9ab6d7; }
-.home-record-path i:nth-child(2) { position: relative; background: #2567c6; }
-.home-record-path i:nth-child(2)::after { position: absolute; top: -3px; right: -1px; width: 7px; height: 7px; border-top: 2px solid #2567c6; border-right: 2px solid #2567c6; content: ""; transform: rotate(45deg); }
-.home-record-review aside { padding: 18px; border: 1px solid #bfd0e4; border-radius: 10px; background: #eef5fd; }
-.home-record-review aside > strong { display: block; margin-top: 12px; font-size: 18px; line-height: 1.25; }
-.home-record-review aside p { margin: 10px 0 18px; color: #53677f; font-size: 11px; line-height: 1.55; }
-.home-record-review aside div { display: flex; align-items: baseline; gap: 7px; padding-top: 14px; border-top: 1px solid #cbd9e8; }
-.home-record-review aside b { color: #1557d0; font-size: 19px; }
-.home-record-review aside small { color: #60748d; font-size: 9px; }
-.home-record-review > figcaption { padding: 13px 22px; border-top: 1px solid #dce5ef; color: #667990; background: #fbfcfe; font-size: 10px; line-height: 1.45; }
+.home-record-path i { display: block; width: 100%; height: 1px; background: #a8c0dc; }
+.home-record-path img { width: 28px; height: 28px; padding: 6px; object-fit: contain; border: 1px solid #b9cce2; border-radius: 8px; background: #fff; box-shadow: 0 6px 16px rgba(21, 87, 208, .13); }
+.home-record-path i:last-child { position: relative; background: #2567c6; }
+.home-record-path i:last-child::after { position: absolute; top: -3px; right: -1px; width: 7px; height: 7px; border-top: 2px solid #2567c6; border-right: 2px solid #2567c6; content: ""; transform: rotate(45deg); }
+.home-record-review aside { overflow: hidden; padding: 16px; border: 1px solid #b8cce4; border-radius: 10px; background: linear-gradient(145deg, #edf5ff, #f8fbff); }
+.home-review-status { display: inline-flex; padding: 5px 7px; border-radius: 5px; background: #dceaff; }
+.home-record-review aside > strong { display: block; margin-top: 11px; font-size: 16px; line-height: 1.25; }
+.home-record-review aside > p { margin: 8px 0 12px; color: #53677f; font-size: 9px; line-height: 1.55; }
+.home-record-review aside ul { display: grid; gap: 6px; margin: 0; padding: 0; color: #405873; font-size: 8px; list-style: none; }
+.home-record-review aside li::before { margin-right: 6px; color: #17805e; content: "✓"; font-weight: 900; }
+.home-review-summary { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-top: 13px; padding-top: 12px; border-top: 1px solid #cbd9e8; }
+.home-review-summary > span { display: grid; gap: 2px; }
+.home-review-summary b { color: #1557d0; font-size: 15px; }
+.home-review-summary small { color: #60748d; font-size: 7px; }
+.home-record-review aside footer { display: flex; align-items: center; justify-content: space-between; margin: 13px -16px -16px; padding: 9px 12px; color: #fff; background: #1557d0; font-size: 8px; font-weight: 750; }
+.home-record-review aside footer i { font-size: 12px; font-style: normal; }
+.home-record-review > figcaption { padding: 11px 19px; border-top: 1px solid #dce5ef; color: #667990; background: #fbfcfe; font-size: 9px; line-height: 1.45; }
 .home-problem-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 32px; }
 .home-problem-grid article,
 .home-capability-grid article,
@@ -907,7 +929,7 @@
   .home-connections,
   .home-platform { grid-template-columns: 1fr; }
   .home-problem-intro { grid-template-columns: 1fr; gap: 34px; }
-  .home-record-review { max-width: 760px; }
+  .home-record-review { max-width: 650px; }
   .home-hero { min-height: 0; gap: 46px; padding-block: 62px 72px; }
   .home-ownership { grid-template-columns: 1fr; gap: 36px; }
   .home-ownership-brand { min-height: 0; display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 22px; align-items: center; }
@@ -977,6 +999,7 @@
   .home-record-review-body { grid-template-columns: 1fr; }
   .home-record-path { position: relative; display: block; width: 1px; height: 30px; justify-self: center; background: #2567c6; }
   .home-record-path i { display: none; }
+  .home-record-path img { position: absolute; top: 1px; left: -14px; }
   .home-record-path::after { position: absolute; right: -3px; bottom: 0; width: 7px; height: 7px; border-right: 2px solid #2567c6; border-bottom: 2px solid #2567c6; content: ""; transform: rotate(45deg); }
   .home-record-review aside { padding: 16px; }
   .home-connections,

@@ -57,6 +57,9 @@ test("homepage copy stays within the verified product boundary", async () => {
   assert.match(html, /verify-organize-visual\.webp/);
   assert.match(html, /home-record-review/);
   assert.match(html, /Ready for owner review/);
+  assert.match(html, /Sources synchronized/);
+  assert.match(html, /Receipt 1458/);
+  assert.match(html, /Example values show how Vanteloq/);
   assert.match(html, /inventory-decision-visual\.webp/);
   assert.match(html, /href="\/privacy"/);
   assert.match(html, /href="\/terms"/);

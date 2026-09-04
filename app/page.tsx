@@ -476,25 +476,55 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
           </div>
           <figure className="home-record-review" aria-labelledby="record-review-title">
             <header>
-              <span>EXAMPLE RECORD REVIEW</span>
-              <strong id="record-review-title">One event, checked across its source records.</strong>
+              <div>
+                <span>EXAMPLE RECORD REVIEW</span>
+                <strong id="record-review-title">One business event, four verified records.</strong>
+              </div>
+              <small><i aria-hidden="true"/>Sources synchronized</small>
             </header>
             <div className="home-record-review-body">
               <div className="home-record-sources" aria-label="Source records">
-                <article><span>SALE</span><strong>Point of sale record</strong><small>Posted</small></article>
-                <article><span>STOCK</span><strong>Inventory movement</strong><small>Matched</small></article>
-                <article><span>COST</span><strong>Supplier record</strong><small>Linked</small></article>
-                <article><span>WORK</span><strong>Assigned follow-up</strong><small>Ready</small></article>
+                <article className="sale">
+                  <span className="home-record-source-mark" aria-hidden="true">$</span>
+                  <div><small>SALE</small><strong>Point of sale receipt</strong><em>Receipt 1458 · Today, 2:41 p.m.</em></div>
+                  <p><b>$128.40</b><span>Posted</span></p>
+                </article>
+                <article className="stock">
+                  <span className="home-record-source-mark" aria-hidden="true">S</span>
+                  <div><small>STOCK</small><strong>Inventory movement</strong><em>3 products · 5 units recorded</em></div>
+                  <p><b>5 units</b><span>Matched</span></p>
+                </article>
+                <article className="cost">
+                  <span className="home-record-source-mark" aria-hidden="true">C</span>
+                  <div><small>COST</small><strong>Supplier cost record</strong><em>3 lines · Cost basis confirmed</em></div>
+                  <p><b>3 lines</b><span>Linked</span></p>
+                </article>
+                <article className="work">
+                  <span className="home-record-source-mark" aria-hidden="true">✓</span>
+                  <div><small>WORK</small><strong>Manager follow-up</strong><em>Assigned · Due today</em></div>
+                  <p><b>Owner set</b><span>Ready</span></p>
+                </article>
               </div>
-              <div className="home-record-path" aria-hidden="true"><i/><i/><i/></div>
+              <div className="home-record-path" aria-hidden="true">
+                <i/>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/brand/vanteloq-mark.png" alt="" width={180} height={180}/>
+                <i/>
+              </div>
               <aside>
-                <span>REVIEW STATUS</span>
+                <span className="home-review-status">COMPLETE EVIDENCE</span>
                 <strong>Ready for owner review</strong>
-                <p>The source, calculation context and responsible person stay together.</p>
-                <div><b>4 of 4</b><small>records linked</small></div>
+                <p>The sale, stock movement, cost basis and assigned work agree.</p>
+                <ul>
+                  <li>Source timestamps aligned</li>
+                  <li>Product quantities reconciled</li>
+                  <li>Responsible person recorded</li>
+                </ul>
+                <div className="home-review-summary"><span><b>4</b><small>source records</small></span><span><b>0</b><small>open conflicts</small></span></div>
+                <footer><span>Prepared for approval</span><i aria-hidden="true">→</i></footer>
               </aside>
             </div>
-            <figcaption>Vanteloq keeps each source visible before a decision is approved.</figcaption>
+            <figcaption>Example values show how Vanteloq keeps the source, calculation context and responsible person visible before approval.</figcaption>
           </figure>
         </div>
         <div className="home-problem-grid">
