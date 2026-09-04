@@ -6,11 +6,9 @@ import Home from "../app/page";
 
 const homepage = renderToStaticMarkup(createElement(Home));
 
-test("homepage labels avoid decorative status dots", () => {
-  const operatingLabel = homepage.match(/<span class="public-pill">[\s\S]*?<\/span>/)?.[0] ?? "";
-
-  assert.match(operatingLabel, /Operations and analytics for independent retail/);
-  assert.doesNotMatch(operatingLabel, /<i\b/);
+test("homepage omits the former independent retail label", () => {
+  assert.doesNotMatch(homepage, /Operations and analytics for independent retail/);
+  assert.doesNotMatch(homepage, /<span class="public-pill">/);
 });
 
 test("homepage sequence labels do not use leading zeroes", () => {

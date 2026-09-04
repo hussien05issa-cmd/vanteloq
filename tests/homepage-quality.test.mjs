@@ -55,7 +55,8 @@ test("homepage copy stays within the verified product boundary", async () => {
   assert.doesNotMatch(html, /ILLUSTRATIVE WORKFLOW|Illustrative inventory decision workflow/i);
   assert.match(html, /connect-import-visual\.webp/);
   assert.match(html, /verify-organize-visual\.webp/);
-  assert.match(html, /business-sources-visual\.webp/);
+  assert.match(html, /home-record-review/);
+  assert.match(html, /Ready for owner review/);
   assert.match(html, /inventory-decision-visual\.webp/);
   assert.match(html, /href="\/privacy"/);
   assert.match(html, /href="\/terms"/);
@@ -70,12 +71,10 @@ test("homepage copy stays within the verified product boundary", async () => {
   assert.doesNotMatch(html, /VERIFIED SECURITY CONTROLS/);
 });
 
-test("homepage labels avoid decorative status dots", async () => {
+test("homepage omits the former independent retail label", async () => {
   const html = await (await fetchRoute("/")).text();
-  const operatingLabel = html.match(/<span class="public-pill">[\s\S]*?<\/span>/)?.[0] ?? "";
-
-  assert.match(operatingLabel, /Operations and analytics for independent retail/);
-  assert.doesNotMatch(operatingLabel, /<i\b/);
+  assert.doesNotMatch(html, /Operations and analytics for independent retail/);
+  assert.doesNotMatch(html, /<span class="public-pill">/);
 });
 
 test("homepage sequence labels do not use leading zeroes", async () => {
@@ -172,10 +171,9 @@ test("the above-the-fold product image is compact and dimensioned", async () => 
 });
 
 test("generated editorial visuals stay compact and production-ready", async () => {
-  const [connect, verify, sources, decision, method, inventory, margin, dashboard, growth, bookkeeping] = await Promise.all([
+  const [connect, verify, decision, method, inventory, margin, dashboard, growth, bookkeeping] = await Promise.all([
     stat(new URL("../public/brand/connect-import-visual.webp", import.meta.url)),
     stat(new URL("../public/brand/verify-organize-visual.webp", import.meta.url)),
-    stat(new URL("../public/brand/business-sources-visual.webp", import.meta.url)),
     stat(new URL("../public/brand/inventory-decision-visual.webp", import.meta.url)),
     stat(new URL("../public/brand/resource-method-visual.webp", import.meta.url)),
     stat(new URL("../public/brand/inventory-tracking-editorial-v2.webp", import.meta.url)),
@@ -186,7 +184,6 @@ test("generated editorial visuals stay compact and production-ready", async () =
   ]);
   assert.ok(connect.size < 160_000, `connect illustration should stay below 160 KB, received ${connect.size}`);
   assert.ok(verify.size < 160_000, `verify illustration should stay below 160 KB, received ${verify.size}`);
-  assert.ok(sources.size < 160_000, `source illustration should stay below 160 KB, received ${sources.size}`);
   assert.ok(decision.size < 160_000, `decision illustration should stay below 160 KB, received ${decision.size}`);
   assert.ok(method.size < 160_000, `method illustration should stay below 160 KB, received ${method.size}`);
   for (const [name, asset] of Object.entries({ inventory, margin, dashboard, growth, bookkeeping })) {

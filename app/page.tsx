@@ -423,7 +423,6 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
     <main id="main-content">
       <section className="home-hero" aria-labelledby="home-title">
         <div className="home-hero-copy">
-          <span className="public-pill">Operations and analytics for independent retail</span>
           <h1 id="home-title">Understand your business. <em>Make better decisions.</em></h1>
           <p>Bring supported sales, inventory, cash and operational records into one clear view. See what changed, understand the limits of the data and decide what needs attention.</p>
           <div className="public-actions">
@@ -475,11 +474,27 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
             <h2 id="problem-title">Your business should not tell four different stories.</h2>
             <span>A sale, a stock movement, a supplier bill and an assigned task may describe the same event. Reviewing them separately makes it harder to see what changed and what needs attention.</span>
           </div>
-          <figure className="home-problem-visual">
-            {/* This generated editorial visual contains no customer data or fabricated performance values. */}
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/brand/business-sources-visual.webp" alt="Sales, inventory, cash and operational records flowing into one business view." width={1200} height={800} loading="lazy" />
-            <figcaption>Four operating inputs. One decision view.</figcaption>
+          <figure className="home-record-review" aria-labelledby="record-review-title">
+            <header>
+              <span>EXAMPLE RECORD REVIEW</span>
+              <strong id="record-review-title">One event, checked across its source records.</strong>
+            </header>
+            <div className="home-record-review-body">
+              <div className="home-record-sources" aria-label="Source records">
+                <article><span>SALE</span><strong>Point of sale record</strong><small>Posted</small></article>
+                <article><span>STOCK</span><strong>Inventory movement</strong><small>Matched</small></article>
+                <article><span>COST</span><strong>Supplier record</strong><small>Linked</small></article>
+                <article><span>WORK</span><strong>Assigned follow-up</strong><small>Ready</small></article>
+              </div>
+              <div className="home-record-path" aria-hidden="true"><i/><i/><i/></div>
+              <aside>
+                <span>REVIEW STATUS</span>
+                <strong>Ready for owner review</strong>
+                <p>The source, calculation context and responsible person stay together.</p>
+                <div><b>4 of 4</b><small>records linked</small></div>
+              </aside>
+            </div>
+            <figcaption>Vanteloq keeps each source visible before a decision is approved.</figcaption>
           </figure>
         </div>
         <div className="home-problem-grid">
