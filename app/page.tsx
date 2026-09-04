@@ -5,6 +5,7 @@ import type { Session } from "@supabase/supabase-js";
 import Link from "next/link";
 import IntegrationBrandLogo from "./integration-brand-logo";
 import { integrationCatalog, integrationPublicStatus } from "./integration-catalog";
+import SourceRecordIcon from "./source-record-icon";
 import ProductBrandLogo from "./product-brand-logo";
 import AuthPanel, { type AuthPanelMode } from "./auth-panel";
 import { currentSession, getSupabase, signOut } from "./supabase-browser";
@@ -424,15 +425,15 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
       <section className="home-hero" aria-labelledby="home-title">
         <div className="home-hero-copy">
           <h1 id="home-title">Understand your business. <em>Make better decisions.</em></h1>
-          <p>Bring supported sales, inventory, cash and operational records into one clear view. See what changed, understand the limits of the data and decide what needs attention.</p>
+          <p>See what is selling, where profit is changing and what needs attention. Bring your supported sales, inventory and financial records into one workspace, with the source behind every result.</p>
           <div className="public-actions">
             <button type="button" onClick={() => start("signup")}>Create your workspace <span aria-hidden="true">→</span></button>
             <a href="#platform">See how Vanteloq works</a>
           </div>
           <ul className="home-proof" aria-label="Verified platform controls">
-            <li>Source-linked calculations</li>
-            <li>Role-based approvals</li>
-            <li>Tenant-separated records</li>
+            <li>Trace results to source records</li>
+            <li>Keep control of approvals</li>
+            <li>Protect your business data</li>
           </ul>
           <div className="home-account-steps">
             <strong>What happens after you create an account</strong>
@@ -461,10 +462,13 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
           </div>
           <FeatureReel />
         </div>
+        <details className="home-connection-directory">
+          <summary>Explore providers and current availability <span>Check your systems before you sign up</span></summary>
         <div className="home-connection-grid">
           {publicIntegrations.map(provider => <article key={provider.id}><IntegrationBrandLogo name={provider.name} compact/><div><strong>{provider.name}</strong><span className={`home-connection-status ${provider.publicStatus.tone}`}>{provider.publicStatus.label}</span><span>{provider.detail}</span></div></article>)}
           <article><IntegrationBrandLogo name="Daily CSV" compact/><div><strong>CSV import</strong><span className="home-connection-status available">Available</span><span>Turn structured operating files into verified records</span></div></article>
         </div>
+        </details>
       </section>
 
       <section className="home-problem" aria-labelledby="problem-title">
@@ -480,27 +484,27 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
                 <span>EXAMPLE RECORD REVIEW</span>
                 <strong id="record-review-title">One business event, four verified records.</strong>
               </div>
-              <small><i aria-hidden="true"/>Sources synchronized</small>
+              <small>Example records</small>
             </header>
             <div className="home-record-review-body">
               <div className="home-record-sources" aria-label="Source records">
                 <article className="sale">
-                  <span className="home-record-source-mark" aria-hidden="true">$</span>
+                  <span className="home-record-source-mark"><SourceRecordIcon kind="sale"/></span>
                   <div><small>SALE</small><strong>Point of sale receipt</strong><em>Receipt 1458 · Today, 2:41 p.m.</em></div>
                   <p><b>$128.40</b><span>Posted</span></p>
                 </article>
                 <article className="stock">
-                  <span className="home-record-source-mark" aria-hidden="true">S</span>
+                  <span className="home-record-source-mark"><SourceRecordIcon kind="stock"/></span>
                   <div><small>STOCK</small><strong>Inventory movement</strong><em>3 products · 5 units recorded</em></div>
                   <p><b>5 units</b><span>Matched</span></p>
                 </article>
                 <article className="cost">
-                  <span className="home-record-source-mark" aria-hidden="true">C</span>
+                  <span className="home-record-source-mark"><SourceRecordIcon kind="cost"/></span>
                   <div><small>COST</small><strong>Supplier cost record</strong><em>3 lines · Cost basis confirmed</em></div>
                   <p><b>3 lines</b><span>Linked</span></p>
                 </article>
                 <article className="work">
-                  <span className="home-record-source-mark" aria-hidden="true">✓</span>
+                  <span className="home-record-source-mark"><SourceRecordIcon kind="work"/></span>
                   <div><small>WORK</small><strong>Manager follow-up</strong><em>Assigned · Due today</em></div>
                   <p><b>Owner set</b><span>Ready</span></p>
                 </article>
@@ -512,7 +516,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
                 <i/>
               </div>
               <aside>
-                <span className="home-review-status">COMPLETE EVIDENCE</span>
+                <span className="home-review-status">RECORDS IN AGREEMENT</span>
                 <strong>Ready for owner review</strong>
                 <p>The sale, stock movement, cost basis and assigned work agree.</p>
                 <ul>

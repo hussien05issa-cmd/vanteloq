@@ -1924,9 +1924,9 @@ function RecommendationLab({
     grossMargin: 0,
     weather: 1,
     expiringUnits: 0,
-    availableCash: Math.round((sourceCashCents ?? 0) / 100),
+    availableCash: (sourceCashCents ?? 0) / 100,
     cashThreshold: 0,
-    accountsPayable: Math.round((sourceAccountsPayableCents ?? 0) / 100),
+    accountsPayable: (sourceAccountsPayableCents ?? 0) / 100,
     payroll: 0,
     tax: 0,
     debt: 0,
@@ -2016,14 +2016,19 @@ function RecommendationLab({
       <article className="card rec-inputs">
         <p>TRACEABLE INPUTS</p>
         <h3>Demand and cash constraints</h3>
-        <div>
-          {fields.map((field) => (
+        <p className="reorder-lab-context">Explore an order using explicit assumptions. Changes here do not update stock, move money or approve a purchase. Review the source date and all cash commitments before using a result.</p>
+        {[
+          { title: "Stock and supplier timing", keys: ["onHand", "incoming", "dailyDemand", "leadTime", "unitCost", "casePack"] },
+          { title: "Cash and commitments", keys: ["availableCash", "cashThreshold", "accountsPayable", "payroll", "tax", "debt", "otherCommitments"] },
+          { title: "Demand assumptions and limits", keys: ["demandStdDev", "reviewPeriod", "serviceLevelZ", "seasonality", "promotion", "weather", "grossMargin", "supplierMinimum", "supplierMinimumSpend", "expiringUnits", "shelfLife", "storageCapacity", "demandHistoryDays", "dataAgeHours"] },
+        ].map(group => <fieldset className="reorder-field-group" key={group.title}><legend>{group.title}</legend><div>
+          {fields.filter(field => group.keys.includes(field.key)).map((field) => (
             <label key={field.key}>
               <span>{field.label}<small>{field.suffix}</small></span>
               <input
                 type="number"
                 min="0"
-                step={field.key === "seasonality" || field.key === "promotion" || field.key === "serviceLevelZ" || field.key === "demandStdDev" ? "0.05" : "1"}
+                step={field.suffix === currency ? "0.01" : ["seasonality", "promotion", "serviceLevelZ", "demandStdDev", "dailyDemand", "grossMargin", "weather"].includes(field.key) ? "0.01" : "1"}
                 value={inputs[field.key]}
                 onChange={(event) =>
                   set(field.key, Number(event.target.value))
@@ -2031,7 +2036,7 @@ function RecommendationLab({
               />
             </label>
           ))}
-        </div>
+        </div></fieldset>)}
       </article>
       <article className="card rec-output">
         {calculation.error || !result ? <p className="form-error">{calculation.error}</p> : <>

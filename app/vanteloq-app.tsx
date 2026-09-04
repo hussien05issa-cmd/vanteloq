@@ -7,6 +7,8 @@ import BookLoQWorkspace from "./bookloq-workspace";
 import CommunicationsWorkspace from "./communications-workspace";
 import CommerceIntelligenceWorkspace from "./commerce-intelligence-workspace";
 import GrowthWorkspace from "./growth-workspace";
+import ScenarioPlanner from "./scenario-planner";
+import { connectorNextStep, filterConnectors } from "../domain/connector-guidance";
 import IntegrationBrandLogo from "./integration-brand-logo";
 import {
   integrationCatalog,
@@ -1303,7 +1305,7 @@ function Workspace({
   if (view === "Decision Journal")
     return <DecisionJournal currency={currency} showNotice={showNotice} />;
   if (view === "Scenario Planner")
-    return <ScenarioPlanner data={data} currency={currency} />;
+    return <ScenarioPlanner source={data.current} currency={currency} />;
   if (view === "Business Brief")
     return (
       <BusinessBrief
@@ -2270,6 +2272,8 @@ function DataHub({
   subscriptionFeatures: readonly string[];
 }) {
   const [tab, setTab] = useState<"import" | "connections">("connections");
+  const [providerQuery, setProviderQuery] = useState("");
+  const [providerCategory, setProviderCategory] = useState("All categories");
   const [connections, setConnections] = useState<IntegrationConnection[]>([]);
   const [connectionError, setConnectionError] = useState("");
   const [connectionsLoading, setConnectionsLoading] = useState(false);
@@ -2402,10 +2406,10 @@ function DataHub({
     showNotice("R-Series is still updating in the background. This page will show the new sync time when it finishes.");
   }, [loadConnections, refresh, showNotice]);
   useEffect(() => {
-    if (tab !== "connections" || connections.length || connectionsLoading) return;
+    if (tab !== "connections" || connections.length || connectionsLoading || connectionError) return;
     const timer = window.setTimeout(() => void loadConnections(), 0);
     return () => window.clearTimeout(timer);
-  }, [connections.length, connectionsLoading, loadConnections, tab]);
+  }, [connections.length, connectionsLoading, connectionError, loadConnections, tab]);
   const providerPost = async (
     provider: DirectIntegrationProvider,
     path: string,
@@ -2795,6 +2799,7 @@ function DataHub({
         canonicalCoverage: emptyCommerceCoverage,
         featureCoverage: buildProviderFeatureCoverage(provider.id, emptyCommerceCoverage),
       }));
+  const filteredProviders = filterConnectors(providerRows, providerQuery, providerCategory);
   return (
     <div className="content data-hub">
       <section className="page-intro">
@@ -2836,7 +2841,20 @@ function DataHub({
               <button onClick={() => void loadConnections()}>Retry status check</button>
             </div>
           )}
-          <section className="provider-parity-contract" aria-labelledby="provider-parity-title">
+          <section className="connector-pathway" aria-label="Connection workflow">
+            <div><span>1</span><p><b>Choose your source</b><small>Check availability and plan access.</small></p></div>
+            <div><span>2</span><p><b>Authorize securely</b><small>Select your business and grant consent.</small></p></div>
+            <div><span>3</span><p><b>Review the import</b><small>Check mappings and totals before approval.</small></p></div>
+          </section>
+          <div className="connector-toolbar">
+            <label htmlFor="connector-search"><span>Find a connection</span><input id="connector-search" type="search" value={providerQuery} onChange={event => setProviderQuery(event.target.value)} placeholder="Search provider or data type"/></label>
+            <label htmlFor="connector-category"><span>Data category</span><select id="connector-category" value={providerCategory} onChange={event => setProviderCategory(event.target.value)}><option>All categories</option>{integrationCategoryOrder.map(category => <option key={category}>{category}</option>)}</select></label>
+            <button type="button" disabled={connectionsLoading} onClick={() => void loadConnections()}>{connectionsLoading ? "Checking…" : "Refresh status"}</button>
+          </div>
+          <p className="connector-result-count" role="status">{connectionsLoading ? "Checking current connection status…" : `${filteredProviders.length} providers shown`}</p>
+          {!filteredProviders.length && <div className="connector-empty"><h3>No matching connections</h3><p>Try a different provider name or category.</p><button type="button" onClick={() => { setProviderQuery(""); setProviderCategory("All categories"); }}>Clear filters</button></div>}
+          <details className="provider-parity-contract">
+            <summary>What your connected records can unlock</summary>
             <header>
               <div><p>ONE COMMERCE INTELLIGENCE MODEL</p><h3 id="provider-parity-title">The same operating view across supported POS systems.</h3><span>Connect a supported point-of-sale account and Vanteloq organizes its available sales, payments, inventory, customer, supplier and location records into one consistent workspace.</span></div>
               <strong>{universalPosContract.length} commerce capabilities</strong>
@@ -2845,12 +2863,12 @@ function DataHub({
               <Image src="/brand/pos-commerce-intelligence.png" alt="Supported point-of-sale sources organized into sales, payment, inventory and customer intelligence" width={1774} height={887} unoptimized />
               <div className="provider-capability-list">{universalPosContract.map((feature) => <article key={feature.id}><span>{feature.label}</span><p>{feature.insight}</p></article>)}</div>
             </div>
-          </section>
+          </details>
           <div className="integration-groups">
-            {integrationCategoryOrder.filter((category) => providerRows.some((provider) => provider.category === category)).map((category) => <section className="integration-category" key={category}>
-              <header><div><p>{category.toUpperCase()}</p><h3>{category}</h3></div><span>{providerRows.filter((provider) => provider.category === category).length} providers</span></header>
+            {integrationCategoryOrder.filter((category) => filteredProviders.some((provider) => provider.category === category)).map((category) => <section className="integration-category" key={category}>
+              <header><div><p>{category.toUpperCase()}</p><h3>{category}</h3></div><span>{filteredProviders.filter((provider) => provider.category === category).length} providers</span></header>
               <div className="integration-grid">
-            {providerRows.filter((provider) => provider.category === category).map((provider) => {
+            {filteredProviders.filter((provider) => provider.category === category).map((provider) => {
               const providerFeature = integrationProviderFeature(provider.id);
               const providerEntitled = providerFeature !== null && subscriptionFeatures.includes(providerFeature);
               const providerPlanLabel = providerFeature?.startsWith("bookloq")
@@ -2877,6 +2895,7 @@ function DataHub({
               const providerAction = providerActions[integrationActionKey(provider.id)] ?? "";
               const anyProviderAction = Object.keys(providerActions).some((key) => key.startsWith(`${provider.id}:`));
               const configured = provider.providerReadiness?.credentialsConfigured === true;
+              const nextStep = connectorNextStep(provider, providerEntitled, canManageProvider);
               const disabledReason = !providerEntitled
                 ? `${providerPlanLabel} required for this connection.`
                 : !canManageProvider
@@ -2897,6 +2916,7 @@ function DataHub({
                   </div>
                 </div>
                 <h3>{provider.name}</h3>
+                <div className="connector-next-step"><small>NEXT STEP</small><b>{connectionsLoading ? "Checking status" : nextStep.stage}</b><p>{connectionsLoading ? "Your existing access and records are unchanged." : nextStep.detail}</p></div>
                 <p>{provider.activationRequirement}</p>
                 <details className="integration-enablement"><summary>What this connection enables</summary><p><b>Features</b><span>{integrationCategoryGuide[provider.category].enables}</span></p><p><b>Data required</b><span>{integrationCategoryGuide[provider.category].data}</span></p></details>
                 {(provider.category === "Point of sale" || provider.id === "shopify") && <details className="integration-feature-checklist"><summary>Feature and data checklist</summary>{provider.featureCoverage.map((feature) => <div key={feature.id}><span className={`feature-state ${feature.status === "ready" ? "available" : "needs-data"}`}>{feature.status === "ready" ? "Available" : "Needs data"}</span><p><b>{feature.label}</b><small>{feature.insight}</small><em>{feature.status === "ready" ? `Verified: ${feature.dataUsed.join(", ")}` : `Missing: ${feature.dataNeeded.join(", ")}`}</em></p></div>)}</details>}
@@ -3810,182 +3830,6 @@ function DecisionJournal({
   );
 }
 
-function ScenarioPlanner({
-  data,
-  currency,
-}: {
-  data: CommandCentre;
-  currency: string;
-}) {
-  const current = data.current;
-  const [sales, setSales] = useState(() =>
-    current ? Math.round(current.netSalesCents / 100) : 80000,
-  );
-  const [margin, setMargin] = useState(
-    () => Math.round((current?.grossMarginRate ?? 0.46) * 1000) / 10,
-  );
-  const [fixed, setFixed] = useState(12000);
-  const [labour, setLabour] = useState(() =>
-    current ? Math.round(current.labourCostCents / 100) : 10000,
-  );
-  const [salesChange, setSalesChange] = useState(0);
-  const [marginChange, setMarginChange] = useState(0);
-  const [costChange, setCostChange] = useState(0);
-  const [aov, setAov] = useState(() =>
-    Math.round((current?.averageTransactionCents ?? 5000) / 100),
-  );
-  const result = useMemo(() => {
-    const projectedSales = sales * (1 + salesChange / 100);
-    const projectedMargin = Math.max(0, Math.min(100, margin + marginChange));
-    const projectedFixed = fixed + labour + costChange;
-    const profit = (projectedSales * projectedMargin) / 100 - projectedFixed;
-    const breakEven = projectedMargin
-      ? projectedFixed / (projectedMargin / 100)
-      : 0;
-    return {
-      projectedSales,
-      projectedMargin,
-      projectedFixed,
-      profit,
-      breakEven,
-      transactions: aov ? breakEven / aov : 0,
-    };
-  }, [
-    sales,
-    margin,
-    fixed,
-    labour,
-    salesChange,
-    marginChange,
-    costChange,
-    aov,
-  ]);
-  const display = (value: number) => money(Math.round(value * 100), currency);
-  return (
-    <div className="content scenario-page">
-      <section className="page-intro">
-        <div>
-          <p>WHAT-IF MODEL</p>
-          <h2>Test a decision before spending money.</h2>
-          <span>
-            This is a user-controlled scenario, not a forecast. Every output is a
-            direct formula from the inputs below.
-          </span>
-        </div>
-      </section>
-      <div className="scenario-layout">
-        <article className="card scenario-inputs">
-          <h3>Current monthly baseline</h3>
-          <div className="manual-grid">
-            <label>
-              Monthly sales
-              <input
-                type="number"
-                value={sales}
-                onChange={(event) => setSales(Number(event.target.value))}
-              />
-            </label>
-            <label>
-              Gross margin %
-              <input
-                type="number"
-                step="0.1"
-                value={margin}
-                onChange={(event) => setMargin(Number(event.target.value))}
-              />
-            </label>
-            <label>
-              Fixed operating costs
-              <input
-                type="number"
-                value={fixed}
-                onChange={(event) => setFixed(Number(event.target.value))}
-              />
-            </label>
-            <label>
-              Monthly labour
-              <input
-                type="number"
-                value={labour}
-                onChange={(event) => setLabour(Number(event.target.value))}
-              />
-            </label>
-            <label>
-              Average transaction
-              <input
-                type="number"
-                value={aov}
-                onChange={(event) => setAov(Number(event.target.value))}
-              />
-            </label>
-          </div>
-          <h3>Scenario changes</h3>
-          <div className="manual-grid">
-            <label>
-              Sales change %
-              <input
-                type="number"
-                step="1"
-                value={salesChange}
-                onChange={(event) => setSalesChange(Number(event.target.value))}
-              />
-            </label>
-            <label>
-              Margin-point change
-              <input
-                type="number"
-                step="0.1"
-                value={marginChange}
-                onChange={(event) =>
-                  setMarginChange(Number(event.target.value))
-                }
-              />
-            </label>
-            <label>
-              New monthly costs
-              <input
-                type="number"
-                value={costChange}
-                onChange={(event) => setCostChange(Number(event.target.value))}
-              />
-            </label>
-          </div>
-        </article>
-        <article className="scenario-results">
-          <div>
-            <small>PROJECTED MONTHLY PROFIT</small>
-            <b className={result.profit < 0 ? "negative" : ""}>
-              {display(result.profit)}
-            </b>
-            <span>Sales × margin − fixed costs − labour − new costs</span>
-          </div>
-          <div>
-            <small>BREAK-EVEN SALES</small>
-            <b>{display(result.breakEven)}</b>
-            <span>
-              {Math.ceil(result.transactions).toLocaleString()} transactions at{" "}
-              {display(aov)} average
-            </span>
-          </div>
-          <div>
-            <small>PROJECTED SALES</small>
-            <b>{display(result.projectedSales)}</b>
-            <span>At {result.projectedMargin.toFixed(1)}% gross margin</span>
-          </div>
-          <div>
-            <small>TOTAL MONTHLY COST BASE</small>
-            <b>{display(result.projectedFixed)}</b>
-            <span>Fixed, labour and scenario additions</span>
-          </div>
-          <p>
-            Not included unless entered: taxes, debt principal, working-capital
-            timing, seasonality, financing costs or one-time launch expenses.
-          </p>
-        </article>
-      </div>
-    </div>
-  );
-}
 
 function BusinessBrief({
   data,
