@@ -42,8 +42,8 @@ export async function GET(request: Request) {
   return handleApi(request, async () => {
     const identity = await optionalIdentity(request);
     if (!identity) return jsonResponse({ authenticated: false, organization: null }, { status: 401 });
-    const context = await findAccessContext(identity);
-    const invitation = context ? null : await pendingTeamInvitation(request, identity);
+    const invitation = await pendingTeamInvitation(request, identity);
+    const context = invitation ? null : await findAccessContext(identity, request);
     return jsonResponse({
       authenticated: true,
       user: { displayName: identity.displayName, email: identity.email, emailVerified: true },
@@ -66,7 +66,9 @@ export async function POST(request: Request) {
     const userAgent = request.headers.get("user-agent")?.slice(0, 512) ?? "";
     const userAgentHash = userAgent ? await hashIdentifier(`legal-user-agent:${userAgent}`) : null;
 
-    const existingAccess = await findAccessContext(identity);
+    const invitation = await pendingTeamInvitation(request, identity);
+    if (invitation) throw new ApiError(409, "TEAM_INVITATION_REQUIRED", "Accept your company invitation instead of creating a separate workspace.");
+    const existingAccess = await findAccessContext(identity, request);
     if (existingAccess) throw new ApiError(409, "WORKSPACE_EXISTS", "This account already belongs to a workspace.");
 
     const input = onboardingInput(await readJsonObject(request));

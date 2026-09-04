@@ -17,7 +17,7 @@ test("non-invitation and malformed links never enter the invitation flow", () =>
     parseTeamInviteCallback("https://vanteloq.com/?team_invite=1&token_hash=secure-token&type=recovery"),
     { tokenHash: "secure-token", type: "recovery" },
   );
-  assert.equal(parseTeamInviteCallback("https://vanteloq.com/?team_invite=1&token_hash=secure-token&type=magiclink"), null);
+  assert.deepEqual(parseTeamInviteCallback("https://vanteloq.com/?team_invite=1&token_hash=secure-token&type=magiclink"), { tokenHash: "secure-token", type: "magiclink" });
 });
 
 test("a verified invitation removes the one time token from browser history", () => {

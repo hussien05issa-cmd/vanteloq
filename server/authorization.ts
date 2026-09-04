@@ -5,6 +5,7 @@ import { ApiError, requireAal2, requireIdentity, type TrustedIdentity } from "./
 import type { FeatureKey } from "./entitlements/catalog";
 import { getTenantEntitlements, requireFeatureEntitlement, requireTenantServiceAccess } from "./entitlements/engine";
 import { bootstrapFounderInternalAccess } from "./internal-access";
+import { liveTeamMembershipAllowed } from "./team-invitations";
 
 export type Role = "owner" | "admin" | "manager" | "employee" | "read_only" | "integration";
 
@@ -18,7 +19,7 @@ export type AccessContext = {
   organization: typeof workspaces.$inferSelect;
 };
 
-export async function findAccessContext(identity: TrustedIdentity): Promise<AccessContext | null> {
+export async function findAccessContext(identity: TrustedIdentity, request?: Request): Promise<AccessContext | null> {
   const [row] = await getDb()
     .select({
       userId: users.id,
@@ -37,6 +38,7 @@ export async function findAccessContext(identity: TrustedIdentity): Promise<Acce
     .limit(1);
 
   if (!row) return null;
+  if (!await liveTeamMembershipAllowed(request, identity, row.userId, row.organizationId, row.role)) return null;
   if (identity.provider === "supabase") {
     if (!identity.subject || !identity.emailVerified) return null;
     if (row.authSubject && (row.authSubject !== identity.subject || row.authProvider !== "supabase")) return null;
@@ -72,7 +74,7 @@ async function requireWorkspaceMembership(
   allowedRoles: readonly Role[],
 ): Promise<AccessContext> {
   const identity = await requireIdentity(request);
-  const context = await findAccessContext(identity);
+  const context = await findAccessContext(identity, request);
   if (!context) throw new ApiError(403, "MEMBERSHIP_REQUIRED", "This account does not have access to a workspace.");
   requireAal2(identity);
   if (!allowedRoles.includes(context.role)) {

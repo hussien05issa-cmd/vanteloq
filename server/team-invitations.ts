@@ -5,10 +5,11 @@ import {
   TERMS_OF_SERVICE_VERSION,
 } from "../shared/legal-versions.ts";
 import { ApiError, hashIdentifier, type TrustedIdentity } from "./api.ts";
+import { invitationIdentityAllowed, invitationSessionAllowed } from "./team-invitation-security.ts";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const VANTELOQ_ROLES = new Set(["admin", "manager", "read_only"]);
-const PRIVATE_CONSOLE_ACTIVATION_URL = "https://wqiwmpqnthshgyxpettl.supabase.co/functions/v1/private-console-activation";
+const PRIVATE_CONSOLE_ACTIVATION_URL = "https://lexedgeconsole.com/invite";
 const MANAGEMENT_CONSOLE_URL = "https://wqiwmpqnthshgyxpettl.supabase.co/functions/v1/management-console";
 
 type InvitationRow = {
@@ -24,6 +25,10 @@ type InvitationRow = {
   invitation_generation: string;
   status: "pending" | "accepted";
   expires_at: string;
+  auth_user_id: string | null;
+  accepted_at: string | null;
+  acceptance_notice_version: string | null;
+  lifecycle_operation: string | null;
 };
 
 export type PendingTeamInvitation = {
@@ -51,10 +56,10 @@ function supabaseConfiguration(request: Request) {
 async function invitationRow(request: Request, identity: TrustedIdentity): Promise<InvitationRow | null> {
   const config = supabaseConfiguration(request);
   const query = new URLSearchParams({
-    select: "id,email,invited_by_user_id,invited_by_email,vanteloq_access,vanteloq_role,console_access,console_role,console_scopes,invitation_generation,status,expires_at",
+    select: "id,email,invited_by_user_id,invited_by_email,vanteloq_access,vanteloq_role,console_access,console_role,console_scopes,invitation_generation,status,expires_at,auth_user_id,accepted_at,acceptance_notice_version,lifecycle_operation",
     email: `eq.${identity.email}`,
     vanteloq_access: "eq.true",
-    status: "eq.pending",
+    status: "in.(pending,accepted)",
     limit: "1",
   });
   const response = await fetch(`${config.url}/rest/v1/team_access_invitations?${query}`, {
@@ -73,11 +78,8 @@ async function invitationRow(request: Request, identity: TrustedIdentity): Promi
     !UUID_PATTERN.test(row.id)
     || !UUID_PATTERN.test(row.invited_by_user_id)
     || !UUID_PATTERN.test(row.invitation_generation)
-    || row.email !== identity.email
-    || row.status !== "pending"
-    || row.vanteloq_access !== true
+    || !invitationIdentityAllowed(row, identity.email, identity.subject)
     || !VANTELOQ_ROLES.has(row.vanteloq_role)
-    || new Date(row.expires_at).getTime() <= Date.now()
   ) return null;
   return row;
 }
@@ -105,6 +107,7 @@ async function inviterWorkspace(row: InvitationRow) {
 export async function pendingTeamInvitation(request: Request, identity: TrustedIdentity): Promise<PendingTeamInvitation | null> {
   const row = await invitationRow(request, identity);
   if (!row) return null;
+  if (row.status === "accepted" && await verifiedTeamProvisioning(request, identity, row.id)) return null;
   const owner = await inviterWorkspace(row);
   return {
     id: row.id,
@@ -177,6 +180,11 @@ export async function acceptTeamInvitation(
   if (!identity.subject || identity.provider !== "supabase" || !identity.emailVerified) {
     throw new ApiError(401, "AUTHENTICATION_REQUIRED", "A verified Supabase account is required.");
   }
+  // Identity has already been verified against Supabase, so these session
+  // claims can now enforce recent onboarding authentication before D1 writes.
+  if (!invitationSessionAllowed(request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? "")) {
+    throw new ApiError(403, "INVITATION_SIGNIN_REQUIRED", "Open your latest invitation or sign in with your password and authenticator to continue.");
+  }
   const row = await invitationRow(request, identity);
   if (!row) throw new ApiError(404, "INVITATION_NOT_FOUND", "This invitation is missing, expired, or already used.");
   const owner = await inviterWorkspace(row);
@@ -197,7 +205,15 @@ export async function acceptTeamInvitation(
   const emailUser = candidates.find((candidate) => candidate.email === identity.email);
   const subjectUser = candidates.find((candidate) => candidate.auth_subject === identity.subject);
   if (subjectUser && subjectUser.email !== identity.email) throw new ApiError(409, "IDENTITY_CONFLICT", "This identity is already attached to another account.");
-  if (emailUser?.auth_subject && emailUser.auth_subject !== identity.subject) throw new ApiError(409, "IDENTITY_CONFLICT", "This email is already attached to another identity.");
+  let replaceDeletedIdentity = false;
+  if (emailUser?.auth_subject && emailUser.auth_subject !== identity.subject) {
+    const deletion = await getD1().prepare(`SELECT action FROM audit_events
+      WHERE resource_id = ? AND organization_id = ? AND action IN ('team_access.deleted', 'team_access.revoked')
+      ORDER BY created_at DESC LIMIT 1`).bind(emailUser.id, owner.organization_id).first<{ action: string }>();
+    replaceDeletedIdentity = row.status === "pending" && row.auth_user_id === identity.subject
+      && emailUser.status === "suspended" && deletion?.action === "team_access.deleted";
+    if (!replaceDeletedIdentity) throw new ApiError(409, "IDENTITY_CONFLICT", "This email is already attached to another identity.");
+  }
   const userHash = (await hashIdentifier(`team-user:${identity.subject}`)).slice(0, 32);
   const invitationHash = (await hashIdentifier(`team-invitation:${row.id}`)).slice(0, 32);
   const generationHash = (await hashIdentifier(`team-invitation-generation:${row.invitation_generation}`)).slice(0, 32);
@@ -230,7 +246,8 @@ export async function acceptTeamInvitation(
         status = 'active',
         updated_at = excluded.updated_at
       WHERE users.auth_subject IS NULL OR users.auth_subject = excluded.auth_subject
-    `).bind(userId, identity.email, identity.subject, displayName, now, now),
+        OR (? = 1 AND users.status = 'suspended' AND users.auth_subject = ?)
+    `).bind(userId, identity.email, identity.subject, displayName, now, now, replaceDeletedIdentity ? 1 : 0, emailUser?.auth_subject ?? ""),
     database.prepare(`
       INSERT INTO memberships (id, user_id, organization_id, role, status, created_at, updated_at)
       VALUES (?, ?, ?, ?, 'active', ?, ?)
@@ -310,7 +327,20 @@ export async function acceptTeamInvitation(
     businessName: owner.business_name,
     role: row.vanteloq_role,
     consoleActivationUrl: row.console_access
-      ? `${PRIVATE_CONSOLE_ACTIVATION_URL}?id=${encodeURIComponent(row.id)}`
+      ? row.acceptance_notice_version === "private-console-access-v1" ? "https://lexedgeconsole.com/" : `${PRIVATE_CONSOLE_ACTIVATION_URL}?id=${encodeURIComponent(row.id)}`
       : null,
   };
+}
+
+// A local membership alone cannot authorize an invited employee. This live
+// check also closes failed-finalization and concurrent revoke/delete races.
+export async function liveTeamMembershipAllowed(request: Request | undefined, identity: TrustedIdentity, userId: string, organizationId: string, role: string) {
+  const receipt = await getD1().prepare(`SELECT 1 AS invited FROM audit_events
+    WHERE actor_user_id = ? AND organization_id = ? AND action = 'team_invitation.accepted' LIMIT 1`)
+    .bind(userId, organizationId).first<{ invited: number }>();
+  if (!receipt) return true;
+  if (!request) return false;
+  const row = await invitationRow(request, identity);
+  if (!row || row.status !== "accepted" || row.vanteloq_role !== role) return false;
+  return verifiedTeamProvisioning(request, identity, row.id);
 }

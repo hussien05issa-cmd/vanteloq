@@ -87,7 +87,7 @@ export default function Home() {
       };
       if (sequence !== loadSequence.current) return;
 
-      if (response.ok && data.organization?.setupComplete) {
+      if (response.ok && data.organization?.setupComplete && !data.invitation) {
         loadedUser.current = userId;
         setAccountEmail(data.user?.email ?? "");
         setOrganizationName(data.organization.businessName ?? "");
@@ -164,8 +164,9 @@ export default function Home() {
             return;
           }
           if (inviteRequested) {
-            setInviteVerificationError("This invitation link is incomplete, expired, or was already used. Ask the owner to send a new invitation.");
-            setEntry("invite-review");
+            setEntry("landing");
+            setAuthMode("signin");
+            setAuthOpen(true);
             return;
           }
           setEntry("landing");
