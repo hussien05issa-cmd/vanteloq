@@ -53,8 +53,8 @@ test("homepage copy stays within the verified product boundary", async () => {
   assert.match(html, /home-intelligence-map/);
   assert.match(html, /home-resource-art/);
   assert.doesNotMatch(html, /ILLUSTRATIVE WORKFLOW|Illustrative inventory decision workflow/i);
-  assert.match(html, /connect-import-visual\.webp/);
-  assert.match(html, /verify-organize-visual\.webp/);
+  assert.doesNotMatch(html, /connect-import-visual\.webp|verify-organize-visual\.webp|home-step-review-visual/);
+  for (const step of ["connect", "verify", "review"]) assert.match(html, new RegExp(`home-operating-preview ${step}`));
   assert.match(html, /home-record-review/);
   assert.match(html, /Ready for owner review/);
   assert.match(html, /Example records/);
@@ -160,7 +160,7 @@ test("homepage and resource cards keep the hosted visual layout", async () => {
   assert.match(resources, /inventory-tracking-editorial-v2\.webp/);
   assert.doesNotMatch(resources, /resource-card-hero/);
   assert.match(homepageCss, /\.home-proof li::before[^}]*content:\s*"✓"/);
-  assert.match(homepageCss, /\.home-step-review-visual::after[^}]*content:\s*"✓"/);
+  assert.doesNotMatch(homepageCss, /home-step-review-visual|home-step-visual/);
   assert.match(homepageCss, /\.home-resource-grid \{[^}]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)/);
   assert.doesNotMatch(homepageCss, /\.home-resource-grid[^}]*repeat\(6, minmax\(0, 1fr\)\)/);
   assert.match(resourcesCss, /\.resource-latest \.resource-card-grid \{[^}]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)/);

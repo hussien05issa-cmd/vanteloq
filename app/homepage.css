@@ -659,37 +659,6 @@
 .home-platform-copy li div { display: flex; flex-direction: column; gap: 5px; }
 .home-platform-copy li strong { font-size: 15px; }
 .home-platform-copy li span { color: #617087; font-size: 13px; line-height: 1.5; }
-.home-step-visual {
-  width: 94px;
-  height: 70px;
-  display: grid;
-  place-items: center;
-  overflow: hidden;
-  border: 1px solid rgba(142, 178, 224, .45);
-  border-radius: 12px;
-  background: radial-gradient(circle at 50% 42%, #fff, #edf5ff 78%);
-  box-shadow: 0 10px 24px rgba(21, 87, 208, .09), inset 0 1px 0 #fff;
-}
-.home-step-visual img { width: 112%; height: 112%; object-fit: contain; }
-.home-step-review-visual {
-  position: relative;
-  width: 94px;
-  height: 70px;
-  display: grid;
-  grid-template-columns: repeat(3, 18px);
-  place-content: center;
-  gap: 6px;
-  overflow: hidden;
-  border: 1px solid rgba(142, 178, 224, .45);
-  border-radius: 12px;
-  background: linear-gradient(145deg, #fff, #edf5ff);
-  box-shadow: 0 10px 24px rgba(21, 87, 208, .09), inset 0 1px 0 #fff;
-}
-.home-step-review-visual i { display: block; width: 18px; border-radius: 5px 5px 2px 2px; background: #a9cbf6; }
-.home-step-review-visual i:nth-child(1) { height: 26px; }
-.home-step-review-visual i:nth-child(2) { height: 42px; background: #5e9dea; }
-.home-step-review-visual i:nth-child(3) { height: 54px; background: #1557d0; }
-.home-step-review-visual::after { position: absolute; top: 12px; right: 11px; display: grid; width: 19px; height: 19px; place-items: center; border-radius: 50%; color: #fff; background: #14805e; content: "✓"; font-size: 11px; font-style: normal; font-weight: 900; box-shadow: 0 5px 12px rgba(20, 128, 94, .24); }
 .home-workflow-preview {
   position: relative;
   overflow: hidden;
@@ -1049,8 +1018,6 @@
   .home-workflow-preview header,
   .home-workflow-preview footer { align-items: flex-start; flex-direction: column; }
   .home-platform-copy li { grid-template-columns: 30px minmax(0, 1fr) 78px; gap: 10px; }
-  .home-step-visual,
-  .home-step-review-visual { width: 78px; height: 64px; }
   .home-product-family-grid article { grid-template-columns: 1fr; gap: 18px; padding: 20px; }
   .home-bookloq-tour{padding-inline:18px}.bookloq-tour-stage figure,.bookloq-tour-stage figure img{min-height:260px}.tour-focus{padding:7px 9px;font-size:9px}.tour-focus b{width:18px;height:18px}.tour-focus.classify{left:26%}.bookloq-tour-stage aside{padding:22px}
   .home-product-logo-shell { width: 100%; max-width: 240px; height: 110px; }

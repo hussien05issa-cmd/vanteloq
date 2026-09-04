@@ -188,3 +188,58 @@ button, a, input, select, textarea, summary { -webkit-tap-highlight-color: trans
 @media (prefers-reduced-motion: reduce) {
   .home-record-review *, .bookloq-main *, .scenario-workbench *, .data-hub * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+
+/* Homepage journeys use interface diagrams and typographic checkpoints. */
+.home-platform-copy .home-step-list > li { grid-template-columns: 2rem minmax(0, 1fr) 11rem; gap: 1rem; padding-block: 1.25rem; }
+.home-platform-copy .home-step-list > li > b { display: grid; place-items: center; align-self: start; margin-top: .375rem; width: 2rem; height: 2rem; font-size: .875rem; border: 1px solid #c3d4ec; border-radius: .5rem; background: #f0f5fc; }
+.home-platform-copy .home-step-list > li > div > strong { font-size: 1rem; line-height: 1.4; }
+.home-platform-copy .home-step-list > li > div > span { font-size: .875rem; line-height: 1.65; }
+.home-platform-copy .home-operating-preview { display: grid; align-content: start; gap: .75rem; width: 11rem; min-height: 7.5rem; padding: .875rem; border: 1px solid #c5d5e9; border-top: 3px solid #2868c6; border-radius: .625rem; background: #f6f9ff; box-shadow: 0 3px 8px #17365408; }
+.home-platform-copy .home-operating-preview.verify { border-top-color: #18766c; background: #f4faf8; }
+.home-platform-copy .home-operating-preview.review { border-top-color: #7160a9; background: #f8f7fc; }
+.home-platform-copy .operating-preview-label { font-size: .8125rem; font-weight: 650; color: #203d5d; line-height: 1.35; }
+.home-platform-copy .operating-source-flow { display: grid; grid-template-columns: 2.5rem 1.25rem minmax(0, 1fr); align-items: center; gap: .375rem; }
+.operating-source-flow > svg { width: 1.125rem; height: 1.125rem; color: #5480b4; }
+.operating-source-chips { display: grid; gap: .375rem; }
+.operating-source-chips em { display: block; text-align: center; padding: .125rem .25rem; border: 1px solid #c2d5ef; border-radius: .25rem; background: white; font-size: .75rem; font-weight: 650; font-style: normal; color: #245790; }
+.operating-records { display: grid; justify-items: center; gap: .25rem; }
+.operating-records > svg { color: #2868c6; }
+.operating-records > small { font-size: .75rem; color: #365b84; }
+.operating-checks { display: grid; gap: .25rem; }
+.home-platform-copy .operating-checks > span { display: flex; justify-content: space-between; align-items: center; padding-bottom: .125rem; border-bottom: 1px solid #dcebe6; }
+.home-platform-copy .operating-checks > span > span { color: #355e57; font-size: .8125rem; line-height: 1.35; }
+.operating-checks svg { width: .9375rem; height: .9375rem; color: #18766c; }
+.operating-task { display: grid; gap: .625rem; }
+.home-platform-copy .operating-task > span { display: flex; align-items: center; gap: .375rem; }
+.operating-task > span > svg { width: 1rem; height: 1rem; color: #7160a9; flex-shrink: 0; }
+.home-platform-copy .operating-task > span > span { font-size: .8125rem; color: #51476b; }
+.home-platform-copy .operating-task .operating-approval { justify-content: space-between; padding-top: .5rem; border-top: 1px solid #e1dced; font-size: .75rem; color: #65528c; }
+.operating-approval svg { width: .875rem; height: .875rem; }
+
+.public-site .home-account-roadmap { max-width: 40rem; padding: 0; overflow: hidden; border: 1px solid #c7d7eb; border-radius: .875rem; background: #fff; box-shadow: 0 8px 24px #173a6210; }
+.home-account-roadmap > header { padding: 1rem 1.125rem; border-bottom: 1px solid #dce5ef; background: #f6f9fe; }
+.home-account-roadmap > header > strong { display: block; color: #193b62; font-size: .875rem; font-weight: 650; line-height: 1.5; }
+.home-account-roadmap > ol { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0; margin: 0; padding: .25rem; }
+.home-account-roadmap .account-checkpoint { --checkpoint: #245fae; --checkpoint-bg: #eaf2ff; position: relative; display: grid; grid-template-columns: 2.25rem minmax(0, 1fr); align-content: start; gap: .75rem; min-height: 6.5rem; margin: 0; padding: 1rem .875rem; text-align: left; }
+.home-account-roadmap .account-checkpoint::before { content: none; }
+.home-account-roadmap .account-checkpoint:nth-child(n+3) { border-top: 1px solid #e5ebf3; }
+.home-account-roadmap .account-checkpoint:nth-child(even) { border-left: 1px solid #e5ebf3; }
+.home-account-roadmap .account-checkpoint.security { --checkpoint: #226f6e; --checkpoint-bg: #eaf6f3; }
+.home-account-roadmap .account-checkpoint.business { --checkpoint: #7052a0; --checkpoint-bg: #f2edfb; }
+.home-account-roadmap .account-checkpoint.plan { --checkpoint: #96631b; --checkpoint-bg: #fff5e5; }
+.account-checkpoint-icon { display: grid; width: 2.25rem; height: 2.25rem; place-items: center; border-radius: .625rem; background: var(--checkpoint-bg); color: var(--checkpoint); }
+.home-account-roadmap .account-checkpoint-number { position: absolute; top: .4375rem; right: .625rem; font-size: .75rem; line-height: 1; color: #718298; font-weight: 600; }
+.home-account-roadmap .account-checkpoint strong { display: block; font-size: .875rem; font-weight: 650; color: #183857; line-height: 1.45; }
+.home-account-roadmap .account-checkpoint p { margin: .375rem 0 0; font-size: .8125rem; line-height: 1.55; color: #51667e; }
+@media (max-width: 620px) {
+  .home-platform-copy .home-step-list > li { grid-template-columns: 2rem minmax(0, 1fr); gap: .75rem; }
+  .home-platform-copy .home-operating-preview { grid-column: 2; width: 100%; max-width: 18rem; min-height: auto; }
+  .home-platform-copy .operating-source-flow { grid-template-columns: 3.25rem 1.5rem 4rem; gap: 1rem; }
+  .operating-checks { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .625rem; }
+  .home-platform-copy .operating-checks > span { flex-direction: column; gap: .375rem; border: 0; }
+}
+@media (max-width: 480px) {
+  .home-account-roadmap > ol { grid-template-columns: 1fr; }
+  .home-account-roadmap .account-checkpoint { min-height: auto; padding: 1rem; }
+  .home-account-roadmap .account-checkpoint:nth-child(n+2) { border-top: 1px solid #e5ebf3; border-left: 0; }
+}

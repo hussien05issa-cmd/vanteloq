@@ -6,6 +6,7 @@ import Link from "next/link";
 import IntegrationBrandLogo from "./integration-brand-logo";
 import { integrationCatalog, integrationPublicStatus } from "./integration-catalog";
 import SourceRecordIcon from "./source-record-icon";
+import { AccountSteps, OperatingStepPreview } from "./home-journey-visuals";
 import ProductBrandLogo from "./product-brand-logo";
 import AuthPanel, { type AuthPanelMode } from "./auth-panel";
 import { currentSession, getSupabase, signOut } from "./supabase-browser";
@@ -435,15 +436,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
             <li>Keep control of approvals</li>
             <li>Protect your business data</li>
           </ul>
-          <div className="home-account-steps">
-            <strong>What happens after you create an account</strong>
-            <ol>
-              <li>Verify your email</li>
-              <li>Protect your account with an authenticator app</li>
-              <li>Add your business details</li>
-              <li>Review a plan and continue to Stripe checkout</li>
-            </ol>
-          </div>
+          <AccountSteps/>
         </div>
         <figure className="product-visual product-visual-reference home-product-visual">
           {/* The image is a real Vanteloq interface composition; the values shown are illustrative. */}
@@ -545,17 +538,9 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
           <h2 id="platform-title">Move from source records to a decision you can explain.</h2>
           <span>Vanteloq keeps the source, calculation status and approval path visible. Missing inputs remain unavailable or provisional instead of being silently replaced with confident-looking numbers.</span>
           <ol className="home-step-list">
-            <li><b>1</b><div><strong>Connect or import</strong><span>Authorize a supported source or upload structured operating records.</span></div><span className="home-step-visual" aria-hidden="true">
-              {/* Decorative generated art is already compact and served directly without an image transformation binding. */}
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/brand/connect-import-visual.webp" alt="" width={360} height={240}/>
-            </span></li>
-            <li><b>2</b><div><strong>Verify and organize</strong><span>Map locations, reconcile totals and apply consistent metric definitions.</span></div><span className="home-step-visual" aria-hidden="true">
-              {/* Decorative generated art is already compact and served directly without an image transformation binding. */}
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/brand/verify-organize-visual.webp" alt="" width={360} height={240}/>
-            </span></li>
-            <li><b>3</b><div><strong>Review and act</strong><span>Turn a supported finding into assigned work with the right approval.</span></div><span className="home-step-review-visual" aria-hidden="true"><i/><i/><i/></span></li>
+            <li><b>1</b><div><strong>Connect or import</strong><span>Authorize a supported source or upload structured operating records.</span></div><OperatingStepPreview step="connect"/></li>
+            <li><b>2</b><div><strong>Verify and organize</strong><span>Map locations, reconcile totals and apply consistent metric definitions.</span></div><OperatingStepPreview step="verify"/></li>
+            <li><b>3</b><div><strong>Review and act</strong><span>Turn a supported finding into assigned work with the right approval.</span></div><OperatingStepPreview step="review"/></li>
           </ol>
         </div>
         <article className="home-workflow-preview" aria-label="Inventory decision example">
