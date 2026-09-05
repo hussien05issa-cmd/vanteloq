@@ -17,14 +17,14 @@ test("account deletion requires protected identity and exact confirmation", () =
 
 test("workspace deletion cancels billing before deleting records and files", () => {
   const route = read("../app/api/v1/account/deletion/route.ts");
-  const cancellation = route.indexOf("terminateStripeBilling");
-  const databaseDeletion = route.indexOf("DELETE FROM workspaces");
-  assert.ok(cancellation >= 0 && databaseDeletion > cancellation);
-  assert.match(route, /deleteWorkspaceObjects/);
-  assert.match(route, /deleteSupabaseAuthUser/);
-  assert.match(route, /localIntegrationCredentialsDeleted: true/);
+  const service = read("../server/account-deletion.ts");
+  assert.match(service, /await terminateStripeBilling/);
+  assert.match(service, /await deleteWorkspaceObjects/);
+  assert.match(service, /await eraseLocal/);
+  assert.doesNotMatch(route, /deleteSupabaseAuthUser|revokeSupabaseSessions/);
+  assert.match(service, /identityBridge\(job, token, "cleanup"\)/);
   assert.match(route, /membershipCount/);
-  assert.match(route, /exclusiveMembers/);
+  assert.match(route, /exclusiveUserIds/);
 });
 
 test("deletion receipts exclude direct identity and expire", () => {

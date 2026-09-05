@@ -10,7 +10,7 @@ Status: Conditional release. Not a certification of legal compliance, bug freedo
 
 This change is limited to Vanteloq. The separate private console, existing account grants, subscription records, provider credentials and customer financial records are not being edited.
 
-The release strengthens OAuth browser binding, sensitive financial projections, location restrictions, streamed request-size limits, spreadsheet-safe exports and accounting-period enforcement. Terms and privacy notices describe the actual manual payroll accounting boundary.
+The earlier release strengthened OAuth browser binding, sensitive financial projections, location restrictions, streamed request-size limits, spreadsheet-safe exports and accounting-period enforcement. The follow-up adds resumable, explicitly confirmed self-service deletion. Terms and privacy notices describe the actual manual payroll accounting and deletion boundaries.
 
 ## Payroll capability
 
@@ -31,8 +31,8 @@ Before enabling automated payroll:
 
 | Item | Current evidence | Required completion |
 | --- | --- | --- |
-| Automated payroll | No chosen provider or verified execution integration | Complete the provider steps above before advertising payroll processing |
-| Self-service deletion | Live server configuration does not include the administrative deletion credential | Provision the correct scoped server credential and test deletion on a disposable, isolated account; retain the privacy-officer request route meanwhile |
+| Automated payroll | Bayzat is the recommended Dubai provider; third-party API access and an execution integration are not verified | Obtain provider partner documentation and employer-specific approval. See UAE_PAYROLL_PROVIDER_DECISION_2026-09-05.md. Do not advertise payroll processing as connected |
+| Self-service deletion | Ten isolated flow tests cover scoped cleanup, shared identities, retries, leases, provider failures and denied requests | Publish the tested worker, generated migration and dedicated identity function, then enable the feature flag. Verify live denial paths. An actual disposable production-account lifecycle remains an acceptance test, not a claimed result |
 | External identity controls | Application guards reviewed; hosted RLS, external activation functions and all authentication settings not independently certified | Verify external controls and recovery with dedicated test accounts |
 | Provider availability | Code paths exist, but not every provider has production approval or validated credentials | Keep each connector's readiness label truthful; complete a customer-authorized test for each provider advertised as available |
 | Uploaded documents | Quarantine protections exist; no production malware-scanning service verified | Keep unscanned uploads quarantined; configure and validate a scanner before permitting downloads |
@@ -47,11 +47,27 @@ Candidate fixes were reviewed independently. Focused regressions exercise denied
 
 ## Deployment and rollback
 
-Use the existing Vanteloq Sites deployment and its current public audience. Save the previous live version for rollback. Publish only the exact tested source and generated migration. The new accounting-period triggers add enforcement without rewriting existing migrations or deleting records.
+Use the existing Vanteloq Sites deployment and its current public audience. Save the previous live version for rollback. Publish only tested source and its generated migrations. Migration 0040 adds the deletion job table without altering existing records or migrations.
 
 If health checks fail, stop promotion and restore the previous application version. Do not remove database protections or delete customer records as an improvised rollback. Review any schema incompatibility explicitly.
 
 Do not publish this release's full source to a public GitHub repository based on an older, commit-specific authorization.
+
+## Self-service deletion operating boundary
+
+The entry point is /account/deletion and the account Settings deletion control. A paid subscription is not required. The caller must sign in, complete fresh multifactor verification, type the exact scope-specific confirmation and explicitly acknowledge permanent deletion. Owners must also acknowledge immediate cancellation and disconnect external providers first. Suspended, ambiguous or multiple-workspace relationships require verified privacy support; the system must not guess which business to erase.
+
+The server captures an encrypted plan and hashes a randomly generated, 256-bit retry capability. The browser saves the capability only in that tab's session storage. No capability is placed in URLs or analytics. Keep that tab open until the receipt confirms completion. A pending result is not proof of deletion.
+
+The dedicated Supabase function verifies the capability against the canonical application's persisted plan before using its internal service credential. No global Supabase administrator key is copied into the Vanteloq website environment. Existing private-console functions and access grants remain unchanged. Shared sign-in identities are retained when another service or workspace needs them. Deleting an owner's workspace never deletes other members' independent sign-in identities.
+
+Processing checks billing cancellation before erasing workspace records, verifies provider removals, uses a renewable processing lease and preserves an encrypted retry plan after an interruption. Completed jobs immediately discard direct target identifiers and the encrypted plan. A pseudonymous receipt is retained for 24 months. A 30-day capability expiry sends unresolved requests to verified privacy support rather than silently marking them complete.
+
+If an incident requires pausing new processing, set VANTELOQ_DELETION_ENABLED to false and deploy that environment revision. Preserve job records and review pending receipts. Do not delete retry records, revoke shared accounts or bypass scope checks to clear an error. Financial, provider and backup retention exceptions still apply as described in the public notice.
+
+## What can honestly be guaranteed
+
+No finite test suite, warranty or security scan can establish that software has zero bugs. This release can report the exact tests performed, their results, the limitations of those tests and a rollback plan. It cannot promise flawless behaviour for every device, provider outage, future dependency change or customer dataset. A contractual bug-fix commitment is a separate business decision, not proof of bug freedom.
 
 ## Legal reference points
 

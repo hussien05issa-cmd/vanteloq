@@ -836,6 +836,29 @@ export const accountDeletionReceipts = sqliteTable(
   ],
 );
 
+// Independent of workspace/user foreign keys so a confirmed deletion can finish
+// after local membership removal. The capability is hashed; the plan is encrypted.
+export const accountDeletionJobs = sqliteTable("account_deletion_jobs", {
+  id: text("id").primaryKey(),
+  accountHash: text("account_hash").notNull(),
+  organizationId: text("organization_id").notNull(),
+  userId: text("user_id").notNull(),
+  scope: text("scope", { enum: ["account", "workspace"] }).notNull(),
+  tokenHash: text("token_hash").notNull(),
+  planEncrypted: text("plan_encrypted").notNull(),
+  stage: text("stage", { enum: ["checking", "confirmed", "local_deleted", "completed"] }).notNull(),
+  resultJson: text("result_json").notNull().default("{}"),
+  leaseUntil: integer("lease_until").notNull().default(0),
+  createdAt: integer("created_at").notNull(),
+  expiresAt: integer("expires_at").notNull(),
+}, (table) => [
+  index("account_deletion_jobs_user_idx").on(table.userId, table.stage),
+  index("account_deletion_jobs_org_idx").on(table.organizationId, table.stage),
+  uniqueIndex("account_deletion_jobs_account_unique").on(table.accountHash),
+  check("account_deletion_jobs_scope_check", sql`${table.scope} in ('account','workspace')`),
+  check("account_deletion_jobs_stage_check", sql`${table.stage} in ('checking','confirmed','local_deleted','completed')`),
+]);
+
 export const integrationOAuthStates = sqliteTable(
   "integration_oauth_states",
   {

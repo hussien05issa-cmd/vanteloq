@@ -59,6 +59,9 @@ export async function POST(request: Request) {
     requireSameOrigin(request);
     const identity = await requireIdentity(request);
     requireAal2(identity);
+    const deletionHash = await hashIdentifier(`vanteloq-account:${identity.subject}`);
+    const deleting = await getD1().prepare("SELECT id FROM account_deletion_jobs WHERE account_hash = ? AND stage <> 'completed' LIMIT 1").bind(deletionHash).first();
+    if (deleting) throw new ApiError(409, "DELETION_IN_PROGRESS", "Finish the saved deletion session before creating another workspace.");
     await enforceRateLimit("onboarding:user", identity.email, 5, 3_600);
     const source = clientSource(request);
     if (source !== "unknown") await enforceRateLimit("onboarding:source", source, 20, 3_600);

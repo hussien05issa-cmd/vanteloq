@@ -27,6 +27,7 @@ type InvitationRow = {
   expires_at: string;
   auth_user_id: string | null;
   accepted_at: string | null;
+  invitation_sent_at?: string | null;
   acceptance_notice_version: string | null;
   lifecycle_operation: string | null;
 };
@@ -56,7 +57,7 @@ function supabaseConfiguration(request: Request) {
 async function invitationRow(request: Request, identity: TrustedIdentity): Promise<InvitationRow | null> {
   const config = supabaseConfiguration(request);
   const query = new URLSearchParams({
-    select: "id,email,invited_by_user_id,invited_by_email,vanteloq_access,vanteloq_role,console_access,console_role,console_scopes,invitation_generation,status,expires_at,auth_user_id,accepted_at,acceptance_notice_version,lifecycle_operation",
+    select: "id,email,invited_by_user_id,invited_by_email,vanteloq_access,vanteloq_role,console_access,console_role,console_scopes,invitation_generation,status,expires_at,auth_user_id,accepted_at,invitation_sent_at,acceptance_notice_version,lifecycle_operation",
     email: `eq.${identity.email}`,
     vanteloq_access: "eq.true",
     status: "in.(pending,accepted)",
@@ -196,6 +197,16 @@ export async function acceptTeamInvitation(
   if (!row) throw new ApiError(404, "INVITATION_NOT_FOUND", "This invitation is missing, expired, or already used.");
   const owner = await inviterWorkspace(row);
   const displayName = teamName(body.displayName, identity.displayName || identity.email.split("@")[0]);
+  const accountHash = await hashIdentifier(`vanteloq-account:${identity.subject}`);
+  const organizationHash = await hashIdentifier(`vanteloq-workspace:${owner.organization_id}`);
+  const deleting = await getD1().prepare("SELECT id FROM account_deletion_jobs WHERE stage <> 'completed' AND (account_hash = ? OR (scope = 'workspace' AND organization_id = ?)) LIMIT 1")
+    .bind(accountHash, owner.organization_id).first();
+  if (deleting) throw new ApiError(409, "DELETION_IN_PROGRESS", "Finish the confirmed deletion before accepting another invitation.");
+  const deleted = await getD1().prepare("SELECT MAX(completed_at) completed_at FROM account_deletion_receipts WHERE result = 'completed' AND (account_hash = ? OR (scope = 'workspace' AND organization_hash = ?))")
+    .bind(accountHash, organizationHash).first<{completed_at: number | null}>();
+  if (deleted?.completed_at && !(Date.parse(row.invitation_sent_at ?? "") > deleted.completed_at * 1000)) {
+    throw new ApiError(409, "NEW_INVITATION_REQUIRED", "This invitation predates a completed deletion. Ask the owner for a new invitation.");
+  }
   const existingRows = await getD1().prepare(`
     SELECT id, email, auth_subject, auth_provider, status
     FROM users
