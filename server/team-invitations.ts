@@ -107,7 +107,7 @@ async function inviterWorkspace(row: InvitationRow) {
 export async function pendingTeamInvitation(request: Request, identity: TrustedIdentity): Promise<PendingTeamInvitation | null> {
   const row = await invitationRow(request, identity);
   if (!row) return null;
-  if (row.status === "accepted" && await verifiedTeamProvisioning(request, identity, row.id)) return null;
+  if (row.status === "accepted" && await provisioningReceipt(row, identity)) return null;
   const owner = await inviterWorkspace(row);
   return {
     id: row.id,
@@ -125,6 +125,10 @@ export async function verifiedTeamProvisioning(request: Request, identity: Trust
   if (!UUID_PATTERN.test(invitationId)) throw new ApiError(400, "INVITATION_INVALID", "The invitation could not be matched safely.");
   const row = await invitationRow(request, identity);
   if (!row || row.id !== invitationId) return false;
+  return provisioningReceipt(row, identity);
+}
+
+async function provisioningReceipt(row: InvitationRow, identity: TrustedIdentity) {
   const owner = await inviterWorkspace(row);
   const proof = await getD1().prepare(`
     SELECT 1 AS provisioned
@@ -146,7 +150,7 @@ export async function verifiedTeamProvisioning(request: Request, identity: Trust
     row.vanteloq_role,
     identity.subject,
     identity.email,
-    invitationId,
+    row.id,
     row.invitation_generation,
     row.vanteloq_role,
   ).first<{ provisioned: number }>();
@@ -342,5 +346,5 @@ export async function liveTeamMembershipAllowed(request: Request | undefined, id
   if (!request) return false;
   const row = await invitationRow(request, identity);
   if (!row || row.status !== "accepted" || row.vanteloq_role !== role) return false;
-  return verifiedTeamProvisioning(request, identity, row.id);
+  return provisioningReceipt(row, identity);
 }
