@@ -1,7 +1,7 @@
 import { and, eq, ne } from "drizzle-orm";
 import { getDb } from "../../../../../../db";
 import { integrationConnections, integrationWebhookEvents } from "../../../../../../db/schema";
-import { ApiError, handleApi, jsonResponse } from "../../../../../../server/api";
+import { ApiError, handleApi, jsonResponse, readRequestBytes } from "../../../../../../server/api";
 import { sha256Hex, STRIPE_PROVIDER, verifyStripeWebhookSignature } from "../../../../../../server/integrations/stripe";
 
 const MAXIMUM_WEBHOOK_BYTES = 256_000;
@@ -15,7 +15,7 @@ export async function POST(request: Request) {
     if (Number.isFinite(contentLength) && contentLength > MAXIMUM_WEBHOOK_BYTES) {
       throw new ApiError(413, "STRIPE_WEBHOOK_TOO_LARGE", "The Stripe webhook is too large.");
     }
-    const bytes = new Uint8Array(await request.arrayBuffer());
+    const bytes = await readRequestBytes(request, MAXIMUM_WEBHOOK_BYTES, "STRIPE_WEBHOOK_TOO_LARGE", "The Stripe webhook is too large.");
     if (bytes.byteLength > MAXIMUM_WEBHOOK_BYTES) {
       throw new ApiError(413, "STRIPE_WEBHOOK_TOO_LARGE", "The Stripe webhook is too large.");
     }

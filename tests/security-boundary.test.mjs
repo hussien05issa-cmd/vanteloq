@@ -114,6 +114,15 @@ test("business intelligence APIs reject anonymous access before database reads",
   }
 });
 
+test("member entitlement lookup rejects anonymous requests before database access", async () => {
+  const worker = await loadWorker();
+  const response = await worker.fetch(new Request("https://vanteloq.example/api/v1/entitlements", {
+    headers: { accept: "application/json" },
+  }), environment, context);
+  assert.equal(response.status, 401);
+  assert.equal((await response.json()).error.code, "AUTHENTICATION_REQUIRED");
+});
+
 test("team invitations remain identity bound and separate from Stripe billing", async () => {
   const [route, provisioningRoute, invitations, internalAccess] = await Promise.all([
     readFile(`${process.cwd()}/app/api/v1/team-invitations/route.ts`, "utf8"),
@@ -322,7 +331,7 @@ test("the R-Series callback rejects malformed one-time state before database acc
     { headers: { accept: "application/json" } },
   ), environment, context);
   assert.equal(response.status, 400);
-  assert.equal((await response.json()).error.code, "LIGHTSPEED_R_CALLBACK_INVALID");
+  assert.equal((await response.json()).error.code, "OAUTH_BROWSER_BINDING_INVALID");
 });
 
 test("the Clover callback rejects malformed one-time state before database access", async () => {
@@ -332,7 +341,7 @@ test("the Clover callback rejects malformed one-time state before database acces
     { headers: { accept: "application/json" } },
   ), environment, context);
   assert.equal(response.status, 400);
-  assert.equal((await response.json()).error.code, "CLOVER_CALLBACK_INVALID");
+  assert.equal((await response.json()).error.code, "OAUTH_BROWSER_BINDING_INVALID");
 });
 
 test("the Square callback rejects malformed one-time state before database access", async () => {
@@ -342,7 +351,7 @@ test("the Square callback rejects malformed one-time state before database acces
     { headers: { accept: "application/json" } },
   ), environment, context);
   assert.equal(response.status, 400);
-  assert.equal((await response.json()).error.code, "SQUARE_CALLBACK_INVALID");
+  assert.equal((await response.json()).error.code, "OAUTH_BROWSER_BINDING_INVALID");
 });
 
 test("the Shopify POS callback rejects malformed one-time state before database access", async () => {
@@ -352,7 +361,7 @@ test("the Shopify POS callback rejects malformed one-time state before database 
     { headers: { accept: "application/json" } },
   ), environment, context);
   assert.equal(response.status, 400);
-  assert.match((await response.json()).error.code, /^SHOPIFY_/u);
+  assert.equal((await response.json()).error.code, "OAUTH_BROWSER_BINDING_INVALID");
 });
 
 test("the Clover callback binds the provider redirect to a one-time initiating owner", async () => {
@@ -401,7 +410,7 @@ test("the Stripe callback rejects malformed one-time state before database acces
     { headers: { accept: "application/json" } },
   ), environment, context);
   assert.equal(response.status, 400);
-  assert.equal((await response.json()).error.code, "STRIPE_CALLBACK_INVALID");
+  assert.equal((await response.json()).error.code, "OAUTH_BROWSER_BINDING_INVALID");
 });
 
 test("marketing callbacks reject malformed one-time state before database access", async () => {
@@ -412,7 +421,7 @@ test("marketing callbacks reject malformed one-time state before database access
       { headers: { accept: "application/json" } },
     ), environment, context);
     assert.equal(response.status, 400, provider);
-    assert.equal((await response.json()).error.code, "MARKETING_CALLBACK_INVALID", provider);
+    assert.equal((await response.json()).error.code, "OAUTH_BROWSER_BINDING_INVALID", provider);
   }
 });
 

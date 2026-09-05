@@ -6,6 +6,7 @@ import { acceptTeamInvitation, pendingTeamInvitation, liveTeamMembershipAllowed,
 import { findAccessContext } from "../server/authorization.ts";
 import { getTenantEntitlements } from "../server/entitlements/engine.ts";
 import type { TrustedIdentity } from "../server/api.ts";
+import { TERMS_OF_SERVICE_VERSION, PRIVACY_POLICY_VERSION, ACCOUNT_ACCEPTANCE_NOTICE_VERSION } from "../shared/legal-versions.ts";
 
 test("real D1 employee provisioning, free entitlements, retries, and revocation", async () => {
   const sqlite = new DatabaseSync(":memory:");
@@ -38,12 +39,13 @@ test("real D1 employee provisioning, free entitlements, retries, and revocation"
   const ownerEmail = "hussienissa@lexedgeconsulting.com";
   const rows = new Map<string, Record<string, unknown>>();
   let failFinalization = false;
+  let invalidInvitationResponse = false;
   const identity = (email: string, subject: string): TrustedIdentity => ({ email, subject, displayName: "Test Employee", provider: "supabase", emailVerified: true, assuranceLevel: "aal2", sessionId: "test-session" });
   const request = (person: TrustedIdentity) => new Request("https://vanteloq.com/api/v1/team-invitations", { method: "POST", headers: {
     authorization: `Bearer test.${Buffer.from(JSON.stringify({ sub: person.subject, email: person.email, aal: "aal2", amr: [{ method: "recovery", timestamp: Date.now() / 1000 }] })).toString("base64url")}.test`,
     origin: "https://vanteloq.com", "content-type": "application/json",
   } });
-  const legal = { displayName: "Test Employee", legalAccepted: true, termsVersion: "2026-08-24", privacyPolicyVersion: "2026-08-24", legalNoticeVersion: "account-creation-v2" };
+  const legal = { displayName: "Test Employee", legalAccepted: true, termsVersion: TERMS_OF_SERVICE_VERSION, privacyPolicyVersion: PRIVACY_POLICY_VERSION, legalNoticeVersion: ACCOUNT_ACCEPTANCE_NOTICE_VERSION };
   try {
     for (const file of (await readdir("drizzle")).filter(name => /^\d{4}.*\.sql$/.test(name)).sort()) {
       for (const sql of (await readFile(`drizzle/${file}`, "utf8")).split("--> statement-breakpoint").map(sql => sql.trim()).filter(Boolean)) await db.prepare(sql).run();
@@ -56,6 +58,7 @@ test("real D1 employee provisioning, free entitlements, retries, and revocation"
     globalThis.fetch = async (input, init) => {
       const url = new URL(String(input));
       if (url.pathname === "/rest/v1/team_access_invitations") {
+        if (invalidInvitationResponse) return Response.json({ message: "Unexpected upstream response" });
         const row = rows.get(url.searchParams.get("email")!.slice(3));
         return Response.json(row && ["pending", "accepted"].includes(String(row.status)) ? [row] : []);
       }
@@ -70,6 +73,11 @@ test("real D1 employee provisioning, free entitlements, retries, and revocation"
       throw new Error(`Unexpected external call: ${url.origin}${url.pathname}`);
     };
     let manager: TrustedIdentity | null = null;
+    const newCustomer = identity("new-customer@example.invalid", crypto.randomUUID());
+    assert.equal(await pendingTeamInvitation(request(newCustomer), newCustomer), null);
+    invalidInvitationResponse = true;
+    await assert.rejects(pendingTeamInvitation(request(newCustomer), newCustomer), /could not be checked safely/);
+    invalidInvitationResponse = false;
     for (const role of ["manager", "read_only", "admin"]) {
       const email = `${role}@example.invalid`;
       const person = identity(email, crypto.randomUUID());

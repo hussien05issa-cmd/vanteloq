@@ -3,6 +3,7 @@ import { readFile, readdir } from "node:fs/promises";
 import { createServer } from "node:http";
 import test from "node:test";
 import { Miniflare } from "miniflare";
+import { registerSupabaseTestServer } from "./helpers/supabase-loopback-transport.mjs";
 import { activateTestSubscription } from "./helpers/subscription-fixture.mjs";
 
 const origin = "https://vanteloq.example";
@@ -66,7 +67,7 @@ async function createEnvironment() {
     authServer,
     environment: {
       DB: database,
-      SUPABASE_URL: `http://127.0.0.1:${authAddress.port}`,
+      SUPABASE_URL: registerSupabaseTestServer(authAddress.port),
       SUPABASE_PUBLISHABLE_KEY: "test-publishable-key",
       ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) },
     },
@@ -105,8 +106,8 @@ function onboardingBody() {
     sourceMode: "connect_later",
     selectedPos: "",
     legalAccepted: true,
-    termsVersion: "2026-08-24",
-    privacyPolicyVersion: "2026-08-24",
+    termsVersion: "2026-09-05",
+    privacyPolicyVersion: "2026-09-05",
     legalNoticeVersion: "account-creation-v2",
   };
 }

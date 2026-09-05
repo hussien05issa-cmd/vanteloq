@@ -171,7 +171,7 @@ export async function GET(request: Request) {
     const now = Date.now();
     const sourceConnections = connectedSourceConnections.filter((row) => row.dataPromotionStatus === "approved"
       && (!row.syncLeaseOwner || !row.syncLeaseExpiresAt || row.syncLeaseExpiresAt.getTime() <= now));
-    const canViewVerifiedProfit = permissions.includes("metrics.profit") && !sourceConnections.some((row) =>
+    const canViewVerifiedProfit = permissions.includes("metrics.revenue") && permissions.includes("metrics.profit") && !sourceConnections.some((row) =>
       row.provider === "square" && row.lastErrorCode === "SQUARE_PRODUCT_COST_UNAVAILABLE"
     );
     const sourceConnection = sourceConnections[0] ?? null;
@@ -373,6 +373,11 @@ export async function GET(request: Request) {
       for (const point of commandCentre.forecast.points) Object.assign(point, { grossProfitCents: null });
     }
     if (!permissions.includes("metrics.revenue")) {
+      for (const totals of [commandCentre.current, commandCentre.previous]) {
+        if (totals) Object.assign(totals, { labourRate: null, contributionCents: null, grossMarginRate: null });
+      }
+      commandCentre.comparisons = null;
+      for (const key of ["labour_rate", "gross_margin", "contribution_after_labour"]) delete (commandCentre.metrics as Record<string, unknown>)[key];
       if (commandCentre.current) Object.assign(commandCentre.current, { grossSalesCents: null, netSalesCents: null, transactionCount: null, unitsSold: null, refundsCents: null, discountsCents: null, averageTransactionCents: null, unitsPerTransaction: null, discountRate: null });
       if (commandCentre.previous) Object.assign(commandCentre.previous, { grossSalesCents: null, netSalesCents: null, transactionCount: null, unitsSold: null, refundsCents: null, discountsCents: null, averageTransactionCents: null, unitsPerTransaction: null, discountRate: null });
       commandCentre.trend = [];
@@ -406,6 +411,23 @@ export async function GET(request: Request) {
       Object.assign(commandCentre.balances, { cashBalanceCents: null, accountsPayableCents: null });
       delete commandCentre.metrics.operating_cash;
       delete commandCentre.metrics.accounts_payable;
+    }
+    if (!permissions.includes("payroll.totals")) {
+      for (const totals of [commandCentre.current, commandCentre.previous]) {
+        if (totals) Object.assign(totals, { labourCostCents: null, labourRate: null, contributionCents: null });
+      }
+      if (commandCentre.periodComparisons) {
+        for (const comparison of [commandCentre.periodComparisons.sevenDays, commandCentre.periodComparisons.thirtyDays]) {
+          Object.assign(comparison.current, { labourCostCents: null, labourRate: null, contributionCents: null });
+          Object.assign(comparison.previous, { labourCostCents: null, labourRate: null, contributionCents: null });
+        }
+      }
+      for (const key of ["labour_cost", "labour_rate", "contribution_after_labour"]) delete (commandCentre.metrics as Record<string, unknown>)[key];
+      commandCentre.insights = commandCentre.insights.filter((insight) => insight.id !== "labour-pressure");
+    }
+    if (!permissions.includes("inventory.value")) {
+      if (commandCentre.balances) Object.assign(commandCentre.balances, { inventoryValueCents: null });
+      delete (commandCentre.metrics as Record<string, unknown>).inventory_value;
     }
     const operatingSystem = buildOperatingSystem({
       ready: commandCentre.ready,

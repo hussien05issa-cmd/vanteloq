@@ -636,6 +636,9 @@ async function procurementCatalog(
           : { tone: "amber" as const, label: "Review inputs", detail: assessment.summary };
     return {
       ...row,
+      soldQuantityMilli30d: Math.round(soldUnits30d * 1000),
+      soldQuantityMilliPrevious30d: Math.round(soldUnitsPrevious30d * 1000),
+      soldQuantityMilli90d: Math.round(soldUnits90d * 1000),
       onHandQuantity,
       reorderPoint,
       incomingUnits,

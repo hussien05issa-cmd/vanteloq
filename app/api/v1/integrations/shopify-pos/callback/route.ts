@@ -1,3 +1,4 @@
+import { requireOAuthBrowser } from "../../../../../../server/integrations/oauth-browser";
 import { and, eq, gt, isNull } from "drizzle-orm";
 import { getDb } from "../../../../../../db";
 import { integrationConnections, integrationLocationMappings, integrationOAuthStates, integrationSecrets, memberships, organizationLocations, users, workspaces } from "../../../../../../db/schema";
@@ -15,6 +16,7 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const code = url.searchParams.get("code")?.trim() ?? "";
     const state = url.searchParams.get("state")?.trim() ?? "";
+    requireOAuthBrowser(request, provider, state);
     const shop = normalizeShopDomain(url.searchParams.get("shop") ?? "");
     if (!code || code.length > 4096 || !/^[A-Za-z0-9_-]{43}$/u.test(state) || !await verifyShopifyCallback(url, provider)) throw new ApiError(400, "SHOPIFY_CALLBACK_INVALID", "Shopify returned an invalid callback. Start the connection again.");
     const now = new Date();

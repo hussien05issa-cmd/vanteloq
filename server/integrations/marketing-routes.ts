@@ -121,7 +121,7 @@ export function marketingAuthorize(request: Request, provider: MarketingProvider
       expiresAt: expiresAt.toISOString(),
       connectionId,
       mode: "measurement",
-    });
+    }, { headers: { "Set-Cookie": oauthBrowserCookie(provider, state) } });
   });
 }
 
@@ -203,6 +203,7 @@ export function marketingCallback(request: Request, provider: MarketingProvider)
     const providerError = url.searchParams.get("error");
     const code = url.searchParams.get("code")?.trim() ?? "";
     const state = url.searchParams.get("state")?.trim() ?? "";
+    requireOAuthBrowser(request, provider, state);
     if ((!providerError && (!code || code.length > 2_048)) || !/^[A-Za-z0-9_-]{43}$/.test(state)) {
       throw new ApiError(400, "MARKETING_CALLBACK_INVALID", `${providerName(provider)} returned an incomplete callback.`);
     }
@@ -1055,3 +1056,4 @@ export function googleBusinessReviews(request: Request) {
     return jsonResponse({ published: true, reply: { updateTime: reply.updateTime || new Date().toISOString() } });
   });
 }
+import { oauthBrowserCookie, requireOAuthBrowser } from "./oauth-browser";

@@ -13,6 +13,16 @@ export type AuthorizedLocationScope = {
   selectedLocationId: string | null;
 };
 
+export function hasUnrestrictedLocationRole(
+  role: string,
+  profile: { systemKey: string | null; roleId?: string | null } | null | undefined,
+): boolean {
+  if (role === "owner") return true;
+  // Preserve legacy administrators without a team profile. A custom role,
+  // even when represented as admin for compatibility, keeps explicit scope.
+  return role === "admin" && (!profile || profile.roleId === null || profile.systemKey === "organization_administrator");
+}
+
 export function resolveAuthorizedLocationScope(input: {
   organizationWide: boolean;
   accessibleLocationIds: readonly string[];

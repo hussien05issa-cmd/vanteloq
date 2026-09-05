@@ -3,6 +3,7 @@ import { readFile, readdir } from "node:fs/promises";
 import { createServer } from "node:http";
 import test from "node:test";
 import { Miniflare } from "miniflare";
+import { registerSupabaseTestServer } from "./helpers/supabase-loopback-transport.mjs";
 import { activateTestSubscription } from "./helpers/subscription-fixture.mjs";
 
 const origin = "https://vanteloq.example";
@@ -44,8 +45,8 @@ function onboardingBody() {
     sourceMode: "connect_later",
     selectedPos: "",
     legalAccepted: true,
-    termsVersion: "2026-08-24",
-    privacyPolicyVersion: "2026-08-24",
+    termsVersion: "2026-09-05",
+    privacyPolicyVersion: "2026-09-05",
     legalNoticeVersion: "account-creation-v2",
   };
 }
@@ -81,7 +82,7 @@ async function createEnvironment() {
   const worker = (await import(workerUrl.href)).default;
   const environment = {
     DB: database,
-    SUPABASE_URL: `http://127.0.0.1:${authAddress.port}`,
+      SUPABASE_URL: registerSupabaseTestServer(authAddress.port),
     SUPABASE_PUBLISHABLE_KEY: "test-publishable-key",
     GOOGLE_MARKETING_CLIENT_ID: "google-client",
     GOOGLE_MARKETING_CLIENT_SECRET: "google-secret",
@@ -92,10 +93,10 @@ async function createEnvironment() {
   return { authServer, miniflare, database, worker, environment };
 }
 
-async function dispatch(worker, environment, path, { method = "GET", body } = {}) {
+async function dispatch(worker, environment, path, { method = "GET", body, cookie = "" } = {}) {
   return worker.fetch(new Request(`${origin}${path}`, {
     method,
-    headers: identityHeaders(method !== "GET"),
+    headers: { ...identityHeaders(method !== "GET"), cookie },
     body: body ? JSON.stringify(body) : undefined,
     redirect: "manual",
   }), environment, executionContext);
@@ -116,8 +117,8 @@ test("exact marketing resources remain versioned, approval-bound, separated, and
     `).first();
     assert.ok(legalAcceptance);
     assert.deepEqual(legalAcceptance, {
-      terms_version: "2026-08-24",
-      privacy_policy_version: "2026-08-24",
+      terms_version: "2026-09-05",
+      privacy_policy_version: "2026-09-05",
       notice_version: "account-creation-v2",
       acceptance_source: "onboarding_review",
       source_hash: null,
@@ -156,7 +157,7 @@ test("exact marketing resources remain versioned, approval-bound, separated, and
     const authorization = await authorize.json();
     const state = new URL(authorization.authorizationUrl).searchParams.get("state");
     assert.ok(state && authorization.connectionId);
-    const callback = await dispatch(worker, environment, `/api/v1/integrations/google/callback?state=${encodeURIComponent(state)}&code=test-code`);
+    const callback = await dispatch(worker, environment, `/api/v1/integrations/google/callback?state=${encodeURIComponent(state)}&code=test-code`, { cookie: authorize.headers.get("set-cookie").split(";")[0] });
     assert.equal(callback.status, 303, await callback.clone().text());
     const callbackConnection = await database.prepare(`SELECT status, last_error_code lastErrorCode FROM integration_connections WHERE id = ?`).bind(authorization.connectionId).first();
     assert.equal(new URL(callback.headers.get("location")).searchParams.get("connection"), "connected", JSON.stringify({ callbackConnection, providerCalls }));

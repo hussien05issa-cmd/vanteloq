@@ -11,6 +11,7 @@ import {
   jsonResponse,
   readJsonObject,
   requireSameOrigin,
+  requireRecentMfa,
 } from "../../../../../server/api";
 import {
   deleteSupabaseAuthUser,
@@ -81,6 +82,7 @@ export async function POST(request: Request) {
       throw new ApiError(503, "ACCOUNT_DELETION_CONFIGURATION_REQUIRED", "Secure account deletion is temporarily unavailable. Contact the privacy officer.");
     }
     await enforceRateLimit("account:delete", context.userId, 3, 86_400);
+    requireRecentMfa(context.identity);
     const input = await readJsonObject(request, 2_000);
     const scope = context.role === "owner" ? "workspace" : "account";
     const requiredConfirmation = scope === "workspace" ? WORKSPACE_CONFIRMATION : ACCOUNT_CONFIRMATION;

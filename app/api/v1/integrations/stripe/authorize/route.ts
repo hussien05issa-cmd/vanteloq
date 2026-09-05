@@ -1,3 +1,4 @@
+import { oauthBrowserCookie } from "../../../../../../server/integrations/oauth-browser";
 import { getDb } from "../../../../../../db";
 import { integrationConnections, integrationOAuthStates } from "../../../../../../db/schema";
 import { recordAudit } from "../../../../../../server/audit";
@@ -67,6 +68,6 @@ export async function POST(request: Request) {
       connectionId,
       mode: "read_only_staging",
       dataPromotionEnabled: false,
-    });
+    }, { headers: { "Set-Cookie": oauthBrowserCookie("stripe", state) } });
   });
 }

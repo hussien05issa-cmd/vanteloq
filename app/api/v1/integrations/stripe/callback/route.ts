@@ -1,3 +1,4 @@
+import { requireOAuthBrowser } from "../../../../../../server/integrations/oauth-browser";
 import { and, eq, gt, isNull, ne, notExists } from "drizzle-orm";
 import { getDb } from "../../../../../../db";
 import { integrationConnections, integrationOAuthStates, memberships, users, workspaces } from "../../../../../../db/schema";
@@ -24,6 +25,7 @@ export async function GET(request: Request) {
     const providerError = url.searchParams.get("error");
     const code = url.searchParams.get("code")?.trim() ?? "";
     const state = url.searchParams.get("state")?.trim() ?? "";
+    requireOAuthBrowser(request, "stripe", state);
     if ((!providerError && (!code || code.length > 512)) || !/^[A-Za-z0-9_-]{43}$/.test(state)) {
       throw new ApiError(400, "STRIPE_CALLBACK_INVALID", "Stripe returned an incomplete callback.");
     }

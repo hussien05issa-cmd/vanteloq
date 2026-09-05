@@ -3,6 +3,7 @@ import { readFile, readdir } from "node:fs/promises";
 import { createServer } from "node:http";
 import test from "node:test";
 import { Miniflare } from "miniflare";
+import { registerSupabaseTestServer } from "./helpers/supabase-loopback-transport.mjs";
 
 const origin = "https://vanteloq.example";
 const context = { waitUntil() {}, passThroughOnException() {} };
@@ -47,8 +48,8 @@ function onboardingPayload(businessName, email) {
     sourceMode: "connect_later",
     selectedPos: "",
     legalAccepted: true,
-    termsVersion: "2026-08-24",
-    privacyPolicyVersion: "2026-08-24",
+    termsVersion: "2026-09-05",
+    privacyPolicyVersion: "2026-09-05",
     legalNoticeVersion: "account-creation-v2",
     hours: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
       .map((day) => ({ day, open: "09:00", close: "17:00", closed: false })),
@@ -96,7 +97,7 @@ test("onboarding rebinds only orphaned Supabase rows and protects existing works
     const worker = (await import(workerUrl.href)).default;
     const environment = {
       DB: database,
-      SUPABASE_URL: `http://127.0.0.1:${authAddress.port}`,
+      SUPABASE_URL: registerSupabaseTestServer(authAddress.port),
       SUPABASE_PUBLISHABLE_KEY: "test-publishable-key",
       ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) },
     };

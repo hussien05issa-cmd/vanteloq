@@ -1,13 +1,20 @@
 import { and, asc, count, eq, inArray } from "drizzle-orm";
 import { getDb } from "../db";
-import { integrationConnections, integrationLocationMappings, organizationLocations, teamMembers } from "../db/schema";
+import { accessRoles, integrationConnections, integrationLocationMappings, organizationLocations, teamMembers } from "../db/schema";
 import { ApiError } from "./api";
 import type { AccessContext } from "./authorization";
-import { parsePermittedLocationIds } from "../domain/location-scope";
+import { hasUnrestrictedLocationRole, parsePermittedLocationIds } from "../domain/location-scope";
 import { resolveAuthorizedLocationScope } from "../domain/location-scope";
 import { scopeExternalRef } from "../domain/integration-source";
 
 export async function accessibleLocations(context: AccessContext) {
+  const [member] = await getDb()
+    .select({ permittedLocationsJson: teamMembers.permittedLocationsJson, roleId: teamMembers.roleId, systemKey: accessRoles.systemKey, roleLocationScopeJson: accessRoles.locationScopeJson })
+    .from(teamMembers)
+    .leftJoin(accessRoles, and(eq(teamMembers.roleId, accessRoles.id), eq(teamMembers.organizationId, accessRoles.organizationId)))
+    .where(and(eq(teamMembers.organizationId, context.organizationId), eq(teamMembers.userId, context.userId)))
+    .limit(1);
+  const unrestricted = hasUnrestrictedLocationRole(context.role, member);
   const queryLocations = () => getDb()
     .select()
     .from(organizationLocations)
@@ -17,7 +24,7 @@ export async function accessibleLocations(context: AccessContext) {
     ))
     .orderBy(asc(organizationLocations.name));
   let locations = await queryLocations();
-  if (!locations.length && (context.role === "owner" || context.role === "admin")) {
+  if (!locations.length && unrestricted) {
     const now = new Date();
     await getDb().insert(organizationLocations).values({
       id: `${context.organizationId}:location:primary`,
@@ -42,18 +49,11 @@ export async function accessibleLocations(context: AccessContext) {
     }).onConflictDoNothing();
     locations = await queryLocations();
   }
-  if (context.role === "owner" || context.role === "admin") return locations;
-
-  const [member] = await getDb()
-    .select({ permittedLocationsJson: teamMembers.permittedLocationsJson })
-    .from(teamMembers)
-    .where(and(
-      eq(teamMembers.organizationId, context.organizationId),
-      eq(teamMembers.userId, context.userId),
-    ))
-    .limit(1);
+  if (context.role === "owner") return locations;
+  const rolePermitted = new Set(parsePermittedLocationIds(member?.roleLocationScopeJson));
+  if (unrestricted) return rolePermitted.size ? locations.filter((location) => rolePermitted.has(location.id)) : locations;
   const permitted = new Set(parsePermittedLocationIds(member?.permittedLocationsJson));
-  return locations.filter((location) => permitted.has(location.id));
+  return locations.filter((location) => permitted.has(location.id) && (!rolePermitted.size || rolePermitted.has(location.id)));
 }
 
 export async function requireAccessibleLocation(context: AccessContext, locationId: string) {
@@ -70,7 +70,6 @@ export async function authorizedLocationScope(context: AccessContext, requestedL
     eq(organizationLocations.status, "active"),
   ));
   const organizationWide = context.role === "owner"
-    || context.role === "admin"
     || ((total?.value ?? 0) > 0 && locations.length === total.value);
   let resolved: ReturnType<typeof resolveAuthorizedLocationScope>;
   try {

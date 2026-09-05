@@ -1,3 +1,4 @@
+import { requireOAuthBrowser } from "../../../../../../server/integrations/oauth-browser";
 import { and, eq, gt, isNull } from "drizzle-orm";
 import { getDb } from "../../../../../../db";
 import {
@@ -30,6 +31,7 @@ export async function GET(request: Request) {
     const providerError = url.searchParams.get("error")?.trim() ?? "";
     const code = url.searchParams.get("code")?.trim() ?? "";
     const state = url.searchParams.get("state")?.trim() ?? "";
+    requireOAuthBrowser(request, "lightspeed-r", state);
     // R-Series authorization codes are opaque and can be substantially longer
     // than a conventional short code. Bound the input without imposing an
     // undocumented provider-specific 512-character limit.

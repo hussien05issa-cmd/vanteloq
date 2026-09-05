@@ -2,7 +2,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { getD1, getDb } from "../../../../../../db";
 import { integrationConnections, integrationSecrets, integrationWebhookEvents } from "../../../../../../db/schema";
 import { scopeExternalRef } from "../../../../../../domain/integration-source";
-import { ApiError, handleApi, jsonResponse } from "../../../../../../server/api";
+import { ApiError, handleApi, jsonResponse, readRequestBytes } from "../../../../../../server/api";
 import { normalizeShopDomain, shopifyProviderFromRequest, shopifySha256, verifyShopifyWebhook } from "../../../../../../server/integrations/shopify-pos";
 import { releaseShopifyStoreIfUnused } from "../../../../../../server/integrations/shopify-store-lock";
 
@@ -18,7 +18,7 @@ export async function POST(request: Request) {
     const provider = shopifyProviderFromRequest(request);
     const declared = Number(request.headers.get("content-length"));
     if (Number.isFinite(declared) && declared > MAXIMUM_WEBHOOK_BYTES) throw new ApiError(413, "SHOPIFY_WEBHOOK_TOO_LARGE", "The Shopify webhook is too large.");
-    const bytes = new Uint8Array(await request.arrayBuffer());
+    const bytes = await readRequestBytes(request, MAXIMUM_WEBHOOK_BYTES, "SHOPIFY_WEBHOOK_TOO_LARGE", "The Shopify webhook is too large.");
     if (bytes.byteLength > MAXIMUM_WEBHOOK_BYTES) throw new ApiError(413, "SHOPIFY_WEBHOOK_TOO_LARGE", "The Shopify webhook is too large.");
     const signature = request.headers.get("x-shopify-hmac-sha256");
     if (!await verifyShopifyWebhook(bytes, signature, provider)) throw new ApiError(401, "SHOPIFY_WEBHOOK_SIGNATURE_INVALID", "The Shopify webhook signature is invalid.");

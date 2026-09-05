@@ -1,16 +1,28 @@
 import { getD1 } from "../../../../../db";
 import { recordAudit } from "../../../../../server/audit";
 import { requireAccess } from "../../../../../server/authorization";
-import { enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameOrigin } from "../../../../../server/api";
+import { ApiError, enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameOrigin } from "../../../../../server/api";
 import { journalInput, requireBookLoQPermission } from "../../../../../server/bookloq";
 import { idempotencyKey } from "../../../../../server/validation";
 import { requirePermission } from "../../../../../server/permissions";
 import { requireAddon } from "../../../../../server/entitlements/engine";
 import { requireOrganizationWideLocationAccess } from "../../../../../server/location-access";
+import { isCalendarDate } from "../../../../../domain/calendar-date";
 
 const writers = ["owner", "admin", "manager", "employee", "read_only"] as const;
 
 type ExistingEntry = { id: string; entryNumber: string; status: string };
+
+async function postAtomicBatch(database: ReturnType<typeof getD1>, statements: D1PreparedStatement[]) {
+  try {
+    await database.batch(statements);
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("ACCOUNTING_PERIOD_UNAVAILABLE")) {
+      throw new ApiError(409, "ACCOUNTING_PERIOD_UNAVAILABLE", "The accounting period changed before posting. Refresh and select an open period.");
+    }
+    throw error;
+  }
+}
 type OriginalLine = {
   accountId: string;
   description: string;
@@ -46,11 +58,15 @@ export async function POST(request: Request) {
       WHERE organization_id = ? AND idempotency_key = ?`).bind(context.organizationId, key).first<ExistingEntry>();
     if (existing) return jsonResponse({ journal: existing, replayed: true });
     const input = journalInput(await readJsonObject(request, 64_000));
+    const settings = await database.prepare("SELECT base_currency baseCurrency FROM bookloq_settings WHERE organization_id = ?")
+      .bind(context.organizationId).first<{ baseCurrency: string }>();
+    const baseCurrency = (settings?.baseCurrency ?? context.organization.currency).toUpperCase();
+    if (input.currency !== baseCurrency) return jsonResponse({ error: { code: "JOURNAL_CURRENCY_UNSUPPORTED", message: "Post journals in the workspace base currency. Foreign-currency posting requires a verified conversion workflow." } }, { status: 400 });
     const period = await database.prepare(`SELECT id, status FROM accounting_periods
       WHERE organization_id = ? AND start_date <= ? AND end_date >= ? ORDER BY start_date DESC LIMIT 1`)
       .bind(context.organizationId, input.entryDate, input.entryDate).first<{ id: string; status: string }>();
     if (!period) return jsonResponse({ error: { code: "ACCOUNTING_PERIOD_REQUIRED", message: "Create an accounting period covering this journal date before posting." } }, { status: 409 });
-    if (period.status === "locked") return jsonResponse({ error: { code: "ACCOUNTING_PERIOD_LOCKED", message: "This accounting period is locked. Post an adjustment in an open period." } }, { status: 409 });
+    if (!["open", "review"].includes(period.status)) return jsonResponse({ error: { code: "ACCOUNTING_PERIOD_LOCKED", message: "This accounting period is locked. Post an adjustment in an unlocked period." } }, { status: 409 });
 
     const requestedIds = [...new Set(input.lines.map((line) => line.accountId))];
     const placeholders = requestedIds.map(() => "?").join(",");
@@ -82,7 +98,7 @@ export async function POST(request: Request) {
           line.debitCents, line.creditCents, line.taxCode, line.taxAmountCents, line.contactId,
           line.locationRef, line.departmentRef, line.projectRef, timestamp));
     });
-    await database.batch(statements);
+    await postAtomicBatch(database, statements);
     await recordAudit({ request, requestId, organizationId: context.organizationId, actorUserId: context.userId,
       action: "journal.posted", resourceType: "journal_entry", resourceId: entryId,
       details: { entryNumber, entryDate: input.entryDate, debitCents: input.totalDebitCents, creditCents: input.totalCreditCents } });
@@ -104,7 +120,7 @@ export async function PATCH(request: Request) {
     if (Object.keys(body).some((field) => !["entryId", "reason", "reversalDate"].includes(field))) {
       return jsonResponse({ error: { code: "UNKNOWN_FIELD", message: "The reversal request contains an unsupported field." } }, { status: 400 });
     }
-    if (typeof body.entryId !== "string" || body.entryId.length > 80 || typeof body.reversalDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(body.reversalDate)) {
+    if (typeof body.entryId !== "string" || body.entryId.length > 80 || !isCalendarDate(body.reversalDate)) {
       return jsonResponse({ error: { code: "INVALID_REVERSAL", message: "Select a posted journal and a valid reversal date." } }, { status: 400 });
     }
     let reason: string;
@@ -121,7 +137,7 @@ export async function PATCH(request: Request) {
     if (existingReversal) return jsonResponse({ error: { code: "JOURNAL_ALREADY_REVERSED", message: "This journal already has a reversal." } }, { status: 409 });
     const period = await database.prepare(`SELECT id, status FROM accounting_periods WHERE organization_id = ? AND start_date <= ? AND end_date >= ? LIMIT 1`)
       .bind(context.organizationId, body.reversalDate, body.reversalDate).first<{ id: string; status: string }>();
-    if (!period || period.status === "locked") return jsonResponse({ error: { code: "REVERSAL_PERIOD_UNAVAILABLE", message: "Post the reversal in an open accounting period." } }, { status: 409 });
+    if (!period || !["open", "review"].includes(period.status)) return jsonResponse({ error: { code: "REVERSAL_PERIOD_UNAVAILABLE", message: "Post the reversal in an unlocked accounting period." } }, { status: 409 });
     const lineResult = await database.prepare(`SELECT account_id accountId, description, debit_cents debitCents,
       credit_cents creditCents, tax_code taxCode, tax_amount_cents taxAmountCents, contact_id contactId,
       location_ref locationRef, department_ref departmentRef, project_ref projectRef
@@ -152,7 +168,7 @@ export async function PATCH(request: Request) {
       .bind(crypto.randomUUID(), context.organizationId, reversalId, index + 1, line.accountId,
         `Reversal: ${line.description}`.slice(0, 300), line.creditCents, line.debitCents, line.taxCode,
         line.taxAmountCents, line.contactId, line.locationRef, line.departmentRef, line.projectRef, timestamp)));
-    await database.batch(statements);
+    await postAtomicBatch(database, statements);
     await recordAudit({ request, requestId, organizationId: context.organizationId, actorUserId: context.userId,
       action: "journal.reversed", resourceType: "journal_entry", resourceId: original.id,
       details: { reversalId, originalEntryNumber: original.entryNumber, reason } });

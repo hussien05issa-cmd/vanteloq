@@ -3,6 +3,7 @@ import { readFile, readdir } from "node:fs/promises";
 import { createServer } from "node:http";
 import test, { describe } from "node:test";
 import { Miniflare } from "miniflare";
+import { registerSupabaseTestServer } from "./helpers/supabase-loopback-transport.mjs";
 import { activateTestSubscription } from "./helpers/subscription-fixture.mjs";
 
 const origin = "https://vanteloq.example";
@@ -52,8 +53,8 @@ function onboardingBody(ownerName, businessName) {
     sourceMode: "csv",
     selectedPos: "",
     legalAccepted: true,
-    termsVersion: "2026-08-24",
-    privacyPolicyVersion: "2026-08-24",
+    termsVersion: "2026-09-05",
+    privacyPolicyVersion: "2026-09-05",
     legalNoticeVersion: "account-creation-v2",
   };
 }
@@ -73,7 +74,7 @@ async function createEnvironment() {
   await new Promise((resolve) => authServer.listen(0, "127.0.0.1", resolve));
   const address = authServer.address();
   assert.ok(address && typeof address !== "string");
-  const supabaseUrl = `http://127.0.0.1:${address.port}`;
+  const supabaseUrl = registerSupabaseTestServer(address.port);
   const miniflare = new Miniflare({
     modules: true,
     script: "export default { fetch() { return new Response('ok') } }",
@@ -492,7 +493,10 @@ test("migrations, tenant isolation and the complete intelligence-to-action flow 
     const limitedBookLoqResponse = await dispatch(worker, environment, "/api/v1/bookloq", financeReader);
     assert.equal(limitedBookLoqResponse.status, 200);
     const limitedBookLoq = (await limitedBookLoqResponse.json()).bookloq;
-    assert.ok(limitedBookLoq.statements.accounts.length > 0);
+    assert.deepEqual(limitedBookLoq.statements.accounts, []);
+    assert.ok(limitedBookLoq.accountCatalog.length > 0);
+    assert.deepEqual(limitedBookLoq.journals, []);
+    assert.deepEqual(limitedBookLoq.budgets, []);
     for (const key of ["banks", "transactions", "reconciliations", "bills", "invoices", "contacts", "audit", "forecasts"]) {
       assert.deepEqual(limitedBookLoq[key], [], key);
     }

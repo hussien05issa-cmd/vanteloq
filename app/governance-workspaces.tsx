@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { FormEvent, type ReactNode, useCallback, useEffect, useState } from "react";
-import { apiFetch, signOut } from "./supabase-browser";
+import { apiFetch, getSupabase, signOut } from "./supabase-browser";
 import { humanizeIdentifier } from "../domain/display-labels";
 
 type Permission = {
@@ -1804,6 +1804,7 @@ type AccountDeletionData = {
 
 function AccountDeletionSettings() {
   const [data, setData] = useState<AccountDeletionData | null>(null);
+  const [verificationCode, setVerificationCode] = useState("");
   const [confirmation, setConfirmation] = useState("");
   const [acknowledgeNoRecovery, setAcknowledgeNoRecovery] = useState(false);
   const [acknowledgeBillingCancellation, setAcknowledgeBillingCancellation] = useState(false);
@@ -1821,10 +1822,18 @@ function AccountDeletionSettings() {
     return () => { active = false; };
   }, []);
   async function remove() {
-    if (!data || busy) return;
+    if (!data || busy || !/^\d{6}$/.test(verificationCode)) return;
     setBusy(true);
     setError("");
     try {
+      const client = await getSupabase();
+      if (!client) throw new Error("Secure verification is temporarily unavailable.");
+      const factors = await client.auth.mfa.listFactors();
+      const factor = factors.data?.totp.find((item) => item.status === "verified");
+      if (factors.error || !factor) throw new Error("A verified authenticator is required. Check your account security settings.");
+      const verified = await client.auth.mfa.challengeAndVerify({ factorId: factor.id, code: verificationCode });
+      setVerificationCode("");
+      if (verified.error) throw new Error("The authenticator code could not be verified. Enter a current six-digit code and try again.");
       const response = await apiFetch("/api/v1/account/deletion", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1853,8 +1862,9 @@ function AccountDeletionSettings() {
           <input autoComplete="off" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} />
         </label>
         <label className="deletion-check"><input type="checkbox" checked={acknowledgeNoRecovery} onChange={(event) => setAcknowledgeNoRecovery(event.target.checked)} /><span>I understand that deleted Vanteloq data and files cannot be recovered.</span></label>
+        <label>Current six-digit authenticator code<input inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} value={verificationCode} onChange={(event) => setVerificationCode(event.target.value.replace(/\D/g, "").slice(0, 6))} /></label>
         {data.scope === "workspace" && <label className="deletion-check"><input type="checkbox" checked={acknowledgeBillingCancellation} onChange={(event) => setAcknowledgeBillingCancellation(event.target.checked)} /><span>I understand that the Stripe subscription will be canceled immediately.</span></label>}
-        <button type="button" className="danger" disabled={!data.available || confirmation !== data.confirmation || !acknowledgeNoRecovery || (data.scope === "workspace" && !acknowledgeBillingCancellation) || busy} onClick={() => void remove()}>{busy ? "Deleting securely…" : data.scope === "workspace" ? "Permanently delete workspace" : "Permanently delete my account"}</button>
+        <button type="button" className="danger" disabled={!data.available || !/^\d{6}$/.test(verificationCode) || confirmation !== data.confirmation || !acknowledgeNoRecovery || (data.scope === "workspace" && !acknowledgeBillingCancellation) || busy} onClick={() => void remove()}>{busy ? "Deleting securely…" : data.scope === "workspace" ? "Permanently delete workspace" : "Permanently delete my account"}</button>
       </div>}
       {data && !data.available && <p className="form-error">Secure deletion is temporarily unavailable. Contact the privacy officer at hussienissa@lexedgeconsulting.com.</p>}
       {error && <p className="form-error">{error}</p>}

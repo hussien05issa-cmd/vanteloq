@@ -3,6 +3,7 @@ import { readFile, readdir } from "node:fs/promises";
 import { createServer } from "node:http";
 import test from "node:test";
 import { Miniflare } from "miniflare";
+import { registerSupabaseTestServer } from "./helpers/supabase-loopback-transport.mjs";
 import { buildThirteenWeekCashFlow } from "../domain/thirteen-week-cash-flow.ts";
 
 const origin = "https://vanteloq.example";
@@ -50,8 +51,8 @@ function onboardingBody(ownerName: string, businessName: string) {
     sourceMode: "csv",
     selectedPos: "",
     legalAccepted: true,
-    termsVersion: "2026-08-24",
-    privacyPolicyVersion: "2026-08-24",
+    termsVersion: "2026-09-05",
+    privacyPolicyVersion: "2026-09-05",
     legalNoticeVersion: "account-creation-v2",
   };
 }
@@ -94,7 +95,7 @@ async function createEnvironment() {
   const environment = {
     DB: database,
     BOOKLOQ_DEMO_ENABLED: "true",
-    SUPABASE_URL: `http://127.0.0.1:${address.port}`,
+    SUPABASE_URL: registerSupabaseTestServer(address.port),
     SUPABASE_PUBLISHABLE_KEY: "test-publishable-key",
     ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) },
   };
@@ -136,6 +137,100 @@ async function grantBookLoQ(database: D1Database, organizationId: string) {
       VALUES (?, ?, 'bookloq', 'active', ?, ?)`).bind(crypto.randomUUID(), organizationId, now, now),
   ]);
 }
+
+test("ledger authorization and period guards preserve legitimate accounting", async () => {
+  const { worker, environment, database, dispose } = await createEnvironment();
+  try {
+    const email = `release-${crypto.randomUUID()}@example.invalid`;
+    const created = await dispatch(worker, environment, "/api/v1/onboarding", { method: "POST", email, body: onboardingBody("Release Owner", "Release Ledger") });
+    assert.equal(created.status, 201, await created.clone().text());
+    const identity = await database.prepare("SELECT u.id userId, m.organization_id organizationId FROM users u JOIN memberships m ON m.user_id=u.id WHERE u.email=?")
+      .bind(email).first<{ userId: string; organizationId: string }>();
+    assert.ok(identity);
+    const org = identity.organizationId;
+    await grantBookLoQ(database, org);
+    const seeded = await dispatch(worker, environment, "/api/v1/bookloq/demo", { method: "POST", email, body: {} });
+    assert.equal(seeded.status, 201, await seeded.clone().text());
+    const read = async () => {
+      const response = await dispatch(worker, environment, "/api/v1/bookloq", { email });
+      assert.equal(response.status, 200, await response.clone().text());
+      return (await response.json()).bookloq;
+    };
+    const owner = await read();
+    assert.ok(owner.statements.accounts.length > 0);
+    assert.ok(owner.journals.length > 0);
+    const location = await database.prepare("SELECT id FROM organization_locations WHERE organization_id=? LIMIT 1").bind(org).first<{ id: string }>();
+    assert.ok(location);
+    const roleId = crypto.randomUUID();
+    const now = Date.now();
+    await database.batch([
+      database.prepare("UPDATE memberships SET role='admin' WHERE organization_id=? AND user_id=?").bind(org, identity.userId),
+      database.prepare("INSERT INTO access_roles (id,organization_id,name,description,color,permissions_json,location_scope_json,archived,created_by_user_id,created_at,updated_at) VALUES (?,?,'Ledger reviewer','','#2255cc',?,'[]',0,?,?,?)")
+        .bind(roleId, org, JSON.stringify(["finance.statements"]), identity.userId, now, now),
+      database.prepare("INSERT INTO team_members (id,organization_id,user_id,role_id,first_name,last_name,email,employee_code,permitted_locations_json,status,created_by_user_id,created_at,updated_at) VALUES (?,?,?,?,'Release','Reviewer',?,'RELEASE',?,'active',?,?,?)")
+        .bind(crypto.randomUUID(), org, identity.userId, roleId, email, JSON.stringify([location.id]), identity.userId, now, now),
+    ]);
+    for (const permission of [[], ["payroll.totals"], ["finance.bank_balances"], ["finance.bank_transactions", "audit.view", "finance.reconcile"]]) {
+      await database.prepare("UPDATE access_roles SET permissions_json=? WHERE id=?").bind(JSON.stringify(["finance.statements", ...permission]), roleId).run();
+      const limited = await read();
+      assert.deepEqual(limited.statements.accounts, []);
+      assert.deepEqual(limited.journals, []);
+      assert.deepEqual(limited.budgets, []);
+      assert.equal(limited.summary.payrollObligationsCents, null);
+      assert.equal(limited.summary.totalExpensesCents, null);
+      assert.ok(limited.accountCatalog.length > 0, "permitted accounting category selection must remain available");
+      assert.ok(limited.accountCatalog.every((account: Record<string, unknown>) => !Object.keys(account).some((key) => /Cents|balance/i.test(key) && key !== "normalBalance")));
+      assert.deepEqual(limited.transactions, []);
+      assert.deepEqual(limited.reconciliations, []);
+      assert.deepEqual(limited.alerts, []);
+      assert.ok(limited.audit.every((event: { detailsJson: string }) => event.detailsJson === "{}"));
+    }
+    const secondLocation = crypto.randomUUID();
+    await database.batch([
+      database.prepare("INSERT INTO organization_locations (id,organization_id,name,country_code,address_line_1,locality,administrative_area,timezone,currency,created_at,updated_at) VALUES (?,?,'Second location','CA','2 Test Street','Edmonton','AB','America/Edmonton','CAD',?,?)").bind(secondLocation, org, now, now),
+      database.prepare("UPDATE access_roles SET permissions_json=?,location_scope_json=? WHERE id=?").bind(JSON.stringify(["dashboard.view", "finance.statements"]), JSON.stringify([location.id]), roleId),
+      database.prepare("UPDATE team_members SET permitted_locations_json=? WHERE organization_id=? AND user_id=?").bind(JSON.stringify([location.id, secondLocation]), org, identity.userId),
+    ]);
+    const scopedLocations = await dispatch(worker, environment, "/api/v1/locations", { email });
+    assert.equal(scopedLocations.status, 200, await scopedLocations.clone().text());
+    assert.deepEqual((await scopedLocations.json()).locations.map((item: { id: string }) => item.id), [location.id], "role scope must intersect member scope");
+    const scopedLedger = await dispatch(worker, environment, "/api/v1/bookloq", { email });
+    assert.equal(scopedLedger.status, 403, "a custom administrator with one location cannot read the organization ledger");
+    await database.prepare("UPDATE team_members SET role_id=NULL WHERE organization_id=? AND user_id=?").bind(org, identity.userId).run();
+    const invitedAdmin = await dispatch(worker, environment, "/api/v1/locations", { email });
+    assert.equal(invitedAdmin.status, 200, await invitedAdmin.clone().text());
+    assert.deepEqual(new Set((await invitedAdmin.json()).locations.map((item: { id: string }) => item.id)), new Set([location.id, secondLocation]), "legacy invited administrators retain their intended location access");
+    await database.prepare("UPDATE memberships SET role='owner' WHERE organization_id=? AND user_id=?").bind(org, identity.userId).run();
+    const restored = await read();
+    assert.equal(restored.statements.accounts.length, owner.statements.accounts.length);
+    const date = new Date().toISOString().slice(0, 10);
+    const accounts = owner.statements.accounts;
+    const body = { entryDate: date, memo: "Verified regression entry", currency: "CAD", lines: [
+      { accountId: accounts[0].id, description: "Debit", debitCents: 12345, creditCents: 0, locationRef: "all" },
+      { accountId: accounts[1].id, description: "Credit", debitCents: 0, creditCents: 12345, locationRef: "all" },
+    ] };
+    const foreign = await dispatch(worker, environment, "/api/v1/bookloq/journals", { method: "POST", email, body: { ...body, currency: "USD" }, idempotencyKey: crypto.randomUUID() });
+    assert.equal(foreign.status, 400);
+    assert.equal((await foreign.json()).error.code, "JOURNAL_CURRENCY_UNSUPPORTED");
+    const key = crypto.randomUUID();
+    const posted = await dispatch(worker, environment, "/api/v1/bookloq/journals", { method: "POST", email, body, idempotencyKey: key });
+    assert.equal(posted.status, 201, await posted.clone().text());
+    const replay = await dispatch(worker, environment, "/api/v1/bookloq/journals", { method: "POST", email, body, idempotencyKey: key });
+    assert.equal((await replay.json()).replayed, true);
+    const period = await database.prepare("SELECT id FROM accounting_periods WHERE organization_id=? AND start_date<=? AND end_date>=?").bind(org, date, date).first<{ id: string }>();
+    assert.ok(period);
+    await database.prepare("UPDATE accounting_periods SET status='locked' WHERE id=?").bind(period.id).run();
+    const locked = await dispatch(worker, environment, "/api/v1/bookloq/journals", { method: "POST", email, body, idempotencyKey: crypto.randomUUID() });
+    assert.equal(locked.status, 409);
+    await assert.rejects(database.prepare("INSERT INTO journal_entries (id,organization_id,entry_number,entry_date,posting_date,period_id,status,source_type,memo,currency,total_debit_cents,total_credit_cents,idempotency_key,prepared_by_user_id,created_at,updated_at) VALUES (?,?,?, ?,?,?,'posted','manual','Direct late write','CAD',100,100,?,?,?,?)")
+      .bind(crypto.randomUUID(), org, `RACE-${crypto.randomUUID()}`, date, date, period.id, crypto.randomUUID(), identity.userId, Math.floor(now / 1000), Math.floor(now / 1000)).run(), /ACCOUNTING_PERIOD_UNAVAILABLE/);
+    assert.equal((await database.prepare("SELECT COUNT(*) count FROM journal_entries WHERE organization_id=? AND memo='Direct late write'").bind(org).first<{ count: number }>())?.count, 0);
+    const unlocked = await dispatch(worker, environment, "/api/v1/bookloq/actions", { method: "POST", email, body: { type: "unlock_period", periodId: period.id, reason: "Review correction against source evidence" } });
+    assert.equal(unlocked.status, 200, await unlocked.clone().text());
+    const correction = await dispatch(worker, environment, "/api/v1/bookloq/journals", { method: "POST", email, body: { ...body, memo: "Correction in reopened review period" }, idempotencyKey: crypto.randomUUID() });
+    assert.equal(correction.status, 201, await correction.clone().text());
+  } finally { await dispose(); }
+});
 
 async function getCashFlow(
   worker: { fetch: (request: Request, environment: unknown, context: unknown) => Promise<Response> },

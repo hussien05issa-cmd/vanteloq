@@ -7,7 +7,7 @@
   },
   "scripts": {
     "install:ci": "bash scripts/install-ci.sh",
-    "test:team-invite": "node --experimental-transform-types --test tests/team-invite-auth.test.ts",
+    "test:team-invite": "node --experimental-transform-types --test tests/team-invite-auth.test.ts tests/team-invitation-security.test.ts && esbuild tests/team-invitation-flow.test.ts --bundle --platform=node --format=esm --outfile=/tmp/vanteloq-team-invitation-test.mjs && node --test /tmp/vanteloq-team-invitation-test.mjs",
     "test:homepage-presentation": "esbuild tests/homepage-presentation.test.ts --bundle --platform=node --format=cjs --outfile=/tmp/vanteloq-homepage-presentation-test.cjs && node --test /tmp/vanteloq-homepage-presentation-test.cjs",
     "test:product-experience": "esbuild tests/product-experience.test.ts --bundle --platform=node --format=cjs --outfile=/tmp/vanteloq-product-experience-test.cjs && node --test /tmp/vanteloq-product-experience-test.cjs",
     "dev": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vite",
@@ -21,7 +21,8 @@
     "test:marketing-connectors": "esbuild tests/marketing-connectors.test.ts --bundle --platform=node --format=esm --outfile=/tmp/vanteloq-marketing-test.mjs && node --test /tmp/vanteloq-marketing-test.mjs && node --experimental-transform-types --test tests/google-business-policy.test.ts tests/local-growth-intelligence.test.ts",
     "test:quickbooks": "esbuild tests/quickbooks.test.ts --bundle --platform=node --format=esm --outfile=/tmp/vanteloq-quickbooks-test.mjs && node --test /tmp/vanteloq-quickbooks-test.mjs",
     "test:decision-contracts": "node --experimental-transform-types --test tests/display-labels.test.ts tests/provider-report-contracts.test.ts tests/purchase-commitments.test.ts tests/thirteen-week-cash-flow.test.ts",
-    "test:security": "node --test tests/security-boundary.test.mjs tests/account-deletion.test.mjs",
+    "test:release-security": "esbuild tests/release-security.test.ts --bundle --platform=node --format=cjs --outfile=/tmp/vanteloq-release-security-test.cjs && node --test /tmp/vanteloq-release-security-test.cjs",
+    "test:security": "npm run test:release-security && node --test tests/security-boundary.test.mjs tests/account-deletion.test.mjs",
     "test:flow": "npm run build && node --test --test-concurrency=1 tests/migrations-incremental.test.mjs tests/onboarding-identity-recovery-flow.test.mjs tests/purchasing-lineage-flow.test.mjs tests/intelligence-flow.test.mjs tests/marketing-resource-selection-flow.test.mjs tests/governance-capacity-flow.test.mjs tests/lightspeed-r-callback-flow.test.mjs tests/lightspeed-x-callback-flow.test.mjs tests/oauth-callback-race.test.mjs tests/stripe-callback-flow.test.mjs && node --experimental-transform-types --test --test-concurrency=1 tests/bookloq-cash-regressions.test.ts",
     "test:seo": "npm run build && node --experimental-strip-types --test tests/seo-content.test.ts && node --test tests/seo-rendered-html.test.mjs",
     "typecheck": "bash scripts/sites-env.sh -- tsc --noEmit",

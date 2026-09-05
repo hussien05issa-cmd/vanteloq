@@ -71,8 +71,11 @@ async function invitationRow(request: Request, identity: TrustedIdentity): Promi
     signal: AbortSignal.timeout(7_500),
   });
   if (!response.ok) throw new ApiError(503, "INVITATIONS_UNAVAILABLE", "Team invitations could not be checked safely.");
-  const rows = await response.json() as InvitationRow[];
-  const row = rows[0];
+  const rows = await response.json() as unknown;
+  if (!Array.isArray(rows) || rows.length > 1 || rows.some(row => !row || typeof row !== "object")) {
+    throw new ApiError(503, "INVITATIONS_UNAVAILABLE", "Team invitations could not be checked safely.");
+  }
+  const row = rows[0] as InvitationRow | undefined;
   if (!row) return null;
   if (
     !UUID_PATTERN.test(row.id)

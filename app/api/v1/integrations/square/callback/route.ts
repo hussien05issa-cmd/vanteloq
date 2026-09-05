@@ -1,3 +1,4 @@
+import { requireOAuthBrowser } from "../../../../../../server/integrations/oauth-browser";
 import { and, eq, gt, isNull } from "drizzle-orm";
 import { getDb } from "../../../../../../db";
 import { integrationConnections, integrationLocationMappings, integrationOAuthStates, integrationSecrets, memberships, organizationLocations, users, workspaces } from "../../../../../../db/schema";
@@ -16,6 +17,7 @@ export async function GET(request: Request) {
     const providerError = url.searchParams.get("error")?.trim() ?? "";
     const code = url.searchParams.get("code")?.trim() ?? "";
     const state = url.searchParams.get("state")?.trim() ?? "";
+    requireOAuthBrowser(request, "square", state);
     if ((!providerError && (!code || code.length > 4096)) || !/^[A-Za-z0-9_-]{43}$/.test(state)) throw new ApiError(400, "SQUARE_CALLBACK_INVALID", "Square returned an incomplete callback. Start the connection again.");
     const now = new Date();
     const stateHash = await squareSha256(state);

@@ -589,7 +589,12 @@ test("paid API access is server-enforced with narrow billing and privacy excepti
     "billing/checkout/route.ts",
     "billing/portal/route.ts",
     "billing/route.ts",
+    "entitlements/route.ts",
   ]);
+  const memberEntitlements = await readFile(new URL("entitlements/route.ts", apiRoot), "utf8");
+  assert.match(memberEntitlements, /requireBillingAccess\(request,/);
+  assert.match(memberEntitlements, /getTenantEntitlements\(context\)/);
+  assert.doesNotMatch(memberEntitlements, /stripeCustomerId|stripeSubscriptionId|paymentMethod/);
   assert.deepEqual(privacyExceptions, [
     "account/deletion/route.ts",
     "advisor/chat/route.ts",

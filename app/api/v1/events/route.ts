@@ -7,7 +7,7 @@ import { enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameO
 import { measureEventImpact } from "../../../../server/intelligence";
 import { businessEventCreateInput } from "../../../../server/validation";
 import { requireOrganizationWideLocationAccess } from "../../../../server/location-access";
-import { requirePermission } from "../../../../server/permissions";
+import { effectivePermissions, requirePermission } from "../../../../server/permissions";
 import { approvedFactSource } from "../../../../server/integrations/trusted-data";
 
 const readers = ["owner", "admin", "manager", "read_only"] as const;
@@ -19,6 +19,7 @@ export async function GET(request: Request) {
     await requirePermission(context, "insights.view");
     await requireOrganizationWideLocationAccess(context);
     await enforceRateLimit("events:read", context.userId, 60, 60);
+    const canReadRevenue = (await effectivePermissions(context)).includes("metrics.revenue");
     const [events, metricRows] = await Promise.all([
       getDb().select().from(businessEvents).where(eq(businessEvents.organizationId, context.organizationId)).orderBy(asc(businessEvents.eventDate)).limit(200),
       getDb().select({
@@ -39,7 +40,9 @@ export async function GET(request: Request) {
         approvedFactSource(dailyBusinessMetrics.organizationId, dailyBusinessMetrics.sourceProvider, dailyBusinessMetrics.sourceConnectionId),
       )).limit(730),
     ]);
-    return jsonResponse({ events: events.map((event) => ({ ...event, measuredImpact: measureEventImpact(metricRows, event.eventDate) })) });
+    return jsonResponse({ events: events.map((event) => ({ ...event, measuredImpact: canReadRevenue
+      ? measureEventImpact(metricRows, event.eventDate)
+      : { measurable: false, reason: "Revenue permission is required to measure sales impact." } })) });
   });
 }
 
