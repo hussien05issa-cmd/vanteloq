@@ -1,332 +1,118 @@
 "use client";
 
-import { useId, useMemo, useState } from "react";
+import { useId, useState } from "react";
+import { chartDomain, chartY, quantityLabel } from "../domain/workspace-presentation";
+import WorkspaceIcon from "./workspace-icon";
 
-type TrendPoint = {
-  date: string;
-  netSalesCents: number;
-  grossProfitCents: number;
-  transactionCount?: number;
-};
-
-type IntradayPoint = {
-  hour: number;
-  label: string;
-  netSalesCents: number;
-  grossProfitCents: number;
-  transactionCount: number;
-};
-
+type TrendPoint = { date: string; netSalesCents: number; grossProfitCents: number | null; transactionCount?: number };
+type IntradayPoint = { hour: number; label: string; netSalesCents: number; grossProfitCents: number | null; transactionCount: number };
 type Tone = "indigo" | "emerald" | "cyan" | "amber" | "rose";
-
+type PlotPoint = { key: string; label: string; shortLabel: string; netSalesCents: number; grossProfitCents: number | null; transactionCount?: number };
 const toneColour: Record<Tone, string> = {
-  indigo: "#5b5bd6",
-  emerald: "#059669",
-  cyan: "#0891b2",
-  amber: "#d97706",
-  rose: "#e11d48",
+  indigo: "#245fce", emerald: "#087f78", cyan: "#087da5", amber: "#a96813", rose: "#b43c55",
 };
-
-function compactMoney(cents: number, currency: string) {
-  return new Intl.NumberFormat("en-CA", {
-    style: "currency",
-    currency,
-    notation: "compact",
-    maximumFractionDigits: 1,
-  }).format(cents / 100);
-}
-
 function fullMoney(cents: number, currency: string) {
+  return new Intl.NumberFormat("en-CA", { style: "currency", currency, minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(cents / 100);
+}
+function axisMoney(cents: number, currency: string) {
   return new Intl.NumberFormat("en-CA", {
-    style: "currency",
-    currency,
-    maximumFractionDigits: 0,
+    style: "currency", currency, notation: Math.abs(cents) >= 100000 ? "compact" : "standard",
+    maximumFractionDigits: Math.abs(cents) < 1000 ? 2 : 1,
   }).format(cents / 100);
 }
-
-function readableDate(value: string) {
-  return new Intl.DateTimeFormat("en-CA", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    timeZone: "UTC",
-  }).format(new Date(`${value}T00:00:00Z`));
+function xAt(index: number, length: number, width: number) {
+  return length === 1 ? width / 2 : index * width / (length - 1);
+}
+function linePath(values: (number | null)[], width: number, height: number, domain: ReturnType<typeof chartDomain>) {
+  let connected = false;
+  return values.map((value, index) => {
+    if (value == null || !Number.isFinite(value)) { connected = false; return ""; }
+    const command = connected ? "L" : "M";
+    connected = true;
+    return `${command}${xAt(index, values.length, width).toFixed(2)},${chartY(value, height, domain).toFixed(2)}`;
+  }).join(" ");
+}
+export function MetricSparkline({ values, tone }: { values: number[]; tone: Tone }) {
+  if (!values.length || !values.some(Number.isFinite)) return null;
+  return <svg className="metric-sparkline" viewBox="0 0 112 36" aria-hidden="true"><path d={linePath(values, 112, 30, chartDomain(values))} transform="translate(0 3)" fill="none" stroke={toneColour[tone]} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>;
+}
+function ChartEmpty({ intraday = false }: { intraday?: boolean }) {
+  return <div className="workspace-chart-empty">
+    <span className="workspace-empty-mark" aria-hidden="true"><WorkspaceIcon name="Reports"/></span>
+    <strong>{intraday ? "No completed sales received today" : "No verified daily records in this period"}</strong>
+    <p>{intraday ? "Hourly activity will appear after your source returns transactions with verified timestamps." : "Choose a period containing approved records, or review your data connection."}</p>
+  </div>;
 }
 
-function tickIndexes(length: number, maximum = 7) {
-  if (length <= maximum) return new Set(Array.from({ length }, (_, index) => index));
-  return new Set(Array.from({ length: maximum }, (_, index) => Math.round(index * (length - 1) / (maximum - 1))));
-}
-
-function points(values: number[], width: number, height: number, maximum: number) {
-  if (!values.length) return "";
-  const step = values.length === 1 ? width : width / (values.length - 1);
-  return values
-    .map((value, index) => {
-      const x = index * step;
-      const y = height - (value / maximum) * height;
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
-    })
-    .join(" ");
-}
-
-export function MetricSparkline({
-  values,
-  tone,
-}: {
-  values: number[];
-  tone: Tone;
+/** The plot, record selector and data table share the same unmodified source values. */
+function FinancialSeriesChart({ data, currency, title, intraday = false }: {
+  data: PlotPoint[]; currency: string; title: string; intraday?: boolean;
 }) {
-  const maximum = Math.max(...values, 1);
-  const line = points(values, 112, 30, maximum);
-  const fill = line ? `0,30 ${line} 112,30` : "";
-  return (
-    <svg className="metric-sparkline" viewBox="0 0 112 32" aria-hidden="true">
-      <polygon points={fill} fill={`${toneColour[tone]}18`} />
-      <polyline
-        points={line}
-        fill="none"
-        stroke={toneColour[tone]}
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-export function BusinessTrendChart({
-  data,
-  currency,
-}: {
-  data: TrendPoint[];
-  currency: string;
-}) {
-  const gradientId = useId().replaceAll(":", "");
-  const [activeIndex, setActiveIndex] = useState<number | null>(null);
-  const width = 720;
-  const height = 228;
-  const plotLeft = 54;
-  const plotRight = 16;
-  const plotTop = 14;
-  const plotBottom = 34;
-  const chartWidth = width - plotLeft - plotRight;
-  const chartHeight = height - plotTop - plotBottom;
-  const maximum = Math.max(
-    ...data.flatMap((point) => [point.netSalesCents, point.grossProfitCents]),
-    1,
-  );
-  const sales = points(
-    data.map((point) => point.netSalesCents),
-    chartWidth,
-    chartHeight,
-    maximum,
-  );
-  const profit = points(
-    data.map((point) => point.grossProfitCents),
-    chartWidth,
-    chartHeight,
-    maximum,
-  );
-  const salesArea = sales
-    ? `0,${chartHeight} ${sales} ${chartWidth},${chartHeight}`
-    : "";
-  const yTicks = [1, 0.75, 0.5, 0.25, 0];
-  const labelIndexes = useMemo(() => tickIndexes(data.length), [data.length]);
-  const active = activeIndex === null ? null : data[activeIndex];
-  const activeX = activeIndex === null || data.length <= 1 ? 0 : (activeIndex / (data.length - 1)) * chartWidth;
-  const activeSalesY = active ? chartHeight - (Math.max(0, active.netSalesCents) / maximum) * chartHeight : 0;
-  const previous = activeIndex !== null && activeIndex > 0 ? data[activeIndex - 1] : null;
-  const change = active && previous && previous.netSalesCents
-    ? (active.netSalesCents - previous.netSalesCents) / Math.abs(previous.netSalesCents)
-    : null;
-
-  return (
-    <div className="business-trend interactive-chart">
-      <div className="chart-legend" aria-hidden="true">
-        <span><i className="legend-sales" />Net sales</span>
-        <span><i className="legend-profit" />Gross profit</span>
-      </div>
-      <svg
-        viewBox={`0 0 ${width} ${height}`}
-        role="img"
-        aria-label="Net sales and gross profit by day"
-      >
-        <defs>
-          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" stopColor="#2563eb" stopOpacity="0.24" />
-            <stop offset="1" stopColor="#2563eb" stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        {yTicks.map((tick) => {
-          const y = plotTop + chartHeight * (1 - tick);
-          return (
-            <g key={tick}>
-              <line x1={plotLeft} x2={width - plotRight} y1={y} y2={y} className="trend-gridline" />
-              <text x={plotLeft - 10} y={y + 4} textAnchor="end" className="trend-axis-label">
-                {compactMoney(maximum * tick, currency)}
-              </text>
-            </g>
-          );
+  const id = useId().replaceAll(":", "");
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const selectedIndex = Math.max(0, selectedKey == null ? data.length - 1 : data.findIndex((point) => point.key === selectedKey));
+  const active = data[selectedIndex];
+  if (!active) return <ChartEmpty intraday={intraday}/>;
+  const plotWidth = 636, plotHeight = 184, left = 66, top = 16;
+  const domain = chartDomain(data.flatMap((point) => [point.netSalesCents, ...(point.grossProfitCents == null ? [] : [point.grossProfitCents])]));
+  const salesPath = linePath(data.map((point) => point.netSalesCents), plotWidth, plotHeight, domain);
+  const profitPath = linePath(data.map((point) => point.grossProfitCents), plotWidth, plotHeight, domain);
+  const zeroY = chartY(0, plotHeight, domain);
+  const firstX = xAt(0, data.length, plotWidth), lastX = xAt(data.length - 1, data.length, plotWidth);
+  const area = `${salesPath} L${lastX},${zeroY} L${firstX},${zeroY} Z`;
+  const activeX = xAt(selectedIndex, data.length, plotWidth);
+  const labels = new Set(Array.from({ length: Math.min(6, data.length) }, (_, index) => Math.round(index * (data.length - 1) / Math.max(1, Math.min(6, data.length) - 1))));
+  const profitAvailable = data.some((point) => point.grossProfitCents != null);
+  return <div className="workspace-series-chart">
+    <div className="chart-legend"><span><i className="legend-sales" aria-hidden="true"/>Net sales</span><span><i className="legend-profit" aria-hidden="true"/>Gross profit{!profitAvailable && " unavailable"}</span></div>
+    <div className="workspace-chart-plot">
+      <svg viewBox="0 0 720 238" role="img" aria-labelledby={`${id}-title ${id}-description`}>
+        <title id={`${id}-title`}>{title}</title>
+        <desc id={`${id}-description`}>Negative values are shown below zero. Use the record selector or expand the data table for exact amounts.</desc>
+        <defs><linearGradient id={id} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#245fce" stopOpacity=".14"/><stop offset="1" stopColor="#245fce" stopOpacity=".015"/></linearGradient></defs>
+        {domain.ticks.map((value, index) => {
+          const y = top + chartY(value, plotHeight, domain);
+          return <g key={index}><line className="trend-gridline" x1={left} x2={left + plotWidth} y1={y} y2={y}/><text className="trend-axis-label" x={left - 12} y={y + 4} textAnchor="end">{axisMoney(value, currency)}</text></g>;
         })}
-        <g transform={`translate(${plotLeft} ${plotTop})`}>
-          <polygon points={salesArea} fill={`url(#${gradientId})`} />
-          <polyline points={sales} className="trend-sales-line" />
-          <polyline points={profit} className="trend-profit-line" />
-          {active && (
-            <g aria-hidden="true" className="chart-active-marker">
-              <line x1={activeX} x2={activeX} y1={0} y2={chartHeight} />
-              <circle cx={activeX} cy={activeSalesY} r="4.5" className="active-sales-point" />
-              <circle cx={activeX} cy={chartHeight - (Math.max(0, active.grossProfitCents) / maximum) * chartHeight} r="4" className="active-profit-point" />
-            </g>
-          )}
+        <g transform={`translate(${left} ${top})`}>
+          <line className="chart-zero-line" x1="0" x2={plotWidth} y1={zeroY} y2={zeroY}/>
+          {data.length > 1 && <path d={area} fill={`url(#${id})`}/>}
+          <path d={salesPath} className="trend-sales-line"/><path d={profitPath} className="trend-profit-line"/>
+          <g className="chart-active-marker" aria-hidden="true"><line x1={activeX} x2={activeX} y1="0" y2={plotHeight}/><circle cx={activeX} cy={chartY(active.netSalesCents, plotHeight, domain)} r="4.5" className="active-sales-point"/>{active.grossProfitCents != null && <circle cx={activeX} cy={chartY(active.grossProfitCents, plotHeight, domain)} r="4" className="active-profit-point"/>}</g>
           {data.map((point, index) => {
-            const x = data.length === 1 ? 0 : (index / (data.length - 1)) * chartWidth;
-            return (
-              <g key={point.date}>
-                {labelIndexes.has(index) && (
-                  <text x={x} y={chartHeight + 24} textAnchor={index === 0 ? "start" : index === data.length - 1 ? "end" : "middle"} className="trend-axis-label">
-                    {new Intl.DateTimeFormat("en-CA", { month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(`${point.date}T00:00:00Z`))}
-                  </text>
-                )}
-                <rect
-                  className="chart-hit-zone"
-                  x={Math.max(0, x - chartWidth / Math.max(data.length, 1) / 2)}
-                  y={0}
-                  width={Math.max(12, chartWidth / Math.max(data.length, 1))}
-                  height={chartHeight}
-                  tabIndex={0}
-                  role="button"
-                  aria-label={`${readableDate(point.date)}. Net sales ${fullMoney(point.netSalesCents, currency)}. Gross profit ${fullMoney(point.grossProfitCents, currency)}${point.transactionCount == null ? "" : `. ${point.transactionCount} transactions`}.`}
-                  onFocus={() => setActiveIndex(index)}
-                  onBlur={() => setActiveIndex(null)}
-                  onMouseEnter={() => setActiveIndex(index)}
-                  onMouseLeave={() => setActiveIndex(null)}
-                />
-              </g>
-            );
+            const x = xAt(index, data.length, plotWidth);
+            const zone = plotWidth / Math.max(1, data.length - 1);
+            return <g key={point.key}>
+              {labels.has(index) && <text className="trend-axis-label" x={x} y={plotHeight + 25} textAnchor={index === 0 ? "start" : index === data.length - 1 ? "end" : "middle"}>{point.shortLabel}</text>}
+              <rect className="chart-hit-zone" x={Math.max(0, x - zone / 2)} y="0" width={Math.min(zone, plotWidth - Math.max(0, x - zone / 2))} height={plotHeight} onPointerEnter={() => setSelectedKey(point.key)} onClick={() => setSelectedKey(point.key)}/>
+            </g>;
           })}
         </g>
       </svg>
-      {active && (
-        <div className="chart-tooltip" role="status" style={{ left: `${Math.min(86, Math.max(14, ((plotLeft + activeX) / width) * 100))}%`, top: `${Math.max(8, ((plotTop + activeSalesY) / height) * 100 - 8)}%` }}>
-          <strong>{readableDate(active.date)}</strong>
-          <span><i className="legend-sales" />Net sales <b>{fullMoney(active.netSalesCents, currency)}</b></span>
-          <span><i className="legend-profit" />Gross profit <b>{fullMoney(active.grossProfitCents, currency)}</b></span>
-          <small>{active.netSalesCents ? `${new Intl.NumberFormat("en-CA", { style: "percent", maximumFractionDigits: 1 }).format(active.grossProfitCents / active.netSalesCents)} margin` : "No sales recorded"}{active.transactionCount == null ? "" : ` · ${active.transactionCount} transactions`}{change === null ? "" : ` · ${new Intl.NumberFormat("en-CA", { style: "percent", maximumFractionDigits: 1, signDisplay: "exceptZero" }).format(change)} vs prior day`}</small>
-        </div>
-      )}
     </div>
-  );
+    <div className="workspace-chart-readout">
+      <label htmlFor={`${id}-record`}>Inspect record<select id={`${id}-record`} value={active.key} onChange={(event) => setSelectedKey(event.target.value)}>{data.map((point) => <option key={point.key} value={point.key}>{point.label}</option>)}</select></label>
+      <dl aria-live="polite" aria-atomic="true"><div><dt>Net sales</dt><dd>{fullMoney(active.netSalesCents, currency)}</dd></div><div><dt>Gross profit</dt><dd>{active.grossProfitCents == null ? "Not available" : fullMoney(active.grossProfitCents, currency)}</dd></div>{active.transactionCount != null && <div><dt>Transactions</dt><dd>{active.transactionCount.toLocaleString("en-CA")}</dd></div>}</dl>
+    </div>
+    <details className="workspace-chart-data"><summary>View chart data <span>{quantityLabel(data.length, "record")}</span></summary><div className="workspace-table-scroll">
+      <table><caption>{title}. Amounts in {currency}.</caption><thead><tr><th scope="col">{intraday ? "Time" : "Date"}</th><th scope="col">Net sales</th><th scope="col">Gross profit</th><th scope="col">Transactions</th></tr></thead><tbody>{data.map((point) => <tr key={point.key}><th scope="row">{point.label}</th><td>{fullMoney(point.netSalesCents, currency)}</td><td>{point.grossProfitCents == null ? "Not available" : fullMoney(point.grossProfitCents, currency)}</td><td>{point.transactionCount ?? "Not supplied"}</td></tr>)}</tbody></table>
+    </div></details>
+  </div>;
 }
-
-export function IntradaySalesChart({
-  data,
-  currency,
-}: {
-  data: IntradayPoint[];
-  currency: string;
-}) {
-  const gradientId = useId().replaceAll(":", "");
-  const [activeIndex, setActiveIndex] = useState<number | null>(null);
-  const width = 760;
-  const height = 250;
-  const plotLeft = 60;
-  const plotRight = 18;
-  const plotTop = 16;
-  const plotBottom = 36;
-  const chartWidth = width - plotLeft - plotRight;
-  const chartHeight = height - plotTop - plotBottom;
-  const values = data.map((point) => Math.max(0, point.netSalesCents));
-  const maximum = Math.max(...values, 1);
-  const line = points(values, chartWidth, chartHeight, maximum);
-  const profitLine = points(data.map((point) => Math.max(0, point.grossProfitCents)), chartWidth, chartHeight, maximum);
-  const area = line ? `0,${chartHeight} ${line} ${chartWidth},${chartHeight}` : "";
-  const yTicks = [1, 0.5, 0];
-  const labelHours = new Set([0, 6, 12, 18, 23]);
-  const total = values.reduce((sum, value) => sum + value, 0);
-  const active = activeIndex === null ? null : data[activeIndex];
-  const activeX = activeIndex === null || data.length <= 1 ? 0 : (activeIndex / (data.length - 1)) * chartWidth;
-  const activeY = active ? chartHeight - (Math.max(0, active.netSalesCents) / maximum) * chartHeight : 0;
-
-  if (total === 0) {
-    return (
-      <div className="intraday-empty" role="img" aria-label="No completed sales have been received for today">
-        <div className="intraday-empty-grid" aria-hidden="true"><i/><i/><i/><i/></div>
-        <span><b>No completed sales received today</b><small>The graph will populate when the connected commerce source returns transactions with verified timestamps.</small></span>
-      </div>
-    );
-  }
-
-  return (
-    <div className="intraday-sales-chart interactive-chart">
-      <div className="chart-legend" aria-hidden="true"><span><i className="legend-sales" />Net sales</span><span><i className="legend-profit" />Gross profit</span></div>
-      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Today&apos;s net sales by hour">
-        <title>Today&apos;s net sales by hour</title>
-        <desc>{`${compactMoney(total, currency)} in net sales across ${data.reduce((sum, point) => sum + point.transactionCount, 0)} completed transactions.`}</desc>
-        <defs>
-          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" stopColor="#176ac3" stopOpacity="0.28" />
-            <stop offset="1" stopColor="#176ac3" stopOpacity="0.02" />
-          </linearGradient>
-        </defs>
-        {yTicks.map((tick) => {
-          const y = plotTop + chartHeight * (1 - tick);
-          return (
-            <g key={tick}>
-              <line x1={plotLeft} x2={width - plotRight} y1={y} y2={y} className="trend-gridline" />
-              <text x={plotLeft - 11} y={y + 4} textAnchor="end" className="trend-axis-label">
-                {compactMoney(maximum * tick, currency)}
-              </text>
-            </g>
-          );
-        })}
-        <g transform={`translate(${plotLeft} ${plotTop})`}>
-          <polygon points={area} fill={`url(#${gradientId})`} />
-          <polyline points={line} className="intraday-sales-line" />
-          <polyline points={profitLine} className="intraday-profit-line" />
-          {active && <g aria-hidden="true" className="chart-active-marker"><line x1={activeX} x2={activeX} y1={0} y2={chartHeight} /><circle cx={activeX} cy={activeY} r="4.5" className="active-sales-point" /><circle cx={activeX} cy={chartHeight - (Math.max(0, active.grossProfitCents) / maximum) * chartHeight} r="4" className="active-profit-point" /></g>}
-          {data.map((point, index) => {
-            const x = data.length === 1 ? 0 : (index / (data.length - 1)) * chartWidth;
-            const y = chartHeight - (Math.max(0, point.netSalesCents) / maximum) * chartHeight;
-            return (
-              <g key={point.hour}>
-                {point.netSalesCents > 0 && <circle cx={x} cy={y} r="3.5" className="intraday-sales-point" />}
-                {labelHours.has(point.hour) && (
-                  <text x={x} y={chartHeight + 25} textAnchor={point.hour === 0 ? "start" : point.hour === 23 ? "end" : "middle"} className="trend-axis-label">
-                    {point.label}
-                  </text>
-                )}
-                <rect
-                  className="chart-hit-zone"
-                  x={Math.max(0, x - chartWidth / 48)}
-                  y={0}
-                  width={Math.max(14, chartWidth / 24)}
-                  height={chartHeight}
-                  tabIndex={0}
-                  role="button"
-                  aria-label={`${point.label}. Net sales ${fullMoney(point.netSalesCents, currency)}. Gross profit ${fullMoney(point.grossProfitCents, currency)}. ${point.transactionCount} transactions.`}
-                  onFocus={() => setActiveIndex(index)}
-                  onBlur={() => setActiveIndex(null)}
-                  onMouseEnter={() => setActiveIndex(index)}
-                  onMouseLeave={() => setActiveIndex(null)}
-                />
-              </g>
-            );
-          })}
-        </g>
-      </svg>
-      {active && (
-        <div className="chart-tooltip" role="status" style={{ left: `${Math.min(86, Math.max(14, ((plotLeft + activeX) / width) * 100))}%`, top: `${Math.max(12, ((plotTop + activeY) / height) * 100 - 8)}%` }}>
-          <strong>{active.label}</strong>
-          <span><i className="legend-sales" />Net sales <b>{fullMoney(active.netSalesCents, currency)}</b></span>
-          <span><i className="legend-profit" />Gross profit <b>{fullMoney(active.grossProfitCents, currency)}</b></span>
-          <small>{active.transactionCount} completed transaction{active.transactionCount === 1 ? "" : "s"}</small>
-        </div>
-      )}
-    </div>
-  );
+export function BusinessTrendChart({ data, currency }: { data: TrendPoint[]; currency: string }) {
+  const points = data.filter((point) => Number.isFinite(point.netSalesCents) && !Number.isNaN(Date.parse(`${point.date}T00:00:00Z`))).map((point) => ({
+    ...point, grossProfitCents: point.grossProfitCents != null && Number.isFinite(point.grossProfitCents) ? point.grossProfitCents : null, key: point.date,
+    label: new Intl.DateTimeFormat("en-CA", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }).format(new Date(`${point.date}T00:00:00Z`)),
+    shortLabel: new Intl.DateTimeFormat("en-CA", { month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(`${point.date}T00:00:00Z`)),
+  }));
+  return <FinancialSeriesChart data={points} currency={currency} title="Daily net sales and gross profit"/>;
+}
+export function IntradaySalesChart({ data, currency }: { data: IntradayPoint[]; currency: string }) {
+  const points = data.filter((point) => Number.isFinite(point.netSalesCents)).map((point) => ({
+    ...point, grossProfitCents: point.grossProfitCents != null && Number.isFinite(point.grossProfitCents) ? point.grossProfitCents : null, key: String(point.hour), shortLabel: point.label,
+  }));
+  if (!points.some((point) => point.transactionCount > 0 || point.netSalesCents !== 0 || (point.grossProfitCents ?? 0) !== 0)) return <ChartEmpty intraday/>;
+  return <FinancialSeriesChart data={points} currency={currency} title="Today's net sales and gross profit by hour" intraday/>;
 }
 
 export function CashPositionRing({

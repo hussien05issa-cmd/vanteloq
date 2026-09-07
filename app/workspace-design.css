@@ -1,0 +1,388 @@
+/*
+ * Authenticated workspace presentation.
+ * Scoped to operating-shell: marketing pages, authentication, consent and
+ * the separate private console retain their existing styles and behaviour.
+ */
+.operating-shell {
+  --ws-ink: #172b43;
+  --ws-muted: #53657b;
+  --ws-line: #dce4ee;
+  --ws-blue: #245fce;
+  --ws-teal: #087f78;
+  --ws-canvas: #f4f6fa;
+  --font-product: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-geist-sans: var(--font-product);
+  --font-geist-mono: var(--font-product);
+  font-family: var(--font-product);
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--ws-ink);
+  background: var(--ws-canvas);
+  grid-template-columns: 248px minmax(0, 1fr);
+  font-variant-numeric: tabular-nums;
+}
+.operating-shell *, .operating-shell *::before, .operating-shell *::after { box-sizing: border-box; }
+.operating-shell :is(button, input, select, textarea) { font-family: inherit; font-size: 14px !important; }
+.operating-shell :is(button, a, input, select, textarea, summary):focus-visible {
+  outline: 3px solid #4b8ef0 !important;
+  outline-offset: 3px;
+}
+.operating-shell :is(button, input:not([type="checkbox"]):not([type="radio"]), select) { min-height: 40px; }
+.operating-shell :is(input, select, textarea) { max-width: 100%; }
+.operating-shell :is(input[type="checkbox"], input[type="radio"]) { accent-color: var(--ws-blue); flex-shrink: 0; }
+.operating-shell button { transition: background-color .15s, border-color .15s, box-shadow .15s; }
+.operating-shell button:disabled { cursor: not-allowed; }
+.operating-shell .main-panel { min-width: 0; }
+.operating-shell .content { padding: 28px clamp(18px, 2.4vw, 36px) 48px; max-width: 1760px; margin-inline: auto; }
+.operating-shell :is(h1, h2, h3, h4, p) { overflow-wrap: break-word; }
+.operating-shell h1 { font-size: 26px !important; font-weight: 650; line-height: 1.2; letter-spacing: -.035em; }
+.operating-shell h2 { font-size: clamp(23px, 2.1vw, 30px) !important; font-weight: 650; line-height: 1.25; letter-spacing: -.035em; }
+.operating-shell h3 { font-size: 18px !important; font-weight: 650; line-height: 1.35; letter-spacing: -.02em; }
+.operating-shell h4 { font-size: 15px !important; font-weight: 650; line-height: 1.4; }
+.operating-shell :is(p, label, dt, dd) { font-size: 14px !important; line-height: 1.55; }
+.operating-shell :is(small, time, summary) { font-size: 12px !important; line-height: 1.5; }
+.operating-shell :is(b, strong) { font-size: inherit; }
+.operating-shell :is(.eyebrow, .card-kicker, .page-intro > div > p, .section-heading > p) {
+  color: var(--ws-blue); font-size: 11px !important; line-height: 1.5; font-weight: 750; letter-spacing: .12em;
+}
+.operating-shell :is(.card, .dense-panel, .bookloq-card, .integration-card) {
+  border: 1px solid var(--ws-line); border-radius: 12px;
+  box-shadow: 0 2px 5px #172b4304; overflow-wrap: break-word;
+}
+.operating-shell :is(.card-head, .card > header, .bookloq-card-head) { gap: 16px; flex-wrap: wrap; }
+.operating-shell :is(.primary, .bookloq-primary) { box-shadow: none; font-weight: 650; border-radius: 8px; }
+.operating-shell .primary { background: var(--ws-blue); border-color: var(--ws-blue); }
+.operating-shell .secondary { border-radius: 8px; }
+.operating-shell .page-intro { gap: 20px; margin-bottom: 24px; }
+.operating-shell .page-intro > div { min-width: 0; max-width: 850px; }
+
+.operating-shell .generic-row .numeric-cell { text-align: right; }
+/* Persistent navigation: quiet colour, recognizable icons, full-size labels. */
+.operating-shell .workspace-icon { width: 19px; height: 19px; flex: 0 0 19px; vertical-align: middle; }
+.operating-shell .sidebar { width: 248px; background: #0d2037; border-color: #20354e; padding: 18px 12px 14px; box-shadow: none; }
+.operating-shell .brand { gap: 10px; margin-bottom: 10px; padding: 0 8px 12px; }
+.operating-shell .brand-name { font-size: 18px !important; font-weight: 700; }
+.operating-shell .brand-name small { font-size: 10px !important; color: #a7b8cb; letter-spacing: .08em; }
+.operating-shell .workspace-switcher {
+  background: #172e49; border-color: #2a415d; border-radius: 10px;
+  padding: 11px !important; gap: 6px 10px !important;
+  grid-template-columns: 32px minmax(0, 1fr) !important;
+}
+.operating-shell .workspace-switcher .workspace-avatar { width: 32px; height: 32px; font-size: 12px !important; background: #2c609b; }
+.operating-shell .workspace-switcher > span:nth-child(2) b { display: block; font-size: 12px !important; line-height: 1.5 !important; }
+.operating-shell .workspace-switcher > span:nth-child(2) small { display: block; color: #b2c2d3; font-size: 11px !important; line-height: 1.5 !important; }
+.operating-shell .workspace-switcher .location-switcher select {
+  min-height: 34px; height: 34px !important; font-size: 11px !important;
+  background: #112840 !important; border-color: #3a516b !important; border-radius: 6px;
+}
+.operating-shell .subscription-summary { flex-wrap: wrap; gap: 4px; margin: 0 7px 20px; }
+.operating-shell .subscription-summary :is(span, small) { color: #b8cadc; font-size: 11px !important; }
+.operating-shell .nav-group { margin-bottom: 22px; }
+.operating-shell .nav-group > p { font-size: 10px !important; color: #93abc5; letter-spacing: .1em; margin: 0 10px 8px; }
+.operating-shell .nav-item { gap: 11px; min-height: 42px; padding: 9px 11px; border-radius: 8px; color: #c5d2e3; font-weight: 500; }
+.operating-shell .nav-item .nav-label { font-size: 13px !important; line-height: 1.4; text-align: left; }
+.operating-shell .nav-item > .workspace-icon { color: #91abc8; width: 18px; height: 18px; flex-basis: 18px; }
+.operating-shell .nav-item:hover { background: #1b334f; }
+.operating-shell .nav-item.active { background: #244465; border-color: #365d87; color: #fff; }
+.operating-shell .nav-item.active > .workspace-icon { color: #bed8ff; }
+.operating-shell .nav-item.active::before { content: none; }
+.operating-shell .side-bottom { padding-top: 10px; margin-top: 8px; }
+.operating-shell .profile { gap: 9px; padding-top: 14px; }
+.operating-shell .profile b { font-size: 12px; }
+.operating-shell .profile small { font-size: 11px !important; color: #b1c1d4; }
+.operating-shell .profile-signout { font-size: 12px !important; min-height: 36px; padding-inline: 6px; }
+.operating-shell .bookloq-nav-lockup { max-width: 134px; }
+.operating-shell .topbar { min-height: 84px; height: auto; padding: 17px clamp(18px, 2.4vw, 36px); gap: 18px; background: #fff; border-bottom: 1px solid var(--ws-line); box-shadow: none; }
+.operating-shell .topbar::after, .operating-shell .topbar-title::before { content: none; }
+.operating-shell .topbar-title { padding-left: 0; min-width: 0; }
+.operating-shell .topbar .eyebrow { font-size: 10px !important; color: #5b7089; letter-spacing: .1em; margin-bottom: 4px; }
+.operating-shell .top-actions { gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.operating-shell .command-trigger { display: flex; align-items: center; gap: 9px; min-height: 40px; background: #f7f9fc; border: 1px solid var(--ws-line); border-radius: 8px; padding: 8px 12px; box-shadow: none; }
+.operating-shell .command-trigger span { font-size: 12px !important; }
+.operating-shell .command-trigger kbd { margin-left: 16px; }
+.operating-shell .source-pill { background: #f1f5fa; color: #526780; border: 1px solid var(--ws-line); border-radius: 7px; font-size: 11px !important; box-shadow: none; }
+.operating-shell .notification { border: 1px solid var(--ws-line); background: #fff; display: inline-flex; align-items: center; gap: 7px; border-radius: 8px; }
+.operating-shell .notification span { font-size: 12px !important; }
+
+/* Evidence and financial summaries: identical number alignment and hierarchy. */
+.operating-shell :is(.today-metric-grid, .commerce-intelligence-kpis, .commerce-summary-strip) { gap: 14px; }
+.operating-shell .today-metric-grid { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; margin-bottom: 22px; }
+.operating-shell .metric-card { animation: none; min-width: 0; min-height: 164px; padding: 20px; border: 1px solid var(--ws-line); border-radius: 12px; background: #fff; box-shadow: 0 2px 5px #172b4304; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.operating-shell .metric-card > p { font-size: 12px !important; color: #53657b; margin: 0; }
+.operating-shell .metric-card > small { font-size: 11px !important; color: #63748a; margin-top: auto; }
+.operating-shell .metric-card > h3 { display: block; width: 100%; font-size: clamp(24px, 2.2vw, 34px) !important; font-family: var(--font-product); font-weight: 650; line-height: 1.15; letter-spacing: -.035em; color: var(--ws-ink); }
+.operating-shell .metric-card > .metric-context { display: block; width: 100%; color: var(--ws-muted); font-size: 12px !important; line-height: 1.5; }
+.operating-shell .metric-card > .metric-context.positive { color: #067565; }
+.operating-shell .metric-card > .metric-context.negative { color: #ad374a; }
+.operating-shell .metric-card.metric-unavailable > h3.metric-unavailable-value { font-size: 23px !important; line-height: 1.25; font-weight: 550; color: #4a6378; }
+.operating-shell .metric-card > h3 { margin: 0; }
+.operating-shell .metric-card .metric-evidence { margin-top: auto; color: #63748a; font-size: 11px !important; line-height: 1.5; }
+.operating-shell .metric-sparkline { height: 32px; width: 100px; align-self: flex-end; margin-top: 4px; }
+.operating-shell :is(.live-sales-heading, .workspace-titlebar) { gap: 18px; flex-wrap: wrap; margin-bottom: 20px; }
+.operating-shell :is(.commerce-stat, .commerce-summary-strip > article) { min-height: 130px; min-width: 0; padding: 18px; border-radius: 10px; }
+.operating-shell .commerce-stat > strong { font-family: var(--font-product); font-size: 27px !important; font-weight: 650; line-height: 1.25; letter-spacing: -.03em; }
+.operating-shell .commerce-stat > span { font-size: 12px !important; color: var(--ws-muted); }
+.operating-shell :is(.sales-comparison-grid, .brief-numbers) b { font-size: 22px; }
+.operating-shell .sales-comparison-grid > div { padding: 16px; }
+.operating-shell :is(.payment-breakdown, .forecast-bars) { font-size: 13px; }
+.operating-shell .chart-foot { color: var(--ws-muted); padding: 14px 20px; border-top: 1px solid var(--ws-line); }
+
+/* Charts: source values, deliberate gridlines, touch and keyboard inspection. */
+.operating-shell .workspace-series-chart { min-width: 0; padding: 18px 20px 0; }
+.operating-shell .chart-legend { justify-content: flex-start; display: flex; flex-wrap: wrap; gap: 20px; margin-bottom: 12px; }
+.operating-shell .chart-legend > span { display: inline-flex; align-items: center; gap: 7px; color: var(--ws-muted); font-size: 12px !important; }
+.operating-shell .chart-legend i { width: 18px; height: 3px; border-radius: 2px; display: inline-block; }
+.operating-shell .legend-sales { background: var(--ws-blue); }
+.operating-shell .legend-profit { background: var(--ws-teal); }
+.operating-shell .workspace-chart-plot { overflow-x: auto; scrollbar-width: thin; }
+.operating-shell .workspace-chart-plot > svg { display: block; width: 100%; min-width: 480px; overflow: visible; }
+.operating-shell .trend-gridline { stroke: #e5ebf3; stroke-width: 1; stroke-dasharray: 3 5; }
+.operating-shell .chart-zero-line { stroke: #b7c6d8; stroke-width: 1; }
+.operating-shell .trend-axis-label { font-family: var(--font-product); font-size: 12px; fill: #566b84; }
+.operating-shell .trend-sales-line, .operating-shell .trend-profit-line { fill: none; stroke-linejoin: round; stroke-linecap: round; stroke-width: 2.5; }
+.operating-shell .trend-sales-line { stroke: var(--ws-blue); }
+.operating-shell .workspace-series-chart .trend-profit-line { stroke: var(--ws-teal); stroke-dasharray: 5 4; }
+.operating-shell .chart-active-marker line { stroke: #9bacc2; stroke-dasharray: 3 4; }
+.operating-shell .active-sales-point { fill: var(--ws-blue); stroke: #fff; stroke-width: 2; }
+.operating-shell .active-profit-point { fill: var(--ws-teal); stroke: #fff; stroke-width: 2; }
+.operating-shell .chart-hit-zone { fill: transparent; cursor: crosshair; }
+.operating-shell .workspace-chart-readout { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; background: #f6f8fc; border-radius: 8px; padding: 14px; margin: 10px 0 16px; }
+.operating-shell .workspace-chart-readout label { display: grid; gap: 5px; color: var(--ws-muted); font-size: 11px !important; }
+.operating-shell .workspace-chart-readout select { width: 190px; border: 1px solid #ced9e8; border-radius: 6px; background: #fff; color: var(--ws-ink); padding: 7px 10px; }
+.operating-shell .workspace-chart-readout dl { display: flex; flex-wrap: wrap; gap: 14px 28px; margin: 0; }
+.operating-shell .workspace-chart-readout dt { font-size: 11px !important; color: var(--ws-muted); }
+.operating-shell .workspace-chart-readout dd { margin: 4px 0 0; font-size: 18px !important; font-weight: 650; letter-spacing: -.025em; }
+.operating-shell .workspace-chart-data { border-top: 1px solid var(--ws-line); }
+.operating-shell .workspace-chart-data summary { padding: 14px 0; cursor: pointer; font-weight: 600; color: #375272; }
+.operating-shell .workspace-chart-data summary > span { margin-left: 10px; color: var(--ws-muted); font-weight: 400; font-size: 12px !important; }
+.operating-shell .workspace-table-scroll { width: 100%; overflow-x: auto; padding-bottom: 14px; }
+.operating-shell .workspace-table-scroll table { width: 100%; border-collapse: collapse; min-width: 480px; }
+.operating-shell .workspace-table-scroll caption { text-align: left; color: var(--ws-muted); padding: 8px 0 12px; }
+.operating-shell .workspace-table-scroll :is(th, td) { text-align: right; padding: 11px 12px; border-bottom: 1px solid #e6ecf4; font-size: 12px !important; }
+.operating-shell .workspace-table-scroll th:first-child { text-align: left; }
+.operating-shell .workspace-chart-empty { min-height: 234px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 12px; padding: 28px; }
+.operating-shell .workspace-chart-empty strong { font-size: 16px; }
+.operating-shell .workspace-chart-empty p { max-width: 430px; margin: 0; color: var(--ws-muted); }
+.operating-shell .workspace-empty-mark { display: grid; place-items: center; width: 52px; height: 52px; border: 1px solid #d1dfef; border-radius: 14px; background: #edf3fb; color: var(--ws-blue); flex: 0 0 auto; }
+.operating-shell .workspace-empty-mark .workspace-icon { width: 26px; height: 26px; }
+
+/* Records, controls and empty states across operations and governance. */
+.operating-shell em { font-size: 12px !important; line-height: 1.5; }
+.operating-shell :is(
+  .quality-issues, .document-pipeline, .document-table, .po-table,
+  .order-facts, .order-lines, .po-line-editor, .receive-modal,
+  .procurement-signal, .reorder-source-state, .reorder-explain,
+  .report-source-buttons, .report-source-conflict, .provider-report-list,
+  .commitment-lines, .planned-purchase-overlap, .report-source-lineage,
+  .pos-stock-row, .lot-row, .fefo-panel, .lot-decision,
+  .role-list, .permission-groups, .employee-review, .setting-toggles,
+  .integrity-warning, .logo-drop, .location-list, .provider-settings,
+  .stress-list, .question-stack, .wiring-principles, .data-contract,
+  .event-card .impact, .brief-action, .drawer-alert, .event-stream,
+  .stock-exceptions, .connected-source, .growth-connection,
+  .growth-source-status, .growth-search-insight, .growth-chart-empty,
+  .growth-csv-drop, .commerce-alert, .commerce-cost-preview,
+  .commerce-ledger, .commerce-product-rank, .commerce-api-error,
+  .location-source-list, .location-data-contract,
+  .bookloq-alert, .bookloq-integrity, .bookloq-tr, .reconciliation-list,
+  .contact-grid, .tax-warning, .close-list
+) b { font-size: 13px !important; line-height: 1.5; }
+.operating-shell :is(.procurement-signal, .bookloq-alert) > b { font-size: 15px !important; }
+.operating-shell :is(.document-upload, .role-list, .quality-issues, .source-health) h4 { font-size: 14px !important; }
+.operating-shell :is(.document-pipeline, .quality-scoreboard, .purchasing-health-overview) { gap: 14px; }
+.operating-shell :is(.quality-issues, .source-health, .document-upload) { padding: 22px; }
+.operating-shell :is(.quality-issues, .source-health) > header { padding: 0 0 16px; }
+.operating-shell :is(.quality-issues, .document-table) button { border-radius: 7px; }
+.operating-shell .procurement-signal { padding: 18px; border-radius: 10px; }
+.operating-shell .procurement-signal > p { margin: 10px 0; color: var(--ws-muted); }
+.operating-shell .report-catalogue em { padding: 4px 8px; white-space: normal; }
+.operating-shell .report-source-buttons { gap: 12px; }
+.operating-shell .report-source-buttons button { padding: 16px; }
+.operating-shell .recommendation-stack strong { font-size: 13px !important; line-height: 1.5; }
+.operating-shell .bookloq-bank-connection-action > strong { font-size: 15px !important; }
+.operating-shell .invoice-bottom aside :is(span, strong) { font-size: 15px !important; }
+.operating-shell .invoice-bottom aside b { font-size: 20px !important; }
+.operating-shell .forecast-list strong { font-size: 18px !important; }
+.operating-shell :is(.dense-row, .generic-row, .employee-row, .growth-row, .observation-row) { font-size: 13px; min-height: 56px; align-items: center; }
+.operating-shell :is(.dense-row, .generic-row, .employee-row, .growth-row, .observation-row) :is(span, small, b, strong) { font-size: 12px !important; line-height: 1.5; }
+.operating-shell :is(.dense-head, .generic-head, .employee-table-head, .growth-head, .observation-head) { background: #f6f8fb; color: #53657b; text-transform: none; letter-spacing: .02em; font-weight: 650; }
+.operating-shell :is(.dense-row, .generic-row):not(.dense-head):not(.generic-head):hover { background: #f8fafd; }
+.operating-shell :is(.dense-table, .bookloq-generic-table, .employee-table) { overflow-x: auto; }
+.operating-shell :is(.table-toolbar, .directory-tools) { padding-block: 16px; gap: 12px; flex-wrap: wrap; }
+.operating-shell .commerce-intelligence-empty { display: flex; align-items: flex-start; gap: 24px; padding: 32px; background: #fff; min-height: 230px; border: 1px solid var(--ws-line); border-radius: 12px; }
+.operating-shell .commerce-intelligence-empty > div:first-child { flex: 1; }
+.operating-shell .commerce-intelligence-empty > div:first-child > p { font-size: 11px !important; color: var(--ws-blue); letter-spacing: .1em; margin: 0 0 12px; }
+.operating-shell .commerce-intelligence-empty h3 { margin: 0 0 10px; }
+.operating-shell .commerce-intelligence-empty span { max-width: 640px; font-size: 14px !important; line-height: 1.65; color: var(--ws-muted); }
+.operating-shell .commerce-intelligence-empty button { margin-top: 20px; border-radius: 8px; padding: 9px 16px; background: var(--ws-blue); color: #fff; }
+.operating-shell :is(.feature-detail-row, .data-requirement-row, .decision-meta, .evidence-row, .security-flags, .control-empty, .governance-empty) :is(b, strong, small, span) { font-size: 12px !important; line-height: 1.5; }
+.operating-shell :is(.feature-detail-row, .data-requirement-row) { padding: 16px 0; }
+.operating-shell .settings-content { min-width: 0; }
+.operating-shell :is(.settings-nav button, .growth-tabs button, .governance-tabs button) { min-height: 42px; }
+.operating-shell :is(.settings-grid, .wizard-grid, .growth-field-grid) { gap: 20px; }
+.operating-shell :is(.settings-form, .growth-profile-form) label { gap: 8px; }
+.operating-shell :is(.settings-form, .growth-profile-form) input { min-height: 44px; border-radius: 7px; }
+.operating-shell :is(.settings-form, .growth-profile-form) small { color: var(--ws-muted); }
+.operating-shell :is(.employee-billing-note, .control-page .line-text, .owner-plan-coverage) b { font-size: 13px; }
+.operating-shell :is(.settings-nav, .directory-tools) input { width: 100%; min-width: 0; }
+.operating-shell .modal-actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; padding-top: 16px; }
+.operating-shell :is(.action-modal, .task-modal, .employee-wizard, .data-approval-dialog) { max-height: calc(100dvh - 40px); overflow-y: auto; }
+
+/* Intelligence and marketing use the same product language, not stock artwork. */
+.operating-shell :is(.intelligence-header, .advisor-hero) { background: #102c49; border: 1px solid #284663; border-radius: 14px; box-shadow: none; padding: 28px; }
+.operating-shell :is(.intelligence-header, .advisor-hero) :is(h2, h3) { color: #fff; }
+.operating-shell :is(.intelligence-header, .advisor-hero) :is(p, small, span) { color: #bed0e4; }
+.operating-shell .intelligence-header > div > p { color: #9fc6ff; font-size: 11px !important; }
+.operating-shell .operating-system-strip { gap: 16px; margin-top: 16px; }
+.operating-shell .operating-system-strip > span { display: flex; align-items: center; gap: 10px; font-size: 13px !important; }
+.operating-shell .insight-four { gap: 16px; }
+.operating-shell .insight-four :is(small, span) { font-size: 12px !important; line-height: 1.55; }
+.operating-shell .advisor-provider-note { color: #c2d4e8 !important; }
+.operating-shell .growth-visual-hero { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 28px; padding: 28px; background: #edf3fa; border: 1px solid #d6e2f0; border-radius: 14px; box-shadow: none; }
+.operating-shell .growth-visual-hero h2 { color: var(--ws-ink) !important; max-width: 740px; margin: 9px 0 12px; }
+.operating-shell .growth-visual-hero p { color: #355f91 !important; font-size: 11px !important; letter-spacing: .12em; }
+.operating-shell .growth-visual-hero span { color: var(--ws-muted) !important; font-size: 14px !important; line-height: 1.65; }
+.operating-shell .growth-visual-hero > .workspace-empty-mark { width: 72px; height: 72px; background: #fff; }
+.operating-shell .growth-visual-hero > .workspace-empty-mark .workspace-icon { width: 32px; height: 32px; }
+.operating-shell :is(.growth-tabs, .governance-tabs) { gap: 6px; margin-block: 22px; flex-wrap: wrap; }
+.operating-shell .module-hero:not(.growth-visual-hero) { padding: 24px; border-radius: 12px; }
+.operating-shell :is(.module-signal, .related-signal) { gap: 12px; padding: 16px; }
+.operating-shell .module-columns { gap: 20px; }
+.operating-shell .module-columns > .card { padding: 22px; }
+.operating-shell .integration-card { padding: 22px; }
+.operating-shell .integration-card-head { gap: 14px; }
+.operating-shell .integration-card p { color: var(--ws-muted); }
+.operating-shell .connector-toolbar { gap: 12px; flex-wrap: wrap; }
+.operating-shell .connector-next-step { padding: 14px; border-radius: 8px; background: #f2f6fb; }
+.operating-shell .provider-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* BookLoQ: one finance system with clear teal accents and roomy source notes. */
+.operating-shell .bookloq-shell { --bq-ink: var(--ws-ink); --bq-muted: var(--ws-muted); --bq-line: var(--ws-line); --bq-bg: var(--ws-canvas); grid-template-columns: 220px minmax(0, 1fr); min-width: 0; }
+.operating-shell .bookloq-shell :is(span, small, time, summary) { font-size: 12px !important; line-height: 1.55; }
+.operating-shell .bookloq-shell :is(p, label, dt, dd) { font-size: 14px !important; line-height: 1.6; }
+.operating-shell .bookloq-side { background: #f9fbfc; top: 84px; max-height: calc(100dvh - 84px); min-height: calc(100dvh - 84px); }
+.operating-shell .bookloq-brand { min-height: 80px; padding: 18px 14px; gap: 8px; }
+.operating-shell .bookloq-brand-lockup { max-width: 142px; width: 142px; }
+.operating-shell .bookloq-brand .bookloq-brand-mark { display: none; }
+.operating-shell .bookloq-search { height: auto; min-height: 44px; margin: 0 12px 14px; padding: 0 9px; gap: 7px; flex-shrink: 0; border-radius: 8px; overflow: hidden; }
+.operating-shell .bookloq-search input { min-width: 0; min-height: 42px; height: 42px; border: 0; padding: 0; margin: 0; box-shadow: none; background: transparent; font-size: 12px !important; }
+.operating-shell .bookloq-search:focus-within { outline: 3px solid #4b8ef0; outline-offset: 1px; }
+.operating-shell .bookloq-search input:focus-visible { outline: none !important; }
+.operating-shell .bookloq-side nav p { font-size: 10px !important; color: #61768a; margin: 18px 10px 6px; }
+.operating-shell .bookloq-side nav button { min-height: 40px; height: auto; padding: 10px; gap: 9px; border-radius: 7px; color: #43596c; font-size: 12px !important; line-height: 1.45; }
+.operating-shell .bookloq-side nav button.active { color: #075f5a; background: #e2f0ee; }
+.operating-shell .bookloq-side nav .workspace-icon { width: 17px; height: 17px; flex-basis: 17px; }
+.operating-shell .bookloq-side-foot b { font-size: 12px; }
+.operating-shell .bookloq-main { min-width: 0; }
+.operating-shell .bookloq-top { position: static; min-height: 86px; height: auto; padding: 20px 26px; gap: 18px; flex-wrap: wrap; background: #fff; }
+.operating-shell .bookloq-top p { font-size: 10px !important; letter-spacing: .1em; color: #5e7484; }
+.operating-shell .bookloq-top h2 { font-size: 26px !important; }
+.operating-shell .bookloq-top > div:last-child { flex-wrap: wrap; }
+.operating-shell .bookloq-content { padding: 24px 26px 42px; }
+.operating-shell .bookloq-page-intro { margin-bottom: 22px; gap: 20px; flex-wrap: wrap; }
+.operating-shell .bookloq-page-intro p, .operating-shell .bookloq-card-head p { font-size: 10px !important; color: #52757a; letter-spacing: .1em; }
+.operating-shell .bookloq-page-intro h3 { font-size: 24px !important; line-height: 1.3; max-width: 760px; }
+.operating-shell .bookloq-page-intro span { max-width: 800px; font-size: 14px !important; }
+.operating-shell .bookloq-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.operating-shell .bookloq-kpis.compact { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+.operating-shell .bookloq-kpi { min-width: 0; min-height: 144px; padding: 19px; border-radius: 10px; gap: 10px; box-shadow: none; }
+.operating-shell .bookloq-kpi > span { color: #506779; font-size: 12px !important; }
+.operating-shell .bookloq-kpi > b { font-family: var(--font-product); font-size: 28px !important; font-weight: 650; line-height: 1.2; letter-spacing: -.025em; }
+.operating-shell .bookloq-kpi > b.bookloq-value-unavailable { font-size: 23px !important; color: #4a6378; font-weight: 550; }
+.operating-shell .bookloq-kpi > small { color: #5c7084; font-size: 12px !important; }
+.operating-shell .bookloq-kpi:hover:not(.static) { border-color: #72a8a4; background: #fbfefd; }
+.operating-shell .bookloq-provider-gate { display: flex; align-items: flex-start; gap: 14px; padding: 20px; background: #f5f8fb; border: 1px solid var(--ws-line); border-radius: 10px; }
+.operating-shell .bookloq-provider-gate > .workspace-icon { color: #57758b; margin-top: 3px; }
+.operating-shell .bookloq-provider-gate > div { flex: 1; min-width: 0; }
+.operating-shell .bookloq-provider-gate b { font-size: 14px; }
+.operating-shell .bookloq-provider-gate p { margin: 6px 0 0; color: var(--ws-muted); }
+.operating-shell .bookloq-provider-gate .provider-state { font-size: 11px; padding: 4px 8px; border-radius: 5px; white-space: nowrap; background: #e7eef5; color: #466078; }
+.operating-shell .bookloq-empty-line { min-height: 160px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 14px; padding: 28px; color: #5a7085; text-align: center; font-size: 14px; }
+.operating-shell .bookloq-empty-line > .workspace-icon { width: 28px; height: 28px; color: #7894ad; }
+.operating-shell .bookloq-card.settings-list { padding: 24px; }
+.operating-shell .settings-list > p { margin: 0 0 16px; }
+.operating-shell .line-text { padding: 13px 0; gap: 18px; }
+.operating-shell .line-text b { font-size: 14px; font-weight: 650; text-align: right; }
+.operating-shell .bookloq-card-head { padding: 20px; }
+.operating-shell .bookloq-two { gap: 18px; }
+.operating-shell .bookloq-location-scope { margin: 18px 26px 0; padding: 14px 18px; border-radius: 9px; }
+.operating-shell .bookloq-bank-connection { padding: 24px; border-radius: 12px; box-shadow: none; }
+.operating-shell .bookloq-bank-use-list { flex-wrap: wrap; gap: 7px; }
+.operating-shell .bookloq-bank-use-list small { font-size: 11px !important; padding: 4px 8px; }
+.operating-shell .bookloq-collapsed { grid-template-columns: 62px minmax(0, 1fr); }
+.operating-shell .bookloq-collapsed .bookloq-brand { flex-direction: column; padding-inline: 8px; }
+.operating-shell .bookloq-collapsed .bookloq-brand-lockup { display: none; }
+.operating-shell .bookloq-collapsed .bookloq-brand .bookloq-brand-mark { display: block; width: 32px; }
+.operating-shell .bookloq-collapsed .bookloq-brand button { transform: rotate(180deg); }
+
+@media (min-width: 901px) {
+  .operating-shell .sidebar { transform: none; }
+  .operating-shell .sidebar-close, .operating-shell .mobile-menu { display: none; }
+}
+@media (max-width: 1240px) {
+  .operating-shell .top-actions .primary { display: inline-flex; align-items: center; justify-content: center; width: 40px; min-width: 40px; padding: 8px; font-size: 0 !important; }
+  .operating-shell .top-actions .primary::before { content: "+"; font-size: 22px; line-height: 1; }
+  .operating-shell .command-trigger { width: 40px; min-width: 40px; justify-content: center; padding: 8px; }
+  .operating-shell .command-trigger :is(span, kbd) { display: none; }
+  .operating-shell .source-pill { display: none; }
+  .operating-shell .bookloq-shell, .operating-shell .bookloq-collapsed { grid-template-columns: minmax(0, 1fr); }
+  .operating-shell .bookloq-side { display: none; }
+  .operating-shell .bookloq-mobile-nav { display: grid; gap: 6px; margin-top: 12px; }
+  .operating-shell .bookloq-mobile-nav select { width: min(100%, 340px); }
+  .operating-shell .bookloq-top > div:first-child { flex: 1; min-width: 220px; }
+  .operating-shell .bookloq-two { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 900px) {
+  .operating-shell { grid-template-columns: minmax(0, 1fr); }
+  .operating-shell .main-panel { grid-column: 1; }
+  .operating-shell .sidebar { width: min(290px, 86vw); position: fixed; inset: 0 auto 0 0; transform: translateX(-101%); z-index: 80; }
+  .operating-shell .sidebar.mobile-open { transform: translateX(0); }
+  .operating-shell .mobile-menu { display: inline-flex; align-items: center; justify-content: center; width: 40px; flex: 0 0 40px; }
+  .operating-shell .sidebar-close { display: block; min-height: 36px; margin: 0 0 12px auto; color: #dce8f6; }
+  .operating-shell .topbar { padding: 14px 18px; gap: 12px; min-height: 78px; }
+  .operating-shell .topbar-title { flex: 1; }
+  .operating-shell .topbar h1 { font-size: 23px !important; }
+  .operating-shell .topbar .eyebrow { font-size: 9px !important; }
+  .operating-shell .top-actions { gap: 6px; }
+  .operating-shell .today-metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .operating-shell :is(.insight-four, .module-columns, .growth-overview-grid) { grid-template-columns: minmax(0, 1fr); }
+  .operating-shell .growth-visual-hero { padding: 24px; }
+}
+@media (max-width: 600px) {
+  .operating-shell .content { padding: 22px 16px 40px; }
+  .operating-shell :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea) { font-size: 16px !important; }
+  .operating-shell .top-actions .primary { display: inline-flex; align-items: center; justify-content: center; width: 40px; min-width: 40px; padding: 8px; font-size: 0 !important; }
+  .operating-shell .top-actions .primary::before { content: "+"; font-size: 22px; line-height: 1; }
+  .operating-shell .top-actions .notification { width: 40px; padding: 8px; justify-content: center; }
+  .operating-shell .top-actions .notification span { display: none; }
+  .operating-shell .topbar .eyebrow { display: none; }
+  .operating-shell .topbar h1 { font-size: 20px !important; }
+  .operating-shell :is(.metric-card, .commerce-stat, .bookloq-kpi) { padding: 16px; min-height: 150px; }
+  .operating-shell .metric-card > h3 { font-size: 25px !important; }
+  .operating-shell :is(.commerce-summary-strip, .commerce-intelligence-kpis) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .operating-shell .bookloq-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .operating-shell .bookloq-kpis.compact { grid-template-columns: minmax(0, 1fr); }
+  .operating-shell .bookloq-kpi > b { font-size: 24px !important; }
+  .operating-shell .bookloq-kpi > b.bookloq-value-unavailable { font-size: 20px !important; }
+  .operating-shell :is(.bookloq-top, .bookloq-content) { padding: 20px 16px; }
+  .operating-shell .bookloq-location-scope { margin-inline: 16px; }
+  .operating-shell .bookloq-bank-connection { padding: 18px; }
+  .operating-shell .bookloq-provider-gate { flex-wrap: wrap; padding: 18px; }
+  .operating-shell .bookloq-provider-gate .provider-state { margin-left: 33px; }
+  .operating-shell .growth-visual-hero { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .operating-shell .growth-visual-hero > .workspace-empty-mark { display: none; }
+  .operating-shell .commerce-intelligence-empty { flex-direction: column-reverse; padding: 24px; }
+  .operating-shell .workspace-series-chart { padding: 16px 12px 0; }
+  .operating-shell .workspace-chart-readout { align-items: stretch; }
+  .operating-shell .workspace-chart-readout label, .operating-shell .workspace-chart-readout select { width: 100%; }
+  .operating-shell .workspace-chart-readout dl { gap: 14px 22px; }
+  .operating-shell :is(.intelligence-header, .advisor-hero) { padding: 22px; }
+  .operating-shell .operating-system-strip { flex-direction: column; }
+}
+@media (max-width: 380px) {
+  .operating-shell :is(.today-metric-grid, .metrics, .commerce-summary-strip, .commerce-intelligence-kpis, .bookloq-kpis) { grid-template-columns: minmax(0, 1fr) !important; }
+  .operating-shell :is(.metric-card, .commerce-stat, .bookloq-kpi) { min-height: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .operating-shell *, .operating-shell *::before, .operating-shell *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}

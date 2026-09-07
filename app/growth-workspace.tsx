@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import WorkspaceIcon from "./workspace-icon";
 import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import IntegrationBrandLogo from "./integration-brand-logo";
 import { apiFetch } from "./supabase-browser";
@@ -580,8 +580,8 @@ export default function GrowthWorkspace({ currency, navigate, activeLocationId, 
 
   return <div className="content module-page growth-page">
     <section className="module-hero growth-visual-hero">
-      <div><p>LOCAL BUSINESS GROWTH INTELLIGENCE</p><h2>Turn business context and measured outcomes into a focused marketing plan.</h2><span>Save who you serve, record the data you actually have, and receive recommendations that state their evidence and measurement limits.</span></div>
-      <Image src="/brand/marketing-intelligence-v2.png" alt="Marketing channels connected to search, local discovery, content, conversion and a calendar" width={1672} height={941} sizes="(max-width: 900px) 100vw, 46vw" />
+      <div><p>LOCAL BUSINESS GROWTH INTELLIGENCE</p><h2>See what is working. Plan what comes next.</h2><span>Save who you serve, record the data you actually have, and receive recommendations that state their evidence and measurement limits.</span></div>
+      <div className="workspace-empty-mark" aria-hidden="true"><WorkspaceIcon name="Marketing"/></div>
     </section>
 
     <nav className="growth-tabs" aria-label="Marketing workspace sections" role="tablist">

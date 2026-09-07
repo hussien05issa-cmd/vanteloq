@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import WorkspaceIcon from "./workspace-icon";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "./supabase-browser";
 import { providerDisplayName } from "../domain/display-labels";
@@ -144,11 +144,11 @@ function DataEmpty({ mode, navigate }: { mode: Mode; navigate: (view: "Integrati
   return <section className="commerce-intelligence-empty">
     <div>
       <p>CONNECTED COMMERCE INTELLIGENCE</p>
-      <h3>No verified {mode.toLowerCase()} records are available yet.</h3>
-      <span>Vanteloq will populate this workspace only from an authorized POS sync. It does not invent missing catalog, customer, supplier or transaction data.</span>
-      <button onClick={() => navigate("Integrations")}>Review data connection →</button>
+      <h3>{mode === "Sales" ? "Your sales records will appear here." : mode === "Inventory" ? "Build a clear picture of your stock." : mode === "Customers" ? "Get to know your customer activity." : "Keep your supplier records together."}</h3>
+      <span>Connect an authorized source and complete its first sync to see verified records. You can review connection status and permissions in Integrations.</span>
+      <button onClick={() => navigate("Integrations")}>Review connections</button>
     </div>
-    <Image src="/media/vanteloq-commerce-intelligence.png" alt="Illustration of connected sales, inventory, customer and supplier intelligence" width={1536} height={864} sizes="(max-width: 780px) 100vw, 46vw" />
+    <div className="workspace-empty-mark" aria-hidden="true"><WorkspaceIcon name={mode}/></div>
   </section>;
 }
 

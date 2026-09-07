@@ -4,6 +4,7 @@ import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState
 import { useModalFocus } from "./use-modal-focus";
 import { csvCell } from "../domain/csv";
 import ProductBrandLogo from "./product-brand-logo";
+import WorkspaceIcon from "./workspace-icon";
 import PlaidLinkButton from "./plaid-link-button";
 import { apiFetch } from "./supabase-browser";
 import { bookloqHealthPresentation, bookloqMetricCount, formatBookloqMoney, bookloqPositionMessage } from "../domain/bookloq-presentation";
@@ -78,7 +79,7 @@ type PlaidAccess = {
 const money = formatBookloqMoney;
 const rate = (basisPoints: number | null | undefined) => basisPoints == null ? "Not available" : `${(basisPoints / 100).toFixed(1)}%`;
 const shortDate = (value: string) => new Intl.DateTimeFormat("en-CA", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }).format(new Date(`${value}T00:00:00Z`));
-const label = (value: string) => value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+const label = (value: string) => value.replace(/([a-z])([A-Z])/g, "$1 $2").replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase()).replace(/\bPos\b/g, "POS");
 const parseJsonList = (value: string) => { try { const parsed: unknown = JSON.parse(value); return Array.isArray(parsed) ? parsed.map(String) : []; } catch { return []; } };
 
 async function downloadPrivateInvoice(documentId: string, invoiceNumber: string) {
@@ -161,7 +162,7 @@ export default function BookLoQWorkspace({ initialSection = "Overview", createTa
   return <div className={`bookloq-shell ${collapsed ? "bookloq-collapsed" : ""}`}>
     <aside className="bookloq-side">
       <div className="bookloq-brand"><ProductBrandLogo product="bookloq" variant="full" className="bookloq-brand-lockup"/><ProductBrandLogo product="bookloq" className="bookloq-brand-mark"/><button aria-label={collapsed ? "Expand BookLoQ navigation" : "Collapse BookLoQ navigation"} onClick={() => setCollapsed((value) => !value)}>‹</button></div>
-      {!collapsed && <><label className="bookloq-search"><span>⌕</span><input aria-label="Search BookLoQ navigation" value={navSearch} onChange={(event) => setNavSearch(event.target.value)} placeholder="Find a finance workspace"/></label><nav aria-label="BookLoQ navigation">{[...new Set(visible.map((item) => item.group))].map((group) => <section key={group}><p>{group}</p>{visible.filter((item) => item.group === group).map((item) => <button key={item.name} className={activeSection === item.name ? "active" : ""} onClick={() => setSection(item.name)}><span>{sectionIcon(item.name)}</span>{item.name}</button>)}</section>)}</nav></>}
+      {!collapsed && <><label className="bookloq-search"><WorkspaceIcon name="Search"/><input aria-label="Search BookLoQ navigation" value={navSearch} onChange={(event) => setNavSearch(event.target.value)} placeholder="Find a finance workspace"/></label><nav aria-label="BookLoQ navigation">{[...new Set(visible.map((item) => item.group))].map((group) => <section key={group}><p>{group}</p>{visible.filter((item) => item.group === group).map((item) => <button key={item.name} className={activeSection === item.name ? "active" : ""} aria-current={activeSection === item.name ? "page" : undefined} onClick={() => { setSection(item.name); window.scrollTo({ top: 0, behavior: "instant" }); }}><WorkspaceIcon name={item.name}/>{item.name}</button>)}</section>)}</nav></>}
       <div className="bookloq-side-foot"><i className={data.settings?.dataMode === "demonstration" ? "demo" : "live"}/>{!collapsed && <span><b>{!data.configured ? "Ready for first records" : !data.settings ? "Financial sources connected" : data.settings.dataMode === "demonstration" ? "Demonstration data" : "Live ledger"}</b><small>{data.organization.currency}{data.settings ? ` · ${label(data.settings.accountingBasis)}` : " · review controls active"}</small></span>}</div>
     </aside>
     <main className="bookloq-main">
@@ -270,14 +271,14 @@ function OverviewPanel({ data, setSection, createTask, refresh, showNotice, navi
       />
       <FinancialKpi label="Available cash" value={money(s.availableCashCents, data.organization.currency)} note="Cash less confirmed 30-day bills" onClick={() => setSection("Cash Flow")}/>
       <FinancialKpi label="Revenue" value={money(s.revenueCents, data.organization.currency)} note="Posted revenue accounts" onClick={() => setSection("Sales")}/>
-      <FinancialKpi label="Gross profit" value={money(s.grossProfitCents, data.organization.currency)} note={`${rate(s.grossMarginBasisPoints)} gross margin`} onClick={() => setSection("Reports")}/>
+      <FinancialKpi label="Gross profit" value={money(s.grossProfitCents, data.organization.currency)} note={s.grossMarginBasisPoints == null ? "Gross margin requires verified costs" : `${rate(s.grossMarginBasisPoints)} gross margin`} onClick={() => setSection("Reports")}/>
       <FinancialKpi label="Operating profit" value={money(s.operatingProfitCents, data.organization.currency)} note="Revenue less posted expenses" onClick={() => setSection("Reports")}/>
       <FinancialKpi label="Total expenses" value={money(s.totalExpensesCents, data.organization.currency)} note="Including cost of goods sold" onClick={() => setSection("Expenses")}/>
-      <FinancialKpi label="Receivable" value={money(s.accountsReceivableCents, data.organization.currency)} note={`${bookloqMetricCount(s.overdueInvoicesCount)} overdue invoices`} onClick={() => setSection("Invoicing")}/>
-      <FinancialKpi label="Payable" value={money(s.accountsPayableCents, data.organization.currency)} note={`${bookloqMetricCount(s.upcomingBillsCount)} open bills`} onClick={() => setSection("Bills")}/>
+      <FinancialKpi label="Receivable" value={money(s.accountsReceivableCents, data.organization.currency)} note={s.overdueInvoicesCount == null ? "Invoice aging is not available" : `${s.overdueInvoicesCount} overdue invoices`} onClick={() => setSection("Invoicing")}/>
+      <FinancialKpi label="Payable" value={money(s.accountsPayableCents, data.organization.currency)} note={s.upcomingBillsCount == null ? "Bill records are not available" : `${s.upcomingBillsCount} open bills`} onClick={() => setSection("Bills")}/>
       <FinancialKpi label="GST position" value={money(s.salesTaxPayableCents, data.organization.currency)} note="Collected less recoverable" onClick={() => setSection("Sales Tax")}/>
       <FinancialKpi label="Debt" value={money(s.debtObligationsCents, data.organization.currency)} note="Posted principal balance" onClick={() => setSection("Assets and Loans")}/>
-      <FinancialKpi label="Unreconciled" value={bookloqMetricCount(s.unreconciledCount)} note={`${bookloqMetricCount(s.uncategorizedCount)} require category review`} onClick={() => setSection("Transactions")}/>
+      <FinancialKpi label="Unreconciled" value={bookloqMetricCount(s.unreconciledCount)} note={s.uncategorizedCount == null ? "Transaction records are not available" : `${s.uncategorizedCount} require category review`} onClick={() => setSection("Transactions")}/>
       <FinancialKpi label="Month-end" value={s.monthEndCompletionRate === null ? "Not available" : `${Math.round(s.monthEndCompletionRate * 100)}%`} note="Checklist completion" onClick={() => setSection("Month-End")}/>
     </section>
     <section className="bookloq-two">
@@ -288,7 +289,7 @@ function OverviewPanel({ data, setSection, createTask, refresh, showNotice, navi
   </div>;
 }
 
-function FinancialKpi({ label: name, value, note, onClick }: { label: string; value: string; note: string; onClick?: () => void }) {
+export function FinancialKpi({ label: name, value, note, onClick }: { label: string; value: string; note: string; onClick?: () => void }) {
   const unavailable = value === "Not available";
   const content = <><span>{name}{onClick && <i aria-hidden="true">↗</i>}</span><b className={unavailable ? "bookloq-value-unavailable" : undefined}>{value}</b><small>{note}</small></>;
   return onClick
@@ -296,7 +297,7 @@ function FinancialKpi({ label: name, value, note, onClick }: { label: string; va
     : <article className="bookloq-kpi static">{content}</article>;
 }
 function Header({ kicker, title, action }: { kicker: string; title: string; action?: ReactNode }) { return <div className="bookloq-card-head"><div><p>{kicker}</p><h3>{title}</h3></div>{action}</div>; }
-function EmptyLine({ text }: { text: string }) { return <div className="bookloq-empty-line"><span aria-hidden="true">○</span>{text}</div>; }
+function EmptyLine({ text }: { text: string }) { return <div className="bookloq-empty-line"><WorkspaceIcon name="Documents"/><span>{text}</span></div>; }
 function Integrity({ label: name, status, detail }: { label: string; status: string; detail: string }) { return <article><span className={status === "Balanced" ? "ok" : status === "Issue" ? "issue" : "off"}>{status}</span><div><b>{name}</b><small>{detail}</small></div></article>; }
 
 function alertTask(alert: Alert, currency: string): TaskSeed { return { title: alert.title, detail: `${alert.explanation} Recommended action: ${alert.recommendedAction}`, priority: alert.severity === "critical" ? "high" : alert.severity === "attention" ? "medium" : "low", expectedImpact: alert.dollarImpactCents == null ? "Impact requires review" : money(alert.dollarImpactCents, currency), sourceType: "alert", sourceRef: alert.id }; }
@@ -712,12 +713,21 @@ function JournalComposer({ data, close, saved }: { data: BookLoQData; close: () 
 }
 
 function PageIntro({ eyebrow, title, copy, action }: { eyebrow: string; title: string; copy: string; action?: ReactNode }) { return <section className="bookloq-page-intro"><div><p>{eyebrow}</p><h3>{title}</h3><span>{copy}</span></div>{action}</section>; }
-function ProviderGate({ title, detail, status = "Not connected" }: { title: string; detail: string; status?: string }) { return <article className="bookloq-provider-gate"><span aria-hidden="true">⛨</span><div><b>{title}</b><p>{detail}</p></div><strong className="provider-state">{status}</strong></article>; }
-function DataTable({ headings, rows }: { headings: string[]; rows: ReactNode[][] }) { return <article className="bookloq-card bookloq-generic-table"><div className="generic-row generic-head" style={{ gridTemplateColumns: `repeat(${headings.length}, minmax(110px, 1fr))` }}>{headings.map((heading) => <span key={heading}>{heading}</span>)}</div>{rows.map((row, index) => <div className="generic-row" key={index} style={{ gridTemplateColumns: `repeat(${headings.length}, minmax(110px, 1fr))` }}>{row.map((cell, cellIndex) => <span key={cellIndex}>{cell}</span>)}</div>)}{!rows.length && <EmptyLine text="No source-backed records exist for this view."/>}</article>; }
+export function ProviderGate({ title, detail, status = "Not connected" }: { title: string; detail: string; status?: string }) { return <article className="bookloq-provider-gate"><WorkspaceIcon name="Data Quality"/><div><b>{title}</b><p>{detail}</p></div><strong className="provider-state">{status}</strong></article>; }
+export function DataTable({ headings, rows }: { headings: string[]; rows: ReactNode[][] }) {
+  const numericColumn = (index: number) => /amount|balance|revenue|profit|expense|debit|credit|outstanding|quantity|count|share|rate|budget|actual|variance|total/i.test(headings[index]);
+  const columns = { gridTemplateColumns: `repeat(${headings.length}, minmax(110px, 1fr))` };
+  return <article className="bookloq-card bookloq-generic-table">
+    <div role="table" aria-label="Financial records">
+      <div role="row" className="generic-row generic-head" style={columns}>{headings.map((heading, index) => <span role="columnheader" className={numericColumn(index) ? "numeric-cell" : undefined} key={heading}>{heading}</span>)}</div>
+      {rows.map((row, index) => <div role="row" className="generic-row" key={index} style={columns}>{row.map((cell, cellIndex) => <span role="cell" className={numericColumn(cellIndex) ? "numeric-cell" : undefined} key={cellIndex}>{cell}</span>)}</div>)}
+    </div>
+    {!rows.length && <EmptyLine text="No verified records are available for this view."/>}
+  </article>;
+}
 function Line({ label: name, value, total = false, currency }: { label: string; value: number; total?: boolean; currency: string }) { return <div className={total ? "bridge-total" : ""}><span>{name}</span><b className={value < 0 ? "negative" : ""}>{money(value, currency)}</b></div>; }
 function LineText({ name, value }: { name: string; value: string }) { return <div className="line-text"><span>{name}</span><b>{value}</b></div>; }
 
-function sectionIcon(section: Section): string { if (["Overview", "Reports"].includes(section)) return "▦"; if (["Banking", "Cash Flow", "Reconciliation"].includes(section)) return "◇"; if (["Bills", "Expenses", "Sales", "Invoicing"].includes(section)) return "$"; if (["Journal Entries", "Chart of Accounts", "Audit Trail"].includes(section)) return "≡"; if (section === "BookLoQ Assistant") return "✦"; return "·"; }
 function parseMoney(value: string): number | null { const normalized = value.trim().replaceAll(",", ""); const match = /^(\d{1,12})(?:\.(\d{0,2}))?$/.exec(normalized); if (!match) return null; const cents = Number(match[1]) * 100 + Number((match[2] ?? "").padEnd(2, "0")); return Number.isSafeInteger(cents) && cents > 0 ? cents : null; }
 function summarizeAudit(value: string): string { try { const parsed = JSON.parse(value) as Record<string, unknown>; return Object.entries(parsed).slice(0, 3).map(([key, item]) => `${label(key)}: ${String(item)}`).join(" · ") || "No additional detail"; } catch { return "Recorded event"; } }
 function downloadCsv(file: string, headings: string[], rows: (string | number)[][]) { const escape = csvCell; const csv = [headings.map(escape).join(","), ...rows.map((row) => row.map(escape).join(","))].join("\n"); const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })); const anchor = document.createElement("a"); anchor.href = url; anchor.download = file; anchor.click(); URL.revokeObjectURL(url); }

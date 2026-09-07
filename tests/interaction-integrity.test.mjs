@@ -269,13 +269,13 @@ test("resource article sections override the legacy global two-column rule", asy
   assert.match(css, /\.resource-site \.article-body > section\.quick-answer \{[^}]*padding:\s*30px;/);
 });
 
-test("commerce charts expose exact-date and exact-hour keyboard tooltips", async () => {
+test("commerce charts expose exact-date and exact-hour keyboard record inspection", async () => {
   const charts = await readFile(new URL("../app/dashboard-charts.tsx", import.meta.url), "utf8");
   const app = await readFile(new URL("../app/vanteloq-app.tsx", import.meta.url), "utf8");
-  assert.match(charts, /chart-tooltip/);
-  assert.match(charts, /onFocus=\{\(\) => setActiveIndex\(index\)\}/);
-  assert.match(charts, /Net sales.*Gross profit.*transactions/s);
-  assert.match(app, /Today vs same weekday/);
+  assert.match(charts, /workspace-chart-readout/);
+  assert.match(charts, /<select id=\{.*-record/);
+  assert.match(charts, /Net sales.*Gross profit.*Transactions/s);
+  assert.match(app, /Latest day vs same weekday/);
   assert.match(app, /PAYMENT MIX/);
   assert.match(app, /7-DAY OUTLOOK/);
 });
@@ -345,7 +345,8 @@ test("marketing intelligence is owner-controlled, evidence-labeled and calendar-
   assert.match(workspace, /Owner entry/);
   assert.doesNotMatch(route, /Coming soon!/);
   assert.match(route, /Association is not proof of causation/i);
-  assert.match(workspace, /marketing-intelligence-v2\.png/);
+  assert.match(workspace, /WorkspaceIcon name="Marketing"/);
+  assert.doesNotMatch(workspace, /marketing-intelligence-v2\.png/);
   assert.match(workspace, /Google demand and website actions/);
   assert.match(workspace, /Meta reach and website clicks/);
   assert.match(workspace, /Owner-record checklist/);

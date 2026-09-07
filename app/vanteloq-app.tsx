@@ -17,6 +17,8 @@ import {
   type IntegrationCatalogEntry,
 } from "./integration-catalog";
 import ProductBrandLogo from "./product-brand-logo";
+import WorkspaceIcon from "./workspace-icon";
+import { comparisonCopy, quantityLabel } from "../domain/workspace-presentation";
 import PlaidLinkButton, { PLAID_REDIRECT_STORAGE_KEY, PLAID_RETURN_VIEW_STORAGE_KEY } from "./plaid-link-button";
 import { apiFetch, signOut } from "./supabase-browser";
 import {
@@ -827,6 +829,7 @@ export default function VanteloqApp({
     }
     setView(next);
     setMobileNavOpen(false);
+    window.scrollTo({ top: 0, behavior: "instant" });
   };
   useEffect(() => {
     if (navigationEntitlement(view, subscriptionFeatures).allowed) return;
@@ -914,10 +917,8 @@ export default function VanteloqApp({
           <span>
             <b>{workspaceName}</b>
             <small>
-              {data?.today.lastSaleAt
-                ? `Live through ${formatTime(data.today.lastSaleAt)}`
-                : data?.source.latestBusinessDate
-                ? `Data through ${data.source.latestBusinessDate}`
+              {data?.source.latestBusinessDate
+                ? `Data through ${formatBusinessDate(data.source.latestBusinessDate)}`
                 : "Data source required"}
             </small>
           </span>
@@ -971,7 +972,7 @@ export default function VanteloqApp({
                         variant="full"
                         className="bookloq-nav-lockup"
                       />
-                    ) : <><span className="nav-dot" />{workspaceViewLabel(item)}</>}
+                    ) : <><WorkspaceIcon name={item}/><span className="nav-label">{workspaceViewLabel(item)}</span></>}
                     {!subscriptionAccess.allowed && <small className="nav-plan-lock">{subscriptionAccess.upgradeLabel}</small>}
                   </button>
                 })}
@@ -987,7 +988,7 @@ export default function VanteloqApp({
               onClick={() => navigate("Integrations")}
               aria-current={view === "Integrations" ? "page" : undefined}
             >
-              <span className="nav-dot" />
+              <WorkspaceIcon name="Integrations" />
               Integrations & data
               {!navigationEntitlement("Integrations", subscriptionFeatures).allowed && <small className="nav-plan-lock">{navigationEntitlement("Integrations", subscriptionFeatures).upgradeLabel}</small>}
             </button>
@@ -998,7 +999,7 @@ export default function VanteloqApp({
               onClick={() => navigate("Settings")}
               aria-current={view === "Settings" ? "page" : undefined}
             >
-              <span className="nav-dot" />
+              <WorkspaceIcon name="Settings" />
               Settings
               {!navigationEntitlement("Settings", subscriptionFeatures).allowed && <small className="nav-plan-lock">{navigationEntitlement("Settings", subscriptionFeatures).upgradeLabel}</small>}
             </button>
@@ -1038,22 +1039,21 @@ export default function VanteloqApp({
             aria-controls="primary-sidebar"
             onClick={() => setMobileNavOpen((value) => !value)}
           >
-            ☰
+            <WorkspaceIcon name="Menu" />
           </button>
           <div className="topbar-title">
             <p className="eyebrow">
               {view === "Dashboard" ? "OWNER COMMAND CENTRE" : view === "BookLoQ" || view === "Profit" || view === "Cash" || view === "Bookkeeping" ? "BOOKLOQ FINANCE" : "VANTELOQ WORKSPACE"}
             </p>
-            <h1>{view === "Dashboard" ? "Unified Workspace" : view === "Profit" ? "BookLoQ · Reports" : view === "Cash" ? "BookLoQ · Cash Flow" : view === "Bookkeeping" ? "BookLoQ · Transactions" : workspaceViewLabel(view)}</h1>
+            <h1>{view === "Dashboard" ? "Dashboard" : view === "Profit" ? "BookLoQ · Reports" : view === "Cash" ? "BookLoQ · Cash Flow" : view === "Bookkeeping" ? "BookLoQ · Transactions" : workspaceViewLabel(view)}</h1>
           </div>
           <div className="top-actions">
-            <button className="command-trigger" onClick={() => setCommandOpen(true)} aria-label="Open workspace search"><span>Search workspace</span><kbd>⌘K</kbd></button>
+            <button className="command-trigger" onClick={() => setCommandOpen(true)} aria-label="Open workspace search"><WorkspaceIcon name="Search"/><span>Search workspace</span><kbd>⌘K</kbd></button>
             <span
               className={`source-pill ${data?.liveSource.lastSuccessfulSyncAt ? "current" : data?.source.freshness ?? "missing"}`}
             >
-              <i />
               {data?.liveSource.lastSuccessfulSyncAt
-                ? "Live sales"
+                ? "Connected sales"
                 : data?.source.latestBusinessDate
                 ? `${humanizeIdentifier(data.source.freshness)} data`
                 : "No data"}
@@ -1063,7 +1063,7 @@ export default function VanteloqApp({
               aria-label="Open alerts"
               onClick={() => setNotificationsOpen((value) => !value)}
             >
-              <span aria-hidden="true">Alerts</span>
+              <WorkspaceIcon name="Alerts"/><span aria-hidden="true">Alerts</span>
             </button>
             <button
               className="primary"
@@ -1401,16 +1401,12 @@ function formatRelativeSync(value: string) {
   if (elapsedMinutes < 1) return "just now";
   if (elapsedMinutes === 1) return "1 minute ago";
   if (elapsedMinutes < 60) return `${elapsedMinutes} minutes ago`;
+  if (elapsedMinutes >= 1440) return new Intl.DateTimeFormat("en-CA", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(value));
   return new Intl.DateTimeFormat("en-CA", { hour: "numeric", minute: "2-digit" }).format(new Date(value));
 }
 
 function formatBusinessDate(value: string) {
   return new Intl.DateTimeFormat("en-CA", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(`${value}T00:00:00Z`));
-}
-
-function comparisonCopy(rate: number | null | undefined, label: string) {
-  if (rate === null || rate === undefined) return `No ${label} baseline`;
-  return `${new Intl.NumberFormat("en-CA", { style: "percent", maximumFractionDigits: 1, signDisplay: "exceptZero" }).format(rate)} vs ${label}`;
 }
 
 function PaymentMixCard({ data, currency, paymentRange, setPaymentRange }: { data: CommandCentre["paymentMix"]; currency: string; paymentRange: PaymentRange; setPaymentRange: (range: PaymentRange) => void }) {
@@ -1441,7 +1437,7 @@ function PaymentMixCard({ data, currency, paymentRange, setPaymentRange }: { dat
 
 function CommerceIntelligenceRail({ data, currency, paymentRange, setPaymentRange }: { data: CommandCentre; currency: string; paymentRange: PaymentRange; setPaymentRange: (range: PaymentRange) => void }) {
   const comparisons: Array<{ label: string; period: string; value: string; rate: number | null }> = [
-    { label: "Today vs same weekday", period: data.todayComparison ? formatBusinessDate(data.todayComparison.baselineDate) : "Baseline unavailable", value: money(data.today.netSalesCents, currency), rate: data.todayComparison?.changes.netSalesRate ?? null },
+    { label: "Latest day vs same weekday", period: data.todayComparison ? formatBusinessDate(data.todayComparison.baselineDate) : "Baseline unavailable", value: money(data.today.netSalesCents, currency), rate: data.todayComparison?.changes.netSalesRate ?? null },
   ];
   if (data.periodComparisons) {
     comparisons.push(
@@ -1468,7 +1464,7 @@ function CommerceIntelligenceRail({ data, currency, paymentRange, setPaymentRang
   return (
     <>
       <section className="sales-comparison-grid" aria-label="Matched sales comparisons">
-        {comparisons.map((item) => <article key={item.label}><p>{item.label}</p><strong>{item.value}</strong><span className={item.rate == null ? "neutral" : item.rate >= 0 ? "positive" : "negative"}>{comparisonCopy(item.rate, item.label === "Today vs same weekday" ? item.period : "prior matched period")}</span><small>{item.period}</small></article>)}
+        {comparisons.map((item) => <article key={item.label}><p>{item.label}</p><strong>{item.value}</strong><span className={item.rate == null ? "neutral" : item.rate >= 0 ? "positive" : "negative"}>{comparisonCopy(item.rate, item.label === "Latest day vs same weekday" ? item.period : "prior matched period")}</span><small>{item.period}</small></article>)}
       </section>
       <section className="commerce-intel-grid">
         <PaymentMixCard data={data.paymentMix} currency={currency} paymentRange={paymentRange} setPaymentRange={setPaymentRange} />
@@ -1495,17 +1491,17 @@ function LiveSalesPanel({ data, currency, paymentRange, setPaymentRange, compact
   return (
     <>
       <section className="today-metric-grid">
-        <Metric label="Today's net sales" value={money(today.netSalesCents, currency)} delta={comparisonCopy(data.todayComparison?.changes.netSalesRate, baselineLabel)} detail={`${today.businessDate} · completed sales`} tone="indigo" />
-        <Metric label="Today's gross profit" value={money(today.grossProfitCents, currency)} delta={comparisonCopy(data.todayComparison?.changes.grossProfitRate, baselineLabel)} detail="Net sales less product cost" tone="emerald" />
+        <Metric label="Latest daily net sales" value={money(today.netSalesCents, currency)} delta={comparisonCopy(data.todayComparison?.changes.netSalesRate, baselineLabel)} detail={`${formatBusinessDate(today.businessDate)} · completed sales`} tone="indigo" />
+        <Metric label="Latest daily gross profit" value={money(today.grossProfitCents, currency)} delta={comparisonCopy(data.todayComparison?.changes.grossProfitRate, baselineLabel)} detail="Net sales less product cost" tone="emerald" />
         <Metric label="Gross margin" value={today.netSalesCents && today.grossProfitCents != null ? `${(today.grossProfitCents / today.netSalesCents * 100).toFixed(1)}%` : "Not available"} delta="Product economics" detail="Gross profit ÷ net sales" tone="emerald" />
         <Metric label="Discounts" value={money(today.discountsCents, currency)} delta={today.netSalesCents + today.discountsCents ? `${(today.discountsCents / (today.netSalesCents + today.discountsCents) * 100).toFixed(1)}% of pre-discount value` : "No discount activity"} detail="Verified line and sale discounts" tone="amber" />
-        <Metric label="Average transaction" value={today.averageTransactionCents == null ? "Not available" : money(today.averageTransactionCents, currency, 2)} delta="Live basket value" detail="Net sales ÷ completed transactions" tone="amber" />
-        <Metric label="Number of sales" value={today.transactionCount == null ? "Not available" : today.transactionCount.toLocaleString()} delta={comparisonCopy(data.todayComparison?.changes.transactionRate, baselineLabel)} detail={today.unitsSold == null ? "Revenue permission required" : `${today.unitsSold.toLocaleString()} line items recorded`} tone="cyan" />
+        <Metric label="Average transaction" value={today.averageTransactionCents == null ? "Not available" : money(today.averageTransactionCents, currency, 2)} delta="Latest daily basket value" detail="Net sales ÷ completed transactions" tone="amber" />
+        <Metric label="Number of sales" value={today.transactionCount == null ? "Not available" : today.transactionCount.toLocaleString()} delta={comparisonCopy(data.todayComparison?.changes.transactionRate, baselineLabel)} detail={today.unitsSold == null ? "Revenue permission required" : `${quantityLabel(today.unitsSold, "line item")} recorded`} tone="cyan" />
       </section>
       <section className={compact ? "live-sales-grid compact" : "live-sales-grid"}>
         <article className="card live-sales-chart-card">
           <div className="card-head">
-            <div><p className="card-kicker">CURRENT DAY</p><h3>Sales by hour</h3></div>
+            <div><p className="card-kicker">LATEST VERIFIED DAY</p><h3>Sales by hour</h3></div>
             <span className="verified-tag">{sourceName} · verified</span>
           </div>
           {today.sourceGranularity === "intraday"
@@ -1545,8 +1541,8 @@ function Overview({ data, currency, navigate, createTask, paymentRange, setPayme
       <section className="live-sales-heading">
         <div>
           <p>LATEST VERIFIED SALES</p>
-          <h2>Current performance from the connected commerce source.</h2>
-          <span>{data.today.lastSaleAt ? `${data.today.sourceGranularity === "intraday" ? "Through" : "Daily summary updated"} ${formatTime(data.today.lastSaleAt)} · ${sourceName}` : `No verified sale has been received for ${data.today.businessDate} from ${sourceName}.`}</span>
+          <h2>Your latest verified business performance.</h2>
+          <span>{data.today.lastSaleAt ? `${data.today.sourceGranularity === "intraday" ? "Through" : "Daily summary updated"} ${formatBusinessDate(data.today.businessDate)} at ${formatTime(data.today.lastSaleAt)} · ${sourceName}` : `No verified sale has been received for ${data.today.businessDate} from ${sourceName}.`}</span>
         </div>
         <span className={`live-sync-state ${data.source.freshness}`}><i />{data.liveSource.lastSuccessfulSyncAt ? `Synced ${formatRelativeSync(data.liveSource.lastSuccessfulSyncAt)}` : "Waiting for first sync"}</span>
       </section>
@@ -1584,7 +1580,7 @@ function SalesWorkspace({ data, currency, navigate, refresh, paymentRange, setPa
   );
 }
 
-function Metric({
+export function Metric({
   label,
   value,
   delta,
@@ -1606,8 +1602,8 @@ function Metric({
     <article className={`metric-card metric-${tone}${unavailable ? " metric-unavailable" : ""}`}>
       <p>{label}</p>
       <h3 className={unavailable ? "metric-unavailable-value" : undefined}>{value}</h3>
-      <span>{delta}</span>
-      {sparkline?.length ? <MetricSparkline values={sparkline} tone={tone} /> : <i className="metric-accent" aria-hidden="true" />}
+      <span className={`metric-context${!unavailable && /^\+/.test(delta) ? " positive" : !unavailable && /^-/.test(delta) ? " negative" : ""}`}>{delta}</span>
+      {!!sparkline?.length && <MetricSparkline values={sparkline} tone={tone} />}
       <small>{detail}</small>
       {provenance && (
         <details className="metric-evidence">
@@ -1779,7 +1775,7 @@ function Intelligence({
         <article className="approval-card">
           <small>EXECUTION POLICY</small>
           <b>Recommend first. Approve before acting.</b>
-          {operating.guardrails.map((guardrail) => <span key={guardrail}><small>POLICY</small>{guardrail}</span>)}
+          {operating.guardrails.map((guardrail) => <span key={guardrail}><WorkspaceIcon name="Data Quality"/>{guardrail}</span>)}
         </article>
       </section>
       <section className="decision-queue">
