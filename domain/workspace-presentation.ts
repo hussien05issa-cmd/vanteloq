@@ -1,4 +1,14 @@
 /** Formatting helpers for the authenticated workspace. */
+export function sourceDateFreshness(time: number | null, maxAgeDays: number, missingLabel: string, now = Date.now()) {
+  if (time == null || !Number.isFinite(time)) return { status: "missing" as const, freshness: missingLabel };
+  // A future source timestamp is not evidence of freshness. Do not guess its units.
+  if (time > now + 86_400_000) return { status: "missing" as const, freshness: "Source timestamp requires review" };
+  const date = new Date(time).toISOString().slice(0, 10);
+  const ageDays = Math.max(0, Math.floor((now - time) / 86_400_000));
+  if (ageDays > maxAgeDays) return { status: "stale" as const, freshness: `Last updated ${date}, ${ageDays} days ago` };
+  return { status: "ready" as const, freshness: `Current through ${date}` };
+}
+
 export function comparisonCopy(rate: number | null | undefined, label: string) {
   if (rate == null || !Number.isFinite(rate)) return "Comparison unavailable";
   return `${new Intl.NumberFormat("en-CA", { style: "percent", maximumFractionDigits: 1, signDisplay: "exceptZero" }).format(rate)} vs ${label}`;

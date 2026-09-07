@@ -238,7 +238,12 @@
 .operating-shell .insight-four { gap: 16px; }
 .operating-shell .insight-four :is(small, span) { font-size: 12px !important; line-height: 1.55; }
 .operating-shell .advisor-provider-note { color: #c2d4e8 !important; }
-.operating-shell .growth-visual-hero { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 28px; padding: 28px; background: #edf3fa; border: 1px solid #d6e2f0; border-radius: 14px; box-shadow: none; }
+.operating-shell .growth-visual-hero { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 28px; min-height: 0; padding: 28px; background: #edf3fa; border: 1px solid #d6e2f0; border-radius: 14px; box-shadow: none; }
+.operating-shell .growth-visual-hero > div { padding: 0; }
+.operating-shell .growth-connection { flex-wrap: wrap; gap: 16px; }
+.operating-shell .growth-connection > div { min-width: 0; flex: 1 1 250px; }
+.operating-shell .growth-connection footer { flex: 0 0 auto; margin-left: auto; }
+.operating-shell .growth-connection footer button { white-space: nowrap; min-width: 76px; }
 .operating-shell .growth-visual-hero h2 { color: var(--ws-ink) !important; max-width: 740px; margin: 9px 0 12px; }
 .operating-shell .growth-visual-hero p { color: #355f91 !important; font-size: 11px !important; letter-spacing: .12em; }
 .operating-shell .growth-visual-hero span { color: var(--ws-muted) !important; font-size: 14px !important; line-height: 1.65; }

@@ -19,6 +19,7 @@ import {
   workspaces,
 } from "../../../../db/schema";
 import { buildGrowthIntelligence } from "../../../../domain/growth-intelligence";
+import { sourceDateFreshness } from "../../../../domain/workspace-presentation";
 import { buildMarketingRecommendations, type EvidenceCoverage, type MarketingOperatingCoverage } from "../../../../domain/marketing-recommendations";
 import { buildGoogleResourceReadiness, buildLocalOpportunityModel, buildProfileHealthChecklist } from "../../../../domain/local-growth-intelligence";
 import { recordAudit } from "../../../../server/audit";
@@ -86,12 +87,7 @@ const latestValue = (values: Array<Date | string | null | undefined>) => {
 };
 
 const sourceFreshness = (value: Date | string | null | undefined, maxAgeDays: number, missingLabel: string) => {
-  const time = timeValue(value);
-  if (time === null) return { status: "missing" as const, freshness: missingLabel };
-  const date = new Date(time).toISOString().slice(0, 10);
-  const ageDays = Math.max(0, Math.floor((Date.now() - time) / 86_400_000));
-  if (ageDays > maxAgeDays) return { status: "stale" as const, freshness: `Last updated ${date}, ${ageDays} days ago` };
-  return { status: "ready" as const, freshness: `Current through ${date}` };
+  return sourceDateFreshness(timeValue(value), maxAgeDays, missingLabel);
 };
 
 export async function GET(request: Request) {

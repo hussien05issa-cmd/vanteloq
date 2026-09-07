@@ -5,7 +5,17 @@ import { BusinessTrendChart, IntradaySalesChart, MetricSparkline } from "../app/
 import { Metric } from "../app/vanteloq-app";
 import { DataTable, FinancialKpi } from "../app/bookloq-workspace";
 import WorkspaceIcon from "../app/workspace-icon";
-import { chartDomain, chartY, comparisonCopy, quantityLabel } from "../domain/workspace-presentation";
+import { chartDomain, chartY, comparisonCopy, quantityLabel, sourceDateFreshness } from "../domain/workspace-presentation";
+
+test("invalid future timestamps never masquerade as current source evidence", () => {
+  const now = Date.parse("2026-09-07T12:00:00Z");
+  assert.equal(sourceDateFreshness(now * 1000, 31, "No source date", now).freshness, "Source timestamp requires review");
+  assert.equal(sourceDateFreshness(now * 1000, 31, "No source date", now).status, "missing");
+  assert.equal(sourceDateFreshness(NaN, 31, "No source date", now).status, "missing");
+  assert.equal(sourceDateFreshness(null, 31, "No source date", now).freshness, "No source date");
+  assert.equal(sourceDateFreshness(now, 31, "No source date", now).freshness, "Current through 2026-09-07");
+  assert.equal(sourceDateFreshness(now - 40 * 86_400_000, 31, "No source date", now).status, "stale");
+});
 
 test("signed chart values stay within the plotted range, including all-negative series", () => {
   for (const values of [[-300, 100, 900], [-600, -100], [0], [15], [NaN, -25, Infinity]]) {
