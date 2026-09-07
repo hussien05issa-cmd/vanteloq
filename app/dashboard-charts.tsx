@@ -3,11 +3,12 @@
 import { useId, useState } from "react";
 import { chartDomain, chartY, quantityLabel } from "../domain/workspace-presentation";
 import WorkspaceIcon from "./workspace-icon";
+import { cumulativeSalesHours } from "../domain/intraday-sales";
 
 type TrendPoint = { date: string; netSalesCents: number; grossProfitCents: number | null; transactionCount?: number };
 type IntradayPoint = { hour: number; label: string; netSalesCents: number; grossProfitCents: number | null; transactionCount: number };
 type Tone = "indigo" | "emerald" | "cyan" | "amber" | "rose";
-type PlotPoint = { key: string; label: string; shortLabel: string; netSalesCents: number; grossProfitCents: number | null; transactionCount?: number };
+type PlotPoint = { key: string; label: string; shortLabel: string; netSalesCents: number; grossProfitCents: number | null; transactionCount?: number; comparisonCents?: number | null };
 const toneColour: Record<Tone, string> = {
   indigo: "#245fce", emerald: "#087f78", cyan: "#087da5", amber: "#a96813", rose: "#b43c55",
 };
@@ -17,7 +18,8 @@ function fullMoney(cents: number, currency: string) {
 function axisMoney(cents: number, currency: string) {
   return new Intl.NumberFormat("en-CA", {
     style: "currency", currency, notation: Math.abs(cents) >= 100000 ? "compact" : "standard",
-    maximumFractionDigits: Math.abs(cents) < 1000 ? 2 : 1,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: Math.abs(cents) < 1000 ? 2 : Math.abs(cents) >= 100000 ? 1 : 0,
   }).format(cents / 100);
 }
 function xAt(index: number, length: number, width: number) {
@@ -45,8 +47,8 @@ function ChartEmpty({ intraday = false }: { intraday?: boolean }) {
 }
 
 /** The plot, record selector and data table share the same unmodified source values. */
-function FinancialSeriesChart({ data, currency, title, intraday = false }: {
-  data: PlotPoint[]; currency: string; title: string; intraday?: boolean;
+function FinancialSeriesChart({ data, currency, title, intraday = false, comparisonLabel }: {
+  data: PlotPoint[]; currency: string; title: string; intraday?: boolean; comparisonLabel?: string;
 }) {
   const id = useId().replaceAll(":", "");
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
@@ -54,9 +56,10 @@ function FinancialSeriesChart({ data, currency, title, intraday = false }: {
   const active = data[selectedIndex];
   if (!active) return <ChartEmpty intraday={intraday}/>;
   const plotWidth = 636, plotHeight = 184, left = 66, top = 16;
-  const domain = chartDomain(data.flatMap((point) => [point.netSalesCents, ...(point.grossProfitCents == null ? [] : [point.grossProfitCents])]));
+  const domain = chartDomain(data.flatMap((point) => [point.netSalesCents, ...(point.grossProfitCents == null ? [] : [point.grossProfitCents]), ...(point.comparisonCents == null ? [] : [point.comparisonCents])]));
   const salesPath = linePath(data.map((point) => point.netSalesCents), plotWidth, plotHeight, domain);
   const profitPath = linePath(data.map((point) => point.grossProfitCents), plotWidth, plotHeight, domain);
+  const comparisonPath = linePath(data.map((point) => point.comparisonCents ?? null), plotWidth, plotHeight, domain);
   const zeroY = chartY(0, plotHeight, domain);
   const firstX = xAt(0, data.length, plotWidth), lastX = xAt(data.length - 1, data.length, plotWidth);
   const area = `${salesPath} L${lastX},${zeroY} L${firstX},${zeroY} Z`;
@@ -64,8 +67,8 @@ function FinancialSeriesChart({ data, currency, title, intraday = false }: {
   const labels = new Set(Array.from({ length: Math.min(6, data.length) }, (_, index) => Math.round(index * (data.length - 1) / Math.max(1, Math.min(6, data.length) - 1))));
   const profitAvailable = data.some((point) => point.grossProfitCents != null);
   return <div className="workspace-series-chart">
-    <div className="chart-legend"><span><i className="legend-sales" aria-hidden="true"/>Net sales</span><span><i className="legend-profit" aria-hidden="true"/>Gross profit{!profitAvailable && " unavailable"}</span></div>
-    <div className="workspace-chart-plot">
+    <div className="chart-legend"><span><i className="legend-sales" aria-hidden="true"/>Net sales</span>{comparisonLabel && <span><i className="legend-comparison" aria-hidden="true"/>{comparisonLabel}</span>}<span><i className="legend-profit" aria-hidden="true"/>Gross profit{!profitAvailable && " unavailable"}</span></div>
+    <div className="workspace-chart-plot" tabIndex={0} role="region" aria-label="Scrollable financial chart">
       <svg viewBox="0 0 720 238" role="img" aria-labelledby={`${id}-title ${id}-description`}>
         <title id={`${id}-title`}>{title}</title>
         <desc id={`${id}-description`}>Negative values are shown below zero. Use the record selector or expand the data table for exact amounts.</desc>
@@ -77,6 +80,7 @@ function FinancialSeriesChart({ data, currency, title, intraday = false }: {
         <g transform={`translate(${left} ${top})`}>
           <line className="chart-zero-line" x1="0" x2={plotWidth} y1={zeroY} y2={zeroY}/>
           {data.length > 1 && <path d={area} fill={`url(#${id})`}/>}
+          {comparisonLabel && <path d={comparisonPath} className="trend-comparison-line"/>}
           <path d={salesPath} className="trend-sales-line"/><path d={profitPath} className="trend-profit-line"/>
           <g className="chart-active-marker" aria-hidden="true"><line x1={activeX} x2={activeX} y1="0" y2={plotHeight}/><circle cx={activeX} cy={chartY(active.netSalesCents, plotHeight, domain)} r="4.5" className="active-sales-point"/>{active.grossProfitCents != null && <circle cx={activeX} cy={chartY(active.grossProfitCents, plotHeight, domain)} r="4" className="active-profit-point"/>}</g>
           {data.map((point, index) => {
@@ -92,10 +96,10 @@ function FinancialSeriesChart({ data, currency, title, intraday = false }: {
     </div>
     <div className="workspace-chart-readout">
       <label htmlFor={`${id}-record`}>Inspect record<select id={`${id}-record`} value={active.key} onChange={(event) => setSelectedKey(event.target.value)}>{data.map((point) => <option key={point.key} value={point.key}>{point.label}</option>)}</select></label>
-      <dl aria-live="polite" aria-atomic="true"><div><dt>Net sales</dt><dd>{fullMoney(active.netSalesCents, currency)}</dd></div><div><dt>Gross profit</dt><dd>{active.grossProfitCents == null ? "Not available" : fullMoney(active.grossProfitCents, currency)}</dd></div>{active.transactionCount != null && <div><dt>Transactions</dt><dd>{active.transactionCount.toLocaleString("en-CA")}</dd></div>}</dl>
+      <dl aria-live="polite" aria-atomic="true"><div><dt>Net sales</dt><dd>{fullMoney(active.netSalesCents, currency)}</dd></div>{comparisonLabel && <div><dt>{comparisonLabel}</dt><dd>{active.comparisonCents == null ? "Not available" : fullMoney(active.comparisonCents, currency)}</dd></div>}<div><dt>Gross profit</dt><dd>{active.grossProfitCents == null ? "Not available" : fullMoney(active.grossProfitCents, currency)}</dd></div>{active.transactionCount != null && <div><dt>Transactions</dt><dd>{active.transactionCount.toLocaleString("en-CA")}</dd></div>}</dl>
     </div>
     <details className="workspace-chart-data"><summary>View chart data <span>{quantityLabel(data.length, "record")}</span></summary><div className="workspace-table-scroll">
-      <table><caption>{title}. Amounts in {currency}.</caption><thead><tr><th scope="col">{intraday ? "Time" : "Date"}</th><th scope="col">Net sales</th><th scope="col">Gross profit</th><th scope="col">Transactions</th></tr></thead><tbody>{data.map((point) => <tr key={point.key}><th scope="row">{point.label}</th><td>{fullMoney(point.netSalesCents, currency)}</td><td>{point.grossProfitCents == null ? "Not available" : fullMoney(point.grossProfitCents, currency)}</td><td>{point.transactionCount ?? "Not supplied"}</td></tr>)}</tbody></table>
+      <table><caption>{title}. Amounts in {currency}.</caption><thead><tr><th scope="col">{intraday ? "Time" : "Date"}</th><th scope="col">Net sales</th>{comparisonLabel && <th scope="col">{comparisonLabel}</th>}<th scope="col">Gross profit</th><th scope="col">Transactions</th></tr></thead><tbody>{data.map((point) => <tr key={point.key}><th scope="row">{point.label}</th><td>{fullMoney(point.netSalesCents, currency)}</td>{comparisonLabel && <td>{point.comparisonCents == null ? "Not available" : fullMoney(point.comparisonCents, currency)}</td>}<td>{point.grossProfitCents == null ? "Not available" : fullMoney(point.grossProfitCents, currency)}</td><td>{point.transactionCount ?? "Not supplied"}</td></tr>)}</tbody></table>
     </div></details>
   </div>;
 }
@@ -107,12 +111,25 @@ export function BusinessTrendChart({ data, currency }: { data: TrendPoint[]; cur
   }));
   return <FinancialSeriesChart data={points} currency={currency} title="Daily net sales and gross profit"/>;
 }
-export function IntradaySalesChart({ data, currency }: { data: IntradayPoint[]; currency: string }) {
-  const points = data.filter((point) => Number.isFinite(point.netSalesCents)).map((point) => ({
+export function IntradaySalesChart({ data, currency, comparison, comparisonDate, asOf, timeZone = "UTC" }: {
+  data: IntradayPoint[]; currency: string; comparison?: IntradayPoint[];
+  comparisonDate?: string; asOf?: string | null; timeZone?: string;
+}) {
+  const [cumulative, setCumulative] = useState(false);
+  const clean = (rows: IntradayPoint[]) => rows.filter((point) => Number.isFinite(point.netSalesCents)).map((point) => ({
     ...point, grossProfitCents: point.grossProfitCents != null && Number.isFinite(point.grossProfitCents) ? point.grossProfitCents : null, key: String(point.hour), shortLabel: point.label,
   }));
-  if (!points.some((point) => point.transactionCount > 0 || point.netSalesCents !== 0 || (point.grossProfitCents ?? 0) !== 0)) return <ChartEmpty intraday/>;
-  return <FinancialSeriesChart data={points} currency={currency} title="Today's net sales and gross profit by hour" intraday/>;
+  const current = clean(data), previous = comparison ? clean(comparison) : [];
+  const previousByHour = new Map((cumulative ? cumulativeSalesHours(previous) : previous).map((point) => [point.hour, point.netSalesCents]));
+  const points = (cumulative ? cumulativeSalesHours(current) : current).map((point) => ({ ...point, key: String(point.hour), shortLabel: point.label, comparisonCents: previousByHour.get(point.hour) ?? null }));
+  const hasActivity = [...current, ...previous].some((point) => point.transactionCount > 0 || point.netSalesCents !== 0 || (point.grossProfitCents ?? 0) !== 0);
+  const updated = asOf && Number.isFinite(Date.parse(asOf)) ? new Intl.DateTimeFormat("en-CA", { timeZone, month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" }).format(new Date(asOf)) : null;
+  const previousLabel = comparisonDate ? new Intl.DateTimeFormat("en-CA", { timeZone: "UTC", month: "short", day: "numeric" }).format(new Date(`${comparisonDate}T12:00:00Z`)) : "Last week";
+  return <div className="intraday-sales-view">
+    <div className="intraday-chart-toolbar"><div><strong>{cumulative ? "Sales accumulated through the day" : "Sales received in each hour"}</strong><p>{updated ? `Source records through ${updated}.` : "Approved transaction records, in business time."}</p></div><div className="chart-mode-toggle" role="group" aria-label="Sales chart view"><button type="button" aria-pressed={!cumulative} onClick={() => setCumulative(false)}>Hourly</button><button type="button" aria-pressed={cumulative} onClick={() => setCumulative(true)}>Running total</button></div></div>
+    {hasActivity ? <FinancialSeriesChart data={points} currency={currency} title={cumulative ? "Cumulative net sales, comparison and gross profit" : "Today's net sales and gross profit by hour"} comparisonLabel={previous.length ? `${previousLabel} net sales` : undefined} intraday/> : <ChartEmpty intraday/>}
+    <p className="intraday-chart-note">{previous.length ? "Compared with the same weekday last week through the same local time. The latest hour may be incomplete." : "A matched comparison appears when every selected source has usable history. The latest hour may be incomplete."} Gross profit is net sales less recorded product cost, not net business profit. Updates follow approved imports.</p>
+  </div>;
 }
 
 export function CashPositionRing({
@@ -124,44 +141,17 @@ export function CashPositionRing({
   payableCents: number | null | undefined;
   currency: string;
 }) {
-  const hasData = cashCents != null && payableCents != null;
-  const cash = Math.max(cashCents ?? 0, 0);
-  const payable = Math.max(payableCents ?? 0, 0);
-  const available = Math.max(cash - payable, 0);
-  const covered = Math.min(cash, payable);
-  const total = Math.max(available + covered, 1);
-  const availableShare = available / total;
-  const radius = 46;
-  const circumference = 2 * Math.PI * radius;
-  const format = (value: number) =>
-    new Intl.NumberFormat("en-CA", {
-      style: "currency",
-      currency,
-      maximumFractionDigits: 0,
-    }).format(value / 100);
+  const cash = cashCents != null && Number.isFinite(cashCents) ? cashCents : null;
+  const payable = payableCents != null && Number.isFinite(payableCents) ? payableCents : null;
+  const remaining = cash !== null && payable !== null ? cash - payable : null;
+  const rows = [{ label: "Operating cash", value: cash, tone: "cash" }, { label: "Accounts payable", value: payable, tone: "payables" }, { label: "Cash less payables", value: remaining, tone: "remaining" }];
+  const scale = Math.max(...rows.map((row) => Math.abs(row.value ?? 0)), 1);
 
   return (
-    <div className="cash-ring-layout">
-      <div className="cash-ring">
-        <svg viewBox="0 0 120 120" role="img" aria-label="Cash remaining after accounts payable">
-          <circle cx="60" cy="60" r={radius} className="cash-ring-track" />
-          {hasData && (
-            <circle
-              cx="60"
-              cy="60"
-              r={radius}
-              className="cash-ring-available"
-              strokeDasharray={`${circumference * availableShare} ${circumference}`}
-            />
-          )}
-        </svg>
-        <span><small>After payables</small><b>{hasData ? format(available) : "Not available"}</b></span>
-      </div>
-      <dl className="cash-ring-details">
-        <div><dt><i className="cash-dot" />Operating cash</dt><dd>{cashCents == null ? "Not connected" : format(cash)}</dd></div>
-        <div><dt><i className="payable-dot" />Accounts payable</dt><dd>{payableCents == null ? "Not connected" : format(payable)}</dd></div>
-        <div><dt><i className="available-dot" />Uncommitted balance</dt><dd>{hasData ? format(available) : "Not calculated"}</dd></div>
-      </dl>
+    <div className="cash-position-bridge">
+      <div className={`cash-bridge-result${remaining != null && remaining < 0 ? " is-shortfall" : ""}`}><span>Cash less recorded payables</span><strong>{remaining == null ? "Not available" : fullMoney(remaining, currency)}</strong><small>{remaining == null ? "Both balances are needed for this calculation." : remaining < 0 ? "Recorded payables exceed operating cash." : "A balance check, not a spending limit."}</small></div>
+      <dl className="cash-bridge-rows">{rows.map((row) => <div key={row.tone}><dt>{row.label}</dt><dd>{row.value == null ? "Not available" : fullMoney(row.value, currency)}</dd><div className="cash-bridge-track" aria-hidden="true"><i className={`${row.tone}${row.value != null && row.value < 0 ? " is-negative" : ""}`} style={{ width: `${Math.abs(row.value ?? 0) / scale * 50}%`, left: `${row.value != null && row.value < 0 ? 50 - Math.abs(row.value) / scale * 50 : 50}%` }}/></div></div>)}</dl>
+      <p>Other obligations, future receipts and payment dates are not included. Review the cash forecast before committing funds.</p>
     </div>
   );
 }

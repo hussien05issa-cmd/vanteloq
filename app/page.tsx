@@ -6,8 +6,10 @@ import Link from "next/link";
 import IntegrationBrandLogo from "./integration-brand-logo";
 import { integrationCatalog, integrationPublicStatus } from "./integration-catalog";
 import SourceRecordIcon from "./source-record-icon";
+import ResourceGuideVisual from "./resource-guide-visual";
 import { AccountSteps, OperatingStepPreview } from "./home-journey-visuals";
 import ProductBrandLogo from "./product-brand-logo";
+import PlatformPreview from "./platform-preview";
 import SocialLinks from "./social-links";
 import AuthPanel, { type AuthPanelMode } from "./auth-panel";
 import { currentSession, getSupabase, signOut } from "./supabase-browser";
@@ -550,17 +552,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
             <li><b>3</b><div><strong>Review and act</strong><span>Turn a supported finding into assigned work with the right approval.</span></div><OperatingStepPreview step="review"/></li>
           </ol>
         </div>
-        <article className="home-workflow-preview" aria-label="Inventory decision example">
-          <header><span>SOURCE-BASED REVIEW</span><b>Inventory decision</b></header>
-          <div className="home-workflow-source"><small>SOURCE</small><strong>Lightspeed R-Series</strong><span>Sales and inventory · last verified import shown in product</span></div>
-          <div className="home-workflow-metrics"><span><small>ITEM</small><strong>Sample SKU</strong></span><span><small>ON HAND</small><strong>Confirmed in source</strong></span><span><small>LEAD TIME</small><strong>Supplier input</strong></span></div>
-          <div className="home-workflow-decision"><div><small>REVIEW OUTPUT</small><strong>Review the proposed order against recent demand, supplier limits and available cash.</strong></div><figure>
-            {/* This generated visual explains the review process without presenting customer data. */}
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/brand/inventory-decision-visual.webp" alt="Inventory, supplier timing, available cash and owner approval brought into one review." width={760} height={760} loading="lazy" />
-          </figure></div>
-          <footer><span>Example workflow · confirm with source records</span><b>Owner approval required</b></footer>
-        </article>
+        <PlatformPreview/>
       </section>
 
       <section className="home-capabilities" id="capabilities" aria-labelledby="capabilities-title">
@@ -662,10 +654,9 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
         <div className="home-resource-grid">
           {RESOURCE_ARTICLES.map((article) => {
             const category = getCategory(article.category);
-            const visualLabel = article.category === "inventory" ? "SKU" : article.category === "finance" ? "%" : "VIEW";
             return (
               <Link href={`/resources/${article.slug}`} key={article.slug}>
-                <div className={`home-resource-art ${article.category}-art`} aria-hidden="true"><i/><i/><i/><b>{visualLabel}</b></div>
+                <ResourceGuideVisual category={article.category} slug={article.slug}/>
                 <small>{category?.shortName.toUpperCase()} · {getReadingTime(article)} MIN</small>
                 <h3>{article.title}</h3>
                 <p>{article.description}</p>

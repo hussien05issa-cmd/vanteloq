@@ -1,7 +1,6 @@
 "use client";
 
 import Image from "next/image";
-import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import BookLoQWorkspace from "./bookloq-workspace";
 import CommunicationsWorkspace from "./communications-workspace";
@@ -10,6 +9,7 @@ import GrowthWorkspace from "./growth-workspace";
 import ScenarioPlanner from "./scenario-planner";
 import { connectorNextStep, filterConnectors } from "../domain/connector-guidance";
 import IntegrationBrandLogo from "./integration-brand-logo";
+import AdvisorComposer, { canAskAdvisor } from "./advisor-composer";
 import {
   integrationCatalog,
   integrationCategoryGuide,
@@ -532,18 +532,22 @@ type CommandCentre = {
     discountsCents: number;
     lastSaleAt: string | null;
     sourceGranularity: "intraday" | "daily";
+    asOf?: string | null;
+    timeZone?: string;
+    hourlyUnavailableReason?: string | null;
     hourly: Array<{
       hour: number;
       label: string;
       netSalesCents: number;
-      grossProfitCents: number;
+      grossProfitCents: number | null;
       transactionCount: number;
     }>;
   };
   todayComparison: {
+    basis?: "full_day" | "same_weekday_same_time";
     baselineDate: string;
     currentDate: string;
-    baseline: { netSalesCents: number; grossProfitCents: number; transactionCount: number };
+    baseline: { netSalesCents: number; grossProfitCents: number | null; transactionCount: number; hourly?: import("../domain/intraday-sales").SalesHour[] };
     changes: { netSalesRate: number | null; grossProfitRate: number | null; transactionRate: number | null };
   } | null;
   paymentMix: {
@@ -672,16 +676,23 @@ export default function VanteloqApp({
   });
   const preferenceQueueRef = useRef<Promise<void>>(Promise.resolve());
   const preferenceWriteRef = useRef(0);
+  const dashboardRequestRef = useRef<AbortController | null>(null);
 
   const refresh = useCallback(async (silent = false) => {
+    if (silent && dashboardRequestRef.current) return;
+    dashboardRequestRef.current?.abort();
+    const request = new AbortController();
+    dashboardRequestRef.current = request;
     if (!silent) setLoading(true);
     try {
       const parameters = new URLSearchParams({ payment_days: String(paymentRange) });
       if (activeLocationId) parameters.set("location", activeLocationId);
       const response = await apiFetch(`/api/v1/command-centre?${parameters.toString()}`, {
         headers: { Accept: "application/json" },
+        signal: request.signal,
       });
       const body = await response.json();
+      if (request.signal.aborted || dashboardRequestRef.current !== request) return;
       if (!response.ok)
         throw new Error(
           body.error?.message ?? "Unable to load the command centre.",
@@ -697,13 +708,17 @@ export default function VanteloqApp({
       );
       setError("");
     } catch (caught) {
+      if (request.signal.aborted || dashboardRequestRef.current !== request) return;
       setError(
         caught instanceof Error
           ? caught.message
           : "Unable to load the command centre.",
       );
     } finally {
-      if (!silent) setLoading(false);
+      if (dashboardRequestRef.current === request) {
+        dashboardRequestRef.current = null;
+        setLoading(false);
+      }
     }
   }, [activeLocationId, organizationName, paymentRange]);
   useEffect(() => {
@@ -730,13 +745,22 @@ export default function VanteloqApp({
   }, []);
   useEffect(() => {
     const timer = window.setTimeout(() => void refresh(), 0);
-    return () => window.clearTimeout(timer);
+    return () => {
+      window.clearTimeout(timer);
+      dashboardRequestRef.current?.abort();
+      dashboardRequestRef.current = null;
+    };
   }, [refresh]);
   useEffect(() => {
-    const timer = window.setInterval(() => {
+    const refreshVisible = () => {
       if (document.visibilityState === "visible") void refresh(true);
-    }, 60_000);
-    return () => window.clearInterval(timer);
+    };
+    const timer = window.setInterval(refreshVisible, 60_000);
+    document.addEventListener("visibilitychange", refreshVisible);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refreshVisible);
+    };
   }, [refresh]);
   useEffect(() => {
     const parameters = new URLSearchParams(window.location.search);
@@ -1486,27 +1510,29 @@ function CommerceIntelligenceRail({ data, currency, paymentRange, setPaymentRang
 
 function LiveSalesPanel({ data, currency, paymentRange, setPaymentRange, compact = false }: { data: CommandCentre; currency: string; paymentRange: PaymentRange; setPaymentRange: (range: PaymentRange) => void; compact?: boolean }) {
   const today = data.today;
-  const baselineLabel = data.todayComparison ? formatBusinessDate(data.todayComparison.baselineDate) : "same weekday";
+  const intraday = today.sourceGranularity === "intraday";
+  const matched = data.todayComparison?.basis === "same_weekday_same_time";
+  const baselineLabel = data.todayComparison ? `${formatBusinessDate(data.todayComparison.baselineDate)}${matched ? " at the same time" : ""}` : "same weekday";
   const sourceName = data.liveSource.accountName || (data.liveSource.provider ? providerLabel(data.liveSource.provider) : "connected source");
   return (
     <>
       <section className="today-metric-grid">
-        <Metric label="Latest daily net sales" value={money(today.netSalesCents, currency)} delta={comparisonCopy(data.todayComparison?.changes.netSalesRate, baselineLabel)} detail={`${formatBusinessDate(today.businessDate)} · completed sales`} tone="indigo" />
-        <Metric label="Latest daily gross profit" value={money(today.grossProfitCents, currency)} delta={comparisonCopy(data.todayComparison?.changes.grossProfitRate, baselineLabel)} detail="Net sales less product cost" tone="emerald" />
-        <Metric label="Gross margin" value={today.netSalesCents && today.grossProfitCents != null ? `${(today.grossProfitCents / today.netSalesCents * 100).toFixed(1)}%` : "Not available"} delta="Product economics" detail="Gross profit ÷ net sales" tone="emerald" />
+        <Metric label={intraday ? "Net sales today" : "Latest daily net sales"} value={money(today.netSalesCents, currency)} delta={comparisonCopy(data.todayComparison?.changes.netSalesRate, baselineLabel)} detail={`${formatBusinessDate(today.businessDate)} · excludes sales tax`} tone="indigo" />
+        <Metric label={intraday ? "Gross profit today" : "Latest daily gross profit"} value={today.grossProfitCents == null ? "Not available" : money(today.grossProfitCents, currency)} delta={comparisonCopy(data.todayComparison?.changes.grossProfitRate, baselineLabel)} detail={today.grossProfitCents == null ? "Verified product costs required" : "Net sales less product cost"} tone="emerald" />
+        <Metric label="Gross margin" value={today.netSalesCents > 0 && today.grossProfitCents != null ? `${(today.grossProfitCents / today.netSalesCents * 100).toFixed(1)}%` : "Not available"} delta="Product economics" detail="Gross profit ÷ positive net sales" tone="emerald" />
         <Metric label="Discounts" value={money(today.discountsCents, currency)} delta={today.netSalesCents + today.discountsCents ? `${(today.discountsCents / (today.netSalesCents + today.discountsCents) * 100).toFixed(1)}% of pre-discount value` : "No discount activity"} detail="Verified line and sale discounts" tone="amber" />
-        <Metric label="Average transaction" value={today.averageTransactionCents == null ? "Not available" : money(today.averageTransactionCents, currency, 2)} delta="Latest daily basket value" detail="Net sales ÷ completed transactions" tone="amber" />
+        <Metric label="Average transaction" value={today.averageTransactionCents == null ? "Not available" : money(today.averageTransactionCents, currency, 2)} delta={intraday ? "Today's basket value" : "Latest daily basket value"} detail="Net sales ÷ completed transactions" tone="amber" />
         <Metric label="Number of sales" value={today.transactionCount == null ? "Not available" : today.transactionCount.toLocaleString()} delta={comparisonCopy(data.todayComparison?.changes.transactionRate, baselineLabel)} detail={today.unitsSold == null ? "Revenue permission required" : `${quantityLabel(today.unitsSold, "line item")} recorded`} tone="cyan" />
       </section>
       <section className={compact ? "live-sales-grid compact" : "live-sales-grid"}>
         <article className="card live-sales-chart-card">
           <div className="card-head">
-            <div><p className="card-kicker">LATEST VERIFIED DAY</p><h3>Sales by hour</h3></div>
-            <span className="verified-tag">{sourceName} · verified</span>
+            <div><p className="card-kicker">{intraday ? "TODAY'S SALES PULSE" : "LATEST VERIFIED DAY"}</p><h3>Sales by hour</h3></div>
+            <span className="verified-tag">{sourceName} · approved records</span>
           </div>
           {today.sourceGranularity === "intraday"
-            ? <IntradaySalesChart data={today.hourly} currency={currency} />
-            : <div className="intel-empty"><b>Hourly detail is not provided by this source</b><span>The totals above come from the latest verified daily summary. Connect a provider with transaction timestamps to unlock the intraday chart.</span></div>}
+            ? <IntradaySalesChart data={today.hourly} currency={currency} comparison={matched ? data.todayComparison?.baseline.hourly : undefined} comparisonDate={matched ? data.todayComparison?.baselineDate : undefined} asOf={today.asOf} timeZone={today.timeZone} />
+            : <div className="intel-empty"><b>Hourly detail is not available</b><span>{today.hourlyUnavailableReason || "The totals above come from the latest verified daily summary. Connect a provider with transaction timestamps to unlock the intraday chart."}</span></div>}
           <div className="chart-foot">
             <span><b>{today.transactionCount == null ? "Not available" : today.transactionCount.toLocaleString()}</b> completed sales</span>
             <span><b>{today.unitsSold == null ? "Not available" : today.unitsSold.toLocaleString()}</b> line items</span>
@@ -3924,7 +3950,7 @@ function Advisor({
   } | null>(null);
   const ask = async (event: FormEvent) => {
     event.preventDefault();
-    if (!question.trim() || loading) return;
+    if (!canAskAdvisor(question, dataUseAccepted, loading)) return;
     setLoading(true);
     const normalized = question.toLowerCase();
     try {
@@ -4016,44 +4042,7 @@ function Advisor({
   };
   return (
     <div className="content advisor-page">
-      <section className="advisor-hero">
-        <p>EVIDENCE-BOUND ADVISOR · GOOGLE GEMINI</p>
-        <h2>Ask the business. See the limits.</h2>
-        <span>
-          Gemini explains the same verified calculation engine used by the command centre. Your workspace memory stays scoped to your organization, and unsupported questions return the missing source instead of a fabricated answer.
-        </span>
-        <form onSubmit={ask}>
-          <input
-            value={question}
-            onChange={(event) => setQuestion(event.target.value)}
-            placeholder="Why were sales lower? Where is margin leaking?"
-          />
-          <button disabled={loading || !dataUseAccepted}>{loading ? "Thinking…" : "Ask Gemini →"}</button>
-        </form>
-        <label className="advisor-data-consent">
-          <input
-            type="checkbox"
-            checked={dataUseAccepted}
-            onChange={(event) => setDataUseAccepted(event.target.checked)}
-          />
-          <span>
-            I understand that my question, verified aggregate business metrics, source status, permitted aggregate cash, and short conversation context are sent to Google Gemini to produce this explanation. Raw credentials, account numbers, customer names, invoice files, and raw transactions are excluded. <Link href="/privacy#automation">Review the Privacy Policy.</Link>
-          </span>
-        </label>
-        <div className="advisor-provider-note"><IntegrationBrandLogo name="Google" compact/><span><strong>Gemini on Google’s AI platform</strong><small>Evidence first · No actions without your approval</small></span>{answer && <button type="button" onClick={() => void clearConversation()}>Clear conversation</button>}</div>
-        <div className="suggested-questions">
-          {[
-            "Why did sales change?",
-            "Where is margin leaking?",
-            "Is labour pressure rising?",
-            "What can the current data not answer?",
-          ].map((item) => (
-            <button key={item} onClick={() => setQuestion(item)}>
-              {item}
-            </button>
-          ))}
-        </div>
-      </section>
+      <AdvisorComposer question={question} onQuestion={setQuestion} dataUseAccepted={dataUseAccepted} onConsent={setDataUseAccepted} loading={loading} onSubmit={ask} onClear={answer ? () => void clearConversation() : undefined}/>
       {answer && (
         <article className="advisor-answer">
           <span>VANTELOQ ANALYSIS</span>

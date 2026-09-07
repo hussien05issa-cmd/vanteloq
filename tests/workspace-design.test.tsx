@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { BusinessTrendChart, IntradaySalesChart, MetricSparkline } from "../app/dashboard-charts";
+import { BusinessTrendChart, IntradaySalesChart, MetricSparkline, CashPositionRing } from "../app/dashboard-charts";
+import ResourceGuideVisual from "../app/resource-guide-visual";
 import { Metric } from "../app/vanteloq-app";
 import { DataTable, FinancialKpi } from "../app/bookloq-workspace";
 import WorkspaceIcon from "../app/workspace-icon";
@@ -96,4 +97,34 @@ test("functional navigation icons are decorative, not duplicate spoken labels", 
     assert.match(html, /aria-hidden="true"/);
     assert.match(html, /focusable="false"/);
   }
+});
+
+test("intraday comparison shares an exact-value table and exposes both chart modes", () => {
+  const rows = [{ hour: 10, label: "10 a.m.", netSalesCents: 12345, grossProfitCents: 2345, transactionCount: 2 }];
+  const html = renderToStaticMarkup(<IntradaySalesChart data={rows} comparison={[{ ...rows[0], netSalesCents: 10000 }]} comparisonDate="2026-08-31" asOf="2026-09-07T18:30:00Z" timeZone="America/Edmonton" currency="CAD"/>);
+  assert.match(html, /Aug 31 net sales/);
+  assert.match(html, /trend-comparison-line/);
+  assert.match(html, /\$100\.00/);
+  assert.match(html, /aria-pressed="true">Hourly/);
+  assert.match(html, /Running total/);
+  assert.match(html, /same local time/);
+  assert.match(html, /12:30/);
+});
+test("cash shortfalls are signed and never presented as an uncommitted spending balance", () => {
+  const html = renderToStaticMarkup(<CashPositionRing cashCents={100000} payableCents={125050} currency="CAD"/>);
+  assert.match(html, /-\$250\.50/);
+  assert.match(html, /is-shortfall/);
+  assert.match(html, /Other obligations/);
+  assert.doesNotMatch(html, /Uncommitted/);
+  assert.match(renderToStaticMarkup(<CashPositionRing cashCents={-5025} payableCents={0} currency="CAD"/>), /-\$50\.25/);
+  assert.match(renderToStaticMarkup(<CashPositionRing cashCents={100} payableCents={null} currency="CAD"/>), /Not available/);
+  assert.doesNotMatch(renderToStaticMarkup(<CashPositionRing cashCents={NaN} payableCents={Infinity} currency="CAD"/>), /NaN|Infinity/);
+});
+test("guide labels occupy a separate heading, without floating chart abbreviations", () => {
+  const html = renderToStaticMarkup(<ResourceGuideVisual category="finance" slug="how-to-calculate-gross-margin-small-business"/>);
+  assert.match(html, /guide-visual-heading/);
+  assert.match(html, /Net sales/);
+  assert.match(html, /Product cost/);
+  assert.match(html, /Gross profit/);
+  assert.doesNotMatch(html, />%<|>SKU<|>VIEW</);
 });

@@ -225,6 +225,67 @@ async function seedReportLocation(database, organizationId, name) {
   return locationId;
 }
 
+test("intraday API compares matched hours and redacts all profit paths for revenue-only staff", async () => {
+  const { worker, environment, database, dispose } = await createEnvironment();
+  try {
+    const identity = await createReportWorkspace(worker, environment, database, "intraday");
+    await database.prepare("UPDATE workspaces SET timezone = 'UTC' WHERE id = ?").bind(identity.organizationId).run();
+    const now = Math.floor(Date.now() / 1000), currentDate = new Date(now * 1000).toISOString().slice(0, 10);
+    const baselineDate = dateOffset(currentDate, -7);
+    const connectionId = `intraday-${crypto.randomUUID()}`;
+    await seedReportConnection(database, { ...identity, connectionId, namespace: "legacy", externalLocationRef: "shop" });
+    const runId = crypto.randomUUID();
+    await database.prepare(`INSERT INTO integration_sync_runs
+      (id, organization_id, provider, connection_id, mode, status, started_at, completed_at)
+      VALUES (?, ?, 'lightspeed-r', ?, 'incremental', 'completed', ?, ?)`)
+      .bind(runId, identity.organizationId, connectionId, now, now).run();
+    const insert = database.prepare(`INSERT INTO integration_staged_sales
+      (id, organization_id, provider, connection_id, external_sale_id, external_version,
+       outlet_ref, sold_at, state, total_cents, tax_cents, cost_cents, discount_cents,
+       line_count, source_payload_hash, sync_run_id, staged_at)
+      VALUES (?, ?, 'lightspeed-r', ?, ?, ?, 'shop', ?, 'completed', ?, 0, ?, 0, 1, 'test-only', ?, ?)`);
+    await database.batch([
+      insert.bind("current-old", identity.organizationId, connectionId, "current", "1", `${currentDate}T00:00:00Z`, 999999, 100, runId, now - 2),
+      insert.bind("current-latest", identity.organizationId, connectionId, "current", "2", `${currentDate}T00:00:00Z`, 10000, 6000, runId, now - 1),
+      insert.bind("baseline", identity.organizationId, connectionId, "previous", "1", `${baselineDate}T00:00:00Z`, 5000, 2000, runId, now - 1),
+    ]);
+    const load = async (user = identity.owner, suffix = "") => {
+      const response = await dispatch(worker, environment, `/api/v1/command-centre${suffix}`, user);
+      assert.equal(response.status, 200);
+      return (await response.json()).commandCentre;
+    };
+    const ownerView = await load(identity.owner, `?location=${identity.locationId}`);
+    assert.equal(ownerView.today.sourceGranularity, "intraday");
+    assert.equal(ownerView.today.netSalesCents, 10000);
+    assert.equal(ownerView.today.grossProfitCents, 4000);
+    assert.equal(ownerView.todayComparison.baseline.netSalesCents, 5000);
+    assert.equal(ownerView.todayComparison.changes.netSalesRate, 1);
+    assert.equal(ownerView.todayComparison.basis, "same_weekday_same_time");
+    assert.equal(ownerView.today.hourly.length, new Date(now * 1000).getUTCHours() + 1);
+    const reader = { email: `intraday-reader-${crypto.randomUUID()}@example.invalid`, name: "Sales reader" };
+    const userId = crypto.randomUUID(), roleId = crypto.randomUUID();
+    await database.batch([
+      database.prepare("INSERT INTO users (id,email,display_name,status,created_at,updated_at) VALUES (?,?,?,'active',?,?)").bind(userId, reader.email, reader.name, now, now),
+      database.prepare("INSERT INTO memberships (id,user_id,organization_id,role,status,created_at,updated_at) VALUES (?,?,?,'employee','active',?,?)").bind(crypto.randomUUID(), userId, identity.organizationId, now, now),
+      database.prepare(`INSERT INTO access_roles (id,organization_id,name,description,color,permissions_json,location_scope_json,archived,created_by_user_id,created_at,updated_at)
+        VALUES (?,?,'Sales only','','#245fce','["dashboard.view","metrics.revenue"]','[]',0,?,?,?)`).bind(roleId, identity.organizationId, identity.userId, now, now),
+      database.prepare(`INSERT INTO team_members (id,organization_id,user_id,role_id,first_name,last_name,email,employee_code,primary_location_id,permitted_locations_json,status,remote_login,created_by_user_id,created_at,updated_at)
+        VALUES (?,?,?,?,'Sales','Reader',?,'INTRA-READ',?,?,'active',1,?,?,?)`).bind(crypto.randomUUID(), identity.organizationId, userId, roleId, reader.email, identity.locationId, JSON.stringify([identity.locationId]), identity.userId, now, now),
+    ]);
+    const staffView = await load(reader, `?location=${identity.locationId}`);
+    assert.equal(staffView.today.netSalesCents, 10000);
+    assert.equal(staffView.today.grossProfitCents, null);
+    assert.equal(staffView.todayComparison.baseline.grossProfitCents, null);
+    assert.equal(staffView.todayComparison.changes.grossProfitRate, null);
+    assert.ok(staffView.today.hourly.every((hour) => hour.grossProfitCents === null));
+    assert.ok(staffView.todayComparison.baseline.hourly.every((hour) => hour.grossProfitCents === null));
+    await database.prepare("UPDATE integration_connections SET last_successful_sync_at = ? WHERE id = ?").bind(now - 86400, connectionId).run();
+    const stale = await load();
+    assert.equal(stale.today.sourceGranularity, "daily");
+    assert.match(stale.today.hourlyUnavailableReason, /current business day/);
+  } finally { await dispose(); }
+});
+
 describe("intelligence flow contracts", { concurrency: false }, () => {
 test("migrations, tenant isolation and the complete intelligence-to-action flow work", async () => {
   const { worker, environment, database, dispose } = await createEnvironment();
@@ -582,7 +643,8 @@ test("migrations, tenant isolation and the complete intelligence-to-action flow 
     assert.equal(task.status, 201);
     assert.equal((await task.json()).task.sourceRef, "sales-trend");
 
-    const event = await dispatch(worker, environment, "/api/v1/events", { method: "POST", ...owner, body: { eventType: "promotion", title: "Changed weekend offer", detail: "Test event", eventDate: "2026-07-15", expectedOutcome: "Improve contribution", reviewDate: "2026-08-01" } });
+    // Keep both measurement windows inside the rolling sales fixture.
+    const event = await dispatch(worker, environment, "/api/v1/events", { method: "POST", ...owner, body: { eventType: "promotion", title: "Changed weekend offer", detail: "Test event", eventDate: dateOffset(latest, -15), expectedOutcome: "Improve contribution", reviewDate: dateOffset(latest, -1) } });
     assert.equal(event.status, 201);
     const eventList = await dispatch(worker, environment, "/api/v1/events", owner);
     assert.equal(eventList.status, 200);
