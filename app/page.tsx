@@ -8,6 +8,7 @@ import { integrationCatalog, integrationPublicStatus } from "./integration-catal
 import SourceRecordIcon from "./source-record-icon";
 import { AccountSteps, OperatingStepPreview } from "./home-journey-visuals";
 import ProductBrandLogo from "./product-brand-logo";
+import SocialLinks from "./social-links";
 import AuthPanel, { type AuthPanelMode } from "./auth-panel";
 import { currentSession, getSupabase, signOut } from "./supabase-browser";
 import { canonicalLocation } from "../shared/auth-urls";
@@ -412,12 +413,17 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
         <a href="#company" onClick={closeMobileNav}>Company</a>
         <a href="#security" onClick={closeMobileNav}>Security</a>
         <Link href="/resources" onClick={closeMobileNav}>Resources</Link>
+        <div className="public-nav-mobile-socials">
+          <span>Follow Vanteloq</span>
+          <SocialLinks/>
+        </div>
         <div className="public-nav-mobile-actions">
           <button type="button" className="nav-login" onClick={() => { closeMobileNav(); start("signin"); }}>Sign in</button>
           <button type="button" onClick={() => { closeMobileNav(); start("signup"); }}>Create workspace</button>
         </div>
       </nav>
       <div className="public-nav-actions">
+        <SocialLinks/>
         <button type="button" className="nav-login" onClick={() => start("signin")}>Sign in</button>
         <button type="button" onClick={() => start("signup")}>Create workspace</button>
       </div>

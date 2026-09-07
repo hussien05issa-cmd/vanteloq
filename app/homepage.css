@@ -57,7 +57,7 @@
   grid-template-columns: auto 1fr auto;
   gap: 28px;
   height: 76px;
-  padding-inline: max(24px, calc((100vw - 1240px) / 2));
+  padding-inline: max(24px, calc((100vw - 1440px) / 2));
   border-bottom: 1px solid #e5eaf0;
   background: rgba(255, 255, 255, .97);
   backdrop-filter: blur(14px);
@@ -68,7 +68,31 @@
 .public-nav-actions { display: flex; align-items: center; gap: 8px; }
 .public-nav-actions button { cursor: pointer; }
 .public-nav-mobile-actions { display: none; }
+.public-nav-mobile-socials { display: none; }
 .nav-menu-toggle { display: none; }
+.public-social-links { display: flex; flex: 0 0 auto; align-items: center; gap: 4px; }
+.public-nav-actions > .public-social-links { margin-right: 6px; padding-right: 14px; border-right: 1px solid var(--home-line); }
+.public-nav a.public-social-link {
+  display: inline-flex;
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid #e5eaf0;
+  border-radius: 10px;
+  color: #34445c;
+  background: #fff;
+  transition: color .15s ease, background-color .15s ease, border-color .15s ease;
+}
+.public-social-link svg { display: block; flex-shrink: 0; }
+.public-nav a.public-social-link:hover { border-color: #c8d3e0; background: #f1f6fc; }
+.public-nav a.social-instagram:hover { color: #b52a63; }
+.public-nav a.social-youtube:hover { color: #c90000; }
+.public-nav a.social-tiktok:hover { color: #111827; }
+.public-nav a.social-facebook:hover { color: #0866ff; }
 
 .home-hero,
 .home-ownership,
@@ -862,7 +886,7 @@
   .home-gemini-grid article:last-child { grid-column: 1 / -1; min-height: 0; }
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1520px) {
   .public-nav { grid-template-columns: 1fr auto auto; }
   .nav-menu-toggle {
     display: inline-flex;
@@ -880,10 +904,13 @@
   }
   .public-nav nav {
     position: absolute;
+    justify-self: stretch;
     top: 68px;
     right: 18px;
     left: 18px;
     display: none;
+    max-height: calc(100dvh - 92px);
+    overflow-y: auto;
     padding: 12px;
     border: 1px solid #d5dee9;
     border-radius: 10px;
@@ -893,6 +920,16 @@
   .public-nav nav.is-open { display: grid; gap: 2px; }
   .public-nav nav a { min-height: 46px; padding: 0 12px; border-radius: 6px; }
   .public-nav nav a:hover { background: #f1f6fc; }
+}
+
+@media (max-width: 900px) {
+  .public-nav { grid-template-columns: 1fr auto; }
+  .public-nav > .public-nav-actions { display: none; }
+  .public-nav-mobile-socials { display: grid; gap: 10px; margin-top: 8px; padding: 16px 12px 8px; border-top: 1px solid #e1e7ef; }
+  .public-nav-mobile-socials > span { color: #53647b; font-size: 14px; font-weight: 600; }
+  .public-nav-mobile-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; padding-top: 12px; border-top: 1px solid #e1e7ef; }
+  .public-nav-mobile-actions button { min-height: 44px; border: 1px solid #1557d0; border-radius: 7px; color: #fff; background: #1557d0; font-size: 13px; font-weight: 750; }
+  .public-nav-mobile-actions .nav-login { color: #0d1b38; border-color: #c8d3e0; background: #fff; }
   .home-hero,
   .home-ownership,
   .home-connections,
