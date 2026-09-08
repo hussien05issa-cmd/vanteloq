@@ -30,11 +30,11 @@ export default function AdvisorComposer({ question, onQuestion, dataUseAccepted,
     <p id="advisor-submit-help" className="advisor-submit-help" aria-live="polite">{loading ? "Reviewing the permitted business context." : !dataUseAccepted ? "Accept the data-use notice below before sending a question." : !question.trim() ? "Enter a question or choose a suggestion below." : "Ready to ask. Avoid including personal information in your question."}</p>
     <label className="advisor-data-consent">
       <input type="checkbox" checked={dataUseAccepted} onChange={(event) => onConsent(event.target.checked)} />
-      <span>I understand that my question, verified aggregate business metrics, source status, permitted aggregate cash, and short conversation context are sent to Google Gemini to produce this explanation. Raw credentials, account numbers, customer names, invoice files, and raw transactions are excluded. <a href="/privacy#automation">Review the Privacy Policy.</a></span>
+      <span>I understand that my question, approved aggregate business and marketing metrics, source status, permitted aggregate cash, and short conversation context are sent to Google Gemini to produce this explanation. Credentials, account numbers, customer names, search queries, page addresses, Business Profile content, invoice files, and raw transactions are excluded. <a href="/privacy#automation">Review the Privacy Policy.</a></span>
     </label>
     <div className="advisor-provider-note"><IntegrationBrandLogo name="Google" compact/><span><strong>Powered by Google Gemini</strong><small>Evidence first · No actions without your approval</small></span>{onClear && <button type="button" disabled={loading} onClick={onClear}>Clear conversation</button>}</div>
     <div className="suggested-questions" role="group" aria-label="Suggested business questions">
-      {["Why did sales change?", "Where is margin leaking?", "Is labour pressure rising?", "What can the current data not answer?"].map((item) => <button type="button" key={item} onClick={() => onQuestion(item)}>{item}</button>)}
+      {["Why did sales change?", "Where is margin leaking?", "What does our marketing data show?", "What can the current data not answer?"].map((item) => <button type="button" key={item} onClick={() => onQuestion(item)}>{item}</button>)}
     </div>
   </section>;
 }

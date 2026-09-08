@@ -5,6 +5,19 @@ const specification = {
   info: { title: "Vanteloq API", version: "1.0.0" },
   servers: [{ url: "/api/v1" }],
   paths: {
+    "/marketing/reports": {
+      get: {
+        summary: "Read approved marketing sources or an on-demand provider report within the user's workspace and location permissions",
+        description: "Requires marketing.view, the marketing workspace entitlement and the selected source entitlement. Source approval is checked before and after retrieval. Reports are not persisted. No campaign modifications occur.",
+        parameters: [
+          { name: "location", in: "query", schema: { type: "string" } },
+          { name: "selectionId", in: "query", description: "Omit to list permitted sources.", schema: { type: "string", minLength: 8, maxLength: 80 } },
+          { name: "view", in: "query", schema: { type: "string", enum: ["daily", "channels", "pages", "devices", "queries", "realtime", "keywords", "campaigns", "platforms"], default: "daily" } },
+          { name: "days", in: "query", schema: { type: "integer", enum: [7, 28, 90], default: 28 } },
+        ],
+        responses: { "200": { description: "Permitted source list or bounded source report with provenance and limitations" }, "400": { description: "Unsupported report or period" }, "401": { description: "Authentication required" }, "403": { description: "Permission or entitlement required" }, "404": { description: "Resource outside the permitted scope" }, "409": { description: "Source approval or configuration required; source changed during retrieval" }, "429": { description: "Application or provider rate limit" }, "502": { description: "Provider report unavailable" } },
+      },
+    },
     "/auth/signin": {
       post: { summary: "Create a Turnstile-protected, rate-limited Supabase password session", responses: { "200": { description: "Authenticated session established" }, "400": { description: "Generic invalid credentials" }, "403": { description: "Origin rejected or email not confirmed" }, "429": { description: "Rate limited" }, "503": { description: "Secure sign-in unavailable" } } },
     },

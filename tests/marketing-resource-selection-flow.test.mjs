@@ -106,6 +106,7 @@ test("exact marketing resources remain versioned, approval-bound, separated, and
   const { authServer, miniflare, database, worker, environment } = await createEnvironment();
   let restoreFetch = globalThis.fetch;
   const providerCalls = [];
+  const advisorPayloads = [];
   try {
     const onboarding = await dispatch(worker, environment, "/api/v1/onboarding", { method: "POST", body: onboardingBody() });
     assert.equal(onboarding.status, 201, await onboarding.clone().text());
@@ -131,6 +132,13 @@ test("exact marketing resources remain versioned, approval-bound, separated, and
       const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
       if (!url.includes("googleapis.com")) return restoreFetch(input, init);
       providerCalls.push(url);
+      if (url.startsWith("https://generativelanguage.googleapis.com/")) {
+        assert.equal(new Headers(init?.headers).get("x-goog-api-key"), "fixture-gemini-key");
+        assert.ok(!url.includes("fixture-gemini-key"));
+        const payload = JSON.parse(String(init?.body));
+        advisorPayloads.push(payload);
+        return Response.json({ candidates: [{ content: { parts: [{ text: "Fixture response based on approved marketing evidence." }] } }] });
+      }
       if (url === "https://oauth2.googleapis.com/token") return Response.json({
         access_token: "google-access-token",
         refresh_token: "google-refresh-token",
@@ -183,6 +191,13 @@ test("exact marketing resources remain versioned, approval-bound, separated, and
     assert.equal(replaced.status, 200, await replaced.clone().text());
     const replacement = await replaced.json();
     assert.equal(replacement.selectionVersion, 1);
+    const pendingSourcesResponse = await dispatch(worker, environment, "/api/v1/marketing/reports");
+    assert.equal(pendingSourcesResponse.status, 200, await pendingSourcesResponse.clone().text());
+    const pendingSources = (await pendingSourcesResponse.json()).sources;
+    assert.equal(pendingSources.length, 2);
+    assert.ok(pendingSources.every((source) => source.status === "approval_required"));
+    const prematureReport = await dispatch(worker, environment, `/api/v1/marketing/reports?selectionId=${pendingSources[0].id}`);
+    assert.equal(prematureReport.status, 409);
 
     const staleReplace = await dispatch(worker, environment, "/api/v1/integrations/google/resources", { method: "POST", body: { action: "replace", connectionId: authorization.connectionId, expectedSelectionVersion: 0, selections: [] } });
     assert.equal(staleReplace.status, 409);
@@ -212,6 +227,37 @@ test("exact marketing resources remain versioned, approval-bound, separated, and
     const growthBody = await growth.json();
     assert.equal(new Set(growthBody.measurementSeries.map((row) => row.selectionId)).size, 2);
     assert.ok(growthBody.measurementSeries.every((row) => row.resourceName && row.localLocationId === location.id));
+    const readySourcesResponse = await dispatch(worker, environment, `/api/v1/marketing/reports?location=${location.id}`);
+    assert.equal(readySourcesResponse.status, 200, await readySourcesResponse.clone().text());
+    const readySources = (await readySourcesResponse.json()).sources;
+    assert.equal(readySources.length, 2);
+    assert.ok(readySources.every((source) => source.status === "ready"));
+    const searchSource = readySources.find((source) => source.dataset === "google_search_console");
+    assert.ok(searchSource);
+    const reportResponse = await dispatch(worker, environment, `/api/v1/marketing/reports?selectionId=${searchSource.id}&location=${location.id}&view=queries&days=28`);
+    assert.equal(reportResponse.status, 200, await reportResponse.clone().text());
+    assert.match(reportResponse.headers.get("cache-control"), /no-store/);
+    const reportBody = await reportResponse.json();
+    assert.equal(reportBody.report.dataset, "google_search_console");
+    assert.equal(reportBody.report.totals.ctr, 10);
+    assert.equal(reportBody.storage, "not_persisted");
+    assert.doesNotMatch(JSON.stringify(reportBody), /google-access-token|google-refresh-token|encrypted/);
+    const missingSource = await dispatch(worker, environment, "/api/v1/marketing/reports?selectionId=other-tenant-resource");
+    assert.equal(missingSource.status, 404);
+    const invalidView = await dispatch(worker, environment, `/api/v1/marketing/reports?selectionId=${searchSource.id}&view=campaigns`);
+    assert.equal(invalidView.status, 400);
+    const unauthorizedReport = await worker.fetch(new Request(`${origin}/api/v1/marketing/reports`), environment, executionContext);
+    assert.equal(unauthorizedReport.status, 401);
+    environment.GOOGLE_GEMINI_API_KEY = "fixture-gemini-key";
+    const advisor = await dispatch(worker, environment, "/api/v1/advisor/chat", { method: "POST", body: { question: "What does our marketing evidence show?", dataUseAccepted: true, noticeVersion: "gemini-evidence-advisor-v2-marketing", privacyPolicyVersion: "2026-09-05" } });
+    assert.equal(advisor.status, 200, await advisor.clone().text());
+    assert.equal((await advisor.json()).status, "answered");
+    assert.equal(advisorPayloads.length, 1);
+    const advisorText = advisorPayloads[0].contents[0].parts[0].text;
+    assert.match(advisorText, /analytics_sessions/);
+    assert.match(advisorText, /search_clicks/);
+    assert.match(advisorText, /comparisonComplete/);
+    assert.doesNotMatch(advisorText, /sc-domain:example.ca|properties\/123|google-access-token/);
 
     const originalDatabaseBinding = environment.DB;
     let raceInjected = false;

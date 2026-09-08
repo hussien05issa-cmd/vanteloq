@@ -1,6 +1,6 @@
 export { PRIVACY_POLICY_VERSION } from "../shared/legal-versions";
 export const PLAID_CONSENT_NOTICE_VERSION = "plaid-financial-data-v3";
-export const GEMINI_CONSENT_NOTICE_VERSION = "gemini-evidence-advisor-v1";
+export const GEMINI_CONSENT_NOTICE_VERSION = "gemini-evidence-advisor-v2-marketing";
 export const QUICKBOOKS_CONSENT_NOTICE_VERSION = "quickbooks-accounting-read-v1";
 
 export const PLAID_DATA_CATEGORIES = [
@@ -21,9 +21,10 @@ export const PLAID_PROCESSING_PURPOSES = [
 export const GEMINI_DATA_CATEGORIES = [
   "The question entered by the authorized user",
   "Dated aggregate sales, gross profit, transaction, discount, and refund metrics",
+  "Permitted synchronized website, search and paid-advertising totals, with source-specific periods and coverage limits; no queries, URLs, Business Profile content or advertising amounts",
   "Connected-source status and freshness details",
   "Aggregate cash available only when the user has bank-balance permission",
-  "A short tenant-scoped conversation history and an evidence summary",
+  "A short user-and-workspace-scoped conversation history only when its evidence and access fingerprint match the current request",
 ] as const;
 
 export const GEMINI_PROCESSING_PURPOSES = [
