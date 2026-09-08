@@ -6,6 +6,7 @@ import Link from "next/link";
 import IntegrationBrandLogo from "./integration-brand-logo";
 import { integrationCatalog, integrationPublicStatus } from "./integration-catalog";
 import SourceRecordIcon from "./source-record-icon";
+import WorkspaceIcon from "./workspace-icon";
 import ResourceGuideVisual from "./resource-guide-visual";
 import { AccountSteps, OperatingStepPreview } from "./home-journey-visuals";
 import ProductBrandLogo from "./product-brand-logo";
@@ -571,6 +572,16 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
             ["6","Operational follow-through","Create tasks from supported findings, assign responsibility and preserve the event and audit context."],
           ].map(([number, title, copy]) => <article key={number}><small>{number}</small><span className="home-capability-signal" aria-hidden="true"><i/><i/><i/></span><h3>{title}</h3><p>{copy}</p></article>)}
         </div>
+      </section>
+
+      <section className="home-marketing" id="marketing" aria-labelledby="marketing-title">
+        <div className="home-section-heading"><p>FROM ATTENTION TO ACTION</p><h2 id="marketing-title">Make marketing decisions with the business in view.</h2><span>Understand how people find you, what they do next and which action deserves your time. Keep the source visible, the plan focused and the result measurable.</span></div>
+        <div className="home-marketing-grid">
+          <article><WorkspaceIcon name="Search"/><h3>Understand discovery</h3><p>Review website traffic, search queries and local discovery from approved Google resources. Compare the same source and time period.</p><span>Search and traffic reports</span></article>
+          <article><WorkspaceIcon name="Customers"/><h3>Find the measurement gaps</h3><p>See where recorded journeys stop. Matched sales remain separate from advertising platforms&apos; reported conversions.</p><span>Evidence before attribution</span></article>
+          <article><WorkspaceIcon name="Action Centre"/><h3>Give the next move a plan</h3><p>Prepare a campaign brief, build consistent campaign links and carry recommendations into your calendar for review.</p><span>Goal, action and measurement</span></article>
+        </div>
+        <div className="home-marketing-footer"><p>Provider authorization and sample approval are required. Facebook and Instagram organic insights are not yet available. Planning tools do not publish content or change advertising budgets.</p><button type="button" onClick={() => start("signup")}>Build your business workspace →</button><a href="#connections">Check connection availability</a></div>
       </section>
 
       <section className="home-gemini" id="gemini" aria-labelledby="gemini-title">

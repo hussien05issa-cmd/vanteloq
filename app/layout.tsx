@@ -19,6 +19,7 @@ import "./experience.css";
 
 import "./workspace-design.css";
 import "./marketing-reporting.css";
+import "./marketing-workbench.css";
 const GOOGLE_ANALYTICS_CONSENT_DEFAULT = `
 window.dataLayer = window.dataLayer || [];
 window.gtag = window.gtag || function () { window.dataLayer.push(arguments); };

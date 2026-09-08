@@ -34,6 +34,7 @@ test("Gemini requires explicit versioned consent and supports scoped deletion", 
   const route = read("../app/api/v1/advisor/chat/route.ts");
   const privacy = read("../server/privacy.ts");
   const client = read("../app/vanteloq-app.tsx");
+  const composer = read("../app/advisor-composer.tsx");
 
   assert.match(route, /GEMINI_CONSENT_REQUIRED/);
   assert.match(route, /recordGeminiConsent/);
@@ -42,6 +43,8 @@ test("Gemini requires explicit versioned consent and supports scoped deletion", 
   assert.match(route, /privacy\.gemini_conversation_deleted/);
   assert.match(privacy, /provider: "google_gemini"/);
   assert.match(client, /dataUseAccepted/);
-  assert.match(client, /Raw credentials, account numbers, customer names, invoice files, and raw transactions are excluded/);
-  assert.match(client, /Clear conversation/);
+  assert.match(client, /<AdvisorComposer/);
+  assert.match(composer, /Credentials, account numbers, customer names, search queries, page addresses, Business Profile content, invoice files, and raw transactions are excluded/);
+  assert.match(composer, /Clear conversation/);
+  assert.match(composer, /type="checkbox" checked=\{dataUseAccepted\}/);
 });

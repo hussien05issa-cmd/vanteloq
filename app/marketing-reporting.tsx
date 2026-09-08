@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { apiFetch } from "./supabase-browser";
+import type { MarketingPlanDraft } from "../domain/marketing-workbench";
 import { metricChange, REPORT_NAMES, REPORT_VIEWS, reportSuggestions, type MarketingReport, type ReportColumn, type ReportSource, type ReportView } from "../domain/marketing-reporting";
 
 const viewLabels: Record<ReportView, string> = { daily: "Daily trend", channels: "Acquisition channels", pages: "Top pages", devices: "Devices", queries: "Search queries", realtime: "Realtime activity", keywords: "Local search terms", campaigns: "Campaigns", platforms: "Facebook and Instagram ads" };
@@ -43,7 +44,7 @@ export function MarketingReportVisual({ report }: { report: MarketingReport }) {
   </section>;
 }
 
-export function MarketingReportBody({ report }: { report: MarketingReport }) {
+export function MarketingReportBody({ report, onPlan }: { report: MarketingReport; onPlan?: (draft: MarketingPlanDraft) => void }) {
   const suggestions = reportSuggestions(report);
   return <>
     <div className="mr-provenance"><span>{report.view === "realtime" ? "Rolling last 30 minutes" : `${report.period.start} to ${report.period.end}`}</span><span>{report.timeZone}</span><span>Fetched {new Date(report.fetchedAt).toLocaleTimeString("en-CA", { hour: "numeric", minute: "2-digit" })}</span></div>
@@ -55,13 +56,13 @@ export function MarketingReportBody({ report }: { report: MarketingReport }) {
     })}</div>}
     {report.previousPeriod && <p className="mr-muted">Comparison: {report.previousPeriod.start} to {report.previousPeriod.end}. A change is not automatically an improvement; lower average search position is better.</p>}
     {report.view !== "realtime" && <MarketingReportVisual key={`${report.dataset}:${report.view}`} report={report}/>}
-    {suggestions.length > 0 && <div className="mr-suggestions"><h3>Worth reviewing next</h3>{suggestions.map((item) => <article key={item.title}><h4>{item.title}</h4><p>{item.detail}</p></article>)}</div>}
-    {report.rows.length > 0 && <details className="mr-table-wrap" open><summary>Source details · {report.rows.length} returned rows</summary><div tabIndex={0} role="region" aria-label="Scrollable source report"><table><caption>{REPORT_NAMES[report.dataset]} · {viewLabels[report.view]}</caption><thead><tr><th scope="col">{report.view === "daily" ? "Date" : "Source dimension"}</th>{report.columns.map((column) => <th key={column.key} scope="col">{column.label}</th>)}</tr></thead><tbody>{report.rows.map((row, index) => <tr key={`${row.label}:${index}`}><th scope="row">{row.label}{row.note && <small>{row.note}</small>}</th>{report.columns.map((column) => <td key={column.key}>{formatMarketingValue(row.values[column.key], column, report.currency)}</td>)}</tr>)}</tbody></table></div></details>}
+    {suggestions.length > 0 && <div className="mr-suggestions"><h3>Worth reviewing next</h3>{suggestions.map((item) => <article key={item.title}><h4>{item.title}</h4><p>{item.detail}</p>{onPlan && <button type="button" onClick={() => onPlan({ title: item.title, channel: report.dataset === "meta_ads" ? "meta" : report.dataset === "google_analytics" ? "website" : "google", eventType: "audit", objective: item.detail, notes: `Source: ${REPORT_NAMES[report.dataset]} · ${viewLabels[report.view]}\nPeriod: ${report.period.start} to ${report.period.end}\nFetched: ${report.fetchedAt}\nReview the same source and comparison period after the change. Record external factors. This suggestion is not a promise of improved results.` })}>Plan this action →</button>}</article>)}</div>}
+    {report.rows.length > 0 && <details className="mr-table-wrap" open><summary>Source details · {report.rows.length} returned {report.rows.length === 1 ? "row" : "rows"}</summary><div tabIndex={0} role="region" aria-label="Scrollable source report"><table><caption>{REPORT_NAMES[report.dataset]} · {viewLabels[report.view]}</caption><thead><tr><th scope="col">{report.view === "daily" ? "Date" : "Source dimension"}</th>{report.columns.map((column) => <th key={column.key} scope="col">{column.label}</th>)}</tr></thead><tbody>{report.rows.map((row, index) => <tr key={`${row.label}:${index}`}><th scope="row">{row.label}{row.note && <small>{row.note}</small>}</th>{report.columns.map((column) => <td key={column.key}>{formatMarketingValue(row.values[column.key], column, report.currency)}</td>)}</tr>)}</tbody></table></div></details>}
     <aside className="mr-method"><h3>What these numbers mean</h3><ul>{report.limitations.map((line) => <li key={line}>{line}</li>)}</ul></aside>
   </>;
 }
 
-export default function MarketingReporting({ locationId, navigate }: { locationId: string | null; navigate: (page: "Integrations" | "Advisor") => void }) {
+export default function MarketingReporting({ locationId, navigate, onPlan }: { locationId: string | null; navigate: (page: "Integrations" | "Advisor") => void; onPlan?: (draft: MarketingPlanDraft) => void }) {
   const [sources, setSources] = useState<ReportSource[]>([]), [selectedId, setSelectedId] = useState("");
   const [view, setView] = useState<ReportView>("daily"), [days, setDays] = useState(28);
   const [report, setReport] = useState<MarketingReport | null>(null), [error, setError] = useState("");
@@ -98,13 +99,13 @@ export default function MarketingReporting({ locationId, navigate }: { locationI
     return () => window.clearInterval(timer);
   }, [monitor, selected, view, refreshReport]);
   return <section className="mr-workspace" aria-label="Connected marketing reports">
-    <header className="mr-heading"><div><p className="mr-eyebrow">YOUR MARKETING, IN FOCUS</p><h2>From discovery to a decision.</h2><p>Explore traffic, search visibility and paid campaigns from the exact accounts you approve.</p></div><button type="button" onClick={() => navigate("Integrations")}>Manage connections →</button></header>
+    <header className="mr-heading"><div><h2>Source reports</h2><p>Compare like-for-like periods in the exact accounts you approve.</p></div><button type="button" onClick={() => navigate("Integrations")}>Manage connections →</button></header>
     <div className="mr-toolbar"><label>Reporting source<select value={selectedId} onChange={(event) => { clearReport(); setSelectedId(event.target.value); setView("daily"); setMonitor(false); setLoading(sources.find((source) => source.id === event.target.value)?.status === "ready"); }}><option value="">Select a source</option>{sources.map((source) => <option key={source.id} value={source.id}>{REPORT_NAMES[source.dataset]} · {source.name}</option>)}</select></label><label>Report<select value={view} disabled={!selected || selected.status !== "ready"} onChange={(event) => { clearReport(); setView(event.target.value as ReportView); }}>{(selected ? REPORT_VIEWS[selected.dataset] : ["daily" as const]).map((item) => <option key={item} value={item}>{viewLabels[item]}</option>)}</select></label><label>Period<select value={days} disabled={!selected || selected.status !== "ready" || view === "realtime" || view === "keywords"} onChange={(event) => { clearReport(); setDays(Number(event.target.value)); }}><option value={7}>7-day report</option><option value={28}>28-day report</option><option value={90}>90-day report</option></select></label><button type="button" disabled={loading || selected?.status !== "ready"} onClick={refreshReport}>Refresh report</button></div>
     {selected?.status === "ready" && <label className="mr-monitor"><input type="checkbox" checked={monitor} disabled={selected.dataset === "google_business_profile"} onChange={(event) => setMonitor(event.target.checked)}/>{selected.dataset === "google_business_profile" ? "Business Profile reports refresh only when requested." : `Refresh while this report is open: every ${view === "realtime" ? "minute" : "10 minutes"}. Stops when the tab is hidden or a request fails.`}</label>}
     {error && <div className="mr-warning" role="alert"><b>Report unavailable</b><p>{error}</p><button onClick={() => { clearReport(); setSources([]); setSelectedId(""); setView("daily"); setSourceRefresh((current) => current + 1); }}>Reload sources and try again</button></div>}
     {loading && <div className="mr-empty" role="status"><b>Loading approved source data…</b><p>Checking access and retrieving the provider report.</p></div>}
     {!loading && !error && (!selected || selected.status !== "ready") && <div className="mr-empty"><h3>{selected ? "Approve this connection first" : "Connect your first marketing source"}</h3><p>In Integrations, connect your account, choose the correct property or ad account, assign its location and approve its sample. No measurements appear before approval.</p><button onClick={() => navigate("Integrations")}>Set up reporting →</button></div>}
-    {!loading && report && <MarketingReportBody report={report}/>}
+    {!loading && report && <MarketingReportBody report={report} onPlan={onPlan}/>}
     <aside className="mr-method"><h3>Coverage, without guesswork</h3><p>GA4 measures tagged website activity. Search Console reports Google search visibility. Business Profile reports local discovery. Meta advertising is separate from Facebook Page and Instagram organic insights, which are not yet available in Vanteloq and require their own permissions and resource setup.</p><button onClick={() => navigate("Advisor")}>Discuss approved marketing data with Gemini →</button><p>Gemini can use permitted, synchronized marketing totals. Refresh your approved connection in Integrations to update that saved evidence. Refreshing this report does not synchronize Gemini&apos;s evidence. Search terms, page addresses and Business Profile content from these on-demand reports are not sent to it.</p></aside>
   </section>;
 }

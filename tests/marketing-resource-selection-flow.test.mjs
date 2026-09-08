@@ -225,6 +225,31 @@ test("exact marketing resources remain versioned, approval-bound, separated, and
     const growth = await dispatch(worker, environment, `/api/v1/growth?location=${encodeURIComponent(location.id)}`);
     assert.equal(growth.status, 200, await growth.clone().text());
     const growthBody = await growth.json();
+    assert.equal(growthBody.journeyCoverage.journeys, 0);
+    assert.equal(growthBody.journeyCoverage.revenueAvailable, true);
+    assert.equal(growthBody.canManage, true);
+    const calendarDraft = { type: "marketing_calendar", title: "Review search landing page", channel: "website", eventType: "audit", startDate: "2026-09-08", dueDate: "2026-09-15", objective: "Review qualified enquiries", notes: "Owner: Test owner. Compare the same source and period." };
+    const invalidDate = await dispatch(worker, environment, "/api/v1/growth", { method: "POST", body: { ...calendarDraft, startDate: "2026-02-30" } });
+    assert.equal(invalidDate.status, 400);
+    const savedPlan = await dispatch(worker, environment, "/api/v1/growth", { method: "POST", body: calendarDraft });
+    assert.equal(savedPlan.status, 201, await savedPlan.clone().text());
+    const planId = (await savedPlan.json()).id;
+    const invalidStatus = await dispatch(worker, environment, "/api/v1/growth", { method: "POST", body: { type: "marketing_calendar_status", id: planId, status: "published" } });
+    assert.equal(invalidStatus.status, 400);
+    for (const status of ["in_progress", "completed", "planned", "cancelled"]) {
+      const changed = await dispatch(worker, environment, "/api/v1/growth", { method: "POST", body: { type: "marketing_calendar_status", id: planId, status } });
+      assert.equal(changed.status, 200, await changed.clone().text());
+    }
+    const missingPlan = await dispatch(worker, environment, "/api/v1/growth", { method: "POST", body: { type: "marketing_calendar_status", id: "other-tenant-plan", status: "completed" } });
+    assert.equal(missingPlan.status, 404);
+    const savedCalendar = await dispatch(worker, environment, "/api/v1/growth");
+    const savedEntry = (await savedCalendar.json()).calendar.find((entry) => entry.id === planId);
+    assert.equal(savedEntry.notes, calendarDraft.notes);
+    assert.equal(savedEntry.status, "cancelled");
+    const anonymousGrowth = await worker.fetch(new Request(`${origin}/api/v1/growth`), environment, executionContext);
+    assert.equal(anonymousGrowth.status, 401);
+    const crossOriginSave = await worker.fetch(new Request(`${origin}/api/v1/growth`, { method: "POST", headers: { ...identityHeaders(true), origin: "https://untrusted.example" }, body: JSON.stringify(calendarDraft) }), environment, executionContext);
+    assert.equal(crossOriginSave.status, 403);
     assert.equal(new Set(growthBody.measurementSeries.map((row) => row.selectionId)).size, 2);
     assert.ok(growthBody.measurementSeries.every((row) => row.resourceName && row.localLocationId === location.id));
     const readySourcesResponse = await dispatch(worker, environment, `/api/v1/marketing/reports?location=${location.id}`);

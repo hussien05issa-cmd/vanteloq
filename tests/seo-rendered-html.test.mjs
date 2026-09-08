@@ -25,7 +25,7 @@ test("homepage exposes the marketing page in initial HTML", async () => {
   assert.doesNotMatch(text, />Preparing Vanteloq…</);
   assert.equal((text.match(/<h1\b/g) ?? []).length, 1);
   assert.match(text, /Business Analytics for Independent Retail/);
-  assert.match(text, /Lightspeed R-Series/);
+  assert.match(text, /Lightspeed Retail R-Series/);
   for (const slug of [
     "how-to-track-inventory-small-business",
     "how-to-calculate-gross-margin-small-business",

@@ -1323,7 +1323,7 @@ function Workspace({
   }
   if (view === "Communications") return <CommunicationsWorkspace activeLocationId={activeLocationId} />;
   if (view === "Marketing")
-    return <GrowthWorkspace currency={currency} navigate={navigate} activeLocationId={activeLocationId} canOptimize={subscriptionFeatures.includes("marketing.optimization")} />;
+    return <GrowthWorkspace key={activeLocationId ?? "organization"} currency={currency} navigate={navigate} activeLocationId={activeLocationId} canOptimize={subscriptionFeatures.includes("marketing.optimization")} />;
   if (view === "Integrations")
     return <DataHub refresh={refresh} showNotice={showNotice} navigate={navigate} subscriptionFeatures={subscriptionFeatures} />;
   if (view === "Decision Journal")
