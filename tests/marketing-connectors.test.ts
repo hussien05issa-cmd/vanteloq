@@ -5,6 +5,8 @@ import {
   META_MARKETING_SCOPES,
   buildMarketingAuthorizationUrl,
   discoverGoogleMarketingResources,
+  discoverGoogleMarketingResourceStatus,
+  exchangeMarketingAuthorizationCode,
   discoverMetaMarketingResources,
   fetchMetaCampaignDirectory,
   fetchGoogleBusinessReviews,
@@ -191,7 +193,7 @@ test("Business Profile performance, review access, reply confirmation target, an
   }
 });
 
-test("Google resource discovery fails closed when a required visibility dataset is unavailable", async () => {
+test("Google resource discovery isolates unavailable datasets without losing healthy services", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async (input) => {
     const url = String(input);
@@ -203,12 +205,49 @@ test("Google resource discovery fails closed when a required visibility dataset 
     throw new Error(`Unexpected provider request: ${url}`);
   };
   try {
-    await assert.rejects(
-      discoverGoogleMarketingResources("google-token"),
-      (error: unknown) => Boolean(error && typeof error === "object" && "code" in error && error.code === "GOOGLE_SEARCH_CONSOLE_FAILED"),
-    );
+    const result = await discoverGoogleMarketingResourceStatus("google-token");
+    assert.deepEqual(result.resources.map((row) => row.externalResourceRef), ["properties/123"]);
+    assert.equal(result.datasets.find((row) => row.dataset === "google_search_console")?.status, "unavailable");
+    assert.equal(result.datasets.find((row) => row.dataset === "google_analytics")?.status, "available");
+    assert.equal(result.datasets.find((row) => row.dataset === "google_business_profile")?.status, "available");
   } finally {
     globalThis.fetch = originalFetch;
+  }
+});
+
+test("Google discovery never represents a total provider failure as an empty successful account", async () => {
+  const originalFetch = globalThis.fetch;
+  runtime.__vanteloqEnv = { GOOGLE_ADS_DEVELOPER_TOKEN: "test-token" };
+  globalThis.fetch = async () => Response.json({ error: "provider detail must not leak" }, { status: 403 });
+  try {
+    await assert.rejects(discoverGoogleMarketingResourceStatus("google-token"), { code: "GOOGLE_DISCOVERY_UNAVAILABLE" });
+  } finally {
+    globalThis.fetch = originalFetch;
+    runtime.__vanteloqEnv = {};
+  }
+});
+
+test("Google accepts granular measurement consent and the canonical email scope", async () => {
+  runtime.__vanteloqEnv = {
+    GOOGLE_MARKETING_CLIENT_ID: "google-client",
+    GOOGLE_MARKETING_CLIENT_SECRET: "google-secret",
+    GOOGLE_MARKETING_REDIRECT_URI: "https://vanteloq.com/api/v1/integrations/google/callback",
+    INTEGRATION_ENCRYPTION_KEY: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+  };
+  const originalFetch = globalThis.fetch;
+  let scope = "openid https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/analytics.readonly";
+  globalThis.fetch = async () => Response.json({ access_token: "access", refresh_token: "refresh", expires_in: 3600, scope });
+  try {
+    const token = await exchangeMarketingAuthorizationCode("google", "authorization-code");
+    assert.ok(token.scopes.includes("https://www.googleapis.com/auth/analytics.readonly"));
+    assert.ok(!token.scopes.includes("https://www.googleapis.com/auth/business.manage"));
+    scope = "openid email";
+    await assert.rejects(exchangeMarketingAuthorizationCode("google", "authorization-code"), { code: "GOOGLE_SCOPES_INCOMPLETE" });
+    scope = "https://www.googleapis.com/auth/analytics.readonly";
+    await assert.rejects(exchangeMarketingAuthorizationCode("google", "authorization-code"), { code: "GOOGLE_SCOPES_INCOMPLETE" });
+  } finally {
+    globalThis.fetch = originalFetch;
+    runtime.__vanteloqEnv = {};
   }
 });
 

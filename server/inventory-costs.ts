@@ -5,7 +5,12 @@ import { getD1 } from "../db";
  * rebuilds daily COGS from the normalized sale-line ledger. Provider refreshes
  * may update their own cost fields, but cannot erase an owner's explicit cost.
  */
-export async function applyOwnerInventoryCosts(organizationId: string, connectionId: string, updatedAt: number) {
+export async function applyOwnerInventoryCosts(
+  organizationId: string,
+  connectionId: string,
+  updatedAt: number,
+  options: { publishDailyMetrics?: boolean } = {},
+) {
   const database = getD1();
   await database.prepare(`
     UPDATE commerce_sale_lines
@@ -89,7 +94,7 @@ export async function applyOwnerInventoryCosts(organizationId: string, connectio
       )
   `).bind(organizationId, connectionId).run();
 
-  await database.prepare(`
+  if (options.publishDailyMetrics !== false) await database.prepare(`
     UPDATE daily_business_metrics AS metric
     SET cost_of_goods_cents = (
           SELECT SUM(line.cost_cents) FROM commerce_sale_lines line

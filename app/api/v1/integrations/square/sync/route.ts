@@ -5,21 +5,19 @@ import { scopeExternalRef, unscopedExternalRef } from "../../../../../../domain/
 import { recordAudit } from "../../../../../../server/audit";
 import { requireAccess } from "../../../../../../server/authorization";
 import { ApiError, enforceRateLimit, handleApi, jsonResponse, requireSameOrigin } from "../../../../../../server/api";
-import { buildSquareCustomerSearchBody, record, records, SQUARE_PROVIDER, squareRequest, squareSha256 } from "../../../../../../server/integrations/square";
-import { acquireIntegrationSyncLease, releaseIntegrationSyncLease, requireOwnedIntegrationConnection, sqliteTimestampSeconds } from "../../../../../../server/integrations/connection";
+import { beginSquareSyncWindow, buildSquareCustomerSearchBody, buildSquareOrderSearchBody, record, records, SQUARE_PROVIDER, squareLineNetSalesCents, squareRequest, squareSha256 } from "../../../../../../server/integrations/square";
+import { acquireIntegrationSyncLease, releaseIntegrationSyncLease, renewIntegrationSyncLease, requireOwnedIntegrationConnection, sqliteTimestampSeconds } from "../../../../../../server/integrations/connection";
 import { requirePermission } from "../../../../../../server/permissions";
 import { applyOwnerInventoryCosts } from "../../../../../../server/inventory-costs";
 
 const PAGE_SIZE = 100;
 const IMPORT_LABEL = "Square read-only sync";
-type Cursor = { orders?: string; catalog?: string; customers?: string; payments?: string; watermark?: string };
 type Sale = { id: string; version: string; location: string; soldAt: string; total: number; tax: number; discount: number; lineCount: number; hash: string; customer: string | null; lines: Line[] };
 type Line = { id: string; saleId: string; product: string | null; customer: string | null; location: string; soldAt: string; sku: string | null; name: string | null; quantity: number; net: number; discount: number; hash: string };
 
 function text(value: unknown) { return typeof value === "string" && value.trim() ? value.trim() : null; }
 function integer(value: unknown) { const number = Number(value); return Number.isFinite(number) ? Math.round(number) : 0; }
 function money(value: unknown) { return integer(record(value).amount); }
-function parseCursor(value: string | null): Cursor { try { return value ? record(JSON.parse(value)) as Cursor : {}; } catch { return {}; } }
 function timestamp(value: unknown) { const valueText = text(value); if (!valueText) return null; const parsed = new Date(valueText); return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString(); }
 async function hash(value: unknown) { return squareSha256(JSON.stringify(value)); }
 async function batches(statements: D1PreparedStatement[]) {
@@ -51,7 +49,7 @@ export async function POST(request: Request) {
     const startedAt = new Date();
     const runId = `square-${crypto.randomUUID()}`;
     const importId = `provider-square-${runId}`;
-    const previous = parseCursor(connection.lastSyncCursor);
+    const previous = beginSquareSyncWindow(connection.lastSyncCursor, startedAt);
     try {
       await enforceRateLimit("square:manual-sync", context.organizationId, 30, 3600);
       await getD1().prepare(`INSERT INTO integration_sync_runs (id, organization_id, provider, connection_id, mode, status, cursor_before, records_read, records_staged, duplicates_skipped, warning_count, started_at, created_by_user_id) VALUES (?, ?, ?, ?, 'incremental', 'running', ?, 0, 0, 0, 0, ?, ?)`)
@@ -61,13 +59,13 @@ export async function POST(request: Request) {
       const unmapped = mappings.filter((mapping) => mapping.status === "unmapped").length;
       if (!mappings.length) throw new ApiError(409, "SQUARE_LOCATIONS_REQUIRED", "Refresh and map the Square seller locations before synchronizing.");
 
-      const startAt = previous.watermark ?? new Date(Date.now() - 2 * 365 * 24 * 60 * 60_000).toISOString();
-      const [catalogBody, customerBody, orderBody, paymentBody] = await Promise.all([
-        squareRequest(context.organizationId, connection.id, "/v2/catalog/search", { method: "POST", body: { object_types: ["ITEM", "ITEM_VARIATION"], include_deleted_objects: true, limit: PAGE_SIZE, cursor: previous.catalog || undefined } }),
-        squareRequest(context.organizationId, connection.id, "/v2/customers/search", { method: "POST", body: buildSquareCustomerSearchBody(previous.customers) }),
-        squareRequest(context.organizationId, connection.id, "/v2/orders/search", { method: "POST", body: { location_ids: mappedLocations.length ? mappedLocations : mappings.map((mapping) => mapping.externalLocationRef), cursor: previous.orders || undefined, limit: PAGE_SIZE, query: { filter: { state_filter: { states: ["COMPLETED"] }, date_time_filter: { created_at: { start_at: startAt } } }, sort: { sort_field: "CREATED_AT", sort_order: "ASC" } } } }),
-        squareRequest(context.organizationId, connection.id, `/v2/payments?begin_time=${encodeURIComponent(startAt)}&limit=${PAGE_SIZE}${previous.payments ? `&cursor=${encodeURIComponent(previous.payments)}` : ""}`),
-      ]);
+      const [catalogBody, customerBody, orderBody, paymentBody] = (await Promise.all([
+        previous.completed?.includes("catalog") ? {} : squareRequest(context.organizationId, connection.id, "/v2/catalog/search", { method: "POST", body: { object_types: ["ITEM", "ITEM_VARIATION"], include_deleted_objects: true, limit: PAGE_SIZE, cursor: previous.catalog || undefined } }),
+        previous.completed?.includes("customers") ? {} : squareRequest(context.organizationId, connection.id, "/v2/customers/search", { method: "POST", body: buildSquareCustomerSearchBody(previous.customers) }),
+        previous.completed?.includes("orders") ? {} : squareRequest(context.organizationId, connection.id, "/v2/orders/search", { method: "POST", body: buildSquareOrderSearchBody(mappedLocations, previous) }),
+        previous.completed?.includes("payments") ? {} : squareRequest(context.organizationId, connection.id, `/v2/payments?updated_at_begin_time=${encodeURIComponent(previous.windowStart)}&updated_at_end_time=${encodeURIComponent(previous.windowEnd)}&sort_field=UPDATED_AT&sort_order=ASC&limit=${PAGE_SIZE}${previous.payments ? `&cursor=${encodeURIComponent(previous.payments)}` : ""}`),
+      ])).map(record);
+      const hasMore = Boolean(text(orderBody.cursor) || text(catalogBody.cursor) || text(customerBody.cursor) || text(paymentBody.cursor));
 
       const catalog = records(catalogBody.objects);
       const itemNames = new Map<string, string>();
@@ -90,7 +88,7 @@ export async function POST(request: Request) {
         for (const [index, line] of records(order.line_items).entries()) {
           const lineId = text(line.uid) ?? `${id}:${index}`;
           const quantityNumber = Number(text(line.quantity) ?? 0);
-          const net = money(record(line.total_money)) || Math.max(0, money(line.gross_sales_money) - money(line.total_discount_money));
+          const net = squareLineNetSalesCents(line);
           lines.push({ id: lineId, saleId: id, product: text(line.catalog_object_id), customer, location, soldAt, sku: text(line.catalog_object_id), name: text(line.name), quantity: Number.isFinite(quantityNumber) ? Math.round(quantityNumber * 1000) : 0, net, discount: money(line.total_discount_money), hash: await hash(line) });
         }
         sales.push({ id, version: `${String(order.version ?? 0)}:${text(order.updated_at) ?? soldAt}`, location, soldAt, total: money(order.total_money), tax: money(order.total_tax_money), discount: money(order.total_discount_money), lineCount: lines.reduce((sum, line) => sum + Math.max(0, Math.round(line.quantity / 1000)), 0), hash: await hash(order), customer, lines });
@@ -102,6 +100,7 @@ export async function POST(request: Request) {
       const inventory = records(inventoryBody.counts);
       const scoped = (value: string | null) => scopeExternalRef(connection.sourceNamespace, value);
       const database = getD1(); const now = Date.now();
+      await renewIntegrationSyncLease(lease);
 
       const importedProducts = await batches(products.map((product) => database.prepare(`INSERT INTO commerce_products (id, organization_id, provider, connection_id, external_product_id, sku, name, category_ref, supplier_ref, default_cost_cents, default_price_cents, archived, source_updated_at, source_payload_hash, sync_run_id, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?, ?, ?, ?, ?) ON CONFLICT(organization_id, provider, connection_id, external_product_id) DO UPDATE SET sku=excluded.sku, name=excluded.name, default_price_cents=excluded.default_price_cents, archived=excluded.archived, source_updated_at=excluded.source_updated_at, source_payload_hash=excluded.source_payload_hash, sync_run_id=excluded.sync_run_id, updated_at=excluded.updated_at`).bind(crypto.randomUUID(), context.organizationId, SQUARE_PROVIDER, connection.id, scoped(product.id), product.sku, product.name, product.price, product.archived ? 1 : 0, product.updatedAt, product.hash, runId, now)));
       const importedCustomers = await batches(customers.map((customer) => database.prepare(`INSERT INTO commerce_customers (id, organization_id, provider, connection_id, external_customer_id, display_name, first_name, last_name, email, phone, archived, source_updated_at, source_payload_hash, sync_run_id, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?) ON CONFLICT(organization_id, provider, connection_id, external_customer_id) DO UPDATE SET display_name=excluded.display_name, first_name=excluded.first_name, last_name=excluded.last_name, email=excluded.email, phone=excluded.phone, source_updated_at=excluded.source_updated_at, source_payload_hash=excluded.source_payload_hash, sync_run_id=excluded.sync_run_id, updated_at=excluded.updated_at`).bind(crypto.randomUUID(), context.organizationId, SQUARE_PROVIDER, connection.id, scoped(customer.id), customer.display, customer.given, customer.family, customer.email, customer.phone, customer.updatedAt, customer.hash, runId, now)));
@@ -111,43 +110,74 @@ export async function POST(request: Request) {
       const importedInventory = await batches(inventory.filter((count) => text(count.location_id) && text(count.catalog_object_id) && mappedLocations.includes(String(count.location_id))).map((count) => { const product = productById.get(String(count.catalog_object_id)); return database.prepare(`INSERT INTO inventory_balances (id, organization_id, location_ref, sku, name, on_hand_quantity, reorder_point, version, source_provider, source_connection_id, updated_at) VALUES (?, ?, ?, ?, ?, ?, 0, 1, ?, ?, ?) ON CONFLICT(organization_id, location_ref, sku) DO UPDATE SET name=excluded.name, on_hand_quantity=excluded.on_hand_quantity, version=inventory_balances.version+1, source_provider=excluded.source_provider, source_connection_id=excluded.source_connection_id, updated_at=excluded.updated_at`).bind(crypto.randomUUID(), context.organizationId, `${SQUARE_PROVIDER}:${scoped(String(count.location_id))}`, product?.sku ?? String(count.catalog_object_id), product?.name ?? "Square item", Number(text(count.quantity) ?? 0), SQUARE_PROVIDER, connection.id, now); }));
       const stagedSales = await batches(sales.filter((sale) => mappedLocations.includes(sale.location)).map((sale) => database.prepare(`INSERT INTO integration_staged_sales (id, organization_id, provider, connection_id, external_sale_id, external_version, outlet_ref, sold_at, state, total_cents, tax_cents, cost_cents, discount_cents, line_count, source_payload_hash, sync_run_id, staged_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?, ?, 0, ?, ?, ?, ?, ?) ON CONFLICT(organization_id, provider, connection_id, external_sale_id, external_version) DO NOTHING`).bind(crypto.randomUUID(), context.organizationId, SQUARE_PROVIDER, connection.id, scoped(sale.id), sale.version, scoped(sale.location), sale.soldAt, sale.total, sale.tax, sale.discount, sale.lineCount, sale.hash, runId, now)));
 
-      const publish = Boolean(connection.promotionAuthorizedAt || connection.dataPromotionStatus === "approved") && unmapped === 0;
+      const publish = Boolean(connection.promotionAuthorizedAt || connection.dataPromotionStatus === "approved") && unmapped === 0 && !hasMore;
+      // Prepare owner costs in staging, but publish them with revenue in one snapshot.
+      const costCoverage = await applyOwnerInventoryCosts(context.organizationId, connection.id, now, { publishDailyMetrics: false });
       let dailyMetrics = 0;
       await database.prepare(`INSERT INTO data_imports (id, organization_id, import_type, status, file_name, row_count, idempotency_key, imported_by_user_id, created_at) VALUES (?, ?, 'manual_entry', 'processing', ?, 0, ?, ?, ?)`).bind(importId, context.organizationId, IMPORT_LABEL, runId, context.userId, now).run();
       if (publish) {
-        const latest = await database.prepare(`SELECT outlet_ref outletRef, sold_at soldAt, total_cents totalCents, tax_cents taxCents, discount_cents discountCents, line_count lineCount FROM (SELECT *, row_number() OVER (PARTITION BY external_sale_id ORDER BY staged_at DESC, id DESC) rank FROM integration_staged_sales WHERE organization_id=? AND provider=? AND connection_id=?) WHERE rank=1 AND state='completed'`).bind(context.organizationId, SQUARE_PROVIDER, connection.id).all<{ outletRef: string; soldAt: string; totalCents: number; taxCents: number; discountCents: number; lineCount: number }>();
-        const grouped = new Map<string, { date: string; location: string; gross: number; net: number; transactions: number; units: number; discounts: number }>();
+        await renewIntegrationSyncLease(lease);
+        const latest = await database.prepare(`SELECT outlet_ref outletRef, sold_at soldAt, total_cents totalCents, tax_cents taxCents,
+          COALESCE((SELECT SUM(line.cost_cents) FROM commerce_sale_lines line
+            WHERE line.organization_id=sale.organization_id AND line.provider=sale.provider
+              AND line.connection_id=sale.connection_id AND line.external_sale_id=sale.external_sale_id), sale.cost_cents) costCents,
+          discount_cents discountCents, line_count lineCount
+          FROM (SELECT *, row_number() OVER (PARTITION BY external_sale_id ORDER BY staged_at DESC, id DESC) rank
+            FROM integration_staged_sales WHERE organization_id=? AND provider=? AND connection_id=?) sale
+          WHERE rank=1 AND state='completed'`).bind(context.organizationId, SQUARE_PROVIDER, connection.id).all<{ outletRef: string; soldAt: string; totalCents: number; taxCents: number; costCents: number; discountCents: number; lineCount: number }>();
+        const grouped = new Map<string, { date: string; location: string; gross: number; net: number; cost: number; transactions: number; units: number; discounts: number }>();
         for (const sale of latest.results ?? []) {
           if (!sale.soldAt) continue;
           const rawLocation = unscopedExternalRef(connection.sourceNamespace, sale.outletRef) ?? sale.outletRef;
           const location = `${SQUARE_PROVIDER}:${scopeExternalRef(connection.sourceNamespace, rawLocation)}`;
           const date = sale.soldAt.slice(0, 10); const key = `${date}:${location}`;
-          const row = grouped.get(key) ?? { date, location, gross: 0, net: 0, transactions: 0, units: 0, discounts: 0 };
+          const row = grouped.get(key) ?? { date, location, gross: 0, net: 0, cost: 0, transactions: 0, units: 0, discounts: 0 };
           const net = Math.max(0, sale.totalCents - sale.taxCents);
-          row.net += net; row.gross += net + Math.max(0, sale.discountCents); row.transactions += 1; row.units += Math.max(0, sale.lineCount); row.discounts += Math.max(0, sale.discountCents); grouped.set(key, row);
+          row.net += net; row.gross += net + Math.max(0, sale.discountCents); row.cost += sale.costCents; row.transactions += 1; row.units += Math.max(0, sale.lineCount); row.discounts += Math.max(0, sale.discountCents); grouped.set(key, row);
         }
-        await database.prepare(`DELETE FROM daily_business_metrics WHERE organization_id=? AND source_connection_id=?`).bind(context.organizationId, connection.id).run();
+        const metricStatements = [
+          // A failed ownership check deliberately violates the connection constraint,
+          // aborting this entire batch before any previously published row is removed.
+          database.prepare(`INSERT INTO integration_connections (id) SELECT ?
+            WHERE NOT EXISTS (
+              SELECT 1 FROM integration_connections
+              WHERE id=? AND organization_id=? AND provider=? AND status='connected'
+                AND sync_lease_owner=? AND sync_version=? AND sync_lease_expires_at>?
+            )`).bind(connection.id, connection.id, context.organizationId, SQUARE_PROVIDER,
+              lease.owner, lease.version, sqliteTimestampSeconds()),
+          database.prepare(`DELETE FROM daily_business_metrics WHERE organization_id=? AND source_connection_id=?`).bind(context.organizationId, connection.id),
+        ];
         for (const row of grouped.values()) {
-          await database.prepare(`INSERT INTO daily_business_metrics (organization_id, business_date, location_ref, gross_sales_cents, net_sales_cents, cost_of_goods_cents, transaction_count, units_sold, refunds_cents, discounts_cents, labour_cost_cents, inventory_value_cents, cash_balance_cents, accounts_payable_cents, source_provider, source_connection_id, source_import_id, created_by_user_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 0, ?, ?, 0, ?, 0, NULL, NULL, NULL, ?, ?, ?, ?, ?, ?) ON CONFLICT(organization_id, business_date, location_ref) DO UPDATE SET gross_sales_cents=excluded.gross_sales_cents, net_sales_cents=excluded.net_sales_cents, cost_of_goods_cents=0, transaction_count=excluded.transaction_count, units_sold=excluded.units_sold, discounts_cents=excluded.discounts_cents, source_provider=excluded.source_provider, source_connection_id=excluded.source_connection_id, source_import_id=excluded.source_import_id, updated_at=excluded.updated_at`).bind(context.organizationId, row.date, row.location, row.gross, row.net, row.transactions, row.units, row.discounts, SQUARE_PROVIDER, connection.id, importId, context.userId, now, now).run();
+          metricStatements.push(database.prepare(`INSERT INTO daily_business_metrics (organization_id, business_date, location_ref, gross_sales_cents, net_sales_cents, cost_of_goods_cents, transaction_count, units_sold, refunds_cents, discounts_cents, labour_cost_cents, inventory_value_cents, cash_balance_cents, accounts_payable_cents, source_provider, source_connection_id, source_import_id, created_by_user_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 0, NULL, NULL, NULL, ?, ?, ?, ?, ?, ?) ON CONFLICT(organization_id, business_date, location_ref) DO UPDATE SET gross_sales_cents=excluded.gross_sales_cents, net_sales_cents=excluded.net_sales_cents, cost_of_goods_cents=excluded.cost_of_goods_cents, transaction_count=excluded.transaction_count, units_sold=excluded.units_sold, discounts_cents=excluded.discounts_cents, source_provider=excluded.source_provider, source_connection_id=excluded.source_connection_id, source_import_id=excluded.source_import_id, updated_at=excluded.updated_at`).bind(context.organizationId, row.date, row.location, row.gross, row.net, row.cost, row.transactions, row.units, row.discounts, SQUARE_PROVIDER, connection.id, importId, context.userId, now, now));
         }
+        // D1 batch is transactional: a failed insert must not leave the old snapshot deleted.
+        await database.batch(metricStatements);
         dailyMetrics = grouped.size;
       }
-      const costCoverage = await applyOwnerInventoryCosts(context.organizationId, connection.id, now);
       const completedAt = new Date();
-      const cursor: Cursor = { orders: text(orderBody.cursor) ?? undefined, catalog: text(catalogBody.cursor) ?? undefined, customers: text(customerBody.cursor) ?? undefined, payments: text(paymentBody.cursor) ?? undefined, watermark: text(orderBody.cursor) || text(catalogBody.cursor) || text(customerBody.cursor) || text(paymentBody.cursor) ? previous.watermark : completedAt.toISOString() };
+      const completed = Object.entries({ orders: orderBody, catalog: catalogBody, customers: customerBody, payments: paymentBody })
+        .filter(([, body]) => !text(body.cursor)).map(([key]) => key);
+      const cursor = { ...previous, completed, orders: text(orderBody.cursor) ?? undefined, catalog: text(catalogBody.cursor) ?? undefined, customers: text(customerBody.cursor) ?? undefined, payments: text(paymentBody.cursor) ?? undefined, watermark: hasMore ? previous.watermark : previous.windowEnd };
       const cursorAfter = JSON.stringify(cursor);
       const recordsRead = catalog.length + customers.length + records(orderBody.orders).length + records(paymentBody.payments).length + inventory.length;
       const recordsStaged = stagedSales + importedProducts + importedCustomers + importedLines + importedPayments + importedInventory;
       await database.prepare(`UPDATE data_imports SET status='completed', row_count=? WHERE id=? AND organization_id=?`).bind(recordsStaged + dailyMetrics, importId, context.organizationId).run();
-      await getDb().update(integrationSyncRuns).set({ status: "completed", cursorAfter, recordsRead, recordsStaged, warningCount: unmapped, completedAt }).where(eq(integrationSyncRuns.id, runId));
-      const [updated] = await getDb().update(integrationConnections).set({ lastSuccessfulSyncAt: completedAt, lastSyncCursor: cursorAfter, dataPromotionStatus: publish ? "approved" : "staging", promotionAuthorizedAt: publish ? null : connection.promotionAuthorizedAt, lastErrorCode: unmapped ? "SQUARE_LOCATION_UNMAPPED" : costCoverage.missingCostLines ? "SQUARE_PRODUCT_COST_UNAVAILABLE" : null, syncLeaseOwner: null, syncLeaseExpiresAt: null, updatedAt: completedAt }).where(and(eq(integrationConnections.id, connection.id), eq(integrationConnections.organizationId, context.organizationId), eq(integrationConnections.provider, SQUARE_PROVIDER), eq(integrationConnections.syncLeaseOwner, lease.owner), eq(integrationConnections.syncVersion, lease.version))).returning({ id: integrationConnections.id });
+      await getDb().update(integrationSyncRuns).set({ status: "completed", cursorAfter, recordsRead, recordsStaged, warningCount: unmapped + Number(hasMore), completedAt }).where(eq(integrationSyncRuns.id, runId));
+      const [updated] = await getDb().update(integrationConnections).set({
+        lastSuccessfulSyncAt: hasMore ? connection.lastSuccessfulSyncAt : completedAt,
+        lastSyncCursor: cursorAfter,
+        dataPromotionStatus: hasMore ? connection.dataPromotionStatus : publish ? "approved" : "staging",
+        promotionAuthorizedAt: publish ? null : connection.promotionAuthorizedAt,
+        lastErrorCode: hasMore ? "SQUARE_SYNC_MORE_PAGES" : unmapped ? "SQUARE_LOCATION_UNMAPPED" : costCoverage.missingCostLines ? "SQUARE_PRODUCT_COST_UNAVAILABLE" : null,
+        syncLeaseOwner: null, syncLeaseExpiresAt: null, updatedAt: completedAt,
+      }).where(and(eq(integrationConnections.id, connection.id), eq(integrationConnections.organizationId, context.organizationId), eq(integrationConnections.provider, SQUARE_PROVIDER), eq(integrationConnections.syncLeaseOwner, lease.owner), eq(integrationConnections.syncVersion, lease.version))).returning({ id: integrationConnections.id });
       if (!updated) throw new ApiError(409, "INTEGRATION_SYNC_LEASE_LOST", "The Square sync was superseded before it could publish.");
       await recordAudit({ request, requestId, organizationId: context.organizationId, actorUserId: context.userId, action: "integration.data_imported", resourceType: "integration_sync_run", resourceId: runId, details: { provider: SQUARE_PROVIDER, connectionId: connection.id, recordsRead, recordsStaged, orders: sales.length, products: importedProducts, customers: importedCustomers, payments: importedPayments, inventory: importedInventory, dailyMetrics, productCostAvailable: costCoverage.missingCostLines === 0 } });
-      return jsonResponse({ provider: SQUARE_PROVIDER, connectionId: connection.id, run: { id: runId, status: "completed", recordsRead, recordsStaged, duplicatesSkipped: 0, warningCount: unmapped + costCoverage.missingCostLines }, reconciliation: { orders: sales.length, completedSales: sales.length, openSales: 0, voidedSales: 0, saleLines: importedLines, payments: importedPayments, products: importedProducts, customers: importedCustomers, inventoryBalances: importedInventory, unmappedLocations: unmapped, missingProductCosts: costCoverage.missingCostLines, dailyMetrics }, readyForReview: sales.length > 0 && unmapped === 0, stagingOnly: !publish, dataPromotionEnabled: publish, nextStep: publish ? costCoverage.missingCostLines ? "Square is synchronized. Add the missing unit costs in Inventory to unlock verified margin reporting." : "Square sales, payments, customers, catalog, inventory and owner-managed costs are synchronized." : unmapped ? "Map every Square location, then re-sync." : "Review and approve this Square import, then run one final sync to publish verified sales data." });
+      return jsonResponse({ provider: SQUARE_PROVIDER, connectionId: connection.id, hasMore, run: { id: runId, status: "completed", recordsRead, recordsStaged, duplicatesSkipped: 0, warningCount: unmapped + costCoverage.missingCostLines + Number(hasMore) }, reconciliation: { orders: sales.length, completedSales: sales.length, openSales: 0, voidedSales: 0, saleLines: importedLines, payments: importedPayments, products: importedProducts, customers: importedCustomers, inventoryBalances: importedInventory, unmappedLocations: unmapped, missingProductCosts: costCoverage.missingCostLines, dailyMetrics }, readyForReview: !hasMore && unmapped === 0, stagingOnly: !publish, dataPromotionEnabled: publish, nextStep: hasMore ? "More Square records remain. Run Sync again to continue the saved import before reviewing or publishing it." : publish ? costCoverage.missingCostLines ? "Square is synchronized. Add the missing unit costs in Inventory to unlock verified margin reporting." : "Square sales, payments, customers, catalog, inventory and owner-managed costs are synchronized." : unmapped ? "Map every Square location, then re-sync." : "Review and approve this Square import, then run one final sync to publish verified sales data." });
     } catch (error) {
       const code = error instanceof ApiError ? error.code : "SQUARE_SYNC_FAILED";
       await getDb().update(integrationSyncRuns).set({ status: "failed", errorCode: code, completedAt: new Date() }).where(eq(integrationSyncRuns.id, runId));
-      await getDb().update(integrationConnections).set({ lastErrorCode: code, updatedAt: new Date() }).where(and(eq(integrationConnections.id, connection.id), eq(integrationConnections.organizationId, context.organizationId), eq(integrationConnections.provider, SQUARE_PROVIDER)));
+      await getDb().update(integrationConnections).set({ lastErrorCode: code, updatedAt: new Date() }).where(and(eq(integrationConnections.id, connection.id), eq(integrationConnections.organizationId, context.organizationId), eq(integrationConnections.provider, SQUARE_PROVIDER), eq(integrationConnections.syncLeaseOwner, lease.owner), eq(integrationConnections.syncVersion, lease.version)));
       throw error;
     } finally { await releaseIntegrationSyncLease(lease); }
   });

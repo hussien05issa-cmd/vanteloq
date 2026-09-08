@@ -28,6 +28,12 @@ export type DiscoveredMarketingResource = {
   syncCapability: "metrics";
 };
 
+export type MarketingDiscoveryStatus = {
+  dataset: MarketingDataset;
+  status: "available" | "unavailable";
+  message: string | null;
+};
+
 export const GOOGLE_MARKETING_SCOPES = [
   "openid",
   "email",
@@ -206,7 +212,7 @@ export function buildMarketingAuthorizationUrl(provider: MarketingProvider, stat
 }
 
 async function providerJson<T>(url: string, init: RequestInit, code: string, message: string): Promise<T> {
-  const response = await fetch(url, init);
+  const response = await fetch(url, { ...init, signal: init.signal ?? AbortSignal.timeout(15_000) });
   if (!response.ok) {
     await response.body?.cancel().catch(() => undefined);
     throw new ApiError(502, code, message);
@@ -233,8 +239,11 @@ export async function exchangeMarketingAuthorizationCode(provider: MarketingProv
     );
     if (!token.access_token || !token.refresh_token) throw new ApiError(409, "GOOGLE_OFFLINE_ACCESS_REQUIRED", "Google did not return the continuing access required for scheduled measurement. Reconnect and approve access.");
     const scopes = [...new Set((token.scope ?? "").split(/\s+/).filter(Boolean))];
-    const missing = googleMarketingScopes().filter((scope) => !scopes.includes(scope));
-    if (missing.length) throw new ApiError(409, "GOOGLE_SCOPES_INCOMPLETE", "Google did not grant every measurement permission required by this connection.");
+    const hasEmail = scopes.includes("email") || scopes.includes("https://www.googleapis.com/auth/userinfo.email");
+    const hasMeasurement = googleMarketingScopes().some((scope) => scope.startsWith("https://") && scopes.includes(scope));
+    if (!scopes.includes("openid") || !hasEmail || !hasMeasurement) {
+      throw new ApiError(409, "GOOGLE_SCOPES_INCOMPLETE", "Approve account identification and at least one measurement service to connect Google.");
+    }
     return {
       accessToken: token.access_token,
       refreshToken: token.refresh_token,
@@ -501,27 +510,46 @@ async function discoverGoogleAdsResources(accessToken: string) {
   }] : []);
 }
 
-export async function discoverGoogleMarketingResources(accessToken: string): Promise<DiscoveredMarketingResource[]> {
-  const [searchResult, analyticsResources, businessResources, adsResources] = await Promise.all([
-    providerJson<{ siteEntry?: Array<{ siteUrl?: string }> }>(
+export async function discoverGoogleMarketingResourceStatus(accessToken: string): Promise<{
+  resources: DiscoveredMarketingResource[];
+  datasets: MarketingDiscoveryStatus[];
+}> {
+  const tasks: Array<{ dataset: MarketingDataset; run: () => Promise<DiscoveredMarketingResource[]> }> = [
+    { dataset: "google_search_console", run: async () => {
+      const result = await providerJson<{ siteEntry?: Array<{ siteUrl?: string }> }>(
       "https://www.googleapis.com/webmasters/v3/sites",
       { headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" } },
       "GOOGLE_SEARCH_CONSOLE_FAILED",
       "Search Console resources could not be loaded.",
-    ),
-    discoverGoogleAnalyticsResources(accessToken),
-    discoverGoogleBusinessProfileResources(accessToken),
-    discoverGoogleAdsResources(accessToken),
-  ]);
-  const searchResources = (searchResult.siteEntry ?? []).flatMap((site) => site.siteUrl ? [{
-    dataset: "google_search_console" as const,
-    externalResourceRef: site.siteUrl,
-    name: site.siteUrl,
-    syncCapability: "metrics" as const,
-  }] : []);
-  const resources = [...searchResources, ...analyticsResources, ...businessResources, ...adsResources];
+      );
+      return (result.siteEntry ?? []).flatMap((site) => site.siteUrl ? [{
+        dataset: "google_search_console" as const, externalResourceRef: site.siteUrl,
+        name: site.siteUrl, syncCapability: "metrics" as const,
+      }] : []);
+    } },
+    { dataset: "google_analytics", run: () => discoverGoogleAnalyticsResources(accessToken) },
+    { dataset: "google_business_profile", run: () => discoverGoogleBusinessProfileResources(accessToken) },
+  ];
+  if (getRuntimeEnv().GOOGLE_ADS_DEVELOPER_TOKEN?.trim()) {
+    tasks.push({ dataset: "google_ads", run: () => discoverGoogleAdsResources(accessToken) });
+  }
+  const outcomes = await Promise.allSettled(tasks.map((task) => task.run()));
+  if (outcomes.every((result) => result.status === "rejected")) {
+    throw new ApiError(502, "GOOGLE_DISCOVERY_UNAVAILABLE", "Google services could not be verified. Check the granted permissions and provider setup, then retry. Existing selections have not changed.");
+  }
+  const resources = outcomes.flatMap((result) => result.status === "fulfilled" ? result.value : []);
   assertDiscoveryCapacity(resources);
-  return resources;
+  const datasets: MarketingDiscoveryStatus[] = outcomes.map((result, index) => ({
+    dataset: tasks[index]!.dataset,
+    status: result.status === "fulfilled" ? "available" : "unavailable",
+    // Never return raw provider errors, access tokens, or request URLs.
+    message: result.status === "fulfilled" ? null : "This service could not be verified. Check its permissions, API access, and quota, then retry. Other available services can still be selected.",
+  }));
+  return { resources, datasets };
+}
+
+export async function discoverGoogleMarketingResources(accessToken: string): Promise<DiscoveredMarketingResource[]> {
+  return (await discoverGoogleMarketingResourceStatus(accessToken)).resources;
 }
 
 export async function discoverMetaMarketingResources(accessToken: string): Promise<DiscoveredMarketingResource[]> {

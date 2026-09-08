@@ -34,7 +34,7 @@ import {
 } from "./connection";
 import {
   buildMarketingAuthorizationUrl,
-  discoverGoogleMarketingResources,
+  discoverGoogleMarketingResourceStatus,
   discoverMetaMarketingResources,
   encryptedMarketingTokens,
   exchangeMarketingAuthorizationCode,
@@ -390,8 +390,11 @@ const providerDatasets: Record<MarketingProvider, readonly MarketingDataset[]> =
 
 async function discoverResources(provider: MarketingProvider, accessToken: string) {
   return provider === "google"
-    ? discoverGoogleMarketingResources(accessToken)
-    : discoverMetaMarketingResources(accessToken);
+    ? discoverGoogleMarketingResourceStatus(accessToken)
+    : {
+      resources: await discoverMetaMarketingResources(accessToken),
+      datasets: [{ dataset: "meta_ads" as const, status: "available" as const, message: null }],
+    };
 }
 
 export function marketingResources(request: Request, provider: MarketingProvider) {
@@ -418,7 +421,11 @@ export function marketingResources(request: Request, provider: MarketingProvider
       eq(marketingResourceSelections.provider, provider),
     ));
     const accessToken = await marketingAccessToken(context.organizationId, connection.id, provider);
-    const discovered = await discoverResources(provider, accessToken);
+    const discovery = await discoverResources(provider, accessToken);
+    const discovered = discovery.resources;
+    const availableDatasets = new Set(discovery.datasets.filter((item) => item.status === "available").map((item) => item.dataset));
+    // A failed discovery must never silently delete an existing source selection.
+    const selectionBlocked = existing.some((item) => !availableDatasets.has(item.dataset as MarketingDataset));
 
     if (body.action === "discover") {
       const selectedByKey = new Map(existing.map((selection) => [
@@ -429,8 +436,12 @@ export function marketingResources(request: Request, provider: MarketingProvider
         connectionId: connection.id,
         provider,
         selectionVersion: connection.resourceSelectionVersion,
+        selectionBlocked,
         datasets: providerDatasets[provider].map((dataset) => ({
           dataset,
+          status: discovery.datasets.find((item) => item.dataset === dataset)?.status ?? "unavailable",
+          message: discovery.datasets.find((item) => item.dataset === dataset)?.message
+            ?? (availableDatasets.has(dataset) ? null : "This service is not enabled for discovery. Its existing selections are preserved."),
           resources: discovered.filter((resource) => resource.dataset === dataset).map((resource) => {
             const selected = selectedByKey.get(`${resource.dataset}\u0000${resource.externalResourceRef}`);
             return {
@@ -456,6 +467,7 @@ export function marketingResources(request: Request, provider: MarketingProvider
     if (body.action !== "replace" || !Number.isInteger(body.expectedSelectionVersion) || !Array.isArray(body.selections)) {
       throw new ApiError(400, "MARKETING_SELECTION_INVALID", "Discover resources, then submit the exact resources and scopes to select.");
     }
+    if (selectionBlocked) throw new ApiError(409, "MARKETING_DISCOVERY_INCOMPLETE", "One of your existing services could not be verified. Retry discovery before replacing selections. No selections or measurements have been changed.");
     if (body.selections.length > 100) throw new ApiError(400, "MARKETING_SELECTION_LIMIT", "Select no more than 100 marketing resources per account.");
     if (body.expectedSelectionVersion !== connection.resourceSelectionVersion) {
       throw new ApiError(409, "MARKETING_SELECTION_CHANGED", "The resource selection changed. Refresh the resource list and try again.");

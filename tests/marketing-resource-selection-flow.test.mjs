@@ -107,6 +107,7 @@ test("exact marketing resources remain versioned, approval-bound, separated, and
   let restoreFetch = globalThis.fetch;
   const providerCalls = [];
   const advisorPayloads = [];
+  let unavailableGoogleService = null;
   try {
     const onboarding = await dispatch(worker, environment, "/api/v1/onboarding", { method: "POST", body: onboardingBody() });
     assert.equal(onboarding.status, 201, await onboarding.clone().text());
@@ -146,9 +147,9 @@ test("exact marketing resources remain versioned, approval-bound, separated, and
         scope: "openid email https://www.googleapis.com/auth/webmasters.readonly https://www.googleapis.com/auth/analytics.readonly https://www.googleapis.com/auth/business.manage",
       });
       if (url === "https://openidconnect.googleapis.com/v1/userinfo") return Response.json({ sub: "google-account-123", name: "Main Google account" });
-      if (url === "https://www.googleapis.com/webmasters/v3/sites") return Response.json({ siteEntry: [{ siteUrl: "sc-domain:example.ca" }, { siteUrl: "sc-domain:unselected.ca" }] });
+      if (url === "https://www.googleapis.com/webmasters/v3/sites") return unavailableGoogleService === "search" ? new Response("Unavailable", { status: 503 }) : Response.json({ siteEntry: [{ siteUrl: "sc-domain:example.ca" }, { siteUrl: "sc-domain:unselected.ca" }] });
       if (url.startsWith("https://analyticsadmin.googleapis.com/v1beta/accountSummaries")) return Response.json({ accountSummaries: [{ propertySummaries: [{ property: "properties/123", displayName: "Main website" }, { property: "properties/999", displayName: "Unselected website" }] }] });
-      if (url.startsWith("https://mybusinessaccountmanagement.googleapis.com/v1/accounts")) return Response.json({ accounts: [{ name: "accounts/123", accountName: "Main business" }] });
+      if (url.startsWith("https://mybusinessaccountmanagement.googleapis.com/v1/accounts")) return unavailableGoogleService === "business" ? new Response("Unavailable", { status: 403 }) : Response.json({ accounts: [{ name: "accounts/123", accountName: "Main business" }] });
       if (url.startsWith("https://mybusinessbusinessinformation.googleapis.com/v1/accounts/123/locations")) return Response.json({ locations: [{ name: "locations/456", title: "Main store", storeCode: "EDM" }] });
       if (url.includes("sites/sc-domain%3Aexample.ca/searchAnalytics/query")) return Response.json({ rows: [{ keys: ["2026-08-01"], clicks: 4, impressions: 40, ctr: 0.1, position: 3.5 }] });
       if (url.includes("properties/123:runReport")) return Response.json({ rows: [{ dimensionValues: [{ value: "20260801" }], metricValues: [{ value: "10" }, { value: "8" }, { value: "2" }, { value: "20" }] }] });
@@ -175,6 +176,13 @@ test("exact marketing resources remain versioned, approval-bound, separated, and
     const resourceList = await discovered.json();
     assert.equal(resourceList.selectionVersion, 0);
     assert.equal(resourceList.datasets.flatMap((entry) => entry.resources).length, 5);
+    unavailableGoogleService = "business";
+    const partialDiscovery = await dispatch(worker, environment, "/api/v1/integrations/google/resources", { method: "POST", body: { action: "discover", connectionId: authorization.connectionId } });
+    assert.equal(partialDiscovery.status, 200, await partialDiscovery.clone().text());
+    const partialResources = await partialDiscovery.json();
+    assert.equal(partialResources.selectionBlocked, false);
+    assert.equal(partialResources.datasets.find((entry) => entry.dataset === "google_business_profile").status, "unavailable");
+    assert.equal(partialResources.datasets.find((entry) => entry.dataset === "google_analytics").resources.length, 2);
 
     const replaced = await dispatch(worker, environment, "/api/v1/integrations/google/resources", {
       method: "POST",
@@ -191,6 +199,7 @@ test("exact marketing resources remain versioned, approval-bound, separated, and
     assert.equal(replaced.status, 200, await replaced.clone().text());
     const replacement = await replaced.json();
     assert.equal(replacement.selectionVersion, 1);
+    unavailableGoogleService = null;
     const pendingSourcesResponse = await dispatch(worker, environment, "/api/v1/marketing/reports");
     assert.equal(pendingSourcesResponse.status, 200, await pendingSourcesResponse.clone().text());
     const pendingSources = (await pendingSourcesResponse.json()).sources;
@@ -221,6 +230,23 @@ test("exact marketing resources remain versioned, approval-bound, separated, and
 
     const approved = await dispatch(worker, environment, "/api/v1/integrations", { method: "POST", body: { action: "approve_data", connectionId: authorization.connectionId, confirmed: true, sampleRunId: sampleBody.run.id, expectedSelectionVersion: 1 } });
     assert.equal(approved.status, 200, await approved.clone().text());
+    const selectionsBeforeFailure = await database.prepare("SELECT * FROM marketing_resource_selections WHERE connection_id = ? ORDER BY id").bind(authorization.connectionId).all();
+    const metricsBeforeFailure = await database.prepare("SELECT * FROM marketing_daily_metrics WHERE resource_selection_id IN (SELECT id FROM marketing_resource_selections WHERE connection_id = ?) ORDER BY id").bind(authorization.connectionId).all();
+    unavailableGoogleService = "search";
+    const interruptedDiscovery = await dispatch(worker, environment, "/api/v1/integrations/google/resources", { method: "POST", body: { action: "discover", connectionId: authorization.connectionId } });
+    assert.equal(interruptedDiscovery.status, 200, await interruptedDiscovery.clone().text());
+    assert.equal((await interruptedDiscovery.json()).selectionBlocked, true);
+    const unsafeReplacement = await dispatch(worker, environment, "/api/v1/integrations/google/resources", {
+      method: "POST",
+      body: { action: "replace", connectionId: authorization.connectionId, expectedSelectionVersion: 1, selections: [
+        { dataset: "google_analytics", externalResourceRef: "properties/123", scopeKind: "location", localLocationId: location.id },
+      ] },
+    });
+    assert.equal(unsafeReplacement.status, 409, await unsafeReplacement.clone().text());
+    assert.equal((await unsafeReplacement.json()).error.code, "MARKETING_DISCOVERY_INCOMPLETE");
+    assert.deepEqual((await database.prepare("SELECT * FROM marketing_resource_selections WHERE connection_id = ? ORDER BY id").bind(authorization.connectionId).all()).results, selectionsBeforeFailure.results);
+    assert.deepEqual((await database.prepare("SELECT * FROM marketing_daily_metrics WHERE resource_selection_id IN (SELECT id FROM marketing_resource_selections WHERE connection_id = ?) ORDER BY id").bind(authorization.connectionId).all()).results, metricsBeforeFailure.results);
+    unavailableGoogleService = null;
 
     const growth = await dispatch(worker, environment, `/api/v1/growth?location=${encodeURIComponent(location.id)}`);
     assert.equal(growth.status, 200, await growth.clone().text());

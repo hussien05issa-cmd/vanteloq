@@ -2262,8 +2262,11 @@ type MarketingResourcePanel = {
   provider: "google" | "meta";
   connectionId: string;
   selectionVersion: number;
+  selectionBlocked: boolean;
   datasets: Array<{
-    dataset: "google_analytics" | "google_search_console" | "meta_ads";
+    dataset: "google_analytics" | "google_search_console" | "google_business_profile" | "google_ads" | "meta_ads";
+    status: "available" | "unavailable";
+    message: string | null;
     resources: Array<{
       externalResourceRef: string;
       name: string;
@@ -2641,6 +2644,7 @@ function DataHub({
         provider,
         connectionId,
         selectionVersion: Number(body.selectionVersion),
+        selectionBlocked: body.selectionBlocked === true,
         locations: body.locations,
         datasets: body.datasets.map((dataset: MarketingResourcePanel["datasets"][number]) => ({
           ...dataset,
@@ -3163,7 +3167,7 @@ function DataHub({
             <div className="outlet-mapping-list">
               {marketingResourcePanel.datasets.map((group) => <div key={group.dataset} className="marketing-resource-group">
                 <h4>{humanizeIdentifier(group.dataset)}</h4>
-                {group.resources.length ? group.resources.map((resource) => <article key={`${group.dataset}:${resource.externalResourceRef}`} className="marketing-resource-row">
+                {group.status === "unavailable" ? <p className="outlet-empty" role="status">{group.message ?? "This service is temporarily unavailable. Retry discovery to check its access."}</p> : group.resources.length ? group.resources.map((resource) => <article key={`${group.dataset}:${resource.externalResourceRef}`} className="marketing-resource-row">
                   <label>
                     <input
                       type="checkbox"
@@ -3197,14 +3201,16 @@ function DataHub({
               </div>)}
             </div>
             <footer>
-              <span>Saving replaces this account&apos;s selection, deletes its prior marketing measurements, and requires a new warning-free sample before dashboard use.</span>
+              <span>{marketingResourcePanel.selectionBlocked
+                ? "An existing service could not be verified. Your selections and measurements are preserved. Close this panel and retry discovery before saving."
+                : "Saving replaces this account’s selection, deletes its prior marketing measurements, and requires a new warning-free sample before dashboard use."}</span>
               <div className="provider-actions">
                 <button type="button" onClick={closeMarketingResourcePanel}>Cancel</button>
                 <button
                   type="button"
                   className="primary"
                   onClick={() => void saveMarketingResources()}
-                  disabled={Boolean(providerActions[integrationActionKey(marketingResourcePanel.provider, marketingResourcePanel.connectionId)])}
+                  disabled={marketingResourcePanel.selectionBlocked || Boolean(providerActions[integrationActionKey(marketingResourcePanel.provider, marketingResourcePanel.connectionId)])}
                 >Save exact resources</button>
               </div>
             </footer>

@@ -264,6 +264,73 @@ export async function verifySquareWebhook(rawBody: string, signature: string | n
 }
 
 function textValue(value: unknown) { return typeof value === "string" && value.trim() ? value.trim() : null; }
+export type SquareSyncCursor = {
+  version: 2;
+  orders?: string;
+  catalog?: string;
+  customers?: string;
+  payments?: string;
+  completed?: string[];
+  watermark?: string;
+  windowStart: string;
+  windowEnd: string;
+};
+
+export function beginSquareSyncWindow(value: string | null, now: Date): SquareSyncCursor {
+  let saved: Record<string, unknown> = {};
+  try { saved = value ? record(JSON.parse(value)) : {}; } catch { /* Restart an invalid checkpoint safely. */ }
+  // Creation-time cursors from the old importer are incompatible with this query.
+  if (saved.version !== 2) saved = {};
+  const iso = (input: unknown) => typeof input === "string" && Number.isFinite(Date.parse(input))
+    && Date.parse(input) <= now.getTime() ? new Date(input).toISOString() : undefined;
+  const watermark = iso(saved.watermark);
+  const windowStart = iso(saved.windowStart);
+  const windowEnd = iso(saved.windowEnd);
+  const cursor = (key: string) => typeof saved[key] === "string" && saved[key].length > 0 ? saved[key] : undefined;
+  const resume = windowStart && windowEnd && windowStart <= windowEnd
+    && ["orders", "catalog", "customers", "payments"].some((key) => cursor(key));
+  return {
+    version: 2,
+    watermark,
+    windowStart: resume ? windowStart : new Date(watermark
+      ? Date.parse(watermark) - 5 * 60_000 : now.getTime() - 2 * 365 * 24 * 60 * 60_000).toISOString(),
+    windowEnd: resume ? windowEnd : now.toISOString(),
+    orders: resume ? cursor("orders") : undefined,
+    catalog: resume ? cursor("catalog") : undefined,
+    customers: resume ? cursor("customers") : undefined,
+    payments: resume ? cursor("payments") : undefined,
+    completed: resume && Array.isArray(saved.completed)
+      ? saved.completed.filter((key): key is string => typeof key === "string" && ["orders", "catalog", "customers", "payments"].includes(key))
+      : [],
+  };
+}
+
+export function buildSquareOrderSearchBody(locationIds: string[], window: SquareSyncCursor) {
+  if (!locationIds.length) throw new ApiError(409, "SQUARE_LOCATIONS_REQUIRED", "Map at least one Square location before synchronizing.");
+  return {
+    location_ids: locationIds, cursor: window.orders, limit: 100,
+    query: {
+      filter: {
+        state_filter: { states: ["COMPLETED"] },
+        date_time_filter: { updated_at: { start_at: window.windowStart, end_at: window.windowEnd } },
+      },
+      sort: { sort_field: "UPDATED_AT", sort_order: "ASC" },
+    },
+  };
+}
+
+/** Collected line totals already include discounts. Tax is not sales revenue. */
+export function squareLineNetSalesCents(line: Record<string, unknown>): number {
+  const total = record(line.total_money).amount;
+  const tax = line.total_tax_money === undefined ? 0 : record(line.total_tax_money).amount;
+  if (typeof total !== "number" || typeof tax !== "number"
+    || !Number.isSafeInteger(total) || !Number.isSafeInteger(tax)
+    || total < 0 || tax < 0 || tax > total) {
+    throw new ApiError(502, "SQUARE_LINE_AMOUNT_INVALID", "Square returned an invalid line amount. No inferred revenue has been substituted.");
+  }
+  return total - tax;
+}
+
 export function record(value: unknown): Record<string, unknown> { return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {}; }
 export function records(value: unknown): Record<string, unknown>[] { return Array.isArray(value) ? value.map(record).filter((row) => Object.keys(row).length > 0) : []; }
 function base64Url(bytes: Uint8Array) { return base64(bytes).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/u, ""); }
