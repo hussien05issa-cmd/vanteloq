@@ -144,6 +144,8 @@ test("Business Profile performance, review access, reply confirmation target, an
     const url = String(input);
     const method = init?.method ?? "GET";
     requests.push({ url, method, headers: new Headers(init?.headers), body: typeof init?.body === "string" ? init.body : "" });
+    if (url.endsWith("customers:listAccessibleCustomers")) return Response.json({ resourceNames: ["customers/9876543210"] });
+    if (url.endsWith("customers/9876543210/googleAds:search")) return Response.json({ results: [{ customer: { resourceName: "customers/9876543210" } }] });
     if (url.includes("businessprofileperformance.googleapis.com")) return Response.json({
       multiDailyMetricTimeSeries: [{
         dailyMetricTimeSeries: [{
@@ -183,7 +185,7 @@ test("Business Profile performance, review access, reply confirmation target, an
     assert.equal(reply.comment, "Thank you for visiting.");
     const adsRequest = requests.find((request) => request.url.includes("googleAds:searchStream"));
     assert.equal(adsRequest?.headers.get("developer-token"), "developer-token");
-    assert.equal(adsRequest?.headers.get("login-customer-id"), "1234567890");
+    assert.equal(adsRequest?.headers.get("login-customer-id"), null, "Direct access must not inherit a platform-wide manager");
     const replyRequest = requests.find((request) => request.url.endsWith("/reviews/789/reply"));
     assert.equal(replyRequest?.method, "PUT");
     assert.deepEqual(JSON.parse(replyRequest?.body ?? "{}"), { comment: "Thank you for visiting." });

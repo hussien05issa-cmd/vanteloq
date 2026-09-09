@@ -2,6 +2,7 @@ import { getRuntimeEnv } from "../../db";
 import { ApiError } from "../api";
 import { finiteMetric, metricRatio, REPORT_VIEWS, reportingWindow, type MarketingReport, type ReportColumn, type ReportRow, type ReportView } from "../../domain/marketing-reporting";
 import type { SelectedMarketingResource } from "./marketing";
+import { googleAdsHeaders, googleAdsVersion, resolveGoogleAdsAccount } from "./google-ads-access";
 
 const LIMIT = 250;
 const column = (key: string, label: string, unit: ReportColumn["unit"] = "count"): ReportColumn => ({ key, label, unit });
@@ -192,11 +193,10 @@ async function googleAdsReport(token: string, selection: SelectedMarketingResour
   if (!/^customers\/\d+$/.test(selection.externalResourceRef)) throw new ApiError(409, "MARKETING_RESOURCE_INVALID", "Choose a valid Google Ads account.");
   const developerToken = env.GOOGLE_ADS_DEVELOPER_TOKEN?.trim();
   if (!developerToken) throw new ApiError(409, "GOOGLE_ADS_SETUP_REQUIRED", "Google Ads reporting needs a configured, production-approved developer token.");
-  const version = env.GOOGLE_ADS_API_VERSION?.trim() || "v25";
-  if (!/^v\d{1,2}$/.test(version)) throw new ApiError(409, "GOOGLE_ADS_VERSION_INVALID", "Google Ads API configuration needs attention.");
-  const headers: Record<string, string> = { "developer-token": developerToken };
-  const manager = env.GOOGLE_ADS_LOGIN_CUSTOMER_ID?.replace(/-/g, "");
-  if (manager && /^\d+$/.test(manager)) headers["login-customer-id"] = manager;
+  const version = googleAdsVersion();
+  const access = await resolveGoogleAdsAccount(token, selection.externalResourceRef);
+  if (access.testAccount) report.limitations.push("Google Ads test account: these results are for verification only and do not represent live advertising performance.");
+  const headers = googleAdsHeaders(token, access.loginCustomerId);
   type AdsRow = { customer?: { currencyCode?: string; timeZone?: string }; campaign?: { name?: string }; segments?: { date?: string }; metrics?: { impressions?: string; clicks?: string; costMicros?: string; conversions?: number; conversionsValue?: number } };
   const query = async (period: Period, detail: boolean) => {
     const dimension = !detail ? "" : report.view === "campaigns" ? "campaign.name, " : "segments.date, ";
@@ -219,5 +219,5 @@ async function googleAdsReport(token: string, selection: SelectedMarketingResour
   report.rows = (detail.results ?? []).slice(0, LIMIT).map((row) => ({ label: safeLabel(report.view === "campaigns" ? row.campaign?.name : row.segments?.date), values: convert(row) }));
   report.totals = convert(total.results?.[0]); report.previous = convert(previous.results?.[0]);
   report.truncated = Boolean(detail.nextPageToken) || (detail.results?.length ?? 0) >= LIMIT;
-  report.limitations = ["Conversions use the Google Ads account's conversion configuration and attribution model. They are not independently verified customers or profit.", "Spend is converted from micros into the ad account's currency. Different account currencies are never combined.", "Production availability depends on Google's developer-token approval and the signed-in user's account access."];
+  report.limitations.push("Conversions use the Google Ads account's conversion configuration and attribution model. They are not independently verified customers or profit.", "Spend is converted from micros into the ad account's currency. Different account currencies are never combined.", "Production availability depends on Google's developer-token approval and the signed-in user's account access.");
 }

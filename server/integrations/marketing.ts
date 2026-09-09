@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { getDb, getRuntimeEnv } from "../../db";
 import { integrationSecrets } from "../../db/schema";
 import { ApiError } from "../api";
+import { discoverGoogleAdsAccounts, googleAdsHeaders, googleAdsVersion, resolveGoogleAdsAccount } from "./google-ads-access";
 import {
   decryptIntegrationSecret,
   encryptIntegrationSecret,
@@ -479,35 +480,14 @@ async function discoverGoogleBusinessProfileResources(accessToken: string) {
   return resources;
 }
 
-function googleAdsVersion() {
-  const configured = getRuntimeEnv().GOOGLE_ADS_API_VERSION?.trim() || "v25";
-  return /^v\d{1,2}$/.test(configured) ? configured : "v25";
-}
-
-function googleAdsHeaders(accessToken: string) {
-  const env = getRuntimeEnv();
-  const developerToken = env.GOOGLE_ADS_DEVELOPER_TOKEN?.trim();
-  if (!developerToken) throw new ApiError(503, "GOOGLE_ADS_CONFIGURATION_REQUIRED", "Google Ads reporting requires a configured developer token.");
-  const headers: Record<string, string> = { Authorization: `Bearer ${accessToken}`, "developer-token": developerToken, Accept: "application/json" };
-  const loginCustomerId = env.GOOGLE_ADS_LOGIN_CUSTOMER_ID?.replace(/\D/g, "");
-  if (loginCustomerId) headers["login-customer-id"] = loginCustomerId;
-  return headers;
-}
-
 async function discoverGoogleAdsResources(accessToken: string) {
   if (!getRuntimeEnv().GOOGLE_ADS_DEVELOPER_TOKEN?.trim()) return [];
-  const result = await providerJson<{ resourceNames?: string[] }>(
-    `https://googleads.googleapis.com/${googleAdsVersion()}/customers:listAccessibleCustomers`,
-    { headers: googleAdsHeaders(accessToken) },
-    "GOOGLE_ADS_ACCOUNTS_FAILED",
-    "Google Ads accounts could not be loaded.",
-  );
-  return (result.resourceNames ?? []).flatMap((resourceName) => /^customers\/\d+$/.test(resourceName) ? [{
+  return (await discoverGoogleAdsAccounts(accessToken)).map((account) => ({
     dataset: "google_ads" as const,
-    externalResourceRef: resourceName,
-    name: `Google Ads · ${resourceName.slice("customers/".length).replace(/(\d{3})(\d{3})(\d+)/, "$1-$2-$3")}`,
+    externalResourceRef: account.resourceRef,
+    name: account.name,
     syncCapability: "metrics" as const,
-  }] : []);
+  }));
 }
 
 export async function discoverGoogleMarketingResourceStatus(accessToken: string): Promise<{
@@ -711,11 +691,13 @@ async function googleBusinessProfileMetrics(accessToken: string, selection: Sele
 
 async function googleAdsMetrics(accessToken: string, selection: SelectedMarketingResource, add: Awaited<ReturnType<typeof metricCollector>>["add"]) {
   if (!/^customers\/\d+$/.test(selection.externalResourceRef)) throw new ApiError(409, "GOOGLE_ADS_SELECTION_INVALID", "The selected Google Ads account is invalid.");
+  const account = await resolveGoogleAdsAccount(accessToken, selection.externalResourceRef);
+  if (account.testAccount) throw new ApiError(409, "GOOGLE_ADS_TEST_ACCOUNT", "Google Ads test accounts cannot supply production marketing measurements.");
   const { start, end } = dateWindow();
   const query = `SELECT segments.date, metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions, metrics.conversions_value FROM customer WHERE segments.date BETWEEN '${start}' AND '${end}' ORDER BY segments.date`;
   const result = await providerJson<Array<{ results?: Array<{ segments?: { date?: string }; metrics?: Record<string, string | number> }> }>>(
     `https://googleads.googleapis.com/${googleAdsVersion()}/${selection.externalResourceRef}/googleAds:searchStream`,
-    { method: "POST", headers: { ...googleAdsHeaders(accessToken), "Content-Type": "application/json" }, body: JSON.stringify({ query }) },
+    { method: "POST", headers: { ...googleAdsHeaders(accessToken, account.loginCustomerId), "Content-Type": "application/json" }, body: JSON.stringify({ query }) },
     "GOOGLE_ADS_REPORT_FAILED",
     "The selected Google Ads report could not be loaded.",
   );

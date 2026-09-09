@@ -126,6 +126,8 @@ describe("marketing reports", { concurrency: false }, () => {
   test("Google Ads reports protect credentials and convert micros once", async () => {
     runtime.__vanteloqEnv = { GOOGLE_ADS_DEVELOPER_TOKEN: "test-developer", GOOGLE_ADS_API_VERSION: "v25" };
     await withFetch(async (input, init) => {
+      if (String(input).endsWith("customers:listAccessibleCustomers")) return Response.json({ resourceNames: ["customers/123"] });
+      if (JSON.parse(String(init?.body)).query.includes("FROM customer LIMIT")) return Response.json({ results: [{ customer: { resourceName: "customers/123" } }] });
       assert.match(String(input), /customers\/123\/googleAds:search$/);
       assert.equal(new Headers(init?.headers).get("developer-token"), "test-developer");
       assert.match(JSON.parse(String(init?.body)).query, /BETWEEN '2026-/);
