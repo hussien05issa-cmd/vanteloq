@@ -122,3 +122,56 @@ test("Google approval failures provide a safe actionable reason, never the provi
     await assert.rejects(discoverGoogleAdsAccounts("fixture"), (error: Error & { code?: string }) => error.code === "GOOGLE_ADS_TOKEN_PROJECT_REQUIRED" && !error.message.includes("private-provider"));
   } finally { globalThis.fetch = originalFetch; runtime.__vanteloqEnv = originalEnv; }
 });
+
+test("Ads failure diagnostics identify the stage without logging provider or customer data", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalEnv = runtime.__vanteloqEnv;
+  const originalWarn = console.warn;
+  const logs: unknown[][] = [];
+  const privateValue = "private-token-email-account-message";
+  runtime.__vanteloqEnv = { GOOGLE_ADS_DEVELOPER_TOKEN: privateValue };
+  console.warn = (...args: unknown[]) => { logs.push(args); };
+  try {
+    const cases = [
+      { phase: "list", reason: "transport", status: null, respond: () => { throw new Error(privateValue); } },
+      { phase: "list", reason: "json_invalid", status: 200, respond: () => new Response(privateValue) },
+      { phase: "list", reason: "provider_rejected", status: 429, respond: () => Response.json({ error: { status: "RESOURCE_EXHAUSTED", message: privateValue } }, { status: 429 }) },
+      { phase: "list", reason: "roots_invalid", status: null, respond: () => Response.json({ resourceNames: [privateValue] }) },
+      { phase: "identity", reason: "identity_invalid", status: null, respond: (url: string) => url.endsWith("listAccessibleCustomers") ? Response.json({ resourceNames: [manager] }) : Response.json({ results: [{ customer: { resourceName: privateValue } }] }) },
+      { phase: "identity", reason: "provider_rejected", status: 403, respond: (url: string) => url.endsWith("listAccessibleCustomers") ? Response.json({ resourceNames: [manager] }) : Response.json({ error: { status: privateValue, message: privateValue, details: [{ errors: [{ errorCode: { authorizationError: privateValue } }] }] } }, { status: 403 }) },
+    ];
+    for (const scenario of cases) {
+      logs.length = 0;
+      globalThis.fetch = async (input) => scenario.respond(String(input));
+      await assert.rejects(discoverGoogleAdsAccounts(privateValue), { code: "GOOGLE_ADS_DIRECTORY_UNAVAILABLE" });
+      assert.equal(logs.length, 1, "One bounded server diagnostic per failure");
+      assert.equal(logs[0][0], "[ads-directory-diagnostic]");
+      const detail = JSON.parse(String(logs[0][1]));
+      assert.deepEqual(Object.keys(detail).sort(), ["httpStatus", "phase", "providerStatus", "reason", "setupCode"]);
+      assert.equal(detail.phase, scenario.phase);
+      assert.equal(detail.reason, scenario.reason);
+      assert.equal(detail.httpStatus, scenario.status);
+      assert.equal(detail.providerStatus, scenario.status === 429 ? "RESOURCE_EXHAUSTED" : null);
+      assert.equal(detail.setupCode, null);
+      assert.ok(!JSON.stringify(logs).includes(privateValue));
+      assert.ok(!JSON.stringify(logs).includes(manager));
+    }
+  } finally { globalThis.fetch = originalFetch; runtime.__vanteloqEnv = originalEnv; console.warn = originalWarn; }
+});
+
+test("Ads diagnostics never change a successful result or replace the original safe error", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalEnv = runtime.__vanteloqEnv;
+  const originalWarn = console.warn;
+  let calls = 0;
+  runtime.__vanteloqEnv = { GOOGLE_ADS_DEVELOPER_TOKEN: "fixture" };
+  console.warn = () => { calls += 1; throw new Error("logger failure"); };
+  try {
+    globalThis.fetch = async () => Response.json({ resourceNames: [] });
+    assert.deepEqual(await discoverGoogleAdsAccounts("fixture"), []);
+    assert.equal(calls, 0);
+    globalThis.fetch = async () => Response.json({ error: { details: [{ errors: [{ errorCode: { authorizationError: "DEVELOPER_TOKEN_PROHIBITED" } }] }] } }, { status: 403 });
+    await assert.rejects(discoverGoogleAdsAccounts("fixture"), { code: "GOOGLE_ADS_TOKEN_PROJECT_REQUIRED" });
+    assert.equal(calls, 1);
+  } finally { globalThis.fetch = originalFetch; runtime.__vanteloqEnv = originalEnv; console.warn = originalWarn; }
+});
