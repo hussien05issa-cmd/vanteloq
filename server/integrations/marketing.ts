@@ -2,7 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { getDb, getRuntimeEnv } from "../../db";
 import { integrationSecrets } from "../../db/schema";
 import { ApiError } from "../api";
-import { discoverGoogleAdsAccounts, googleAdsHeaders, googleAdsVersion, resolveGoogleAdsAccount } from "./google-ads-access";
+import { discoverGoogleAdsAccounts, googleAdsHeaders, googleAdsVersion, GOOGLE_ADS_SETUP_MESSAGES, resolveGoogleAdsAccount } from "./google-ads-access";
 import {
   decryptIntegrationSecret,
   encryptIntegrationSecret,
@@ -523,7 +523,10 @@ export async function discoverGoogleMarketingResourceStatus(accessToken: string)
     dataset: tasks[index]!.dataset,
     status: result.status === "fulfilled" ? "available" : "unavailable",
     // Never return raw provider errors, access tokens, or request URLs.
-    message: result.status === "fulfilled" ? null : "This service could not be verified. Check its permissions, API access, and quota, then retry. Other available services can still be selected.",
+    message: result.status === "fulfilled" ? null
+      : tasks[index]!.dataset === "google_ads" && result.reason instanceof ApiError && Object.hasOwn(GOOGLE_ADS_SETUP_MESSAGES, result.reason.code)
+        ? GOOGLE_ADS_SETUP_MESSAGES[result.reason.code]
+        : "This service could not be verified. Check its permissions, API access, and quota, then retry. Other available services can still be selected.",
   }));
   return { resources, datasets };
 }

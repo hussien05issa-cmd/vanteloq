@@ -25,6 +25,37 @@ function directoryError() {
   return new ApiError(502, "GOOGLE_ADS_DIRECTORY_UNAVAILABLE", "Google Ads accounts could not be fully verified. Check account access, API approval and provider limits, then retry. Existing selections are unchanged.");
 }
 
+export const GOOGLE_ADS_SETUP_MESSAGES: Record<string, string> = {
+  GOOGLE_ADS_TOKEN_PROJECT_REQUIRED: "Google has not authorized this app's Cloud project to use its Ads developer token. Vanteloq must resolve the token and project approval before customers can use Ads reporting.",
+  GOOGLE_ADS_TOKEN_APPROVAL_REQUIRED: "The Google Ads developer token is not approved for this account type. Vanteloq must complete Google's production API approval; customer account consent alone is not enough.",
+  GOOGLE_ADS_TOKEN_INVALID: "Google rejected Vanteloq's Ads developer token. The platform owner must verify the secure Google Ads setup.",
+  GOOGLE_ADS_CUSTOMER_UNAVAILABLE: "This Google Ads account is inactive or has not completed its Google setup. Existing resource selections are unchanged.",
+  GOOGLE_ADS_USER_PERMISSION_REQUIRED: "This Google user does not have the required Ads account access. Check the account's Google Ads permissions before reconnecting.",
+  GOOGLE_ADS_SCOPE_REQUIRED: "Google Ads permission was not granted. Reconnect Google and explicitly allow Ads reporting.",
+};
+
+function safeProviderFailure(body: unknown) {
+  const aliases: Record<string, string> = {
+    DEVELOPER_TOKEN_PROHIBITED: "GOOGLE_ADS_TOKEN_PROJECT_REQUIRED",
+    DEVELOPER_TOKEN_NOT_APPROVED: "GOOGLE_ADS_TOKEN_APPROVAL_REQUIRED",
+    DEVELOPER_TOKEN_INVALID: "GOOGLE_ADS_TOKEN_INVALID",
+    DEVELOPER_TOKEN_NOT_ON_ALLOWLIST: "GOOGLE_ADS_TOKEN_APPROVAL_REQUIRED",
+    CUSTOMER_NOT_ENABLED: "GOOGLE_ADS_CUSTOMER_UNAVAILABLE",
+    USER_PERMISSION_DENIED: "GOOGLE_ADS_USER_PERMISSION_REQUIRED",
+    ACCESS_TOKEN_SCOPE_INSUFFICIENT: "GOOGLE_ADS_SCOPE_REQUIRED",
+  };
+  const data = body as { error?: { details?: Array<{ errors?: Array<{ errorCode?: Record<string, unknown> }> }> } } | null;
+  if (Array.isArray(data?.error?.details)) for (const detail of data.error.details) {
+    if (!Array.isArray(detail?.errors)) continue;
+    for (const entry of detail.errors) for (const value of Object.values(entry?.errorCode ?? {})) {
+      if (typeof value !== "string" || !Object.hasOwn(aliases, value)) continue;
+      const code = aliases[value];
+      return new ApiError(502, code, GOOGLE_ADS_SETUP_MESSAGES[code]);
+    }
+  }
+  return directoryError();
+}
+
 async function directoryJson<T>(path: string, token: string, signal: AbortSignal, body?: unknown, manager: string | null = null): Promise<T> {
   try {
     const response = await fetch(`https://googleads.googleapis.com/${googleAdsVersion()}/${path}`, {
@@ -32,7 +63,6 @@ async function directoryJson<T>(path: string, token: string, signal: AbortSignal
       headers: { ...googleAdsHeaders(token, manager), ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
-    if (!response.ok) { await response.body?.cancel(); throw directoryError(); }
     const reader = response.body?.getReader();
     if (!reader) throw directoryError();
     const decoder = new TextDecoder();
@@ -45,9 +75,14 @@ async function directoryJson<T>(path: string, token: string, signal: AbortSignal
         if (bytes > 2_000_000) throw directoryError();
         text += decoder.decode(chunk.value, { stream: true });
       }
-      return JSON.parse(text + decoder.decode()) as T;
+      const body: unknown = JSON.parse(text + decoder.decode());
+      if (!response.ok) throw safeProviderFailure(body);
+      return body as T;
     } finally { await reader.cancel().catch(() => undefined); }
-  } catch { throw directoryError(); }
+  } catch (error) {
+    if (error instanceof ApiError && Object.hasOwn(GOOGLE_ADS_SETUP_MESSAGES, error.code)) throw error;
+    throw directoryError();
+  }
 }
 
 /** Request-local discovery only: no tokens, manager routes or customer data are cached across users. */

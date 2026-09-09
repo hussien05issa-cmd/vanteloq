@@ -110,3 +110,15 @@ test("Ads discovery fails closed on denied branches, malformed references, overs
     }
   } finally { globalThis.fetch = originalFetch; runtime.__vanteloqEnv = originalEnv; }
 });
+
+test("Google approval failures provide a safe actionable reason, never the provider's raw message", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalEnv = runtime.__vanteloqEnv;
+  runtime.__vanteloqEnv = { GOOGLE_ADS_DEVELOPER_TOKEN: "fixture" };
+  globalThis.fetch = async (input) => String(input).endsWith("listAccessibleCustomers")
+    ? Response.json({ resourceNames: [manager] })
+    : Response.json({ error: { message: "private-provider-message", details: [{ errors: [{ errorCode: { authorizationError: "DEVELOPER_TOKEN_PROHIBITED" }, message: "private-provider-message" }] }] } }, { status: 403 });
+  try {
+    await assert.rejects(discoverGoogleAdsAccounts("fixture"), (error: Error & { code?: string }) => error.code === "GOOGLE_ADS_TOKEN_PROJECT_REQUIRED" && !error.message.includes("private-provider"));
+  } finally { globalThis.fetch = originalFetch; runtime.__vanteloqEnv = originalEnv; }
+});
