@@ -26,7 +26,7 @@ function directoryError() {
 }
 
 type DirectoryPhase = "list" | "identity" | "hierarchy";
-type DirectoryReason = "transport" | "body_missing" | "body_read" | "body_limit" | "json_invalid" | "provider_rejected" | "roots_invalid" | "identity_invalid" | "rows_invalid" | "reference_invalid" | "page_invalid" | "request_limit" | "account_limit";
+type DirectoryReason = "transport" | "redirect_rejected" | "body_missing" | "body_read" | "body_limit" | "json_invalid" | "provider_rejected" | "roots_invalid" | "identity_invalid" | "rows_invalid" | "reference_invalid" | "page_invalid" | "request_limit" | "account_limit";
 const PROVIDER_STATUSES = new Set(["INVALID_ARGUMENT", "UNAUTHENTICATED", "PERMISSION_DENIED", "RESOURCE_EXHAUSTED", "NOT_FOUND", "FAILED_PRECONDITION", "INTERNAL", "UNAVAILABLE", "DEADLINE_EXCEEDED", "UNKNOWN", "UNIMPLEMENTED"]);
 
 // Server-only, bounded diagnostics. Never accept request URLs, IDs, headers, tokens,
@@ -84,11 +84,18 @@ async function directoryJson<T>(phase: DirectoryPhase, path: string, token: stri
   let providerStatus: string | null = null;
   try {
     const response = await fetch(`https://googleads.googleapis.com/${googleAdsVersion()}/${path}`, {
-      method: body === undefined ? "GET" : "POST", redirect: "error", cache: "no-store", signal,
+      method: body === undefined ? "GET" : "POST", redirect: "manual", cache: "no-store", signal,
       headers: { ...googleAdsHeaders(token, manager), ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
     httpStatus = response.status;
+    // Workers does not support redirect: "error". Fail closed explicitly so
+    // neither OAuth nor developer credentials can reach a redirect destination.
+    if (response.status >= 300 && response.status < 400) {
+      reason = "redirect_rejected";
+      await response.body?.cancel().catch(() => undefined);
+      throw directoryError();
+    }
     reason = "body_missing";
     const reader = response.body?.getReader();
     if (!reader) throw directoryError();
