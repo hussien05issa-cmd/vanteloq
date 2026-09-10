@@ -576,6 +576,7 @@ test("paid API access is server-enforced with narrow billing and privacy excepti
 
   const apiRoot = new URL("../app/api/v1/", import.meta.url);
   const routePaths = (await readdir(apiRoot, { recursive: true }))
+    .map((path) => path.replaceAll("\\", "/"))
     .filter((path) => path.endsWith("route.ts"))
     .sort();
   const billingExceptions = [];

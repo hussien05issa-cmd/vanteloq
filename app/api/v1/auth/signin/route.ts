@@ -24,7 +24,8 @@ function passwordText(value: unknown) {
   if (typeof value !== "string" || value.length < 1 || value.length > 256 || /[\u0000-\u001f\u007f]/.test(value)) {
     throw new ApiError(400, "INVALID_FIELD", "Enter a valid password.");
   }
-  return value.normalize("NFC");
+  // Passwords must reach the identity provider exactly as entered at signup/reset.
+  return value;
 }
 
 export async function POST(request: Request) {
@@ -79,10 +80,19 @@ export async function POST(request: Request) {
     if (!response.ok) {
       if (response.status === 429) throw new ApiError(429, "SIGNIN_RATE_LIMITED", "Too many sign-in attempts. Wait fifteen minutes before trying again.");
       const providerCode = typeof payload.error_code === "string" ? payload.error_code : typeof payload.code === "string" ? payload.code : "";
+      if (response.status >= 500) {
+        throw new ApiError(503, "ACCOUNT_SERVICE_UNAVAILABLE", "Sign-in is temporarily unavailable. Try again shortly.");
+      }
+      if (providerCode === "captcha_failed") {
+        throw new ApiError(400, "SECURITY_VERIFICATION_FAILED", "The security check expired or could not be verified. Complete a fresh security check and try again.");
+      }
       if (providerCode === "email_not_confirmed") {
         throw new ApiError(403, "EMAIL_NOT_CONFIRMED", "Verify your email before signing in.");
       }
-      throw new ApiError(400, "INVALID_CREDENTIALS", "The email or password is incorrect.");
+      if (providerCode === "invalid_credentials" || providerCode === "user_banned") {
+        throw new ApiError(400, "INVALID_CREDENTIALS", "The email or password is incorrect.");
+      }
+      throw new ApiError(503, "ACCOUNT_SERVICE_UNAVAILABLE", "Sign-in could not be completed. Try again shortly.");
     }
 
     if (typeof payload.access_token !== "string" || typeof payload.refresh_token !== "string") {
