@@ -19,7 +19,7 @@ test("privacy notice explains financial connections, document review, and consen
     "financial-data authorization",
     "TLS 1.2",
     "additional application-level AES-GCM encryption layer",
-    "Gemini Advisor data-use acceptance",
+    "Vanteloq AI data-use acceptance",
     "The checkbox is not preselected",
     "Clear conversation",
     "full account numbers",
@@ -52,7 +52,7 @@ test("legal and retention documents keep professional review and deletion limits
   assert.match(retention, /DELETE PLAID DATA/);
   assert.match(retention, /quarterly operational review/);
   assert.match(shell, /LEGAL_DOCUMENT_UPDATED_LABEL/);
-  assert.match(versions, /August 24, 2026/);
+  assert.match(versions, /September 5, 2026/);
 
   for (const document of [legal, retention, shell, versions]) assert.doesNotMatch(document, /\u2014/);
 });

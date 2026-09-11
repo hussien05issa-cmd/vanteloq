@@ -57,6 +57,20 @@ function monthlyPrice(cents: number, currency: string) {
   }).format(cents / 100);
 }
 
+async function loadAccess(): Promise<BillingData> {
+  const response = await apiFetch("/api/v1/entitlements", { headers: { Accept: "application/json" } });
+  const payload = await response.json();
+  if (!response.ok || !payload.accessType) throw new Error(problemMessage(payload, "Workspace access could not be loaded."));
+  if (payload.accessType === "internal" || payload.accessType === "subscription") {
+    return { ...payload, configured: true, plans: [], addon: { key: "bookloq", name: "BookLoQ", price: 0 }, currency: "CAD" };
+  }
+  if (!payload.canManageBilling) throw new Error("Your company workspace is not currently active. Ask the owner to check access; you do not need to buy a personal subscription.");
+  const billing = await apiFetch("/api/v1/billing", { headers: { Accept: "application/json" } });
+  const details = await billing.json();
+  if (!billing.ok) throw new Error(problemMessage(details, "Billing settings could not be loaded."));
+  return details;
+}
+
 export default function BillingOnboardingGate({ children }: { children: ReactNode }) {
   const [data, setData] = useState<BillingData | null>(null);
   const [plan, setPlan] = useState<Plan["key"] | "">("");
@@ -72,11 +86,7 @@ export default function BillingOnboardingGate({ children }: { children: ReactNod
 
     const load = async (attempt = 0) => {
       try {
-        const response = await apiFetch("/api/v1/billing", { headers: { Accept: "application/json" } });
-        const payload = await response.json() as BillingData | { error?: unknown };
-        if (!response.ok || !("accessType" in payload)) {
-          throw new Error(problemMessage(payload, "Subscription status could not be loaded."));
-        }
+        const payload = await loadAccess();
         if (!active) return;
         setData(payload);
         setPlan(current => current || payload.plans.find(item => item.mostPopular)?.key || payload.plans[0]?.key || "");
@@ -113,9 +123,7 @@ export default function BillingOnboardingGate({ children }: { children: ReactNod
     setBusy(true);
     setError("");
     try {
-      const response = await apiFetch("/api/v1/billing", { headers: { Accept: "application/json" } });
-      const payload = await response.json() as BillingData | { error?: unknown };
-      if (!response.ok || !("accessType" in payload)) throw new Error(problemMessage(payload, "Subscription status could not be loaded."));
+      const payload = await loadAccess();
       setData(payload);
       setMessage(billingGateState(payload) === "ready" ? "Subscription confirmed." : "Stripe has not confirmed an active subscription yet.");
     } catch (caught) {

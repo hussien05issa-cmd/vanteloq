@@ -1,6 +1,6 @@
 "use client";
 
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import Link from "next/link";
 import ProductBrandLogo from "./product-brand-logo";
@@ -8,7 +8,7 @@ import { getSupabase } from "./supabase-browser";
 import TurnstileField from "./turnstile-field";
 import { MINIMUM_PASSWORD_LENGTH, passwordRules, strongPasswordError } from "../shared/password-security";
 import { canonicalAuthUrl } from "../shared/auth-urls";
-import { signupErrorMessage } from "../shared/auth-error-messages";
+import { recoveryEmailErrorMessage, signupErrorMessage } from "../shared/auth-error-messages";
 import { passwordExposureStatus } from "../shared/password-exposure";
 import { inspectRecoveryMfa, verifyRecoveryMfa } from "../shared/recovery-mfa";
 import {
@@ -24,6 +24,7 @@ import {
   PRIVACY_POLICY_VERSION,
   TERMS_OF_SERVICE_VERSION,
 } from "../shared/legal-versions";
+import { useModalFocus } from "./use-modal-focus";
 
 export type AuthPanelMode = "signin" | "signup" | "verify-signup" | "request-reset" | "verify-recovery" | "reset-password";
 
@@ -36,6 +37,7 @@ export default function AuthPanel({
   authenticated: (session: Session) => void;
   initialMode?: AuthPanelMode;
 }) {
+  const dialogRef = useRef<HTMLDivElement>(null);
   const [mode, setMode] = useState<AuthPanelMode>(initialMode);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -77,7 +79,7 @@ export default function AuthPanel({
       if (!ready) {
         setRecoveryMfaState("error");
         setMessageIsError(true);
-        setMessage("This password-reset link is invalid or has expired. Request a new link to continue.");
+        setMessage("This link could not open a recovery session. Open it in the same browser that requested it, or use the recovery email code below. If the email has expired, request a new one.");
         return;
       }
       const mfa = await inspectRecoveryMfa(client.auth.mfa);
@@ -267,18 +269,24 @@ export default function AuthPanel({
     }
 
     if (mode === "request-reset") {
-      const redirectTo = canonicalAuthUrl("/?recovery=1");
-      const result = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), { redirectTo, captchaToken: turnstileToken });
-      resetTurnstile();
-      setBusy(false);
-      if (result.error) {
+      try {
+        const redirectTo = canonicalAuthUrl("/?recovery=1");
+        const result = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), { redirectTo, captchaToken: turnstileToken });
+        if (result.error) {
+          setMessageIsError(true);
+          setMessage(recoveryEmailErrorMessage(result.error));
+          return;
+        }
+        setVerificationCode("");
+        setMode("verify-recovery");
+        setMessage("If an account exists for that email, the newest message includes both a secure reset link and a recovery email code. Open the link in this browser, or enter the code here. Check your junk folder too.");
+      } catch {
         setMessageIsError(true);
-        setMessage("The reset email could not be sent. Wait a moment and try again.");
-        return;
+        setMessage(recoveryEmailErrorMessage({}));
+      } finally {
+        resetTurnstile();
+        setBusy(false);
       }
-      setVerificationCode("");
-      setMode("verify-recovery");
-      setMessage("If an account exists for that email, the newest message includes both a secure reset link and a recovery email code.");
       return;
     }
 
@@ -433,12 +441,14 @@ export default function AuthPanel({
     setLegalAccepted(false);
   }
 
-  function dismiss() {
+  const dismiss = useCallback(() => {
     if (mode === "verify-recovery" || mode === "reset-password") {
       window.history.replaceState({}, document.title, window.location.pathname);
     }
     close();
-  }
+  }, [close, mode]);
+
+  useModalFocus(dialogRef, true, dismiss);
 
   const title = mode === "signup" ? "Create your workspace"
     : mode === "verify-signup" ? "Verify your email"
@@ -455,7 +465,7 @@ export default function AuthPanel({
       : mode === "request-reset"
         ? "Enter your account email. We will send a secure reset link and a recovery email code."
         : mode === "verify-recovery"
-          ? `Open the secure link in the newest message sent to ${email.trim().toLowerCase() || "your email"}, or enter its 6 to 10 digit recovery code below.`
+          ? `Enter the 6 to 10 digit recovery code from the newest email, or open its reset link in the same browser that requested it.`
         : recoveryMfaRequired
           ? "Enter the current six-digit code from your authenticator app before changing your password."
           : "Enter a new password for your Vanteloq account.";
@@ -466,12 +476,12 @@ export default function AuthPanel({
     : mode === "verify-recovery" ? "Verify recovery code"
     : recoveryMfaRequired ? "Verify and continue" : "Update password";
 
-  return <div className="auth-backdrop" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+  return <div ref={dialogRef} className="auth-backdrop" role="dialog" aria-modal="true" aria-labelledby="auth-title" aria-describedby="auth-description" tabIndex={-1}>
     <section className="auth-panel">
       <header><ProductBrandLogo product="vanteloq"/><button type="button" onClick={dismiss} aria-label="Close account form">×</button></header>
       <small>SECURE VANTELOQ ACCOUNT</small>
       <h2 id="auth-title">{title}</h2>
-      <p>{description}</p>
+      <p id="auth-description">{description}</p>
       {configured === false && <div className="auth-message error">Account service is temporarily unavailable.</div>}
       <form onSubmit={submit}>
         {mode === "signup" && <label>Full name<input autoComplete="name" value={name} onChange={event => setName(event.target.value)} minLength={2} maxLength={120} required/></label>}
@@ -495,6 +505,7 @@ export default function AuthPanel({
       </form>
       {mode === "signin" && <button className="auth-switch" type="button" onClick={() => changeMode("request-reset")}>Forgot your password?</button>}
       {mode === "request-reset" && <button className="auth-switch" type="button" onClick={() => changeMode("signin")}>Back to sign in</button>}
+      {(mode === "request-reset" || (mode === "reset-password" && recoveryReady === false)) && <button className="auth-switch" type="button" onClick={() => changeMode("verify-recovery")}>I already have a recovery email code</button>}
       {mode === "verify-recovery" && <button className="auth-switch" type="button" onClick={() => changeMode("request-reset")}>Send a new recovery email</button>}
       {mode === "verify-recovery" && <button className="auth-switch auth-switch-secondary" type="button" onClick={() => changeMode("signin")}>Back to sign in</button>}
       {mode === "reset-password" && recoveryReady === false && <button className="auth-switch" type="button" onClick={() => changeMode("request-reset")}>Request a new reset link</button>}

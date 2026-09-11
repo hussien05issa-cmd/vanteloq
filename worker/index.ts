@@ -68,6 +68,25 @@ interface ExecutionContext {
   passThroughOnException(): void;
 }
 
+const NOT_FOUND_TITLE = "Page not found | Vanteloq";
+const NOT_FOUND_DESCRIPTION = "The requested Vanteloq page could not be found.";
+
+function rewriteNotFoundMetadata(html: string) {
+  return html
+    .replace(/<title>[\s\S]*?<\/title>/i, `<title>${NOT_FOUND_TITLE}</title>`)
+    .replace(/<meta property="og:title" content="[^"]*"\/>/i, `<meta property="og:title" content="${NOT_FOUND_TITLE}"/>`)
+    .replace(/<meta name="twitter:title" content="[^"]*"\/>/i, `<meta name="twitter:title" content="${NOT_FOUND_TITLE}"/>`)
+    .replace(/<meta name="description" content="[^"]*"\/>/i, `<meta name="description" content="${NOT_FOUND_DESCRIPTION}"/>`)
+    .replace(/<meta property="og:description" content="[^"]*"\/>/i, `<meta property="og:description" content="${NOT_FOUND_DESCRIPTION}"/>`)
+    .replace(/<meta name="twitter:description" content="[^"]*"\/>/i, `<meta name="twitter:description" content="${NOT_FOUND_DESCRIPTION}"/>`)
+    .replace(/<meta property="og:url" content="[^"]*"\/>/i, "")
+    .replace(/<link rel="canonical" href="[^"]*"\/>/i, "")
+    // The runtime and page metadata can both emit robots directives for a 404.
+    // Normalize the server HTML to one directive before it reaches crawlers.
+    .replace(/<meta\b[^>]*\bname=["']robots["'][^>]*\/?>/gi, "")
+    .replace(/<\/head>/i, '<meta name="robots" content="noindex, follow"/></head>');
+}
+
 // Image security config. SVG sources with .svg extension auto-skip the
 // optimization endpoint on the client side (served directly, no proxy).
 // To route SVGs through the optimizer (with security headers), set
@@ -116,6 +135,15 @@ const worker = {
       headers.set("Cache-Control", "no-store, max-age=0");
       headers.set("Cross-Origin-Resource-Policy", "same-origin");
     }
+
+    const isNotFoundHtml = response.status === 404 && headers.get("Content-Type")?.includes("text/html");
+    if (isNotFoundHtml) {
+      const html = rewriteNotFoundMetadata(await response.text());
+      headers.delete("Content-Length");
+      headers.set("X-Robots-Tag", "noindex, follow");
+      return new Response(html, { status: response.status, statusText: response.statusText, headers });
+    }
+
     return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
   },
 };

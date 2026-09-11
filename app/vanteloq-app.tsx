@@ -1,13 +1,20 @@
 "use client";
 
 import Image from "next/image";
-import Link from "next/link";
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import BookLoQWorkspace from "./bookloq-workspace";
 import CommunicationsWorkspace from "./communications-workspace";
 import CommerceIntelligenceWorkspace from "./commerce-intelligence-workspace";
 import GrowthWorkspace from "./growth-workspace";
+import ScenarioPlanner from "./scenario-planner";
+import { connectorNextStep, filterConnectors } from "../domain/connector-guidance";
 import IntegrationBrandLogo from "./integration-brand-logo";
+import AdvisorComposer, { canAskAdvisor } from "./advisor-composer";
+import AdvisorThinking from "./advisor-thinking";
+import AdvisorResponse from "./advisor-response";
+import { requestAdvisorAnalysis } from "./advisor-client";
+import AdvisorPrivacy from "./advisor-privacy";
+import { ADVISOR_PROVIDER_LABELS, advisorProviders, type AdvisorMode } from "../domain/advisor-providers";
 import {
   integrationCatalog,
   integrationCategoryGuide,
@@ -15,6 +22,8 @@ import {
   type IntegrationCatalogEntry,
 } from "./integration-catalog";
 import ProductBrandLogo from "./product-brand-logo";
+import WorkspaceIcon from "./workspace-icon";
+import { comparisonCopy, quantityLabel } from "../domain/workspace-presentation";
 import PlaidLinkButton, { PLAID_REDIRECT_STORAGE_KEY, PLAID_RETURN_VIEW_STORAGE_KEY } from "./plaid-link-button";
 import { apiFetch, signOut } from "./supabase-browser";
 import {
@@ -40,7 +49,6 @@ import { buildProviderFeatureCoverage, type CanonicalCommerceCoverage, type Prov
 import { integrationActionKey, supportsMultipleProviderAccounts } from "../domain/integration-source";
 import { humanizeIdentifier, providerDisplayName, workspaceViewLabel } from "../domain/display-labels";
 import {
-  GEMINI_CONSENT_NOTICE_VERSION,
   PRIVACY_POLICY_VERSION,
   QUICKBOOKS_CONSENT_NOTICE_VERSION,
 } from "../domain/privacy-controls";
@@ -502,6 +510,7 @@ type CommandCentre = {
   } | null;
   forecast?: {
     available: boolean;
+    unavailableReason?: string;
     requiredDays: number;
     verifiedDays: number;
     totalNetSalesCents: number | null;
@@ -528,18 +537,22 @@ type CommandCentre = {
     discountsCents: number;
     lastSaleAt: string | null;
     sourceGranularity: "intraday" | "daily";
+    asOf?: string | null;
+    timeZone?: string;
+    hourlyUnavailableReason?: string | null;
     hourly: Array<{
       hour: number;
       label: string;
       netSalesCents: number;
-      grossProfitCents: number;
+      grossProfitCents: number | null;
       transactionCount: number;
     }>;
   };
   todayComparison: {
+    basis?: "full_day" | "same_weekday_same_time";
     baselineDate: string;
     currentDate: string;
-    baseline: { netSalesCents: number; grossProfitCents: number; transactionCount: number };
+    baseline: { netSalesCents: number; grossProfitCents: number | null; transactionCount: number; hourly?: import("../domain/intraday-sales").SalesHour[] };
     changes: { netSalesRate: number | null; grossProfitRate: number | null; transactionRate: number | null };
   } | null;
   paymentMix: {
@@ -668,16 +681,23 @@ export default function VanteloqApp({
   });
   const preferenceQueueRef = useRef<Promise<void>>(Promise.resolve());
   const preferenceWriteRef = useRef(0);
+  const dashboardRequestRef = useRef<AbortController | null>(null);
 
   const refresh = useCallback(async (silent = false) => {
+    if (silent && dashboardRequestRef.current) return;
+    dashboardRequestRef.current?.abort();
+    const request = new AbortController();
+    dashboardRequestRef.current = request;
     if (!silent) setLoading(true);
     try {
       const parameters = new URLSearchParams({ payment_days: String(paymentRange) });
       if (activeLocationId) parameters.set("location", activeLocationId);
       const response = await apiFetch(`/api/v1/command-centre?${parameters.toString()}`, {
         headers: { Accept: "application/json" },
+        signal: request.signal,
       });
       const body = await response.json();
+      if (request.signal.aborted || dashboardRequestRef.current !== request) return;
       if (!response.ok)
         throw new Error(
           body.error?.message ?? "Unable to load the command centre.",
@@ -693,13 +713,17 @@ export default function VanteloqApp({
       );
       setError("");
     } catch (caught) {
+      if (request.signal.aborted || dashboardRequestRef.current !== request) return;
       setError(
         caught instanceof Error
           ? caught.message
           : "Unable to load the command centre.",
       );
     } finally {
-      if (!silent) setLoading(false);
+      if (dashboardRequestRef.current === request) {
+        dashboardRequestRef.current = null;
+        setLoading(false);
+      }
     }
   }, [activeLocationId, organizationName, paymentRange]);
   useEffect(() => {
@@ -726,13 +750,22 @@ export default function VanteloqApp({
   }, []);
   useEffect(() => {
     const timer = window.setTimeout(() => void refresh(), 0);
-    return () => window.clearTimeout(timer);
+    return () => {
+      window.clearTimeout(timer);
+      dashboardRequestRef.current?.abort();
+      dashboardRequestRef.current = null;
+    };
   }, [refresh]);
   useEffect(() => {
-    const timer = window.setInterval(() => {
+    const refreshVisible = () => {
       if (document.visibilityState === "visible") void refresh(true);
-    }, 60_000);
-    return () => window.clearInterval(timer);
+    };
+    const timer = window.setInterval(refreshVisible, 60_000);
+    document.addEventListener("visibilitychange", refreshVisible);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refreshVisible);
+    };
   }, [refresh]);
   useEffect(() => {
     const parameters = new URLSearchParams(window.location.search);
@@ -825,6 +858,7 @@ export default function VanteloqApp({
     }
     setView(next);
     setMobileNavOpen(false);
+    window.scrollTo({ top: 0, behavior: "instant" });
   };
   useEffect(() => {
     if (navigationEntitlement(view, subscriptionFeatures).allowed) return;
@@ -912,10 +946,8 @@ export default function VanteloqApp({
           <span>
             <b>{workspaceName}</b>
             <small>
-              {data?.today.lastSaleAt
-                ? `Live through ${formatTime(data.today.lastSaleAt)}`
-                : data?.source.latestBusinessDate
-                ? `Data through ${data.source.latestBusinessDate}`
+              {data?.source.latestBusinessDate
+                ? `Data through ${formatBusinessDate(data.source.latestBusinessDate)}`
                 : "Data source required"}
             </small>
           </span>
@@ -969,7 +1001,7 @@ export default function VanteloqApp({
                         variant="full"
                         className="bookloq-nav-lockup"
                       />
-                    ) : <><span className="nav-dot" />{workspaceViewLabel(item)}</>}
+                    ) : <><WorkspaceIcon name={item}/><span className="nav-label">{workspaceViewLabel(item)}</span></>}
                     {!subscriptionAccess.allowed && <small className="nav-plan-lock">{subscriptionAccess.upgradeLabel}</small>}
                   </button>
                 })}
@@ -985,7 +1017,7 @@ export default function VanteloqApp({
               onClick={() => navigate("Integrations")}
               aria-current={view === "Integrations" ? "page" : undefined}
             >
-              <span className="nav-dot" />
+              <WorkspaceIcon name="Integrations" />
               Integrations & data
               {!navigationEntitlement("Integrations", subscriptionFeatures).allowed && <small className="nav-plan-lock">{navigationEntitlement("Integrations", subscriptionFeatures).upgradeLabel}</small>}
             </button>
@@ -996,7 +1028,7 @@ export default function VanteloqApp({
               onClick={() => navigate("Settings")}
               aria-current={view === "Settings" ? "page" : undefined}
             >
-              <span className="nav-dot" />
+              <WorkspaceIcon name="Settings" />
               Settings
               {!navigationEntitlement("Settings", subscriptionFeatures).allowed && <small className="nav-plan-lock">{navigationEntitlement("Settings", subscriptionFeatures).upgradeLabel}</small>}
             </button>
@@ -1036,22 +1068,21 @@ export default function VanteloqApp({
             aria-controls="primary-sidebar"
             onClick={() => setMobileNavOpen((value) => !value)}
           >
-            ☰
+            <WorkspaceIcon name="Menu" />
           </button>
           <div className="topbar-title">
             <p className="eyebrow">
               {view === "Dashboard" ? "OWNER COMMAND CENTRE" : view === "BookLoQ" || view === "Profit" || view === "Cash" || view === "Bookkeeping" ? "BOOKLOQ FINANCE" : "VANTELOQ WORKSPACE"}
             </p>
-            <h1>{view === "Dashboard" ? "Unified Workspace" : view === "Profit" ? "BookLoQ · Reports" : view === "Cash" ? "BookLoQ · Cash Flow" : view === "Bookkeeping" ? "BookLoQ · Transactions" : workspaceViewLabel(view)}</h1>
+            <h1>{view === "Dashboard" ? "Dashboard" : view === "Profit" ? "BookLoQ · Reports" : view === "Cash" ? "BookLoQ · Cash Flow" : view === "Bookkeeping" ? "BookLoQ · Transactions" : workspaceViewLabel(view)}</h1>
           </div>
           <div className="top-actions">
-            <button className="command-trigger" onClick={() => setCommandOpen(true)} aria-label="Open workspace search"><span>Search workspace</span><kbd>⌘K</kbd></button>
+            <button className="command-trigger" onClick={() => setCommandOpen(true)} aria-label="Open workspace search"><WorkspaceIcon name="Search"/><span>Search workspace</span><kbd>⌘K</kbd></button>
             <span
               className={`source-pill ${data?.liveSource.lastSuccessfulSyncAt ? "current" : data?.source.freshness ?? "missing"}`}
             >
-              <i />
               {data?.liveSource.lastSuccessfulSyncAt
-                ? "Live sales"
+                ? "Connected sales"
                 : data?.source.latestBusinessDate
                 ? `${humanizeIdentifier(data.source.freshness)} data`
                 : "No data"}
@@ -1061,7 +1092,7 @@ export default function VanteloqApp({
               aria-label="Open alerts"
               onClick={() => setNotificationsOpen((value) => !value)}
             >
-              <span aria-hidden="true">Alerts</span>
+              <WorkspaceIcon name="Alerts"/><span aria-hidden="true">Alerts</span>
             </button>
             <button
               className="primary"
@@ -1297,13 +1328,13 @@ function Workspace({
   }
   if (view === "Communications") return <CommunicationsWorkspace activeLocationId={activeLocationId} />;
   if (view === "Marketing")
-    return <GrowthWorkspace currency={currency} navigate={navigate} activeLocationId={activeLocationId} canOptimize={subscriptionFeatures.includes("marketing.optimization")} />;
+    return <GrowthWorkspace key={activeLocationId ?? "organization"} currency={currency} navigate={navigate} activeLocationId={activeLocationId} canOptimize={subscriptionFeatures.includes("marketing.optimization")} />;
   if (view === "Integrations")
     return <DataHub refresh={refresh} showNotice={showNotice} navigate={navigate} subscriptionFeatures={subscriptionFeatures} />;
   if (view === "Decision Journal")
     return <DecisionJournal currency={currency} showNotice={showNotice} />;
   if (view === "Scenario Planner")
-    return <ScenarioPlanner data={data} currency={currency} />;
+    return <ScenarioPlanner source={data.current} currency={currency} />;
   if (view === "Business Brief")
     return (
       <BusinessBrief
@@ -1399,16 +1430,12 @@ function formatRelativeSync(value: string) {
   if (elapsedMinutes < 1) return "just now";
   if (elapsedMinutes === 1) return "1 minute ago";
   if (elapsedMinutes < 60) return `${elapsedMinutes} minutes ago`;
+  if (elapsedMinutes >= 1440) return new Intl.DateTimeFormat("en-CA", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(value));
   return new Intl.DateTimeFormat("en-CA", { hour: "numeric", minute: "2-digit" }).format(new Date(value));
 }
 
 function formatBusinessDate(value: string) {
   return new Intl.DateTimeFormat("en-CA", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(`${value}T00:00:00Z`));
-}
-
-function comparisonCopy(rate: number | null | undefined, label: string) {
-  if (rate === null || rate === undefined) return `No ${label} baseline`;
-  return `${new Intl.NumberFormat("en-CA", { style: "percent", maximumFractionDigits: 1, signDisplay: "exceptZero" }).format(rate)} vs ${label}`;
 }
 
 function PaymentMixCard({ data, currency, paymentRange, setPaymentRange }: { data: CommandCentre["paymentMix"]; currency: string; paymentRange: PaymentRange; setPaymentRange: (range: PaymentRange) => void }) {
@@ -1424,7 +1451,8 @@ function PaymentMixCard({ data, currency, paymentRange, setPaymentRange }: { dat
   const labels: Record<string, string> = { card: "Card", cash: "Cash", gift_card: "Gift card", store_credit: "Store credit", other: "Other" };
   return (
     <article className="card commerce-intel-card payment-mix-card">
-      <header><div><p className="card-kicker">PAYMENT MIX</p><h3>Cash vs card</h3></div><label className="payment-range"><span>Time frame</span><select aria-label="Payment mix time frame" value={paymentRange} onChange={(event) => setPaymentRange(Number(event.target.value) as PaymentRange)}><option value={1}>Today</option><option value={7}>Last 7 days</option><option value={30}>Last 30 days</option></select></label></header>
+      <header><div><p className="card-kicker">PAYMENT MIX</p><h3>Cash vs card</h3></div><label className="payment-range"><span>Time frame</span><select aria-label="Payment mix time frame" value={paymentRange} onChange={(event) => setPaymentRange(Number(event.target.value) as PaymentRange)}><option value={1}>Latest verified day</option><option value={7}>7 days to latest</option><option value={30}>30 days to latest</option></select></label></header>
+      <p className="payment-period">{data.period}</p>
       {data.sourceAvailable && total > 0 ? <>
         <div className="payment-stack" aria-label={`Payment mix totaling ${money(total, currency)}`}>
           {rows.map((row) => <i key={row.category} className={`payment-${row.category}`} style={{ width: `${Math.max(2, row.amountCents / total * 100)}%` }} />)}
@@ -1439,7 +1467,7 @@ function PaymentMixCard({ data, currency, paymentRange, setPaymentRange }: { dat
 
 function CommerceIntelligenceRail({ data, currency, paymentRange, setPaymentRange }: { data: CommandCentre; currency: string; paymentRange: PaymentRange; setPaymentRange: (range: PaymentRange) => void }) {
   const comparisons: Array<{ label: string; period: string; value: string; rate: number | null }> = [
-    { label: "Today vs same weekday", period: data.todayComparison ? formatBusinessDate(data.todayComparison.baselineDate) : "Baseline unavailable", value: money(data.today.netSalesCents, currency), rate: data.todayComparison?.changes.netSalesRate ?? null },
+    { label: "Latest day vs same weekday", period: data.todayComparison ? formatBusinessDate(data.todayComparison.baselineDate) : "Baseline unavailable", value: money(data.today.netSalesCents, currency), rate: data.todayComparison?.changes.netSalesRate ?? null },
   ];
   if (data.periodComparisons) {
     comparisons.push(
@@ -1466,7 +1494,7 @@ function CommerceIntelligenceRail({ data, currency, paymentRange, setPaymentRang
   return (
     <>
       <section className="sales-comparison-grid" aria-label="Matched sales comparisons">
-        {comparisons.map((item) => <article key={item.label}><p>{item.label}</p><strong>{item.value}</strong><span className={item.rate == null ? "neutral" : item.rate >= 0 ? "positive" : "negative"}>{comparisonCopy(item.rate, item.label === "Today vs same weekday" ? item.period : "prior matched period")}</span><small>{item.period}</small></article>)}
+        {comparisons.map((item) => <article key={item.label}><p>{item.label}</p><strong>{item.value}</strong><span className={item.rate == null ? "neutral" : item.rate >= 0 ? "positive" : "negative"}>{comparisonCopy(item.rate, item.label === "Latest day vs same weekday" ? item.period : "prior matched period")}</span><small>{item.period}</small></article>)}
       </section>
       <section className="commerce-intel-grid">
         <PaymentMixCard data={data.paymentMix} currency={currency} paymentRange={paymentRange} setPaymentRange={setPaymentRange} />
@@ -1479,7 +1507,7 @@ function CommerceIntelligenceRail({ data, currency, paymentRange, setPaymentRang
               {forecast.points.map((point) => <i key={point.date} style={{ height: `${Math.max(12, point.netSalesCents / Math.max(...forecast.points.map((item) => item.netSalesCents), 1) * 100)}%` }} title={`${formatBusinessDate(point.date)}: ${money(point.netSalesCents, currency)}`} />)}
             </div>
             <small>{forecast.method}</small>
-          </> : <div className="intel-empty"><b>{Math.max(0, forecast.requiredDays - forecast.verifiedDays)} more verified days needed</b><span>Vanteloq will not forecast until at least {forecast.requiredDays} distinct sales days are available.</span></div>}
+          </> : <div className="intel-empty"><b>{forecast.unavailableReason ? "Recent sales required" : `${Math.max(0, forecast.requiredDays - forecast.verifiedDays)} more verified days needed`}</b><span>{forecast.unavailableReason ?? `Vanteloq will not forecast until at least ${forecast.requiredDays} distinct sales days are available.`}</span></div>}
         </article>
       </section>
     </>
@@ -1488,27 +1516,29 @@ function CommerceIntelligenceRail({ data, currency, paymentRange, setPaymentRang
 
 function LiveSalesPanel({ data, currency, paymentRange, setPaymentRange, compact = false }: { data: CommandCentre; currency: string; paymentRange: PaymentRange; setPaymentRange: (range: PaymentRange) => void; compact?: boolean }) {
   const today = data.today;
-  const baselineLabel = data.todayComparison ? formatBusinessDate(data.todayComparison.baselineDate) : "same weekday";
+  const intraday = today.sourceGranularity === "intraday";
+  const matched = data.todayComparison?.basis === "same_weekday_same_time";
+  const baselineLabel = data.todayComparison ? `${formatBusinessDate(data.todayComparison.baselineDate)}${matched ? " at the same time" : ""}` : "same weekday";
   const sourceName = data.liveSource.accountName || (data.liveSource.provider ? providerLabel(data.liveSource.provider) : "connected source");
   return (
     <>
       <section className="today-metric-grid">
-        <Metric label="Today's net sales" value={money(today.netSalesCents, currency)} delta={comparisonCopy(data.todayComparison?.changes.netSalesRate, baselineLabel)} detail={`${today.businessDate} · completed sales`} tone="indigo" />
-        <Metric label="Today's gross profit" value={money(today.grossProfitCents, currency)} delta={comparisonCopy(data.todayComparison?.changes.grossProfitRate, baselineLabel)} detail="Net sales less product cost" tone="emerald" />
-        <Metric label="Gross margin" value={today.netSalesCents && today.grossProfitCents != null ? `${(today.grossProfitCents / today.netSalesCents * 100).toFixed(1)}%` : "Not available"} delta="Product economics" detail="Gross profit ÷ net sales" tone="emerald" />
+        <Metric label={intraday ? "Net sales today" : "Latest daily net sales"} value={money(today.netSalesCents, currency)} delta={comparisonCopy(data.todayComparison?.changes.netSalesRate, baselineLabel)} detail={`${formatBusinessDate(today.businessDate)} · excludes sales tax`} tone="indigo" />
+        <Metric label={intraday ? "Gross profit today" : "Latest daily gross profit"} value={today.grossProfitCents == null ? "Not available" : money(today.grossProfitCents, currency)} delta={comparisonCopy(data.todayComparison?.changes.grossProfitRate, baselineLabel)} detail={today.grossProfitCents == null ? "Verified product costs required" : "Net sales less product cost"} tone="emerald" />
+        <Metric label="Gross margin" value={today.netSalesCents > 0 && today.grossProfitCents != null ? `${(today.grossProfitCents / today.netSalesCents * 100).toFixed(1)}%` : "Not available"} delta="Product economics" detail="Gross profit ÷ positive net sales" tone="emerald" />
         <Metric label="Discounts" value={money(today.discountsCents, currency)} delta={today.netSalesCents + today.discountsCents ? `${(today.discountsCents / (today.netSalesCents + today.discountsCents) * 100).toFixed(1)}% of pre-discount value` : "No discount activity"} detail="Verified line and sale discounts" tone="amber" />
-        <Metric label="Average transaction" value={today.averageTransactionCents == null ? "Not available" : money(today.averageTransactionCents, currency, 2)} delta="Live basket value" detail="Net sales ÷ completed transactions" tone="amber" />
-        <Metric label="Number of sales" value={today.transactionCount == null ? "Not available" : today.transactionCount.toLocaleString()} delta={comparisonCopy(data.todayComparison?.changes.transactionRate, baselineLabel)} detail={today.unitsSold == null ? "Revenue permission required" : `${today.unitsSold.toLocaleString()} line items recorded`} tone="cyan" />
+        <Metric label="Average transaction" value={today.averageTransactionCents == null ? "Not available" : money(today.averageTransactionCents, currency, 2)} delta={intraday ? "Today's basket value" : "Latest daily basket value"} detail="Net sales ÷ completed transactions" tone="amber" />
+        <Metric label="Number of sales" value={today.transactionCount == null ? "Not available" : today.transactionCount.toLocaleString()} delta={comparisonCopy(data.todayComparison?.changes.transactionRate, baselineLabel)} detail={today.unitsSold == null ? "Revenue permission required" : `${quantityLabel(today.unitsSold, "line item")} recorded`} tone="cyan" />
       </section>
       <section className={compact ? "live-sales-grid compact" : "live-sales-grid"}>
         <article className="card live-sales-chart-card">
           <div className="card-head">
-            <div><p className="card-kicker">CURRENT DAY</p><h3>Sales by hour</h3></div>
-            <span className="verified-tag">{sourceName} · verified</span>
+            <div><p className="card-kicker">{intraday ? "TODAY'S SALES PULSE" : "LATEST VERIFIED DAY"}</p><h3>Sales by hour</h3></div>
+            <span className="verified-tag">{sourceName} · approved records</span>
           </div>
           {today.sourceGranularity === "intraday"
-            ? <IntradaySalesChart data={today.hourly} currency={currency} />
-            : <div className="intel-empty"><b>Hourly detail is not provided by this source</b><span>The totals above come from the latest verified daily summary. Connect a provider with transaction timestamps to unlock the intraday chart.</span></div>}
+            ? <IntradaySalesChart data={today.hourly} currency={currency} comparison={matched ? data.todayComparison?.baseline.hourly : undefined} comparisonDate={matched ? data.todayComparison?.baselineDate : undefined} asOf={today.asOf} timeZone={today.timeZone} />
+            : <div className="intel-empty"><b>Hourly detail is not available</b><span>{today.hourlyUnavailableReason || "The totals above come from the latest verified daily summary. Connect a provider with transaction timestamps to unlock the intraday chart."}</span></div>}
           <div className="chart-foot">
             <span><b>{today.transactionCount == null ? "Not available" : today.transactionCount.toLocaleString()}</b> completed sales</span>
             <span><b>{today.unitsSold == null ? "Not available" : today.unitsSold.toLocaleString()}</b> line items</span>
@@ -1518,8 +1548,9 @@ function LiveSalesPanel({ data, currency, paymentRange, setPaymentRange, compact
         </article>
         {!compact && data.current && (
           <article className="card period-summary-card">
-            <p className="card-kicker">LAST 30 DAYS</p>
+            <p className="card-kicker">LATEST 30-DAY WINDOW</p>
             <h3>Period context</h3>
+            {data.source.latestBusinessDate && <small>Through {formatBusinessDate(data.source.latestBusinessDate)}</small>}
             <dl>
               <div><dt>Net sales</dt><dd>{money(data.current.netSalesCents, currency)}</dd></div>
               <div><dt>Gross profit</dt><dd>{money(data.current.grossProfitCents, currency)}</dd></div>
@@ -1543,8 +1574,8 @@ function Overview({ data, currency, navigate, createTask, paymentRange, setPayme
       <section className="live-sales-heading">
         <div>
           <p>LATEST VERIFIED SALES</p>
-          <h2>Current performance from the connected commerce source.</h2>
-          <span>{data.today.lastSaleAt ? `${data.today.sourceGranularity === "intraday" ? "Through" : "Daily summary updated"} ${formatTime(data.today.lastSaleAt)} · ${sourceName}` : `No verified sale has been received for ${data.today.businessDate} from ${sourceName}.`}</span>
+          <h2>Your latest verified business performance.</h2>
+          <span>{data.today.lastSaleAt ? `${data.today.sourceGranularity === "intraday" ? "Through" : "Daily summary updated"} ${formatBusinessDate(data.today.businessDate)} at ${formatTime(data.today.lastSaleAt)} · ${sourceName}` : `No verified sale has been received for ${data.today.businessDate} from ${sourceName}.`}</span>
         </div>
         <span className={`live-sync-state ${data.source.freshness}`}><i />{data.liveSource.lastSuccessfulSyncAt ? `Synced ${formatRelativeSync(data.liveSource.lastSuccessfulSyncAt)}` : "Waiting for first sync"}</span>
       </section>
@@ -1582,7 +1613,7 @@ function SalesWorkspace({ data, currency, navigate, refresh, paymentRange, setPa
   );
 }
 
-function Metric({
+export function Metric({
   label,
   value,
   delta,
@@ -1604,8 +1635,8 @@ function Metric({
     <article className={`metric-card metric-${tone}${unavailable ? " metric-unavailable" : ""}`}>
       <p>{label}</p>
       <h3 className={unavailable ? "metric-unavailable-value" : undefined}>{value}</h3>
-      <span>{delta}</span>
-      {sparkline?.length ? <MetricSparkline values={sparkline} tone={tone} /> : <i className="metric-accent" aria-hidden="true" />}
+      <span className={`metric-context${!unavailable && /^\+/.test(delta) ? " positive" : !unavailable && /^-/.test(delta) ? " negative" : ""}`}>{delta}</span>
+      {!!sparkline?.length && <MetricSparkline values={sparkline} tone={tone} />}
       <small>{detail}</small>
       {provenance && (
         <details className="metric-evidence">
@@ -1777,7 +1808,7 @@ function Intelligence({
         <article className="approval-card">
           <small>EXECUTION POLICY</small>
           <b>Recommend first. Approve before acting.</b>
-          {operating.guardrails.map((guardrail) => <span key={guardrail}><small>POLICY</small>{guardrail}</span>)}
+          {operating.guardrails.map((guardrail) => <span key={guardrail}><WorkspaceIcon name="Data Quality"/>{guardrail}</span>)}
         </article>
       </section>
       <section className="decision-queue">
@@ -2238,8 +2269,11 @@ type MarketingResourcePanel = {
   provider: "google" | "meta";
   connectionId: string;
   selectionVersion: number;
+  selectionBlocked: boolean;
   datasets: Array<{
-    dataset: "google_analytics" | "google_search_console" | "meta_ads";
+    dataset: "google_analytics" | "google_search_console" | "google_business_profile" | "google_ads" | "meta_ads";
+    status: "available" | "unavailable";
+    message: string | null;
     resources: Array<{
       externalResourceRef: string;
       name: string;
@@ -2270,6 +2304,8 @@ function DataHub({
   subscriptionFeatures: readonly string[];
 }) {
   const [tab, setTab] = useState<"import" | "connections">("connections");
+  const [providerQuery, setProviderQuery] = useState("");
+  const [providerCategory, setProviderCategory] = useState("All categories");
   const [connections, setConnections] = useState<IntegrationConnection[]>([]);
   const [connectionError, setConnectionError] = useState("");
   const [connectionsLoading, setConnectionsLoading] = useState(false);
@@ -2402,10 +2438,10 @@ function DataHub({
     showNotice("R-Series is still updating in the background. This page will show the new sync time when it finishes.");
   }, [loadConnections, refresh, showNotice]);
   useEffect(() => {
-    if (tab !== "connections" || connections.length || connectionsLoading) return;
+    if (tab !== "connections" || connections.length || connectionsLoading || connectionError) return;
     const timer = window.setTimeout(() => void loadConnections(), 0);
     return () => window.clearTimeout(timer);
-  }, [connections.length, connectionsLoading, loadConnections, tab]);
+  }, [connections.length, connectionsLoading, connectionError, loadConnections, tab]);
   const providerPost = async (
     provider: DirectIntegrationProvider,
     path: string,
@@ -2615,6 +2651,7 @@ function DataHub({
         provider,
         connectionId,
         selectionVersion: Number(body.selectionVersion),
+        selectionBlocked: body.selectionBlocked === true,
         locations: body.locations,
         datasets: body.datasets.map((dataset: MarketingResourcePanel["datasets"][number]) => ({
           ...dataset,
@@ -2795,6 +2832,7 @@ function DataHub({
         canonicalCoverage: emptyCommerceCoverage,
         featureCoverage: buildProviderFeatureCoverage(provider.id, emptyCommerceCoverage),
       }));
+  const filteredProviders = filterConnectors(providerRows, providerQuery, providerCategory);
   return (
     <div className="content data-hub">
       <section className="page-intro">
@@ -2836,7 +2874,20 @@ function DataHub({
               <button onClick={() => void loadConnections()}>Retry status check</button>
             </div>
           )}
-          <section className="provider-parity-contract" aria-labelledby="provider-parity-title">
+          <section className="connector-pathway" aria-label="Connection workflow">
+            <div><span>1</span><p><b>Choose your source</b><small>Check availability and plan access.</small></p></div>
+            <div><span>2</span><p><b>Authorize securely</b><small>Select your business and grant consent.</small></p></div>
+            <div><span>3</span><p><b>Review the import</b><small>Check mappings and totals before approval.</small></p></div>
+          </section>
+          <div className="connector-toolbar">
+            <label htmlFor="connector-search"><span>Find a connection</span><input id="connector-search" type="search" value={providerQuery} onChange={event => setProviderQuery(event.target.value)} placeholder="Search provider or data type"/></label>
+            <label htmlFor="connector-category"><span>Data category</span><select id="connector-category" value={providerCategory} onChange={event => setProviderCategory(event.target.value)}><option>All categories</option>{integrationCategoryOrder.map(category => <option key={category}>{category}</option>)}</select></label>
+            <button type="button" disabled={connectionsLoading} onClick={() => void loadConnections()}>{connectionsLoading ? "Checking…" : "Refresh status"}</button>
+          </div>
+          <p className="connector-result-count" role="status">{connectionsLoading ? "Checking current connection status…" : `${filteredProviders.length} providers shown`}</p>
+          {!filteredProviders.length && <div className="connector-empty"><h3>No matching connections</h3><p>Try a different provider name or category.</p><button type="button" onClick={() => { setProviderQuery(""); setProviderCategory("All categories"); }}>Clear filters</button></div>}
+          <details className="provider-parity-contract">
+            <summary>What your connected records can unlock</summary>
             <header>
               <div><p>ONE COMMERCE INTELLIGENCE MODEL</p><h3 id="provider-parity-title">The same operating view across supported POS systems.</h3><span>Connect a supported point-of-sale account and Vanteloq organizes its available sales, payments, inventory, customer, supplier and location records into one consistent workspace.</span></div>
               <strong>{universalPosContract.length} commerce capabilities</strong>
@@ -2845,12 +2896,12 @@ function DataHub({
               <Image src="/brand/pos-commerce-intelligence.png" alt="Supported point-of-sale sources organized into sales, payment, inventory and customer intelligence" width={1774} height={887} unoptimized />
               <div className="provider-capability-list">{universalPosContract.map((feature) => <article key={feature.id}><span>{feature.label}</span><p>{feature.insight}</p></article>)}</div>
             </div>
-          </section>
+          </details>
           <div className="integration-groups">
-            {integrationCategoryOrder.filter((category) => providerRows.some((provider) => provider.category === category)).map((category) => <section className="integration-category" key={category}>
-              <header><div><p>{category.toUpperCase()}</p><h3>{category}</h3></div><span>{providerRows.filter((provider) => provider.category === category).length} providers</span></header>
+            {integrationCategoryOrder.filter((category) => filteredProviders.some((provider) => provider.category === category)).map((category) => <section className="integration-category" key={category}>
+              <header><div><p>{category.toUpperCase()}</p><h3>{category}</h3></div><span>{filteredProviders.filter((provider) => provider.category === category).length} providers</span></header>
               <div className="integration-grid">
-            {providerRows.filter((provider) => provider.category === category).map((provider) => {
+            {filteredProviders.filter((provider) => provider.category === category).map((provider) => {
               const providerFeature = integrationProviderFeature(provider.id);
               const providerEntitled = providerFeature !== null && subscriptionFeatures.includes(providerFeature);
               const providerPlanLabel = providerFeature?.startsWith("bookloq")
@@ -2877,6 +2928,7 @@ function DataHub({
               const providerAction = providerActions[integrationActionKey(provider.id)] ?? "";
               const anyProviderAction = Object.keys(providerActions).some((key) => key.startsWith(`${provider.id}:`));
               const configured = provider.providerReadiness?.credentialsConfigured === true;
+              const nextStep = connectorNextStep(provider, providerEntitled, canManageProvider);
               const disabledReason = !providerEntitled
                 ? `${providerPlanLabel} required for this connection.`
                 : !canManageProvider
@@ -2897,6 +2949,7 @@ function DataHub({
                   </div>
                 </div>
                 <h3>{provider.name}</h3>
+                <div className="connector-next-step"><small>NEXT STEP</small><b>{connectionsLoading ? "Checking status" : nextStep.stage}</b><p>{connectionsLoading ? "Your existing access and records are unchanged." : nextStep.detail}</p></div>
                 <p>{provider.activationRequirement}</p>
                 <details className="integration-enablement"><summary>What this connection enables</summary><p><b>Features</b><span>{integrationCategoryGuide[provider.category].enables}</span></p><p><b>Data required</b><span>{integrationCategoryGuide[provider.category].data}</span></p></details>
                 {(provider.category === "Point of sale" || provider.id === "shopify") && <details className="integration-feature-checklist"><summary>Feature and data checklist</summary>{provider.featureCoverage.map((feature) => <div key={feature.id}><span className={`feature-state ${feature.status === "ready" ? "available" : "needs-data"}`}>{feature.status === "ready" ? "Available" : "Needs data"}</span><p><b>{feature.label}</b><small>{feature.insight}</small><em>{feature.status === "ready" ? `Verified: ${feature.dataUsed.join(", ")}` : `Missing: ${feature.dataNeeded.join(", ")}`}</em></p></div>)}</details>}
@@ -3121,7 +3174,7 @@ function DataHub({
             <div className="outlet-mapping-list">
               {marketingResourcePanel.datasets.map((group) => <div key={group.dataset} className="marketing-resource-group">
                 <h4>{humanizeIdentifier(group.dataset)}</h4>
-                {group.resources.length ? group.resources.map((resource) => <article key={`${group.dataset}:${resource.externalResourceRef}`} className="marketing-resource-row">
+                {group.status === "unavailable" ? <p className="outlet-empty" role="status">{group.message ?? "This service is temporarily unavailable. Retry discovery to check its access."}</p> : group.resources.length ? group.resources.map((resource) => <article key={`${group.dataset}:${resource.externalResourceRef}`} className="marketing-resource-row">
                   <label>
                     <input
                       type="checkbox"
@@ -3155,14 +3208,16 @@ function DataHub({
               </div>)}
             </div>
             <footer>
-              <span>Saving replaces this account&apos;s selection, deletes its prior marketing measurements, and requires a new warning-free sample before dashboard use.</span>
+              <span>{marketingResourcePanel.selectionBlocked
+                ? "An existing service could not be verified. Your selections and measurements are preserved. Close this panel and retry discovery before saving."
+                : "Saving replaces this account’s selection, deletes its prior marketing measurements, and requires a new warning-free sample before dashboard use."}</span>
               <div className="provider-actions">
                 <button type="button" onClick={closeMarketingResourcePanel}>Cancel</button>
                 <button
                   type="button"
                   className="primary"
                   onClick={() => void saveMarketingResources()}
-                  disabled={Boolean(providerActions[integrationActionKey(marketingResourcePanel.provider, marketingResourcePanel.connectionId)])}
+                  disabled={marketingResourcePanel.selectionBlocked || Boolean(providerActions[integrationActionKey(marketingResourcePanel.provider, marketingResourcePanel.connectionId)])}
                 >Save exact resources</button>
               </div>
             </footer>
@@ -3810,182 +3865,6 @@ function DecisionJournal({
   );
 }
 
-function ScenarioPlanner({
-  data,
-  currency,
-}: {
-  data: CommandCentre;
-  currency: string;
-}) {
-  const current = data.current;
-  const [sales, setSales] = useState(() =>
-    current ? Math.round(current.netSalesCents / 100) : 80000,
-  );
-  const [margin, setMargin] = useState(
-    () => Math.round((current?.grossMarginRate ?? 0.46) * 1000) / 10,
-  );
-  const [fixed, setFixed] = useState(12000);
-  const [labour, setLabour] = useState(() =>
-    current ? Math.round(current.labourCostCents / 100) : 10000,
-  );
-  const [salesChange, setSalesChange] = useState(0);
-  const [marginChange, setMarginChange] = useState(0);
-  const [costChange, setCostChange] = useState(0);
-  const [aov, setAov] = useState(() =>
-    Math.round((current?.averageTransactionCents ?? 5000) / 100),
-  );
-  const result = useMemo(() => {
-    const projectedSales = sales * (1 + salesChange / 100);
-    const projectedMargin = Math.max(0, Math.min(100, margin + marginChange));
-    const projectedFixed = fixed + labour + costChange;
-    const profit = (projectedSales * projectedMargin) / 100 - projectedFixed;
-    const breakEven = projectedMargin
-      ? projectedFixed / (projectedMargin / 100)
-      : 0;
-    return {
-      projectedSales,
-      projectedMargin,
-      projectedFixed,
-      profit,
-      breakEven,
-      transactions: aov ? breakEven / aov : 0,
-    };
-  }, [
-    sales,
-    margin,
-    fixed,
-    labour,
-    salesChange,
-    marginChange,
-    costChange,
-    aov,
-  ]);
-  const display = (value: number) => money(Math.round(value * 100), currency);
-  return (
-    <div className="content scenario-page">
-      <section className="page-intro">
-        <div>
-          <p>WHAT-IF MODEL</p>
-          <h2>Test a decision before spending money.</h2>
-          <span>
-            This is a user-controlled scenario, not a forecast. Every output is a
-            direct formula from the inputs below.
-          </span>
-        </div>
-      </section>
-      <div className="scenario-layout">
-        <article className="card scenario-inputs">
-          <h3>Current monthly baseline</h3>
-          <div className="manual-grid">
-            <label>
-              Monthly sales
-              <input
-                type="number"
-                value={sales}
-                onChange={(event) => setSales(Number(event.target.value))}
-              />
-            </label>
-            <label>
-              Gross margin %
-              <input
-                type="number"
-                step="0.1"
-                value={margin}
-                onChange={(event) => setMargin(Number(event.target.value))}
-              />
-            </label>
-            <label>
-              Fixed operating costs
-              <input
-                type="number"
-                value={fixed}
-                onChange={(event) => setFixed(Number(event.target.value))}
-              />
-            </label>
-            <label>
-              Monthly labour
-              <input
-                type="number"
-                value={labour}
-                onChange={(event) => setLabour(Number(event.target.value))}
-              />
-            </label>
-            <label>
-              Average transaction
-              <input
-                type="number"
-                value={aov}
-                onChange={(event) => setAov(Number(event.target.value))}
-              />
-            </label>
-          </div>
-          <h3>Scenario changes</h3>
-          <div className="manual-grid">
-            <label>
-              Sales change %
-              <input
-                type="number"
-                step="1"
-                value={salesChange}
-                onChange={(event) => setSalesChange(Number(event.target.value))}
-              />
-            </label>
-            <label>
-              Margin-point change
-              <input
-                type="number"
-                step="0.1"
-                value={marginChange}
-                onChange={(event) =>
-                  setMarginChange(Number(event.target.value))
-                }
-              />
-            </label>
-            <label>
-              New monthly costs
-              <input
-                type="number"
-                value={costChange}
-                onChange={(event) => setCostChange(Number(event.target.value))}
-              />
-            </label>
-          </div>
-        </article>
-        <article className="scenario-results">
-          <div>
-            <small>PROJECTED MONTHLY PROFIT</small>
-            <b className={result.profit < 0 ? "negative" : ""}>
-              {display(result.profit)}
-            </b>
-            <span>Sales × margin − fixed costs − labour − new costs</span>
-          </div>
-          <div>
-            <small>BREAK-EVEN SALES</small>
-            <b>{display(result.breakEven)}</b>
-            <span>
-              {Math.ceil(result.transactions).toLocaleString()} transactions at{" "}
-              {display(aov)} average
-            </span>
-          </div>
-          <div>
-            <small>PROJECTED SALES</small>
-            <b>{display(result.projectedSales)}</b>
-            <span>At {result.projectedMargin.toFixed(1)}% gross margin</span>
-          </div>
-          <div>
-            <small>TOTAL MONTHLY COST BASE</small>
-            <b>{display(result.projectedFixed)}</b>
-            <span>Fixed, labour and scenario additions</span>
-          </div>
-          <p>
-            Not included unless entered: taxes, debt principal, working-capital
-            timing, seasonality, financing costs or one-time launch expenses.
-          </p>
-        </article>
-      </div>
-    </div>
-  );
-}
 
 function BusinessBrief({
   data,
@@ -4073,6 +3952,15 @@ function Advisor({
   createTask: (seed: TaskSeed) => void;
 }) {
   const [question, setQuestion] = useState("");
+  const [memoryEnabled, setMemoryEnabled] = useState(false);
+  const [provider, setProvider] = useState<AdvisorMode>("gemini");
+  const [thinking, setThinking] = useState(false);
+  const [providers, setProviders] = useState({ gemini: { ready: false, reason: "Checking Google Gemini availability." as string | null }, openai: { ready: false, reason: "Checking OpenAI availability." as string | null } });
+  useEffect(() => {
+    let active = true;
+    void apiFetch("/api/v1/advisor/chat").then(async response => { if (!response.ok) throw new Error("unavailable"); return response.json(); }).then(payload => { if (active && payload.providers) setProviders(payload.providers); }).catch(() => { if (active) setProviders({ gemini: { ready: false, reason: "Provider availability could not be checked. Reopen Vanteloq AI to retry." }, openai: { ready: false, reason: "Provider availability could not be checked. Reopen Vanteloq AI to retry." } }); });
+    return () => { active = false; };
+  }, []);
   const [loading, setLoading] = useState(false);
   const [dataUseAccepted, setDataUseAccepted] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
@@ -4082,32 +3970,29 @@ function Advisor({
     limitation: string;
     seed?: TaskSeed;
   } | null>(null);
+  const [submittedQuestion, setSubmittedQuestion] = useState("");
+  const [history, setHistory] = useState<Array<{ question: string; answer: NonNullable<typeof answer> }>>([]);
   const ask = async (event: FormEvent) => {
     event.preventDefault();
-    if (!question.trim() || loading) return;
+    if (!advisorProviders(provider).every(item => providers[item].ready) || !canAskAdvisor(question, dataUseAccepted, loading)) return;
+    if (answer) setHistory(previous => [...previous, { question: submittedQuestion, answer }].slice(-5));
+    setAnswer(null);
+    setSubmittedQuestion(question);
     setLoading(true);
+    setThinking(true);
     const normalized = question.toLowerCase();
     try {
-      const response = await apiFetch("/api/v1/advisor/chat", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          question,
-          conversationId,
-          dataUseAccepted,
-          noticeVersion: GEMINI_CONSENT_NOTICE_VERSION,
-          privacyPolicyVersion: PRIVACY_POLICY_VERSION,
-        }),
-      });
-      const payload = await response.json() as { status?: string; answer?: string | null; conversationId?: string; message?: string; error?: { message?: string } };
+      const response = await requestAdvisorAnalysis(apiFetch, { question, provider, conversationId, dataUseAccepted, memoryEnabled });
+      const payload = await response.json() as { providers?: Array<"gemini" | "openai">; partial?: boolean; status?: string; answer?: string | null; conversationId?: string | null; message?: string; error?: { message?: string } };
       if (!response.ok) throw new Error(payload.error?.message ?? "The advisor could not answer right now.");
-      if (payload.conversationId) setConversationId(payload.conversationId);
+      setConversationId(payload.conversationId ?? null);
       if (payload.status === "configuration_required") {
-        setAnswer({ title: "Gemini is ready to connect", body: "The evidence-bound advisor is installed, but the server still needs its protected Google Gemini credential.", limitation: payload.message ?? "No business data was sent to an external model." });
+        setAnswer({ title: "Vanteloq AI setup is pending", body: payload.message ?? "The selected AI provider needs administrator setup.", limitation: payload.message ?? "No business data was sent to an external model." });
         return;
       }
       if (payload.answer) {
-        setAnswer({ title: "Gemini explanation", body: payload.answer, limitation: "Grounded in the verified Vanteloq evidence snapshot. Numbers remain unavailable when their source is missing." });
+        setQuestion("");
+        setAnswer({ title: "Vanteloq AI analysis", body: payload.answer, limitation: `${payload.partial ? "Partial response. One selected provider could not complete the analysis. " : ""}Powered by ${(payload.providers ?? []).map(item => ADVISOR_PROVIDER_LABELS[item]).join(" and ")}. Based on your permitted evidence snapshot. Verify conclusions before acting; AI can make mistakes.` });
         return;
       }
     } catch (error) {
@@ -4115,8 +4000,9 @@ function Advisor({
       return;
     } finally {
       setLoading(false);
+      setThinking(false);
     }
-    /* Local evidence fallback keeps the surface useful while Gemini is being configured. */
+    /* Explicit local evidence is available when no external answer was returned. */
     const insight =
       normalized.includes("margin") ||
       normalized.includes("profit") ||
@@ -4132,7 +4018,7 @@ function Advisor({
       setAnswer({
         title: insight.title,
         body: `${insight.whatHappened} ${insight.probableCause} Recommended: ${insight.recommendedAction}`,
-        limitation: `Confidence: ${insight.confidence}. Missing: ${insight.missingInformation.join(", ")}.`,
+        limitation: `Local evidence summary; no AI response was returned. Confidence: ${insight.confidence}. Missing: ${insight.missingInformation.join(", ")}.`,
         seed: {
           ...insight.suggestedTask,
           sourceType: "insight",
@@ -4150,6 +4036,7 @@ function Advisor({
   const clearConversation = async () => {
     if (loading) return;
     if (conversationId) {
+      if (!window.confirm("Permanently delete this saved chat from Vanteloq? Provider safety logs and managed backups follow separate retention periods.")) return;
       setLoading(true);
       try {
         const response = await apiFetch("/api/v1/advisor/chat", {
@@ -4172,65 +4059,23 @@ function Advisor({
     }
     setConversationId(null);
     setAnswer(null);
+    setSubmittedQuestion("");
+    setHistory([]);
     setQuestion("");
   };
+  const resetVisibleChat = () => { setConversationId(null); setAnswer(null); setSubmittedQuestion(""); setHistory([]); setQuestion(""); };
+  const changeMemory = (enabled: boolean) => { setMemoryEnabled(enabled); setDataUseAccepted(false); resetVisibleChat(); };
+  const reply = (value: NonNullable<typeof answer>) => <AdvisorResponse title={value.title} body={value.body} limitation={value.limitation}>
+    {value.seed ? <button onClick={() => createTask(value.seed!)}>Create action →</button> : <button onClick={() => navigate("Integrations")}>Review connected sources →</button>}
+  </AdvisorResponse>;
   return (
     <div className="content advisor-page">
-      <section className="advisor-hero">
-        <p>EVIDENCE-BOUND ADVISOR · GOOGLE GEMINI</p>
-        <h2>Ask the business. See the limits.</h2>
-        <span>
-          Gemini explains the same verified calculation engine used by the command centre. Your workspace memory stays scoped to your organization, and unsupported questions return the missing source instead of a fabricated answer.
-        </span>
-        <form onSubmit={ask}>
-          <input
-            value={question}
-            onChange={(event) => setQuestion(event.target.value)}
-            placeholder="Why were sales lower? Where is margin leaking?"
-          />
-          <button disabled={loading || !dataUseAccepted}>{loading ? "Thinking…" : "Ask Gemini →"}</button>
-        </form>
-        <label className="advisor-data-consent">
-          <input
-            type="checkbox"
-            checked={dataUseAccepted}
-            onChange={(event) => setDataUseAccepted(event.target.checked)}
-          />
-          <span>
-            I understand that my question, verified aggregate business metrics, source status, permitted aggregate cash, and short conversation context are sent to Google Gemini to produce this explanation. Raw credentials, account numbers, customer names, invoice files, and raw transactions are excluded. <Link href="/privacy#automation">Review the Privacy Policy.</Link>
-          </span>
-        </label>
-        <div className="advisor-provider-note"><IntegrationBrandLogo name="Google" compact/><span><strong>Gemini on Google’s AI platform</strong><small>Evidence first · No actions without your approval</small></span>{answer && <button type="button" onClick={() => void clearConversation()}>Clear conversation</button>}</div>
-        <div className="suggested-questions">
-          {[
-            "Why did sales change?",
-            "Where is margin leaking?",
-            "Is labour pressure rising?",
-            "What can the current data not answer?",
-          ].map((item) => (
-            <button key={item} onClick={() => setQuestion(item)}>
-              {item}
-            </button>
-          ))}
-        </div>
-      </section>
-      {answer && (
-        <article className="advisor-answer">
-          <span>VANTELOQ ANALYSIS</span>
-          <h3>{answer.title}</h3>
-          <p>{answer.body}</p>
-          <div>{answer.limitation}</div>
-          {answer.seed ? (
-            <button onClick={() => createTask(answer.seed!)}>
-              Create action →
-            </button>
-          ) : (
-            <button onClick={() => navigate("Integrations")}>
-              Add the missing source →
-            </button>
-          )}
-        </article>
-      )}
+      <AdvisorComposer memoryEnabled={memoryEnabled} onMemory={changeMemory} privacyControls={<AdvisorPrivacy fetcher={apiFetch} disabled={loading} onDeleted={id => { if (id === null || id === conversationId) resetVisibleChat(); }}/>} provider={provider} providers={providers} onProvider={value => { setProvider(value); setDataUseAccepted(false); resetVisibleChat(); }} question={question} onQuestion={setQuestion} dataUseAccepted={dataUseAccepted} onConsent={setDataUseAccepted} loading={loading} thinking={thinking} onSubmit={ask} hasConversation={Boolean(submittedQuestion || answer || history.length)} onClear={conversationId || answer || submittedQuestion ? () => void clearConversation() : undefined}>
+        {history.map((item, index) => <Fragment key={index}><div className="ai-user-message"><small>You</small>{item.question}</div>{reply(item.answer)}</Fragment>)}
+        {submittedQuestion && <div className="ai-user-message"><small>You</small>{submittedQuestion}</div>}
+        {thinking && <AdvisorThinking/>}
+        {answer && reply(answer)}
+      </AdvisorComposer>
     </div>
   );
 }

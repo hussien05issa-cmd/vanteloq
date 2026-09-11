@@ -3,6 +3,7 @@ import { readFile, readdir } from "node:fs/promises";
 import { createServer } from "node:http";
 import test, { describe } from "node:test";
 import { Miniflare } from "miniflare";
+import { registerSupabaseTestServer } from "./helpers/supabase-loopback-transport.mjs";
 import { activateTestSubscription } from "./helpers/subscription-fixture.mjs";
 
 const origin = "https://vanteloq.example";
@@ -52,8 +53,8 @@ function onboardingBody(ownerName, businessName) {
     sourceMode: "csv",
     selectedPos: "",
     legalAccepted: true,
-    termsVersion: "2026-08-24",
-    privacyPolicyVersion: "2026-08-24",
+    termsVersion: "2026-09-05",
+    privacyPolicyVersion: "2026-09-10",
     legalNoticeVersion: "account-creation-v2",
   };
 }
@@ -73,7 +74,7 @@ async function createEnvironment() {
   await new Promise((resolve) => authServer.listen(0, "127.0.0.1", resolve));
   const address = authServer.address();
   assert.ok(address && typeof address !== "string");
-  const supabaseUrl = `http://127.0.0.1:${address.port}`;
+  const supabaseUrl = registerSupabaseTestServer(address.port);
   const miniflare = new Miniflare({
     modules: true,
     script: "export default { fetch() { return new Response('ok') } }",
@@ -224,6 +225,153 @@ async function seedReportLocation(database, organizationId, name) {
   return locationId;
 }
 
+test("intraday API compares matched hours and redacts all profit paths for revenue-only staff", async () => {
+  const { worker, environment, database, dispose } = await createEnvironment();
+  try {
+    const identity = await createReportWorkspace(worker, environment, database, "intraday");
+    await database.prepare("UPDATE workspaces SET timezone = 'UTC' WHERE id = ?").bind(identity.organizationId).run();
+    const now = Math.floor(Date.now() / 1000), currentDate = new Date(now * 1000).toISOString().slice(0, 10);
+    const baselineDate = dateOffset(currentDate, -7);
+    const connectionId = `intraday-${crypto.randomUUID()}`;
+    await seedReportConnection(database, { ...identity, connectionId, namespace: "legacy", externalLocationRef: "shop" });
+    const runId = crypto.randomUUID();
+    await database.prepare(`INSERT INTO integration_sync_runs
+      (id, organization_id, provider, connection_id, mode, status, started_at, completed_at)
+      VALUES (?, ?, 'lightspeed-r', ?, 'incremental', 'completed', ?, ?)`)
+      .bind(runId, identity.organizationId, connectionId, now, now).run();
+    const insert = database.prepare(`INSERT INTO integration_staged_sales
+      (id, organization_id, provider, connection_id, external_sale_id, external_version,
+       outlet_ref, sold_at, state, total_cents, tax_cents, cost_cents, discount_cents,
+       line_count, source_payload_hash, sync_run_id, staged_at)
+      VALUES (?, ?, 'lightspeed-r', ?, ?, ?, 'shop', ?, 'completed', ?, 0, ?, 0, 1, 'test-only', ?, ?)`);
+    await database.batch([
+      insert.bind("current-old", identity.organizationId, connectionId, "current", "1", `${currentDate}T00:00:00Z`, 999999, 100, runId, now - 2),
+      insert.bind("current-latest", identity.organizationId, connectionId, "current", "2", `${currentDate}T00:00:00Z`, 10000, 6000, runId, now - 1),
+      insert.bind("baseline", identity.organizationId, connectionId, "previous", "1", `${baselineDate}T00:00:00Z`, 5000, 2000, runId, now - 1),
+    ]);
+    const load = async (user = identity.owner, suffix = "") => {
+      const response = await dispatch(worker, environment, `/api/v1/command-centre${suffix}`, user);
+      assert.equal(response.status, 200);
+      return (await response.json()).commandCentre;
+    };
+    const ownerView = await load(identity.owner, `?location=${identity.locationId}`);
+    assert.equal(ownerView.today.sourceGranularity, "intraday");
+    assert.equal(ownerView.today.netSalesCents, 10000);
+    assert.equal(ownerView.today.grossProfitCents, 4000);
+    assert.equal(ownerView.todayComparison.baseline.netSalesCents, 5000);
+    assert.equal(ownerView.todayComparison.changes.netSalesRate, 1);
+    assert.equal(ownerView.todayComparison.basis, "same_weekday_same_time");
+    assert.equal(ownerView.today.hourly.length, new Date(now * 1000).getUTCHours() + 1);
+    const reader = { email: `intraday-reader-${crypto.randomUUID()}@example.invalid`, name: "Sales reader" };
+    const userId = crypto.randomUUID(), roleId = crypto.randomUUID();
+    await database.batch([
+      database.prepare("INSERT INTO users (id,email,display_name,status,created_at,updated_at) VALUES (?,?,?,'active',?,?)").bind(userId, reader.email, reader.name, now, now),
+      database.prepare("INSERT INTO memberships (id,user_id,organization_id,role,status,created_at,updated_at) VALUES (?,?,?,'employee','active',?,?)").bind(crypto.randomUUID(), userId, identity.organizationId, now, now),
+      database.prepare(`INSERT INTO access_roles (id,organization_id,name,description,color,permissions_json,location_scope_json,archived,created_by_user_id,created_at,updated_at)
+        VALUES (?,?,'Sales only','','#245fce','["dashboard.view","metrics.revenue"]','[]',0,?,?,?)`).bind(roleId, identity.organizationId, identity.userId, now, now),
+      database.prepare(`INSERT INTO team_members (id,organization_id,user_id,role_id,first_name,last_name,email,employee_code,primary_location_id,permitted_locations_json,status,remote_login,created_by_user_id,created_at,updated_at)
+        VALUES (?,?,?,?,'Sales','Reader',?,'INTRA-READ',?,?,'active',1,?,?,?)`).bind(crypto.randomUUID(), identity.organizationId, userId, roleId, reader.email, identity.locationId, JSON.stringify([identity.locationId]), identity.userId, now, now),
+    ]);
+    const staffView = await load(reader, `?location=${identity.locationId}`);
+    assert.equal(staffView.today.netSalesCents, 10000);
+    assert.equal(staffView.today.grossProfitCents, null);
+    assert.equal(staffView.todayComparison.baseline.grossProfitCents, null);
+    assert.equal(staffView.todayComparison.changes.grossProfitRate, null);
+    assert.ok(staffView.today.hourly.every((hour) => hour.grossProfitCents === null));
+    assert.ok(staffView.todayComparison.baseline.hourly.every((hour) => hour.grossProfitCents === null));
+    // Assert the actual outbound AI evidence, not just the displayed dashboard.
+    await database.prepare("UPDATE access_roles SET permissions_json = ? WHERE id = ?").bind(JSON.stringify(["dashboard.view", "metrics.revenue", "insights.view"]), roleId).run();
+    await seedReportMetric(database, { ...identity, businessDate: currentDate, locationRef: identity.locationId, netSalesCents: 432100 });
+    const otherLocation = await seedReportLocation(database, identity.organizationId, "Private location");
+    await seedReportMetric(database, { ...identity, businessDate: currentDate, locationRef: otherLocation, netSalesCents: 987654321 });
+    await database.prepare("UPDATE daily_business_metrics SET cost_of_goods_cents = 123400, labour_cost_cents = 45600, inventory_value_cents = 78900, accounts_payable_cents = 99900 WHERE organization_id = ?").bind(identity.organizationId).run();
+    environment.GOOGLE_GEMINI_API_KEY = "fixture-only";
+    environment.GOOGLE_GEMINI_PAID_SERVICE_CONFIRMED = "true";
+    const originalFetch = globalThis.fetch, outbound = [];
+    globalThis.fetch = async (input, init) => {
+      if (String(input).startsWith("https://generativelanguage.googleapis.com/")) {
+        outbound.push(JSON.parse(init.body).contents[0].parts[0].text);
+        return Response.json({ candidates: [{ finishReason: "STOP", content: { parts: [{ text: "Fixture analysis" }] } }] });
+      }
+      return originalFetch(input, init);
+    };
+    try {
+      const ask = (user, body = {}) => dispatch(worker, environment, "/api/v1/advisor/chat", { method: "POST", ...user, body: { question: "Analyze available KPIs", dataUseAccepted: true, noticeVersion: "vanteloq-ai-v4-optional-memory", privacyPolicyVersion: "2026-09-10", ...body } });
+      const temporary = await ask(reader);
+      assert.equal(temporary.status, 200);
+      assert.equal((await temporary.json()).conversationId, null);
+      assert.equal((await database.prepare("SELECT count(*) count FROM assistant_conversations WHERE user_id = ?").bind(userId).first()).count, 0);
+      const withoutConsent = await ask(reader, { dataUseAccepted: false });
+      assert.equal(withoutConsent.status, 409);
+      const staleConsent = await ask(reader, { noticeVersion: "old-notice" });
+      assert.equal(staleConsent.status, 409);
+      const badMemory = await ask(reader, { memoryEnabled: "yes" });
+      assert.equal(badMemory.status, 400);
+      assert.equal(outbound.length, 1);
+      const answer = await ask(reader, { memoryEnabled: true });
+      assert.equal(answer.status, 200, await answer.clone().text());
+      const { conversationId } = await answer.json();
+      const evidence = JSON.parse(outbound[0].split("Evidence JSON: ")[1].split("\n\nConversation memory:")[0]);
+      assert.equal(evidence.kpis.current.netSalesCents, 432100);
+      assert.equal(evidence.kpis.current.grossProfitCents, null);
+      assert.equal(evidence.kpis.current.labourCostCents, null);
+      assert.equal(evidence.kpis.inventorySnapshotCents, null);
+      assert.equal(evidence.kpis.accountsPayableSnapshotCents, null);
+      assert.equal(evidence.cashAvailableCents, null);
+      assert.doesNotMatch(outbound[0], /987654321|123400|45600|78900|99900|Private location/);
+      const remembered = await ask(reader, { conversationId, memoryEnabled: true });
+      assert.equal(remembered.status, 200);
+      assert.match(outbound.at(-1), /Fixture analysis/);
+      const beforeTemporary = (await database.prepare("SELECT count(*) count FROM assistant_messages WHERE conversation_id = ?").bind(conversationId).first()).count;
+      const memoryOff = await ask(reader, { conversationId, memoryEnabled: false });
+      assert.equal(memoryOff.status, 200);
+      assert.equal((await memoryOff.json()).conversationId, null);
+      assert.match(outbound.at(-1), /Conversation memory: \[\]/);
+      assert.doesNotMatch(outbound.at(-1), /Fixture analysis/);
+      assert.equal((await database.prepare("SELECT count(*) count FROM assistant_messages WHERE conversation_id = ?").bind(conversationId).first()).count, beforeTemporary);
+      const saved = await dispatch(worker, environment, "/api/v1/advisor/conversations", { ...reader });
+      assert.equal(saved.status, 200);
+      const savedBody = await saved.json();
+      assert.equal(savedBody.conversations[0].id, conversationId);
+      assert.equal(savedBody.conversations[0].title, undefined);
+      assert.doesNotMatch(JSON.stringify(savedBody), /Fixture analysis|Analyze available/);
+      const foreignRead = await ask(identity.owner, { conversationId, memoryEnabled: true });
+      assert.equal(foreignRead.status, 404);
+      const foreignDelete = await dispatch(worker, environment, "/api/v1/advisor/chat", { method: "DELETE", ...identity.owner, body: { conversationId } });
+      assert.equal(foreignDelete.status, 404);
+      await database.prepare("UPDATE access_roles SET permissions_json = ? WHERE id = ?").bind(JSON.stringify(["dashboard.view", "insights.view"]), roleId).run();
+      const narrowed = await ask(reader, { conversationId, memoryEnabled: true });
+      assert.equal(narrowed.status, 200, await narrowed.clone().text());
+      assert.match(outbound.at(-1), /Conversation memory: \[\]/);
+      assert.doesNotMatch(outbound.at(-1), /432100|Fixture analysis/);
+      const unconfirmedDelete = await dispatch(worker, environment, "/api/v1/advisor/conversations", { method: "DELETE", ...reader, body: {} });
+      assert.equal(unconfirmedDelete.status, 400);
+      const ownerDeleteAll = await dispatch(worker, environment, "/api/v1/advisor/conversations", { method: "DELETE", ...identity.owner, body: { confirmDeleteAll: true } });
+      assert.equal(ownerDeleteAll.status, 200);
+      assert.equal((await ownerDeleteAll.json()).count, 0);
+      assert.ok((await database.prepare("SELECT count(*) count FROM assistant_messages WHERE conversation_id = ?").bind(conversationId).first()).count > 0);
+      await database.prepare("UPDATE access_roles SET permissions_json = ? WHERE id = ?").bind(JSON.stringify(["dashboard.view"]), roleId).run();
+      const deleted = await dispatch(worker, environment, "/api/v1/advisor/chat", { method: "DELETE", ...reader, body: { conversationId } });
+      assert.equal(deleted.status, 200);
+      const remaining = await database.prepare("SELECT count(*) count FROM assistant_messages WHERE conversation_id = ?").bind(conversationId).first();
+      assert.equal(remaining.count, 0);
+      await database.prepare("UPDATE access_roles SET permissions_json = ? WHERE id = ?").bind(JSON.stringify(["dashboard.view", "insights.view"]), roleId).run();
+      const deletedReuse = await ask(reader, { conversationId, memoryEnabled: true });
+      assert.equal(deletedReuse.status, 404);
+      const newChat = await ask(reader, { memoryEnabled: true });
+      assert.equal(newChat.status, 200);
+      const allDeleted = await dispatch(worker, environment, "/api/v1/advisor/conversations", { method: "DELETE", ...reader, body: { confirmDeleteAll: true } });
+      assert.equal(allDeleted.status, 200);
+      assert.equal((await allDeleted.json()).count, 1);
+      assert.equal((await database.prepare("SELECT count(*) count FROM assistant_messages WHERE user_id = ?").bind(userId).first()).count, 0);
+    } finally { globalThis.fetch = originalFetch; }
+    await database.prepare("UPDATE integration_connections SET last_successful_sync_at = ? WHERE id = ?").bind(now - 86400, connectionId).run();
+    const stale = await load();
+    assert.equal(stale.today.sourceGranularity, "daily");
+    assert.match(stale.today.hourlyUnavailableReason, /current business day/);
+  } finally { await dispose(); }
+});
+
 describe("intelligence flow contracts", { concurrency: false }, () => {
 test("migrations, tenant isolation and the complete intelligence-to-action flow work", async () => {
   const { worker, environment, database, dispose } = await createEnvironment();
@@ -280,7 +428,8 @@ test("migrations, tenant isolation and the complete intelligence-to-action flow 
     assert.equal(empty.status, 200);
     assert.equal((await empty.json()).commandCentre.ready, false);
 
-    const latest = "2026-08-03";
+    // Keep the operating fixture current so rolling comparisons remain valid.
+    const latest = new Date().toISOString().slice(0, 10);
     const rows = [];
     for (let offset = -59; offset <= 0; offset++) {
       const current = offset >= -29;
@@ -342,6 +491,9 @@ test("migrations, tenant isolation and the complete intelligence-to-action flow 
     assert.equal(bookloq.cashIntelligence.purchasingCapacityCents, null);
     assert.equal(bookloq.summary.availableCashCents, null);
     assert.deepEqual(bookloq.forecasts, []);
+    const openAccountingPeriod = bookloq.periods.find(period => period.status === "open");
+    assert.ok(openAccountingPeriod?.startDate);
+    const journalDate = openAccountingPeriod.startDate;
 
     const ownerRecord = await database.prepare(`SELECT u.id userId, m.organization_id organizationId
       FROM users u JOIN memberships m ON m.user_id = u.id WHERE u.email = ?`).bind(owner.email).first();
@@ -488,7 +640,10 @@ test("migrations, tenant isolation and the complete intelligence-to-action flow 
     const limitedBookLoqResponse = await dispatch(worker, environment, "/api/v1/bookloq", financeReader);
     assert.equal(limitedBookLoqResponse.status, 200);
     const limitedBookLoq = (await limitedBookLoqResponse.json()).bookloq;
-    assert.ok(limitedBookLoq.statements.accounts.length > 0);
+    assert.deepEqual(limitedBookLoq.statements.accounts, []);
+    assert.ok(limitedBookLoq.accountCatalog.length > 0);
+    assert.deepEqual(limitedBookLoq.journals, []);
+    assert.deepEqual(limitedBookLoq.budgets, []);
     for (const key of ["banks", "transactions", "reconciliations", "bills", "invoices", "contacts", "audit", "forecasts"]) {
       assert.deepEqual(limitedBookLoq[key], [], key);
     }
@@ -546,7 +701,7 @@ test("migrations, tenant isolation and the complete intelligence-to-action flow 
     const creditAccount = bookloq.statements.accounts.find(account => account.systemKey === "accounts_payable");
     const journalKey = crypto.randomUUID();
     const manualJournal = await dispatch(worker, environment, "/api/v1/bookloq/journals", { method: "POST", ...owner, idempotencyKey: journalKey, body: {
-      entryDate: latest, memo: "Verified manual journal", currency: "CAD",
+      entryDate: journalDate, memo: "Verified manual journal", currency: "CAD",
       lines: [
         { accountId: debitAccount.id, description: "Supplies", debitCents: 10_000, creditCents: 0, locationRef: "Main" },
         { accountId: creditAccount.id, description: "Supplier payable", debitCents: 0, creditCents: 10_000, locationRef: "Main" },
@@ -556,7 +711,7 @@ test("migrations, tenant isolation and the complete intelligence-to-action flow 
     const manualJournalBody = await manualJournal.json();
     assert.equal(manualJournalBody.journal.totalDebitCents, 10_000);
     const journalReplay = await dispatch(worker, environment, "/api/v1/bookloq/journals", { method: "POST", ...owner, idempotencyKey: journalKey, body: {
-      entryDate: latest, memo: "Verified manual journal", currency: "CAD",
+      entryDate: journalDate, memo: "Verified manual journal", currency: "CAD",
       lines: [
         { accountId: debitAccount.id, debitCents: 10_000, creditCents: 0 },
         { accountId: creditAccount.id, debitCents: 0, creditCents: 10_000 },
@@ -565,7 +720,7 @@ test("migrations, tenant isolation and the complete intelligence-to-action flow 
     assert.equal(journalReplay.status, 200);
     assert.equal((await journalReplay.json()).replayed, true);
 
-    const reversal = await dispatch(worker, environment, "/api/v1/bookloq/journals", { method: "PATCH", ...owner, idempotencyKey: crypto.randomUUID(), body: { entryId: manualJournalBody.journal.id, reason: "Correct the verified test entry", reversalDate: latest } });
+    const reversal = await dispatch(worker, environment, "/api/v1/bookloq/journals", { method: "PATCH", ...owner, idempotencyKey: crypto.randomUUID(), body: { entryId: manualJournalBody.journal.id, reason: "Correct the verified test entry", reversalDate: journalDate } });
     assert.equal(reversal.status, 201);
     assert.equal((await reversal.json()).journal.reversalOfEntryId, manualJournalBody.journal.id);
 
@@ -574,7 +729,8 @@ test("migrations, tenant isolation and the complete intelligence-to-action flow 
     assert.equal(task.status, 201);
     assert.equal((await task.json()).task.sourceRef, "sales-trend");
 
-    const event = await dispatch(worker, environment, "/api/v1/events", { method: "POST", ...owner, body: { eventType: "promotion", title: "Changed weekend offer", detail: "Test event", eventDate: "2026-07-15", expectedOutcome: "Improve contribution", reviewDate: "2026-08-01" } });
+    // Keep both measurement windows inside the rolling sales fixture.
+    const event = await dispatch(worker, environment, "/api/v1/events", { method: "POST", ...owner, body: { eventType: "promotion", title: "Changed weekend offer", detail: "Test event", eventDate: dateOffset(latest, -15), expectedOutcome: "Improve contribution", reviewDate: dateOffset(latest, -1) } });
     assert.equal(event.status, 201);
     const eventList = await dispatch(worker, environment, "/api/v1/events", owner);
     assert.equal(eventList.status, 200);

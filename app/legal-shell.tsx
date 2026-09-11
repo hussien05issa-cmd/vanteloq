@@ -11,11 +11,13 @@ export function LegalShell({
   title,
   summary,
   children,
+  updated = LEGAL_UPDATED,
 }: {
   eyebrow: string;
   title: string;
   summary: string;
   children: ReactNode;
+  updated?: string;
 }) {
   return (
     <div className="legal-site">
@@ -41,7 +43,7 @@ export function LegalShell({
             <h1>{title}</h1>
             <span>{summary}</span>
             <dl>
-              <div><dt>Last updated</dt><dd>{LEGAL_UPDATED}</dd></div>
+              <div><dt>Last updated</dt><dd>{updated}</dd></div>
               <div><dt>Operator</dt><dd>LexEdge Consulting, operating as Vanteloq</dd></div>
             </dl>
           </div>

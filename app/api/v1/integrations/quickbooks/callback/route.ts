@@ -1,3 +1,4 @@
+import { requireOAuthBrowser } from "../../../../../../server/integrations/oauth-browser";
 import { and, eq, gt, isNull } from "drizzle-orm";
 import { getDb } from "../../../../../../db";
 import { integrationConnections, integrationOAuthStates, memberships, users, workspaces } from "../../../../../../db/schema";
@@ -69,6 +70,7 @@ export async function GET(request: Request) {
     const providerError = url.searchParams.get("error");
     const code = url.searchParams.get("code")?.trim() ?? "";
     const state = url.searchParams.get("state")?.trim() ?? "";
+    requireOAuthBrowser(request, "quickbooks", state);
     const realmId = url.searchParams.get("realmId")?.trim() ?? "";
     if ((!providerError && (!code || code.length > 2_048 || !/^\d{1,32}$/.test(realmId))) || !/^[A-Za-z0-9_-]{43}$/.test(state)) {
       throw new ApiError(400, "QUICKBOOKS_CALLBACK_INVALID", "QuickBooks returned an incomplete callback.");

@@ -1,13 +1,13 @@
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../../../../../../db";
 import { integrationConnections, integrationWebhookEvents } from "../../../../../../db/schema";
-import { ApiError, handleApi, jsonResponse } from "../../../../../../server/api";
+import { ApiError, handleApi, jsonResponse, readRequestBytes } from "../../../../../../server/api";
 import { record, SQUARE_PROVIDER, squareSha256, verifySquareWebhook } from "../../../../../../server/integrations/square";
 
 const MAX_BYTES = 256_000;
 export async function POST(request: Request) {
   return handleApi(request, async () => {
-    const bytes = new Uint8Array(await request.arrayBuffer());
+    const bytes = await readRequestBytes(request, MAX_BYTES, "SQUARE_WEBHOOK_TOO_LARGE", "The Square webhook is too large.");
     if (bytes.byteLength > MAX_BYTES) throw new ApiError(413, "SQUARE_WEBHOOK_TOO_LARGE", "The Square webhook is too large.");
     const raw = new TextDecoder().decode(bytes);
     if (!await verifySquareWebhook(raw, request.headers.get("x-square-hmacsha256-signature"))) throw new ApiError(401, "SQUARE_WEBHOOK_SIGNATURE_INVALID", "The Square webhook signature is invalid.");

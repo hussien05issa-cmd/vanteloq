@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../../../../../../db";
 import { integrationConnections, integrationWebhookEvents } from "../../../../../../db/schema";
-import { ApiError, handleApi, jsonResponse } from "../../../../../../server/api";
+import { ApiError, handleApi, jsonResponse, readRequestBytes } from "../../../../../../server/api";
 import { CLOVER_PROVIDER, cloverSha256, verifyCloverWebhookAppId, verifyCloverWebhookAuth } from "../../../../../../server/integrations/clover";
 
 const MAXIMUM_WEBHOOK_BYTES = 256_000;
@@ -17,7 +17,7 @@ export async function POST(request: Request) {
     }
     const declared = Number(request.headers.get("content-length"));
     if (Number.isFinite(declared) && declared > MAXIMUM_WEBHOOK_BYTES) throw new ApiError(413, "CLOVER_WEBHOOK_TOO_LARGE", "The Clover webhook is too large.");
-    const bytes = new Uint8Array(await request.arrayBuffer());
+    const bytes = await readRequestBytes(request, MAXIMUM_WEBHOOK_BYTES, "CLOVER_WEBHOOK_TOO_LARGE", "The Clover webhook is too large.");
     if (bytes.byteLength > MAXIMUM_WEBHOOK_BYTES) throw new ApiError(413, "CLOVER_WEBHOOK_TOO_LARGE", "The Clover webhook is too large.");
     let payload: Record<string, unknown>;
     try { payload = record(JSON.parse(new TextDecoder().decode(bytes))); }

@@ -30,18 +30,21 @@ test("material legal updates require a new affirmative acceptance before billing
   assert.match(page, /<LegalAcceptanceGate><BillingOnboardingGate>/);
 });
 
-test("Gemini requires explicit versioned consent and supports scoped deletion", () => {
+test("Vanteloq AI requires explicit versioned consent and supports scoped deletion", () => {
   const route = read("../app/api/v1/advisor/chat/route.ts");
   const privacy = read("../server/privacy.ts");
   const client = read("../app/vanteloq-app.tsx");
+  const composer = read("../app/advisor-composer.tsx");
 
   assert.match(route, /GEMINI_CONSENT_REQUIRED/);
-  assert.match(route, /recordGeminiConsent/);
+  assert.match(route, /recordAdvisorConsent/);
   assert.match(route, /export async function DELETE/);
   assert.match(route, /organization_id = \? AND user_id = \?/);
-  assert.match(route, /privacy\.gemini_conversation_deleted/);
-  assert.match(privacy, /provider: "google_gemini"/);
+  assert.match(route, /privacy\.advisor_conversation_deleted/);
+  assert.match(privacy, /input.provider === "gemini" \? "google_gemini" : "openai"/);
   assert.match(client, /dataUseAccepted/);
-  assert.match(client, /Raw credentials, account numbers, customer names, invoice files, and raw transactions are excluded/);
-  assert.match(client, /Clear conversation/);
+  assert.match(client, /<AdvisorComposer/);
+  assert.match(composer, /credentials, account numbers, customer names, search queries, page addresses, Business Profile content, invoice files, and raw transactions/);
+  assert.match(composer, /Clear conversation/);
+  assert.match(composer, /type="checkbox" checked=\{dataUseAccepted\}/);
 });

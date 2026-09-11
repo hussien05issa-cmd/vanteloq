@@ -1,8 +1,13 @@
 "use client";
 
-import Image from "next/image";
+import WorkspaceIcon from "./workspace-icon";
 import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import IntegrationBrandLogo from "./integration-brand-logo";
+import MarketingReporting from "./marketing-reporting";
+import MarketingWorkbench, { JourneyCoverageCard, type JourneyCoverage } from "./marketing-workbench";
+import { comparableSearchSeries } from "../domain/growth-intelligence";
+import type { MarketingPlanDraft } from "../domain/marketing-workbench";
+import { metricRatio } from "../domain/marketing-reporting";
 import { apiFetch } from "./supabase-browser";
 
 type Profile = {
@@ -69,6 +74,7 @@ type GrowthData = {
   operatingCoverage: Record<CoverageItem["key"], Omit<CoverageItem, "key" | "label">>;
   marketingEvidence: Omit<CoverageItem, "key" | "label">;
   calendar: CalendarEntry[];
+  journeyCoverage: JourneyCoverage | null;
   searchSeries: { query: string; observedDate: string; position: number; sourceSystem: string }[];
   measurementSeries: {
     selectionId: string;
@@ -94,7 +100,7 @@ type GrowthData = {
   locationScope: { id: string; name: string } | null;
 };
 
-type Tab = "overview" | "context" | "data" | "calendar";
+type Tab = "overview" | "reports" | "plan" | "context" | "data" | "calendar";
 type CsvKind = "search_visibility" | "touchpoint" | "transaction";
 type CsvRecord = Record<string, string>;
 const money = (cents: number, currency: string) => new Intl.NumberFormat("en-CA", { style: "currency", currency, maximumFractionDigits: 0 }).format(cents / 100);
@@ -164,15 +170,21 @@ const csvRequirements: Record<CsvKind, { label: string; required: string[]; samp
 };
 
 function SearchVisibilityChart({ rows }: { rows: GrowthData["searchSeries"] }) {
+  const [selected, setSelected] = useState("");
   if (!rows.length) return <div className="growth-chart-empty"><b>No search observations yet</b><span>Add an owner-entered Search Console observation to establish a baseline.</span></div>;
-  const points = rows.slice(-12);
+  const series = comparableSearchSeries(rows);
+  const current = series.find((item) => item.key === selected) ?? series[0];
+  if (!current) return <p>No comparable observations are available.</p>;
+  const points = current.rows.slice(-12);
   const positions = points.map((row) => row.position);
   const minimum = Math.min(...positions);
   const maximum = Math.max(...positions);
   const range = Math.max(1, maximum - minimum);
-  const coordinates = points.map((row, index) => ({ row, x: 38 + index * (652 / Math.max(1, points.length - 1)), y: 24 + ((row.position - minimum) / range) * 144 }));
+  const start = Date.parse(points[0].observedDate), end = Date.parse(points.at(-1)!.observedDate);
+  const coordinates = points.map((row) => ({ row, x: 38 + (Date.parse(row.observedDate) - start) / Math.max(86400000, end - start) * 652, y: 24 + ((row.position - minimum) / range) * 144 }));
   const path = coordinates.map((point, index) => `${index ? "L" : "M"}${point.x},${point.y}`).join(" ");
   return <div className="search-position-chart">
+    <label>Query and source<select value={current.key} onChange={(event) => setSelected(event.target.value)}>{series.map((item) => <option key={item.key} value={item.key}>{item.rows[0].query} · {label(item.rows[0].sourceSystem)}</option>)}</select></label>
     <div className="growth-chart-key"><span><i />Search position</span><small>Lower is better</small></div>
     <svg viewBox="0 0 728 220" role="img" aria-label="Recorded search position over time">
       {[24, 72, 120, 168].map((y) => <line key={y} x1="38" x2="690" y1={y} y2={y} className="growth-gridline" />)}
@@ -183,6 +195,7 @@ function SearchVisibilityChart({ rows }: { rows: GrowthData["searchSeries"] }) {
       </g>)}
       {coordinates.map(({ row, x }, index) => (index === 0 || index === coordinates.length - 1) && <text key={row.observedDate} x={x} y="204" textAnchor={index ? "end" : "start"}>{row.observedDate}</text>)}
     </svg>
+    <p className="mw-chart-note">{points.length} {points.length === 1 ? "observation" : "observations"} for this query and source. Lines connect recorded snapshots, not estimated values between them. Average position is not a guaranteed rank for every person.</p>
   </div>;
 }
 
@@ -216,13 +229,10 @@ function metricTotal(rows: GrowthData["measurementSeries"], metric: string) {
 }
 
 function weightedMetricAverage(rows: GrowthData["measurementSeries"], metric: string, weightMetric: string) {
-  const weighted = rows.reduce((sum, row) => sum + (row.metrics[metric] ?? 0) * (row.metrics[weightMetric] ?? 0), 0);
-  const weight = metricTotal(rows, weightMetric);
-  return weight > 0 ? weighted / weight : 0;
-}
-
-function providerCurrency(value: number) {
-  return `${value.toLocaleString("en-CA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} · account currency`;
+  const measured = rows.filter((row) => Number.isFinite(row.metrics[metric]) && Number.isFinite(row.metrics[weightMetric]));
+  const weighted = measured.reduce((sum, row) => sum + row.metrics[metric] * row.metrics[weightMetric], 0);
+  const weight = metricTotal(measured, weightMetric);
+  return weight > 0 ? weighted / weight : null;
 }
 
 function MeasurementTrend({ rows, metric, labelText }: { rows: GrowthData["measurementSeries"]; metric: string; labelText: string }) {
@@ -266,16 +276,18 @@ function ProviderMeasurementCard({ provider, rows }: { provider: "google" | "met
           ? ["gbp_search_mobile_impressions", "gbp_maps_mobile_impressions", "gbp_call_clicks", "gbp_direction_requests"]
           : resource.dataset === "google_ads"
             ? ["google_ads_impressions", "google_ads_clicks", "google_ads_spend", "google_ads_conversions"]
-            : ["meta_impressions", "meta_reach", "meta_link_clicks", "meta_spend"];
+            : ["meta_impressions", "meta_link_clicks"];
     return <article className={`card marketing-measurement-card ${provider}`} key={selectionId}>
       <header><div><IntegrationBrandLogo name={google ? "Google" : "Meta"} compact /><span><small>{label(resource.dataset)}</small><h3>{resource.resourceName}</h3></span></div><em>{`Through ${resourceRows.at(-1)?.metricDate}`}</em></header>
       <p className="marketing-resource-lineage">{resource.scopeKind === "organization" ? "Organization-wide resource" : `Location resource · ${resource.localLocationId}`}</p>
       <div className="marketing-measurement-summary">{metricKeys.map((metric) => {
-        const value = metricTotal(resourceRows, metric);
-        return <span key={metric}><small>{measurementLabels[metric]}</small><b>{metric === "meta_spend" || metric === "google_ads_spend" ? providerCurrency(value) : Math.round(value).toLocaleString("en-CA")}</b></span>;
+        const displayRows = resource.dataset === "google_business_profile" ? resourceRows.slice(-1) : resourceRows;
+        const value = metricTotal(displayRows, metric);
+        const present = displayRows.some((row) => Number.isFinite(row.metrics[metric]));
+        return <span key={metric}><small>{measurementLabels[metric]}{resource.dataset === "google_business_profile" ? " · latest reported day" : ""}</small><b>{!present ? "Not available" : metric === "meta_spend" || metric === "google_ads_spend" ? "See currency in Reports" : value.toLocaleString("en-CA", { maximumFractionDigits: 2 })}</b></span>;
       })}</div>
       <MeasurementTrend rows={resourceRows} metric={primaryMetric} labelText={measurementLabels[primaryMetric]} />
-      <footer>{resource.dataset === "google_search_console" ? <><span>Search CTR <b>{(metricTotal(resourceRows, "search_impressions") > 0 ? metricTotal(resourceRows, "search_clicks") / metricTotal(resourceRows, "search_impressions") * 100 : 0).toFixed(1)}%</b></span><span>Impression-weighted position <b>{weightedMetricAverage(resourceRows, "search_position", "search_impressions").toFixed(1)}</b></span></> : resource.dataset === "meta_ads" ? <><span>Derived CTR <b>{(metricTotal(resourceRows, "meta_impressions") > 0 ? metricTotal(resourceRows, "meta_link_clicks") / metricTotal(resourceRows, "meta_impressions") * 100 : 0).toFixed(2)}%</b></span><span>Derived CPC <b>{providerCurrency(metricTotal(resourceRows, "meta_link_clicks") > 0 ? metricTotal(resourceRows, "meta_spend") / metricTotal(resourceRows, "meta_link_clicks") : 0)}</b></span></> : <span>Source lineage <b>{resource.selectionId.slice(0, 8)}</b></span>}</footer>
+      <footer>{resource.dataset === "google_search_console" ? <><span>Search CTR <b>{metricRatio(resourceRows.some((row) => row.metrics.search_clicks !== undefined) ? metricTotal(resourceRows, "search_clicks") : null, metricTotal(resourceRows, "search_impressions"), 100)?.toFixed(1) ?? "Not available"}{metricTotal(resourceRows, "search_impressions") > 0 ? "%" : ""}</b></span><span>Impression-weighted position <b>{weightedMetricAverage(resourceRows, "search_position", "search_impressions")?.toFixed(1) ?? "Not available"}</b></span></> : <span>Open Reports for matching periods, source details and correctly scoped comparisons.</span>}</footer>
     </article>;
   })}</>;
 }
@@ -316,7 +328,7 @@ type MetaCampaignDirectory = { selectionId: string; accountRef: string; accountN
 
 function GoogleVisibilityCommandCentre({ data, navigate }: { data: GrowthData; navigate: (view: "Integrations") => void }) {
   const profile = data.googleBusinessProfiles[0];
-  const profileRows = data.measurementSeries.filter((row) => row.dataset === "google_business_profile");
+  const profileRows = data.measurementSeries.filter((row) => row.dataset === "google_business_profile" && row.selectionId === profile?.selectionId);
   const adsRows = data.measurementSeries.filter((row) => row.dataset === "google_ads");
   const [reviews, setReviews] = useState<GoogleReview[]>([]);
   const [reviewBusy, setReviewBusy] = useState(false);
@@ -347,18 +359,20 @@ function GoogleVisibilityCommandCentre({ data, navigate }: { data: GrowthData; n
       await fetchReviews();
     } catch (error) { setReviewError(error instanceof Error ? error.message : "The reply could not be published."); setReviewBusy(false); }
   };
+  const latestProfile = profileRows.at(-1);
   const visibility = [
-    ["Search views", metricTotal(profileRows, "gbp_search_desktop_impressions") + metricTotal(profileRows, "gbp_search_mobile_impressions")],
-    ["Maps views", metricTotal(profileRows, "gbp_maps_desktop_impressions") + metricTotal(profileRows, "gbp_maps_mobile_impressions")],
-    ["Calls", metricTotal(profileRows, "gbp_call_clicks")],
-    ["Directions", metricTotal(profileRows, "gbp_direction_requests")],
-    ["Website clicks", metricTotal(profileRows, "gbp_website_clicks")],
+    ["Mobile Search views", latestProfile?.metrics.gbp_search_mobile_impressions],
+    ["Mobile Maps views", latestProfile?.metrics.gbp_maps_mobile_impressions],
+    ["Call clicks", latestProfile?.metrics.gbp_call_clicks],
+    ["Direction requests", latestProfile?.metrics.gbp_direction_requests],
+    ["Website clicks", latestProfile?.metrics.gbp_website_clicks],
   ] as const;
   return <section className="google-command-centre" aria-label="Google visibility command centre">
     <article className="card google-visibility-card">
       <header><div><p className="card-kicker">GOOGLE VISIBILITY</p><h3>{profile?.name ?? "Business Profile connection required"}</h3></div><a href="https://business.google.com/" target="_blank" rel="noreferrer">Open Business Profile ↗</a></header>
-      <div className="google-visibility-kpis">{visibility.map(([name, value]) => <span key={name}><small>{name}</small><b>{profileRows.length ? Math.round(value).toLocaleString("en-CA") : "—"}</b></span>)}</div>
-      <div className="visibility-checklist"><b>Visibility checklist</b><ul><li className={profile ? "done" : ""}>Authorized and mapped Business Profile location</li><li className={profileRows.length ? "done" : ""}>Fresh search, Maps and customer-action measurements</li><li className={data.profileChecklist.actionRequiredCount === 0 ? "done" : ""}>Website, phone and business-hours records reviewed</li><li className={adsRows.length ? "done" : ""}>Google Ads performance connected for spend and conversion review</li></ul></div>
+      <div className="google-visibility-kpis">{visibility.map(([name, value]) => <span key={name}><small>{name}</small><b>{value !== undefined && Number.isFinite(value) ? value.toLocaleString("en-CA") : "Not available"}</b></span>)}</div>
+      <p>{latestProfile ? `Original daily measures for ${latestProfile.metricDate}. No device or date totals are combined here.` : "Open Reports after approval to retrieve the original Business Profile measures."}</p>
+      <div className="visibility-checklist"><b>Visibility checklist</b><ul><li className={profile ? "done" : ""}>Authorized and mapped Business Profile location</li><li className={profileRows.length ? "done" : ""}>Provider measurements received; check their reporting date</li><li className={data.profileChecklist.actionRequiredCount === 0 ? "done" : ""}>Website, phone and business-hours records reviewed</li><li className={adsRows.length ? "done" : ""}>Google Ads performance connected for spend and conversion review</li></ul></div>
       <footer><button onClick={() => navigate("Integrations")}>{profile ? "Manage Google sources" : "Connect Google"}</button><a href="https://search.google.com/search-console/" target="_blank" rel="noreferrer">Search Console</a><a href="https://ads.google.com/" target="_blank" rel="noreferrer">Google Ads</a></footer>
     </article>
     <article className="card google-review-centre">
@@ -376,7 +390,7 @@ function GoogleVisibilityCommandCentre({ data, navigate }: { data: GrowthData; n
 
 function MetaAdsCommandCentre({ data, navigate, canOptimize }: { data: GrowthData; navigate: (view: "Integrations") => void; canOptimize: boolean }) {
   const selection = data.metaAdAccounts[0];
-  const metricRows = data.measurementSeries.filter((row) => row.dataset === "meta_ads");
+  const metricRows = data.measurementSeries.filter((row) => row.dataset === "meta_ads" && row.selectionId === selection?.selectionId);
   const [directory, setDirectory] = useState<MetaCampaignDirectory | null>(null);
   const [busyCampaignId, setBusyCampaignId] = useState("");
   const [error, setError] = useState("");
@@ -422,16 +436,14 @@ function MetaAdsCommandCentre({ data, navigate, canOptimize }: { data: GrowthDat
     void applyChange(campaign, { action: "set_daily_budget", dailyBudgetMinor: minor });
   };
 
-  const spend = metricTotal(metricRows, "meta_spend");
   const impressions = metricTotal(metricRows, "meta_impressions");
   const clicks = metricTotal(metricRows, "meta_clicks");
-  const cpc = weightedMetricAverage(metricRows, "meta_cpc", "meta_clicks");
   const accountCurrency = directory?.currency ?? "CAD";
   const formatProviderMoney = (minor: number | null) => minor === null ? "Managed at ad-set level" : new Intl.NumberFormat("en-CA", { style: "currency", currency: accountCurrency }).format(minor / 10 ** (directory?.currencyExponent ?? 2));
 
   return <section className="meta-command-centre card" aria-label="Meta advertising command centre">
     <header><div><p className="card-kicker">META ADS CONTROL</p><h3>{directory?.accountName ?? selection?.name ?? "Meta advertising connection required"}</h3><span>{directory ? `${directory.currency} · ${directory.timezoneName}` : "Spend intelligence and owner-confirmed campaign controls"}</span></div><div><button onClick={() => navigate("Integrations")}>{selection ? "Manage connection" : "Connect Meta"}</button><button disabled={!selection || Boolean(busyCampaignId)} onClick={() => void loadCampaigns()}>{busyCampaignId === "loading" ? "Loading…" : directory ? "Refresh campaigns" : "Load campaigns"}</button></div></header>
-    <div className="meta-ad-kpis"><span><small>Recorded spend</small><b>{metricRows.length ? money(Math.round(spend * 100), accountCurrency) : "—"}</b></span><span><small>Impressions</small><b>{metricRows.length ? Math.round(impressions).toLocaleString("en-CA") : "—"}</b></span><span><small>Clicks</small><b>{metricRows.length ? Math.round(clicks).toLocaleString("en-CA") : "—"}</b></span><span><small>Average CPC</small><b>{metricRows.length && clicks > 0 && cpc !== null ? money(Math.round(cpc * 100), accountCurrency) : "—"}</b></span></div>
+    <div className="meta-ad-kpis"><span><small>Spend and cost per click</small><b>See Reports</b><small>Verified account currency required</small></span><span><small>Impressions</small><b>{metricRows.some((row) => row.metrics.meta_impressions !== undefined) ? impressions.toLocaleString("en-CA") : "Not available"}</b></span><span><small>All ad clicks</small><b>{metricRows.some((row) => row.metrics.meta_clicks !== undefined) ? clicks.toLocaleString("en-CA") : "Not available"}</b></span><span><small>Reporting dates</small><b>{metricRows.length ? `${metricRows[0].metricDate} to ${metricRows.at(-1)?.metricDate}` : "Not available"}</b></span></div>
     {error && <div className="growth-message error" role="alert">{error}</div>}
     {notice && <div className="growth-message success" role="status">{notice}</div>}
     {!selection ? <div className="marketing-metric-empty"><b>Select a Meta ad account</b><span>Authorize Meta, choose the exact account and approve its sample before Vanteloq displays or changes campaign data.</span></div> : !directory ? <div className="marketing-metric-empty"><b>Campaigns load only when requested</b><span>Use Load campaigns to retrieve the current account state directly from Meta. Vanteloq does not invent or cache campaign controls.</span></div> : !directory.campaigns.length ? <div className="marketing-metric-empty"><b>No campaigns returned</b><span>The selected advertising account did not return any campaigns.</span></div> : <div className="meta-campaign-list">{directory.campaigns.map((campaign) => <article key={campaign.id}>
@@ -455,7 +467,7 @@ function LocalReadinessPanels({ data }: { data: GrowthData }) {
   </section>;
 }
 
-export default function GrowthWorkspace({ currency, navigate, activeLocationId, canOptimize }: { currency: string; navigate: (view: "Integrations") => void; activeLocationId: string | null; canOptimize: boolean }) {
+export default function GrowthWorkspace({ currency, navigate, activeLocationId, canOptimize }: { currency: string; navigate: (view: "Integrations" | "Advisor") => void; activeLocationId: string | null; canOptimize: boolean }) {
   const [data, setData] = useState<GrowthData | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [tab, setTab] = useState<Tab>("overview");
@@ -465,6 +477,8 @@ export default function GrowthWorkspace({ currency, navigate, activeLocationId, 
   const [csvKind, setCsvKind] = useState<CsvKind>("search_visibility");
   const [csvFileName, setCsvFileName] = useState("");
   const [csvRows, setCsvRows] = useState<CsvRecord[]>([]);
+  const [calendarDraft, setCalendarDraft] = useState<MarketingPlanDraft | null>(null);
+  const [draftVersion, setDraftVersion] = useState(0);
   const growthPath = `/api/v1/growth${activeLocationId ? `?location=${encodeURIComponent(activeLocationId)}` : ""}`;
 
   const load = useCallback(async () => {
@@ -498,9 +512,22 @@ export default function GrowthWorkspace({ currency, navigate, activeLocationId, 
 
   const runSave = async (action: () => Promise<unknown>, message: string) => {
     setBusy(true); setError(""); setNotice("");
-    try { await action(); await load(); setNotice(message); }
-    catch (caught) { setError(caught instanceof Error ? caught.message : "The change could not be saved."); }
+    try {
+      await action();
+      // A refresh failure must not invite a duplicate submission of a committed action.
+      try { await load(); setNotice(message); }
+      catch { setNotice(`${message} The updated list could not be refreshed. Reload this page to see the saved change; do not submit it again.`); }
+      return true;
+    }
+    catch (caught) { setError(caught instanceof Error ? caught.message : "The change could not be saved."); return false; }
     finally { setBusy(false); }
+  };
+
+  const prepareCalendarDraft = (draft: MarketingPlanDraft) => {
+    setCalendarDraft({ ...draft, title: draft.title.slice(0, 180), objective: draft.objective.slice(0, 500), notes: draft.notes.slice(0, 1000) });
+    setDraftVersion((version) => version + 1);
+    setTab("calendar"); setError(""); setNotice("Draft prepared. Review the details and dates, then select Add to calendar to save it. No content or ads have been published.");
+    window.requestAnimationFrame(() => document.querySelector<HTMLInputElement>(".growth-calendar-form input[name=title]")?.focus());
   };
 
   const saveProfile = (event: FormEvent<HTMLFormElement>) => {
@@ -520,7 +547,7 @@ export default function GrowthWorkspace({ currency, navigate, activeLocationId, 
       position: Number(values.get("position")),
       sourceSystem: "owner_entry",
       sourceEventId: crypto.randomUUID(),
-    }), "Search observation recorded with Owner entry as its source.").then(() => form.reset());
+    }), "Search observation recorded with Owner entry as its source.").then((saved) => { if (saved) form.reset(); });
   };
 
   const saveCalendar = (event: FormEvent<HTMLFormElement>) => {
@@ -536,10 +563,10 @@ export default function GrowthWorkspace({ currency, navigate, activeLocationId, 
       dueDate: values.get("dueDate"),
       objective: values.get("objective"),
       notes: values.get("notes"),
-    }), "Marketing calendar entry created.").then(() => form.reset());
+    }), "Marketing calendar entry created.").then((saved) => { if (saved) { setCalendarDraft(null); setDraftVersion((version) => version + 1); form.reset(); } });
   };
 
-  const completeEntry = (entry: CalendarEntry) => void runSave(() => postGrowth({ type: "marketing_calendar_status", id: entry.id, status: "completed" }), `Marked “${entry.title}” complete.`);
+  const updateEntryStatus = (entry: CalendarEntry, status: CalendarEntry["status"]) => void runSave(() => postGrowth({ type: "marketing_calendar_status", id: entry.id, status }), `Updated “${entry.title}” to ${label(status).toLowerCase()}.`);
 
   const chooseCsv = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -574,38 +601,43 @@ export default function GrowthWorkspace({ currency, navigate, activeLocationId, 
       }
       await postGrowth(payload);
     }
-  }, `${csvRows.length} marketing record${csvRows.length === 1 ? "" : "s"} validated and imported.`).then(() => { setCsvRows([]); setCsvFileName(""); });
+  }, `${csvRows.length} marketing record${csvRows.length === 1 ? "" : "s"} validated; existing source event IDs are skipped.`).then((saved) => { if (saved) { setCsvRows([]); setCsvFileName(""); } });
 
-  const growthTabs = ["overview", "context", "data", "calendar"] as const;
+  const growthTabs = ["overview", "reports", "plan", "calendar", "context", "data"] as const;
 
   return <div className="content module-page growth-page">
     <section className="module-hero growth-visual-hero">
-      <div><p>LOCAL BUSINESS GROWTH INTELLIGENCE</p><h2>Turn business context and measured outcomes into a focused marketing plan.</h2><span>Save who you serve, record the data you actually have, and receive recommendations that state their evidence and measurement limits.</span></div>
-      <Image src="/brand/marketing-intelligence-v2.png" alt="Marketing channels connected to search, local discovery, content, conversion and a calendar" width={1672} height={941} sizes="(max-width: 900px) 100vw, 46vw" />
+      <div><p>MARKETING INTELLIGENCE</p><h2>Know what deserves your next move.</h2><span>Review search, website and campaign evidence. Turn a useful finding into a measured plan, with your business context and approval kept in view.</span></div>
+      <div className="workspace-empty-mark" aria-hidden="true"><WorkspaceIcon name="Marketing"/></div>
     </section>
 
     <nav className="growth-tabs" aria-label="Marketing workspace sections" role="tablist">
       {growthTabs.map((item, index) => <button key={item} id={`growth-tab-${item}`} role="tab" aria-controls={`growth-panel-${item}`} aria-selected={tab === item} tabIndex={tab === item ? 0 : -1} className={tab === item ? "active" : ""} onClick={() => setTab(item)} onKeyDown={(event) => {
         const offset = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
-        if (!offset) return;
+        if (!offset && event.key !== "Home" && event.key !== "End") return;
         event.preventDefault();
-        const next = growthTabs[(index + offset + growthTabs.length) % growthTabs.length];
+        const next = growthTabs[event.key === "Home" ? 0 : event.key === "End" ? growthTabs.length - 1 : (index + offset + growthTabs.length) % growthTabs.length];
         setTab(next);
         window.requestAnimationFrame(() => document.getElementById(`growth-tab-${next}`)?.focus());
-      }}>{item === "context" ? "Business context" : item === "data" ? "Import data" : item === "calendar" ? "Marketing calendar" : label(item)}</button>)}
+      }}>{item === "context" ? "Business context" : item === "data" ? "Import data" : item === "calendar" ? "Marketing calendar" : item === "plan" ? "Plan & measure" : label(item)}</button>)}
     </nav>
 
     <div id={`growth-panel-${tab}`} role="tabpanel" aria-labelledby={`growth-tab-${tab}`} tabIndex={0}>
     {error && <div className="growth-message error" role="alert">{error}</div>}
     {notice && <div className="growth-message success" role="status">{notice}</div>}
+    {tab === "reports" && <MarketingReporting key={activeLocationId ?? "all"} locationId={activeLocationId ?? null} navigate={navigate} onPlan={data?.canManage ? prepareCalendarDraft : undefined}/>}
+    {tab === "plan" && data && <MarketingWorkbench key={activeLocationId ?? "all"} canManage={data.canManage} website={data.profile.websiteUrl} onPlan={prepareCalendarDraft} onReports={() => setTab("reports")}/>}
 
     {tab === "overview" && <>
+      {data && <section className="mw-next-action" aria-label="Next marketing step"><div><small>YOUR NEXT USEFUL STEP</small><h3>{!data.profile.saved ? "Start with the customer and the outcome." : !data.measurementSeries.length ? "Establish a baseline before changing spend." : "Turn an observed result into a measured action."}</h3><p>{!data.profile.saved ? "Describe your audience, offer and goal. Recommendations will use that saved context." : !data.measurementSeries.length ? "No saved provider measurements are available in this scope. Review your sources, then approve a sample. You can still prepare a campaign plan." : "Review the report for the right source and date range. Carry the evidence into your calendar and decide how you will judge the result."}</p></div><button type="button" onClick={() => !data.profile.saved ? setTab("context") : !data.measurementSeries.length ? navigate("Integrations") : setTab("reports")}>{!data.profile.saved ? "Set business context" : !data.measurementSeries.length ? "Review connections" : "Review reports"} →</button></section>}
       <section className="growth-summary-grid">
-        <article><small>ATTRIBUTED REVENUE</small><b>{money(totals.revenue, currency)}</b><span>{data?.growth.status === "available" ? "First-touch records" : "Awaiting matched journeys"}</span></article>
-        <article><small>ATTRIBUTED LEADS</small><b>{totals.leads.toLocaleString("en-CA")}</b><span>{totals.customers.toLocaleString("en-CA")} became recorded customers</span></article>
+        <article><small>MATCHED REVENUE</small><b>{data?.growth.status === "available" && data.journeyCoverage?.revenueAvailable && data.journeyCoverage.matchedTransactions > 0 ? money(totals.revenue, currency) : "Not available"}</b><span>Recorded first touch, not incremental sales</span></article>
+        <article><small>RECORDED LEADS</small><b>{data?.growth.status === "available" ? totals.leads.toLocaleString("en-CA") : "Not available"}</b><span>{data?.growth.status === "available" ? `${totals.customers.toLocaleString("en-CA")} journeys include a customer event` : "Awaiting recorded journey evidence"}</span></article>
         <article><small>SEARCH OBSERVATIONS</small><b>{data?.searchSeries.length ?? 0}</b><span>Owner or verified source records</span></article>
         <article><small>PLANNED WORK</small><b>{data?.calendar.filter((item) => item.status !== "completed" && item.status !== "cancelled").length ?? 0}</b><span>Open calendar entries</span></article>
       </section>
+
+      {data && <JourneyCoverageCard coverage={data.journeyCoverage} period={data.period} onImport={() => setTab("data")}/>}
 
       <section className="growth-connection-grid">
         {data?.connections.map((connection) => <article className={`card growth-connection ${connection.status}`} key={`${connection.providerId}:${connection.connectionId ?? "setup"}`}><div><IntegrationBrandLogo name={connection.providerId === "google" ? "Google" : "Meta"} compact /><div><b>{connection.provider}</b><small>{connection.availableNow}</small></div></div><footer><em>{connection.label}</em><button onClick={() => navigate("Integrations")}>{connection.status === "connected" ? "Manage" : "Set up"} →</button></footer></article>)}
@@ -624,13 +656,13 @@ export default function GrowthWorkspace({ currency, navigate, activeLocationId, 
           <div className="card-head"><div><p className="card-kicker">TAILORED NEXT ACTIONS</p><h3>{data?.organization.businessName ?? "Business"} growth plan</h3></div><button onClick={() => setTab("context")}>Edit context</button></div>
           <div className="recommendation-stack">{data?.recommendations.map((item, index) => <section key={item.id}>
             <span className={`recommendation-rank ${item.priority}`}>{index + 1}</span>
-            <div><div className="recommendation-meta"><small>{label(item.category)}</small><em>{item.priority} priority</em><em>{label(item.confidence)} confidence</em></div><h4>{item.title}</h4><p>{item.rationale}</p><strong>Recommended action</strong><span>{item.action}</span><dl><dt>Confidence</dt><dd>{item.confidenceReason}</dd><dt>Source freshness</dt><dd>{item.sourceFreshness}</dd><dt>Evidence</dt><dd>{item.evidence.join(" · ")}</dd><dt>Missing inputs</dt><dd>{item.missingInputs.length ? item.missingInputs.join(" · ") : "No material inputs missing"}</dd><dt>Operating checks</dt><dd>{item.operatingCoverage.map((check) => `${check.label}: ${label(check.status)} (${check.freshness})`).join(" · ")}</dd><dt>Action owner</dt><dd>{item.actionOwner}</dd><dt>Action due</dt><dd>{item.actionDueDate}</dd><dt>Measure</dt><dd>{item.metrics.join(" · ")}</dd><dt>Evidence needed</dt><dd>{item.evidenceNeeded.join(" · ")}</dd><dt>Review method</dt><dd>{item.reviewMethod}</dd></dl><a href={item.sourceUrl} target="_blank" rel="noreferrer">Method source: {item.sourceLabel}</a></div>
+            <div><div className="recommendation-meta"><small>{label(item.category)}</small><em>{item.priority} priority</em><em>{label(item.confidence)} confidence</em></div><h4>{item.title}</h4><p>{item.rationale}</p><strong>Recommended action</strong><span>{item.action}</span><details><summary>Evidence, limits and review method</summary><dl><dt>Confidence</dt><dd>{item.confidenceReason}</dd><dt>Source freshness</dt><dd>{item.sourceFreshness}</dd><dt>Evidence</dt><dd>{item.evidence.join(" · ")}</dd><dt>Missing inputs</dt><dd>{item.missingInputs.length ? item.missingInputs.join(" · ") : "No material inputs missing"}</dd><dt>Operating checks</dt><dd>{item.operatingCoverage.map((check) => `${check.label}: ${label(check.status)} (${check.freshness})`).join(" · ")}</dd><dt>Action owner</dt><dd>{item.actionOwner}</dd><dt>Action due</dt><dd>{item.actionDueDate}</dd><dt>Measure</dt><dd>{item.metrics.join(" · ")}</dd><dt>Evidence needed</dt><dd>{item.evidenceNeeded.join(" · ")}</dd><dt>Review method</dt><dd>{item.reviewMethod}</dd></dl></details>{data.canManage && <button type="button" onClick={() => prepareCalendarDraft({ title: item.title, channel: item.category === "local_search" ? "local" : item.category === "content" ? "content" : "website", eventType: "audit", objective: item.action, notes: `Owner: ${item.actionOwner}\nMeasure: ${item.metrics.join(", ")}\nReview: ${item.reviewMethod}\nEvidence: ${item.sourceLabel}\nSource: ${item.sourceUrl}` })}>Plan this action →</button>} <a href={item.sourceUrl} target="_blank" rel="noreferrer">Method source: {item.sourceLabel}</a></div>
           </section>)}</div>
         </article>
         <article className="card growth-search-card"><div className="card-head"><div><p className="card-kicker">SEARCH VISIBILITY</p><h3>Recorded position trend</h3></div><button onClick={() => setTab("data")}>Add data</button></div><SearchVisibilityChart rows={data?.searchSeries ?? []} />{data?.growth.insight && <div className="growth-search-insight"><b>{data.growth.insight.title}</b><span>{data.growth.insight.explanation}</span></div>}</article>
       </section>
 
-      {data?.growth.status === "available" ? <article className="card growth-table"><div className="card-head"><div><p className="card-kicker">SOURCE TO CUSTOMER TO POS</p><h3>Revenue attribution</h3></div><span>{data.period.since} to {data.period.through}</span></div><div className="growth-row growth-head"><span>Source</span><span>Leads</span><span>Customers</span><span>Transactions</span><span>Revenue</span><span>Gross profit</span></div>{data.growth.channels.map((row) => <div className="growth-row" key={row.source}><b>{row.source}</b><span>{row.leads}</span><span>{row.customers}</span><span>{row.transactions}</span><strong>{money(row.revenueCents, currency)}</strong><span>{row.grossProfitCents === null ? "Unavailable" : money(row.grossProfitCents, currency)}</span></div>)}</article> : <article className="card growth-empty"><b>Revenue attribution needs matched journey records</b><span>{data?.growth.reason}</span><button onClick={() => navigate("Integrations")}>Review data connections</button></article>}
+      {data?.growth.status === "available" ? <article className="card growth-table"><div className="card-head"><div><p className="card-kicker">SOURCE TO CUSTOMER TO POS</p><h3>Revenue attribution</h3></div><span>{data.period.since} to {data.period.through}</span></div><div className="growth-row growth-head"><span>Source</span><span>Leads</span><span>Customers</span><span>Transactions</span><span>Revenue</span><span>Gross profit</span></div>{data.growth.channels.map((row) => <div className="growth-row" key={row.source}><b>{row.source}</b><span>{row.leads}</span><span>{row.customers}</span><span>{row.transactions}</span><strong>{data.journeyCoverage?.revenueAvailable && row.transactions > 0 ? money(row.revenueCents, currency) : "Unavailable"}</strong><span>{row.grossProfitCents === null || !row.transactions || !data.journeyCoverage?.revenueAvailable ? "Unavailable" : money(row.grossProfitCents, currency)}</span></div>)}</article> : <article className="card growth-empty"><b>Revenue attribution needs matched journey records</b><span>{data?.growth.reason}</span><button onClick={() => navigate("Integrations")}>Review data connections</button></article>}
     </>}
 
     {tab === "context" && <section className="growth-form-layout">
@@ -672,12 +704,12 @@ export default function GrowthWorkspace({ currency, navigate, activeLocationId, 
     </section>}
 
     {tab === "calendar" && <section className="growth-calendar-layout">
-      <form className="card growth-calendar-form" onSubmit={saveCalendar}>
+      <form key={draftVersion} className="card growth-calendar-form" onSubmit={saveCalendar}>
         <div className="card-head"><div><p className="card-kicker">MARKETING CALENDAR</p><h3>Plan a measurable action</h3></div></div>
-        <div className="growth-field-grid"><label className="wide">Title<input name="title" required maxLength={180} placeholder="Publish service-area guide" /></label><label>Channel<select name="channel" defaultValue="content"><option value="content">Content</option><option value="google">Google</option><option value="meta">Meta</option><option value="email">Email</option><option value="local">Local</option><option value="website">Website</option></select></label><label>Work type<select name="eventType" defaultValue="content"><option value="campaign">Campaign</option><option value="content">Content</option><option value="audit">Audit</option><option value="offer">Offer</option><option value="follow_up">Follow up</option></select></label><label>Start date<input name="startDate" type="date" required /></label><label>Due date<input name="dueDate" type="date" /></label><label className="wide">Objective<textarea name="objective" maxLength={500} placeholder="What should change, and how will you measure it?" /></label><label className="wide">Notes<textarea name="notes" maxLength={1000} placeholder="Owner, dependencies, audience, offer details, or evidence needed" /></label></div>
+        <div className="growth-field-grid"><label className="wide">Title<input name="title" defaultValue={calendarDraft?.title ?? ""} required maxLength={180} placeholder="Publish service-area guide" /></label><label>Channel<select name="channel" defaultValue={calendarDraft?.channel ?? "content"}><option value="content">Content</option><option value="google">Google</option><option value="meta">Meta</option><option value="email">Email</option><option value="local">Local</option><option value="website">Website</option></select></label><label>Work type<select name="eventType" defaultValue={calendarDraft?.eventType ?? "content"}><option value="campaign">Campaign</option><option value="content">Content</option><option value="audit">Audit</option><option value="offer">Offer</option><option value="follow_up">Follow up</option></select></label><label>Start date<input name="startDate" type="date" required /></label><label>Due date<input name="dueDate" type="date" /></label><label className="wide">Objective<textarea name="objective" defaultValue={calendarDraft?.objective ?? ""} maxLength={500} placeholder="What should change, and how will you measure it?" /></label><label className="wide">Notes<textarea name="notes" defaultValue={calendarDraft?.notes ?? ""} maxLength={1000} placeholder="Owner, dependencies, audience, offer details, or evidence needed" /></label></div>
         <footer><button disabled={busy || !data?.canManage}>{busy ? "Creating..." : data?.canManage ? "Add to calendar" : "Owner or admin access required"}</button></footer>
       </form>
-      <article className="card growth-calendar-list"><div className="card-head"><div><p className="card-kicker">UPCOMING & RECENT</p><h3>Marketing work</h3></div><span>{data?.calendar.length ?? 0} entries</span></div>{data?.calendar.length ? <div>{data.calendar.map((entry) => <section key={entry.id} className={`calendar-entry ${entry.status}`}><time dateTime={entry.startDate}><b>{new Date(`${entry.startDate}T12:00:00`).toLocaleDateString("en-CA", { day: "2-digit" })}</b><span>{new Date(`${entry.startDate}T12:00:00`).toLocaleDateString("en-CA", { month: "short" })}</span></time><div><div><small>{label(entry.channel)} · {label(entry.eventType)}</small><em>{label(entry.status)}</em></div><h4>{entry.title}</h4>{entry.objective && <p>{entry.objective}</p>}<span>{entry.dueDate ? `Due ${entry.dueDate}` : "No separate due date"}</span></div>{entry.status !== "completed" && entry.status !== "cancelled" && data.canManage && <button onClick={() => completeEntry(entry)}>Mark complete</button>}</section>)}</div> : <div className="growth-chart-empty"><b>No marketing work planned</b><span>Add the first campaign, content task, audit, offer or follow-up.</span></div>}</article>
+      <article className="card growth-calendar-list"><div className="card-head"><div><p className="card-kicker">UPCOMING & RECENT</p><h3>Marketing work</h3></div><span>{data?.calendar.length ?? 0} {data?.calendar.length === 1 ? "entry" : "entries"}</span></div>{data?.calendar.length ? <div>{data.calendar.map((entry) => <section key={entry.id} className={`calendar-entry ${entry.status}`}><time dateTime={entry.startDate}><b>{new Date(`${entry.startDate}T12:00:00`).toLocaleDateString("en-CA", { day: "numeric" })}</b><span>{new Date(`${entry.startDate}T12:00:00`).toLocaleDateString("en-CA", { month: "short" })}</span></time><div><div><small>{label(entry.channel)} · {label(entry.eventType)}</small><em>{label(entry.status)}</em></div><h4>{entry.title}</h4>{entry.objective && <p className="calendar-notes">{entry.objective}</p>}{entry.notes && <details><summary>Plan and review notes</summary><p className="calendar-notes">{entry.notes}</p></details>}<span>{entry.dueDate ? `Due ${entry.dueDate}` : "No separate due date"}</span></div>{data.canManage && <label className="calendar-status-control">Work status<select aria-label={`Status for ${entry.title}`} value={entry.status} disabled={busy} onChange={(event) => updateEntryStatus(entry, event.target.value as CalendarEntry["status"])}><option value="planned">Planned</option><option value="in_progress">In progress</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option></select></label>}</section>)}</div> : <div className="growth-chart-empty"><b>No marketing work planned</b><span>Add the first campaign, content task, audit, offer or follow-up.</span></div>}</article>
     </section>}
 
     <article className="card growth-boundary"><b>{data?.locationScope ? `${data.locationScope.name} evidence boundary` : "Evidence boundary"}</b><span>{data ? `${data.scopeBoundary} ${data.sourceBoundary}` : "Loading source contract..."}</span></article>

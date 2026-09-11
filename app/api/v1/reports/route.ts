@@ -36,10 +36,7 @@ const supported = [
 type ReportId = (typeof supported)[number];
 const REPORT_PAGE_SIZE = 500;
 
-function csvCell(value: string | number | null) {
-  const text = value === null ? "" : String(value);
-  return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
-}
+import { csvCell } from "../../../../domain/csv";
 
 function dateOffset(iso: string, days: number) {
   const date = new Date(`${iso}T00:00:00Z`);

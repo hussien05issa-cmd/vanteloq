@@ -23,3 +23,11 @@ test("opening the Cookie Notice closes the consent panel and uses the notice rou
   link.onClick();
   assert.equal(panelOpen, false);
 });
+
+test("the initial consent panel stays out of the way on the Cookie Notice page", () => {
+  assert.equal(typeof navigation?.shouldShowConsentPanel, "function");
+  assert.equal(navigation.shouldShowConsentPanel("/cookies", null, false), false);
+  assert.equal(navigation.shouldShowConsentPanel("/cookies", null, true), true);
+  assert.equal(navigation.shouldShowConsentPanel("/privacy", null, false), true);
+  assert.equal(navigation.shouldShowConsentPanel("/cookies", "analytics", false), false);
+});

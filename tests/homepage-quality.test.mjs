@@ -40,35 +40,50 @@ test("homepage copy stays within the verified product boundary", async () => {
   assert.ok(connections, "homepage should render the public connector section");
   assert.doesNotMatch(html, /Start (?:Your )?Free Trial/i);
   for (const provider of ["Lightspeed Retail R-Series", "Lightspeed Retail X-Series", "Square", "Moneris", "QuickBooks", "Xero", "Plaid", "Google", "Meta"]) assert.match(connections, new RegExp(`<strong>${provider}</strong>`));
-  for (const provider of ["DoorDash", "Uber Eats"]) assert.match(connections, new RegExp(`<strong>${provider}</strong><span>Coming soon</span>`));
+  for (const provider of ["DoorDash", "Uber Eats"]) assert.match(connections, new RegExp(`<strong>${provider}</strong>[\\s\\S]*?Coming soon`));
+  assert.match(connections, /QuickBooks[\s\S]*?Sandbox only/);
+  assert.match(connections, /Plaid[\s\S]*?Production approval needed/);
+  assert.match(connections, /Xero[\s\S]*?In development/);
+  assert.match(connections, /Stripe[\s\S]*?Setup required/);
   assert.match(connections, /Connect the tools that already run your business/);
   assert.match(connections, /Use owner-authorized balances and transactions in cash planning/);
-  assert.doesNotMatch(connections, /(?:PLANNED|STAGING|LIMITED PILOT|ADAPTER BUILT|honest availability)/i);
+  assert.doesNotMatch(connections, /(?:AVAILABLE NOW|PRODUCTION READY|FULLY CONNECTED|honest availability)/i);
   assert.doesNotMatch(html, /\b(?:SOC 2|ISO 27001|HIPAA|PCI)\s+(?:certified|compliant|accredited)\b/i);
   assert.doesNotMatch(html, /\u2014/u, "homepage prose should not contain an em dash");
   assert.match(html, /home-intelligence-map/);
   assert.match(html, /home-resource-art/);
   assert.doesNotMatch(html, /ILLUSTRATIVE WORKFLOW|Illustrative inventory decision workflow/i);
-  assert.match(html, /connect-import-visual\.webp/);
-  assert.match(html, /verify-organize-visual\.webp/);
-  assert.match(html, /business-sources-visual\.webp/);
-  assert.match(html, /inventory-decision-visual\.webp/);
+  assert.doesNotMatch(html, /connect-import-visual\.webp|verify-organize-visual\.webp|home-step-review-visual/);
+  for (const step of ["connect", "verify", "review"]) assert.match(html, new RegExp(`home-operating-preview ${step}`));
+  assert.match(html, /home-record-review/);
+  assert.match(html, /Ready for owner review/);
+  assert.match(html, /Example records/);
+  assert.doesNotMatch(html, /Sources synchronized/);
+  assert.match(connections, /<details class="home-connection-directory">/);
+  assert.match(connections, /Explore providers and current availability/);
+  assert.match(html, /Receipt 1458/);
+  assert.match(html, /Example values show how Vanteloq/);
+  assert.match(html, /platform-preview/);
+  assert.doesNotMatch(html, /inventory-decision-visual\.webp/);
+  assert.match(html, /id="marketing"/);
+  assert.match(html, /Facebook and Instagram organic insights are not yet available/);
   assert.match(html, /href="\/privacy"/);
   assert.match(html, /href="\/terms"/);
   assert.match(html, /href="\/cookies"/);
   assert.match(html, /Vanteloq is a LexEdge Consulting product/);
   assert.match(html, /Vanteloq is owned and operated by LexEdge Consulting/);
-  assert.match(html, /lexedge-consulting-logo\.png/);
+  assert.match(html, /lexedge-consulting-logo-web\.png/);
   assert.match(html, /Can I delete my account and data\?/);
   assert.match(html, /Is Vanteloq a replacement for an accountant or legal adviser\?/);
+  assert.match(html, /What happens after you create an account/);
+  assert.match(html, /IMPLEMENTED SECURITY CONTROLS/);
+  assert.doesNotMatch(html, /VERIFIED SECURITY CONTROLS/);
 });
 
-test("homepage labels avoid decorative status dots", async () => {
+test("homepage omits the former independent retail label", async () => {
   const html = await (await fetchRoute("/")).text();
-  const operatingLabel = html.match(/<span class="public-pill">[\s\S]*?<\/span>/)?.[0] ?? "";
-
-  assert.match(operatingLabel, /Operations and analytics for independent retail/);
-  assert.doesNotMatch(operatingLabel, /<i\b/);
+  assert.doesNotMatch(html, /Operations and analytics for independent retail/);
+  assert.doesNotMatch(html, /<span class="public-pill">/);
 });
 
 test("homepage sequence labels do not use leading zeroes", async () => {
@@ -88,6 +103,15 @@ test("homepage sequence labels do not use leading zeroes", async () => {
   assert.match(gemini, /<b>3<\/b>/);
   for (const number of [1, 2, 3, 4, 5, 6]) assert.match(capabilities, new RegExp(`<small>${number}<\\/small>`));
   assert.doesNotMatch(`${platform}${capabilities}${gemini}`, />(?:01|02|03|04|05|06)</);
+});
+
+test("resource research links use current official guidance", async () => {
+  const content = await readFile(new URL("../app/resources/content.ts", import.meta.url), "utf8");
+
+  assert.match(content, /support\.google\.com\/webmasters\/answer\/7576553\?hl=en/);
+  assert.match(content, /canada\.ca\/en\/revenue-agency\/services\/tax\/businesses\/topics\/sole-proprietorships-partnerships\/business-expenses\.html/);
+  assert.doesNotMatch(content, /support\.google\.com\/webmasters\/answer\/17010961/);
+  assert.doesNotMatch(content, /small-businesses-self-employed-income\/business-income-tax-reporting\/business-expenses\/what-business-expenses\.html/);
 });
 
 test("homepage preserves responsive and keyboard interaction safeguards", async () => {
@@ -113,8 +137,10 @@ test("homepage preserves responsive and keyboard interaction safeguards", async 
   assert.match(css, /@media \(max-width: 620px\)[\s\S]*?\.home-gemini-grid \{ grid-template-columns: 1fr/);
   assert.match(css, /:focus-visible/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
-  assert.doesNotMatch(css, /\.public-nav-actions\s+\.nav-login\s*\{\s*display:\s*none/);
-  assert.match(css, /\.public-nav-actions\s+\.nav-login\s*\{[\s\S]*?display:\s*inline-flex/);
+  assert.match(source, /public-nav-mobile-actions/);
+  assert.match(css, /@media \(max-width: 620px\)[\s\S]*?\.public-nav\s*>\s*\.public-nav-actions\s*\{\s*display:\s*none/);
+  assert.match(css, /@media \(max-width: 620px\)[\s\S]*?\.public-nav-mobile-actions\s*\{\s*display:\s*grid/);
+  assert.match(css, /\.home-connection-grid article > div \.home-connection-status[\s\S]{0,260}font-size:\s*12px/);
 });
 
 test("homepage and resource cards keep the hosted visual layout", async () => {
@@ -137,7 +163,7 @@ test("homepage and resource cards keep the hosted visual layout", async () => {
   assert.match(resources, /inventory-tracking-editorial-v2\.webp/);
   assert.doesNotMatch(resources, /resource-card-hero/);
   assert.match(homepageCss, /\.home-proof li::before[^}]*content:\s*"✓"/);
-  assert.match(homepageCss, /\.home-step-review-visual::after[^}]*content:\s*"✓"/);
+  assert.doesNotMatch(homepageCss, /home-step-review-visual|home-step-visual/);
   assert.match(homepageCss, /\.home-resource-grid \{[^}]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)/);
   assert.doesNotMatch(homepageCss, /\.home-resource-grid[^}]*repeat\(6, minmax\(0, 1fr\)\)/);
   assert.match(resourcesCss, /\.resource-latest \.resource-card-grid \{[^}]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)/);
@@ -154,10 +180,9 @@ test("the above-the-fold product image is compact and dimensioned", async () => 
 });
 
 test("generated editorial visuals stay compact and production-ready", async () => {
-  const [connect, verify, sources, decision, method, inventory, margin, dashboard, growth, bookkeeping] = await Promise.all([
+  const [connect, verify, decision, method, inventory, margin, dashboard, growth, bookkeeping] = await Promise.all([
     stat(new URL("../public/brand/connect-import-visual.webp", import.meta.url)),
     stat(new URL("../public/brand/verify-organize-visual.webp", import.meta.url)),
-    stat(new URL("../public/brand/business-sources-visual.webp", import.meta.url)),
     stat(new URL("../public/brand/inventory-decision-visual.webp", import.meta.url)),
     stat(new URL("../public/brand/resource-method-visual.webp", import.meta.url)),
     stat(new URL("../public/brand/inventory-tracking-editorial-v2.webp", import.meta.url)),
@@ -168,7 +193,6 @@ test("generated editorial visuals stay compact and production-ready", async () =
   ]);
   assert.ok(connect.size < 160_000, `connect illustration should stay below 160 KB, received ${connect.size}`);
   assert.ok(verify.size < 160_000, `verify illustration should stay below 160 KB, received ${verify.size}`);
-  assert.ok(sources.size < 160_000, `source illustration should stay below 160 KB, received ${sources.size}`);
   assert.ok(decision.size < 160_000, `decision illustration should stay below 160 KB, received ${decision.size}`);
   assert.ok(method.size < 160_000, `method illustration should stay below 160 KB, received ${method.size}`);
   for (const [name, asset] of Object.entries({ inventory, margin, dashboard, growth, bookkeeping })) {
@@ -177,6 +201,6 @@ test("generated editorial visuals stay compact and production-ready", async () =
 });
 
 test("the supplied LexEdge ownership mark is present and web ready", async () => {
-  const asset = await stat(new URL("../public/brand/lexedge-consulting-logo.png", import.meta.url));
-  assert.ok(asset.size < 500_000, `LexEdge logo should stay below 500 KB, received ${asset.size}`);
+  const asset = await stat(new URL("../public/brand/lexedge-consulting-logo-web.png", import.meta.url));
+  assert.ok(asset.size < 100_000, `LexEdge logo should stay below 100 KB, received ${asset.size}`);
 });

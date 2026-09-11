@@ -29,6 +29,12 @@
 .resource-brand small { margin-top: 1px; color: var(--vql-subtle); font-size: 9px; letter-spacing: .12em; }
 .resource-header nav { display: flex; align-items: center; gap: 28px; color: #44536a; font-size: 14px; }
 .resource-header nav a { display: inline-flex; min-height: 44px; align-items: center; }
+.resource-mobile-menu { position: relative; display: none; }
+.resource-mobile-menu summary { min-height: 44px; display: inline-flex; align-items: center; padding: 0 12px; border: 1px solid #c9d5e3; border-radius: 7px; color: #243b57; background: #fff; font-size: 13px; font-weight: 750; cursor: pointer; list-style: none; }
+.resource-mobile-menu summary::-webkit-details-marker { display: none; }
+.resource-mobile-menu nav { position: absolute; top: 52px; right: 0; display: grid; width: min(270px, calc(100vw - 32px)); gap: 2px; padding: 10px; border: 1px solid #d2dce8; border-radius: 10px; background: #fff; box-shadow: 0 18px 42px rgba(7, 26, 53, .16); }
+.resource-mobile-menu nav a { min-height: 44px; display: flex; align-items: center; padding: 0 11px; border-radius: 6px; color: #334a64; font-size: 13px; }
+.resource-mobile-menu nav a:hover { background: #f1f6fc; }
 .resource-header-actions { display: flex; align-items: center; gap: 8px; }
 .resource-header-signin { display: inline-flex; min-height: 44px; align-items: center; padding: 0 12px; color: #314158; font-size: 14px; font-weight: 700; }
 .resource-header-cta { display: inline-flex; min-height: 44px; align-items: center; padding: 0 16px; border-radius: 7px; background: var(--vql-blue-700); color: #fff !important; font-size: 14px; font-weight: 700; }
@@ -215,7 +221,8 @@
 .article-cta { margin-top: 70px; }
 
 @media (max-width: 980px) {
-  .resource-header nav { display: none; }
+  .resource-header > nav { display: none; }
+  .resource-mobile-menu { display: block; margin-left: auto; }
   .resource-hero { grid-template-columns: 1fr; gap: 38px; }
   .resource-category-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .resource-category-grid > a,
@@ -235,8 +242,9 @@
 }
 
 @media (max-width: 700px) {
-  .resource-header { min-height: 68px; padding: 0 16px; }
+  .resource-header { min-height: 68px; gap: 8px; padding: 0 16px; }
   .resource-header-cta { display: none; }
+  .resource-header-signin { padding-inline: 8px; font-size: 13px; }
   .resource-hero { padding: 66px 18px; }
   .resource-hero h1 { font-size: 43px; }
   .resource-category-strip, .resource-latest, .category-articles, .related-guides { padding: 64px 18px; }
@@ -267,6 +275,11 @@
   .resource-site .article-body > section.quick-answer { padding: 23px; }
   .article-sources li { display: block; }
   .article-sources span { display: block; margin-top: 3px; text-align: left; }
+}
+
+@media (max-width: 390px) {
+  .resource-brand > span { display: none; }
+  .resource-mobile-menu summary { padding-inline: 10px; }
 }
 
 @keyframes resourceGloss { 0%, 62% { transform: translateX(0) skewX(-18deg); } 78%, 100% { transform: translateX(560%) skewX(-18deg); } }

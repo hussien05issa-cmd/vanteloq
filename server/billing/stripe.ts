@@ -175,7 +175,10 @@ export async function terminateStripeBilling(input: {
     if (!SUBSCRIPTION_ID.test(input.subscriptionId)) {
       throw new ApiError(409, "STRIPE_SUBSCRIPTION_INVALID", "The stored Stripe subscription reference is invalid. Contact support before deleting this workspace.");
     }
-    const canceled = await stripeFormRequest(`/v1/subscriptions/${encodeURIComponent(input.subscriptionId)}`, undefined, "DELETE", fetcher);
+    const subscriptionPath = `/v1/subscriptions/${encodeURIComponent(input.subscriptionId)}`;
+    const current = await stripeFormRequest(subscriptionPath, undefined, "GET", fetcher);
+    if (current.id !== input.subscriptionId) throw new ApiError(502, "STRIPE_SUBSCRIPTION_MISMATCH", "Stripe subscription identity could not be confirmed.");
+    const canceled = current.status === "canceled" ? current : await stripeFormRequest(subscriptionPath, undefined, "DELETE", fetcher);
     if (canceled.id !== input.subscriptionId || canceled.status !== "canceled") {
       throw new ApiError(502, "STRIPE_SUBSCRIPTION_CANCELLATION_UNCONFIRMED", "Stripe did not confirm subscription cancellation. The workspace was not deleted.");
     }
@@ -185,7 +188,10 @@ export async function terminateStripeBilling(input: {
     if (!CUSTOMER_ID.test(input.customerId)) {
       throw new ApiError(409, "STRIPE_CUSTOMER_INVALID", "The stored Stripe customer reference is invalid. Contact support before deleting this workspace.");
     }
-    const deleted = await stripeFormRequest(`/v1/customers/${encodeURIComponent(input.customerId)}`, undefined, "DELETE", fetcher);
+    const customerPath = `/v1/customers/${encodeURIComponent(input.customerId)}`;
+    const current = await stripeFormRequest(customerPath, undefined, "GET", fetcher);
+    if (current.id !== input.customerId) throw new ApiError(502, "STRIPE_CUSTOMER_MISMATCH", "Stripe customer identity could not be confirmed.");
+    const deleted = current.deleted === true ? current : await stripeFormRequest(customerPath, undefined, "DELETE", fetcher);
     if (deleted.id !== input.customerId || deleted.deleted !== true) {
       throw new ApiError(502, "STRIPE_CUSTOMER_DELETION_UNCONFIRMED", "Stripe did not confirm customer deletion. The workspace was not deleted.");
     }

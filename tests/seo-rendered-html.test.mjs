@@ -25,7 +25,7 @@ test("homepage exposes the marketing page in initial HTML", async () => {
   assert.doesNotMatch(text, />Preparing Vanteloq…</);
   assert.equal((text.match(/<h1\b/g) ?? []).length, 1);
   assert.match(text, /Business Analytics for Independent Retail/);
-  assert.match(text, /Lightspeed R-Series/);
+  assert.match(text, /Lightspeed Retail R-Series/);
   for (const slug of [
     "how-to-track-inventory-small-business",
     "how-to-calculate-gross-margin-small-business",
@@ -35,7 +35,9 @@ test("homepage exposes the marketing page in initial HTML", async () => {
     "small-business-bookkeeping-system",
   ]) assert.match(text, new RegExp(`href="/resources/${slug}"`));
   assert.match(text, /id="security"/);
-  assert.match(text, /<link[^>]+rel="canonical"[^>]+href="https:\/\/vanteloq\.com\/"/i);
+  const canonical = text.match(/<link[^>]+rel="canonical"[^>]+href="([^"]+)"/i)?.[1];
+  assert.ok(canonical, "homepage should expose a canonical URL");
+  assert.equal(new URL(canonical).href, "https://vanteloq.com/");
   assert.match(text, /"@type":"Organization"/);
 });
 
@@ -119,6 +121,27 @@ test("category, sitemap and robots routes expose canonical crawl paths", async (
   assert.equal(robots.response.status, 200);
   assert.match(robots.text, /Disallow: \/api\//);
   assert.match(robots.text, /Sitemap: https:\/\/vanteloq\.com\/sitemap\.xml/);
+  assert.doesNotMatch(robots.text, /^Host:/m);
+});
+
+test("unknown routes expose one unambiguous noindex directive", async () => {
+  const missing = await fetchText("/this-page-does-not-exist");
+  assert.equal(missing.response.status, 404);
+  assert.equal((missing.text.match(/name="robots"/g) ?? []).length, 1);
+  assert.match(missing.text, /content="noindex/);
+  assert.doesNotMatch(missing.text, /content="index, follow"/);
+  assert.match(missing.text, /<title>Page not found \| Vanteloq<\/title>/);
+  assert.match(missing.text, /<meta property="og:title" content="Page not found \| Vanteloq"\/>/);
+  assert.doesNotMatch(missing.text, /<link[^>]+rel="canonical"/);
+});
+
+test("resource category metadata uses title capitalization", async () => {
+  const analytics = await fetchText("/resources/analytics");
+  const ai = await fetchText("/resources/ai");
+  const pos = await fetchText("/resources/pos");
+  assert.match(analytics.text, /<title>Business Analytics Guides for Small Businesses \| Vanteloq<\/title>/);
+  assert.match(ai.text, /<title>AI for Business Guides for Small Businesses \| Vanteloq<\/title>/);
+  assert.match(pos.text, /<title>POS Data Guides for Small Businesses \| Vanteloq<\/title>/);
 });
 
 test("legal pages are complete, crawlable, and use distinct metadata", async () => {

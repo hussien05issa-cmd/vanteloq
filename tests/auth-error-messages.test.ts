@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { signupErrorMessage } from "../shared/auth-error-messages.ts";
+import { recoveryEmailErrorMessage, signupErrorMessage } from "../shared/auth-error-messages.ts";
+
+test("recovery distinguishes rate limits and CAPTCHA failures without revealing account or provider details", () => {
+  assert.match(recoveryEmailErrorMessage({ status: 429 }), /wait a few minutes/i);
+  assert.match(recoveryEmailErrorMessage({ code: "over_email_send_rate_limit" }), /one new recovery email/i);
+  assert.match(recoveryEmailErrorMessage({ code: "captcha_failed" }), /fresh security check/i);
+  assert.equal(recoveryEmailErrorMessage({ message: "smtp_password=secret" }), recoveryEmailErrorMessage({}));
+  assert.doesNotMatch(recoveryEmailErrorMessage({ code: "user_not_found" }), /not found/i);
+});
 
 test("signup reports a backend password-policy mismatch without exposing provider details", () => {
   const providerMessage = "Password should be at least 1212 characters.";

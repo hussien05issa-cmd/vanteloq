@@ -1,3 +1,4 @@
+import { oauthBrowserCookie } from "../../../../../../server/integrations/oauth-browser";
 import { getDb } from "../../../../../../db";
 import { and, eq, inArray } from "drizzle-orm";
 import { integrationConnections, integrationOAuthStates } from "../../../../../../db/schema";
@@ -20,7 +21,7 @@ export async function POST(request: Request) {
     const shop = normalizeShopDomain(input.shop);
     const state = newShopifyState();
     const linkedStores = await getDb().select({ id: integrationConnections.id, organizationId: integrationConnections.organizationId, provider: integrationConnections.provider, status: integrationConnections.status }).from(integrationConnections).where(and(inArray(integrationConnections.provider, [SHOPIFY_PROVIDER, SHOPIFY_POS_PROVIDER]), eq(integrationConnections.domainPrefix, shop))).limit(10);
-    if (linkedStores.some((connection) => connection.organizationId !== context.organizationId && (connection.status === "pending" || connection.status === "connected"))) throw new ApiError(409, "SHOPIFY_STORE_ALREADY_CONNECTED", "This Shopify store is already connected to another Vanteloq workspace.");
+    if (linkedStores.some((connection) => connection.organizationId !== context.organizationId && connection.status === "connected")) throw new ApiError(409, "SHOPIFY_STORE_ALREADY_CONNECTED", "This Shopify store is already connected to another Vanteloq workspace.");
     const existing = linkedStores.find((connection) => connection.organizationId === context.organizationId && connection.provider === provider);
     if (existing?.status === "connected") throw new ApiError(409, "SHOPIFY_STORE_ALREADY_CONNECTED", "This Shopify store is already connected. Use Re-sync now instead of authorizing it again.");
     const connectionId = existing?.id ?? crypto.randomUUID();
@@ -34,6 +35,6 @@ export async function POST(request: Request) {
     }
     await getDb().insert(integrationOAuthStates).values({ stateHash: await shopifySha256(state), organizationId: context.organizationId, actorUserId: context.userId, provider, connectionId, expiresAt, consumedAt: null, createdAt: now });
     await recordAudit({ request, requestId, organizationId: context.organizationId, actorUserId: context.userId, action: "integration.authorization_started", resourceType: "integration", resourceId: connectionId, details: { provider, shop, scopes: SHOPIFY_POS_READ_SCOPES.join(","), expiresInSeconds: 600 } });
-    return jsonResponse({ authorizationUrl: buildShopifyAuthorizationUrl(shop, state, provider), expiresAt: expiresAt.toISOString(), connectionId, permissions: [...SHOPIFY_POS_READ_SCOPES], mode: "read_only_staged_sync" });
+    return jsonResponse({ authorizationUrl: buildShopifyAuthorizationUrl(shop, state, provider), expiresAt: expiresAt.toISOString(), connectionId, permissions: [...SHOPIFY_POS_READ_SCOPES], mode: "read_only_staged_sync" }, { headers: { "Set-Cookie": oauthBrowserCookie(provider, state) } });
   });
 }

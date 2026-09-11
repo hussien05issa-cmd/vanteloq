@@ -3,6 +3,7 @@ import { readFile, readdir } from "node:fs/promises";
 import { createServer } from "node:http";
 import test from "node:test";
 import { Miniflare } from "miniflare";
+import { registerSupabaseTestServer } from "./helpers/supabase-loopback-transport.mjs";
 import { activateTestSubscription } from "./helpers/subscription-fixture.mjs";
 
 const origin = "https://vanteloq.example";
@@ -54,7 +55,7 @@ async function createHarness(label) {
   await new Promise((resolve) => authServer.listen(0, "127.0.0.1", resolve));
   const authAddress = authServer.address();
   assert.ok(authAddress && typeof authAddress !== "string");
-  const authOrigin = `http://127.0.0.1:${authAddress.port}`;
+  const authOrigin = registerSupabaseTestServer(authAddress.port);
   const miniflare = new Miniflare({
     modules: true,
     script: "export default { fetch() { return new Response('ok') } }",
@@ -103,8 +104,8 @@ async function createHarness(label) {
         country: "CA", province: "AB", city: "Edmonton", address: "1 Race Avenue",
         postalCode: "T5A 1A1", emailNotifications: true, timezone: "America/Edmonton",
         currency: "CAD", fiscalYearStart: "January", taxNumber: "", sourceMode: "connect_later",
-        selectedPos: "", legalAccepted: true, termsVersion: "2026-08-24",
-        privacyPolicyVersion: "2026-08-24", legalNoticeVersion: "account-creation-v2",
+        selectedPos: "", legalAccepted: true, termsVersion: "2026-09-05",
+        privacyPolicyVersion: "2026-09-10", legalNoticeVersion: "account-creation-v2",
         hours: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
           .map((day) => ({ day, open: "09:00", close: "17:00", closed: false })),
       }),
@@ -156,7 +157,7 @@ test("R-Series callback cannot restore a connection disconnected during token ex
 
     const callback = await worker.fetch(new Request(
       `${origin}/api/v1/integrations/lightspeed-r/callback?code=${"r".repeat(900)}&state=${state}`,
-      { headers: { accept: "text/html" } },
+      { headers: { accept: "text/html", cookie: authorization.headers.get("set-cookie").split(";")[0] } },
     ), environment, context);
     assert.equal(callback.status, 303, await callback.clone().text());
     assert.equal(callback.headers.get("location"), `${origin}/?integration=lightspeed-r&connection=failed`);
@@ -291,7 +292,7 @@ test("Stripe callback preserves a connection disconnected during token exchange"
 
     const callback = await worker.fetch(new Request(
       `${origin}/api/v1/integrations/stripe/callback?code=stripe-code&state=${state}`,
-      { headers: { accept: "text/html" } },
+      { headers: { accept: "text/html", cookie: authorization.headers.get("set-cookie").split(";")[0] } },
     ), environment, context);
     assert.equal(callback.status, 303, await callback.clone().text());
     assert.equal(callback.headers.get("location"), `${origin}/?integration=stripe&connection=failed`);
@@ -347,7 +348,7 @@ test("Stripe callback never deauthorizes an account used by an existing connecti
     const firstState = new URL(firstBody.authorizationUrl).searchParams.get("state");
     const firstCallback = await worker.fetch(new Request(
       `${origin}/api/v1/integrations/stripe/callback?code=first-code&state=${firstState}`,
-      { headers: { accept: "text/html" } },
+      { headers: { accept: "text/html", cookie: firstAuthorization.headers.get("set-cookie").split(";")[0] } },
     ), environment, context);
     assert.equal(firstCallback.headers.get("location"), `${origin}/?integration=stripe&connection=connected`);
 
@@ -360,7 +361,7 @@ test("Stripe callback never deauthorizes an account used by an existing connecti
     verificationFails = true;
     const secondCallback = await worker.fetch(new Request(
       `${origin}/api/v1/integrations/stripe/callback?code=second-code&state=${secondState}`,
-      { headers: { accept: "text/html" } },
+      { headers: { accept: "text/html", cookie: secondAuthorization.headers.get("set-cookie").split(";")[0] } },
     ), environment, context);
     assert.equal(secondCallback.headers.get("location"), `${origin}/?integration=stripe&connection=failed`);
     assert.equal(deauthorizations, 0, "an existing connection's provider grant must be preserved");

@@ -9,6 +9,9 @@ import {
   records,
   refreshSquareToken,
   squareReadiness,
+  squareLineNetSalesCents,
+  beginSquareSyncWindow,
+  buildSquareOrderSearchBody,
   verifySquareWebhook,
 } from "../server/integrations/square.ts";
 
@@ -104,6 +107,59 @@ test("Square customer sync uses the supported creation-time sort field", () => {
     query: { sort: { field: "CREATED_AT", order: "ASC" } },
   });
   assert.equal(buildSquareCustomerSearchBody().cursor, undefined);
+});
+
+test("Square line revenue excludes tax without deducting discounts twice", () => {
+  assert.equal(squareLineNetSalesCents({
+    total_money: { amount: 10_500 }, total_tax_money: { amount: 500 },
+    gross_sales_money: { amount: 10_000 },
+  }), 10_000);
+  assert.equal(squareLineNetSalesCents({
+    total_money: { amount: 9_450 }, total_tax_money: { amount: 450 },
+    total_discount_money: { amount: 1_000 }, gross_sales_money: { amount: 10_000 },
+  }), 9_000);
+  // Inclusive tax is still removed exactly once from the amount collected.
+  assert.equal(squareLineNetSalesCents({
+    total_money: { amount: 10_500 }, total_tax_money: { amount: 500 },
+    gross_sales_money: { amount: 10_500 },
+  }), 10_000);
+});
+
+test("Square zero-value lines remain zero and malformed amounts fail closed", () => {
+  assert.equal(squareLineNetSalesCents({
+    total_money: { amount: 0 }, total_tax_money: { amount: 0 },
+    gross_sales_money: { amount: 10_000 },
+  }), 0);
+  assert.equal(squareLineNetSalesCents({ total_money: { amount: 500 } }), 500);
+  for (const value of [
+    {}, { total_money: { amount: null } }, { total_money: { amount: 1.5 } },
+    { total_money: { amount: Number.MAX_SAFE_INTEGER + 1 } },
+    { total_money: { amount: 100 }, total_tax_money: { amount: 101 } },
+    { total_money: { amount: 100 }, total_tax_money: { amount: -1 } },
+  ]) assert.throws(() => squareLineNetSalesCents(value));
+});
+
+test("Square incremental windows use updates, overlap safely, and stay fixed during pagination", () => {
+  const now = new Date("2026-09-08T12:00:00Z");
+  const window = beginSquareSyncWindow(JSON.stringify({ version: 2, watermark: "2026-09-08T11:00:00Z" }), now);
+  assert.equal(window.windowStart, "2026-09-08T10:55:00.000Z");
+  assert.equal(window.windowEnd, now.toISOString());
+  const resumed = beginSquareSyncWindow(JSON.stringify({ ...window, orders: "page-two", completed: ["customers"] }), new Date("2026-09-08T12:10:00Z"));
+  assert.equal(resumed.windowEnd, now.toISOString());
+  assert.equal(resumed.orders, "page-two");
+  assert.deepEqual(resumed.completed, ["customers"]);
+  const request = buildSquareOrderSearchBody(["store-one"], resumed);
+  assert.deepEqual(request.query.filter.date_time_filter, {
+    updated_at: { start_at: window.windowStart, end_at: window.windowEnd },
+  });
+  assert.equal(request.query.sort.sort_field, "UPDATED_AT");
+  assert.equal(request.cursor, "page-two");
+  // Old creation-time pagination cannot be reused with an update-time query.
+  const legacy = beginSquareSyncWindow(JSON.stringify({ orders: "old-cursor", watermark: "2026-09-08T11:00:00Z" }), now);
+  assert.equal(legacy.orders, undefined);
+  assert.deepEqual(legacy.completed, []);
+  assert.ok(legacy.windowStart < "2025-01-01");
+  assert.throws(() => buildSquareOrderSearchBody([], window));
 });
 
 test("commerce approval accepts a clean no-op sync and validates durable staged sales separately", () => {

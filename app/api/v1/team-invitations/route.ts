@@ -24,6 +24,11 @@ export async function POST(request: Request) {
     requireAal2(identity);
     await enforceRateLimit("team-invitation:accept", identity.email, 5, 3_600);
     const result = await acceptTeamInvitation(request, identity, await readJsonObject(request), requestId);
-    return jsonResponse({ accepted: true, organization: { businessName: result.businessName }, role: result.role });
+    return jsonResponse({
+      accepted: true,
+      organization: { businessName: result.businessName },
+      role: result.role,
+      console: result.consoleActivationUrl ? { activationUrl: result.consoleActivationUrl } : null,
+    });
   });
 }

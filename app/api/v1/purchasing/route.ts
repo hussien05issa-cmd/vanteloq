@@ -82,7 +82,7 @@ type ProcurementProductRow = {
   supplierId: string | null;
   supplierName: string | null;
   defaultCostCents: number | null;
-  onHandQuantity: number;
+  onHandQuantity: number | null;
   reorderPoint: number;
   incomingUnits: number;
   soldQuantityMilli30d: number;
@@ -292,7 +292,7 @@ async function procurementCatalog(
                 s.id AS supplierId,
                 s.name AS supplierName,
                 p.default_cost_cents AS defaultCostCents,
-                COALESCE((SELECT SUM(b.on_hand_quantity)
+                (SELECT SUM(b.on_hand_quantity)
                   FROM inventory_balances b
                   WHERE b.organization_id = p.organization_id
                     AND b.source_connection_id = p.connection_id
@@ -302,7 +302,7 @@ async function procurementCatalog(
                       JOIN integration_connections c ON c.id = m.connection_id AND c.organization_id = m.organization_id
                       WHERE m.organization_id = p.organization_id AND m.connection_id = p.connection_id AND m.status = 'mapped'
                     )
-                    AND b.sku = p.sku), 0) AS onHandQuantity,
+                    AND b.sku = p.sku) AS onHandQuantity,
                 COALESCE((SELECT SUM(b.reorder_point)
                   FROM inventory_balances b
                   WHERE b.organization_id = p.organization_id
@@ -598,7 +598,7 @@ async function procurementCatalog(
       ? scopedOrdersByProduct.get(`${row.provider}:${row.connectionId}:${row.externalProductId}`)
         ?? (!duplicateSku ? scopedOrdersByProduct.get(`legacy:${row.sku}`) : undefined)
       : null;
-    const onHandQuantity = Number(locationScope ? scopedInventory?.onHandQuantity ?? 0 : row.onHandQuantity ?? 0);
+    const onHandQuantity = locationScope ? scopedInventory?.onHandQuantity ?? null : row.onHandQuantity == null ? null : Number(row.onHandQuantity);
     const reorderPoint = Number(locationScope ? scopedInventory?.reorderPoint ?? 0 : row.reorderPoint ?? 0);
     const incomingUnits = Number(locationScope ? scopedOrder?.incomingUnits ?? 0 : row.incomingUnits ?? 0);
     const soldUnits30d = Math.max(
@@ -636,6 +636,9 @@ async function procurementCatalog(
           : { tone: "amber" as const, label: "Review inputs", detail: assessment.summary };
     return {
       ...row,
+      soldQuantityMilli30d: Math.round(soldUnits30d * 1000),
+      soldQuantityMilliPrevious30d: Math.round(soldUnitsPrevious30d * 1000),
+      soldQuantityMilli90d: Math.round(soldUnits90d * 1000),
       onHandQuantity,
       reorderPoint,
       incomingUnits,
@@ -646,7 +649,7 @@ async function procurementCatalog(
       lastOrderedDate,
       lastOrderStatus,
       lastSoldDate,
-      recommendedQuantity: assessment.recommendedUnits,
+      recommendedQuantity: onHandQuantity === null ? null : assessment.recommendedUnits,
       daysCover: assessment.daysCover,
       demandTrendRate: assessment.demandTrendRate,
       recommendationFactors: assessment.factors,

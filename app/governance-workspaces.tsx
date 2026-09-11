@@ -1,8 +1,9 @@
 "use client";
 
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { FormEvent, type ReactNode, useCallback, useEffect, useState } from "react";
-import { apiFetch, signOut } from "./supabase-browser";
+import { apiFetch, getSupabase } from "./supabase-browser";
 import { humanizeIdentifier } from "../domain/display-labels";
 
 type Permission = {
@@ -1802,8 +1803,10 @@ type AccountDeletionData = {
   consequences: string[];
 };
 
-function AccountDeletionSettings() {
+export function AccountDeletionSettings() {
+  const router = useRouter();
   const [data, setData] = useState<AccountDeletionData | null>(null);
+  const [verificationCode, setVerificationCode] = useState("");
   const [confirmation, setConfirmation] = useState("");
   const [acknowledgeNoRecovery, setAcknowledgeNoRecovery] = useState(false);
   const [acknowledgeBillingCancellation, setAcknowledgeBillingCancellation] = useState(false);
@@ -1821,19 +1824,34 @@ function AccountDeletionSettings() {
     return () => { active = false; };
   }, []);
   async function remove() {
-    if (!data || busy) return;
+    if (!data || busy || !/^\d{6}$/.test(verificationCode)) return;
     setBusy(true);
     setError("");
     try {
+      const client = await getSupabase();
+      if (!client) throw new Error("Secure verification is temporarily unavailable.");
+      const factors = await client.auth.mfa.listFactors();
+      const factor = factors.data?.totp.find((item) => item.status === "verified");
+      if (factors.error || !factor) throw new Error("A verified authenticator is required. Check your account security settings.");
+      const verified = await client.auth.mfa.challengeAndVerify({ factorId: factor.id, code: verificationCode });
+      setVerificationCode("");
+      if (verified.error) throw new Error("The authenticator code could not be verified. Enter a current six-digit code and try again.");
+      const stored = sessionStorage.getItem("vanteloq:deletion-session");
+      const previousSession = stored ? JSON.parse(stored) : null;
+      const deletionSession = previousSession && previousSession.complete !== true ? previousSession : {
+        jobId: crypto.randomUUID(),
+        token: Array.from(crypto.getRandomValues(new Uint8Array(32)), (value) => value.toString(16).padStart(2, "0")).join(""),
+      };
+      // Save before submission, so a lost response does not lose the retry key.
+      sessionStorage.setItem("vanteloq:deletion-session", JSON.stringify(deletionSession));
       const response = await apiFetch("/api/v1/account/deletion", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ confirmation, acknowledgeNoRecovery, acknowledgeBillingCancellation }),
+        body: JSON.stringify({ confirmation, acknowledgeNoRecovery, acknowledgeBillingCancellation, ...deletionSession }),
       });
       const body = await response.json();
       if (!response.ok) throw new Error(message(body, "The deletion request could not be completed."));
-      await signOut().catch(() => undefined);
-      window.location.assign("/?account=deleted");
+      router.push("/account/deletion-status");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "The deletion request could not be completed.");
       setBusy(false);
@@ -1843,21 +1861,23 @@ function AccountDeletionSettings() {
     <section className="settings-form account-deletion-control">
       <header>
         <p>PERMANENT DELETION</p>
-        <h2>{data?.scope === "workspace" ? "Delete this workspace and every linked account" : "Delete my Vanteloq account"}</h2>
+        <h2>{data?.scope === "workspace" ? "Delete this Vanteloq workspace" : "Delete my Vanteloq account"}</h2>
         <span>This protected action requires recent multifactor authentication. It cannot be undone.</span>
       </header>
       {data?.consequences?.length ? <ul>{data.consequences.map((item) => <li key={item}>{item}</li>)}</ul> : null}
+      <p>Already confirmed a deletion? <a href="/account/deletion-status">Resume the saved deletion session</a>. Keep that browser tab open until completion is confirmed.</p>
       {data && <div className="deletion-confirmation">
         <label>
           Type <strong>{data.confirmation}</strong>
           <input autoComplete="off" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} />
         </label>
         <label className="deletion-check"><input type="checkbox" checked={acknowledgeNoRecovery} onChange={(event) => setAcknowledgeNoRecovery(event.target.checked)} /><span>I understand that deleted Vanteloq data and files cannot be recovered.</span></label>
+        <label>Current six-digit authenticator code<input inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} value={verificationCode} onChange={(event) => setVerificationCode(event.target.value.replace(/\D/g, "").slice(0, 6))} /></label>
         {data.scope === "workspace" && <label className="deletion-check"><input type="checkbox" checked={acknowledgeBillingCancellation} onChange={(event) => setAcknowledgeBillingCancellation(event.target.checked)} /><span>I understand that the Stripe subscription will be canceled immediately.</span></label>}
-        <button type="button" className="danger" disabled={!data.available || confirmation !== data.confirmation || !acknowledgeNoRecovery || (data.scope === "workspace" && !acknowledgeBillingCancellation) || busy} onClick={() => void remove()}>{busy ? "Deleting securely…" : data.scope === "workspace" ? "Permanently delete workspace" : "Permanently delete my account"}</button>
+        <button type="button" className="danger" disabled={!data.available || !/^\d{6}$/.test(verificationCode) || confirmation !== data.confirmation || !acknowledgeNoRecovery || (data.scope === "workspace" && !acknowledgeBillingCancellation) || busy} onClick={() => void remove()}>{busy ? "Deleting securely…" : data.scope === "workspace" ? "Permanently delete workspace" : "Permanently delete my account"}</button>
       </div>}
       {data && !data.available && <p className="form-error">Secure deletion is temporarily unavailable. Contact the privacy officer at hussienissa@lexedgeconsulting.com.</p>}
-      {error && <p className="form-error">{error}</p>}
+      {error && <p className="form-error" role="alert">{error}</p>}
     </section>
   );
 }

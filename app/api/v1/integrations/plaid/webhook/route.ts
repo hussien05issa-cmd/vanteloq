@@ -1,7 +1,7 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "../../../../../../db";
 import { integrationConnections, integrationWebhookEvents } from "../../../../../../db/schema";
-import { ApiError, handleApi, jsonResponse } from "../../../../../../server/api";
+import { ApiError, handleApi, jsonResponse, readRequestBytes } from "../../../../../../server/api";
 import { PLAID_PROVIDER, settlePlaidWebhookEvent, verifyPlaidWebhook } from "../../../../../../server/integrations/plaid";
 
 const MAXIMUM_WEBHOOK_BYTES = 256_000;
@@ -24,7 +24,7 @@ export async function POST(request: Request) {
     }
     const signature = request.headers.get("Plaid-Verification")?.trim() ?? "";
     if (!signature) throw new ApiError(401, "PLAID_WEBHOOK_SIGNATURE_REQUIRED", "Plaid webhook verification is required.");
-    const bytes = new Uint8Array(await request.arrayBuffer());
+    const bytes = await readRequestBytes(request, MAXIMUM_WEBHOOK_BYTES, "PLAID_WEBHOOK_TOO_LARGE", "The Plaid webhook is too large.");
     if (bytes.byteLength > MAXIMUM_WEBHOOK_BYTES) throw new ApiError(413, "PLAID_WEBHOOK_TOO_LARGE", "The Plaid webhook is too large.");
     const rawBody = new TextDecoder().decode(bytes);
     await verifyPlaidWebhook(rawBody, signature);

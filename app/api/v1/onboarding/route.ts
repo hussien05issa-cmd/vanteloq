@@ -42,8 +42,8 @@ export async function GET(request: Request) {
   return handleApi(request, async () => {
     const identity = await optionalIdentity(request);
     if (!identity) return jsonResponse({ authenticated: false, organization: null }, { status: 401 });
-    const context = await findAccessContext(identity);
-    const invitation = context ? null : await pendingTeamInvitation(request, identity);
+    const invitation = await pendingTeamInvitation(request, identity);
+    const context = invitation ? null : await findAccessContext(identity, request);
     return jsonResponse({
       authenticated: true,
       user: { displayName: identity.displayName, email: identity.email, emailVerified: true },
@@ -59,6 +59,9 @@ export async function POST(request: Request) {
     requireSameOrigin(request);
     const identity = await requireIdentity(request);
     requireAal2(identity);
+    const deletionHash = await hashIdentifier(`vanteloq-account:${identity.subject}`);
+    const deleting = await getD1().prepare("SELECT id FROM account_deletion_jobs WHERE account_hash = ? AND stage <> 'completed' LIMIT 1").bind(deletionHash).first();
+    if (deleting) throw new ApiError(409, "DELETION_IN_PROGRESS", "Finish the saved deletion session before creating another workspace.");
     await enforceRateLimit("onboarding:user", identity.email, 5, 3_600);
     const source = clientSource(request);
     if (source !== "unknown") await enforceRateLimit("onboarding:source", source, 20, 3_600);
@@ -66,7 +69,9 @@ export async function POST(request: Request) {
     const userAgent = request.headers.get("user-agent")?.slice(0, 512) ?? "";
     const userAgentHash = userAgent ? await hashIdentifier(`legal-user-agent:${userAgent}`) : null;
 
-    const existingAccess = await findAccessContext(identity);
+    const invitation = await pendingTeamInvitation(request, identity);
+    if (invitation) throw new ApiError(409, "TEAM_INVITATION_REQUIRED", "Accept your company invitation instead of creating a separate workspace.");
+    const existingAccess = await findAccessContext(identity, request);
     if (existingAccess) throw new ApiError(409, "WORKSPACE_EXISTS", "This account already belongs to a workspace.");
 
     const input = onboardingInput(await readJsonObject(request));

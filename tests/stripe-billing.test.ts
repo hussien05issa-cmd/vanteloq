@@ -86,7 +86,7 @@ test("Checkout rejects annual purchases before contacting Stripe", async () => {
   assert.equal(requested, false);
 });
 
-test("Workspace deletion cancels the subscription and deletes the Stripe customer", async () => {
+test("Workspace deletion recognizes already canceled billing after an interrupted request", async () => {
   const requests: Array<{ path: string; method: string }> = [];
   const fetcher: typeof fetch = async (input, init) => {
     const url = new URL(typeof input === "string" ? input : input instanceof URL ? input : input.url);
@@ -99,9 +99,23 @@ test("Workspace deletion cancels the subscription and deletes the Stripe custome
     customerDeleted: true,
   });
   assert.deepEqual(requests, [
-    { path: "/v1/subscriptions/sub_123456789", method: "DELETE" },
-    { path: "/v1/customers/cus_123456789", method: "DELETE" },
+    { path: "/v1/subscriptions/sub_123456789", method: "GET" },
+    { path: "/v1/customers/cus_123456789", method: "GET" },
   ]);
+});
+
+test("workspace deletion confirms active billing identities before canceling them", async () => {
+  const writes: string[] = [];
+  const fetcher: typeof fetch = async (input, init) => {
+    const path = new URL(String(input)).pathname;
+    if (init?.method === "DELETE") writes.push(path);
+    return path.includes("subscriptions")
+      ? Response.json({id:"sub_123456789",status:init?.method === "DELETE" ? "canceled" : "active"})
+      : Response.json({id:"cus_123456789",deleted:init?.method === "DELETE"});
+  };
+  assert.deepEqual(await terminateStripeBilling({subscriptionId:"sub_123456789",customerId:"cus_123456789",fetcher}),{subscriptionCanceled:true,customerDeleted:true});
+  assert.deepEqual(writes,["/v1/subscriptions/sub_123456789","/v1/customers/cus_123456789"]);
+  await assert.rejects(()=>terminateStripeBilling({subscriptionId:"sub_123456789",customerId:null,fetcher:async()=>Response.json({id:"sub_OTHER12345",status:"active"})}),/identity could not be confirmed/);
 });
 
 test("Checkout fails closed when a Stripe monthly price differs from the catalogue", async () => {

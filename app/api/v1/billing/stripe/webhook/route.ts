@@ -1,7 +1,7 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "../../../../../../db";
 import { stripeBillingEvents, tenantAddons, tenantSubscriptions } from "../../../../../../db/schema";
-import { ApiError, handleApi, jsonResponse } from "../../../../../../server/api";
+import { ApiError, handleApi, jsonResponse, readRequestBytes } from "../../../../../../server/api";
 import {
   normalizeStripeSubscription,
   retrieveStripeSubscription,
@@ -14,7 +14,7 @@ const MAXIMUM_BYTES = 256_000;
 export async function POST(request: Request) {
   return handleApi(request, async () => {
     if (!(request.headers.get("content-type") ?? "").toLowerCase().startsWith("application/json")) throw new ApiError(415, "STRIPE_BILLING_CONTENT_TYPE", "Stripe Billing webhook content type is invalid.");
-    const bytes = new Uint8Array(await request.arrayBuffer());
+    const bytes = await readRequestBytes(request, MAXIMUM_BYTES, "STRIPE_BILLING_WEBHOOK_TOO_LARGE", "The Stripe Billing webhook is too large.");
     if (bytes.length > MAXIMUM_BYTES) throw new ApiError(413, "STRIPE_BILLING_WEBHOOK_TOO_LARGE", "The Stripe Billing webhook is too large.");
     if (!(await verifyStripeBillingSignature(bytes, request.headers.get("stripe-signature")))) throw new ApiError(401, "STRIPE_BILLING_SIGNATURE_INVALID", "The Stripe Billing webhook signature is invalid or expired.");
     let event: Record<string, unknown>;

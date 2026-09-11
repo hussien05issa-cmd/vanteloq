@@ -1,4 +1,5 @@
 import { getD1, getRuntimeEnv } from "../db/index.ts";
+import { isRecentMfa, latestMfaTime } from "../shared/recent-mfa.ts";
 
 const EMAIL_PATTERN = /^[^\s@]{1,64}@[^\s@]{1,190}$/;
 const JSON_CONTENT_TYPE = /^application\/json(?:\s*;|$)/i;
@@ -11,6 +12,7 @@ export type TrustedIdentity = {
   emailVerified: boolean;
   assuranceLevel: "aal1" | "aal2" | null;
   sessionId: string | null;
+  mfaVerifiedAt?: number | null;
 };
 
 export class ApiError extends Error {
@@ -28,15 +30,15 @@ export function requestId(request: Request): string {
   return edgeId && edgeId.length <= 64 ? edgeId : crypto.randomUUID();
 }
 
-function verifiedJwtSession(token: string): { assuranceLevel: "aal1" | "aal2" | null; sessionId: string | null } {
+function verifiedJwtSession(token: string): { assuranceLevel: "aal1" | "aal2" | null; sessionId: string | null; mfaVerifiedAt?: number | null } {
   try {
     const payloadPart = token.split(".")[1];
     if (!payloadPart) return { assuranceLevel: null, sessionId: null };
     const normalized = payloadPart.replaceAll("-", "+").replaceAll("_", "/").padEnd(Math.ceil(payloadPart.length / 4) * 4, "=");
-    const payload = JSON.parse(atob(normalized)) as { aal?: unknown; session_id?: unknown };
+    const payload = JSON.parse(atob(normalized)) as { aal?: unknown; session_id?: unknown; amr?: unknown };
     const assuranceLevel = payload.aal === "aal1" || payload.aal === "aal2" ? payload.aal : null;
     const sessionId = typeof payload.session_id === "string" && payload.session_id.length <= 200 ? payload.session_id : null;
-    return { assuranceLevel, sessionId };
+    return { assuranceLevel, sessionId, mfaVerifiedAt: latestMfaTime(payload.amr) };
   } catch {
     return { assuranceLevel: null, sessionId: null };
   }
@@ -100,6 +102,13 @@ export function requireAal2(identity: TrustedIdentity): void {
   }
 }
 
+export function requireRecentMfa(identity: TrustedIdentity): void {
+  requireAal2(identity);
+  if (!isRecentMfa(identity.mfaVerifiedAt)) {
+    throw new ApiError(403, "RECENT_MFA_REQUIRED", "Verify a current authenticator code before this permanent action.");
+  }
+}
+
 export function requireSameOrigin(request: Request): void {
   const origin = request.headers.get("origin");
   if (!origin) throw new ApiError(403, "ORIGIN_REQUIRED", "The request origin could not be verified.");
@@ -118,21 +127,46 @@ export function requireSameOrigin(request: Request): void {
   }
 }
 
+export async function readRequestBytes(
+  request: Request,
+  maximumBytes: number,
+  code = "REQUEST_TOO_LARGE",
+  message = "The request is too large.",
+): Promise<Uint8Array> {
+  if (!Number.isSafeInteger(maximumBytes) || maximumBytes < 1) throw new Error("Invalid request size limit");
+  const declared = Number(request.headers.get("content-length") ?? "0");
+  if (Number.isFinite(declared) && declared > maximumBytes) throw new ApiError(413, code, message);
+  if (!request.body) return new Uint8Array();
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let length = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      length += value.byteLength;
+      if (length > maximumBytes) {
+        void reader.cancel().catch(() => undefined);
+        throw new ApiError(413, code, message);
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+  return bytes;
+}
+
 export async function readJsonObject(request: Request, maximumBytes = 32_768): Promise<Record<string, unknown>> {
   const contentType = request.headers.get("content-type") ?? "";
   if (!JSON_CONTENT_TYPE.test(contentType)) {
     throw new ApiError(415, "UNSUPPORTED_CONTENT_TYPE", "Send the request as application/json.");
   }
 
-  const contentLength = Number(request.headers.get("content-length") ?? "0");
-  if (Number.isFinite(contentLength) && contentLength > maximumBytes) {
-    throw new ApiError(413, "REQUEST_TOO_LARGE", "The request is too large.");
-  }
-
-  const body = await request.text();
-  if (new TextEncoder().encode(body).byteLength > maximumBytes) {
-    throw new ApiError(413, "REQUEST_TOO_LARGE", "The request is too large.");
-  }
+  const body = new TextDecoder().decode(await readRequestBytes(request, maximumBytes));
 
   let parsed: unknown;
   try {

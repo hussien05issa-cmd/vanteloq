@@ -315,6 +315,19 @@ export async function GET(request: Request) {
       missingReceiptCount: 0,
     };
     const ledgerAvailable = Boolean(healthStats.ledgerAvailable);
+    // Complete ledger totals can reconstruct protected wage and bank balances.
+    // Keep independent bank and invoice permissions, but do not publish a
+    // partially redacted trial balance that still reveals the hidden accounts.
+    const ledgerReadable = ledgerAvailable && access.payrollTotals && access.bankBalances;
+    const fullLedgerPermission = access.payrollTotals && access.bankBalances;
+    // Raw bank feeds may contain uncategorized payroll. An account label alone
+    // cannot reliably establish that a transaction is safe for payroll-limited roles.
+    const transactionReadable = access.bankTransactions && access.payrollTotals;
+    const accountCatalog = accountRows.map((account) => ({
+      id: account.id, code: account.code, name: account.name,
+      accountType: account.accountType, accountSubtype: account.accountSubtype,
+      normalBalance: account.normalBalance, systemKey: account.systemKey,
+    }));
     const unbalancedJournalCount = Number(healthStats.unbalancedJournalCount);
     const uncategorizedCount = Number(healthStats.uncategorizedCount);
     const unreconciledCount = Number(healthStats.unreconciledCount);
@@ -421,7 +434,7 @@ export async function GET(request: Request) {
     const visibleBillsForCash = access.accountsPayableReceivable ? bills.filter((bill) => matchesDataMode(bill.demoRecord)) : [];
     const visibleInvoicesForCash = access.accountsPayableReceivable ? invoices.filter((invoice) => matchesDataMode(invoice.demoRecord)) : [];
     const confirmedTransactionIds = new Set(transactionMatches.filter((match) => match.status === "confirmed").map((match) => match.transactionId));
-    const cashTransactions = (access.bankTransactions ? transactions : []).filter((transaction) => transaction.currency.toUpperCase() === baseCurrency).map((transaction) => ({
+    const cashTransactions = (transactionReadable ? transactions : []).filter((transaction) => transaction.currency.toUpperCase() === baseCurrency).map((transaction) => ({
       postingDate: transaction.postingDate,
       amountCents: Number(transaction.amountCents),
       category: transaction.accountName ?? (transaction.amountCents >= 0 ? "Uncategorized income" : "Uncategorized spending"),
@@ -443,7 +456,7 @@ export async function GET(request: Request) {
       ...visibleInvoicesForCash.map((invoice) => ({ id: invoice.id, kind: "customer_invoice" as const, date: invoice.dueDate, amountCents: invoice.totalCents - invoice.paidCents, label: `${invoice.customerName} · ${invoice.invoiceNumber}`, reference: invoice.invoiceNumber })),
     ])).filter((candidate) => !confirmedTransactionIds.has(candidate.transactionId)).slice(0, 100);
     const cashProjectionAllowed = access.bankBalances && access.accountsPayableReceivable && cashOpeningBalanceCents !== null;
-    const thirteenWeekAllowed = cashProjectionAllowed && access.bankTransactions;
+    const thirteenWeekAllowed = cashProjectionAllowed && transactionReadable;
     const asOfMilliseconds = Date.parse(`${asOf}T00:00:00Z`);
     const asOfWeekday = new Date(asOfMilliseconds).getUTCDay();
     const firstWeekStart = new Date(asOfMilliseconds - ((asOfWeekday + 6) % 7) * 86_400_000).toISOString().slice(0, 10);
@@ -598,7 +611,7 @@ export async function GET(request: Request) {
     const decisionBlocks: CashFlowDecisionBlock[] = [];
     if (dataMode === "demonstration") decisionBlocks.push("demonstration_data");
     if (settings?.status !== "active") decisionBlocks.push("bookloq_inactive");
-    if (!access.bankBalances || !access.accountsPayableReceivable || !access.bankTransactions) {
+    if (!access.bankBalances || !access.accountsPayableReceivable || !transactionReadable) {
       decisionBlocks.push("finance_permissions_required");
     }
     if (dataMode === "live" && verifiedBankCashCents === null) decisionBlocks.push("bank_data_unavailable");
@@ -679,7 +692,7 @@ export async function GET(request: Request) {
       confirmedPurchasingObligationsCents: thirteenWeekAllowed ? confirmedPurchasingObligationsCents : null,
       decisionBlocks,
     });
-    const availableStatements = ledgerAvailable ? statements : {
+    const availableStatements = ledgerReadable ? statements : {
       accounts: [],
       trialBalance: { totalDebitCents: null, totalCreditCents: null },
       profitAndLoss: { revenueCents: null, expenseCents: null, cogsCents: null, grossProfitCents: null, operatingProfitCents: null },
@@ -695,6 +708,17 @@ export async function GET(request: Request) {
         settings,
         role: context.role,
         permissions: uiPermissions,
+        accountCatalog,
+        transactionAccess: {
+          available: transactionReadable,
+          reason: transactionReadable ? null : "Complete bank transaction views require bank transaction and payroll total permissions because an uncategorized bank feed can contain payroll information.",
+        },
+        ledgerAccess: {
+          available: ledgerReadable,
+          reason: !fullLedgerPermission
+            ? "Complete ledger views require payroll totals and bank balance permissions. Other permitted sections remain available."
+            : !ledgerAvailable ? "Post verified journals before reviewing ledger totals." : null,
+        },
         organization: {
           name: context.organization.businessName,
           legalName: context.organization.legalName,
@@ -714,29 +738,29 @@ export async function GET(request: Request) {
             ? cashOpeningBalanceCents - dueNext30Cents
             : null,
           bankBalanceCents,
-          bookBalanceCents: ledgerAvailable ? statements.cashCents : null,
+          bookBalanceCents: ledgerReadable ? statements.cashCents : null,
           cashSource,
           cashLastSyncAt,
           bankCashStatus: verifiedBankCash.status,
-          revenueCents: ledgerAvailable ? statements.profitAndLoss.revenueCents : null,
-          grossProfitCents: ledgerAvailable ? statements.profitAndLoss.grossProfitCents : null,
-          grossMarginBasisPoints: ledgerAvailable && statements.profitAndLoss.revenueCents ? Math.round(statements.profitAndLoss.grossProfitCents * 10_000 / statements.profitAndLoss.revenueCents) : null,
-          operatingProfitCents: ledgerAvailable ? statements.profitAndLoss.operatingProfitCents : null,
-          totalExpensesCents: ledgerAvailable ? statements.profitAndLoss.expenseCents : null,
-          accountsReceivableCents: ledgerAvailable && access.accountsPayableReceivable ? statements.accountsReceivableCents : null,
-          accountsPayableCents: ledgerAvailable && access.accountsPayableReceivable ? statements.accountsPayableCents : null,
-          salesTaxPayableCents: ledgerAvailable ? statements.netSalesTaxCents : null,
-          payrollObligationsCents: ledgerAvailable && access.payrollTotals
+          revenueCents: ledgerReadable ? statements.profitAndLoss.revenueCents : null,
+          grossProfitCents: ledgerReadable ? statements.profitAndLoss.grossProfitCents : null,
+          grossMarginBasisPoints: ledgerReadable && statements.profitAndLoss.revenueCents ? Math.round(statements.profitAndLoss.grossProfitCents * 10_000 / statements.profitAndLoss.revenueCents) : null,
+          operatingProfitCents: ledgerReadable ? statements.profitAndLoss.operatingProfitCents : null,
+          totalExpensesCents: ledgerReadable ? statements.profitAndLoss.expenseCents : null,
+          accountsReceivableCents: ledgerReadable && access.accountsPayableReceivable ? statements.accountsReceivableCents : null,
+          accountsPayableCents: ledgerReadable && access.accountsPayableReceivable ? statements.accountsPayableCents : null,
+          salesTaxPayableCents: ledgerReadable ? statements.netSalesTaxCents : null,
+          payrollObligationsCents: ledgerReadable && access.payrollTotals
             ? statements.accounts.filter((account) => account.systemKey === "payroll_payable").reduce((sum, account) => sum + account.balanceCents, 0)
             : null,
-          debtObligationsCents: ledgerAvailable ? statements.accounts.filter((account) => account.systemKey === "loan_payable").reduce((sum, account) => sum + account.balanceCents, 0) : null,
-          upcomingBillsCount: ledgerAvailable && access.accountsPayableReceivable ? bills.filter((bill) => !["paid", "reconciled", "void"].includes(bill.status)).length : null,
-          overdueInvoicesCount: ledgerAvailable && access.accountsPayableReceivable ? invoices.filter((invoice) => invoice.dueDate < asOf && !["paid", "written_off", "void"].includes(invoice.status)).length : null,
-          unreconciledCount: ledgerAvailable && canReconcile ? unreconciledCount : null,
-          uncategorizedCount: ledgerAvailable && access.bankTransactions ? uncategorizedCount : null,
-          missingReceiptsCount: ledgerAvailable ? missingReceiptCount : null,
-          monthEndCompletionRate: ledgerAvailable ? monthEndCompletionRate : null,
-          healthScore: ledgerAvailable ? healthScore : null,
+          debtObligationsCents: ledgerReadable ? statements.accounts.filter((account) => account.systemKey === "loan_payable").reduce((sum, account) => sum + account.balanceCents, 0) : null,
+          upcomingBillsCount: ledgerReadable && access.accountsPayableReceivable ? bills.filter((bill) => !["paid", "reconciled", "void"].includes(bill.status)).length : null,
+          overdueInvoicesCount: ledgerReadable && access.accountsPayableReceivable ? invoices.filter((invoice) => invoice.dueDate < asOf && !["paid", "written_off", "void"].includes(invoice.status)).length : null,
+          unreconciledCount: ledgerReadable && canReconcile ? unreconciledCount : null,
+          uncategorizedCount: ledgerReadable && transactionReadable ? uncategorizedCount : null,
+          missingReceiptsCount: ledgerReadable ? missingReceiptCount : null,
+          monthEndCompletionRate: ledgerReadable ? monthEndCompletionRate : null,
+          healthScore: ledgerReadable ? healthScore : null,
         },
         statements: availableStatements,
         locationScope: locationRefs !== null ? {
@@ -760,21 +784,21 @@ export async function GET(request: Request) {
           evidence: [],
         },
         cashActivity,
-        transactions: access.bankTransactions ? transactions : [],
-        transactionMatches: access.bankTransactions ? transactionMatches : [],
-        matchCandidates: access.bankTransactions && access.accountsPayableReceivable ? matchCandidates : [],
-        categoryRules: access.bankTransactions ? categoryRules : [],
+        transactions: transactionReadable ? transactions : [],
+        transactionMatches: transactionReadable ? transactionMatches : [],
+        matchCandidates: transactionReadable && access.accountsPayableReceivable ? matchCandidates : [],
+        categoryRules: transactionReadable ? categoryRules : [],
         banks: visibleBanks,
-        reconciliations: canReconcile ? reconciliations : [],
+        reconciliations: canReconcile && access.bankBalances ? reconciliations : [],
         bills: visibleBills,
         invoices: visibleInvoices.map((invoice) => canViewDocuments ? invoice : { ...invoice, documentId: null }),
         contacts: visibleContacts,
-        alerts: rows(alertsResult),
-        journals: ledgerAvailable ? journalRows : [],
+        alerts: fullLedgerPermission ? rows(alertsResult) : [],
+        journals: ledgerReadable ? journalRows : [],
         periods: rows(periodsResult),
         closeItems,
-        budgets: rows(budgetsResult),
-        audit: access.audit ? rows(auditResult) : [],
+        budgets: fullLedgerPermission ? rows(budgetsResult) : [],
+        audit: access.audit ? rows(auditResult).map((event) => fullLedgerPermission ? event : { ...event, detailsJson: "{}" }) : [],
         documentSummary: {
           total: canViewDocuments ? documentRows.length : 0,
           invoices: canViewDocuments ? documentRows.filter((document) => document.documentType === "invoice").length : 0,
@@ -798,7 +822,7 @@ export async function GET(request: Request) {
               ? (plaidConnection.dataPromotionStatus === "approved" && bankBalanceCents !== null ? "connected_and_synced" : "connected_needs_sync")
               : "not_connected",
           pos: integrationRows.some((item) => item.status === "connected" && ["lightspeed", "lightspeed-r", "shopify", "shopify-pos", "square", "clover"].includes(item.provider)) ? "connected" : "not_connected",
-          payroll: "not_connected",
+          payroll: "manual_journals_only",
           receiptCapture: canViewDocuments ? (documentRows.length ? "review_queue_active" : "upload_available") : "permission_required",
           taxFiling: "not_available",
         },

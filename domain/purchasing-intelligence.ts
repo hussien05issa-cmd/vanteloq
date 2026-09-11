@@ -2,7 +2,7 @@ export type PurchasingProductInput = {
   sku: string;
   name: string;
   supplierName: string | null;
-  onHandUnits: number;
+  onHandUnits: number | null;
   reorderPointUnits: number;
   incomingUnits: number;
   unitsSold30: number;
@@ -27,7 +27,7 @@ export type PurchasingProductAssessment = PurchasingProductInput & {
 export type CashConstrainedPurchasingAssessment = PurchasingProductAssessment & {
   cashConstrainedUnits: number | null;
   cashAllocatedCents: number | null;
-  cashDecision: "within_capacity" | "cash_constrained" | "needs_verified_cash" | "needs_unit_cost" | "no_order_needed";
+  cashDecision: "within_capacity" | "cash_constrained" | "needs_verified_cash" | "needs_unit_cost" | "needs_inventory" | "no_order_needed";
 };
 
 export type PurchasingCapacityAccount = {
@@ -212,6 +212,12 @@ export function calculateVerifiedPurchasingCapacity(
 }
 
 export function assessPurchasingProduct(input: PurchasingProductInput): PurchasingProductAssessment {
+  if (input.onHandUnits === null) return {
+    ...input, health: "watch", recommendedUnits: 0, recommendedCostCents: null,
+    daysCover: null, demandTrendRate: null,
+    summary: "Inventory evidence is unavailable. Verify stock before evaluating stockout risk or reorder quantity.",
+    factors: ["No verified inventory balance is available for this product and location scope."],
+  };
   const onHand = nonNegative(input.onHandUnits);
   const incoming = nonNegative(input.incomingUnits);
   const currentDemand = nonNegative(input.unitsSold30);
@@ -279,9 +285,9 @@ export function allocatePurchasingCapacity(
   if (verifiedPurchasingCapacityCents === null || !Number.isFinite(verifiedPurchasingCapacityCents)) {
     return assessments.map((assessment) => ({
       ...assessment,
-      cashConstrainedUnits: assessment.recommendedUnits === 0 ? 0 : null,
-      cashAllocatedCents: assessment.recommendedUnits === 0 ? 0 : null,
-      cashDecision: assessment.recommendedUnits === 0 ? "no_order_needed" : "needs_verified_cash",
+      cashConstrainedUnits: assessment.onHandUnits !== null && assessment.recommendedUnits === 0 ? 0 : null,
+      cashAllocatedCents: assessment.onHandUnits !== null && assessment.recommendedUnits === 0 ? 0 : null,
+      cashDecision: assessment.onHandUnits === null ? "needs_inventory" : assessment.recommendedUnits === 0 ? "no_order_needed" : "needs_verified_cash",
     }));
   }
 
@@ -301,6 +307,10 @@ export function allocatePurchasingCapacity(
 
   const allocated = new Map<string, Pick<CashConstrainedPurchasingAssessment, "cashAllocatedCents" | "cashConstrainedUnits" | "cashDecision">>();
   for (const assessment of [...assessments].sort((a, b) => (priority.get(a.sku) ?? 0) - (priority.get(b.sku) ?? 0))) {
+    if (assessment.onHandUnits === null) {
+      allocated.set(assessment.sku, { cashConstrainedUnits: null, cashAllocatedCents: null, cashDecision: "needs_inventory" });
+      continue;
+    }
     if (assessment.recommendedUnits === 0) {
       allocated.set(assessment.sku, { cashConstrainedUnits: 0, cashAllocatedCents: 0, cashDecision: "no_order_needed" });
       continue;

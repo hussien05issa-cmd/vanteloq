@@ -122,12 +122,12 @@ test("invoice files stay behind authenticated document downloads", async () => {
   assert.match(documentsRoute, /Cache-Control": "private, no-store"/);
 });
 
-test("the feature tour advances meaningful interface phases and scene controls restart playback", async () => {
+test("the feature tour advances meaningful interface phases and preserves manual scene choices", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.match(source, /function FeatureReelStage/);
   assert.match(source, /current\.phase < 3/);
-  assert.match(source, /setPlayhead\(\{ scene: index, phase: 0 \}\); setPlaying\(true\)/);
-  assert.doesNotMatch(source, /setActive\(index\); setPlaying\(false\)/);
+  assert.match(source, /setPlayhead\(\{ scene: index, phase: 0 \}\); setPlaying\(false\)/);
+  assert.doesNotMatch(source, /setPlayhead\(\{ scene: index, phase: 0 \}\); setPlaying\(true\)/);
   assert.doesNotMatch(source, /vanteloq-feature-reel-v1\.webp/);
 });
 
@@ -269,13 +269,13 @@ test("resource article sections override the legacy global two-column rule", asy
   assert.match(css, /\.resource-site \.article-body > section\.quick-answer \{[^}]*padding:\s*30px;/);
 });
 
-test("commerce charts expose exact-date and exact-hour keyboard tooltips", async () => {
+test("commerce charts expose exact-date and exact-hour keyboard record inspection", async () => {
   const charts = await readFile(new URL("../app/dashboard-charts.tsx", import.meta.url), "utf8");
   const app = await readFile(new URL("../app/vanteloq-app.tsx", import.meta.url), "utf8");
-  assert.match(charts, /chart-tooltip/);
-  assert.match(charts, /onFocus=\{\(\) => setActiveIndex\(index\)\}/);
-  assert.match(charts, /Net sales.*Gross profit.*transactions/s);
-  assert.match(app, /Today vs same weekday/);
+  assert.match(charts, /workspace-chart-readout/);
+  assert.match(charts, /<select id=\{.*-record/);
+  assert.match(charts, /Net sales.*Gross profit.*Transactions/s);
+  assert.match(app, /Latest day vs same weekday/);
   assert.match(app, /PAYMENT MIX/);
   assert.match(app, /7-DAY OUTLOOK/);
 });
@@ -345,7 +345,8 @@ test("marketing intelligence is owner-controlled, evidence-labeled and calendar-
   assert.match(workspace, /Owner entry/);
   assert.doesNotMatch(route, /Coming soon!/);
   assert.match(route, /Association is not proof of causation/i);
-  assert.match(workspace, /marketing-intelligence-v2\.png/);
+  assert.match(workspace, /WorkspaceIcon name="Marketing"/);
+  assert.doesNotMatch(workspace, /marketing-intelligence-v2\.png/);
   assert.match(workspace, /Google demand and website actions/);
   assert.match(workspace, /Meta reach and website clicks/);
   assert.match(workspace, /Owner-record checklist/);
@@ -459,6 +460,39 @@ test("account access includes confirmation recovery and a complete password-rese
   assert.match(home, /entry === "load-error"/);
 });
 
+test("authentication and analytics dialogs manage keyboard focus", async () => {
+  const [authPanel, analyticsConsent, modalFocus] = await Promise.all([
+    readFile(new URL("../app/auth-panel.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/google-analytics-consent.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/use-modal-focus.ts", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(authPanel, /useModalFocus/);
+  assert.match(authPanel, /aria-describedby="auth-description"/);
+  assert.match(analyticsConsent, /useModalFocus/);
+  assert.match(analyticsConsent, /aria-modal="true"/);
+  assert.match(analyticsConsent, /isPublicMeasurementPage\(pathname\)[\s\S]{0,300}setAnalyticsDisabled\(false\)/);
+  assert.match(modalFocus, /event\.key === "Escape"/);
+  assert.match(modalFocus, /event\.key !== "Tab"/);
+  assert.match(modalFocus, /sibling\.inert = true/);
+  assert.match(modalFocus, /getClientRects\(\)\.length > 0/);
+  assert.match(modalFocus, /!container\.contains\(document\.activeElement\)/);
+  assert.match(modalFocus, /opener\?\.focus/);
+});
+
+test("the hydrated missing page cannot restore homepage metadata", async () => {
+  const [notFound, metadataGuard] = await Promise.all([
+    readFile(new URL("../app/not-found.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/not-found-metadata-guard.tsx", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(notFound, /<NotFoundMetadataGuard \/>/);
+  assert.match(metadataGuard, /document\.title = TITLE/);
+  assert.match(metadataGuard, /link\[rel="canonical"\]/);
+  assert.match(metadataGuard, /openGraphUrl\?\.remove\(\)/);
+  assert.match(metadataGuard, /new MutationObserver\(enforceNotFoundMetadata\)/);
+});
+
 test("signup success continues with in-place email code verification", async () => {
   const authPanel = await readFile(new URL("../app/auth-panel.tsx", import.meta.url), "utf8");
 
@@ -542,6 +576,7 @@ test("paid API access is server-enforced with narrow billing and privacy excepti
 
   const apiRoot = new URL("../app/api/v1/", import.meta.url);
   const routePaths = (await readdir(apiRoot, { recursive: true }))
+    .map((path) => path.replaceAll("\\", "/"))
     .filter((path) => path.endsWith("route.ts"))
     .sort();
   const billingExceptions = [];
@@ -556,10 +591,16 @@ test("paid API access is server-enforced with narrow billing and privacy excepti
     "billing/checkout/route.ts",
     "billing/portal/route.ts",
     "billing/route.ts",
+    "entitlements/route.ts",
   ]);
+  const memberEntitlements = await readFile(new URL("entitlements/route.ts", apiRoot), "utf8");
+  assert.match(memberEntitlements, /requireBillingAccess\(request,/);
+  assert.match(memberEntitlements, /getTenantEntitlements\(context\)/);
+  assert.doesNotMatch(memberEntitlements, /stripeCustomerId|stripeSubscriptionId|paymentMethod/);
   assert.deepEqual(privacyExceptions, [
     "account/deletion/route.ts",
     "advisor/chat/route.ts",
+    "advisor/conversations/route.ts",
     "integrations/clover/disconnect/route.ts",
     "integrations/lightspeed-r/disconnect/route.ts",
     "integrations/lightspeed/disconnect/route.ts",

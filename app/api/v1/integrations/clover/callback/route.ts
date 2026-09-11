@@ -1,3 +1,4 @@
+import { requireOAuthBrowser } from "../../../../../../server/integrations/oauth-browser";
 import { and, eq, gt, isNull } from "drizzle-orm";
 import { getDb } from "../../../../../../db";
 import {
@@ -28,6 +29,7 @@ export async function GET(request: Request) {
     const providerError = url.searchParams.get("error")?.trim() ?? "";
     const code = url.searchParams.get("code")?.trim() ?? "";
     const state = url.searchParams.get("state")?.trim() ?? "";
+    requireOAuthBrowser(request, "clover", state);
     const merchantId = url.searchParams.get("merchant_id")?.trim() ?? "";
     if ((!providerError && (!code || code.length > 4096 || !/^[A-Za-z0-9_-]{4,128}$/.test(merchantId))) || !/^[A-Za-z0-9_-]{43}$/.test(state)) {
       throw new ApiError(400, "CLOVER_CALLBACK_INVALID", "Clover returned an incomplete callback. Start the connection again.");

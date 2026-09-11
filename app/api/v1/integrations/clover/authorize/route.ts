@@ -1,3 +1,4 @@
+import { oauthBrowserCookie } from "../../../../../../server/integrations/oauth-browser";
 import { getDb } from "../../../../../../db";
 import { integrationConnections, integrationOAuthStates } from "../../../../../../db/schema";
 import { recordAudit } from "../../../../../../server/audit";
@@ -62,6 +63,6 @@ export async function POST(request: Request) {
       connectionId,
       permissions: [...CLOVER_READ_PERMISSIONS],
       mode: "read_only_staged_sync",
-    });
+    }, { headers: { "Set-Cookie": oauthBrowserCookie("clover", state) } });
   });
 }

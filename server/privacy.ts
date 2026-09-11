@@ -1,3 +1,4 @@
+import type { AdvisorProvider } from "../domain/advisor-providers";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../db";
 import { integrationConsents } from "../db/schema";
@@ -16,7 +17,8 @@ import {
 } from "../domain/privacy-controls";
 import { ApiError } from "./api";
 
-export async function recordGeminiConsent(input: {
+export async function recordAdvisorConsent(input: {
+  provider: AdvisorProvider;
   organizationId: string;
   actorUserId: string;
   noticeVersion: string;
@@ -26,16 +28,17 @@ export async function recordGeminiConsent(input: {
     input.noticeVersion !== GEMINI_CONSENT_NOTICE_VERSION
     || input.privacyPolicyVersion !== PRIVACY_POLICY_VERSION
   ) {
-    throw new ApiError(409, "GEMINI_CONSENT_NOTICE_STALE", "The Gemini data-use notice changed. Review it again before asking a question.");
+    throw new ApiError(409, "GEMINI_CONSENT_NOTICE_STALE", "The Vanteloq AI data-use notice changed. Review it again before asking a question.");
   }
 
+  const provider = input.provider === "gemini" ? "google_gemini" : "openai";
   const [existing] = await getDb().select({
     id: integrationConsents.id,
     acceptedAt: integrationConsents.acceptedAt,
   }).from(integrationConsents).where(and(
     eq(integrationConsents.organizationId, input.organizationId),
     eq(integrationConsents.actorUserId, input.actorUserId),
-    eq(integrationConsents.provider, "google_gemini"),
+    eq(integrationConsents.provider, provider),
     eq(integrationConsents.status, "accepted"),
     eq(integrationConsents.noticeVersion, GEMINI_CONSENT_NOTICE_VERSION),
     eq(integrationConsents.privacyPolicyVersion, PRIVACY_POLICY_VERSION),
@@ -48,7 +51,7 @@ export async function recordGeminiConsent(input: {
     id,
     organizationId: input.organizationId,
     actorUserId: input.actorUserId,
-    provider: "google_gemini",
+    provider,
     status: "accepted",
     noticeVersion: GEMINI_CONSENT_NOTICE_VERSION,
     privacyPolicyVersion: PRIVACY_POLICY_VERSION,

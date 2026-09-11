@@ -6,12 +6,16 @@ import { enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameO
 import { createStripeCheckout } from "../../../../../server/billing/stripe";
 import { isPlanKey } from "../../../../../server/entitlements/catalog";
 import { requirePermission } from "../../../../../server/permissions";
+import { getTenantEntitlements } from "../../../../../server/entitlements/engine";
 
 export async function POST(request: Request) {
   return handleApi(request, async () => {
     requireSameOrigin(request);
     const context = await requireBillingAccess(request, ["owner", "admin"]);
     await requirePermission(context, "organization.billing");
+    if ((await getTenantEntitlements(context)).accessType === "internal") {
+      throw new ApiError(409, "INTERNAL_ACCESS_INCLUDED", "Your internal company access is already included. No subscription is required.");
+    }
     await enforceRateLimit("billing:checkout", context.userId, 10, 3_600);
     const input = await readJsonObject(request, 4_096);
     const plan = input.plan;

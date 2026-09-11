@@ -8,6 +8,16 @@ export type SignupProviderError = {
 
 const DEFAULT_SIGNUP_ERROR = "Account creation could not be completed. Check your details and try again.";
 
+export function recoveryEmailErrorMessage(error: SignupProviderError): string {
+  if (error.status === 429 || /over_email_send_rate_limit|over_request_rate_limit/.test(error.code ?? "")) {
+    return "Too many reset requests. Wait a few minutes, then request one new recovery email.";
+  }
+  if (/captcha|security check/i.test(`${error.code ?? ""} ${error.message ?? ""}`)) {
+    return "The security check expired or could not be verified. Complete a fresh security check and try again.";
+  }
+  return "The reset email could not be sent. Check your connection and try again shortly.";
+}
+
 export function signupErrorMessage(error: SignupProviderError): string {
   if (error.status === 429) {
     return "Too many account-creation attempts. Wait a moment and try again.";

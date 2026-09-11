@@ -18,7 +18,9 @@ import {
   searchVisibilityObservations,
   workspaces,
 } from "../../../../db/schema";
-import { buildGrowthIntelligence } from "../../../../domain/growth-intelligence";
+import { buildGrowthIntelligence, buildJourneyCoverage } from "../../../../domain/growth-intelligence";
+import { isCalendarDate, isGrowthTimestamp } from "../../../../domain/marketing-workbench";
+import { sourceDateFreshness } from "../../../../domain/workspace-presentation";
 import { buildMarketingRecommendations, type EvidenceCoverage, type MarketingOperatingCoverage } from "../../../../domain/marketing-recommendations";
 import { buildGoogleResourceReadiness, buildLocalOpportunityModel, buildProfileHealthChecklist } from "../../../../domain/local-growth-intelligence";
 import { recordAudit } from "../../../../server/audit";
@@ -37,8 +39,6 @@ const googleStatuses = new Set(["not_set", "claimed", "verified"]);
 const calendarChannels = new Set(["content", "google", "meta", "email", "local", "website"]);
 const calendarTypes = new Set(["campaign", "content", "audit", "offer", "follow_up"]);
 const calendarStatuses = new Set(["planned", "in_progress", "completed", "cancelled"]);
-const isoDate = /^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z)?$/;
-const calendarDate = /^\d{4}-\d{2}-\d{2}$/;
 
 const textValue = (value: unknown, name: string, max = 160) => {
   if (typeof value !== "string" || !value.trim() || value.trim().length > max) throw new ApiError(400, "INVALID_GROWTH_RECORD", `${name} is required and must be at most ${max} characters.`);
@@ -86,12 +86,7 @@ const latestValue = (values: Array<Date | string | null | undefined>) => {
 };
 
 const sourceFreshness = (value: Date | string | null | undefined, maxAgeDays: number, missingLabel: string) => {
-  const time = timeValue(value);
-  if (time === null) return { status: "missing" as const, freshness: missingLabel };
-  const date = new Date(time).toISOString().slice(0, 10);
-  const ageDays = Math.max(0, Math.floor((Date.now() - time) / 86_400_000));
-  if (ageDays > maxAgeDays) return { status: "stale" as const, freshness: `Last updated ${date}, ${ageDays} days ago` };
-  return { status: "ready" as const, freshness: `Current through ${date}` };
+  return sourceDateFreshness(timeValue(value), maxAgeDays, missingLabel);
 };
 
 export async function GET(request: Request) {
@@ -180,7 +175,7 @@ export async function GET(request: Request) {
       ? locationMappings
       : locationMappings.filter((mapping) => Boolean(mapping.localLocationId && locationAccess.locationIds?.includes(mapping.localLocationId)));
     const authorizedTouchpoints = authorizationRestricted ? [] : touchpoints;
-    const authorizedTransactions = authorizationRestricted
+    const authorizedTransactions = authorizationRestricted || !permissions.includes("metrics.revenue")
       ? []
       : transactions.map((transaction) => ({
           ...transaction,
@@ -432,6 +427,11 @@ export async function GET(request: Request) {
       marketingEvidence,
       locationScope: locationDataRestricted ? { id: selectedLocation?.id ?? "accessible", name: selectedLocation?.name ?? "Accessible locations" } : null,
       calendar: authorizationRestricted ? [] : calendar,
+      journeyCoverage: authorizationRestricted ? null : {
+        ...buildJourneyCoverage(authorizedTouchpoints, authorizedTransactions),
+        limited: authorizedTouchpoints.length >= 10000 || authorizedTransactions.length >= 10000,
+        revenueAvailable: permissions.includes("metrics.revenue"),
+      },
       searchSeries: authorizedVisibility.slice(-24).map((row) => ({ query: row.query, observedDate: row.observedDate, position: row.positionMilli / 1000, sourceSystem: row.sourceSystem })),
       measurementSeries,
       googleResourceReadiness: buildGoogleResourceReadiness({
@@ -465,7 +465,7 @@ export async function GET(request: Request) {
         localLocationId: selection.localLocationId,
         canManage: context.role === "owner" || context.role === "admin",
       })),
-      canManage: context.role === "owner" || context.role === "admin",
+      canManage: (context.role === "owner" || context.role === "admin") && permissions.includes("marketing.manage") && locationAccess.organizationWide,
       connections: authorizationRestricted ? [] : connectionSummaries,
       period: { since, through: new Date().toISOString().slice(0, 10) },
       sourceBoundary: "Recommendations use saved owner context, approved tenant operating records, recorded observations, and measurements from explicitly selected provider resources after sample approval. Resource series remain separate unless an owner-approved model combines them. Business Profile reviews are fetched on demand and are not persisted; replies publish only after the user confirms the exact text. Association is not proof of causation.",
@@ -519,7 +519,7 @@ export async function POST(request: Request) {
       if (!calendarChannels.has(channel)) throw new ApiError(400, "INVALID_GROWTH_RECORD", "channel is not supported.");
       if (!calendarTypes.has(eventType)) throw new ApiError(400, "INVALID_GROWTH_RECORD", "eventType is not supported.");
       if (!calendarStatuses.has(status)) throw new ApiError(400, "INVALID_GROWTH_RECORD", "status is not supported.");
-      if (!calendarDate.test(startDate) || (dueDate && !calendarDate.test(dueDate))) throw new ApiError(400, "INVALID_GROWTH_RECORD", "Calendar dates must use YYYY-MM-DD.");
+      if (!isCalendarDate(startDate) || (dueDate && !isCalendarDate(dueDate))) throw new ApiError(400, "INVALID_GROWTH_RECORD", "Calendar dates must be valid dates in YYYY-MM-DD format.");
       if (dueDate && dueDate < startDate) throw new ApiError(400, "INVALID_GROWTH_RECORD", "dueDate cannot be before startDate.");
       await getDb().insert(marketingCalendarEntries).values({ id, organizationId: context.organizationId, title: textValue(body.title, "title", 180), channel: channel as "content" | "google" | "meta" | "email" | "local" | "website", eventType: eventType as "campaign" | "content" | "audit" | "offer" | "follow_up", startDate, dueDate, status: status as "planned" | "in_progress" | "completed" | "cancelled", objective: optionalTextValue(body.objective, "objective", 500), notes: optionalTextValue(body.notes, "notes", 1_000), createdByUserId: context.userId, createdAt: now, updatedAt: now });
       await recordAudit({ request, requestId, organizationId: context.organizationId, actorUserId: context.userId, action: "marketing.calendar_created", resourceType: "marketing_calendar_entry", resourceId: id, details: { channel, eventType, startDate } });
@@ -542,16 +542,16 @@ export async function POST(request: Request) {
       const stage = textValue(body.stage, "stage", 24);
       if (!stages.has(stage)) throw new ApiError(400, "INVALID_GROWTH_RECORD", "stage is not supported.");
       const occurredAt = textValue(body.occurredAt, "occurredAt", 32);
-      if (!isoDate.test(occurredAt)) throw new ApiError(400, "INVALID_GROWTH_RECORD", "occurredAt must be an ISO date or UTC timestamp.");
+      if (!isGrowthTimestamp(occurredAt)) throw new ApiError(400, "INVALID_GROWTH_RECORD", "occurredAt must be a valid ISO date or UTC timestamp.");
       await getDb().insert(growthTouchpoints).values({ id, organizationId: context.organizationId, occurredAt, source: textValue(body.source, "source", 80), stage: stage as "discovery" | "website" | "phone_call" | "lead" | "customer", journeyRef: textValue(body.journeyRef, "journeyRef", 160), sourceSystem, sourceEventId, createdAt: now }).onConflictDoNothing();
     } else if (type === "transaction") {
       const occurredAt = textValue(body.occurredAt, "occurredAt", 32);
-      if (!isoDate.test(occurredAt)) throw new ApiError(400, "INVALID_GROWTH_RECORD", "occurredAt must be an ISO date or UTC timestamp.");
+      if (!isGrowthTimestamp(occurredAt)) throw new ApiError(400, "INVALID_GROWTH_RECORD", "occurredAt must be a valid ISO date or UTC timestamp.");
       await getDb().insert(growthTransactions).values({ id, organizationId: context.organizationId, occurredAt, journeyRef: textValue(body.journeyRef, "journeyRef", 160), revenueCents: integerValue(body.revenueCents, "revenueCents")!, grossProfitCents: integerValue(body.grossProfitCents ?? null, "grossProfitCents", true), sourceSystem, sourceEventId, createdAt: now }).onConflictDoNothing();
     } else if (type === "search_visibility") {
       const observedDate = textValue(body.observedDate, "observedDate", 10);
-      if (!calendarDate.test(observedDate)) throw new ApiError(400, "INVALID_GROWTH_RECORD", "observedDate must be YYYY-MM-DD.");
-      const position = Number(body.position);
+      if (!isCalendarDate(observedDate)) throw new ApiError(400, "INVALID_GROWTH_RECORD", "observedDate must be a valid date in YYYY-MM-DD format.");
+      const position = typeof body.position === "number" ? body.position : NaN;
       if (!Number.isFinite(position) || position <= 0 || position > 1_000) throw new ApiError(400, "INVALID_GROWTH_RECORD", "position must be greater than zero and no more than 1000.");
       await getDb().insert(searchVisibilityObservations).values({ id, organizationId: context.organizationId, query: textValue(body.query, "query", 180), observedDate, positionMilli: Math.round(position * 1_000), discoveryActions: null, sourceSystem, sourceEventId, createdAt: now }).onConflictDoNothing();
     } else throw new ApiError(400, "INVALID_GROWTH_RECORD", "type must be a supported marketing profile, calendar, touchpoint, transaction, or search record.");

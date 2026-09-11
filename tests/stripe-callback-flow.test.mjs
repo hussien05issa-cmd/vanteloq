@@ -4,6 +4,7 @@ import { readFile, readdir } from "node:fs/promises";
 import { createServer } from "node:http";
 import test from "node:test";
 import { Miniflare } from "miniflare";
+import { registerSupabaseTestServer } from "./helpers/supabase-loopback-transport.mjs";
 import { activateTestSubscription } from "./helpers/subscription-fixture.mjs";
 
 const origin = "https://vanteloq.example";
@@ -35,8 +36,8 @@ function onboardingPayload(businessName, businessEmail) {
     country: "CA", province: "AB", city: "Edmonton", address: "1 Test Avenue",
     postalCode: "T5A 1A1", emailNotifications: true, timezone: "America/Edmonton",
     currency: "CAD", fiscalYearStart: "January", taxNumber: "", sourceMode: "connect_later",
-    selectedPos: "", legalAccepted: true, termsVersion: "2026-08-24",
-    privacyPolicyVersion: "2026-08-24", legalNoticeVersion: "account-creation-v2",
+    selectedPos: "", legalAccepted: true, termsVersion: "2026-09-05",
+    privacyPolicyVersion: "2026-09-10", legalNoticeVersion: "account-creation-v2",
     hours: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
       .map((day) => ({ day, open: "09:00", close: "17:00", closed: false })),
   };
@@ -83,7 +84,7 @@ test("Stripe callback ownership and signed webhooks preserve unambiguous tenant 
   await new Promise((resolve) => authServer.listen(0, "127.0.0.1", resolve));
   const authAddress = authServer.address();
   assert.ok(authAddress && typeof authAddress !== "string");
-  const authOrigin = `http://127.0.0.1:${authAddress.port}`;
+  const authOrigin = registerSupabaseTestServer(authAddress.port);
   const miniflare = new Miniflare({
     modules: true,
     script: "export default { fetch() { return new Response('ok') } }",
@@ -139,7 +140,11 @@ test("Stripe callback ownership and signed webhooks preserve unambiguous tenant 
     };
 
     const callbackUrl = `${origin}/api/v1/integrations/stripe/callback?code=test-code&state=${state}`;
-    const callback = await worker.fetch(new Request(callbackUrl, { headers: { accept: "text/html" } }), environment, context);
+    const browserCookie = authorization.headers.get("set-cookie").split(";")[0];
+    const wrongBrowser = await worker.fetch(new Request(callbackUrl, { headers: { accept: "application/json" } }), environment, context);
+    assert.equal(wrongBrowser.status, 400);
+    assert.equal((await wrongBrowser.json()).error.code, "OAUTH_BROWSER_BINDING_INVALID");
+    const callback = await worker.fetch(new Request(callbackUrl, { headers: { accept: "text/html", cookie: browserCookie } }), environment, context);
     assert.equal(callback.status, 303, await callback.clone().text());
     assert.equal(callback.headers.get("location"), `${origin}/?integration=stripe&connection=connected`);
     const originalConnection = await database.prepare(
@@ -153,7 +158,7 @@ test("Stripe callback ownership and signed webhooks preserve unambiguous tenant 
       "SELECT consumed_at consumedAt FROM integration_oauth_states WHERE connection_id = ?",
     ).bind(authorizationBody.connectionId).first()).consumedAt, "number");
 
-    const replay = await worker.fetch(new Request(callbackUrl, { headers: { accept: "application/json" } }), environment, context);
+    const replay = await worker.fetch(new Request(callbackUrl, { headers: { accept: "application/json", cookie: browserCookie } }), environment, context);
     assert.equal(replay.status, 400);
     assert.equal((await replay.json()).error.code, "STRIPE_STATE_INVALID");
     assert.equal((await database.prepare(
@@ -209,7 +214,7 @@ test("Stripe callback ownership and signed webhooks preserve unambiguous tenant 
     const duplicateState = new URL(duplicateAuthorizationBody.authorizationUrl).searchParams.get("state");
     const duplicateCallback = await worker.fetch(new Request(
       `${origin}/api/v1/integrations/stripe/callback?code=duplicate-code&state=${duplicateState}`,
-      { headers: { accept: "text/html" } },
+      { headers: { accept: "text/html", cookie: duplicateAuthorization.headers.get("set-cookie").split(";")[0] } },
     ), environment, context);
     assert.equal(duplicateCallback.status, 303, await duplicateCallback.clone().text());
     assert.equal(duplicateCallback.headers.get("location"), `${origin}/?integration=stripe&connection=connected`);
@@ -243,7 +248,7 @@ test("Stripe callback ownership and signed webhooks preserve unambiguous tenant 
     const crossTenantState = new URL(crossTenantAuthorizationBody.authorizationUrl).searchParams.get("state");
     const crossTenantCallback = await worker.fetch(new Request(
       `${origin}/api/v1/integrations/stripe/callback?code=cross-tenant-code&state=${crossTenantState}`,
-      { headers: { accept: "text/html" } },
+      { headers: { accept: "text/html", cookie: crossTenantAuthorization.headers.get("set-cookie").split(";")[0] } },
     ), environment, context);
     assert.equal(crossTenantCallback.status, 303, await crossTenantCallback.clone().text());
     assert.equal(crossTenantCallback.headers.get("location"), `${origin}/?integration=stripe&connection=failed`);

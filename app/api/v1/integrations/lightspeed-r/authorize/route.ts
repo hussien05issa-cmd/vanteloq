@@ -1,3 +1,4 @@
+import { oauthBrowserCookie } from "../../../../../../server/integrations/oauth-browser";
 import { getDb } from "../../../../../../db";
 import { integrationConnections, integrationOAuthStates } from "../../../../../../db/schema";
 import { recordAudit } from "../../../../../../server/audit";
@@ -55,6 +56,6 @@ export async function POST(request: Request) {
     return jsonResponse({
       authorizationUrl, expiresAt: expiresAt.toISOString(),
       connectionId, scopes: [...LIGHTSPEED_R_SCOPES], mode: "read_only_live_sync",
-    });
+    }, { headers: { "Set-Cookie": oauthBrowserCookie("lightspeed-r", state) } });
   });
 }

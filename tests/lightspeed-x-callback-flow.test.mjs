@@ -4,6 +4,7 @@ import { readFile, readdir } from "node:fs/promises";
 import { createServer } from "node:http";
 import test from "node:test";
 import { Miniflare } from "miniflare";
+import { registerSupabaseTestServer } from "./helpers/supabase-loopback-transport.mjs";
 import { activateTestSubscription } from "./helpers/subscription-fixture.mjs";
 
 const origin = "https://vanteloq.example";
@@ -53,7 +54,7 @@ test("X-Series isolates two retailer accounts and every account action", async (
   await new Promise((resolve) => authServer.listen(0, "127.0.0.1", resolve));
   const authAddress = authServer.address();
   assert.ok(authAddress && typeof authAddress !== "string");
-  const authOrigin = `http://127.0.0.1:${authAddress.port}`;
+  const authOrigin = registerSupabaseTestServer(authAddress.port);
   const miniflare = new Miniflare({
     modules: true,
     script: "export default { fetch() { return new Response('ok') } }",
@@ -89,8 +90,8 @@ test("X-Series isolates two retailer accounts and every account action", async (
         country: "CA", province: "AB", city: "Edmonton", address: "1 Test Avenue",
         postalCode: "T5A 1A1", emailNotifications: true, timezone: "America/Edmonton",
         currency: "CAD", fiscalYearStart: "January", taxNumber: "", sourceMode: "connect_later",
-        selectedPos: "", legalAccepted: true, termsVersion: "2026-08-24",
-        privacyPolicyVersion: "2026-08-24", legalNoticeVersion: "account-creation-v2",
+        selectedPos: "", legalAccepted: true, termsVersion: "2026-09-05",
+        privacyPolicyVersion: "2026-09-10", legalNoticeVersion: "account-creation-v2",
         hours: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
           .map((day) => ({ day, open: "09:00", close: "17:00", closed: false })),
       }),

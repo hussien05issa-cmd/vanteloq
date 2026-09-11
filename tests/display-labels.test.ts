@@ -10,7 +10,7 @@ test("provider names and connector states use professional presentation labels",
   assert.equal(humanizeIdentifier("oauth_callback_required"), "OAuth callback required");
 });
 
-test("the advisor is consistently identified as Gemini Advisor", () => {
-  assert.equal(workspaceViewLabel("Advisor"), "Gemini Advisor");
+test("the advisor is consistently identified as Vanteloq AI", () => {
+  assert.equal(workspaceViewLabel("Advisor"), "Vanteloq AI");
   assert.equal(workspaceViewLabel("Reports"), "Reports");
 });

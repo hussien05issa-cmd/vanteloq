@@ -1,5 +1,6 @@
 import type { Role } from "./authorization";
 import { ApiError } from "./api.ts";
+import { isCalendarDate } from "../domain/calendar-date.ts";
 
 export const bookloqPermissions = [
   "view_revenue", "view_profit", "view_banking", "view_payroll", "create_transactions",
@@ -112,7 +113,6 @@ export type JournalInput = {
   totalCreditCents: number;
 };
 
-const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const CURRENCY = /^[A-Z]{3}$/;
 
 function cleanString(value: unknown, label: string, maximum: number, required = true): string {
@@ -143,7 +143,7 @@ function rejectUnknown(value: Record<string, unknown>, allowed: readonly string[
 export function journalInput(value: Record<string, unknown>): JournalInput {
   rejectUnknown(value, ["entryDate", "memo", "currency", "lines"]);
   const entryDate = cleanString(value.entryDate, "entry date", 10);
-  if (!DATE.test(entryDate) || Number.isNaN(Date.parse(`${entryDate}T00:00:00Z`))) {
+  if (!isCalendarDate(entryDate)) {
     throw new ApiError(400, "INVALID_FIELD", "Enter a valid journal date.");
   }
   const currency = cleanString(value.currency ?? "CAD", "currency", 3).toUpperCase();

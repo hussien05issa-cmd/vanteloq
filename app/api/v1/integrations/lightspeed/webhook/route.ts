@@ -4,7 +4,7 @@ import {
   integrationConnections,
   integrationWebhookEvents,
 } from "../../../../../../db/schema";
-import { ApiError, handleApi } from "../../../../../../server/api";
+import { ApiError, handleApi, readRequestBytes } from "../../../../../../server/api";
 import {
   LIGHTSPEED_PROVIDER,
   sha256Hex,
@@ -24,7 +24,7 @@ export async function POST(request: Request) {
     if (Number.isFinite(contentLength) && contentLength > MAXIMUM_WEBHOOK_BYTES) {
       throw new ApiError(413, "LIGHTSPEED_WEBHOOK_TOO_LARGE", "The Lightspeed webhook is too large.");
     }
-    const bytes = new Uint8Array(await request.arrayBuffer());
+    const bytes = await readRequestBytes(request, MAXIMUM_WEBHOOK_BYTES, "LIGHTSPEED_WEBHOOK_TOO_LARGE", "The Lightspeed webhook is too large.");
     if (bytes.byteLength > MAXIMUM_WEBHOOK_BYTES) {
       throw new ApiError(413, "LIGHTSPEED_WEBHOOK_TOO_LARGE", "The Lightspeed webhook is too large.");
     }

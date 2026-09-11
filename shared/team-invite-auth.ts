@@ -1,6 +1,6 @@
 export type TeamInviteCallback = {
   tokenHash: string;
-  type: "invite";
+  type: "invite" | "recovery" | "magiclink";
 };
 
 export function parseTeamInviteCallback(url: string): TeamInviteCallback | null {
@@ -8,7 +8,7 @@ export function parseTeamInviteCallback(url: string): TeamInviteCallback | null 
   if (current.searchParams.get("team_invite") !== "1") return null;
   const tokenHash = current.searchParams.get("token_hash")?.trim() ?? "";
   const type = current.searchParams.get("type");
-  if (!tokenHash || type !== "invite") return null;
+  if (!tokenHash || (type !== "invite" && type !== "recovery" && type !== "magiclink")) return null;
   return { tokenHash, type };
 }
 

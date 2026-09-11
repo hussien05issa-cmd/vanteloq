@@ -15,7 +15,12 @@ import "./homepage.css";
 import "./legal.css";
 import "./readability.css";
 import "./analytics-consent.css";
+import "./experience.css";
 
+import "./workspace-design.css";
+import "./marketing-reporting.css";
+import "./marketing-workbench.css";
+import "./vanteloq-ai-brand.css";
 const GOOGLE_ANALYTICS_CONSENT_DEFAULT = `
 window.dataLayer = window.dataLayer || [];
 window.gtag = window.gtag || function () { window.dataLayer.push(arguments); };
@@ -32,7 +37,6 @@ export const metadata: Metadata = {
   title: "Vanteloq | Business Analytics for Independent Retail",
   description: "Bring verified sales, inventory, cash and operational records into clearer views with Vanteloq, a source-aware platform for independent retail.",
   alternates: { canonical: "/" },
-  robots: { index: true, follow: true },
   openGraph: {
     type: "website",
     url: "/",

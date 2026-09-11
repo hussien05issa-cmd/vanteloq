@@ -1,3 +1,4 @@
+import { oauthBrowserCookie } from "../../../../../../server/integrations/oauth-browser";
 import { getDb } from "../../../../../../db";
 import { integrationConnections, integrationOAuthStates } from "../../../../../../db/schema";
 import { PRIVACY_POLICY_VERSION, QUICKBOOKS_CONSENT_NOTICE_VERSION } from "../../../../../../domain/privacy-controls";
@@ -87,6 +88,6 @@ export async function POST(request: Request) {
       environment: readiness.environment,
       mode: readiness.mode,
       dataPromotionEnabled: false,
-    });
+    }, { headers: { "Set-Cookie": oauthBrowserCookie("quickbooks", state) } });
   });
 }

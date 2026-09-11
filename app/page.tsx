@@ -4,8 +4,15 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react"
 import type { Session } from "@supabase/supabase-js";
 import Link from "next/link";
 import IntegrationBrandLogo from "./integration-brand-logo";
-import { integrationCatalog } from "./integration-catalog";
+import VanteloqAiLogo from "./vanteloq-ai-logo";
+import { integrationCatalog, integrationPublicStatus } from "./integration-catalog";
+import SourceRecordIcon from "./source-record-icon";
+import WorkspaceIcon from "./workspace-icon";
+import ResourceGuideVisual from "./resource-guide-visual";
+import { AccountSteps, OperatingStepPreview } from "./home-journey-visuals";
 import ProductBrandLogo from "./product-brand-logo";
+import PlatformPreview from "./platform-preview";
+import SocialLinks from "./social-links";
 import AuthPanel, { type AuthPanelMode } from "./auth-panel";
 import { currentSession, getSupabase, signOut } from "./supabase-browser";
 import { canonicalLocation } from "../shared/auth-urls";
@@ -85,7 +92,7 @@ export default function Home() {
       };
       if (sequence !== loadSequence.current) return;
 
-      if (response.ok && data.organization?.setupComplete) {
+      if (response.ok && data.organization?.setupComplete && !data.invitation) {
         loadedUser.current = userId;
         setAccountEmail(data.user?.email ?? "");
         setOrganizationName(data.organization.businessName ?? "");
@@ -162,8 +169,9 @@ export default function Home() {
             return;
           }
           if (inviteRequested) {
-            setInviteVerificationError("This invitation link is incomplete, expired, or was already used. Ask the owner to send a new invitation.");
-            setEntry("invite-review");
+            setEntry("landing");
+            setAuthMode("signin");
+            setAuthOpen(true);
             return;
           }
           setEntry("landing");
@@ -345,7 +353,7 @@ function FeatureReel() {
     if (!playing) return;
     const timer = window.setInterval(() => setPlayhead((current) => current.phase < 3
       ? { ...current, phase: current.phase + 1 }
-      : { scene: (current.scene + 1) % featureReelScenes.length, phase: 0 }), 1450);
+      : { scene: (current.scene + 1) % featureReelScenes.length, phase: 0 }), 2000);
     return () => window.clearInterval(timer);
   }, [playing]);
 
@@ -358,9 +366,9 @@ function FeatureReel() {
       </button>
     </header>
     <div className="feature-reel-screen"><FeatureReelStage scene={scene.id} phase={playhead.phase}/></div>
-    <div className="feature-reel-caption" aria-live="polite"><small>{scene.kicker}</small><strong>{scene.title}</strong><span>{scene.copy}</span><div className="feature-reel-progress"><i style={{ width: `${((playhead.phase + 1) / 4) * 100}%` }}/></div><em>{scene.steps[playhead.phase]}</em></div>
+    <div className="feature-reel-caption" aria-live="off"><small>{scene.kicker}</small><strong>{scene.title}</strong><span>{scene.copy}</span><div className="feature-reel-progress"><i style={{ width: `${((playhead.phase + 1) / 4) * 100}%` }}/></div><em>{scene.steps[playhead.phase]}</em></div>
     <nav aria-label="Feature tour scenes">
-      {featureReelScenes.map((item, index) => <button type="button" key={item.id} className={index === playhead.scene ? "active" : ""} aria-current={index === playhead.scene ? "step" : undefined} onClick={() => { setPlayhead({ scene: index, phase: 0 }); setPlaying(true); }}><span>{index + 1}</span>{item.label}</button>)}
+      {featureReelScenes.map((item, index) => <button type="button" key={item.id} className={index === playhead.scene ? "active" : ""} aria-current={index === playhead.scene ? "step" : undefined} onClick={() => { setPlayhead({ scene: index, phase: 0 }); setPlaying(false); }}><span>{index + 1}</span>{item.label}</button>)}
     </nav>
   </div>;
 }
@@ -381,9 +389,8 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
   };
   const publicIntegrations = integrationCatalog.map(provider => ({
     ...provider,
-    detail: provider.availability === "coming_soon"
-      ? "Coming soon"
-      : connectorBenefits[provider.category] ?? "Bring source records into one operating view",
+    detail: connectorBenefits[provider.category] ?? "Bring source records into one operating view",
+    publicStatus: integrationPublicStatus(provider),
   }));
 
   useEffect(() => {
@@ -410,8 +417,17 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
         <a href="#company" onClick={closeMobileNav}>Company</a>
         <a href="#security" onClick={closeMobileNav}>Security</a>
         <Link href="/resources" onClick={closeMobileNav}>Resources</Link>
+        <div className="public-nav-mobile-socials">
+          <span>Follow Vanteloq</span>
+          <SocialLinks/>
+        </div>
+        <div className="public-nav-mobile-actions">
+          <button type="button" className="nav-login" onClick={() => { closeMobileNav(); start("signin"); }}>Sign in</button>
+          <button type="button" onClick={() => { closeMobileNav(); start("signup"); }}>Create workspace</button>
+        </div>
       </nav>
       <div className="public-nav-actions">
+        <SocialLinks/>
         <button type="button" className="nav-login" onClick={() => start("signin")}>Sign in</button>
         <button type="button" onClick={() => start("signup")}>Create workspace</button>
       </div>
@@ -420,18 +436,18 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
     <main id="main-content">
       <section className="home-hero" aria-labelledby="home-title">
         <div className="home-hero-copy">
-          <span className="public-pill">Operations and analytics for independent retail</span>
           <h1 id="home-title">Understand your business. <em>Make better decisions.</em></h1>
-          <p>Bring supported sales, inventory, cash and operational records into one clear view. See what changed, understand the limits of the data and decide what needs attention.</p>
+          <p>See what is selling, where profit is changing and what needs attention. Bring your supported sales, inventory and financial records into one workspace, with the source behind every result.</p>
           <div className="public-actions">
             <button type="button" onClick={() => start("signup")}>Create your workspace <span aria-hidden="true">→</span></button>
             <a href="#platform">See how Vanteloq works</a>
           </div>
           <ul className="home-proof" aria-label="Verified platform controls">
-            <li>Source-linked calculations</li>
-            <li>Role-based approvals</li>
-            <li>Tenant-separated records</li>
+            <li>Trace results to source records</li>
+            <li>Keep control of approvals</li>
+            <li>Protect your business data</li>
           </ul>
+          <AccountSteps/>
         </div>
         <figure className="product-visual product-visual-reference home-product-visual">
           {/* The image is a real Vanteloq interface composition; the values shown are illustrative. */}
@@ -439,26 +455,6 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
           <img src="/brand/vanteloq-command-ledger.webp" alt="Vanteloq command centre interface with sales, gross profit, cash, inventory and a decision queue." width={1487} height={1058} loading="eager" fetchPriority="high" />
           <figcaption>Vanteloq command centre · Illustrative values · Available views depend on connected and verified source data</figcaption>
         </figure>
-      </section>
-
-      <section className="home-ownership" id="company" aria-labelledby="ownership-title">
-        <div className="home-ownership-brand">
-          <span>PRODUCT OWNERSHIP</span>
-          {/* This is the supplied LexEdge Consulting logo. */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/brand/lexedge-consulting-logo.png" alt="LexEdge Consulting" width={1536} height={1024} loading="lazy" />
-          <p>Company ownership and operating responsibility</p>
-        </div>
-        <div className="home-ownership-copy">
-          <p>BUILT AND OPERATED BY LEXEDGE CONSULTING</p>
-          <h2 id="ownership-title">Vanteloq is a LexEdge Consulting product.</h2>
-          <span>LexEdge Consulting owns and operates Vanteloq. The company is responsible for the product direction, service operations, privacy commitments and customer support behind the platform.</span>
-          <div className="home-ownership-ledger" aria-label="LexEdge Consulting owns and operates Vanteloq">
-            <article><small>COMPANY</small><strong>LexEdge Consulting</strong><span>Product owner and operator</span></article>
-            <i aria-hidden="true">→</i>
-            <article><small>PRODUCT</small><strong>Vanteloq</strong><span>Business operations and analytics platform</span></article>
-          </div>
-        </div>
       </section>
 
       <section className="home-connections" id="connections" aria-labelledby="connections-title">
@@ -470,10 +466,13 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
           </div>
           <FeatureReel />
         </div>
+        <details className="home-connection-directory">
+          <summary>Explore providers and current availability <span>Check your systems before you sign up</span></summary>
         <div className="home-connection-grid">
-          {publicIntegrations.map(provider => <article key={provider.id}><IntegrationBrandLogo name={provider.name} compact/><div><strong>{provider.name}</strong><span>{provider.detail}</span></div></article>)}
-          <article><IntegrationBrandLogo name="Daily CSV" compact/><div><strong>CSV import</strong><span>Turn structured operating files into verified records</span></div></article>
+          {publicIntegrations.map(provider => <article key={provider.id}><IntegrationBrandLogo name={provider.name} compact/><div><strong>{provider.name}</strong><span className={`home-connection-status ${provider.publicStatus.tone}`}>{provider.publicStatus.label}</span><span>{provider.detail}</span></div></article>)}
+          <article><IntegrationBrandLogo name="Daily CSV" compact/><div><strong>CSV import</strong><span className="home-connection-status available">Available</span><span>Turn structured operating files into verified records</span></div></article>
         </div>
+        </details>
       </section>
 
       <section className="home-problem" aria-labelledby="problem-title">
@@ -483,11 +482,57 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
             <h2 id="problem-title">Your business should not tell four different stories.</h2>
             <span>A sale, a stock movement, a supplier bill and an assigned task may describe the same event. Reviewing them separately makes it harder to see what changed and what needs attention.</span>
           </div>
-          <figure className="home-problem-visual">
-            {/* This generated editorial visual contains no customer data or fabricated performance values. */}
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/brand/business-sources-visual.webp" alt="Sales, inventory, cash and operational records flowing into one business view." width={1200} height={800} loading="lazy" />
-            <figcaption>Four operating inputs. One decision view.</figcaption>
+          <figure className="home-record-review" aria-labelledby="record-review-title">
+            <header>
+              <div>
+                <span>EXAMPLE RECORD REVIEW</span>
+                <strong id="record-review-title">One business event, four verified records.</strong>
+              </div>
+              <small>Example records</small>
+            </header>
+            <div className="home-record-review-body">
+              <div className="home-record-sources" aria-label="Source records">
+                <article className="sale">
+                  <span className="home-record-source-mark"><SourceRecordIcon kind="sale"/></span>
+                  <div><small>SALE</small><strong>Point of sale receipt</strong><em>Receipt 1458 · Today, 2:41 p.m.</em></div>
+                  <p><b>$128.40</b><span>Posted</span></p>
+                </article>
+                <article className="stock">
+                  <span className="home-record-source-mark"><SourceRecordIcon kind="stock"/></span>
+                  <div><small>STOCK</small><strong>Inventory movement</strong><em>3 products · 5 units recorded</em></div>
+                  <p><b>5 units</b><span>Matched</span></p>
+                </article>
+                <article className="cost">
+                  <span className="home-record-source-mark"><SourceRecordIcon kind="cost"/></span>
+                  <div><small>COST</small><strong>Supplier cost record</strong><em>3 lines · Cost basis confirmed</em></div>
+                  <p><b>3 lines</b><span>Linked</span></p>
+                </article>
+                <article className="work">
+                  <span className="home-record-source-mark"><SourceRecordIcon kind="work"/></span>
+                  <div><small>WORK</small><strong>Manager follow-up</strong><em>Assigned · Due today</em></div>
+                  <p><b>Owner set</b><span>Ready</span></p>
+                </article>
+              </div>
+              <div className="home-record-path" aria-hidden="true">
+                <i/>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/brand/vanteloq-mark.png" alt="" width={180} height={180}/>
+                <i/>
+              </div>
+              <aside>
+                <span className="home-review-status">RECORDS IN AGREEMENT</span>
+                <strong>Ready for owner review</strong>
+                <p>The sale, stock movement, cost basis and assigned work agree.</p>
+                <ul>
+                  <li>Source timestamps aligned</li>
+                  <li>Product quantities reconciled</li>
+                  <li>Responsible person recorded</li>
+                </ul>
+                <div className="home-review-summary"><span><b>4</b><small>source records</small></span><span><b>0</b><small>open conflicts</small></span></div>
+                <footer><span>Prepared for approval</span><i aria-hidden="true">→</i></footer>
+              </aside>
+            </div>
+            <figcaption>Example values show how Vanteloq keeps the source, calculation context and responsible person visible before approval.</figcaption>
           </figure>
         </div>
         <div className="home-problem-grid">
@@ -504,30 +549,12 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
           <h2 id="platform-title">Move from source records to a decision you can explain.</h2>
           <span>Vanteloq keeps the source, calculation status and approval path visible. Missing inputs remain unavailable or provisional instead of being silently replaced with confident-looking numbers.</span>
           <ol className="home-step-list">
-            <li><b>1</b><div><strong>Connect or import</strong><span>Authorize a supported source or upload structured operating records.</span></div><span className="home-step-visual" aria-hidden="true">
-              {/* Decorative generated art is already compact and served directly without an image transformation binding. */}
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/brand/connect-import-visual.webp" alt="" width={360} height={240}/>
-            </span></li>
-            <li><b>2</b><div><strong>Verify and organize</strong><span>Map locations, reconcile totals and apply consistent metric definitions.</span></div><span className="home-step-visual" aria-hidden="true">
-              {/* Decorative generated art is already compact and served directly without an image transformation binding. */}
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/brand/verify-organize-visual.webp" alt="" width={360} height={240}/>
-            </span></li>
-            <li><b>3</b><div><strong>Review and act</strong><span>Turn a supported finding into assigned work with the right approval.</span></div><span className="home-step-review-visual" aria-hidden="true"><i/><i/><i/></span></li>
+            <li><b>1</b><div><strong>Connect or import</strong><span>Authorize a supported source or upload structured operating records.</span></div><OperatingStepPreview step="connect"/></li>
+            <li><b>2</b><div><strong>Verify and organize</strong><span>Map locations, reconcile totals and apply consistent metric definitions.</span></div><OperatingStepPreview step="verify"/></li>
+            <li><b>3</b><div><strong>Review and act</strong><span>Turn a supported finding into assigned work with the right approval.</span></div><OperatingStepPreview step="review"/></li>
           </ol>
         </div>
-        <article className="home-workflow-preview" aria-label="Inventory decision example">
-          <header><span>SOURCE-BASED REVIEW</span><b>Inventory decision</b></header>
-          <div className="home-workflow-source"><small>SOURCE</small><strong>Lightspeed R-Series</strong><span>Sales and inventory · last verified import shown in product</span></div>
-          <div className="home-workflow-metrics"><span><small>ITEM</small><strong>Sample SKU</strong></span><span><small>ON HAND</small><strong>Confirmed in source</strong></span><span><small>LEAD TIME</small><strong>Supplier input</strong></span></div>
-          <div className="home-workflow-decision"><div><small>REVIEW OUTPUT</small><strong>Review the proposed order against recent demand, supplier limits and available cash.</strong></div><figure>
-            {/* This generated visual explains the review process without presenting customer data. */}
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/brand/inventory-decision-visual.webp" alt="Inventory, supplier timing, available cash and owner approval brought into one review." width={760} height={760} loading="lazy" />
-          </figure></div>
-          <footer><span>Example workflow · confirm with source records</span><b>Owner approval required</b></footer>
-        </article>
+        <PlatformPreview/>
       </section>
 
       <section className="home-capabilities" id="capabilities" aria-labelledby="capabilities-title">
@@ -548,29 +575,41 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
         </div>
       </section>
 
+      <section className="home-marketing" id="marketing" aria-labelledby="marketing-title">
+        <div className="home-section-heading"><p>FROM ATTENTION TO ACTION</p><h2 id="marketing-title">Make marketing decisions with the business in view.</h2><span>Understand how people find you, what they do next and which action deserves your time. Keep the source visible, the plan focused and the result measurable.</span></div>
+        <div className="home-marketing-grid">
+          <article><WorkspaceIcon name="Search"/><h3>Understand discovery</h3><p>Review website traffic, search queries and local discovery from approved Google resources. Compare the same source and time period.</p><span>Search and traffic reports</span></article>
+          <article><WorkspaceIcon name="Customers"/><h3>Find the measurement gaps</h3><p>See where recorded journeys stop. Matched sales remain separate from advertising platforms&apos; reported conversions.</p><span>Evidence before attribution</span></article>
+          <article><WorkspaceIcon name="Action Centre"/><h3>Give the next move a plan</h3><p>Prepare a campaign brief, build consistent campaign links and carry recommendations into your calendar for review.</p><span>Goal, action and measurement</span></article>
+        </div>
+        <div className="home-marketing-footer"><p>Provider authorization and sample approval are required. Facebook and Instagram organic insights are not yet available. Planning tools do not publish content or change advertising budgets.</p><button type="button" onClick={() => start("signup")}>Build your business workspace →</button><a href="#connections">Check connection availability</a></div>
+      </section>
+
       <section className="home-gemini" id="gemini" aria-labelledby="gemini-title">
-        <aside className="home-gemini-mark" aria-label="How Gemini supports a Vanteloq answer">
+        <aside className="home-gemini-mark" aria-label="How Vanteloq AI supports a business answer">
           <div className="home-gemini-brand">
-            <IntegrationBrandLogo name="Google"/>
-            <div><span>GOOGLE GEMINI</span><small>AI EXPLANATIONS IN VANTELOQ</small></div>
+            <VanteloqAiLogo size={64} decorative/>
+            <div><span>Vanteloq AI</span><small>OPENAI + GOOGLE GEMINI</small></div>
           </div>
           <p>From verified business records to an explanation your team can review.</p>
           <ol>
             <li><b>1</b><span><strong>Verified records</strong><small>Vanteloq prepares the approved business context.</small></span></li>
-            <li><b>2</b><span><strong>Grounded explanation</strong><small>Gemini explains the evidence and identifies missing inputs.</small></span></li>
+            <li><b>2</b><span><strong>Grounded explanation</strong><small>Vanteloq AI explains the evidence and identifies missing inputs.</small></span></li>
             <li><b>3</b><span><strong>Human approval</strong><small>Your permissions still control every action.</small></span></li>
           </ol>
         </aside>
         <div className="home-gemini-copy">
           <p>GROUNDED BUSINESS INTELLIGENCE</p>
-          <h2 id="gemini-title">Gemini explains the business behind the numbers.</h2>
-          <span>Vanteloq uses Google Gemini to turn verified sales, inventory, cash and marketing evidence into a clear explanation, with the source, freshness and missing inputs kept visible.</span>
+          <h2 id="gemini-title">Vanteloq AI explains the business behind the numbers.</h2>
+          <div className="vanteloq-ai-engines" aria-label="Vanteloq AI providers"><span>OpenAI</span><b aria-hidden="true">+</b><span>Google Gemini</span></div>
+          <span>Built to be powered by OpenAI and Google Gemini. Explore financial performance, KPIs and business trends through one Vanteloq AI workspace. Choose either provider or compare two independent analyses, using only the approved evidence you can access.</span>
+          <p className="vanteloq-ai-activation">Provider activation is in progress. AI answers become available after secure setup, with a separate data-use choice before each request.</p>
           <div className="home-gemini-grid">
             <article><strong>Ask in plain language</strong><span>Ask why sales changed, where margin is leaking or what deserves attention next.</span></article>
             <article><strong>Evidence stays visible</strong><span>Every answer is grounded in the records your workspace has approved. Missing data stays unavailable.</span></article>
-            <article><strong>Memory stays in your workspace</strong><span>Conversation context is scoped to your organization and user, with no raw customer or bank details sent to the model.</span></article>
+            <article><strong>Memory is your choice</strong><span>Memory starts off. Enable it for a chat, switch it off, or delete your saved chats. Permitted context stays scoped to your user and workspace.</span></article>
           </div>
-          <small className="home-gemini-note">Gemini is an explanation layer, not an autonomous operator. Actions remain behind Vanteloq permissions and your approval.</small>
+          <small className="home-gemini-note">Vanteloq AI supports analysis and planning. Actions remain behind Vanteloq permissions and your approval.</small>
         </div>
       </section>
 
@@ -629,10 +668,9 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
         <div className="home-resource-grid">
           {RESOURCE_ARTICLES.map((article) => {
             const category = getCategory(article.category);
-            const visualLabel = article.category === "inventory" ? "SKU" : article.category === "finance" ? "%" : "VIEW";
             return (
               <Link href={`/resources/${article.slug}`} key={article.slug}>
-                <div className={`home-resource-art ${article.category}-art`} aria-hidden="true"><i/><i/><i/><b>{visualLabel}</b></div>
+                <ResourceGuideVisual category={article.category} slug={article.slug}/>
                 <small>{category?.shortName.toUpperCase()} · {getReadingTime(article)} MIN</small>
                 <h3>{article.title}</h3>
                 <p>{article.description}</p>
@@ -646,7 +684,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
 
       <section className="home-security" id="security" aria-labelledby="security-title">
         <div className="home-section-heading">
-          <p>VERIFIED SECURITY CONTROLS</p>
+          <p>IMPLEMENTED SECURITY CONTROLS</p>
           <h2 id="security-title">Business data is business-critical.</h2>
           <span>Authentication, authorization and audit controls are enforced within the current application, with sensitive actions kept behind server-side permission checks.</span>
         </div>
@@ -655,6 +693,26 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
           <article><strong>Role permissions</strong><p>Server-side permissions control sensitive integration, finance, export and workspace actions.</p></article>
           <article><strong>Protected connections</strong><p>Implemented provider flows use scoped authorization, one-time state and encrypted credentials.</p></article>
           <article><strong>Change history</strong><p>Important operating and connection actions are recorded, and duplicate requests are handled safely.</p></article>
+        </div>
+      </section>
+
+      <section className="home-ownership" id="company" aria-labelledby="ownership-title">
+        <div className="home-ownership-brand">
+          <span>PRODUCT OWNERSHIP</span>
+          {/* This is the supplied LexEdge Consulting logo. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/brand/lexedge-consulting-logo-web.png" alt="LexEdge Consulting" width={480} height={320} loading="lazy" />
+          <p>Company ownership and operating responsibility</p>
+        </div>
+        <div className="home-ownership-copy">
+          <p>BUILT AND OPERATED BY LEXEDGE CONSULTING</p>
+          <h2 id="ownership-title">Vanteloq is a LexEdge Consulting product.</h2>
+          <span>LexEdge Consulting owns and operates Vanteloq. The company is responsible for the product direction, service operations, privacy commitments and customer support behind the platform.</span>
+          <div className="home-ownership-ledger" aria-label="LexEdge Consulting owns and operates Vanteloq">
+            <article><small>COMPANY</small><strong>LexEdge Consulting</strong><span>Product owner and operator</span></article>
+            <i aria-hidden="true">→</i>
+            <article><small>PRODUCT</small><strong>Vanteloq</strong><span>Business operations and analytics platform</span></article>
+          </div>
         </div>
       </section>
 
@@ -671,7 +729,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
             <div><span>Supported sources</span><span>Visible data limits</span><span>Human approvals</span></div>
             <div className="home-faq-owner">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/brand/lexedge-consulting-logo.png" alt="" width={1536} height={1024} loading="lazy" />
+              <img src="/brand/lexedge-consulting-logo-web.png" alt="" width={480} height={320} loading="lazy" />
               <span>Owned and operated by LexEdge Consulting</span>
             </div>
           </aside>
@@ -680,7 +738,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
             <details><summary>Who owns Vanteloq?</summary><p>Vanteloq is owned and operated by LexEdge Consulting. LexEdge Consulting is responsible for the product direction, service operations, privacy commitments and customer support behind Vanteloq.</p></details>
             <details><summary>How are LexEdge Consulting and Vanteloq connected?</summary><p>LexEdge Consulting is the company. Vanteloq is the company&apos;s business software product. A Vanteloq subscription provides access to the software and does not create a separate consulting engagement unless the customer and LexEdge Consulting agree to one in writing.</p></details>
             <details><summary>Who is Vanteloq designed for?</summary><p>The current product and connection work are designed primarily for independent retailers and the owners or managers who oversee sales, inventory, purchasing, cash and daily operations.</p></details>
-            <details><summary>What systems can I connect?</summary><p>Vanteloq includes connection paths for supported point of sale, commerce, payment, banking, accounting and marketing providers. Availability is shown inside the Connections workspace. Stripe Connect and Canada Post AddressComplete are configured, QuickBooks is in sandbox staging, and DoorDash and Uber Eats are marked Coming soon. Other providers remain unavailable until their credentials, review and production setup are complete. Structured CSV import is also available.</p></details>
+            <details><summary>What systems can I connect?</summary><p>The Connections section shows the current status for every provider. Setup required means a connection path exists but customer or hosted provider setup is still required. Sandbox only and Production approval needed do not mean the provider is available for live production data. In development and Coming soon connections remain unavailable. Structured CSV import is available.</p></details>
             <details><summary>Do I need to replace my POS?</summary><p>No. Vanteloq is designed to use supported source records while the POS remains the transaction system. Availability and depth depend on the connector and successful reconciliation.</p></details>
             <details><summary>Can Vanteloq help with inventory?</summary><p>Yes. Implemented inventory tools cover lots, expiry, shelf-life risk, first-expiring-first-out review and a constrained reorder calculation. Recommendations still require reliable demand, cost, lead-time, supplier and cash inputs.</p></details>
             <details><summary>What is BookLoQ?</summary><p>BookLoQ is the accounting workspace inside the Vanteloq product family. It keeps journals, bills, documents, reconciliation and financial reporting separate from the main operating workspace. Access depends on the customer&apos;s plan and any required connection setup.</p></details>
@@ -701,7 +759,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
     <footer className="home-footer">
       <div className="home-footer-brand"><div><ProductBrandLogo product="vanteloq"/><strong>Vanteloq</strong></div><p>Source-aware operations and analytics for independent retail.</p><div className="home-footer-owner">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/brand/lexedge-consulting-logo.png" alt="LexEdge Consulting" width={1536} height={1024} loading="lazy" />
+        <img src="/brand/lexedge-consulting-logo-web.png" alt="LexEdge Consulting" width={480} height={320} loading="lazy" />
         <span>Owned and operated by LexEdge Consulting</span>
       </div></div>
       <div><strong>PRODUCT</strong><a href="#platform">How it works</a><a href="#capabilities">Capabilities</a><a href="#connections">Connections</a><a href="#security">Security</a></div>

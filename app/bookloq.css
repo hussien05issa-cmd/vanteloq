@@ -46,3 +46,10 @@
 @media(max-width:1050px){.business-cash-kpis{grid-template-columns:1fr 1fr}.business-cash-kpis article:nth-child(3){border-left:0;border-top:1px solid #e1e9ef}.business-cash-kpis article:nth-child(4){border-top:1px solid #e1e9ef}.business-cash-body{grid-template-columns:1fr}.cash-activity-chart{border-right:0;border-bottom:1px solid #dee8ef}}
 @media(max-width:700px){.transaction-status-row{grid-template-columns:1fr 1fr}.business-cash-report>header{flex-direction:column}.business-cash-kpis{grid-template-columns:1fr}.business-cash-kpis article{border-left:0;border-top:1px solid #e1e9ef}.business-cash-kpis article:first-child{border-top:0}.cash-activity-chart{overflow-x:auto}.cash-activity-bars{min-width:520px}.cash-period-switch{width:100%;display:grid;grid-template-columns:repeat(3,1fr)}.cash-period-switch button{padding-inline:6px}.custom-category-row{grid-template-columns:1fr}.custom-category-row button{min-height:42px}}
 .invoice-download{align-items:center;font-family:inherit}.invoice-download:disabled{cursor:wait;opacity:.6}
+.journal-entry-line { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr); gap: 12px; padding: 14px; border: 1px solid #cbd8e5; border-radius: 12px; min-width: 0; }
+.journal-entry-line legend { color: #234469; font-weight: 700; padding: 0 5px; }
+.journal-entry-line label { min-width: 0; }
+.journal-entry-line input, .journal-entry-line select { width: 100%; min-width: 0; }
+.journal-approval { display: flex !important; align-items: flex-start; gap: 10px; line-height: 1.5; }
+.journal-approval input { flex: 0 0 auto; width: 20px !important; height: 20px; margin-top: 3px; }
+@media (max-width: 600px) { .journal-entry-line { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .journal-entry-line label:first-of-type { grid-column: 1 / -1; } }

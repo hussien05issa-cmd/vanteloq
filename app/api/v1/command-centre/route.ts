@@ -11,10 +11,11 @@ import { authorizedLocationDataScope } from "../../../../server/location-access"
 import { scopeExternalRef } from "../../../../domain/integration-source";
 import { approvedBankSource, approvedFactSource, noActiveIntegrationLease } from "../../../../server/integrations/trusted-data";
 import { calculateVerifiedPurchasingCapacity } from "../../../../domain/purchasing-intelligence";
+import { businessClock, salesDay, sameWeekdayComparison, salesChange } from "../../../../domain/intraday-sales";
 
 const readers = ["owner", "admin", "manager", "employee", "read_only"] as const;
 
-type LiveSaleRow = LightspeedRLiveSale;
+type LiveSaleRow = LightspeedRLiveSale & { connectionId: string };
 
 type PaymentMixRow = {
   connectionId: string;
@@ -62,7 +63,7 @@ function buildDailySourceSnapshot(
   return {
     businessDate: latestDate,
     netSalesCents,
-    grossProfitCents: Math.max(0, netSalesCents - costOfGoodsCents),
+    grossProfitCents: netSalesCents - costOfGoodsCents,
     averageTransactionCents: transactionCount ? Math.round(netSalesCents / transactionCount) : null,
     transactionCount,
     unitsSold: latestRows.reduce((sum, row) => sum + row.unitsSold, 0),
@@ -95,11 +96,6 @@ export async function GET(request: Request) {
     const locationAccess = await authorizedLocationDataScope(context, requestedLocationId);
     const availableLocations = locationAccess.locations;
     const selectedLocation = locationAccess.selectedLocation;
-    const selectedRSeriesRefs = new Set(
-      (locationAccess.providerLocations ?? [])
-        .filter((mapping) => mapping.provider === LIGHTSPEED_R_PROVIDER)
-        .map((mapping) => mapping.externalLocationRef),
-    );
     const selectedCommerceLocationKeys = new Set(
       (locationAccess.providerLocations ?? []).map(
         (mapping) => `${mapping.connectionId}\u0000${mapping.externalLocationRef}`,
@@ -171,12 +167,16 @@ export async function GET(request: Request) {
     const now = Date.now();
     const sourceConnections = connectedSourceConnections.filter((row) => row.dataPromotionStatus === "approved"
       && (!row.syncLeaseOwner || !row.syncLeaseExpiresAt || row.syncLeaseExpiresAt.getTime() <= now));
-    const canViewVerifiedProfit = permissions.includes("metrics.profit") && !sourceConnections.some((row) =>
+    const canViewVerifiedProfit = permissions.includes("metrics.revenue") && permissions.includes("metrics.profit") && !sourceConnections.some((row) =>
       row.provider === "square" && row.lastErrorCode === "SQUARE_PRODUCT_COST_UNAVAILABLE"
     );
     const sourceConnection = sourceConnections[0] ?? null;
     const rSeriesConnections = sourceConnections.filter((row) => row.provider === LIGHTSPEED_R_PROVIDER);
-    const rSeriesIntraday = rSeriesConnections.length > 0 && rSeriesConnections.length === sourceConnections.length;
+    const rSeriesOnly = rSeriesConnections.length > 0 && rSeriesConnections.length === sourceConnections.length;
+    const commonSyncMs = Math.min(...rSeriesConnections.map((row) => row.lastSuccessfulSyncAt?.getTime() ?? 0));
+    const commonSync = Number.isFinite(commonSyncMs) && commonSyncMs > 0 && commonSyncMs <= now ? new Date(commonSyncMs) : null;
+    const currentBusinessDate = businessClock(new Date(now), context.organization.timezone)!.date;
+    const rSeriesCurrent = rSeriesOnly && commonSync !== null && businessClock(commonSync, context.organization.timezone)!.date === currentBusinessDate;
     const connectedPosProviders = new Set(sourceConnections.map((row) => row.provider));
     const connectedSourceIds = new Set(sourceConnections.map((row) => row.id));
     const ignoredRows = await getDb().select({
@@ -197,35 +197,39 @@ export async function GET(request: Request) {
         noActiveIntegrationLease(integrationConnections.syncLeaseOwner, integrationConnections.syncLeaseExpiresAt),
       ));
     const ignored = new Set(ignoredRows.map((row) => scopeExternalRef(row.sourceNamespace, row.externalLocationRef)).filter((value): value is string => Boolean(value)));
-    const recentThreshold = new Date(Date.now() - 72 * 60 * 60 * 1_000).toISOString();
+    const recentThreshold = dateOffset(currentBusinessDate, -8);
     const rSeriesPlaceholders = rSeriesConnections.map(() => "?").join(", ");
-    const staged = rSeriesIntraday ? await getD1().prepare(`
-      SELECT external_sale_id AS externalSaleId, outlet_ref AS outletRef, sold_at AS soldAt, state,
+    const staged = rSeriesCurrent ? await getD1().prepare(`
+      SELECT connection_id AS connectionId, external_sale_id AS externalSaleId, outlet_ref AS outletRef, sold_at AS soldAt, state,
              total_cents AS totalCents, tax_cents AS taxCents, cost_cents AS costCents,
              discount_cents AS discountCents, line_count AS lineCount
       FROM (
         SELECT *, row_number() OVER (
-          PARTITION BY external_sale_id ORDER BY staged_at DESC, id DESC
+          PARTITION BY connection_id, external_sale_id ORDER BY staged_at DESC, id DESC
         ) AS version_rank
         FROM integration_staged_sales
-        WHERE organization_id = ? AND provider = ? AND connection_id IN (${rSeriesPlaceholders}) AND sold_at >= ?
+        WHERE organization_id = ? AND provider = ? AND connection_id IN (${rSeriesPlaceholders})
       )
-      WHERE version_rank = 1
+      WHERE version_rank = 1 AND sold_at >= ?
       ORDER BY sold_at ASC
-      LIMIT 5000
+      LIMIT 20001
     `).bind(context.organizationId, LIGHTSPEED_R_PROVIDER, ...rSeriesConnections.map((row) => row.id), recentThreshold).all<LiveSaleRow>() : { results: [] as LiveSaleRow[] };
     const trustedRows = locationRestricted
       ? rows.filter((row) => selectedMetricRefs.has(row.locationRef))
       : rows;
+    const intradayTruncated = (staged.results?.length ?? 0) > 20000;
+    const rSeriesIntraday = rSeriesCurrent && !intradayTruncated;
+    const approvedSales = (staged.results ?? []).filter((sale) =>
+      (!sale.outletRef || !ignored.has(sale.outletRef)) &&
+      (!locationRestricted || Boolean(sale.outletRef && selectedCommerceLocationKeys.has(`${sale.connectionId}\u0000${sale.outletRef}`))),
+    ).map((sale) => ({ ...sale,
+      // Legacy staging defaults missing costs to zero. Without explicit zero-cost
+      // provenance, withhold profit for a nonzero sale or refund with zero cost.
+      costVerified: sale.costCents !== 0 || sale.totalCents === sale.taxCents,
+    }));
     const today = rSeriesIntraday
       ? {
-          ...buildLightspeedRLiveSalesSnapshot(
-            (staged.results ?? []).filter((sale) =>
-              (!sale.outletRef || !ignored.has(sale.outletRef)) &&
-              (!locationRestricted || Boolean(sale.outletRef && selectedRSeriesRefs.has(sale.outletRef))),
-            ),
-            context.organization.timezone,
-          ),
+          ...salesDay(approvedSales, context.organization.timezone, commonSync!),
           sourceGranularity: "intraday" as const,
         }
       : buildDailySourceSnapshot(trustedRows, context.organization.timezone);
@@ -293,6 +297,10 @@ export async function GET(request: Request) {
       grossProfitCents: total.grossProfitCents + row.netSalesCents - row.costOfGoodsCents,
       transactionCount: total.transactionCount + row.transactionCount,
     }), { netSalesCents: 0, grossProfitCents: 0, transactionCount: 0 });
+    const intradayComparison = rSeriesIntraday ? sameWeekdayComparison(
+      approvedSales, context.organization.timezone, commonSync!,
+      rSeriesConnections.filter((connection) => !locationRestricted || (locationAccess.providerLocations ?? []).some((location) => location.connectionId === connection.id)).map((connection) => connection.id),
+    ) : null;
     const paymentRows = sourceConnections.length ? await getD1().prepare(`
       SELECT provider, connection_id AS connectionId, category, payment_type_name AS paymentTypeName, outlet_ref AS outletRef,
              SUM(CASE WHEN amount_cents > 0 THEN amount_cents ELSE 0 END) AS amountCents,
@@ -312,21 +320,25 @@ export async function GET(request: Request) {
       today: {
         ...today,
         grossProfitCents: canViewVerifiedProfit ? today.grossProfitCents : null,
+        asOf: rSeriesIntraday ? commonSync!.toISOString() : null,
+        timeZone: context.organization.timezone,
+        hourlyUnavailableReason: intradayTruncated ? "Hourly history exceeds the safe review limit. Daily summaries are shown; no partial hourly total is presented." : rSeriesOnly && !rSeriesCurrent ? "The POS has not completed a synchronization for the current business day. The latest daily summary is shown." : null,
       },
-      todayComparison: comparisonRows.length ? {
+      todayComparison: rSeriesIntraday ? intradayComparison : comparisonRows.length ? {
         baselineDate: comparisonDate,
         currentDate: today.businessDate,
+        basis: "full_day" as const,
         baseline: comparisonBaseline,
         changes: {
           netSalesRate: percentageChange(today.netSalesCents, comparisonBaseline.netSalesCents),
           grossProfitRate: canViewVerifiedProfit
-            ? percentageChange(today.grossProfitCents, comparisonBaseline.grossProfitCents)
+            ? salesChange(today.grossProfitCents, comparisonBaseline.grossProfitCents)
             : null,
           transactionRate: percentageChange(today.transactionCount, comparisonBaseline.transactionCount),
         },
       } : null,
       paymentMix: {
-        period: paymentDays === 1 ? "Today" : `Last ${paymentDays} days`,
+        period: paymentDays === 1 ? `Business date: ${today.businessDate}` : `${dateOffset(today.businessDate, -(paymentDays - 1))} to ${today.businessDate}`,
         rows: (paymentRows.results ?? [])
           .filter((row) => connectedSourceIds.has(row.connectionId))
           .filter((row) => !locationRestricted || Boolean(row.outletRef && selectedCommerceLocationKeys.has(`${row.connectionId}\u0000${row.outletRef}`)))
@@ -362,7 +374,13 @@ export async function GET(request: Request) {
       for (const key of ["cost_of_goods", "gross_profit", "gross_margin", "contribution_after_labour", "labour_cost", "labour_rate"]) delete (commandCentre.metrics as Record<string, unknown>)[key];
       commandCentre.insights = commandCentre.insights.filter((insight) => insight.id !== "margin-trend" && insight.id !== "labour-pressure");
       for (const hour of commandCentre.today.hourly) Object.assign(hour, { grossProfitCents: null });
-      if (commandCentre.todayComparison) Object.assign(commandCentre.todayComparison.baseline, { grossProfitCents: null });
+      if (commandCentre.todayComparison) {
+        Object.assign(commandCentre.todayComparison.baseline, { grossProfitCents: null });
+        Object.assign(commandCentre.todayComparison.changes, { grossProfitRate: null });
+      }
+      if (commandCentre.todayComparison && "hourly" in commandCentre.todayComparison.baseline) {
+        for (const hour of commandCentre.todayComparison.baseline.hourly) hour.grossProfitCents = null;
+      }
       if (commandCentre.periodComparisons) {
         for (const comparison of [commandCentre.periodComparisons.sevenDays, commandCentre.periodComparisons.thirtyDays]) {
           Object.assign(comparison.current, { costOfGoodsCents: null, grossProfitCents: null, contributionCents: null, grossMarginRate: null, labourCostCents: null, labourRate: null });
@@ -373,6 +391,11 @@ export async function GET(request: Request) {
       for (const point of commandCentre.forecast.points) Object.assign(point, { grossProfitCents: null });
     }
     if (!permissions.includes("metrics.revenue")) {
+      for (const totals of [commandCentre.current, commandCentre.previous]) {
+        if (totals) Object.assign(totals, { labourRate: null, contributionCents: null, grossMarginRate: null });
+      }
+      commandCentre.comparisons = null;
+      for (const key of ["labour_rate", "gross_margin", "contribution_after_labour"]) delete (commandCentre.metrics as Record<string, unknown>)[key];
       if (commandCentre.current) Object.assign(commandCentre.current, { grossSalesCents: null, netSalesCents: null, transactionCount: null, unitsSold: null, refundsCents: null, discountsCents: null, averageTransactionCents: null, unitsPerTransaction: null, discountRate: null });
       if (commandCentre.previous) Object.assign(commandCentre.previous, { grossSalesCents: null, netSalesCents: null, transactionCount: null, unitsSold: null, refundsCents: null, discountsCents: null, averageTransactionCents: null, unitsPerTransaction: null, discountRate: null });
       commandCentre.trend = [];
@@ -406,6 +429,23 @@ export async function GET(request: Request) {
       Object.assign(commandCentre.balances, { cashBalanceCents: null, accountsPayableCents: null });
       delete commandCentre.metrics.operating_cash;
       delete commandCentre.metrics.accounts_payable;
+    }
+    if (!permissions.includes("payroll.totals")) {
+      for (const totals of [commandCentre.current, commandCentre.previous]) {
+        if (totals) Object.assign(totals, { labourCostCents: null, labourRate: null, contributionCents: null });
+      }
+      if (commandCentre.periodComparisons) {
+        for (const comparison of [commandCentre.periodComparisons.sevenDays, commandCentre.periodComparisons.thirtyDays]) {
+          Object.assign(comparison.current, { labourCostCents: null, labourRate: null, contributionCents: null });
+          Object.assign(comparison.previous, { labourCostCents: null, labourRate: null, contributionCents: null });
+        }
+      }
+      for (const key of ["labour_cost", "labour_rate", "contribution_after_labour"]) delete (commandCentre.metrics as Record<string, unknown>)[key];
+      commandCentre.insights = commandCentre.insights.filter((insight) => insight.id !== "labour-pressure");
+    }
+    if (!permissions.includes("inventory.value")) {
+      if (commandCentre.balances) Object.assign(commandCentre.balances, { inventoryValueCents: null });
+      delete (commandCentre.metrics as Record<string, unknown>).inventory_value;
     }
     const operatingSystem = buildOperatingSystem({
       ready: commandCentre.ready,

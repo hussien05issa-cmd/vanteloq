@@ -114,9 +114,19 @@ test("business intelligence APIs reject anonymous access before database reads",
   }
 });
 
+test("member entitlement lookup rejects anonymous requests before database access", async () => {
+  const worker = await loadWorker();
+  const response = await worker.fetch(new Request("https://vanteloq.example/api/v1/entitlements", {
+    headers: { accept: "application/json" },
+  }), environment, context);
+  assert.equal(response.status, 401);
+  assert.equal((await response.json()).error.code, "AUTHENTICATION_REQUIRED");
+});
+
 test("team invitations remain identity bound and separate from Stripe billing", async () => {
-  const [route, invitations, internalAccess] = await Promise.all([
+  const [route, provisioningRoute, invitations, internalAccess] = await Promise.all([
     readFile(`${process.cwd()}/app/api/v1/team-invitations/route.ts`, "utf8"),
+    readFile(`${process.cwd()}/app/api/v1/internal/team-provisioning/route.ts`, "utf8"),
     readFile(`${process.cwd()}/server/team-invitations.ts`, "utf8"),
     readFile(`${process.cwd()}/server/internal-access.ts`, "utf8"),
   ]);
@@ -127,12 +137,39 @@ test("team invitations remain identity bound and separate from Stripe billing", 
   assert.match(invitations, /identity\.subject/);
   assert.match(invitations, /team_invitation/);
   assert.match(invitations, /internal_no_stripe/);
-  assert.match(invitations, /INSERT OR IGNORE INTO internal_access/);
+  assert.match(invitations, /INSERT INTO internal_access/);
+  assert.match(invitations, /ON CONFLICT\(user_id, organization_id, access_level\) DO UPDATE SET[\s\S]*active = 1/);
   assert.match(invitations, /internalAccessId,[\s\S]*userId,[\s\S]*owner\.organization_id/);
+  assert.match(invitations, /functions\/v1\/management-console/);
+  assert.match(invitations, /team\.vanteloq\.accept/);
+  assert.match(invitations, /verifiedTeamProvisioning/);
+  assert.match(invitations, /json_extract\(ae\.details_json, '\$\.invitationId'\) = \?/);
+  assert.match(invitations, /json_extract\(ae\.details_json, '\$\.invitationGeneration'\) = \?/);
+  assert.match(invitations, /team-invitation-generation:/);
+  assert.match(invitations, /m\.role = \?/);
+  assert.match(provisioningRoute, /requireIdentity/);
+  assert.match(provisioningRoute, /requireAal2/);
+  assert.doesNotMatch(invitations, /method:\s*"PATCH"[\s\S]*team_access_invitations/);
   assert.doesNotMatch(invitations, /STRIPE_SECRET_KEY|stripeCustomerId|stripeSubscriptionId/);
   assert.match(internalAccess, /isBoundSupabaseContext/);
   assert.match(internalAccess, /eq\(internalAccess\.userId, context\.userId\)/);
   assert.doesNotMatch(internalAccess, /\.\.\.\(founder \?/);
+});
+
+test("private console employee removal is owner bound and disables every Vanteloq access record", async () => {
+  const [route, management] = await Promise.all([
+    readFile(`${process.cwd()}/app/api/v1/internal/team-access/route.ts`, "utf8"),
+    readFile(`${process.cwd()}/server/team-access-management.ts`, "utf8"),
+  ]);
+  assert.match(route, /requireIdentity/);
+  assert.match(route, /requireAal2/);
+  assert.match(management, /identity\.email !== FOUNDER_BOOTSTRAP_EMAIL/);
+  assert.match(management, /context\.role !== "owner"/);
+  assert.match(management, /UPDATE internal_access SET active = 0/);
+  assert.match(management, /UPDATE memberships SET status = 'suspended'/);
+  assert.match(management, /UPDATE team_members SET status = \?, remote_login = 0/);
+  assert.match(management, /UPDATE users SET status = 'suspended'/);
+  assert.doesNotMatch(management, /DELETE FROM users/);
 });
 
 test("reported high-risk routes keep their server-side security boundaries", async () => {
@@ -294,7 +331,7 @@ test("the R-Series callback rejects malformed one-time state before database acc
     { headers: { accept: "application/json" } },
   ), environment, context);
   assert.equal(response.status, 400);
-  assert.equal((await response.json()).error.code, "LIGHTSPEED_R_CALLBACK_INVALID");
+  assert.equal((await response.json()).error.code, "OAUTH_BROWSER_BINDING_INVALID");
 });
 
 test("the Clover callback rejects malformed one-time state before database access", async () => {
@@ -304,7 +341,7 @@ test("the Clover callback rejects malformed one-time state before database acces
     { headers: { accept: "application/json" } },
   ), environment, context);
   assert.equal(response.status, 400);
-  assert.equal((await response.json()).error.code, "CLOVER_CALLBACK_INVALID");
+  assert.equal((await response.json()).error.code, "OAUTH_BROWSER_BINDING_INVALID");
 });
 
 test("the Square callback rejects malformed one-time state before database access", async () => {
@@ -314,7 +351,7 @@ test("the Square callback rejects malformed one-time state before database acces
     { headers: { accept: "application/json" } },
   ), environment, context);
   assert.equal(response.status, 400);
-  assert.equal((await response.json()).error.code, "SQUARE_CALLBACK_INVALID");
+  assert.equal((await response.json()).error.code, "OAUTH_BROWSER_BINDING_INVALID");
 });
 
 test("the Shopify POS callback rejects malformed one-time state before database access", async () => {
@@ -324,7 +361,7 @@ test("the Shopify POS callback rejects malformed one-time state before database 
     { headers: { accept: "application/json" } },
   ), environment, context);
   assert.equal(response.status, 400);
-  assert.match((await response.json()).error.code, /^SHOPIFY_/u);
+  assert.equal((await response.json()).error.code, "OAUTH_BROWSER_BINDING_INVALID");
 });
 
 test("the Clover callback binds the provider redirect to a one-time initiating owner", async () => {
@@ -373,7 +410,7 @@ test("the Stripe callback rejects malformed one-time state before database acces
     { headers: { accept: "application/json" } },
   ), environment, context);
   assert.equal(response.status, 400);
-  assert.equal((await response.json()).error.code, "STRIPE_CALLBACK_INVALID");
+  assert.equal((await response.json()).error.code, "OAUTH_BROWSER_BINDING_INVALID");
 });
 
 test("marketing callbacks reject malformed one-time state before database access", async () => {
@@ -384,7 +421,7 @@ test("marketing callbacks reject malformed one-time state before database access
       { headers: { accept: "application/json" } },
     ), environment, context);
     assert.equal(response.status, 400, provider);
-    assert.equal((await response.json()).error.code, "MARKETING_CALLBACK_INVALID", provider);
+    assert.equal((await response.json()).error.code, "OAUTH_BROWSER_BINDING_INVALID", provider);
   }
 });
 

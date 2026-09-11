@@ -3,6 +3,7 @@ import { readFile, readdir } from "node:fs/promises";
 import { createServer } from "node:http";
 import test from "node:test";
 import { Miniflare } from "miniflare";
+import { registerSupabaseTestServer } from "./helpers/supabase-loopback-transport.mjs";
 import { activateTestSubscription } from "./helpers/subscription-fixture.mjs";
 
 const origin = "https://vanteloq.example";
@@ -44,8 +45,8 @@ function onboardingBody() {
     sourceMode: "connect_later",
     selectedPos: "",
     legalAccepted: true,
-    termsVersion: "2026-08-24",
-    privacyPolicyVersion: "2026-08-24",
+    termsVersion: "2026-09-05",
+    privacyPolicyVersion: "2026-09-10",
     legalNoticeVersion: "account-creation-v2",
   };
 }
@@ -81,7 +82,7 @@ async function createEnvironment() {
   const worker = (await import(workerUrl.href)).default;
   const environment = {
     DB: database,
-    SUPABASE_URL: `http://127.0.0.1:${authAddress.port}`,
+      SUPABASE_URL: registerSupabaseTestServer(authAddress.port),
     SUPABASE_PUBLISHABLE_KEY: "test-publishable-key",
     GOOGLE_MARKETING_CLIENT_ID: "google-client",
     GOOGLE_MARKETING_CLIENT_SECRET: "google-secret",
@@ -92,10 +93,10 @@ async function createEnvironment() {
   return { authServer, miniflare, database, worker, environment };
 }
 
-async function dispatch(worker, environment, path, { method = "GET", body } = {}) {
+async function dispatch(worker, environment, path, { method = "GET", body, cookie = "" } = {}) {
   return worker.fetch(new Request(`${origin}${path}`, {
     method,
-    headers: identityHeaders(method !== "GET"),
+    headers: { ...identityHeaders(method !== "GET"), cookie },
     body: body ? JSON.stringify(body) : undefined,
     redirect: "manual",
   }), environment, executionContext);
@@ -105,6 +106,9 @@ test("exact marketing resources remain versioned, approval-bound, separated, and
   const { authServer, miniflare, database, worker, environment } = await createEnvironment();
   let restoreFetch = globalThis.fetch;
   const providerCalls = [];
+  const advisorPayloads = [];
+  const openaiPayloads = [];
+  let unavailableGoogleService = null;
   try {
     const onboarding = await dispatch(worker, environment, "/api/v1/onboarding", { method: "POST", body: onboardingBody() });
     assert.equal(onboarding.status, 201, await onboarding.clone().text());
@@ -116,8 +120,8 @@ test("exact marketing resources remain versioned, approval-bound, separated, and
     `).first();
     assert.ok(legalAcceptance);
     assert.deepEqual(legalAcceptance, {
-      terms_version: "2026-08-24",
-      privacy_policy_version: "2026-08-24",
+      terms_version: "2026-09-05",
+      privacy_policy_version: "2026-09-10",
       notice_version: "account-creation-v2",
       acceptance_source: "onboarding_review",
       source_hash: null,
@@ -128,8 +132,22 @@ test("exact marketing resources remain versioned, approval-bound, separated, and
     restoreFetch = globalThis.fetch;
     globalThis.fetch = async (input, init) => {
       const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (url === "https://api.openai.com/v1/responses") {
+        assert.equal(new Headers(init?.headers).get("authorization"), "Bearer fixture-openai-key");
+        const payload = JSON.parse(String(init?.body));
+        assert.equal(payload.store, false);
+        openaiPayloads.push(payload);
+        return Response.json({status: "completed", output: [{type: "message", content: [{type: "output_text", text: "Independent fixture financial analysis."}]}]});
+      }
       if (!url.includes("googleapis.com")) return restoreFetch(input, init);
       providerCalls.push(url);
+      if (url.startsWith("https://generativelanguage.googleapis.com/")) {
+        assert.equal(new Headers(init?.headers).get("x-goog-api-key"), "fixture-gemini-key");
+        assert.ok(!url.includes("fixture-gemini-key"));
+        const payload = JSON.parse(String(init?.body));
+        advisorPayloads.push(payload);
+        return Response.json({ candidates: [{ finishReason: "STOP", content: { parts: [{ text: "Fixture response based on approved marketing evidence." }] } }] });
+      }
       if (url === "https://oauth2.googleapis.com/token") return Response.json({
         access_token: "google-access-token",
         refresh_token: "google-refresh-token",
@@ -137,9 +155,9 @@ test("exact marketing resources remain versioned, approval-bound, separated, and
         scope: "openid email https://www.googleapis.com/auth/webmasters.readonly https://www.googleapis.com/auth/analytics.readonly https://www.googleapis.com/auth/business.manage",
       });
       if (url === "https://openidconnect.googleapis.com/v1/userinfo") return Response.json({ sub: "google-account-123", name: "Main Google account" });
-      if (url === "https://www.googleapis.com/webmasters/v3/sites") return Response.json({ siteEntry: [{ siteUrl: "sc-domain:example.ca" }, { siteUrl: "sc-domain:unselected.ca" }] });
+      if (url === "https://www.googleapis.com/webmasters/v3/sites") return unavailableGoogleService === "search" ? new Response("Unavailable", { status: 503 }) : Response.json({ siteEntry: [{ siteUrl: "sc-domain:example.ca" }, { siteUrl: "sc-domain:unselected.ca" }] });
       if (url.startsWith("https://analyticsadmin.googleapis.com/v1beta/accountSummaries")) return Response.json({ accountSummaries: [{ propertySummaries: [{ property: "properties/123", displayName: "Main website" }, { property: "properties/999", displayName: "Unselected website" }] }] });
-      if (url.startsWith("https://mybusinessaccountmanagement.googleapis.com/v1/accounts")) return Response.json({ accounts: [{ name: "accounts/123", accountName: "Main business" }] });
+      if (url.startsWith("https://mybusinessaccountmanagement.googleapis.com/v1/accounts")) return unavailableGoogleService === "business" ? new Response("Unavailable", { status: 403 }) : Response.json({ accounts: [{ name: "accounts/123", accountName: "Main business" }] });
       if (url.startsWith("https://mybusinessbusinessinformation.googleapis.com/v1/accounts/123/locations")) return Response.json({ locations: [{ name: "locations/456", title: "Main store", storeCode: "EDM" }] });
       if (url.includes("sites/sc-domain%3Aexample.ca/searchAnalytics/query")) return Response.json({ rows: [{ keys: ["2026-08-01"], clicks: 4, impressions: 40, ctr: 0.1, position: 3.5 }] });
       if (url.includes("properties/123:runReport")) return Response.json({ rows: [{ dimensionValues: [{ value: "20260801" }], metricValues: [{ value: "10" }, { value: "8" }, { value: "2" }, { value: "20" }] }] });
@@ -156,7 +174,7 @@ test("exact marketing resources remain versioned, approval-bound, separated, and
     const authorization = await authorize.json();
     const state = new URL(authorization.authorizationUrl).searchParams.get("state");
     assert.ok(state && authorization.connectionId);
-    const callback = await dispatch(worker, environment, `/api/v1/integrations/google/callback?state=${encodeURIComponent(state)}&code=test-code`);
+    const callback = await dispatch(worker, environment, `/api/v1/integrations/google/callback?state=${encodeURIComponent(state)}&code=test-code`, { cookie: authorize.headers.get("set-cookie").split(";")[0] });
     assert.equal(callback.status, 303, await callback.clone().text());
     const callbackConnection = await database.prepare(`SELECT status, last_error_code lastErrorCode FROM integration_connections WHERE id = ?`).bind(authorization.connectionId).first();
     assert.equal(new URL(callback.headers.get("location")).searchParams.get("connection"), "connected", JSON.stringify({ callbackConnection, providerCalls }));
@@ -166,6 +184,13 @@ test("exact marketing resources remain versioned, approval-bound, separated, and
     const resourceList = await discovered.json();
     assert.equal(resourceList.selectionVersion, 0);
     assert.equal(resourceList.datasets.flatMap((entry) => entry.resources).length, 5);
+    unavailableGoogleService = "business";
+    const partialDiscovery = await dispatch(worker, environment, "/api/v1/integrations/google/resources", { method: "POST", body: { action: "discover", connectionId: authorization.connectionId } });
+    assert.equal(partialDiscovery.status, 200, await partialDiscovery.clone().text());
+    const partialResources = await partialDiscovery.json();
+    assert.equal(partialResources.selectionBlocked, false);
+    assert.equal(partialResources.datasets.find((entry) => entry.dataset === "google_business_profile").status, "unavailable");
+    assert.equal(partialResources.datasets.find((entry) => entry.dataset === "google_analytics").resources.length, 2);
 
     const replaced = await dispatch(worker, environment, "/api/v1/integrations/google/resources", {
       method: "POST",
@@ -182,6 +207,14 @@ test("exact marketing resources remain versioned, approval-bound, separated, and
     assert.equal(replaced.status, 200, await replaced.clone().text());
     const replacement = await replaced.json();
     assert.equal(replacement.selectionVersion, 1);
+    unavailableGoogleService = null;
+    const pendingSourcesResponse = await dispatch(worker, environment, "/api/v1/marketing/reports");
+    assert.equal(pendingSourcesResponse.status, 200, await pendingSourcesResponse.clone().text());
+    const pendingSources = (await pendingSourcesResponse.json()).sources;
+    assert.equal(pendingSources.length, 2);
+    assert.ok(pendingSources.every((source) => source.status === "approval_required"));
+    const prematureReport = await dispatch(worker, environment, `/api/v1/marketing/reports?selectionId=${pendingSources[0].id}`);
+    assert.equal(prematureReport.status, 409);
 
     const staleReplace = await dispatch(worker, environment, "/api/v1/integrations/google/resources", { method: "POST", body: { action: "replace", connectionId: authorization.connectionId, expectedSelectionVersion: 0, selections: [] } });
     assert.equal(staleReplace.status, 409);
@@ -205,12 +238,113 @@ test("exact marketing resources remain versioned, approval-bound, separated, and
 
     const approved = await dispatch(worker, environment, "/api/v1/integrations", { method: "POST", body: { action: "approve_data", connectionId: authorization.connectionId, confirmed: true, sampleRunId: sampleBody.run.id, expectedSelectionVersion: 1 } });
     assert.equal(approved.status, 200, await approved.clone().text());
+    const selectionsBeforeFailure = await database.prepare("SELECT * FROM marketing_resource_selections WHERE connection_id = ? ORDER BY id").bind(authorization.connectionId).all();
+    const metricsBeforeFailure = await database.prepare("SELECT * FROM marketing_daily_metrics WHERE resource_selection_id IN (SELECT id FROM marketing_resource_selections WHERE connection_id = ?) ORDER BY id").bind(authorization.connectionId).all();
+    unavailableGoogleService = "search";
+    const interruptedDiscovery = await dispatch(worker, environment, "/api/v1/integrations/google/resources", { method: "POST", body: { action: "discover", connectionId: authorization.connectionId } });
+    assert.equal(interruptedDiscovery.status, 200, await interruptedDiscovery.clone().text());
+    assert.equal((await interruptedDiscovery.json()).selectionBlocked, true);
+    const unsafeReplacement = await dispatch(worker, environment, "/api/v1/integrations/google/resources", {
+      method: "POST",
+      body: { action: "replace", connectionId: authorization.connectionId, expectedSelectionVersion: 1, selections: [
+        { dataset: "google_analytics", externalResourceRef: "properties/123", scopeKind: "location", localLocationId: location.id },
+      ] },
+    });
+    assert.equal(unsafeReplacement.status, 409, await unsafeReplacement.clone().text());
+    assert.equal((await unsafeReplacement.json()).error.code, "MARKETING_DISCOVERY_INCOMPLETE");
+    assert.deepEqual((await database.prepare("SELECT * FROM marketing_resource_selections WHERE connection_id = ? ORDER BY id").bind(authorization.connectionId).all()).results, selectionsBeforeFailure.results);
+    assert.deepEqual((await database.prepare("SELECT * FROM marketing_daily_metrics WHERE resource_selection_id IN (SELECT id FROM marketing_resource_selections WHERE connection_id = ?) ORDER BY id").bind(authorization.connectionId).all()).results, metricsBeforeFailure.results);
+    unavailableGoogleService = null;
 
     const growth = await dispatch(worker, environment, `/api/v1/growth?location=${encodeURIComponent(location.id)}`);
     assert.equal(growth.status, 200, await growth.clone().text());
     const growthBody = await growth.json();
+    assert.equal(growthBody.journeyCoverage.journeys, 0);
+    assert.equal(growthBody.journeyCoverage.revenueAvailable, true);
+    assert.equal(growthBody.canManage, true);
+    const calendarDraft = { type: "marketing_calendar", title: "Review search landing page", channel: "website", eventType: "audit", startDate: "2026-09-08", dueDate: "2026-09-15", objective: "Review qualified enquiries", notes: "Owner: Test owner. Compare the same source and period." };
+    const invalidDate = await dispatch(worker, environment, "/api/v1/growth", { method: "POST", body: { ...calendarDraft, startDate: "2026-02-30" } });
+    assert.equal(invalidDate.status, 400);
+    const savedPlan = await dispatch(worker, environment, "/api/v1/growth", { method: "POST", body: calendarDraft });
+    assert.equal(savedPlan.status, 201, await savedPlan.clone().text());
+    const planId = (await savedPlan.json()).id;
+    const invalidStatus = await dispatch(worker, environment, "/api/v1/growth", { method: "POST", body: { type: "marketing_calendar_status", id: planId, status: "published" } });
+    assert.equal(invalidStatus.status, 400);
+    for (const status of ["in_progress", "completed", "planned", "cancelled"]) {
+      const changed = await dispatch(worker, environment, "/api/v1/growth", { method: "POST", body: { type: "marketing_calendar_status", id: planId, status } });
+      assert.equal(changed.status, 200, await changed.clone().text());
+    }
+    const missingPlan = await dispatch(worker, environment, "/api/v1/growth", { method: "POST", body: { type: "marketing_calendar_status", id: "other-tenant-plan", status: "completed" } });
+    assert.equal(missingPlan.status, 404);
+    const savedCalendar = await dispatch(worker, environment, "/api/v1/growth");
+    const savedEntry = (await savedCalendar.json()).calendar.find((entry) => entry.id === planId);
+    assert.equal(savedEntry.notes, calendarDraft.notes);
+    assert.equal(savedEntry.status, "cancelled");
+    const anonymousGrowth = await worker.fetch(new Request(`${origin}/api/v1/growth`), environment, executionContext);
+    assert.equal(anonymousGrowth.status, 401);
+    const crossOriginSave = await worker.fetch(new Request(`${origin}/api/v1/growth`, { method: "POST", headers: { ...identityHeaders(true), origin: "https://untrusted.example" }, body: JSON.stringify(calendarDraft) }), environment, executionContext);
+    assert.equal(crossOriginSave.status, 403);
     assert.equal(new Set(growthBody.measurementSeries.map((row) => row.selectionId)).size, 2);
     assert.ok(growthBody.measurementSeries.every((row) => row.resourceName && row.localLocationId === location.id));
+    const readySourcesResponse = await dispatch(worker, environment, `/api/v1/marketing/reports?location=${location.id}`);
+    assert.equal(readySourcesResponse.status, 200, await readySourcesResponse.clone().text());
+    const readySources = (await readySourcesResponse.json()).sources;
+    assert.equal(readySources.length, 2);
+    assert.ok(readySources.every((source) => source.status === "ready"));
+    const searchSource = readySources.find((source) => source.dataset === "google_search_console");
+    assert.ok(searchSource);
+    const reportResponse = await dispatch(worker, environment, `/api/v1/marketing/reports?selectionId=${searchSource.id}&location=${location.id}&view=queries&days=28`);
+    assert.equal(reportResponse.status, 200, await reportResponse.clone().text());
+    assert.match(reportResponse.headers.get("cache-control"), /no-store/);
+    const reportBody = await reportResponse.json();
+    assert.equal(reportBody.report.dataset, "google_search_console");
+    assert.equal(reportBody.report.totals.ctr, 10);
+    assert.equal(reportBody.storage, "not_persisted");
+    assert.doesNotMatch(JSON.stringify(reportBody), /google-access-token|google-refresh-token|encrypted/);
+    const missingSource = await dispatch(worker, environment, "/api/v1/marketing/reports?selectionId=other-tenant-resource");
+    assert.equal(missingSource.status, 404);
+    const invalidView = await dispatch(worker, environment, `/api/v1/marketing/reports?selectionId=${searchSource.id}&view=campaigns`);
+    assert.equal(invalidView.status, 400);
+    const unauthorizedReport = await worker.fetch(new Request(`${origin}/api/v1/marketing/reports`), environment, executionContext);
+    assert.equal(unauthorizedReport.status, 401);
+    environment.GOOGLE_GEMINI_API_KEY = "fixture-gemini-key";
+    environment.GOOGLE_GEMINI_PAID_SERVICE_CONFIRMED = "true";
+    const advisor = await dispatch(worker, environment, "/api/v1/advisor/chat", { method: "POST", body: { question: "What does our marketing evidence show?", dataUseAccepted: true, noticeVersion: "vanteloq-ai-v4-optional-memory", privacyPolicyVersion: "2026-09-10" } });
+    assert.equal(advisor.status, 200, await advisor.clone().text());
+    const advisorBody = await advisor.json();
+    assert.equal(advisorBody.status, "answered");
+    assert.equal(advisorPayloads.length, 1);
+    const advisorText = advisorPayloads[0].contents[0].parts[0].text;
+    assert.match(advisorText, /analytics_sessions/);
+    assert.match(advisorText, /search_clicks/);
+    assert.match(advisorText, /comparisonComplete/);
+    assert.doesNotMatch(advisorText, /sc-domain:example.ca|properties\/123|google-access-token/);
+
+    const aiQuestion = { question: "Which KPIs need attention?", conversationId: advisorBody.conversationId, dataUseAccepted: true, noticeVersion: "vanteloq-ai-v4-optional-memory", privacyPolicyVersion: "2026-09-10" };
+    const noConsent = await dispatch(worker, environment, "/api/v1/advisor/chat", {method: "POST", body: {...aiQuestion, dataUseAccepted: false}});
+    assert.equal(noConsent.status, 409);
+    const staleConsent = await dispatch(worker, environment, "/api/v1/advisor/chat", {method: "POST", body: {...aiQuestion, noticeVersion: "gemini-evidence-advisor-v2-marketing"}});
+    assert.equal(staleConsent.status, 409);
+    const sensitive = await dispatch(worker, environment, "/api/v1/advisor/chat", {method: "POST", body: {...aiQuestion, question: "Analyze jane@example.com"}});
+    assert.equal(sensitive.status, 400);
+    assert.equal(advisorPayloads.length, 1);
+    environment.GOOGLE_GEMINI_PAID_SERVICE_CONFIRMED = "false";
+    const protectedData = await dispatch(worker, environment, "/api/v1/advisor/chat", {method: "POST", body: aiQuestion});
+    assert.equal((await protectedData.json()).status, "configuration_required");
+    assert.equal(advisorPayloads.length, 1);
+    environment.GOOGLE_GEMINI_PAID_SERVICE_CONFIRMED = "true";
+    environment.OPENAI_API_KEY = "fixture-openai-key";
+    const combined = await dispatch(worker, environment, "/api/v1/advisor/chat", {method: "POST", body: {...aiQuestion, provider: "both"}});
+    assert.equal(combined.status, 200, await combined.clone().text());
+    const combinedBody = await combined.json();
+    assert.deepEqual(combinedBody.providers, ["gemini", "openai"]);
+    assert.equal(combinedBody.partial, false);
+    assert.equal(openaiPayloads.length, 1);
+    assert.equal(openaiPayloads[0].input, advisorPayloads[1].contents[0].parts[0].text);
+    assert.match(openaiPayloads[0].input, /Conversation memory: \[\]/);
+    assert.doesNotMatch(openaiPayloads[0].input, /sc-domain:example.ca|properties\/123|fixture-openai-key|google-access-token/);
+    const aiConsents = await database.prepare("SELECT DISTINCT provider FROM integration_consents WHERE notice_version = ? ORDER BY provider").bind("vanteloq-ai-v4-optional-memory").all();
+    assert.deepEqual(aiConsents.results.map(row => row.provider), ["google_gemini", "openai"]);
 
     const originalDatabaseBinding = environment.DB;
     let raceInjected = false;

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import NotFoundMetadataGuard from "./not-found-metadata-guard";
 import ProductBrandLogo from "./product-brand-logo";
 
 export const metadata: Metadata = {
@@ -10,6 +11,7 @@ export const metadata: Metadata = {
 export default function NotFound() {
   return (
     <main className="site-not-found">
+      <NotFoundMetadataGuard />
       <ProductBrandLogo product="vanteloq" priority />
       <p>404</p>
       <h1>This page is not in the operating view.</h1>

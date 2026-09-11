@@ -18,6 +18,18 @@ export function ResourceHeader() {
         <Link href="/resources/finance">Finance</Link>
         <Link href="/resources/pos">POS</Link>
       </nav>
+      <details className="resource-mobile-menu">
+        <summary>Browse</summary>
+        <nav aria-label="Mobile resource navigation">
+          <Link href="/">Home</Link>
+          <Link href="/resources">All guides</Link>
+          <Link href="/resources/inventory">Inventory</Link>
+          <Link href="/resources/analytics">Analytics</Link>
+          <Link href="/resources/finance">Finance</Link>
+          <Link href="/resources/pos">POS</Link>
+          <Link href="/?start=signup">Create workspace</Link>
+        </nav>
+      </details>
       <div className="resource-header-actions">
         <Link className="resource-header-signin" href="/?start=signin">Sign in</Link>
         <Link className="resource-header-cta" href="/?start=signup">Create workspace</Link>

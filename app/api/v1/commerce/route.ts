@@ -17,6 +17,7 @@ export async function GET(request: Request) {
     const canReadProfit = permissions.includes("metrics.profit");
     const canReadSuppliers = permissions.includes("purchasing.view");
     const canReadInventory = permissions.includes("inventory.view");
+    const canReadSales = permissions.includes("sales.view") && permissions.includes("metrics.revenue");
     const database = getD1();
     const squareCostGap = await database.prepare(`
       SELECT 1 AS value FROM integration_connections
@@ -127,10 +128,10 @@ export async function GET(request: Request) {
     const safeCustomers = canReadCustomerTotals ? (customers.results ?? []).map((row) => canReadCustomerIdentity
       ? row
       : { ...row, externalCustomerId: null, displayName: null, firstName: null, lastName: null, email: null, phone: null }) : [];
-    const safeTopProducts = (topProducts.results ?? []).map((row) => ({
+    const safeTopProducts = canReadSales ? (topProducts.results ?? []).map((row) => ({
       ...row,
       grossProfitCents: canViewVerifiedProfit ? row.grossProfitCents : null,
-    }));
+    })) : [];
     return jsonResponse({
       source: "normalized-commerce",
       sources,
