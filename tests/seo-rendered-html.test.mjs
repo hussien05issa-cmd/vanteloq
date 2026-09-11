@@ -35,7 +35,9 @@ test("homepage exposes the marketing page in initial HTML", async () => {
     "small-business-bookkeeping-system",
   ]) assert.match(text, new RegExp(`href="/resources/${slug}"`));
   assert.match(text, /id="security"/);
-  assert.match(text, /<link[^>]+rel="canonical"[^>]+href="https:\/\/vanteloq\.com\/"/i);
+  const canonical = text.match(/<link[^>]+rel="canonical"[^>]+href="([^"]+)"/i)?.[1];
+  assert.ok(canonical, "homepage should expose a canonical URL");
+  assert.equal(new URL(canonical).href, "https://vanteloq.com/");
   assert.match(text, /"@type":"Organization"/);
 });
 

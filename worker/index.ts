@@ -80,7 +80,11 @@ function rewriteNotFoundMetadata(html: string) {
     .replace(/<meta property="og:description" content="[^"]*"\/>/i, `<meta property="og:description" content="${NOT_FOUND_DESCRIPTION}"/>`)
     .replace(/<meta name="twitter:description" content="[^"]*"\/>/i, `<meta name="twitter:description" content="${NOT_FOUND_DESCRIPTION}"/>`)
     .replace(/<meta property="og:url" content="[^"]*"\/>/i, "")
-    .replace(/<link rel="canonical" href="[^"]*"\/>/i, "");
+    .replace(/<link rel="canonical" href="[^"]*"\/>/i, "")
+    // The runtime and page metadata can both emit robots directives for a 404.
+    // Normalize the server HTML to one directive before it reaches crawlers.
+    .replace(/<meta\b[^>]*\bname=["']robots["'][^>]*\/?>/gi, "")
+    .replace(/<\/head>/i, '<meta name="robots" content="noindex, follow"/></head>');
 }
 
 // Image security config. SVG sources with .svg extension auto-skip the
