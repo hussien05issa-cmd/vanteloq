@@ -416,7 +416,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
         <a href="#capabilities" onClick={closeMobileNav}>Capabilities</a>
         <a href="#connections" onClick={closeMobileNav}>Connections</a>
         <a href="#demo" onClick={closeMobileNav}>Try the demo</a>
-        <a href="#security" onClick={closeMobileNav}>Security</a>
+        <Link data-public-event="pricing_view" href="/pricing" onClick={closeMobileNav}>Pricing</Link>
         <Link href="/resources" onClick={closeMobileNav}>Resources</Link>
         <div className="public-nav-mobile-socials">
           <span>Follow Vanteloq</span>
@@ -429,19 +429,19 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
       </nav>
       <div className="public-nav-actions">
         <button type="button" className="nav-login" onClick={() => start("signin")}>Sign in</button>
-        <button type="button" onClick={() => start("signup")}>Create workspace</button>
+        <button type="button" data-public-event="signup_start" onClick={() => start("signup")}>Create workspace</button>
       </div>
     </header>
 
     <main id="main-content">
       <section className="home-hero" aria-labelledby="home-title">
         <div className="home-hero-copy">
-          <p className="home-eyebrow">CLARITY FOR EVERY BUSINESS DECISION</p>
+          <p className="home-eyebrow">RETAIL ANALYTICS, CASH AND FOLLOW-THROUGH</p>
           <h1 id="home-title">Understand your business. <em>Make better decisions.</em></h1>
           <p>See what is selling, where profit is changing and what needs attention. Bring your supported sales, inventory and financial records into one workspace, with the source behind every result.</p>
           <div className="public-actions">
             <a href="#demo">Try the interactive demo <span aria-hidden="true">→</span></a>
-            <button type="button" onClick={() => start("signup")}>Create your workspace <span aria-hidden="true">→</span></button>
+            <button type="button" data-public-event="signup_start" onClick={() => start("signup")}>Create your workspace <span aria-hidden="true">→</span></button>
           </div>
           <ul className="home-proof" aria-label="Verified platform controls">
             <li>Trace results to source records</li>
@@ -460,6 +460,8 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
       </section>
 
       <ProductDemo/>
+
+      <section className="home-decision-proof" aria-labelledby="decision-proof-title"><div><p className="demo-eyebrow">BUILT FOR THE OWNER’S NEXT DECISION</p><h2 id="decision-proof-title">From a number to a decision you can explain.</h2><p>Keep your sales system. Add context, source checks and a clear next step across operations and BookLoQ.</p></div><div className="decision-proof-grid"><article><span>01 / UNDERSTAND</span><h3>See what changed.</h3><p>Compare equivalent periods and locations. Missing costs stay visible instead of becoming misleading profit.</p><Link href="/demo">Inspect the sample KPIs →</Link></article><article><span>02 / TEST</span><h3>Check the cash impact.</h3><p>Explore a proposed purchase against known obligations and a safety reserve. Separate expected receipts from confirmed cash.</p><Link href="/demo#bookloq">Try BookLoQ cash →</Link></article><article><span>03 / FOLLOW THROUGH</span><h3>Give the decision an owner.</h3><p>Use Vanteloq AI to explain permitted evidence, then review and assign the next step in Action Centre.</p><Link href="/help#follow-through">See how it works →</Link></article></div></section>
 
       <section className="home-connections" id="connections" aria-labelledby="connections-title">
         <div className="home-connection-intro">
@@ -586,7 +588,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
           <article><WorkspaceIcon name="Customers"/><h3>Find the measurement gaps</h3><p>See where recorded journeys stop. Matched sales remain separate from advertising platforms&apos; reported conversions.</p><span>Evidence before attribution</span></article>
           <article><WorkspaceIcon name="Action Centre"/><h3>Give the next move a plan</h3><p>Prepare a campaign brief, build consistent campaign links and carry recommendations into your calendar for review.</p><span>Goal, action and measurement</span></article>
         </div>
-        <div className="home-marketing-footer"><p>Provider authorization and sample approval are required. Facebook and Instagram organic insights are not yet available. Planning tools do not publish content or change advertising budgets.</p><button type="button" onClick={() => start("signup")}>Build your business workspace →</button><a href="#connections">Check connection availability</a></div>
+        <div className="home-marketing-footer"><p>Provider authorization and sample approval are required. Facebook and Instagram organic insights are not yet available. Planning tools do not publish content or change advertising budgets.</p><button type="button" data-public-event="signup_start" onClick={() => start("signup")}>Build your business workspace →</button><a href="#connections">Check connection availability</a></div>
       </section>
 
       <section className="home-gemini" id="gemini" aria-labelledby="gemini-title">
@@ -684,7 +686,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
             );
           })}
         </div>
-        <Link className="home-text-link" href="/resources">Explore all Vanteloq resources →</Link>
+        <Link className="home-text-link" href="/resources">Explore all Vanteloq resources →</Link> <Link className="home-text-link" href="/help">Visit the help centre →</Link>
       </section>
 
       <section className="home-security" id="security" aria-labelledby="security-title">
@@ -759,7 +761,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
       <div className="home-onboarding-summary"><AccountSteps/></div>
       <section className="home-final-cta" aria-labelledby="final-cta-title">
         <div><p>START WITH A CLEARER VIEW</p><h2 id="final-cta-title">Understand what is happening in your business.</h2><span>Create a workspace, add supported information and keep the source, calculation and next action connected.</span></div>
-        <div><button type="button" onClick={() => start("signup")}>Create your workspace</button><a href="#platform">Explore the platform</a></div>
+        <div><button type="button" data-public-event="signup_start" onClick={() => start("signup")}>Create your workspace</button><a href="#platform">Explore the platform</a></div>
       </section>
     </main>
 
@@ -769,10 +771,10 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
         <img src="/brand/lexedge-consulting-logo-web.png" alt="LexEdge Consulting" width={480} height={320} loading="lazy" />
         <span>Owned and operated by LexEdge Consulting</span>
       </div></div>
-      <div><strong>PRODUCT</strong><a href="#platform">How it works</a><a href="#capabilities">Capabilities</a><a href="#connections">Connections</a><a href="#security">Security</a></div>
-      <div><strong>RESOURCES</strong><Link href="/resources">All resources</Link><Link href="/resources/inventory">Inventory</Link><Link href="/resources/finance">Finance</Link><Link href="/resources/analytics">Analytics</Link></div>
+      <div><strong>PRODUCT</strong><Link data-public-event="pricing_view" href="/pricing">Pricing</Link><Link href="/demo">Interactive demo</Link><a href="#platform">How it works</a><a href="#capabilities">Capabilities</a><a href="#connections">Connections</a><a href="#security">Security</a></div>
+      <div><strong>RESOURCES</strong><Link href="/help">Help centre</Link><Link href="/resources">All resources</Link><Link href="/resources/inventory">Inventory</Link><Link href="/resources/finance">Finance</Link><Link href="/resources/analytics">Analytics</Link></div>
       <div><strong>LEGAL</strong><Link href="/legal">Legal centre</Link><Link href="/privacy">Privacy</Link><Link href="/terms">Terms</Link><Link href="/cookies">Cookies</Link></div>
-      <div><strong>ACCOUNT</strong><button type="button" onClick={() => start("signin")}>Sign in</button><button type="button" onClick={() => start("signup")}>Create workspace</button></div>
+      <div><strong>ACCOUNT</strong><button type="button" onClick={() => start("signin")}>Sign in</button><button type="button" data-public-event="signup_start" onClick={() => start("signup")}>Create workspace</button></div>
       <p className="home-footer-note">© {new Date().getFullYear()} LexEdge Consulting. Vanteloq is a product owned and operated by LexEdge Consulting. Feature availability depends on workspace access, configured sources and verified records.</p>
     </footer>
   </div>;

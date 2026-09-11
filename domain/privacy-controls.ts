@@ -1,6 +1,6 @@
 export { PRIVACY_POLICY_VERSION } from "../shared/legal-versions";
 export const PLAID_CONSENT_NOTICE_VERSION = "plaid-financial-data-v3";
-export const GEMINI_CONSENT_NOTICE_VERSION = "vanteloq-ai-v4-optional-memory";
+export const GEMINI_CONSENT_NOTICE_VERSION = "vanteloq-ai-v5-bookloq-help";
 export const QUICKBOOKS_CONSENT_NOTICE_VERSION = "quickbooks-accounting-read-v1";
 
 export const PLAID_DATA_CATEGORIES = [
@@ -22,6 +22,8 @@ export const GEMINI_DATA_CATEGORIES = [
   "The question entered by the authorized user",
   "Dated aggregate sales, gross profit, transaction, discount, refund and unit metrics; permission-filtered labour totals, inventory values and accounts payable snapshots",
   "Permitted synchronized website, search and paid-advertising totals, with source-specific periods and coverage limits; no queries, URLs, Business Profile content or advertising amounts",
+  "Permitted organization-wide BookLoQ ledger and cash summaries, only with the required finance access and a live ledger; no raw ledger records or identities",
+  "Product guidance for App help; workspace records are not attached in that mode",
   "Connected-source status and freshness details",
   "Aggregate cash available only when the user has bank-balance permission",
   "An optional short user-and-workspace-scoped conversation history, only when memory is enabled and its evidence and access fingerprint match the current request",

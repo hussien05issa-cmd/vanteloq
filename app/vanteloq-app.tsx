@@ -14,7 +14,7 @@ import AdvisorThinking from "./advisor-thinking";
 import AdvisorResponse from "./advisor-response";
 import { requestAdvisorAnalysis } from "./advisor-client";
 import AdvisorPrivacy from "./advisor-privacy";
-import { ADVISOR_PROVIDER_LABELS, advisorProviders, type AdvisorMode } from "../domain/advisor-providers";
+import { ADVISOR_PROVIDER_LABELS, advisorProviders, defaultAdvisorProvider, type AdvisorMode } from "../domain/advisor-providers";
 import {
   integrationCatalog,
   integrationCategoryGuide,
@@ -1345,7 +1345,7 @@ function Workspace({
       />
     );
   if (view === "Advisor")
-    return <Advisor data={data} navigate={navigate} createTask={createTask} />;
+    return <Advisor key={activeLocationId ?? "organization"} data={data} navigate={navigate} createTask={createTask} activeLocationId={activeLocationId} />;
   if (view === "Reports")
     return (
       <ReportsWorkspace
@@ -3957,23 +3957,32 @@ function Advisor({
   data,
   navigate,
   createTask,
+  activeLocationId,
 }: {
   data: CommandCentre;
   navigate: (view: View) => void;
   createTask: (seed: TaskSeed) => void;
+  activeLocationId: string | null;
 }) {
   const [question, setQuestion] = useState("");
   const [memoryEnabled, setMemoryEnabled] = useState(false);
-  const [provider, setProvider] = useState<AdvisorMode>("gemini");
+  const [provider, setProvider] = useState<AdvisorMode>("openai");
+  const [purpose, setPurpose] = useState<"analysis" | "help">("analysis");
+  const providerChosen = useRef(false);
   const [thinking, setThinking] = useState(false);
+  const [dataUseAccepted, setDataUseAccepted] = useState(false);
   const [providers, setProviders] = useState({ gemini: { ready: false, reason: "Checking Google Gemini availability." as string | null }, openai: { ready: false, reason: "Checking OpenAI availability." as string | null } });
   useEffect(() => {
     let active = true;
-    void apiFetch("/api/v1/advisor/chat").then(async response => { if (!response.ok) throw new Error("unavailable"); return response.json(); }).then(payload => { if (active && payload.providers) setProviders(payload.providers); }).catch(() => { if (active) setProviders({ gemini: { ready: false, reason: "Provider availability could not be checked. Reopen Vanteloq AI to retry." }, openai: { ready: false, reason: "Provider availability could not be checked. Reopen Vanteloq AI to retry." } }); });
+    void apiFetch("/api/v1/advisor/chat").then(async response => { if (!response.ok) throw new Error("unavailable"); return response.json(); }).then(payload => {
+      if (active && payload.providers) {
+        setProviders(payload.providers);
+        if (!providerChosen.current) { setProvider(defaultAdvisorProvider(payload.providers)); setDataUseAccepted(false); }
+      }
+    }).catch(() => { if (active) setProviders({ gemini: { ready: false, reason: "Provider availability could not be checked. Reopen Vanteloq AI to retry." }, openai: { ready: false, reason: "Provider availability could not be checked. Reopen Vanteloq AI to retry." } }); });
     return () => { active = false; };
   }, []);
   const [loading, setLoading] = useState(false);
-  const [dataUseAccepted, setDataUseAccepted] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [answer, setAnswer] = useState<{
     title: string;
@@ -3993,7 +4002,7 @@ function Advisor({
     setThinking(true);
     const normalized = question.toLowerCase();
     try {
-      const response = await requestAdvisorAnalysis(apiFetch, { question, provider, conversationId, dataUseAccepted, memoryEnabled });
+      const response = await requestAdvisorAnalysis(apiFetch, { question, provider, purpose, conversationId, dataUseAccepted, memoryEnabled, locationId: activeLocationId });
       const payload = await response.json() as { providers?: Array<"gemini" | "openai">; partial?: boolean; status?: string; answer?: string | null; conversationId?: string | null; message?: string; error?: { message?: string } };
       if (!response.ok) throw new Error(payload.error?.message ?? "The advisor could not answer right now.");
       setConversationId(payload.conversationId ?? null);
@@ -4003,7 +4012,7 @@ function Advisor({
       }
       if (payload.answer) {
         setQuestion("");
-        setAnswer({ title: "Vanteloq AI analysis", body: payload.answer, limitation: `${payload.partial ? "Partial response. One selected provider could not complete the analysis. " : ""}Powered by ${(payload.providers ?? []).map(item => ADVISOR_PROVIDER_LABELS[item]).join(" and ")}. Based on your permitted evidence snapshot. Verify conclusions before acting; AI can make mistakes.` });
+        setAnswer({ title: purpose === "help" ? "Vanteloq help" : "Vanteloq AI analysis", body: payload.answer, limitation: `${payload.partial ? "Partial response. One selected provider could not complete the analysis. " : ""}Powered by ${(payload.providers ?? []).map(item => ADVISOR_PROVIDER_LABELS[item]).join(" and ")}. ${purpose === "help" ? "Product guidance only. No workspace records attached." : "Based on your permitted evidence snapshot."} Verify important details; AI can make mistakes.` });
         return;
       }
     } catch (error) {
@@ -4014,6 +4023,7 @@ function Advisor({
       setThinking(false);
     }
     /* Explicit local evidence is available when no external answer was returned. */
+    if (purpose === "help") { setAnswer({ title: "Help is available", body: "Open the help centre for verified product instructions.", limitation: "No AI response was returned." }); return; }
     const insight =
       normalized.includes("margin") ||
       normalized.includes("profit") ||
@@ -4051,7 +4061,7 @@ function Advisor({
   </AdvisorResponse>;
   return (
     <div className="content advisor-page">
-      <AdvisorComposer memoryEnabled={memoryEnabled} onMemory={changeMemory} privacyControls={<AdvisorPrivacy fetcher={apiFetch} disabled={loading} onDeleted={id => { if (id === null || id === conversationId) resetVisibleChat(); }}/>} provider={provider} providers={providers} onProvider={value => { setProvider(value); setDataUseAccepted(false); resetVisibleChat(); }} question={question} onQuestion={setQuestion} dataUseAccepted={dataUseAccepted} onConsent={setDataUseAccepted} loading={loading} thinking={thinking} onSubmit={ask} hasConversation={Boolean(submittedQuestion || answer || history.length)} onNewChat={resetVisibleChat}>
+      <AdvisorComposer purpose={purpose} onPurpose={value => { if (value !== purpose) { setPurpose(value); setDataUseAccepted(false); resetVisibleChat(); } }} memoryEnabled={memoryEnabled} onMemory={changeMemory} privacyControls={<AdvisorPrivacy fetcher={apiFetch} disabled={loading} onDeleted={id => { if (id === null || id === conversationId) resetVisibleChat(); }}/>} provider={provider} providers={providers} onProvider={value => { providerChosen.current = true; setProvider(value); setDataUseAccepted(false); resetVisibleChat(); }} question={question} onQuestion={setQuestion} dataUseAccepted={dataUseAccepted} onConsent={setDataUseAccepted} loading={loading} thinking={thinking} onSubmit={ask} hasConversation={Boolean(submittedQuestion || answer || history.length)} onNewChat={resetVisibleChat}>
         {history.map((item, index) => <Fragment key={index}><div className="ai-user-message"><small>You</small>{item.question}</div>{reply(item.answer)}</Fragment>)}
         {submittedQuestion && <div className="ai-user-message"><small>You</small>{submittedQuestion}</div>}
         {thinking && <AdvisorThinking/>}

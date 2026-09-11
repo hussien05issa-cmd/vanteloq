@@ -19,6 +19,7 @@ import { ApiError } from "./api";
 
 export async function recordAdvisorConsent(input: {
   provider: AdvisorProvider;
+  purpose?: "analysis" | "help";
   organizationId: string;
   actorUserId: string;
   noticeVersion: string;
@@ -32,6 +33,10 @@ export async function recordAdvisorConsent(input: {
   }
 
   const provider = input.provider === "gemini" ? "google_gemini" : "openai";
+  const dataCategoriesJson = JSON.stringify(input.purpose === "help"
+    ? ["The question entered by the authorized user", "Vanteloq product guidance", "Optional recent app-help conversation messages with matching evidence and access; no workspace records"]
+    : GEMINI_DATA_CATEGORIES);
+  const purposesJson = JSON.stringify(input.purpose === "help" ? ["Explain how to use Vanteloq and BookLoQ"] : GEMINI_PROCESSING_PURPOSES);
   const [existing] = await getDb().select({
     id: integrationConsents.id,
     acceptedAt: integrationConsents.acceptedAt,
@@ -42,6 +47,8 @@ export async function recordAdvisorConsent(input: {
     eq(integrationConsents.status, "accepted"),
     eq(integrationConsents.noticeVersion, GEMINI_CONSENT_NOTICE_VERSION),
     eq(integrationConsents.privacyPolicyVersion, PRIVACY_POLICY_VERSION),
+    eq(integrationConsents.dataCategoriesJson, dataCategoriesJson),
+    eq(integrationConsents.purposesJson, purposesJson),
   )).limit(1);
   if (existing) return existing;
 
@@ -55,8 +62,8 @@ export async function recordAdvisorConsent(input: {
     status: "accepted",
     noticeVersion: GEMINI_CONSENT_NOTICE_VERSION,
     privacyPolicyVersion: PRIVACY_POLICY_VERSION,
-    dataCategoriesJson: JSON.stringify(GEMINI_DATA_CATEGORIES),
-    purposesJson: JSON.stringify(GEMINI_PROCESSING_PURPOSES),
+    dataCategoriesJson,
+    purposesJson,
     consentSource: "in_app",
     acceptedAt: now,
     createdAt: now,

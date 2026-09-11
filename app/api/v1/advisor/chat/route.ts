@@ -13,6 +13,8 @@ import { recordAudit } from "../../../../../server/audit";
 import { recordAdvisorConsent } from "../../../../../server/privacy";
 import { advisorMarketingEvidence } from "../../../../../server/marketing-evidence";
 import { advisorEvidenceFingerprint, permittedAdvisorMemory } from "../../../../../domain/advisor-memory";
+import { projectAdvisorBookloq } from "../../../../../domain/advisor-bookloq";
+import { GET as readBookloq } from "../../bookloq/route";
 import {
   GEMINI_CONSENT_NOTICE_VERSION,
   PRIVACY_POLICY_VERSION,
@@ -22,7 +24,10 @@ const readers = ["owner", "admin", "manager", "employee", "read_only"] as const;
 
 
 type Evidence = {
+  purpose?: "analysis" | "help";
+  bookloq?: ReturnType<typeof projectAdvisorBookloq>;
   currency: string;
+  scope?: "selected_location" | "organization" | "permitted_locations";
   marketing?: Awaited<ReturnType<typeof advisorMarketingEvidence>>;
   latestDate: string | null;
   days: Array<{ date: string; netSalesCents: number | null; grossProfitCents: number | null; transactions: number | null; discountsCents: number | null; refundsCents: number | null }>;
@@ -66,6 +71,8 @@ async function evidenceFor(
   const [latest] = await db.select({ date: dailyBusinessMetrics.businessDate }).from(dailyBusinessMetrics).where(metricScope).orderBy(desc(dailyBusinessMetrics.businessDate)).limit(1);
   const startDate = latest ? new Date(Date.parse(`${latest.date}T00:00:00Z`) - 55 * 86400000).toISOString().slice(0, 10) : "9999-12-31";
   const rows = await db.select({
+    sourceProvider: dailyBusinessMetrics.sourceProvider,
+    sourceConnectionId: dailyBusinessMetrics.sourceConnectionId,
     businessDate: dailyBusinessMetrics.businessDate,
     netSalesCents: dailyBusinessMetrics.netSalesCents,
     costOfGoodsCents: dailyBusinessMetrics.costOfGoodsCents,
@@ -80,7 +87,11 @@ async function evidenceFor(
   }).from(dailyBusinessMetrics).where(and(metricScope, gte(dailyBusinessMetrics.businessDate, startDate))).orderBy(desc(dailyBusinessMetrics.businessDate)).limit(5001);
   if (rows.length > 5000) throw new ApiError(413, "ADVISOR_EVIDENCE_LIMIT", "The available evidence exceeds the safe analysis limit. Ask your administrator to narrow the reporting scope.");
   if (rows.some(row => row.locationRef === "all" && rows.some(other => other.businessDate === row.businessDate && other.locationRef !== "all"))) throw new ApiError(409, "ADVISOR_SOURCE_OVERLAP", "Organization and location summaries overlap. Reconcile their scope before requesting AI analysis.");
-  const connections = await db.select({ provider: integrationConnections.provider, status: integrationConnections.status, lastSyncAt: integrationConnections.lastSuccessfulSyncAt }).from(integrationConnections).where(eq(integrationConnections.organizationId, organizationId));
+  // Attribution follows the actual permitted rows, not every connected account.
+  // Excluded test accounts and other locations must not look like evidence sources.
+  const connectionIds = [...new Set(rows.flatMap(row => row.sourceConnectionId ? [row.sourceConnectionId] : []))];
+  const connections = connectionIds.length ? await db.select({ provider: integrationConnections.provider, status: integrationConnections.status, lastSyncAt: integrationConnections.lastSuccessfulSyncAt }).from(integrationConnections).where(and(eq(integrationConnections.organizationId, organizationId), inArray(integrationConnections.id, connectionIds))) : [];
+  const recordedSources = [...new Set(rows.filter(row => !row.sourceConnectionId).map(row => row.sourceProvider ?? "Recorded business summaries"))];
   let cashAvailableCents: number | null = null;
   if (includeCash) {
     const accounts = await db.select({ available: bankAccounts.availableBalanceCents, live: bankAccounts.liveBalanceCents, lastSyncAt: bankAccounts.lastSyncAt, status: bankAccounts.connectionStatus }).from(bankAccounts).where(and(eq(bankAccounts.organizationId, organizationId), eq(bankAccounts.provider, "plaid"), eq(bankAccounts.currency, currency), inArray(bankAccounts.accountType, ["chequing", "savings"]), approvedBankSource(bankAccounts.organizationId, bankAccounts.provider, bankAccounts.externalItemRef)));
@@ -103,7 +114,7 @@ async function evidenceFor(
       refundsCents: includeRevenue ? row.refundsCents : null,
     }));
   const kpis = advisorKpis(days as AdvisorDay[]);
-  return { currency, latestDate: days.at(-1)?.date ?? null, kpis, days: advisorDailySeries(days), sources: connections.map((row) => ({ provider: row.provider, status: row.status, lastSyncAt: row.lastSyncAt?.toISOString() ?? null })), cashAvailableCents };
+  return { currency, latestDate: days.at(-1)?.date ?? null, kpis, days: advisorDailySeries(days), sources: [...connections.map((row) => ({ provider: row.provider, status: row.status, lastSyncAt: row.lastSyncAt?.toISOString() ?? null })), ...recordedSources.map(provider => ({ provider, status: "recorded", lastSyncAt: null }))], cashAvailableCents };
 }
 
 function prompt(question: string, evidence: Evidence, memory: Array<{ role: string; content: string }>) {
@@ -130,6 +141,8 @@ export async function POST(request: Request) {
     await enforceRateLimit("advisor:chat", `${context.userId}:${clientSource(request)}`, 20, 60);
     const body = await readJsonObject(request);
     const question = cleanQuestion(body.question);
+    if (body.purpose !== undefined && body.purpose !== "analysis" && body.purpose !== "help") throw new ApiError(400, "ADVISOR_PURPOSE_INVALID", "Choose business analysis or app help.");
+    const purpose = body.purpose === "help" ? "help" : "analysis";
     if (body.memoryEnabled !== undefined && typeof body.memoryEnabled !== "boolean") throw new ApiError(400, "ADVISOR_MEMORY_INVALID", "Choose whether to enable conversation memory.");
     const memoryEnabled = body.memoryEnabled === true;
     const mode = body.provider ?? "gemini";
@@ -139,23 +152,37 @@ export async function POST(request: Request) {
     }
     for (const provider of advisorProviders(mode)) await recordAdvisorConsent({
       provider,
+      purpose,
       organizationId: context.organizationId,
       actorUserId: context.userId,
       noticeVersion: typeof body.noticeVersion === "string" ? body.noticeVersion : "",
       privacyPolicyVersion: typeof body.privacyPolicyVersion === "string" ? body.privacyPolicyVersion : "",
     });
     const permissions = await effectivePermissions(context);
-    const locationAccess = await authorizedLocationDataScope(context, null);
-    const evidence = await evidenceFor(
+    if (body.locationId != null && (typeof body.locationId !== "string" || !body.locationId.trim() || body.locationId.length > 200)) throw new ApiError(400, "ADVISOR_LOCATION_INVALID", "Choose a valid reporting location.");
+    const locationId = typeof body.locationId === "string" ? body.locationId : null;
+    const locationAccess = await authorizedLocationDataScope(context, locationId);
+    const evidence: Evidence = purpose === "help" ? { currency: context.organization.currency, latestDate: null, days: [], sources: [], cashAvailableCents: null, kpis: advisorKpis([]) } : await evidenceFor(
       context.organizationId,
       locationAccess.locationRefs,
       permissions.includes("metrics.revenue"),
       permissions.includes("metrics.revenue") && permissions.includes("metrics.profit"),
-      locationAccess.organizationWide && permissions.includes("finance.bank_balances"),
+      locationAccess.locationIds === null && locationAccess.organizationWide && permissions.includes("finance.bank_balances"),
       permissions,
       context.organization.currency,
     );
-    if (permissions.includes("marketing.view")) evidence.marketing = await advisorMarketingEvidence(context);
+    evidence.scope = locationId ? "selected_location" : locationAccess.organizationWide ? "organization" : "permitted_locations";
+    evidence.purpose = purpose;
+    if (purpose === "analysis" && permissions.includes("marketing.view")) evidence.marketing = await advisorMarketingEvidence(context, locationId);
+    if (purpose === "analysis") {
+      evidence.bookloq = { status: "unavailable", reason: "Select All locations with the required BookLoQ and finance access to include organization-wide summaries." };
+      if (locationAccess.organizationWide && locationAccess.locationIds === null && permissions.includes("finance.statements")) {
+        // Reuse BookLoQ's complete authorization, entitlement and redaction path.
+        // The allowlist strips identifiers and raw records before provider use.
+        const bookloqResponse = await readBookloq(new Request(new URL("/api/v1/bookloq", request.url), { headers: request.headers }));
+        if (bookloqResponse.ok) evidence.bookloq = projectAdvisorBookloq(await bookloqResponse.json());
+      }
+    }
     const suppliedId = memoryEnabled && body.conversationId != null ? cleanConversationId(body.conversationId) : null;
     const conversationId = suppliedId ?? crypto.randomUUID();
     const existingConversation = await getD1().prepare("SELECT organization_id, user_id FROM assistant_conversations WHERE id = ?").bind(conversationId).first<{ organization_id: string; user_id: string }>();

@@ -3,7 +3,7 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { build } from 'esbuild';
 const bundle = await build({entryPoints:['tests/fixtures/advisor-preview.tsx'],bundle:true,write:false,format:'esm',platform:'browser',jsx:'automatic',logLevel:'error'});
-const names=['globals','operating','theme','brand','design-v2','readability','experience','workspace-design','vanteloq-ai-brand','typography'];
+const names=['globals','operating','theme','brand','design-v2','readability','experience','workspace-design','vanteloq-ai-brand','typography','product-demo'];
 const server = createServer(async(request,response)=>{
  if(request.url==='/brand/vanteloq-ai-nexus.png'){response.setHeader('Content-Type','image/png');response.end(await readFile('public/brand/vanteloq-ai-nexus.png'));return;}
  if(request.url==='/fonts/geist-latin.woff2'){response.setHeader('Content-Type','font/woff2');response.end(await readFile('public/fonts/geist-latin.woff2'));return;}

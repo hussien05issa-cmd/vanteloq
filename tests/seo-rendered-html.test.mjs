@@ -54,6 +54,17 @@ test("resource index is server rendered with distinct metadata", async () => {
   assert.match(text, /gross-margin-editorial-v2\.webp/);
 });
 
+test("help and pricing are crawlable, with accurate canonical links and no invented ratings", async () => {
+  for (const [path, label] of [["/help", "A clear next step"], ["/pricing", "Clarity, including the price"]]) {
+    const { response, text } = await fetchText(path);
+    assert.equal(response.status, 200);
+    assert.ok(text.includes(label));
+    assert.equal((text.match(/<h1\b/g) ?? []).length, 1);
+    assert.ok(text.includes(`href="https://vanteloq.com${path}"`));
+    assert.doesNotMatch(text, /aggregateRating/);
+  }
+});
+
 test("article HTML includes content, canonical, article and breadcrumb schemas", async () => {
   const path = "/resources/how-to-track-inventory-small-business";
   const { response, text } = await fetchText(path);
