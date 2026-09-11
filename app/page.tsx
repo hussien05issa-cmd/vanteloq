@@ -12,6 +12,7 @@ import ResourceGuideVisual from "./resource-guide-visual";
 import { AccountSteps, OperatingStepPreview } from "./home-journey-visuals";
 import ProductBrandLogo from "./product-brand-logo";
 import PlatformPreview from "./platform-preview";
+import ProductDemo from "./product-demo";
 import SocialLinks from "./social-links";
 import AuthPanel, { type AuthPanelMode } from "./auth-panel";
 import { currentSession, getSupabase, signOut } from "./supabase-browser";
@@ -414,7 +415,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
         <a href="#platform" onClick={closeMobileNav}>Platform</a>
         <a href="#capabilities" onClick={closeMobileNav}>Capabilities</a>
         <a href="#connections" onClick={closeMobileNav}>Connections</a>
-        <a href="#company" onClick={closeMobileNav}>Company</a>
+        <a href="#demo" onClick={closeMobileNav}>Try the demo</a>
         <a href="#security" onClick={closeMobileNav}>Security</a>
         <Link href="/resources" onClick={closeMobileNav}>Resources</Link>
         <div className="public-nav-mobile-socials">
@@ -427,7 +428,6 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
         </div>
       </nav>
       <div className="public-nav-actions">
-        <SocialLinks/>
         <button type="button" className="nav-login" onClick={() => start("signin")}>Sign in</button>
         <button type="button" onClick={() => start("signup")}>Create workspace</button>
       </div>
@@ -436,18 +436,20 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
     <main id="main-content">
       <section className="home-hero" aria-labelledby="home-title">
         <div className="home-hero-copy">
+          <p className="home-eyebrow">CLARITY FOR EVERY BUSINESS DECISION</p>
           <h1 id="home-title">Understand your business. <em>Make better decisions.</em></h1>
           <p>See what is selling, where profit is changing and what needs attention. Bring your supported sales, inventory and financial records into one workspace, with the source behind every result.</p>
           <div className="public-actions">
+            <a href="#demo">Try the interactive demo <span aria-hidden="true">→</span></a>
             <button type="button" onClick={() => start("signup")}>Create your workspace <span aria-hidden="true">→</span></button>
-            <a href="#platform">See how Vanteloq works</a>
           </div>
           <ul className="home-proof" aria-label="Verified platform controls">
             <li>Trace results to source records</li>
             <li>Keep control of approvals</li>
             <li>Protect your business data</li>
           </ul>
-          <AccountSteps/>
+
+          <p className="home-demo-caption">Explore with sample data. No signup required. <Link href="/demo">Open full demo →</Link></p>
         </div>
         <figure className="product-visual product-visual-reference home-product-visual">
           {/* The image is a real Vanteloq interface composition; the values shown are illustrative. */}
@@ -456,6 +458,8 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
           <figcaption>Vanteloq command centre · Illustrative values · Available views depend on connected and verified source data</figcaption>
         </figure>
       </section>
+
+      <ProductDemo/>
 
       <section className="home-connections" id="connections" aria-labelledby="connections-title">
         <div className="home-connection-intro">
@@ -600,7 +604,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
         </aside>
         <div className="home-gemini-copy">
           <p>GROUNDED BUSINESS INTELLIGENCE</p>
-          <h2 id="gemini-title">Vanteloq AI explains the business behind the numbers.</h2>
+          <h2 id="gemini-title">Your business context.<br/>A clearer next question.</h2>
           <div className="vanteloq-ai-engines" aria-label="Vanteloq AI providers"><span>OpenAI</span><b aria-hidden="true">+</b><span>Google Gemini</span></div>
           <span>Built to be powered by OpenAI and Google Gemini. Explore financial performance, KPIs and business trends through one Vanteloq AI workspace. Choose either provider or compare two independent analyses, using only the approved evidence you can access.</span>
           <p className="vanteloq-ai-activation">Provider activation is in progress. AI answers become available after secure setup, with a separate data-use choice before each request.</p>
@@ -610,6 +614,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
             <article><strong>Memory is your choice</strong><span>Memory starts off. Enable it for a chat, switch it off, or delete your saved chats. Permitted context stays scoped to your user and workspace.</span></article>
           </div>
           <small className="home-gemini-note">Vanteloq AI supports analysis and planning. Actions remain behind Vanteloq permissions and your approval.</small>
+          <a className="home-ai-demo-link" href="#demo">Explore the evidence in the interactive demo →</a>
         </div>
       </section>
 
@@ -694,6 +699,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
           <article><strong>Protected connections</strong><p>Implemented provider flows use scoped authorization, one-time state and encrypted credentials.</p></article>
           <article><strong>Change history</strong><p>Important operating and connection actions are recorded, and duplicate requests are handled safely.</p></article>
         </div>
+        <div className="home-security-evidence"><a href="/privacy">Privacy and deletion choices →</a><a href="/subprocessors">Who processes your data →</a><a href="https://github.com/hussien05issa-cmd/vanteloq/blob/main/tests/release-security.test.ts" target="_blank" rel="noopener noreferrer">Inspect application security tests ↗</a></div>
       </section>
 
       <section className="home-ownership" id="company" aria-labelledby="ownership-title">
@@ -750,6 +756,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
         </div>
       </section>
 
+      <div className="home-onboarding-summary"><AccountSteps/></div>
       <section className="home-final-cta" aria-labelledby="final-cta-title">
         <div><p>START WITH A CLEARER VIEW</p><h2 id="final-cta-title">Understand what is happening in your business.</h2><span>Create a workspace, add supported information and keep the source, calculation and next action connected.</span></div>
         <div><button type="button" onClick={() => start("signup")}>Create your workspace</button><a href="#platform">Explore the platform</a></div>
@@ -770,3 +777,4 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
     </footer>
   </div>;
 }
+

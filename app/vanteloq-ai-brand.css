@@ -1,4 +1,4 @@
-.vanteloq-ai-logo { display: inline-block; flex-shrink: 0; vertical-align: middle; background: linear-gradient(115deg, #278aff 12%, #5855ed 35%, #ae58f6 53%, #5872ff 72%, #2ea8ff 90%); background-size: 260% 260%; mask: url('/brand/vanteloq-ai.png') center / contain no-repeat; -webkit-mask: url('/brand/vanteloq-ai.png') center / contain no-repeat; animation: vanteloq-ai-flow 7s ease-in-out infinite alternate; }
+.vanteloq-ai-logo { display: inline-block; flex-shrink: 0; vertical-align: middle; background: linear-gradient(115deg, #278aff 12%, #5855ed 35%, #ae58f6 53%, #5872ff 72%, #2ea8ff 90%); background-size: 260% 260%; mask: url('/brand/vanteloq-ai-nexus.png') center / contain no-repeat; -webkit-mask: url('/brand/vanteloq-ai-nexus.png') center / contain no-repeat; animation: vanteloq-ai-flow 7s ease-in-out infinite alternate; }
 .vanteloq-ai-logo.is-thinking { animation: vanteloq-ai-flow 2s ease-in-out infinite alternate, vanteloq-ai-breathe 2.2s ease-in-out infinite; }
 @keyframes vanteloq-ai-flow { from { background-position: 0% 30%; } to { background-position: 100% 70%; } }
 @keyframes vanteloq-ai-breathe { 0%, 100% { transform: scale(.94); opacity: .76; } 50% { transform: scale(1.06); opacity: 1; } }
@@ -125,3 +125,4 @@
 .ai-privacy-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .ai-delete-confirm { margin-top: 12px; padding: 10px; border: 1px solid #edd8d8; border-radius: 9px; background: #fffafa; }
 .ai-delete-confirm button { margin: 0 4px 4px 0; }
+
