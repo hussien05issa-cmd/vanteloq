@@ -1,4 +1,5 @@
 import { and, eq } from "drizzle-orm";
+import { businessDateForTimestamp } from "../../domain/intraday-sales";
 import { getDb, getRuntimeEnv } from "../../db";
 import { integrationSecrets } from "../../db/schema";
 import { ApiError } from "../api";
@@ -489,11 +490,13 @@ export async function normalizeCloverPayments(merchantId: string, values: Record
 export function buildCloverDailyMetrics(
   sales: NormalizedCloverSale[],
   namespace = "legacy",
+  timeZone = "UTC",
 ): CloverDailyMetric[] {
   const grouped = new Map<string, CloverDailyMetric>();
   for (const sale of sales) {
     if (!sale.soldAt || sale.state !== "completed") continue;
-    const businessDate = sale.soldAt.slice(0, 10);
+    const businessDate = businessDateForTimestamp(sale.soldAt, timeZone);
+    if (!businessDate) continue;
     const scopedMerchant = namespace === "legacy" ? sale.outletRef : `${namespace}:${sale.outletRef}`;
     const locationRef = `${CLOVER_PROVIDER}:${scopedMerchant}`;
     const key = `${businessDate}:${locationRef}`;

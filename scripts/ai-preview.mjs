@@ -3,9 +3,10 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { build } from 'esbuild';
 const bundle = await build({entryPoints:['tests/fixtures/advisor-preview.tsx'],bundle:true,write:false,format:'esm',platform:'browser',jsx:'automatic',logLevel:'error'});
-const names=['globals','operating','theme','brand','design-v2','readability','experience','workspace-design','vanteloq-ai-brand'];
+const names=['globals','operating','theme','brand','design-v2','readability','experience','workspace-design','vanteloq-ai-brand','typography'];
 const server = createServer(async(request,response)=>{
  if(request.url==='/brand/vanteloq-ai.png'){response.setHeader('Content-Type','image/png');response.end(await readFile('public/brand/vanteloq-ai.png'));return;}
+ if(request.url==='/fonts/geist-latin.woff2'){response.setHeader('Content-Type','font/woff2');response.end(await readFile('public/fonts/geist-latin.woff2'));return;}
  if(request.url==='/preview.js'){response.setHeader('Content-Type','application/javascript');response.end(bundle.outputFiles[0].text);return;}
  const css=(await Promise.all(names.map(name=>readFile('app/'+name+'.css','utf8')))).join('\n');
  response.setHeader('Content-Type','text/html; charset=utf-8');

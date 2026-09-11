@@ -21,6 +21,7 @@ import "./workspace-design.css";
 import "./marketing-reporting.css";
 import "./marketing-workbench.css";
 import "./vanteloq-ai-brand.css";
+import "./typography.css";
 const GOOGLE_ANALYTICS_CONSENT_DEFAULT = `
 window.dataLayer = window.dataLayer || [];
 window.gtag = window.gtag || function () { window.dataLayer.push(arguments); };
@@ -66,6 +67,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
+        <link rel="preload" href="/fonts/geist-latin.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
         <script id="vanteloq-google-consent-default" dangerouslySetInnerHTML={{ __html: GOOGLE_ANALYTICS_CONSENT_DEFAULT }} />
       </head>
       <body className="antialiased">

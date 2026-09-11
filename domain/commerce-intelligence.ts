@@ -19,7 +19,8 @@ export function shiftCommerceDate(value: string, days: number) {
 export function parseCommercePeriod(fromValue: string | null, toValue: string | null, today = new Date().toISOString().slice(0, 10)): CommercePeriod {
   const to = toValue ?? today;
   const from = fromValue ?? shiftCommerceDate(to, -29);
-  if (!ISO_DATE.test(from) || !ISO_DATE.test(to) || !Number.isFinite(Date.parse(`${from}T00:00:00Z`)) || !Number.isFinite(Date.parse(`${to}T00:00:00Z`))) {
+  const validDate = (value: string) => ISO_DATE.test(value) && Number.isFinite(Date.parse(`${value}T00:00:00Z`)) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
+  if (!validDate(from) || !validDate(to)) {
     throw new Error("Use real calendar dates in YYYY-MM-DD format.");
   }
   const days = Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000) + 1;

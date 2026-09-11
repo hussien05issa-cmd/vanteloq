@@ -1,3 +1,4 @@
+import { businessTimestampRange } from "../domain/business-period";
 import { getD1 } from "../db";
 
 /**
@@ -94,16 +95,27 @@ export async function applyOwnerInventoryCosts(
       )
   `).bind(organizationId, connectionId).run();
 
-  if (options.publishDailyMetrics !== false) await database.prepare(`
+  if (options.publishDailyMetrics !== false) {
+    // Canonical line.outlet_ref already includes the account namespace.
+    const metricLocationMatches = `(metric.location_ref = line.provider || ':' || line.outlet_ref OR metric.location_ref = line.outlet_ref)`;
+    const workspace = await database.prepare("SELECT timezone FROM workspaces WHERE id = ?").bind(organizationId).first<{ timezone: string }>();
+    if (!workspace?.timezone) throw new Error("Business timezone is required to rebuild daily costs");
+    const dates = await database.prepare(`SELECT DISTINCT business_date businessDate FROM daily_business_metrics
+      WHERE organization_id = ? AND source_connection_id = ? AND EXISTS (
+        SELECT 1 FROM commerce_products WHERE organization_id = ? AND connection_id = ? AND archived = 0 AND owner_cost_cents IS NOT NULL
+      )`).bind(organizationId, connectionId, organizationId, connectionId).all<{ businessDate: string }>();
+    const statements = (dates.results ?? []).map(date => {
+      const window = businessTimestampRange("line.sold_at", date.businessDate, date.businessDate, workspace.timezone);
+      return database.prepare(`
     UPDATE daily_business_metrics AS metric
     SET cost_of_goods_cents = (
           SELECT SUM(line.cost_cents) FROM commerce_sale_lines line
           WHERE line.organization_id = metric.organization_id
             AND line.connection_id = metric.source_connection_id
-            AND substr(line.sold_at, 1, 10) = metric.business_date
-            AND (metric.location_ref = line.provider || ':' || line.outlet_ref OR metric.location_ref = line.outlet_ref)
+            AND ${window.sql}
+            AND ${metricLocationMatches}
         ), updated_at = ?
-    WHERE metric.organization_id = ? AND metric.source_connection_id = ?
+    WHERE metric.organization_id = ? AND metric.source_connection_id = ? AND metric.business_date = ?
       AND EXISTS (
         SELECT 1
         FROM commerce_sale_lines line
@@ -117,12 +129,15 @@ export async function applyOwnerInventoryCosts(
          )
         WHERE line.organization_id = metric.organization_id
           AND line.connection_id = metric.source_connection_id
-          AND substr(line.sold_at, 1, 10) = metric.business_date
-          AND (metric.location_ref = line.provider || ':' || line.outlet_ref OR metric.location_ref = line.outlet_ref)
+          AND ${window.sql}
+          AND ${metricLocationMatches}
           AND product.archived = 0
           AND product.owner_cost_cents IS NOT NULL
       )
-  `).bind(updatedAt, organizationId, connectionId).run();
+  `).bind(...window.bindings, updatedAt, organizationId, connectionId, date.businessDate, ...window.bindings);
+    });
+    for (let index = 0; index < statements.length; index += 50) await database.batch(statements.slice(index, index + 50));
+  }
 
   const remaining = await database.prepare(`
     SELECT COUNT(*) AS count

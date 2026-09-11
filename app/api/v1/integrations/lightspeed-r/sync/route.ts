@@ -537,6 +537,7 @@ export async function POST(request: Request) {
       const dailyMetrics = normalizationWarnings.sales === 0
         ? buildLightspeedRDailyMetrics(
             (latest.results ?? []).filter((sale) => !sale.outletRef || mapped.has(sale.outletRef)),
+            context.organization.timezone,
           )
         : [];
       const verifiedSalesReady = dailyMetrics.length > 0 && unmappedLocations === 0;

@@ -2,7 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { getDb, getRuntimeEnv } from "../../db";
 import { integrationSecrets } from "../../db/schema";
 import { ApiError } from "../api";
-import { salesDay } from "../../domain/intraday-sales";
+import { businessDateForTimestamp, salesDay } from "../../domain/intraday-sales";
 
 export const LIGHTSPEED_R_PROVIDER = "lightspeed-r";
 export const LIGHTSPEED_R_SCOPES = ["employee:register_read", "employee:inventory_read"] as const;
@@ -632,12 +632,13 @@ export async function normalizeLightspeedRPayments(
 
 export function buildLightspeedRDailyMetrics(
   sales: Array<Pick<NormalizedLightspeedRSale, "externalSaleId" | "outletRef" | "soldAt" | "state" | "totalCents" | "taxCents" | "costCents" | "discountCents" | "lineCount">>,
+  timeZone = "UTC",
 ): LightspeedRDailyMetric[] {
   const totals = new Map<string, LightspeedRDailyMetric & { positiveNetCents: number; returnedCostCents: number }>();
   for (const sale of sales) {
     if (sale.state !== "completed" || !sale.outletRef || !sale.soldAt) continue;
-    const businessDate = sale.soldAt.slice(0, 10);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(businessDate)) continue;
+    const businessDate = businessDateForTimestamp(sale.soldAt, timeZone);
+    if (!businessDate) continue;
     const locationRef = `${LIGHTSPEED_R_PROVIDER}:${sale.outletRef}`;
     const key = `${businessDate}\u0000${locationRef}`;
     const row = totals.get(key) ?? {

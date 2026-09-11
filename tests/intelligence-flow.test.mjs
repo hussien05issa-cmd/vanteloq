@@ -225,6 +225,85 @@ async function seedReportLocation(database, organizationId, name) {
   return locationId;
 }
 
+test("excluding a test POS preserves records and removes them from reporting with tenant and sync guards", async () => {
+  const { worker, environment, database, dispose } = await createEnvironment();
+  try {
+    const identity = await createReportWorkspace(worker, environment, database, "report-exclusion");
+    const other = await createReportWorkspace(worker, environment, database, "other-exclusion");
+    const today = new Date().toISOString().slice(0, 10);
+    const real = "real-pos", sample = "test-pos";
+    for (const [id, cents] of [[real, 20000], [sample, 100]]) {
+      const locationRef = await seedReportConnection(database, { ...identity, connectionId: id, namespace: id, externalLocationRef: "shop" });
+      await seedReportMetric(database, { ...identity, businessDate: today, locationRef, netSalesCents: cents, sourceConnectionId: id });
+    }
+    await database.prepare("UPDATE integration_connections SET provider='square', last_error_code='SQUARE_PRODUCT_COST_UNAVAILABLE', promotion_authorized_at=? WHERE id=?").bind(Math.floor(Date.now()/1000), sample).run();
+    await database.prepare("UPDATE daily_business_metrics SET source_provider='square' WHERE source_connection_id=?").bind(sample).run();
+    await database.prepare("UPDATE integration_location_mappings SET provider='square' WHERE connection_id=?").bind(sample).run();
+    const before = await dispatch(worker, environment, "/api/v1/command-centre", identity.owner);
+    assert.equal(before.status, 200);
+    const dashboard = (await before.json()).commandCentre;
+    assert.ok(dashboard.trend.length > 0, "missing costs must not erase verified revenue history");
+    assert.equal(dashboard.trend.reduce((sum, day) => sum + day.netSalesCents, 0), 20100);
+    assert.ok(dashboard.trend.every(day => day.grossProfitCents === null));
+    const exclude = (owner, confirmed=true) => dispatch(worker, environment, "/api/v1/integrations", {
+      ...owner, method: "POST", body: { action: "exclude_data", connectionId: sample, confirmed },
+    });
+    assert.equal((await exclude(other.owner)).status, 404);
+    assert.equal((await exclude(identity.owner, false)).status, 400);
+    await database.prepare("UPDATE integration_connections SET sync_lease_owner='active-test', sync_lease_expires_at=? WHERE id=?").bind(Math.floor(Date.now()/1000)+120, sample).run();
+    assert.equal((await exclude(identity.owner)).status, 409);
+    await database.prepare("UPDATE integration_connections SET sync_lease_owner=NULL, sync_lease_expires_at=NULL WHERE id=?").bind(sample).run();
+    const response = await exclude(identity.owner);
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).recordsRetained, true);
+    const state = await database.prepare("SELECT status, data_promotion_status promotion, promotion_authorized_at authorization FROM integration_connections WHERE id=?").bind(sample).first();
+    assert.deepEqual(state, { status: "connected", promotion: "staging", authorization: null });
+    assert.equal((await database.prepare("SELECT COUNT(*) count FROM daily_business_metrics WHERE source_connection_id=?").bind(sample).first()).count, 1);
+    const after = await dispatch(worker, environment, "/api/v1/command-centre", identity.owner);
+    assert.equal(after.status, 200);
+    const revised = (await after.json()).commandCentre;
+    assert.equal(revised.trend.reduce((sum, day) => sum + day.netSalesCents, 0), 20000);
+    const report = await dispatch(worker, environment, `/api/v1/reports?report=sales_totals&start=${today}&end=${today}`, identity.owner);
+    assert.equal(report.status, 200);
+    assert.equal((await report.json()).totals.netSalesCents, 20000);
+    assert.equal((await database.prepare("SELECT COUNT(*) count FROM audit_events WHERE organization_id=? AND action='integration.data_promotion_excluded'").bind(identity.organizationId).first()).count, 1);
+  } finally { await dispose(); }
+});
+
+test("commerce and payment reports use local midnight for evening provider sales", async () => {
+  const { worker, environment, database, dispose } = await createEnvironment();
+  try {
+    const identity = await createReportWorkspace(worker, environment, database, "business-day");
+    const connectionId = "timezone-pos", now = Math.floor(Date.now()/1000), runId = crypto.randomUUID();
+    await seedReportConnection(database, { ...identity, connectionId, namespace: "legacy", externalLocationRef: "shop" });
+    await database.prepare(`INSERT INTO integration_sync_runs (id, organization_id, provider, connection_id, mode, status, started_at, completed_at) VALUES (?,?,'lightspeed-r',?,'incremental','completed',?,?)`).bind(runId, identity.organizationId, connectionId, now, now).run();
+    const samples = [["evening", "2026-08-15T01:55:00Z", 100], ["offset", "2026-08-14T19:55:00-06:00", 200], ["local", "2026-08-14T19:55:00", 300], ["prior", "2026-08-14T05:59:59Z", 400], ["next", "2026-08-15T06:00:00Z", 500]];
+    for (const [id, timestamp, cents] of samples) {
+      await database.batch([
+        database.prepare(`INSERT INTO commerce_sale_lines (id,organization_id,provider,connection_id,external_sale_id,external_line_id,outlet_ref,sold_at,quantity_milli,net_sales_cents,cost_cents,source_payload_hash,sync_run_id,updated_at) VALUES (?,?,'lightspeed-r',?,?,?,'shop',?,1000,?,0,'test',?,?)`).bind(id,identity.organizationId,connectionId,id,id,timestamp,cents,runId,now),
+        database.prepare(`INSERT INTO commerce_payments (id,organization_id,provider,connection_id,external_sale_id,external_payment_id,outlet_ref,paid_at,amount_cents,category,source_payload_hash,sync_run_id,updated_at) VALUES (?,?,'lightspeed-r',?,?,?,'shop',?,?,'cash','test',?,?)`).bind(id,identity.organizationId,connectionId,id,id,timestamp,cents,runId,now),
+      ]);
+    }
+    const response = await dispatch(worker, environment, "/api/v1/commerce-intelligence?mode=Sales&from=2026-08-14&to=2026-08-14", identity.owner);
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.kpis.netSalesCents, 600);
+    assert.deepEqual(body.saleLines.map(row=>row.externalSaleId).sort(), ["evening", "local", "offset"]);
+    const payments = await dispatch(worker, environment, `/api/v1/reports?report=sales_totals&presentation=payment_mix&connection=${connectionId}&start=2026-08-14&end=2026-08-14`, identity.owner);
+    assert.equal(payments.status, 200);
+    const paymentBody = await payments.json();
+    assert.equal(paymentBody.paymentMix.reduce((sum,row)=>sum+row.amountCents,0),600);
+    // Owner cost updates must rebuild the same local day, including account namespaces.
+    await database.prepare("UPDATE integration_connections SET source_namespace='account-a' WHERE id=?").bind(connectionId).run();
+    await database.prepare("UPDATE commerce_sale_lines SET outlet_ref='account-a:shop', product_ref='account-a:item' WHERE connection_id=?").bind(connectionId).run();
+    await database.prepare(`INSERT INTO commerce_products (id,organization_id,provider,connection_id,external_product_id,sku,name,source_payload_hash,sync_run_id,updated_at) VALUES ('cost-item',?,'lightspeed-r',?,'account-a:item','TEST','Test item','test',?,?)`).bind(identity.organizationId,connectionId,runId,now).run();
+    await seedReportMetric(database, { ...identity, businessDate: "2026-08-14", locationRef: "lightspeed-r:account-a:shop", netSalesCents: 600, sourceConnectionId: connectionId });
+    const costs = await dispatch(worker, environment, "/api/v1/inventory-costs", { ...identity.owner, method: "POST", body: { source: "manual", entries: [{ provider: "lightspeed-r", connectionId, externalProductId: "account-a:item", unitCostCents: 25 }] } });
+    assert.equal(costs.status, 200, await costs.text());
+    assert.equal((await database.prepare("SELECT cost_of_goods_cents cents FROM daily_business_metrics WHERE organization_id=? AND business_date='2026-08-14'").bind(identity.organizationId).first()).cents, 75);
+  } finally { await dispose(); }
+});
+
 test("intraday API compares matched hours and redacts all profit paths for revenue-only staff", async () => {
   const { worker, environment, database, dispose } = await createEnvironment();
   try {

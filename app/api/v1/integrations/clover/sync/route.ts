@@ -263,7 +263,7 @@ export async function POST(request: Request) {
           FROM (SELECT *, row_number() OVER (PARTITION BY external_sale_id ORDER BY staged_at DESC, id DESC) rank
             FROM integration_staged_sales WHERE organization_id=? AND provider=? AND connection_id=?) WHERE rank=1
         `).bind(context.organizationId, CLOVER_PROVIDER, connection.id).all<NormalizedCloverSale>();
-        const metrics = buildCloverDailyMetrics((latest.results ?? []).map((sale) => ({ ...sale, outletRef: unscopedExternalRef(connection.sourceNamespace, sale.outletRef) ?? sale.outletRef })), connection.sourceNamespace);
+        const metrics = buildCloverDailyMetrics((latest.results ?? []).map((sale) => ({ ...sale, outletRef: unscopedExternalRef(connection.sourceNamespace, sale.outletRef) ?? sale.outletRef })), connection.sourceNamespace, context.organization.timezone);
         await database.prepare(`DELETE FROM daily_business_metrics WHERE organization_id=? AND source_connection_id=?`).bind(context.organizationId, connection.id).run();
         for (const row of metrics) {
           await database.prepare(`
