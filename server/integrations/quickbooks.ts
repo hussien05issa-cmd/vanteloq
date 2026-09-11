@@ -155,7 +155,13 @@ async function requestToken(body: URLSearchParams, current: QuickBooksConfig, fe
   const refreshToken = text(payload.refresh_token);
   const expiresIn = positiveInteger(payload.expires_in);
   const refreshExpiresIn = positiveInteger(payload.x_refresh_token_expires_in);
-  const scopes = text(payload.scope).split(/\s+/).filter(Boolean);
+  // Intuit's documented token response omits scope. OAuth 2.0 section 5.1
+  // allows omission when the granted scope matches the requested scope. This
+  // connector requests accounting only; an explicit different or empty scope
+  // still fails, and the callback verifies company access before saving tokens.
+  const scopes = payload.scope === undefined
+    ? [...QUICKBOOKS_SCOPES]
+    : text(payload.scope).split(/\s+/).filter(Boolean);
   if (!accessToken || !refreshToken || !expiresIn || !scopes.includes(QUICKBOOKS_SCOPES[0])) {
     throw new ApiError(502, "QUICKBOOKS_TOKEN_RESPONSE_INVALID", "QuickBooks returned an incomplete accounting authorization response.");
   }
@@ -188,9 +194,11 @@ export async function verifyQuickBooksCompany(realmId: string, accessToken: stri
   if (response.status === 401 || response.status === 403) throw new ApiError(409, "QUICKBOOKS_AUTHORIZATION_EXPIRED", "QuickBooks authorization is no longer valid. Reconnect the company.");
   if (!response.ok) throw new ApiError(502, "QUICKBOOKS_COMPANY_VERIFICATION_FAILED", "QuickBooks could not verify the selected company. No accounting data was enabled.");
   const companyInfo = object(payload.CompanyInfo);
-  if (text(companyInfo.Id) && text(companyInfo.Id) !== realmId) throw new ApiError(502, "QUICKBOOKS_COMPANY_MISMATCH", "QuickBooks returned a different company than the one authorized.");
+  // CompanyInfo.Id identifies the object (commonly "1"), not the OAuth realm.
+  // Company access is verified by Intuit against the token and realm in this
+  // fixed-host request; never compare an entity ID with the realm identifier.
   const name = text(companyInfo.CompanyName) || text(companyInfo.LegalName);
-  if (!name) throw new ApiError(502, "QUICKBOOKS_COMPANY_RESPONSE_INVALID", "QuickBooks returned an incomplete company response.");
+  if (!text(companyInfo.Id) || !name) throw new ApiError(502, "QUICKBOOKS_COMPANY_RESPONSE_INVALID", "QuickBooks returned an incomplete company response.");
   return { realmId, name: name.slice(0, 160), country: text(companyInfo.Country).slice(0, 2).toUpperCase() || null };
 }
 

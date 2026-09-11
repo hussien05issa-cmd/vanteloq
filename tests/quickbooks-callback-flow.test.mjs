@@ -65,9 +65,12 @@ test("QuickBooks callback retains verified initiation MFA and rechecks the actor
       if (url.origin === "https://oauth.platform.intuit.com" && url.pathname.endsWith("/tokens/bearer")) {
         tokenExchanges++;
         return Response.json({ access_token: "test-access-token", refresh_token: "test-refresh-token", expires_in: 3600,
-          x_refresh_token_expires_in: 86400, scope: "com.intuit.quickbooks.accounting" });
+          x_refresh_token_expires_in: 86400, token_type: "bearer" });
       }
-      if (url.origin === "https://sandbox-quickbooks.api.intuit.com") return Response.json({ CompanyInfo: { Id: "123456789", CompanyName: "Test company", Country: "CA" } });
+      if (url.origin === "https://sandbox-quickbooks.api.intuit.com") {
+        assert.equal(url.pathname, "/v3/company/123456789/companyinfo/123456789");
+        return Response.json({ CompanyInfo: { Id: "1", CompanyName: "Test company", Country: "CA" } });
+      }
       throw Error(`Unexpected external destination: ${url.origin}${url.pathname}`);
     };
     const start = async () => {
