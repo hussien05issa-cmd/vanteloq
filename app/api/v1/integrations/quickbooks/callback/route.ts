@@ -21,7 +21,8 @@ function returnUrl(request: Request, status: "connected" | "declined" | "failed"
   return new URL(`/?integration=quickbooks&connection=${status}`, new URL(request.url).origin).toString();
 }
 
-async function callbackActor(organizationId: string, actorUserId: string): Promise<AccessContext> {
+async function callbackActor(initiation: typeof integrationOAuthStates.$inferSelect): Promise<AccessContext> {
+  const { organizationId, actorUserId } = initiation;
   const [actor] = await getDb().select({
     userId: users.id,
     email: users.email,
@@ -42,6 +43,14 @@ async function callbackActor(organizationId: string, actorUserId: string): Promi
   if (!actor || (actor.role !== "owner" && actor.role !== "admin")) {
     throw new ApiError(403, "QUICKBOOKS_INITIATOR_INELIGIBLE", "The account that started this connection can no longer manage accounting integrations.");
   }
+  // This proof was recorded from the verified session at authorization, never
+  // from callback parameters. It is usable only after the browser-bound,
+  // unexpired one-time state above has been checked. Re-check the actor's
+  // identity, current membership, entitlement and permission before exchange.
+  if (!initiation.initiatorAuthSubject || initiation.initiatorAuthSubject !== actor.authSubject
+    || initiation.initiatorAuthProvider !== actor.authProvider) {
+    throw new ApiError(403, "QUICKBOOKS_INITIATOR_SESSION_INVALID", "Start a new QuickBooks connection from your signed-in workspace.");
+  }
   const context: AccessContext = {
     identity: {
       email: actor.email,
@@ -49,7 +58,7 @@ async function callbackActor(organizationId: string, actorUserId: string): Promi
       subject: actor.authSubject,
       provider: actor.authProvider ?? "sites",
       emailVerified: true,
-      assuranceLevel: null,
+      assuranceLevel: initiation.initiatorAssuranceLevel === "aal2" ? "aal2" : initiation.initiatorAssuranceLevel === "aal1" ? "aal1" : null,
       sessionId: null,
     },
     userId: actor.userId,
@@ -84,7 +93,7 @@ export async function GET(request: Request) {
       gt(integrationOAuthStates.expiresAt, now),
     )).limit(1);
     if (!storedState) throw new ApiError(400, "QUICKBOOKS_STATE_INVALID", "The QuickBooks authorization attempt expired or was already used. Start again.");
-    const context = await callbackActor(storedState.organizationId, storedState.actorUserId);
+    const context = await callbackActor(storedState);
     const [consumed] = await getDb().update(integrationOAuthStates).set({ consumedAt: now }).where(and(
       eq(integrationOAuthStates.stateHash, stateHash),
       eq(integrationOAuthStates.provider, QUICKBOOKS_PROVIDER),
