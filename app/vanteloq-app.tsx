@@ -1357,7 +1357,7 @@ function Workspace({
       />
     );
   if (view === "Sales" || view === "Inventory" || view === "Customers" || view === "Suppliers")
-    return <CommerceIntelligenceWorkspace mode={view} currency={currency} activeLocationId={activeLocationId} navigate={navigate} createTask={createTask} />;
+    return <CommerceIntelligenceWorkspace mode={view} currency={currency} timeZone={data.today.timeZone} activeLocationId={activeLocationId} navigate={navigate} createTask={createTask} />;
   if (view === "Purchase Orders")
     return (
       <PurchaseOrdersWorkspace

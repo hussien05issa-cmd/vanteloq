@@ -288,6 +288,7 @@ test("commerce and payment reports use local midnight for evening provider sales
     assert.equal(response.status, 200);
     const body = await response.json();
     assert.equal(body.kpis.netSalesCents, 600);
+    assert.equal(body.kpis.changes.grossMarginPointChange, 0, "equal margins must show no margin change even when profit dollars change");
     assert.deepEqual(body.saleLines.map(row=>row.externalSaleId).sort(), ["evening", "local", "offset"]);
     const payments = await dispatch(worker, environment, `/api/v1/reports?report=sales_totals&presentation=payment_mix&connection=${connectionId}&start=2026-08-14&end=2026-08-14`, identity.owner);
     assert.equal(payments.status, 200);

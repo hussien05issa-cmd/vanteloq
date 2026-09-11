@@ -308,6 +308,7 @@ export async function GET(request: Request) {
         changes: {
           netSalesRate: commerceChangeRate(current.netSalesCents, comparison.netSalesCents),
           grossProfitRate: current.grossProfitCents == null || comparison.grossProfitCents == null ? null : commerceChangeRate(current.grossProfitCents, comparison.grossProfitCents),
+          grossMarginPointChange: current.grossMarginRate == null || comparison.grossMarginRate == null ? null : current.grossMarginRate - comparison.grossMarginRate,
           transactionsRate: commerceChangeRate(current.transactions, comparison.transactions),
           averageTransactionRate: current.averageTransactionCents == null || comparison.averageTransactionCents == null ? null : commerceChangeRate(current.averageTransactionCents, comparison.averageTransactionCents),
         },
