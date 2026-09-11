@@ -4,6 +4,7 @@ import WorkspaceIcon from "./workspace-icon";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "./supabase-browser";
 import { providerDisplayName } from "../domain/display-labels";
+import { businessClock, businessDateOffset } from "../domain/intraday-sales";
 
 type Mode = "Sales" | "Inventory" | "Customers" | "Suppliers";
 type TaskSeed = { title: string; detail: string; priority: "high" | "medium" | "low"; sourceType?: "alert"; sourceRef?: string };
@@ -14,7 +15,7 @@ type Snapshot = {
     netSalesCents: number; grossProfitCents: number | null; grossMarginRate: number | null;
     discountsCents: number; discountRate: number | null; transactions: number; units: number;
     averageTransactionCents: number | null; unitsPerTransaction: number | null; knownCustomerTransactions: number;
-    changes: { netSalesRate: number | null; grossProfitRate: number | null; transactionsRate: number | null; averageTransactionRate: number | null };
+    changes: { netSalesRate: number | null; grossProfitRate: number | null; grossMarginPointChange: number | null; transactionsRate: number | null; averageTransactionRate: number | null };
   };
   saleLines: Array<{
     provider: string; externalSaleId: string; externalLineId: string; soldAt: string | null; sku: string | null;
@@ -48,12 +49,6 @@ type Snapshot = {
 
 type CostImportRow = { row: number; sku: string; provider: string | null; unitCostCents: number };
 
-const today = () => new Date().toISOString().slice(0, 10);
-const dateBefore = (days: number) => {
-  const date = new Date();
-  date.setUTCDate(date.getUTCDate() - days);
-  return date.toISOString().slice(0, 10);
-};
 const money = (value: number | null, currency: string) => value == null
   ? "Not available"
   : new Intl.NumberFormat("en-CA", { style: "currency", currency, maximumFractionDigits: 0 }).format(value / 100);
@@ -152,12 +147,13 @@ function DataEmpty({ mode, navigate }: { mode: Mode; navigate: (view: "Integrati
   </section>;
 }
 
-export default function CommerceIntelligenceWorkspace({ mode, currency, activeLocationId, navigate, createTask }: {
-  mode: Mode; currency: string; activeLocationId: string | null; navigate: (view: "Integrations") => void; createTask: (seed: TaskSeed) => void;
+export default function CommerceIntelligenceWorkspace({ mode, currency, timeZone = "UTC", activeLocationId, navigate, createTask }: {
+  mode: Mode; currency: string; timeZone?: string; activeLocationId: string | null; navigate: (view: "Integrations") => void; createTask: (seed: TaskSeed) => void;
 }) {
-  const [from, setFrom] = useState(dateBefore(29));
-  const [to, setTo] = useState(today());
-  const [applied, setApplied] = useState({ from: dateBefore(29), to: today() });
+  const today = () => businessClock(new Date(), timeZone)!.date;
+  const [from, setFrom] = useState(() => businessDateOffset(today(), -29));
+  const [to, setTo] = useState(today);
+  const [applied, setApplied] = useState({ from, to });
   const [data, setData] = useState<Snapshot | null>(null);
   const [query, setQuery] = useState("");
   const [error, setError] = useState("");
@@ -259,7 +255,7 @@ export default function CommerceIntelligenceWorkspace({ mode, currency, activeLo
       <section className="commerce-date-context"><span>{data.period.from} → {data.period.to}</span><b>{data.period.days} calendar {data.period.days === 1 ? "day" : "days"}</b><small>Compared with {data.period.comparisonFrom} → {data.period.comparisonTo}</small></section>
       {mode === "Sales" && <section className="commerce-stats">
         <Stat label="NET SALES" value={money(data.kpis.netSalesCents, currency)} note={changeCopy(data.kpis.changes.netSalesRate)} />
-        <Stat label="GROSS MARGIN" value={percent(data.kpis.grossMarginRate)} note={changeCopy(data.kpis.changes.grossProfitRate)} tone="green" />
+        <Stat label="GROSS MARGIN" value={percent(data.kpis.grossMarginRate)} note={data.kpis.changes.grossMarginPointChange == null ? "No matched baseline" : `${data.kpis.changes.grossMarginPointChange >= 0 ? "+" : ""}${(data.kpis.changes.grossMarginPointChange * 100).toFixed(1)} percentage points vs prior period`} tone="green" />
         <Stat label="AVERAGE BASKET" value={preciseMoney(data.kpis.averageTransactionCents, currency)} note={changeCopy(data.kpis.changes.averageTransactionRate)} tone="amber" />
         <Stat label="DISCOUNTS" value={money(data.kpis.discountsCents, currency)} note={`${percent(data.kpis.discountRate)} of pre-discount value`} tone="coral" />
         <Stat label="TRANSACTIONS" value={data.kpis.transactions.toLocaleString()} note={`${data.kpis.units.toFixed(1)} units · ${data.kpis.unitsPerTransaction?.toFixed(2) ?? "—"} per basket`} tone="cyan" />
