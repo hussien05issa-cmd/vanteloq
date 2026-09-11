@@ -1,4 +1,4 @@
-import { ADVISOR_SYSTEM_INSTRUCTIONS } from "./advisor-instructions.ts";
+import { ADVISOR_APP_HELP_INSTRUCTIONS, ADVISOR_SYSTEM_INSTRUCTIONS } from "./advisor-instructions.ts";
 import type { VanteloqRuntimeEnv } from "../db/index.ts";
 import { ADVISOR_PROVIDER_LABELS, advisorProviders, type AdvisorMode, type AdvisorProvider } from "../domain/advisor-providers.ts";
 import { ApiError } from "./api.ts";
@@ -10,7 +10,8 @@ export function advisorProviderStatus(env: VanteloqRuntimeEnv) {
   };
 }
 
-async function callProvider(provider: AdvisorProvider, text: string, env: VanteloqRuntimeEnv, request: typeof fetch) {
+async function callProvider(provider: AdvisorProvider, text: string, env: VanteloqRuntimeEnv, request: typeof fetch, purpose: "analysis" | "help") {
+  const instructions = purpose === "help" ? ADVISOR_APP_HELP_INSTRUCTIONS : ADVISOR_SYSTEM_INSTRUCTIONS;
   const model = provider === "gemini" ? env.VERTEX_AI_MODEL?.trim() || "gemini-2.5-flash" : env.OPENAI_MODEL?.trim() || "gpt-5-mini";
   const url = provider === "gemini" ? `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent` : "https://api.openai.com/v1/responses";
   try {
@@ -20,8 +21,8 @@ async function callProvider(provider: AdvisorProvider, text: string, env: Vantel
       method: "POST", redirect: "manual", signal: AbortSignal.timeout(45_000),
       headers: provider === "gemini" ? { "content-type": "application/json", "x-goog-api-key": env.GOOGLE_GEMINI_API_KEY!.trim() } : { "content-type": "application/json", authorization: `Bearer ${env.OPENAI_API_KEY!.trim()}` },
       body: JSON.stringify(provider === "gemini"
-        ? { systemInstruction: { parts: [{ text: ADVISOR_SYSTEM_INSTRUCTIONS }] }, contents: [{ role: "user", parts: [{ text }] }], generationConfig: { temperature: 0.15, maxOutputTokens: 1400 } }
-        : { model, instructions: ADVISOR_SYSTEM_INSTRUCTIONS, input: text, store: false, max_output_tokens: 2400, reasoning: { effort: "low" } }),
+        ? { systemInstruction: { parts: [{ text: instructions }] }, contents: [{ role: "user", parts: [{ text }] }], generationConfig: { temperature: 0.15, maxOutputTokens: 1400 } }
+        : { model, instructions, input: text, store: false, max_output_tokens: 2400, reasoning: { effort: "low" } }),
     });
     if (!response.ok) {
       // Provider diagnostics can contain sensitive details. Expose only our own
@@ -54,13 +55,13 @@ async function callProvider(provider: AdvisorProvider, text: string, env: Vantel
   }
 }
 
-export async function callAdvisor(mode: AdvisorMode, text: string, env: VanteloqRuntimeEnv, request: typeof fetch = fetch) {
+export async function callAdvisor(mode: AdvisorMode, text: string, env: VanteloqRuntimeEnv, request: typeof fetch = fetch, purpose: "analysis" | "help" = "analysis") {
   const providers = advisorProviders(mode);
   const status = advisorProviderStatus(env);
   const blocked = providers.filter(provider => !status[provider].ready);
   // Check every selected provider before sending any customer information.
   if (blocked.length) return { configured: false as const, message: blocked.map(provider => status[provider].reason).join(" "), model: "", text: "", providers: [] };
-  const results = await Promise.allSettled(providers.map(provider => callProvider(provider, text, env, request)));
+  const results = await Promise.allSettled(providers.map(provider => callProvider(provider, text, env, request, purpose)));
   const completed = results.flatMap(result => result.status === "fulfilled" ? [result.value] : []);
   if (!completed.length) {
     const failure = results.find(result => result.status === "rejected" && result.reason instanceof ApiError);

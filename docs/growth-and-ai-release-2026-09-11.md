@@ -45,7 +45,7 @@ Provider-backed production acceptance is a separate gate. A test API key in a lo
 
 | Area | Remaining acceptance requirement |
 | --- | --- |
-| OpenAI | Store the paid account's API key as the production server secret, apply it with a deployment, then complete an authenticated, consented chat. A working local key does not configure Sites. |
+| OpenAI | Production secret configured and deployed. Authenticated live App help and business analysis requests succeeded with memory off. Continue monitoring provider availability and credit limits. |
 | Gemini | Verify paid-service business-data protection for the configured key before enabling confidential workspace analysis. |
 | Live POS reporting | Fresh sync, location mapping, source approval and reconciliation against the merchant's same date range; do not call an old snapshot real time. Keep test accounts excluded. |
 | Plaid | Current environment is sandbox. Production approval, live connection, current balances and reconciliation are separate requirements. |

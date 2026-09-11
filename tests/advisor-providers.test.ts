@@ -3,7 +3,18 @@ import assert from "node:assert/strict";
 import { callAdvisor, advisorProviderStatus } from "../server/advisor-providers.ts";
 import { defaultAdvisorProvider } from "../domain/advisor-providers.ts";
 import { Miniflare } from "miniflare";
+import { ADVISOR_APP_HELP_INSTRUCTIONS } from "../server/advisor-instructions.ts";
 const env = { GOOGLE_GEMINI_API_KEY: "fixture-google-key", GOOGLE_GEMINI_PAID_SERVICE_CONFIRMED: "true", OPENAI_API_KEY: "fixture-openai-key" };
+test("App help selects instructions that do not claim to inspect a user's account", async () => {
+  const request = (async (_url, init) => {
+    const body = JSON.parse(String(init?.body));
+    assert.equal(body.instructions, ADVISOR_APP_HELP_INSTRUCTIONS);
+    assert.match(body.instructions, /No workspace records were requested or attached/);
+    assert.equal(body.store, false);
+    return Response.json({status:"completed",output:[{type:"message",content:[{type:"output_text",text:"Product help only"}]}]});
+  }) as typeof fetch;
+  await callAdvisor("openai", "How do I check BookLoQ?", env, request, "help");
+});
 test("unverified Gemini and missing providers never receive evidence", async () => {
   let calls = 0;
   const request = (async () => { calls++; return Response.json({}); }) as typeof fetch;
