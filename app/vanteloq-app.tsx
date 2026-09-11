@@ -1190,8 +1190,8 @@ function GlobalCommand({ permissions, navigate, close }: { permissions: string[]
   const options = useMemo(() => ([...nav.flatMap(([, items]) => items), "Integrations", "Settings"] as View[])
     .filter((item, index, list) => list.indexOf(item) === index)
     .filter((item) => !viewPermission[item] || permissions.includes(viewPermission[item]!))
-    .filter((item) => !query || item.toLowerCase().includes(query.toLowerCase())), [permissions, query]);
-  return <div className="modal-backdrop command-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}><section className="command-modal" role="dialog" aria-modal="true" aria-label="Workspace search"><div className="command-input"><span>⌕</span><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Go to a workspace…"/><button onClick={close}>ESC</button></div><div className="command-results"><small>WORKSPACES</small>{options.map((option) => <button key={option} onClick={() => navigate(option)}><span>↳</span><span>{option}</span><b>→</b></button>)}{!options.length && <p>No matching workspace.</p>}</div></section></div>;
+    .filter((item) => !query || `${item} ${workspaceViewLabel(item)}`.toLowerCase().includes(query.toLowerCase())), [permissions, query]);
+  return <div className="modal-backdrop command-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}><section className="command-modal" role="dialog" aria-modal="true" aria-label="Workspace search"><div className="command-input"><span>⌕</span><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Go to a workspace…"/><button onClick={close}>ESC</button></div><div className="command-results"><small>WORKSPACES</small>{options.map((option) => <button key={option} onClick={() => navigate(option)}><span>↳</span><span>{workspaceViewLabel(option)}</span><b>→</b></button>)}{!options.length && <p>No matching workspace.</p>}</div></section></div>;
 }
 
 function NavigationSettingsPanel({
