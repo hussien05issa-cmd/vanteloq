@@ -484,12 +484,7 @@ test("intraday API compares matched hours and redacts all profit paths for reven
       const help = await ask(identity.owner, { provider: "openai", purpose: "help", question: "How do I use BookLoQ?" });
       assert.equal(help.status, 200, await help.clone().text());
       const helpEvidence = JSON.parse(outbound.at(-1).split("Evidence JSON: ")[1].split("\n\nConversation memory:")[0]);
-      assert.equal(helpEvidence.purpose, "help");
-      assert.deepEqual(helpEvidence.days, []);
-      assert.deepEqual(helpEvidence.sources, []);
-      assert.equal(helpEvidence.cashAvailableCents, null);
-      assert.equal(helpEvidence.bookloq, undefined);
-      assert.equal(helpEvidence.marketing, undefined);
+      assert.deepEqual(helpEvidence, { purpose: "help", workspaceDataAttached: false });
       assert.doesNotMatch(outbound.at(-1), /432100|987654321|Fixture analysis/);
       const helpConsent = await database.prepare("SELECT data_categories_json categories FROM integration_consents WHERE organization_id = ? AND provider = 'openai' AND purposes_json = ?").bind(identity.organizationId, JSON.stringify(["Explain how to use Vanteloq and BookLoQ"])).first();
       assert.ok(helpConsent);
@@ -538,8 +533,7 @@ test("AI reads permitted BookLoQ summaries through its real access path and excl
     assert.doesNotMatch(JSON.stringify(financial), /"banks":|"contacts":|"transactions":|"journals":|"maskedNumber":|"organizationId":/);
     assert.equal((await ask({ locationId: identity.locationId })).bookloq.status, "unavailable");
     const help = await ask({ purpose: "help" });
-    assert.equal(help.bookloq, undefined);
-    assert.deepEqual(help.days, []);
+    assert.deepEqual(help, { purpose: "help", workspaceDataAttached: false });
   } finally {
     globalThis.fetch = originalFetch;
     await dispose();

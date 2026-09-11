@@ -120,7 +120,7 @@ async function evidenceFor(
 function prompt(question: string, evidence: Evidence, memory: Array<{ role: string; content: string }>) {
   return [
     `Question: ${JSON.stringify(question)}`,
-    `Evidence JSON: ${JSON.stringify(evidence)}`,
+    `Evidence JSON: ${JSON.stringify(evidence.purpose === "help" ? { purpose: "help", workspaceDataAttached: false } : evidence)}`,
     `Conversation memory: ${JSON.stringify(memory.slice(-6))}`,
   ].join("\n\n");
 }
@@ -192,7 +192,7 @@ export async function POST(request: Request) {
     await getD1().prepare("DELETE FROM assistant_conversations WHERE organization_id = ? AND user_id = ? AND updated_at < ?").bind(context.organizationId, context.userId, Date.now() - 90 * 24 * 60 * 60 * 1_000).run();
     const memoryRows = memoryEnabled ? await getD1().prepare("SELECT role, content, evidence_json FROM assistant_messages WHERE conversation_id = ? AND organization_id = ? AND user_id = ? ORDER BY created_at DESC LIMIT 6").bind(conversationId, context.organizationId, context.userId).all<{ role: string; content: string; evidence_json: string }>() : { results: [] };
     const memory = permittedAdvisorMemory(memoryRows.results ?? [], accessFingerprint);
-    const result = await callAdvisor(mode, prompt(question, evidence, memory), getRuntimeEnv());
+    const result = await callAdvisor(mode, prompt(question, evidence, memory), getRuntimeEnv(), undefined, purpose);
     if (!result.configured) {
       return jsonResponse({ status: "configuration_required", conversationId: suppliedId, memoryEnabled, model: result.model, answer: null, evidence: { latestDate: evidence.latestDate, sourceCount: evidence.sources.length, days: evidence.days.length }, message: result.message });
     }
