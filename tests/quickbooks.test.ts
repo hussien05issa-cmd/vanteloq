@@ -55,7 +55,7 @@ test("QuickBooks environment metadata does not occupy the cross tenant domain un
   }
 });
 
-test("QuickBooks token exchange requires the accounting scope", async () => {
+test("QuickBooks token exchange validates an explicitly returned accounting scope", async () => {
   const fetcher = (async (_input: RequestInfo | URL, init?: RequestInit) => {
     assert.equal(init?.method, "POST");
     assert.match(String((init?.headers as Record<string, string>).Authorization), /^Basic /);
@@ -82,13 +82,39 @@ test("QuickBooks token exchange requires the accounting scope", async () => {
   );
 });
 
+test("QuickBooks accepts Intuit's documented token response without scope", async () => {
+  const token = await exchangeQuickBooksAuthorizationCode("authorization-code", (async () => Response.json({
+    access_token: "access-token-value",
+    refresh_token: "refresh-token-value",
+    expires_in: 3_600,
+    token_type: "bearer",
+    x_refresh_token_expires_in: 8_726_400,
+  })) as typeof fetch);
+  assert.deepEqual(token.scopes, ["com.intuit.quickbooks.accounting"]);
+  assert.equal(token.accessToken, "access-token-value");
+  assert.equal(token.refreshToken, "refresh-token-value");
+});
+
+test("QuickBooks does not infer scope when an explicit invalid scope or incomplete token is returned", async () => {
+  const valid = { access_token: "access-token-value", refresh_token: "refresh-token-value", expires_in: 3_600 };
+  for (const payload of [
+    { ...valid, scope: "" }, { ...valid, scope: null }, { ...valid, scope: ["com.intuit.quickbooks.accounting"] },
+    { ...valid, scope: "openid" }, { ...valid, access_token: "" }, { ...valid, refresh_token: "" }, { ...valid, expires_in: 0 },
+  ]) {
+    await assert.rejects(
+      () => exchangeQuickBooksAuthorizationCode("authorization-code", (async () => Response.json(payload)) as typeof fetch),
+      (error: unknown) => error instanceof Error && "code" in error && error.code === "QUICKBOOKS_TOKEN_RESPONSE_INVALID",
+    );
+  }
+});
+
 test("QuickBooks company verification retains identity only and excludes addresses", async () => {
   const fetcher = (async (input: RequestInfo | URL, init?: RequestInit) => {
     assert.match(String(input), /^https:\/\/sandbox-quickbooks\.api\.intuit\.com\/v3\/company\/123456789\/companyinfo\/123456789$/);
     assert.equal((init?.headers as Record<string, string>).Authorization, "Bearer access-token-value");
     return Response.json({
       CompanyInfo: {
-        Id: "123456789",
+        Id: "1",
         CompanyName: "Vanteloq Sandbox Company",
         Country: "CA",
         CompanyAddr: { Line1: "Sensitive address", PostalCode: "A1A 1A1" },
@@ -98,4 +124,19 @@ test("QuickBooks company verification retains identity only and excludes address
   const company = await verifyQuickBooksCompany("123456789", "access-token-value", fetcher);
   assert.deepEqual(company, { realmId: "123456789", name: "Vanteloq Sandbox Company", country: "CA" });
   assert.doesNotMatch(JSON.stringify(company), /Sensitive address|A1A 1A1/);
+});
+
+test("QuickBooks requires the authorized realm to return a valid company record", async () => {
+  for (const status of [401, 403]) {
+    await assert.rejects(
+      () => verifyQuickBooksCompany("123456789", "access-token-value", (async () => Response.json({}, { status })) as typeof fetch),
+      (error: unknown) => error instanceof Error && "code" in error && error.code === "QUICKBOOKS_AUTHORIZATION_EXPIRED",
+    );
+  }
+  for (const CompanyInfo of [{}, { Id: "1" }, { CompanyName: "Incomplete company" }]) {
+    await assert.rejects(
+      () => verifyQuickBooksCompany("123456789", "access-token-value", (async () => Response.json({ CompanyInfo })) as typeof fetch),
+      (error: unknown) => error instanceof Error && "code" in error && error.code === "QUICKBOOKS_COMPANY_RESPONSE_INVALID",
+    );
+  }
 });
