@@ -4,6 +4,8 @@ Vanteloq is a retail operating-intelligence platform for sales, margin, inventor
 
 ## Current release boundary
 
+See [September 10 review](docs/REVIEW_2026-09-10.md) for the current verified release, provider status and remaining operational prerequisites.
+
 Implemented now:
 
 - Public branded landing page
@@ -33,12 +35,12 @@ Implemented now:
 Intentionally unavailable until its required production control or provider adapter exists:
 
 - Passkeys and a user-facing session/device management screen
-- Production Plaid access; Shopify, Moneris, Square, Clover, Google and Meta marketing, and accounting-provider adapters
+- Production Plaid approval; account-specific live approval and complete data coverage for every connected adapter; unfinished accounting imports and Meta organic insights
 - Lightspeed X-Series promotion into live dashboard metrics, pending provider reconciliation approval
 - Live campaign, employee, payout, and accounting feeds, plus line-item POS, SKU inventory, customer, supplier, and bank feeds from providers not identified above as implemented
 - Invoice malware scanning and OCR extraction, so uploaded documents remain quarantined and unavailable for download
 - Payment initiation, tax filing, payroll execution, automatic accounting posting, and accountant invitations
-- Production PDF or XLSX report generation, outbound email delivery, and customer-data exports
+- Production PDF or XLSX report generation and any outbound delivery flow without its own configured sender and consent prerequisites
 - A durable background worker for queued provider webhook recovery
 - Account-level Cloudflare WAF/backup/alert configuration evidence
 
@@ -46,11 +48,11 @@ The production dependency audit and release checks must be rerun for each deploy
 
 ## Local setup
 
-Prerequisites: Node.js 22.13 or later, Linux tooling used by the Sites starter, and access to the Sites lifecycle.
+Prerequisites: Node.js 22.15 or later (Node 24 tested), npm, and access to the existing Sites project. Development, builds, typechecks and tests use portable Node entry points on Windows, macOS and Linux.
 
 1. Open the existing Site checkout through the Sites lifecycle.
-2. Install exactly from the lockfile with `npm run install:ci` when dependencies are not already present.
-3. Start the agent-compatible local application with `sites-preview start "$PWD"`.
+2. Install exactly from the lockfile with `npm ci` when dependencies are not already present. The optional `install:ci` script is intended for the managed Linux Sites build.
+3. Start locally with `npm run dev`. `npm run preview:ai` opens an isolated interactive AI fixture with fictional data and no provider requests. Managed Sites environments can also use `sites-preview start "$PWD"`.
 4. Use `npm run lint`, `npm run typecheck`, and `npm test` for checks.
 5. Generate a migration after schema changes with `npm run db:generate`, then inspect the SQL before deployment.
 

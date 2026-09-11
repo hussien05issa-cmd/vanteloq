@@ -279,3 +279,19 @@ test("sandbox, demonstration, and inactive BookLoQ sources never verify purchasi
   assert.equal(verifiedCashSourceEligible({ ...otherwiseConnected, liveDataEligible: true, hasDemoAccounts: true }), false);
   assert.equal(verifiedCashSourceEligible({ ...otherwiseConnected, liveDataEligible: true }), true);
 });
+
+
+test("missing inventory is not zero stock and cannot imply an order or cash allocation", () => {
+  const unknown = assessPurchasingProduct({ ...base, onHandUnits: null });
+  assert.equal(unknown.health, "watch");
+  assert.equal(unknown.onHandUnits, null);
+  assert.equal(unknown.daysCover, null);
+  assert.match(unknown.summary, /unavailable/);
+  for (const capacity of [null, 100000]) {
+    const [result] = allocatePurchasingCapacity([unknown], capacity);
+    assert.equal(result.cashDecision, "needs_inventory");
+    assert.equal(result.cashConstrainedUnits, null);
+    assert.equal(result.cashAllocatedCents, null);
+  }
+  assert.equal(assessPurchasingProduct({ ...base, onHandUnits: 0 }).health, "issue");
+});

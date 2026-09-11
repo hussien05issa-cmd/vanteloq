@@ -600,6 +600,7 @@ test("paid API access is server-enforced with narrow billing and privacy excepti
   assert.deepEqual(privacyExceptions, [
     "account/deletion/route.ts",
     "advisor/chat/route.ts",
+    "advisor/conversations/route.ts",
     "integrations/clover/disconnect/route.ts",
     "integrations/lightspeed-r/disconnect/route.ts",
     "integrations/lightspeed/disconnect/route.ts",

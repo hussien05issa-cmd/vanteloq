@@ -1,6 +1,5 @@
 /** The same original Vanteloq AI mark is used in public and private surfaces. */
-export default function VanteloqAiLogo({ size = 48, className = "", decorative = false }: { size?: number; className?: string; decorative?: boolean }) {
-  // A local static image keeps the mark independent of external provider assets.
-  // eslint-disable-next-line @next/next/no-img-element
-  return <img className={`vanteloq-ai-logo ${className}`} src="/brand/vanteloq-ai.png" width={size} height={size} alt={decorative ? "" : "Vanteloq AI logo"} aria-hidden={decorative || undefined} />;
+export default function VanteloqAiLogo({ size = 48, className = "", decorative = false, thinking = false }: { size?: number; className?: string; decorative?: boolean; thinking?: boolean }) {
+  // The original transparent artwork defines the silhouette; CSS moves the colour within it.
+  return <span className={`vanteloq-ai-logo ${thinking ? "is-thinking" : ""} ${className}`} style={{ width: size, height: size }} role={decorative ? undefined : "img"} aria-label={decorative ? undefined : "Vanteloq AI logo"} aria-hidden={decorative || undefined} />;
 }

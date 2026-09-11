@@ -1,3 +1,4 @@
+import { ADVISOR_SYSTEM_INSTRUCTIONS } from "./advisor-instructions.ts";
 import type { VanteloqRuntimeEnv } from "../db/index.ts";
 import { ADVISOR_PROVIDER_LABELS, advisorProviders, type AdvisorMode, type AdvisorProvider } from "../domain/advisor-providers.ts";
 import { ApiError } from "./api.ts";
@@ -17,8 +18,8 @@ async function callProvider(provider: AdvisorProvider, text: string, env: Vantel
       method: "POST", redirect: "error", signal: AbortSignal.timeout(45_000),
       headers: provider === "gemini" ? { "content-type": "application/json", "x-goog-api-key": env.GOOGLE_GEMINI_API_KEY!.trim() } : { "content-type": "application/json", authorization: `Bearer ${env.OPENAI_API_KEY!.trim()}` },
       body: JSON.stringify(provider === "gemini"
-        ? { contents: [{ role: "user", parts: [{ text }] }], generationConfig: { temperature: 0.15, maxOutputTokens: 1400 } }
-        : { model, input: text, store: false, max_output_tokens: 2400, reasoning: { effort: "low" } }),
+        ? { systemInstruction: { parts: [{ text: ADVISOR_SYSTEM_INSTRUCTIONS }] }, contents: [{ role: "user", parts: [{ text }] }], generationConfig: { temperature: 0.15, maxOutputTokens: 1400 } }
+        : { model, instructions: ADVISOR_SYSTEM_INSTRUCTIONS, input: text, store: false, max_output_tokens: 2400, reasoning: { effort: "low" } }),
     });
     if (!response.ok) throw new Error("provider rejected request");
     const body = await response.json() as {

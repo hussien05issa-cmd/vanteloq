@@ -338,7 +338,7 @@ export async function GET(request: Request) {
         },
       } : null,
       paymentMix: {
-        period: paymentDays === 1 ? "Today" : `Last ${paymentDays} days`,
+        period: paymentDays === 1 ? `Business date: ${today.businessDate}` : `${dateOffset(today.businessDate, -(paymentDays - 1))} to ${today.businessDate}`,
         rows: (paymentRows.results ?? [])
           .filter((row) => connectedSourceIds.has(row.connectionId))
           .filter((row) => !locationRestricted || Boolean(row.outletRef && selectedCommerceLocationKeys.has(`${row.connectionId}\u0000${row.outletRef}`)))

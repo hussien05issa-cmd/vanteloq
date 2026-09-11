@@ -141,7 +141,12 @@ function windowComparison(rows: MetricRow[], latestBusinessDate: string, days: n
   };
 }
 
-function sevenDayForecast(rows: MetricRow[], latestBusinessDate: string) {
+function sevenDayForecast(rows: MetricRow[], latestBusinessDate: string, asOf: Date) {
+  // An outlook must cover the present/future, not the week after an old import.
+  const latestAge = (asOf.getTime() - Date.parse(`${latestBusinessDate}T23:59:59Z`)) / 86_400_000;
+  if (!Number.isFinite(latestAge) || latestAge > 2 || latestAge < -2) {
+    return { available: false as const, requiredDays: 28, verifiedDays: rows.length, points: [], totalNetSalesCents: null, lowCents: null, highCents: null, confidence: "unavailable" as const, method: "Same-weekday weighted average", unavailableReason: `Refresh verified sales before using an outlook. The latest business date is ${latestBusinessDate}.` };
+  }
   if (rows.length < 28) {
     return { available: false as const, requiredDays: 28, verifiedDays: rows.length, points: [], totalNetSalesCents: null, lowCents: null, highCents: null, confidence: "unavailable" as const, method: "Same-weekday weighted average" };
   }
@@ -304,7 +309,7 @@ function buildInsights(current: Totals, previous: Totals, currency: string): Ins
   return insights;
 }
 
-export function buildCommandCentre(rows: MetricRow[], currency: string) {
+export function buildCommandCentre(rows: MetricRow[], currency: string, asOf = new Date()) {
   const sourceRecordCount = rows.length;
   const sorted = aggregateDaily(rows);
   if (!sorted.length) {
@@ -342,7 +347,7 @@ export function buildCommandCentre(rows: MetricRow[], currency: string) {
   const current = sum(currentRows);
   const previous = sum(previousRows);
   const latestWith = <K extends keyof MetricRow>(key: K) => [...sorted].reverse().find((row) => row[key] !== null)?.[key] ?? null;
-  const latestAgeDays = Math.max(0, Math.floor((Date.now() - Date.parse(`${latestBusinessDate}T23:59:59Z`)) / 86_400_000));
+  const latestAgeDays = Math.max(0, Math.floor((asOf.getTime() - Date.parse(`${latestBusinessDate}T23:59:59Z`)) / 86_400_000));
   const freshness: FreshnessStatus = latestAgeDays <= 1 ? "current" : latestAgeDays <= 7 ? "aging" : "stale";
   const comparisons = {
     netSalesRate: percentChange(current.netSalesCents, previous.netSalesCents),
@@ -392,7 +397,7 @@ export function buildCommandCentre(rows: MetricRow[], currency: string) {
       sevenDays: windowComparison(sorted, latestBusinessDate, 7),
       thirtyDays: windowComparison(sorted, latestBusinessDate, 30),
     },
-    forecast: sevenDayForecast(sorted, latestBusinessDate),
+    forecast: sevenDayForecast(sorted, latestBusinessDate, asOf),
     insights: buildInsights(current, previous, currency),
     dataQuality: { status: previous.days >= 7 ? "usable" : "limited", verifiedFields: 10, missingDimensions: ["Product and category detail", "Customer identity", "Marketing attribution", "Hourly traffic", "Supplier invoices"] },
   };

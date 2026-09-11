@@ -42,7 +42,7 @@ test("the engine detects supported sales, margin and labour exceptions", () => {
   const latest = "2026-08-03";
   const rows: MetricRow[] = [];
   for (let offset = -59; offset <= 0; offset++) rows.push(row(dateOffset(latest, offset), offset >= -29 ? "current" : "previous"));
-  const result = buildCommandCentre(rows, "CAD");
+  const result = buildCommandCentre(rows, "CAD", new Date("2026-08-04T12:00:00Z"));
   assert.equal(result.ready, true);
   assert.equal(result.current?.days, 30);
   assert.equal(result.previous?.days, 30);
@@ -53,6 +53,17 @@ test("the engine detects supported sales, margin and labour exceptions", () => {
   assert.equal(result.forecast?.available, true);
   assert.equal(result.forecast?.points.length, 7);
   assert.equal(result.periodComparisons?.sevenDays.comparable, true);
+});
+
+test("an old import cannot present an expired forecast as the current outlook", () => {
+  const rows = Array.from({ length: 60 }, (_, i) => row(dateOffset("2026-08-15", i - 59), "current"));
+  const result = buildCommandCentre(rows, "CAD", new Date("2026-09-10T12:00:00Z"));
+  assert.equal(result.current?.days, 30);
+  assert.equal(result.forecast.available, false);
+  assert.equal(result.forecast.totalNetSalesCents, null);
+  assert.deepEqual(result.forecast.points, []);
+  assert.ok("unavailableReason" in result.forecast);
+  assert.match(result.forecast.unavailableReason ?? "", /Refresh verified sales/);
 });
 
 test("multiple locations on one business date count as one verified day", () => {

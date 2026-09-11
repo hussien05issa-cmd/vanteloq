@@ -607,7 +607,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
           <div className="home-gemini-grid">
             <article><strong>Ask in plain language</strong><span>Ask why sales changed, where margin is leaking or what deserves attention next.</span></article>
             <article><strong>Evidence stays visible</strong><span>Every answer is grounded in the records your workspace has approved. Missing data stays unavailable.</span></article>
-            <article><strong>Memory stays in your workspace</strong><span>Conversation context is scoped to your organization and user, with no raw customer or bank details sent to the model.</span></article>
+            <article><strong>Memory is your choice</strong><span>Memory starts off. Enable it for a chat, switch it off, or delete your saved chats. Permitted context stays scoped to your user and workspace.</span></article>
           </div>
           <small className="home-gemini-note">Vanteloq AI supports analysis and planning. Actions remain behind Vanteloq permissions and your approval.</small>
         </div>

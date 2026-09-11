@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import BookLoQWorkspace from "./bookloq-workspace";
 import CommunicationsWorkspace from "./communications-workspace";
 import CommerceIntelligenceWorkspace from "./commerce-intelligence-workspace";
@@ -10,6 +10,10 @@ import ScenarioPlanner from "./scenario-planner";
 import { connectorNextStep, filterConnectors } from "../domain/connector-guidance";
 import IntegrationBrandLogo from "./integration-brand-logo";
 import AdvisorComposer, { canAskAdvisor } from "./advisor-composer";
+import AdvisorThinking from "./advisor-thinking";
+import AdvisorResponse from "./advisor-response";
+import { requestAdvisorAnalysis } from "./advisor-client";
+import AdvisorPrivacy from "./advisor-privacy";
 import { ADVISOR_PROVIDER_LABELS, advisorProviders, type AdvisorMode } from "../domain/advisor-providers";
 import {
   integrationCatalog,
@@ -45,7 +49,6 @@ import { buildProviderFeatureCoverage, type CanonicalCommerceCoverage, type Prov
 import { integrationActionKey, supportsMultipleProviderAccounts } from "../domain/integration-source";
 import { humanizeIdentifier, providerDisplayName, workspaceViewLabel } from "../domain/display-labels";
 import {
-  GEMINI_CONSENT_NOTICE_VERSION,
   PRIVACY_POLICY_VERSION,
   QUICKBOOKS_CONSENT_NOTICE_VERSION,
 } from "../domain/privacy-controls";
@@ -507,6 +510,7 @@ type CommandCentre = {
   } | null;
   forecast?: {
     available: boolean;
+    unavailableReason?: string;
     requiredDays: number;
     verifiedDays: number;
     totalNetSalesCents: number | null;
@@ -1447,7 +1451,8 @@ function PaymentMixCard({ data, currency, paymentRange, setPaymentRange }: { dat
   const labels: Record<string, string> = { card: "Card", cash: "Cash", gift_card: "Gift card", store_credit: "Store credit", other: "Other" };
   return (
     <article className="card commerce-intel-card payment-mix-card">
-      <header><div><p className="card-kicker">PAYMENT MIX</p><h3>Cash vs card</h3></div><label className="payment-range"><span>Time frame</span><select aria-label="Payment mix time frame" value={paymentRange} onChange={(event) => setPaymentRange(Number(event.target.value) as PaymentRange)}><option value={1}>Today</option><option value={7}>Last 7 days</option><option value={30}>Last 30 days</option></select></label></header>
+      <header><div><p className="card-kicker">PAYMENT MIX</p><h3>Cash vs card</h3></div><label className="payment-range"><span>Time frame</span><select aria-label="Payment mix time frame" value={paymentRange} onChange={(event) => setPaymentRange(Number(event.target.value) as PaymentRange)}><option value={1}>Latest verified day</option><option value={7}>7 days to latest</option><option value={30}>30 days to latest</option></select></label></header>
+      <p className="payment-period">{data.period}</p>
       {data.sourceAvailable && total > 0 ? <>
         <div className="payment-stack" aria-label={`Payment mix totaling ${money(total, currency)}`}>
           {rows.map((row) => <i key={row.category} className={`payment-${row.category}`} style={{ width: `${Math.max(2, row.amountCents / total * 100)}%` }} />)}
@@ -1502,7 +1507,7 @@ function CommerceIntelligenceRail({ data, currency, paymentRange, setPaymentRang
               {forecast.points.map((point) => <i key={point.date} style={{ height: `${Math.max(12, point.netSalesCents / Math.max(...forecast.points.map((item) => item.netSalesCents), 1) * 100)}%` }} title={`${formatBusinessDate(point.date)}: ${money(point.netSalesCents, currency)}`} />)}
             </div>
             <small>{forecast.method}</small>
-          </> : <div className="intel-empty"><b>{Math.max(0, forecast.requiredDays - forecast.verifiedDays)} more verified days needed</b><span>Vanteloq will not forecast until at least {forecast.requiredDays} distinct sales days are available.</span></div>}
+          </> : <div className="intel-empty"><b>{forecast.unavailableReason ? "Recent sales required" : `${Math.max(0, forecast.requiredDays - forecast.verifiedDays)} more verified days needed`}</b><span>{forecast.unavailableReason ?? `Vanteloq will not forecast until at least ${forecast.requiredDays} distinct sales days are available.`}</span></div>}
         </article>
       </section>
     </>
@@ -1543,8 +1548,9 @@ function LiveSalesPanel({ data, currency, paymentRange, setPaymentRange, compact
         </article>
         {!compact && data.current && (
           <article className="card period-summary-card">
-            <p className="card-kicker">LAST 30 DAYS</p>
+            <p className="card-kicker">LATEST 30-DAY WINDOW</p>
             <h3>Period context</h3>
+            {data.source.latestBusinessDate && <small>Through {formatBusinessDate(data.source.latestBusinessDate)}</small>}
             <dl>
               <div><dt>Net sales</dt><dd>{money(data.current.netSalesCents, currency)}</dd></div>
               <div><dt>Gross profit</dt><dd>{money(data.current.grossProfitCents, currency)}</dd></div>
@@ -3946,7 +3952,9 @@ function Advisor({
   createTask: (seed: TaskSeed) => void;
 }) {
   const [question, setQuestion] = useState("");
+  const [memoryEnabled, setMemoryEnabled] = useState(false);
   const [provider, setProvider] = useState<AdvisorMode>("gemini");
+  const [thinking, setThinking] = useState(false);
   const [providers, setProviders] = useState({ gemini: { ready: false, reason: "Checking Google Gemini availability." as string | null }, openai: { ready: false, reason: "Checking OpenAI availability." as string | null } });
   useEffect(() => {
     let active = true;
@@ -3962,31 +3970,28 @@ function Advisor({
     limitation: string;
     seed?: TaskSeed;
   } | null>(null);
+  const [submittedQuestion, setSubmittedQuestion] = useState("");
+  const [history, setHistory] = useState<Array<{ question: string; answer: NonNullable<typeof answer> }>>([]);
   const ask = async (event: FormEvent) => {
     event.preventDefault();
     if (!advisorProviders(provider).every(item => providers[item].ready) || !canAskAdvisor(question, dataUseAccepted, loading)) return;
+    if (answer) setHistory(previous => [...previous, { question: submittedQuestion, answer }].slice(-5));
+    setAnswer(null);
+    setSubmittedQuestion(question);
     setLoading(true);
+    setThinking(true);
     const normalized = question.toLowerCase();
     try {
-      const response = await apiFetch("/api/v1/advisor/chat", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          question,
-          conversationId,
-          dataUseAccepted,
-          noticeVersion: GEMINI_CONSENT_NOTICE_VERSION,
-          privacyPolicyVersion: PRIVACY_POLICY_VERSION,
-        }),
-      });
-      const payload = await response.json() as { providers?: Array<"gemini" | "openai">; partial?: boolean; status?: string; answer?: string | null; conversationId?: string; message?: string; error?: { message?: string } };
+      const response = await requestAdvisorAnalysis(apiFetch, { question, provider, conversationId, dataUseAccepted, memoryEnabled });
+      const payload = await response.json() as { providers?: Array<"gemini" | "openai">; partial?: boolean; status?: string; answer?: string | null; conversationId?: string | null; message?: string; error?: { message?: string } };
       if (!response.ok) throw new Error(payload.error?.message ?? "The advisor could not answer right now.");
-      if (payload.conversationId) setConversationId(payload.conversationId);
+      setConversationId(payload.conversationId ?? null);
       if (payload.status === "configuration_required") {
         setAnswer({ title: "Vanteloq AI setup is pending", body: payload.message ?? "The selected AI provider needs administrator setup.", limitation: payload.message ?? "No business data was sent to an external model." });
         return;
       }
       if (payload.answer) {
+        setQuestion("");
         setAnswer({ title: "Vanteloq AI analysis", body: payload.answer, limitation: `${payload.partial ? "Partial response. One selected provider could not complete the analysis. " : ""}Powered by ${(payload.providers ?? []).map(item => ADVISOR_PROVIDER_LABELS[item]).join(" and ")}. Based on your permitted evidence snapshot. Verify conclusions before acting; AI can make mistakes.` });
         return;
       }
@@ -3995,8 +4000,9 @@ function Advisor({
       return;
     } finally {
       setLoading(false);
+      setThinking(false);
     }
-    /* Local evidence fallback keeps the surface useful while Gemini is being configured. */
+    /* Explicit local evidence is available when no external answer was returned. */
     const insight =
       normalized.includes("margin") ||
       normalized.includes("profit") ||
@@ -4012,7 +4018,7 @@ function Advisor({
       setAnswer({
         title: insight.title,
         body: `${insight.whatHappened} ${insight.probableCause} Recommended: ${insight.recommendedAction}`,
-        limitation: `Confidence: ${insight.confidence}. Missing: ${insight.missingInformation.join(", ")}.`,
+        limitation: `Local evidence summary; no AI response was returned. Confidence: ${insight.confidence}. Missing: ${insight.missingInformation.join(", ")}.`,
         seed: {
           ...insight.suggestedTask,
           sourceType: "insight",
@@ -4030,6 +4036,7 @@ function Advisor({
   const clearConversation = async () => {
     if (loading) return;
     if (conversationId) {
+      if (!window.confirm("Permanently delete this saved chat from Vanteloq? Provider safety logs and managed backups follow separate retention periods.")) return;
       setLoading(true);
       try {
         const response = await apiFetch("/api/v1/advisor/chat", {
@@ -4052,28 +4059,23 @@ function Advisor({
     }
     setConversationId(null);
     setAnswer(null);
+    setSubmittedQuestion("");
+    setHistory([]);
     setQuestion("");
   };
+  const resetVisibleChat = () => { setConversationId(null); setAnswer(null); setSubmittedQuestion(""); setHistory([]); setQuestion(""); };
+  const changeMemory = (enabled: boolean) => { setMemoryEnabled(enabled); setDataUseAccepted(false); resetVisibleChat(); };
+  const reply = (value: NonNullable<typeof answer>) => <AdvisorResponse title={value.title} body={value.body} limitation={value.limitation}>
+    {value.seed ? <button onClick={() => createTask(value.seed!)}>Create action →</button> : <button onClick={() => navigate("Integrations")}>Review connected sources →</button>}
+  </AdvisorResponse>;
   return (
     <div className="content advisor-page">
-      <AdvisorComposer provider={provider} providers={providers} onProvider={value => { setProvider(value); setDataUseAccepted(false); setAnswer(null); }} question={question} onQuestion={setQuestion} dataUseAccepted={dataUseAccepted} onConsent={setDataUseAccepted} loading={loading} onSubmit={ask} onClear={conversationId || answer ? () => void clearConversation() : undefined}/>
-      {answer && (
-        <article className="advisor-answer">
-          <span>VANTELOQ ANALYSIS</span>
-          <h3>{answer.title}</h3>
-          <p>{answer.body}</p>
-          <div>{answer.limitation}</div>
-          {answer.seed ? (
-            <button onClick={() => createTask(answer.seed!)}>
-              Create action →
-            </button>
-          ) : (
-            <button onClick={() => navigate("Integrations")}>
-              Add the missing source →
-            </button>
-          )}
-        </article>
-      )}
+      <AdvisorComposer memoryEnabled={memoryEnabled} onMemory={changeMemory} privacyControls={<AdvisorPrivacy fetcher={apiFetch} disabled={loading} onDeleted={id => { if (id === null || id === conversationId) resetVisibleChat(); }}/>} provider={provider} providers={providers} onProvider={value => { setProvider(value); setDataUseAccepted(false); resetVisibleChat(); }} question={question} onQuestion={setQuestion} dataUseAccepted={dataUseAccepted} onConsent={setDataUseAccepted} loading={loading} thinking={thinking} onSubmit={ask} hasConversation={Boolean(submittedQuestion || answer || history.length)} onClear={conversationId || answer || submittedQuestion ? () => void clearConversation() : undefined}>
+        {history.map((item, index) => <Fragment key={index}><div className="ai-user-message"><small>You</small>{item.question}</div>{reply(item.answer)}</Fragment>)}
+        {submittedQuestion && <div className="ai-user-message"><small>You</small>{submittedQuestion}</div>}
+        {thinking && <AdvisorThinking/>}
+        {answer && reply(answer)}
+      </AdvisorComposer>
     </div>
   );
 }

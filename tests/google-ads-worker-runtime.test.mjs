@@ -8,6 +8,8 @@ import { Miniflare, NoOpLog, Response } from "miniflare";
 // accept redirect modes that the deployed Workers runtime does not support.
 test("Google Ads discovery is Worker-compatible and never follows provider redirects", async (t) => {
   const bundle = await build({
+    absWorkingDir: fileURLToPath(new URL("../", import.meta.url)),
+    tsconfigRaw: { compilerOptions: { target: "ESNext" } },
     stdin: {
       resolveDir: fileURLToPath(new URL("../", import.meta.url)),
       contents: `

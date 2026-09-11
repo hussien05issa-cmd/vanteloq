@@ -764,17 +764,17 @@ type ProcurementProduct = {
   supplierId: string | null;
   supplierName: string | null;
   defaultCostCents: number | null;
-  onHandQuantity: number;
+  onHandQuantity: number | null;
   reorderPoint: number;
   incomingUnits: number;
   soldUnits30d: number;
   soldUnitsPrevious30d: number;
   soldUnits90d: number;
   averageDailyDemand: number;
-  recommendedQuantity: number;
+  recommendedQuantity: number | null;
   cashConstrainedQuantity?: number | null;
   cashAllocatedCents: number | null;
-  cashDecision?: "within_capacity" | "cash_constrained" | "needs_verified_cash" | "needs_unit_cost" | "no_order_needed" | "restricted";
+  cashDecision?: "within_capacity" | "cash_constrained" | "needs_verified_cash" | "needs_unit_cost" | "needs_inventory" | "no_order_needed" | "restricted";
   daysCover: number | null;
   demandTrendRate: number | null;
   recommendationFactors: string[];
@@ -876,6 +876,7 @@ export function PurchaseOrdersWorkspace({
 }: SharedProps & { activeLocationId: string | null }) {
   const [data, setData] = useState<PurchasingData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [tab, setTab] = useState<"orders" | "recommendations" | "calendar">("orders");
   const [creating, setCreating] = useState<{
     supplierId?: string;
@@ -883,13 +884,15 @@ export function PurchaseOrdersWorkspace({
   } | null>(null);
   const [selected, setSelected] = useState<Order | null>(null);
   const load = useCallback(async () => {
-    setLoading(true);
-    const response = await apiFetch(`/api/v1/purchasing${activeLocationId ? `?location=${encodeURIComponent(activeLocationId)}` : ""}`);
-    const body: unknown = await response.json();
-    if (response.ok) setData(body as PurchasingData);
-    else showNotice(apiMessage(body, "Unable to load purchase orders."));
-    setLoading(false);
-  }, [activeLocationId, showNotice]);
+    setLoading(true); setLoadError(""); setData(null);
+    try {
+      const response = await apiFetch(`/api/v1/purchasing${activeLocationId ? `?location=${encodeURIComponent(activeLocationId)}` : ""}`);
+      const body: unknown = await response.json();
+      if (!response.ok) throw new Error(apiMessage(body, "Unable to load purchase orders."));
+      setData(body as PurchasingData);
+    } catch (error) { setLoadError(error instanceof Error ? error.message : "Unable to load purchase orders."); }
+    finally { setLoading(false); }
+  }, [activeLocationId]);
   useEffect(() => {
     const timer = window.setTimeout(() => void load(), 0);
     return () => window.clearTimeout(timer);
@@ -910,6 +913,7 @@ export function PurchaseOrdersWorkspace({
     );
     showNotice("Purchase-order workflow updated and audited");
   };
+  if (loadError) return <div className="content control-empty"><p role="alert">{loadError}</p><button type="button" onClick={() => void load()}>Retry purchase orders</button></div>;
   if (loading || !data)
     return (
       <div className="content control-empty">
@@ -1123,7 +1127,7 @@ function ProcurementSignals({
           </header>
           <b>{product.name}</b>
           <small>
-            {product.onHandQuantity} on hand · {product.incomingUnits} incoming
+            {product.onHandQuantity ?? "Unknown"} on hand · {product.incomingUnits} incoming
           </small>
           <p>{product.health.detail}</p>
           <footer>
@@ -1192,7 +1196,7 @@ function CatalogRecommendations({
   openDraft: (seed: { supplierId?: string; productId?: string }) => void;
 }) {
   const products = [...catalog.products].sort(
-    (left, right) => right.recommendedQuantity - left.recommendedQuantity,
+    (left, right) => (right.recommendedQuantity ?? -1) - (left.recommendedQuantity ?? -1),
   );
   return (
     <section className="catalog-recommendations">
@@ -1262,20 +1266,22 @@ function CatalogRecommendations({
                 <em>{product.health.label}</em>
               </header>
               <div className="recommendation-metrics">
-                <span><small>ON HAND</small><b>{product.onHandQuantity}</b></span>
+                <span><small>ON HAND</small><b>{product.onHandQuantity ?? "Unknown"}</b></span>
                 <span><small>INCOMING</small><b>{product.incomingUnits}</b></span>
                 <span><small>SOLD 30D</small><b>{product.soldUnits30d.toLocaleString()}</b></span>
-                <span><small>DEMAND NEED</small><b>{product.recommendedQuantity}</b></span>
+                <span><small>DEMAND NEED</small><b>{product.recommendedQuantity ?? "Review"}</b></span>
                 <span><small>{cashRestricted ? "OWNER REVIEW" : "CASH-AWARE"}</small><b>{product.cashConstrainedQuantity ?? "Review"}</b></span>
               </div>
               <p>{product.health.detail}</p>
               <p className={`cash-decision-copy ${product.cashDecision ?? "restricted"}`}>
                 {cashRestricted
                   ? "An owner or finance teammate must review cash capacity before this demand quantity is approved."
+                  : product.cashDecision === "needs_inventory"
+                  ? "Verify inventory before calculating a reorder quantity or allocating cash."
                   : product.cashDecision === "within_capacity"
                   ? `${product.cashConstrainedQuantity} units fit within verified purchasing capacity.`
                   : product.cashDecision === "cash_constrained"
-                    ? `Verified capacity reduces this reviewed quantity from ${product.recommendedQuantity} to ${product.cashConstrainedQuantity}.`
+                    ? `Verified capacity reduces this reviewed quantity from ${product.recommendedQuantity ?? "Review"} to ${product.cashConstrainedQuantity}.`
                     : product.cashDecision === "needs_unit_cost"
                       ? "Add a verified unit cost before cash can constrain this quantity."
                       : product.cashDecision === "no_order_needed"
@@ -1483,9 +1489,9 @@ function PurchaseOrderModal({
       unitCost: product?.defaultCostCents
         ? product.defaultCostCents / 100
         : 0,
-      currentInventory: product?.onHandQuantity ?? 0,
+      currentInventory: product?.onHandQuantity ?? null,
       reorderPoint: product?.reorderPoint ?? 0,
-      forecastDemand: product?.recommendedQuantity ?? 0,
+      forecastDemand: product?.recommendedQuantity ?? null,
     });
   const [supplierId, setSupplierId] = useState(
     seed.supplierId ?? initialProduct?.supplierId ?? "",
@@ -1528,9 +1534,9 @@ function PurchaseOrderModal({
           description: line.description,
           quantity: Number(line.quantity),
           unitCostCents: Math.round(Number(line.unitCost) * 100),
-          currentInventory: Number(line.currentInventory),
+          currentInventory: line.currentInventory === null ? null : Number(line.currentInventory),
           reorderPoint: Number(line.reorderPoint),
-          forecastDemand: Number(line.forecastDemand),
+          forecastDemand: line.forecastDemand === null ? null : Number(line.forecastDemand),
         })),
       }),
     });
@@ -1718,9 +1724,9 @@ function PurchaseOrderModal({
                 );
                 return product ? (
                   <aside className={`po-product-context ${product.health.tone}`}>
-                    <span><b>{product.onHandQuantity}</b> on hand</span>
+                    <span><b>{product.onHandQuantity ?? "Unknown"}</b> on hand</span>
                     <span><b>{product.incomingUnits}</b> already incoming</span>
-                    <span><b>{product.recommendedQuantity}</b> demand need</span>
+                    <span><b>{product.recommendedQuantity ?? "Review"}</b> demand need</span>
                     <span><b>{product.cashConstrainedQuantity ?? "Review"}</b> {!product.cashDecision || product.cashDecision === "restricted" ? "owner review" : "cash-aware"}</span>
                     <span>
                       Last ordered <b>{product.lastOrderedDate || "No history"}</b>
@@ -2244,6 +2250,7 @@ export function DocumentsWorkspace({ showNotice, canUpload }: SharedProps & { ca
 }
 
 type QualityData = {
+  locationScope: { id: string; name: string; boundary: string } | null;
   summary: {
     completeness: number;
     costCoverage: number;
@@ -2272,18 +2279,23 @@ type QualityData = {
     }[];
   };
 };
-export function DataQualityWorkspace({ showNotice, createTask, activeLocationId }: SharedProps & { activeLocationId: string | null }) {
+export function DataQualityWorkspace({ createTask, activeLocationId }: SharedProps & { activeLocationId: string | null }) {
   const [data, setData] = useState<QualityData | null>(null);
+  const [loadError, setLoadError] = useState("");
   const load = useCallback(async () => {
-    const response = await apiFetch(`/api/v1/data-quality${activeLocationId ? `?location=${encodeURIComponent(activeLocationId)}` : ""}`);
-    const body: unknown = await response.json();
-    if (response.ok) setData(body as QualityData);
-    else showNotice(apiMessage(body, "Unable to load data quality."));
-  }, [activeLocationId, showNotice]);
+    setData(null); setLoadError("");
+    try {
+      const response = await apiFetch(`/api/v1/data-quality${activeLocationId ? `?location=${encodeURIComponent(activeLocationId)}` : ""}`);
+      const body: unknown = await response.json();
+      if (!response.ok) throw new Error(apiMessage(body, "Unable to load data quality."));
+      setData(body as QualityData);
+    } catch (error) { setLoadError(error instanceof Error ? error.message : "Unable to load data quality."); }
+  }, [activeLocationId]);
   useEffect(() => {
     const timer = window.setTimeout(() => void load(), 0);
     return () => window.clearTimeout(timer);
   }, [load]);
+  if (loadError) return <div className="content control-empty"><p role="alert">{loadError}</p><button type="button" onClick={() => void load()}>Retry data quality</button></div>;
   if (!data)
     return (
       <div className="content control-empty">Checking source completeness…</div>
@@ -2303,6 +2315,7 @@ export function DataQualityWorkspace({ showNotice, createTask, activeLocationId 
           {data.summary.status}
         </span>
       </section>
+      {data.locationScope && <p role="note">{data.locationScope.name}: {data.locationScope.boundary}</p>}
       <section className="quality-scoreboard">
         <article>
           <small>COMPLETENESS</small>
@@ -2325,7 +2338,7 @@ export function DataQualityWorkspace({ showNotice, createTask, activeLocationId 
           <small>AFFECTED METRICS</small>
           <b>{data.summary.affectedMetricCount}</b>
           <span>
-            {data.summary.failedSynchronizationCount} failed sources/imports
+            {data.locationScope ? "Source/import status is outside this location view" : `${data.summary.failedSynchronizationCount} failed sources/imports`}
           </span>
         </article>
       </section>
@@ -2372,10 +2385,10 @@ export function DataQualityWorkspace({ showNotice, createTask, activeLocationId 
               Daily operating rows<b>{data.sources.dailyRows}</b>
             </span>
             <span>
-              Import runs<b>{data.sources.imports}</b>
+              Import runs<b>{data.locationScope ? "Outside scope" : data.sources.imports}</b>
             </span>
             <span>
-              Stored documents<b>{data.sources.documents}</b>
+              Stored documents<b>{data.locationScope ? "Outside scope" : data.sources.documents}</b>
             </span>
             <span>
               Missing date gaps<b>{data.summary.missingPeriodCount}</b>
@@ -2391,8 +2404,8 @@ export function DataQualityWorkspace({ showNotice, createTask, activeLocationId 
             ))
           ) : (
             <p>
-              <b>No live provider</b>
-              <span>Imported/manual only</span>
+              <b>{data.locationScope ? "Outside location scope" : "No provider connection in this view"}</b>
+              <span>{data.locationScope ? "Use the permitted organization view to review connection health." : "Review integrations for source availability."}</span>
             </p>
           )}
         </aside>

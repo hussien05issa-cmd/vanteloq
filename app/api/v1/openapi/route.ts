@@ -5,6 +5,15 @@ const specification = {
   info: { title: "Vanteloq API", version: "1.0.0" },
   servers: [{ url: "/api/v1" }],
   paths: {
+    "/advisor/chat": {
+      get: { summary: "Read provider readiness", responses: { "200": { description: "Provider readiness without credentials" } } },
+      post: { summary: "Request evidence-bound Vanteloq AI analysis", description: "Requires current explicit data-use consent, AI entitlement and insight permission. provider selects gemini, openai or both. memoryEnabled defaults false: no historical messages are sent and no chat content is saved. With memory enabled, conversationId may refer only to the current user's existing conversation in this workspace. Only matching evidence and permissions allow history reuse.", responses: { "200": { description: "Analysis or explicit setup requirement" }, "400": { description: "Invalid question or memory choice" }, "403": { description: "Permission or entitlement required" }, "404": { description: "Conversation unavailable" }, "409": { description: "Consent or source reconciliation required" } } },
+      delete: { summary: "Delete one of your saved chats", description: "Same-origin request with conversationId. Privacy access remains independent of an AI subscription or insights permission. Messages and conversation are deleted together; content-free audit metadata remains.", responses: { "200": { description: "Deleted" }, "404": { description: "Conversation unavailable" } } },
+    },
+    "/advisor/conversations": {
+      get: { summary: "List your saved chat dates in the current workspace", description: "Returns up to 50 metadata-only records; old question and reply content is excluded. hasMore indicates older entries. Also prunes chats inactive for 90 days.", responses: { "200": { description: "Conversation metadata" } } },
+      delete: { summary: "Delete all your saved chats in this workspace", description: "Requires a same-origin request and confirmDeleteAll: true. Other users and workspaces are excluded.", responses: { "200": { description: "Deleted count" }, "400": { description: "Confirmation required" } } },
+    },
     "/marketing/reports": {
       get: {
         summary: "Read approved marketing sources or an on-demand provider report within the user's workspace and location permissions",

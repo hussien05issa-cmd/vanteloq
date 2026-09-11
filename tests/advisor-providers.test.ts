@@ -25,6 +25,9 @@ test("both providers get the same evidence only through protected server request
   assert.equal(new Headers(openai.init.headers).get("authorization"),`Bearer ${env.OPENAI_API_KEY}`);
   const googleBody=JSON.parse(String(google.init.body)), openaiBody=JSON.parse(String(openai.init.body));
   assert.equal(openaiBody.input,googleBody.contents[0].parts[0].text);
+  assert.equal(openaiBody.instructions, googleBody.systemInstruction.parts[0].text);
+  assert.match(openaiBody.instructions, /Risk analysis:|Marketing:|Finance:/);
+  assert.doesNotMatch(openaiBody.instructions, /approved evidence/);
   assert.equal(openaiBody.store,false); assert.equal(openaiBody.tools,undefined);
   for(const call of calls){ assert.equal(call.init.redirect,"error"); assert.ok(call.init.signal); assert.doesNotMatch(call.url,/fixture/); }
 });

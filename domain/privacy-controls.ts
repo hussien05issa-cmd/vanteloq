@@ -1,6 +1,6 @@
 export { PRIVACY_POLICY_VERSION } from "../shared/legal-versions";
 export const PLAID_CONSENT_NOTICE_VERSION = "plaid-financial-data-v3";
-export const GEMINI_CONSENT_NOTICE_VERSION = "vanteloq-ai-v3-providers-kpis";
+export const GEMINI_CONSENT_NOTICE_VERSION = "vanteloq-ai-v4-optional-memory";
 export const QUICKBOOKS_CONSENT_NOTICE_VERSION = "quickbooks-accounting-read-v1";
 
 export const PLAID_DATA_CATEGORIES = [
@@ -24,13 +24,13 @@ export const GEMINI_DATA_CATEGORIES = [
   "Permitted synchronized website, search and paid-advertising totals, with source-specific periods and coverage limits; no queries, URLs, Business Profile content or advertising amounts",
   "Connected-source status and freshness details",
   "Aggregate cash available only when the user has bank-balance permission",
-  "A short user-and-workspace-scoped conversation history only when its evidence and access fingerprint match the current request",
+  "An optional short user-and-workspace-scoped conversation history, only when memory is enabled and its evidence and access fingerprint match the current request",
 ] as const;
 
 export const GEMINI_PROCESSING_PURPOSES = [
   "Explain verified business performance and calculations",
   "Identify missing evidence and data-quality limits",
-  "Maintain the authorized user's organization-scoped advisor conversation",
+  "Maintain the authorized user's organization-scoped advisor conversation only when they enable memory",
 ] as const;
 
 export const QUICKBOOKS_DATA_CATEGORIES = [
