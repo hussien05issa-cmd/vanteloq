@@ -503,7 +503,7 @@ type CommandCentre = {
     accountsPayableCents: number | null;
   } | null;
   metrics: Record<string, MetricProvenance>;
-  trend: { date: string; netSalesCents: number; grossProfitCents: number; transactionCount?: number }[];
+  trend: { date: string; netSalesCents: number; grossProfitCents: number | null; transactionCount?: number }[];
   periodComparisons: {
     sevenDays: PeriodComparison;
     thirtyDays: PeriodComparison;
@@ -2287,6 +2287,7 @@ type MarketingResourcePanel = {
 };
 
 type PendingDataApproval = {
+  exclude?: boolean;
   provider: string;
   connectionId: string;
   marketingReview?: { sampleRunId: string; expectedSelectionVersion: number };
@@ -2594,18 +2595,18 @@ function DataHub({
   }, [closeDataApproval, pendingDataApproval]);
   const approveConnectionData = async () => {
     if (!pendingDataApproval) return;
-    const { provider, connectionId, marketingReview } = pendingDataApproval;
+    const { provider, connectionId, marketingReview, exclude } = pendingDataApproval;
     setPendingDataApproval(null);
     const actionKey = integrationActionKey(provider, connectionId);
-    setProviderActions((current) => ({ ...current, [actionKey]: "approve" }));
+    setProviderActions((current) => ({ ...current, [actionKey]: exclude ? "exclude" : "approve" }));
     try {
       const response = await apiFetch("/api/v1/integrations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "approve_data", connectionId, confirmed: true, ...marketingReview }),
+        body: JSON.stringify({ action: exclude ? "exclude_data" : "approve_data", connectionId, confirmed: true, ...marketingReview }),
       });
       const body = await response.json();
-      if (!response.ok) throw new Error(body.error?.message ?? "The reviewed data could not be approved.");
+      if (!response.ok) throw new Error(body.error?.message ?? "The reporting setting could not be changed.");
       if ((provider === "lightspeed-r" || provider === "shopify" || provider === "shopify-pos" || provider === "square" || provider === "clover") && body.publicationPending === true) {
         const label = provider === "clover" ? "Clover" : provider === "square" ? "Square" : provider === "shopify" ? "Shopify e-commerce" : provider === "shopify-pos" ? "Shopify POS" : "R-Series";
         showNotice(`Reviewed ${label} data approved. Publishing it to the workspace now.`);
@@ -3073,6 +3074,14 @@ function DataHub({
                               disabled={!canManageProvider || Boolean(connectionAction)}
                             >{connectionAction === "approve" ? "Approving…" : "Approve reconciliation"}</button>}
                           </>}
+                          {connection.dataPromotionStatus === "approved" && <button
+                            type="button"
+                            onClick={() => {
+                              dataApprovalTriggerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+                              setPendingDataApproval({ provider: provider.id, connectionId: connection.id, exclude: true });
+                            }}
+                            disabled={!canManageProvider || Boolean(connectionAction) || connection.syncActive}
+                          >{connectionAction === "exclude" ? "Excluding…" : "Exclude from reporting"}</button>}
                           <button
                             type="button"
                             className="danger-text"
@@ -3305,17 +3314,19 @@ function DataHub({
         >
           <div className="modal-head">
             <div>
-              <p className="card-kicker">RECONCILIATION REVIEW</p>
-              <h2 id="data-approval-title">Make these reviewed records available?</h2>
+              <p className="card-kicker">REPORTING CONTROL</p>
+              <h2 id="data-approval-title">{pendingDataApproval.exclude ? "Exclude this account from reporting?" : "Make these reviewed records available?"}</h2>
             </div>
             <button type="button" aria-label="Close approval dialog" onClick={closeDataApproval}>×</button>
           </div>
           <p id="data-approval-description" className="data-approval-copy">
-            Vanteloq will allow dashboard and BookLoQ features to use the reviewed records from this provider account. The source, connection, and audit history remain traceable.
+            {pendingDataApproval.exclude
+              ? "This account will no longer contribute to business reports, forecasts or AI evidence. Its connection and imported records stay available for review. You can review and approve its data again later."
+              : "Vanteloq will allow dashboard and BookLoQ features to use the reviewed records from this provider account. The source, connection, and audit history remain traceable."}
           </p>
           <div className="modal-actions">
             <button type="button" onClick={closeDataApproval}>Cancel</button>
-            <button type="button" className="primary" onClick={() => void approveConnectionData()}>Approve reviewed data</button>
+            <button type="button" className="primary" onClick={() => void approveConnectionData()}>{pendingDataApproval.exclude ? "Exclude from reporting" : "Approve reviewed data"}</button>
           </div>
         </section>
       </div>}

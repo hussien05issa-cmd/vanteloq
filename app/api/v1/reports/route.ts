@@ -1,3 +1,4 @@
+import { businessTimestampRange, businessTimestampExtrema, businessDatesFromExtrema, type TimestampExtrema } from "../../../../domain/business-period";
 import { and, asc, eq, gt, gte, inArray, isNull, lte, or, sql, type SQL } from "drizzle-orm";
 import { getD1, getDb } from "../../../../db";
 import { dailyBusinessMetrics, dataImports, integrationConnections, integrationLocationMappings } from "../../../../db/schema";
@@ -138,7 +139,8 @@ export async function GET(request: Request) {
     const selectedLocation = locationAccess.selectedLocation;
     const locationRefs = locationAccess.locationRefs;
     const locationRestricted = locationRefs !== null;
-    if ((start && !DATE.test(start)) || (end && !DATE.test(end)))
+    const validDate = (value: string) => DATE.test(value) && Number.isFinite(Date.parse(`${value}T00:00:00Z`)) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
+    if ((start && !validDate(start)) || (end && !validDate(end)))
       throw new ApiError(400, "INVALID_DATE", "Enter valid report dates.");
     if (start && end && start > end)
       throw new ApiError(400, "INVALID_DATE_RANGE", "The start date must be on or before the end date.");
@@ -239,14 +241,14 @@ export async function GET(request: Request) {
     const rows = unscopedRows;
     const generatedAt = new Date().toISOString();
     const distinctDates = [...new Set(rows.map((row) => row.businessDate))];
-    const paymentBounds = presentation === "payment_mix" && paymentScopes.length && (!start || !end)
+    const paymentWindow = businessTimestampRange("p.paid_at", start, end, context.organization.timezone);
+    const rawPaymentBounds = presentation === "payment_mix" && paymentScopes.length && (!start || !end)
       ? await getD1().prepare(`
-          SELECT MIN(substr(p.paid_at, 1, 10)) earliestDate, MAX(substr(p.paid_at, 1, 10)) latestDate
+          SELECT ${businessTimestampExtrema("p.paid_at")}
           FROM commerce_payments p
           WHERE p.organization_id = ? AND (${paymentScopeClause})
             AND p.paid_at IS NOT NULL AND p.amount_cents > 0
-            ${start ? "AND substr(p.paid_at, 1, 10) >= ?" : ""}
-            ${end ? "AND substr(p.paid_at, 1, 10) <= ?" : ""}
+            AND ${paymentWindow.sql}
             AND EXISTS (
               SELECT 1 FROM integration_connections approved_source
               WHERE approved_source.id = p.connection_id
@@ -259,9 +261,10 @@ export async function GET(request: Request) {
         `).bind(
           context.organizationId,
           ...paymentScopeBindings,
-          ...[start, end].filter((value): value is string => Boolean(value)),
-        ).first<{ earliestDate: string | null; latestDate: string | null }>()
+          ...paymentWindow.bindings,
+        ).first<TimestampExtrema>()
       : null;
+    const paymentBounds = businessDatesFromExtrema(rawPaymentBounds, context.organization.timezone);
     const resolvedStart = start ?? distinctDates.at(0) ?? paymentBounds?.earliestDate ?? null;
     const resolvedEnd = end ?? distinctDates.at(-1) ?? paymentBounds?.latestDate ?? null;
     const expectedDays = resolvedStart && resolvedEnd ? inclusiveDays(resolvedStart, resolvedEnd) : 0;
@@ -453,6 +456,7 @@ export async function GET(request: Request) {
       comparisonRows = await loadAllDailyMetricRows(and(...comparisonFilters, sourcePredicate));
     }
     const comparisonTotals = totalsFor(comparisonRows);
+    const resolvedPaymentWindow = businessTimestampRange("p.paid_at", resolvedStart, resolvedEnd, context.organization.timezone);
     const paymentMixResult = !consolidationBlocked && paymentScopes.length && resolvedStart && resolvedEnd
       ? await getD1().prepare(`
           SELECT p.provider, p.connection_id AS connectionId, p.category, p.payment_type_name AS paymentTypeName,
@@ -460,7 +464,7 @@ export async function GET(request: Request) {
                  COUNT(DISTINCT CASE WHEN amount_cents > 0 THEN external_sale_id END) AS transactionCount
           FROM commerce_payments p
           WHERE p.organization_id = ? AND (${paymentScopeClause}) AND p.paid_at IS NOT NULL AND p.amount_cents > 0
-            AND substr(p.paid_at, 1, 10) BETWEEN ? AND ?
+            AND ${resolvedPaymentWindow.sql}
             AND EXISTS (
               SELECT 1 FROM integration_connections approved_source
               WHERE approved_source.id = p.connection_id
@@ -472,7 +476,7 @@ export async function GET(request: Request) {
                   OR approved_source.sync_lease_expires_at <= CAST(strftime('%s', 'now') AS INTEGER)))
           GROUP BY p.provider, p.connection_id, p.category, p.payment_type_name
           ORDER BY amountCents DESC
-        `).bind(context.organizationId, ...paymentScopeBindings, resolvedStart, resolvedEnd).all<{
+        `).bind(context.organizationId, ...paymentScopeBindings, ...resolvedPaymentWindow.bindings).all<{
           provider: string;
           connectionId: string;
           category: string;
@@ -532,11 +536,12 @@ export async function GET(request: Request) {
       const outletPlaceholders = outletRefs.map(() => "?").join(", ") || "NULL";
       const locationPlaceholders = scopedLocationIds.map(() => "?").join(", ") || "NULL";
       const salesDateClause = `${start ? " AND business_date >= ?" : ""}${end ? " AND business_date <= ?" : ""}`;
-      const paymentDateClause = `${start ? " AND substr(paid_at, 1, 10) >= ?" : ""}${end ? " AND substr(paid_at, 1, 10) <= ?" : ""}`;
+      const coverageWindow = businessTimestampRange("paid_at", start, end, context.organization.timezone);
+      const paymentDateClause = ` AND ${coverageWindow.sql}`;
       const salesDates = [start, end].filter((value): value is string => Boolean(value));
       const [salesFact, paymentFact, productFact, inventoryFact, customerFact, supplierFact, locationFact] = await Promise.all([
         getD1().prepare(`SELECT COUNT(*) count FROM daily_business_metrics WHERE organization_id = ? AND source_connection_id = ? AND location_ref IN (${metricPlaceholders})${salesDateClause}`).bind(context.organizationId, connection.id, ...metricRefs, ...salesDates).first<{ count: number }>(),
-        getD1().prepare(`SELECT COUNT(*) count FROM commerce_payments WHERE organization_id = ? AND connection_id = ? AND outlet_ref IN (${outletPlaceholders}) AND paid_at IS NOT NULL AND amount_cents > 0${paymentDateClause}`).bind(context.organizationId, connection.id, ...outletRefs, ...salesDates).first<{ count: number }>(),
+        getD1().prepare(`SELECT COUNT(*) count FROM commerce_payments WHERE organization_id = ? AND connection_id = ? AND outlet_ref IN (${outletPlaceholders}) AND paid_at IS NOT NULL AND amount_cents > 0${paymentDateClause}`).bind(context.organizationId, connection.id, ...outletRefs, ...coverageWindow.bindings).first<{ count: number }>(),
         catalogDimensionsAllowed
           ? getD1().prepare("SELECT COUNT(*) count FROM commerce_products WHERE organization_id = ? AND connection_id = ? AND archived = 0").bind(context.organizationId, connection.id).first<{ count: number }>()
           : Promise.resolve(null),

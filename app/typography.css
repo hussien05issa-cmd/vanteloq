@@ -1,0 +1,26 @@
+/* One locally served typeface keeps the product consistent across computers. */
+@font-face {
+  font-family: "Vanteloq Geist";
+  src: url("/fonts/geist-latin.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+:root,
+.operating-shell {
+  --font-product: "Vanteloq Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  --font-geist-sans: var(--font-product);
+}
+
+body,
+button,
+input,
+select,
+textarea {
+  font-family: var(--font-product);
+}
+
+body { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+:is(h1, h2, h3, h4) { text-wrap: balance; }
+.operating-shell :is(.metric-card, .today-metric-grid, .sales-comparison-grid, .numeric-cell) { font-variant-numeric: tabular-nums; }

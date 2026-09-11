@@ -48,6 +48,11 @@ function saleClock(value: string, timeZone: string) {
   return businessClock(new Date(value), timeZone);
 }
 
+/** Use the workspace business day, preserving provider wall-clock timestamps. */
+export function businessDateForTimestamp(value: string, timeZone: string): string | null {
+  return saleClock(value, timeZone)?.date ?? null;
+}
+
 /** Input must contain the latest approved version of each source sale. */
 export function salesDay(sales: TimestampedSale[], timeZone: string, asOf: Date, date = businessClock(asOf, timeZone)!.date): SalesDay {
   const clock = businessClock(asOf, timeZone)!;

@@ -133,7 +133,7 @@ export async function POST(request: Request) {
         UPDATE commerce_products
         SET owner_cost_cents = ?, owner_cost_source = ?, owner_cost_updated_by_user_id = ?, owner_cost_updated_at = ?
         WHERE id = ? AND organization_id = ?
-      `).bind(input.unitCostCents, source, context.userId, now, product.id, context.organizationId));
+      `).bind(input.unitCostCents, source, context.userId, now.getTime(), product.id, context.organizationId));
     }
     await runBatches(statements);
 
@@ -146,7 +146,7 @@ export async function POST(request: Request) {
             UPDATE integration_connections SET last_error_code = NULL, updated_at = ?
             WHERE organization_id = ? AND id = ? AND provider = 'square'
               AND last_error_code = 'SQUARE_PRODUCT_COST_UNAVAILABLE'
-          `).bind(now, context.organizationId, product.connectionId).run();
+          `).bind(now.getTime(), context.organizationId, product.connectionId).run();
         }
       }
     }

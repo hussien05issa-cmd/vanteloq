@@ -1,3 +1,5 @@
+import { businessTimestampRange } from "../../../../domain/business-period";
+import { businessDateOffset, businessClock } from "../../../../domain/intraday-sales";
 import { getD1 } from "../../../../db";
 import { requireAccess } from "../../../../server/authorization";
 import { ApiError, clientSource, enforceRateLimit, handleApi, jsonResponse } from "../../../../server/api";
@@ -42,7 +44,7 @@ export async function GET(request: Request) {
     const canImportCosts = canManageCosts && permissions.includes("data.import");
     let period;
     try {
-      period = parseCommercePeriod(url.searchParams.get("from"), url.searchParams.get("to"));
+      period = parseCommercePeriod(url.searchParams.get("from"), url.searchParams.get("to"), businessClock(new Date(), context.organization.timezone)!.date);
     } catch (error) {
       throw new ApiError(400, "COMMERCE_PERIOD_INVALID", error instanceof Error ? error.message : "Choose a valid date range.");
     }
@@ -73,7 +75,9 @@ export async function GET(request: Request) {
         AND approved.status = 'connected'
         AND approved.data_promotion_status = 'approved'
     )`;
-    const salePeriodSql = " AND l.sold_at >= ? AND l.sold_at < ?";
+    const periodWindow = (from: string, toExclusive: string) => businessTimestampRange("l.sold_at", from, businessDateOffset(toExclusive, -1), context.organization.timezone);
+    const currentWindow = periodWindow(period.from, period.toExclusive);
+    const salePeriodSql = ` AND ${currentWindow.sql}`;
     const database = getD1();
     const squareCostGap = await database.prepare(`
       SELECT 1 AS value FROM integration_connections
@@ -91,7 +95,7 @@ export async function GET(request: Request) {
              count(DISTINCT CASE WHEN l.customer_ref IS NOT NULL THEN l.provider || char(0) || l.connection_id || char(0) || l.external_sale_id END) AS knownCustomerTransactions
       FROM commerce_sale_lines l
       WHERE l.organization_id = ?${approved("l")}${saleLocationSql}${salePeriodSql}
-    `).bind(context.organizationId, ...saleLocationBindings, from, toExclusive).first<MetricRow>();
+    `).bind(context.organizationId, ...saleLocationBindings, ...periodWindow(from, toExclusive).bindings).first<MetricRow>();
 
     const [currentRaw, comparisonRaw, lineRows, inventoryRows, customerRows, supplierRows, productRows] = await Promise.all([
       metrics(period.from, period.toExclusive),
@@ -108,7 +112,7 @@ export async function GET(request: Request) {
         LEFT JOIN commerce_customers c ON c.organization_id = l.organization_id AND c.provider = l.provider AND c.connection_id = l.connection_id AND c.external_customer_id = l.customer_ref
         WHERE l.organization_id = ?${approved("l")}${saleLocationSql}${salePeriodSql}
         ORDER BY l.sold_at DESC, l.external_sale_id DESC, l.external_line_id DESC LIMIT 1000
-      `).bind(context.organizationId, ...saleLocationBindings, period.from, period.toExclusive).all<Record<string, unknown>>(),
+      `).bind(context.organizationId, ...saleLocationBindings, ...currentWindow.bindings).all<Record<string, unknown>>(),
       canReadInventory ? database.prepare(`
         SELECT b.source_provider AS provider, b.source_connection_id AS connectionId, b.location_ref AS locationRef,
                b.sku, b.name, b.on_hand_quantity AS onHandQuantity, b.reorder_point AS reorderPoint,
@@ -126,12 +130,12 @@ export async function GET(request: Request) {
         LEFT JOIN (
           SELECT l.provider, l.connection_id, l.sku, sum(l.quantity_milli) quantity_milli, sum(l.net_sales_cents) net_sales_cents,
                  sum(l.cost_cents) cost_cents, sum(l.discount_cents) discount_cents
-          FROM commerce_sale_lines l WHERE l.organization_id = ? AND l.sold_at >= ? AND l.sold_at < ?${saleLocationSql}
+          FROM commerce_sale_lines l WHERE l.organization_id = ? AND ${currentWindow.sql}${saleLocationSql}
           GROUP BY l.provider, l.connection_id, l.sku
         ) sales ON sales.provider = b.source_provider AND sales.connection_id = b.source_connection_id AND sales.sku = b.sku
         WHERE b.organization_id = ?${approved("b", "source_connection_id")}${inventoryLocationSql}
         ORDER BY CASE WHEN b.on_hand_quantity <= 0 THEN 0 WHEN b.on_hand_quantity <= b.reorder_point THEN 1 ELSE 2 END, b.name COLLATE NOCASE LIMIT 2000
-      `).bind(context.organizationId, period.from, period.toExclusive, ...saleLocationBindings, context.organizationId, ...inventoryLocationBindings).all<Record<string, unknown>>() : Promise.resolve({ results: [] }),
+      `).bind(context.organizationId, ...currentWindow.bindings, ...saleLocationBindings, context.organizationId, ...inventoryLocationBindings).all<Record<string, unknown>>() : Promise.resolve({ results: [] }),
       canReadCustomerTotals ? database.prepare(`
         SELECT c.provider, c.external_customer_id AS externalCustomerId, c.display_name AS displayName,
                c.email, c.phone, c.source_updated_at AS sourceUpdatedAt,
@@ -140,11 +144,11 @@ export async function GET(request: Request) {
                coalesce(sum(l.discount_cents), 0) AS discountCents, max(l.sold_at) AS lastPurchaseAt
         FROM commerce_customers c
         LEFT JOIN commerce_sale_lines l ON l.organization_id = c.organization_id AND l.provider = c.provider AND l.connection_id = c.connection_id
-          AND l.customer_ref = c.external_customer_id AND l.sold_at >= ? AND l.sold_at < ?${saleLocationSql}
+          AND l.customer_ref = c.external_customer_id AND ${currentWindow.sql}${saleLocationSql}
         WHERE c.organization_id = ? AND c.archived = 0${approved("c")}${restricted ? " AND l.external_line_id IS NOT NULL" : ""}
         GROUP BY c.provider, c.connection_id, c.external_customer_id
         ORDER BY netSalesCents DESC, c.display_name COLLATE NOCASE LIMIT 1000
-      `).bind(period.from, period.toExclusive, ...saleLocationBindings, context.organizationId).all<Record<string, unknown>>() : Promise.resolve({ results: [] }),
+      `).bind(...currentWindow.bindings, ...saleLocationBindings, context.organizationId).all<Record<string, unknown>>() : Promise.resolve({ results: [] }),
       canReadSuppliers ? database.prepare(`
         SELECT s.provider, s.external_supplier_id AS externalSupplierId, s.name, s.account_number AS accountNumber,
                s.contact_name AS contactName, s.email, s.phone, s.source_updated_at AS sourceUpdatedAt,
@@ -155,11 +159,11 @@ export async function GET(request: Request) {
         FROM commerce_suppliers s
         LEFT JOIN commerce_products p ON p.organization_id = s.organization_id AND p.provider = s.provider AND p.connection_id = s.connection_id AND p.supplier_ref = s.external_supplier_id AND p.archived = 0
         LEFT JOIN commerce_sale_lines l ON l.organization_id = p.organization_id AND l.provider = p.provider AND l.connection_id = p.connection_id
-          AND l.product_ref = p.external_product_id AND l.sold_at >= ? AND l.sold_at < ?${saleLocationSql}
+          AND l.product_ref = p.external_product_id AND ${currentWindow.sql}${saleLocationSql}
         WHERE s.organization_id = ? AND s.archived = 0${approved("s")}${restricted ? " AND l.external_line_id IS NOT NULL" : ""}
         GROUP BY s.provider, s.connection_id, s.external_supplier_id
         ORDER BY periodNetSalesCents DESC, s.name COLLATE NOCASE LIMIT 1000
-      `).bind(period.from, period.toExclusive, ...saleLocationBindings, context.organizationId).all<Record<string, unknown>>() : Promise.resolve({ results: [] }),
+      `).bind(...currentWindow.bindings, ...saleLocationBindings, context.organizationId).all<Record<string, unknown>>() : Promise.resolve({ results: [] }),
       database.prepare(`
         SELECT coalesce(l.product_ref, l.sku, l.product_name, 'unclassified') AS productRef,
                coalesce(max(l.product_name), max(l.sku), 'Unclassified item') AS name,
@@ -170,7 +174,7 @@ export async function GET(request: Request) {
         WHERE l.organization_id = ?${approved("l")}${saleLocationSql}${salePeriodSql}
         GROUP BY coalesce(l.product_ref, l.sku, l.product_name, 'unclassified')
         ORDER BY netSalesCents DESC LIMIT 250
-      `).bind(context.organizationId, ...saleLocationBindings, period.from, period.toExclusive).all<Record<string, unknown>>(),
+      `).bind(context.organizationId, ...saleLocationBindings, ...currentWindow.bindings).all<Record<string, unknown>>(),
     ]);
 
     const normalizeMetric = (row: MetricRow | null) => {

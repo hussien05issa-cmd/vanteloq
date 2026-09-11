@@ -12,6 +12,7 @@ import { scopeExternalRef } from "../../../../domain/integration-source";
 import { approvedBankSource, approvedFactSource, noActiveIntegrationLease } from "../../../../server/integrations/trusted-data";
 import { calculateVerifiedPurchasingCapacity } from "../../../../domain/purchasing-intelligence";
 import { businessClock, salesDay, sameWeekdayComparison, salesChange } from "../../../../domain/intraday-sales";
+import { businessTimestampRange } from "../../../../domain/business-period";
 
 const readers = ["owner", "admin", "manager", "employee", "read_only"] as const;
 
@@ -301,19 +302,19 @@ export async function GET(request: Request) {
       approvedSales, context.organization.timezone, commonSync!,
       rSeriesConnections.filter((connection) => !locationRestricted || (locationAccess.providerLocations ?? []).some((location) => location.connectionId === connection.id)).map((connection) => connection.id),
     ) : null;
+    const paymentWindow = businessTimestampRange("paid_at", dateOffset(today.businessDate, -(paymentDays - 1)), today.businessDate, context.organization.timezone);
     const paymentRows = sourceConnections.length ? await getD1().prepare(`
       SELECT provider, connection_id AS connectionId, category, payment_type_name AS paymentTypeName, outlet_ref AS outletRef,
              SUM(CASE WHEN amount_cents > 0 THEN amount_cents ELSE 0 END) AS amountCents,
              COUNT(DISTINCT CASE WHEN amount_cents > 0 THEN external_sale_id END) AS transactionCount
       FROM commerce_payments
       WHERE organization_id = ? AND paid_at IS NOT NULL
-        AND substr(paid_at, 1, 10) >= ? AND substr(paid_at, 1, 10) <= ?
+        AND ${paymentWindow.sql}
       GROUP BY provider, connection_id, category, payment_type_name, outlet_ref
       ORDER BY amountCents DESC
     `).bind(
       context.organizationId,
-      dateOffset(today.businessDate, -(paymentDays - 1)),
-      today.businessDate,
+      ...paymentWindow.bindings,
     ).all<PaymentMixRow & { provider: string }>() : { results: [] as Array<PaymentMixRow & { provider: string }> };
     const commandCentre = {
       ...baseCommandCentre,
@@ -370,7 +371,8 @@ export async function GET(request: Request) {
       if (commandCentre.current) Object.assign(commandCentre.current, { costOfGoodsCents: null, grossProfitCents: null, contributionCents: null, grossMarginRate: null });
       if (commandCentre.previous) Object.assign(commandCentre.previous, { costOfGoodsCents: null, grossProfitCents: null, contributionCents: null, grossMarginRate: null });
       if (commandCentre.comparisons) Object.assign(commandCentre.comparisons, { grossProfitRate: null, marginPointChange: null });
-      commandCentre.trend = [];
+      // Missing costs do not erase verified revenue. The chart already supports gaps in profit.
+      for (const point of commandCentre.trend) Object.assign(point, { grossProfitCents: null });
       for (const key of ["cost_of_goods", "gross_profit", "gross_margin", "contribution_after_labour", "labour_cost", "labour_rate"]) delete (commandCentre.metrics as Record<string, unknown>)[key];
       commandCentre.insights = commandCentre.insights.filter((insight) => insight.id !== "margin-trend" && insight.id !== "labour-pressure");
       for (const hour of commandCentre.today.hourly) Object.assign(hour, { grossProfitCents: null });

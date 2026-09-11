@@ -1,3 +1,5 @@
+import { businessTimestampRange, businessTimestampExtrema, businessDatesFromExtrema, type TimestampExtrema } from "../../../../domain/business-period";
+import { businessClock } from "../../../../domain/intraday-sales";
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { getD1, getDb } from "../../../../db";
 import {
@@ -252,10 +254,18 @@ async function procurementCatalog(
   exposeCashContext = false,
 ) {
   const database = getD1();
-  const today = new Date().toISOString().slice(0, 10);
+  const workspace = await database.prepare("SELECT timezone FROM workspaces WHERE id = ?").bind(organizationId).first<{ timezone: string }>();
+  const timeZone = workspace?.timezone ?? "UTC";
+  const today = businessClock(new Date(), timeZone)!.date;
   const thirtyDayStart = businessDateOffset(today, -29);
   const sixtyDayStart = businessDateOffset(today, -59);
   const ninetyDayStart = businessDateOffset(today, -89);
+  const windows = (column: string) => [
+    businessTimestampRange(column, thirtyDayStart, today, timeZone),
+    businessTimestampRange(column, sixtyDayStart, businessDateOffset(thirtyDayStart, -1), timeZone),
+    businessTimestampRange(column, ninetyDayStart, today, timeZone),
+  ];
+  const saleWindows = windows("sl.sold_at"), scopedWindows = windows("sold_at");
   const [supplierRows, productRows, coverage, cashContext] = await Promise.all([
     getDb()
       .select({
@@ -343,28 +353,27 @@ async function procurementCatalog(
                     AND sl.provider = p.provider
                     AND sl.connection_id = p.connection_id
                     AND sl.product_ref = p.external_product_id
-                    AND substr(sl.sold_at, 1, 10) >= ?), 0) AS soldQuantityMilli30d,
+                    AND ${saleWindows[0].sql}), 0) AS soldQuantityMilli30d,
                 COALESCE((SELECT SUM(sl.quantity_milli)
                   FROM commerce_sale_lines sl
                   WHERE sl.organization_id = p.organization_id
                     AND sl.provider = p.provider
                     AND sl.connection_id = p.connection_id
                     AND sl.product_ref = p.external_product_id
-                    AND substr(sl.sold_at, 1, 10) >= ?
-                    AND substr(sl.sold_at, 1, 10) < ?), 0) AS soldQuantityMilliPrevious30d,
+                    AND ${saleWindows[1].sql}), 0) AS soldQuantityMilliPrevious30d,
                 COALESCE((SELECT SUM(sl.quantity_milli)
                   FROM commerce_sale_lines sl
                   WHERE sl.organization_id = p.organization_id
                     AND sl.provider = p.provider
                     AND sl.connection_id = p.connection_id
                     AND sl.product_ref = p.external_product_id
-                    AND substr(sl.sold_at, 1, 10) >= ?), 0) AS soldQuantityMilli90d,
-                (SELECT MAX(substr(sl.sold_at, 1, 10))
+                    AND ${saleWindows[2].sql}), 0) AS soldQuantityMilli90d,
+                (SELECT json_object('firstInstant', firstInstant, 'lastInstant', lastInstant, 'firstLocal', firstLocal, 'lastLocal', lastLocal) FROM (SELECT ${businessTimestampExtrema("sl.sold_at")}
                   FROM commerce_sale_lines sl
                   WHERE sl.organization_id = p.organization_id
                     AND sl.provider = p.provider
                     AND sl.connection_id = p.connection_id
-                    AND sl.product_ref = p.external_product_id) AS lastSoldDate,
+                    AND sl.product_ref = p.external_product_id)) AS lastSoldDate,
                 (SELECT MAX(po.order_date)
                   FROM purchase_order_lines pol
                   JOIN purchase_orders po ON po.id = pol.purchase_order_id
@@ -425,11 +434,11 @@ async function procurementCatalog(
          ORDER BY p.name ASC
          LIMIT 1000`,
       )
-      .bind(thirtyDayStart, sixtyDayStart, thirtyDayStart, ninetyDayStart, organizationId)
+      .bind(...saleWindows.flatMap(window => window.bindings), organizationId)
       .all<ProcurementProductRow>(),
     database
       .prepare(
-        `SELECT MIN(substr(sl.sold_at, 1, 10)) AS earliestSaleDate
+        `SELECT ${businessTimestampExtrema("sl.sold_at")}
          FROM commerce_sale_lines sl
          JOIN integration_connections c
            ON c.id = sl.connection_id AND c.organization_id = sl.organization_id
@@ -439,13 +448,15 @@ async function procurementCatalog(
              OR c.sync_lease_expires_at <= CAST(strftime('%s', 'now') AS INTEGER))`,
       )
       .bind(organizationId)
-      .first<{ earliestSaleDate: string | null }>(),
+      .first<TimestampExtrema>(),
     exposeCashContext ? verifiedCashContext(organizationId) : Promise.resolve(null),
   ]);
 
-  let hasNinetyDaysOfHistory = Boolean(
-    coverage?.earliestSaleDate && coverage.earliestSaleDate <= ninetyDayStart,
-  );
+  for (const row of productRows.results ?? []) {
+    row.lastSoldDate = businessDatesFromExtrema(row.lastSoldDate ? JSON.parse(row.lastSoldDate) as TimestampExtrema : null, timeZone).latestDate;
+  }
+  const earliestSaleDate = businessDatesFromExtrema(coverage, timeZone).earliestDate;
+  let hasNinetyDaysOfHistory = Boolean(earliestSaleDate && earliestSaleDate <= ninetyDayStart);
   const scopedInventoryByProduct = new Map<string, { onHandQuantity: number; reorderPoint: number }>();
   const scopedSalesByProduct = new Map<string, {
     soldQuantityMilli30d: number;
@@ -485,11 +496,10 @@ async function procurementCatalog(
       }>(),
       database.prepare(`
         SELECT provider, connection_id AS connectionId, product_ref AS productRef,
-               SUM(CASE WHEN substr(sold_at, 1, 10) >= ? THEN quantity_milli ELSE 0 END) AS soldQuantityMilli30d,
-               SUM(CASE WHEN substr(sold_at, 1, 10) >= ? AND substr(sold_at, 1, 10) < ? THEN quantity_milli ELSE 0 END) AS soldQuantityMilliPrevious30d,
-               SUM(CASE WHEN substr(sold_at, 1, 10) >= ? THEN quantity_milli ELSE 0 END) AS soldQuantityMilli90d,
-               MAX(substr(sold_at, 1, 10)) AS lastSoldDate,
-               MIN(substr(sold_at, 1, 10)) AS earliestSaleDate
+               SUM(CASE WHEN ${scopedWindows[0].sql} THEN quantity_milli ELSE 0 END) AS soldQuantityMilli30d,
+               SUM(CASE WHEN ${scopedWindows[1].sql} THEN quantity_milli ELSE 0 END) AS soldQuantityMilliPrevious30d,
+               SUM(CASE WHEN ${scopedWindows[2].sql} THEN quantity_milli ELSE 0 END) AS soldQuantityMilli90d,
+               ${businessTimestampExtrema("sold_at")}
         FROM commerce_sale_lines
         WHERE organization_id = ? AND (${saleLocationClause})
           AND EXISTS (
@@ -502,7 +512,7 @@ async function procurementCatalog(
                 OR approved.sync_lease_expires_at <= CAST(strftime('%s', 'now') AS INTEGER))
           )
         GROUP BY provider, connection_id, product_ref
-      `).bind(thirtyDayStart, sixtyDayStart, thirtyDayStart, ninetyDayStart, organizationId, ...saleLocationBindings).all<{
+      `).bind(...scopedWindows.flatMap(window => window.bindings), organizationId, ...saleLocationBindings).all<TimestampExtrema & {
         provider: string;
         connectionId: string;
         productRef: string;
@@ -552,6 +562,10 @@ async function procurementCatalog(
         lastOrderStatus: string | null;
       }>(),
     ]);
+    for (const row of saleRows.results ?? []) {
+      const dates = businessDatesFromExtrema(row, timeZone);
+      row.earliestSaleDate = dates.earliestDate; row.lastSoldDate = dates.latestDate;
+    }
     hasNinetyDaysOfHistory = (saleRows.results ?? []).some(
       (row) => Boolean(row.earliestSaleDate && row.earliestSaleDate <= ninetyDayStart),
     );

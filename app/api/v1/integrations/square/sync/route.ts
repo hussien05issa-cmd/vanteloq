@@ -1,4 +1,5 @@
 import { and, eq } from "drizzle-orm";
+import { businessDateForTimestamp } from "../../../../../../domain/intraday-sales";
 import { getD1, getDb } from "../../../../../../db";
 import { integrationConnections, integrationLocationMappings, integrationSyncRuns } from "../../../../../../db/schema";
 import { scopeExternalRef, unscopedExternalRef } from "../../../../../../domain/integration-source";
@@ -130,7 +131,7 @@ export async function POST(request: Request) {
           if (!sale.soldAt) continue;
           const rawLocation = unscopedExternalRef(connection.sourceNamespace, sale.outletRef) ?? sale.outletRef;
           const location = `${SQUARE_PROVIDER}:${scopeExternalRef(connection.sourceNamespace, rawLocation)}`;
-          const date = sale.soldAt.slice(0, 10); const key = `${date}:${location}`;
+          const date = businessDateForTimestamp(sale.soldAt, context.organization.timezone); if (!date) continue; const key = `${date}:${location}`;
           const row = grouped.get(key) ?? { date, location, gross: 0, net: 0, cost: 0, transactions: 0, units: 0, discounts: 0 };
           const net = Math.max(0, sale.totalCents - sale.taxCents);
           row.net += net; row.gross += net + Math.max(0, sale.discountCents); row.cost += sale.costCents; row.transactions += 1; row.units += Math.max(0, sale.lineCount); row.discounts += Math.max(0, sale.discountCents); grouped.set(key, row);

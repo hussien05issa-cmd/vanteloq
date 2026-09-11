@@ -22,6 +22,7 @@ import { requireOrganizationWideLocationAccess } from "../../../../server/locati
 import { buildProviderReportCatalog } from "../../../../domain/provider-report-contracts";
 import { integrationProviderFeature } from "../../../../domain/paid-feature-routing";
 import { requireFeature } from "../../../../server/entitlements/engine";
+import { noActiveIntegrationLease } from "../../../../server/integrations/trusted-data";
 
 function maskedAccountRef(value: string | null | undefined) {
   if (!value) return null;
@@ -291,7 +292,7 @@ export async function POST(request: Request) {
       sampleRunId?: unknown;
       expectedSelectionVersion?: unknown;
     };
-    if (body.action !== "approve_data" || typeof body.connectionId !== "string" || body.confirmed !== true) {
+    if (!["approve_data", "exclude_data"].includes(String(body.action)) || typeof body.connectionId !== "string" || body.confirmed !== true) {
       throw new ApiError(400, "INVALID_PROMOTION_REQUEST", "Confirm the reviewed provider account before making its data available.");
     }
     const [connection] = await getDb().select().from(integrationConnections).where(and(
@@ -315,6 +316,31 @@ export async function POST(request: Request) {
         throw new ApiError(403, "INSUFFICIENT_PERMISSION", "Only an owner or admin can approve marketing measurements.");
       }
       await requirePermission(context, "marketing.manage");
+    }
+    if (body.action === "exclude_data") {
+      const excluded = await getDb().update(integrationConnections).set({
+        dataPromotionStatus: "staging",
+        promotionAuthorizedAt: null,
+        updatedAt: new Date(),
+      }).where(and(
+        eq(integrationConnections.id, connection.id),
+        eq(integrationConnections.organizationId, context.organizationId),
+        eq(integrationConnections.status, "connected"),
+        eq(integrationConnections.syncVersion, connection.syncVersion),
+        noActiveIntegrationLease(integrationConnections.syncLeaseOwner, integrationConnections.syncLeaseExpiresAt),
+      )).returning({ id: integrationConnections.id });
+      if (!excluded.length) {
+        throw new ApiError(409, "INTEGRATION_DATA_CHANGED", "Wait for any current sync to finish, then refresh and try again.");
+      }
+      await recordAudit({
+        request, requestId, organizationId: context.organizationId, actorUserId: context.userId,
+        action: "integration.data_promotion_excluded", resourceType: "integration_connection",
+        resourceId: connection.id, details: { provider: connection.provider },
+      });
+      return jsonResponse({
+        excluded: true, connectionId: connection.id, recordsRetained: true,
+        nextStep: "This account is excluded from business reporting. Its connection and records are retained. Review and approve its data to include it again.",
+      });
     }
     if (connection.dataPromotionStatus !== "staging") {
       throw new ApiError(409, "INTEGRATION_DATA_NOT_READY", "Sync and review this provider account before making its data available.");
