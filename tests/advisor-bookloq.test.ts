@@ -18,6 +18,15 @@ test("demonstration and inactive ledgers cannot be presented as live AI evidence
     assert.doesNotMatch(JSON.stringify(projected), /999999/);
   }
 });
+
+test("BookLoQ bank freshness preserves real numeric timestamps without free text", () => {
+  for (const value of [1789120800, 1789120800000, "2026-09-11T10:00:00Z"]) {
+    const result = projectAdvisorBookloq({ bookloq: { settings: { status: "active", dataMode: "live" }, summary: { cashLastSyncAt: value } } });
+    assert.equal(result.cashLastSyncAt, "2026-09-11T10:00:00.000Z");
+  }
+  const result = projectAdvisorBookloq({ bookloq: { settings: { status: "active", dataMode: "live" }, summary: { cashLastSyncAt: "2026-09-11Tnot-a-date private details" } } });
+  assert.equal(result.cashLastSyncAt, null);
+});
 test("BookLoQ demo reserves known bills, separates expected receipts and blocks absent cash", () => {
   const baseline = bookloqDemo(600000, false, false), delayed = bookloqDemo(600000, true, false);
   assert.equal(Math.min(...baseline.weeks.map(week => week.conservativeClosingCashCents!)), 1200000);

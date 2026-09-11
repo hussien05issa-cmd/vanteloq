@@ -223,7 +223,7 @@ function BookLoQBankConnection({ plaid, loading, error, canManage, onChanged, re
   </section>;
 }
 
-function BookLoQSection(props: { section: Section; data: BookLoQData; setSection: (section: Section) => void; createTask: (seed: TaskSeed) => void; showNotice: (message: string) => void; refresh: () => Promise<void>; openJournal: () => void; navigate: (view: "Integrations" | "Documents") => void }) {
+function BookLoQSection(props: { section: Section; data: BookLoQData; setSection: (section: Section) => void; createTask: (seed: TaskSeed) => void; showNotice: (message: string) => void; refresh: () => Promise<void>; openJournal: () => void; navigate: (view: "Integrations" | "Documents" | "Advisor") => void }) {
   const { section } = props;
   if (section === "Overview") return <OverviewPanel {...props}/>;
   if (section === "Transactions") return <TransactionCentre data={props.data} refresh={props.refresh} showNotice={props.showNotice}/>;
@@ -244,7 +244,7 @@ function BookLoQSection(props: { section: Section; data: BookLoQData; setSection
   if (section === "Month-End") return <MonthEndPanel data={props.data} refresh={props.refresh} showNotice={props.showNotice}/>;
   if (section === "Accountant Portal") return <AccountantPanel data={props.data}/>;
   if (section === "Audit Trail") return <AuditPanel data={props.data}/>;
-  if (section === "BookLoQ Assistant") return <AssistantPanel data={props.data} createTask={props.createTask}/>;
+  if (section === "BookLoQ Assistant") return <AssistantPanel data={props.data} createTask={props.createTask} openAi={() => props.navigate("Advisor")}/>;
   return <SettingsPanel data={props.data}/>;
 }
 
@@ -643,7 +643,18 @@ function MonthEndPanel({ data, refresh, showNotice }: { data: BookLoQData; refre
 function AccountantPanel({ data }: { data: BookLoQData }) { return <div className="bookloq-content"><PageIntro eyebrow="ACCOUNTANT PORTAL" title="Finance access without unrelated operational exposure" copy="The current account has the finance role and permissions shown below. Invitations remain unavailable until identity invitations and recent reauthentication are implemented."/><section className="bookloq-two"><article className="bookloq-card"><Header kicker="CURRENT ACCESS" title={label(data.role)}/><div className="permission-list">{data.permissions.map((permission) => <span key={permission}>Allowed: {label(permission)}</span>)}</div></article><ProviderGate title="Accountant invitations not yet available" detail="Vanteloq must verify recipient identity, role scope, expiry, acceptance and revocation before an invitation can be sent."/></section></div>; }
 function AuditPanel({ data }: { data: BookLoQData }) { return <div className="bookloq-content"><PageIntro eyebrow="AUDIT TRAIL" title="Append-only history for sensitive finance events" copy="Posted journals, reversals, status changes, locks and exports are recorded with the trusted actor and organization scope."/><DataTable headings={["Time", "Action", "Resource", "Outcome", "Recorded detail"]} rows={data.audit.map((event) => [new Intl.DateTimeFormat("en-CA", { dateStyle: "medium", timeStyle: "short" }).format(new Date(event.createdAt * 1000)), label(event.action), `${label(event.resourceType)}${event.resourceId ? ` · ${event.resourceId.slice(-10)}` : ""}`, label(event.outcome), summarizeAudit(event.detailsJson)])}/></div>; }
 
-function AssistantPanel({ data, createTask }: { data: BookLoQData; createTask: (seed: TaskSeed) => void }) { const prompts = ["What requires my attention today?", "Why does the bank not match my books?", "How much GST should I set aside?", "Can I afford to pay all supplier bills?", "Explain my balance sheet.", "Prepare a month-end checklist."]; const [question, setQuestion] = useState(prompts[0]); const [answer, setAnswer] = useState(() => assistantAnswer(prompts[0], data)); const ask = (value: string) => { setQuestion(value); setAnswer(assistantAnswer(value, data)); }; return <div className="bookloq-content"><PageIntro eyebrow="BOOKLOQ ASSISTANT" title="Plain-language answers grounded in the ledger" copy="The assistant explains calculations based on reviewed records. The ledger remains the source of truth for balances, tax and reconciliation."/><section className="assistant-layout"><aside>{prompts.map((prompt) => <button key={prompt} onClick={() => ask(prompt)}>{prompt}</button>)}</aside><article className="bookloq-card assistant-card"><form onSubmit={(event) => { event.preventDefault(); ask(question); }}><input value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Ask about verified BookLoQ data"/><button>Ask</button></form><div><span className={`confidence ${answer.confidence}`}>{answer.confidence} confidence</span><h3>{answer.title}</h3><p>{answer.answer}</p><dl><dt>Calculation</dt><dd>{answer.calculation}</dd><dt>Supporting records</dt><dd>{answer.supporting.join(" · ") || "No supporting record available"}</dd><dt>Missing information</dt><dd>{answer.missing || "None material for this answer"}</dd></dl>{answer.action && <button className="bookloq-primary" onClick={() => createTask({ title: answer.action!, detail: `${answer.answer} Calculation: ${answer.calculation}`, priority: "medium", expectedImpact: "Review BookLoQ supporting records", sourceType: "alert", sourceRef: "bookloq-assistant" })}>Create recommended task</button>}</div></article></section></div>; }
+function AssistantPanel({ data, createTask, openAi }: { data: BookLoQData; createTask: (seed: TaskSeed) => void; openAi: () => void }) {
+  const prompts = ["What requires my attention today?", "Compare bank and book balances", "Review recorded GST balances", "Review the supplier payment plan", "Explain my balance sheet", "Review the month-end checklist"];
+  const [question, setQuestion] = useState(prompts[0]);
+  const answer = bookloqGuidedAnswer(question, data);
+  return <div className="bookloq-content">
+    <PageIntro eyebrow="BOOKLOQ ASSISTANT" title="Financial context, with Vanteloq AI" copy="Ask about your permitted financial summaries or get help using BookLoQ. Select All locations for organization-wide analysis, then review the provider and data-use notice."/>
+    <button type="button" className="bookloq-primary" onClick={openAi}>Open Vanteloq AI →</button>
+    <section className="assistant-layout"><aside aria-label="Guided ledger checks"><h3>Guided ledger checks</h3>{prompts.map(prompt => <button key={prompt} aria-pressed={question === prompt} onClick={() => setQuestion(prompt)}>{prompt}</button>)}</aside>
+      <article className="bookloq-card assistant-card"><p>Calculated from the available records. These guided checks do not call an AI provider.</p><div><span className={`confidence ${answer.confidence}`}>{answer.confidence} confidence</span><h3>{answer.title}</h3><p>{answer.answer}</p><dl><dt>Calculation</dt><dd>{answer.calculation}</dd><dt>Supporting records</dt><dd>{answer.supporting.join(" · ") || "No supporting record available"}</dd><dt>Missing information</dt><dd>{answer.missing}</dd></dl>{answer.action && <button className="bookloq-primary" onClick={() => createTask({ title: answer.action!, detail: `${answer.answer} Calculation: ${answer.calculation}`, priority: "medium", expectedImpact: "Review BookLoQ supporting records", sourceType: "alert", sourceRef: "bookloq-assistant" })}>Create review task</button>}</div></article>
+    </section>
+  </div>;
+}
 
 function SettingsPanel({ data }: { data: BookLoQData }) { return <div className="bookloq-content"><PageIntro eyebrow="BOOKLOQ SETTINGS" title="Accounting policy, permissions and provider controls" copy="Sensitive configuration is checked on the server and restricted to this organization."/><section className="bookloq-two"><article className="bookloq-card settings-list"><Header kicker="ACCOUNTING PROFILE" title={data.organization.name}/><LineText name="Base currency" value={data.settings?.baseCurrency ?? data.organization.currency}/><LineText name="Accounting basis" value={label(data.settings?.accountingBasis ?? "not configured")}/><LineText name="Jurisdiction" value={`${data.settings?.countryCode ?? "CA"}-${data.settings?.provinceCode ?? "AB"}`}/><LineText name="Cash safety threshold" value={money(data.settings?.cashSafetyThresholdCents ?? 0, data.organization.currency)}/><LineText name="Data mode" value={label(data.settings?.dataMode ?? "live")}/></article><article className="bookloq-card settings-list"><Header kicker="INTEGRATION STATUS" title="Financial providers"/>{Object.entries(data.integrations).map(([name, status]) => <LineText key={name} name={label(name)} value={label(status)}/>)}</article></section><ProviderGate title="Configuration changes are guarded" detail="Banking, tax, payroll, export and period permissions are separate. Secrets are never exposed to browser code, and real integrations require verified server-side token storage."/></div>; }
 
@@ -734,9 +745,13 @@ function downloadCsv(file: string, headings: string[], rows: (string | number)[]
 function downloadTransactions(rows: Transaction[]) { downloadCsv("bookloq-transactions.csv", ["Posting date", "Description", "Original description", "Amount cents", "Currency", "Account", "Source", "External ID", "Categorization", "Reconciliation", "Confidence basis points"], rows.map((item) => [item.postingDate, item.description, item.originalDescription, item.amountCents, item.currency, item.accountName ?? "", item.sourceSystem, item.externalSourceId, item.categorizationStatus, item.reconciliationStatus, item.confidenceBasisPoints])); }
 function downloadReport(report: string, rows: ReactNode[][]) { downloadCsv(`bookloq-${report}-${new Date().toISOString().slice(0, 10)}.csv`, ["Code", "Account", "Classification", "Amount"], rows.map((row) => row.map((value) => typeof value === "string" || typeof value === "number" ? value : "Rendered value"))); }
 
-function assistantAnswer(question: string, data: BookLoQData) {
+export function bookloqGuidedAnswer(question: string, data: BookLoQData) {
   const q = question.toLowerCase();
-  if (q.includes("bank") && q.includes("match") && (data.summary.bankBalanceCents === null || data.summary.bookBalanceCents === null)) return {
+  const unavailable = (missing: string) => ({ title: "More verified records are needed", answer: missing, calculation: "Unavailable", supporting: [] as string[], missing, confidence: "low" as const, action: null });
+  if (data.settings?.dataMode !== "live") return unavailable("A configured live ledger is required. Demonstration records are not evidence of your business position.");
+  const needsLedger = q.includes("bank") || q.includes("gst") || q.includes("hst") || q.includes("tax") || q.includes("balance sheet");
+  if (needsLedger && data.ledgerAccess?.available !== true) return unavailable("Verified posted ledger records are unavailable or outside your permissions. Missing balances are not zero.");
+  if (q.includes("bank") && (data.summary.bankBalanceCents === null || data.summary.bookBalanceCents === null)) return {
     title: "A current bank comparison is unavailable",
     answer: "Refresh or review the bank connection before comparing it with the books.",
     calculation: "No current verified bank balance",
@@ -746,39 +761,42 @@ function assistantAnswer(question: string, data: BookLoQData) {
     action: "Refresh the bank connection",
   };
   const difference = (data.summary.bankBalanceCents ?? 0) - (data.summary.bookBalanceCents ?? 0);
-  if (q.includes("bank") && q.includes("match")) return {
-    title: "The bank is below the books by " + money(Math.abs(difference), data.organization.currency),
-    answer: difference === 0 ? "The stored bank and book balances agree." : `The stored bank balance is ${money(Math.abs(difference), data.organization.currency)} ${difference < 0 ? "below" : "above"} the posted cash ledger. The open reconciliation links this to an unmatched settlement timing item.`,
+  if (q.includes("bank")) return {
+    title: difference === 0 ? "The recorded balances agree" : `The bank is ${difference < 0 ? "below" : "above"} the books by ${money(Math.abs(difference), data.organization.currency)}`,
+    answer: difference === 0 ? "The recorded balances agree. This alone does not prove every transaction is reconciled." : `The recorded bank balance is ${money(Math.abs(difference), data.organization.currency)} ${difference < 0 ? "below" : "above"} the posted cash ledger. These totals do not establish the cause. Review the statement and unmatched entries.`,
     calculation: `${money(data.summary.bankBalanceCents, data.organization.currency)} bank − ${money(data.summary.bookBalanceCents, data.organization.currency)} books = ${money(difference, data.organization.currency)}`,
     supporting: data.reconciliations.map((item) => `${item.accountCode} reconciliation ${item.id.slice(-8)}`),
-    missing: "A live bank feed and statement image are not connected.", confidence: "high" as const, action: "Resolve the bank-to-book difference",
+    missing: "Transaction-level reconciliation and evidence explaining any difference.", confidence: "medium" as const, action: difference === 0 ? null : "Review the bank-to-book difference",
   };
   if (q.includes("gst") || q.includes("hst") || q.includes("tax")) {
-    const collected = data.statements.accounts.find((account) => account.systemKey === "gst_collected")?.balanceCents ?? 0;
-    const recoverable = data.statements.accounts.find((account) => account.systemKey === "gst_recoverable")?.balanceCents ?? 0;
+    const collected = data.statements.accounts.find((account) => account.systemKey === "gst_collected")?.balanceCents;
+    const recoverable = data.statements.accounts.find((account) => account.systemKey === "gst_recoverable")?.balanceCents;
+    if (collected == null || recoverable == null) return unavailable("Both posted GST accounts are required for this calculation. Missing tax records cannot establish a zero liability.");
     return {
-      title: `${money(Math.abs(collected - recoverable), data.organization.currency)} estimated net GST position`,
+      title: `${money(Math.abs(collected - recoverable), data.organization.currency)} recorded net GST ${collected < recoverable ? "credit" : "payable"}`,
       answer: `Posted GST collected is ${money(collected, data.organization.currency)} and posted recoverable GST is ${money(recoverable, data.organization.currency)}. This is a working position, not a filed return.`,
       calculation: `${money(collected, data.organization.currency)} collected − ${money(recoverable, data.organization.currency)} recoverable = ${money(collected - recoverable, data.organization.currency)}`,
       supporting: ["2100 GST collected", "1150 GST recoverable"],
-      missing: "Filing adjustments, documentation eligibility and official confirmation.", confidence: "high" as const, action: "Review GST working papers",
+      missing: "Filing adjustments, documentation eligibility and official confirmation.", confidence: "medium" as const, action: "Review GST working papers",
     };
   }
-  if (q.includes("afford") || q.includes("supplier bill")) return {
-    title: data.summary.availableCashCents === null ? "A confirmed payment plan is unavailable" : data.summary.availableCashCents >= 0 ? "Confirmed 30-day bills fit within posted cash" : "Posted cash does not cover confirmed 30-day bills",
-    answer: `Posted cash is ${money(data.summary.currentCashCents, data.organization.currency)}. After confirmed bills due within 30 days, available cash is ${money(data.summary.availableCashCents, data.organization.currency)} before probable collections and unmodeled obligations.`,
+  if ((q.includes("afford") || q.includes("supplier")) && (data.summary.currentCashCents === null || data.summary.availableCashCents === null)) return unavailable("Current cash and known obligations must be available before assessing the recorded payment plan.");
+  if (q.includes("afford") || q.includes("supplier")) return {
+    title: data.summary.availableCashCents! >= 0 ? "Recorded cash covers the known 30-day bills" : "Recorded cash does not cover the known 30-day bills",
+    answer: `Current recorded cash is ${money(data.summary.currentCashCents, data.organization.currency)}. After confirmed bills due within 30 days, available cash is ${money(data.summary.availableCashCents, data.organization.currency)} before probable collections and unmodeled obligations.`,
     calculation: `${money(data.summary.currentCashCents, data.organization.currency)} cash − confirmed 30-day bills = ${money(data.summary.availableCashCents, data.organization.currency)}`,
     supporting: data.bills.map((bill) => `${bill.billNumber} ${money(bill.totalCents - bill.paidCents, data.organization.currency)}`),
     missing: "Live bank availability, unentered bills, payroll, card due dates and tax payment schedules.", confidence: "medium" as const, action: "Review the 30-day payment plan",
   };
   if (q.includes("balance sheet") || q.includes("explain")) return {
-    title: "Assets, liabilities and equity remain balanced through double entry",
+    title: "Recorded balance-sheet totals",
     answer: `Assets are ${money(data.statements.balanceSheet.assetCents, data.organization.currency)}, liabilities are ${money(data.statements.balanceSheet.liabilityCents, data.organization.currency)}, and equity including current earnings is ${money(data.statements.balanceSheet.equityCents, data.organization.currency)}.`,
-    calculation: `${money(data.statements.balanceSheet.assetCents, data.organization.currency)} assets − ${money(data.statements.balanceSheet.liabilityCents, data.organization.currency)} liabilities = ${money(data.statements.balanceSheet.equityCents, data.organization.currency)} equity`,
+    calculation: `${money(data.statements.balanceSheet.assetCents, data.organization.currency)} assets − ${money(data.statements.balanceSheet.liabilityCents, data.organization.currency)} liabilities = ${money(data.statements.balanceSheet.assetCents - data.statements.balanceSheet.liabilityCents, data.organization.currency)} net assets. Recorded equity: ${money(data.statements.balanceSheet.equityCents, data.organization.currency)}.`,
     supporting: data.statements.accounts.filter((account) => ["asset", "liability", "equity"].includes(account.accountType)).map((account) => `${account.code} ${account.name}`),
     missing: "Unrecorded assets, liabilities or adjustments cannot be inferred.", confidence: "high" as const, action: null,
   };
   if (q.includes("month-end") || q.includes("checklist")) {
+    if (!data.closeItems.length || data.summary.monthEndCompletionRate === null) return unavailable("No complete month-end checklist is available. An empty list does not mean the close is complete.");
     const incomplete = data.closeItems.filter((item) => item.status !== "complete");
     return {
       title: `${incomplete.length} month-end controls remain`,
@@ -791,9 +809,9 @@ function assistantAnswer(question: string, data: BookLoQData) {
   const open = data.alerts.filter((alert) => alert.status === "open");
   return {
     title: `${open.length} financial items require review`,
-    answer: open.map((alert) => `${alert.title}: ${alert.recommendedAction}`).join(" ") || "No open BookLoQ alert currently requires action.",
+    answer: open.map((alert) => `${alert.title}: ${alert.recommendedAction}`).join(" ") || "No open alerts were produced by the available records. This does not establish that the books are complete or the business has no risk.",
     calculation: `${open.filter((alert) => alert.severity === "critical").length} critical + ${open.filter((alert) => alert.severity === "attention").length} attention + ${open.filter((alert) => alert.severity === "opportunity").length} opportunities`,
     supporting: open.flatMap((alert) => parseJsonList(alert.supportingRecordsJson)),
-    missing: "No additional cause is inferred beyond the linked records.", confidence: "high" as const, action: open[0]?.recommendedAction ?? null,
+    missing: "Unrecorded issues and obligations are not covered by this check.", confidence: "medium" as const, action: open[0]?.recommendedAction ?? null,
   };
 }
