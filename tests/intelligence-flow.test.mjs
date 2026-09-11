@@ -266,6 +266,24 @@ test("excluding a test POS preserves records and removes them from reporting wit
     const report = await dispatch(worker, environment, `/api/v1/reports?report=sales_totals&start=${today}&end=${today}`, identity.owner);
     assert.equal(report.status, 200);
     assert.equal((await report.json()).totals.netSalesCents, 20000);
+    environment.OPENAI_API_KEY = "fixture-only";
+    const originalFetch = globalThis.fetch;
+    let aiEvidence;
+    globalThis.fetch = async (input, init) => {
+      if (String(input) === "https://api.openai.com/v1/responses") {
+        const prompt = JSON.parse(init.body).input;
+        aiEvidence = JSON.parse(prompt.split("Evidence JSON: ")[1].split("\n\nConversation memory:")[0]);
+        return Response.json({status:"completed",output:[{type:"message",content:[{type:"output_text",text:"Fixture analysis"}]}]});
+      }
+      return originalFetch(input, init);
+    };
+    try {
+      const analysis = await dispatch(worker, environment, "/api/v1/advisor/chat", { ...identity.owner, method:"POST", body:{question:"Review my sales",provider:"openai",dataUseAccepted:true,noticeVersion:"vanteloq-ai-v5-bookloq-help",privacyPolicyVersion:"2026-09-10"} });
+      assert.equal(analysis.status,200,await analysis.clone().text());
+      assert.equal(aiEvidence.kpis.current.netSalesCents,20000);
+      assert.deepEqual(aiEvidence.sources.map(source => source.provider),["lightspeed-r"]);
+      assert.doesNotMatch(JSON.stringify(aiEvidence),/square|test-pos/);
+    } finally { globalThis.fetch = originalFetch; }
     assert.equal((await database.prepare("SELECT COUNT(*) count FROM audit_events WHERE organization_id=? AND action='integration.data_promotion_excluded'").bind(identity.organizationId).first()).count, 1);
   } finally { await dispose(); }
 });
@@ -367,16 +385,21 @@ test("intraday API compares matched hours and redacts all profit paths for reven
     await database.prepare("UPDATE daily_business_metrics SET cost_of_goods_cents = 123400, labour_cost_cents = 45600, inventory_value_cents = 78900, accounts_payable_cents = 99900 WHERE organization_id = ?").bind(identity.organizationId).run();
     environment.GOOGLE_GEMINI_API_KEY = "fixture-only";
     environment.GOOGLE_GEMINI_PAID_SERVICE_CONFIRMED = "true";
+    environment.OPENAI_API_KEY = "fixture-only";
     const originalFetch = globalThis.fetch, outbound = [];
     globalThis.fetch = async (input, init) => {
       if (String(input).startsWith("https://generativelanguage.googleapis.com/")) {
         outbound.push(JSON.parse(init.body).contents[0].parts[0].text);
         return Response.json({ candidates: [{ finishReason: "STOP", content: { parts: [{ text: "Fixture analysis" }] } }] });
       }
+      if (String(input) === "https://api.openai.com/v1/responses") {
+        outbound.push(JSON.parse(init.body).input);
+        return Response.json({status:"completed",output:[{type:"message",content:[{type:"output_text",text:"Fixture analysis"}]}]});
+      }
       return originalFetch(input, init);
     };
     try {
-      const ask = (user, body = {}) => dispatch(worker, environment, "/api/v1/advisor/chat", { method: "POST", ...user, body: { question: "Analyze available KPIs", dataUseAccepted: true, noticeVersion: "vanteloq-ai-v4-optional-memory", privacyPolicyVersion: "2026-09-10", ...body } });
+      const ask = (user, body = {}) => dispatch(worker, environment, "/api/v1/advisor/chat", { method: "POST", ...user, body: { question: "Analyze available KPIs", dataUseAccepted: true, noticeVersion: "vanteloq-ai-v5-bookloq-help", privacyPolicyVersion: "2026-09-10", ...body } });
       const temporary = await ask(reader);
       assert.equal(temporary.status, 200);
       assert.equal((await temporary.json()).conversationId, null);
@@ -399,6 +422,20 @@ test("intraday API compares matched hours and redacts all profit paths for reven
       assert.equal(evidence.kpis.accountsPayableSnapshotCents, null);
       assert.equal(evidence.cashAvailableCents, null);
       assert.doesNotMatch(outbound[0], /987654321|123400|45600|78900|99900|Private location/);
+      assert.deepEqual(evidence.sources.map(source => source.provider),["Recorded business summaries"]);
+      const openaiAnswer = await ask(reader, { provider:"openai" });
+      assert.equal(openaiAnswer.status,200);
+      assert.deepEqual(JSON.parse(outbound.at(-1).split("Evidence JSON: ")[1].split("\n\nConversation memory:")[0]),evidence);
+      const outboundBeforeDeniedLocation = outbound.length;
+      assert.equal((await ask(reader,{provider:"openai",locationId:otherLocation})).status,403);
+      assert.equal(outbound.length,outboundBeforeDeniedLocation);
+      const selectedLocationAnswer = await ask(identity.owner,{provider:"openai",locationId:identity.locationId});
+      assert.equal(selectedLocationAnswer.status,200,await selectedLocationAnswer.clone().text());
+      const selectedEvidence = JSON.parse(outbound.at(-1).split("Evidence JSON: ")[1].split("\n\nConversation memory:")[0]);
+      assert.equal(selectedEvidence.scope,"selected_location");
+      assert.equal(selectedEvidence.kpis.current.netSalesCents,432100);
+      assert.equal(selectedEvidence.cashAvailableCents,null);
+      assert.doesNotMatch(outbound.at(-1),/987654321|Private location/);
       const remembered = await ask(reader, { conversationId, memoryEnabled: true });
       assert.equal(remembered.status, 200);
       assert.match(outbound.at(-1), /Fixture analysis/);
@@ -444,12 +481,69 @@ test("intraday API compares matched hours and redacts all profit paths for reven
       assert.equal(allDeleted.status, 200);
       assert.equal((await allDeleted.json()).count, 1);
       assert.equal((await database.prepare("SELECT count(*) count FROM assistant_messages WHERE user_id = ?").bind(userId).first()).count, 0);
+      const help = await ask(identity.owner, { provider: "openai", purpose: "help", question: "How do I use BookLoQ?" });
+      assert.equal(help.status, 200, await help.clone().text());
+      const helpEvidence = JSON.parse(outbound.at(-1).split("Evidence JSON: ")[1].split("\n\nConversation memory:")[0]);
+      assert.equal(helpEvidence.purpose, "help");
+      assert.deepEqual(helpEvidence.days, []);
+      assert.deepEqual(helpEvidence.sources, []);
+      assert.equal(helpEvidence.cashAvailableCents, null);
+      assert.equal(helpEvidence.bookloq, undefined);
+      assert.equal(helpEvidence.marketing, undefined);
+      assert.doesNotMatch(outbound.at(-1), /432100|987654321|Fixture analysis/);
+      const helpConsent = await database.prepare("SELECT data_categories_json categories FROM integration_consents WHERE organization_id = ? AND provider = 'openai' AND purposes_json = ?").bind(identity.organizationId, JSON.stringify(["Explain how to use Vanteloq and BookLoQ"])).first();
+      assert.ok(helpConsent);
+      assert.doesNotMatch(helpConsent.categories, /ledger|financial|payroll|aggregate cash/);
     } finally { globalThis.fetch = originalFetch; }
     await database.prepare("UPDATE integration_connections SET last_successful_sync_at = ? WHERE id = ?").bind(now - 86400, connectionId).run();
     const stale = await load();
     assert.equal(stale.today.sourceGranularity, "daily");
     assert.match(stale.today.hourlyUnavailableReason, /current business day/);
   } finally { await dispose(); }
+});
+
+test("AI reads permitted BookLoQ summaries through its real access path and excludes demo and scoped ledgers", async () => {
+  const { worker, environment, database, dispose } = await createEnvironment();
+  const originalFetch = globalThis.fetch, outbound = [];
+  try {
+    const identity = await createReportWorkspace(worker, environment, database, "bookloq-ai");
+    const workspace = await database.prepare("SELECT business_name name FROM workspaces WHERE id = ?").bind(identity.organizationId).first();
+    await grantBookLoqForFlow(database, workspace.name);
+    assert.equal((await dispatch(worker, environment, "/api/v1/bookloq/demo", { ...identity.owner, method: "POST", body: {} })).status, 201);
+    environment.OPENAI_API_KEY = "fixture-only";
+    globalThis.fetch = async (input, init) => {
+      if (String(input) === "https://api.openai.com/v1/responses") {
+        outbound.push(JSON.parse(init.body).input);
+        return Response.json({ status: "completed", output: [{ type: "message", content: [{ type: "output_text", text: "Fixture financial review" }] }] });
+      }
+      return originalFetch(input, init);
+    };
+    const ask = async (extra = {}) => {
+      const response = await dispatch(worker, environment, "/api/v1/advisor/chat", { ...identity.owner, method: "POST", body: { question: "Explain my recorded BookLoQ totals", provider: "openai", dataUseAccepted: true, noticeVersion: "vanteloq-ai-v5-bookloq-help", privacyPolicyVersion: "2026-09-10", ...extra } });
+      assert.equal(response.status, 200, await response.clone().text());
+      return JSON.parse(outbound.at(-1).split("Evidence JSON: ")[1].split("\n\nConversation memory:")[0]);
+    };
+    assert.equal((await ask()).bookloq.status, "unavailable");
+    // Mark only this isolated fixture live to exercise the production read path.
+    await database.prepare("UPDATE bookloq_settings SET data_mode = 'live' WHERE organization_id = ?").bind(identity.organizationId).run();
+    const sourceResponse = await dispatch(worker, environment, "/api/v1/bookloq", identity.owner);
+    assert.equal(sourceResponse.status, 200);
+    const source = (await sourceResponse.json()).bookloq;
+    const financial = (await ask()).bookloq;
+    assert.equal(financial.status, "available");
+    assert.equal(financial.values.revenueCents, source.summary.revenueCents);
+    assert.equal(financial.values.accountsPayableCents, source.summary.accountsPayableCents);
+    assert.equal(financial.values.availableCashCents, source.summary.availableCashCents);
+    assert.match(financial.period, /Cumulative posted ledger/);
+    assert.doesNotMatch(JSON.stringify(financial), /"banks":|"contacts":|"transactions":|"journals":|"maskedNumber":|"organizationId":/);
+    assert.equal((await ask({ locationId: identity.locationId })).bookloq.status, "unavailable");
+    const help = await ask({ purpose: "help" });
+    assert.equal(help.bookloq, undefined);
+    assert.deepEqual(help.days, []);
+  } finally {
+    globalThis.fetch = originalFetch;
+    await dispose();
+  }
 });
 
 describe("intelligence flow contracts", { concurrency: false }, () => {

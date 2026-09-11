@@ -8,6 +8,8 @@ export function requestAdvisorAnalysis(fetcher: typeof fetch, input: {
   conversationId: string | null;
   dataUseAccepted: boolean;
   memoryEnabled: boolean;
+  locationId?: string | null;
+  purpose?: "analysis" | "help";
 }) {
   return fetcher("/api/v1/advisor/chat", {
     method: "POST",

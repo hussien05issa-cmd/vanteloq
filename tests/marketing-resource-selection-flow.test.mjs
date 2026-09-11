@@ -309,7 +309,7 @@ test("exact marketing resources remain versioned, approval-bound, separated, and
     assert.equal(unauthorizedReport.status, 401);
     environment.GOOGLE_GEMINI_API_KEY = "fixture-gemini-key";
     environment.GOOGLE_GEMINI_PAID_SERVICE_CONFIRMED = "true";
-    const advisor = await dispatch(worker, environment, "/api/v1/advisor/chat", { method: "POST", body: { question: "What does our marketing evidence show?", dataUseAccepted: true, noticeVersion: "vanteloq-ai-v4-optional-memory", privacyPolicyVersion: "2026-09-10" } });
+    const advisor = await dispatch(worker, environment, "/api/v1/advisor/chat", { method: "POST", body: { question: "What does our marketing evidence show?", dataUseAccepted: true, noticeVersion: "vanteloq-ai-v5-bookloq-help", privacyPolicyVersion: "2026-09-10" } });
     assert.equal(advisor.status, 200, await advisor.clone().text());
     const advisorBody = await advisor.json();
     assert.equal(advisorBody.status, "answered");
@@ -320,7 +320,7 @@ test("exact marketing resources remain versioned, approval-bound, separated, and
     assert.match(advisorText, /comparisonComplete/);
     assert.doesNotMatch(advisorText, /sc-domain:example.ca|properties\/123|google-access-token/);
 
-    const aiQuestion = { question: "Which KPIs need attention?", conversationId: advisorBody.conversationId, dataUseAccepted: true, noticeVersion: "vanteloq-ai-v4-optional-memory", privacyPolicyVersion: "2026-09-10" };
+    const aiQuestion = { question: "Which KPIs need attention?", conversationId: advisorBody.conversationId, dataUseAccepted: true, noticeVersion: "vanteloq-ai-v5-bookloq-help", privacyPolicyVersion: "2026-09-10" };
     const noConsent = await dispatch(worker, environment, "/api/v1/advisor/chat", {method: "POST", body: {...aiQuestion, dataUseAccepted: false}});
     assert.equal(noConsent.status, 409);
     const staleConsent = await dispatch(worker, environment, "/api/v1/advisor/chat", {method: "POST", body: {...aiQuestion, noticeVersion: "gemini-evidence-advisor-v2-marketing"}});
@@ -343,7 +343,7 @@ test("exact marketing resources remain versioned, approval-bound, separated, and
     assert.equal(openaiPayloads[0].input, advisorPayloads[1].contents[0].parts[0].text);
     assert.match(openaiPayloads[0].input, /Conversation memory: \[\]/);
     assert.doesNotMatch(openaiPayloads[0].input, /sc-domain:example.ca|properties\/123|fixture-openai-key|google-access-token/);
-    const aiConsents = await database.prepare("SELECT DISTINCT provider FROM integration_consents WHERE notice_version = ? ORDER BY provider").bind("vanteloq-ai-v4-optional-memory").all();
+    const aiConsents = await database.prepare("SELECT DISTINCT provider FROM integration_consents WHERE notice_version = ? ORDER BY provider").bind("vanteloq-ai-v5-bookloq-help").all();
     assert.deepEqual(aiConsents.results.map(row => row.provider), ["google_gemini", "openai"]);
 
     const originalDatabaseBinding = environment.DB;

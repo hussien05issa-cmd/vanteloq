@@ -7,3 +7,8 @@ export function isAdvisorMode(value: unknown): value is AdvisorMode {
 export function advisorProviders(mode: AdvisorMode): AdvisorProvider[] {
   return mode === "both" ? ["gemini", "openai"] : [mode];
 }
+
+/** Select one available provider on first load. Comparing both is an explicit choice. */
+export function defaultAdvisorProvider(providers: Record<AdvisorProvider, { ready: boolean }>): AdvisorProvider {
+  return providers.openai.ready ? "openai" : providers.gemini.ready ? "gemini" : "openai";
+}

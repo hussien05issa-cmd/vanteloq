@@ -25,8 +25,8 @@ export async function accessibleMarketingSources(context: AccessContext, locatio
   });
 }
 
-export async function advisorMarketingEvidence(context: AccessContext) {
-  const sources = (await accessibleMarketingSources(context)).filter(({ selection, connection }) => selection.dataset !== "google_business_profile" && connection.status === "connected" && connection.promotion === "approved");
+export async function advisorMarketingEvidence(context: AccessContext, location: string | null = null) {
+  const sources = (await accessibleMarketingSources(context, location)).filter(({ selection, connection }) => selection.dataset !== "google_business_profile" && connection.status === "connected" && connection.promotion === "approved");
   const window = reportingWindow(28, new Date(), 3);
   if (!sources.length) return marketingEvidenceSummary([]);
   const rows = await getDb().select({ selectionId: marketingDailyMetrics.resourceSelectionId, dataset: marketingResourceSelections.dataset, metricDate: marketingDailyMetrics.metricDate, metricKey: marketingDailyMetrics.metricKey, valueMilli: marketingDailyMetrics.valueMilli })

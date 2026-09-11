@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { callAdvisor, advisorProviderStatus } from "../server/advisor-providers.ts";
+import { defaultAdvisorProvider } from "../domain/advisor-providers.ts";
 const env = { GOOGLE_GEMINI_API_KEY: "fixture-google-key", GOOGLE_GEMINI_PAID_SERVICE_CONFIRMED: "true", OPENAI_API_KEY: "fixture-openai-key" };
 test("unverified Gemini and missing providers never receive evidence", async () => {
   let calls = 0;
@@ -41,4 +42,27 @@ test("incomplete or empty OpenAI output fails safely without retrying another pr
   let calls=0;
   const request=(async()=>{calls++;return Response.json({status:"incomplete",output:[{type:"message",content:[{type:"output_text",text:"Partial financial calculation"}]}]});}) as typeof fetch;
   await assert.rejects(callAdvisor("openai","evidence",env,request),/could not complete/); assert.equal(calls,1);
+});
+
+test("initial provider selection prefers an available provider and never silently sends to both", () => {
+  assert.equal(defaultAdvisorProvider({openai:{ready:true},gemini:{ready:false}}), "openai");
+  assert.equal(defaultAdvisorProvider({openai:{ready:false},gemini:{ready:true}}), "gemini");
+  assert.equal(defaultAdvisorProvider({openai:{ready:true},gemini:{ready:true}}), "openai");
+});
+
+test("billing failures give an actionable message without leaking provider diagnostics", async () => {
+  for (const [error, expectedCode] of [
+    [{code:"credit_balance_exhausted",type:"insufficient_quota"}, "ADVISOR_CREDITS_REQUIRED"],
+    [{code:"project_spend_limit_exceeded",type:"insufficient_quota"}, "ADVISOR_BILLING_REQUIRED"],
+    [{code:"rate_limit_exceeded",type:"rate_limit_error"}, "ADVISOR_RATE_LIMITED"],
+  ] as const) {
+    let calls = 0;
+    const request = (async () => { calls++; return Response.json({error:{...error,message:"Private upstream diagnostics: key and account details"}}, {status:429}); }) as typeof fetch;
+    await assert.rejects(callAdvisor("openai","fictional evidence",env,request), (failure: unknown) => {
+      assert.equal((failure as {code:string}).code,expectedCode);
+      assert.doesNotMatch(String(failure),/Private upstream|key and account/);
+      return true;
+    });
+    assert.equal(calls,1);
+  }
 });

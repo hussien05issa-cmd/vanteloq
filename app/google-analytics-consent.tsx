@@ -26,7 +26,7 @@ const ANALYTICS_ID_PATTERN = /^G-[A-Z0-9]+$/;
 const CONSENT_STORAGE_KEY = "vanteloq:cookie-consent:v1";
 const SCRIPT_ID = "vanteloq-google-analytics";
 const READY_EVENT = "vanteloq:analytics-ready";
-const PUBLIC_MEASUREMENT_PATHS = new Set(["/", "/cookies", "/data-processing", "/legal", "/privacy", "/subprocessors", "/terms"]);
+const PUBLIC_MEASUREMENT_PATHS = new Set(["/", "/demo", "/help", "/pricing", "/cookies", "/data-processing", "/legal", "/privacy", "/subprocessors", "/terms"]);
 
 function runGtag(...args: GtagCommand) {
   window.dataLayer = window.dataLayer ?? [];
@@ -180,6 +180,21 @@ export function GoogleAnalyticsConsent() {
     if (window.__vanteloqAnalyticsReady) sendPageView();
     else loadAnalytics();
     return () => window.removeEventListener(READY_EVENT, sendPageView);
+  }, [choice, configured, pathname]);
+
+  useEffect(() => {
+    if (!configured || choice !== "analytics" || !pathname || !isPublicMeasurementPage(pathname)) return;
+    const measure = (event: MouseEvent) => {
+      if (!window.__vanteloqAnalyticsReady || !(event.target instanceof Element)) return;
+      const control = event.target.closest<HTMLElement>("[data-public-event]");
+      if (!control?.closest(".public-site")) return;
+      const name = control.dataset.publicEvent;
+      if (name !== "demo_view" && name !== "signup_start" && name !== "pricing_view") return;
+      // Fixed event vocabulary only. No input values, account data or URL queries.
+      runGtag("event", name, { page_location: `${window.location.origin}${pathname}`, page_path: pathname });
+    };
+    document.addEventListener("click", measure);
+    return () => document.removeEventListener("click", measure);
   }, [choice, configured, pathname]);
 
   if (!configured || choice === undefined) return null;

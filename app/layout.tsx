@@ -37,7 +37,7 @@ window.gtag("consent", "default", {
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_ORIGIN),
   title: "Vanteloq | Business Analytics for Independent Retail",
-  description: "Bring verified sales, inventory, cash and operational records into clearer views with Vanteloq, a source-aware platform for independent retail.",
+  description: "Retail analytics, BookLoQ cash planning and Vanteloq AI in one workspace. Explore the interactive demo and trace business KPIs to verified source records.",
   alternates: { canonical: "/" },
   openGraph: {
     type: "website",

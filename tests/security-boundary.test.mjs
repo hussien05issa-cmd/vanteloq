@@ -215,7 +215,7 @@ test("reported medium-risk routes keep location, permission, and data-integrity 
     readFile(`${process.cwd()}/server/intelligence.ts`, "utf8"),
   ]);
 
-  assert.match(advisor, /authorizedLocationDataScope\(context, null\)/);
+  assert.match(advisor, /authorizedLocationDataScope\(context, locationId\)/);
   assert.match(advisor, /permissions\.includes\("metrics\.profit"\)/);
   assert.match(advisor, /locationAccess\.organizationWide && permissions\.includes\("finance\.bank_balances"\)/);
   assert.match(marketing, /requireSelectionLocationAccess\(context, selection\)/);

@@ -16,9 +16,9 @@ test("each provider selection travels with its consent and conversation to the a
       sent = JSON.parse(String(init?.body));
       return Response.json({ answer: "Test answer" });
     };
-    const response = await requestAdvisorAnalysis(fetcher, { question: "Which KPIs changed?", provider, conversationId: "conversation-a", dataUseAccepted: true, memoryEnabled: false });
+    const response = await requestAdvisorAnalysis(fetcher, { question: "Which KPIs changed?", provider, conversationId: "conversation-a", dataUseAccepted: true, memoryEnabled: false, locationId: "selected-location" });
     assert.equal(response.ok, true);
-    assert.deepEqual(sent, { question: "Which KPIs changed?", provider, conversationId: "conversation-a", dataUseAccepted: true, memoryEnabled: false, noticeVersion: GEMINI_CONSENT_NOTICE_VERSION, privacyPolicyVersion: PRIVACY_POLICY_VERSION });
+    assert.deepEqual(sent, { question: "Which KPIs changed?", provider, conversationId: "conversation-a", dataUseAccepted: true, memoryEnabled: false, locationId: "selected-location", noticeVersion: GEMINI_CONSENT_NOTICE_VERSION, privacyPolicyVersion: PRIVACY_POLICY_VERSION });
   }
 });
 
