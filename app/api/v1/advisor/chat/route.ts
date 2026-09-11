@@ -16,7 +16,7 @@ import { advisorEvidenceFingerprint, permittedAdvisorMemory } from "../../../../
 import { projectAdvisorBookloq } from "../../../../../domain/advisor-bookloq";
 import { GET as readBookloq } from "../../bookloq/route";
 import {
-  GEMINI_CONSENT_NOTICE_VERSION,
+  ADVISOR_CONSENT_NOTICE_VERSION,
   PRIVACY_POLICY_VERSION,
 } from "../../../../../domain/privacy-controls";
 
@@ -145,10 +145,10 @@ export async function POST(request: Request) {
     const purpose = body.purpose === "help" ? "help" : "analysis";
     if (body.memoryEnabled !== undefined && typeof body.memoryEnabled !== "boolean") throw new ApiError(400, "ADVISOR_MEMORY_INVALID", "Choose whether to enable conversation memory.");
     const memoryEnabled = body.memoryEnabled === true;
-    const mode = body.provider ?? "gemini";
-    if (!isAdvisorMode(mode)) throw new ApiError(400, "ADVISOR_PROVIDER_INVALID", "Choose Gemini, OpenAI, or both.");
+    const mode = body.provider ?? "openai";
+    if (!isAdvisorMode(mode)) throw new ApiError(400, "ADVISOR_PROVIDER_INVALID", "Vanteloq AI supports OpenAI only. Refresh the app and try again.");
     if (body.dataUseAccepted !== true) {
-      throw new ApiError(409, "GEMINI_CONSENT_REQUIRED", "Review and accept the Vanteloq AI data-use notice before asking a question.");
+      throw new ApiError(409, "ADVISOR_CONSENT_REQUIRED", "Review and accept the Vanteloq AI data-use notice before asking a question.");
     }
     for (const provider of advisorProviders(mode)) await recordAdvisorConsent({
       provider,
@@ -236,7 +236,7 @@ export async function DELETE(request: Request) {
   });
 }
 
-export const GEMINI_CONSENT_VERSIONS = {
-  noticeVersion: GEMINI_CONSENT_NOTICE_VERSION,
+export const ADVISOR_CONSENT_VERSIONS = {
+  noticeVersion: ADVISOR_CONSENT_NOTICE_VERSION,
   privacyPolicyVersion: PRIVACY_POLICY_VERSION,
 };

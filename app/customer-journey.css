@@ -1,0 +1,52 @@
+/* Shared navigation and decision touchpoints, using the existing product typeface. */
+.public-brand-family { display:flex;align-items:center;gap:16px;min-width:0; }
+.public-site .public-brand-family .public-brand { flex:0 0 auto;gap:10px;background:transparent;border:0;padding:0;color:#152b45;box-shadow:none; }
+.public-site .public-brand-family .public-brand:hover { background:transparent;color:#185ad0; }
+.public-brand-family .public-brand > span { font-size:17px;letter-spacing:-.04em; }
+.public-brand-family .public-brand small { font-size:9px;letter-spacing:.11em;margin-top:4px; }
+.public-owner-brand { display:flex;align-items:center;justify-content:center;flex-direction:column;gap:0;padding-left:16px;border-left:1px solid #dce4ed;min-height:48px;text-decoration:none; }
+.public-owner-brand img { display:block;width:71px;height:43px;object-fit:contain; }
+.public-owner-brand > span { font-size:8px;letter-spacing:.1em;font-weight:650;color:#53657d;line-height:1.4; }
+.public-site .public-nav nav a { display:inline-flex;align-items:center;min-height:44px; }
+.public-site :is(button,select),.public-site .home-ai-demo-link { min-height:44px; }
+.public-site a:focus-visible,.public-site button:focus-visible,.public-site summary:focus-visible,
+.operating-shell :is(a,button,select,input,textarea,summary):focus-visible { outline:3px solid #2676df;outline-offset:3px; }
+.public-site section[id] { scroll-margin-top:100px; }
+.analytics-consent { padding:18px 22px;gap:16px;max-width:1000px; }
+.analytics-consent-copy h2 { font-size:18px; }
+.analytics-consent-actions button { min-height:44px;font-weight:600; }
+.analytics-settings-button { min-height:44px;font-size:12px; }
+.ai-input-toolbar > span { font-size:12px;color:#63768d; }
+.ai-studio .ai-text-button { min-height:36px; }
+.sales-evidence-notice { display:flex;align-items:center;gap:24px;margin:0 0 24px;padding:18px 22px;border:1px solid #d2dfed;border-left:3px solid #347ad6;border-radius:10px;background:#f5f8fd; }
+.sales-evidence-notice > div { flex:1; }
+.sales-evidence-notice strong { display:block;color:#173451;font-size:14px;font-weight:600; }
+.sales-evidence-notice p { margin:6px 0 0;color:#536981;font-size:13px;line-height:1.6; }
+.sales-evidence-notice button { min-height:44px;padding:10px 16px;border:1px solid #b9ccdf;border-radius:8px;background:white;color:#1a4b84;font:600 13px var(--font-product);cursor:pointer;white-space:nowrap; }
+.today-metric-grid .metric-card { min-width:0; }
+@media (min-width:1101px) {
+  .public-site .public-nav { gap:22px; }
+  .public-site .public-nav nav { gap:22px; }
+}
+@media (max-width:1100px) {
+  .public-brand-family { gap:12px; }
+  .public-owner-brand { padding-left:12px; }
+}
+@media (max-width:620px) {
+  .public-brand-family .public-brand > span { display:block;font-size:16px; }
+  .public-brand-family .public-brand small { display:none; }
+  .public-brand-family { gap:10px; }
+  .public-owner-brand { padding-left:10px; }
+  .public-owner-brand img { width:57px;height:38px; }
+  .public-owner-brand > span { display:none; }
+  .sales-evidence-notice { align-items:stretch;flex-direction:column;gap:12px;padding:16px; }
+  .sales-evidence-notice button { align-self:flex-start; }
+  .analytics-consent { gap:12px;padding:18px; }
+  .analytics-consent-brand.product-brand-logo.icon { display:none; }
+  .analytics-consent-copy p { font-size:12px; }
+  .analytics-consent-actions { grid-template-columns:1fr 1fr; }
+  .ai-studio .ai-text-button { min-height:44px; }
+}
+@media (prefers-reduced-motion:reduce) {
+  .public-site { scroll-behavior:auto; }
+}

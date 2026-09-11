@@ -16,6 +16,17 @@ export type SalesDay = {
 };
 
 const clockFormatters = new Map<string, Intl.DateTimeFormat>();
+
+/** An empty transaction feed is not evidence of a completed zero-sales day. */
+export function isAwaitingSalesRecords(day: {
+  sourceGranularity: "intraday" | "daily";
+  lastSaleAt: string | null;
+  transactionCount: number | null;
+  refundsCents: number | null;
+}) {
+  return day.sourceGranularity === "intraday" && !day.lastSaleAt
+    && day.transactionCount === 0 && day.refundsCents === 0;
+}
 const hourFormatter = new Intl.DateTimeFormat("en-CA", { timeZone: "UTC", hour: "numeric", hour12: true });
 
 export function businessClock(value: Date, timeZone: string) {

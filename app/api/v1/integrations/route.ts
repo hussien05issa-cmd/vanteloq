@@ -40,6 +40,7 @@ export async function GET(request: Request) {
       .select({
         id: integrationConnections.id,
         provider: integrationConnections.provider,
+        sourceNamespace: integrationConnections.sourceNamespace,
         status: integrationConnections.status,
         externalAccountRef: integrationConnections.externalAccountRef,
         externalAccountName: integrationConnections.externalAccountName,
@@ -111,7 +112,11 @@ export async function GET(request: Request) {
         )
         .sort((left, right) => (right.completedAt?.getTime() ?? 0) - (left.completedAt?.getTime() ?? 0))[0];
     };
-    const activeRows = rows.filter((row) => row.status !== "revoked" && row.status !== "not_connected");
+    const activeRows = rows.filter((row) => row.status !== "revoked" && row.status !== "not_connected").map(row => ({
+      ...row,
+      // Old approvals do not establish that a payment account is production.
+      dataPromotionStatus: row.provider === MONERIS_PROVIDER && !row.sourceNamespace?.startsWith("production:") ? "staging" : row.dataPromotionStatus,
+    }));
     const byProvider = new Map<string, typeof activeRows>();
     for (const row of activeRows) byProvider.set(row.provider, [...(byProvider.get(row.provider) ?? []), row]);
     const database = getD1();
@@ -204,6 +209,7 @@ export async function GET(request: Request) {
           lastErrorCode: connection.lastErrorCode,
           connectedAt: connection.connectedAt?.toISOString() ?? null,
           dataPromotionStatus: connection.dataPromotionStatus,
+          reportingEnvironment: provider.id === MONERIS_PROVIDER ? connection.sourceNamespace?.startsWith("production:") ? "production" : connection.sourceNamespace?.startsWith("sandbox:") ? "sandbox" : "unverified" : null,
           syncActive: Boolean(connection.syncLeaseOwner && connection.syncLeaseExpiresAt && connection.syncLeaseExpiresAt.getTime() > Date.now()),
           resourceSelectionVersion: connection.resourceSelectionVersion,
           resourceSelections: selections.map((selection) => ({
@@ -257,7 +263,7 @@ export async function GET(request: Request) {
             : provider.id === QUICKBOOKS_PROVIDER
               ? quickBooksReadiness()
             : provider.id === MONERIS_PROVIDER
-              ? monerisReadiness()
+              ? { ...monerisReadiness(), ...(providerConnections.length > 0 && !providerConnections.some(connection => connection.sourceNamespace?.startsWith("production:")) ? { mode: "sandbox_or_unverified", liveDataEligible: false } : {}) }
               : provider.id === "plaid"
                 ? plaidReadiness()
                 : provider.id === "google" || provider.id === "meta"
@@ -341,6 +347,9 @@ export async function POST(request: Request) {
         excluded: true, connectionId: connection.id, recordsRetained: true,
         nextStep: "This account is excluded from business reporting. Its connection and records are retained. Review and approve its data to include it again.",
       });
+    }
+    if (connection.provider === MONERIS_PROVIDER && !connection.sourceNamespace?.startsWith("production:")) {
+      throw new ApiError(409, "MONERIS_PRODUCTION_REQUIRED", "Sandbox or unverified Moneris records cannot be approved for business reporting. Connect and review a production merchant account.");
     }
     if (connection.dataPromotionStatus !== "staging") {
       throw new ApiError(409, "INTEGRATION_DATA_NOT_READY", "Sync and review this provider account before making its data available.");

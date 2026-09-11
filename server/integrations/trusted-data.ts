@@ -15,6 +15,7 @@ export function approvedFactSource(
         AND approved_source.provider = ${sourceProvider}
         AND approved_source.status = 'connected'
         AND approved_source.data_promotion_status = 'approved'
+      AND (approved_source.provider <> 'moneris' OR approved_source.source_namespace LIKE 'production:%')
         AND (
           approved_source.sync_lease_owner IS NULL
           OR approved_source.sync_lease_expires_at IS NULL
@@ -37,6 +38,7 @@ export function approvedCommerceSource(
       AND approved_source.provider = ${provider}
       AND approved_source.status = 'connected'
       AND approved_source.data_promotion_status = 'approved'
+      AND (approved_source.provider <> 'moneris' OR approved_source.source_namespace LIKE 'production:%')
       AND (
         approved_source.sync_lease_owner IS NULL
         OR approved_source.sync_lease_expires_at IS NULL

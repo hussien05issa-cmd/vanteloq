@@ -3,6 +3,7 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import Link from "next/link";
+import Image from "next/image";
 import IntegrationBrandLogo from "./integration-brand-logo";
 import VanteloqAiLogo from "./vanteloq-ai-logo";
 import { integrationCatalog, integrationPublicStatus } from "./integration-catalog";
@@ -406,18 +407,20 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
   return <div className="public-site">
     <a className="home-skip-link" href="#main-content">Skip to main content</a>
     <header className="public-nav">
+      <div className="public-brand-family">
       <button type="button" className="public-brand" aria-label="Vanteloq home" onClick={() => { closeMobileNav(); window.scrollTo({ top: 0, behavior: "smooth" }); }}>
         <ProductBrandLogo product="vanteloq" priority/>
-        <span>Vanteloq<small>BUSINESS OPERATING SYSTEM</small></span>
+        <span>Vanteloq<small>BUSINESS INTELLIGENCE</small></span>
       </button>
+      <a className="public-owner-brand" href="#company" onClick={closeMobileNav} aria-label="LexEdge Consulting, owner of Vanteloq"><Image src="/brand/lexedge-consulting-logo-web.png" width={480} height={320} alt="LexEdge Consulting" unoptimized/><span>BY LEXEDGE</span></a>
+      </div>
       <button type="button" className="nav-menu-toggle" aria-label={mobileNavOpen ? "Close navigation menu" : "Open navigation menu"} aria-expanded={mobileNavOpen} aria-controls="public-navigation" onClick={() => setMobileNavOpen(open => !open)}>{mobileNavOpen ? "Close" : "Menu"}</button>
       <nav id="public-navigation" className={mobileNavOpen ? "is-open" : ""} aria-label="Main navigation">
         <a href="#platform" onClick={closeMobileNav}>Platform</a>
-        <a href="#capabilities" onClick={closeMobileNav}>Capabilities</a>
         <a href="#connections" onClick={closeMobileNav}>Connections</a>
         <a href="#demo" onClick={closeMobileNav}>Try the demo</a>
         <Link data-public-event="pricing_view" href="/pricing" onClick={closeMobileNav}>Pricing</Link>
-        <Link href="/resources" onClick={closeMobileNav}>Resources</Link>
+        <Link href="/help" onClick={closeMobileNav}>Help</Link>
         <div className="public-nav-mobile-socials">
           <span>Follow Vanteloq</span>
           <SocialLinks/>
@@ -468,7 +471,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
           <div className="home-section-heading compact">
             <p>CONNECTED BUSINESS</p>
             <h2 id="connections-title">Connect the tools that already run your business.</h2>
-            <span>Bring sales, inventory, payments, banking, accounting, delivery and marketing into one operating view, so every dashboard, forecast and recommendation starts from the same business records.</span>
+            <span>Start with a supported sales source or a structured import. Add inventory, financial and marketing context as each connection is configured and its records are reviewed. Check availability before choosing your plan.</span>
           </div>
           <FeatureReel />
         </div>
@@ -591,11 +594,11 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
         <div className="home-marketing-footer"><p>Provider authorization and sample approval are required. Facebook and Instagram organic insights are not yet available. Planning tools do not publish content or change advertising budgets.</p><button type="button" data-public-event="signup_start" onClick={() => start("signup")}>Build your business workspace →</button><a href="#connections">Check connection availability</a></div>
       </section>
 
-      <section className="home-gemini" id="gemini" aria-labelledby="gemini-title">
-        <aside className="home-gemini-mark" aria-label="How Vanteloq AI supports a business answer">
-          <div className="home-gemini-brand">
+      <section className="home-ai" id="vanteloq-ai" aria-labelledby="vanteloq-ai-title">
+        <aside className="home-ai-mark" aria-label="How Vanteloq AI supports a business answer">
+          <div className="home-ai-brand">
             <VanteloqAiLogo size={64} decorative/>
-            <div><span>Vanteloq AI</span><small>OPENAI + GOOGLE GEMINI</small></div>
+            <div><span>Vanteloq AI</span><small>POWERED BY OPENAI</small></div>
           </div>
           <p>From verified business records to an explanation your team can review.</p>
           <ol>
@@ -604,18 +607,18 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
             <li><b>3</b><span><strong>Human approval</strong><small>Your permissions still control every action.</small></span></li>
           </ol>
         </aside>
-        <div className="home-gemini-copy">
+        <div className="home-ai-copy">
           <p>GROUNDED BUSINESS INTELLIGENCE</p>
-          <h2 id="gemini-title">Your business context.<br/>A clearer next question.</h2>
-          <div className="vanteloq-ai-engines" aria-label="Vanteloq AI providers"><span>OpenAI</span><b aria-hidden="true">+</b><span>Google Gemini</span></div>
-          <span>Built to be powered by OpenAI and Google Gemini. Explore financial performance, KPIs and business trends through one Vanteloq AI workspace. Choose either provider or compare two independent analyses, using only the approved evidence you can access.</span>
-          <p className="vanteloq-ai-activation">Provider activation is in progress. AI answers become available after secure setup, with a separate data-use choice before each request.</p>
-          <div className="home-gemini-grid">
+          <h2 id="vanteloq-ai-title">Your business context.<br/>A clearer next question.</h2>
+          <div className="vanteloq-ai-engines" aria-label="Vanteloq AI provider"><span>Powered by OpenAI</span></div>
+          <span>Explore sales, margins, inventory, marketing and BookLoQ with Vanteloq AI, powered by OpenAI. Ask about the approved evidence you can access, or switch to App help for guidance on using the product.</span>
+          <p className="vanteloq-ai-activation">You choose when to share data. Memory starts off, saved chats can be deleted, and App help does not attach workspace records.</p>
+          <div className="home-ai-grid">
             <article><strong>Ask in plain language</strong><span>Ask why sales changed, where margin is leaking or what deserves attention next.</span></article>
-            <article><strong>Evidence stays visible</strong><span>Every answer is grounded in the records your workspace has approved. Missing data stays unavailable.</span></article>
+            <article><strong>Evidence stays visible</strong><span>Business analysis uses permitted summaries with source dates and coverage. Review the evidence and check important conclusions.</span></article>
             <article><strong>Memory is your choice</strong><span>Memory starts off. Enable it for a chat, switch it off, or delete your saved chats. Permitted context stays scoped to your user and workspace.</span></article>
           </div>
-          <small className="home-gemini-note">Vanteloq AI supports analysis and planning. Actions remain behind Vanteloq permissions and your approval.</small>
+          <small className="home-ai-note">Vanteloq AI supports analysis and planning. Actions remain behind Vanteloq permissions and your approval.</small>
           <a className="home-ai-demo-link" href="#demo">Explore the evidence in the interactive demo →</a>
         </div>
       </section>

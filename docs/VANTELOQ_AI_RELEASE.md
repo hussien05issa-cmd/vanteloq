@@ -1,40 +1,42 @@
 # Vanteloq AI implementation and activation
 
-Prepared 10 September 2026. This update is not proof of live provider operation or legal certification.
+Updated September 11, 2026. This document describes the current implementation, not a security or legal certification.
 
-## Implemented behavior
+## OpenAI only
 
-- Vanteloq AI branding throughout the advisor and public description. Google Gemini, OpenAI, or both can be selected; unavailable configurations are explicitly labelled.
-- Both mode sends the same permitted evidence independently and displays attributed answers. Partial failures identify the missing provider. A single-provider request is never rerouted silently.
-- The server calculates two aligned 28-day periods, net sales, gross profit, weighted gross margin, average transaction value, units per transaction, labour-to-sales ratio, contribution after labour, and dated inventory/payables snapshots. Growth comparisons require complete observed-location coverage in both periods. Missing data is unavailable rather than zero.
-- Approved daily records, authorized marketing aggregates, source freshness and eligible bank-cash aggregates are selected within the requesting user's organization, locations and permissions. The evidence contains no raw invoices, transactions, account numbers, customer identifiers, credentials or provider resource identifiers.
-- Net profit, free cash flow, liquidity ratios, tax, forecasts and product/customer/employee analyses are not fabricated when their required data is absent. The model is instructed to distinguish evidence, hypotheses, assumptions and suggested next steps, with human review for consequential decisions.
-- Separate explicit versioned consent records for Google and OpenAI; changing providers clears the checkbox. Memory is invalidated by provider choice, permissions, locations or evidence changes. Conversations remain private to their user and organization, with scoped deletion and existing 90-day inactivity cleanup on next use.
-- Server-held keys, bounded questions, basic sensitive-input rejection, rate limiting, authentication/MFA and entitlement checks, no model tools or autonomous actions, safe provider errors and timeouts. The text-input filter is not comprehensive personal-data detection; users must avoid including such information.
+Vanteloq AI uses the OpenAI Responses API. The provider selector and Gemini integration have been removed. The API defaults to OpenAI and rejects removed or unknown provider modes before collecting evidence. There is no automatic provider fallback. `OPENAI_API_KEY` is a server secret; `OPENAI_MODEL` optionally overrides the current default, `gpt-5-mini`.
 
-## Activation status and required configuration
+OpenAI was verified in production for App help and Business analysis. Operational credit and usage limits still apply. Known billing, quota and authorization failures return actionable sanitized errors. Requests use manual redirect handling, a 45-second timeout, `store: false`, no action tools and completed text responses only.
 
-As inspected during this update, the live Sites configuration contains a Gemini key but no OpenAI key. The owner answered that Gemini billing was absent or uncertain. The secure OpenAI connector returned an unknown-tool error after reconnection; no new OpenAI credential was created.
+## Evidence, privacy and consent
 
-1. Verify which Google Cloud project owns the configured Gemini key and that it has active Cloud Billing under the applicable paid-service terms. Do not infer this from a saved key, successful response or another billed project. Set `GOOGLE_GEMINI_PAID_SERVICE_CONFIRMED=true` only after verification; the new code otherwise blocks Gemini evidence transmission.
-2. Complete secure OpenAI key provisioning, review project permissions/budget and disable optional account data sharing/training. Store `OPENAI_API_KEY` as a Sites secret. `OPENAI_MODEL` defaults to `gpt-5-mini`; the application uses Responses with `store:false`. No plaintext keys belong in source or conversation.
-3. Review provider agreements, subprocessors, processing locations, customer/employee authority and notices, retention/deletion operations and applicable Alberta/Canadian or other jurisdictional duties with the responsible privacy/legal reviewer. Neither a checkbox nor this implementation establishes compliance by itself. Canadian-only processing and zero provider retention have not been established.
-4. Publish the saved update when release is authorized. Until published, the new protections and branding are not active on the customer domain.
-5. Test Gemini, OpenAI and both with synthetic data first, then an authorized account's permitted aggregates. Check arithmetic against source reports, withheld/missing inputs, current provider availability, consent, provider attribution, partial failure and deletion. Live model quality and end-to-end dual-provider operation are not yet verified.
+- Business analysis uses approved records scoped to organization, permitted locations and metric permissions. The server calculates matching periods and financial ratios before sending a bounded summary. Missing costs, stale records and incomplete comparisons remain explicit.
+- Authorized BookLoQ aggregates use the actual finance authorization path. Demonstration ledgers and absent cash are excluded from live evidence.
+- App help sends product instructions and the user's question without attaching workspace records. It is not an account inspection or a transaction execution tool.
+- The unchecked data-use control names OpenAI. The current AI notice is `vanteloq-ai-v6-openai`. Changing purpose or memory resets acceptance. Historical audit records are retained.
+- Memory defaults off. With memory off, chat history is neither loaded into prompts nor saved in the application chat database. With memory on, at most six recent messages can be reused only while evidence, purpose and permissions still match.
+- Saved conversations are isolated by user and organization. Deletion controls remove active chat records. Provider logs and managed backups have separate retention rules.
+- No credentials, account numbers, raw invoices, customer identities, private marketing resource identifiers or raw transaction lists are automatically attached.
+- AI does not move money, post journals, file taxes, place purchases or publish campaigns. People retain approval responsibility.
 
-## Verification completed
+OpenAI's API [data controls](https://developers.openai.com/api/docs/guides/your-data) describe training defaults and retention. Administrators must keep optional provider data-sharing disabled for confidential business analysis. `store: false` is not a zero-retention guarantee.
 
-- Production build and TypeScript checks passed.
-- Lint passed for changed application/provider/KPI code and affected flow tests.
-- 71 targeted calculation, provider, consent, presentation, release-security, anonymous-access, origin and deletion checks passed.
-- 13 integration/legal checks passed, including marketing evidence selection, both-provider requests, stale/no consent, Google billing gate, and onboarding recovery.
-- The outbound advisor access test also passed after extension: restricted cost/payroll/inventory/payables/cash values and another location's sales are absent; a different user cannot read or delete the conversation; revoking revenue permission removes previous memory; deletion removes messages.
-- Provider requests in these tests are fixtures. No live customer information was submitted to an AI provider for verification. Authenticated browser acceptance remains outstanding.
+## Customer journey and source reliability
 
-## Primary references reviewed
+The homepage now pairs the existing Vanteloq and LexEdge marks, provides five primary navigation links, and offers a sample-data demo before signup. Local fonts, keyboard focus, mobile tap targets and privacy choices preserve the current blue/navy visual identity.
 
-- [Gemini API terms](https://ai.google.dev/gemini-api/terms): paid and unpaid service data handling differ.
-- [OpenAI API data controls](https://developers.openai.com/api/docs/guides/your-data): no training by default, optional data sharing, abuse-monitoring retention and limitations of `store:false`.
-- [Canadian privacy regulators' generative AI principles](https://www.priv.gc.ca/en/privacy-topics/technology/artificial-intelligence/gd_principles_ai/): accountability, appropriate purposes, consent and safeguards.
+An empty intraday feed displays “Awaiting records” instead of a verified zero-sales result. Verified zero-dollar transactions, refunds and daily summaries retain their numerical meaning. Source sync completion is not described as proof of current reporting coverage.
 
-Review these terms again when activating or changing accounts, providers, regions or models. The public Privacy Policy and Subprocessor Notice were updated to describe the implemented flows and their limitations.
+Connection cards wait for actual status instead of inventing missing credentials during loading. Sandbox or unverified Moneris accounts cannot be approved for reporting; legacy approvals are also excluded by the shared fact and commerce query guards. Records remain retained.
+
+## Remaining release gates
+
+1. Reconcile fresh real POS totals with the matching store, currency and period.
+2. Obtain Plaid production access and verify a real bank connection and reconciliation. Sandbox is not live finance.
+3. Complete QuickBooks ledger import, account/tax mapping, closed-period handling and Intuit production review. Company authorization alone does not implement ledger sync.
+4. Complete account/resource authorization and acceptance samples for each commerce or marketing provider. Meta requires its missing application configuration.
+5. Configure transactional invoice delivery and prove delivery, bounce and retry handling. Password-reset delivery is a separate authentication service.
+6. Complete independent document scanning before enabling quarantined document processing.
+7. Complete controlled production checkout, billing webhook and cancellation acceptance, operational monitoring, restore drills, load tests and an independent accessibility/security review.
+
+Tests cover the changed boundaries but cannot establish that every provider, browser, workload or legal obligation is satisfied. No claim of outperforming all competitors or guaranteed conversion improvement is made.

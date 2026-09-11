@@ -103,7 +103,7 @@ async function businessReport(token: string, selection: SelectedMarketingResourc
   const location = /^accounts\/[\w-]+\/locations\/([\w-]+)$/.exec(selection.externalResourceRef)?.[1];
   if (!location) throw new ApiError(409, "MARKETING_RESOURCE_INVALID", "Choose a valid Business Profile location.");
   report.previousPeriod = null; report.timeZone = "Business Profile reporting dates";
-  report.limitations = ["Google Business Profile content is fetched on demand, not stored by this reporting endpoint or sent to Gemini. Measures stay in their original source series.", "Calls are call-button clicks, not completed calls. Directions and website clicks are not confirmed visits or sales."];
+  report.limitations = ["Google Business Profile content is fetched on demand, not stored by this reporting endpoint or sent to Vanteloq AI. Measures stay in their original source series.", "Calls are call-button clicks, not completed calls. Directions and website clicks are not confirmed visits or sales."];
   if (report.view === "keywords") {
     const month = new Date(`${report.fetchedAt.slice(0, 7)}-01T00:00:00Z`); month.setUTCMonth(month.getUTCMonth() - 1);
     const monthLabel = month.toISOString().slice(0, 7);

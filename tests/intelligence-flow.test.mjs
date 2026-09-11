@@ -278,13 +278,28 @@ test("excluding a test POS preserves records and removes them from reporting wit
       return originalFetch(input, init);
     };
     try {
-      const analysis = await dispatch(worker, environment, "/api/v1/advisor/chat", { ...identity.owner, method:"POST", body:{question:"Review my sales",provider:"openai",dataUseAccepted:true,noticeVersion:"vanteloq-ai-v5-bookloq-help",privacyPolicyVersion:"2026-09-10"} });
+      const analysis = await dispatch(worker, environment, "/api/v1/advisor/chat", { ...identity.owner, method:"POST", body:{question:"Review my sales",provider:"openai",dataUseAccepted:true,noticeVersion:"vanteloq-ai-v6-openai",privacyPolicyVersion:"2026-09-10"} });
       assert.equal(analysis.status,200,await analysis.clone().text());
       assert.equal(aiEvidence.kpis.current.netSalesCents,20000);
       assert.deepEqual(aiEvidence.sources.map(source => source.provider),["lightspeed-r"]);
       assert.doesNotMatch(JSON.stringify(aiEvidence),/square|test-pos/);
     } finally { globalThis.fetch = originalFetch; }
     assert.equal((await database.prepare("SELECT COUNT(*) count FROM audit_events WHERE organization_id=? AND action='integration.data_promotion_excluded'").bind(identity.organizationId).first()).count, 1);
+    // Legacy approval must not turn a sandbox payment source into live evidence.
+    await database.prepare("UPDATE integration_connections SET provider='moneris', source_namespace='sandbox:fixture', data_promotion_status='approved' WHERE id=?").bind(sample).run();
+    await database.prepare("UPDATE daily_business_metrics SET source_provider='moneris' WHERE source_connection_id=?").bind(sample).run();
+    const guardedReport = await dispatch(worker, environment, `/api/v1/reports?report=sales_totals&start=${today}&end=${today}`, identity.owner);
+    assert.equal(guardedReport.status, 200);
+    assert.equal((await guardedReport.json()).totals.netSalesCents, 20000);
+    const approveSandbox = await dispatch(worker, environment, "/api/v1/integrations", { ...identity.owner, method: "POST", body: { action: "approve_data", connectionId: sample, confirmed: true } });
+    assert.equal(approveSandbox.status, 409);
+    assert.equal((await approveSandbox.json()).error.code, "MONERIS_PRODUCTION_REQUIRED");
+    const statuses = await dispatch(worker, environment, "/api/v1/integrations", identity.owner);
+    const moneris = (await statuses.json()).integrations.find(provider => provider.id === "moneris");
+    assert.equal(moneris.connections[0].reportingEnvironment, "sandbox");
+    assert.equal(moneris.dataPromotionStatus, "staging");
+    assert.equal(moneris.canonicalCoverage.payments, false);
+    assert.equal((await database.prepare("SELECT COUNT(*) count FROM daily_business_metrics WHERE source_connection_id=?").bind(sample).first()).count, 1);
   } finally { await dispose(); }
 });
 
@@ -383,15 +398,9 @@ test("intraday API compares matched hours and redacts all profit paths for reven
     const otherLocation = await seedReportLocation(database, identity.organizationId, "Private location");
     await seedReportMetric(database, { ...identity, businessDate: currentDate, locationRef: otherLocation, netSalesCents: 987654321 });
     await database.prepare("UPDATE daily_business_metrics SET cost_of_goods_cents = 123400, labour_cost_cents = 45600, inventory_value_cents = 78900, accounts_payable_cents = 99900 WHERE organization_id = ?").bind(identity.organizationId).run();
-    environment.GOOGLE_GEMINI_API_KEY = "fixture-only";
-    environment.GOOGLE_GEMINI_PAID_SERVICE_CONFIRMED = "true";
     environment.OPENAI_API_KEY = "fixture-only";
     const originalFetch = globalThis.fetch, outbound = [];
     globalThis.fetch = async (input, init) => {
-      if (String(input).startsWith("https://generativelanguage.googleapis.com/")) {
-        outbound.push(JSON.parse(init.body).contents[0].parts[0].text);
-        return Response.json({ candidates: [{ finishReason: "STOP", content: { parts: [{ text: "Fixture analysis" }] } }] });
-      }
       if (String(input) === "https://api.openai.com/v1/responses") {
         outbound.push(JSON.parse(init.body).input);
         return Response.json({status:"completed",output:[{type:"message",content:[{type:"output_text",text:"Fixture analysis"}]}]});
@@ -399,7 +408,7 @@ test("intraday API compares matched hours and redacts all profit paths for reven
       return originalFetch(input, init);
     };
     try {
-      const ask = (user, body = {}) => dispatch(worker, environment, "/api/v1/advisor/chat", { method: "POST", ...user, body: { question: "Analyze available KPIs", dataUseAccepted: true, noticeVersion: "vanteloq-ai-v5-bookloq-help", privacyPolicyVersion: "2026-09-10", ...body } });
+      const ask = (user, body = {}) => dispatch(worker, environment, "/api/v1/advisor/chat", { method: "POST", ...user, body: { question: "Analyze available KPIs", dataUseAccepted: true, noticeVersion: "vanteloq-ai-v6-openai", privacyPolicyVersion: "2026-09-10", ...body } });
       const temporary = await ask(reader);
       assert.equal(temporary.status, 200);
       assert.equal((await temporary.json()).conversationId, null);
@@ -514,7 +523,7 @@ test("AI reads permitted BookLoQ summaries through its real access path and excl
       return originalFetch(input, init);
     };
     const ask = async (extra = {}) => {
-      const response = await dispatch(worker, environment, "/api/v1/advisor/chat", { ...identity.owner, method: "POST", body: { question: "Explain my recorded BookLoQ totals", provider: "openai", dataUseAccepted: true, noticeVersion: "vanteloq-ai-v5-bookloq-help", privacyPolicyVersion: "2026-09-10", ...extra } });
+      const response = await dispatch(worker, environment, "/api/v1/advisor/chat", { ...identity.owner, method: "POST", body: { question: "Explain my recorded BookLoQ totals", provider: "openai", dataUseAccepted: true, noticeVersion: "vanteloq-ai-v6-openai", privacyPolicyVersion: "2026-09-10", ...extra } });
       assert.equal(response.status, 200, await response.clone().text());
       return JSON.parse(outbound.at(-1).split("Evidence JSON: ")[1].split("\n\nConversation memory:")[0]);
     };

@@ -169,9 +169,9 @@
 .public-site .home-onboarding-summary .home-account-roadmap { max-width:none; }
 @media(min-width:901px) { .home-onboarding-summary .home-account-roadmap > ol { grid-template-columns:repeat(4,minmax(0,1fr)); }.home-onboarding-summary .home-account-roadmap .account-checkpoint { border:0; }.home-onboarding-summary .home-account-roadmap .account-checkpoint + .account-checkpoint { border-left:1px solid #e5ebf3; } }
 .home-demo-caption a { color:#285dac;text-underline-offset:3px; }
-.public-site .home-gemini-mark { background:linear-gradient(145deg,#102943,#172c49 65%,#292b53); }
-.public-site .home-gemini-brand { padding-bottom:26px;border-bottom:1px solid #ffffff24; }
-.public-site .home-gemini-brand > div > span { font-weight:550;letter-spacing:-.035em;font-size:30px; }
+.public-site .home-ai-mark { background:linear-gradient(145deg,#102943,#172c49 65%,#292b53); }
+.public-site .home-ai-brand { padding-bottom:26px;border-bottom:1px solid #ffffff24; }
+.public-site .home-ai-brand > div > span { font-weight:550;letter-spacing:-.035em;font-size:30px; }
 .home-ai-demo-link { display:inline-flex;align-items:center;gap:8px;margin-top:23px;color:#205ba7;font-size:14px;font-weight:600;text-underline-offset:4px; }
 .home-security-evidence { display:flex;flex-wrap:wrap;gap:14px 26px;margin-top:28px;padding-top:22px;border-top:1px solid #cad8e8; }
 .home-security-evidence a { color:inherit;font-size:13px;text-underline-offset:4px; }

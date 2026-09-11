@@ -2,7 +2,17 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
-import { businessClock, businessDateOffset, cumulativeSalesHours, salesDay, sameWeekdayComparison, salesChange, type TimestampedSale } from "../domain/intraday-sales";
+import { isAwaitingSalesRecords, businessClock, businessDateOffset, cumulativeSalesHours, salesDay, sameWeekdayComparison, salesChange, type TimestampedSale } from "../domain/intraday-sales";
+
+test("an absent feed differs from verified zero-dollar sales and refund-only activity", () => {
+  const empty = { sourceGranularity: "intraday" as const, lastSaleAt: null, transactionCount: 0, refundsCents: 0 };
+  assert.equal(isAwaitingSalesRecords(empty), true);
+  assert.equal(isAwaitingSalesRecords({ ...empty, transactionCount: 1 }), false);
+  assert.equal(isAwaitingSalesRecords({ ...empty, refundsCents: 100 }), false);
+  assert.equal(isAwaitingSalesRecords({ ...empty, lastSaleAt: "2026-09-11T10:00:00" }), false);
+  assert.equal(isAwaitingSalesRecords({ ...empty, sourceGranularity: "daily" }), false);
+  assert.equal(isAwaitingSalesRecords({ ...empty, transactionCount: null }), false);
+});
 
 const zone = "America/Edmonton";
 const asOf = new Date("2026-09-07T18:30:00Z");

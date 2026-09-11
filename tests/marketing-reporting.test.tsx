@@ -159,7 +159,7 @@ describe("marketing reports", { concurrency: false }, () => {
   });
 });
 
-test("Gemini marketing evidence excludes GBP, private labels, unknown currency and incomplete comparisons", () => {
+test("AI marketing evidence excludes GBP, private labels, unknown currency and incomplete comparisons", () => {
   const row = { selectionId: "private-resource-id", dataset: "google_search_console", metricDate: "2026-09-04", metricKey: "search_clicks", valueMilli: 5000 };
   const evidence = marketingEvidenceSummary([
     row, { ...row, metricKey: "search_impressions", valueMilli: 100000 }, { ...row, metricKey: "search_position", valueMilli: 5000 },

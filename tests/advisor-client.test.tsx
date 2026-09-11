@@ -5,10 +5,10 @@ import { requestAdvisorAnalysis } from "../app/advisor-client";
 import AdvisorThinking from "../app/advisor-thinking";
 import AdvisorComposer from "../app/advisor-composer";
 import { AdvisorAnswerContent } from "../app/advisor-response";
-import { GEMINI_CONSENT_NOTICE_VERSION, PRIVACY_POLICY_VERSION } from "../domain/privacy-controls";
+import { ADVISOR_CONSENT_NOTICE_VERSION, PRIVACY_POLICY_VERSION } from "../domain/privacy-controls";
 
 test("each provider selection travels with its consent and conversation to the advisor endpoint", async () => {
-  for (const provider of ["gemini", "openai", "both"] as const) {
+  for (const provider of ["openai"] as const) {
     let sent: Record<string, unknown> | undefined;
     const fetcher: typeof fetch = async (url, init) => {
       assert.equal(url, "/api/v1/advisor/chat");
@@ -18,7 +18,7 @@ test("each provider selection travels with its consent and conversation to the a
     };
     const response = await requestAdvisorAnalysis(fetcher, { question: "Which KPIs changed?", provider, conversationId: "conversation-a", dataUseAccepted: true, memoryEnabled: false, locationId: "selected-location" });
     assert.equal(response.ok, true);
-    assert.deepEqual(sent, { question: "Which KPIs changed?", provider, conversationId: "conversation-a", dataUseAccepted: true, memoryEnabled: false, locationId: "selected-location", noticeVersion: GEMINI_CONSENT_NOTICE_VERSION, privacyPolicyVersion: PRIVACY_POLICY_VERSION });
+    assert.deepEqual(sent, { question: "Which KPIs changed?", provider, conversationId: "conversation-a", dataUseAccepted: true, memoryEnabled: false, locationId: "selected-location", noticeVersion: ADVISOR_CONSENT_NOTICE_VERSION, privacyPolicyVersion: PRIVACY_POLICY_VERSION });
   }
 });
 
@@ -57,7 +57,7 @@ test("chat settings are labelled and closed initially while consent stays in the
 });
 
 test("unavailable providers cannot receive a question even after consent", () => {
-  const markup = renderToStaticMarkup(<AdvisorComposer question="Which KPIs changed?" onQuestion={() => {}} dataUseAccepted onConsent={() => {}} loading={false} onSubmit={() => {}} provider="both" providers={{gemini:{ready:true},openai:{ready:false,reason:"OpenAI setup required."}}}/>);
+  const markup = renderToStaticMarkup(<AdvisorComposer question="Which KPIs changed?" onQuestion={() => {}} dataUseAccepted onConsent={() => {}} loading={false} onSubmit={() => {}} provider="openai" providers={{openai:{ready:false,reason:"OpenAI setup required."}}}/>);
   assert.match(markup, /type="submit" disabled=""/);
   assert.match(markup, /Provider setup needed/);
   assert.match(markup, /OpenAI setup required/);
