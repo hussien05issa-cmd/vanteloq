@@ -23,13 +23,14 @@ type Props = {
   privacyControls?: ReactNode;
   onNewChat?: () => void;
   provider?: AdvisorMode;
+  providersLoading?: boolean;
   providers?: { openai: { ready: boolean; reason?: string | null } };
 };
 
 /** Shared by the authenticated advisor and isolated presentation tests. */
-export default function AdvisorComposer({ question, onQuestion, dataUseAccepted, onConsent, loading, thinking = loading, purpose = "analysis", onPurpose, onSubmit, onNewChat, children, hasConversation = false, memoryEnabled = false, onMemory, privacyControls, provider = "openai", providers = { openai: { ready: false } } }: Props) {
+export default function AdvisorComposer({ question, onQuestion, dataUseAccepted, onConsent, loading, thinking = loading, purpose = "analysis", onPurpose, onSubmit, onNewChat, children, hasConversation = false, memoryEnabled = false, onMemory, privacyControls, provider = "openai", providersLoading = false, providers = { openai: { ready: false } } }: Props) {
   const selectedReady = advisorProviders(provider).every(item => providers[item].ready);
-  const ready = selectedReady && canAskAdvisor(question, dataUseAccepted, loading);
+  const ready = !providersLoading && selectedReady && canAskAdvisor(question, dataUseAccepted, loading);
   const input = useRef<HTMLTextAreaElement>(null);
   const settings = useRef<HTMLDialogElement>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -96,7 +97,7 @@ export default function AdvisorComposer({ question, onQuestion, dataUseAccepted,
         <div className="ai-consent-row"><label className="ai-consent"><input type="checkbox" checked={dataUseAccepted} disabled={loading} onChange={event => onConsent(event.target.checked)}/><span>I agree to send {purpose === "help" ? "my question and product guidance" : "my question and permitted business data"} to <strong>{ADVISOR_PROVIDER_LABELS[provider]}</strong>.</span></label><button className="ai-text-button" type="button" onClick={() => openSettings(true)}>Data use</button></div>
         {purpose === "help" && <p className="ai-help-scope">Workspace records are not attached in App help.</p>}
         <div className="ai-composer-meta">
-          <p id="advisor-submit-help" className="ai-submit-help" aria-live="polite">{thinking ? "Analyzing…" : loading ? "Clearing…" : !selectedReady ? <>Provider setup needed. <button className="ai-text-button" type="button" onClick={() => openSettings()}>View details</button></> : !dataUseAccepted ? "Accept the data-use notice to send." : "AI can make mistakes. Verify important details."}</p>
+          <p id="advisor-submit-help" className="ai-submit-help" aria-live="polite">{thinking ? "Analyzing…" : loading ? "Clearing…" : providersLoading ? "Checking OpenAI availability…" : !selectedReady ? <>Provider setup needed. <button className="ai-text-button" type="button" onClick={() => openSettings()}>View details</button></> : !dataUseAccepted ? "Accept the data-use notice to send." : "AI can make mistakes. Verify important details."}</p>
           <button className="ai-text-button ai-memory-status" type="button" onClick={() => openSettings()} aria-label={`Memory ${memoryEnabled ? "on" : "off"}. Open settings.`}>Memory {memoryEnabled ? "on" : "off"}</button>
         </div>
 

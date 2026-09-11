@@ -3,7 +3,6 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import Link from "next/link";
-import Image from "next/image";
 import IntegrationBrandLogo from "./integration-brand-logo";
 import VanteloqAiLogo from "./vanteloq-ai-logo";
 import { integrationCatalog, integrationPublicStatus } from "./integration-catalog";
@@ -412,7 +411,11 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
         <ProductBrandLogo product="vanteloq" priority/>
         <span>Vanteloq<small>BUSINESS INTELLIGENCE</small></span>
       </button>
-      <a className="public-owner-brand" href="#company" onClick={closeMobileNav} aria-label="LexEdge Consulting, owner of Vanteloq"><Image src="/brand/lexedge-consulting-logo-web.png" width={480} height={320} alt="LexEdge Consulting" unoptimized/><span>BY LEXEDGE</span></a>
+      <a className="public-owner-brand" href="#company" onClick={closeMobileNav} aria-label="LexEdge Consulting, owner of Vanteloq">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/brand/lexedge-consulting-logo-web.png" width={480} height={320} alt="LexEdge Consulting" decoding="async"/>
+        <span>BY LEXEDGE</span>
+      </a>
       </div>
       <button type="button" className="nav-menu-toggle" aria-label={mobileNavOpen ? "Close navigation menu" : "Open navigation menu"} aria-expanded={mobileNavOpen} aria-controls="public-navigation" onClick={() => setMobileNavOpen(open => !open)}>{mobileNavOpen ? "Close" : "Menu"}</button>
       <nav id="public-navigation" className={mobileNavOpen ? "is-open" : ""} aria-label="Main navigation">
@@ -712,7 +715,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
           <span>PRODUCT OWNERSHIP</span>
           {/* This is the supplied LexEdge Consulting logo. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/brand/lexedge-consulting-logo-web.png" alt="LexEdge Consulting" width={480} height={320} loading="lazy" />
+          <img src="/brand/lexedge-consulting-logo-web.png" srcSet="/brand/lexedge-consulting-logo-web.png 480w, /brand/lexedge-consulting-logo.png 1536w" sizes="(max-width: 620px) 280px, (max-width: 1100px) 220px, 326px" alt="LexEdge Consulting" width={480} height={320} loading="lazy" decoding="async" />
           <p>Company ownership and operating responsibility</p>
         </div>
         <div className="home-ownership-copy">
@@ -782,4 +785,3 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
     </footer>
   </div>;
 }
-
