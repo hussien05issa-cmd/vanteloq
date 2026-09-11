@@ -62,3 +62,10 @@ test("unavailable providers cannot receive a question even after consent", () =>
   assert.match(markup, /Provider setup needed/);
   assert.match(markup, /OpenAI setup required/);
 });
+
+test("a pending availability check keeps sending disabled without claiming setup is missing", () => {
+  const markup = renderToStaticMarkup(<AdvisorComposer question="Which KPIs changed?" onQuestion={() => {}} dataUseAccepted onConsent={() => {}} loading={false} onSubmit={() => {}} providersLoading providers={{openai:{ready:false,reason:"Checking OpenAI availability."}}}/>);
+  assert.match(markup, /type="submit" disabled=""/);
+  assert.match(markup, /Checking OpenAI availability…/);
+  assert.doesNotMatch(markup, /Provider setup needed/);
+});

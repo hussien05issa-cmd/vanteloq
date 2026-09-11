@@ -27,7 +27,7 @@
 
 html { color-scheme: light; }
 body {
-  min-width: 320px;
+  min-width: 0;
   background: var(--vql-canvas);
   color: var(--vql-ink);
   font-size: 15px;

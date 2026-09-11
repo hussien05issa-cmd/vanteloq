@@ -3959,6 +3959,7 @@ function Advisor({
   const [thinking, setThinking] = useState(false);
   const [dataUseAccepted, setDataUseAccepted] = useState(false);
   const [providers, setProviders] = useState({ openai: { ready: false, reason: "Checking OpenAI availability." as string | null } });
+  const [providersLoading, setProvidersLoading] = useState(true);
   useEffect(() => {
     let active = true;
     void apiFetch("/api/v1/advisor/chat").then(async response => { if (!response.ok) throw new Error("unavailable"); return response.json(); }).then(payload => {
@@ -3966,7 +3967,7 @@ function Advisor({
         setProviders(payload.providers);
         setDataUseAccepted(false);
       }
-    }).catch(() => { if (active) setProviders({ openai: { ready: false, reason: "Provider availability could not be checked. Reopen Vanteloq AI to retry." } }); });
+    }).catch(() => { if (active) setProviders({ openai: { ready: false, reason: "Provider availability could not be checked. Reopen Vanteloq AI to retry." } }); }).finally(() => { if (active) setProvidersLoading(false); });
     return () => { active = false; };
   }, []);
   const [loading, setLoading] = useState(false);
@@ -4048,7 +4049,7 @@ function Advisor({
   </AdvisorResponse>;
   return (
     <div className="content advisor-page">
-      <AdvisorComposer purpose={purpose} onPurpose={value => { if (value !== purpose) { setPurpose(value); setDataUseAccepted(false); resetVisibleChat(); } }} memoryEnabled={memoryEnabled} onMemory={changeMemory} privacyControls={<AdvisorPrivacy fetcher={apiFetch} disabled={loading} onDeleted={id => { if (id === null || id === conversationId) resetVisibleChat(); }}/>} provider={provider} providers={providers} question={question} onQuestion={setQuestion} dataUseAccepted={dataUseAccepted} onConsent={setDataUseAccepted} loading={loading} thinking={thinking} onSubmit={ask} hasConversation={Boolean(submittedQuestion || answer || history.length)} onNewChat={resetVisibleChat}>
+      <AdvisorComposer purpose={purpose} onPurpose={value => { if (value !== purpose) { setPurpose(value); setDataUseAccepted(false); resetVisibleChat(); } }} memoryEnabled={memoryEnabled} onMemory={changeMemory} privacyControls={<AdvisorPrivacy fetcher={apiFetch} disabled={loading} onDeleted={id => { if (id === null || id === conversationId) resetVisibleChat(); }}/>} provider={provider} providers={providers} providersLoading={providersLoading} question={question} onQuestion={setQuestion} dataUseAccepted={dataUseAccepted} onConsent={setDataUseAccepted} loading={loading} thinking={thinking} onSubmit={ask} hasConversation={Boolean(submittedQuestion || answer || history.length)} onNewChat={resetVisibleChat}>
         {history.map((item, index) => <Fragment key={index}><div className="ai-user-message"><small>You</small>{item.question}</div>{reply(item.answer)}</Fragment>)}
         {submittedQuestion && <div className="ai-user-message"><small>You</small>{submittedQuestion}</div>}
         {thinking && <AdvisorThinking/>}
