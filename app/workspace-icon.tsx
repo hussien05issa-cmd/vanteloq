@@ -1,7 +1,9 @@
 import type { ReactNode } from "react";
+import VanteloqAiLogo from "./vanteloq-ai-logo";
 
 /** Interface symbols accompany visible labels; they never replace accessible names. */
 export default function WorkspaceIcon({ name, className = "" }: { name: string; className?: string }) {
+  if (name === "Advisor" || name === "Vanteloq AI") return <VanteloqAiLogo size={22} className={`workspace-icon ${className}`} decorative/>;
   const paths: Record<string, ReactNode> = {
     Dashboard: <><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></>,
     Intelligence: <path d="M3 18 8 12l4 3 8-10M15 5h5v5M3 22h18"/>,

@@ -1,0 +1,18 @@
+.vanteloq-ai-logo { display: inline-block; object-fit: contain; flex-shrink: 0; vertical-align: middle; }
+.vanteloq-ai-heading { display: flex; align-items: center; gap: 14px; margin-bottom: 20px; }
+.vanteloq-ai-heading > div { min-width: 0; }
+.operating-shell .vanteloq-ai-heading p { margin: 0; color: #fff; font-size: 24px; font-weight: 750; letter-spacing: -.035em; line-height: 1.2; }
+.operating-shell .vanteloq-ai-heading small { display: block; margin-top: 5px; color: #bcd8ff; font-size: 14px; line-height: 1.4; }
+.home-gemini-brand > .vanteloq-ai-logo { width: 64px; height: 64px; }
+.home-gemini-brand > div > span { font-size: 25px; letter-spacing: -.04em; line-height: 1.15; }
+.home-gemini-brand > div > small { font-size: 12px; letter-spacing: .04em; }
+.vanteloq-ai-engines { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 22px 0; }
+.vanteloq-ai-engines > span { color: #124da4; background: #eaf2ff; border: 1px solid #bdd4f8; padding: 9px 15px; border-radius: 99px; font-size: 15px; font-weight: 700; }
+.vanteloq-ai-engines > b { color: #477fb9; font-size: 18px; font-weight: 400; }
+.home-gemini-copy > .vanteloq-ai-activation { margin-top: 16px; max-width: 740px; color: #54677f; font-family: inherit; font-size: 14px; font-weight: 400; letter-spacing: 0; line-height: 1.6; }
+@media (max-width: 480px) {
+  .home-gemini-brand { gap: 10px; }
+  .home-gemini-brand > .vanteloq-ai-logo { width: 52px; height: 52px; }
+  .home-gemini-brand > div > span { font-size: 23px; }
+  .vanteloq-ai-heading { gap: 10px; }
+}

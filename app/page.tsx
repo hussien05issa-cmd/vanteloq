@@ -4,6 +4,7 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react"
 import type { Session } from "@supabase/supabase-js";
 import Link from "next/link";
 import IntegrationBrandLogo from "./integration-brand-logo";
+import VanteloqAiLogo from "./vanteloq-ai-logo";
 import { integrationCatalog, integrationPublicStatus } from "./integration-catalog";
 import SourceRecordIcon from "./source-record-icon";
 import WorkspaceIcon from "./workspace-icon";
@@ -587,8 +588,8 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
       <section className="home-gemini" id="gemini" aria-labelledby="gemini-title">
         <aside className="home-gemini-mark" aria-label="How Vanteloq AI supports a business answer">
           <div className="home-gemini-brand">
-            <IntegrationBrandLogo name="Google"/>
-            <div><span>VANTELOQ AI</span><small>GOOGLE GEMINI · OPENAI SUPPORT</small></div>
+            <VanteloqAiLogo size={64} decorative/>
+            <div><span>Vanteloq AI</span><small>OPENAI + GOOGLE GEMINI</small></div>
           </div>
           <p>From verified business records to an explanation your team can review.</p>
           <ol>
@@ -600,7 +601,9 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
         <div className="home-gemini-copy">
           <p>GROUNDED BUSINESS INTELLIGENCE</p>
           <h2 id="gemini-title">Vanteloq AI explains the business behind the numbers.</h2>
-          <span>Explore financial performance, KPIs and business trends with Vanteloq AI. Choose Google Gemini, OpenAI, or both when configured. Every request uses only the approved evidence you can access, with provider attribution and a separate data-use choice.</span>
+          <div className="vanteloq-ai-engines" aria-label="Vanteloq AI providers"><span>OpenAI</span><b aria-hidden="true">+</b><span>Google Gemini</span></div>
+          <span>Built to be powered by OpenAI and Google Gemini. Explore financial performance, KPIs and business trends through one Vanteloq AI workspace. Choose either provider or compare two independent analyses, using only the approved evidence you can access.</span>
+          <p className="vanteloq-ai-activation">Provider activation is in progress. AI answers become available after secure setup, with a separate data-use choice before each request.</p>
           <div className="home-gemini-grid">
             <article><strong>Ask in plain language</strong><span>Ask why sales changed, where margin is leaking or what deserves attention next.</span></article>
             <article><strong>Evidence stays visible</strong><span>Every answer is grounded in the records your workspace has approved. Missing data stays unavailable.</span></article>
