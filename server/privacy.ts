@@ -3,9 +3,9 @@ import { and, eq } from "drizzle-orm";
 import { getDb } from "../db";
 import { integrationConsents } from "../db/schema";
 import {
-  GEMINI_CONSENT_NOTICE_VERSION,
-  GEMINI_DATA_CATEGORIES,
-  GEMINI_PROCESSING_PURPOSES,
+  ADVISOR_CONSENT_NOTICE_VERSION,
+  ADVISOR_DATA_CATEGORIES,
+  ADVISOR_PROCESSING_PURPOSES,
   PLAID_CONSENT_MAX_AGE_MS,
   PLAID_CONSENT_NOTICE_VERSION,
   PLAID_DATA_CATEGORIES,
@@ -26,17 +26,17 @@ export async function recordAdvisorConsent(input: {
   privacyPolicyVersion: string;
 }) {
   if (
-    input.noticeVersion !== GEMINI_CONSENT_NOTICE_VERSION
+    input.noticeVersion !== ADVISOR_CONSENT_NOTICE_VERSION
     || input.privacyPolicyVersion !== PRIVACY_POLICY_VERSION
   ) {
-    throw new ApiError(409, "GEMINI_CONSENT_NOTICE_STALE", "The Vanteloq AI data-use notice changed. Review it again before asking a question.");
+    throw new ApiError(409, "ADVISOR_CONSENT_NOTICE_STALE", "The Vanteloq AI data-use notice changed. Review it again before asking a question.");
   }
 
-  const provider = input.provider === "gemini" ? "google_gemini" : "openai";
+  const provider = input.provider;
   const dataCategoriesJson = JSON.stringify(input.purpose === "help"
     ? ["The question entered by the authorized user", "Vanteloq product guidance", "Optional recent app-help conversation messages with matching evidence and access; no workspace records"]
-    : GEMINI_DATA_CATEGORIES);
-  const purposesJson = JSON.stringify(input.purpose === "help" ? ["Explain how to use Vanteloq and BookLoQ"] : GEMINI_PROCESSING_PURPOSES);
+    : ADVISOR_DATA_CATEGORIES);
+  const purposesJson = JSON.stringify(input.purpose === "help" ? ["Explain how to use Vanteloq and BookLoQ"] : ADVISOR_PROCESSING_PURPOSES);
   const [existing] = await getDb().select({
     id: integrationConsents.id,
     acceptedAt: integrationConsents.acceptedAt,
@@ -45,7 +45,7 @@ export async function recordAdvisorConsent(input: {
     eq(integrationConsents.actorUserId, input.actorUserId),
     eq(integrationConsents.provider, provider),
     eq(integrationConsents.status, "accepted"),
-    eq(integrationConsents.noticeVersion, GEMINI_CONSENT_NOTICE_VERSION),
+    eq(integrationConsents.noticeVersion, ADVISOR_CONSENT_NOTICE_VERSION),
     eq(integrationConsents.privacyPolicyVersion, PRIVACY_POLICY_VERSION),
     eq(integrationConsents.dataCategoriesJson, dataCategoriesJson),
     eq(integrationConsents.purposesJson, purposesJson),
@@ -60,7 +60,7 @@ export async function recordAdvisorConsent(input: {
     actorUserId: input.actorUserId,
     provider,
     status: "accepted",
-    noticeVersion: GEMINI_CONSENT_NOTICE_VERSION,
+    noticeVersion: ADVISOR_CONSENT_NOTICE_VERSION,
     privacyPolicyVersion: PRIVACY_POLICY_VERSION,
     dataCategoriesJson,
     purposesJson,

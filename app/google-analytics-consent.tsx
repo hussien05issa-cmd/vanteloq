@@ -208,8 +208,8 @@ export function GoogleAnalyticsConsent() {
           <ProductBrandLogo product="vanteloq" priority className="analytics-consent-brand" />
           <div className="analytics-consent-copy">
             <span>PRIVACY CONTROLS</span>
-            <h2 id="analytics-consent-title">Help us improve Vanteloq with optional analytics.</h2>
-            <p id="analytics-consent-copy">With your permission, Google Analytics helps us understand how visitors use Vanteloq’s public pages so we can improve navigation and content. We do not send account information, form entries, email addresses, telephone numbers, workspace records, or URL query text. Advertising features remain off, and choosing Essential only will not limit Vanteloq.</p>
+            <h2 id="analytics-consent-title">Your privacy choices</h2>
+            <p id="analytics-consent-copy">Optional Google Analytics helps us improve public pages. Account details, form entries, workspace records and URL query text are excluded. Advertising features stay off. Essential only gives you the same access.</p>
             <Link {...cookieNoticeNavigation}>Read the Cookie Notice</Link>
           </div>
           <div className="analytics-consent-actions">

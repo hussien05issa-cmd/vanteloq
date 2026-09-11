@@ -23,12 +23,11 @@ type Props = {
   privacyControls?: ReactNode;
   onNewChat?: () => void;
   provider?: AdvisorMode;
-  onProvider?: (provider: AdvisorMode) => void;
-  providers?: { gemini: { ready: boolean; reason?: string | null }; openai: { ready: boolean; reason?: string | null } };
+  providers?: { openai: { ready: boolean; reason?: string | null } };
 };
 
 /** Shared by the authenticated advisor and isolated presentation tests. */
-export default function AdvisorComposer({ question, onQuestion, dataUseAccepted, onConsent, loading, thinking = loading, purpose = "analysis", onPurpose, onSubmit, onNewChat, children, hasConversation = false, memoryEnabled = false, onMemory, privacyControls, provider = "gemini", onProvider, providers = { gemini: { ready: true }, openai: { ready: false } } }: Props) {
+export default function AdvisorComposer({ question, onQuestion, dataUseAccepted, onConsent, loading, thinking = loading, purpose = "analysis", onPurpose, onSubmit, onNewChat, children, hasConversation = false, memoryEnabled = false, onMemory, privacyControls, provider = "openai", providers = { openai: { ready: false } } }: Props) {
   const selectedReady = advisorProviders(provider).every(item => providers[item].ready);
   const ready = selectedReady && canAskAdvisor(question, dataUseAccepted, loading);
   const input = useRef<HTMLTextAreaElement>(null);
@@ -89,7 +88,7 @@ export default function AdvisorComposer({ question, onQuestion, dataUseAccepted,
             }
           }} maxLength={800} required aria-describedby="advisor-submit-help" placeholder={purpose === "help" ? "Ask how to use Vanteloq or BookLoQ…" : "Ask about your business…"}/>
           <div className="ai-input-toolbar">
-            {onProvider ? <label className="ai-provider-label"><span className="ai-visually-hidden">AI provider</span><select value={provider} disabled={loading} onChange={event => { onConsent(false); onProvider(event.target.value as AdvisorMode); }}><option value="gemini">Google Gemini</option><option value="openai">OpenAI</option><option value="both">OpenAI + Gemini</option></select></label> : <span>Powered by {ADVISOR_PROVIDER_LABELS[provider]}</span>}
+            <span>Powered by {ADVISOR_PROVIDER_LABELS[provider]}</span>
             <div className="ai-send-tools">{question.length > 600 && <span className="ai-character-count">{question.length}/800</span>}<button className="ai-send" type="submit" disabled={!ready} aria-label={submitLabel} title={submitLabel} aria-describedby="advisor-submit-help"><WorkspaceIcon name="Chevron"/></button></div>
           </div>
         </form>
@@ -125,8 +124,8 @@ export default function AdvisorComposer({ question, onQuestion, dataUseAccepted,
           <p>Off by default when you open Vanteloq AI. Changing memory starts a new chat. Saved chats stay until you delete them.</p>
         </section>
         <section aria-labelledby="advisor-saved-title"><h3 id="advisor-saved-title">Saved chats</h3>{privacyControls ?? <p>No saved chats available.</p>}</section>
-        <section aria-labelledby="advisor-provider-title"><h3 id="advisor-provider-title">AI provider</h3><p>Powered by {ADVISOR_PROVIDER_LABELS[provider]}. {provider === "both" && "Both providers receive the same permitted evidence and return separate analyses."}</p>{!selectedReady && <p className="ai-provider-pending" role="status">{advisorProviders(provider).filter(item => !providers[item].ready).map(item => providers[item].reason ?? `${ADVISOR_PROVIDER_LABELS[item]} setup is pending.`).join(" ")}</p>}</section>
-        <section><details className="ai-data-details" open={dataDetailsOpen} onToggle={event => setDataDetailsOpen(event.currentTarget.open)}><summary>Data use & privacy</summary><p>In Business analysis, your question, permitted aggregate financial and marketing KPIs, labour totals, inventory values, accounts payable, source status, aggregate cash and permitted BookLoQ ledger summaries{memoryEnabled ? " and up to six recent conversation messages" : " (without conversation history)"} are sent to {ADVISOR_PROVIDER_LABELS[provider]} for business analysis.</p><p>Automatic evidence excludes credentials, account numbers, customer names, search queries, page addresses, Business Profile content, invoice files and raw transactions. Do not enter personal information or secrets.</p><p>Provider safety logs and managed backups follow separate retention periods. No automated business actions are taken.</p><a href="/privacy#automation" target="_blank" rel="noreferrer">Privacy policy and retention details</a></details></section>
+        <section aria-labelledby="advisor-provider-title"><h3 id="advisor-provider-title">AI provider</h3><p>Powered by {ADVISOR_PROVIDER_LABELS[provider]}.</p>{!selectedReady && <p className="ai-provider-pending" role="status">{advisorProviders(provider).filter(item => !providers[item].ready).map(item => providers[item].reason ?? `${ADVISOR_PROVIDER_LABELS[item]} setup is pending.`).join(" ")}</p>}</section>
+        <section><details className="ai-data-details" open={dataDetailsOpen} onToggle={event => setDataDetailsOpen(event.currentTarget.open)}><summary>Data use & privacy</summary>{purpose === "help" ? <p>App help sends your question, verified product guidance{memoryEnabled ? " and up to six recent messages from this help chat" : " (without conversation history)"} to OpenAI. Workspace records are not attached.</p> : <p>In Business analysis, your question, permitted aggregate financial and marketing KPIs, labour totals, inventory values, accounts payable, source status, aggregate cash and permitted BookLoQ ledger summaries{memoryEnabled ? " and up to six recent conversation messages" : " (without conversation history)"} are sent to {ADVISOR_PROVIDER_LABELS[provider]} for business analysis.</p>}<p>Automatic evidence excludes credentials, account numbers, customer names, search queries, page addresses, Business Profile content, invoice files and raw transactions. Do not enter personal information or secrets.</p><p>Provider safety logs and managed backups follow separate retention periods. No automated business actions are taken.</p><a href="/privacy#automation" target="_blank" rel="noreferrer">Privacy policy and retention details</a></details></section>
       </div>
     </dialog>
   </section>;

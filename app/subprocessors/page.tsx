@@ -23,7 +23,7 @@ export default function SubprocessorsPage() {
       <p>These services receive information only after an authorized user enables the relevant feature and completes the displayed provider and Vanteloq controls. Their own terms and privacy materials also apply.</p>
       <ul>
         <li><strong>Plaid:</strong> read only business financial account connection, balances, and transactions selected by a workspace owner.</li>
-        <li><strong>Google:</strong> selected marketing resources, Business Profile information, or limited Vanteloq AI prompts and permitted aggregate evidence through Google Gemini under verified paid-service terms after the specific acceptance shown in Vanteloq.</li>
+        <li><strong>Google:</strong> selected marketing resources and Business Profile information after the specific authorization and resource selection shown in Vanteloq. Google does not provide Vanteloq AI responses.</li>
         <li><strong>OpenAI:</strong> optional Vanteloq AI analysis using the question, permission-filtered business and financial KPIs and bounded conversation context, only when configured and selected with affirmative acceptance. Processing may occur in the United States and other provider locations. Requests disable stored response objects; provider safety retention can still apply.</li>
         <li><strong>Meta:</strong> selected marketing account and measurement records.</li>
         <li><strong>Intuit QuickBooks Online:</strong> a customer selected company identifier, company name, authorization status, and accounting records only when the staged accounting import is later enabled and expressly authorized.</li>

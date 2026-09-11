@@ -37,12 +37,12 @@ test("Vanteloq AI requires explicit versioned consent and supports scoped deleti
   const composer = read("../app/advisor-composer.tsx");
   const chatPrivacy = read("../app/advisor-privacy.tsx");
 
-  assert.match(route, /GEMINI_CONSENT_REQUIRED/);
+  assert.match(route, /ADVISOR_CONSENT_REQUIRED/);
   assert.match(route, /recordAdvisorConsent/);
   assert.match(route, /export async function DELETE/);
   assert.match(route, /organization_id = \? AND user_id = \?/);
   assert.match(route, /privacy\.advisor_conversation_deleted/);
-  assert.match(privacy, /input.provider === "gemini" \? "google_gemini" : "openai"/);
+  assert.match(privacy, /const provider = input.provider/);
   assert.match(client, /dataUseAccepted/);
   assert.match(client, /<AdvisorComposer/);
   assert.match(composer, /credentials, account numbers, customer names, search queries, page addresses, Business Profile content, invoice files and raw transactions/);

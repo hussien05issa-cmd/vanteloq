@@ -32,7 +32,7 @@ test("advisor visibly explains its disabled state and labels its controls", () =
   assert.match(markup, /Accept the data-use notice/);
   assert.match(markup, /for="advisor-question"/);
   assert.match(markup, /maxLength="800"/i);
-  assert.match(markup, /Powered by Google Gemini/);
+  assert.match(markup, /Powered by OpenAI/);
   assert.match(markup, /href="\/privacy#automation"/);
   assert.doesNotMatch(markup, /type="checkbox" checked/);
   const route = readFileSync("app/api/v1/advisor/chat/route.ts", "utf8");

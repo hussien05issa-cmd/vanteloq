@@ -1,4 +1,5 @@
 "use client";
+import { isAwaitingSalesRecords } from "../domain/intraday-sales";
 
 import Image from "next/image";
 import { FormEvent, Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -14,9 +15,8 @@ import AdvisorThinking from "./advisor-thinking";
 import AdvisorResponse from "./advisor-response";
 import { requestAdvisorAnalysis } from "./advisor-client";
 import AdvisorPrivacy from "./advisor-privacy";
-import { ADVISOR_PROVIDER_LABELS, advisorProviders, defaultAdvisorProvider, type AdvisorMode } from "../domain/advisor-providers";
+import { advisorProviders, type AdvisorMode } from "../domain/advisor-providers";
 import {
-  integrationCatalog,
   integrationCategoryGuide,
   integrationCategoryOrder,
   type IntegrationCatalogEntry,
@@ -1466,8 +1466,9 @@ function PaymentMixCard({ data, currency, paymentRange, setPaymentRange }: { dat
 }
 
 function CommerceIntelligenceRail({ data, currency, paymentRange, setPaymentRange }: { data: CommandCentre; currency: string; paymentRange: PaymentRange; setPaymentRange: (range: PaymentRange) => void }) {
+  const awaitingRecords = isAwaitingSalesRecords(data.today);
   const comparisons: Array<{ label: string; period: string; value: string; rate: number | null }> = [
-    { label: "Latest day vs same weekday", period: data.todayComparison ? formatBusinessDate(data.todayComparison.baselineDate) : "Baseline unavailable", value: money(data.today.netSalesCents, currency), rate: data.todayComparison?.changes.netSalesRate ?? null },
+    { label: "Latest day vs same weekday", period: data.todayComparison ? formatBusinessDate(data.todayComparison.baselineDate) : "Baseline unavailable", value: awaitingRecords ? "Awaiting records" : money(data.today.netSalesCents, currency), rate: awaitingRecords ? null : data.todayComparison?.changes.netSalesRate ?? null },
   ];
   if (data.periodComparisons) {
     comparisons.push(
@@ -1517,18 +1518,19 @@ function CommerceIntelligenceRail({ data, currency, paymentRange, setPaymentRang
 function LiveSalesPanel({ data, currency, paymentRange, setPaymentRange, compact = false }: { data: CommandCentre; currency: string; paymentRange: PaymentRange; setPaymentRange: (range: PaymentRange) => void; compact?: boolean }) {
   const today = data.today;
   const intraday = today.sourceGranularity === "intraday";
+  const awaitingRecords = isAwaitingSalesRecords(today);
   const matched = data.todayComparison?.basis === "same_weekday_same_time";
   const baselineLabel = data.todayComparison ? `${formatBusinessDate(data.todayComparison.baselineDate)}${matched ? " at the same time" : ""}` : "same weekday";
   const sourceName = data.liveSource.accountName || (data.liveSource.provider ? providerLabel(data.liveSource.provider) : "connected source");
   return (
     <>
       <section className="today-metric-grid">
-        <Metric label={intraday ? "Net sales today" : "Latest daily net sales"} value={money(today.netSalesCents, currency)} delta={comparisonCopy(data.todayComparison?.changes.netSalesRate, baselineLabel)} detail={`${formatBusinessDate(today.businessDate)} · excludes sales tax`} tone="indigo" />
-        <Metric label={intraday ? "Gross profit today" : "Latest daily gross profit"} value={today.grossProfitCents == null ? "Not available" : money(today.grossProfitCents, currency)} delta={comparisonCopy(data.todayComparison?.changes.grossProfitRate, baselineLabel)} detail={today.grossProfitCents == null ? "Verified product costs required" : "Net sales less product cost"} tone="emerald" />
+        <Metric label={intraday ? "Net sales today" : "Latest daily net sales"} value={awaitingRecords ? "Awaiting records" : money(today.netSalesCents, currency)} delta={awaitingRecords ? "No current-day records received" : comparisonCopy(data.todayComparison?.changes.netSalesRate, baselineLabel)} detail={`${formatBusinessDate(today.businessDate)} · excludes sales tax`} tone="indigo" />
+        <Metric label={intraday ? "Gross profit today" : "Latest daily gross profit"} value={awaitingRecords ? "Not available" : today.grossProfitCents == null ? "Not available" : money(today.grossProfitCents, currency)} delta={awaitingRecords ? "Sales records required" : comparisonCopy(data.todayComparison?.changes.grossProfitRate, baselineLabel)} detail={today.grossProfitCents == null ? "Verified product costs required" : "Net sales less product cost"} tone="emerald" />
         <Metric label="Gross margin" value={today.netSalesCents > 0 && today.grossProfitCents != null ? `${(today.grossProfitCents / today.netSalesCents * 100).toFixed(1)}%` : "Not available"} delta="Product economics" detail="Gross profit ÷ positive net sales" tone="emerald" />
-        <Metric label="Discounts" value={money(today.discountsCents, currency)} delta={today.netSalesCents + today.discountsCents ? `${(today.discountsCents / (today.netSalesCents + today.discountsCents) * 100).toFixed(1)}% of pre-discount value` : "No discount activity"} detail="Verified line and sale discounts" tone="amber" />
+        <Metric label="Discounts" value={awaitingRecords ? "Not available" : money(today.discountsCents, currency)} delta={awaitingRecords ? "Sales records required" : today.netSalesCents + today.discountsCents ? `${(today.discountsCents / (today.netSalesCents + today.discountsCents) * 100).toFixed(1)}% of pre-discount value` : "No discount activity"} detail="Verified line and sale discounts" tone="amber" />
         <Metric label="Average transaction" value={today.averageTransactionCents == null ? "Not available" : money(today.averageTransactionCents, currency, 2)} delta={intraday ? "Today's basket value" : "Latest daily basket value"} detail="Net sales ÷ completed transactions" tone="amber" />
-        <Metric label="Number of sales" value={today.transactionCount == null ? "Not available" : today.transactionCount.toLocaleString()} delta={comparisonCopy(data.todayComparison?.changes.transactionRate, baselineLabel)} detail={today.unitsSold == null ? "Revenue permission required" : `${quantityLabel(today.unitsSold, "line item")} recorded`} tone="cyan" />
+        <Metric label="Number of sales" value={awaitingRecords ? "Awaiting records" : today.transactionCount == null ? "Not available" : today.transactionCount.toLocaleString()} delta={awaitingRecords ? "No completed sales received" : comparisonCopy(data.todayComparison?.changes.transactionRate, baselineLabel)} detail={today.unitsSold == null ? "Revenue permission required" : `${quantityLabel(today.unitsSold, "line item")} recorded`} tone="cyan" />
       </section>
       <section className={compact ? "live-sales-grid compact" : "live-sales-grid"}>
         <article className="card live-sales-chart-card">
@@ -1536,15 +1538,15 @@ function LiveSalesPanel({ data, currency, paymentRange, setPaymentRange, compact
             <div><p className="card-kicker">{intraday ? "TODAY'S SALES PULSE" : "LATEST VERIFIED DAY"}</p><h3>Sales by hour</h3></div>
             <span className="verified-tag">{sourceName} · approved records</span>
           </div>
-          {today.sourceGranularity === "intraday"
+          {awaitingRecords ? <div className="intel-empty"><b>Waiting for today’s records</b><span>No approved transactions have been received for this business day. This does not confirm that the business made no sales.</span></div> : today.sourceGranularity === "intraday"
             ? <IntradaySalesChart data={today.hourly} currency={currency} comparison={matched ? data.todayComparison?.baseline.hourly : undefined} comparisonDate={matched ? data.todayComparison?.baselineDate : undefined} asOf={today.asOf} timeZone={today.timeZone} />
             : <div className="intel-empty"><b>Hourly detail is not available</b><span>{today.hourlyUnavailableReason || "The totals above come from the latest verified daily summary. Connect a provider with transaction timestamps to unlock the intraday chart."}</span></div>}
-          <div className="chart-foot">
+          {!awaitingRecords && <div className="chart-foot">
             <span><b>{today.transactionCount == null ? "Not available" : today.transactionCount.toLocaleString()}</b> completed sales</span>
             <span><b>{today.unitsSold == null ? "Not available" : today.unitsSold.toLocaleString()}</b> line items</span>
             <span><b>{money(today.discountsCents, currency)}</b> discounts</span>
             <span><b>{money(today.refundsCents, currency)}</b> refunds</span>
-          </div>
+          </div>}
         </article>
         {!compact && data.current && (
           <article className="card period-summary-card">
@@ -1579,6 +1581,7 @@ function Overview({ data, currency, navigate, createTask, paymentRange, setPayme
         </div>
         <span className={`live-sync-state ${data.source.freshness}`}><i />{data.liveSource.lastSuccessfulSyncAt ? `Synced ${formatRelativeSync(data.liveSource.lastSuccessfulSyncAt)}` : "Waiting for first sync"}</span>
       </section>
+      {(isAwaitingSalesRecords(data.today) || data.source.freshness === "stale") && <section className="sales-evidence-notice" aria-label="Sales data coverage"><div><strong>{isAwaitingSalesRecords(data.today) ? "Today’s sales are not yet verified" : "Your sales records need a refresh"}</strong><p>{data.source.latestBusinessDate ? `The latest approved daily record is ${formatBusinessDate(data.source.latestBusinessDate)}. ` : "No approved daily records are available. "}A successful connection sync does not confirm complete sales coverage. Review source status and approved imports before using these figures for a decision.</p></div><button type="button" onClick={() => navigate("Integrations")}>Review data connections →</button></section>}
       <LiveSalesPanel data={data} currency={currency} paymentRange={paymentRange} setPaymentRange={setPaymentRange} />
       <section className="card period-trend-card">
         <div className="card-head"><div><p className="card-kicker">PERIOD TREND</p><h3>Net sales and gross profit</h3></div><span className="verified-tag">{data.trend.length} verified days</span></div>
@@ -2218,6 +2221,7 @@ type IntegrationConnection = IntegrationCatalogEntry & {
     lastErrorCode: string | null;
     connectedAt: string | null;
     dataPromotionStatus: string;
+    reportingEnvironment?: "production" | "sandbox" | "unverified" | null;
     resourceSelectionVersion: number;
     resourceSelections: Array<{
       id: string;
@@ -2310,6 +2314,7 @@ function DataHub({
   const [connections, setConnections] = useState<IntegrationConnection[]>([]);
   const [connectionError, setConnectionError] = useState("");
   const [connectionsLoading, setConnectionsLoading] = useState(false);
+  const [connectionsLoaded, setConnectionsLoaded] = useState(false);
   const [canManage, setCanManage] = useState(false);
   const [canManageBankConnections, setCanManageBankConnections] = useState(false);
   const [providerActions, setProviderActions] = useState<Record<string, string>>({});
@@ -2404,6 +2409,7 @@ function DataHub({
       );
     } finally {
       setConnectionsLoading(false);
+      setConnectionsLoaded(true);
     }
   }, []);
   const waitForConnectionSync = useCallback(async (
@@ -2425,7 +2431,7 @@ function DataHub({
         setCanManage(body.canManage === true);
         setCanManageBankConnections(body.canManageBankConnections === true);
         if (connection.lastSuccessfulSyncAt && connection.lastSuccessfulSyncAt !== startedFrom) {
-          showNotice("R-Series is current. The dashboard has been refreshed with the latest verified records.");
+          showNotice("R-Series sync completed. Check the dates and coverage of the returned records before relying on the refreshed dashboard.");
         } else if (connection.lastErrorCode) {
           showNotice(`R Series needs attention: ${humanizeIdentifier(connection.lastErrorCode)}.`);
         } else {
@@ -2439,10 +2445,10 @@ function DataHub({
     showNotice("R-Series is still updating in the background. This page will show the new sync time when it finishes.");
   }, [loadConnections, refresh, showNotice]);
   useEffect(() => {
-    if (tab !== "connections" || connections.length || connectionsLoading || connectionError) return;
+    if (tab !== "connections" || connectionsLoaded || connectionsLoading || connectionError) return;
     const timer = window.setTimeout(() => void loadConnections(), 0);
     return () => window.clearTimeout(timer);
-  }, [connections.length, connectionsLoading, connectionError, loadConnections, tab]);
+  }, [connectionsLoaded, connectionsLoading, connectionError, loadConnections, tab]);
   const providerPost = async (
     provider: DirectIntegrationProvider,
     path: string,
@@ -2814,25 +2820,7 @@ function DataHub({
       });
     }
   };
-  const providerRows: IntegrationConnection[] = connections.length
-    ? connections
-    : integrationCatalog.map((provider) => ({
-        ...provider,
-        status: "not_connected",
-        maskedAccountRef: null,
-        externalAccountName: null,
-        lastSuccessfulSyncAt: null,
-        lastErrorCode: null,
-        connectedAt: null,
-        dataPromotionStatus: "blocked",
-        connectionCount: 0,
-        connections: [],
-        privacyDataDeletedAt: null,
-        canManage: false,
-        providerReadiness: null,
-        canonicalCoverage: emptyCommerceCoverage,
-        featureCoverage: buildProviderFeatureCoverage(provider.id, emptyCommerceCoverage),
-      }));
+  const providerRows = connections;
   const filteredProviders = filterConnectors(providerRows, providerQuery, providerCategory);
   return (
     <div className="content data-hub">
@@ -2885,8 +2873,8 @@ function DataHub({
             <label htmlFor="connector-category"><span>Data category</span><select id="connector-category" value={providerCategory} onChange={event => setProviderCategory(event.target.value)}><option>All categories</option>{integrationCategoryOrder.map(category => <option key={category}>{category}</option>)}</select></label>
             <button type="button" disabled={connectionsLoading} onClick={() => void loadConnections()}>{connectionsLoading ? "Checking…" : "Refresh status"}</button>
           </div>
-          <p className="connector-result-count" role="status">{connectionsLoading ? "Checking current connection status…" : `${filteredProviders.length} providers shown`}</p>
-          {!filteredProviders.length && <div className="connector-empty"><h3>No matching connections</h3><p>Try a different provider name or category.</p><button type="button" onClick={() => { setProviderQuery(""); setProviderCategory("All categories"); }}>Clear filters</button></div>}
+          <p className="connector-result-count" role="status">{connectionsLoading || !connectionsLoaded ? "Checking current connection status…" : connectionError ? "Connection status could not be verified." : `${filteredProviders.length} providers shown`}</p>
+          {connectionsLoaded && !connectionError && !filteredProviders.length && <div className="connector-empty"><h3>No matching connections</h3><p>Try a different provider name or category.</p><button type="button" onClick={() => { setProviderQuery(""); setProviderCategory("All categories"); }}>Clear filters</button></div>}
           <details className="provider-parity-contract">
             <summary>What your connected records can unlock</summary>
             <header>
@@ -3014,7 +3002,7 @@ function DataHub({
                           <b>{connection.externalAccountName || `${provider.name} account`}</b>
                           <small>{connection.maskedAccountRef ? `Protected reference ${connection.maskedAccountRef}` : connection.status === "pending" ? "Authorization pending" : "Protected provider identity"}</small>
                           {connection.lastSuccessfulSyncAt && <small>Last synced {formatRelativeSync(connection.lastSuccessfulSyncAt)}</small>}
-                          {connection.dataPromotionStatus !== "blocked" && <small>Data {humanizeIdentifier(connection.dataPromotionStatus)}</small>}
+                          {connection.dataPromotionStatus !== "blocked" && <small>{connection.reportingEnvironment === "sandbox" ? "Sandbox · excluded from reports" : connection.reportingEnvironment === "unverified" ? "Environment verification required" : `Data ${humanizeIdentifier(connection.dataPromotionStatus)}`}</small>}
                           {isMarketingProvider && <small>{connection.resourceSelections.length
                             ? `${connection.resourceSelections.length} exact resource${connection.resourceSelections.length === 1 ? "" : "s"} selected`
                             : "No provider resources selected"}</small>}
@@ -3068,7 +3056,7 @@ function DataHub({
                               onClick={() => requestConnectionDataApproval(provider.id, connection.id)}
                               disabled={!canManageProvider || Boolean(connectionAction)}
                             >{connectionAction === "approve" ? "Approving…" : "Approve reviewed data"}</button>}
-                            {provider.id === "moneris" && connection.dataPromotionStatus === "staging" && connection.lastSuccessfulSyncAt && <button
+                            {provider.id === "moneris" && connection.reportingEnvironment === "production" && connection.dataPromotionStatus === "staging" && connection.lastSuccessfulSyncAt && <button
                               type="button"
                               onClick={() => requestConnectionDataApproval(provider.id, connection.id)}
                               disabled={!canManageProvider || Boolean(connectionAction)}
@@ -3966,20 +3954,19 @@ function Advisor({
 }) {
   const [question, setQuestion] = useState("");
   const [memoryEnabled, setMemoryEnabled] = useState(false);
-  const [provider, setProvider] = useState<AdvisorMode>("openai");
+  const provider: AdvisorMode = "openai";
   const [purpose, setPurpose] = useState<"analysis" | "help">("analysis");
-  const providerChosen = useRef(false);
   const [thinking, setThinking] = useState(false);
   const [dataUseAccepted, setDataUseAccepted] = useState(false);
-  const [providers, setProviders] = useState({ gemini: { ready: false, reason: "Checking Google Gemini availability." as string | null }, openai: { ready: false, reason: "Checking OpenAI availability." as string | null } });
+  const [providers, setProviders] = useState({ openai: { ready: false, reason: "Checking OpenAI availability." as string | null } });
   useEffect(() => {
     let active = true;
     void apiFetch("/api/v1/advisor/chat").then(async response => { if (!response.ok) throw new Error("unavailable"); return response.json(); }).then(payload => {
       if (active && payload.providers) {
         setProviders(payload.providers);
-        if (!providerChosen.current) { setProvider(defaultAdvisorProvider(payload.providers)); setDataUseAccepted(false); }
+        setDataUseAccepted(false);
       }
-    }).catch(() => { if (active) setProviders({ gemini: { ready: false, reason: "Provider availability could not be checked. Reopen Vanteloq AI to retry." }, openai: { ready: false, reason: "Provider availability could not be checked. Reopen Vanteloq AI to retry." } }); });
+    }).catch(() => { if (active) setProviders({ openai: { ready: false, reason: "Provider availability could not be checked. Reopen Vanteloq AI to retry." } }); });
     return () => { active = false; };
   }, []);
   const [loading, setLoading] = useState(false);
@@ -4003,7 +3990,7 @@ function Advisor({
     const normalized = question.toLowerCase();
     try {
       const response = await requestAdvisorAnalysis(apiFetch, { question, provider, purpose, conversationId, dataUseAccepted, memoryEnabled, locationId: activeLocationId });
-      const payload = await response.json() as { providers?: Array<"gemini" | "openai">; partial?: boolean; status?: string; answer?: string | null; conversationId?: string | null; message?: string; error?: { message?: string } };
+      const payload = await response.json() as { providers?: Array<"openai">; partial?: boolean; status?: string; answer?: string | null; conversationId?: string | null; message?: string; error?: { message?: string } };
       if (!response.ok) throw new Error(payload.error?.message ?? "The advisor could not answer right now.");
       setConversationId(payload.conversationId ?? null);
       if (payload.status === "configuration_required") {
@@ -4012,7 +3999,7 @@ function Advisor({
       }
       if (payload.answer) {
         setQuestion("");
-        setAnswer({ title: purpose === "help" ? "Vanteloq help" : "Vanteloq AI analysis", body: payload.answer, limitation: `${payload.partial ? "Partial response. One selected provider could not complete the analysis. " : ""}Powered by ${(payload.providers ?? []).map(item => ADVISOR_PROVIDER_LABELS[item]).join(" and ")}. ${purpose === "help" ? "Product guidance only. No workspace records attached." : "Based on your permitted evidence snapshot."} Verify important details; AI can make mistakes.` });
+        setAnswer({ title: purpose === "help" ? "Vanteloq help" : "Vanteloq AI analysis", body: payload.answer, limitation: `Powered by OpenAI. ${purpose === "help" ? "Product guidance only. No workspace records attached." : "Based on your permitted evidence snapshot."} Verify important details; AI can make mistakes.` });
         return;
       }
     } catch (error) {
@@ -4057,11 +4044,11 @@ function Advisor({
   const resetVisibleChat = () => { setConversationId(null); setAnswer(null); setSubmittedQuestion(""); setHistory([]); setQuestion(""); };
   const changeMemory = (enabled: boolean) => { setMemoryEnabled(enabled); setDataUseAccepted(false); resetVisibleChat(); };
   const reply = (value: NonNullable<typeof answer>) => <AdvisorResponse title={value.title} body={value.body} limitation={value.limitation}>
-    {value.seed ? <button onClick={() => createTask(value.seed!)}>Create action →</button> : <button onClick={() => navigate("Integrations")}>Review connected sources →</button>}
+    {purpose === "help" ? <a href="/help" target="_blank" rel="noreferrer">Open help centre →</a> : value.seed ? <button onClick={() => createTask(value.seed!)}>Create action →</button> : <button onClick={() => navigate("Integrations")}>Review connected sources →</button>}
   </AdvisorResponse>;
   return (
     <div className="content advisor-page">
-      <AdvisorComposer purpose={purpose} onPurpose={value => { if (value !== purpose) { setPurpose(value); setDataUseAccepted(false); resetVisibleChat(); } }} memoryEnabled={memoryEnabled} onMemory={changeMemory} privacyControls={<AdvisorPrivacy fetcher={apiFetch} disabled={loading} onDeleted={id => { if (id === null || id === conversationId) resetVisibleChat(); }}/>} provider={provider} providers={providers} onProvider={value => { providerChosen.current = true; setProvider(value); setDataUseAccepted(false); resetVisibleChat(); }} question={question} onQuestion={setQuestion} dataUseAccepted={dataUseAccepted} onConsent={setDataUseAccepted} loading={loading} thinking={thinking} onSubmit={ask} hasConversation={Boolean(submittedQuestion || answer || history.length)} onNewChat={resetVisibleChat}>
+      <AdvisorComposer purpose={purpose} onPurpose={value => { if (value !== purpose) { setPurpose(value); setDataUseAccepted(false); resetVisibleChat(); } }} memoryEnabled={memoryEnabled} onMemory={changeMemory} privacyControls={<AdvisorPrivacy fetcher={apiFetch} disabled={loading} onDeleted={id => { if (id === null || id === conversationId) resetVisibleChat(); }}/>} provider={provider} providers={providers} question={question} onQuestion={setQuestion} dataUseAccepted={dataUseAccepted} onConsent={setDataUseAccepted} loading={loading} thinking={thinking} onSubmit={ask} hasConversation={Boolean(submittedQuestion || answer || history.length)} onNewChat={resetVisibleChat}>
         {history.map((item, index) => <Fragment key={index}><div className="ai-user-message"><small>You</small>{item.question}</div>{reply(item.answer)}</Fragment>)}
         {submittedQuestion && <div className="ai-user-message"><small>You</small>{submittedQuestion}</div>}
         {thinking && <AdvisorThinking/>}

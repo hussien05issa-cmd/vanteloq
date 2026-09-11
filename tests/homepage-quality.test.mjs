@@ -90,19 +90,19 @@ test("homepage sequence labels do not use leading zeroes", async () => {
   const html = await (await fetchRoute("/")).text();
   const platform = html.match(/<section class="home-platform"[\s\S]*?<\/section>/)?.[0] ?? "";
   const capabilities = html.match(/<section class="home-capabilities"[\s\S]*?<\/section>/)?.[0] ?? "";
-  const gemini = html.match(/<section class="home-gemini"[\s\S]*?<\/section>/)?.[0] ?? "";
+  const advisor = html.match(/<section class="home-ai"[\s\S]*?<\/section>/)?.[0] ?? "";
 
   assert.ok(platform, "homepage should render the platform sequence");
   assert.ok(capabilities, "homepage should render the capability sequence");
-  assert.ok(gemini, "homepage should render the Gemini evidence sequence");
+  assert.ok(advisor, "homepage should render the OpenAI evidence sequence");
   assert.match(platform, /<b>1<\/b>/);
   assert.match(platform, /<b>2<\/b>/);
   assert.match(platform, /<b>3<\/b>/);
-  assert.match(gemini, /<b>1<\/b>/);
-  assert.match(gemini, /<b>2<\/b>/);
-  assert.match(gemini, /<b>3<\/b>/);
+  assert.match(advisor, /<b>1<\/b>/);
+  assert.match(advisor, /<b>2<\/b>/);
+  assert.match(advisor, /<b>3<\/b>/);
   for (const number of [1, 2, 3, 4, 5, 6]) assert.match(capabilities, new RegExp(`<small>${number}<\\/small>`));
-  assert.doesNotMatch(`${platform}${capabilities}${gemini}`, />(?:01|02|03|04|05|06)</);
+  assert.doesNotMatch(`${platform}${capabilities}${advisor}`, />(?:01|02|03|04|05|06)</);
 });
 
 test("resource research links use current official guidance", async () => {
@@ -132,9 +132,9 @@ test("homepage preserves responsive and keyboard interaction safeguards", async 
   assert.match(css, /prefers-reduced-motion: reduce/);
   assert.doesNotMatch(source, /className="tour-focus/);
   assert.match(css, /\.home-connection-grid \{ display: grid; grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
-  assert.match(css, /\.home-capabilities,\s*\.home-gemini,\s*\.home-product-family/);
-  assert.match(css, /@media \(max-width: 1050px\)[\s\S]*?\.home-gemini-grid \{ grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
-  assert.match(css, /@media \(max-width: 620px\)[\s\S]*?\.home-gemini-grid \{ grid-template-columns: 1fr/);
+  assert.match(css, /\.home-capabilities,\s*\.home-ai,\s*\.home-product-family/);
+  assert.match(css, /@media \(max-width: 1050px\)[\s\S]*?\.home-ai-grid \{ grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.match(css, /@media \(max-width: 620px\)[\s\S]*?\.home-ai-grid \{ grid-template-columns: 1fr/);
   assert.match(css, /:focus-visible/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
   assert.match(source, /public-nav-mobile-actions/);
@@ -212,7 +212,7 @@ test("the public demo works without workspace bindings and identifies sample ana
   assert.match(html, /<h1[^>]*>See the numbers/);
   assert.match(html, /rel="canonical" href="https:\/\/vanteloq\.com\/demo"/);
   assert.match(html, /\$105,070/);
-  assert.match(html, /Fictional business\. Real KPI calculation logic/);
+  assert.match(html.replace(/<!--[\s\S]*?-->/g, ""), /Fictional business\. Real KPI calculation logic/);
   assert.match(html, /Rule-based demo explanation, not a live AI response/);
   assert.match(html, /Scenario lab/);
   assert.doesNotMatch(html, /Supplement World|hussienissa@|hussien05issa@gmail/);
