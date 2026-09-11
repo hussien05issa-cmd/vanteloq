@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { callAdvisor, advisorProviderStatus } from "../server/advisor-providers.ts";
 import { defaultAdvisorProvider } from "../domain/advisor-providers.ts";
+import { Miniflare } from "miniflare";
 const env = { GOOGLE_GEMINI_API_KEY: "fixture-google-key", GOOGLE_GEMINI_PAID_SERVICE_CONFIRMED: "true", OPENAI_API_KEY: "fixture-openai-key" };
 test("unverified Gemini and missing providers never receive evidence", async () => {
   let calls = 0;
@@ -30,7 +31,46 @@ test("both providers get the same evidence only through protected server request
   assert.match(openaiBody.instructions, /Risk analysis:|Marketing:|Finance:/);
   assert.doesNotMatch(openaiBody.instructions, /approved evidence/);
   assert.equal(openaiBody.store,false); assert.equal(openaiBody.tools,undefined);
-  for(const call of calls){ assert.equal(call.init.redirect,"error"); assert.ok(call.init.signal); assert.doesNotMatch(call.url,/fixture/); }
+  for(const call of calls){ assert.equal(call.init.redirect,"manual"); assert.ok(call.init.signal); assert.doesNotMatch(call.url,/fixture/); }
+});
+test("provider requests are accepted by the actual Worker Request implementation", async () => {
+  const runtime = new Miniflare({
+    modules: true,
+    compatibilityDate: "2026-05-15",
+    script: `export default { async fetch(incoming) {
+      const {url, init} = await incoming.json();
+      const request = new Request(url, {...init, signal: AbortSignal.timeout(45000)});
+      return Response.json({redirect: request.redirect, method: request.method});
+    } }`,
+  });
+  try {
+    const request = (async (url, init) => {
+      const response = await runtime.dispatchFetch("https://runtime-test.invalid", {
+        method: "POST", body: JSON.stringify({url, init: {...init, signal: undefined}}),
+      });
+      assert.equal(response.status, 200, "The Worker must accept the provider request options");
+      assert.deepEqual(await response.json(), {redirect: "manual", method: "POST"});
+      return String(url).includes("googleapis.com")
+        ? Response.json({candidates:[{finishReason:"STOP",content:{parts:[{text:"Runtime verified"}]}}]})
+        : Response.json({status:"completed",output:[{type:"message",content:[{type:"output_text",text:"Runtime verified"}]}]});
+    }) as typeof fetch;
+    const result = await callAdvisor("both", "Fictional runtime test", env, request);
+    assert.deepEqual(result.providers, ["gemini", "openai"]);
+  } finally {
+    await runtime.dispose();
+  }
+});
+test("provider redirects fail closed without following or exposing a new destination", async () => {
+  for (const provider of ["openai", "gemini"] as const) {
+    let calls = 0;
+    const request = (async (_url, init) => {
+      calls++;
+      assert.equal(init?.redirect, "manual");
+      return new Response("Untrusted redirect body", {status: 307, headers: {location: "https://untrusted.invalid/collect"}});
+    }) as typeof fetch;
+    await assert.rejects(callAdvisor(provider, "Fictional evidence", env, request), /could not complete/);
+    assert.equal(calls, 1);
+  }
 });
 test("a partial comparison names the failed provider and never pretends both answered", async () => {
   const request=(async url=>String(url).includes("googleapis.com")?new Response("secret provider diagnostics",{status:503}):Response.json({status:"completed",output:[{type:"message",content:[{type:"output_text",text:"One completed answer"}]}]})) as typeof fetch;

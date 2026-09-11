@@ -15,7 +15,9 @@ async function callProvider(provider: AdvisorProvider, text: string, env: Vantel
   const url = provider === "gemini" ? `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent` : "https://api.openai.com/v1/responses";
   try {
     const response = await request(url, {
-      method: "POST", redirect: "error", signal: AbortSignal.timeout(45_000),
+      // This Worker runtime supports manual/follow only. A 3xx response fails
+      // the response.ok check below, so credentials never follow a redirect.
+      method: "POST", redirect: "manual", signal: AbortSignal.timeout(45_000),
       headers: provider === "gemini" ? { "content-type": "application/json", "x-goog-api-key": env.GOOGLE_GEMINI_API_KEY!.trim() } : { "content-type": "application/json", authorization: `Bearer ${env.OPENAI_API_KEY!.trim()}` },
       body: JSON.stringify(provider === "gemini"
         ? { systemInstruction: { parts: [{ text: ADVISOR_SYSTEM_INSTRUCTIONS }] }, contents: [{ role: "user", parts: [{ text }] }], generationConfig: { temperature: 0.15, maxOutputTokens: 1400 } }
