@@ -4044,36 +4044,6 @@ function Advisor({
           "Product, customer, campaign, supplier or hourly questions need their corresponding feeds.",
       });
   };
-  const clearConversation = async () => {
-    if (loading) return;
-    if (conversationId) {
-      if (!window.confirm("Permanently delete this saved chat from Vanteloq? Provider safety logs and managed backups follow separate retention periods.")) return;
-      setLoading(true);
-      try {
-        const response = await apiFetch("/api/v1/advisor/chat", {
-          method: "DELETE",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ conversationId }),
-        });
-        const payload = await response.json() as { error?: { message?: string } };
-        if (!response.ok) throw new Error(payload.error?.message ?? "The conversation could not be deleted.");
-      } catch (error) {
-        setAnswer({
-          title: "The conversation was not cleared",
-          body: error instanceof Error ? error.message : "Try again shortly.",
-          limitation: "The existing conversation remains available until deletion succeeds.",
-        });
-        return;
-      } finally {
-        setLoading(false);
-      }
-    }
-    setConversationId(null);
-    setAnswer(null);
-    setSubmittedQuestion("");
-    setHistory([]);
-    setQuestion("");
-  };
   const resetVisibleChat = () => { setConversationId(null); setAnswer(null); setSubmittedQuestion(""); setHistory([]); setQuestion(""); };
   const changeMemory = (enabled: boolean) => { setMemoryEnabled(enabled); setDataUseAccepted(false); resetVisibleChat(); };
   const reply = (value: NonNullable<typeof answer>) => <AdvisorResponse title={value.title} body={value.body} limitation={value.limitation}>
@@ -4081,7 +4051,7 @@ function Advisor({
   </AdvisorResponse>;
   return (
     <div className="content advisor-page">
-      <AdvisorComposer memoryEnabled={memoryEnabled} onMemory={changeMemory} privacyControls={<AdvisorPrivacy fetcher={apiFetch} disabled={loading} onDeleted={id => { if (id === null || id === conversationId) resetVisibleChat(); }}/>} provider={provider} providers={providers} onProvider={value => { setProvider(value); setDataUseAccepted(false); resetVisibleChat(); }} question={question} onQuestion={setQuestion} dataUseAccepted={dataUseAccepted} onConsent={setDataUseAccepted} loading={loading} thinking={thinking} onSubmit={ask} hasConversation={Boolean(submittedQuestion || answer || history.length)} onClear={conversationId || answer || submittedQuestion ? () => void clearConversation() : undefined}>
+      <AdvisorComposer memoryEnabled={memoryEnabled} onMemory={changeMemory} privacyControls={<AdvisorPrivacy fetcher={apiFetch} disabled={loading} onDeleted={id => { if (id === null || id === conversationId) resetVisibleChat(); }}/>} provider={provider} providers={providers} onProvider={value => { setProvider(value); setDataUseAccepted(false); resetVisibleChat(); }} question={question} onQuestion={setQuestion} dataUseAccepted={dataUseAccepted} onConsent={setDataUseAccepted} loading={loading} thinking={thinking} onSubmit={ask} hasConversation={Boolean(submittedQuestion || answer || history.length)} onNewChat={resetVisibleChat}>
         {history.map((item, index) => <Fragment key={index}><div className="ai-user-message"><small>You</small>{item.question}</div>{reply(item.answer)}</Fragment>)}
         {submittedQuestion && <div className="ai-user-message"><small>You</small>{submittedQuestion}</div>}
         {thinking && <AdvisorThinking/>}

@@ -7,8 +7,8 @@ export default function AdvisorThinking() {
   useEffect(() => {
     status.current?.scrollIntoView({ block: "nearest", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
   }, []);
-  return <section ref={status} className="advisor-thinking" role="status" aria-live="polite" aria-atomic="true">
-    <VanteloqAiLogo size={42} thinking decorative/>
-    <div><strong>Vanteloq AI is thinking</strong><p>Analyzing your permitted business data. This may take a moment.</p></div>
+  return <section ref={status} className="advisor-thinking" role="status" aria-label="Vanteloq AI is thinking" aria-live="polite" aria-atomic="true">
+    <VanteloqAiLogo size={28} thinking decorative/>
+    <strong>Thinking…</strong>
   </section>;
 }

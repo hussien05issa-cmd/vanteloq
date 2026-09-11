@@ -35,6 +35,7 @@ test("Vanteloq AI requires explicit versioned consent and supports scoped deleti
   const privacy = read("../server/privacy.ts");
   const client = read("../app/vanteloq-app.tsx");
   const composer = read("../app/advisor-composer.tsx");
+  const chatPrivacy = read("../app/advisor-privacy.tsx");
 
   assert.match(route, /GEMINI_CONSENT_REQUIRED/);
   assert.match(route, /recordAdvisorConsent/);
@@ -44,7 +45,9 @@ test("Vanteloq AI requires explicit versioned consent and supports scoped deleti
   assert.match(privacy, /input.provider === "gemini" \? "google_gemini" : "openai"/);
   assert.match(client, /dataUseAccepted/);
   assert.match(client, /<AdvisorComposer/);
-  assert.match(composer, /credentials, account numbers, customer names, search queries, page addresses, Business Profile content, invoice files, and raw transactions/);
-  assert.match(composer, /Clear conversation/);
+  assert.match(composer, /credentials, account numbers, customer names, search queries, page addresses, Business Profile content, invoice files and raw transactions/);
+  assert.match(chatPrivacy, /Confirm deletion/);
+  assert.match(chatPrivacy, /method: "DELETE"/);
+  assert.match(client, /onNewChat=\{resetVisibleChat\}/);
   assert.match(composer, /type="checkbox" checked=\{dataUseAccepted\}/);
 });

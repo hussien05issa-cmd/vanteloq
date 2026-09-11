@@ -42,3 +42,23 @@ test("financial answers render readable tables and lists while keeping provider 
   assert.match(markup, /&lt;img/);
   assert.doesNotMatch(markup, /<img|<script|href=/);
 });
+
+test("chat settings are labelled and closed initially while consent stays in the composer", () => {
+  const markup = renderToStaticMarkup(<AdvisorComposer question="" onQuestion={() => {}} dataUseAccepted={false} onConsent={() => {}} loading={false} onSubmit={() => {}} onMemory={() => {}} onNewChat={() => {}}/>);
+  assert.match(markup, /aria-haspopup="dialog" aria-controls="advisor-settings"/);
+  assert.match(markup, /<dialog[^>]*aria-labelledby="advisor-settings-title"/);
+  assert.doesNotMatch(markup, /<dialog[^>]* open=/);
+  assert.match(markup, /role="switch" aria-label="Conversation memory"/);
+  assert.doesNotMatch(markup, /type="checkbox"[^>]*checked=""/);
+  assert.match(markup, /Saved chats stay until you delete them/);
+  assert.match(markup, /New chat/);
+  assert.ok(markup.indexOf('class="ai-consent"') < markup.indexOf('<dialog'));
+  assert.match(markup, /aria-controls="advisor-suggestions"/);
+});
+
+test("unavailable providers cannot receive a question even after consent", () => {
+  const markup = renderToStaticMarkup(<AdvisorComposer question="Which KPIs changed?" onQuestion={() => {}} dataUseAccepted onConsent={() => {}} loading={false} onSubmit={() => {}} provider="both" providers={{gemini:{ready:true},openai:{ready:false,reason:"OpenAI setup required."}}}/>);
+  assert.match(markup, /type="submit" disabled=""/);
+  assert.match(markup, /Provider setup needed/);
+  assert.match(markup, /OpenAI setup required/);
+});
