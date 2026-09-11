@@ -10,6 +10,7 @@ import ScenarioPlanner from "./scenario-planner";
 import { connectorNextStep, filterConnectors } from "../domain/connector-guidance";
 import IntegrationBrandLogo from "./integration-brand-logo";
 import AdvisorComposer, { canAskAdvisor } from "./advisor-composer";
+import { ADVISOR_PROVIDER_LABELS, advisorProviders, type AdvisorMode } from "../domain/advisor-providers";
 import {
   integrationCatalog,
   integrationCategoryGuide,
@@ -3945,6 +3946,13 @@ function Advisor({
   createTask: (seed: TaskSeed) => void;
 }) {
   const [question, setQuestion] = useState("");
+  const [provider, setProvider] = useState<AdvisorMode>("gemini");
+  const [providers, setProviders] = useState({ gemini: { ready: false, reason: "Checking Google Gemini availability." as string | null }, openai: { ready: false, reason: "Checking OpenAI availability." as string | null } });
+  useEffect(() => {
+    let active = true;
+    void apiFetch("/api/v1/advisor/chat").then(async response => { if (!response.ok) throw new Error("unavailable"); return response.json(); }).then(payload => { if (active && payload.providers) setProviders(payload.providers); }).catch(() => { if (active) setProviders({ gemini: { ready: false, reason: "Provider availability could not be checked. Reopen Vanteloq AI to retry." }, openai: { ready: false, reason: "Provider availability could not be checked. Reopen Vanteloq AI to retry." } }); });
+    return () => { active = false; };
+  }, []);
   const [loading, setLoading] = useState(false);
   const [dataUseAccepted, setDataUseAccepted] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
@@ -3956,7 +3964,7 @@ function Advisor({
   } | null>(null);
   const ask = async (event: FormEvent) => {
     event.preventDefault();
-    if (!canAskAdvisor(question, dataUseAccepted, loading)) return;
+    if (!advisorProviders(provider).every(item => providers[item].ready) || !canAskAdvisor(question, dataUseAccepted, loading)) return;
     setLoading(true);
     const normalized = question.toLowerCase();
     try {
@@ -3971,15 +3979,15 @@ function Advisor({
           privacyPolicyVersion: PRIVACY_POLICY_VERSION,
         }),
       });
-      const payload = await response.json() as { status?: string; answer?: string | null; conversationId?: string; message?: string; error?: { message?: string } };
+      const payload = await response.json() as { providers?: Array<"gemini" | "openai">; partial?: boolean; status?: string; answer?: string | null; conversationId?: string; message?: string; error?: { message?: string } };
       if (!response.ok) throw new Error(payload.error?.message ?? "The advisor could not answer right now.");
       if (payload.conversationId) setConversationId(payload.conversationId);
       if (payload.status === "configuration_required") {
-        setAnswer({ title: "Gemini is ready to connect", body: "The evidence-bound advisor is installed, but the server still needs its protected Google Gemini credential.", limitation: payload.message ?? "No business data was sent to an external model." });
+        setAnswer({ title: "Vanteloq AI setup is pending", body: payload.message ?? "The selected AI provider needs administrator setup.", limitation: payload.message ?? "No business data was sent to an external model." });
         return;
       }
       if (payload.answer) {
-        setAnswer({ title: "Gemini explanation", body: payload.answer, limitation: "Grounded in the verified Vanteloq evidence snapshot. Numbers remain unavailable when their source is missing." });
+        setAnswer({ title: "Vanteloq AI analysis", body: payload.answer, limitation: `${payload.partial ? "Partial response. One selected provider could not complete the analysis. " : ""}Powered by ${(payload.providers ?? []).map(item => ADVISOR_PROVIDER_LABELS[item]).join(" and ")}. Based on your permitted evidence snapshot. Verify conclusions before acting; AI can make mistakes.` });
         return;
       }
     } catch (error) {
@@ -4048,7 +4056,7 @@ function Advisor({
   };
   return (
     <div className="content advisor-page">
-      <AdvisorComposer question={question} onQuestion={setQuestion} dataUseAccepted={dataUseAccepted} onConsent={setDataUseAccepted} loading={loading} onSubmit={ask} onClear={answer ? () => void clearConversation() : undefined}/>
+      <AdvisorComposer provider={provider} providers={providers} onProvider={value => { setProvider(value); setDataUseAccepted(false); setAnswer(null); }} question={question} onQuestion={setQuestion} dataUseAccepted={dataUseAccepted} onConsent={setDataUseAccepted} loading={loading} onSubmit={ask} onClear={conversationId || answer ? () => void clearConversation() : undefined}/>
       {answer && (
         <article className="advisor-answer">
           <span>VANTELOQ ANALYSIS</span>

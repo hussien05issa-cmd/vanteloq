@@ -107,7 +107,7 @@ function onboardingBody() {
     selectedPos: "",
     legalAccepted: true,
     termsVersion: "2026-09-05",
-    privacyPolicyVersion: "2026-09-05",
+    privacyPolicyVersion: "2026-09-10",
     legalNoticeVersion: "account-creation-v2",
   };
 }

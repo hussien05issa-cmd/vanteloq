@@ -471,3 +471,7 @@
 @media (prefers-reduced-motion: reduce) {
   .operating-shell *, .operating-shell *::before, .operating-shell *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+
+/* Vanteloq AI keeps provider choice and independent analyses readable. */
+.advisor-hero #advisor-provider { display: block; width: 100%; margin: 8px 0 16px; padding: 12px; background: #fff; color: #17385a; border: 1px solid #aebed2; border-radius: 8px; font-size: 1rem; }
+.advisor-answer > p { white-space: pre-wrap; overflow-wrap: anywhere; }

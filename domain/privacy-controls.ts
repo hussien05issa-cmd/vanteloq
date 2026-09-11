@@ -1,6 +1,6 @@
 export { PRIVACY_POLICY_VERSION } from "../shared/legal-versions";
 export const PLAID_CONSENT_NOTICE_VERSION = "plaid-financial-data-v3";
-export const GEMINI_CONSENT_NOTICE_VERSION = "gemini-evidence-advisor-v2-marketing";
+export const GEMINI_CONSENT_NOTICE_VERSION = "vanteloq-ai-v3-providers-kpis";
 export const QUICKBOOKS_CONSENT_NOTICE_VERSION = "quickbooks-accounting-read-v1";
 
 export const PLAID_DATA_CATEGORIES = [
@@ -20,7 +20,7 @@ export const PLAID_PROCESSING_PURPOSES = [
 
 export const GEMINI_DATA_CATEGORIES = [
   "The question entered by the authorized user",
-  "Dated aggregate sales, gross profit, transaction, discount, and refund metrics",
+  "Dated aggregate sales, gross profit, transaction, discount, refund and unit metrics; permission-filtered labour totals, inventory values and accounts payable snapshots",
   "Permitted synchronized website, search and paid-advertising totals, with source-specific periods and coverage limits; no queries, URLs, Business Profile content or advertising amounts",
   "Connected-source status and freshness details",
   "Aggregate cash available only when the user has bank-balance permission",

@@ -36,7 +36,7 @@ test("advisor visibly explains its disabled state and labels its controls", () =
   assert.match(markup, /href="\/privacy#automation"/);
   assert.doesNotMatch(markup, /type="checkbox" checked/);
   const route = readFileSync("app/api/v1/advisor/chat/route.ts", "utf8");
-  assert.ok(route.indexOf('body.dataUseAccepted !== true') < route.indexOf('const result = await callGemini'));
+  assert.ok(route.indexOf('body.dataUseAccepted !== true') < route.indexOf('const result = await callAdvisor'));
   assert.match(route, /requireAccess\(request, readers, "ai.basic"\)/);
   assert.match(route, /requireSameOrigin\(request\)/);
 });

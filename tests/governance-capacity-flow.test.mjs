@@ -50,7 +50,7 @@ function onboardingPayload(ownerName, businessName, businessEmail) {
     selectedPos: "",
     legalAccepted: true,
     termsVersion: "2026-09-05",
-    privacyPolicyVersion: "2026-09-05",
+    privacyPolicyVersion: "2026-09-10",
     legalNoticeVersion: "account-creation-v2",
     hours: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
       .map((day) => ({ day, open: "09:00", close: "17:00", closed: false })),

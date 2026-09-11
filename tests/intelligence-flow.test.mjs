@@ -54,7 +54,7 @@ function onboardingBody(ownerName, businessName) {
     selectedPos: "",
     legalAccepted: true,
     termsVersion: "2026-09-05",
-    privacyPolicyVersion: "2026-09-05",
+    privacyPolicyVersion: "2026-09-10",
     legalNoticeVersion: "account-creation-v2",
   };
 }
@@ -279,6 +279,50 @@ test("intraday API compares matched hours and redacts all profit paths for reven
     assert.equal(staffView.todayComparison.changes.grossProfitRate, null);
     assert.ok(staffView.today.hourly.every((hour) => hour.grossProfitCents === null));
     assert.ok(staffView.todayComparison.baseline.hourly.every((hour) => hour.grossProfitCents === null));
+    // Assert the actual outbound AI evidence, not just the displayed dashboard.
+    await database.prepare("UPDATE access_roles SET permissions_json = ? WHERE id = ?").bind(JSON.stringify(["dashboard.view", "metrics.revenue", "insights.view"]), roleId).run();
+    await seedReportMetric(database, { ...identity, businessDate: currentDate, locationRef: identity.locationId, netSalesCents: 432100 });
+    const otherLocation = await seedReportLocation(database, identity.organizationId, "Private location");
+    await seedReportMetric(database, { ...identity, businessDate: currentDate, locationRef: otherLocation, netSalesCents: 987654321 });
+    await database.prepare("UPDATE daily_business_metrics SET cost_of_goods_cents = 123400, labour_cost_cents = 45600, inventory_value_cents = 78900, accounts_payable_cents = 99900 WHERE organization_id = ?").bind(identity.organizationId).run();
+    environment.GOOGLE_GEMINI_API_KEY = "fixture-only";
+    environment.GOOGLE_GEMINI_PAID_SERVICE_CONFIRMED = "true";
+    const originalFetch = globalThis.fetch, outbound = [];
+    globalThis.fetch = async (input, init) => {
+      if (String(input).startsWith("https://generativelanguage.googleapis.com/")) {
+        outbound.push(JSON.parse(init.body).contents[0].parts[0].text);
+        return Response.json({ candidates: [{ finishReason: "STOP", content: { parts: [{ text: "Fixture analysis" }] } }] });
+      }
+      return originalFetch(input, init);
+    };
+    try {
+      const ask = (user, body = {}) => dispatch(worker, environment, "/api/v1/advisor/chat", { method: "POST", ...user, body: { question: "Analyze available KPIs", dataUseAccepted: true, noticeVersion: "vanteloq-ai-v3-providers-kpis", privacyPolicyVersion: "2026-09-10", ...body } });
+      const answer = await ask(reader);
+      assert.equal(answer.status, 200, await answer.clone().text());
+      const { conversationId } = await answer.json();
+      const evidence = JSON.parse(outbound[0].split("Evidence JSON: ")[1].split("\n\nConversation memory:")[0]);
+      assert.equal(evidence.kpis.current.netSalesCents, 432100);
+      assert.equal(evidence.kpis.current.grossProfitCents, null);
+      assert.equal(evidence.kpis.current.labourCostCents, null);
+      assert.equal(evidence.kpis.inventorySnapshotCents, null);
+      assert.equal(evidence.kpis.accountsPayableSnapshotCents, null);
+      assert.equal(evidence.cashAvailableCents, null);
+      assert.doesNotMatch(outbound[0], /987654321|123400|45600|78900|99900|Private location/);
+      const foreignRead = await ask(identity.owner, { conversationId });
+      assert.equal(foreignRead.status, 404);
+      const foreignDelete = await dispatch(worker, environment, "/api/v1/advisor/chat", { method: "DELETE", ...identity.owner, body: { conversationId } });
+      assert.equal(foreignDelete.status, 404);
+      await database.prepare("UPDATE access_roles SET permissions_json = ? WHERE id = ?").bind(JSON.stringify(["dashboard.view", "insights.view"]), roleId).run();
+      const narrowed = await ask(reader, { conversationId });
+      assert.equal(narrowed.status, 200, await narrowed.clone().text());
+      assert.equal(outbound.length, 2);
+      assert.match(outbound[1], /Conversation memory: \[\]/);
+      assert.doesNotMatch(outbound[1], /432100|Fixture analysis/);
+      const deleted = await dispatch(worker, environment, "/api/v1/advisor/chat", { method: "DELETE", ...reader, body: { conversationId } });
+      assert.equal(deleted.status, 200);
+      const remaining = await database.prepare("SELECT count(*) count FROM assistant_messages WHERE conversation_id = ?").bind(conversationId).first();
+      assert.equal(remaining.count, 0);
+    } finally { globalThis.fetch = originalFetch; }
     await database.prepare("UPDATE integration_connections SET last_successful_sync_at = ? WHERE id = ?").bind(now - 86400, connectionId).run();
     const stale = await load();
     assert.equal(stale.today.sourceGranularity, "daily");

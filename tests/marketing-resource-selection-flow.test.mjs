@@ -46,7 +46,7 @@ function onboardingBody() {
     selectedPos: "",
     legalAccepted: true,
     termsVersion: "2026-09-05",
-    privacyPolicyVersion: "2026-09-05",
+    privacyPolicyVersion: "2026-09-10",
     legalNoticeVersion: "account-creation-v2",
   };
 }
@@ -107,6 +107,7 @@ test("exact marketing resources remain versioned, approval-bound, separated, and
   let restoreFetch = globalThis.fetch;
   const providerCalls = [];
   const advisorPayloads = [];
+  const openaiPayloads = [];
   let unavailableGoogleService = null;
   try {
     const onboarding = await dispatch(worker, environment, "/api/v1/onboarding", { method: "POST", body: onboardingBody() });
@@ -120,7 +121,7 @@ test("exact marketing resources remain versioned, approval-bound, separated, and
     assert.ok(legalAcceptance);
     assert.deepEqual(legalAcceptance, {
       terms_version: "2026-09-05",
-      privacy_policy_version: "2026-09-05",
+      privacy_policy_version: "2026-09-10",
       notice_version: "account-creation-v2",
       acceptance_source: "onboarding_review",
       source_hash: null,
@@ -131,6 +132,13 @@ test("exact marketing resources remain versioned, approval-bound, separated, and
     restoreFetch = globalThis.fetch;
     globalThis.fetch = async (input, init) => {
       const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (url === "https://api.openai.com/v1/responses") {
+        assert.equal(new Headers(init?.headers).get("authorization"), "Bearer fixture-openai-key");
+        const payload = JSON.parse(String(init?.body));
+        assert.equal(payload.store, false);
+        openaiPayloads.push(payload);
+        return Response.json({status: "completed", output: [{type: "message", content: [{type: "output_text", text: "Independent fixture financial analysis."}]}]});
+      }
       if (!url.includes("googleapis.com")) return restoreFetch(input, init);
       providerCalls.push(url);
       if (url.startsWith("https://generativelanguage.googleapis.com/")) {
@@ -138,7 +146,7 @@ test("exact marketing resources remain versioned, approval-bound, separated, and
         assert.ok(!url.includes("fixture-gemini-key"));
         const payload = JSON.parse(String(init?.body));
         advisorPayloads.push(payload);
-        return Response.json({ candidates: [{ content: { parts: [{ text: "Fixture response based on approved marketing evidence." }] } }] });
+        return Response.json({ candidates: [{ finishReason: "STOP", content: { parts: [{ text: "Fixture response based on approved marketing evidence." }] } }] });
       }
       if (url === "https://oauth2.googleapis.com/token") return Response.json({
         access_token: "google-access-token",
@@ -300,15 +308,43 @@ test("exact marketing resources remain versioned, approval-bound, separated, and
     const unauthorizedReport = await worker.fetch(new Request(`${origin}/api/v1/marketing/reports`), environment, executionContext);
     assert.equal(unauthorizedReport.status, 401);
     environment.GOOGLE_GEMINI_API_KEY = "fixture-gemini-key";
-    const advisor = await dispatch(worker, environment, "/api/v1/advisor/chat", { method: "POST", body: { question: "What does our marketing evidence show?", dataUseAccepted: true, noticeVersion: "gemini-evidence-advisor-v2-marketing", privacyPolicyVersion: "2026-09-05" } });
+    environment.GOOGLE_GEMINI_PAID_SERVICE_CONFIRMED = "true";
+    const advisor = await dispatch(worker, environment, "/api/v1/advisor/chat", { method: "POST", body: { question: "What does our marketing evidence show?", dataUseAccepted: true, noticeVersion: "vanteloq-ai-v3-providers-kpis", privacyPolicyVersion: "2026-09-10" } });
     assert.equal(advisor.status, 200, await advisor.clone().text());
-    assert.equal((await advisor.json()).status, "answered");
+    const advisorBody = await advisor.json();
+    assert.equal(advisorBody.status, "answered");
     assert.equal(advisorPayloads.length, 1);
     const advisorText = advisorPayloads[0].contents[0].parts[0].text;
     assert.match(advisorText, /analytics_sessions/);
     assert.match(advisorText, /search_clicks/);
     assert.match(advisorText, /comparisonComplete/);
     assert.doesNotMatch(advisorText, /sc-domain:example.ca|properties\/123|google-access-token/);
+
+    const aiQuestion = { question: "Which KPIs need attention?", conversationId: advisorBody.conversationId, dataUseAccepted: true, noticeVersion: "vanteloq-ai-v3-providers-kpis", privacyPolicyVersion: "2026-09-10" };
+    const noConsent = await dispatch(worker, environment, "/api/v1/advisor/chat", {method: "POST", body: {...aiQuestion, dataUseAccepted: false}});
+    assert.equal(noConsent.status, 409);
+    const staleConsent = await dispatch(worker, environment, "/api/v1/advisor/chat", {method: "POST", body: {...aiQuestion, noticeVersion: "gemini-evidence-advisor-v2-marketing"}});
+    assert.equal(staleConsent.status, 409);
+    const sensitive = await dispatch(worker, environment, "/api/v1/advisor/chat", {method: "POST", body: {...aiQuestion, question: "Analyze jane@example.com"}});
+    assert.equal(sensitive.status, 400);
+    assert.equal(advisorPayloads.length, 1);
+    environment.GOOGLE_GEMINI_PAID_SERVICE_CONFIRMED = "false";
+    const protectedData = await dispatch(worker, environment, "/api/v1/advisor/chat", {method: "POST", body: aiQuestion});
+    assert.equal((await protectedData.json()).status, "configuration_required");
+    assert.equal(advisorPayloads.length, 1);
+    environment.GOOGLE_GEMINI_PAID_SERVICE_CONFIRMED = "true";
+    environment.OPENAI_API_KEY = "fixture-openai-key";
+    const combined = await dispatch(worker, environment, "/api/v1/advisor/chat", {method: "POST", body: {...aiQuestion, provider: "both"}});
+    assert.equal(combined.status, 200, await combined.clone().text());
+    const combinedBody = await combined.json();
+    assert.deepEqual(combinedBody.providers, ["gemini", "openai"]);
+    assert.equal(combinedBody.partial, false);
+    assert.equal(openaiPayloads.length, 1);
+    assert.equal(openaiPayloads[0].input, advisorPayloads[1].contents[0].parts[0].text);
+    assert.match(openaiPayloads[0].input, /Conversation memory: \[\]/);
+    assert.doesNotMatch(openaiPayloads[0].input, /sc-domain:example.ca|properties\/123|fixture-openai-key|google-access-token/);
+    const aiConsents = await database.prepare("SELECT DISTINCT provider FROM integration_consents WHERE notice_version = ? ORDER BY provider").bind("vanteloq-ai-v3-providers-kpis").all();
+    assert.deepEqual(aiConsents.results.map(row => row.provider), ["google_gemini", "openai"]);
 
     const originalDatabaseBinding = environment.DB;
     let raceInjected = false;

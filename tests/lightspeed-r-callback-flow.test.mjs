@@ -81,7 +81,7 @@ test("R-Series completes a browser callback using the initiating one-time state"
         postalCode: "T5A 1A1", emailNotifications: true, timezone: "America/Edmonton",
         currency: "CAD", fiscalYearStart: "January", taxNumber: "", sourceMode: "connect_later",
         selectedPos: "", legalAccepted: true, termsVersion: "2026-09-05",
-        privacyPolicyVersion: "2026-09-05", legalNoticeVersion: "account-creation-v2",
+        privacyPolicyVersion: "2026-09-10", legalNoticeVersion: "account-creation-v2",
         hours: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
           .map((day) => ({ day, open: "09:00", close: "17:00", closed: false })),
       }),

@@ -19,7 +19,7 @@ test("privacy notice explains financial connections, document review, and consen
     "financial-data authorization",
     "TLS 1.2",
     "additional application-level AES-GCM encryption layer",
-    "Gemini Advisor data-use acceptance",
+    "Vanteloq AI data-use acceptance",
     "The checkbox is not preselected",
     "Clear conversation",
     "full account numbers",

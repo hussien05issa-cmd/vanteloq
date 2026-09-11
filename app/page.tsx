@@ -585,28 +585,28 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
       </section>
 
       <section className="home-gemini" id="gemini" aria-labelledby="gemini-title">
-        <aside className="home-gemini-mark" aria-label="How Gemini supports a Vanteloq answer">
+        <aside className="home-gemini-mark" aria-label="How Vanteloq AI supports a business answer">
           <div className="home-gemini-brand">
             <IntegrationBrandLogo name="Google"/>
-            <div><span>GOOGLE GEMINI</span><small>AI EXPLANATIONS IN VANTELOQ</small></div>
+            <div><span>VANTELOQ AI</span><small>GOOGLE GEMINI · OPENAI SUPPORT</small></div>
           </div>
           <p>From verified business records to an explanation your team can review.</p>
           <ol>
             <li><b>1</b><span><strong>Verified records</strong><small>Vanteloq prepares the approved business context.</small></span></li>
-            <li><b>2</b><span><strong>Grounded explanation</strong><small>Gemini explains the evidence and identifies missing inputs.</small></span></li>
+            <li><b>2</b><span><strong>Grounded explanation</strong><small>Vanteloq AI explains the evidence and identifies missing inputs.</small></span></li>
             <li><b>3</b><span><strong>Human approval</strong><small>Your permissions still control every action.</small></span></li>
           </ol>
         </aside>
         <div className="home-gemini-copy">
           <p>GROUNDED BUSINESS INTELLIGENCE</p>
-          <h2 id="gemini-title">Gemini explains the business behind the numbers.</h2>
-          <span>Vanteloq uses Google Gemini to turn verified sales, inventory, cash and marketing evidence into a clear explanation, with the source, freshness and missing inputs kept visible.</span>
+          <h2 id="gemini-title">Vanteloq AI explains the business behind the numbers.</h2>
+          <span>Explore financial performance, KPIs and business trends with Vanteloq AI. Choose Google Gemini, OpenAI, or both when configured. Every request uses only the approved evidence you can access, with provider attribution and a separate data-use choice.</span>
           <div className="home-gemini-grid">
             <article><strong>Ask in plain language</strong><span>Ask why sales changed, where margin is leaking or what deserves attention next.</span></article>
             <article><strong>Evidence stays visible</strong><span>Every answer is grounded in the records your workspace has approved. Missing data stays unavailable.</span></article>
             <article><strong>Memory stays in your workspace</strong><span>Conversation context is scoped to your organization and user, with no raw customer or bank details sent to the model.</span></article>
           </div>
-          <small className="home-gemini-note">Gemini is an explanation layer, not an autonomous operator. Actions remain behind Vanteloq permissions and your approval.</small>
+          <small className="home-gemini-note">Vanteloq AI supports analysis and planning. Actions remain behind Vanteloq permissions and your approval.</small>
         </div>
       </section>
 
