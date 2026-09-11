@@ -204,3 +204,16 @@ test("the supplied LexEdge ownership mark is present and web ready", async () =>
   const asset = await stat(new URL("../public/brand/lexedge-consulting-logo-web.png", import.meta.url));
   assert.ok(asset.size < 100_000, `LexEdge logo should stay below 100 KB, received ${asset.size}`);
 });
+
+test("the public demo works without workspace bindings and identifies sample analysis", async () => {
+  const response = await fetchRoute("/demo");
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /<h1[^>]*>See the numbers/);
+  assert.match(html, /rel="canonical" href="https:\/\/vanteloq\.com\/demo"/);
+  assert.match(html, /\$105,070/);
+  assert.match(html, /Fictional business\. Real KPI calculation logic/);
+  assert.match(html, /Rule-based demo explanation, not a live AI response/);
+  assert.match(html, /Scenario lab/);
+  assert.doesNotMatch(html, /Supplement World|hussienissa@|hussien05issa@gmail/);
+});

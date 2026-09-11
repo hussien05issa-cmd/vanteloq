@@ -22,6 +22,7 @@ import "./marketing-reporting.css";
 import "./marketing-workbench.css";
 import "./vanteloq-ai-brand.css";
 import "./typography.css";
+import "./product-demo.css";
 const GOOGLE_ANALYTICS_CONSENT_DEFAULT = `
 window.dataLayer = window.dataLayer || [];
 window.gtag = window.gtag || function () { window.dataLayer.push(arguments); };
