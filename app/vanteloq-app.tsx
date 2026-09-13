@@ -727,6 +727,9 @@ export default function VanteloqApp({
       }
     }
   }, [activeLocationId, organizationName, paymentRange]);
+  // A same-workspace mutation refresh must preserve the active form or sync
+  // reconciliation panel. Scope changes still use the full loading boundary.
+  const refreshWorkspace = useCallback(() => refresh(true), [refresh]);
   useEffect(() => {
     let cancelled = false;
     void apiFetch("/api/v1/preferences", { headers: { Accept: "application/json" } })
@@ -1122,7 +1125,7 @@ export default function VanteloqApp({
             subscriptionFeatures={subscriptionFeatures}
             currency={currency}
             navigate={navigate}
-            refresh={refresh}
+            refresh={refreshWorkspace}
             showNotice={showNotice}
             createTask={(seed) => setTaskSeed(seed)}
             organizationName={workspaceName}
