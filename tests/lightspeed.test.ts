@@ -169,12 +169,15 @@ test("R-Series inventory normalization extracts per-shop balances without custom
 
 test("R-Series commerce normalization produces provider-neutral catalog, customer, supplier and sale-line records", async () => {
   const product = await normalizeLightspeedRProduct({
-    itemID: "900", description: "Creatine A", customSku: "CRE-A", categoryID: "12",
+    itemID: "900", description: "Creatine A", customSku: "CRE-A", categoryID: "12", Category: { name: "Creatine", fullPathName: "Performance/Creatine" },
     defaultVendorID: "44", defaultCost: "21.50", Prices: { ItemPrice: [{ useType: "Default", amount: "39.99" }] },
   });
   assert.equal(product.defaultCostCents, 2150);
   assert.equal(product.defaultPriceCents, 3999);
   assert.equal(product.supplierRef, "44");
+  assert.equal(product.categoryRef, "12");
+  assert.equal(product.categoryName, "Performance/Creatine");
+  assert.equal((await normalizeLightspeedRProduct({ itemID: "901", categoryID: "12" })).categoryName, null);
   const customer = await normalizeLightspeedRCustomer({
     customerID: "cust-1", firstName: "Ada", lastName: "Lovelace",
     Contact: { email: "ada@example.invalid", phone: "555-0100" },

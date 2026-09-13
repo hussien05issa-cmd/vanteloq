@@ -155,13 +155,13 @@ test("R-Series completes a browser callback using the initiating one-time state"
         return Response.json({ PaymentType: [{ paymentTypeID: "card-1", name: "Visa" }], "@attributes": {} });
       }
       if (url.origin === "https://api.lightspeedapp.com" && url.pathname === "/API/V3/Account/123/Item.json") {
-        assert.deepEqual(JSON.parse(url.searchParams.get("load_relations")), ["ItemShops", "ItemPrices"], "ItemPrices is the API relation; Prices is only the response field");
+        assert.deepEqual(JSON.parse(url.searchParams.get("load_relations")), ["ItemShops", "ItemPrices", "Category"], "catalogue relations include prices and readable category names");
         catalogSince = url.searchParams.get("timeStamp");
         if (emptyCatalogPage) return Response.json({ Item: [], "@attributes": {} });
         return Response.json({
           Item: [
             {
-              itemID: "item-1", description: "Creatine A", customSku: "CRE-A",
+              itemID: "item-1", description: "Creatine A", customSku: "CRE-A", categoryID: "12", Category: { fullPathName: "Performance/Creatine" },
               ItemShops: { ItemShop: [{ shopID: "1", qoh: "45", reorderPoint: "24" }] },
             },
           ],
@@ -422,7 +422,7 @@ test("R-Series completes a browser callback using the initiating one-time state"
     assert.equal(linesOnlySync.status, 200, await linesOnlySync.clone().text());
     assert.equal(catalogSince, null, "the old normalization checkpoint must trigger a full catalogue repair");
     assert.deepEqual(await database.prepare("SELECT SUM(net_sales_cents) net, SUM(discount_cents) discounts FROM commerce_sale_lines WHERE connection_id=?").bind(connection.id).first(), { net: 10000, discounts: 200 });
-    assert.deepEqual(await database.prepare("SELECT name,sku FROM commerce_products WHERE connection_id=?").bind(connection.id).first(), { name: "Creatine A", sku: "CRE-A" }, "sale-line fallback identities must not erase the verified Item catalogue");
+    assert.deepEqual(await database.prepare("SELECT name,sku,category_name AS categoryName FROM commerce_products WHERE connection_id=?").bind(connection.id).first(), { name: "Creatine A", sku: "CRE-A", categoryName: "Performance/Creatine" }, "sale-line fallback identities must not erase the verified Item catalogue");
     emptyCatalogPage = false;
 
     const reviewedRun = await database.prepare(`SELECT

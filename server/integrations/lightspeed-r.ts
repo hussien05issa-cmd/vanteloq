@@ -45,6 +45,7 @@ export type NormalizedLightspeedRProduct = {
   sku: string;
   name: string;
   categoryRef: string | null;
+  categoryName?: string | null;
   supplierRef: string | null;
   defaultCostCents: number | null;
   defaultPriceCents: number | null;
@@ -483,6 +484,7 @@ export async function normalizeLightspeedRProduct(item: Record<string, unknown>)
     sku: (limitedText(item.customSku, 160) || limitedText(item.upc, 160) || limitedText(item.ean, 160) || externalProductId),
     name: limitedText(item.description, 240) || `R-Series item ${externalProductId}`,
     categoryRef: limitedText(item.categoryID, 120),
+    categoryName: limitedText(objectValue(item.Category).fullPathName, 240) || limitedText(objectValue(item.Category).name, 240),
     supplierRef: limitedText(item.defaultVendorID, 120),
     defaultCostCents: item.defaultCost == null ? null : money(item.defaultCost),
     defaultPriceCents: firstPrice(item),
