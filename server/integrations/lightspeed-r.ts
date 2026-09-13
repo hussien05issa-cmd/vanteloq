@@ -688,8 +688,8 @@ export function buildLightspeedRDailyMetrics(
   }
   return [...totals.values()].map(({ positiveNetCents, returnedCostCents, ...row }) => ({
     ...row,
-    netSalesCents: Math.max(0, positiveNetCents - row.refundsCents),
-    costOfGoodsCents: Math.max(0, row.costOfGoodsCents - returnedCostCents),
+    netSalesCents: positiveNetCents - row.refundsCents,
+    costOfGoodsCents: row.costOfGoodsCents - returnedCostCents,
   })).sort((left, right) => left.businessDate.localeCompare(right.businessDate) || left.locationRef.localeCompare(right.locationRef));
 }
 

@@ -397,11 +397,16 @@ export async function POST(request: Request) {
     }
 
     let reviewedMarketingRunId: string | null = null;
-    const isReviewedCommerceImport = connection.provider === "lightspeed-r" || connection.provider === "clover" || connection.provider === "square" || connection.provider === SHOPIFY_PROVIDER || connection.provider === SHOPIFY_POS_PROVIDER;
-    const commerceProviderLabel = connection.provider === "clover" ? "Clover" : connection.provider === "square" ? "Square" : connection.provider === SHOPIFY_PROVIDER ? "Shopify e-commerce" : connection.provider === SHOPIFY_POS_PROVIDER ? "Shopify POS" : "R-Series";
-    const commerceLocationLabel = connection.provider === "clover" ? "Clover merchant location" : connection.provider === "square" ? "Square locations" : connection.provider === SHOPIFY_PROVIDER ? "Shopify online-store channel" : connection.provider === SHOPIFY_POS_PROVIDER ? "Shopify POS locations" : "R-Series shops";
-    const commerceLocationSingular = connection.provider === "clover" ? "Clover merchant location" : connection.provider === "square" ? "Square location" : connection.provider === SHOPIFY_PROVIDER ? "Shopify online-store channel" : connection.provider === SHOPIFY_POS_PROVIDER ? "Shopify POS location" : "R-Series shop";
+    const isReviewedCommerceImport = connection.provider === "lightspeed" || connection.provider === "lightspeed-r" || connection.provider === "clover" || connection.provider === "square" || connection.provider === SHOPIFY_PROVIDER || connection.provider === SHOPIFY_POS_PROVIDER;
+    const commerceProviderLabel = connection.provider === "lightspeed" ? "X-Series" : connection.provider === "clover" ? "Clover" : connection.provider === "square" ? "Square" : connection.provider === SHOPIFY_PROVIDER ? "Shopify e-commerce" : connection.provider === SHOPIFY_POS_PROVIDER ? "Shopify POS" : "R-Series";
+    const commerceLocationLabel = connection.provider === "lightspeed" ? "X-Series outlets" : connection.provider === "clover" ? "Clover merchant location" : connection.provider === "square" ? "Square locations" : connection.provider === SHOPIFY_PROVIDER ? "Shopify online-store channel" : connection.provider === SHOPIFY_POS_PROVIDER ? "Shopify POS locations" : "R-Series shops";
+    const commerceLocationSingular = connection.provider === "lightspeed" ? "X-Series outlet" : connection.provider === "clover" ? "Clover merchant location" : connection.provider === "square" ? "Square location" : connection.provider === SHOPIFY_PROVIDER ? "Shopify online-store channel" : connection.provider === SHOPIFY_POS_PROVIDER ? "Shopify POS location" : "R-Series shop";
     if (isReviewedCommerceImport) {
+      if (connection.provider === "lightspeed") {
+        const checkpoint = JSON.parse(connection.lastSyncCursor ?? "null");
+        if (checkpoint?.version !== 2 || !checkpoint.watermark || checkpoint.cycleComplete !== true)
+          throw new ApiError(409, "INTEGRATION_HISTORY_INCOMPLETE", "Complete and review the X-Series history import before approving reports.");
+      }
       const [reviewedRun] = await getDb().select().from(integrationSyncRuns).where(and(
         eq(integrationSyncRuns.organizationId, context.organizationId),
         eq(integrationSyncRuns.provider, connection.provider),

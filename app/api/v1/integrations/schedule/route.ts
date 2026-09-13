@@ -1,6 +1,8 @@
 import { and, eq } from "drizzle-orm";
 import { getD1, getDb, getRuntimeEnv } from "../../../../../db";
-import { integrationSyncSchedules } from "../../../../../db/schema";
+import { integrationConsents, integrationSyncSchedules } from "../../../../../db/schema";
+import { POS_SYNC_CONSENT_VERSION, POS_SYNC_PURPOSES, posSyncDataCategories } from "../../../../../domain/pos-sync-consent";
+import { PRIVACY_POLICY_VERSION } from "../../../../../domain/privacy-controls";
 import { ApiError, handleApi, jsonResponse, readJsonObject, requireSameOrigin } from "../../../../../server/api";
 import { requireAccess } from "../../../../../server/authorization";
 import { recordAudit } from "../../../../../server/audit";
@@ -29,7 +31,12 @@ export async function POST(request: Request) {
         throw new ApiError(409, "INTEGRATION_NOT_CONNECTED", "Reconnect the account before enabling automatic sync.");
       const consent = await getD1().prepare("SELECT status FROM integration_consents WHERE organization_id=? AND provider=? ORDER BY accepted_at DESC, created_at DESC LIMIT 1")
         .bind(context.organizationId, input.provider).first<{status:string}>();
-      if (consent?.status !== "accepted") throw new ApiError(403, "INTEGRATION_CONSENT_REQUIRED", "Renew the integration's data access consent first.");
+      if (input.consentAccepted === true && input.consentNoticeVersion === POS_SYNC_CONSENT_VERSION) {
+        await getDb().insert(integrationConsents).values({ id: crypto.randomUUID(), organizationId: context.organizationId,
+          actorUserId: context.userId, provider: input.provider, status: "accepted", noticeVersion: POS_SYNC_CONSENT_VERSION,
+          privacyPolicyVersion: PRIVACY_POLICY_VERSION, dataCategoriesJson: JSON.stringify(posSyncDataCategories(input.provider)),
+          purposesJson: JSON.stringify(POS_SYNC_PURPOSES), consentSource: "in_app", acceptedAt: now, createdAt: now, updatedAt: now });
+      } else if (consent?.status !== "accepted") throw new ApiError(403, "INTEGRATION_CONSENT_REQUIRED", "Review the automatic sync data notice and enable it again to authorize background imports.");
       const [existing] = await getDb().select().from(integrationSyncSchedules).where(eq(integrationSyncSchedules.connectionId, connection.id));
       await getDb().insert(integrationSyncSchedules).values({
         connectionId: connection.id, organizationId: context.organizationId, provider: input.provider, enabled: true,
@@ -56,4 +63,3 @@ export async function POST(request: Request) {
     return jsonResponse({ schedule });
   });
 }
-

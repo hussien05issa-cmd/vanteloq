@@ -323,6 +323,20 @@
       "when": 1789288759667,
       "tag": "0045_absent_shape",
       "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "6",
+      "when": 1789290421393,
+      "tag": "0046_clean_blazing_skull",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "6",
+      "when": 1789290700323,
+      "tag": "0047_pale_vertigo",
+      "breakpoints": true
     }
   ]
 }

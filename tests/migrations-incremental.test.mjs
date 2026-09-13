@@ -78,6 +78,18 @@ test("the founder migration preserves populated foreign-key relationships", asyn
     assert.deepEqual(membership, { user_id: "existing-user", organization_id: "existing-workspace" });
     assert.deepEqual(user, { id: "existing-user", auth_subject: null, auth_provider: null });
     assert.equal((await database.prepare("PRAGMA foreign_key_check").all()).results.length, 0);
+    for (const migration of migrations.filter(file => file >= "0015" && file < "0047")) await applyMigration(database, migration);
+    await database.prepare(`INSERT INTO data_imports(id,organization_id,import_type,status,file_name,row_count,idempotency_key,imported_by_user_id,created_at)
+      VALUES ('preserved-import','existing-workspace','manual_entry','completed','Existing import',1,'preserved-import','existing-user',?)`).bind(now).run();
+    await database.prepare(`INSERT INTO daily_business_metrics(organization_id,business_date,location_ref,gross_sales_cents,net_sales_cents,cost_of_goods_cents,transaction_count,units_sold,source_import_id,created_by_user_id,created_at,updated_at)
+      VALUES ('existing-workspace','2026-09-12','existing-outlet',10000,9500,4000,5,7,'preserved-import','existing-user',?,?)`).bind(now,now).run();
+    const metricBefore = await database.prepare("SELECT * FROM daily_business_metrics").first();
+    await applyMigration(database,migrations.find(file => file.startsWith('0047_')));
+    assert.deepEqual(await database.prepare("SELECT * FROM daily_business_metrics").first(),metricBefore);
+    await database.prepare("UPDATE daily_business_metrics SET net_sales_cents=-2000,cost_of_goods_cents=-800,refunds_cents=2000 WHERE id=?").bind(metricBefore.id).run();
+    assert.equal((await database.prepare("SELECT net_sales_cents net FROM daily_business_metrics WHERE id=?").bind(metricBefore.id).first()).net,-2000);
+    await assert.rejects(database.prepare("UPDATE daily_business_metrics SET refunds_cents=-1 WHERE id=?").bind(metricBefore.id).run(),/CHECK constraint/);
+    assert.equal((await database.prepare("PRAGMA foreign_key_check").all()).results.length,0);
   } finally {
     await miniflare.dispose();
   }

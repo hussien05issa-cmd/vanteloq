@@ -73,9 +73,9 @@ export async function readRetailReport(context: AccessContext, locationId: strin
       l.product_ref AS productRef,
       coalesce(l.sku, CASE WHEN p.name NOT LIKE 'R-Series item %' THEN p.sku END) AS sku,
       coalesce(CASE WHEN p.name NOT LIKE 'R-Series item %' THEN p.name END, l.product_name, p.name, l.sku, 'Unclassified item') AS name,
-      CASE WHEN l.provider='lightspeed-r' THEN p.category_name ELSE p.category_ref END AS category, NULL AS itemType, l.customer_ref AS customerRef, l.outlet_ref AS outletRef, l.sold_at AS soldAt,
+      CASE WHEN l.provider IN ('lightspeed-r','lightspeed') THEN p.category_name ELSE p.category_ref END AS category, NULL AS itemType, l.customer_ref AS customerRef, l.outlet_ref AS outletRef, l.sold_at AS soldAt,
       l.quantity_milli AS quantityMilli, l.net_sales_cents AS netCents, l.discount_cents AS discountCents,
-      CASE WHEN l.cost_cents <> 0 THEN l.cost_cents ELSE NULL END AS costCents,
+      CASE WHEN l.cost_cents <> 0 OR (l.provider='lightspeed' AND (l.cost_known=1 OR COALESCE(p.owner_cost_cents,p.default_cost_cents) IS NOT NULL)) THEN l.cost_cents ELSE NULL END AS costCents,
       CASE WHEN l.provider='lightspeed-r' AND NOT EXISTS (
         SELECT 1 FROM integration_sync_runs normalization WHERE normalization.id=l.sync_run_id
           AND normalization.organization_id=l.organization_id AND normalization.connection_id=l.connection_id

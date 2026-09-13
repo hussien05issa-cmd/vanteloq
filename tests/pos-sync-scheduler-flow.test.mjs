@@ -101,5 +101,14 @@ test("durable POS jobs enforce owner grants, tenant boundaries, signed ticks, re
     assert.equal(providerCalls,callsAtPause);
     const otherWorkspace = await database.prepare("SELECT COUNT(*) count FROM integration_sync_schedules WHERE organization_id=?").bind(b.organizationId).first();
     assert.equal(otherWorkspace.count,0);
+    await database.prepare(`INSERT INTO integration_connections(id,organization_id,provider,source_namespace,status,external_account_ref,created_at,updated_at,data_promotion_status)
+      VALUES ('connection-consent-b',?,'stripe','production:b','connected','acct_ConsentB',?,?,'staging')`).bind(b.organizationId,now,now).run();
+    const newSetting = {...setting,connectionId:'connection-consent-b'};
+    assert.equal((await configure(newSetting,b.owner)).status,403);
+    assert.equal((await configure({...newSetting,consentAccepted:true,consentNoticeVersion:'obsolete'},b.owner)).status,403);
+    const consentEnabled = await configure({...newSetting,consentAccepted:true,consentNoticeVersion:'pos-background-data-v1'},b.owner);
+    assert.equal(consentEnabled.status,200,await consentEnabled.clone().text());
+    const savedConsent = await database.prepare("SELECT actor_user_id actor,notice_version notice,status FROM integration_consents WHERE organization_id=? AND provider='stripe'").bind(b.organizationId).first();
+    assert.deepEqual(savedConsent,{actor:b.userId,notice:'pos-background-data-v1',status:'accepted'});
   } finally { globalThis.fetch=fetchBefore; await dispose(); }
 });
