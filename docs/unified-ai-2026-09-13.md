@@ -11,3 +11,6 @@ The AI notice is versioned as vanteloq-ai-v7-unified. Privacy copy and consent r
 
 Validation evidence is recorded in outputs/launch205-unit.log, launch205-flow.log, launch205-typecheck.log, launch205-lint.log and launch205-final-build.log. Desktop and phone screenshots are saved under outputs/design-audit-204/11-unified-ai-desktop.png and 12-unified-ai-mobile.png.
 
+The first live mixed-question check identified overstatements about absent data, an inaccurate gross-margin definition and invented navigation. The follow-up hardens the terminology and route instructions and passes only fixed, allowlisted explanations for known source-consistency and BookLoQ access blocks. It never forwards raw error messages to OpenAI. An empty request does not establish that the account has no records. The regression covers active sync blocking while preserving privacy and tenant boundaries.
+
+The 29-test flow run had 28 passes and one missing-build-chunk failure while a local rebuild replaced dist. Its isolated rerun passed. The additional availability/provider/client suite has 18 passes. These tests validate controls and request wiring, not the correctness of every generated answer.

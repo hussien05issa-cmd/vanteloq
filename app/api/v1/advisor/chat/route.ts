@@ -17,6 +17,7 @@ import { projectAdvisorBookloq } from "../../../../../domain/advisor-bookloq";
 import { GET as readBookloq } from "../../bookloq/route";
 import { GET as readRetail } from "../../retail-intelligence/route";
 import { projectAdvisorRetail } from "../../../../../domain/advisor-retail";
+import { advisorUnavailableReason } from "../../../../../domain/advisor-availability";
 import { retailPeriod } from "../../../../../server/retail-intelligence";
 import {
   ADVISOR_CONSENT_NOTICE_VERSION,
@@ -191,7 +192,7 @@ export async function POST(request: Request) {
         const retailBody = await retailResponse.json();
         evidence.retail = projectAdvisorRetail(retailBody.report);
         if (requestedPeriod) { evidence.latestDate = retailBody.report.days.at(-1)?.date ?? null; retailCoverage = { sourceCount: retailBody.source.sourceCount, days: retailBody.report.comparison.currentObservedDays }; }
-      } else evidence.retail = { status: "unavailable", reason: "Retail records are unavailable for this permitted scope. Check the Retail intelligence view for source, date-range or access requirements." };
+      } else evidence.retail = { status: "unavailable", reason: advisorUnavailableReason("retail", await retailResponse.json().catch(() => null)) };
     }
     if (purpose === "analysis" && permissions.includes("marketing.view")) evidence.marketing = await advisorMarketingEvidence(context, locationId);
     if (purpose === "analysis") {
@@ -201,6 +202,7 @@ export async function POST(request: Request) {
         // The allowlist strips identifiers and raw records before provider use.
         const bookloqResponse = await readBookloq(new Request(new URL("/api/v1/bookloq", request.url), { headers: request.headers }));
         if (bookloqResponse.ok) evidence.bookloq = projectAdvisorBookloq(await bookloqResponse.json());
+        else evidence.bookloq = { status: "unavailable", reason: advisorUnavailableReason("bookloq", await bookloqResponse.json().catch(() => null)) };
       }
     }
     const suppliedId = memoryEnabled && body.conversationId != null ? cleanConversationId(body.conversationId) : null;

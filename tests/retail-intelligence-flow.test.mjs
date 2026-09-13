@@ -120,6 +120,13 @@ test("retail Worker enforces tenant/location/privacy boundaries, source approval
     let evidence = JSON.parse(prompts[0].split("Evidence JSON: ")[1].split("\n\nConversation memory:")[0]);
     assert.equal(evidence.retail.current.netCents, 1000); assert.equal(evidence.retail.current.grossProfitCents, null); assert.equal(evidence.retail.customers, null); assert.equal(evidence.requestedRetailPeriod.from, "2026-09-11");
     assert.doesNotMatch(prompts[0], /customer-secret|private@example|OTHER TENANT|connectionId|sku|lineId|productRef/);
+    await db.prepare("UPDATE integration_connections SET sync_lease_owner='running',sync_lease_expires_at=? WHERE id='real-retail'").bind(Math.floor(Date.now()/1000)+120).run();
+    response = await ask({ memoryEnabled: false }); assert.equal(response.status, 200, await response.clone().text());
+    evidence = JSON.parse(prompts.at(-1).split("Evidence JSON: ")[1].split("\n\nConversation memory:")[0]);
+    assert.equal(evidence.retail.status, "unavailable");
+    assert.match(evidence.retail.reason, /overlap or a source is still syncing/);
+    assert.doesNotMatch(prompts.at(-1), /customer-secret|private@example|OTHER TENANT|PRIVATE TEST SECRET/);
+    await db.prepare("UPDATE integration_connections SET sync_lease_owner=NULL,sync_lease_expires_at=NULL WHERE id='real-retail'").run();
     response = await ask({ purpose: "help", memoryEnabled: false }); assert.equal(response.status, 200, await response.clone().text());
     evidence = JSON.parse(prompts.at(-1).split("Evidence JSON: ")[1].split("\n\nConversation memory:")[0]); assert.deepEqual(evidence, { purpose: "help", workspaceDataAttached: false });
     response = await dispatch(worker, environment, "/api/v1/advisor/chat", { ...other.owner, method: "DELETE", body: { conversationId: chat.conversationId } }); assert.equal(response.status, 404);
