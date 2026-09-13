@@ -6,6 +6,7 @@ The authenticated retail workspace and public fictional demo use `domain/retail-
 
 - Money enters as signed integer cents; quantities enter as thousandths of a unit. Unsafe integer sums fail explicitly.
 - Receipt and product identities include provider and connection. Stock velocity also includes the exact source outlet and SKU. Conflicting duplicates are rejected.
+- R-Series detail uses the latest parent sale status, completion timestamp and outlet. Open, voided and unmatched parent records are excluded, including a sale whose earlier version was completed. Line creation time cannot substitute for completion time.
 - The server applies organization, membership, location, entitlement, permission and source-authority checks before returning data. Staged records and nonproduction Moneris records do not contribute. A selected source that is syncing cannot silently fall back to another account.
 - Dates and hours use the workspace time zone. Offset timestamps are converted as instants; provider timestamps without an offset are local business times.
 - A purchase basket contains positive-quantity lines. Returns and zero-quantity adjustments remain in net revenue but are separate in the revenue bridge. Fully returned items on the same receipt leave co-purchase sets.

@@ -407,7 +407,8 @@ export async function POST(request: Request) {
       // SaleLine is also a trustworthy catalog identity source. Preserve sold
       // products even if R-Series omits Item rows or a shop relation is partial;
       // later Item pages enrich these records with names, cost, price and stock.
-      const knownProductRefs = new Set(products.map((product) => product.externalProductId));
+      const catalogProductRefs = new Set(products.map((product) => product.externalProductId));
+      const knownProductRefs = new Set(catalogProductRefs);
       for (const line of uniqueSaleLines) {
         if (!line.productRef || knownProductRefs.has(line.productRef)) continue;
         const fallback = {
@@ -625,12 +626,12 @@ export async function POST(request: Request) {
              default_cost_cents, default_price_cents, archived, source_updated_at, source_payload_hash,
              sync_run_id, updated_at)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          ON CONFLICT(organization_id, provider, connection_id, external_product_id) DO UPDATE SET
+          ON CONFLICT(organization_id, provider, connection_id, external_product_id) ${catalogProductRefs.has(product.externalProductId) ? `DO UPDATE SET
             sku = excluded.sku, name = excluded.name, category_ref = excluded.category_ref,
             supplier_ref = excluded.supplier_ref, default_cost_cents = excluded.default_cost_cents,
             default_price_cents = excluded.default_price_cents, archived = excluded.archived,
             source_updated_at = excluded.source_updated_at, source_payload_hash = excluded.source_payload_hash,
-            sync_run_id = excluded.sync_run_id, updated_at = excluded.updated_at
+            sync_run_id = excluded.sync_run_id, updated_at = excluded.updated_at` : "DO NOTHING"}
         `).bind(
           crypto.randomUUID(), context.organizationId, LIGHTSPEED_R_PROVIDER, connection.id, scopedRef(product.externalProductId),
           product.sku, product.name, scopedRef(product.categoryRef), scopedRef(product.supplierRef), product.defaultCostCents,

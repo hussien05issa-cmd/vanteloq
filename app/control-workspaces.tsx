@@ -265,7 +265,8 @@ export function ReportsWorkspace({
   createTask,
   activeLocationId,
   canExportFeature,
-}: SharedProps & { activeLocationId: string | null; canExportFeature: boolean }) {
+  onOpenRetail,
+}: SharedProps & { activeLocationId: string | null; canExportFeature: boolean; onOpenRetail?: () => void }) {
   const [query, setQuery] = useState("");
   const [group, setGroup] = useState("All reports");
   const [selected, setSelected] = useState("Sales totals");
@@ -395,15 +396,19 @@ export function ReportsWorkspace({
           <p>REPORTS CENTRE</p>
           <h2>Find the answer, inspect its source, then act.</h2>
           <span>
-            Five aggregate reports are live from verified daily summaries.
-            Deeper reports remain gated until their exact line-item, customer,
-            supplier, hourly, banking or payroll source exists.
+            Review source totals here, or open Retail intelligence for products,
+            baskets, revenue drivers and operating measures. Each view identifies
+            the records and permissions it needs.
           </span>
         </div>
         <button className="secondary" disabled title="Scheduled delivery requires an approved email provider, queue, export permission checks and retry handling.">
           Schedule delivery · provider required
         </button>
       </section>
+      {onOpenRetail && <section className="sales-evidence-notice" aria-label="Retail intelligence reports">
+        <div><strong>Go deeper than the total.</strong><p>Explore category and SKU performance, basket patterns, stock and hourly demand. Add reviewed inputs where your source needs more context.</p></div>
+        <button onClick={onOpenRetail}>Open Retail intelligence →</button>
+      </section>}
       <section className="card report-source-control" aria-label="Reporting sources">
         <header>
           <div><p>REPORTING SOURCES</p><h3>Canonical totals or one provider account</h3></div>

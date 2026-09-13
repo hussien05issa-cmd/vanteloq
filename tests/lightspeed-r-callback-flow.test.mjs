@@ -119,6 +119,7 @@ test("R-Series completes a browser callback using the initiating one-time state"
     let failShopVerification = false;
     let failOptionalVendorRead = false;
     let injectSyncWarning = false;
+    let emptyCatalogPage = false;
     const mockLightspeedFetch = async (input, init) => {
       const request = input instanceof Request ? input : new Request(input, init);
       const url = new URL(request.url);
@@ -153,6 +154,7 @@ test("R-Series completes a browser callback using the initiating one-time state"
         return Response.json({ PaymentType: [{ paymentTypeID: "card-1", name: "Visa" }], "@attributes": {} });
       }
       if (url.origin === "https://api.lightspeedapp.com" && url.pathname === "/API/V3/Account/123/Item.json") {
+        if (emptyCatalogPage) return Response.json({ Item: [], "@attributes": {} });
         return Response.json({
           Item: [
             {
@@ -409,6 +411,13 @@ test("R-Series completes a browser callback using the initiating one-time state"
       category: "card",
       amount_cents: 10_500,
     });
+    emptyCatalogPage = true;
+    const linesOnlySync = await worker.fetch(new Request(`${origin}/api/v1/integrations/lightspeed-r/sync`, {
+      method: "POST", headers: ownerHeaders(true), body: JSON.stringify({ reason: "manual", connectionId: connection.id }),
+    }), environment, context);
+    assert.equal(linesOnlySync.status, 200, await linesOnlySync.clone().text());
+    assert.deepEqual(await database.prepare("SELECT name,sku FROM commerce_products WHERE connection_id=?").bind(connection.id).first(), { name: "Creatine A", sku: "CRE-A" }, "sale-line fallback identities must not erase the verified Item catalogue");
+    emptyCatalogPage = false;
 
     const reviewedRun = await database.prepare(`SELECT
       cursor_before cursorBefore, cursor_after cursorAfter,

@@ -15,6 +15,8 @@ test("retail Worker enforces tenant/location/privacy boundaries, source approval
       await db.prepare("INSERT INTO commerce_products (id,organization_id,provider,connection_id,external_product_id,sku,name,category_ref,default_cost_cents,source_payload_hash,sync_run_id,updated_at) VALUES (?,?,'lightspeed-r',?,'product','SKU',?,'category-id',400,'hash',?,?)").bind("product-" + connectionId, identity.organizationId, connectionId, name, run, now).run();
       await db.prepare("INSERT INTO commerce_customers (id,organization_id,provider,connection_id,external_customer_id,display_name,email,source_payload_hash,sync_run_id,updated_at) VALUES (?,?,'lightspeed-r',?,'customer-secret','Private customer','private@example.invalid','hash',?,?)").bind("customer-" + connectionId, identity.organizationId, connectionId, run, now).run();
       for (const date of ["2026-09-10", "2026-09-11"]) {
+        await db.prepare("INSERT INTO integration_staged_sales (id,organization_id,provider,connection_id,external_sale_id,external_version,outlet_ref,sold_at,state,total_cents,line_count,source_payload_hash,sync_run_id,staged_at) VALUES (?,?,'lightspeed-r',?,?, '1','shop',?,'completed',?,1,'hash',?,?)")
+          .bind('parent-'+connectionId+date,identity.organizationId,connectionId,date,date+'T11:00:00',amount,run,now).run();
         await db.prepare("INSERT INTO commerce_sale_lines (id,organization_id,provider,connection_id,external_sale_id,external_line_id,product_ref,customer_ref,outlet_ref,sold_at,sku,product_name,quantity_milli,net_sales_cents,cost_cents,discount_cents,source_payload_hash,sync_run_id,updated_at) VALUES (?,?,'lightspeed-r',?,?,'1','product','customer-secret','shop',?,'SKU',?,1000,?,400,0,'hash',?,?)")
           .bind(connectionId + date, identity.organizationId, connectionId, date, date + "T11:00:00", name, amount, run, now).run();
       }
@@ -36,10 +38,30 @@ test("retail Worker enforces tenant/location/privacy boundaries, source approval
     const load = () => dispatch(worker, environment, query, owner.owner);
     assert.equal((await load()).status, 409, "a source choice is required when staged facts overlap");
     await seedSalesAuthority(db, { ...owner, connectionId: "real-retail" });
+    // Creation time is not completion time. Open, voided and orphaned lines
+    // must never enter trading totals, even when a previous parent was completed.
+    await db.prepare("UPDATE commerce_sale_lines SET sold_at='2026-08-01T11:00:00' WHERE connection_id='real-retail'").run();
+    for (const state of ['open','voided','orphan']) {
+      await db.prepare("INSERT INTO commerce_sale_lines (id,organization_id,provider,connection_id,external_sale_id,external_line_id,outlet_ref,sold_at,quantity_milli,net_sales_cents,cost_cents,source_payload_hash,sync_run_id,updated_at) VALUES (?,?,'lightspeed-r','real-retail',?,'1','shop','2026-09-11T11:00:00',99000,999999,100,'test','run-real-retail',?)").bind('excluded-'+state,owner.organizationId,state,now).run();
+      if (state === 'orphan') continue;
+      for (const [version,status] of [['1','completed'],['2',state]]) {
+        await db.prepare("INSERT INTO integration_staged_sales (id,organization_id,provider,connection_id,external_sale_id,external_version,outlet_ref,sold_at,state,total_cents,line_count,source_payload_hash,sync_run_id,staged_at) VALUES (?,?,'lightspeed-r','real-retail',?,?,'shop','2026-09-11T11:00:00',?,999999,1,'test','run-real-retail',?)")
+          .bind('parent-'+state+version,owner.organizationId,state,version,status,now+Number(version)).run();
+      }
+    }
     let response = await load(); assert.equal(response.status, 200, await response.clone().text());
     let body = await response.json(); assert.equal(body.report.current.netCents, 1000); assert.equal(body.report.products[0].name, "Whey protein");
     assert.equal(body.report.inventory[0].dailyVelocity, 1); assert.equal(body.report.current.grossProfitCents, 600);
     assert.doesNotMatch(JSON.stringify(body), /OTHER TENANT|PRIVATE TEST SECRET|private@example|customer-secret|test-retail/);
+    await db.prepare("UPDATE commerce_sale_lines SET sku=NULL,product_name='R-Series item product' WHERE connection_id='real-retail'").run();
+    body = await (await load()).json();
+    assert.equal(body.report.products[0].name, "Whey protein", "verified catalogue names enrich generic sale lines");
+    assert.equal(body.report.products[0].sku, "SKU");
+    await db.prepare("UPDATE commerce_products SET name='R-Series item product' WHERE connection_id='real-retail'").run();
+    body = await (await load()).json();
+    assert.equal(body.report.products[0].sku, null, "a fallback product reference is not a verified SKU");
+    assert.match(body.report.dataQualityWarnings.join(' '), /full POS catalogue/);
+    await db.prepare("UPDATE commerce_products SET name='Whey protein' WHERE connection_id='real-retail'").run();
     await db.prepare("UPDATE commerce_sale_lines SET cost_cents=0 WHERE connection_id='real-retail'").run();
     assert.equal((await (await load()).json()).report.current.grossProfitCents, null);
     const legacy = await dispatch(worker, environment, query.replace('retail-intelligence?', 'commerce-intelligence?mode=Sales&'), owner.owner);

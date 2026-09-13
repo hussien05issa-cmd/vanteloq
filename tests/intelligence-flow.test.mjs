@@ -313,6 +313,7 @@ test("commerce and payment reports use local midnight for evening provider sales
     const samples = [["evening", "2026-08-15T01:55:00Z", 100], ["offset", "2026-08-14T19:55:00-06:00", 200], ["local", "2026-08-14T19:55:00", 300], ["prior", "2026-08-14T05:59:59Z", 400], ["next", "2026-08-15T06:00:00Z", 500]];
     for (const [id, timestamp, cents] of samples) {
       await database.batch([
+        database.prepare(`INSERT INTO integration_staged_sales (id,organization_id,provider,connection_id,external_sale_id,external_version,outlet_ref,sold_at,state,total_cents,line_count,source_payload_hash,sync_run_id,staged_at) VALUES (?,?,'lightspeed-r',?,?,'1','shop',?,'completed',?,1,'test',?,?)`).bind('parent-'+id,identity.organizationId,connectionId,id,timestamp,cents,runId,now),
         database.prepare(`INSERT INTO commerce_sale_lines (id,organization_id,provider,connection_id,external_sale_id,external_line_id,outlet_ref,sold_at,quantity_milli,net_sales_cents,cost_cents,source_payload_hash,sync_run_id,updated_at) VALUES (?,?,'lightspeed-r',?,?,?,'shop',?,1000,?,?,'test',?,?)`).bind(id,identity.organizationId,connectionId,id,id,timestamp,cents,cents/2,runId,now),
         database.prepare(`INSERT INTO commerce_payments (id,organization_id,provider,connection_id,external_sale_id,external_payment_id,outlet_ref,paid_at,amount_cents,category,source_payload_hash,sync_run_id,updated_at) VALUES (?,?,'lightspeed-r',?,?,?,'shop',?,?,'cash','test',?,?)`).bind(id,identity.organizationId,connectionId,id,id,timestamp,cents,runId,now),
       ]);
