@@ -50,20 +50,15 @@ export default function AdvisorComposer({ question, onQuestion, dataUseAccepted,
   }, [question]);
 
   const openSettings = (showDataUse = false) => { setDataDetailsOpen(showDataUse); setSettingsOpen(true); };
-  const suggestions = purpose === "help" ? [
-    { icon: "Integrations", title: "Connect my data", question: "How do I connect my POS and approve the correct records?" },
-    { icon: "BookLoQ", title: "Get started in BookLoQ", question: "How do I get started in BookLoQ and check my cash?" },
-    { icon: "Reports", title: "Check a report", question: "How do I investigate a number that looks wrong?" },
-    { icon: "Settings", title: "Manage AI privacy", question: "How do I turn memory off and delete saved chats?" },
-  ] : [
-    { icon: "Reports", title: "Review my KPIs", question: "Which KPIs need attention, and why?" },
-    { icon: "Sales", title: "Find margin gaps", question: "Where is margin leaking?" },
-    { icon: "Inventory", title: "Explore stock & cash", question: "How do labour and inventory affect performance?" },
-    { icon: "Marketing", title: "Assess marketing", question: "What does our marketing data show?" },
+  const suggestions = [
+    { icon: "Reports", title: "Review my business", question: "Which KPIs need attention, and what should I check next?" },
+    { icon: "Sales", title: "Understand my products", question: "Which products and basket patterns deserve attention?" },
+    { icon: "BookLoQ", title: "Review cash & books", question: "Review my available financial records, cash outlook and missing inputs." },
+    { icon: "Integrations", title: "Help me get started", question: "How do I connect my POS and review its records in Vanteloq?" },
   ];
   const submitLabel = thinking ? "Analyzing…" : loading ? "Clearing…" : "Send message";
 
-  return <section className={`ai-studio${hasConversation ? " has-conversation" : " is-empty"}`} aria-label="Vanteloq AI business analysis workspace">
+  return <section className={`ai-studio${hasConversation ? " has-conversation" : " is-empty"}`} aria-label="Vanteloq AI conversation">
     <header className="ai-studio-header">
       <div className="vanteloq-ai-heading"><VanteloqAiLogo size={30} decorative/><strong>Vanteloq AI</strong></div>
       <div className="ai-header-tools">
@@ -73,21 +68,20 @@ export default function AdvisorComposer({ question, onQuestion, dataUseAccepted,
     </header>
 
     <div className="ai-chat-column">
-      {onPurpose && <div className="ai-purpose" role="group" aria-label="Conversation purpose"><button type="button" disabled={loading} aria-pressed={purpose === "analysis"} onClick={() => onPurpose("analysis")}>Business analysis</button><button type="button" disabled={loading} aria-pressed={purpose === "help"} onClick={() => onPurpose("help")}>App help</button><a href="/help" target="_blank" rel="noreferrer">Help centre ↗</a></div>}
       <div className="ai-conversation" aria-label="Conversation">
-        {!hasConversation && <div className="ai-welcome"><VanteloqAiLogo size={56} decorative/><h2>What would you like to explore?</h2></div>}
+        {!hasConversation && <div className="ai-welcome"><VanteloqAiLogo size={56} decorative/><h2>What can I help you with?</h2><p>Business insights, financial questions or help with Vanteloq.</p></div>}
         {children}
       </div>
 
       <div className="ai-compose-area">
         <form onSubmit={event => { if (!ready) { event.preventDefault(); return; } setSuggestionsOpen(false); onSubmit(event); }}>
-          <label className="ai-visually-hidden" htmlFor="advisor-question">Your business question</label>
+          <label className="ai-visually-hidden" htmlFor="advisor-question">Your message</label>
           <textarea ref={input} id="advisor-question" rows={2} value={question} disabled={loading} onChange={event => onQuestion(event.target.value)} onKeyDown={event => {
             if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
               event.preventDefault();
               if (ready) event.currentTarget.form?.requestSubmit();
             }
-          }} maxLength={800} required aria-describedby="advisor-submit-help" placeholder={purpose === "help" ? "Ask how to use Vanteloq or BookLoQ…" : "Ask about your business…"}/>
+          }} maxLength={800} required aria-describedby="advisor-submit-help" placeholder="Ask Vanteloq AI…"/>
           <div className="ai-input-toolbar">
             <span>Powered by {ADVISOR_PROVIDER_LABELS[provider]}</span>
             <div className="ai-send-tools">{question.length > 600 && <span className="ai-character-count">{question.length}/800</span>}<button className="ai-send" type="submit" disabled={!ready} aria-label={submitLabel} title={submitLabel} aria-describedby="advisor-submit-help"><WorkspaceIcon name="Chevron"/></button></div>
@@ -95,7 +89,7 @@ export default function AdvisorComposer({ question, onQuestion, dataUseAccepted,
         </form>
 
         <div className="ai-consent-row"><label className="ai-consent"><input type="checkbox" checked={dataUseAccepted} disabled={loading} onChange={event => onConsent(event.target.checked)}/><span>I agree to send {purpose === "help" ? "my question and product guidance" : "my question and permitted business data"} to <strong>{ADVISOR_PROVIDER_LABELS[provider]}</strong>.</span></label><button className="ai-text-button" type="button" onClick={() => openSettings(true)}>Data use</button></div>
-        {purpose === "help" && <p className="ai-help-scope">Workspace records are not attached in App help.</p>}
+        {purpose === "help" && <p className="ai-help-scope">Workspace data is off. Turn it on in Settings for analysis of your records.</p>}
         <div className="ai-composer-meta">
           <p id="advisor-submit-help" className="ai-submit-help" aria-live="polite">{thinking ? "Analyzing…" : loading ? "Clearing…" : providersLoading ? "Checking OpenAI availability…" : !selectedReady ? <>Provider setup needed. <button className="ai-text-button" type="button" onClick={() => openSettings()}>View details</button></> : !dataUseAccepted ? "Accept the data-use notice to send." : "AI can make mistakes. Verify important details."}</p>
           <button className="ai-text-button ai-memory-status" type="button" onClick={() => openSettings()} aria-label={`Memory ${memoryEnabled ? "on" : "off"}. Open settings.`}>Memory {memoryEnabled ? "on" : "off"}</button>
@@ -103,7 +97,7 @@ export default function AdvisorComposer({ question, onQuestion, dataUseAccepted,
 
         <div className="ai-suggestions">
           <button className="ai-text-button ai-suggestions-toggle" type="button" aria-expanded={suggestionsOpen} aria-controls="advisor-suggestions" onClick={() => setSuggestionsOpen(open => !open)}>{suggestionsOpen ? "Hide suggestions" : "Show suggestions"}</button>
-          <div id="advisor-suggestions" className="ai-prompt-grid" role="group" aria-label="Suggested business questions" hidden={!suggestionsOpen}>
+          <div id="advisor-suggestions" className="ai-prompt-grid" role="group" aria-label="Suggested questions" hidden={!suggestionsOpen}>
             {suggestions.map(item => <button key={item.title} type="button" disabled={loading} onClick={() => { onQuestion(item.question); setSuggestionsOpen(false); input.current?.focus(); }}><WorkspaceIcon name={item.icon}/><span>{item.title}</span></button>)}
           </div>
         </div>
@@ -119,14 +113,19 @@ export default function AdvisorComposer({ question, onQuestion, dataUseAccepted,
     }}>
       <header className="ai-settings-header"><div><span>Vanteloq AI</span><h2 id="advisor-settings-title">Settings</h2></div><button type="button" onClick={() => setSettingsOpen(false)}>Done</button></header>
       <div className="ai-settings-body">
+        {onPurpose && <section aria-labelledby="advisor-context-title">
+          <div className="ai-setting-row"><h3 id="advisor-context-title">Workspace data</h3><label className="ai-memory-switch"><input type="checkbox" role="switch" aria-label="Include workspace data" checked={purpose === "analysis"} disabled={loading} onChange={event => { onConsent(false); onPurpose(event.target.checked ? "analysis" : "help"); }}/><span aria-hidden="true"/></label></div>
+          <p>{purpose === "analysis" ? "Include the business summaries your role can access. Vanteloq AI can analyze those records and help you use the app in this conversation." : "Your question and product guidance are included. No workspace records are attached; answers about business concepts are general guidance."}</p>
+          <p>Changing this starts a new chat and requires fresh consent. It does not change your account permissions.</p>
+        </section>}
         <section aria-labelledby="advisor-memory-title">
           <div className="ai-setting-row"><h3 id="advisor-memory-title">Conversation memory</h3>{onMemory && <label className="ai-memory-switch"><input type="checkbox" role="switch" aria-label="Conversation memory" checked={memoryEnabled} disabled={loading} onChange={event => { onConsent(false); onMemory(event.target.checked); }}/><span aria-hidden="true"/></label>}</div>
           <p>{memoryEnabled ? "On. New messages are saved. Up to six recent messages from this chat can inform replies when evidence and permissions still match." : "Off. Each question uses current permitted evidence. New questions and replies are not saved in Vanteloq’s chat database."}</p>
           <p>Off by default when you open Vanteloq AI. Changing memory starts a new chat. Saved chats stay until you delete them.</p>
         </section>
         <section aria-labelledby="advisor-saved-title"><h3 id="advisor-saved-title">Saved chats</h3>{privacyControls ?? <p>No saved chats available.</p>}</section>
-        <section aria-labelledby="advisor-provider-title"><h3 id="advisor-provider-title">AI provider</h3><p>Powered by {ADVISOR_PROVIDER_LABELS[provider]}.</p>{!selectedReady && <p className="ai-provider-pending" role="status">{advisorProviders(provider).filter(item => !providers[item].ready).map(item => providers[item].reason ?? `${ADVISOR_PROVIDER_LABELS[item]} setup is pending.`).join(" ")}</p>}</section>
-        <section><details className="ai-data-details" open={dataDetailsOpen} onToggle={event => setDataDetailsOpen(event.currentTarget.open)}><summary>Data use & privacy</summary>{purpose === "help" ? <p>App help sends your question, verified product guidance{memoryEnabled ? " and up to six recent messages from this help chat" : " (without conversation history)"} to OpenAI. Workspace records are not attached.</p> : <p>In Business analysis, your question, permitted aggregate financial and marketing KPIs, labour totals, inventory values, accounts payable, source status, aggregate cash and permitted BookLoQ ledger summaries{memoryEnabled ? " and up to six recent conversation messages" : " (without conversation history)"} are sent to {ADVISOR_PROVIDER_LABELS[provider]} for business analysis.</p>}<p>Automatic evidence excludes credentials, account numbers, customer names, search queries, page addresses, Business Profile content, invoice files and raw transactions. Do not enter personal information or secrets.</p><p>Provider safety logs and managed backups follow separate retention periods. No automated business actions are taken.</p><a href="/privacy#automation" target="_blank" rel="noreferrer">Privacy policy and retention details</a></details></section>
+        <section aria-labelledby="advisor-provider-title"><h3 id="advisor-provider-title">AI provider</h3><a href="/help" target="_blank" rel="noreferrer">Help centre ↗</a><p>Powered by {ADVISOR_PROVIDER_LABELS[provider]}.</p>{!selectedReady && <p className="ai-provider-pending" role="status">{advisorProviders(provider).filter(item => !providers[item].ready).map(item => providers[item].reason ?? `${ADVISOR_PROVIDER_LABELS[item]} setup is pending.`).join(" ")}</p>}</section>
+        <section><details className="ai-data-details" open={dataDetailsOpen} onToggle={event => setDataDetailsOpen(event.currentTarget.open)}><summary>Data use & privacy</summary>{purpose === "help" ? <p>With workspace data off, your question and verified product guidance{memoryEnabled ? " and up to six recent messages from this chat" : " (without conversation history)"} are sent to OpenAI. Workspace records are not attached.</p> : <p>With workspace data on, your question, permitted aggregate financial and marketing KPIs, labour totals, inventory values, accounts payable, source status, aggregate cash and permitted BookLoQ ledger summaries{memoryEnabled ? " and up to six recent conversation messages" : " (without conversation history)"} and product guidance are sent to {ADVISOR_PROVIDER_LABELS[provider]} to answer your question.</p>}<p>Automatic evidence excludes credentials, account numbers, customer names, search queries, page addresses, Business Profile content, invoice files and raw transactions. Do not enter personal information or secrets.</p><p>Provider safety logs and managed backups follow separate retention periods. No automated business actions are taken.</p><a href="/privacy#automation" target="_blank" rel="noreferrer">Privacy policy and retention details</a></details></section>
       </div>
     </dialog>
   </section>;

@@ -146,7 +146,7 @@ export async function POST(request: Request) {
     await enforceRateLimit("advisor:chat", `${context.userId}:${clientSource(request)}`, 20, 60);
     const body = await readJsonObject(request);
     const question = cleanQuestion(body.question);
-    if (body.purpose !== undefined && body.purpose !== "analysis" && body.purpose !== "help") throw new ApiError(400, "ADVISOR_PURPOSE_INVALID", "Choose business analysis or app help.");
+    if (body.purpose !== undefined && body.purpose !== "analysis" && body.purpose !== "help") throw new ApiError(400, "ADVISOR_PURPOSE_INVALID", "Choose a valid workspace-data setting.");
     const purpose = body.purpose === "help" ? "help" : "analysis";
     if (body.memoryEnabled !== undefined && typeof body.memoryEnabled !== "boolean") throw new ApiError(400, "ADVISOR_MEMORY_INVALID", "Choose whether to enable conversation memory.");
     const memoryEnabled = body.memoryEnabled === true;

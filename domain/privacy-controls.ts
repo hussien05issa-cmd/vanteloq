@@ -1,6 +1,6 @@
 export { PRIVACY_POLICY_VERSION } from "../shared/legal-versions";
 export const PLAID_CONSENT_NOTICE_VERSION = "plaid-financial-data-v3";
-export const ADVISOR_CONSENT_NOTICE_VERSION = "vanteloq-ai-v6-openai";
+export const ADVISOR_CONSENT_NOTICE_VERSION = "vanteloq-ai-v7-unified";
 export const QUICKBOOKS_CONSENT_NOTICE_VERSION = "quickbooks-accounting-read-v1";
 
 export const PLAID_DATA_CATEGORIES = [
@@ -23,7 +23,7 @@ export const ADVISOR_DATA_CATEGORIES = [
   "Dated aggregate sales, gross profit, transaction, discount, refund and unit metrics; permission-filtered labour totals, inventory values and accounts payable snapshots",
   "Permitted synchronized website, search and paid-advertising totals, with source-specific periods and coverage limits; no queries, URLs, Business Profile content or advertising amounts",
   "Permitted organization-wide BookLoQ ledger and cash summaries, only with the required finance access and a live ledger; no raw ledger records or identities",
-  "Product guidance for App help; workspace records are not attached in that mode",
+  "Product guidance for Vanteloq and BookLoQ; disabling Workspace data excludes business records",
   "Connected-source status and freshness details",
   "Aggregate cash available only when the user has bank-balance permission",
   "An optional short user-and-workspace-scoped conversation history, only when memory is enabled and its evidence and access fingerprint match the current request",
@@ -31,6 +31,7 @@ export const ADVISOR_DATA_CATEGORIES = [
 
 export const ADVISOR_PROCESSING_PURPOSES = [
   "Explain verified business performance and calculations",
+  "Explain financial and analytical concepts and how to use Vanteloq and BookLoQ",
   "Identify missing evidence and data-quality limits",
   "Maintain the authorized user's organization-scoped advisor conversation only when they enable memory",
 ] as const;

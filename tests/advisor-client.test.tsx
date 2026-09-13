@@ -7,6 +7,22 @@ import AdvisorComposer from "../app/advisor-composer";
 import { AdvisorAnswerContent } from "../app/advisor-response";
 import { ADVISOR_CONSENT_NOTICE_VERSION, PRIVACY_POLICY_VERSION } from "../domain/privacy-controls";
 
+test("one chat combines business and product questions with data sharing in Settings", () => {
+  for (const purpose of ["analysis", "help"] as const) {
+    const markup = renderToStaticMarkup(<AdvisorComposer purpose={purpose} onPurpose={() => {}} question="" onQuestion={() => {}} dataUseAccepted={false} onConsent={() => {}} loading={false} onSubmit={() => {}}/>);
+    assert.doesNotMatch(markup, /Conversation purpose|>Business analysis<|>App help</);
+    assert.match(markup, /What can I help you with/);
+    assert.match(markup, /Help me get started/);
+    assert.match(markup, /Review cash &amp; books/);
+    const context = markup.match(/<input[^>]+aria-label="Include workspace data"[^>]*>/)?.[0];
+    assert.ok(context);
+    assert.equal(context.includes('checked=""'), purpose === "analysis");
+    assert.ok(markup.indexOf(context) > markup.indexOf('<dialog'));
+    assert.match(markup, /type="submit" disabled=""/);
+    if (purpose === "help") assert.match(markup, /No workspace records are attached/);
+  }
+});
+
 test("each provider selection travels with its consent and conversation to the advisor endpoint", async () => {
   for (const provider of ["openai"] as const) {
     let sent: Record<string, unknown> | undefined;

@@ -34,9 +34,9 @@ export async function recordAdvisorConsent(input: {
 
   const provider = input.provider;
   const dataCategoriesJson = JSON.stringify(input.purpose === "help"
-    ? ["The question entered by the authorized user", "Vanteloq product guidance", "Optional recent app-help conversation messages with matching evidence and access; no workspace records"]
+    ? ["The question entered by the authorized user", "Vanteloq product guidance", "Optional recent conversation messages with matching evidence and access; no workspace records"]
     : ADVISOR_DATA_CATEGORIES);
-  const purposesJson = JSON.stringify(input.purpose === "help" ? ["Explain how to use Vanteloq and BookLoQ"] : ADVISOR_PROCESSING_PURPOSES);
+  const purposesJson = JSON.stringify(input.purpose === "help" ? ["Explain how to use Vanteloq and BookLoQ", "Explain financial and analytical concepts without workspace records"] : ADVISOR_PROCESSING_PURPOSES);
   const [existing] = await getDb().select({
     id: integrationConsents.id,
     acceptedAt: integrationConsents.acceptedAt,

@@ -301,7 +301,7 @@ test("exact marketing resources remain versioned, approval-bound, separated, and
     const unauthorizedReport = await worker.fetch(new Request(`${origin}/api/v1/marketing/reports`), environment, executionContext);
     assert.equal(unauthorizedReport.status, 401);
     environment.OPENAI_API_KEY = "fixture-openai-key";
-    const advisor = await dispatch(worker, environment, "/api/v1/advisor/chat", { method: "POST", body: { question: "What does our marketing evidence show?", dataUseAccepted: true, noticeVersion: "vanteloq-ai-v6-openai", privacyPolicyVersion: "2026-09-10" } });
+    const advisor = await dispatch(worker, environment, "/api/v1/advisor/chat", { method: "POST", body: { question: "What does our marketing evidence show?", dataUseAccepted: true, noticeVersion: "vanteloq-ai-v7-unified", privacyPolicyVersion: "2026-09-10" } });
     assert.equal(advisor.status, 200, await advisor.clone().text());
     const advisorBody = await advisor.json();
     assert.equal(advisorBody.status, "answered");
@@ -312,7 +312,7 @@ test("exact marketing resources remain versioned, approval-bound, separated, and
     assert.match(advisorText, /comparisonComplete/);
     assert.doesNotMatch(advisorText, /sc-domain:example.ca|properties\/123|google-access-token/);
 
-    const aiQuestion = { question: "Which KPIs need attention?", conversationId: advisorBody.conversationId, dataUseAccepted: true, noticeVersion: "vanteloq-ai-v6-openai", privacyPolicyVersion: "2026-09-10" };
+    const aiQuestion = { question: "Which KPIs need attention?", conversationId: advisorBody.conversationId, dataUseAccepted: true, noticeVersion: "vanteloq-ai-v7-unified", privacyPolicyVersion: "2026-09-10" };
     const noConsent = await dispatch(worker, environment, "/api/v1/advisor/chat", {method: "POST", body: {...aiQuestion, dataUseAccepted: false}});
     assert.equal(noConsent.status, 409);
     const staleConsent = await dispatch(worker, environment, "/api/v1/advisor/chat", {method: "POST", body: {...aiQuestion, noticeVersion: "gemini-evidence-advisor-v2-marketing"}});
@@ -333,7 +333,7 @@ test("exact marketing resources remain versioned, approval-bound, separated, and
     assert.equal(openaiPayloads.length, 1, "Rejected modes must not collect or forward evidence");
     assert.match(openaiPayloads[0].input, /Conversation memory: \[\]/);
     assert.doesNotMatch(openaiPayloads[0].input, /sc-domain:example.ca|properties\/123|fixture-openai-key|google-access-token/);
-    const aiConsents = await database.prepare("SELECT DISTINCT provider FROM integration_consents WHERE notice_version = ? ORDER BY provider").bind("vanteloq-ai-v6-openai").all();
+    const aiConsents = await database.prepare("SELECT DISTINCT provider FROM integration_consents WHERE notice_version = ? ORDER BY provider").bind("vanteloq-ai-v7-unified").all();
     assert.deepEqual(aiConsents.results.map(row => row.provider), ["openai"]);
 
     const originalDatabaseBinding = environment.DB;

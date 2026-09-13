@@ -4020,7 +4020,7 @@ function Advisor({
       }
       if (payload.answer) {
         setQuestion("");
-        setAnswer({ title: purpose === "help" ? "Vanteloq help" : "Vanteloq AI analysis", body: payload.answer, limitation: `Powered by OpenAI. ${purpose === "help" ? "Product guidance only. No workspace records attached." : "Based on your permitted evidence snapshot."} Verify important details; AI can make mistakes.` });
+        setAnswer({ title: "Vanteloq AI", body: payload.answer, limitation: `Powered by OpenAI. ${purpose === "help" ? "Product guidance only. No workspace records attached." : "Based on your permitted evidence snapshot."} Verify important details; AI can make mistakes.` });
         return;
       }
     } catch (error) {
