@@ -378,6 +378,7 @@ function FeatureReel() {
 
 function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const mobileMenuButton = useRef<HTMLButtonElement>(null);
   const closeMobileNav = () => setMobileNavOpen(false);
   const connectorBenefits: Record<string, string> = {
     "Point of sale": "Unify sales, returns, products and inventory movement",
@@ -399,7 +400,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
   useEffect(() => {
     if (!mobileNavOpen) return;
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setMobileNavOpen(false);
+      if (event.key === "Escape") { setMobileNavOpen(false); mobileMenuButton.current?.focus(); }
     };
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
@@ -409,7 +410,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
     <a className="home-skip-link" href="#main-content">Skip to main content</a>
     <header className="public-nav">
       <div className="public-brand-family">
-      <button type="button" className="public-brand" aria-label="Vanteloq home" onClick={() => { closeMobileNav(); window.scrollTo({ top: 0, behavior: "smooth" }); }}>
+      <button type="button" className="public-brand" aria-label="Vanteloq home" onClick={() => { closeMobileNav(); window.scrollTo({ top: 0, behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" }); }}>
         <ProductBrandLogo product="vanteloq" priority/>
         <span>Vanteloq<small>BUSINESS INTELLIGENCE</small></span>
       </button>
@@ -418,7 +419,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
         <img src="/brand/lexedge-consulting-logo.png" width={1536} height={1024} alt="LexEdge Consulting" decoding="async"/>
       </a>
       </div>
-      <button type="button" className="nav-menu-toggle" aria-label={mobileNavOpen ? "Close navigation menu" : "Open navigation menu"} aria-expanded={mobileNavOpen} aria-controls="public-navigation" onClick={() => setMobileNavOpen(open => !open)}>{mobileNavOpen ? "Close" : "Menu"}</button>
+      <button type="button" className="nav-menu-toggle" ref={mobileMenuButton} aria-label={mobileNavOpen ? "Close navigation menu" : "Open navigation menu"} aria-expanded={mobileNavOpen} aria-controls="public-navigation" onClick={() => setMobileNavOpen(open => !open)}>{mobileNavOpen ? "Close" : "Menu"}</button>
       <nav id="public-navigation" className={mobileNavOpen ? "is-open" : ""} aria-label="Main navigation">
         <a href="#platform" onClick={closeMobileNav}>Platform</a>
         <a href="#connections" onClick={closeMobileNav}>Connections</a>
@@ -444,19 +445,19 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
       <section className="home-hero" aria-labelledby="home-title">
         <div className="home-hero-copy">
           <p className="home-eyebrow">RETAIL ANALYTICS, CASH AND FOLLOW-THROUGH</p>
-          <h1 id="home-title">Understand your business. <em>Make better decisions.</em></h1>
-          <p>Know what sells together, which products earn their place and what accounts for a revenue change. Bring supported sales, inventory and financial records into one workspace, with evidence behind the decision.</p>
+          <h1 id="home-title">Know what sells.<br/><em>See where to act.</em></h1>
+          <p>Find your strongest products, understand buying patterns and see what drives a revenue change. Add BookLoQ for accounting and cash planning, with Vanteloq AI to help interpret the evidence.</p>
           <div className="public-actions">
             <a href="#demo">Try the interactive demo <span aria-hidden="true">→</span></a>
-            <button type="button" data-public-event="signup_start" onClick={() => start("signup")}>Create your workspace <span aria-hidden="true">→</span></button>
+            <Link data-public-event="pricing_view" href="/pricing">Compare plans <span aria-hidden="true">→</span></Link>
           </div>
           <ul className="home-proof" aria-label="Verified platform controls">
             <li>Trace results to source records</li>
-            <li>Keep control of approvals</li>
-            <li>Protect your business data</li>
+            <li>Review before you act</li>
+            <li>Control AI data sharing</li>
           </ul>
 
-          <p className="home-demo-caption">No signup required. <Link href="/demo#retail">Explore retail intelligence with sample records →</Link></p>
+          <p className="home-demo-caption">Try it with sample data. No signup required.</p>
         </div>
         <figure className="product-visual product-visual-reference home-product-visual">
           {/* The image is a real Vanteloq interface composition; the values shown are illustrative. */}
@@ -466,17 +467,20 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
         </figure>
       </section>
 
-      <ProductDemo/>
+
+      <nav className="home-feature-shortcuts" aria-label="Explore a product feature"><span>Take a closer look</span><Link href="/demo#products">Product performance <span aria-hidden="true">↗</span></Link><Link href="/demo#baskets">Basket patterns <span aria-hidden="true">↗</span></Link><Link href="/demo#retail">Revenue drivers <span aria-hidden="true">↗</span></Link><Link href="/demo#bookloq">Cash planning <span aria-hidden="true">↗</span></Link></nav>
 
       <section className="home-decision-proof" aria-labelledby="decision-proof-title">
-        <div><p className="demo-eyebrow">TRY THE EVIDENCE. THEN MAKE THE CALL.</p><h2 id="decision-proof-title">Know what changed. See where to act.</h2><p>Explore the same retail calculation engine used inside a workspace. The demo uses fictional records, clearly marked, so you can inspect the result without sharing your business data.</p></div>
+        <div><p className="demo-eyebrow">BUILT FOR THE DECISIONS YOU MAKE</p><h2 id="decision-proof-title">From a number to a next step.</h2><p>Explore the calculations with fictional records. See the inputs, the result and what still needs review.</p></div>
         <div className="decision-proof-grid">
           <article><span>1 / REVENUE DRIVERS</span><h3>Revenue is down. Tap “Why?”</h3><p>Break the change into purchase volume, basket value and returns. See how category revenue contributes, with a bridge that reconciles to the cent.</p><Link href="/demo#retail">Inspect the revenue bridge →</Link></article>
-          <article><span>2 / PRODUCTS & BASKETS</span><h3>Find the pattern behind the purchase.</h3><p>Filter products by category and type. Compare discount reliance, repeat activity and combinations bought together, with sample sizes and formulas visible.</p><Link href="/demo#retail">Explore products and baskets →</Link></article>
-          <article><span>3 / STOCK & OPERATIONS</span><h3>Plan with the inputs that matter.</h3><p>Review stock cover, expiry and hourly demand. Add reviewed inventory or labour records when your source does not supply the inputs a calculation needs.</p><Link href="/demo#retail">Explore inventory and hours →</Link></article>
+          <article><span>2 / PRODUCT & BASKET INTELLIGENCE</span><h3>See what customers buy together.</h3><p>Compare product performance, category revenue and discount reliance. Inspect purchase combinations with sample sizes and formulas visible.</p><Link href="/demo#baskets">Explore basket patterns →</Link></article>
+          <article><span>3 / INVENTORY & CASH</span><h3>Review the stock. Check the cash.</h3><p>Understand stock cover and expiry risk. Use BookLoQ to test a purchase against a 13-week cash plan before committing.</p><Link href="/demo#bookloq">Test the cash impact →</Link></article>
         </div>
         <div className="home-retail-next"><p><strong>One practical workflow.</strong> Connect and review your source, inspect the result, ask Vanteloq AI for an interpretation, then assign a review task. BookLoQ adds the cash context before you commit.</p><Link href="/demo#bookloq">Test a purchase in BookLoQ →</Link><button type="button" data-public-event="signup_start" onClick={() => start("signup")}>Create your workspace</button></div>
       </section>
+
+      <ProductDemo/>
 
       <section className="home-connections" id="connections" aria-labelledby="connections-title">
         <div className="home-connection-intro">
@@ -675,12 +679,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
             <span><small>REVIEWED ACTION</small><b>Decide · Approve · Follow through</b></span>
           </div>
         </div>
-        <div className="home-seo-columns">
-          <p>Vanteloq is a business operating and analytics platform owned and operated by LexEdge Consulting. It is designed for independent retailers that need a clearer view of daily performance. It works with supported point of sale and payment sources, structured daily imports and operating records created inside the platform. The goal is not to collect data for its own sake. It is to help owners and managers understand how sales, inventory, cash commitments, purchasing decisions and assigned work relate to one another.</p>
-          <p>Most businesses already generate useful information. Transactions are recorded by a POS, stock changes appear in inventory records, supplier purchases affect cash and staff complete work across separate tools. The difficult part is often definition and context: whether two reports cover the same dates, whether cost data is complete, whether an estimate is being treated as a fact and whether anyone owns the next action. Vanteloq keeps those boundaries visible so a dashboard does not appear more certain than its source data allows.</p>
-          <p>For a smaller organization, business intelligence should answer practical questions without requiring an enterprise reporting team. A useful operating view can show what changed, where the supporting record came from, what information is missing and which action needs approval. Vanteloq includes source-aware sales measures, gross-margin calculations, inventory lifecycle controls, cash context, purchasing tools, reporting and operational task workflows. The exact views available depend on the records and entitlements present in the workspace.</p>
-          <p>Connected visibility does not replace sound accounting, physical inventory counts or management judgment. It makes comparison and follow-through easier. Vanteloq is built around that operating discipline: use supported sources, reconcile before promotion, preserve audit context and keep consequential actions in human hands.</p>
-        </div>
+<div className="home-seo-columns"><p>Vanteloq brings sales, inventory, purchasing and assigned work into one operating view. BookLoQ adds accounting records and cash planning. Connect a supported source or import a structured file, review the records, then investigate what changed.</p><details><summary>How Vanteloq keeps the context visible</summary><p>Reports show their dates, source coverage and missing inputs. Margin requires recorded product costs. Growth comparisons require equivalent periods. Estimates remain separate from recorded results, and consequential actions require human review.</p><p>Available views depend on your plan, permissions and reviewed records. Vanteloq supports management decisions; it does not replace accounting review, physical stock counts or professional judgment.</p></details></div>
       </section>
 
       <section className="home-resources" aria-labelledby="resources-title">

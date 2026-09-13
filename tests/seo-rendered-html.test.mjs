@@ -21,7 +21,7 @@ async function fetchText(path) {
 test("homepage exposes the marketing page in initial HTML", async () => {
   const { response, text } = await fetchText("/");
   assert.equal(response.status, 200);
-  assert.match(text, /Understand your business/);
+  assert.match(text, /Know what sells/);
   assert.doesNotMatch(text, />Preparing Vanteloq…</);
   assert.equal((text.match(/<h1\b/g) ?? []).length, 1);
   assert.match(text, /Business Analytics for Independent Retail/);
@@ -55,7 +55,7 @@ test("resource index is server rendered with distinct metadata", async () => {
 });
 
 test("help and pricing are crawlable, with accurate canonical links and no invented ratings", async () => {
-  for (const [path, label] of [["/help", "A clear next step"], ["/pricing", "Clarity, including the price"]]) {
+  for (const [path, label] of [["/help", "A clear next step"], ["/pricing", "Start with the plan that fits"]]) {
     const { response, text } = await fetchText(path);
     assert.equal(response.status, 200);
     assert.ok(text.includes(label));
