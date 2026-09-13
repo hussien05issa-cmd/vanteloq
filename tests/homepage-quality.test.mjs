@@ -45,6 +45,7 @@ test("homepage copy stays within the verified product boundary", async () => {
   assert.match(connections, /Plaid[\s\S]*?Production approval needed/);
   assert.match(connections, /Xero[\s\S]*?In development/);
   assert.match(connections, /Stripe[\s\S]*?Authorize and review/);
+  assert.match(connections, /Moneris<\/strong>[\s\S]*?Review payment amounts, status and timing for reconciliation/);
   assert.match(connections, /Connect the tools that already run your business/);
   assert.match(connections, /Use owner-authorized balances and transactions in cash planning/);
   assert.doesNotMatch(connections, /(?:AVAILABLE NOW|PRODUCTION READY|FULLY CONNECTED|honest availability)/i);

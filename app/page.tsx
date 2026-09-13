@@ -390,7 +390,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
   };
   const publicIntegrations = integrationCatalog.map(provider => ({
     ...provider,
-    detail: connectorBenefits[provider.category] ?? "Bring source records into one operating view",
+    detail: provider.id === "moneris" ? "Review payment amounts, status and timing for reconciliation" : connectorBenefits[provider.category] ?? "Bring source records into one operating view",
     publicStatus: integrationPublicStatus(provider),
   }));
 
