@@ -1358,6 +1358,7 @@ function Workspace({
         createTask={createTask}
         activeLocationId={activeLocationId}
         canExportFeature={subscriptionFeatures.includes("reporting.exports")}
+        onOpenRetail={() => navigate("Intelligence")}
       />
     );
   if (view === "Sales" || view === "Inventory" || view === "Customers" || view === "Suppliers")

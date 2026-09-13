@@ -6,6 +6,7 @@ import { ApiError, clientSource, enforceRateLimit, handleApi, jsonResponse } fro
 import { effectivePermissions, requirePermission } from "../../../../server/permissions";
 import { authorizedLocationDataScope } from "../../../../server/location-access";
 import { commerceSourceAuthority } from "../../../../server/integrations/source-authority";
+import { reportSaleLinesSql } from "../../../../server/integrations/report-sale-lines";
 import { commerceChangeRate, inventoryDecision, parseCommercePeriod } from "../../../../domain/commerce-intelligence";
 import {
   commerceResponseForMode,
@@ -103,7 +104,7 @@ export async function GET(request: Request) {
              coalesce(sum(l.quantity_milli), 0) AS quantityMilli,
              count(DISTINCT l.provider || char(0) || l.connection_id || char(0) || l.external_sale_id) AS transactions,
              count(DISTINCT CASE WHEN l.customer_ref IS NOT NULL THEN l.provider || char(0) || l.connection_id || char(0) || l.external_sale_id END) AS knownCustomerTransactions
-      FROM commerce_sale_lines l
+      FROM ${reportSaleLinesSql} l
       WHERE l.organization_id = ?${approved("l")}${saleLocationSql}${salePeriodSql}
     `).bind(context.organizationId, ...saleLocationBindings, ...periodWindow(from, toExclusive).bindings).first<MetricRow>();
 
@@ -117,7 +118,7 @@ export async function GET(request: Request) {
                l.quantity_milli AS quantityMilli, l.net_sales_cents AS netSalesCents,
                nullif(l.cost_cents, 0) AS costCents, l.discount_cents AS discountCents,
                c.display_name AS customerName, c.email AS customerEmail, c.phone AS customerPhone
-        FROM commerce_sale_lines l
+        FROM ${reportSaleLinesSql} l
         LEFT JOIN commerce_products p ON p.organization_id = l.organization_id AND p.provider = l.provider AND p.connection_id = l.connection_id AND p.external_product_id = l.product_ref
         LEFT JOIN commerce_customers c ON c.organization_id = l.organization_id AND c.provider = l.provider AND c.connection_id = l.connection_id AND c.external_customer_id = l.customer_ref
         WHERE l.organization_id = ?${approved("l")}${saleLocationSql}${salePeriodSql}
@@ -140,7 +141,7 @@ export async function GET(request: Request) {
         LEFT JOIN (
           SELECT l.provider, l.connection_id, l.outlet_ref, l.sku, sum(l.quantity_milli) quantity_milli, sum(l.net_sales_cents) net_sales_cents,
                  CASE WHEN count(l.external_line_id)>0 AND sum(CASE WHEN l.cost_cents IS NULL OR l.cost_cents=0 THEN 1 ELSE 0 END)=0 THEN sum(l.cost_cents) END cost_cents, sum(l.discount_cents) discount_cents
-          FROM commerce_sale_lines l WHERE l.organization_id = ? AND ${currentWindow.sql}${saleLocationSql}
+          FROM ${reportSaleLinesSql} l WHERE l.organization_id = ? AND ${currentWindow.sql}${saleLocationSql}
           GROUP BY l.provider, l.connection_id, l.outlet_ref, l.sku
         ) sales ON sales.provider = b.source_provider AND sales.connection_id = b.source_connection_id AND sales.sku = b.sku AND b.location_ref = sales.provider || ':' || sales.outlet_ref
         WHERE b.organization_id = ?${approved("b", "source_connection_id")}${inventoryLocationSql}
@@ -153,7 +154,7 @@ export async function GET(request: Request) {
                coalesce(sum(l.net_sales_cents), 0) AS netSalesCents, CASE WHEN count(l.external_line_id)>0 AND sum(CASE WHEN l.cost_cents IS NULL OR l.cost_cents=0 THEN 1 ELSE 0 END)=0 THEN sum(l.cost_cents) END AS costCents,
                coalesce(sum(l.discount_cents), 0) AS discountCents, max(l.sold_at) AS lastPurchaseAt
         FROM commerce_customers c
-        LEFT JOIN commerce_sale_lines l ON l.organization_id = c.organization_id AND l.provider = c.provider AND l.connection_id = c.connection_id
+        LEFT JOIN ${reportSaleLinesSql} l ON l.organization_id = c.organization_id AND l.provider = c.provider AND l.connection_id = c.connection_id
           AND l.customer_ref = c.external_customer_id AND ${currentWindow.sql}${saleLocationSql}
         WHERE c.organization_id = ? AND c.archived = 0${approved("c")}${restricted ? " AND l.external_line_id IS NOT NULL" : ""}
         GROUP BY c.provider, c.connection_id, c.external_customer_id
@@ -168,7 +169,7 @@ export async function GET(request: Request) {
                CASE WHEN count(l.external_line_id)>0 AND sum(CASE WHEN l.cost_cents IS NULL OR l.cost_cents=0 THEN 1 ELSE 0 END)=0 THEN sum(l.cost_cents) END AS periodCostCents
         FROM commerce_suppliers s
         LEFT JOIN commerce_products p ON p.organization_id = s.organization_id AND p.provider = s.provider AND p.connection_id = s.connection_id AND p.supplier_ref = s.external_supplier_id AND p.archived = 0
-        LEFT JOIN commerce_sale_lines l ON l.organization_id = p.organization_id AND l.provider = p.provider AND l.connection_id = p.connection_id
+        LEFT JOIN ${reportSaleLinesSql} l ON l.organization_id = p.organization_id AND l.provider = p.provider AND l.connection_id = p.connection_id
           AND l.product_ref = p.external_product_id AND ${currentWindow.sql}${saleLocationSql}
         WHERE s.organization_id = ? AND s.archived = 0${approved("s")}${restricted ? " AND l.external_line_id IS NOT NULL" : ""}
         GROUP BY s.provider, s.connection_id, s.external_supplier_id
@@ -180,7 +181,7 @@ export async function GET(request: Request) {
                sum(l.quantity_milli) AS quantityMilli, sum(l.net_sales_cents) AS netSalesCents,
                CASE WHEN count(l.external_line_id)>0 AND sum(CASE WHEN l.cost_cents IS NULL OR l.cost_cents=0 THEN 1 ELSE 0 END)=0 THEN sum(l.cost_cents) END AS costCents, sum(l.discount_cents) AS discountCents,
                count(DISTINCT l.provider || char(0) || l.connection_id || char(0) || l.external_sale_id) AS transactionCount
-        FROM commerce_sale_lines l
+        FROM ${reportSaleLinesSql} l
         WHERE l.organization_id = ?${approved("l")}${saleLocationSql}${salePeriodSql}
         GROUP BY l.provider, l.connection_id, coalesce(l.product_ref, l.sku, l.product_name, 'unclassified')
         ORDER BY netSalesCents DESC LIMIT 250
