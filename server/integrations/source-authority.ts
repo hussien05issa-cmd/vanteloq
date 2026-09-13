@@ -22,6 +22,7 @@ export async function commerceSourceAuthority(input: {
   organizationId: string;
   localLocationIds: readonly string[];
   factFamily: CommerceFactFamily;
+  salesLineFacts?: boolean;
 }) {
   if (!input.localLocationIds.length) {
     return { status: "ready" as const, authoritativeConnectionIds: [] as string[], conflicts: [], selections: [], candidates: [] };
@@ -56,7 +57,9 @@ export async function commerceSourceAuthority(input: {
   const connectionIds = [...new Set(mappings.map((mapping) => mapping.connectionId))];
   const connectionPlaceholders = connectionIds.map(() => "?").join(", ") || "NULL";
   const scopedFactSql: Record<CommerceFactFamily, string> = {
-    sales: `SELECT source_connection_id connectionId, location_ref scopeRef FROM daily_business_metrics WHERE organization_id = ? AND source_connection_id IN (${connectionPlaceholders}) GROUP BY source_connection_id, location_ref`,
+    sales: input.salesLineFacts
+      ? `SELECT connection_id connectionId, provider || ':' || outlet_ref scopeRef FROM commerce_sale_lines WHERE organization_id = ? AND connection_id IN (${connectionPlaceholders}) GROUP BY provider, connection_id, outlet_ref`
+      : `SELECT source_connection_id connectionId, location_ref scopeRef FROM daily_business_metrics WHERE organization_id = ? AND source_connection_id IN (${connectionPlaceholders}) GROUP BY source_connection_id, location_ref`,
     payments: `SELECT connection_id connectionId, outlet_ref scopeRef FROM commerce_payments WHERE organization_id = ? AND connection_id IN (${connectionPlaceholders}) AND paid_at IS NOT NULL AND amount_cents > 0 GROUP BY connection_id, outlet_ref`,
     inventory: `SELECT source_connection_id connectionId, location_ref scopeRef FROM inventory_balances WHERE organization_id = ? AND source_connection_id IN (${connectionPlaceholders}) GROUP BY source_connection_id, location_ref`,
     products: `SELECT connection_id connectionId, NULL scopeRef FROM commerce_products WHERE organization_id = ? AND connection_id IN (${connectionPlaceholders}) AND archived = 0 GROUP BY connection_id`,

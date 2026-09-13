@@ -6,6 +6,7 @@ import { FormEvent, Fragment, useCallback, useEffect, useMemo, useRef, useState 
 import BookLoQWorkspace from "./bookloq-workspace";
 import CommunicationsWorkspace from "./communications-workspace";
 import CommerceIntelligenceWorkspace from "./commerce-intelligence-workspace";
+import type { RetailAdvisorSeed } from "./retail-intelligence-workspace";
 import GrowthWorkspace from "./growth-workspace";
 import ScenarioPlanner from "./scenario-planner";
 import { connectorNextStep, filterConnectors } from "../domain/connector-guidance";
@@ -1288,6 +1289,9 @@ function Workspace({
   selectLocation: (locationId: string | null) => void;
   navigationSettings: React.ReactNode;
 }) {
+  const [retailAdvisorSeed, setRetailAdvisorSeed] = useState<RetailAdvisorSeed | null>(null);
+  const askRetailAdvisor = (seed: RetailAdvisorSeed) => { setRetailAdvisorSeed(seed); navigate("Advisor"); };
+  useEffect(() => { if (view === "Advisor" && retailAdvisorSeed) queueMicrotask(() => setRetailAdvisorSeed(null)); }, [view, retailAdvisorSeed]);
   if (view === "Dashboard")
     return (
       <Overview
@@ -1301,12 +1305,12 @@ function Workspace({
     );
   if (view === "Intelligence")
     return (
-      <Intelligence
+      <><CommerceIntelligenceWorkspace key={activeLocationId ?? "all"} mode="Sales" currency={currency} timeZone={data.today.timeZone} activeLocationId={activeLocationId} navigate={navigate} createTask={createTask} onAsk={askRetailAdvisor}/><details className="retail-existing-decisions"><summary>Open the operating decision queue</summary><Intelligence
         data={data}
         currency={currency}
         navigate={navigate}
         createTask={createTask}
-      />
+      /></details></>
     );
   if (view === "Action Centre")
     return (
@@ -1345,7 +1349,7 @@ function Workspace({
       />
     );
   if (view === "Advisor")
-    return <Advisor key={activeLocationId ?? "organization"} data={data} navigate={navigate} createTask={createTask} activeLocationId={activeLocationId} />;
+    return <Advisor key={activeLocationId ?? "organization"} data={data} navigate={navigate} createTask={createTask} activeLocationId={activeLocationId} retailSeed={retailAdvisorSeed?.locationId === activeLocationId ? retailAdvisorSeed : null} />;
   if (view === "Reports")
     return (
       <ReportsWorkspace
@@ -1357,7 +1361,7 @@ function Workspace({
       />
     );
   if (view === "Sales" || view === "Inventory" || view === "Customers" || view === "Suppliers")
-    return <CommerceIntelligenceWorkspace mode={view} currency={currency} timeZone={data.today.timeZone} activeLocationId={activeLocationId} navigate={navigate} createTask={createTask} />;
+    return <CommerceIntelligenceWorkspace key={view + activeLocationId} mode={view} currency={currency} timeZone={data.today.timeZone} activeLocationId={activeLocationId} navigate={navigate} createTask={createTask} onAsk={askRetailAdvisor} />;
   if (view === "Purchase Orders")
     return (
       <PurchaseOrdersWorkspace
@@ -3946,13 +3950,16 @@ function Advisor({
   navigate,
   createTask,
   activeLocationId,
+  retailSeed,
 }: {
   data: CommandCentre;
   navigate: (view: View) => void;
   createTask: (seed: TaskSeed) => void;
   activeLocationId: string | null;
+  retailSeed?: RetailAdvisorSeed | null;
 }) {
-  const [question, setQuestion] = useState("");
+  const [question, setQuestion] = useState(retailSeed?.question ?? "");
+  const [analysisPeriod, setAnalysisPeriod] = useState<{ from: string; to: string } | null>(retailSeed ? { from: retailSeed.from, to: retailSeed.to } : null);
   const [memoryEnabled, setMemoryEnabled] = useState(false);
   const provider: AdvisorMode = "openai";
   const [purpose, setPurpose] = useState<"analysis" | "help">("analysis");
@@ -3990,7 +3997,7 @@ function Advisor({
     setThinking(true);
     const normalized = question.toLowerCase();
     try {
-      const response = await requestAdvisorAnalysis(apiFetch, { question, provider, purpose, conversationId, dataUseAccepted, memoryEnabled, locationId: activeLocationId });
+      const response = await requestAdvisorAnalysis(apiFetch, { question, provider, purpose, conversationId, dataUseAccepted, memoryEnabled, locationId: activeLocationId, ...(purpose === "analysis" && analysisPeriod ? analysisPeriod : {}) });
       const payload = await response.json() as { providers?: Array<"openai">; partial?: boolean; status?: string; answer?: string | null; conversationId?: string | null; message?: string; error?: { message?: string } };
       if (!response.ok) throw new Error(payload.error?.message ?? "The advisor could not answer right now.");
       setConversationId(payload.conversationId ?? null);
@@ -4049,7 +4056,8 @@ function Advisor({
   </AdvisorResponse>;
   return (
     <div className="content advisor-page">
-      <AdvisorComposer purpose={purpose} onPurpose={value => { if (value !== purpose) { setPurpose(value); setDataUseAccepted(false); resetVisibleChat(); } }} memoryEnabled={memoryEnabled} onMemory={changeMemory} privacyControls={<AdvisorPrivacy fetcher={apiFetch} disabled={loading} onDeleted={id => { if (id === null || id === conversationId) resetVisibleChat(); }}/>} provider={provider} providers={providers} providersLoading={providersLoading} question={question} onQuestion={setQuestion} dataUseAccepted={dataUseAccepted} onConsent={setDataUseAccepted} loading={loading} thinking={thinking} onSubmit={ask} hasConversation={Boolean(submittedQuestion || answer || history.length)} onNewChat={resetVisibleChat}>
+      {analysisPeriod && purpose === "analysis" && <div className="retail-ai-period"><span>Retail evidence: {analysisPeriod.from} to {analysisPeriod.to}</span><button onClick={() => { setAnalysisPeriod(null); resetVisibleChat(); }}>Use recent workspace evidence</button></div>}
+      <AdvisorComposer purpose={purpose} onPurpose={value => { if (value !== purpose) { setPurpose(value); setDataUseAccepted(false); resetVisibleChat(); } }} memoryEnabled={memoryEnabled} onMemory={changeMemory} privacyControls={<AdvisorPrivacy fetcher={apiFetch} disabled={loading} onDeleted={id => { if (id === null || id === conversationId) resetVisibleChat(); }}/>} provider={provider} providers={providers} providersLoading={providersLoading} question={question} onQuestion={setQuestion} dataUseAccepted={dataUseAccepted} onConsent={setDataUseAccepted} loading={loading} thinking={thinking} onSubmit={ask} hasConversation={Boolean(submittedQuestion || answer || history.length)} onNewChat={() => { setAnalysisPeriod(null); resetVisibleChat(); }}>
         {history.map((item, index) => <Fragment key={index}><div className="ai-user-message"><small>You</small>{item.question}</div>{reply(item.answer)}</Fragment>)}
         {submittedQuestion && <div className="ai-user-message"><small>You</small>{submittedQuestion}</div>}
         {thinking && <AdvisorThinking/>}

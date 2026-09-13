@@ -4,13 +4,14 @@ import { useEffect, useId, useState } from "react";
 import Link from "next/link";
 import { DEMO_LOCATIONS, demoAnalysis, demoScenario, type DemoLocation, type DemoQuality } from "../domain/product-demo";
 import BookloqDemo from "./bookloq-demo";
+import RetailDemo from "./retail-demo";
 import VanteloqAiLogo from "./vanteloq-ai-logo";
 
 const money = (cents: number | null) => cents === null ? "Unavailable" : new Intl.NumberFormat("en-CA", { style: "currency", currency: "CAD", maximumFractionDigits: 0 }).format(cents / 100);
 const preciseMoney = (cents: number | null) => cents === null ? "Missing" : new Intl.NumberFormat("en-CA", { style: "currency", currency: "CAD" }).format(cents / 100);
 const percent = (value: number | null) => value === null ? "Unavailable" : `${value.toFixed(1)}%`;
 const dateLabel = (value: string) => new Intl.DateTimeFormat("en-CA", { month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(`${value}T12:00:00Z`));
-const views = ["Overview", "Source records", "Scenario lab", "BookLoQ cash"] as const;
+const views = ["Overview", "Retail intelligence", "Source records", "Scenario lab", "BookLoQ cash"] as const;
 
 export default function ProductDemo({ standalone = false }: { standalone?: boolean }) {
   const id = useId();
@@ -19,7 +20,7 @@ export default function ProductDemo({ standalone = false }: { standalone?: boole
   const [quality, setQuality] = useState<DemoQuality>("complete");
   const [view, setView] = useState<typeof views[number]>("Overview");
   useEffect(() => {
-    const chooseView = () => { if (window.location.hash === "#bookloq") queueMicrotask(() => setView("BookLoQ cash")); };
+    const chooseView = () => { if (window.location.hash === "#bookloq") queueMicrotask(() => setView("BookLoQ cash")); if (window.location.hash === "#retail") queueMicrotask(() => setView("Retail intelligence")); };
     chooseView(); window.addEventListener("hashchange", chooseView);
     return () => window.removeEventListener("hashchange", chooseView);
   }, []);
@@ -46,7 +47,8 @@ export default function ProductDemo({ standalone = false }: { standalone?: boole
         {view !== "BookLoQ cash" && <label>Location<select aria-label="Demo location" value={location} onChange={event => { setLocation(event.target.value as DemoLocation); setRecordPage(0); }}><option value="all">Both shops</option><option value="central">Central shop</option><option value="riverside">Riverside shop</option></select></label>}
       </div>
       <div className="demo-content">
-        {view !== "BookLoQ cash" && <><div className="demo-period"><div><strong>{view === "Scenario lab" ? "Model a decision" : view === "Source records" ? "Follow the evidence" : "Performance, with context"}</strong><span>May 29 to June 25, 2026 · CAD · Sales exclude tax</span></div><label>Test data quality<select aria-label="Demo data quality" value={quality} onChange={event => { setQuality(event.target.value as DemoQuality); setRecordPage(0); }}><option value="complete">Complete records</option><option value="missing-cost">One cost is missing</option><option value="missing-days">Prior week is missing</option></select></label></div>
+        {view === "Retail intelligence" && <RetailDemo location={location}/>}
+        {view !== "BookLoQ cash" && view !== "Retail intelligence" && <><div className="demo-period"><div><strong>{view === "Scenario lab" ? "Model a decision" : view === "Source records" ? "Follow the evidence" : "Performance, with context"}</strong><span>May 29 to June 25, 2026 · CAD · Sales exclude tax</span></div><label>Test data quality<select aria-label="Demo data quality" value={quality} onChange={event => { setQuality(event.target.value as DemoQuality); setRecordPage(0); }}><option value="complete">Complete records</option><option value="missing-cost">One cost is missing</option><option value="missing-days">Prior week is missing</option></select></label></div>
         <p className={`demo-quality ${quality === "complete" ? "complete" : "limited"}`} role="status">{quality === "missing-cost" ? "Cost gap detected. Gross profit, margin and scenarios are unavailable until the missing cost is supplied." : quality === "missing-days" ? "Incomplete baseline. Current totals remain visible; growth comparisons are unavailable." : `${currentRows.length} current-period daily records · Complete 28-day comparison across the selected shops`}</p></>}
         {view === "BookLoQ cash" && <BookloqDemo/>}
         {view === "Overview" && <>
@@ -73,7 +75,7 @@ export default function ProductDemo({ standalone = false }: { standalone?: boole
       <footer className="demo-app-footer"><span>Fictional business. Real {view === "BookLoQ cash" ? "cash-flow" : "KPI"} calculation logic.</span><span>No account connection · No AI provider request · No saved demo data</span></footer>
     </div>
     <div className="demo-conversion"><div><h3>Your next decision, with your own data.</h3><p>Check your connection, choose a plan and review your first records.</p></div><Link data-public-event="signup_start" href="/?start=signup">Create your workspace →</Link><Link data-public-event="pricing_view" href="/pricing">View plans & pricing →</Link></div>
-    <div className="demo-proof-links"><p>Inspect how it works, including its limits.</p><a href={`https://github.com/hussien05issa-cmd/vanteloq/blob/main/domain/${view === "BookLoQ cash" ? "thirteen-week-cash-flow" : "advisor-kpis"}.ts`} target="_blank" rel="noopener noreferrer">View the calculation source ↗</a><a href="/privacy">Read the privacy policy →</a><Link href="/#connections">Check provider availability →</Link></div>
+    <div className="demo-proof-links"><p>Inspect how it works, including its limits.</p><a href={`https://github.com/hussien05issa-cmd/vanteloq/blob/main/domain/${view === "BookLoQ cash" ? "thirteen-week-cash-flow" : view === "Retail intelligence" ? "retail-intelligence" : "advisor-kpis"}.ts`} target="_blank" rel="noopener noreferrer">View the calculation source ↗</a><a href="/privacy">Read the privacy policy →</a><Link href="/#connections">Check provider availability →</Link></div>
   </section>;
 }
 
