@@ -40,6 +40,7 @@ const IMPORT_LABEL = "Lightspeed R-Series live sync";
 
 type SyncCheckpoint = {
   version: 5;
+  catalogVersion: number;
   watermark: string | null;
   salesCursor: string | null;
   saleLinesCursor: string | null;
@@ -63,6 +64,7 @@ type LightspeedRCollectionPage = Awaited<ReturnType<typeof fetchLightspeedRColle
 function checkpoint(value: string | null): SyncCheckpoint {
   const empty: SyncCheckpoint = {
     version: 5,
+    catalogVersion: 0,
     watermark: null,
     salesCursor: null,
     saleLinesCursor: null,
@@ -83,15 +85,16 @@ function checkpoint(value: string | null): SyncCheckpoint {
     if (parsed.version !== 5) return empty;
     return {
       version: 5,
+      catalogVersion: parsed.catalogVersion === 1 ? 1 : 0,
       watermark: typeof parsed.watermark === "string" ? parsed.watermark : null,
       salesCursor: typeof parsed.salesCursor === "string" ? parsed.salesCursor : null,
       saleLinesCursor: typeof parsed.saleLinesCursor === "string" ? parsed.saleLinesCursor : null,
-      itemsCursor: typeof parsed.itemsCursor === "string" ? parsed.itemsCursor : null,
+      itemsCursor: parsed.catalogVersion === 1 && typeof parsed.itemsCursor === "string" ? parsed.itemsCursor : null,
       customersCursor: typeof parsed.customersCursor === "string" ? parsed.customersCursor : null,
       suppliersCursor: typeof parsed.suppliersCursor === "string" ? parsed.suppliersCursor : null,
       salesComplete: parsed.salesComplete === true,
       saleLinesComplete: parsed.saleLinesComplete === true,
-      itemsComplete: parsed.itemsComplete === true,
+      itemsComplete: parsed.catalogVersion === 1 && parsed.itemsComplete === true,
       customersComplete: parsed.customersComplete === true,
       suppliersComplete: parsed.suppliersComplete === true,
     };
@@ -113,10 +116,12 @@ function nextCheckpoint(
   itemsComplete: boolean,
   customersComplete: boolean,
   suppliersComplete: boolean,
+  catalogVersion: number,
 ) {
   if (salesComplete && saleLinesComplete && itemsComplete && customersComplete && suppliersComplete) {
     return JSON.stringify({
       version: 5,
+      catalogVersion,
       watermark: completedAt.toISOString(),
       salesCursor: null,
       saleLinesCursor: null,
@@ -132,6 +137,7 @@ function nextCheckpoint(
   }
   return JSON.stringify({
     version: 5,
+    catalogVersion,
     watermark: previous.watermark,
     salesCursor,
     saleLinesCursor,
@@ -324,10 +330,10 @@ export async function POST(request: Request) {
         : await optionalCollection("products and inventory", "Item", {
             maxPages: 1,
             cursor: previous.itemsCursor,
-            modifiedSince: previous.itemsCursor || Number(existingCommerce?.products ?? 0) === 0
+            modifiedSince: previous.catalogVersion !== 1 || previous.itemsCursor || Number(existingCommerce?.products ?? 0) === 0
               ? null
               : previous.watermark,
-            loadRelations: ["ItemShops", "ItemPrices"],
+            loadRelations: ["ItemShops", "ItemPrices", "Category"],
           });
       const customersPage = previous.customersComplete && Number(existingCommerce?.customers ?? 0) > 0
         ? { data: [], pages: 0, cursor: null as string | null }
@@ -620,19 +626,19 @@ export async function POST(request: Request) {
       }
       const productStatements = products.map((product) => database.prepare(`
           INSERT INTO commerce_products
-            (id, organization_id, provider, connection_id, external_product_id, sku, name, category_ref, supplier_ref,
+            (id, organization_id, provider, connection_id, external_product_id, sku, name, category_ref, category_name, supplier_ref,
              default_cost_cents, default_price_cents, archived, source_updated_at, source_payload_hash,
              sync_run_id, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(organization_id, provider, connection_id, external_product_id) ${catalogProductRefs.has(product.externalProductId) ? `DO UPDATE SET
-            sku = excluded.sku, name = excluded.name, category_ref = excluded.category_ref,
+            sku = excluded.sku, name = excluded.name, category_ref = excluded.category_ref, category_name = excluded.category_name,
             supplier_ref = excluded.supplier_ref, default_cost_cents = excluded.default_cost_cents,
             default_price_cents = excluded.default_price_cents, archived = excluded.archived,
             source_updated_at = excluded.source_updated_at, source_payload_hash = excluded.source_payload_hash,
             sync_run_id = excluded.sync_run_id, updated_at = excluded.updated_at` : "DO NOTHING"}
         `).bind(
           crypto.randomUUID(), context.organizationId, LIGHTSPEED_R_PROVIDER, connection.id, scopedRef(product.externalProductId),
-          product.sku, product.name, scopedRef(product.categoryRef), scopedRef(product.supplierRef), product.defaultCostCents,
+          product.sku, product.name, scopedRef(product.categoryRef), "categoryName" in product ? product.categoryName ?? null : null, scopedRef(product.supplierRef), product.defaultCostCents,
           product.defaultPriceCents, product.archived ? 1 : 0, product.sourceUpdatedAt,
           product.sourcePayloadHash, runId, now,
         ));
@@ -701,6 +707,7 @@ export async function POST(request: Request) {
         itemsComplete,
         customersComplete,
         suppliersComplete,
+        itemsPage.failed ? previous.catalogVersion : 1,
       );
       const safeCheckpoint = computedCheckpoint;
       const recordsRead = recentSalesPage.data.length + salesPage.data.length + saleLinesPage.data.length + itemsPage.data.length + customersPage.data.length + suppliersPage.data.length + paymentTypesPage.data.length;

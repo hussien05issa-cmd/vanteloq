@@ -1,0 +1,1 @@
+ALTER TABLE `commerce_products` ADD `category_name` text;

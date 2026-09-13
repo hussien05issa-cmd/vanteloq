@@ -972,6 +972,7 @@ export const commerceProducts = sqliteTable(
     sku: text("sku").notNull(),
     name: text("name").notNull(),
     categoryRef: text("category_ref"),
+    categoryName: text("category_name"),
     supplierRef: text("supplier_ref"),
     defaultCostCents: integer("default_cost_cents"),
     // Provider cost remains untouched. An owner-supplied cost is stored
