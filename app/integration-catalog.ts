@@ -58,7 +58,7 @@ export function integrationPublicStatus(provider: IntegrationCatalogEntry): Inte
 
   switch (provider.availability) {
     case "credentials_required":
-      return { label: "Setup required", tone: "setup" };
+      return { label: "Authorize and review", tone: "setup" };
     case "provider_access_required":
       return { label: "Provider access needed", tone: "setup" };
     case "provider_build_required":

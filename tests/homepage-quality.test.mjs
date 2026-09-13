@@ -44,7 +44,7 @@ test("homepage copy stays within the verified product boundary", async () => {
   assert.match(connections, /QuickBooks[\s\S]*?Sandbox only/);
   assert.match(connections, /Plaid[\s\S]*?Production approval needed/);
   assert.match(connections, /Xero[\s\S]*?In development/);
-  assert.match(connections, /Stripe[\s\S]*?Setup required/);
+  assert.match(connections, /Stripe[\s\S]*?Authorize and review/);
   assert.match(connections, /Connect the tools that already run your business/);
   assert.match(connections, /Use owner-authorized balances and transactions in cash planning/);
   assert.doesNotMatch(connections, /(?:AVAILABLE NOW|PRODUCTION READY|FULLY CONNECTED|honest availability)/i);
