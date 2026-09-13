@@ -181,7 +181,7 @@ export function lightspeedRCheckpointReadyForApproval(value: string | null) {
   if (!value) return false;
   try {
     const parsed = JSON.parse(value) as Record<string, unknown>;
-    if (parsed.version !== 4 || typeof parsed.watermark !== "string" || Number.isNaN(Date.parse(parsed.watermark))) {
+    if (parsed.version !== 5 || typeof parsed.watermark !== "string" || Number.isNaN(Date.parse(parsed.watermark))) {
       return false;
     }
     const cursorKeys = ["salesCursor", "saleLinesCursor", "itemsCursor", "customersCursor", "suppliersCursor"];
@@ -530,6 +530,25 @@ export async function normalizeLightspeedRSupplier(vendor: Record<string, unknow
   return { ...normalized, sourcePayloadHash: await lightspeedRSha256(JSON.stringify(normalized)) };
 }
 
+// R-Series calcSubtotal is BEFORE line and transaction discounts. calcTotal
+// includes tax. Keep both ingestion paths on the same pre-tax net definition.
+// Reference: https://developers.lightspeedhq.com/retail/endpoints/SaleLine/
+function saleLineEconomics(line: Record<string, unknown>, quantity: number) {
+  const discount = line.calcLineDiscount != null || line.calcTransactionDiscount != null
+    ? (finiteNumber(line.calcLineDiscount) ?? 0) + (finiteNumber(line.calcTransactionDiscount) ?? 0)
+    : finiteNumber(line.calcDiscount) ?? 0;
+  const subtotal = line.calcSubtotal == null ? null : finiteNumber(line.calcSubtotal);
+  const total = line.calcTotal == null ? null : finiteNumber(line.calcTotal);
+  const net = subtotal != null ? subtotal - discount : total != null
+    ? total - (finiteNumber(line.calcTax1) ?? 0) - (finiteNumber(line.calcTax2) ?? 0)
+    : (finiteNumber(line.unitPrice) ?? 0) * quantity - discount;
+  return {
+    netSalesCents: money(net),
+    costCents: money(line.calcFIFOCost ?? line.calcAvgCost ?? Number(line.fifoCost ?? line.avgCost ?? 0) * quantity),
+    discountCents: Math.abs(money(discount)),
+  };
+}
+
 export async function normalizeLightspeedRSaleLines(sale: Record<string, unknown>): Promise<NormalizedLightspeedRSaleLine[]> {
   const externalSaleId = stringValue(sale.saleID);
   if (!externalSaleId) throw new Error("Sale ID is missing.");
@@ -551,9 +570,7 @@ export async function normalizeLightspeedRSaleLines(sale: Record<string, unknown
       sku: limitedText(line.customSku ?? line.upc ?? item.customSku ?? item.upc, 160),
       productName: limitedText(line.description ?? item.description, 240),
       quantityMilli: Math.round(quantity * 1000),
-      netSalesCents: money(line.calcSubtotal ?? line.calcTotal ?? Number(line.unitPrice ?? 0) * quantity),
-      costCents: money(line.calcFIFOCost ?? line.calcAvgCost ?? Number(line.avgCost ?? 0) * quantity),
-      discountCents: Math.abs(money(line.calcDiscount)),
+      ...saleLineEconomics(line, quantity),
     };
     return { ...normalized, sourcePayloadHash: await lightspeedRSha256(JSON.stringify(normalized)) };
   }));
@@ -575,9 +592,7 @@ export async function normalizeLightspeedRSaleLine(line: Record<string, unknown>
     sku: limitedText(line.customSku ?? line.upc ?? item.customSku ?? item.upc, 160),
     productName: limitedText(line.description ?? item.description, 240),
     quantityMilli: Math.round(quantity * 1000),
-    netSalesCents: money(line.calcSubtotal ?? line.calcTotal ?? Number(line.unitPrice ?? 0) * quantity),
-    costCents: money(line.calcFIFOCost ?? line.calcAvgCost ?? Number(line.avgCost ?? 0) * quantity),
-    discountCents: Math.abs(money(line.calcDiscount)),
+    ...saleLineEconomics(line, quantity),
   };
   return { ...normalized, sourcePayloadHash: await lightspeedRSha256(JSON.stringify(normalized)) };
 }
