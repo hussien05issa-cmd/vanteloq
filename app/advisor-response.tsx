@@ -35,7 +35,7 @@ export function AdvisorAnswerContent({ text }: { text: string }) {
 
 export default function AdvisorResponse({ title, body, limitation, children }: { title: string; body: string; limitation: string; children?: ReactNode }) {
   return <article className="advisor-answer">
-    <header className="advisor-response-heading"><VanteloqAiLogo size={32} decorative/><strong>Vanteloq AI</strong></header>
+    <header className="advisor-response-heading"><VanteloqAiLogo size={36} decorative/><strong>Vanteloq AI</strong></header>
     <h3>{title}</h3>
     <AdvisorAnswerContent text={body}/>
     <div>{limitation}</div>

@@ -60,7 +60,7 @@ export default function AdvisorComposer({ question, onQuestion, dataUseAccepted,
 
   return <section className={`ai-studio${hasConversation ? " has-conversation" : " is-empty"}`} aria-label="Vanteloq AI conversation">
     <header className="ai-studio-header">
-      <div className="vanteloq-ai-heading"><VanteloqAiLogo size={30} decorative/><strong>Vanteloq AI</strong></div>
+      <div className="vanteloq-ai-heading"><VanteloqAiLogo size={36} thinking={thinking} active={Boolean(question.trim())} decorative/><strong>Vanteloq AI</strong></div>
       <div className="ai-header-tools">
         {onNewChat && <button type="button" disabled={loading} onClick={() => { onNewChat(); onConsent(false); input.current?.focus(); }} title="Start a new chat. Saved chats stay in Settings."><WorkspaceIcon name="Business Brief"/><span>New chat</span></button>}
         <button type="button" aria-haspopup="dialog" aria-controls="advisor-settings" onClick={() => openSettings()}><WorkspaceIcon name="Settings"/><span>Settings</span></button>
@@ -69,7 +69,7 @@ export default function AdvisorComposer({ question, onQuestion, dataUseAccepted,
 
     <div className="ai-chat-column">
       <div className="ai-conversation" aria-label="Conversation">
-        {!hasConversation && <div className="ai-welcome"><VanteloqAiLogo size={56} decorative/><h2>What can I help you with?</h2><p>Business insights, financial questions or help with Vanteloq.</p></div>}
+        {!hasConversation && <div className="ai-welcome"><VanteloqAiLogo size={96} active={Boolean(question.trim())} decorative/><h2>What can I help you with?</h2><p>Business insights, financial questions or help with Vanteloq.</p></div>}
         {children}
       </div>
 

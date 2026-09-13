@@ -27,7 +27,7 @@ test("advisor readiness requires consent, a bounded question and no active reque
 });
 
 test("advisor visibly explains its disabled state and labels its controls", () => {
-  const markup = renderToStaticMarkup(<AdvisorComposer question="Sales?" onQuestion={() => {}} dataUseAccepted={false} onConsent={() => {}} loading={false} onSubmit={() => {}}/>);
+  const markup = renderToStaticMarkup(<AdvisorComposer question="Sales?" onQuestion={() => {}} dataUseAccepted={false} onConsent={() => {}} loading={false} onSubmit={() => {}} providers={{ openai: { ready: true } }}/>);
   assert.match(markup, /type="submit" disabled=""/);
   assert.match(markup, /Accept the data-use notice/);
   assert.match(markup, /for="advisor-question"/);
