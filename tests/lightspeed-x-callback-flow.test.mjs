@@ -100,6 +100,7 @@ test("X-Series isolates two retailer accounts and every account action", async (
     await activateTestSubscription(database, (await onboarding.json()).organization.id);
 
     let failNorthOutletVerification = false;
+    let saleVersion = 1, corruptSale = false, currency = "CAD";
     globalThis.fetch = async (input, init) => {
       const request = input instanceof Request ? input : new Request(input, init);
       const url = new URL(request.url);
@@ -109,7 +110,7 @@ test("X-Series isolates two retailer accounts and every account action", async (
           access_token: `access-${url.hostname}`,
           refresh_token: `refresh-${url.hostname}`,
           expires_in: 3600,
-          scope: "outlets:read sales:read",
+          scope: "customers:read inventory:read outlets:read products:read retailer:read sales:read suppliers:read",
         });
       }
       if (url.pathname === "/api/2026-07/outlets") {
@@ -120,15 +121,33 @@ test("X-Series isolates two retailer accounts and every account action", async (
         return Response.json({ data: [{ id: "outlet-1", name: `${url.hostname} outlet` }], version: { max: 1 } });
       }
       if (url.pathname === "/api/2026-07/sales") {
-        if (url.searchParams.has("after")) return Response.json({ data: [], version: { max: 1 } });
+        if (Number(url.searchParams.get("after") ?? 0) >= saleVersion) return Response.json({ data: [], version: { max: saleVersion } });
         return Response.json({
           data: [{
-            id: "sale-1", state: "closed", date: "2026-08-10T15:00:00Z",
-            outlet_id: "outlet-1", totals: { total_price: 42.55, total_tax: 2.55 },
-            line_items: [{ quantity: 1, pricing: { cost: 18 } }], _metadata: { version: 1 },
+            id: "sale-1", state: saleVersion === 3 ? "voided" : "closed", date: "2026-08-10T15:00:00Z",
+            source: { outlet_id: "outlet-1" }, totals: { price: saleVersion === 2 ? 60 : 40, tax: 2.55, price_incl_tax: saleVersion === 2 ? 62.55 : 42.55 },
+            line_items: [{ id: "line-1", product: { id: "product-1" }, quantity: saleVersion === 2 ? 3 : 2, pricing: { total: corruptSale ? 1 : saleVersion === 2 ? 60 : 40, cost: 9 } }], _metadata: { version: saleVersion },
+            payments: [{ id: "payment-1", amount: saleVersion === 2 ? 62.55 : 42.55, date: "2026-08-10T15:00:00Z", type: { name: "Cash" } }],
           }],
-          version: { max: 1 },
+          version: { max: saleVersion },
         });
+      }
+      if (url.pathname === "/api/2026-07/retailer") return Response.json({ data: { domain_prefix: url.hostname.split(".")[0], currency: { code: currency } } });
+      const catalogs = {
+        products: [{ id: "product-1", sku: "CRE", name: "Creatine", product_category: { id: "cat", name: "Performance" }, supply_price: 9, active: true }],
+        customers: [{ id: "customer-1", first_name: "Test", email: "do-not-store" }],
+        suppliers: [{ id: "supplier-1", name: "Supplier" }],
+        inventory: [{ id: "stock-1", product_id: "product-1", outlet_id: "outlet-1", current_inventory_level: 22, reorder_point: 5 }],
+      };
+      const resource = url.pathname.split("/").at(-1);
+      if (catalogs[resource]) {
+        const after = resource === "inventory" ? (await request.json()).after : url.searchParams.get("after");
+        if (resource === "products" && url.hostname.startsWith("history-store.")) {
+          const rows = !after ? [catalogs.products[0], ...Array.from({length:99},(_,i)=>({id:'history-'+i,sku:'H'+i,name:'Historical item '+i}))]
+            : Number(after)===100 ? [{id:'history-last',sku:'LAST',name:'Final history item'}] : [];
+          return Response.json({data:rows,version:{max:!after?100:101}});
+        }
+        return Response.json({ data: after ? [] : catalogs[resource], version: { max: 1 } });
       }
       throw new Error(`Unexpected outbound request: ${url.origin}${url.pathname}`);
     };
@@ -256,7 +275,7 @@ test("X-Series isolates two retailer accounts and every account action", async (
         method: "POST", headers: ownerHeaders(true), body: JSON.stringify({ connectionId }),
       }), environment, context);
       assert.equal(sync.status, 200, await sync.clone().text());
-      assert.equal((await sync.json()).run.recordsStaged, 1);
+      assert.ok((await sync.json()).run.recordsStaged >= 7);
     }
 
     const connectionCount = await database.prepare(
@@ -276,7 +295,40 @@ test("X-Series isolates two retailer accounts and every account action", async (
       { connections: 2, secrets: 2, mappings: 2, sales: 2 },
     );
     assert.deepEqual(new Set(stagedRows.results.map((row) => row.connectionId)), new Set([firstConnectionId, secondConnectionId]));
-    assert.deepEqual(new Set(stagedRows.results.map((row) => row.externalSaleId)), new Set(["sale-1"]));
+    assert.equal(new Set(stagedRows.results.map((row) => row.externalSaleId)).size, 2);
+    assert.ok(stagedRows.results.every(row => row.externalSaleId.endsWith(":sale-1")));
+
+    const syncNorth = () => worker.fetch(new Request(`${origin}/api/v1/integrations/lightspeed/sync`, { method: "POST", headers: ownerHeaders(true), body: JSON.stringify({ connectionId: firstConnectionId }) }), environment, context);
+    const local = await database.prepare("SELECT id FROM organization_locations LIMIT 1").first();
+    await database.prepare("UPDATE integration_location_mappings SET status='mapped',local_location_id=? WHERE connection_id=?").bind(local.id,firstConnectionId).run();
+    assert.equal((await syncNorth()).status,200);
+    const approval = await worker.fetch(new Request(`${origin}/api/v1/integrations`, { method: "POST", headers: ownerHeaders(true), body: JSON.stringify({ action: "approve_data", connectionId: firstConnectionId, confirmed: true }) }), environment, context);
+    assert.equal(approval.status,200,await approval.clone().text());
+    const publication = await syncNorth();
+    assert.equal(publication.status,200,await publication.clone().text());
+    assert.equal((await publication.json()).dataPromotionEnabled,true);
+    const metric = await database.prepare("SELECT net_sales_cents net,units_sold units,cost_of_goods_cents cost FROM daily_business_metrics WHERE source_connection_id=?").bind(firstConnectionId).first();
+    assert.deepEqual(metric,{net:4000,units:2,cost:1800});
+    assert.equal((await database.prepare("SELECT on_hand_quantity quantity FROM inventory_balances WHERE source_connection_id=?").bind(firstConnectionId).first()).quantity,22);
+    assert.equal((await database.prepare("SELECT category_name category FROM commerce_products WHERE connection_id=?").bind(firstConnectionId).first()).category,"Performance");
+    assert.equal((await database.prepare("SELECT email FROM commerce_customers WHERE connection_id=?").bind(firstConnectionId).first()).email,null);
+    saleVersion = 2;
+    assert.equal((await syncNorth()).status,200);
+    assert.equal((await database.prepare("SELECT net_sales_cents net FROM daily_business_metrics WHERE source_connection_id=?").bind(firstConnectionId).first()).net,6000);
+    assert.equal((await database.prepare("SELECT COUNT(*) count FROM commerce_sale_lines WHERE connection_id=?").bind(firstConnectionId).first()).count,1);
+    saleVersion = 3;
+    assert.equal((await syncNorth()).status,200);
+    assert.equal((await database.prepare("SELECT COUNT(*) count FROM commerce_sale_lines WHERE connection_id=?").bind(firstConnectionId).first()).count,0);
+    assert.equal((await database.prepare("SELECT COUNT(*) count FROM daily_business_metrics WHERE source_connection_id=?").bind(firstConnectionId).first()).count,0);
+    assert.equal((await database.prepare("SELECT COUNT(*) count FROM commerce_sale_lines WHERE connection_id=?").bind(secondConnectionId).first()).count,1);
+    const checkpointBefore = (await database.prepare("SELECT last_sync_cursor cursor FROM integration_connections WHERE id=?").bind(firstConnectionId).first()).cursor;
+    saleVersion = 4; corruptSale = true;
+    const corrupt = await syncNorth(); assert.equal(corrupt.status,502);
+    assert.equal((await corrupt.json()).error.code,"LIGHTSPEED_RECORDS_INVALID");
+    assert.equal((await database.prepare("SELECT last_sync_cursor cursor FROM integration_connections WHERE id=?").bind(firstConnectionId).first()).cursor,checkpointBefore);
+    corruptSale = false; currency = "USD";
+    assert.equal((await (await syncNorth()).json()).error.code,"LIGHTSPEED_CURRENCY_MISMATCH");
+    currency = "CAD";
 
     const integrations = await worker.fetch(
       new Request(`${origin}/api/v1/integrations`, { headers: ownerHeaders() }),
@@ -300,6 +352,17 @@ test("X-Series isolates two retailer accounts and every account action", async (
     assert.equal((await database.prepare(
       "SELECT COUNT(*) count FROM integration_secrets WHERE provider = 'lightspeed'",
     ).first()).count, 1);
+    saleVersion=1; corruptSale=false;
+    const historyId=await connectAccount("history-store");
+    await database.prepare("UPDATE integration_location_mappings SET status='mapped',local_location_id=? WHERE connection_id=?").bind(local.id,historyId).run();
+    const syncHistory=()=>worker.fetch(new Request(`${origin}/api/v1/integrations/lightspeed/sync`,{method:'POST',headers:ownerHeaders(true),body:JSON.stringify({connectionId:historyId})}),environment,context);
+    const historyFirst=await syncHistory(); assert.equal(historyFirst.status,200,await historyFirst.clone().text());
+    const historyFirstBody=await historyFirst.json(); assert.equal(historyFirstBody.backfillComplete,false); assert.equal(historyFirstBody.reconciliation.inventoryBalances,0);
+    const earlyApproval=await worker.fetch(new Request(`${origin}/api/v1/integrations`,{method:'POST',headers:ownerHeaders(true),body:JSON.stringify({action:'approve_data',connectionId:historyId,confirmed:true})}),environment,context);
+    assert.equal((await earlyApproval.json()).error.code,'INTEGRATION_HISTORY_INCOMPLETE');
+    const historySecond=await syncHistory(); assert.equal(historySecond.status,200,await historySecond.clone().text());
+    const historySecondBody=await historySecond.json(); assert.equal(historySecondBody.backfillComplete,true); assert.equal(historySecondBody.reconciliation.inventoryBalances,1);
+    assert.equal((await database.prepare("SELECT COUNT(*) count FROM commerce_products WHERE connection_id=?").bind(historyId).first()).count,101);
   } finally {
     globalThis.fetch = originalFetch;
     try {

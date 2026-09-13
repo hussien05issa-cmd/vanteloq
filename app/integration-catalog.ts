@@ -86,7 +86,7 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
     category: "Point of sale",
     availability: "credentials_required",
     activationRequirement:
-      "The X-Series connection is built. Authorize a store, map outlets, and review a sample before dashboard results can use the data.",
+      "Connect an X-Series retailer to import sales, products, categories, stock, customers and suppliers. Map outlets and review the completed import before enabling reports.",
   },
   {
     id: "lightspeed-r",

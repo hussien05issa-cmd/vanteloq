@@ -1,0 +1,1 @@
+ALTER TABLE `commerce_sale_lines` ADD `cost_known` integer DEFAULT false NOT NULL;

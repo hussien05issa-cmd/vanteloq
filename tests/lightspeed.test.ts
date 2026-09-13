@@ -80,13 +80,13 @@ test("X-Series OAuth state is bound to the initiating browser", () => {
 });
 
 test("X-Series callback rejects missing and additional OAuth scopes", () => {
-  assert.deepEqual(validateLightspeedGrantedScopes("outlets:read sales:read"), [...LIGHTSPEED_SCOPES]);
+  assert.deepEqual(validateLightspeedGrantedScopes(LIGHTSPEED_SCOPES.join(" ")), [...LIGHTSPEED_SCOPES]);
   assert.throws(
     () => validateLightspeedGrantedScopes("outlets:read"),
     /every read-only scope required/i,
   );
   assert.throws(
-    () => validateLightspeedGrantedScopes("outlets:read sales:read products:write"),
+    () => validateLightspeedGrantedScopes(LIGHTSPEED_SCOPES.join(" ") + " products:write"),
     /unexpected OAuth permissions/i,
   );
 });
@@ -311,13 +311,20 @@ test("R-Series live snapshot calculates current-day sales, profit, average trans
   assert.equal(snapshot.hourly[12].netSalesCents, -2_000);
 });
 
+test("R-Series refund-only days preserve negative net revenue and returned cost", async () => {
+  const refund = await normalizeLightspeedRSale({ saleID: "refund-only", completed: "true", shopID: "8", completeTime: "2026-09-12T11:00:00-06:00", total: "-21", taxTotal: "-1", calcFIFOCost: "-8" });
+  const [day] = buildLightspeedRDailyMetrics([refund], "America/Edmonton");
+  assert.equal(day.netSalesCents,-2000); assert.equal(day.costOfGoodsCents,-800);
+  assert.equal(day.refundsCents,2000); assert.equal(day.transactionCount,0);
+});
+
 test("readiness reports a staged adapter with promotion disabled", () => {
   const readiness = lightspeedReadiness();
   assert.equal(readiness.adapterBuilt, true);
   assert.equal(readiness.credentialsConfigured, true);
-  assert.equal(readiness.mode, "read_only_staging");
+  assert.equal(readiness.mode, "read_only_live_sync");
   assert.equal(readiness.dataPromotionEnabled, false);
-  assert.deepEqual(readiness.scopes, ["outlets:read", "sales:read"]);
+  assert.deepEqual(readiness.scopes, [...LIGHTSPEED_SCOPES]);
 });
 
 test("retailer domains are constrained to a single safe prefix", () => {
@@ -382,7 +389,7 @@ test("sale normalization reads the official 2026-07 totals and line aggregate fi
   });
   assert.equal(normalized.externalVersion, "22446763475");
   assert.equal(normalized.outletRef, "outlet-live");
-  assert.equal(normalized.totalCents, 4_800);
+  assert.equal(normalized.totalCents, 5_040);
   assert.equal(normalized.taxCents, 240);
   assert.equal(normalized.discountCents, 1_200);
   assert.equal(normalized.costCents, 3_000);

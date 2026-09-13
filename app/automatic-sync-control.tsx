@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { apiFetch } from "./supabase-browser";
+import { POS_SYNC_CONSENT_VERSION, posSyncDataCategories } from "../domain/pos-sync-consent";
 
 export type AutomaticSyncStatus = {
   configured: boolean; healthy: boolean; canManage: boolean; enabled: boolean;
@@ -18,7 +19,7 @@ export default function AutomaticSyncControl({ provider, connectionId, accountNa
     setBusy(true); setError("");
     try {
       const response = await apiFetch("/api/v1/integrations/schedule", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider, connectionId, enabled: !status.enabled, authorizationVersion: "owner-background-sync-v1" }) });
+        body: JSON.stringify({ provider, connectionId, enabled: !status.enabled, authorizationVersion: "owner-background-sync-v1", consentAccepted: !status.enabled, consentNoticeVersion: POS_SYNC_CONSENT_VERSION }) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error?.message ?? "The sync setting could not be saved.");
       await refresh();
@@ -33,6 +34,7 @@ export default function AutomaticSyncControl({ provider, connectionId, accountNa
   return <section className="automatic-sync-control" aria-label={`Automatic sync for ${accountName}`}>
     <div className="automatic-sync-heading"><strong>Automatic sync</strong><span data-active={status.enabled}>{labels[status.status] ?? "Needs attention"}</span></div>
     <p>{detail}</p>
+    {!status.enabled && status.canManage && <details><summary>Data access and consent</summary><p>Enabling automatic sync authorizes Vanteloq to continue reading this connected account while you are signed out. It uses {posSyncDataCategories(provider).map(value => value.toLowerCase()).join("; ")}. Pause here or disconnect the account to stop future imports. This does not approve staged data for reports.</p></details>}
     {status.enabled && status.nextRunAt && <small>Next check: {new Date(status.nextRunAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</small>}
     {status.lastErrorCode && <small role="status">Sync needs attention: {status.lastErrorCode.toLowerCase().replaceAll("_", " ")}.</small>}
     {status.canManage && <button type="button" disabled={busy || !status.configured} onClick={() => void change()}
@@ -44,4 +46,3 @@ export default function AutomaticSyncControl({ provider, connectionId, accountNa
     {error && <p role="alert">{error}</p>}
   </section>;
 }
-

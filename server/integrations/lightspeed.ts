@@ -7,7 +7,7 @@ import {
 import { ApiError } from "../api";
 
 export const LIGHTSPEED_PROVIDER = "lightspeed";
-export const LIGHTSPEED_SCOPES = ["outlets:read", "sales:read"] as const;
+export const LIGHTSPEED_SCOPES = ["customers:read", "inventory:read", "outlets:read", "products:read", "retailer:read", "sales:read", "suppliers:read"] as const;
 export const LIGHTSPEED_OAUTH_BINDING_COOKIE = "__Host-vanteloq_lightspeed_oauth";
 const DOMAIN_PREFIX = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 const API_VERSION = /^20\d{2}-(?:0[1-9]|1[0-2])$/;
@@ -49,7 +49,7 @@ export function validateLightspeedGrantedScopes(scope: string | undefined): stri
     throw new ApiError(
       409,
       "LIGHTSPEED_SCOPES_INCOMPLETE",
-      "Lightspeed did not grant every read-only scope required by the pilot.",
+      "Lightspeed did not grant every read-only scope required by the importer. Reconnect this retailer.",
     );
   }
   const unexpected = granted.filter(
@@ -112,7 +112,7 @@ export function lightspeedReadiness() {
     missingConfiguration: missing,
     apiVersion: validApiVersion(env.LIGHTSPEED_X_API_VERSION || env.LIGHTSPEED_API_VERSION),
     scopes: [...LIGHTSPEED_SCOPES],
-    mode: "read_only_staging" as const,
+    mode: "read_only_live_sync" as const,
     dataPromotionEnabled: false,
   };
 }
@@ -377,22 +377,31 @@ export async function loadValidAccessToken(
 export async function fetchLightspeedCollection(
   organizationId: string,
   connectionId: string,
-  resource: "outlets" | "sales",
+  resource: "outlets" | "sales" | "products" | "customers" | "suppliers" | "inventory",
   options: { after?: string | null; maxPages?: number; fetcher?: typeof fetch } = {},
-): Promise<{ data: Record<string, unknown>[]; cursor: string | null; pages: number }> {
+): Promise<{ data: Record<string, unknown>[]; cursor: string | null; pages: number; hasMore: boolean }> {
   const fetcher = options.fetcher ?? fetch;
   const authorization = await loadValidAccessToken(organizationId, connectionId, fetcher);
   const data: Record<string, unknown>[] = [];
   let after = options.after ?? null;
   let pages = 0;
+  let hasMore = true;
   const maximum = Math.min(Math.max(options.maxPages ?? 1, 1), 10);
   while (pages < maximum) {
     const url = new URL(
       `https://${authorization.domainPrefix}.retail.lightspeed.app/api/${authorization.apiVersion}/${resource}`,
     );
-    url.searchParams.set("page_size", "100");
-    if (after) url.searchParams.set("after", after);
-    const response = await providerFetch(url, authorization.accessToken, fetcher);
+    if (after && !/^\d+$/.test(after)) throw new ApiError(409, "LIGHTSPEED_CURSOR_INVALID", "The provider cursor is invalid. It has not been advanced.");
+    if (resource !== "inventory") {
+      url.searchParams.set("page_size", "100");
+      if (after) url.searchParams.set("after", after);
+      if (["products", "customers", "suppliers"].includes(resource)) url.searchParams.set("deleted", "true");
+      if (resource === "products") url.searchParams.set("include_images", "false");
+    }
+    // /inventory is a read-only POST query in the current X-Series API.
+    const inventoryQuery = resource === "inventory" ? { size: 100, sort_direction: "asc", include_deleted: true, ...(after ? { after: Number(after) } : {}) } : undefined;
+    if (after && !Number.isSafeInteger(Number(after))) throw new ApiError(502, "LIGHTSPEED_CURSOR_INVALID", "The provider version exceeds the safe integer range.");
+    const response = await providerFetch(url, authorization.accessToken, fetcher, inventoryQuery);
     const body = await response.json() as { data?: unknown; version?: { max?: unknown } };
     if (!Array.isArray(body.data)) {
       throw new ApiError(502, "LIGHTSPEED_RESPONSE_INVALID", `Lightspeed returned an invalid ${resource} response.`);
@@ -401,24 +410,37 @@ export async function fetchLightspeedCollection(
     const page = body.data.filter(
       (item): item is Record<string, unknown> => !!item && typeof item === "object" && !Array.isArray(item),
     );
+    if (page.length !== body.data.length) throw new ApiError(502, "LIGHTSPEED_RESPONSE_INVALID", "The provider returned an invalid record. The cursor is preserved.");
     data.push(...page);
     const cursor = body.version?.max;
-    if (!page.length || (typeof cursor !== "number" && typeof cursor !== "string")) break;
+    if (!page.length) { hasMore = false; break; }
+    if ((typeof cursor !== "number" && typeof cursor !== "string") || !/^\d+$/.test(String(cursor)) || !Number.isSafeInteger(Number(cursor))) throw new ApiError(502, "LIGHTSPEED_CURSOR_INVALID", "Lightspeed returned records without a valid version cursor.");
     const next = String(cursor);
-    if (next === after) break;
+    if (after && BigInt(next) <= BigInt(after)) throw new ApiError(502, "LIGHTSPEED_CURSOR_STALLED", "The provider cursor did not advance. Retry without skipping records.");
     after = next;
+    if (page.length < 100) { hasMore = false; break; }
   }
-  return { data, cursor: after, pages };
+  return { data, cursor: after, pages, hasMore };
 }
 
-async function providerFetch(url: URL, accessToken: string, fetcher: typeof fetch) {
+export async function fetchLightspeedRetailer(organizationId: string, connectionId: string) {
+  const auth = await loadValidAccessToken(organizationId, connectionId);
+  const response = await providerFetch(new URL(`https://${auth.domainPrefix}.retail.lightspeed.app/api/${auth.apiVersion}/retailer`), auth.accessToken, fetch);
+  const body = await response.json() as { data?: Record<string, unknown> };
+  if (!body.data || typeof body.data !== "object" || Array.isArray(body.data)) throw new ApiError(502, "LIGHTSPEED_RESPONSE_INVALID", "The retailer response is invalid.");
+  return { domainPrefix: stringValue(body.data.domain_prefix), currency: stringValue(objectValue(body.data.currency).code), name: stringValue(body.data.name) };
+}
+
+async function providerFetch(url: URL, accessToken: string, fetcher: typeof fetch, readQuery?: Record<string, unknown>) {
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const response = await fetcher(url, {
       headers: {
         Accept: "application/json",
+        ...(readQuery ? { "Content-Type": "application/json" } : {}),
         Authorization: `Bearer ${accessToken}`,
         "User-Agent": "Vanteloq-Lightspeed-Connector/1.0",
       },
+      ...(readQuery ? { method: "POST", body: JSON.stringify(readQuery) } : {}),
       signal: AbortSignal.timeout(15_000),
     });
     if (response.ok) return response;
@@ -447,15 +469,15 @@ export async function normalizeLightspeedSale(
     ? sale.line_items.filter((item): item is Record<string, unknown> => !!item && typeof item === "object" && !Array.isArray(item))
     : [];
   const externalVersion = stringValue(metadata.version) || stringValue(sale.version) || "0";
-  const totalCents = firstMoney(
-    totals.price,
+  const taxCents = firstMoney(totals.tax, totals.total_tax, sale.total_tax, sale.tax);
+  const totalCents = firstMoneyOrNull(totals.price_incl_tax)
+    ?? (moneyCents(totals.price) !== null ? moneyCents(totals.price)! + taxCents : firstMoney(
     totals.total_price,
     totals.total,
     sale.total_price,
     sale.total,
     sale.total_incl,
-  );
-  const taxCents = firstMoney(totals.tax, totals.total_tax, sale.total_tax, sale.tax);
+  ));
   const lineDiscountCents = lines.reduce((sum, line) => {
     const pricing = objectValue(line.pricing);
     const quantity = finiteNumber(line.quantity, 0);
@@ -478,10 +500,9 @@ export async function normalizeLightspeedSale(
     outletRef:
       stringValue(sale.outlet_id) ||
       stringValue(source.outlet_id) ||
-      stringValue(source.register_id) ||
       null,
     soldAt: stringValue(sale.date) || stringValue(sale.created_at) || null,
-    state: stringValue(sale.state) || "unknown",
+    state: sale.deleted_at ? "voided" : stringValue(sale.state) === "closed" ? "completed" : stringValue(sale.state) || "unknown",
     totalCents,
     taxCents,
     costCents,

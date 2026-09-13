@@ -336,7 +336,8 @@ export const dailyBusinessMetrics = sqliteTable(
     uniqueIndex("daily_metrics_workspace_date_location_unique").on(table.organizationId, table.businessDate, table.locationRef),
     index("daily_metrics_workspace_date_idx").on(table.organizationId, table.businessDate),
     index("daily_metrics_workspace_source_idx").on(table.organizationId, table.sourceConnectionId),
-    check("daily_metrics_nonnegative_amounts_check", sql`${table.grossSalesCents} >= 0 and ${table.netSalesCents} >= 0 and ${table.costOfGoodsCents} >= 0 and ${table.refundsCents} >= 0 and ${table.discountsCents} >= 0 and ${table.labourCostCents} >= 0`),
+    // Refund-only days legitimately have negative net revenue and net COGS.
+    check("daily_metrics_nonnegative_amounts_check", sql`${table.grossSalesCents} >= 0 and ${table.refundsCents} >= 0 and ${table.discountsCents} >= 0 and ${table.labourCostCents} >= 0`),
     check("daily_metrics_nonnegative_counts_check", sql`${table.transactionCount} >= 0 and ${table.unitsSold} >= 0`),
   ],
 );
@@ -1122,6 +1123,8 @@ export const commerceSaleLines = sqliteTable(
     quantityMilli: integer("quantity_milli").notNull().default(0),
     netSalesCents: integer("net_sales_cents").notNull().default(0),
     costCents: integer("cost_cents").notNull().default(0),
+    // X-Series distinguishes an explicit zero cost from an absent cost field.
+    costKnown: integer("cost_known", { mode: "boolean" }).notNull().default(false),
     discountCents: integer("discount_cents").notNull().default(0),
     sourcePayloadHash: text("source_payload_hash").notNull(),
     syncRunId: text("sync_run_id").notNull().references(() => integrationSyncRuns.id, { onDelete: "cascade" }),

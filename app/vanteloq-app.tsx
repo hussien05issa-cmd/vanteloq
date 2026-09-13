@@ -2475,7 +2475,7 @@ function DataHub({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          reason: (provider === "lightspeed-r" || provider === "shopify" || provider === "shopify-pos" || provider === "square" || provider === "clover") && action === "sync" ? "manual" : undefined,
+          reason: (provider === "lightspeed" || provider === "lightspeed-r" || provider === "shopify" || provider === "shopify-pos" || provider === "square" || provider === "clover") && action === "sync" ? "manual" : undefined,
           connectionId,
           ...extraBody,
         }),
@@ -2536,7 +2536,7 @@ function DataHub({
     const body = await providerPost(
       provider,
       providerSyncRoutes[provider],
-      provider === "lightspeed-r" || provider === "shopify" || provider === "shopify-pos" || provider === "square" || provider === "clover" || provider === "moneris" ? "sync" : "sample",
+      provider === "lightspeed" || provider === "lightspeed-r" || provider === "shopify" || provider === "shopify-pos" || provider === "square" || provider === "clover" || provider === "moneris" ? "sync" : "sample",
       connectionId,
     );
     if (!body) return;
@@ -2551,11 +2551,11 @@ function DataHub({
     }
     setActiveSampleProvider(provider);
     setSampleResult(body);
-    showNotice(body.nextStep ?? (provider === "lightspeed-r" || provider === "shopify" || provider === "shopify-pos" || provider === "square" || provider === "clover" || provider === "moneris"
+    showNotice(body.nextStep ?? (provider === "lightspeed" || provider === "lightspeed-r" || provider === "shopify" || provider === "shopify-pos" || provider === "square" || provider === "clover" || provider === "moneris"
       ? `The ${provider === "clover" ? "Clover" : provider === "square" ? "Square" : provider === "shopify" ? "Shopify e-commerce" : provider === "shopify-pos" ? "Shopify POS" : "R-Series"} sync finished. Review its reconciliation before approval.`
       : `${provider === "stripe" ? "Stripe" : "X-Series"} sample staged; dashboard metrics remain unchanged`));
     await loadConnections();
-    if (provider === "lightspeed-r" || provider === "shopify" || provider === "shopify-pos" || provider === "square" || provider === "clover" || provider === "moneris") await refresh();
+    if (provider === "lightspeed" || provider === "lightspeed-r" || provider === "shopify" || provider === "shopify-pos" || provider === "square" || provider === "clover" || provider === "moneris") await refresh();
   };
   const syncMarketingProvider = async (
     provider: "google" | "meta",
@@ -2625,10 +2625,10 @@ function DataHub({
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error?.message ?? "The reporting setting could not be changed.");
-      if ((provider === "lightspeed-r" || provider === "shopify" || provider === "shopify-pos" || provider === "square" || provider === "clover") && body.publicationPending === true) {
-        const label = provider === "clover" ? "Clover" : provider === "square" ? "Square" : provider === "shopify" ? "Shopify e-commerce" : provider === "shopify-pos" ? "Shopify POS" : "R-Series";
+      if ((provider === "lightspeed" || provider === "lightspeed-r" || provider === "shopify" || provider === "shopify-pos" || provider === "square" || provider === "clover") && body.publicationPending === true) {
+        const label = provider === "lightspeed" ? "X-Series" : provider === "clover" ? "Clover" : provider === "square" ? "Square" : provider === "shopify" ? "Shopify e-commerce" : provider === "shopify-pos" ? "Shopify POS" : "R-Series";
         showNotice(`Reviewed ${label} data approved. Publishing it to the workspace now.`);
-        await stageProviderSample(provider as "lightspeed-r" | "shopify" | "shopify-pos" | "square" | "clover", connectionId);
+        await stageProviderSample(provider as "lightspeed" | "lightspeed-r" | "shopify" | "shopify-pos" | "square" | "clover", connectionId);
         return;
       }
       showNotice(body.nextStep ?? "Reviewed provider data is now available to dashboard features.");
@@ -2911,7 +2911,7 @@ function DataHub({
                   ? "Growth plan"
                   : "Starter plan";
               const connected = provider.status === "connected";
-              const hasLocationMapping = provider.id === "lightspeed" || provider.id === "lightspeed-r" || provider.id === "shopify" || provider.id === "shopify-pos" || provider.id === "square" || provider.id === "clover";
+              const hasLocationMapping = provider.id === "lightspeed" || provider.id === "lightspeed" || provider.id === "lightspeed-r" || provider.id === "shopify" || provider.id === "shopify-pos" || provider.id === "square" || provider.id === "clover";
               const isStripe = provider.id === "stripe";
               const isMoneris = provider.id === "moneris";
               const isQuickBooks = provider.id === "quickbooks";
@@ -3060,13 +3060,13 @@ function DataHub({
                               type="button"
                               onClick={() => void stageProviderSample(actionableProvider as "lightspeed" | "lightspeed-r" | "shopify" | "shopify-pos" | "square" | "clover" | "stripe" | "moneris", connection.id, connection.lastSuccessfulSyncAt)}
                               disabled={!canManageProvider || Boolean(connectionAction) || connection.syncActive}
-                            >{connectionAction === "sync" || connection.syncActive ? "Syncing…" : connectionAction === "sample" ? "Working…" : provider.id === "moneris" ? "Sync payments" : provider.id === "lightspeed-r" || provider.id === "shopify" || provider.id === "shopify-pos" || provider.id === "square" || provider.id === "clover" ? "Re-sync now" : "Stage sample"}</button>}
+                            >{connectionAction === "sync" || connection.syncActive ? "Syncing…" : connectionAction === "sample" ? "Working…" : provider.id === "moneris" ? "Sync payments" : provider.id === "lightspeed" || provider.id === "lightspeed-r" || provider.id === "shopify" || provider.id === "shopify-pos" || provider.id === "square" || provider.id === "clover" ? "Re-sync now" : "Stage sample"}</button>}
                             {hasLocationMapping && <button
                               type="button"
                               onClick={() => void loadProviderLocations(actionableProvider as "lightspeed" | "lightspeed-r" | "shopify" | "shopify-pos" | "square" | "clover", connection.id)}
                               disabled={!canManageProvider || Boolean(connectionAction)}
                             >{connectionAction === "locations" ? "Loading…" : `Map ${provider.id === "lightspeed-r" ? "shops" : provider.id === "clover" ? "merchant" : provider.id === "shopify" ? "channels" : provider.id === "square" || provider.id === "shopify-pos" ? "locations" : "outlets"}`}</button>}
-                            {(provider.id === "lightspeed-r" || provider.id === "shopify" || provider.id === "shopify-pos" || provider.id === "square" || provider.id === "clover") && connection.dataPromotionStatus === "staging" && connection.lastSuccessfulSyncAt && <button
+                            {(provider.id === "lightspeed" || provider.id === "lightspeed-r" || provider.id === "shopify" || provider.id === "shopify-pos" || provider.id === "square" || provider.id === "clover") && connection.dataPromotionStatus === "staging" && connection.lastSuccessfulSyncAt && <button
                               type="button"
                               onClick={() => requestConnectionDataApproval(provider.id, connection.id)}
                               disabled={!canManageProvider || Boolean(connectionAction)}
@@ -3123,7 +3123,7 @@ function DataHub({
                         ? "Re-authentication required · sync paused"
                         : connected
                         ? provider.dataPromotionStatus === "approved"
-                          ? provider.id === "lightspeed-r" || provider.id === "shopify" || provider.id === "shopify-pos" || provider.id === "square" || provider.id === "clover"
+                          ? provider.id === "lightspeed" || provider.id === "lightspeed-r" || provider.id === "shopify" || provider.id === "shopify-pos" || provider.id === "square" || provider.id === "clover"
                             ? "Approved sales, catalog, customers and suppliers are available"
                             : provider.id === "plaid"
                               ? "Reviewed bank data is available · fresh balances power cash analysis · transactions await review"
