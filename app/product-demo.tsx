@@ -5,6 +5,7 @@ import Link from "next/link";
 import { DEMO_LOCATIONS, demoAnalysis, demoScenario, type DemoLocation, type DemoQuality } from "../domain/product-demo";
 import BookloqDemo from "./bookloq-demo";
 import RetailDemo from "./retail-demo";
+import { demoRetailSection } from "../domain/public-journey";
 import VanteloqAiLogo from "./vanteloq-ai-logo";
 
 const money = (cents: number | null) => cents === null ? "Unavailable" : new Intl.NumberFormat("en-CA", { style: "currency", currency: "CAD", maximumFractionDigits: 0 }).format(cents / 100);
@@ -19,8 +20,13 @@ export default function ProductDemo({ standalone = false }: { standalone?: boole
   const [location, setLocation] = useState<DemoLocation>("all");
   const [quality, setQuality] = useState<DemoQuality>("complete");
   const [view, setView] = useState<typeof views[number]>("Overview");
+  const [retailSection, setRetailSection] = useState<NonNullable<ReturnType<typeof demoRetailSection>>>("Why it changed");
   useEffect(() => {
-    const chooseView = () => { if (window.location.hash === "#bookloq") queueMicrotask(() => setView("BookLoQ cash")); if (window.location.hash === "#retail") queueMicrotask(() => setView("Retail intelligence")); };
+    const chooseView = () => {
+      const section = demoRetailSection(window.location.hash);
+      if (window.location.hash === "#bookloq") queueMicrotask(() => setView("BookLoQ cash"));
+      else if (section) queueMicrotask(() => { setRetailSection(section); setView("Retail intelligence"); });
+    };
     chooseView(); window.addEventListener("hashchange", chooseView);
     return () => window.removeEventListener("hashchange", chooseView);
   }, []);
@@ -33,7 +39,7 @@ export default function ProductDemo({ standalone = false }: { standalone?: boole
   const projection = demoScenario(current.netSalesCents!, current.grossProfitCents, price, cost);
   const marginChange = current.grossMarginPercent !== null && previous.grossMarginPercent !== null && kpis.comparisonComplete ? current.grossMarginPercent - previous.grossMarginPercent : null;
   const visibleRows = rows.slice(recordPage * 8, recordPage * 8 + 8);
-  const reset = () => { setLocation("all"); setQuality("complete"); setView("Overview"); setRecordPage(0); setPrice(0); setCost(0); setSuggestions(true); };
+  const reset = () => { setRetailSection("Why it changed"); setLocation("all"); setQuality("complete"); setView("Overview"); setRecordPage(0); setPrice(0); setCost(0); setSuggestions(true); };
 
   return <section className="product-demo" id="demo" aria-labelledby={`${id}-title`}>
     <div className="demo-intro">
@@ -47,7 +53,7 @@ export default function ProductDemo({ standalone = false }: { standalone?: boole
         {view !== "BookLoQ cash" && <label>Location<select aria-label="Demo location" value={location} onChange={event => { setLocation(event.target.value as DemoLocation); setRecordPage(0); }}><option value="all">Both shops</option><option value="central">Central shop</option><option value="riverside">Riverside shop</option></select></label>}
       </div>
       <div className="demo-content">
-        {view === "Retail intelligence" && <RetailDemo location={location}/>}
+        {view === "Retail intelligence" && <RetailDemo location={location} initialSection={retailSection}/>}
         {view !== "BookLoQ cash" && view !== "Retail intelligence" && <><div className="demo-period"><div><strong>{view === "Scenario lab" ? "Model a decision" : view === "Source records" ? "Follow the evidence" : "Performance, with context"}</strong><span>May 29 to June 25, 2026 · CAD · Sales exclude tax</span></div><label>Test data quality<select aria-label="Demo data quality" value={quality} onChange={event => { setQuality(event.target.value as DemoQuality); setRecordPage(0); }}><option value="complete">Complete records</option><option value="missing-cost">One cost is missing</option><option value="missing-days">Prior week is missing</option></select></label></div>
         <p className={`demo-quality ${quality === "complete" ? "complete" : "limited"}`} role="status">{quality === "missing-cost" ? "Cost gap detected. Gross profit, margin and scenarios are unavailable until the missing cost is supplied." : quality === "missing-days" ? "Incomplete baseline. Current totals remain visible; growth comparisons are unavailable." : `${currentRows.length} current-period daily records · Complete 28-day comparison across the selected shops`}</p></>}
         {view === "BookLoQ cash" && <BookloqDemo/>}
