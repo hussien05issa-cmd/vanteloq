@@ -1,4 +1,5 @@
 "use client";
+import CustomPlanCallout from "./custom-plan-callout";
 
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -1876,7 +1877,7 @@ export function AccountDeletionSettings() {
         {data.scope === "workspace" && <label className="deletion-check"><input type="checkbox" checked={acknowledgeBillingCancellation} onChange={(event) => setAcknowledgeBillingCancellation(event.target.checked)} /><span>I understand that the Stripe subscription will be canceled immediately.</span></label>}
         <button type="button" className="danger" disabled={!data.available || !/^\d{6}$/.test(verificationCode) || confirmation !== data.confirmation || !acknowledgeNoRecovery || (data.scope === "workspace" && !acknowledgeBillingCancellation) || busy} onClick={() => void remove()}>{busy ? "Deleting securely…" : data.scope === "workspace" ? "Permanently delete workspace" : "Permanently delete my account"}</button>
       </div>}
-      {data && !data.available && <p className="form-error">Secure deletion is temporarily unavailable. Contact the privacy officer at hussienissa@lexedgeconsulting.com.</p>}
+      {data && !data.available && <p className="form-error">Secure deletion is temporarily unavailable. Contact the privacy officer through <a href="/contact">our private contact form</a>.</p>}
       {error && <p className="form-error" role="alert">{error}</p>}
     </section>
   );
@@ -1926,5 +1927,6 @@ function BillingSettings() {
       <div className="provider-settings"><article><div><b>Current access</b><p>{data?.current.plan ? `${data.current.plan} · ${data.current.status}` : "No synchronized paid subscription."}</p></div><span>{data?.current.cancelAtPeriodEnd ? "Cancels at renewal" : data?.current.status ?? "Not subscribed"}</span></article></div>
       <footer>{managed ? <button className="primary" disabled={busy || !data?.configured} onClick={() => void open("/api/v1/billing/portal")}>{busy ? "Opening…" : "Manage billing in Stripe"}</button> : <button className="primary" disabled={busy || !data?.configured} title={!data?.configured ? "Stripe products, prices and webhook secret must be configured first." : "Open secure Stripe Checkout"} onClick={() => void open("/api/v1/billing/checkout", { plan, interval: "month", includeBookloq: bookloq })}>{busy ? "Opening…" : data?.configured ? "Continue to secure checkout" : "Stripe setup required"}</button>}</footer>
     </>}
+    <CustomPlanCallout/>
   </section>;
 }

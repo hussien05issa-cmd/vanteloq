@@ -199,14 +199,24 @@ export function reconciliationDifference(statementClosingCents: number, bookBala
   if (!Number.isSafeInteger(statementClosingCents) || !Number.isSafeInteger(bookBalanceCents)) {
     throw new Error("Reconciliation values must use integer minor units.");
   }
-  return statementClosingCents - bookBalanceCents;
+  return exactMoney(BigInt(statementClosingCents) - BigInt(bookBalanceCents));
 }
 
 export function calculateCanadianTax(subtotalCents: number, rateBasisPoints: number): number {
-  if (!Number.isSafeInteger(subtotalCents) || subtotalCents < 0 || !Number.isInteger(rateBasisPoints) || rateBasisPoints < 0) {
+  if (!Number.isSafeInteger(subtotalCents) || subtotalCents < 0 || !Number.isSafeInteger(rateBasisPoints) || rateBasisPoints < 0) {
     throw new Error("Tax inputs must be non-negative integers.");
   }
-  return Math.round((subtotalCents * rateBasisPoints) / 10_000);
+  return exactMoney((BigInt(subtotalCents) * BigInt(rateBasisPoints) + BigInt(5_000)) / BigInt(10_000));
+}
+
+function exactMoney(value: bigint): number {
+  if (value > BigInt(Number.MAX_SAFE_INTEGER) || value < BigInt(Number.MIN_SAFE_INTEGER)) throw new Error("Ledger totals exceed safe integer precision.");
+  return Number(value);
+}
+
+function ledgerCents(value: number): bigint {
+  if (!Number.isSafeInteger(value) || value < 0) throw new Error("Ledger amounts must be non-negative safe integer minor units.");
+  return BigInt(value);
 }
 
 export type LedgerAccountRow = {
@@ -224,20 +234,27 @@ export type LedgerAccountRow = {
 };
 
 export function accountBalance(row: LedgerAccountRow): number {
-  return row.normalBalance === "debit" ? row.debitCents - row.creditCents : row.creditCents - row.debitCents;
+  const net = ledgerCents(row.debitCents) - ledgerCents(row.creditCents);
+  return exactMoney(row.normalBalance === "debit" ? net : -net);
 }
 
 export function buildFinancialStatements(rows: readonly LedgerAccountRow[]) {
   const accounts = rows.map((row) => ({ ...row, balanceCents: accountBalance(row) }));
-  const sumType = (type: LedgerAccountRow["accountType"]) => accounts.filter((row) => row.accountType === type).reduce((sum, row) => sum + row.balanceCents, 0);
+  // Statement signs follow the account's class. A credit-normal contra asset,
+  // for example accumulated depreciation, reduces assets despite its positive
+  // account-level normal balance. Keep normal balances for account displays.
+  const statementBalance = (row: LedgerAccountRow) => row.accountType === "asset" || row.accountType === "expense"
+    ? ledgerCents(row.debitCents) - ledgerCents(row.creditCents) : ledgerCents(row.creditCents) - ledgerCents(row.debitCents);
+  const total = (selected: readonly LedgerAccountRow[]) => exactMoney(selected.reduce((sum, row) => sum + statementBalance(row), BigInt(0)));
+  const sumType = (type: LedgerAccountRow["accountType"]) => total(accounts.filter((row) => row.accountType === type));
   const revenueCents = sumType("revenue");
   const expenseCents = sumType("expense");
   const assetCents = sumType("asset");
   const liabilityCents = sumType("liability");
   const equityBeforeEarningsCents = sumType("equity");
-  const operatingProfitCents = revenueCents - expenseCents;
-  const cogsCents = accounts.filter((row) => row.systemKey === "cost_of_goods_sold").reduce((sum, row) => sum + row.balanceCents, 0);
-  const grossProfitCents = revenueCents - cogsCents;
+  const operatingProfitCents = exactMoney(BigInt(revenueCents) - BigInt(expenseCents));
+  const cogsCents = total(accounts.filter((row) => row.systemKey === "cost_of_goods_sold"));
+  const grossProfitCents = exactMoney(BigInt(revenueCents) - BigInt(cogsCents));
   const cashCents = accounts.filter((row) => row.systemKey === "operating_cash").reduce((sum, row) => sum + row.balanceCents, 0);
   const accountsReceivableCents = accounts.filter((row) => row.systemKey === "accounts_receivable").reduce((sum, row) => sum + row.balanceCents, 0);
   const accountsPayableCents = accounts.filter((row) => row.systemKey === "accounts_payable").reduce((sum, row) => sum + row.balanceCents, 0);
@@ -246,15 +263,15 @@ export function buildFinancialStatements(rows: readonly LedgerAccountRow[]) {
   return {
     accounts,
     trialBalance: {
-      totalDebitCents: rows.reduce((sum, row) => sum + row.debitCents, 0),
-      totalCreditCents: rows.reduce((sum, row) => sum + row.creditCents, 0),
+      totalDebitCents: exactMoney(rows.reduce((sum, row) => sum + ledgerCents(row.debitCents), BigInt(0))),
+      totalCreditCents: exactMoney(rows.reduce((sum, row) => sum + ledgerCents(row.creditCents), BigInt(0))),
     },
     profitAndLoss: { revenueCents, expenseCents, cogsCents, grossProfitCents, operatingProfitCents },
-    balanceSheet: { assetCents, liabilityCents, equityCents: equityBeforeEarningsCents + operatingProfitCents },
+    balanceSheet: { assetCents, liabilityCents, equityCents: exactMoney(BigInt(equityBeforeEarningsCents) + BigInt(operatingProfitCents)) },
     cashCents,
     accountsReceivableCents,
     accountsPayableCents,
-    netSalesTaxCents: gstCollectedCents - gstRecoverableCents,
+    netSalesTaxCents: exactMoney(BigInt(gstCollectedCents) - BigInt(gstRecoverableCents)),
   };
 }
 

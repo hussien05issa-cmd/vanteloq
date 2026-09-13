@@ -4,7 +4,7 @@ import ProductBrandLogo from "./product-brand-logo";
 import { LEGAL_DOCUMENT_UPDATED_LABEL } from "../shared/legal-versions";
 
 export const LEGAL_UPDATED = LEGAL_DOCUMENT_UPDATED_LABEL;
-export const LEGAL_EMAIL = "hussienissa@lexedgeconsulting.com";
+export function LegalContactLink() { return <Link href="/contact">our private contact form</Link>; }
 
 export function LegalShell({
   eyebrow,
@@ -70,7 +70,7 @@ export function LegalShell({
       <footer className="legal-footer">
         <div><ProductBrandLogo product="vanteloq"/><span><strong>Vanteloq</strong><small>Operated by LexEdge Consulting</small></span></div>
         <nav aria-label="Legal footer navigation"><Link href="/">Home</Link><Link href="/resources">Resources</Link><Link href="/privacy">Privacy</Link><Link href="/terms">Terms</Link><Link href="/cookies">Cookies</Link><Link href="/data-processing">Data processing</Link><Link href="/subprocessors">Subprocessors</Link></nav>
-        <p>Questions about these documents can be sent to <a href={`mailto:${LEGAL_EMAIL}`}>{LEGAL_EMAIL}</a>.</p>
+        <p>Questions about these documents can be sent through <LegalContactLink/>.</p>
       </footer>
     </div>
   );

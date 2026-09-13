@@ -13,6 +13,8 @@ import { AccountSteps, OperatingStepPreview } from "./home-journey-visuals";
 import ProductBrandLogo from "./product-brand-logo";
 import PlatformPreview from "./platform-preview";
 import ProductDemo from "./product-demo";
+import CustomPlanCallout from "./custom-plan-callout";
+import FinanceProof from "./finance-proof";
 import SocialLinks from "./social-links";
 import AuthPanel, { type AuthPanelMode } from "./auth-panel";
 import { currentSession, getSupabase, signOut } from "./supabase-browser";
@@ -634,6 +636,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
         </div>
       </section>
 
+      <FinanceProof/><div className="home-custom-plan"><CustomPlanCallout/></div>
       <section className="home-product-family" aria-labelledby="product-family-title">
         <div className="home-section-heading compact">
           <p>PRODUCT FAMILY</p>
@@ -761,7 +764,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
             <details><summary>How are LexEdge Consulting and Vanteloq connected?</summary><p>LexEdge Consulting is the company. Vanteloq is the company&apos;s business software product. A Vanteloq subscription provides access to the software and does not create a separate consulting engagement unless the customer and LexEdge Consulting agree to one in writing.</p></details>
             <details><summary>Can I explore the product before signing up?</summary><p>Yes. The interactive demo includes retail revenue drivers, product and basket analysis, inventory evidence, hourly demand and BookLoQ cash scenarios. It uses fictional sample records and the same retail calculation engine as the workspace. Missing input scenarios show why unsupported results are withheld.</p><Link href="/demo#retail">Explore retail intelligence →</Link></details>
             <details><summary>Who is Vanteloq designed for?</summary><p>The current product and connection work are designed primarily for independent retailers and the owners or managers who oversee sales, inventory, purchasing, cash and daily operations.</p></details>
-            <details><summary>What systems can I connect?</summary><p>The Connections section shows each provider's availability. Authorize and review means a connection path exists and each business must authorize its account, complete any required provider setup and review the imported records. Your workspace shows your own account's connection status. Sandbox only and Production approval needed connections still require production activation. In development and Coming soon connections remain unavailable. Structured CSV import is available.</p></details>
+            <details><summary>What systems can I connect?</summary><p>The Connections section shows each provider&apos;s availability. Authorize and review means a connection path exists and each business must authorize its account, complete any required provider setup and review the imported records. Your workspace shows your own account&apos;s connection status. Sandbox only and Production approval needed connections still require production activation. In development and Coming soon connections remain unavailable. Structured CSV import is available.</p></details>
             <details><summary>Do I need to replace my POS?</summary><p>No. Vanteloq is designed to use supported source records while the POS remains the transaction system. Availability and depth depend on the connector and successful reconciliation.</p></details>
             <details><summary>Can Vanteloq help with inventory?</summary><p>Yes. Implemented inventory tools cover lots, expiry, shelf-life risk, first-expiring-first-out review and a constrained reorder calculation. Recommendations still require reliable demand, cost, lead-time, supplier and cash inputs.</p></details>
             <details><summary>What is BookLoQ?</summary><p>BookLoQ is the accounting workspace inside the Vanteloq product family. It keeps journals, bills, documents, reconciliation and financial reporting separate from the main operating workspace. Access depends on the customer&apos;s plan and any required connection setup.</p></details>

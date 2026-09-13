@@ -4,6 +4,7 @@ import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState
 import { useModalFocus } from "./use-modal-focus";
 import { csvCell } from "../domain/csv";
 import ProductBrandLogo from "./product-brand-logo";
+import FinancialReviewCard from "./financial-review-card";
 import WorkspaceIcon from "./workspace-icon";
 import PlaidLinkButton from "./plaid-link-button";
 import { apiFetch } from "./supabase-browser";
@@ -262,6 +263,7 @@ function OverviewPanel({ data, setSection, createTask, refresh, showNotice, navi
       <button type="button" onClick={() => setSection("Reports")}><span>Ledger records</span><b>{ledgerHasEntries ? "Recorded balances" : "Awaiting posted entries"}</b><small>Inspect accounts and statements →</small></button>
       <button type="button" onClick={() => setSection("Transactions")}><span>Transaction review</span><b>{s.uncategorizedCount === null ? "Awaiting source records" : `${s.uncategorizedCount} need categorization`}</b><small>Open supporting records →</small></button>
     </section>
+    <FinancialReviewCard statements={data.statements} available={data.ledgerAccess?.available === true} currency={data.organization.currency}/>
     <section className="bookloq-kpis">
       <FinancialKpi
         label={s.cashSource === "plaid_available_balance" ? "Available bank cash" : "Current cash"}

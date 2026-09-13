@@ -78,6 +78,7 @@ export type VanteloqRuntimeEnv = {
   BOOKLOQ_DEMO_ENABLED?: string;
   VANTELOQ_INTERNAL_ACCESS_ENABLED?: string;
   RESEND_API_KEY?: string;
+  CUSTOM_PLAN_INQUIRY_TO?: string;
   INVOICE_EMAIL_FROM?: string;
   INVOICE_EMAIL_REPLY_TO?: string;
 };

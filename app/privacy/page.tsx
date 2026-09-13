@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { LEGAL_EMAIL, LegalShell, PolicySection } from "../legal-shell";
+import { LegalContactLink, LegalShell, PolicySection } from "../legal-shell";
 
 export const metadata: Metadata = {
   title: "Privacy Policy | Vanteloq",
@@ -12,7 +12,7 @@ export default function PrivacyPage() {
     <LegalShell updated="September 10, 2026" eyebrow="PRIVACY POLICY" title="Your information should have a clear purpose." summary="This policy explains what Vanteloq handles, why it is needed, and the choices available to account holders and other individuals.">
       <PolicySection id="scope" title="1. Scope and accountability">
         <p>This Privacy Policy applies when you visit vanteloq.com, create or use a Vanteloq account, administer a workspace, connect a supported service, submit a form, or contact us.</p>
-        <p>LexEdge Consulting, operating as Vanteloq, is responsible for personal information under its control. The privacy contact is the Vanteloq Privacy Officer at <a href={`mailto:${LEGAL_EMAIL}`}>{LEGAL_EMAIL}</a>.</p>
+        <p>LexEdge Consulting, operating as Vanteloq, is responsible for personal information under its control. The privacy contact is the Vanteloq Privacy Officer through <LegalContactLink/>.</p>
         <p>Vanteloq follows Alberta’s <a href="https://www.alberta.ca/personal-information-protection-act">Personal Information Protection Act</a> and Canada’s <a href="https://www.priv.gc.ca/en/privacy-topics/privacy-laws-in-canada/the-personal-information-protection-and-electronic-documents-act-pipeda/">Personal Information Protection and Electronic Documents Act</a> where each law applies.</p>
       </PolicySection>
 
@@ -97,7 +97,7 @@ export default function PrivacyPage() {
 
       <PolicySection id="transfers" title="6. Processing outside Canada">
         <p>Some service providers may process or store personal information outside Canada. Cloudflare may process web traffic through its global network for hosting, delivery, and security. Supabase processes authentication information in the configured project region and may use subprocessors in other countries. Stripe may process billing and supported payment information in the United States and other countries outside Canada when configured. Plaid may process authorized financial-connection information in the United States and other countries identified in its privacy materials when configured. Google may process consented website analytics or an authorized Vanteloq AI request in countries described in Google&apos;s service materials. OpenAI may process authorized AI requests in the United States and other countries described in its service materials; Canadian-only processing has not been established. A customer-selected integration may also process authorization and synchronized records in countries disclosed by that provider.</p>
-        <p>Information processed in another country may be subject to that country’s laws and lawful access rules. We assess providers and use contractual, technical, and organizational safeguards appropriate to the information and service. Contact the Privacy Officer at <a href={`mailto:${LEGAL_EMAIL}`}>{LEGAL_EMAIL}</a> to ask about a current service-provider location or safeguards relevant to a specific connection.</p>
+        <p>Information processed in another country may be subject to that country’s laws and lawful access rules. We assess providers and use contractual, technical, and organizational safeguards appropriate to the information and service. Contact the Privacy Officer through <LegalContactLink/> to ask about a current service-provider location or safeguards relevant to a specific connection.</p>
       </PolicySection>
 
       <PolicySection id="retention" title="7. Retention and deletion">
@@ -128,7 +128,7 @@ export default function PrivacyPage() {
       <PolicySection id="rights" title="9. Access, correction, and privacy requests">
         <p>You may ask to access or correct personal information under our control, subject to legal exceptions. You may also ask about how information was used or disclosed, withdraw consent where applicable, or raise a privacy concern.</p>
         <p>Workspace controls allow an authenticated user to permanently delete their account and allow an authorized owner to permanently delete the workspace after the warnings and confirmation steps described above. Other controls allow an owner to export records, disconnect a provider, or correct reviewable fields. A disconnection is not the same as deleting legally retained accounting records. We will explain any applicable limitation when responding to a verified request.</p>
-        <p>Send a clear request to <a href={`mailto:${LEGAL_EMAIL}`}>{LEGAL_EMAIL}</a>. We may need to verify your identity and authority before responding. If information is controlled by a Vanteloq customer, we may direct the request to that customer.</p>
+        <p>Send a clear request through <LegalContactLink/>. Contact and custom plan forms collect your name, email address, optional phone number, business name when relevant, and the message you submit. Resend delivers these inquiries to our team so we can respond. Submitting a request does not enroll you in marketing. Avoid sending passwords, payment details, identity documents or customer records. We may need to verify your identity and authority before responding. If information is controlled by a Vanteloq customer, we may direct the request to that customer.</p>
         <p>If a concern is not resolved, you may contact the <a href="https://oipc.ab.ca/">Office of the Information and Privacy Commissioner of Alberta</a> or the <a href="https://www.priv.gc.ca/">Office of the Privacy Commissioner of Canada</a>, depending on which law applies.</p>
       </PolicySection>
 

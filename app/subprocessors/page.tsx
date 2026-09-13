@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { LEGAL_EMAIL, LegalShell, PolicySection } from "../legal-shell";
+import { LegalContactLink, LegalShell, PolicySection } from "../legal-shell";
 
 export const metadata: Metadata = {
   title: "Subprocessors and Connected Services | Vanteloq",
@@ -32,7 +32,7 @@ export default function SubprocessorsPage() {
       <p>Placeholder integrations shown as unavailable do not receive Customer Data.</p>
     </PolicySection>
     <PolicySection id="changes" title="Changes and questions">
-      <p>This notice is updated before a new core subprocessor begins materially different processing. Customers may contact <a href={`mailto:${LEGAL_EMAIL}`}>{LEGAL_EMAIL}</a> for current provider information or to raise a reasonable data protection objection.</p>
+      <p>This notice is updated before a new core subprocessor begins materially different processing. Customers may use <LegalContactLink/> for current provider information or to raise a reasonable data protection objection.</p>
     </PolicySection>
   </LegalShell>;
 }
