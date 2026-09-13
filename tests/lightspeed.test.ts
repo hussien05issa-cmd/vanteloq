@@ -209,6 +209,23 @@ test("R-Series commerce normalization produces provider-neutral catalog, custome
   assert.equal(relatedItemLine.productName, "Pre-workout B");
 });
 
+test("R-Series sale lines remove both discount levels, exclude tax and preserve signed returns", async () => {
+  const source = { saleID: "sale", saleLineID: "line", unitQuantity: "2", calcSubtotal: "100.00", calcLineDiscount: "10.00", calcTransactionDiscount: "5.00", calcTotal: "89.25", calcTax1: "4.25", fifoCost: "20.00" };
+  const direct = await normalizeLightspeedRSaleLine(source);
+  const [nested] = await normalizeLightspeedRSaleLines({ saleID: "sale", SaleLines: { SaleLine: [source] } });
+  for (const result of [direct, nested]) {
+    assert.equal(result.netSalesCents, 8500);
+    assert.equal(result.discountCents, 1500);
+    assert.equal(result.costCents, 4000);
+  }
+  const returned = await normalizeLightspeedRSaleLine({ ...source, unitQuantity: "-2", calcSubtotal: "-100", calcLineDiscount: "-10", calcTransactionDiscount: "-5" });
+  assert.equal(returned.netSalesCents, -8500); assert.equal(returned.costCents, -4000); assert.equal(returned.discountCents, 1500);
+  const taxInclusive = await normalizeLightspeedRSaleLine({ saleID: "sale", saleLineID: "tax", unitQuantity: "2", calcTotal: "51.73875", calcTax1: "2.25", calcTax2: "4.48875" });
+  assert.equal(taxInclusive.netSalesCents, 4500);
+  const noDiscount = await normalizeLightspeedRSaleLine({ ...source, calcLineDiscount: "0", calcTransactionDiscount: "0", calcDiscount: "99" });
+  assert.equal(noDiscount.netSalesCents, 10000); assert.equal(noDiscount.discountCents, 0);
+});
+
 test("R-Series payment normalization records tender totals without card or customer details", async () => {
   const types = lightspeedRPaymentTypeMap([
     { paymentTypeID: "1", name: "Cash" },

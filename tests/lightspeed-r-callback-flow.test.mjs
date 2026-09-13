@@ -120,6 +120,7 @@ test("R-Series completes a browser callback using the initiating one-time state"
     let failOptionalVendorRead = false;
     let injectSyncWarning = false;
     let emptyCatalogPage = false;
+    let catalogSince = null;
     const mockLightspeedFetch = async (input, init) => {
       const request = input instanceof Request ? input : new Request(input, init);
       const url = new URL(request.url);
@@ -154,6 +155,7 @@ test("R-Series completes a browser callback using the initiating one-time state"
         return Response.json({ PaymentType: [{ paymentTypeID: "card-1", name: "Visa" }], "@attributes": {} });
       }
       if (url.origin === "https://api.lightspeedapp.com" && url.pathname === "/API/V3/Account/123/Item.json") {
+        catalogSince = url.searchParams.get("timeStamp");
         if (emptyCatalogPage) return Response.json({ Item: [], "@attributes": {} });
         return Response.json({
           Item: [
@@ -168,7 +170,7 @@ test("R-Series completes a browser callback using the initiating one-time state"
       if (url.origin === "https://api.lightspeedapp.com" && url.pathname === "/API/V3/Account/123/SaleLine.json") {
         return Response.json({
           SaleLine: [
-            { saleLineID: "line-1", saleID: "sale-100", itemID: "item-1", shopID: "1", unitQuantity: "1", calcSubtotal: "50.00", calcFIFOCost: "20.00" },
+            { saleLineID: "line-1", saleID: "sale-100", itemID: "item-1", shopID: "1", unitQuantity: "1", calcSubtotal: "52.00", calcLineDiscount: "1.00", calcTransactionDiscount: "1.00", calcFIFOCost: "20.00" },
             { saleLineID: "line-2", saleID: "sale-100", itemID: "item-1", shopID: "1", unitQuantity: "1", calcSubtotal: "50.00", calcFIFOCost: "20.00" },
           ],
           "@attributes": {},
@@ -412,10 +414,13 @@ test("R-Series completes a browser callback using the initiating one-time state"
       amount_cents: 10_500,
     });
     emptyCatalogPage = true;
+    await database.prepare("UPDATE integration_connections SET last_sync_cursor=? WHERE id=?").bind(JSON.stringify({ version: 4, watermark: '2099-01-01T00:00:00Z' }), connection.id).run();
     const linesOnlySync = await worker.fetch(new Request(`${origin}/api/v1/integrations/lightspeed-r/sync`, {
       method: "POST", headers: ownerHeaders(true), body: JSON.stringify({ reason: "manual", connectionId: connection.id }),
     }), environment, context);
     assert.equal(linesOnlySync.status, 200, await linesOnlySync.clone().text());
+    assert.equal(catalogSince, null, "the old normalization checkpoint must trigger a full catalogue repair");
+    assert.deepEqual(await database.prepare("SELECT SUM(net_sales_cents) net, SUM(discount_cents) discounts FROM commerce_sale_lines WHERE connection_id=?").bind(connection.id).first(), { net: 10000, discounts: 200 });
     assert.deepEqual(await database.prepare("SELECT name,sku FROM commerce_products WHERE connection_id=?").bind(connection.id).first(), { name: "Creatine A", sku: "CRE-A" }, "sale-line fallback identities must not erase the verified Item catalogue");
     emptyCatalogPage = false;
 

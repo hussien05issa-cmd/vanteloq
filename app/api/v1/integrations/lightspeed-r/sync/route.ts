@@ -39,7 +39,7 @@ import { applyOwnerInventoryCosts } from "../../../../../../server/inventory-cos
 const IMPORT_LABEL = "Lightspeed R-Series live sync";
 
 type SyncCheckpoint = {
-  version: 4;
+  version: 5;
   watermark: string | null;
   salesCursor: string | null;
   saleLinesCursor: string | null;
@@ -62,7 +62,7 @@ type LightspeedRCollectionPage = Awaited<ReturnType<typeof fetchLightspeedRColle
 
 function checkpoint(value: string | null): SyncCheckpoint {
   const empty: SyncCheckpoint = {
-    version: 4,
+    version: 5,
     watermark: null,
     salesCursor: null,
     saleLinesCursor: null,
@@ -76,15 +76,13 @@ function checkpoint(value: string | null): SyncCheckpoint {
     suppliersComplete: false,
   };
   if (!value) return empty;
-  if (value.startsWith("https://api.lightspeedapp.com/") && value.includes("/Sale.json")) {
-    return { ...empty, salesCursor: value };
-  }
-  if (!Number.isNaN(Date.parse(value))) return { ...empty, watermark: value };
   try {
     const parsed = JSON.parse(value) as Record<string, unknown>;
-    if (parsed.version !== 1 && parsed.version !== 2 && parsed.version !== 3 && parsed.version !== 4) return empty;
+    // Version 5 repairs historical pre-discount line totals and catalogue coverage.
+    // Older checkpoints restart the bounded, resumable import without deleting records.
+    if (parsed.version !== 5) return empty;
     return {
-      version: 4,
+      version: 5,
       watermark: typeof parsed.watermark === "string" ? parsed.watermark : null,
       salesCursor: typeof parsed.salesCursor === "string" ? parsed.salesCursor : null,
       saleLinesCursor: typeof parsed.saleLinesCursor === "string" ? parsed.saleLinesCursor : null,
@@ -118,7 +116,7 @@ function nextCheckpoint(
 ) {
   if (salesComplete && saleLinesComplete && itemsComplete && customersComplete && suppliersComplete) {
     return JSON.stringify({
-      version: 4,
+      version: 5,
       watermark: completedAt.toISOString(),
       salesCursor: null,
       saleLinesCursor: null,
@@ -133,7 +131,7 @@ function nextCheckpoint(
     } satisfies SyncCheckpoint);
   }
   return JSON.stringify({
-    version: 4,
+    version: 5,
     watermark: previous.watermark,
     salesCursor,
     saleLinesCursor,
