@@ -8,7 +8,7 @@ export default function AdvisorThinking() {
     status.current?.scrollIntoView({ block: "nearest", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
   }, []);
   return <section ref={status} className="advisor-thinking" role="status" aria-label="Vanteloq AI is thinking" aria-live="polite" aria-atomic="true">
-    <VanteloqAiLogo size={28} thinking decorative/>
+    <VanteloqAiLogo size={40} thinking decorative/>
     <strong>Thinking…</strong>
   </section>;
 }

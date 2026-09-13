@@ -4,7 +4,7 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react"
 import type { Session } from "@supabase/supabase-js";
 import Link from "next/link";
 import IntegrationBrandLogo from "./integration-brand-logo";
-import VanteloqAiLogo from "./vanteloq-ai-logo";
+import VanteloqAiShowcase from "./vanteloq-ai-showcase";
 import { integrationCatalog, integrationPublicStatus } from "./integration-catalog";
 import SourceRecordIcon from "./source-record-icon";
 import WorkspaceIcon from "./workspace-icon";
@@ -612,18 +612,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
       </section>
 
       <section className="home-ai" id="vanteloq-ai" aria-labelledby="vanteloq-ai-title">
-        <aside className="home-ai-mark" aria-label="How Vanteloq AI supports a business answer">
-          <div className="home-ai-brand">
-            <VanteloqAiLogo size={64} decorative/>
-            <div><span>Vanteloq AI</span><small>POWERED BY OPENAI</small></div>
-          </div>
-          <p>From verified business records to an explanation your team can review.</p>
-          <ol>
-            <li><b>1</b><span><strong>Verified records</strong><small>Vanteloq prepares the approved business context.</small></span></li>
-            <li><b>2</b><span><strong>Grounded explanation</strong><small>Vanteloq AI explains the evidence and identifies missing inputs.</small></span></li>
-            <li><b>3</b><span><strong>Human approval</strong><small>Your permissions still control every action.</small></span></li>
-          </ol>
-        </aside>
+        <VanteloqAiShowcase/>
         <div className="home-ai-copy">
           <p>GROUNDED BUSINESS INTELLIGENCE</p>
           <h2 id="vanteloq-ai-title">Your business context.<br/>A clearer next question.</h2>

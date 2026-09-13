@@ -1,7 +1,18 @@
-.vanteloq-ai-logo { display: inline-block; flex-shrink: 0; vertical-align: middle; background: linear-gradient(115deg, #278aff 12%, #5855ed 35%, #ae58f6 53%, #5872ff 72%, #2ea8ff 90%); background-size: 260% 260%; mask: url('/brand/vanteloq-ai-nexus.png') center / contain no-repeat; -webkit-mask: url('/brand/vanteloq-ai-nexus.png') center / contain no-repeat; animation: vanteloq-ai-flow 7s ease-in-out infinite alternate; }
-.vanteloq-ai-logo.is-thinking { animation: vanteloq-ai-flow 2s ease-in-out infinite alternate, vanteloq-ai-breathe 2.2s ease-in-out infinite; }
-@keyframes vanteloq-ai-flow { from { background-position: 0% 30%; } to { background-position: 100% 70%; } }
-@keyframes vanteloq-ai-breathe { 0%, 100% { transform: scale(.94); opacity: .76; } 50% { transform: scale(1.06); opacity: 1; } }
+.vanteloq-ai-logo { --vai-orbit-duration: 12s; display: inline-block; flex-shrink: 0; vertical-align: middle; isolation: isolate; }
+.vanteloq-ai-logo > svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.vai-core { transform-origin: 80px 80px; }
+.vai-orbit-spin { transform-origin: 0 0; animation: vai-orbit-turn var(--vai-orbit-duration) linear infinite; }
+.vanteloq-ai-logo.is-compact .vai-orbit-spin { animation-play-state: paused; }
+.vanteloq-ai-logo.is-compact .vai-grid { display: none; }
+.vanteloq-ai-logo.is-compact .vai-orbit-back { stroke-width: 2.5; opacity: .7; }
+.vanteloq-ai-logo:is(.is-thinking, .is-attentive, :hover) { --vai-orbit-duration: 4s; }
+.vanteloq-ai-logo:is(.is-thinking, .is-attentive, :hover) .vai-orbit-spin { animation-play-state: running; }
+.vanteloq-ai-logo.is-thinking { --vai-orbit-duration: 2.4s; }
+.vanteloq-ai-logo.is-thinking .vai-core { animation: vai-core-breathe 2.4s ease-in-out infinite; }
+.vanteloq-ai-logo.is-attentive .vai-core { animation: vai-core-breathe 4s ease-in-out infinite; }
+.primary-sidebar .vanteloq-ai-logo { filter: drop-shadow(0 0 3px #4e9aff48); }
+@keyframes vai-orbit-turn { to { transform: rotate(360deg); } }
+@keyframes vai-core-breathe { 0%, 100% { transform: scale(.98); } 50% { transform: scale(1.025); } }
 .vanteloq-ai-heading { display: flex; align-items: center; gap: 14px; margin-bottom: 20px; }
 .vanteloq-ai-heading > div { min-width: 0; }
 .operating-shell .advisor-hero .vanteloq-ai-heading strong { display: block; margin: 0; color: #fff; font-size: 24px; font-weight: 750; letter-spacing: -.035em; line-height: 1.2; }
@@ -23,7 +34,7 @@
 .operating-shell .advisor-answer > p { font-size: 15px; line-height: 1.75; color: #41546d; }
 .operating-shell .advisor-answer > div { font-size: 13px; line-height: 1.6; color: #53647c; }
 .operating-shell .advisor-provider-note > span.vanteloq-ai-logo { flex: 0 0 auto; display: inline-block; }
-@media (prefers-reduced-motion: reduce) { .vanteloq-ai-logo, .vanteloq-ai-logo.is-thinking { animation: none; background-position: 55% 50%; } }
+@media (prefers-reduced-motion: reduce) { .vanteloq-ai-logo *, .vanteloq-ai-logo.is-thinking * { animation: none !important; transition: none !important; } }
 .ai-studio { display: flex; flex-direction: column; min-height: min(720px, calc(100dvh - 160px)); border: 1px solid #e1e6ef; border-radius: 18px; background: #fff; color: #243347; }
 .ai-studio-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 24px; }
 .ai-studio-header .vanteloq-ai-heading { margin: 0; gap: 9px; }
@@ -44,6 +55,7 @@
 .ai-studio.has-conversation .ai-compose-area { margin-top: auto; padding-top: 14px; padding-bottom: 10px; background: #fff; }
 .ai-compose-area form { padding: 16px; border: 1px solid #d4dce9; border-radius: 22px; background: #fff; box-shadow: 0 4px 18px #14284608; transition: border-color .15s, box-shadow .15s; }
 .ai-compose-area form:focus-within { border-color: #7788d3; box-shadow: 0 0 0 3px #596ed210; }
+.operating-shell .ai-compose-area textarea:focus-visible { outline: none !important; box-shadow: none !important; }
 .operating-shell .ai-compose-area textarea { display: block; width: 100%; min-height: 62px; max-height: 176px; resize: none; margin: 0 0 10px; padding: 2px 4px; border: 0; border-radius: 0; outline: 0; box-shadow: none; background: transparent; color: #26354b; font-size: 15px; line-height: 1.6; }
 .ai-compose-area textarea::placeholder { color: #778499; }
 .ai-input-toolbar, .ai-send-tools { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
