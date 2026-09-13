@@ -11,6 +11,7 @@ import GrowthWorkspace from "./growth-workspace";
 import ScenarioPlanner from "./scenario-planner";
 import { connectorNextStep, filterConnectors } from "../domain/connector-guidance";
 import IntegrationBrandLogo from "./integration-brand-logo";
+import AutomaticSyncControl, { type AutomaticSyncStatus } from "./automatic-sync-control";
 import AdvisorComposer, { canAskAdvisor } from "./advisor-composer";
 import AdvisorThinking from "./advisor-thinking";
 import AdvisorResponse from "./advisor-response";
@@ -2253,6 +2254,7 @@ type IntegrationConnection = IntegrationCatalogEntry & {
       resourceResults: Array<{ resourceSelectionId: string; recordsRead: number; warningCodes: string[] }>;
     };
     syncActive: boolean;
+    automaticSync?: AutomaticSyncStatus | null;
     canonicalCoverage: CanonicalCommerceCoverage;
     featureCoverage: ProviderFeatureCoverage[];
     reportCatalog: {
@@ -3028,6 +3030,9 @@ function DataHub({
                           })}</div>
                           <label><input type="checkbox" checked={reviewedMarketingSamples[connection.sampleSummary.runId] === true} onChange={(event) => setReviewedMarketingSamples((current) => ({ ...current, [connection.sampleSummary!.runId]: event.target.checked }))} />I reviewed every selected resource, scope, record count, and warning total above.</label>
                         </section>}
+                        {connection.automaticSync && connection.status === "connected" && <AutomaticSyncControl
+                          provider={provider.id} connectionId={connection.id} accountName={accountLabel}
+                          status={connection.automaticSync} refresh={loadConnections} />}
                         <div className="provider-account-actions">
                           {connection.status === "connected" && <>
                             {isQuickBooks ? <small>Company verified. Ledger import and dashboard metrics remain locked during the sandbox stage.</small> : isMarketingProvider ? <>

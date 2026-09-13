@@ -83,7 +83,7 @@ test("Shopify compliance and uninstall topics terminate at the verified webhook 
 });
 
 test("Shopify e-commerce routes preserve online-order lineage separately from Shopify POS", () => {
-  const sync = readFileSync(`${process.cwd()}/app/api/v1/integrations/shopify-pos/sync/route.ts`, "utf8");
+  const sync = readFileSync(`${process.cwd()}/server/integrations/sync/shopify-pos.ts`, "utf8");
   const wrapper = readFileSync(`${process.cwd()}/app/api/v1/integrations/shopify/sync/route.ts`, "utf8");
   const configuration = readFileSync(`${process.cwd()}/shopify.app.toml`, "utf8");
   assert.match(sync, /isCommerce \? "source_name:web" : "source_name:pos"/);

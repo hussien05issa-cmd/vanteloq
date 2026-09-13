@@ -24,6 +24,8 @@ import { integrationProviderFeature } from "../../../../domain/paid-feature-rout
 import { requireFeature } from "../../../../server/entitlements/engine";
 import { noActiveIntegrationLease } from "../../../../server/integrations/trusted-data";
 
+import { loadSyncSchedules } from "../../../../server/integrations/sync-status";
+
 function maskedAccountRef(value: string | null | undefined) {
   if (!value) return null;
   const ending = value.slice(-4);
@@ -36,6 +38,7 @@ export async function GET(request: Request) {
     await requirePermission(context, "integrations.view");
     await requireOrganizationWideLocationAccess(context);
     const permissions = await effectivePermissions(context);
+    const scheduleStatus = await loadSyncSchedules(context.organizationId, context.role === "owner");
     const rows = await getDb()
       .select({
         id: integrationConnections.id,
@@ -203,6 +206,7 @@ export async function GET(request: Request) {
           return ({
           id: connection.id,
           status: connection.status,
+          automaticSync: scheduleStatus(provider.id, connection.id),
           maskedAccountRef: maskedAccountRef(connection.externalAccountRef),
           externalAccountName: connection.externalAccountName,
           lastSuccessfulSyncAt: connection.lastSuccessfulSyncAt?.toISOString() ?? null,

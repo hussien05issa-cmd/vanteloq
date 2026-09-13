@@ -3,6 +3,7 @@ import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } fr
 import handler from "vinext/server/app-router-entry";
 
 interface Env {
+  POS_SYNC_SECRET?: string;
   ASSETS: Fetcher;
   DB: D1Database;
   BUCKET: R2Bucket;

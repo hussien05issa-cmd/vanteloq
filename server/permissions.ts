@@ -243,7 +243,7 @@ function parsePermissions(value: string): PermissionKey[] {
 }
 
 export async function effectivePermissions(
-  context: AccessContext,
+  context: Pick<AccessContext, "userId" | "organizationId" | "role">,
 ): Promise<PermissionKey[]> {
   if (context.role === "owner") return [...allPermissions];
   const [profile] = await getDb()
@@ -281,7 +281,7 @@ export async function effectivePermissions(
 }
 
 export async function requirePermission(
-  context: AccessContext,
+  context: Pick<AccessContext, "userId" | "organizationId" | "role">,
   permission: PermissionKey,
 ): Promise<void> {
   if (!(await effectivePermissions(context)).includes(permission)) {

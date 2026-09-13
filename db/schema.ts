@@ -672,6 +672,39 @@ export const integrationConnections = sqliteTable(
   ],
 );
 
+export const integrationSyncSchedules = sqliteTable("integration_sync_schedules", {
+  connectionId: text("connection_id").primaryKey().references(() => integrationConnections.id, { onDelete: "cascade" }),
+  organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  provider: text("provider").notNull(),
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(false),
+  authorizedByUserId: text("authorized_by_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  authorizedSubject: text("authorized_subject").notNull(),
+  authorizationVersion: text("authorization_version").notNull(),
+  authorizedAt: integer("authorized_at", { mode: "timestamp" }).notNull(),
+  generation: integer("generation").notNull().default(1),
+  intervalSeconds: integer("interval_seconds").notNull().default(900),
+  nextRunAt: integer("next_run_at", { mode: "timestamp" }).notNull(),
+  cycleStartedAt: integer("cycle_started_at", { mode: "timestamp" }),
+  lastStartedAt: integer("last_started_at", { mode: "timestamp" }),
+  lastFinishedAt: integer("last_finished_at", { mode: "timestamp" }),
+  lastStatus: text("last_status").notNull().default("queued"),
+  lastErrorCode: text("last_error_code"),
+  consecutiveFailures: integer("consecutive_failures").notNull().default(0),
+  leaseOwner: text("lease_owner"),
+  leaseExpiresAt: integer("lease_expires_at", { mode: "timestamp" }),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+}, table => [
+  index("integration_sync_schedules_due_idx").on(table.enabled, table.nextRunAt),
+  index("integration_sync_schedules_workspace_idx").on(table.organizationId),
+  check("integration_sync_schedules_interval_check", sql`${table.intervalSeconds} between 900 and 86400`),
+]);
+
+export const integrationSyncTicks = sqliteTable("integration_sync_ticks", {
+  id: text("id").primaryKey(),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+}, table => [index("integration_sync_ticks_created_idx").on(table.createdAt)]);
+
 export const shopifyStoreLocks = sqliteTable(
   "shopify_store_locks",
   {

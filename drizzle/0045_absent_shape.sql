@@ -1,0 +1,1 @@
+ALTER TABLE `integration_sync_schedules` ADD `cycle_started_at` integer;

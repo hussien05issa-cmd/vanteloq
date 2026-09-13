@@ -475,3 +475,15 @@
 /* Vanteloq AI keeps provider choice and independent analyses readable. */
 .advisor-hero #advisor-provider { display: block; width: 100%; margin: 8px 0 16px; padding: 12px; background: #fff; color: #17385a; border: 1px solid #aebed2; border-radius: 8px; font-size: 1rem; }
 .advisor-answer > p { white-space: pre-wrap; overflow-wrap: anywhere; }
+/* Connection-specific background sync controls. */
+.provider-account-list .automatic-sync-control { grid-column: 1 / -1; width: 100%; min-width: 0; padding: 14px 16px; border: 1px solid var(--border, #dce3ef); border-radius: 12px; background: var(--surface, #f8faff); display: grid; gap: 8px; }
+.automatic-sync-control .automatic-sync-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.automatic-sync-heading strong { font-size: 13px; }
+.automatic-sync-heading span { font-size: 11px; padding: 4px 8px; border-radius: 20px; background: #e8edf5; color: #445269; }
+.automatic-sync-heading span[data-active="true"] { color: #2855a5; background: #e9f0ff; }
+.automatic-sync-control p { margin: 0; font-size: 12px; line-height: 1.6; color: var(--muted, #53647c); }
+.automatic-sync-control small { display: block; font-size: 11px; line-height: 1.5; color: var(--muted, #53647c); }
+.automatic-sync-control button { justify-self: start; min-height: 40px; padding: 8px 12px; border: 1px solid #c7d4ea; border-radius: 8px; color: #254b89; background: #fff; font-size: 12px; font-weight: 600; cursor: pointer; }
+.automatic-sync-control button:focus-visible { outline: 2px solid #647ced; outline-offset: 3px; }
+.automatic-sync-control button:disabled { opacity: .55; cursor: default; }
+.automatic-sync-control [role="alert"] { color: #a12639; }

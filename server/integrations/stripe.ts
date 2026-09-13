@@ -187,7 +187,7 @@ export async function fetchStripeFinancialCollection(
   connectionId: string,
   resource: "balance_transactions" | "payouts",
   options: { after?: string | null; maxPages?: number; fetcher?: typeof fetch } = {},
-): Promise<{ data: Record<string, unknown>[]; cursor: string | null; pages: number }> {
+): Promise<{ data: Record<string, unknown>[]; cursor: string | null; pages: number; hasMore: boolean }> {
   const [connection] = await getDb().select({
     accountId: integrationConnections.externalAccountRef,
   }).from(integrationConnections).where(and(
@@ -203,6 +203,7 @@ export async function fetchStripeFinancialCollection(
   const maximum = Math.min(Math.max(options.maxPages ?? 1, 1), 10);
   const data: Record<string, unknown>[] = [];
   let cursor = options.after ?? null;
+  let hasMore = false;
   let pages = 0;
   while (pages < maximum) {
     const query = new URLSearchParams({ limit: "100" });
@@ -215,10 +216,12 @@ export async function fetchStripeFinancialCollection(
     data.push(...page);
     pages += 1;
     const lastId = page.length ? stringValue(page[page.length - 1].id) : "";
-    if (body.has_more !== true || !lastId || lastId === cursor) break;
+    hasMore = body.has_more === true;
+    if (!hasMore) { cursor = null; break; }
+    if (!lastId || lastId === cursor) throw new ApiError(502, "STRIPE_CURSOR_STALLED", "Stripe pagination did not advance. The saved cursor is unchanged.");
     cursor = lastId;
   }
-  return { data, cursor, pages };
+  return { data, cursor, pages, hasMore };
 }
 
 async function stripeRequest(

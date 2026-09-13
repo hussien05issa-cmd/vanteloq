@@ -149,7 +149,7 @@ export function requireInternalAccessMfa(
   }
 }
 
-async function subscriptionSnapshot(organizationId: string): Promise<SubscriptionSnapshot> {
+export async function subscriptionSnapshot(organizationId: string): Promise<SubscriptionSnapshot> {
   const [subscription, addonRows] = await Promise.all([
     getDb().select().from(tenantSubscriptions).where(eq(tenantSubscriptions.organizationId, organizationId)).limit(1),
     getDb().select({ addonKey: tenantAddons.addonKey, status: tenantAddons.status })

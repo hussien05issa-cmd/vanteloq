@@ -242,8 +242,8 @@ test("X-Series isolates two retailer accounts and every account action", async (
       FROM integration_webhook_events WHERE provider = 'lightspeed' AND external_object_ref = 'sale-webhook-1'`).all();
     assert.equal(webhookEvents.results.length, 1);
     assert.equal(webhookEvents.results[0].connectionId, secondConnectionId);
-    assert.equal(webhookEvents.results[0].status, "processed");
-    assert.equal(typeof webhookEvents.results[0].processedAt, "number");
+    assert.equal(webhookEvents.results[0].status, "queued");
+    assert.equal(webhookEvents.results[0].processedAt, null);
 
     const ambiguousSync = await worker.fetch(new Request(`${origin}/api/v1/integrations/lightspeed/sync`, {
       method: "POST", headers: ownerHeaders(true), body: "{}",
