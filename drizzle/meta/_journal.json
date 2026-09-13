@@ -309,6 +309,20 @@
       "when": 1789281488971,
       "tag": "0043_amazing_gambit",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "6",
+      "when": 1789288527443,
+      "tag": "0044_slim_dragon_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "6",
+      "when": 1789288759667,
+      "tag": "0045_absent_shape",
+      "breakpoints": true
     }
   ]
 }

@@ -2,6 +2,7 @@ import { drizzle } from "drizzle-orm/d1";
 import * as schema from "./schema.ts";
 
 export type VanteloqRuntimeEnv = {
+  POS_SYNC_SECRET?: string;
   DB?: D1Database;
   BUCKET?: R2Bucket;
   LIGHTSPEED_CLIENT_ID?: string;

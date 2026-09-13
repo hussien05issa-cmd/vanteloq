@@ -1,5 +1,7 @@
 # POS integration readiness audit
 
+Historical audit. Current connector and background-sync status is documented in [POS sync operations](POS_SYNC_OPERATIONS.md). The staging-only statements below describe the August snapshot, not the current release.
+
 Date: 2026-08-09
 Decision: **The Lightspeed X-Series and R-Series read-only staging connectors are built and hosted; do not promote live POS data yet.**
 

@@ -200,7 +200,7 @@ test("reported medium-risk routes keep location, permission, and data-integrity 
     readFile(`${process.cwd()}/server/integrations/marketing-routes.ts`, "utf8"),
     readFile(`${process.cwd()}/app/api/v1/integrations/shopify-pos/authorize/route.ts`, "utf8"),
     readFile(`${process.cwd()}/app/api/v1/integrations/shopify-pos/callback/route.ts`, "utf8"),
-    readFile(`${process.cwd()}/app/api/v1/integrations/shopify-pos/sync/route.ts`, "utf8"),
+    readFile(`${process.cwd()}/server/integrations/sync/shopify-pos.ts`, "utf8"),
     readFile(`${process.cwd()}/server/integrations/shopify-store-lock.ts`, "utf8"),
     readFile(`${process.cwd()}/drizzle/0037_shopify_store_ownership.sql`, "utf8"),
     readFile(`${process.cwd()}/app/api/v1/integrations/moneris/connect/route.ts`, "utf8"),
@@ -574,7 +574,7 @@ test("every cursor-bearing provider sync uses the connection lease and version f
   const { readFile } = await import("node:fs/promises");
   for (const route of ["lightspeed", "lightspeed-r", "clover", "stripe"]) {
     const source = await readFile(
-      `${process.cwd()}/app/api/v1/integrations/${route}/sync/route.ts`,
+      `${process.cwd()}/server/integrations/sync/${route}.ts`,
       "utf8",
     );
     assert.match(source, /acquireIntegrationSyncLease/);

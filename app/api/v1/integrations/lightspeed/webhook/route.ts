@@ -72,9 +72,9 @@ export async function POST(request: Request) {
       signatureHash: signature.signatureHash,
       eventType,
       externalObjectRef,
-      status: "processed",
+      status: "queued",
       receivedAt,
-      processedAt: receivedAt,
+      processedAt: null,
     }).onConflictDoNothing({
       target: [
         integrationWebhookEvents.organizationId,
