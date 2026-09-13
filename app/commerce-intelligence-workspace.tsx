@@ -1,7 +1,8 @@
 "use client";
 
 import WorkspaceIcon from "./workspace-icon";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import RetailIntelligenceWorkspace, { type RetailAdvisorSeed } from "./retail-intelligence-workspace";
 import { apiFetch } from "./supabase-browser";
 import { providerDisplayName } from "../domain/display-labels";
 import { businessClock, businessDateOffset } from "../domain/intraday-sales";
@@ -18,24 +19,24 @@ type Snapshot = {
     changes: { netSalesRate: number | null; grossProfitRate: number | null; grossMarginPointChange: number | null; transactionsRate: number | null; averageTransactionRate: number | null };
   };
   saleLines: Array<{
-    provider: string; externalSaleId: string; externalLineId: string; soldAt: string | null; sku: string | null;
+    provider: string; connectionId: string; externalSaleId: string; externalLineId: string; soldAt: string | null; sku: string | null;
     productName: string; quantityMilli: number; netSalesCents: number; costCents: number | null; discountCents: number;
     grossProfitCents: number | null; marginRate: number | null; customerName: string | null; customerEmail: string | null;
   }>;
   inventory: Array<{
     provider: string; connectionId: string; externalProductId: string | null; locationRef: string; sku: string; name: string; categoryRef: string | null; supplierRef: string | null;
     onHandQuantity: number; reorderPoint: number; unitsSold: number; dailyVelocity: number; daysOfCover: number | null;
-    stockStatus: "healthy" | "watch" | "low" | "stockout"; recommendedOrderUnits: number; periodNetSalesCents: number;
+    stockStatus: "healthy" | "watch" | "low" | "stockout" | "unknown"; recommendedOrderUnits: number | null; periodNetSalesCents: number;
     periodDiscountCents: number; defaultCostCents: number | null; ownerCostCents: number | null; effectiveCostCents: number | null;
     costSource: "manual" | "csv" | "provider" | null; costUpdatedAt: number | string | null; updatedAt: number | string;
   }>;
   customers: Array<{
-    provider: string; externalCustomerId: string | null; displayName: string; email: string | null; phone: string | null;
+    provider: string; connectionId: string; externalCustomerId: string | null; displayName: string; email: string | null; phone: string | null;
     transactionCount: number; netSalesCents: number; grossProfitCents: number | null; discountCents: number;
     averageTransactionCents: number | null; lastPurchaseAt: string | null;
   }>;
   suppliers: Array<{
-    provider: string; externalSupplierId: string; name: string; accountNumber: string | null; contactName: string | null;
+    provider: string; connectionId: string; externalSupplierId: string; name: string; accountNumber: string | null; contactName: string | null;
     email: string | null; phone: string | null; productCount: number; periodQuantityMilli: number;
     periodNetSalesCents: number; periodGrossProfitCents: number | null; periodMarginRate: number | null; lowStockItems: number;
   }>;
@@ -57,7 +58,7 @@ const preciseMoney = (value: number | null, currency: string) => value == null
   : new Intl.NumberFormat("en-CA", { style: "currency", currency, minimumFractionDigits: 2 }).format(value / 100);
 const percent = (value: number | null, digits = 1) => value == null ? "Not available" : `${(value * 100).toFixed(digits)}%`;
 const changeCopy = (value: number | null) => value == null ? "No matched baseline" : `${value >= 0 ? "+" : ""}${(value * 100).toFixed(1)}% vs prior period`;
-const dateTime = (value: string | null) => value ? new Intl.DateTimeFormat("en-CA", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(value)) : "Not supplied";
+const dateTime = (value: string | null, timeZone: string) => value ? new Intl.DateTimeFormat("en-CA", { timeZone, month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(value)) : "Not supplied";
 const csvCell = (value: unknown) => {
   const raw = String(value ?? "");
   // Prevent spreadsheet applications from executing a provider-supplied value as a formula.
@@ -147,8 +148,8 @@ function DataEmpty({ mode, navigate }: { mode: Mode; navigate: (view: "Integrati
   </section>;
 }
 
-export default function CommerceIntelligenceWorkspace({ mode, currency, timeZone = "UTC", activeLocationId, navigate, createTask }: {
-  mode: Mode; currency: string; timeZone?: string; activeLocationId: string | null; navigate: (view: "Integrations") => void; createTask: (seed: TaskSeed) => void;
+export default function CommerceIntelligenceWorkspace({ mode, currency, timeZone = "UTC", activeLocationId, navigate, createTask, onAsk }: {
+  mode: Mode; currency: string; timeZone?: string; activeLocationId: string | null; navigate: (view: "Integrations") => void; createTask: (seed: TaskSeed) => void; onAsk?: (seed: RetailAdvisorSeed) => void;
 }) {
   const today = () => businessClock(new Date(), timeZone)!.date;
   const [from, setFrom] = useState(() => businessDateOffset(today(), -29));
@@ -164,23 +165,29 @@ export default function CommerceIntelligenceWorkspace({ mode, currency, timeZone
   const [costSaving, setCostSaving] = useState(false);
   const [editingCostKey, setEditingCostKey] = useState("");
   const [costDraft, setCostDraft] = useState("");
+  const requestRef = useRef<AbortController | null>(null);
   const load = useCallback(async () => {
+    requestRef.current?.abort();
+    const controller = new AbortController(); requestRef.current = controller;
     setLoading(true);
+    setData(null);
     try {
       const params = new URLSearchParams({ from: applied.from, to: applied.to, mode });
       if (activeLocationId) params.set("location", activeLocationId);
-      const response = await apiFetch(`/api/v1/commerce-intelligence?${params}`, { headers: { Accept: "application/json" } });
+      const response = await apiFetch(`/api/v1/commerce-intelligence?${params}`, { headers: { Accept: "application/json" }, signal: controller.signal });
       const body = await response.json();
+      if (controller.signal.aborted) return;
       if (!response.ok) throw new Error(body.error?.message ?? "Commerce intelligence could not be loaded.");
       setData(body);
       setError("");
     } catch (caught) {
+      if (controller.signal.aborted) return;
       setError(caught instanceof Error ? caught.message : "Commerce intelligence could not be loaded.");
-    } finally { setLoading(false); }
+    } finally { if (!controller.signal.aborted) setLoading(false); }
   }, [activeLocationId, applied, mode]);
   useEffect(() => {
     const timer = window.setTimeout(() => void load(), 0);
-    return () => window.clearTimeout(timer);
+    return () => { window.clearTimeout(timer); requestRef.current?.abort(); };
   }, [load]);
 
   const saveCosts = useCallback(async (source: "manual" | "csv", entries: Array<Record<string, unknown>>) => {
@@ -251,7 +258,8 @@ export default function CommerceIntelligenceWorkspace({ mode, currency, timeZone
       </form>
     </section>
     {error ? <section className="commerce-api-error" role="alert"><b>Commerce data could not be loaded.</b><span>{error}</span><button onClick={() => void load()}>Try again</button></section> : null}
-    {data ? <>
+    {mode !== "Suppliers" && <RetailIntelligenceWorkspace key={mode + applied.from + applied.to + activeLocationId} from={applied.from} to={applied.to} locationId={activeLocationId} currency={currency} navigate={navigate} createTask={createTask} onAsk={onAsk} initialSection={mode === "Sales" ? "Why it changed" : mode}/>}
+    {data ? <details className="commerce-source-detail" open={mode === "Suppliers"}><summary>Source records and controls</summary>
       <section className="commerce-date-context"><span>{data.period.from} → {data.period.to}</span><b>{data.period.days} calendar {data.period.days === 1 ? "day" : "days"}</b><small>Compared with {data.period.comparisonFrom} → {data.period.comparisonTo}</small></section>
       {mode === "Sales" && <section className="commerce-stats">
         <Stat label="NET SALES" value={money(data.kpis.netSalesCents, currency)} note={changeCopy(data.kpis.changes.netSalesRate)} />
@@ -292,23 +300,23 @@ export default function CommerceIntelligenceWorkspace({ mode, currency, timeZone
         {hasRecords ? <div className="commerce-scroll-table" role="region" aria-label={`${mode} records`} tabIndex={0}>
           {mode === "Sales" && <div className="commerce-ledger commerce-ledger-sales">
             <div className="commerce-ledger-head"><span>Date / sale</span><span>Item</span><span>Customer</span><span>Qty</span><span>Net sales</span><span>Discount</span><span>Margin</span></div>
-            {lines.map((row) => <div key={`${row.provider}:${row.externalSaleId}:${row.externalLineId}`}><span><b>{dateTime(row.soldAt)}</b><small>{row.externalSaleId}</small></span><span><b>{row.productName}</b><small>{row.sku || "No SKU"}</small></span><span><b>{row.customerName || "Guest / not supplied"}</b><small>{row.customerEmail || "No identity attached"}</small></span><span>{(row.quantityMilli / 1000).toFixed(2)}</span><span>{preciseMoney(row.netSalesCents, currency)}</span><span>{preciseMoney(row.discountCents, currency)}</span><span className={row.marginRate != null && row.marginRate < .25 ? "negative" : "positive"}>{percent(row.marginRate)}</span></div>)}
+            {lines.map((row) => <div key={`${row.provider}:${row.connectionId}:${row.externalSaleId}:${row.externalLineId}`}><span><b>{dateTime(row.soldAt, timeZone)}</b><small>{row.externalSaleId}</small></span><span><b>{row.productName}</b><small>{row.sku || "No SKU"}</small></span><span><b>{row.customerName || "Guest / not supplied"}</b><small>{row.customerEmail || "No identity attached"}</small></span><span>{(row.quantityMilli / 1000).toFixed(2)}</span><span>{preciseMoney(row.netSalesCents, currency)}</span><span>{preciseMoney(row.discountCents, currency)}</span><span className={row.marginRate != null && row.marginRate < .25 ? "negative" : "positive"}>{percent(row.marginRate)}</span></div>)}
           </div>}
           {mode === "Inventory" && <div className="commerce-ledger commerce-ledger-inventory">
             <div className="commerce-ledger-head"><span>Item</span><span>Location</span><span>Unit cost</span><span>On hand</span><span>Velocity</span><span>Cover</span><span>Status</span><span>Order review</span></div>
             {inventory.map((row) => {
               const costKey = `${row.provider}:${row.connectionId}:${row.externalProductId ?? row.sku}`;
               const editing = editingCostKey === costKey;
-              return <div key={`${row.provider}:${row.locationRef}:${row.sku}`}><span><b>{row.name}</b><small>{row.sku}</small></span><span>{row.locationRef.split(":").at(-1)}</span><span className="commerce-unit-cost">{editing ? <form onSubmit={(event) => { event.preventDefault(); saveManualCost(row); }}><label><span className="sr-only">Unit cost for {row.name}</span><input autoFocus inputMode="decimal" value={costDraft} onChange={(event) => setCostDraft(event.target.value)} placeholder="0.00" /></label><button disabled={costSaving}>Save</button><button type="button" onClick={() => { setEditingCostKey(""); setCostDraft(""); }}>Cancel</button></form> : <><b>{preciseMoney(row.effectiveCostCents, currency)}</b><small>{row.costSource ? `${row.costSource === "provider" ? "POS" : row.costSource.toUpperCase()} source` : "Cost needed"}</small>{data.permissions.manageCosts && row.externalProductId ? <button type="button" onClick={() => { setCostError(""); setEditingCostKey(costKey); setCostDraft(row.effectiveCostCents == null ? "" : (row.effectiveCostCents / 100).toFixed(2)); }}>Edit</button> : null}</>}</span><span>{row.onHandQuantity.toLocaleString()}</span><span>{row.dailyVelocity.toFixed(2)}/day</span><span>{row.daysOfCover == null ? "No velocity" : `${row.daysOfCover.toFixed(1)} days`}</span><span><i className={`stock-state ${row.stockStatus}`}>{row.stockStatus}</i></span><span><b>{row.recommendedOrderUnits > 0 ? `${row.recommendedOrderUnits} units` : "No order"}</b><small>Review—not automatic</small></span></div>;
+              return <div key={`${row.provider}:${row.connectionId}:${row.locationRef}:${row.sku}`}><span><b>{row.name}</b><small>{row.sku}</small></span><span>{row.locationRef.split(":").at(-1)}</span><span className="commerce-unit-cost">{editing ? <form onSubmit={(event) => { event.preventDefault(); saveManualCost(row); }}><label><span className="sr-only">Unit cost for {row.name}</span><input autoFocus inputMode="decimal" value={costDraft} onChange={(event) => setCostDraft(event.target.value)} placeholder="0.00" /></label><button disabled={costSaving}>Save</button><button type="button" onClick={() => { setEditingCostKey(""); setCostDraft(""); }}>Cancel</button></form> : <><b>{preciseMoney(row.effectiveCostCents, currency)}</b><small>{row.costSource ? `${row.costSource === "provider" ? "POS" : row.costSource.toUpperCase()} source` : "Cost needed"}</small>{data.permissions.manageCosts && row.externalProductId ? <button type="button" onClick={() => { setCostError(""); setEditingCostKey(costKey); setCostDraft(row.effectiveCostCents == null ? "" : (row.effectiveCostCents / 100).toFixed(2)); }}>Edit</button> : null}</>}</span><span>{row.onHandQuantity.toLocaleString()}</span><span>{row.dailyVelocity.toFixed(2)}/day</span><span>{row.daysOfCover == null ? "Needs current evidence" : `${row.daysOfCover.toFixed(1)} days`}</span><span><i className={`stock-state ${row.stockStatus}`}>{row.stockStatus}</i></span><span><b>{row.recommendedOrderUnits == null ? "Needs current evidence" : row.recommendedOrderUnits > 0 ? `${row.recommendedOrderUnits} units` : "No order"}</b><small>Review—not automatic</small></span></div>;
             })}
           </div>}
           {mode === "Customers" && <div className="commerce-ledger commerce-ledger-customers">
             <div className="commerce-ledger-head"><span>Customer</span><span>Last purchase</span><span>Transactions</span><span>Net sales</span><span>Avg basket</span><span>Gross profit</span></div>
-            {customers.map((row, index) => <div key={`${row.provider}:${row.externalCustomerId ?? index}`}><span><b>{row.displayName || "Known customer"}</b><small>{row.email || row.phone || "Identity restricted or not supplied"}</small></span><span>{dateTime(row.lastPurchaseAt)}</span><span>{Number(row.transactionCount).toLocaleString()}</span><span>{money(Number(row.netSalesCents), currency)}</span><span>{preciseMoney(Number(row.averageTransactionCents), currency)}</span><span>{money(row.grossProfitCents == null ? null : Number(row.grossProfitCents), currency)}</span></div>)}
+            {customers.map((row, index) => <div key={`${row.provider}:${row.connectionId}:${row.externalCustomerId ?? index}`}><span><b>{row.displayName || "Known customer"}</b><small>{row.email || row.phone || "Identity restricted or not supplied"}</small>{row.externalCustomerId && <small>Source reference: {row.externalCustomerId}</small>}</span><span>{dateTime(row.lastPurchaseAt, timeZone)}</span><span>{Number(row.transactionCount).toLocaleString()}</span><span>{money(Number(row.netSalesCents), currency)}</span><span>{preciseMoney(row.averageTransactionCents, currency)}</span><span>{money(row.grossProfitCents == null ? null : Number(row.grossProfitCents), currency)}</span></div>)}
           </div>}
           {mode === "Suppliers" && <div className="commerce-ledger commerce-ledger-suppliers">
             <div className="commerce-ledger-head"><span>Supplier</span><span>Contact</span><span>Products</span><span>Units sold</span><span>Net sales</span><span>Margin</span><span>Stock risk</span></div>
-            {suppliers.map((row) => <div key={`${row.provider}:${row.externalSupplierId}`}><span><b>{row.name}</b><small>{row.accountNumber || "No account number"}</small></span><span><b>{row.contactName || "Not supplied"}</b><small>{row.email || row.phone || "No contact detail"}</small></span><span>{Number(row.productCount).toLocaleString()}</span><span>{(Number(row.periodQuantityMilli) / 1000).toFixed(1)}</span><span>{money(Number(row.periodNetSalesCents), currency)}</span><span>{percent(row.periodMarginRate)}</span><span className={Number(row.lowStockItems) > 0 ? "negative" : "positive"}>{Number(row.lowStockItems)} at risk</span></div>)}
+            {suppliers.map((row) => <div key={`${row.provider}:${row.connectionId}:${row.externalSupplierId}`}><span><b>{row.name}</b><small>{row.accountNumber || "No account number"}</small></span><span><b>{row.contactName || "Not supplied"}</b><small>{row.email || row.phone || "No contact detail"}</small></span><span>{Number(row.productCount).toLocaleString()}</span><span>{(Number(row.periodQuantityMilli) / 1000).toFixed(1)}</span><span>{money(Number(row.periodNetSalesCents), currency)}</span><span>{percent(row.periodMarginRate)}</span><span className={Number(row.lowStockItems) > 0 ? "negative" : "positive"}>{Number(row.lowStockItems)} at risk</span></div>)}
           </div>}
         </div> : <DataEmpty mode={mode} navigate={navigate} />}
       </section>
@@ -316,6 +324,6 @@ export default function CommerceIntelligenceWorkspace({ mode, currency, timeZone
         <header><div><p>PRODUCT ECONOMICS</p><h3>Revenue, discount and margin leaders</h3></div><span>Selected date range</span></header>
         <div>{data.products.slice(0, 12).map((product, index) => <article key={product.productRef}><i>{index + 1}</i><span><b>{product.name}</b><small>{(product.quantityMilli / 1000).toFixed(1)} units · {product.transactionCount} baskets</small></span><strong>{money(product.netSalesCents, currency)}</strong><em>{percent(product.marginRate)} margin</em><small>{money(product.discountCents, currency)} discounts</small></article>)}</div>
       </section>}
-    </> : loading ? <section className="commerce-loading-canvas" aria-label="Loading commerce intelligence"><i /><i /><i /></section> : null}
+    </details> : loading ? <section className="commerce-loading-canvas" aria-label="Loading commerce intelligence"><i /><i /><i /></section> : null}
   </div>;
 }

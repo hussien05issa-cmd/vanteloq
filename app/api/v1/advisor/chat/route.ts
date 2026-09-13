@@ -15,6 +15,9 @@ import { advisorMarketingEvidence } from "../../../../../server/marketing-eviden
 import { advisorEvidenceFingerprint, permittedAdvisorMemory } from "../../../../../domain/advisor-memory";
 import { projectAdvisorBookloq } from "../../../../../domain/advisor-bookloq";
 import { GET as readBookloq } from "../../bookloq/route";
+import { GET as readRetail } from "../../retail-intelligence/route";
+import { projectAdvisorRetail } from "../../../../../domain/advisor-retail";
+import { retailPeriod } from "../../../../../server/retail-intelligence";
 import {
   ADVISOR_CONSENT_NOTICE_VERSION,
   PRIVACY_POLICY_VERSION,
@@ -24,6 +27,8 @@ const readers = ["owner", "admin", "manager", "employee", "read_only"] as const;
 
 
 type Evidence = {
+  retail?: ReturnType<typeof projectAdvisorRetail> | { status: "unavailable"; reason: string };
+  requestedRetailPeriod?: { from: string; to: string };
   purpose?: "analysis" | "help";
   bookloq?: ReturnType<typeof projectAdvisorBookloq>;
   currency: string;
@@ -161,8 +166,10 @@ export async function POST(request: Request) {
     const permissions = await effectivePermissions(context);
     if (body.locationId != null && (typeof body.locationId !== "string" || !body.locationId.trim() || body.locationId.length > 200)) throw new ApiError(400, "ADVISOR_LOCATION_INVALID", "Choose a valid reporting location.");
     const locationId = typeof body.locationId === "string" ? body.locationId : null;
+    if ((body.from != null || body.to != null) && (typeof body.from !== "string" || typeof body.to !== "string")) throw new ApiError(400, "ADVISOR_PERIOD_INVALID", "Supply both reporting dates.");
+    const requestedPeriod = typeof body.from === "string" && typeof body.to === "string" ? retailPeriod(body.from, body.to, context.organization.timezone) : null;
     const locationAccess = await authorizedLocationDataScope(context, locationId);
-    const evidence: Evidence = purpose === "help" ? { currency: context.organization.currency, latestDate: null, days: [], sources: [], cashAvailableCents: null, kpis: advisorKpis([]) } : await evidenceFor(
+    const evidence: Evidence = purpose === "help" || requestedPeriod ? { currency: context.organization.currency, latestDate: null, days: [], sources: [], cashAvailableCents: null, kpis: advisorKpis([]) } : await evidenceFor(
       context.organizationId,
       locationAccess.locationRefs,
       permissions.includes("metrics.revenue"),
@@ -173,6 +180,19 @@ export async function POST(request: Request) {
     );
     evidence.scope = locationId ? "selected_location" : locationAccess.organizationWide ? "organization" : "permitted_locations";
     evidence.purpose = purpose;
+    let retailCoverage: { sourceCount: number; days: number } | null = null;
+    if (purpose === "analysis" && permissions.includes("metrics.revenue")) {
+      const retailUrl = new URL("/api/v1/retail-intelligence", request.url);
+      if (locationId) retailUrl.searchParams.set("location", locationId);
+      if (requestedPeriod) { retailUrl.searchParams.set("from", requestedPeriod.from); retailUrl.searchParams.set("to", requestedPeriod.to); evidence.requestedRetailPeriod = { from: requestedPeriod.from, to: requestedPeriod.to }; }
+      // Reuse all retail entitlement, source, location and redaction checks.
+      const retailResponse = await readRetail(new Request(retailUrl, { headers: request.headers }));
+      if (retailResponse.ok) {
+        const retailBody = await retailResponse.json();
+        evidence.retail = projectAdvisorRetail(retailBody.report);
+        if (requestedPeriod) { evidence.latestDate = retailBody.report.days.at(-1)?.date ?? null; retailCoverage = { sourceCount: retailBody.source.sourceCount, days: retailBody.report.comparison.currentObservedDays }; }
+      } else evidence.retail = { status: "unavailable", reason: "Retail records are unavailable for this permitted scope. Check the Retail intelligence view for source, date-range or access requirements." };
+    }
     if (purpose === "analysis" && permissions.includes("marketing.view")) evidence.marketing = await advisorMarketingEvidence(context, locationId);
     if (purpose === "analysis") {
       evidence.bookloq = { status: "unavailable", reason: "Select All locations with the required BookLoQ and finance access to include organization-wide summaries." };
@@ -192,18 +212,19 @@ export async function POST(request: Request) {
     await getD1().prepare("DELETE FROM assistant_conversations WHERE organization_id = ? AND user_id = ? AND updated_at < ?").bind(context.organizationId, context.userId, Date.now() - 90 * 24 * 60 * 60 * 1_000).run();
     const memoryRows = memoryEnabled ? await getD1().prepare("SELECT role, content, evidence_json FROM assistant_messages WHERE conversation_id = ? AND organization_id = ? AND user_id = ? ORDER BY created_at DESC LIMIT 6").bind(conversationId, context.organizationId, context.userId).all<{ role: string; content: string; evidence_json: string }>() : { results: [] };
     const memory = permittedAdvisorMemory(memoryRows.results ?? [], accessFingerprint);
+    const evidenceSummary = { latestDate: evidence.latestDate, sourceCount: retailCoverage?.sourceCount ?? evidence.sources.length, days: retailCoverage?.days ?? evidence.days.length };
     const result = await callAdvisor(mode, prompt(question, evidence, memory), getRuntimeEnv(), undefined, purpose);
     if (!result.configured) {
-      return jsonResponse({ status: "configuration_required", conversationId: suppliedId, memoryEnabled, model: result.model, answer: null, evidence: { latestDate: evidence.latestDate, sourceCount: evidence.sources.length, days: evidence.days.length }, message: result.message });
+      return jsonResponse({ status: "configuration_required", conversationId: suppliedId, memoryEnabled, model: result.model, answer: null, evidence: evidenceSummary, message: result.message });
     }
     if (memoryEnabled) await getD1().batch([
       suppliedId
         ? getD1().prepare("UPDATE assistant_conversations SET updated_at = ? WHERE id = ? AND organization_id = ? AND user_id = ?").bind(now.getTime(), conversationId, context.organizationId, context.userId)
         : getD1().prepare("INSERT INTO assistant_conversations (id, organization_id, user_id, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)").bind(conversationId, context.organizationId, context.userId, "Vanteloq AI conversation", now.getTime(), now.getTime()),
       getD1().prepare("INSERT INTO assistant_messages (id, conversation_id, organization_id, user_id, role, content, evidence_json, model, created_at) VALUES (?, ?, ?, ?, 'user', ?, ?, ?, ?)").bind(crypto.randomUUID(), conversationId, context.organizationId, context.userId, question, JSON.stringify({ accessFingerprint }), result.model, now.getTime()),
-      getD1().prepare("INSERT INTO assistant_messages (id, conversation_id, organization_id, user_id, role, content, evidence_json, model, created_at) VALUES (?, ?, ?, ?, 'assistant', ?, ?, ?, ?)").bind(crypto.randomUUID(), conversationId, context.organizationId, context.userId, result.text, JSON.stringify({ accessFingerprint, latestDate: evidence.latestDate, days: evidence.days.length, sourceCount: evidence.sources.length }), result.model, now.getTime()),
+      getD1().prepare("INSERT INTO assistant_messages (id, conversation_id, organization_id, user_id, role, content, evidence_json, model, created_at) VALUES (?, ?, ?, ?, 'assistant', ?, ?, ?, ?)").bind(crypto.randomUUID(), conversationId, context.organizationId, context.userId, result.text, JSON.stringify({ accessFingerprint, ...evidenceSummary }), result.model, now.getTime()),
     ]);
-    return jsonResponse({ status: "answered", providers: result.providers, partial: result.partial, kpis: evidence.kpis, conversationId: memoryEnabled ? conversationId : null, memoryEnabled, model: result.model, answer: result.text, evidence: { latestDate: evidence.latestDate, sourceCount: evidence.sources.length, days: evidence.days.length } });
+    return jsonResponse({ status: "answered", providers: result.providers, partial: result.partial, kpis: evidence.kpis, conversationId: memoryEnabled ? conversationId : null, memoryEnabled, model: result.model, answer: result.text, evidence: evidenceSummary });
   });
 }
 

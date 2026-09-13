@@ -413,8 +413,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
       </button>
       <a className="public-owner-brand" href="#company" onClick={closeMobileNav} aria-label="LexEdge Consulting, owner of Vanteloq">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/brand/lexedge-consulting-logo-web.png" width={480} height={320} alt="LexEdge Consulting" decoding="async"/>
-        <span>BY LEXEDGE</span>
+        <img src="/brand/lexedge-consulting-logo.png" width={1536} height={1024} alt="LexEdge Consulting" decoding="async"/>
       </a>
       </div>
       <button type="button" className="nav-menu-toggle" aria-label={mobileNavOpen ? "Close navigation menu" : "Open navigation menu"} aria-expanded={mobileNavOpen} aria-controls="public-navigation" onClick={() => setMobileNavOpen(open => !open)}>{mobileNavOpen ? "Close" : "Menu"}</button>
@@ -444,7 +443,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
         <div className="home-hero-copy">
           <p className="home-eyebrow">RETAIL ANALYTICS, CASH AND FOLLOW-THROUGH</p>
           <h1 id="home-title">Understand your business. <em>Make better decisions.</em></h1>
-          <p>See what is selling, where profit is changing and what needs attention. Bring your supported sales, inventory and financial records into one workspace, with the source behind every result.</p>
+          <p>Know what sells together, which products earn their place and what accounts for a revenue change. Bring supported sales, inventory and financial records into one workspace, with evidence behind the decision.</p>
           <div className="public-actions">
             <a href="#demo">Try the interactive demo <span aria-hidden="true">→</span></a>
             <button type="button" data-public-event="signup_start" onClick={() => start("signup")}>Create your workspace <span aria-hidden="true">→</span></button>
@@ -455,7 +454,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
             <li>Protect your business data</li>
           </ul>
 
-          <p className="home-demo-caption">Explore with sample data. No signup required. <Link href="/demo">Open full demo →</Link></p>
+          <p className="home-demo-caption">No signup required. <Link href="/demo#retail">Explore retail intelligence with sample records →</Link></p>
         </div>
         <figure className="product-visual product-visual-reference home-product-visual">
           {/* The image is a real Vanteloq interface composition; the values shown are illustrative. */}
@@ -467,7 +466,15 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
 
       <ProductDemo/>
 
-      <section className="home-decision-proof" aria-labelledby="decision-proof-title"><div><p className="demo-eyebrow">BUILT FOR THE OWNER’S NEXT DECISION</p><h2 id="decision-proof-title">From a number to a decision you can explain.</h2><p>Keep your sales system. Add context, source checks and a clear next step across operations and BookLoQ.</p></div><div className="decision-proof-grid"><article><span>01 / UNDERSTAND</span><h3>See what changed.</h3><p>Compare equivalent periods and locations. Missing costs stay visible instead of becoming misleading profit.</p><Link href="/demo">Inspect the sample KPIs →</Link></article><article><span>02 / TEST</span><h3>Check the cash impact.</h3><p>Explore a proposed purchase against known obligations and a safety reserve. Separate expected receipts from confirmed cash.</p><Link href="/demo#bookloq">Try BookLoQ cash →</Link></article><article><span>03 / FOLLOW THROUGH</span><h3>Give the decision an owner.</h3><p>Use Vanteloq AI to explain permitted evidence, then review and assign the next step in Action Centre.</p><Link href="/help#follow-through">See how it works →</Link></article></div></section>
+      <section className="home-decision-proof" aria-labelledby="decision-proof-title">
+        <div><p className="demo-eyebrow">TRY THE EVIDENCE. THEN MAKE THE CALL.</p><h2 id="decision-proof-title">Know what changed. See where to act.</h2><p>Explore the same retail calculation engine used inside a workspace. The demo uses fictional records, clearly marked, so you can inspect the result without sharing your business data.</p></div>
+        <div className="decision-proof-grid">
+          <article><span>1 / REVENUE DRIVERS</span><h3>Revenue is down. Tap “Why?”</h3><p>Break the change into purchase volume, basket value and returns. See how category revenue contributes, with a bridge that reconciles to the cent.</p><Link href="/demo#retail">Inspect the revenue bridge →</Link></article>
+          <article><span>2 / PRODUCTS & BASKETS</span><h3>Find the pattern behind the purchase.</h3><p>Filter products by category and type. Compare discount reliance, repeat activity and combinations bought together, with sample sizes and formulas visible.</p><Link href="/demo#retail">Explore products and baskets →</Link></article>
+          <article><span>3 / STOCK & OPERATIONS</span><h3>Plan with the inputs that matter.</h3><p>Review stock cover, expiry and hourly demand. Add reviewed inventory or labour records when your source does not supply the inputs a calculation needs.</p><Link href="/demo#retail">Explore inventory and hours →</Link></article>
+        </div>
+        <div className="home-retail-next"><p><strong>One practical workflow.</strong> Connect and review your source, inspect the result, ask Vanteloq AI for an interpretation, then assign a review task. BookLoQ adds the cash context before you commit.</p><Link href="/demo#bookloq">Test a purchase in BookLoQ →</Link><button type="button" data-public-event="signup_start" onClick={() => start("signup")}>Create your workspace</button></div>
+      </section>
 
       <section className="home-connections" id="connections" aria-labelledby="connections-title">
         <div className="home-connection-intro">
@@ -751,6 +758,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
             <details><summary>What is Vanteloq?</summary><p>Vanteloq is a business operations and analytics platform for independent retailers. It brings supported sales, inventory, cash, purchasing and operational records into one workspace, then shows where each result came from, what is missing and what needs attention. It is designed to help owners make better decisions without hiding uncertainty behind a polished dashboard.</p></details>
             <details><summary>Who owns Vanteloq?</summary><p>Vanteloq is owned and operated by LexEdge Consulting. LexEdge Consulting is responsible for the product direction, service operations, privacy commitments and customer support behind Vanteloq.</p></details>
             <details><summary>How are LexEdge Consulting and Vanteloq connected?</summary><p>LexEdge Consulting is the company. Vanteloq is the company&apos;s business software product. A Vanteloq subscription provides access to the software and does not create a separate consulting engagement unless the customer and LexEdge Consulting agree to one in writing.</p></details>
+            <details><summary>Can I explore the product before signing up?</summary><p>Yes. The interactive demo includes retail revenue drivers, product and basket analysis, inventory evidence, hourly demand and BookLoQ cash scenarios. It uses fictional sample records and the same retail calculation engine as the workspace. Missing input scenarios show why unsupported results are withheld.</p><Link href="/demo#retail">Explore retail intelligence →</Link></details>
             <details><summary>Who is Vanteloq designed for?</summary><p>The current product and connection work are designed primarily for independent retailers and the owners or managers who oversee sales, inventory, purchasing, cash and daily operations.</p></details>
             <details><summary>What systems can I connect?</summary><p>The Connections section shows the current status for every provider. Setup required means a connection path exists but customer or hosted provider setup is still required. Sandbox only and Production approval needed do not mean the provider is available for live production data. In development and Coming soon connections remain unavailable. Structured CSV import is available.</p></details>
             <details><summary>Do I need to replace my POS?</summary><p>No. Vanteloq is designed to use supported source records while the POS remains the transaction system. Availability and depth depend on the connector and successful reconciliation.</p></details>

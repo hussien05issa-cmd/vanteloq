@@ -997,6 +997,29 @@ export const commerceProducts = sqliteTable(
   ],
 );
 
+export const retailMeasurements = sqliteTable("retail_measurements", {
+  id: text("id").primaryKey(),
+  organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  connectionId: text("connection_id").notNull().references(() => integrationConnections.id, { onDelete: "cascade" }),
+  provider: text("provider").notNull(),
+  outletRef: text("outlet_ref").notNull(),
+  kind: text("kind", { enum: ["stock", "labour", "loyalty", "catalog"] }).notNull(),
+  reference: text("reference").notNull(),
+  periodFrom: text("period_from").notNull(),
+  periodTo: text("period_to").notNull(),
+  sourceLabel: text("source_label").notNull(),
+  valuesJson: text("values_json").notNull(),
+  updatedByUserId: text("updated_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  version: integer("version").notNull().default(1),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+}, table => [
+  uniqueIndex("retail_measurements_identity_unique").on(table.organizationId, table.connectionId, table.outletRef, table.kind, table.reference, table.periodFrom, table.periodTo),
+  index("retail_measurements_scope_idx").on(table.organizationId, table.connectionId, table.kind, table.periodFrom, table.periodTo),
+  check("retail_measurements_kind_check", sql`${table.kind} in ('stock','labour','loyalty','catalog')`),
+  check("retail_measurements_json_check", sql`json_valid(${table.valuesJson})`),
+  check("retail_measurements_version_check", sql`${table.version} > 0`),
+]);
+
 export const commerceCustomers = sqliteTable(
   "commerce_customers",
   {

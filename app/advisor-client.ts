@@ -10,6 +10,8 @@ export function requestAdvisorAnalysis(fetcher: typeof fetch, input: {
   memoryEnabled: boolean;
   locationId?: string | null;
   purpose?: "analysis" | "help";
+  from?: string;
+  to?: string;
 }) {
   return fetcher("/api/v1/advisor/chat", {
     method: "POST",
