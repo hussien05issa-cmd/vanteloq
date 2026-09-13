@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { LEGAL_EMAIL, LegalShell, PolicySection } from "../legal-shell";
+import { LegalContactLink, LegalShell, PolicySection } from "../legal-shell";
 
 export const metadata: Metadata = {
   title: "Terms of Service | Vanteloq",
@@ -115,7 +115,7 @@ export default function TermsPage() {
 
       <PolicySection id="changes-contact" title="17. Changes and contact">
         <p>We may update these terms as the service or law changes. We will post the updated terms with a new date. When a material change affects an authenticated user, Vanteloq requires a new affirmative acceptance before billing status or workspace access is shown. Continued use alone is not used as the only acceptance method for that material update.</p>
-        <p>Questions or legal notices can be sent to <a href={`mailto:${LEGAL_EMAIL}`}>{LEGAL_EMAIL}</a>.</p>
+        <p>Questions or legal notices can be sent through <LegalContactLink/>.</p>
       </PolicySection>
     </LegalShell>
   );

@@ -2,6 +2,7 @@
 
 import { type ReactNode, useEffect, useState } from "react";
 import ProductBrandLogo from "./product-brand-logo";
+import CustomPlanCallout from "./custom-plan-callout";
 import { apiFetch, signOut } from "./supabase-browser";
 import {
   billingGateState,
@@ -197,6 +198,7 @@ export default function BillingOnboardingGate({ children }: { children: ReactNod
         <div className="billing-onboarding-security"><b>Card information is required.</b><span>Stripe securely collects and stores payment details. Vanteloq never receives card numbers. The subscription is charged according to the amount shown in Checkout.</span></div>
         <button className="billing-onboarding-submit" type="button" disabled={busy || !plan} onClick={() => void checkout()}>{busy ? "Opening secure checkout…" : "Continue to Stripe and subscribe"}</button>
       </>}
+      <CustomPlanCallout/>
       <footer><button type="button" disabled={busy} onClick={() => void refresh()}>Check payment status</button><button type="button" onClick={() => void signOut()}>Sign out</button></footer>
     </section>
   </main>;

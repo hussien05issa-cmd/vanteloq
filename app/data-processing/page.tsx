@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { LEGAL_EMAIL, LegalShell, PolicySection } from "../legal-shell";
+import { LegalContactLink, LegalShell, PolicySection } from "../legal-shell";
 
 export const metadata: Metadata = {
   title: "Data Processing Addendum | Vanteloq",
@@ -32,7 +32,7 @@ export default function DataProcessingPage() {
     </PolicySection>
     <PolicySection id="subprocessors" title="5. Subprocessors and connected services">
       <p>The customer authorizes the subprocessors listed in the <Link href="/subprocessors">Subprocessor and Connected Service Notice</Link>. Vanteloq requires subprocessors to protect personal information through appropriate contractual obligations. Vanteloq remains responsible for its own obligations when a subprocessor performs processing on its behalf.</p>
-      <p>Vanteloq may update that list to operate or improve the service. A customer may object to a new subprocessor on reasonable data protection grounds by contacting <a href={`mailto:${LEGAL_EMAIL}`}>{LEGAL_EMAIL}</a> promptly after notice. The parties will work in good faith on a reasonable solution; if none is available, the affected feature or service may be ended.</p>
+      <p>Vanteloq may update that list to operate or improve the service. A customer may object to a new subprocessor on reasonable data protection grounds by using <LegalContactLink/> promptly after notice. The parties will work in good faith on a reasonable solution; if none is available, the affected feature or service may be ended.</p>
     </PolicySection>
     <PolicySection id="transfers" title="6. Processing outside Canada">
       <p>Customer Data may be processed outside Canada where a listed provider operates. Vanteloq uses contractual, technical, and organizational safeguards appropriate to the service and will provide available information about relevant locations and safeguards on request. Where an applicable law requires a specific transfer mechanism, the parties will cooperate to put that mechanism in place.</p>
@@ -49,7 +49,7 @@ export default function DataProcessingPage() {
       <p>Vanteloq may retain information required by law, a documented legal hold, security need, or the customer&apos;s recordkeeping instruction. Such information is protected and deleted or anonymized when the reason ends. A pseudonymous deletion receipt may be retained for 24 months. Processing records and retry-session handling are described in the Privacy Policy. Provider records retained independently under a provider&apos;s agreement or law are controlled by that provider.</p>
     </PolicySection>
     <PolicySection id="review" title="10. Review and contact">
-      <p>On reasonable written request, Vanteloq will provide available policies, test summaries, or other evidence relevant to this addendum. Any audit must avoid unreasonable disruption and exposure of another customer&apos;s information or protected security details. Questions and requests can be sent to <a href={`mailto:${LEGAL_EMAIL}`}>{LEGAL_EMAIL}</a>.</p>
+      <p>On reasonable written request, Vanteloq will provide available policies, test summaries, or other evidence relevant to this addendum. Any audit must avoid unreasonable disruption and exposure of another customer&apos;s information or protected security details. Questions and requests can be sent through <LegalContactLink/>.</p>
     </PolicySection>
   </LegalShell>;
 }

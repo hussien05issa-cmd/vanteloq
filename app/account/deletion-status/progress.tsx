@@ -51,7 +51,7 @@ export default function DeletionProgress() {
     {receipt && <p>Receipt number: <code style={{ overflowWrap: "anywhere" }}>{receipt}</code></p>}
     {complete && retained && <p>Your shared sign-in remains available for another workspace or the private console. Deletion did not remove those separate services.</p>}
     {!complete && <button type="button" disabled={busy} onClick={() => void resume()} style={{ padding: "14px 22px", margin: "16px 0", borderRadius: 8, border: 0, background: "#1558db", color: "white" }}>{busy ? "Processing…" : "Retry or check status"}</button>}
-    <p><a href="mailto:hussienissa@lexedgeconsulting.com">Contact the Privacy Officer</a> if the process cannot finish. Share only the receipt number, not your private deletion session key.</p>
+    <p><a href="/contact">Contact the Privacy Officer</a> if the process cannot finish. Share only the receipt number, not your private deletion session key.</p>
     <p><Link href="/privacy#retention">Retention and deletion information</Link> · <Link href="/">Return to Vanteloq</Link></p>
   </main>;
 }

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { LEGAL_EMAIL, LegalShell, PolicySection } from "../legal-shell";
+import { LegalContactLink, LegalShell, PolicySection } from "../legal-shell";
 
 export const metadata: Metadata = {
   title: "Cookie Notice | Vanteloq",
@@ -41,7 +41,7 @@ export default function CookiesPage() {
       <PolicySection id="controls" title="5. Your controls">
         <p>You can use browser settings to inspect, delete, or block cookies and site data. Deleting authentication storage will usually sign you out. Browser privacy controls may also limit integration callbacks or account recovery.</p>
         <p>The first time the analytics choice is available, you can select Essential only or Allow analytics. The choice is not preselected. Use the Cookie settings button at any time to change it. Choosing Essential only or withdrawing analytics permission does not limit Vanteloq features. It stops new analytics events and removes Google Analytics cookies that this site can access.</p>
-        <p>For questions about browser storage, contact <a href={`mailto:${LEGAL_EMAIL}`}>{LEGAL_EMAIL}</a>.</p>
+        <p>For questions about browser storage, use <LegalContactLink/>.</p>
       </PolicySection>
 
       <PolicySection id="changes" title="6. Changes to this notice">
