@@ -628,11 +628,11 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
           <p>GROUNDED BUSINESS INTELLIGENCE</p>
           <h2 id="vanteloq-ai-title">Your business context.<br/>A clearer next question.</h2>
           <div className="vanteloq-ai-engines" aria-label="Vanteloq AI provider"><span>Powered by OpenAI</span></div>
-          <span>Explore sales, margins, inventory, marketing and BookLoQ with Vanteloq AI, powered by OpenAI. Ask about the approved evidence you can access, or switch to App help for guidance on using the product.</span>
-          <p className="vanteloq-ai-activation">You choose when to share data. Memory starts off, saved chats can be deleted, and App help does not attach workspace records.</p>
+          <span>Explore sales, margins, inventory, marketing and BookLoQ with Vanteloq AI, powered by OpenAI. Ask about your permitted business evidence, financial concepts or how to use the app in one conversation.</span>
+          <p className="vanteloq-ai-activation">You choose when to share data. Memory starts off, saved chats can be deleted, and Workspace data can be turned off in AI Settings.</p>
           <div className="home-ai-grid">
             <article><strong>Ask in plain language</strong><span>Ask why sales changed, where margin is leaking or what deserves attention next.</span></article>
-            <article><strong>Evidence stays visible</strong><span>Business analysis uses permitted summaries with source dates and coverage. Review the evidence and check important conclusions.</span></article>
+            <article><strong>Evidence stays visible</strong><span>Business questions use permitted summaries with source dates and coverage. Review the evidence and check important conclusions.</span></article>
             <article><strong>Memory is your choice</strong><span>Memory starts off. Enable it for a chat, switch it off, or delete your saved chats. Permitted context stays scoped to your user and workspace.</span></article>
           </div>
           <small className="home-ai-note">Vanteloq AI supports analysis and planning. Actions remain behind Vanteloq permissions and your approval.</small>

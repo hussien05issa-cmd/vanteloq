@@ -3,8 +3,20 @@ import assert from "node:assert/strict";
 import { callAdvisor, advisorProviderStatus } from "../server/advisor-providers.ts";
 import { isAdvisorMode, type AdvisorMode } from "../domain/advisor-providers.ts";
 import { Miniflare } from "miniflare";
-import { ADVISOR_APP_HELP_INSTRUCTIONS } from "../server/advisor-instructions.ts";
+import { ADVISOR_APP_HELP_INSTRUCTIONS, ADVISOR_SYSTEM_INSTRUCTIONS } from "../server/advisor-instructions.ts";
 const env = { OPENAI_API_KEY: "fixture-openai-key" };
+
+test("the unified assistant retains financial and operational disciplines without workspace access", () => {
+  for (const instructions of [ADVISOR_SYSTEM_INSTRUCTIONS, ADVISOR_APP_HELP_INSTRUCTIONS]) {
+    for (const skill of ["Accounting review:", "Treasury and cash planning:", "Marketing:", "Operations and inventory:", "Risk analysis:"]) assert.ok(instructions.includes(skill));
+    assert.match(instructions, /verified product guide|product guide for app instructions/);
+    assert.match(instructions, /never invent a workspace number/);
+    assert.match(instructions, /Never recommend a balancing plug/);
+    assert.match(instructions, /Handle mixed app and business questions/);
+  }
+  assert.match(ADVISOR_APP_HELP_INSTRUCTIONS, /No workspace records were requested or attached/);
+  assert.match(ADVISOR_APP_HELP_INSTRUCTIONS, /general guidance/);
+});
 test("App help selects instructions that do not claim to inspect a user's account", async () => {
   const request = (async (_url, init) => {
     const body = JSON.parse(String(init?.body));
