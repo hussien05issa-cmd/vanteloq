@@ -155,6 +155,7 @@ test("R-Series completes a browser callback using the initiating one-time state"
         return Response.json({ PaymentType: [{ paymentTypeID: "card-1", name: "Visa" }], "@attributes": {} });
       }
       if (url.origin === "https://api.lightspeedapp.com" && url.pathname === "/API/V3/Account/123/Item.json") {
+        assert.deepEqual(JSON.parse(url.searchParams.get("load_relations")), ["ItemShops", "ItemPrices"], "ItemPrices is the API relation; Prices is only the response field");
         catalogSince = url.searchParams.get("timeStamp");
         if (emptyCatalogPage) return Response.json({ Item: [], "@attributes": {} });
         return Response.json({

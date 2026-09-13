@@ -52,6 +52,10 @@ test("retail Worker enforces tenant/location/privacy boundaries, source approval
     let response = await load(); assert.equal(response.status, 200, await response.clone().text());
     let body = await response.json(); assert.equal(body.report.current.netCents, 1000); assert.equal(body.report.products[0].name, "Whey protein");
     assert.equal(body.report.inventory[0].dailyVelocity, 1); assert.equal(body.report.current.grossProfitCents, 600);
+    assert.match(body.report.dataQualityWarnings.join(' '), /Historical discount correction/);
+    await db.prepare("UPDATE integration_sync_runs SET cursor_after=? WHERE id='run-real-retail'").bind(JSON.stringify({ version: 5 })).run();
+    body = await (await load()).json();
+    assert.doesNotMatch(body.report.dataQualityWarnings.join(' '), /Historical discount correction/);
     assert.doesNotMatch(JSON.stringify(body), /OTHER TENANT|PRIVATE TEST SECRET|private@example|customer-secret|test-retail/);
     await db.prepare("UPDATE commerce_sale_lines SET sku=NULL,product_name='R-Series item product' WHERE connection_id='real-retail'").run();
     body = await (await load()).json();

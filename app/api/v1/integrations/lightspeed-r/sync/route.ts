@@ -327,7 +327,7 @@ export async function POST(request: Request) {
             modifiedSince: previous.itemsCursor || Number(existingCommerce?.products ?? 0) === 0
               ? null
               : previous.watermark,
-            loadRelations: ["ItemShops", "Prices"],
+            loadRelations: ["ItemShops", "ItemPrices"],
           });
       const customersPage = previous.customersComplete && Number(existingCommerce?.customers ?? 0) > 0
         ? { data: [], pages: 0, cursor: null as string | null }
@@ -827,8 +827,10 @@ export async function POST(request: Request) {
           ? `Imported ${recordsImported} verified records. ${warnings} source record${warnings === 1 ? " needs" : "s need"} attention before the sync cursor can advance.`
           : promotionStatus === "approved"
             ? coverageWarnings.size
-              ? `Verified sales are current. ${[...coverageWarnings].join(", ")} will retry on the next sync.`
-              : "R-Series is current and the approved records are available to dashboard features."
+              ? `Approved records remain available. ${[...coverageWarnings].join(", ")} will retry on the next sync.${!backfillComplete ? " Historical import is still in progress." : ""}`
+              : !backfillComplete
+                ? "Approved records remain available. Run sync again to continue the remaining history before treating the import as complete."
+                : "R-Series is current and the approved records are available to dashboard features."
           : verifiedSalesReady
             ? coverageWarnings.size || !backfillComplete
               ? `Verified sales are ready for review. Approve them to populate the dashboard while ${[...coverageWarnings, ...(!backfillComplete ? ["remaining history"] : [])].join(" and ")} continue syncing.`
