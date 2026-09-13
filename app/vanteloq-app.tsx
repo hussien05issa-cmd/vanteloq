@@ -2349,6 +2349,8 @@ function DataHub({
   const [quickBooksConsentOpen, setQuickBooksConsentOpen] = useState(false);
   const [quickBooksConsentAccepted, setQuickBooksConsentAccepted] = useState(false);
   const [sampleResult, setSampleResult] = useState<null | {
+    dataPromotionEnabled?: boolean;
+    backfillComplete?: boolean;
     run: { recordsRead: number; recordsStaged: number; duplicatesSkipped: number; warningCount: number };
     reconciliation: {
       mappedOutlets?: number;
@@ -3262,7 +3264,9 @@ function DataHub({
             <header>
               <div>
                 <p>{activeSampleProvider === "stripe" ? "STRIPE SAMPLE RECONCILIATION" : activeSampleProvider === "moneris" ? "MONERIS PAYMENT RECONCILIATION" : activeSampleProvider === "lightspeed-r" ? "R-SERIES DATA SYNC" : activeSampleProvider === "shopify" ? "SHOPIFY E-COMMERCE DATA SYNC" : activeSampleProvider === "shopify-pos" ? "SHOPIFY POS DATA SYNC" : activeSampleProvider === "square" ? "SQUARE DATA SYNC" : activeSampleProvider === "clover" ? "CLOVER DATA SYNC" : "X-SERIES SAMPLE RECONCILIATION"}</p>
-                <h3>{activeSampleProvider === "lightspeed-r" || activeSampleProvider === "shopify" || activeSampleProvider === "shopify-pos" || activeSampleProvider === "square" || activeSampleProvider === "clover"
+                <h3>{sampleResult.dataPromotionEnabled === true
+                  ? sampleResult.backfillComplete === false ? "Approved data refreshed. History is still importing." : "Approved data refreshed."
+                  : activeSampleProvider === "lightspeed-r" || activeSampleProvider === "shopify" || activeSampleProvider === "shopify-pos" || activeSampleProvider === "square" || activeSampleProvider === "clover"
                   ? sampleResult.readyForReview
                     ? `The ${activeSampleProvider === "clover" ? "Clover" : activeSampleProvider === "square" ? "Square" : activeSampleProvider === "shopify" ? "Shopify e-commerce" : activeSampleProvider === "shopify-pos" ? "Shopify POS" : "R-Series"} import is ready for your review.`
                     : sampleResult.run.warningCount > 0
@@ -3270,7 +3274,7 @@ function DataHub({
                       : `The ${activeSampleProvider === "clover" ? "Clover" : activeSampleProvider === "square" ? "Square" : activeSampleProvider === "shopify" ? "Shopify e-commerce" : activeSampleProvider === "shopify-pos" ? "Shopify POS" : "R-Series"} backfill is still in progress.`
                   : "Staged safely. Nothing has entered live metrics."}</h3>
               </div>
-              <strong>{(activeSampleProvider === "lightspeed-r" || activeSampleProvider === "shopify" || activeSampleProvider === "shopify-pos" || activeSampleProvider === "square" || activeSampleProvider === "clover") && sampleResult.readyForReview ? "READY TO REVIEW" : sampleResult.readyForReview ? "READY TO VERIFY" : "DASHBOARD DATA LOCKED"}</strong>
+              <strong>{sampleResult.dataPromotionEnabled === true ? "APPROVED RECORDS" : (activeSampleProvider === "lightspeed-r" || activeSampleProvider === "shopify" || activeSampleProvider === "shopify-pos" || activeSampleProvider === "square" || activeSampleProvider === "clover") && sampleResult.readyForReview ? "READY TO REVIEW" : sampleResult.readyForReview ? "READY TO VERIFY" : "DASHBOARD DATA LOCKED"}</strong>
             </header>
             <div>
               <span><small>RECORDS READ</small><b>{sampleResult.run.recordsRead}</b></span>

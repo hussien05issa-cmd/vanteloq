@@ -75,11 +75,16 @@ export async function readRetailReport(context: AccessContext, locationId: strin
       coalesce(CASE WHEN p.name NOT LIKE 'R-Series item %' THEN p.name END, l.product_name, p.name, l.sku, 'Unclassified item') AS name,
       p.category_ref AS category, NULL AS itemType, l.customer_ref AS customerRef, l.outlet_ref AS outletRef, l.sold_at AS soldAt,
       l.quantity_milli AS quantityMilli, l.net_sales_cents AS netCents, l.discount_cents AS discountCents,
-      CASE WHEN l.cost_cents <> 0 THEN l.cost_cents ELSE NULL END AS costCents
+      CASE WHEN l.cost_cents <> 0 THEN l.cost_cents ELSE NULL END AS costCents,
+      CASE WHEN l.provider='lightspeed-r' AND NOT EXISTS (
+        SELECT 1 FROM integration_sync_runs normalization WHERE normalization.id=l.sync_run_id
+          AND normalization.organization_id=l.organization_id AND normalization.connection_id=l.connection_id
+          AND CASE WHEN json_valid(normalization.cursor_after) THEN json_extract(normalization.cursor_after,'$.version') ELSE 0 END>=5
+      ) THEN 1 ELSE 0 END AS historicalRepairPending
       FROM ${reportSaleLinesSql} l LEFT JOIN commerce_products p ON p.organization_id = l.organization_id AND p.provider = l.provider AND p.connection_id = l.connection_id AND p.external_product_id = l.product_ref
       WHERE l.organization_id = ? AND ${approvedRetailSource("l")}${locationSql} AND ${window.sql}
       ORDER BY l.sold_at, l.provider, l.connection_id, l.external_sale_id, l.external_line_id LIMIT 50001`)
-      .bind(context.organizationId, ...bindings, ...window.bindings).all<RetailLine>(),
+      .bind(context.organizationId, ...bindings, ...window.bindings).all<RetailLine & { historicalRepairPending: number }>(),
     access.inventory ? db.prepare(`SELECT source_provider AS provider, source_connection_id AS connectionId, location_ref AS locationRef,
       sku, name, on_hand_quantity AS onHand, reorder_point AS reorderPoint, updated_at AS updatedAt
       FROM inventory_balances b WHERE organization_id = ? AND ${approvedRetailSource("b", "source_connection_id", "source_provider")} ORDER BY name LIMIT 5001`)
@@ -113,6 +118,8 @@ export async function readRetailReport(context: AccessContext, locationId: strin
   });
   const redactTotals = <T extends { grossProfitCents: number | null }>(totals: T): T => ({ ...totals, grossProfitCents: access.profit ? totals.grossProfitCents : null });
   const dataQualityWarnings = inventoryAuthority?.status === "conflict" ? ["Inventory sources overlap or are syncing. Resolve the inventory authority in Reports; stock calculations are withheld."] : [];
+  const pendingRepair = (lines.results ?? []).filter(row => row.historicalRepairPending).length;
+  if (pendingRepair) dataQualityWarnings.push(`Historical discount correction is still importing for ${pendingRepair} line records. Revenue, discount and profit figures for this selection are provisional. Finish the R-Series history sync before using them for decisions.`);
   if (report.products.some(product => /^R-Series item /.test(product.name))) dataQualityWarnings.push("Some product identities are awaiting the full POS catalogue. Review catalogue coverage before using product names, SKUs or category comparisons.");
   const safe: RetailReport = { ...report, dataQualityWarnings, current: redactTotals(report.current), prior: redactTotals(report.prior),
     products: report.products.map(row => ({ ...row, grossProfitCents: access.profit ? row.grossProfitCents : null, marginRate: access.profit ? row.marginRate : null })),
