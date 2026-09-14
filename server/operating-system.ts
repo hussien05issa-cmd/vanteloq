@@ -17,7 +17,7 @@ export type OperatingDecision = {
 export type OperatingSystemInput = {
   ready: boolean;
   currency: string;
-  source: { rowCount: number; freshness: string; latestBusinessDate: string | null };
+  source: { rowCount: number; verifiedDays?: number; freshness: string; latestBusinessDate: string | null };
   balances: null | {
     cashBalanceCents: number | null;
     accountsPayableCents: number | null;
@@ -126,9 +126,9 @@ export function buildOperatingSystem(input: OperatingSystemInput) {
       ? "Needs cash and payable balances"
       : "Preliminary only: cash less recorded payables; unmodeled obligations excluded",
     pillars: [
-      { id: "sales", label: "Sales", state: input.source.rowCount >= 14 ? "operational" : "limited" },
+      { id: "sales", label: "Sales", state: input.dataQuality.status === "usable" && input.source.freshness === "current" ? "operational" : "limited" },
       { id: "money", label: "Money", state: cash !== null && payable !== null ? "limited" : "needs_source" },
-      { id: "inventory", label: "Inventory", state: input.balances?.inventoryValueCents !== null ? "limited" : "needs_source" },
+      { id: "inventory", label: "Inventory", state: input.balances?.inventoryValueCents != null ? "limited" : "needs_source" },
       { id: "operations", label: "Operations", state: "operational" },
     ],
     decisions,

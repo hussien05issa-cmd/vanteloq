@@ -1,3 +1,5 @@
+import { periodEvidence } from "./period-evidence.ts";
+
 export type AdvisorDay = { date: string; locationRef: string; netSalesCents: number | null; grossProfitCents: number | null; transactions: number | null; discountsCents: number | null; refundsCents: number | null; unitsSold: number | null; labourCostCents: number | null; inventoryValueCents: number | null; accountsPayableCents: number | null };
 const shift = (date: string, days: number) => new Date(Date.parse(`${date}T00:00:00Z`) + days * 86400000).toISOString().slice(0, 10);
 type NumericField = Exclude<keyof AdvisorDay, "date" | "locationRef">;
@@ -21,11 +23,11 @@ export function advisorKpis(rows: AdvisorDay[], now = new Date()) {
   const latestDate = dates.at(-1);
   if (!latestDate) return { latestDate: null, current: null, previous: null, comparisonComplete: false, salesChangePercent: null, limitations: ["No approved daily business evidence is available."] };
   const locations = [...new Set(rows.map(row => row.locationRef))];
+  const coverageRows = rows.map(row => ({ businessDate: row.date, locationRef: row.locationRef }));
   function period(end: string) {
     const start = shift(end, -27);
     const selected = rows.filter(row => row.date >= start && row.date <= end);
-    const coverage = new Set(selected.map(row => `${row.date}:${row.locationRef}`));
-    const complete = locations.every(location => Array.from({length: 28}, (_, i) => shift(end, -i)).every(date => coverage.has(`${date}:${location}`)));
+    const complete = periodEvidence(coverageRows, start, end, locations).complete;
     const netSalesCents = total(selected, "netSalesCents"), grossProfitCents = total(selected, "grossProfitCents"), transactions = total(selected, "transactions"), unitsSold = total(selected, "unitsSold"), labourCostCents = total(selected, "labourCostCents");
     return { start, end, complete, observedDays: new Set(selected.map(row => row.date)).size, netSalesCents, grossProfitCents, transactions, unitsSold, labourCostCents,
       discountsCents: total(selected, "discountsCents"), refundsCents: total(selected, "refundsCents"), grossMarginPercent: ratio(grossProfitCents, netSalesCents, 100), averageTransactionCents: ratio(netSalesCents, transactions), unitsPerTransaction: ratio(unitsSold, transactions), labourToSalesPercent: ratio(labourCostCents, netSalesCents, 100),
