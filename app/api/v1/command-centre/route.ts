@@ -82,8 +82,9 @@ function buildDailySourceSnapshot(
   };
 }
 
-export async function GET(request: Request) {
-  return handleApi(request, async () => {
+// Shared by opportunity capture so saved evidence uses the exact same source and
+// permission filtering as the dashboard, without an internal HTTP request.
+export async function loadCommandCentre(request: Request) {
     const paymentDaysValue = new URL(request.url).searchParams.get("payment_days") ?? "1";
     if (!["1", "7", "30"].includes(paymentDaysValue)) {
       throw new ApiError(400, "PAYMENT_PERIOD_INVALID", "Choose today, the last 7 days, or the last 30 days.");
@@ -457,7 +458,7 @@ export async function GET(request: Request) {
       insights: commandCentre.insights,
       dataQuality: commandCentre.dataQuality,
     });
-    return jsonResponse({
+    return {
       organization: {
         name: branding?.displayName ?? context.organization.businessName,
         currency: context.organization.currency,
@@ -471,6 +472,9 @@ export async function GET(request: Request) {
       },
       commandCentre,
       operatingSystem,
-    });
-  });
+    };
+}
+
+export async function GET(request: Request) {
+  return handleApi(request, async () => jsonResponse(await loadCommandCentre(request)));
 }
