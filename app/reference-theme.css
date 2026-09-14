@@ -8,6 +8,8 @@
   --ui-surface: #f9fbfe;
   --ui-glass: linear-gradient(125deg,#f9fcffe6,#dfe9f6b8);
   --ui-shadow: 0 12px 32px #1737590a,inset 0 1px 0 #ffffffd9;
+  --ui-action: linear-gradient(165deg,#294763,#102840 48%,#091a2e);
+  --ui-action-hover: linear-gradient(165deg,#355c83,#173a5e 48%,#102940);
 }
 .reference-home { position:relative; background:#f7f9fc; color:var(--ui-ink); }
 .reference-home main { position:relative; }
@@ -34,7 +36,7 @@
 .reference-home .public-nav-actions button:not(.nav-login),
 .reference-home .home-hero .public-actions a:first-child,
 .reference-home .journey-final > button {
-  background:linear-gradient(165deg,#294763,#102840 48%,#091a2e);
+  background:var(--ui-action);
   border:1px solid #d7e5f0; color:#f6faff;
   box-shadow:inset 0 2px 4px #ffffff28,0 4px 14px #0d2c461c;
 }
@@ -104,6 +106,30 @@
 .operating-shell :is(.topbar,.bookloq-top,.ai-studio-header) { background:linear-gradient(120deg,#f9fcffe8,#dfebf8d9); backdrop-filter:blur(18px) saturate(115%); }
 .operating-shell .ai-studio { box-shadow:0 16px 50px #214c7b0d,inset 0 1px 0 #fff; border-color:#cadbef; }
 .operating-shell .ai-composer-shell { background:linear-gradient(150deg,#fafdff,#eef4fb); border-color:#bdd0e6; box-shadow:inset 0 1px 0 #fff,0 6px 18px #1644740b; }
+/* Shared action hierarchy across workspace, finance, AI and account entry. */
+.operating-shell :is(button.primary,button.bookloq-primary,.ai-send:not(:disabled)),
+.auth-submit,.setup-actions .continue,.custom-plan-form > button,.unified-public-nav .public-nav-create {
+  background:var(--ui-action); border-color:#335575; color:#f6faff;
+  box-shadow:inset 0 2px 4px #ffffff28,0 3px 10px #17375918;
+}
+.operating-shell :is(button.primary,button.bookloq-primary,.ai-send):not(:disabled):hover,
+.auth-submit:not(:disabled):hover,.setup-actions .continue:not(:disabled):hover,.custom-plan-form > button:not(:disabled):hover {
+  background:var(--ui-action-hover); box-shadow:inset 0 2px 4px #ffffff28,0 5px 14px #17375924;
+}
+.operating-shell :is(button.primary,button.secondary,button.bookloq-primary,.decision-detail-actions button,.decision-toolbar > button,.decision-workspace-heading button,.bookloq-toolbar button,.bookloq-document-actions button,.ai-settings-header button):is(:enabled,:disabled) {
+  border-radius:var(--ui-control-radius); min-height:44px; font-weight:550;
+}
+.operating-shell :is(.decision-toolbar,.decision-workspace-heading,.bookloq-toolbar,.bookloq-document-actions,.ai-settings-header) > button:not(.primary):not(.danger):not(:disabled) {
+  color:#254769; background:linear-gradient(160deg,#fafdff,#eaf1f9); border:1px solid #b9cbe0;
+  box-shadow:inset 0 1px 0 #ffffffd9,0 2px 5px #193b6209;
+}
+.operating-shell .bookloq-side nav button:is(:enabled,:disabled) { color:#d4e1f0; border-radius:10px; min-height:46px; }
+.operating-shell .bookloq-side nav button:hover { color:#f6faff; background:#ffffff14; }
+.operating-shell .bookloq-side nav button[aria-current="page"] {
+  color:#102e51; background:linear-gradient(115deg,#c9e1ff,#96bce9);
+  box-shadow:inset 3px 0 0 #e8f3ff,inset 0 1px 0 #ffffff96,0 3px 10px #071c3826;
+}
+.operating-shell .bookloq-side nav section > p,.operating-shell .bookloq-side-foot { color:#b5c8dd; }
 @media (max-width:1300px) and (min-width:1001px) {
   .reference-home .public-nav { grid-template-columns:auto 1fr auto; column-gap:12px; padding-inline:30px; }
   .reference-home .public-brand > span { font-size:17px; }
