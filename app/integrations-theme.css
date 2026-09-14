@@ -1,0 +1,105 @@
+/* Integrations uses the same light surfaces as the rest of the workspace.
+   Keep these rules scoped so legacy dark marketing panels are unaffected. */
+.operating-shell .data-hub {
+  --connection-ink: #19334f;
+  --connection-muted: #49617a;
+  --connection-line: #ccd9e7;
+  --connection-surface: #f9fbfe;
+  color: var(--connection-ink);
+}
+.operating-shell .data-hub .integration-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr));
+  align-items: start;
+  gap: 20px;
+}
+.operating-shell .data-hub :is(.integration-card,.provider-parity-contract,.csv-import,.manual-entry) {
+  background: var(--connection-surface);
+  color: var(--connection-ink);
+  border: 1px solid var(--connection-line);
+  border-radius: 18px;
+  box-shadow: inset 0 1px 0 #ffffffcc, 0 5px 18px #19395f08;
+}
+.operating-shell .data-hub .integration-card { padding: 24px; }
+.operating-shell .data-hub .integration-card::before { display: none; }
+.operating-shell .data-hub :is(.integration-card h3,.provider-parity-contract h3) {
+  color: var(--connection-ink); font-size: 1.25rem !important; line-height: 1.4;
+}
+.operating-shell .data-hub :is(.integration-card p,.provider-parity-contract p,.csv-import > p) {
+  height: auto; color: var(--connection-muted); font-size: 1rem !important; line-height: 1.65;
+}
+.operating-shell .data-hub :is(.connector-result-count,.connector-toolbar label,.integration-category > header span) {
+  color: var(--connection-muted); font-size: .875rem !important;
+}
+.operating-shell .data-hub :is(.integration-type,.integration-category > header p,.connector-next-step small) {
+  color: #365777; font-size: .75rem !important; letter-spacing: .06em;
+}
+.operating-shell .data-hub :is(.connector-next-step,.connected-source,.provider-setup-needed,.data-contract > div) {
+  background: #eef4fa; color: var(--connection-ink); border-color: var(--connection-line); border-radius: 12px;
+}
+.operating-shell .data-hub :is(.connected-source b,.provider-setup-needed b,.data-contract b) { color: var(--connection-ink); font-size: .9375rem !important; }
+.operating-shell .data-hub :is(.connected-source span,.connected-source small,.provider-setup-needed span,.data-contract span,.connection-lock) {
+  color: var(--connection-muted); font-size: .875rem !important; line-height: 1.6;
+}
+.operating-shell .data-hub :is(.integration-enablement,.integration-feature-checklist) {
+  border: 1px solid var(--connection-line); background: #f4f8fc; border-radius: 12px; padding: 0;
+}
+.operating-shell .data-hub :is(.integration-enablement,.integration-feature-checklist,.provider-parity-contract) > summary {
+  padding: 14px 16px; min-height: 48px; color: #244e78; font-size: .875rem !important; line-height: 1.5; font-weight: 600;
+}
+.operating-shell .data-hub :is(.integration-enablement,.integration-feature-checklist,.provider-parity-contract) > summary:hover { background: #eaf2fb; }
+.operating-shell .data-hub .integration-enablement > p { grid-template-columns: 1fr; gap: 4px; padding: 0 16px 14px; }
+.operating-shell .data-hub .integration-feature-checklist > div { margin: 0; padding: 14px 16px; grid-template-columns: 1fr; gap: 8px; border-color: var(--connection-line); }
+.operating-shell .data-hub .integration-feature-checklist p > b { color: var(--connection-ink); font-size: .9375rem !important; }
+.operating-shell .data-hub .integration-feature-checklist p > :is(small,em) { color: var(--connection-muted); font-size: .875rem !important; line-height: 1.6; }
+.operating-shell .data-hub .feature-state { justify-self: start; font-size: .8125rem !important; }
+.operating-shell .data-hub .provider-parity-contract > header { border-color: var(--connection-line); padding: 20px; }
+.operating-shell .data-hub .provider-parity-contract > header p { color: #365777; font-size: .75rem !important; }
+.operating-shell .data-hub .provider-parity-contract > header span { color: var(--connection-muted); font-size: 1rem !important; }
+.operating-shell .data-hub .provider-parity-contract > header > strong { background: #eaf2fb; color: #244e78; border-color: var(--connection-line); font-size: .875rem !important; }
+.operating-shell .data-hub .provider-parity-body { background: var(--connection-surface); grid-template-columns: 1fr; }
+.operating-shell .data-hub .provider-parity-body > img { width: 100%; height: auto; min-height: 0; max-height: 340px; object-fit: contain; background: #f0f5fa; border: 0; }
+.operating-shell .data-hub .provider-capability-list { padding: 20px; gap: 16px; }
+.operating-shell .data-hub .provider-capability-list article { padding: 16px; background: #f0f5fa; border: 1px solid var(--connection-line); border-radius: 12px; }
+.operating-shell .data-hub .provider-capability-list article > span { color: var(--connection-ink); font-size: 1rem !important; }
+.operating-shell .data-hub .provider-capability-list article > p { color: var(--connection-muted); font-size: .9375rem !important; }
+.operating-shell .data-hub .provider-account-list > article { background: #f2f6fb; border-color: var(--connection-line); padding: 16px; border-radius: 12px; gap: 12px; }
+.operating-shell .data-hub .provider-account-list > article > div:first-child { gap: 6px; }
+.operating-shell .data-hub .provider-account-list > article > div:first-child span { color: #365777; font-size: .75rem !important; }
+.operating-shell .data-hub .provider-account-list > article > div:first-child b { color: var(--connection-ink); font-size: 1rem !important; white-space: normal; overflow-wrap: anywhere; }
+.operating-shell .data-hub .provider-account-list > article > div:first-child small { color: var(--connection-muted); font-size: .875rem !important; line-height: 1.55; }
+.operating-shell .data-hub :is(.provider-account-state,.status,.integration-coming-soon) { font-size: .8125rem !important; line-height: 1.4; }
+.operating-shell .data-hub .status.planned { background: #e9eef5; color: #465c73; }
+.operating-shell .data-hub .automatic-sync-control { background: var(--connection-surface); border-color: var(--connection-line); }
+.operating-shell .data-hub .automatic-sync-heading { flex-wrap: wrap; }
+.operating-shell .data-hub .automatic-sync-heading strong { color: var(--connection-ink); font-size: .9375rem !important; }
+.operating-shell .data-hub .automatic-sync-heading span { color: #365777; font-size: .8125rem !important; }
+.operating-shell .data-hub .automatic-sync-control :is(p,small,summary) { color: var(--connection-muted); font-size: .875rem !important; line-height: 1.6; }
+.operating-shell .data-hub .automatic-sync-control [role="alert"] { color: #9b293c; }
+.operating-shell .data-hub button {
+  min-height: 44px; padding: 10px 14px; border: 1px solid #bccde0; border-radius: 12px;
+  background: linear-gradient(155deg,#fafdff,#eaf1f9); color: #254769; font-size: .875rem !important; font-weight: 600; line-height: 1.5;
+  white-space: normal; overflow-wrap: anywhere; box-shadow: inset 0 1px 0 #ffffffb3;
+}
+.operating-shell .data-hub :is(.integration-card-footer > button,.integration-card-footer .provider-actions button,button.primary) { background: var(--ui-action); border-color: #335575; color: #f6faff; }
+.operating-shell .data-hub button:not(:disabled):hover { background: #e3edf9; border-color: #799aba; color: #173d63; }
+.operating-shell .data-hub :is(.integration-card-footer > button,.integration-card-footer .provider-actions button,button.primary):not(:disabled):hover { background: var(--ui-action-hover); color: #f6faff; }
+.operating-shell .data-hub button.danger-text { color: #9b293c; border-color: #dfbdc4; background: #fff5f6; }
+.operating-shell .data-hub :is(button.primary,.integration-card-footer .provider-actions button,button):disabled { background: #e9eef5; color: #53677d; border-color: #ced9e5; opacity: 1; cursor: not-allowed; box-shadow: none; }
+.operating-shell .data-hub .segmented button { border-color: transparent; background: transparent; color: var(--connection-muted); box-shadow: none; }
+.operating-shell .data-hub .segmented button.active { background: #f9fbfe; border-color: #c2d3e6; color: #183e68; box-shadow: 0 2px 6px #17395f0b; }
+.operating-shell .data-hub :is(button,summary,input,select):focus-visible { outline: 3px solid #2e6baa; outline-offset: 3px; }
+.operating-shell .data-hub :is(.drop-zone b,.manual-entry label) { color: var(--connection-ink); font-size: .9375rem !important; }
+.operating-shell .data-hub :is(.drop-zone span,.manual-entry .card-head > span) { color: var(--connection-muted); font-size: .875rem !important; }
+.operating-shell .data-hub .drop-zone { padding: 20px; align-items: flex-start; text-align: left; }
+.operating-shell .data-hub .manual-grid { grid-template-columns: 1fr; }
+@media (max-width: 900px) {
+  .operating-shell .data-hub .import-layout { grid-template-columns: 1fr; }
+}
+@media (max-width: 600px) {
+  .operating-shell .data-hub .integration-card { padding: 18px; }
+  .operating-shell .data-hub :is(.connector-pathway,.provider-capability-list,.data-contract) { grid-template-columns: 1fr; }
+  .operating-shell .data-hub .provider-account-list > article { grid-template-columns: 1fr; }
+  .operating-shell .data-hub .provider-account-state { justify-self: start; grid-row: auto; }
+  .operating-shell .data-hub .provider-account-actions { grid-row: auto; display: grid; grid-template-columns: 1fr; }
+  .operating-shell .data-hub .provider-capability-list { padding: 16px; }
+}
