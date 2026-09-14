@@ -160,3 +160,12 @@ test("Billing webhook verification rejects tampering and stale replay", async ()
   assert.equal(await verifyStripeBillingSignature(new TextEncoder().encode("{}"), header, timestamp + 60), false);
   assert.equal(await verifyStripeBillingSignature(body, header, timestamp + 301), false);
 });
+
+test("normalization rejects duplicate add-ons, invalid quantities and partial item lists", () => {
+  const base = { id: "si_base12345678", quantity: 1, price: verifiedPrice(PLANS.starter.prices.month.lookupKey) };
+  const addon = { id: "si_addon1234567", quantity: 1, price: verifiedPrice(ADDONS.bookloq.prices.month.lookupKey) };
+  const subscription = { id:"sub_123456789", customer:"cus_123456789", status:"active", metadata:{vanteloq_organization_id:"org_verified_123"} };
+  for (const items of [{ data:[base,addon,addon] }, { data:[{...base,quantity:2}] }, { data:[base],has_more:true }]) {
+    assert.throws(() => normalizeStripeSubscription({...subscription,items}), (error: unknown) => error instanceof ApiError && error.code === "STRIPE_SUBSCRIPTION_PAYLOAD_INVALID");
+  }
+});

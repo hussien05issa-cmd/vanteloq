@@ -54,8 +54,8 @@
 .reference-home .public-actions :is(a,button) { min-height:52px; border-radius:999px; padding:13px 24px; font-size:14px; font-weight:550; display:inline-flex; align-items:center; justify-content:center; gap:30px; text-decoration:none; transition:transform .2s,box-shadow .2s,background-color .2s; }
 .reference-home .public-actions button { background:#f8fbffc9; color:#132e4d; border:1px solid #fff; box-shadow:inset 0 1px 0 #ffffffb5,0 4px 20px #23456908; backdrop-filter:blur(12px); cursor:pointer; }
 .reference-home .public-actions :is(a,button):hover { transform:translateY(-2px); box-shadow:0 9px 24px #173f6928; }
-.reference-home .home-proof { display:flex; flex-wrap:wrap; column-gap:17px; row-gap:9px; margin-top:20px; max-width:560px; }
-.reference-home .home-proof li { font-size:11px; color:#324c69; font-weight:450; }
+.reference-home .home-proof { display:flex; flex-wrap:wrap; gap:10px 18px; margin-top:20px; max-width:560px; width:fit-content; padding:12px 15px; border:1px solid #c9d7e6; border-radius:12px; background:#f5f9fded; box-shadow:inset 0 1px 0 #ffffff; }
+.reference-home .home-proof li { font-size:14px; line-height:1.5; color:#233e5c; font-weight:500; }
 .reference-home .home-proof li::before { color:#1e67b4; }
 .hero-product-hotspot { position:absolute; left:47%; right:2%; top:0; bottom:0; z-index:1; border-radius:24px; color:#ebf4ff; text-decoration:none; }
 .hero-product-hotspot > span { position:absolute; right:24px; bottom:22px; display:grid; gap:5px; padding:10px 16px; border-radius:12px; background:#0c284bb3; backdrop-filter:blur(12px); border:1px solid #d0e2f030; font-size:10px; letter-spacing:.08em; color:#e2ecf8; }
@@ -98,8 +98,22 @@
 /* Carry the same materials into the working application without translucency
    under financial records or changing any data/permission state. */
 .operating-shell,.bookloq-main { background:radial-gradient(ellipse at 90% 0,#dbe7f6 0,transparent 50%),#eff4fa; }
-.operating-shell .sidebar,.bookloq-side { background:linear-gradient(155deg,#18334f,#0c223b 68%); box-shadow:inset -1px 0 0 #aacde42a,7px 0 28px #17395508; }
-.operating-shell .sidebar .nav-item[aria-current="page"],.bookloq-side nav button[aria-current="page"] { color:#102e51; background:linear-gradient(115deg,#c9e1ff,#96bce9); box-shadow:inset 0 1px 0 #ffffff96,0 3px 10px #071c3826; border-radius:10px; font-weight:600; }
+.operating-shell .sidebar,.operating-shell .bookloq-side { background:linear-gradient(150deg,#f2f7fdef,#dce8f3ed); color:#19344f; border-color:#d1deec; box-shadow:inset -1px 0 0 #ffffffb8,7px 0 28px #17395505; }
+.operating-shell .sidebar :is(.brand,.brand-name,.workspace-switcher,.profile,.profile-signout,.sidebar-close) { color:#16304c; }
+.operating-shell .sidebar .profile b { color:#16304c; }
+.operating-shell .sidebar .nav-item { color:#3e5875; }
+.operating-shell .sidebar .nav-item > .workspace-icon { color:#476987; }
+.operating-shell .sidebar .nav-item:hover { background:#e0edff; color:#17497d; }
+.operating-shell .sidebar :is(.brand-name small,.subscription-summary span,.subscription-summary small,.nav-group > p,.profile small) { color:#506b85; }
+.operating-shell .workspace-switcher { background:#f4f9fdb8; border-color:#c6d8e9; box-shadow:inset 0 1px 0 #ffffff; }
+.operating-shell .workspace-switcher > span:nth-child(2) small { color:#516982; }
+.operating-shell .workspace-switcher .location-switcher select { background:#f7fafe!important; border-color:#bdcfe2!important; color:#294b6d!important; }
+.operating-shell .bookloq-search { background:#f5f9fde0; border-color:#c9d9e9; color:#476584; }
+.operating-shell .bookloq-search input { color:#234765; }
+.operating-shell .bookloq-search input::placeholder { color:#546c84; opacity:1; }
+.operating-shell .bookloq-brand > button { color:#365875; border-color:#bfcee0; background:#f4f8fca8; }
+.operating-shell .bookloq-side .product-brand-logo { filter:none; }
+.operating-shell .sidebar .nav-item[aria-current="page"],.bookloq-side nav button[aria-current="page"] { color:#102e51; background:linear-gradient(115deg,#d4e7ff,#e8f2ff); box-shadow:inset 0 1px 0 #ffffff96,0 3px 10px #3769a00a; border-radius:10px; font-weight:600; }
 .operating-shell .sidebar .nav-item[aria-current="page"] .workspace-icon { color:#154f8c; }
 .operating-shell :is(.card,.dense-panel,.metric-card,.bookloq-card,.integration-card,.decision-explorer) { background-color:#f9fbfe; border-color:#d6e1ee; box-shadow:inset 0 1px 0 #ffffffde,0 6px 24px #19395f06; }
 .operating-shell :is(.page-intro h1,.bookloq-page-intro h1) { font-weight:600; letter-spacing:-.035em; }
@@ -123,13 +137,45 @@
   color:#254769; background:linear-gradient(160deg,#fafdff,#eaf1f9); border:1px solid #b9cbe0;
   box-shadow:inset 0 1px 0 #ffffffd9,0 2px 5px #193b6209;
 }
-.operating-shell .bookloq-side nav button:is(:enabled,:disabled) { color:#d4e1f0; border-radius:10px; min-height:46px; }
-.operating-shell .bookloq-side nav button:hover { color:#f6faff; background:#ffffff14; }
+.operating-shell .bookloq-side nav button:is(:enabled,:disabled) { color:#3d5b78; border-radius:12px; min-height:46px; }
+.operating-shell .bookloq-side nav button:is(:enabled,:disabled) { font-size:14px!important; }
+.operating-shell .bookloq-side nav section > p { font-size:11px!important; }
+.operating-shell .bookloq-health { display:none; }
+.operating-shell .bookloq-side nav button:hover { color:#1b4b7c; background:#d9e9fc; }
 .operating-shell .bookloq-side nav button[aria-current="page"] {
-  color:#102e51; background:linear-gradient(115deg,#c9e1ff,#96bce9);
-  box-shadow:inset 3px 0 0 #e8f3ff,inset 0 1px 0 #ffffff96,0 3px 10px #071c3826;
+  color:#102e51; background:linear-gradient(115deg,#d4e7ff,#e8f2ff);
+  box-shadow:inset 3px 0 0 #e8f3ff,inset 0 1px 0 #ffffff96,0 3px 10px #3769a00a;
 }
-.operating-shell .bookloq-side nav section > p,.operating-shell .bookloq-side-foot { color:#b5c8dd; }
+.operating-shell .bookloq-side nav section > p,.operating-shell .bookloq-side-foot { color:#4d6985; }
+/* Clear data surfaces paired with restrained glass navigation. */
+.operating-shell .bookloq-promise { background:linear-gradient(120deg,#f7fbff,#e8f1fb); border:1px solid #d7e3f0; border-radius:18px; padding:24px; box-shadow:inset 0 1px 0 #fff; }
+.operating-shell .bookloq-promise h3 { color:#172f49; font-size:25px!important; line-height:1.35; letter-spacing:-.035em; }
+.operating-shell .bookloq-promise p { color:#436589; }
+.operating-shell .bookloq-promise span { color:#506b85; }
+.operating-shell .bookloq-promise button { background:var(--ui-action); border-color:#365b7e; color:#f6faff; border-radius:12px; min-height:44px; }
+.operating-shell :is(.bookloq-card,.metric-card,.dense-panel,.integration-card,.decision-explorer) { border-radius:18px; }
+.operating-shell .bookloq-kpis { grid-template-columns:repeat(4,minmax(0,1fr)); gap:16px; }
+.operating-shell .bookloq-kpi { min-height:136px; padding:20px; border-radius:18px; border-color:#dce6f1; background:linear-gradient(135deg,#fbfdff,#f2f7fc); box-shadow:inset 0 1px 0 #ffffff; }
+.operating-shell .bookloq-kpi > span { color:#243d59; font-size:14px!important; font-weight:550; }
+.operating-shell .bookloq-kpi > b { color:#102740; font-size:29px!important; font-weight:620; letter-spacing:-.035em; font-variant-numeric:tabular-nums; }
+.operating-shell .bookloq-kpi > small { color:#526b85; font-size:13px!important; line-height:1.5; }
+.operating-shell .bookloq-kpi > b.bookloq-value-unavailable { font-size:21px!important; }
+.operating-shell .bookloq-two { grid-template-columns:minmax(0,1fr) minmax(0,1.45fr); gap:20px; }
+.operating-shell .bookloq-overview-grid { grid-template-columns:minmax(0,1.85fr) minmax(280px,1fr); }
+.operating-shell .business-cash-body { grid-template-columns:minmax(0,1.8fr) minmax(230px,1fr); }
+.operating-shell .business-cash-kpis > article { background:#f6faff; border-radius:16px; border-color:#d7e4ef; }
+.operating-shell .cash-period-switch { padding:4px; gap:3px; background:#eaf2fc; border:1px solid #d0dfef; border-radius:12px; }
+.operating-shell .cash-period-switch button { border:0; border-radius:9px; min-height:44px; color:#486383; font-size:13px; }
+.operating-shell .cash-period-switch button.active { background:linear-gradient(#fafdff,#ddecff); color:#165cae; box-shadow:0 2px 6px #274e8010,inset 0 1px 0 #fff; }
+.operating-shell :is(.bookloq-content,.bookloq-table-card,.report-summary) { color:#203a56; }
+@media (max-width:1280px) {
+  .operating-shell .bookloq-kpis { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .operating-shell :is(.bookloq-two,.business-cash-body) { grid-template-columns:minmax(0,1fr); }
+}
+@media (max-width:600px) {
+  .operating-shell .bookloq-kpis { grid-template-columns:minmax(0,1fr); }
+  .operating-shell .bookloq-kpi { min-height:124px; }
+}
 @media (max-width:1300px) and (min-width:1001px) {
   .reference-home .public-nav { grid-template-columns:auto 1fr auto; column-gap:12px; padding-inline:30px; }
   .reference-home .public-brand > span { font-size:17px; }
@@ -144,7 +190,6 @@
   .reference-home .home-hero { min-height:510px; }
   .reference-home .home-hero-copy > p:not(.home-eyebrow) { font-size:16px; max-width:415px; }
   .reference-home .home-proof { max-width:440px; }
-  .reference-home .home-proof li { font-size:10px; }
   .reference-connections > div { gap:24px; }
   .reference-connections { gap:20px; }
   .reference-home .decision-proof-grid article { padding:20px; }
@@ -194,7 +239,6 @@
   .reference-home .public-actions { flex-wrap:wrap; }
   .reference-home .public-actions :is(a,button) { min-height:48px; padding:12px 19px; font-size:13px; gap:20px; }
   .reference-home .home-proof { gap:9px 15px; margin-top:17px; }
-  .reference-home .home-proof li { font-size:11px; }
   .reference-connections { padding-inline:22px; }
   .reference-connections > div { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:0 12px; }
   .reference-connections strong { font-size:14px; }

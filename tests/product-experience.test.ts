@@ -49,7 +49,8 @@ test("BookLoQ formats the requested currency and preserves unavailable values", 
   assert.match(formatBookloqMoney(12345, "EUR"), /€123\.45/);
   assert.equal(formatBookloqMoney(null, "CAD"), "Not available");
   assert.equal(formatBookloqMoney(NaN, "CAD"), "Not available");
-  assert.equal(formatBookloqMoney(0, "CAD"), "$0");
+  assert.equal(formatBookloqMoney(0, "CAD"), "$0.00");
+  assert.equal(formatBookloqMoney(-0, "CAD"), "$0.00");
 });
 test("financial position distinguishes empty, partial, demonstration and alert states", () => {
   const input = { currentCashCents: null, revenueCents: null };

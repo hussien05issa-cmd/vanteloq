@@ -150,13 +150,12 @@ export function requireInternalAccessMfa(
 }
 
 export async function subscriptionSnapshot(organizationId: string): Promise<SubscriptionSnapshot> {
-  const [subscription, addonRows] = await Promise.all([
-    getDb().select().from(tenantSubscriptions).where(eq(tenantSubscriptions.organizationId, organizationId)).limit(1),
-    getDb().select({ addonKey: tenantAddons.addonKey, status: tenantAddons.status })
-      .from(tenantAddons)
-      .where(eq(tenantAddons.organizationId, organizationId)),
-  ]);
-  const row = subscription[0];
+  // One SQL statement prevents a plan and add-on from different webhook snapshots being combined.
+  const rows = await getDb().select({ subscription: tenantSubscriptions, addon: tenantAddons })
+    .from(tenantSubscriptions).leftJoin(tenantAddons, eq(tenantAddons.organizationId, tenantSubscriptions.organizationId))
+    .where(eq(tenantSubscriptions.organizationId, organizationId));
+  const row = rows[0]?.subscription;
+  const addonRows = rows.flatMap(item => item.addon ? [item.addon] : []);
   return {
     basePlan: row?.basePlan ?? null,
     status: row?.status ?? null,

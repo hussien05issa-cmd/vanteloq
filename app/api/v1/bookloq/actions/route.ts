@@ -56,22 +56,23 @@ export async function POST(request: Request) {
       ]);
       if (!transaction) return jsonResponse({ error: { code: "TRANSACTION_NOT_FOUND", message: "Transaction not found." } }, { status: 404 });
       if (!account) return jsonResponse({ error: { code: "CATEGORY_NOT_FOUND", message: "The ledger category is unavailable." } }, { status: 404 });
-      await database.prepare(`UPDATE financial_transactions SET category_account_id = ?, categorization_status = 'confirmed', confidence_basis_points = 10000, updated_at = ? WHERE organization_id = ? AND id = ?`)
-        .bind(account.id, timestamp, context.organizationId, transactionId).run();
+      const mutations = [database.prepare(`UPDATE financial_transactions SET category_account_id = ?, categorization_status = 'confirmed', confidence_basis_points = 10000, updated_at = ? WHERE organization_id = ? AND id = ?`)
+        .bind(account.id, timestamp, context.organizationId, transactionId)];
       if (body.createRule === true) {
         const requestedMatch = typeof body.matchText === "string" ? body.matchText : transaction.description || transaction.originalDescription;
         const matchText = normalizeCategoryRuleText(requestedMatch).slice(0, 120);
         const direction = body.direction === "inflow" || body.direction === "outflow" ? body.direction : transaction.amountCents >= 0 ? "inflow" : "outflow";
         if (matchText.length < 3) return jsonResponse({ error: { code: "INVALID_CATEGORY_RULE", message: "A reusable category rule needs at least three recognizable characters." } }, { status: 400 });
         const ruleId = crypto.randomUUID();
-        await database.prepare(`INSERT INTO bookloq_category_rules
+        mutations.push(database.prepare(`INSERT INTO bookloq_category_rules
           (id, organization_id, name, match_text, direction, account_id, active, created_by_user_id, created_at, updated_at)
           VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
           ON CONFLICT(organization_id, name) DO UPDATE SET match_text = excluded.match_text,
             direction = excluded.direction, account_id = excluded.account_id, active = 1,
             updated_at = excluded.updated_at`)
-          .bind(ruleId, context.organizationId, `${matchText} → ${account.name}`.slice(0, 180), matchText, direction, account.id, context.userId, timestamp, timestamp).run();
+          .bind(ruleId, context.organizationId, `${matchText} → ${account.name}`.slice(0, 180), matchText, direction, account.id, context.userId, timestamp, timestamp));
       }
+      await database.batch(mutations);
       await recordAudit({ request, requestId, organizationId: context.organizationId, actorUserId: context.userId,
         action: "financial_transaction.categorized", resourceType: "financial_transaction", resourceId: transactionId,
         details: { previousAccountId: transaction.categoryAccountId, previousStatus: transaction.categorizationStatus, accountId: account.id, accountCode: account.code, accountName: account.name, accountType: account.accountType, status: "confirmed" } });

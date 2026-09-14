@@ -10,7 +10,7 @@ export function bookloqHealthPresentation(value: number | null | undefined) {
 
 export function formatBookloqMoney(value: number | null | undefined, currency: string) {
   return value == null || !Number.isFinite(value) ? "Not available"
-    : new Intl.NumberFormat("en-CA", { style: "currency", currency, minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(value / 100);
+    : new Intl.NumberFormat("en-CA", { style: "currency", currency, minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value === 0 ? 0 : value / 100);
 }
 
 export function bookloqPositionMessage(input: { alert?: { title: string; explanation: string }; currentCashCents: number | null; revenueCents: number | null; dataMode?: string }) {
