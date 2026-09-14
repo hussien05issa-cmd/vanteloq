@@ -76,10 +76,10 @@ test("resource catalogue preserves one canonical route namespace", () => {
   }
 });
 
-test("homepage resource cards are rendered from the published catalogue", () => {
+test("homepage links the published catalogue through the shared article browser", () => {
   const homepage = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
-  assert.match(homepage, /RESOURCE_ARTICLES\.map\(\(article\)/);
-  assert.match(homepage, /getCategory\(article\.category\)/);
-  assert.match(homepage, /getReadingTime\(article\)/);
-  assert.doesNotMatch(homepage, /(?:INVENTORY|FINANCE|ANALYTICS) · \d+ MIN/);
+  const browser = readFileSync(new URL("../app/resource-article-browser.tsx", import.meta.url), "utf8");
+  assert.ok(homepage.includes("<ResourceArticleBrowser articles={RESOURCE_ARTICLES}"));
+  assert.ok(browser.includes("getCategory(article.category)"));
+  assert.ok(browser.includes("getReadingTime(article)"));
 });

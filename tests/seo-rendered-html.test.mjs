@@ -21,7 +21,7 @@ async function fetchText(path) {
 test("homepage exposes the marketing page in initial HTML", async () => {
   const { response, text } = await fetchText("/");
   assert.equal(response.status, 200);
-  assert.match(text, /Know what sells/);
+  assert.match(text, /Run Smarter/);
   assert.doesNotMatch(text, />Preparing Vanteloq…</);
   assert.equal((text.match(/<h1\b/g) ?? []).length, 1);
   assert.match(text, /Business Analytics for Independent Retail/);
@@ -49,9 +49,9 @@ test("resource index is server rendered with distinct metadata", async () => {
   assert.match(text, /href="https:\/\/vanteloq\.com\/resources"/);
   assert.match(text, /How to Track Inventory for a Small Business/);
   assert.match(text, /vanteloq-command-ledger\.webp/);
-  assert.match(text, /resource-card-image/);
-  assert.match(text, /inventory-tracking-editorial-v2\.webp/);
-  assert.match(text, /gross-margin-editorial-v2\.webp/);
+  assert.ok(text.includes('<details class="resource-article-browser">'), "Articles should be collapsed in the initial HTML");
+  assert.ok(text.includes('href="/resources/how-to-calculate-gross-margin-small-business"'));
+  assert.ok(text.includes("min read"));
 });
 
 test("help and pricing are crawlable, with accurate canonical links and no invented ratings", async () => {
@@ -180,4 +180,17 @@ test("legal pages are complete, crawlable, and use distinct metadata", async () 
   for (const html of [privacy.text, terms.text, cookies.text]) {
     assert.doesNotMatch(html, /\u2014/u, "legal pages should not contain em dashes");
   }
+});
+
+
+test("BookLoQ feature page contains descriptive metadata and a public working example", async () => {
+  const { response, text } = await fetchText("/features/financial-review");
+  assert.equal(response.status, 200);
+  assert.ok(text.includes("BookLoQ Accounting and Cash Flow for Small Businesses | Vanteloq"));
+  assert.ok(text.includes('href="https://vanteloq.com/features/financial-review"'));
+  assert.ok(text.includes("Reconcile Transactions and Prepare Month-End"));
+  assert.ok(text.includes('type="range"'));
+  assert.ok(text.includes("fictional records"));
+  assert.ok(text.includes('href="/resources/small-business-bookkeeping-system"'));
+  assert.ok(!text.includes("Supplement World"), "Public examples must not contain customer records");
 });

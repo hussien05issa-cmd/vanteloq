@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArticleCard, Breadcrumbs, ResourceShell, ResourceVisual } from "../components";
+import ResourceArticleBrowser from "../../resource-article-browser";
 import {
   RESOURCE_ARTICLES,
   RESOURCE_CATEGORIES,
@@ -230,7 +231,7 @@ function CategoryPage({ categorySlug }: { categorySlug: string }) {
         </section>
         <section className="category-articles" aria-labelledby="category-guides">
           <div className="resource-section-heading"><p className="resource-eyebrow">PRACTICAL GUIDES</p><h2 id="category-guides">{category.name} questions, answered clearly</h2></div>
-          {categoryArticles.length > 0 ? <div className="resource-card-grid">{categoryArticles.map((article) => <ArticleCard article={article} key={article.slug} />)}</div> : <div className="resource-empty"><h2>Guides are being prepared for this topic.</h2><p>Browse all published resources while this topic cluster is completed.</p><Link href="/resources">View all resources</Link></div>}
+          {categoryArticles.length > 0 ? <ResourceArticleBrowser articles={categoryArticles} title={`Browse ${category.name} Articles`}/> : <div className="resource-empty"><h2>Guides are being prepared for this topic.</h2><p>Browse all published resources while this topic cluster is completed.</p><Link href="/resources">View all resources</Link></div>}
         </section>
       </main>
     </ResourceShell>
