@@ -33,3 +33,9 @@ test("an empty workspace produces no fabricated decision", () => {
   assert.deepEqual(result.decisions, []);
   assert.equal(result.preliminaryPurchasingCapacityCents, null);
 });
+
+test("absent inventory balances and partial sales coverage remain unavailable or limited", () => {
+  const result = buildOperatingSystem({ ...base, balances: null, dataQuality: { status: "limited", missingDimensions: [] } });
+  assert.equal(result.pillars.find(pillar => pillar.id === "inventory")?.state, "needs_source");
+  assert.equal(result.pillars.find(pillar => pillar.id === "sales")?.state, "limited");
+});

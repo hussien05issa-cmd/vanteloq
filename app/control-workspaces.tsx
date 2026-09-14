@@ -266,15 +266,16 @@ export function ReportsWorkspace({
   activeLocationId,
   canExportFeature,
   onOpenRetail,
-}: SharedProps & { activeLocationId: string | null; canExportFeature: boolean; onOpenRetail?: () => void }) {
+  initialPeriod,
+}: SharedProps & { activeLocationId: string | null; canExportFeature: boolean; onOpenRetail?: () => void; initialPeriod?: { from: string; to: string } }) {
   const [query, setQuery] = useState("");
   const [group, setGroup] = useState("All reports");
   const [selected, setSelected] = useState("Sales totals");
   const [report, setReport] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(false);
-  const [start, setStart] = useState("");
-  const [end, setEnd] = useState("");
-  const [preset, setPreset] = useState("all");
+  const [start, setStart] = useState(initialPeriod?.from ?? "");
+  const [end, setEnd] = useState(initialPeriod?.to ?? "");
+  const [preset, setPreset] = useState(initialPeriod ? "custom" : "all");
   const [sourceConnectionId, setSourceConnectionId] = useState("");
   const [sourceReportLabel, setSourceReportLabel] = useState("");
   const [savingAuthority, setSavingAuthority] = useState("");

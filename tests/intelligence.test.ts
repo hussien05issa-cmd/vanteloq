@@ -119,3 +119,58 @@ test("business events reject impossible calendar dates and existing bad rows fai
   assert.equal(result.measurable, false);
   assert.match(result.reason ?? "", /invalid/i);
 });
+
+test("partial thirty-day periods preserve recorded totals but withhold business trends", () => {
+  const latest = "2026-08-03";
+  const rows = Array.from({ length: 60 }, (_, i) => row(dateOffset(latest, i - 59), i >= 30 ? "current" : "previous"));
+  rows.splice(5, 1);
+  const result = buildCommandCentre(rows, "CAD", new Date("2026-08-04T12:00:00Z"));
+  assert.equal(result.previous?.days, 29);
+  assert.equal(result.current?.netSalesCents, 2_400_000);
+  assert.equal(result.comparisons?.netSalesRate, null);
+  assert.equal(result.periodComparisons?.thirtyDays.comparable, false);
+  assert.equal(result.periodComparisons?.sevenDays.comparable, true);
+  assert.deepEqual(result.insights.map(insight => insight.id), ["history-readiness"]);
+  assert.equal(result.dataQuality.status, "limited");
+});
+
+test("one missing location-day cannot hide behind another location's complete dates", () => {
+  const rows = Array.from({ length: 60 }, (_, i) => ["north", "south"].map(locationRef => ({
+    ...row(dateOffset("2026-08-03", i - 59), i >= 30 ? "current" : "previous"), locationRef,
+  }))).flat();
+  const complete = buildCommandCentre(rows, "CAD");
+  assert.equal(complete.periodComparisons?.thirtyDays.comparable, true);
+  const missing = buildCommandCentre(rows.filter((_, i) => i !== 109), "CAD", new Date("2026-08-04T12:00:00Z"));
+  assert.equal(missing.current?.days, 30);
+  assert.equal(missing.periodComparisons?.thirtyDays.coverage.current.missingLocationDays, 1);
+  assert.equal(missing.comparisons?.netSalesRate, null);
+  assert.equal(missing.forecast.available, false);
+});
+
+test("a newly observed store with no baseline does not create an artificial growth comparison", () => {
+  const rows = Array.from({ length: 60 }, (_, i) => ({ ...row(dateOffset("2026-08-03", i - 59), "previous"), locationRef: "north" }));
+  rows.push(...rows.slice(-30).map(item => ({ ...item, locationRef: "south" })));
+  const result = buildCommandCentre(rows, "CAD");
+  assert.equal(result.current?.netSalesCents, 6_000_000);
+  assert.equal(result.periodComparisons?.thirtyDays.coverage.previous.missingLocationDays, 30);
+  assert.equal(result.comparisons?.netSalesRate, null);
+});
+
+test("forecast gaps are withheld and modeled gross losses are preserved", () => {
+  const latest = "2026-08-03";
+  const rows = Array.from({ length: 60 }, (_, i) => ({ ...row(dateOffset(latest, i - 59), "current"), netSalesCents: 10_000, costOfGoodsCents: 20_000 }));
+  const result = buildCommandCentre(rows, "CAD", new Date("2026-08-04T12:00:00Z"));
+  assert.equal(result.forecast.available, true);
+  assert.ok(result.forecast.points.every(point => point.grossProfitCents === -10_000));
+  rows.splice(50, 1);
+  assert.equal(buildCommandCentre(rows, "CAD", new Date("2026-08-04T12:00:00Z")).forecast.available, false);
+});
+
+test("margin rates use percentage points and do not turn association into causation", () => {
+  const rows = Array.from({ length: 60 }, (_, i) => row(dateOffset("2026-08-03", i - 59), i >= 30 ? "current" : "previous"));
+  const result = buildCommandCentre(rows, "CAD");
+  const insight = result.insights.find(item => item.id === "margin-trend")!;
+  assert.match(insight.title, /percentage points/);
+  assert.match(insight.probableCause, /does not isolate/);
+  assert.doesNotMatch(result.insights.find(item => item.id === "sales-trend")!.suggestedTask.expectedImpact, /opportunity/);
+});

@@ -2,7 +2,7 @@
 import { isAwaitingSalesRecords } from "../domain/intraday-sales";
 
 import Image from "next/image";
-import { FormEvent, Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, Fragment, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import BookLoQWorkspace from "./bookloq-workspace";
 import CommunicationsWorkspace from "./communications-workspace";
 import CommerceIntelligenceWorkspace from "./commerce-intelligence-workspace";
@@ -25,6 +25,8 @@ import {
 } from "./integration-catalog";
 import ProductBrandLogo from "./product-brand-logo";
 import WorkspaceIcon from "./workspace-icon";
+import DecisionWorkspace from "./decision-workspace";
+import { useModalFocus } from "./use-modal-focus";
 import { comparisonCopy, quantityLabel } from "../domain/workspace-presentation";
 import PlaidLinkButton, { PLAID_REDIRECT_STORAGE_KEY, PLAID_RETURN_VIEW_STORAGE_KEY } from "./plaid-link-button";
 import { apiFetch, signOut } from "./supabase-browser";
@@ -583,7 +585,7 @@ type CommandCentre = {
     pillars: { id: string; label: string; state: string }[];
     decisions: {
       id: string;
-      pillar: string;
+      pillar: "sales" | "money" | "inventory" | "operations" | "data";
       priority: "critical" | "high" | "medium" | "low";
       score: number;
       title: string;
@@ -591,7 +593,7 @@ type CommandCentre = {
       evidence: string[];
       missing: string[];
       confidence: "high" | "medium" | "low";
-      approval: string;
+      approval: "owner_review" | "authorized_user";
       sourceRef: string;
     }[];
     guardrails: string[];
@@ -615,6 +617,7 @@ type PeriodComparison = {
     averageTransactionRate: number | null;
   };
   comparable: boolean;
+  unavailableReason?: string | null;
 };
 type TaskSeed = {
   title: string;
@@ -1293,6 +1296,8 @@ function Workspace({
   selectLocation: (locationId: string | null) => void;
   navigationSettings: React.ReactNode;
 }) {
+  const [reportSeed, setReportSeed] = useState<{ from: string; to: string; locationId: string | null } | null>(null);
+  const [intelligenceTab, setIntelligenceTab] = useState<"opportunities" | "retail">("opportunities");
   const [retailAdvisorSeed, setRetailAdvisorSeed] = useState<RetailAdvisorSeed | null>(null);
   const askRetailAdvisor = (seed: RetailAdvisorSeed) => { setRetailAdvisorSeed(seed); navigate("Advisor"); };
   useEffect(() => { if (view === "Advisor" && retailAdvisorSeed) queueMicrotask(() => setRetailAdvisorSeed(null)); }, [view, retailAdvisorSeed]);
@@ -1309,17 +1314,18 @@ function Workspace({
     );
   if (view === "Intelligence")
     return (
-      <><CommerceIntelligenceWorkspace key={activeLocationId ?? "all"} mode="Sales" currency={currency} timeZone={data.today.timeZone} activeLocationId={activeLocationId} navigate={navigate} createTask={createTask} onAsk={askRetailAdvisor}/><details className="retail-existing-decisions"><summary>Open the operating decision queue</summary><Intelligence
-        data={data}
-        currency={currency}
-        navigate={navigate}
-        createTask={createTask}
-      /></details></>
+      <><nav className="intelligence-switch" aria-label="Intelligence views"><button type="button" aria-pressed={intelligenceTab === "opportunities"} onClick={() => setIntelligenceTab("opportunities")}>Opportunities</button><button type="button" aria-pressed={intelligenceTab === "retail"} onClick={() => setIntelligenceTab("retail")}>Retail analysis</button></nav>
+        {intelligenceTab === "retail" ? <CommerceIntelligenceWorkspace key={activeLocationId ?? "all"} mode="Sales" currency={currency} timeZone={data.today.timeZone} activeLocationId={activeLocationId} navigate={navigate} createTask={createTask} onAsk={askRetailAdvisor}/> : <Intelligence
+          data={data} navigate={navigate} createTask={createTask} activeLocationId={activeLocationId} onAsk={askRetailAdvisor}
+          onEvidence={() => { const period = data.periodComparisons?.thirtyDays; setReportSeed(period ? { from: period.periodStart, to: period.periodEnd, locationId: activeLocationId } : null); navigate("Reports"); }}
+          canCreate={permissions.includes("insights.create_task")} canAsk={subscriptionFeatures.includes("ai.basic") && permissions.includes("insights.view")}
+        />}</>
     );
   if (view === "Action Centre")
     return (
       <TaskCentre
         showNotice={showNotice}
+        navigate={navigate}
         openComposer={() =>
           createTask({
             title: "",
@@ -1357,12 +1363,14 @@ function Workspace({
   if (view === "Reports")
     return (
       <ReportsWorkspace
+        key={activeLocationId ?? "all"}
+        initialPeriod={reportSeed?.locationId === activeLocationId ? reportSeed : undefined}
         currency={currency}
         showNotice={showNotice}
         createTask={createTask}
         activeLocationId={activeLocationId}
         canExportFeature={subscriptionFeatures.includes("reporting.exports")}
-        onOpenRetail={() => navigate("Intelligence")}
+        onOpenRetail={() => { setIntelligenceTab("retail"); navigate("Intelligence"); }}
       />
     );
   if (view === "Sales" || view === "Inventory" || view === "Customers" || view === "Suppliers")
@@ -1781,100 +1789,26 @@ function EmptyCommandCentre({ navigate }: { navigate: (view: View) => void }) {
   );
 }
 
-function Intelligence({
-  data,
-  currency,
-  navigate,
-  createTask,
-}: {
-  data: CommandCentre;
-  currency: string;
-  navigate: (view: View) => void;
-  createTask: (seed: TaskSeed) => void;
+function Intelligence({ data, navigate, createTask, activeLocationId, onAsk, onEvidence, canCreate, canAsk }: {
+  data: CommandCentre; navigate: (view: View) => void; createTask: (seed: TaskSeed) => void;
+  activeLocationId: string | null; onAsk: (seed: RetailAdvisorSeed) => void; onEvidence: () => void; canCreate: boolean; canAsk: boolean;
 }) {
-  if (!data.ready) return <><FirstInsightPath data={data} navigate={navigate}/><EmptyCommandCentre navigate={navigate} /></>;
-  const operating = data.operatingSystem;
-  return (
-    <div className="content intelligence-page">
-      <section className="intelligence-header">
-        <div>
-          <p>RETAIL OPERATING SYSTEM</p>
-          <h2>One ranked queue for the decisions that matter.</h2>
-          <span>
-            Sales, cash, inventory and operations use the same evidence,
-            permission and approval rules. Vanteloq never turns a partial fact
-            into an automatic financial action.
-          </span>
-        </div>
-        <div className={`quality-score ${data.dataQuality.status}`}>
-          <small>DATA QUALITY</small>
-          <b>{data.dataQuality.status}</b>
-          <span>{data.source.rowCount} verified daily records</span>
-        </div>
-      </section>
-      <section className="operating-system-strip">
-        <article className="cash-capacity-card">
-          <small>PRELIMINARY PURCHASING CAPACITY</small>
-          <b>{money(operating.preliminaryPurchasingCapacityCents, currency)}</b>
-          <span>{operating.purchasingCapacityLabel}</span>
-          <button onClick={() => navigate("Cash")}>Open cash model →</button>
-        </article>
-        <div className="pillar-readiness">
-          {operating.pillars.map((pillar) => (
-            <article key={pillar.id}>
-              <i className={pillar.state}/>
-              <span><b>{pillar.label}</b><small>{pillar.state.replaceAll("_", " ")}</small></span>
-            </article>
-          ))}
-        </div>
-        <article className="approval-card">
-          <small>EXECUTION POLICY</small>
-          <b>Recommend first. Approve before acting.</b>
-          {operating.guardrails.map((guardrail) => <span key={guardrail}><WorkspaceIcon name="Data Quality"/>{guardrail}</span>)}
-        </article>
-      </section>
-      <section className="decision-queue">
-        <div className="section-heading"><div><p>TODAY&apos;S DECISION QUEUE</p><h2>Ranked by urgency, confidence and freshness</h2></div><button onClick={() => navigate("Action Centre")}>Open assigned work →</button></div>
-        {operating.decisions.map((decision, index) => (
-          <article key={decision.id}>
-            <b className={`decision-rank ${decision.priority}`}>{index + 1}</b>
-            <div>
-              <span className="decision-meta">{decision.pillar} · {decision.priority} · {decision.confidence} confidence</span>
-              <h3>{decision.title}</h3>
-              <p>{decision.decision}</p>
-              <small>{decision.evidence[0]}</small>
-            </div>
-            <aside>
-              <span>{decision.missing.length ? `${decision.missing.length} confidence gap${decision.missing.length === 1 ? "" : "s"}` : "Evidence complete"}</span>
-              <button onClick={() => createTask({ title: decision.title, detail: `${decision.decision} Evidence: ${decision.evidence.join(" ")}`, priority: decision.priority === "critical" || decision.priority === "high" ? "high" : decision.priority === "medium" ? "medium" : "low", expectedImpact: "Review the evidence and record the approved outcome.", sourceType: "decision", sourceRef: decision.sourceRef })}>Create review action →</button>
-            </aside>
-          </article>
-        ))}
-      </section>
-      <div className="intelligence-list">
-        {data.insights.map((insight) => (
-          <InsightCard
-            key={insight.id}
-            insight={insight}
-            createTask={createTask}
-            expanded
-          />
-        ))}
-      </div>
-      <section className="missing-panel">
-        <p>MISSING DIMENSIONS</p>
-        <h3>What would make the analysis stronger</h3>
-        <div>
-          {data.dataQuality.missingDimensions.map((item) => (
-            <span key={item}>{item}</span>
-          ))}
-        </div>
-        <button onClick={() => navigate("Integrations")}>
-          Connect the next source →
-        </button>
-      </section>
-    </div>
-  );
+  const comparison = data.periodComparisons?.thirtyDays;
+  const period = comparison ? { from: comparison.periodStart, to: comparison.periodEnd } : null;
+  const context = period ? `Period: ${period.from} to ${period.to}. Scope: ${activeLocationId ?? "all accessible locations"}.` : "No verified reporting period.";
+  return <div className="content intelligence-page"><DecisionWorkspace
+    decisions={data.operatingSystem.decisions} period={period} freshness={data.source.freshness} verifiedDays={data.source.verifiedDays}
+    comparisonNote={comparison?.unavailableReason ?? (!comparison?.comparable && data.ready ? "Comparison needs complete daily coverage in both periods. Check imports and closures." : null)}
+    onConnections={() => navigate("Integrations")} onEvidence={onEvidence} onActions={() => navigate("Action Centre")}
+    onAction={canCreate ? decision => createTask({ title: decision.title,
+      detail: `${context}\nFinding: ${decision.evidence.join(" ")}\nNext step: ${decision.decision}\nMissing inputs: ${decision.missing.join(", ") || "Review source totals"}`,
+      priority: decision.priority === "critical" ? "high" : decision.priority,
+      expectedImpact: "Review the evidence and record the outcome. No financial recovery is assumed.", sourceType: "decision", sourceRef: decision.sourceRef,
+    }) : undefined}
+    onAsk={canAsk && period ? decision => onAsk({ from: period.from, to: period.to, locationId: activeLocationId,
+      question: `Review the finding: ${decision.title}. ${context} Verify it against the permitted source data. Explain the measured drivers, evidence limitations and practical next steps. Do not infer causation or guaranteed savings.`,
+    }) : undefined}
+  /></div>;
 }
 
 function InsightCard({
@@ -1901,7 +1835,7 @@ function InsightCard({
           {insight.whatHappened}
         </p>
         <p>
-          <b>Probable cause</b>
+          <b>Interpretation to investigate</b>
           {insight.probableCause}
         </p>
         <p>
@@ -1957,11 +1891,17 @@ type Task = {
 function TaskCentre({
   showNotice,
   openComposer,
+  navigate,
 }: {
+  navigate: (view: View) => void;
   showNotice: (message: string) => void;
   openComposer: () => void;
 }) {
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("active");
+  const [updating, setUpdating] = useState<number | null>(null);
+  const [updateError, setUpdateError] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const load = useCallback(async () => {
@@ -1985,22 +1925,20 @@ function TaskCentre({
     return () => window.clearTimeout(timer);
   }, [load]);
   const update = async (task: Task, status: Task["status"]) => {
-    const response = await apiFetch("/api/v1/tasks", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: task.id, status }),
-    });
-    if (response.ok) {
-      setTasks((current) =>
-        current.map((item) =>
-          item.id === task.id ? { ...item, status } : item,
-        ),
-      );
-      showNotice(
-        status === "done" ? "Action completed" : "Action status updated",
-      );
-    }
+    if (updating !== null) return;
+    setUpdating(task.id); setUpdateError("");
+    try {
+      const response = await apiFetch("/api/v1/tasks", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: task.id, status }) });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error?.message ?? "The action could not be updated. Please retry.");
+      setTasks(current => current.map(item => item.id === task.id ? body.task : item));
+      showNotice(status === "done" ? "Action completed" : "Action status updated");
+    } catch { setUpdateError("The update was not confirmed. Refresh actions to check their status, then retry if needed."); }
+    finally { setUpdating(null); }
   };
+  const filteredTasks = tasks.filter(task => (statusFilter === "all" || statusFilter === "active" && task.status !== "done" || task.status === statusFilter)
+    && `${task.title} ${task.detail} ${task.assignee}`.toLowerCase().includes(query.toLowerCase().trim()))
+    .sort((a, b) => ({high:0,medium:1,low:2}[a.priority] - {high:0,medium:1,low:2}[b.priority]) || (a.dueDate ?? "9999").localeCompare(b.dueDate ?? "9999"));
   const active = tasks.filter((task) => task.status !== "done");
   return (
     <div className="content tasks-page">
@@ -2041,6 +1979,8 @@ function TaskCentre({
           <span>Completed</span>
         </div>
       </section>
+      <div className="action-tools"><label>Find an action<input type="search" value={query} placeholder="Search title, owner or evidence" onChange={event => setQuery(event.target.value)}/></label><label>Status<select value={statusFilter} onChange={event => setStatusFilter(event.target.value)}><option value="active">Active</option><option value="all">All actions</option><option value="open">To do</option><option value="in_progress">In progress</option><option value="done">Done</option></select></label><button className="secondary" type="button" disabled={updating !== null} onClick={() => void load()}>Refresh actions</button></div>
+      {updateError && <p className="action-update-error" role="alert">{updateError}</p>}
       <article className="card task-board">
         {loading ? (
           <div className="empty-state">Loading actions…</div>
@@ -2056,13 +1996,15 @@ function TaskCentre({
           </div>
         ) : (
           <div className="task-list">
-            {tasks.map((task) => (
+            {!filteredTasks.length && <div className="empty-state"><b>No actions match this view.</b><button onClick={() => { setStatusFilter("all"); setQuery(""); }}>Show all actions</button></div>}
+            {filteredTasks.map((task) => (
               <div
                 className={`task-item ${task.status === "done" ? "is-done" : ""}`}
                 key={task.id}
               >
                 <button
                   className="check-task"
+                  disabled={updating !== null}
                   aria-label={`${task.status === "done" ? "Reopen" : "Complete"} ${task.title}`}
                   onClick={() =>
                     void update(task, task.status === "done" ? "open" : "done")
@@ -2086,9 +2028,11 @@ function TaskCentre({
                     {task.dueDate ? ` · Due ${task.dueDate}` : " · No due date"}
                     {task.expectedImpact ? ` · ${task.expectedImpact}` : ""}
                   </small>
+                  {(task.sourceType === "insight" || task.sourceType === "decision") && <button className="task-source-link" type="button" onClick={() => navigate("Intelligence")}>Review current opportunities →</button>}
                 </div>
                 <select
                   aria-label={`Status for ${task.title}`}
+                  disabled={updating !== null}
                   value={task.status}
                   onChange={(event) =>
                     void update(task, event.target.value as Task["status"])
@@ -2117,49 +2061,39 @@ function TaskComposer({
   saved: () => void;
 }) {
   const [saving, setSaving] = useState(false);
+  const dialogId = useId();
+  const formRef = useRef<HTMLFormElement>(null);
+  useModalFocus(formRef, true, () => { if (!saving) close(); });
   const [error, setError] = useState("");
+  const attempt = useRef<{ payload: string; key: string } | null>(null);
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (saving) return;
     setSaving(true);
     setError("");
     const form = new FormData(event.currentTarget);
-    const response = await apiFetch("/api/v1/tasks", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Idempotency-Key": crypto.randomUUID(),
-      },
-      body: JSON.stringify({
-        title: form.get("title"),
-        detail: form.get("detail"),
-        priority: form.get("priority"),
-        assignee: form.get("assignee"),
-        dueDate: form.get("dueDate") || null,
-        sourceType: seed.sourceType ?? "manual",
-        sourceRef: seed.sourceRef ?? null,
-        expectedImpact: form.get("expectedImpact"),
-      }),
-    });
-    const body = await response.json();
-    if (!response.ok) {
-      setError(body.error?.message ?? "Unable to save the action.");
-      setSaving(false);
-      return;
-    }
-    saved();
+    const payload = JSON.stringify({ title: form.get("title"), detail: form.get("detail"), priority: form.get("priority"), assignee: form.get("assignee"), dueDate: form.get("dueDate") || null, sourceType: seed.sourceType ?? "manual", sourceRef: seed.sourceRef ?? null, expectedImpact: form.get("expectedImpact") });
+    if (!attempt.current || attempt.current.payload !== payload) attempt.current = { payload, key: crypto.randomUUID() };
+    try {
+      const response = await apiFetch("/api/v1/tasks", { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": attempt.current.key }, body: payload });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error?.message ?? "Unable to save the action.");
+      saved();
+    } catch (caught) { setError(caught instanceof Error && caught.message !== "Failed to fetch" ? caught.message : "The save was not confirmed. Retry the unchanged form to avoid creating a duplicate."); }
+    finally { setSaving(false); }
   };
   return (
     <div
       className="modal-backdrop"
-      onMouseDown={(event) => event.currentTarget === event.target && close()}
+      onMouseDown={(event) => !saving && event.currentTarget === event.target && close()}
     >
-      <form className="action-modal" onSubmit={submit}>
+      <form ref={formRef} className="action-modal" role="dialog" aria-modal="true" aria-labelledby={dialogId} aria-busy={saving} onSubmit={submit}>
         <div className="modal-title">
           <div>
             <p>QUICK ACTION</p>
-            <h2>Assign the next move</h2>
+            <h2 id={dialogId}>Assign the next move</h2>
           </div>
-          <button type="button" onClick={close}>
+          <button type="button" disabled={saving} aria-label="Close action form" onClick={close}>
             ×
           </button>
         </div>
@@ -2208,9 +2142,9 @@ function TaskComposer({
             Linked to {seed.sourceType}: {seed.sourceRef}
           </div>
         )}
-        {error && <p className="form-error">{error}</p>}
+        {error && <p className="form-error" role="alert">{error}</p>}
         <div className="modal-actions">
-          <button type="button" onClick={close}>
+          <button type="button" disabled={saving} onClick={close}>
             Cancel
           </button>
           <button className="primary" disabled={saving}>

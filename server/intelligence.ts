@@ -1,4 +1,5 @@
 import { buildMetricResults, type FreshnessStatus } from "./data-trust.ts";
+import { periodEvidence } from "../domain/period-evidence.ts";
 
 export type MetricRow = {
   businessDate: string;
@@ -119,8 +120,14 @@ function windowComparison(rows: MetricRow[], latestBusinessDate: string, days: n
   const currentStart = dateOffset(latestBusinessDate, -(days - 1));
   const previousEnd = dateOffset(currentStart, -1);
   const previousStart = dateOffset(previousEnd, -(days - 1));
-  const current = sum(rows.filter((row) => row.businessDate >= currentStart && row.businessDate <= latestBusinessDate));
-  const previous = sum(rows.filter((row) => row.businessDate >= previousStart && row.businessDate <= previousEnd));
+  const selected = rows.filter(row => row.businessDate >= previousStart && row.businessDate <= latestBusinessDate);
+  const locations = [...new Set(selected.map(row => row.locationRef || "all"))];
+  const currentEvidence = periodEvidence(rows, currentStart, latestBusinessDate, locations);
+  const previousEvidence = periodEvidence(rows, previousStart, previousEnd, locations);
+  const comparable = currentEvidence.complete && previousEvidence.complete;
+  const daily = aggregateDaily(selected);
+  const current = sum(daily.filter((row) => row.businessDate >= currentStart));
+  const previous = sum(daily.filter((row) => row.businessDate <= previousEnd));
   return {
     days,
     periodStart: currentStart,
@@ -130,18 +137,20 @@ function windowComparison(rows: MetricRow[], latestBusinessDate: string, days: n
     current,
     previous,
     changes: {
-      netSalesRate: percentChange(current.netSalesCents, previous.netSalesCents),
-      grossProfitRate: percentChange(current.grossProfitCents, previous.grossProfitCents),
-      transactionRate: percentChange(current.transactionCount, previous.transactionCount),
-      averageTransactionRate: current.averageTransactionCents !== null && previous.averageTransactionCents !== null
+      netSalesRate: comparable ? percentChange(current.netSalesCents, previous.netSalesCents) : null,
+      grossProfitRate: comparable ? percentChange(current.grossProfitCents, previous.grossProfitCents) : null,
+      transactionRate: comparable ? percentChange(current.transactionCount, previous.transactionCount) : null,
+      averageTransactionRate: comparable && current.averageTransactionCents !== null && previous.averageTransactionCents !== null
         ? percentChange(current.averageTransactionCents, previous.averageTransactionCents)
         : null,
     },
-    comparable: current.days === days && previous.days === days,
+    comparable,
+    coverage: { current: currentEvidence, previous: previousEvidence },
+    unavailableReason: comparable ? null : "Comparison withheld: every observed location needs daily records in both periods. Review missing imports and known closures.",
   };
 }
 
-function sevenDayForecast(rows: MetricRow[], latestBusinessDate: string, asOf: Date) {
+function sevenDayForecast(rows: MetricRow[], latestBusinessDate: string, asOf: Date, rawRows: MetricRow[]) {
   // An outlook must cover the present/future, not the week after an old import.
   const latestAge = (asOf.getTime() - Date.parse(`${latestBusinessDate}T23:59:59Z`)) / 86_400_000;
   if (!Number.isFinite(latestAge) || latestAge > 2 || latestAge < -2) {
@@ -150,6 +159,17 @@ function sevenDayForecast(rows: MetricRow[], latestBusinessDate: string, asOf: D
   if (rows.length < 28) {
     return { available: false as const, requiredDays: 28, verifiedDays: rows.length, points: [], totalNetSalesCents: null, lowCents: null, highCents: null, confidence: "unavailable" as const, method: "Same-weekday weighted average" };
   }
+  const coverage = periodEvidence(rawRows, dateOffset(latestBusinessDate, -27), latestBusinessDate);
+  if (!coverage.complete) {
+    return { available: false as const, requiredDays: 28, verifiedDays: rows.length, points: [], totalNetSalesCents: null, lowCents: null, highCents: null, confidence: "unavailable" as const, method: "Same-weekday weighted average", unavailableReason: "The latest 28 days contain missing location records. Review coverage before using an outlook." };
+  }
+  // Older gaps must not enter the weekday model just because recent coverage passed.
+  let historyDays = 28;
+  for (let candidate = 35; candidate <= 84; candidate += 7) {
+    if (!periodEvidence(rawRows, dateOffset(latestBusinessDate, -(candidate - 1)), latestBusinessDate).complete) break;
+    historyDays = candidate;
+  }
+  rows = rows.filter(row => row.businessDate >= dateOffset(latestBusinessDate, -(historyDays - 1)));
   const byWeekday = new Map<number, MetricRow[]>();
   for (const row of rows.slice(-84)) {
     const weekday = new Date(`${row.businessDate}T00:00:00Z`).getUTCDay();
@@ -164,7 +184,7 @@ function sevenDayForecast(rows: MetricRow[], latestBusinessDate: string, asOf: D
       return denominator ? Math.round(history.reduce((total, row, itemIndex) => total + row[key] * (itemIndex + 1), 0) / denominator) : 0;
     };
     const netSalesCents = weighted("netSalesCents");
-    const grossProfitCents = Math.max(0, netSalesCents - weighted("costOfGoodsCents"));
+    const grossProfitCents = netSalesCents - weighted("costOfGoodsCents");
     return { date, netSalesCents, grossProfitCents, observations: history.length };
   });
   const totalNetSalesCents = points.reduce((total, point) => total + point.netSalesCents, 0);
@@ -196,20 +216,20 @@ function percentage(value: number): string {
   return new Intl.NumberFormat("en-CA", { style: "percent", maximumFractionDigits: 1 }).format(value);
 }
 
-function buildInsights(current: Totals, previous: Totals, currency: string): Insight[] {
+function buildInsights(current: Totals, previous: Totals, currency: string, comparable: boolean): Insight[] {
   const insights: Insight[] = [];
-  const enoughHistory = previous.days >= 7 && current.days >= 7;
+  const enoughHistory = comparable;
   if (!enoughHistory) {
     insights.push({
       id: "history-readiness",
       severity: "informational",
       title: "More history is required for a reliable trend",
       whatHappened: `${current.days} current-period day${current.days === 1 ? " is" : "s are"} verified.`,
-      probableCause: "The comparison period does not yet contain at least seven daily records.",
+      probableCause: "Both 30-day periods need daily records for every observed location. Missing days may be closures or incomplete imports.",
       financialImpact: "No financial impact is estimated because the baseline is incomplete.",
       recommendedAction: "Import at least 60 consecutive daily summaries for a complete 30-day comparison.",
       confidence: "high",
-      evidence: [`Current period: ${current.days} days`, `Previous period: ${previous.days} days`],
+      evidence: [`Current period: ${current.days} of 30 dates have records`, `Previous period: ${previous.days} of 30 dates have records`, "Coverage is checked separately for each observed location"],
       missingInformation: ["A complete prior-period baseline"],
       suggestedTask: { title: "Complete daily sales history", detail: "Import enough verified daily summaries to unlock trend and anomaly analysis.", priority: "medium", expectedImpact: "Enables defensible period-over-period recommendations." },
     });
@@ -218,14 +238,14 @@ function buildInsights(current: Totals, previous: Totals, currency: string): Ins
 
   const salesChange = percentChange(current.netSalesCents, previous.netSalesCents) ?? 0;
   const transactionChange = percentChange(current.transactionCount, previous.transactionCount) ?? 0;
-  const aovChange = current.averageTransactionCents && previous.averageTransactionCents
+  const aovChange = current.averageTransactionCents !== null && previous.averageTransactionCents !== null
     ? percentChange(current.averageTransactionCents, previous.averageTransactionCents) ?? 0
     : 0;
   const salesDelta = current.netSalesCents - previous.netSalesCents;
-  const trafficEffect = previous.averageTransactionCents
+  const trafficEffect = previous.averageTransactionCents !== null
     ? (current.transactionCount - previous.transactionCount) * previous.averageTransactionCents
     : 0;
-  const basketEffect = current.averageTransactionCents && previous.averageTransactionCents
+  const basketEffect = current.averageTransactionCents !== null && previous.averageTransactionCents !== null
     ? current.transactionCount * (current.averageTransactionCents - previous.averageTransactionCents)
     : 0;
   if (Math.abs(salesChange) >= 0.05) {
@@ -241,12 +261,12 @@ function buildInsights(current: Totals, previous: Totals, currency: string): Ins
         : `Average transaction value moved ${percentage(Math.abs(aovChange))} and explains more of the modeled change than transaction volume.`,
       financialImpact: `${money(Math.abs(salesDelta), currency)} ${salesDelta >= 0 ? "in additional net sales" : "in lower net sales"}.`,
       recommendedAction: trafficLed
-        ? "Review traffic by weekday and hour once the POS transaction feed is connected; preserve basket value while correcting weak traffic periods."
-        : "Review product mix and add-on behaviour once line-item data is connected; protect the strongest basket drivers.",
+        ? "Review purchase counts by weekday and hour in Retail analysis. Check coverage, opening hours and stock availability; transaction counts do not measure foot traffic."
+        : "Review product mix, returns and add-on behaviour in Retail analysis before selecting an intervention.",
       confidence: "medium",
-      evidence: [`Transactions: ${percentage(transactionChange)} vs prior period`, `Average transaction: ${percentage(aovChange)} vs prior period`, "Cause split uses a volume-versus-basket decomposition"],
+      evidence: [`Transactions: ${percentage(transactionChange)} vs prior period`, `Average transaction: ${percentage(aovChange)} vs prior period`, "Volume-versus-basket arithmetic describes the recorded change, not its cause"],
       missingInformation: ["Hourly traffic", "Product and category mix", "Promotion attribution"],
-      suggestedTask: { title: salesDelta >= 0 ? "Protect the strongest sales driver" : "Investigate the sales decline", detail: trafficLed ? "Compare weekday and hourly traffic after the POS transaction feed is available." : "Inspect product mix and add-on behaviour after line-item data is available.", priority: salesDelta >= 0 ? "medium" : "high", expectedImpact: `${money(Math.abs(salesDelta), currency)} period-level opportunity.` },
+      suggestedTask: { title: salesDelta >= 0 ? "Protect the strongest sales driver" : "Investigate the sales decline", detail: trafficLed ? "Compare weekday and hourly purchase counts. Transactions do not measure foot traffic." : "Inspect product mix and add-on behaviour using line-item data.", priority: salesDelta >= 0 ? "medium" : "high", expectedImpact: `${money(Math.abs(salesDelta), currency)} recorded sales change to investigate; recovery is not estimated.` },
     });
   }
 
@@ -259,13 +279,13 @@ function buildInsights(current: Totals, previous: Totals, currency: string): Ins
       insights.push({
         id: "margin-trend",
         severity: marginDelta >= 0 ? "opportunity" : "attention",
-        title: `Gross margin ${marginDelta >= 0 ? "improved" : "declined"} ${percentage(Math.abs(marginDelta))}`,
+        title: `Gross margin ${marginDelta >= 0 ? "improved" : "declined"} ${(Math.abs(marginDelta) * 100).toFixed(1)} percentage points`,
         whatHappened: `Gross margin moved from ${percentage(previous.grossMarginRate)} to ${percentage(current.grossMarginRate)}.`,
-        probableCause: discountLed ? "Discounts consumed a larger share of gross sales and are a supported contributing factor." : "Daily summaries confirm the margin movement, but product-cost and supplier detail are required to isolate the cause.",
+        probableCause: discountLed ? "Discount share also increased. This association does not isolate its contribution; inspect product mix and costs before attributing the margin change." : "Daily summaries confirm the margin movement, but product-cost and supplier detail are required to isolate the cause.",
         financialImpact: `${money(Math.abs(marginImpact), currency)} estimated gross-profit effect at current sales volume.`,
         recommendedAction: discountLed ? "Audit the highest-discount promotions and replace unprofitable offers with bundles or targeted offers." : "Connect line-item costs and supplier invoices before changing prices or assortment.",
         confidence: discountLed ? "medium" : "low",
-        evidence: [`Current gross profit: ${money(current.grossProfitCents, currency)}`, `Discount rate moved ${percentage(discountDelta)}`],
+        evidence: [`Current gross profit: ${money(current.grossProfitCents, currency)}`, `Discount rate moved ${(discountDelta * 100).toFixed(1)} percentage points`],
         missingInformation: ["SKU-level cost changes", "Supplier price changes", "Promotion-level margin"],
         suggestedTask: { title: marginDelta >= 0 ? "Document the margin improvement" : "Review margin compression", detail: discountLed ? "Identify promotions whose gross-profit impact was negative." : "Connect product costs and supplier invoice detail before taking pricing action.", priority: marginDelta >= 0 ? "low" : "high", expectedImpact: `${money(Math.abs(marginImpact), currency)} estimated gross-profit effect.` },
       });
@@ -279,7 +299,7 @@ function buildInsights(current: Totals, previous: Totals, currency: string): Ins
         id: "labour-pressure",
         severity: "attention",
         title: "Labour is consuming more of each sales dollar",
-        whatHappened: `Labour cost reached ${percentage(current.labourRate)} of net sales, up ${percentage(labourDelta)}.`,
+        whatHappened: `Labour cost reached ${percentage(current.labourRate)} of net sales, up ${(labourDelta * 100).toFixed(1)} percentage points.`,
         probableCause: transactionChange < 0 ? "Transaction volume declined while labour cost did not fall proportionally." : "Daily summaries show higher labour pressure; shift-level traffic is required to identify the exact schedule gap.",
         financialImpact: `${money(current.labourCostCents - previous.labourCostCents, currency)} change in recorded labour cost.`,
         recommendedAction: "Compare staffing to sales by hour before changing shifts; do not rank employees solely by revenue.",
@@ -346,18 +366,16 @@ export function buildCommandCentre(rows: MetricRow[], currency: string, asOf = n
   const previousRows = sorted.filter((row) => row.businessDate >= previousStart && row.businessDate <= previousEnd);
   const current = sum(currentRows);
   const previous = sum(previousRows);
+  const thirtyDays = windowComparison(rows, latestBusinessDate, 30);
   const latestWith = <K extends keyof MetricRow>(key: K) => [...sorted].reverse().find((row) => row[key] !== null)?.[key] ?? null;
   const latestAgeDays = Math.max(0, Math.floor((asOf.getTime() - Date.parse(`${latestBusinessDate}T23:59:59Z`)) / 86_400_000));
   const freshness: FreshnessStatus = latestAgeDays <= 1 ? "current" : latestAgeDays <= 7 ? "aging" : "stale";
   const comparisons = {
-    netSalesRate: percentChange(current.netSalesCents, previous.netSalesCents),
-    grossProfitRate: percentChange(current.grossProfitCents, previous.grossProfitCents),
-    transactionRate: percentChange(current.transactionCount, previous.transactionCount),
-    averageTransactionRate: current.averageTransactionCents !== null && previous.averageTransactionCents !== null ? percentChange(current.averageTransactionCents, previous.averageTransactionCents) : null,
-    marginPointChange: current.grossMarginRate !== null && previous.grossMarginRate !== null ? current.grossMarginRate - previous.grossMarginRate : null,
+    ...thirtyDays.changes,
+    marginPointChange: thirtyDays.comparable && current.grossMarginRate !== null && previous.grossMarginRate !== null ? current.grossMarginRate - previous.grossMarginRate : null,
   };
   const metrics = buildMetricResults({
-    rows: currentRows,
+    rows: rows.filter(row => row.businessDate >= currentStart && row.businessDate <= latestBusinessDate),
     currency,
     periodStart: currentStart,
     periodEnd: latestBusinessDate,
@@ -394,12 +412,12 @@ export function buildCommandCentre(rows: MetricRow[], currency: string, asOf = n
     metrics,
     trend: sorted.slice(-90).map((row) => ({ date: row.businessDate, netSalesCents: row.netSalesCents, grossProfitCents: row.netSalesCents - row.costOfGoodsCents, transactionCount: row.transactionCount })),
     periodComparisons: {
-      sevenDays: windowComparison(sorted, latestBusinessDate, 7),
-      thirtyDays: windowComparison(sorted, latestBusinessDate, 30),
+      sevenDays: windowComparison(rows, latestBusinessDate, 7),
+      thirtyDays,
     },
-    forecast: sevenDayForecast(sorted, latestBusinessDate, asOf),
-    insights: buildInsights(current, previous, currency),
-    dataQuality: { status: previous.days >= 7 ? "usable" : "limited", verifiedFields: 10, missingDimensions: ["Product and category detail", "Customer identity", "Marketing attribution", "Hourly traffic", "Supplier invoices"] },
+    forecast: sevenDayForecast(sorted, latestBusinessDate, asOf, rows),
+    insights: buildInsights(current, previous, currency, thirtyDays.comparable),
+    dataQuality: { status: thirtyDays.comparable ? "usable" : "limited", verifiedFields: 10, missingDimensions: ["Product and category detail", "Customer identity", "Marketing attribution", "Hourly traffic", "Supplier invoices"] },
   };
 }
 
