@@ -15,7 +15,8 @@ import AutomaticSyncControl, { type AutomaticSyncStatus } from "./automatic-sync
 import AdvisorComposer, { canAskAdvisor } from "./advisor-composer";
 import AdvisorThinking from "./advisor-thinking";
 import AdvisorResponse from "./advisor-response";
-import { requestAdvisorAnalysis } from "./advisor-client";
+import { readAdvisorAnswer } from "./advisor-client";
+import { useAdvisorConsent } from "./advisor-consent";
 import AdvisorPrivacy from "./advisor-privacy";
 import { advisorProviders, type AdvisorMode } from "../domain/advisor-providers";
 import {
@@ -3928,7 +3929,11 @@ function Advisor({
   const provider: AdvisorMode = "openai";
   const [purpose, setPurpose] = useState<"analysis" | "help">("analysis");
   const [thinking, setThinking] = useState(false);
-  const [dataUseAccepted, setDataUseAccepted] = useState(false);
+  const savedConsent = useAdvisorConsent(apiFetch, activeLocationId ?? "organization");
+  const dataUseAccepted = savedConsent.consent[purpose];
+  const activeRequest = useRef<AbortController | null>(null);
+  const [responseError, setResponseError] = useState("");
+  useEffect(() => () => { activeRequest.current?.abort(); activeRequest.current = null; }, []);
   const [providers, setProviders] = useState({ openai: { ready: false, reason: "Checking OpenAI availability." as string | null } });
   const [providersLoading, setProvidersLoading] = useState(true);
   useEffect(() => {
@@ -3936,7 +3941,6 @@ function Advisor({
     void apiFetch("/api/v1/advisor/chat").then(async response => { if (!response.ok) throw new Error("unavailable"); return response.json(); }).then(payload => {
       if (active && payload.providers) {
         setProviders(payload.providers);
-        setDataUseAccepted(false);
       }
     }).catch(() => { if (active) setProviders({ openai: { ready: false, reason: "Provider availability could not be checked. Reopen Vanteloq AI to retry." } }); }).finally(() => { if (active) setProvidersLoading(false); });
     return () => { active = false; };
@@ -3948,38 +3952,49 @@ function Advisor({
     body: string;
     limitation: string;
     seed?: TaskSeed;
+    animate?: boolean;
   } | null>(null);
   const [submittedQuestion, setSubmittedQuestion] = useState("");
   const [history, setHistory] = useState<Array<{ question: string; answer: NonNullable<typeof answer> }>>([]);
   const ask = async (event: FormEvent) => {
     event.preventDefault();
-    if (!advisorProviders(provider).every(item => providers[item].ready) || !canAskAdvisor(question, dataUseAccepted, loading)) return;
+    if (activeRequest.current || savedConsent.busy || savedConsent.error || !advisorProviders(provider).every(item => providers[item].ready) || !canAskAdvisor(question, dataUseAccepted, loading)) return;
+    const controller = new AbortController();
+    activeRequest.current = controller;
     if (answer) setHistory(previous => [...previous, { question: submittedQuestion, answer }].slice(-5));
     setAnswer(null);
+    setResponseError("");
     setSubmittedQuestion(question);
     setLoading(true);
     setThinking(true);
     const normalized = question.toLowerCase();
     try {
-      const response = await requestAdvisorAnalysis(apiFetch, { question, provider, purpose, conversationId, dataUseAccepted, memoryEnabled, locationId: activeLocationId, ...(purpose === "analysis" && analysisPeriod ? analysisPeriod : {}) });
-      const payload = await response.json() as { providers?: Array<"openai">; partial?: boolean; status?: string; answer?: string | null; conversationId?: string | null; message?: string; error?: { message?: string } };
-      if (!response.ok) throw new Error(payload.error?.message ?? "The advisor could not answer right now.");
+      const { response, payload } = await readAdvisorAnswer(apiFetch, { question, provider, purpose, conversationId, dataUseAccepted, memoryEnabled, locationId: activeLocationId, ...(purpose === "analysis" && analysisPeriod ? analysisPeriod : {}) }, controller.signal);
+      if (activeRequest.current !== controller) return;
+      if (!response.ok) {
+        if (payload.error?.code?.startsWith("ADVISOR_CONSENT")) void savedConsent.refresh();
+        throw new Error(payload.error?.message ?? "The advisor could not answer right now.");
+      }
       setConversationId(payload.conversationId ?? null);
       if (payload.status === "configuration_required") {
-        setAnswer({ title: "Vanteloq AI setup is pending", body: payload.message ?? "The selected AI provider needs administrator setup.", limitation: payload.message ?? "No business data was sent to an external model." });
+        setResponseError(payload.message ?? "OpenAI setup needs administrator attention.");
         return;
       }
       if (payload.answer) {
         setQuestion("");
-        setAnswer({ title: "Vanteloq AI", body: payload.answer, limitation: `Powered by OpenAI. ${purpose === "help" ? "Product guidance only. No workspace records attached." : "Based on your permitted evidence snapshot."} Verify important details; AI can make mistakes.` });
+        setAnswer({ title: "Vanteloq AI", body: payload.answer, limitation: purpose === "help" ? "Workspace data is off." : "Based on the permitted records available for this question.", animate: true });
         return;
       }
     } catch (error) {
-      setAnswer({ title: "The advisor could not answer", body: error instanceof Error ? error.message : "Try again shortly.", limitation: "No decision or business value was inferred from unavailable data." });
+      if (activeRequest.current !== controller) return;
+      setResponseError(error instanceof Error ? error.message : "This reply could not be completed. Your question is ready to try again.");
       return;
     } finally {
-      setLoading(false);
-      setThinking(false);
+      if (activeRequest.current === controller) {
+        activeRequest.current = null;
+        setLoading(false);
+        setThinking(false);
+      }
     }
     /* Explicit local evidence is available when no external answer was returned. */
     if (purpose === "help") { setAnswer({ title: "Help is available", body: "Open the help centre for verified product instructions.", limitation: "No AI response was returned." }); return; }
@@ -4013,19 +4028,27 @@ function Advisor({
           "Product, customer, campaign, supplier or hourly questions need their corresponding feeds.",
       });
   };
-  const resetVisibleChat = () => { setConversationId(null); setAnswer(null); setSubmittedQuestion(""); setHistory([]); setQuestion(""); };
-  const changeMemory = (enabled: boolean) => { setMemoryEnabled(enabled); setDataUseAccepted(false); resetVisibleChat(); };
-  const reply = (value: NonNullable<typeof answer>) => <AdvisorResponse title={value.title} body={value.body} limitation={value.limitation}>
+  const stopResponse = () => {
+    const request = activeRequest.current;
+    activeRequest.current = null;
+    request?.abort();
+    setLoading(false); setThinking(false);
+    setResponseError("Response stopped. You can edit or resend your question.");
+  };
+  const resetVisibleChat = () => { setConversationId(null); setAnswer(null); setResponseError(""); setSubmittedQuestion(""); setHistory([]); setQuestion(""); };
+  const changeMemory = (enabled: boolean) => { setMemoryEnabled(enabled); resetVisibleChat(); };
+  const reply = (value: NonNullable<typeof answer>, latest = false) => <AdvisorResponse title={value.title} body={value.body} limitation={value.limitation} animate={latest && value.animate}>
     {purpose === "help" ? <a href="/help" target="_blank" rel="noreferrer">Open help centre →</a> : value.seed ? <button onClick={() => createTask(value.seed!)}>Create action →</button> : <button onClick={() => navigate("Integrations")}>Review connected sources →</button>}
   </AdvisorResponse>;
   return (
     <div className="content advisor-page">
       {analysisPeriod && purpose === "analysis" && <div className="retail-ai-period"><span>Retail evidence: {analysisPeriod.from} to {analysisPeriod.to}</span><button onClick={() => { setAnalysisPeriod(null); resetVisibleChat(); }}>Use recent workspace evidence</button></div>}
-      <AdvisorComposer purpose={purpose} onPurpose={value => { if (value !== purpose) { setPurpose(value); setDataUseAccepted(false); resetVisibleChat(); } }} memoryEnabled={memoryEnabled} onMemory={changeMemory} privacyControls={<AdvisorPrivacy fetcher={apiFetch} disabled={loading} onDeleted={id => { if (id === null || id === conversationId) resetVisibleChat(); }}/>} provider={provider} providers={providers} providersLoading={providersLoading} question={question} onQuestion={setQuestion} dataUseAccepted={dataUseAccepted} onConsent={setDataUseAccepted} loading={loading} thinking={thinking} onSubmit={ask} hasConversation={Boolean(submittedQuestion || answer || history.length)} onNewChat={() => { setAnalysisPeriod(null); resetVisibleChat(); }}>
+      <AdvisorComposer purpose={purpose} onPurpose={value => { if (value !== purpose) { setPurpose(value); resetVisibleChat(); } }} memoryEnabled={memoryEnabled} onMemory={changeMemory} privacyControls={<AdvisorPrivacy fetcher={apiFetch} disabled={loading} onDeleted={id => { if (id === null || id === conversationId) resetVisibleChat(); }}/>} provider={provider} providers={providers} providersLoading={providersLoading} question={question} onQuestion={setQuestion} dataUseAccepted={dataUseAccepted} onConsent={accepted => { if (!accepted) resetVisibleChat(); void savedConsent.refresh(accepted, purpose); }} consentLoading={savedConsent.busy} consentError={savedConsent.error} onConsentRetry={() => void savedConsent.refresh()} onStop={stopResponse} loading={loading} thinking={thinking} onSubmit={ask} hasConversation={Boolean(submittedQuestion || answer || history.length)} onNewChat={() => { setAnalysisPeriod(null); resetVisibleChat(); }}>
         {history.map((item, index) => <Fragment key={index}><div className="ai-user-message"><small>You</small>{item.question}</div>{reply(item.answer)}</Fragment>)}
         {submittedQuestion && <div className="ai-user-message"><small>You</small>{submittedQuestion}</div>}
         {thinking && <AdvisorThinking/>}
-        {answer && reply(answer)}
+        {responseError && <div className="ai-response-error" role="status"><strong>Reply not completed</strong><p>{responseError}</p><span>Your question remains in the message box.</span></div>}
+        {answer && reply(answer, true)}
       </AdvisorComposer>
     </div>
   );

@@ -1,5 +1,5 @@
 import { advisorProviderStatus, callAdvisor } from "../../../../../server/advisor-providers";
-import { advisorProviders, isAdvisorMode } from "../../../../../domain/advisor-providers";
+import { isAdvisorMode } from "../../../../../domain/advisor-providers";
 import { advisorKpis, advisorDailySeries, type AdvisorDay } from "../../../../../domain/advisor-kpis";
 import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import { getDb, getD1, getRuntimeEnv } from "../../../../../db";
@@ -10,7 +10,7 @@ import { effectivePermissions, requirePermission } from "../../../../../server/p
 import { authorizedLocationDataScope } from "../../../../../server/location-access";
 import { approvedBankSource, approvedFactSource } from "../../../../../server/integrations/trusted-data";
 import { recordAudit } from "../../../../../server/audit";
-import { recordAdvisorConsent } from "../../../../../server/privacy";
+import { requireAdvisorConsent } from "../../../../../server/privacy";
 import { advisorMarketingEvidence } from "../../../../../server/marketing-evidence";
 import { advisorEvidenceFingerprint, permittedAdvisorMemory } from "../../../../../domain/advisor-memory";
 import { projectAdvisorBookloq } from "../../../../../domain/advisor-bookloq";
@@ -156,8 +156,7 @@ export async function POST(request: Request) {
     if (body.dataUseAccepted !== true) {
       throw new ApiError(409, "ADVISOR_CONSENT_REQUIRED", "Review and accept the Vanteloq AI data-use notice before asking a question.");
     }
-    for (const provider of advisorProviders(mode)) await recordAdvisorConsent({
-      provider,
+    await requireAdvisorConsent({
       purpose,
       organizationId: context.organizationId,
       actorUserId: context.userId,
@@ -182,6 +181,8 @@ export async function POST(request: Request) {
     evidence.scope = locationId ? "selected_location" : locationAccess.organizationWide ? "organization" : "permitted_locations";
     evidence.purpose = purpose;
     let retailCoverage: { sourceCount: number; days: number } | null = null;
+    await Promise.all([
+    (async () => {
     if (purpose === "analysis" && permissions.includes("metrics.revenue")) {
       const retailUrl = new URL("/api/v1/retail-intelligence", request.url);
       if (locationId) retailUrl.searchParams.set("location", locationId);
@@ -194,7 +195,11 @@ export async function POST(request: Request) {
         if (requestedPeriod) { evidence.latestDate = retailBody.report.days.at(-1)?.date ?? null; retailCoverage = { sourceCount: retailBody.source.sourceCount, days: retailBody.report.comparison.currentObservedDays }; }
       } else evidence.retail = { status: "unavailable", reason: advisorUnavailableReason("retail", await retailResponse.json().catch(() => null)) };
     }
-    if (purpose === "analysis" && permissions.includes("marketing.view")) evidence.marketing = await advisorMarketingEvidence(context, locationId);
+    })(),
+    (async () => {
+      if (purpose === "analysis" && permissions.includes("marketing.view")) evidence.marketing = await advisorMarketingEvidence(context, locationId);
+    })(),
+    (async () => {
     if (purpose === "analysis") {
       evidence.bookloq = { status: "unavailable", reason: "Select All locations with the required BookLoQ and finance access to include organization-wide summaries." };
       if (locationAccess.organizationWide && locationAccess.locationIds === null && permissions.includes("finance.statements")) {
@@ -205,17 +210,22 @@ export async function POST(request: Request) {
         else evidence.bookloq = { status: "unavailable", reason: advisorUnavailableReason("bookloq", await bookloqResponse.json().catch(() => null)) };
       }
     }
+    })(),
+    ]);
     const suppliedId = memoryEnabled && body.conversationId != null ? cleanConversationId(body.conversationId) : null;
     const conversationId = suppliedId ?? crypto.randomUUID();
-    const existingConversation = await getD1().prepare("SELECT organization_id, user_id FROM assistant_conversations WHERE id = ?").bind(conversationId).first<{ organization_id: string; user_id: string }>();
+    const existingConversation = suppliedId ? await getD1().prepare("SELECT organization_id, user_id FROM assistant_conversations WHERE id = ?").bind(conversationId).first<{ organization_id: string; user_id: string }>() : null;
     if (suppliedId && (!existingConversation || existingConversation.organization_id !== context.organizationId || existingConversation.user_id !== context.userId)) throw new ApiError(404, "CONVERSATION_NOT_FOUND", "This conversation is unavailable. Start a new chat.");
     const accessFingerprint = await advisorEvidenceFingerprint(evidence, [...permissions, `advisor-provider:${mode}`], locationAccess.locationRefs);
     const now = new Date();
-    await getD1().prepare("DELETE FROM assistant_conversations WHERE organization_id = ? AND user_id = ? AND updated_at < ?").bind(context.organizationId, context.userId, Date.now() - 90 * 24 * 60 * 60 * 1_000).run();
+    if (memoryEnabled) await getD1().prepare("DELETE FROM assistant_conversations WHERE organization_id = ? AND user_id = ? AND updated_at < ?").bind(context.organizationId, context.userId, Date.now() - 90 * 24 * 60 * 60 * 1_000).run();
     const memoryRows = memoryEnabled ? await getD1().prepare("SELECT role, content, evidence_json FROM assistant_messages WHERE conversation_id = ? AND organization_id = ? AND user_id = ? ORDER BY created_at DESC LIMIT 6").bind(conversationId, context.organizationId, context.userId).all<{ role: string; content: string; evidence_json: string }>() : { results: [] };
     const memory = permittedAdvisorMemory(memoryRows.results ?? [], accessFingerprint);
-    const evidenceSummary = { latestDate: evidence.latestDate, sourceCount: retailCoverage?.sourceCount ?? evidence.sources.length, days: retailCoverage?.days ?? evidence.days.length };
-    const result = await callAdvisor(mode, prompt(question, evidence, memory), getRuntimeEnv(), undefined, purpose);
+    const coverage = retailCoverage as { sourceCount: number; days: number } | null;
+    const evidenceSummary = { latestDate: evidence.latestDate, sourceCount: coverage?.sourceCount ?? evidence.sources.length, days: coverage?.days ?? evidence.days.length };
+    // Consent may be withdrawn from another tab while evidence is loading.
+    await requireAdvisorConsent({ organizationId: context.organizationId, actorUserId: context.userId, purpose, noticeVersion: body.noticeVersion, privacyPolicyVersion: body.privacyPolicyVersion });
+    const result = await callAdvisor(mode, prompt(question, evidence, memory), getRuntimeEnv(), undefined, purpose, request.signal);
     if (!result.configured) {
       return jsonResponse({ status: "configuration_required", conversationId: suppliedId, memoryEnabled, model: result.model, answer: null, evidence: evidenceSummary, message: result.message });
     }

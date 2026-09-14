@@ -9,15 +9,17 @@ export function advisorProviderStatus(env: VanteloqRuntimeEnv) {
   };
 }
 
-async function callProvider(provider: AdvisorProvider, text: string, env: VanteloqRuntimeEnv, request: typeof fetch, purpose: "analysis" | "help") {
+async function callProvider(provider: AdvisorProvider, text: string, env: VanteloqRuntimeEnv, request: typeof fetch, purpose: "analysis" | "help", signal?: AbortSignal) {
   const instructions = purpose === "help" ? ADVISOR_APP_HELP_INSTRUCTIONS : ADVISOR_SYSTEM_INSTRUCTIONS;
   const model = env.OPENAI_MODEL?.trim() || "gpt-5-mini";
   const url = "https://api.openai.com/v1/responses";
+  const deadline = AbortSignal.timeout(45_000);
   try {
+    signal?.throwIfAborted();
     const response = await request(url, {
       // This Worker runtime supports manual/follow only. A 3xx response fails
       // the response.ok check below, so credentials never follow a redirect.
-      method: "POST", redirect: "manual", signal: AbortSignal.timeout(45_000),
+      method: "POST", redirect: "manual", signal: signal ? AbortSignal.any([signal, deadline]) : deadline,
       headers: { "content-type": "application/json", authorization: `Bearer ${env.OPENAI_API_KEY!.trim()}` },
       body: JSON.stringify({ model, instructions, input: text, store: false, max_output_tokens: 3200, reasoning: { effort: "medium" } }),
     });
@@ -42,18 +44,21 @@ async function callProvider(provider: AdvisorProvider, text: string, env: Vantel
     };
     const answer = body.status === "completed" ? body.output?.filter(item => item.type === "message").flatMap(item => item.content ?? []).filter(item => item.type === "output_text").map(item => item.text ?? "").join("\n").trim() : "";
     if (!answer) throw new Error("provider returned no complete answer");
+    signal?.throwIfAborted();
     return { provider, model, text: answer };
   } catch (error) {
     if (error instanceof ApiError) throw error;
+    if (signal?.aborted) throw new ApiError(408, "ADVISOR_REQUEST_CANCELLED", "The response was stopped.");
+    if (deadline.aborted) throw new ApiError(504, "ADVISOR_PROVIDER_TIMEOUT", "OpenAI took too long to finish this reply. Your question is ready to try again.");
     throw new ApiError(502, "ADVISOR_PROVIDER_UNAVAILABLE", `${ADVISOR_PROVIDER_LABELS[provider]} could not complete the analysis. Try again shortly.`);
   }
 }
 
-export async function callAdvisor(mode: AdvisorMode, text: string, env: VanteloqRuntimeEnv, request: typeof fetch = fetch, purpose: "analysis" | "help" = "analysis") {
+export async function callAdvisor(mode: AdvisorMode, text: string, env: VanteloqRuntimeEnv, request: typeof fetch = fetch, purpose: "analysis" | "help" = "analysis", signal?: AbortSignal) {
   // Reject legacy or forged modes even when called outside the HTTP handler.
   if (!isAdvisorMode(mode)) throw new ApiError(400, "ADVISOR_PROVIDER_INVALID", "Vanteloq AI supports OpenAI only.");
   const status = advisorProviderStatus(env).openai;
   if (!status.ready) return { configured: false as const, message: status.reason, model: "", text: "", providers: [] };
-  const answer = await callProvider("openai", text, env, request, purpose);
+  const answer = await callProvider("openai", text, env, request, purpose, signal);
   return { configured: true as const, model: answer.model, text: answer.text, providers: [answer.provider], partial: false };
 }

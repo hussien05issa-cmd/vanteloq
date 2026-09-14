@@ -14,6 +14,10 @@ type Props = {
   dataUseAccepted: boolean; onConsent: (value: boolean) => void;
   loading: boolean; onSubmit: (event: FormEvent) => void;
   thinking?: boolean;
+  onStop?: () => void;
+  consentLoading?: boolean;
+  consentError?: string;
+  onConsentRetry?: () => void;
   purpose?: "analysis" | "help";
   onPurpose?: (purpose: "analysis" | "help") => void;
   children?: ReactNode;
@@ -28,9 +32,9 @@ type Props = {
 };
 
 /** Shared by the authenticated advisor and isolated presentation tests. */
-export default function AdvisorComposer({ question, onQuestion, dataUseAccepted, onConsent, loading, thinking = loading, purpose = "analysis", onPurpose, onSubmit, onNewChat, children, hasConversation = false, memoryEnabled = false, onMemory, privacyControls, provider = "openai", providersLoading = false, providers = { openai: { ready: false } } }: Props) {
+export default function AdvisorComposer({ question, onQuestion, dataUseAccepted, onConsent, loading, thinking = loading, onStop, consentLoading = false, consentError = "", onConsentRetry, purpose = "analysis", onPurpose, onSubmit, onNewChat, children, hasConversation = false, memoryEnabled = false, onMemory, privacyControls, provider = "openai", providersLoading = false, providers = { openai: { ready: false } } }: Props) {
   const selectedReady = advisorProviders(provider).every(item => providers[item].ready);
-  const ready = !providersLoading && selectedReady && canAskAdvisor(question, dataUseAccepted, loading);
+  const ready = !providersLoading && !consentLoading && !consentError && selectedReady && canAskAdvisor(question, dataUseAccepted, loading);
   const input = useRef<HTMLTextAreaElement>(null);
   const settings = useRef<HTMLDialogElement>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -62,7 +66,7 @@ export default function AdvisorComposer({ question, onQuestion, dataUseAccepted,
     <header className="ai-studio-header">
       <div className="vanteloq-ai-heading"><VanteloqAiLogo size={36} thinking={thinking} active={Boolean(question.trim())} decorative/><strong>Vanteloq AI</strong></div>
       <div className="ai-header-tools">
-        {onNewChat && <button type="button" disabled={loading} onClick={() => { onNewChat(); onConsent(false); input.current?.focus(); }} title="Start a new chat. Saved chats stay in Settings."><WorkspaceIcon name="Business Brief"/><span>New chat</span></button>}
+        {onNewChat && <button type="button" disabled={loading} onClick={() => { onNewChat(); input.current?.focus(); }} title="Start a new chat. Saved chats stay in Settings."><WorkspaceIcon name="Business Brief"/><span>New chat</span></button>}
         <button type="button" aria-haspopup="dialog" aria-controls="advisor-settings" onClick={() => openSettings()}><WorkspaceIcon name="Settings"/><span>Settings</span></button>
       </div>
     </header>
@@ -84,14 +88,15 @@ export default function AdvisorComposer({ question, onQuestion, dataUseAccepted,
           }} maxLength={800} required aria-describedby="advisor-submit-help" placeholder="Ask Vanteloq AI…"/>
           <div className="ai-input-toolbar">
             <span>Powered by {ADVISOR_PROVIDER_LABELS[provider]}</span>
-            <div className="ai-send-tools">{question.length > 600 && <span className="ai-character-count">{question.length}/800</span>}<button className="ai-send" type="submit" disabled={!ready} aria-label={submitLabel} title={submitLabel} aria-describedby="advisor-submit-help"><WorkspaceIcon name="Chevron"/></button></div>
+            <div className="ai-send-tools">{question.length > 600 && <span className="ai-character-count">{question.length}/800</span>}{thinking && onStop ? <button key="stop" className="ai-send ai-stop" type="button" onClick={event => { event.preventDefault(); onStop(); }} aria-label="Stop response" title="Stop response"><span aria-hidden="true"/></button> : <button key="send" className="ai-send" type="submit" disabled={!ready} aria-label={submitLabel} title={submitLabel} aria-describedby="advisor-submit-help"><WorkspaceIcon name="Chevron"/></button>}</div>
           </div>
         </form>
 
-        <div className="ai-consent-row"><label className="ai-consent"><input type="checkbox" checked={dataUseAccepted} disabled={loading} onChange={event => onConsent(event.target.checked)}/><span>I agree to send {purpose === "help" ? "my question and product guidance" : "my question and permitted business data"} to <strong>{ADVISOR_PROVIDER_LABELS[provider]}</strong>.</span></label><button className="ai-text-button" type="button" onClick={() => openSettings(true)}>Data use</button></div>
+        {!dataUseAccepted && !consentLoading && !consentError && <div className="ai-consent-row"><label className="ai-consent"><input type="checkbox" checked={false} disabled={loading} onChange={event => onConsent(event.target.checked)}/><span>I agree to send {purpose === "help" ? "my question and product guidance" : "my question and permitted business data"} to <strong>{ADVISOR_PROVIDER_LABELS[provider]}</strong>. Remember for this workspace.</span></label><button className="ai-text-button" type="button" onClick={() => openSettings(true)}>Data use</button></div>}
+        {consentError && <p className="ai-consent-error" role="alert">{consentError} <button className="ai-text-button" type="button" onClick={onConsentRetry} disabled={consentLoading}>Retry</button></p>}
         {purpose === "help" && <p className="ai-help-scope">Workspace data is off. Turn it on in Settings for analysis of your records.</p>}
         <div className="ai-composer-meta">
-          <p id="advisor-submit-help" className="ai-submit-help" aria-live="polite">{thinking ? "Analyzing…" : loading ? "Clearing…" : providersLoading ? "Checking OpenAI availability…" : !selectedReady ? <>Provider setup needed. <button className="ai-text-button" type="button" onClick={() => openSettings()}>View details</button></> : !dataUseAccepted ? "Accept the data-use notice to send." : "AI can make mistakes. Verify important details."}</p>
+          <p id="advisor-submit-help" className="ai-submit-help" aria-live="polite">{thinking ? "You can stop this response." : loading ? "Clearing…" : consentLoading ? "Checking your data-use setting…" : providersLoading ? "Checking OpenAI availability…" : !selectedReady ? <>Provider setup needed. <button className="ai-text-button" type="button" onClick={() => openSettings()}>View details</button></> : !dataUseAccepted ? "Accept the data-use notice to send." : "AI can make mistakes. Verify important details."}</p>
           <button className="ai-text-button ai-memory-status" type="button" onClick={() => openSettings()} aria-label={`Memory ${memoryEnabled ? "on" : "off"}. Open settings.`}>Memory {memoryEnabled ? "on" : "off"}</button>
         </div>
 
@@ -113,13 +118,14 @@ export default function AdvisorComposer({ question, onQuestion, dataUseAccepted,
     }}>
       <header className="ai-settings-header"><div><span>Vanteloq AI</span><h2 id="advisor-settings-title">Settings</h2></div><button type="button" onClick={() => setSettingsOpen(false)}>Done</button></header>
       <div className="ai-settings-body">
+        <section aria-labelledby="advisor-agreement-title"><h3 id="advisor-agreement-title">Data-use agreement</h3><p>{consentLoading ? "Checking your saved agreement…" : dataUseAccepted ? "Accepted for this workspace. New chats keep this choice. We ask again if the notice or permitted data changes." : "Accept the notice below the message box before your first question."}</p>{dataUseAccepted && <button className="ai-text-button ai-withdraw-consent" type="button" disabled={loading || consentLoading} onClick={() => onConsent(false)}>Withdraw agreement</button>}{consentError && <p role="alert">{consentError} <button className="ai-text-button" type="button" onClick={onConsentRetry} disabled={consentLoading}>Retry</button></p>}</section>
         {onPurpose && <section aria-labelledby="advisor-context-title">
-          <div className="ai-setting-row"><h3 id="advisor-context-title">Workspace data</h3><label className="ai-memory-switch"><input type="checkbox" role="switch" aria-label="Include workspace data" checked={purpose === "analysis"} disabled={loading} onChange={event => { onConsent(false); onPurpose(event.target.checked ? "analysis" : "help"); }}/><span aria-hidden="true"/></label></div>
+          <div className="ai-setting-row"><h3 id="advisor-context-title">Workspace data</h3><label className="ai-memory-switch"><input type="checkbox" role="switch" aria-label="Include workspace data" checked={purpose === "analysis"} disabled={loading || consentLoading} onChange={event => { onPurpose(event.target.checked ? "analysis" : "help"); }}/><span aria-hidden="true"/></label></div>
           <p>{purpose === "analysis" ? "Include the business summaries your role can access. Vanteloq AI can analyze those records and help you use the app in this conversation." : "Your question and product guidance are included. No workspace records are attached; answers about business concepts are general guidance."}</p>
-          <p>Changing this starts a new chat and requires fresh consent. It does not change your account permissions.</p>
+          <p>Changing this starts a new chat. We ask again only if your saved agreement does not cover the data you enable.</p>
         </section>}
         <section aria-labelledby="advisor-memory-title">
-          <div className="ai-setting-row"><h3 id="advisor-memory-title">Conversation memory</h3>{onMemory && <label className="ai-memory-switch"><input type="checkbox" role="switch" aria-label="Conversation memory" checked={memoryEnabled} disabled={loading} onChange={event => { onConsent(false); onMemory(event.target.checked); }}/><span aria-hidden="true"/></label>}</div>
+          <div className="ai-setting-row"><h3 id="advisor-memory-title">Conversation memory</h3>{onMemory && <label className="ai-memory-switch"><input type="checkbox" role="switch" aria-label="Conversation memory" checked={memoryEnabled} disabled={loading} onChange={event => { onMemory(event.target.checked); }}/><span aria-hidden="true"/></label>}</div>
           <p>{memoryEnabled ? "On. New messages are saved. Up to six recent messages from this chat can inform replies when evidence and permissions still match." : "Off. Each question uses current permitted evidence. New questions and replies are not saved in Vanteloq’s chat database."}</p>
           <p>Off by default when you open Vanteloq AI. Changing memory starts a new chat. Saved chats stay until you delete them.</p>
         </section>

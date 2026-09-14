@@ -9,6 +9,12 @@ import { activateTestSubscription } from "./helpers/subscription-fixture.mjs";
 const origin = "https://vanteloq.example";
 const context = { waitUntil() {}, passThroughOnException() {} };
 
+async function acceptAdvisorConsent(worker, environment, user, purpose = "analysis") {
+  const response = await dispatch(worker, environment, "/api/v1/advisor/consent", { ...user, method: "POST", body: { accepted: true, purpose, noticeVersion: "vanteloq-ai-v7-unified", privacyPolicyVersion: "2026-09-10" } });
+  assert.equal(response.status, 200, await response.clone().text());
+  return response.json();
+}
+
 function dateOffset(iso, days) {
   const date = new Date(`${iso}T00:00:00Z`);
   date.setUTCDate(date.getUTCDate() + days);
@@ -278,6 +284,7 @@ test("excluding a test POS preserves records and removes them from reporting wit
       return originalFetch(input, init);
     };
     try {
+      await acceptAdvisorConsent(worker, environment, identity.owner);
       const analysis = await dispatch(worker, environment, "/api/v1/advisor/chat", { ...identity.owner, method:"POST", body:{question:"Review my sales",provider:"openai",dataUseAccepted:true,noticeVersion:"vanteloq-ai-v7-unified",privacyPolicyVersion:"2026-09-10"} });
       assert.equal(analysis.status,200,await analysis.clone().text());
       assert.equal(aiEvidence.kpis.current.netSalesCents,20000);
@@ -410,6 +417,16 @@ test("intraday API compares matched hours and redacts all profit paths for reven
     };
     try {
       const ask = (user, body = {}) => dispatch(worker, environment, "/api/v1/advisor/chat", { method: "POST", ...user, body: { question: "Analyze available KPIs", dataUseAccepted: true, noticeVersion: "vanteloq-ai-v7-unified", privacyPolicyVersion: "2026-09-10", ...body } });
+      const consentFor = async user => (await dispatch(worker, environment, "/api/v1/advisor/consent", user)).json();
+      assert.deepEqual((await consentFor(reader)).consent, { analysis: false, help: false });
+      assert.equal((await ask(reader)).status, 409, "a chat checkbox cannot create its own persistent consent");
+      const limited = await acceptAdvisorConsent(worker, environment, reader, "help");
+      assert.deepEqual(limited.consent, { analysis: false, help: true });
+      assert.equal((await ask(reader)).status, 409, "help-only consent cannot attach business data");
+      await acceptAdvisorConsent(worker, environment, reader);
+      assert.deepEqual((await consentFor(reader)).consent, { analysis: true, help: true });
+      assert.deepEqual((await consentFor(identity.owner)).consent, { analysis: false, help: false }, "another user does not inherit this receipt");
+      await acceptAdvisorConsent(worker, environment, identity.owner);
       const temporary = await ask(reader);
       assert.equal(temporary.status, 200);
       assert.equal((await temporary.json()).conversationId, null);
@@ -499,6 +516,20 @@ test("intraday API compares matched hours and redacts all profit paths for reven
       const helpConsent = await database.prepare("SELECT data_categories_json categories FROM integration_consents WHERE organization_id = ? AND provider = 'openai' AND purposes_json = ?").bind(identity.organizationId, JSON.stringify(["Explain how to use Vanteloq and BookLoQ", "Explain financial and analytical concepts without workspace records"])).first();
       assert.ok(helpConsent);
       assert.doesNotMatch(helpConsent.categories, /ledger|financial|payroll|aggregate cash/);
+      const acceptedCount = (await database.prepare("SELECT count(*) count FROM integration_consents WHERE actor_user_id = ? AND provider='openai'").bind(userId).first()).count;
+      assert.equal(acceptedCount, 2, "new chats and memory toggles reuse the accepted receipts");
+      const beforeWithdrawal = outbound.length;
+      await database.prepare("UPDATE access_roles SET permissions_json = ? WHERE id = ?").bind(JSON.stringify(["dashboard.view"]), roleId).run();
+      const withdrawn = await dispatch(worker, environment, "/api/v1/advisor/consent", { ...reader, method: "DELETE" });
+      assert.equal(withdrawn.status, 200, "privacy controls remain available without insights access");
+      assert.deepEqual((await consentFor(reader)).consent, { analysis: false, help: false });
+      assert.deepEqual((await consentFor(identity.owner)).consent, { analysis: true, help: true });
+      await database.prepare("UPDATE access_roles SET permissions_json = ? WHERE id = ?").bind(JSON.stringify(["dashboard.view", "insights.view"]), roleId).run();
+      assert.equal((await ask(reader)).status, 409, "a stale browser cannot silently reaccept withdrawn consent");
+      assert.equal(outbound.length, beforeWithdrawal);
+      await acceptAdvisorConsent(worker, environment, reader);
+      await database.prepare("UPDATE integration_consents SET notice_version='expired-notice' WHERE actor_user_id = ? AND provider='openai'").bind(userId).run();
+      assert.deepEqual((await consentFor(reader)).consent, { analysis: false, help: false }, "changed notices require a new explicit choice");
     } finally { globalThis.fetch = originalFetch; }
     await database.prepare("UPDATE integration_connections SET last_successful_sync_at = ? WHERE id = ?").bind(now - 86400, connectionId).run();
     const stale = await load();
@@ -528,6 +559,7 @@ test("AI reads permitted BookLoQ summaries through its real access path and excl
       assert.equal(response.status, 200, await response.clone().text());
       return JSON.parse(outbound.at(-1).split("Evidence JSON: ")[1].split("\n\nConversation memory:")[0]);
     };
+    await acceptAdvisorConsent(worker, environment, identity.owner);
     assert.equal((await ask()).bookloq.status, "unavailable");
     // Mark only this isolated fixture live to exercise the production read path.
     await database.prepare("UPDATE bookloq_settings SET data_mode = 'live' WHERE organization_id = ?").bind(identity.organizationId).run();
