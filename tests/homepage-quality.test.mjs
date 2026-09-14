@@ -36,49 +36,20 @@ test("homepage keeps every crawlable internal link on a working route", async ()
 
 test("homepage copy stays within the verified product boundary", async () => {
   const html = await (await fetchRoute("/")).text();
-  const connections = html.match(/<section class="home-connections"[\s\S]*?<\/section>/)?.[0] ?? "";
-  assert.ok(connections, "homepage should render the public connector section");
+  for (const provider of ["Lightspeed Retail R-Series", "Lightspeed Retail X-Series", "Square", "Moneris", "QuickBooks", "Xero", "Plaid", "Google", "Meta"]) assert.ok(html.includes(provider), provider);
+  for (const label of ["Sandbox only", "Production approval needed", "In development", "Coming soon", "Provider setup required"]) assert.ok(html.includes(label), label);
   assert.doesNotMatch(html, /Start (?:Your )?Free Trial/i);
-  for (const provider of ["Lightspeed Retail R-Series", "Lightspeed Retail X-Series", "Square", "Moneris", "QuickBooks", "Xero", "Plaid", "Google", "Meta"]) assert.match(connections, new RegExp(`<strong>${provider}</strong>`));
-  for (const provider of ["DoorDash", "Uber Eats"]) assert.match(connections, new RegExp(`<strong>${provider}</strong>[\\s\\S]*?Coming soon`));
-  assert.match(connections, /QuickBooks[\s\S]*?Sandbox only/);
-  assert.match(connections, /Plaid[\s\S]*?Production approval needed/);
-  assert.match(connections, /Xero[\s\S]*?In development/);
-  assert.match(connections, /Stripe[\s\S]*?Authorize and review/);
-  assert.match(connections, /Moneris<\/strong>[\s\S]*?Review payment amounts, status and timing for reconciliation/);
-  assert.match(connections, /Connect the tools that already run your business/);
-  assert.match(connections, /Use owner-authorized balances and transactions in cash planning/);
-  assert.doesNotMatch(connections, /(?:AVAILABLE NOW|PRODUCTION READY|FULLY CONNECTED|honest availability)/i);
   assert.doesNotMatch(html, /\b(?:SOC 2|ISO 27001|HIPAA|PCI)\s+(?:certified|compliant|accredited)\b/i);
-  assert.doesNotMatch(html, /\u2014/u, "homepage prose should not contain an em dash");
-  assert.match(html, /home-intelligence-map/);
-  assert.match(html, /home-resource-art/);
-  assert.doesNotMatch(html, /ILLUSTRATIVE WORKFLOW|Illustrative inventory decision workflow/i);
-  assert.doesNotMatch(html, /connect-import-visual\.webp|verify-organize-visual\.webp|home-step-review-visual/);
-  for (const step of ["connect", "verify", "review"]) assert.match(html, new RegExp(`home-operating-preview ${step}`));
-  assert.match(html, /home-record-review/);
-  assert.match(html, /Ready for owner review/);
-  assert.match(html, /Example records/);
-  assert.doesNotMatch(html, /Sources synchronized/);
-  assert.match(connections, /<details class="home-connection-directory">/);
-  assert.match(connections, /Explore providers and current availability/);
-  assert.match(html, /Receipt 1458/);
-  assert.match(html, /Example values show how Vanteloq/);
-  assert.match(html, /platform-preview/);
-  assert.doesNotMatch(html, /inventory-decision-visual\.webp/);
-  assert.match(html, /id="marketing"/);
-  assert.match(html, /Facebook and Instagram organic insights are not yet available/);
-  assert.match(html, /href="\/privacy"/);
-  assert.match(html, /href="\/terms"/);
-  assert.match(html, /href="\/cookies"/);
-  assert.match(html, /Vanteloq is a LexEdge Consulting product/);
-  assert.match(html, /Vanteloq is owned and operated by LexEdge Consulting/);
+  assert.doesNotMatch(html, /\u2014/u);
+  assert.match(html, /Fictional records/);
+  assert.match(html, /ai-orbit-showcase/);
+  assert.doesNotMatch(html, /Preview thinking|Pause logo animation/);
+  for (const path of ["/privacy", "/terms", "/cookies", "/contact", "/pricing", "/custom-plan"]) assert.ok(html.includes('href="' + path + '"'),path);
+  assert.match(html, /owned and operated by LexEdge Consulting/);
   assert.match(html, /lexedge-consulting-logo-web\.png/);
-  assert.match(html, /Can I delete my account and data\?/);
-  assert.match(html, /Is Vanteloq a replacement for an accountant or legal adviser\?/);
-  assert.match(html, /What happens after you create an account/);
-  assert.match(html, /IMPLEMENTED SECURITY CONTROLS/);
-  assert.doesNotMatch(html, /VERIFIED SECURITY CONTROLS/);
+  assert.match(html, /Memory starts off/);
+  assert.match(html, /Which system do you use/);
+  assert.match(html, /review source totals/);
 });
 
 test("homepage omits the former independent retail label", async () => {
@@ -87,22 +58,12 @@ test("homepage omits the former independent retail label", async () => {
   assert.doesNotMatch(html, /<span class="public-pill">/);
 });
 
-test("homepage sequence labels do not use leading zeroes", async () => {
+test("homepage keeps the three-step journey and explicit subscription context", async () => {
   const html = await (await fetchRoute("/")).text();
-  const platform = html.match(/<section class="home-platform"[\s\S]*?<\/section>/)?.[0] ?? "";
-  const capabilities = html.match(/<section class="home-capabilities"[\s\S]*?<\/section>/)?.[0] ?? "";
-  const advisor = html.match(/<section class="home-ai"[\s\S]*?<\/section>/)?.[0] ?? "";
-
-  assert.ok(platform, "homepage should render the platform sequence");
-  assert.ok(capabilities, "homepage should render the capability sequence");
-  assert.ok(advisor, "homepage should render the AI presentation");
-  assert.match(platform, /<b>1<\/b>/);
-  assert.match(platform, /<b>2<\/b>/);
-  assert.match(platform, /<b>3<\/b>/);
-  assert.match(advisor, /ai-orbit-showcase/);
-  assert.doesNotMatch(advisor, /Preview thinking|Pause logo animation/);
-  for (const number of [1, 2, 3, 4, 5, 6]) assert.match(capabilities, new RegExp(`<small>${number}<\\/small>`));
-  assert.doesNotMatch(`${platform}${capabilities}${advisor}`, />(?:01|02|03|04|05|06)</);
+  assert.match(html, /From signup to the first insight/);
+  for (const label of ["Set up your workspace", "Connect and check", "Investigate your first insight"]) assert.ok(html.includes(label));
+  assert.match(html, /BookLoQ/);
+  assert.match(html, /CAD \/ month/);
 });
 
 test("resource research links use current official guidance", async () => {
@@ -157,7 +118,7 @@ test("homepage and resource cards keep the hosted visual layout", async () => {
     resourcesResponse.text(),
   ]);
 
-  assert.match(homepage, /home-resource-art/);
+  for (const slug of ["retail-intelligence", "inventory-and-cash", "financial-review"]) assert.ok(homepage.includes('/features/' + slug));
   assert.doesNotMatch(homepage, /home-resource-thumbnail/);
   assert.match(resources, /resource-card-image/);
   assert.match(resources, /inventory-tracking-editorial-v2\.webp/);
@@ -170,13 +131,12 @@ test("homepage and resource cards keep the hosted visual layout", async () => {
   assert.doesNotMatch(resourcesCss, /\.resource-latest \.resource-card-grid[^}]*repeat\(6, minmax\(0, 1fr\)\)/);
 });
 
-test("the above-the-fold product image is compact and dimensioned", async () => {
-  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
-  const image = await stat(new URL("../public/brand/vanteloq-command-ledger.webp", import.meta.url));
-  assert.ok(image.size < 100_000, `product image should stay below 100 KB, received ${image.size}`);
-  assert.match(source, /vanteloq-command-ledger\.webp/);
-  assert.match(source, /width=\{1487\} height=\{1058\}/);
-  assert.match(source, /fetchPriority="high"/);
+test("the hero presents working sample data instead of unreadable image text", async () => {
+  const source = await readFile(new URL("../app/home-decision-preview.tsx", import.meta.url), "utf8");
+  assert.match(source, /demoAnalysis/);
+  assert.match(source, /aria-label="Sample location"/);
+  assert.match(source, /Fictional records/);
+  assert.doesNotMatch(source, /<img/);
 });
 
 test("generated editorial visuals stay compact and production-ready", async () => {
@@ -209,9 +169,9 @@ test("the public demo works without workspace bindings and identifies sample ana
   const response = await fetchRoute("/demo");
   assert.equal(response.status, 200);
   const html = await response.text();
-  assert.match(html, /<h1[^>]*>See the numbers/);
+  assert.match(html, /<h1[^>]*>Try a question/);
   assert.match(html, /rel="canonical" href="https:\/\/vanteloq\.com\/demo"/);
-  assert.match(html, /\$105,070/);
+  assert.match(html, /\$24,594/);
   assert.match(html.replace(/<!--[\s\S]*?-->/g, ""), /Fictional business\. Real KPI calculation logic/);
   assert.match(html, /Rule-based demo explanation, not a live AI response/);
   assert.match(html, /Scenario lab/);

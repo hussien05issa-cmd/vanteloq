@@ -1,6 +1,7 @@
 import type { MetadataRoute } from "next";
 import { RESOURCE_ARTICLES, RESOURCE_CATEGORIES } from "./resources/content";
 import { absoluteUrl } from "./seo";
+import { FEATURE_GUIDES } from "./features/content";
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const latestResourceUpdate = RESOURCE_ARTICLES.map((article) => article.updated).sort().at(-1) ?? "2026-08-11";
@@ -36,6 +37,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: absoluteUrl("/data-processing"), lastModified: "2026-08-24", changeFrequency: "monthly", priority: 0.4 },
     { url: absoluteUrl("/subprocessors"), lastModified: "2026-08-24", changeFrequency: "monthly", priority: 0.4 },
     ...categoryEntries,
+    ...Object.keys(FEATURE_GUIDES).map(slug => ({url: absoluteUrl("/features/" + slug), lastModified: "2026-09-13", changeFrequency: "monthly" as const, priority: 0.8})),
     ...articleEntries,
   ];
 }

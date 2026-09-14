@@ -4,6 +4,8 @@ import { type FormEvent, useCallback, useEffect, useRef, useState } from "react"
 import type { Session } from "@supabase/supabase-js";
 import Link from "next/link";
 import ProductBrandLogo from "./product-brand-logo";
+import { readPlanSelection, type PlanSelection } from "../shared/plan-selection";
+import { PLANS, ADDONS } from "../server/entitlements/catalog";
 import { getSupabase } from "./supabase-browser";
 import TurnstileField from "./turnstile-field";
 import { MINIMUM_PASSWORD_LENGTH, passwordRules, strongPasswordError } from "../shared/password-security";
@@ -39,6 +41,8 @@ export default function AuthPanel({
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const [mode, setMode] = useState<AuthPanelMode>(initialMode);
+  const [planSelection, setPlanSelection] = useState<PlanSelection | null>(null);
+  useEffect(() => { queueMicrotask(() => setPlanSelection(readPlanSelection())); }, []);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -184,6 +188,7 @@ export default function AuthPanel({
           options: {
             data: {
               full_name: name.trim(),
+              ...(planSelection ? { signup_plan: planSelection.plan, signup_bookloq: planSelection.bookloq } : {}),
               legal_terms_version: TERMS_OF_SERVICE_VERSION,
               legal_privacy_version: PRIVACY_POLICY_VERSION,
               legal_notice_version: ACCOUNT_ACCEPTANCE_NOTICE_VERSION,
@@ -457,7 +462,7 @@ export default function AuthPanel({
     : mode === "verify-recovery" ? "Check your email"
     : recoveryMfaRequired ? "Verify it's you" : "Choose a new password";
   const description = mode === "signup"
-    ? "Start with a verified owner account. Business data stays separated by workspace."
+    ? "Create your account, verify your email, then secure and set up your business."
     : mode === "verify-signup"
       ? `Enter the verification code sent to ${email.trim().toLowerCase() || "your email"}. You will continue directly to two-factor authentication.`
     : mode === "signin"
@@ -482,6 +487,7 @@ export default function AuthPanel({
       <small>SECURE VANTELOQ ACCOUNT</small>
       <h2 id="auth-title">{title}</h2>
       <p id="auth-description">{description}</p>
+      {mode === "signup" && planSelection && <div className="auth-plan-selection"><span><strong>{PLANS[planSelection.plan].displayName}{planSelection.bookloq ? " + BookLoQ" : ""}</strong><small>{"$"}{(PLANS[planSelection.plan].prices.month.amountCents + (planSelection.bookloq ? ADDONS.bookloq.prices.month.amountCents : 0)) / 100} CAD / month before tax. Review before payment.</small></span><Link href="/pricing">Change</Link></div>}
       {configured === false && <div className="auth-message error">Account service is temporarily unavailable.</div>}
       <form onSubmit={submit}>
         {mode === "signup" && <label>Full name<input autoComplete="name" value={name} onChange={event => setName(event.target.value)} minLength={2} maxLength={120} required/></label>}
@@ -490,7 +496,7 @@ export default function AuthPanel({
         {recoveryMfaRequired && <label>Authenticator app code<input autoFocus value={recoveryMfaCode} onChange={event => setRecoveryMfaCode(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" minLength={6} maxLength={6} required/></label>}
         {(mode === "signup" || mode === "signin" || (mode === "reset-password" && recoveryMfaState === "ready")) && <label>{mode === "reset-password" ? "New password" : "Password"}<input type="password" autoComplete={mode === "signin" ? "current-password" : "new-password"} value={password} onChange={event => setPassword(event.target.value)} minLength={mode === "signin" ? 1 : MINIMUM_PASSWORD_LENGTH} required/></label>}
         {mode === "reset-password" && recoveryMfaState === "ready" && <label>Confirm new password<input type="password" autoComplete="new-password" value={passwordConfirmation} onChange={event => setPasswordConfirmation(event.target.value)} minLength={MINIMUM_PASSWORD_LENGTH} required/></label>}
-        {(mode === "signup" || (mode === "reset-password" && recoveryMfaState === "ready")) && <div className="auth-password-rules" aria-label="Password requirements">{passwordRules(password).map(rule => <span className={rule.met ? "met" : ""} key={rule.id}>{rule.met ? "Met" : "Required"}: {rule.label}</span>)}<span>Known breached passwords are rejected when you submit.</span></div>}
+        {(mode === "signup" || (mode === "reset-password" && recoveryMfaState === "ready")) && <details className="auth-password-details"><summary>Use 12+ characters, upper and lowercase, a number and a symbol.</summary><div className="auth-password-rules" aria-label="Password requirements">{passwordRules(password).map(rule => <span className={rule.met ? "met" : ""} key={rule.id}>{rule.met ? "Met" : "Required"}: {rule.label}</span>)}<span>Known breached passwords are rejected when you submit.</span></div></details>}
         {showsTurnstile && siteKey && turnstileAction && <TurnstileField
           siteKey={siteKey}
           action={turnstileAction}
@@ -503,6 +509,7 @@ export default function AuthPanel({
         {mode === "signup" && <label className="auth-legal-consent"><input type="checkbox" checked={legalAccepted} onChange={event => setLegalAccepted(event.target.checked)} required/><span>I agree to the <Link href="/terms" target="_blank">Terms of Service</Link> and acknowledge the <Link href="/privacy" target="_blank">Privacy Policy</Link>.</span></label>}
         <button className="auth-submit" disabled={busy || configured !== true || (protectedMode && (!siteKey || !turnstileToken)) || ((mode === "verify-signup" || mode === "verify-recovery") && !isCompleteEmailVerificationCode(verificationCode)) || (mode === "signup" && !legalAccepted) || (mode === "reset-password" && (recoveryReady !== true || recoveryMfaState === "checking" || recoveryMfaState === "error" || (recoveryMfaState === "challenge_required" && recoveryMfaCode.length !== 6)))}>{busy || configured === null || (mode === "reset-password" && (recoveryReady === null || recoveryMfaState === "checking")) ? "Please wait…" : submitLabel}</button>
       </form>
+      {mode === "signup" && <p className="auth-setup-progress">Next: verify email · set up 2FA · add your business · confirm a plan</p>}
       {mode === "signin" && <button className="auth-switch" type="button" onClick={() => changeMode("request-reset")}>Forgot your password?</button>}
       {mode === "request-reset" && <button className="auth-switch" type="button" onClick={() => changeMode("signin")}>Back to sign in</button>}
       {(mode === "request-reset" || (mode === "reset-password" && recoveryReady === false)) && <button className="auth-switch" type="button" onClick={() => changeMode("verify-recovery")}>I already have a recovery email code</button>}

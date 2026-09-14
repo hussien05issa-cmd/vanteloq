@@ -99,11 +99,11 @@ test("reviewed CSV rejects ambiguous numbers, duplicates, impossible dates and m
 });
 test("public demonstration uses real formulas, explicit missing costs and complete cent reconciliation", () => {
   const sample = retailDemo(), missing = retailDemo("all", true);
-  assert.equal(sample.current.netCents, 1_944_432); assert.equal(sample.current.purchaseBaskets, 336);
+  assert.equal(sample.current.netCents, 2_459_361); assert.equal(sample.current.purchaseBaskets, 420);
   assert.equal(sample.bridge!.reduce((n, r) => n + r.impactCents, 0), sample.current.netCents - sample.prior.netCents);
   assert.ok(sample.products.every(p => p.score != null && p.score >= 0 && p.score <= 100));
   assert.equal(missing.current.grossProfitCents, null); assert.equal(missing.current.netCents, sample.current.netCents);
-  assert.equal(retailDemo("central").current.netCents * 2, sample.current.netCents);
+  assert.equal(retailDemo("central").current.netCents + retailDemo("riverside").current.netCents, sample.current.netCents);
 });
 test("unsafe monetary accumulation fails instead of silently rounding", () => {
   assert.throws(() => analyze([line("1", "A", { netCents: Number.MAX_SAFE_INTEGER }), line("2", "B", { netCents: 100 })]), /exact integer/);
