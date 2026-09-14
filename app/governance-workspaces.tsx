@@ -1,11 +1,13 @@
 "use client";
+import WorkspaceSkeleton from "./workspace-skeleton";
 import CustomPlanCallout from "./custom-plan-callout";
 
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { FormEvent, type ReactNode, useCallback, useEffect, useState } from "react";
+import { FormEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { apiFetch, getSupabase } from "./supabase-browser";
 import { humanizeIdentifier } from "../domain/display-labels";
+import { FieldLabel, FormInput, FormLegend } from "./form-primitives";
 
 type Permission = {
   key: string;
@@ -176,10 +178,7 @@ function Loading({ error, retry }: { error: string; retry: () => void }) {
           <button onClick={retry}>Try again</button>
         </>
       ) : (
-        <>
-          <i />
-          <b>Loading organization controls…</b>
-        </>
+        <WorkspaceSkeleton label="Loading team and settings"/>
       )}
     </div>
   );
@@ -650,6 +649,7 @@ function EmployeeWizard({
   const availableRoles = data.roles.filter((role) =>
     role.systemKey !== "account_owner" && (canAssignRoles || role.systemKey === "employee"),
   );
+  const wizardRef = useRef<HTMLElement>(null);
   const [step, setStep] = useState(1);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -677,6 +677,11 @@ function EmployeeWizard({
   const set = (key: keyof typeof form, value: string | boolean) =>
     setForm((current) => ({ ...current, [key]: value }));
   const next = () => {
+    const invalid = Array.from(wizardRef.current?.querySelectorAll<HTMLInputElement | HTMLSelectElement>("input,select") || []).filter(input => !input.disabled && !input.checkValidity());
+    if (invalid.length) {
+      invalid[0].focus();
+      return setError("Review the highlighted fields before continuing.");
+    }
     if (
       step === 1 &&
       (!form.firstName || !form.lastName || !form.email || !form.employeeCode)
@@ -711,7 +716,7 @@ function EmployeeWizard({
   const role = availableRoles.find((item) => item.id === form.roleId);
   return (
     <div className="modal-backdrop">
-      <section className="employee-wizard">
+      <section ref={wizardRef} className="employee-wizard">
         <header>
           <div>
             <p>EMPLOYEE SETUP · STEP {step} OF 4</p>
@@ -726,72 +731,73 @@ function EmployeeWizard({
               }
             </h2>
           </div>
-          <button onClick={close}>×</button>
+          <button onClick={close} aria-label="Close Employee Setup">×</button>
         </header>
-        <div className="wizard-progress">
+        <FormLegend/>
+        <div className="wizard-progress" role="progressbar" aria-label="Employee setup" aria-valuemin={0} aria-valuemax={4} aria-valuenow={step} aria-valuetext={`Step ${step} of 4`}>
           <i style={{ width: `${step * 25}%` }} />
         </div>
         {step === 1 && (
           <div className="wizard-grid">
             <label>
-              First name
-              <input
+              <FieldLabel>First Name</FieldLabel>
+              <FormInput aria-label="First Name" required autoComplete="given-name"
                 value={form.firstName}
                 onChange={(event) => set("firstName", event.target.value)}
               />
             </label>
             <label>
-              Last name
-              <input
+              <FieldLabel>Last Name</FieldLabel>
+              <FormInput aria-label="Last Name" required autoComplete="family-name"
                 value={form.lastName}
                 onChange={(event) => set("lastName", event.target.value)}
               />
             </label>
             <label>
-              Preferred name
+              <FieldLabel required={false}>Preferred Name</FieldLabel>
               <input
                 value={form.preferredName}
                 onChange={(event) => set("preferredName", event.target.value)}
               />
             </label>
             <label>
-              Employee email
-              <input
+              <FieldLabel>Employee Email</FieldLabel>
+              <FormInput aria-label="Employee Email" required autoComplete="email"
                 type="email"
                 value={form.email}
                 onChange={(event) => set("email", event.target.value)}
               />
             </label>
             <label>
-              Mobile number
-              <input
+              <FieldLabel required={false}>Mobile Number</FieldLabel>
+              <input type="tel" autoComplete="tel"
                 value={form.mobile}
                 onChange={(event) => set("mobile", event.target.value)}
               />
             </label>
             <label>
-              Employee identifier
-              <input
+              <FieldLabel>Employee Identifier</FieldLabel>
+              <FormInput aria-label="Employee Identifier" required
                 value={form.employeeCode}
                 onChange={(event) => set("employeeCode", event.target.value)}
               />
             </label>
             <label>
-              Job title
+              <FieldLabel required={false}>Job Title</FieldLabel>
               <input
                 value={form.jobTitle}
                 onChange={(event) => set("jobTitle", event.target.value)}
               />
             </label>
             <label>
-              Department
+              <FieldLabel required={false}>Department</FieldLabel>
               <input
                 value={form.department}
                 onChange={(event) => set("department", event.target.value)}
               />
             </label>
             <label>
-              Employment type
+              <FieldLabel>Employment Type</FieldLabel>
               <select
                 value={form.employmentType}
                 onChange={(event) => set("employmentType", event.target.value)}
@@ -803,7 +809,7 @@ function EmployeeWizard({
               </select>
             </label>
             <label>
-              Start date
+              <FieldLabel required={false}>Start Date</FieldLabel>
               <input
                 type="date"
                 value={form.startDate}
@@ -891,9 +897,7 @@ function EmployeeWizard({
                 </small>
               </span>
             </label>
-            <label className="full">
-              Temporary workplace PIN (optional)
-              <input
+            <label className="full"><FieldLabel required={false}>Temporary Workplace PIN</FieldLabel><input
                 inputMode="numeric"
                 maxLength={8}
                 value={form.temporaryPin}
@@ -1704,16 +1708,11 @@ function LocationModal({
           </button>
         </header>
         <div className="wizard-grid">
-          <label>
-            Name
-            <input name="name" required />
+          <label><FieldLabel>Name</FieldLabel><input name="name" required />
           </label>
-          <label>
-            ISO country code
-            <input name="countryCode" maxLength={2} placeholder="CA" required />
+          <label><FieldLabel>ISO Country Code</FieldLabel><input name="countryCode" maxLength={2} placeholder="CA" required />
           </label>
-          <label className="full">
-            Address line 1<input name="addressLine1" required />
+          <label className="full"><FieldLabel>Address Line 1</FieldLabel><input name="addressLine1" required />
           </label>
           <label>
             Address line 2<input name="addressLine2" />
@@ -1721,33 +1720,23 @@ function LocationModal({
           <label>
             Address line 3<input name="addressLine3" />
           </label>
-          <label>
-            City / locality
-            <input name="locality" required />
+          <label><FieldLabel>City / Locality</FieldLabel><input name="locality" required />
           </label>
           <label>
             District / county
             <input name="district" />
           </label>
-          <label>
-            Province / state / region
-            <input name="administrativeArea" required />
+          <label><FieldLabel>Province / State / Region</FieldLabel><input name="administrativeArea" required />
           </label>
           <label>
             Postal / ZIP code
             <input name="postalCode" />
           </label>
-          <label>
-            Timezone
-            <input name="timezone" defaultValue="America/Edmonton" required />
+          <label><FieldLabel>Timezone</FieldLabel><input name="timezone" defaultValue="America/Edmonton" required />
           </label>
-          <label>
-            Currency
-            <input name="currency" defaultValue="CAD" maxLength={3} required />
+          <label><FieldLabel>Currency</FieldLabel><input name="currency" defaultValue="CAD" maxLength={3} required />
           </label>
-          <label>
-            Locale
-            <input name="locale" defaultValue="en-CA" required />
+          <label><FieldLabel>Locale</FieldLabel><input name="locale" defaultValue="en-CA" required />
           </label>
           <label>
             Tax jurisdiction

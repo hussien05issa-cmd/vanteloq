@@ -3,6 +3,7 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { buildCampaignLink, marketingReviewGuides, type MarketingPlanDraft } from "../domain/marketing-workbench";
 import WorkspaceIcon from "./workspace-icon";
+import { FieldLabel } from "./form-primitives";
 
 export type JourneyCoverage = {
   journeys: number; stages: Record<"discovery" | "website" | "contact" | "customer" | "purchase", number>;
@@ -40,14 +41,14 @@ export default function MarketingWorkbench({ canManage, website, onPlan, onRepor
       <form className="mw-card" onSubmit={preparePlan}>
         <header><div><p className="mw-kicker">CAMPAIGN BRIEF</p><h3>Turn an idea into accountable work.</h3></div><WorkspaceIcon name="Action Centre"/></header>
         <div className="mw-fields">
-          <label className="mw-wide">Campaign name<input name="title" maxLength={180} required placeholder="Autumn product education"/></label>
+          <label className="mw-wide"><FieldLabel>Campaign Name</FieldLabel><input name="title" maxLength={180} required placeholder="Autumn product education"/></label>
           <label>Primary channel<select name="channel" defaultValue="content"><option value="content">Content and social</option><option value="google">Google</option><option value="meta">Meta (planning only)</option><option value="email">Email</option><option value="local">Local discovery</option><option value="website">Website</option></select></label>
           <label>Responsible person<input name="owner" maxLength={80} placeholder="Name or team role"/></label>
-          <label className="mw-wide">Who is this for?<input name="audience" maxLength={120} required placeholder="Customers comparing their first purchase"/></label>
-          <label className="mw-wide">Business outcome<input name="outcome" maxLength={200} required placeholder="More qualified enquiries for this offer"/></label>
-          <label>Success metric<input name="metric" maxLength={160} required placeholder="Qualified enquiries, not likes"/></label>
+          <label className="mw-wide"><FieldLabel>Who Is This for?</FieldLabel><input name="audience" maxLength={120} required placeholder="Customers comparing their first purchase"/></label>
+          <label className="mw-wide"><FieldLabel>Business Outcome</FieldLabel><input name="outcome" maxLength={200} required placeholder="More qualified enquiries for this offer"/></label>
+          <label><FieldLabel>Success Metric</FieldLabel><input name="metric" maxLength={160} required placeholder="Qualified enquiries, not likes"/></label>
           <label>Current baseline<input name="baseline" maxLength={120} placeholder="Value, source and date range"/></label>
-          <label className="mw-wide">How will you review the result?<textarea name="review" maxLength={280} required placeholder="Compare the same source and period. Record spend, sales context, what changed and what remains uncertain."/></label>
+          <label className="mw-wide"><FieldLabel>How Will You Review the Result?</FieldLabel><textarea name="review" maxLength={280} required placeholder="Compare the same source and period. Record spend, sales context, what changed and what remains uncertain."/></label>
         </div>
         {planError && <p role="alert" className="mw-error">{planError}</p>}
         <footer><p>Next, review the draft and choose dates in the calendar. Nothing is saved or published yet.</p><button type="submit" disabled={!canManage}>Review calendar draft →</button>{!canManage && <small>Organization-wide owner or admin permission is required to create plans.</small>}</footer>
@@ -57,11 +58,11 @@ export default function MarketingWorkbench({ canManage, website, onPlan, onRepor
         <p>Create a tagged link for external campaigns. Use the same campaign name across platforms and a different source for each. Your website still needs consent-aware Analytics configuration.</p>
         <form onSubmit={(event) => { event.preventDefault(); setLinkRequested(true); setCopyStatus(""); }}>
           <div className="mw-fields">
-            <label className="mw-wide">Public landing page<input type="url" value={destination} onChange={(event) => { setDestination(event.target.value); setCopyStatus(""); }} maxLength={1400} required placeholder="https://yourbusiness.com/offer"/></label>
-            <label>Source<input value={source} onChange={(event) => { setSource(event.target.value); setCopyStatus(""); }} maxLength={80} required list="campaign-sources"/><datalist id="campaign-sources"><option value="instagram"/><option value="facebook"/><option value="youtube"/><option value="tiktok"/><option value="newsletter"/><option value="google"/></datalist></label>
+            <label className="mw-wide"><FieldLabel>Public Landing Page</FieldLabel><input type="url" value={destination} onChange={(event) => { setDestination(event.target.value); setCopyStatus(""); }} maxLength={1400} required placeholder="https://yourbusiness.com/offer"/></label>
+            <label><FieldLabel>Source</FieldLabel><input value={source} onChange={(event) => { setSource(event.target.value); setCopyStatus(""); }} maxLength={80} required list="campaign-sources"/><datalist id="campaign-sources"><option value="instagram"/><option value="facebook"/><option value="youtube"/><option value="tiktok"/><option value="newsletter"/><option value="google"/></datalist></label>
             <label>Medium<select value={medium} onChange={(event) => { setMedium(event.target.value); setCopyStatus(""); }}><option value="social">Organic social</option><option value="paid_social">Paid social</option><option value="email">Email</option><option value="referral">Referral</option><option value="cpc">Paid search</option><option value="qr">Offline QR campaign</option></select></label>
-            <label>Campaign<input value={campaign} onChange={(event) => { setCampaign(event.target.value); setCopyStatus(""); }} required maxLength={80} placeholder="autumn_education"/></label>
-            <label>Creative label (optional)<input value={content} onChange={(event) => { setContent(event.target.value); setCopyStatus(""); }} maxLength={80} placeholder="product_video"/></label>
+            <label><FieldLabel>Campaign</FieldLabel><input value={campaign} onChange={(event) => { setCampaign(event.target.value); setCopyStatus(""); }} required maxLength={80} placeholder="autumn_education"/></label>
+            <label><FieldLabel required={false}>Creative Label</FieldLabel><input value={content} onChange={(event) => { setContent(event.target.value); setCopyStatus(""); }} maxLength={80} placeholder="product_video"/></label>
           </div><button type="submit">Build campaign link</button>
         </form>
         {linkRequested && (link.error ? <p className="mw-error" role="alert">{link.error}</p> : <div className="mw-link-result"><label>Campaign URL<textarea readOnly value={link.url ?? ""} onFocus={(event) => event.target.select()}/></label><button type="button" onClick={async () => { try { await navigator.clipboard.writeText(link.url!); setCopyStatus("Campaign link copied."); } catch { setCopyStatus("Clipboard unavailable. Select the URL and copy it manually."); } }}>Copy link</button><p role="status">{copyStatus}</p></div>)}

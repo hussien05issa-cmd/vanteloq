@@ -228,7 +228,7 @@ export function GoogleAnalyticsConsent() {
       )}
       {!panelOpen && (
         <button type="button" className="analytics-settings-button" onClick={() => setSettingsOpen(true)} aria-label="Open cookie settings">
-          Cookie settings
+          Cookie Settings
         </button>
       )}
     </>

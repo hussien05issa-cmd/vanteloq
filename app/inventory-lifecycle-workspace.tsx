@@ -1,4 +1,5 @@
 "use client";
+import WorkspaceSkeleton from "./workspace-skeleton";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "./supabase-browser";
@@ -207,7 +208,7 @@ export function InventoryLifecycleWorkspace({ currency, showNotice, createTask, 
       <div><p>INVENTORY LIFECYCLE</p><h2>Know what is aging, what to sell first, and what cash is exposed.</h2><span>Lot evidence, recorded sales velocity, and shelf-life dates. Missing inputs stay unavailable.</span></div>
       <button onClick={() => open()}>Add inventory lot</button>
     </header>
-    {loading ? <div className="card lifecycle-state">Loading recorded inventory lots…</div> : error && !data ? <div className="card lifecycle-state"><b>Inventory lifecycle unavailable</b><span>{error}</span><button onClick={() => void load()}>Retry</button></div> : data ? <>
+    {loading ? <WorkspaceSkeleton label="Loading inventory lots"/> : error && !data ? <div className="card lifecycle-state"><b>Inventory lifecycle unavailable</b><span>{error}</span><button onClick={() => void load()}>Retry</button></div> : data ? <>
       {data.locationScope ? <div className="workspace-scope-banner"><b>{data.locationScope.name}</b><span>Inventory lots, POS balances, shelf-life risk and sale velocity are limited to this mapped location.</span></div> : null}
       <div className="lifecycle-summary">
         <article><small>POS SKUS</small><b>{data.summary.posSkus}</b></article>

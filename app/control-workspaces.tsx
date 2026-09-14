@@ -1,4 +1,5 @@
 "use client";
+import WorkspaceSkeleton from "./workspace-skeleton";
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "./supabase-browser";
@@ -9,6 +10,7 @@ import {
   type ReorderInputs,
 } from "../domain/reorder-engine";
 import { humanizeIdentifier, providerDisplayName } from "../domain/display-labels";
+import { FieldLabel } from "./form-primitives";
 
 type TaskSeed = {
   title: string;
@@ -922,9 +924,7 @@ export function PurchaseOrdersWorkspace({
   if (loadError) return <div className="content control-empty"><p role="alert">{loadError}</p><button type="button" onClick={() => void load()}>Retry purchase orders</button></div>;
   if (loading || !data)
     return (
-      <div className="content control-empty">
-        Loading purchase-order centre…
-      </div>
+      <WorkspaceSkeleton label="Loading purchase orders"/>
     );
   return (
     <div className="content control-page po-centre">
@@ -1455,9 +1455,7 @@ function CommitmentDateEditor({
         void action({ action: "set_commitment_date", purchaseOrderId: order.id, committedCashDate });
       }}
     >
-      <label>
-        Expected cash date
-        <input
+      <label><FieldLabel>Expected Cash Date</FieldLabel><input
           type="date"
           value={committedCashDate}
           onChange={(event) => setCommittedCashDate(event.target.value)}
@@ -1564,9 +1562,7 @@ function PurchaseOrderModal({
           </button>
         </header>
         <div className="po-form-grid">
-          <label>
-            Order number
-            <input name="orderNumber" placeholder="PO-0001" required />
+          <label><FieldLabel>Order Number</FieldLabel><input name="orderNumber" placeholder="PO-0001" required />
           </label>
           <label>
             Supplier
@@ -1599,14 +1595,10 @@ function PurchaseOrderModal({
             </select>
           </label>
           {!supplierId && (
-            <label>
-              Supplier name
-              <input name="supplierName" required />
+            <label><FieldLabel>Supplier Name</FieldLabel><input name="supplierName" required />
             </label>
           )}
-          <label>
-            Order date
-            <input
+          <label><FieldLabel>Order Date</FieldLabel><input
               name="orderDate"
               type="date"
               defaultValue={new Date().toISOString().slice(0, 10)}
@@ -2151,7 +2143,7 @@ export function DocumentsWorkspace({ showNotice, canUpload }: SharedProps & { ca
   };
   if (!data)
     return (
-      <div className="content control-empty">Loading document centre…</div>
+      <WorkspaceSkeleton label="Loading documents"/>
     );
   return (
     <div className="content control-page documents-centre">

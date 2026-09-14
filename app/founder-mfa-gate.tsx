@@ -2,6 +2,7 @@
 
 import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 import { getSupabase, signOut } from "./supabase-browser";
+import { FieldLabel, FormLegend } from "./form-primitives";
 import ProductBrandLogo from "./product-brand-logo";
 
 type GateState = "checking" | "enroll_required" | "challenge_required" | "ready" | "error";
@@ -156,7 +157,7 @@ export default function AccountMfaGate({ children }: { children: ReactNode }) {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           {qrCode && <img src={qrCode} width={190} height={190} alt="Authenticator enrollment QR code"/>}
           <form className="founder-mfa-form" onSubmit={verify}>
-            <label>Verification code<input value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required/></label>
+            <FormLegend/><label><FieldLabel>Verification Code</FieldLabel><input value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required/></label>
             <button disabled={busy || code.length !== 6}>{busy ? "Verifying…" : "Enable two-factor authentication"}</button>
           </form>
         </div>
@@ -165,7 +166,7 @@ export default function AccountMfaGate({ children }: { children: ReactNode }) {
         <h1>Verify it&apos;s you.</h1>
         <p>Enter the current six-digit code from your authenticator app to continue.</p>
         <form className="founder-mfa-form" onSubmit={verify}>
-          <label>Verification code<input autoFocus value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required/></label>
+          <FormLegend/><label><FieldLabel>Verification Code</FieldLabel><input autoFocus value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required/></label>
           <button disabled={busy || code.length !== 6}>{busy ? "Verifying…" : "Verify and continue"}</button>
         </form>
       </div>}
