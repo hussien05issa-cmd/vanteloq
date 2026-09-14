@@ -566,9 +566,10 @@ export async function runSync(request: Request, requestId: string, context: Sync
           connection.sourceNamespace, context.organizationId, LIGHTSPEED_R_PROVIDER, connection.id,
         ).run();
 
-        for (const row of publishedDailyMetrics) {
-          await renewIntegrationSyncLease(syncLease);
-          await database.prepare(`
+        // Rebuilding years of history must not make two remote D1 round trips
+        // per business date. Keep the existing publication gate closed while
+        // bounded write batches and lease renewals complete.
+        const dailyStatements = publishedDailyMetrics.map(row => database.prepare(`
           INSERT INTO daily_business_metrics (
             organization_id, business_date, location_ref, gross_sales_cents, net_sales_cents,
             cost_of_goods_cents, transaction_count, units_sold, refunds_cents, discounts_cents,
@@ -592,8 +593,8 @@ export async function runSync(request: Request, requestId: string, context: Sync
             row.netSalesCents, row.costOfGoodsCents, row.transactionCount, row.unitsSold,
             row.refundsCents, row.discountsCents, LIGHTSPEED_R_PROVIDER, connection.id,
             importId, context.userId, now, now,
-          ).run();
-        }
+          ));
+        await runWriteBatches(dailyStatements);
       }
 
       let importedInventory = 0;

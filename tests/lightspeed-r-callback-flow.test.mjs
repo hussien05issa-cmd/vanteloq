@@ -757,6 +757,22 @@ test("R-Series completes a browser callback using the initiating one-time state"
     assert.equal(rSeries.connectionCount, 2);
     assert.deepEqual(new Set(rSeries.connections.map((item) => item.id)), new Set([connection.id, secondAuthorizationBody.connectionId]));
 
+    // A long history is rebuilt in bounded D1 batches. It must preserve every
+    // date and the other merchant's records before reopening publication.
+    globalThis.fetch = mockLightspeedFetch;
+    const historyRun = await database.prepare("SELECT id FROM integration_sync_runs WHERE connection_id=? AND status='completed' ORDER BY completed_at DESC LIMIT 1").bind(connection.id).first();
+    for (let start = 0; start < 150; start += 50) await database.batch(Array.from({ length: 50 }, (_, offset) => {
+      const index = start + offset, date = new Date(Date.UTC(2024, 0, 1 + index)).toISOString().slice(0, 10);
+      return database.prepare(`INSERT INTO integration_staged_sales (id,organization_id,provider,connection_id,external_sale_id,external_version,outlet_ref,sold_at,state,total_cents,tax_cents,cost_cents,discount_cents,line_count,source_payload_hash,sync_run_id,staged_at)
+        VALUES (?,?,'lightspeed-r',?,?,'1',?,?,'completed',100,0,40,0,0,'history-fixture',?,?)`)
+        .bind(`history-${index}`, connection.organization_id, connection.id, `${connection.id}:history-${index}`, `${connection.id}:1`, `${date}T12:00:00-07:00`, historyRun.id, Date.now());
+    }));
+    const historySync = await worker.fetch(new Request(`${origin}/api/v1/integrations/lightspeed-r/sync`, { method: "POST", headers: ownerHeaders(true), body: JSON.stringify({ reason: "manual", connectionId: connection.id }) }), environment, context);
+    assert.equal(historySync.status, 200, await historySync.clone().text());
+    assert.equal((await historySync.json()).dataPromotionEnabled, true);
+    assert.deepEqual(await database.prepare("SELECT count(*) dates, sum(net_sales_cents) sales FROM daily_business_metrics WHERE source_connection_id=? AND business_date LIKE '2024-%'").bind(connection.id).first(), { dates: 150, sales: 15000 });
+    assert.ok((await database.prepare("SELECT count(*) count FROM daily_business_metrics WHERE source_connection_id=?").bind(secondAuthorizationBody.connectionId).first()).count > 0);
+
     const disconnect = await worker.fetch(new Request(`${origin}/api/v1/integrations/lightspeed-r/disconnect`, {
       method: "POST", headers: ownerHeaders(true), body: JSON.stringify({ connectionId: connection.id }),
     }), environment, context);

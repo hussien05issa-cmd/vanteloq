@@ -56,6 +56,34 @@
 .decision-empty { padding:40px 24px; text-align:center; background:#fff; border:1px solid var(--ws-line,#dce4ee); border-radius:12px; }
 .decision-method { padding:20px 0; color:var(--ws-muted,#53657b); }
 .decision-method p { max-width:800px; }
+.review-list-state { font-size:11px; color:#245fce; font-weight:600; }
+.review-detail-tabs { display:flex; gap:6px; padding:4px; margin:16px 0 24px; background:#eef2f8; border-radius:8px; width:fit-content; max-width:100%; }
+.review-detail-tabs button { background:transparent; border:1px solid transparent; border-radius:6px; padding:8px 14px; color:#52657c; cursor:pointer; }
+.review-detail-tabs button[aria-pressed="true"] { background:#fff; border-color:#d2ddea; color:#174986; font-weight:600; }
+.review-tab-panel .opportunity-review-panel { margin-top:0; padding-top:0; border-top:0; }
+.review-snapshot-note { padding:12px 14px; background:#f0f4fa; border-radius:8px; font-size:12px !important; }
+.opportunity-review-panel { margin-top:24px; padding-top:24px; border-top:1px solid var(--ws-line,#dce4ee); }
+.review-state-line { display:flex; gap:12px; align-items:center; margin-bottom:16px; }
+.review-state-line h4 { margin:0; }
+.review-state-line .decision-status { margin-left:auto; font-size:11px; }
+.review-fields { display:flex; flex-wrap:wrap; gap:16px; }
+.opportunity-review-panel form { display:grid; gap:16px; margin:16px 0; }
+.opportunity-review-panel label { display:grid; gap:7px; flex:1; font-size:12px; font-weight:600; }
+.opportunity-review-panel :is(select,textarea) { width:100%; min-height:44px; border:1px solid #c7d3e2; padding:10px 12px; border-radius:8px; background:#fff; color:inherit; font:inherit; }
+.opportunity-review-panel textarea { min-height:90px; resize:vertical; font-size:14px; line-height:1.55; }
+.opportunity-review-panel form > button { justify-self:start; }
+.review-hint { font-size:12px !important; margin:0; }
+.review-task { display:grid; gap:6px; width:100%; text-align:left; padding:14px; color:#1d4d88; background:#f2f6fd; border:1px solid #c7d8ef; border-radius:8px; cursor:pointer; }
+.review-task span { font-size:12px; }
+.review-history { border-top:1px solid #dce4ee; padding-top:16px; }
+.review-history summary { cursor:pointer; font-size:12px; font-weight:600; }
+.review-history ol { list-style:none; padding:0; margin:16px 0 0; max-height:360px; overflow-y:auto; }
+.review-history li { border-left:2px solid #d2deed; padding:0 0 16px 14px; }
+.review-history li > div { display:flex; flex-wrap:wrap; justify-content:space-between; gap:8px; }
+.review-history time, .review-history small { font-size:11px; color:#62748a; }
+.review-history p { white-space:pre-wrap; overflow-wrap:anywhere; margin:5px 0 0; font-size:13px; }
+.decision-toolbar { flex-wrap:wrap; }
+@media(max-width:700px) { .opportunity-review-panel :is(select,textarea) { font-size:16px !important; } .decision-toolbar > label { min-width:calc(50% - 12px); } }
 .action-tools { display:flex; gap:16px; flex-wrap:wrap; align-items:end; padding:18px 0; }
 .action-tools label { display:grid; gap:6px; }
 .action-tools label:first-child { flex:1; min-width:180px; }

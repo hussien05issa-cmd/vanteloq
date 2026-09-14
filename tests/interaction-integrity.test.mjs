@@ -80,7 +80,7 @@ test("product branding uses the supplied BookLoQ assets and a shared trademark g
   assert.doesNotMatch(productLogoSource, /bookloq-logo\.jpeg/);
   assert.match(productLogoSource, /brand-trademark/);
   assert.match(productLogoSource, />™<\/sup>/);
-  assert.match(homepage, /home-product-logo-shell bookloq-logo-shell/);
+  assert.match(homepage, /home-bookloq-compact[\s\S]*?<ProductBrandLogo product="bookloq" variant="full"/);
   assert.match(homepageCss, /\.home-product-logo-shell\.bookloq-logo-shell \{[^}]*background:\s*transparent/);
   assert.match(homepageCss, /\.product-brand-logo\.bookloq\.full \{[^}]*background:\s*transparent/);
 });
@@ -531,7 +531,8 @@ test("Cloudflare Turnstile protects every unauthenticated Supabase email flow", 
   assert.match(authPanel, /mode === "signup" \|\| mode === "signin" \|\| mode === "request-reset"/);
   assert.match(authPanel, /password-recovery/);
   assert.match(signupRoute, /SUPABASE_CAPTCHA_ENABLED/);
-  assert.match(authPanel, /auth\.signUp[\s\S]{0,500}captchaToken: turnstileToken/);
+  const signupCall = authPanel.slice(authPanel.indexOf("const result = await supabase.auth.signUp("), authPanel.indexOf("if (result.error)"));
+  assert.match(signupCall, /options: \{[\s\S]*captchaToken: turnstileToken/);
   assert.match(signinRoute, /SUPABASE_CAPTCHA_ENABLED/);
   assert.match(signinRoute, /gotrue_meta_security: \{ captcha_token: turnstileToken \}/);
   assert.match(signinRoute, /signin:account-source/);

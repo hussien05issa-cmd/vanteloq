@@ -30,6 +30,7 @@ import { useModalFocus } from "./use-modal-focus";
 import { comparisonCopy, quantityLabel } from "../domain/workspace-presentation";
 import PlaidLinkButton, { PLAID_REDIRECT_STORAGE_KEY, PLAID_RETURN_VIEW_STORAGE_KEY } from "./plaid-link-button";
 import { apiFetch, signOut } from "./supabase-browser";
+import { useOpportunityReviews } from "./use-opportunity-reviews";
 import {
   BusinessTrendChart,
   IntradaySalesChart,
@@ -1317,7 +1318,8 @@ function Workspace({
       <><nav className="intelligence-switch" aria-label="Intelligence views"><button type="button" aria-pressed={intelligenceTab === "opportunities"} onClick={() => setIntelligenceTab("opportunities")}>Opportunities</button><button type="button" aria-pressed={intelligenceTab === "retail"} onClick={() => setIntelligenceTab("retail")}>Retail analysis</button></nav>
         {intelligenceTab === "retail" ? <CommerceIntelligenceWorkspace key={activeLocationId ?? "all"} mode="Sales" currency={currency} timeZone={data.today.timeZone} activeLocationId={activeLocationId} navigate={navigate} createTask={createTask} onAsk={askRetailAdvisor}/> : <Intelligence
           data={data} navigate={navigate} createTask={createTask} activeLocationId={activeLocationId} onAsk={askRetailAdvisor}
-          onEvidence={() => { const period = data.periodComparisons?.thirtyDays; setReportSeed(period ? { from: period.periodStart, to: period.periodEnd, locationId: activeLocationId } : null); navigate("Reports"); }}
+          key={activeLocationId ?? "all"}
+          onEvidence={savedPeriod => { const period = data.periodComparisons?.thirtyDays; setReportSeed(savedPeriod ? { ...savedPeriod, locationId: activeLocationId } : period ? { from: period.periodStart, to: period.periodEnd, locationId: activeLocationId } : null); navigate("Reports"); }}
           canCreate={permissions.includes("insights.create_task")} canAsk={subscriptionFeatures.includes("ai.basic") && permissions.includes("insights.view")}
         />}</>
     );
@@ -1791,23 +1793,28 @@ function EmptyCommandCentre({ navigate }: { navigate: (view: View) => void }) {
 
 function Intelligence({ data, navigate, createTask, activeLocationId, onAsk, onEvidence, canCreate, canAsk }: {
   data: CommandCentre; navigate: (view: View) => void; createTask: (seed: TaskSeed) => void;
-  activeLocationId: string | null; onAsk: (seed: RetailAdvisorSeed) => void; onEvidence: () => void; canCreate: boolean; canAsk: boolean;
+  activeLocationId: string | null; onAsk: (seed: RetailAdvisorSeed) => void; onEvidence: (period?: { from: string; to: string }) => void; canCreate: boolean; canAsk: boolean;
 }) {
   const comparison = data.periodComparisons?.thirtyDays;
   const period = comparison ? { from: comparison.periodStart, to: comparison.periodEnd } : null;
-  const context = period ? `Period: ${period.from} to ${period.to}. Scope: ${activeLocationId ?? "all accessible locations"}.` : "No verified reporting period.";
+  const lifecycle = useOpportunityReviews(activeLocationId, period);
   return <div className="content intelligence-page"><DecisionWorkspace
     decisions={data.operatingSystem.decisions} period={period} freshness={data.source.freshness} verifiedDays={data.source.verifiedDays}
+    reviews={lifecycle.reviews} canReview={lifecycle.canReview} reviewLoading={lifecycle.loading} reviewBusy={lifecycle.busy} reviewError={lifecycle.error}
+    onRefresh={() => { void lifecycle.refresh(); }} onCapture={decision => { void lifecycle.capture(decision).catch(() => {}); }} onReview={lifecycle.update}
     comparisonNote={comparison?.unavailableReason ?? (!comparison?.comparable && data.ready ? "Comparison needs complete daily coverage in both periods. Check imports and closures." : null)}
     onConnections={() => navigate("Integrations")} onEvidence={onEvidence} onActions={() => navigate("Action Centre")}
-    onAction={canCreate ? decision => createTask({ title: decision.title,
-      detail: `${context}\nFinding: ${decision.evidence.join(" ")}\nNext step: ${decision.decision}\nMissing inputs: ${decision.missing.join(", ") || "Review source totals"}`,
+    onAction={canCreate && lifecycle.canReview ? (decision, review) => { void (async () => {
+      const saved = review ?? await lifecycle.capture(decision);
+      const evidence = saved.snapshot;
+      createTask({ title: evidence.title,
+      detail: `Period: ${saved.period.from} to ${saved.period.to}. Scope: ${saved.scopeLabel}.\nFinding: ${evidence.evidence.join(" ")}\nNext step: ${evidence.decision}\nMissing inputs: ${evidence.missing.join(", ") || "Review source totals"}`.slice(0, 2000),
       priority: decision.priority === "critical" ? "high" : decision.priority,
-      expectedImpact: "Review the evidence and record the outcome. No financial recovery is assumed.", sourceType: "decision", sourceRef: decision.sourceRef,
-    }) : undefined}
-    onAsk={canAsk && period ? decision => onAsk({ from: period.from, to: period.to, locationId: activeLocationId,
-      question: `Review the finding: ${decision.title}. ${context} Verify it against the permitted source data. Explain the measured drivers, evidence limitations and practical next steps. Do not infer causation or guaranteed savings.`,
-    }) : undefined}
+      expectedImpact: "Review the evidence and record the outcome. No financial recovery is assumed.", sourceType: "decision", sourceRef: `opportunity:${saved.id}`,
+    }); })().catch(() => {}); } : undefined}
+    onAsk={canAsk ? (decision, savedPeriod) => { const scope = savedPeriod ?? period; if (scope) onAsk({ ...scope, locationId: activeLocationId,
+      question: `Review the finding: ${decision.title}. Period: ${scope.from} to ${scope.to}. Scope: ${activeLocationId ?? "all accessible locations"}. Verify it against the permitted source data. Explain the measured drivers, evidence limitations and practical next steps. Do not infer causation or guaranteed savings.`,
+    }); } : undefined}
   /></div>;
 }
 
@@ -2139,7 +2146,7 @@ function TaskComposer({
         </label>
         {seed.sourceType && seed.sourceType !== "manual" && (
           <div className="linked-source">
-            Linked to {seed.sourceType}: {seed.sourceRef}
+            {seed.sourceRef?.startsWith("opportunity:") ? "Linked to the saved opportunity and its evidence." : `Linked to ${seed.sourceType}: ${seed.sourceRef}`}
           </div>
         )}
         {error && <p className="form-error" role="alert">{error}</p>}

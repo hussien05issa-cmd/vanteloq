@@ -14,6 +14,8 @@ import {
 import { idempotencyKey, taskCreateInput, taskUpdateInput } from "../../../../server/validation";
 import { requirePermission } from "../../../../server/permissions";
 import { requireOrganizationWideLocationAccess } from "../../../../server/location-access";
+import { filterReadableOpportunityTasks, requireReadableReview } from "../../../../server/opportunity-reviews";
+import { ApiError } from "../../../../server/api";
 
 const taskReaders = ["owner", "admin", "manager", "employee", "read_only"] as const;
 const taskWriters = ["owner", "admin", "manager", "employee"] as const;
@@ -47,7 +49,7 @@ export async function GET(request: Request) {
       .where(eq(workspaceTasks.organizationId, context.organizationId))
       .orderBy(desc(workspaceTasks.createdAt))
       .limit(200);
-    return jsonResponse({ tasks: rows.map(taskDto) });
+    return jsonResponse({ tasks: (await filterReadableOpportunityTasks(context, rows)).map(taskDto) });
   });
 }
 
@@ -61,6 +63,13 @@ export async function POST(request: Request) {
     await requirePermission(context, input.sourceType === "manual" ? "operations.manage" : "insights.create_task");
     await requireOrganizationWideLocationAccess(context);
 
+    const reviewId = input.sourceRef?.startsWith("opportunity:") ? input.sourceRef.slice(12) : null;
+    if (reviewId) {
+      if (input.sourceType !== "decision") throw new ApiError(400, "INVALID_TASK_SOURCE", "Use a decision action for a saved opportunity.");
+      await requireReadableReview(context, reviewId);
+      const [linked] = await getDb().select().from(workspaceTasks).where(and(eq(workspaceTasks.organizationId, context.organizationId), eq(workspaceTasks.sourceType, "decision"), eq(workspaceTasks.sourceRef, input.sourceRef!))).limit(1);
+      if (linked) return jsonResponse({ task: taskDto(linked), replayed: true });
+    }
     const [existing] = await getDb()
       .select()
       .from(workspaceTasks)
@@ -69,7 +78,10 @@ export async function POST(request: Request) {
         eq(workspaceTasks.idempotencyKey, key),
       ))
       .limit(1);
-    if (existing) return jsonResponse({ task: taskDto(existing), replayed: true });
+    if (existing) {
+      if (existing.sourceRef?.startsWith("opportunity:")) await requireReadableReview(context, existing.sourceRef.slice(12));
+      return jsonResponse({ task: taskDto(existing), replayed: true });
+    }
 
     const now = new Date();
     const [task] = await getDb().insert(workspaceTasks).values({
@@ -87,7 +99,13 @@ export async function POST(request: Request) {
       idempotencyKey: key,
       createdAt: now,
       updatedAt: now,
-    }).returning();
+    }).onConflictDoNothing().returning();
+
+    if (!task) {
+      const [existing] = await getDb().select().from(workspaceTasks).where(and(eq(workspaceTasks.organizationId, context.organizationId), reviewId ? and(eq(workspaceTasks.sourceType, "decision"), eq(workspaceTasks.sourceRef, input.sourceRef!)) : eq(workspaceTasks.idempotencyKey, key))).limit(1);
+      if (!existing) throw new ApiError(409, "TASK_CONFLICT", "Refresh the action list and retry.");
+      return jsonResponse({ task: taskDto(existing), replayed: true });
+    }
 
     await recordAudit({
       request,
@@ -120,6 +138,8 @@ export async function PATCH(request: Request) {
     if (!before) {
       return jsonResponse({ error: { code: "TASK_NOT_FOUND", message: "Task not found." }, requestId }, { status: 404 });
     }
+
+    if (before.sourceRef?.startsWith("opportunity:")) await requireReadableReview(context, before.sourceRef.slice(12));
 
     const [task] = await getDb()
       .update(workspaceTasks)

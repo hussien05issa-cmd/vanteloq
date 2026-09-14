@@ -274,6 +274,7 @@ export const workspaceTasks = sqliteTable(
   },
   (table) => [
     uniqueIndex("workspace_tasks_idempotency_unique").on(table.organizationId, table.idempotencyKey),
+    uniqueIndex("workspace_tasks_opportunity_unique").on(table.organizationId, table.sourceRef).where(sql`${table.sourceType} = 'decision' AND ${table.sourceRef} LIKE 'opportunity:%'`),
     index("workspace_tasks_workspace_status_idx").on(table.organizationId, table.status),
     index("workspace_tasks_workspace_created_idx").on(table.organizationId, table.createdAt),
     check("workspace_tasks_priority_check", sql`${table.priority} in ('high', 'medium', 'low')`),
@@ -281,6 +282,44 @@ export const workspaceTasks = sqliteTable(
     check("workspace_tasks_source_type_check", sql`${table.sourceType} in ('manual', 'insight', 'alert', 'decision')`),
   ],
 );
+
+export const opportunityReviews = sqliteTable("opportunity_reviews", {
+  id: text("id").primaryKey(),
+  organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  scopeKey: text("scope_key").notNull(),
+  scopeLabel: text("scope_label").notNull(),
+  ruleId: text("rule_id").notNull(),
+  periodStart: text("period_start").notNull(),
+  periodEnd: text("period_end").notNull(),
+  snapshotJson: text("snapshot_json").notNull(),
+  requiredPermissionsJson: text("required_permissions_json").notNull(),
+  status: text("status", { enum: ["reviewed", "monitoring", "snoozed", "resolved", "dismissed"] }).notNull(),
+  snoozedUntil: integer("snoozed_until", { mode: "timestamp" }),
+  version: integer("version").notNull().default(1),
+  mutationKey: text("mutation_key").notNull(),
+  createdByUserId: text("created_by_user_id").notNull().references(() => users.id),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+}, table => [
+  uniqueIndex("opportunity_review_scope_period_unique").on(table.organizationId, table.scopeKey, table.ruleId, table.periodStart, table.periodEnd),
+  index("opportunity_review_scope_updated_idx").on(table.organizationId, table.scopeKey, table.updatedAt),
+  check("opportunity_review_status_check", sql`${table.status} in ('reviewed','monitoring','snoozed','resolved','dismissed')`),
+  check("opportunity_review_version_check", sql`${table.version} > 0`),
+]);
+
+export const opportunityReviewEvents = sqliteTable("opportunity_review_events", {
+  id: text("id").primaryKey(),
+  reviewId: text("review_id").notNull().references(() => opportunityReviews.id, { onDelete: "cascade" }),
+  organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  version: integer("version").notNull(),
+  status: text("status").notNull(),
+  note: text("note").notNull().default(""),
+  actorUserId: text("actor_user_id").notNull().references(() => users.id),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+}, table => [
+  uniqueIndex("opportunity_event_review_version_unique").on(table.reviewId, table.version),
+  index("opportunity_event_org_review_idx").on(table.organizationId, table.reviewId),
+]);
 
 export const dataImports = sqliteTable(
   "data_imports",
