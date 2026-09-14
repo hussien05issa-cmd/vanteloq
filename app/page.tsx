@@ -3,10 +3,8 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import Link from "next/link";
-import IntegrationBrandLogo from "./integration-brand-logo";
 import VanteloqAiShowcase from "./vanteloq-ai-showcase";
 import VanteloqAiLogo from "./vanteloq-ai-logo";
-import { integrationCatalog, integrationPublicStatus } from "./integration-catalog";
 import CompatibilityCheck from "./compatibility-check";
 import PublicPlanCards from "./public-plan-cards";
 import HomeDecisionPreview from "./home-decision-preview";
@@ -364,30 +362,6 @@ function FeatureReel() {
 }
 
 function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) {
-  const connectorBenefits: Record<string, string> = {
-    "Point of sale": "Unify sales, returns, products and inventory movement",
-    Commerce: "Connect orders, customers, products and channel performance",
-    Payments: "Reconcile payouts, fees, refunds and cash timing",
-    Accounting: "Keep books, balances and operating records aligned",
-    Marketplace: "Bring marketplace demand and settlement records into view",
-    Delivery: "Compare delivery revenue, commissions and order activity",
-    Marketing: "Connect discovery, campaigns and attributable customer action",
-    Banking: "Use owner-authorized balances and transactions in cash planning",
-    "File import": "Turn structured operating files into verified records",
-  };
-  const publicIntegrations = integrationCatalog.map(provider => ({
-    ...provider,
-    detail: provider.id === "moneris" ? "Review payment amounts, status and timing for reconciliation" : connectorBenefits[provider.category] ?? "Bring source records into one operating view",
-    publicStatus: integrationPublicStatus(provider),
-  }));
-  const providerGroups = [
-    { name: "Point of sale & online stores", categories: ["Point of sale", "Commerce"], description: "Sales, products and stock across your selling channels." },
-    { name: "Payments & banking", categories: ["Payments", "Banking"], description: "Payment activity, settlement and authorized cash records." },
-    { name: "Accounting", categories: ["Accounting"], description: "Accounting connections, with their current availability shown." },
-    { name: "Marketing", categories: ["Marketing"], description: "Visibility and campaign records from the accounts you authorize." },
-    { name: "Delivery & labour", categories: ["Delivery", "Labour"], description: "Planned coverage and the provider access still needed." },
-  ];
-
   return <div className="public-site journey-home">
     <a className="home-skip-link" href="#main-content">Skip to main content</a>
     <header className="public-nav">
@@ -434,7 +408,6 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
       <section className="home-connections" id="connections" aria-labelledby="connections-title">
         <div className="home-section-heading compact"><p>CHECK YOUR FIT FIRST</p><h2 id="connections-title">Keep your POS.<br/>Get more from its data.</h2><span>Choose your system to see what it can support, what you need to connect and what is still in development.</span></div>
         <CompatibilityCheck/>
-        <div className="home-provider-directory" aria-labelledby="provider-directory-title"><header><div><h3 id="provider-directory-title">Connections at a glance.</h3><p>Find your system below. Each label shows its current availability.</p></div><span>Connection does not mean activation. Authorize, import and review your records before using reports.</span></header>{providerGroups.map(group => <section className="home-provider-group" key={group.name} aria-label={group.name}><div className="home-provider-group-heading"><h4>{group.name}</h4><p>{group.description}</p></div><div className="home-provider-tiles">{publicIntegrations.filter(provider => group.categories.includes(provider.category)).map(provider => <article key={provider.id}><IntegrationBrandLogo name={provider.name} compact/><div><h5>{provider.name}</h5><span className={`home-connection-status ${provider.publicStatus.tone}`}>{provider.publicStatus.label}</span></div></article>)}</div></section>)}<section className="home-provider-import" aria-label="File imports"><IntegrationBrandLogo name="Daily CSV" compact/><div><h4>CSV import</h4><p>Start with supported templates when a direct connection is not available. Review validation and source totals before using the results.</p></div><span className="home-connection-status setup">Available</span></section></div>
         <FeatureReel/>
       </section>
       <section className="home-ai" id="vanteloq-ai" aria-labelledby="vanteloq-ai-title">
