@@ -8,6 +8,7 @@
 - Bound the full client operation, including session lookup and response parsing, to 75 seconds. Keep the question on failure, timeout or cancellation. Ignore late responses after Stop or unmount.
 - Forward request cancellation to the provider when the hosting request signal propagates it. The provider call also has its own 45-second deadline. A proxy may continue server work after a browser disconnect; Stop is not a guarantee that a provider request was never processed.
 - Gather independent retail, marketing and BookLoQ context concurrently while retaining their existing authorization and redaction paths.
+- Reuse a fresh session snapshot from synchronous Supabase auth notifications for API transport. Coalesce near-expiry refresh reads, bound stalled session lookups, and invalidate the snapshot on sign-out or account changes. Server JWT and permission checks remain authoritative. This follows the [Supabase session event guidance](https://supabase.com/docs/reference/javascript/auth-onauthstatechange).
 - Reveal completed, validated answers progressively. This is a presentation animation, not provider token streaming. Keep financial tables complete, offer immediate full-answer display, and respect reduced motion. Never render provider HTML.
 - Remove duplicate assistant headings and consolidate response notes into a quiet footer.
 - Refine the shared vector V and orbit with blue and violet highlights, a moving gradient and restrained orbit motion. No raster asset replacement or new runtime dependency.
