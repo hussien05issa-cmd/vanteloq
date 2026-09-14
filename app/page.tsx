@@ -5,6 +5,7 @@ import type { Session } from "@supabase/supabase-js";
 import Link from "next/link";
 import IntegrationBrandLogo from "./integration-brand-logo";
 import VanteloqAiShowcase from "./vanteloq-ai-showcase";
+import VanteloqAiLogo from "./vanteloq-ai-logo";
 import { integrationCatalog, integrationPublicStatus } from "./integration-catalog";
 import SourceRecordIcon from "./source-record-icon";
 import WorkspaceIcon from "./workspace-icon";
@@ -283,96 +284,81 @@ function AuthenticatedLoading() {
 }
 
 const featureReelScenes = [
-  {
-    id: "commerce",
-    label: "Commerce pulse",
-    kicker: "LIVE OPERATING VIEW",
-    title: "See sales, margin and demand move together.",
-    copy: "Review the current trading picture with the source period and data coverage kept visible.",
-    steps: ["Receive verified sales", "Build the hourly trend", "Compare the baseline", "Surface the decision"],
-  },
-  {
-    id: "inventory",
-    label: "Inventory decisions",
-    kicker: "STOCK AND PURCHASING",
-    title: "Move from stock counts to a supported order decision.",
-    copy: "Bring sales velocity, supplier timing, on-hand inventory and cash constraints into one review.",
-    steps: ["Read stock by location", "Calculate demand cover", "Apply supplier constraints", "Prioritize the order"],
-  },
-  {
-    id: "bookloq",
-    label: "BookLoQ control",
-    kicker: "FINANCIAL CONTROL",
-    title: "Turn financial records into cash context.",
-    copy: "Categorize activity, review receipts and invoices, and compare commitments with available cash.",
-    steps: ["Capture source records", "Confirm categories", "Project cash timing", "Flag the pressure point"],
-  },
-  {
-    id: "reports",
-    label: "Owner reports",
-    kicker: "TRACEABLE REPORTING",
-    title: "Understand what changed before deciding what to do.",
-    copy: "Compare periods and follow every supported result back to its source, definition and freshness.",
-    steps: ["Choose a period", "Compare like for like", "Inspect the variance", "Trace the evidence"],
-  },
+  { id: "commerce", label: "Sales intelligence", source: "POS records", metric: "Net sales", value: "$4,860", context: "96 transactions", detail: "$50.63 average basket", insight: "Demand peaks at 2 p.m.", explanation: "Use the hourly pattern to review staffing and stock availability." },
+  { id: "inventory", label: "Inventory intelligence", source: "Stock & sales", metric: "Stock cover", value: "5.1 days", context: "11 units on hand", detail: "15 units sold per week", insight: "Stock cover is shorter than lead time.", explanation: "Review the reorder before the next 14-day supplier delivery." },
+  { id: "bookloq", label: "BookLoQ cash planning", source: "Financial records", metric: "Projected closing cash", value: "$13,100", context: "Opening cash $18,400", detail: "One-week scenario", insight: "$1,100 above the cash floor.", explanation: "Test a purchase against commitments before approving the spend." },
+  { id: "reports", label: "Performance analysis", source: "Matched periods", metric: "Net sales change", value: "+8.5%", context: "+$380 net sales", detail: "Versus the prior matched period", insight: "See the movement behind the total.", explanation: "Follow the change into transactions, basket value and source records." },
 ] as const;
 
-function FeatureReelStage({ scene, phase }: { scene: (typeof featureReelScenes)[number]["id"]; phase: number }) {
-  const commerceBars = [35, 48, 42, 67, 82, 58, 74, 91, 62, 46];
-  const comparison = [62, 78, 55, 88, 70, 94];
-  return <div className={`feature-reel-stage stage-${scene} phase-${phase}`} aria-hidden="true">
-    <div className="reel-window-bar"><i/><i/><i/><span>Vanteloq workspace</span><b>Verified source</b></div>
-    {scene === "commerce" && <div className="reel-commerce">
-      <div className="reel-kpis"><article><span>Net sales</span><strong>$4,860</strong><small>Current day</small></article><article><span>Transactions</span><strong>96</strong><small>Completed</small></article><article><span>Average basket</span><strong>$50.63</strong><small>Net sales ÷ sales</small></article></div>
-      <div className="reel-chart-card"><header><div><b>Sales by hour</b><span>Today compared with same weekday</span></div><em>Source time zone</em></header><div className="reel-bar-chart">{commerceBars.map((height, index) => <i key={index} style={{ height: `${height}%` }}><span>{index + 8}:00</span></i>)}</div></div>
-      <div className="reel-decision"><span>Detected change</span><b>Lunch-period demand is ahead of the same-weekday baseline.</b><em>Open source evidence →</em></div>
-    </div>}
-    {scene === "inventory" && <div className="reel-inventory">
-      <header><div><b>Reorder review</b><span>Demand, stock, lead time and cash in one queue</span></div><em>3 products reviewed</em></header>
-      <div className="reel-stock-head"><span>Product</span><span>On hand</span><span>Velocity</span><span>Decision</span></div>
-      {[["Creatine A", "45", "12 / week", "Order 36", "stable"], ["Pre-workout B", "18", "2 / week", "Hold", "hold"], ["Protein C", "11", "15 / week", "Order 60", "urgent"]].map(([name, stock, velocity, decision, state]) => <article className={`reel-stock-row ${state}`} key={name}><b>{name}</b><span>{stock}</span><span>{velocity}</span><em>{decision}</em></article>)}
-      <div className="reel-constraint"><span>Order logic</span><b>Velocity + lead time + supplier minimum + available cash</b><i>Recommendation remains reviewable</i></div>
-    </div>}
-    {scene === "bookloq" && <div className="reel-bookloq">
-      <div className="reel-record-stream"><article><span>Bank</span><b>Deposit received</b><i>Matched</i></article><article><span>Receipt</span><b>Operating expense</b><i>Review</i></article><article><span>Invoice</span><b>Supplier bill</b><i>Due soon</i></article></div>
-      <div className="reel-cash-panel"><header><div><b>13-week cash view</b><span>Opening balance, inflows, outflows and commitments</span></div><em>Range shown</em></header><div className="reel-cash-bars">{[62, 74, 68, 54, 49, 57, 45, 39, 48, 52].map((height, index) => <i key={index} style={{ height: `${height}%` }}><span/></i>)}</div><div className="reel-cash-floor"><span>Cash floor</span></div></div>
-      <div className="reel-cash-alert"><span>Timing risk</span><b>A supplier payment overlaps payroll week.</b><em>Review payment timing →</em></div>
-    </div>}
-    {scene === "reports" && <div className="reel-reports">
-      <header><div><b>Performance report</b><span>Period, comparison and source coverage stay together</span></div><div><i>7 days</i><i className="active">30 days</i><i>Quarter</i></div></header>
-      <div className="reel-report-body"><section><b>Net sales comparison</b><div className="reel-comparison-chart">{comparison.map((height, index) => <i key={index}><span style={{ height: `${Math.max(20, height - 18)}%` }}/><b style={{ height: `${height}%` }}/></i>)}</div></section><aside><span>Change</span><strong>+8.4%</strong><small>versus prior matched period</small><hr/><span>Coverage</span><b>30 of 30 days</b><small>Latest import verified</small></aside></div>
-      <div className="reel-lineage"><span>Metric definition</span><i>→</i><span>Matched period</span><i>→</i><span>Source records</span><b>Export CSV</b></div>
-    </div>}
-    <div className="reel-stage-note"><span>Product tour</span><b>Illustrative interface</b></div>
+function FeatureReelStage({ scene }: { scene: (typeof featureReelScenes)[number] }) {
+  return <div className={"feature-reel-stage stage-" + scene.id}>
+    <div className="reel-metric"><span>{scene.metric}</span><strong>{scene.value}</strong><p>{scene.context}<i/>{scene.detail}</p></div>
+    <div className="reel-data-visual">
+      {scene.id === "commerce" && <div className="reel-sales">
+        <div className="reel-visual-label"><span>Sales by hour</span><b>2 p.m. peak</b></div>
+        <div className="reel-sales-bars" aria-label="Hourly sales from 8 a.m. to 5 p.m. Peak sales are $780 at 2 p.m.">{[280, 420, 360, 540, 650, 510, 780, 610, 410, 300].map((sales, index) => <i key={index} className={index === 6 ? "peak" : ""} style={{ height: (sales / 780 * 100) + "%", animationDelay: (index * 55) + "ms" }}><span>{index === 6 ? "$780" : ""}</span></i>)}</div>
+        <div className="reel-chart-axis"><span>8 a.m.</span><span>Noon</span><span>5 p.m.</span></div>
+      </div>}
+      {scene.id === "inventory" && <div className="reel-stock">
+        <div className="reel-visual-label"><span>Protein C</span><b>Reorder review</b></div>
+        <div className="reel-cover-row"><span>Stock cover</span><i><b style={{ width: "36.43%" }}/></i><strong>5.1d</strong></div>
+        <div className="reel-cover-row lead-time"><span>Lead time</span><i><b style={{ width: "100%" }}/></i><strong>14d</strong></div>
+        <p className="reel-formula">11 units ÷ (15 units ÷ 7 days)</p>
+      </div>}
+      {scene.id === "bookloq" && <div className="reel-cash">
+        <div className="reel-visual-label"><span>Cash movement</span><b>$12,000 cash floor</b></div>
+        <div className="reel-cash-row"><span>Expected inflows</span><i><b style={{ width: "63.45%" }}/></i><strong>+$9,200</strong></div>
+        <div className="reel-cash-row outflow"><span>Planned outflows</span><i><b style={{ width: "100%" }}/></i><strong>−$14,500</strong></div>
+        <p className="reel-formula">Opening cash + inflows − outflows</p>
+      </div>}
+      {scene.id === "reports" && <div className="reel-compare">
+        <div className="reel-visual-label"><span>Like-for-like comparison</span><b>Net sales</b></div>
+        <div className="reel-compare-row prior"><span>Prior period</span><i><b style={{ width: "92.18%" }}/></i><strong>$4,480</strong></div>
+        <div className="reel-compare-row"><span>Current period</span><i><b style={{ width: "100%" }}/></i><strong>$4,860</strong></div>
+        <p className="reel-formula">($4,860 − $4,480) ÷ $4,480</p>
+      </div>}
+    </div>
+    <div className="reel-insight"><VanteloqAiLogo size={42} decorative/><div><span>Vanteloq AI</span><strong>{scene.insight}</strong><p>{scene.explanation}</p></div></div>
   </div>;
 }
 
 function FeatureReel() {
-  const [playhead, setPlayhead] = useState({ scene: 0, phase: 0 });
-  const [playing, setPlaying] = useState(true);
+  const [sceneIndex, setSceneIndex] = useState(0);
+  const reel = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    if (!playing) return;
-    const timer = window.setInterval(() => setPlayhead((current) => current.phase < 3
-      ? { ...current, phase: current.phase + 1 }
-      : { scene: (current.scene + 1) % featureReelScenes.length, phase: 0 }), 2000);
-    return () => window.clearInterval(timer);
-  }, [playing]);
+    const motion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    let timer: number | undefined;
+    let visible = true;
+    const observer = new IntersectionObserver(([entry]) => { visible = entry.isIntersecting; });
+    if (reel.current) observer.observe(reel.current);
+    const updateMotion = () => {
+      window.clearInterval(timer);
+      if (motion.matches) return;
+      timer = window.setInterval(() => {
+        if (visible && !document.hidden) setSceneIndex(current => (current + 1) % featureReelScenes.length);
+      }, 8000);
+    };
+    updateMotion();
+    motion.addEventListener("change", updateMotion);
+    return () => {
+      window.clearInterval(timer);
+      motion.removeEventListener("change", updateMotion);
+      observer.disconnect();
+    };
+  }, []);
 
-  const scene = featureReelScenes[playhead.scene];
-  return <div className={`feature-reel scene-${scene.id}`} role="region" aria-labelledby="feature-reel-title">
-    <header>
-      <div><p>VANTELOQ IN MOTION</p><h3 id="feature-reel-title">One operating picture, from source to decision.</h3></div>
-      <button type="button" className="feature-reel-play" aria-label={playing ? "Pause feature tour" : "Play feature tour"} aria-pressed={!playing} onClick={() => setPlaying((value) => !value)}>
-        <span aria-hidden="true">{playing ? "Ⅱ" : "▶"}</span>{playing ? "Pause" : "Play"}
-      </button>
-    </header>
-    <div className="feature-reel-screen"><FeatureReelStage scene={scene.id} phase={playhead.phase}/></div>
-    <div className="feature-reel-caption" aria-live="off"><small>{scene.kicker}</small><strong>{scene.title}</strong><span>{scene.copy}</span><div className="feature-reel-progress"><i style={{ width: `${((playhead.phase + 1) / 4) * 100}%` }}/></div><em>{scene.steps[playhead.phase]}</em></div>
-    <nav aria-label="Feature tour scenes">
-      {featureReelScenes.map((item, index) => <button type="button" key={item.id} className={index === playhead.scene ? "active" : ""} aria-current={index === playhead.scene ? "step" : undefined} onClick={() => { setPlayhead({ scene: index, phase: 0 }); setPlaying(false); }}><span>{index + 1}</span>{item.label}</button>)}
-    </nav>
+  const scene = featureReelScenes[sceneIndex];
+  return <div className="feature-reel" ref={reel} role="region" aria-labelledby="feature-reel-title" aria-live="off">
+    <header><p>THE CONNECTED WORKSPACE</p><h3 id="feature-reel-title">One operating picture,<br/>from source to decision.</h3></header>
+    <div className="reel-flow" aria-label="Source records become analysis for an owner to review">
+      <span>{scene.source}</span><i aria-hidden="true"/><b>Vanteloq</b><i aria-hidden="true"/><span>Your next step</span>
+    </div>
+    <div className="feature-reel-screen">
+      <div className="reel-window-bar"><span className="reel-app-symbol" aria-hidden="true">V</span><strong>{scene.label}</strong><span>Illustrative interface</span></div>
+      <FeatureReelStage key={scene.id} scene={scene}/>
+    </div>
+    <footer><span>Illustrative data. Every decision stays yours.</span><Link href="/demo#retail">Explore the demo <span aria-hidden="true">↗</span></Link></footer>
   </div>;
 }
 
@@ -489,8 +475,8 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
             <h2 id="connections-title">Connect the tools that already run your business.</h2>
             <span>Start with a supported sales source or a structured import. Add inventory, financial and marketing context as each connection is configured and its records are reviewed. Check availability before choosing your plan.</span>
           </div>
-          <FeatureReel />
         </div>
+        <FeatureReel />
         <details className="home-connection-directory">
           <summary>Explore providers and current availability <span>Check your systems before you sign up</span></summary>
           <p>Each business authorizes its own provider account and reviews its records. Sign in to see which sources are connected to your workspace.</p>

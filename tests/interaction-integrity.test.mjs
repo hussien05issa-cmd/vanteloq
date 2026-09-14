@@ -122,17 +122,18 @@ test("invoice files stay behind authenticated document downloads", async () => {
   assert.match(documentsRoute, /Cache-Control": "private, no-store"/);
 });
 
-test("the feature tour advances meaningful interface phases and preserves manual scene choices", async () => {
+test("the product story advances automatically and respects reduced motion", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.match(source, /function FeatureReelStage/);
-  assert.match(source, /current\.phase < 3/);
-  assert.match(source, /setPlayhead\(\{ scene: index, phase: 0 \}\); setPlaying\(false\)/);
-  assert.doesNotMatch(source, /setPlayhead\(\{ scene: index, phase: 0 \}\); setPlaying\(true\)/);
+  assert.match(source, /current => \(current \+ 1\) % featureReelScenes\.length/);
+  assert.match(source, /if \(motion\.matches\) return/);
+  assert.match(source, /motion\.removeEventListener\("change", updateMotion\)/);
+  assert.doesNotMatch(source, /feature-reel-play|setPlaying/);
   assert.doesNotMatch(source, /vanteloq-feature-reel-v1\.webp/);
 });
 
 test("R-Series reconciliation warnings keep source records out of live metrics and preserve the retry cursor", async () => {
-  const sync = await readFile(new URL("../app/api/v1/integrations/lightspeed-r/sync/route.ts", import.meta.url), "utf8");
+  const sync = await readFile(new URL("../server/integrations/sync/lightspeed-r.ts", import.meta.url), "utf8");
   assert.match(sync, /const publicationWarnings = normalizationWarnings\.sales \+ unmappedLocations/);
   assert.match(sync, /const publishCanonical = publicationAuthorized && publicationWarnings === 0/);
   assert.match(sync, /const publishedDailyMetrics = publishCanonical \? dailyMetrics : \[\]/);
@@ -141,7 +142,7 @@ test("R-Series reconciliation warnings keep source records out of live metrics a
 
 test("R-Series backfills are bounded, resumable and recover expired locks without GET mutations", async () => {
   const [sync, connection, integrations] = await Promise.all([
-    readFile(new URL("../app/api/v1/integrations/lightspeed-r/sync/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../server/integrations/sync/lightspeed-r.ts", import.meta.url), "utf8"),
     readFile(new URL("../server/integrations/connection.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/v1/integrations/route.ts", import.meta.url), "utf8"),
   ]);
@@ -172,7 +173,7 @@ test("R-Series location setup cannot silently leave dashboard data locked", asyn
   const [app, shops, sync] = await Promise.all([
     readFile(new URL("../app/vanteloq-app.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/api/v1/integrations/lightspeed-r/shops/route.ts", import.meta.url), "utf8"),
-    readFile(new URL("../app/api/v1/integrations/lightspeed-r/sync/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../server/integrations/sync/lightspeed-r.ts", import.meta.url), "utf8"),
   ]);
   assert.doesNotMatch(app, /Keep as a separate R-Series location/);
   assert.match(app, /Not mapped — dashboard data stays locked/);
@@ -180,7 +181,7 @@ test("R-Series location setup cannot silently leave dashboard data locked", asyn
   assert.match(shops, /activeLocalLocations\.length === 1/);
   assert.match(sync, /unmappedLocations/);
   assert.match(sync, /Map or ignore/);
-  assert.match(app, /\(provider === "lightspeed-r" \|\| provider === "shopify" \|\| provider === "shopify-pos" \|\| provider === "square" \|\| provider === "clover"\) && body\.publicationPending === true/);
+  assert.match(app, /\(provider === "lightspeed" \|\| provider === "lightspeed-r" \|\| provider === "shopify" \|\| provider === "shopify-pos" \|\| provider === "square" \|\| provider === "clover"\) && body\.publicationPending === true/);
   assert.match(app, /stageProviderSample\(provider as [^,]+, connectionId\)/);
 });
 
@@ -188,7 +189,7 @@ test("live sales and report time frames stay connected to real API filters", asy
   const app = await readFile(new URL("../app/vanteloq-app.tsx", import.meta.url), "utf8");
   const reports = await readFile(new URL("../app/control-workspaces.tsx", import.meta.url), "utf8");
   const reportRoute = await readFile(new URL("../app/api/v1/reports/route.ts", import.meta.url), "utf8");
-  const rSeriesSync = await readFile(new URL("../app/api/v1/integrations/lightspeed-r/sync/route.ts", import.meta.url), "utf8");
+  const rSeriesSync = await readFile(new URL("../server/integrations/sync/lightspeed-r.ts", import.meta.url), "utf8");
   assert.match(app, /IntradaySalesChart/);
   assert.match(app, /integrations\/lightspeed-r\/sync/);
   assert.match(app, /R-Series refreshes are started from Connections and remain hidden until the latest reconciliation is reviewed/);
