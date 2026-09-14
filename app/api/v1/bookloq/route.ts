@@ -20,7 +20,8 @@ import {
   type CashFlowDecisionBlock,
   type ThirteenWeekCashFlowItem,
 } from "../../../../domain/thirteen-week-cash-flow";
-import { buildBusinessCashSummary, rankTransactionMatches } from "../../../../domain/bookloq-cash-management";
+import { rankTransactionMatches } from "../../../../domain/bookloq-cash-management";
+import { loadBookloqCashActivity } from "../../../../server/bookloq-cash-activity";
 
 const readers = ["owner", "admin", "manager", "employee", "read_only"] as const;
 
@@ -434,18 +435,9 @@ export async function GET(request: Request) {
     const visibleBillsForCash = access.accountsPayableReceivable ? bills.filter((bill) => matchesDataMode(bill.demoRecord)) : [];
     const visibleInvoicesForCash = access.accountsPayableReceivable ? invoices.filter((invoice) => matchesDataMode(invoice.demoRecord)) : [];
     const confirmedTransactionIds = new Set(transactionMatches.filter((match) => match.status === "confirmed").map((match) => match.transactionId));
-    const cashTransactions = (transactionReadable ? transactions : []).filter((transaction) => transaction.currency.toUpperCase() === baseCurrency).map((transaction) => ({
-      postingDate: transaction.postingDate,
-      amountCents: Number(transaction.amountCents),
-      category: transaction.accountName ?? (transaction.amountCents >= 0 ? "Uncategorized income" : "Uncategorized spending"),
-      categorized: transaction.categorizationStatus === "confirmed",
-      matched: transaction.reconciliationStatus === "matched" || transaction.reconciliationStatus === "reconciled" || confirmedTransactionIds.has(transaction.id),
-    }));
-    const cashActivity = {
-      days30: buildBusinessCashSummary(cashTransactions, asOf, 30),
-      days90: buildBusinessCashSummary(cashTransactions, asOf, 90),
-      months12: buildBusinessCashSummary(cashTransactions, asOf, 366),
-    };
+    const cashActivity = await loadBookloqCashActivity(database, {
+      organizationId, currency: baseCurrency, asOf, dataMode, allowed: transactionReadable,
+    });
     const matchCandidates = transactions.flatMap((transaction) => rankTransactionMatches({
       id: transaction.id,
       postingDate: transaction.postingDate,
@@ -667,7 +659,7 @@ export async function GET(request: Request) {
                   AND (c.sync_lease_owner IS NULL OR c.sync_lease_expires_at IS NULL
                     OR c.sync_lease_expires_at <= CAST(strftime('%s', 'now') AS INTEGER))))
               OR (? = 'demonstration' AND b.demo_record = 1))
-          GROUP BY t.posting_date ORDER BY t.posting_date`)
+          GROUP BY t.posting_date, (t.amount_cents < 0) ORDER BY t.posting_date`)
           .bind(
             organizationId, baseCurrency, dataMode === "demonstration" ? 1 : 0,
             baseCurrency, dataMode === "demonstration" ? 1 : 0,

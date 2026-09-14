@@ -24,8 +24,8 @@ export async function POST(request: Request) {
       throw new ApiError(400, "BILLING_SELECTION_INVALID", "Select a valid Vanteloq monthly plan.");
     }
     const [subscription] = await getDb().select().from(tenantSubscriptions).where(eq(tenantSubscriptions.organizationId, context.organizationId)).limit(1);
-    if (subscription && ["active", "trialing"].includes(subscription.status)) {
-      throw new ApiError(409, "BILLING_PORTAL_REQUIRED", "Use Manage billing to change an active subscription.");
+    if (subscription?.stripeSubscriptionId && !["canceled", "incomplete_expired"].includes(subscription.status)) {
+      throw new ApiError(409, "BILLING_PORTAL_REQUIRED", "Use Manage billing to update or restore your existing subscription.");
     }
     const origin = new URL(request.url).origin;
     return jsonResponse(await createStripeCheckout({

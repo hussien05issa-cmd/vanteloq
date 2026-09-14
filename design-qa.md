@@ -41,3 +41,15 @@ This is a visual and interaction regression review for the theme change, not a n
 ## Final Result
 
 passed
+
+## BookLoQ and Subscription Follow-up, September 14, 2026
+
+Reference: `ChatGPT Image Sep 14, 2026, 11_22_22 AM.png`, 1536 x 1024. Applied its pale silver-blue materials, readable navy typography, four primary KPI cards, restrained lines and generous chart surfaces. Preserved actual product identities, financial terminology and explicit sample/source-status labels. No gaming aesthetic or new decorative animation was introduced.
+
+The reference and final BookLoQ overview were inspected at the same normalized 960 x 640 size, using a 1536 x 1024 iframe for the application. The second BookLoQ navigation remains because this is an accounting module inside the existing application; it collapses and becomes a section selector on mobile. Missing bank balances remain unavailable instead of copying the reference's invented totals.
+
+Phone QA at 390 x 844 verified the BookLoQ section selector, More Financial Details disclosure, cash-period buttons, chart inspection/table disclosure, and onboarding field errors. Found and fixed the weekly cash-plan table escaping the viewport: the document returned to 375px content width inside the 390px viewport, while wide accounting columns scroll within the labelled region. Raised weekly table copy sizes and removed negative-zero currency display. The homepage proof labels remain 14px with a pale backing at mobile sizes.
+
+The real billing gate was tested in a fictional local harness. The visible workspace updated from Starter without BookLoQ to Starter plus BookLoQ, then Pro without BookLoQ. Past-due access was replaced by billing recovery; an inactive employee saw owner guidance with no personal checkout. This confirms the client state transition, not a production card charge.
+
+No unresolved P0, P1 or P2 visual issue was found in these checked surfaces. This does not claim every production workspace or provider was inspected. Existing authenticated live verification still depends on an available signed-in browser session.

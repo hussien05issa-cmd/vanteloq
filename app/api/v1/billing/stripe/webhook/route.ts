@@ -1,6 +1,6 @@
-import { and, eq, inArray } from "drizzle-orm";
-import { getDb } from "../../../../../../db";
-import { stripeBillingEvents, tenantAddons, tenantSubscriptions } from "../../../../../../db/schema";
+import { and, eq, inArray, lt, or } from "drizzle-orm";
+import { getD1, getDb } from "../../../../../../db";
+import { stripeBillingEvents, tenantSubscriptions } from "../../../../../../db/schema";
 import { ApiError, handleApi, jsonResponse, readRequestBytes } from "../../../../../../server/api";
 import {
   normalizeStripeSubscription,
@@ -8,6 +8,8 @@ import {
   sha256Hex,
   verifyStripeBillingSignature,
 } from "../../../../../../server/billing/stripe";
+
+import { persistStripeSubscription } from "../../../../../../server/billing/synchronize";
 
 const MAXIMUM_BYTES = 256_000;
 
@@ -32,9 +34,13 @@ export async function POST(request: Request) {
       eventId, organizationId: null, eventType, stripeCreatedAt: new Date(eventCreated * 1000), payloadHash: await sha256Hex(bytes), status: "received", errorCode: null, receivedAt: now, processedAt: null,
     }).onConflictDoNothing();
     const claimed = await getDb().update(stripeBillingEvents).set({ status: "processing", errorCode: null, receivedAt: now })
-      .where(and(eq(stripeBillingEvents.eventId, eventId), inArray(stripeBillingEvents.status, ["received", "failed"])))
+      .where(and(eq(stripeBillingEvents.eventId, eventId), or(inArray(stripeBillingEvents.status, ["received", "failed"]), and(eq(stripeBillingEvents.status, "processing"), lt(stripeBillingEvents.receivedAt, new Date(now.getTime() - 120_000))))))
       .returning({ eventId: stripeBillingEvents.eventId });
-    if (!claimed.length) return jsonResponse({ received: true, duplicate: true });
+    if (!claimed.length) {
+      const [existing] = await getDb().select().from(stripeBillingEvents).where(eq(stripeBillingEvents.eventId, eventId)).limit(1);
+      if (existing?.status === "processing") throw new ApiError(409, "STRIPE_BILLING_PROCESSING", "This billing event is still processing. Retry shortly.");
+      return jsonResponse({ received: true, duplicate: true });
+    }
     try {
       const data = event.data && typeof event.data === "object" && !Array.isArray(event.data) ? event.data as Record<string, unknown> : {};
       const object = data.object && typeof data.object === "object" && !Array.isArray(data.object) ? data.object as Record<string, unknown> : {};
@@ -45,38 +51,24 @@ export async function POST(request: Request) {
         await getDb().update(stripeBillingEvents).set({ status: "ignored", processedAt: new Date() }).where(eq(stripeBillingEvents.eventId, eventId));
         return jsonResponse({ received: true, ignored: true });
       }
+      // Observe the version before requesting Stripe, so concurrent fetches cannot overwrite a newer snapshot.
+      const metadata = object.metadata && typeof object.metadata === "object" ? object.metadata as Record<string, unknown> : {};
+      const hintedOrganization = typeof metadata.vanteloq_organization_id === "string" ? metadata.vanteloq_organization_id : null;
+      const [current] = await getDb().select().from(tenantSubscriptions).where(hintedOrganization
+        ? eq(tenantSubscriptions.organizationId, hintedOrganization)
+        : eq(tenantSubscriptions.stripeSubscriptionId, subscriptionId)).limit(1);
       const normalized = normalizeStripeSubscription(await retrieveStripeSubscription(subscriptionId));
-      const [current] = await getDb().select().from(tenantSubscriptions).where(eq(tenantSubscriptions.organizationId, normalized.organizationId)).limit(1);
-      if (current?.lastStripeEventCreatedAt && current.lastStripeEventCreatedAt.getTime() > eventCreated * 1000) {
+      if (normalized.subscriptionId !== subscriptionId || (hintedOrganization && hintedOrganization !== normalized.organizationId)
+        || (current && current.organizationId !== normalized.organizationId)) {
+        throw new ApiError(400, "STRIPE_SUBSCRIPTION_IDENTITY_MISMATCH", "Stripe subscription ownership could not be confirmed.");
+      }
+      const result = await persistStripeSubscription(getD1(), {
+        subscription: normalized, eventId, eventCreated, expectedVersion: current?.version ?? 0,
+      });
+      if (result === "stale") {
         await getDb().update(stripeBillingEvents).set({ organizationId: normalized.organizationId, status: "ignored", processedAt: new Date() }).where(eq(stripeBillingEvents.eventId, eventId));
         return jsonResponse({ received: true, stale: true });
       }
-      const syncedAt = new Date();
-      await getDb().insert(tenantSubscriptions).values({
-        organizationId: normalized.organizationId, basePlan: normalized.basePlan, billingInterval: normalized.billingInterval, status: normalized.status,
-        stripeCustomerId: normalized.customerId, stripeSubscriptionId: normalized.subscriptionId, stripeBasePriceId: normalized.basePriceId,
-        trialEndsAt: normalized.trialEndsAt, currentPeriodEndsAt: normalized.currentPeriodEndsAt, cancelAtPeriodEnd: normalized.cancelAtPeriodEnd,
-        scheduledBasePlan: null, scheduledBillingInterval: null, scheduledEffectiveAt: null, lastStripeEventId: eventId,
-        lastStripeEventCreatedAt: new Date(eventCreated * 1000), lastSyncedAt: syncedAt, version: (current?.version ?? 0) + 1,
-        createdAt: current?.createdAt ?? syncedAt, updatedAt: syncedAt,
-      }).onConflictDoUpdate({ target: tenantSubscriptions.organizationId, set: {
-        basePlan: normalized.basePlan, billingInterval: normalized.billingInterval, status: normalized.status,
-        stripeCustomerId: normalized.customerId, stripeSubscriptionId: normalized.subscriptionId, stripeBasePriceId: normalized.basePriceId,
-        trialEndsAt: normalized.trialEndsAt, currentPeriodEndsAt: normalized.currentPeriodEndsAt, cancelAtPeriodEnd: normalized.cancelAtPeriodEnd,
-        scheduledBasePlan: null, scheduledBillingInterval: null, scheduledEffectiveAt: null, lastStripeEventId: eventId,
-        lastStripeEventCreatedAt: new Date(eventCreated * 1000), lastSyncedAt: syncedAt, version: (current?.version ?? 0) + 1, updatedAt: syncedAt,
-      } });
-      const addonActive = normalized.addon && ["active", "trialing"].includes(normalized.status);
-      const addonRow = normalized.addon;
-      await getDb().insert(tenantAddons).values({
-        id: crypto.randomUUID(), organizationId: normalized.organizationId, addonKey: "bookloq", status: addonActive ? normalized.status as "active" | "trialing" : "inactive",
-        stripeSubscriptionItemId: addonRow?.itemId ?? null, stripePriceId: addonRow?.priceId ?? null, currentPeriodEndsAt: addonRow?.currentPeriodEndsAt ?? null,
-        scheduledRemovalAt: null, lastSyncedAt: syncedAt, createdAt: syncedAt, updatedAt: syncedAt,
-      }).onConflictDoUpdate({ target: [tenantAddons.organizationId, tenantAddons.addonKey], set: {
-        status: addonActive ? normalized.status as "active" | "trialing" : "inactive", stripeSubscriptionItemId: addonRow?.itemId ?? null,
-        stripePriceId: addonRow?.priceId ?? null, currentPeriodEndsAt: addonRow?.currentPeriodEndsAt ?? null, scheduledRemovalAt: null, lastSyncedAt: syncedAt, updatedAt: syncedAt,
-      } });
-      await getDb().update(stripeBillingEvents).set({ organizationId: normalized.organizationId, status: "processed", processedAt: syncedAt }).where(eq(stripeBillingEvents.eventId, eventId));
       return jsonResponse({ received: true, synchronized: true });
     } catch (error) {
       const code = error instanceof ApiError ? error.code : "STRIPE_BILLING_SYNC_FAILED";

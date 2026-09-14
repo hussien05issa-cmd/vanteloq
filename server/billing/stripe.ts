@@ -48,7 +48,7 @@ export function stripeBillingReadiness() {
 
 function secretKey() {
   const value = getRuntimeEnv().STRIPE_SECRET_KEY ?? "";
-  if (!value.startsWith("sk_") || value.length > 256) {
+  if (!/^(sk|rk)_(test|live)_/.test(value) || value.length > 256) {
     throw new ApiError(503, "STRIPE_BILLING_CONFIGURATION_REQUIRED", "Stripe Billing is not configured yet.");
   }
   return value;
@@ -210,6 +210,7 @@ export function normalizeStripeSubscription(object: Record<string, unknown>): No
     throw new ApiError(400, "STRIPE_SUBSCRIPTION_PAYLOAD_INVALID", "Stripe subscription data could not be safely mapped.");
   }
   const itemsObject = isObject(object.items) ? object.items : {};
+  if (itemsObject.has_more === true) throw new ApiError(400, "STRIPE_SUBSCRIPTION_PAYLOAD_INVALID", "A complete Stripe subscription item list is required.");
   const items = Array.isArray(itemsObject.data) ? itemsObject.data.filter(isObject) : [];
   let base: { plan: PlanKey; interval: BillingInterval; priceId: string; period: Date | null } | null = null;
   let addon: NormalizedBillingSubscription["addon"] = null;
@@ -217,11 +218,13 @@ export function normalizeStripeSubscription(object: Record<string, unknown>): No
     const price = isObject(item.price) ? item.price as StripePrice : {};
     const match = matchCatalogPrice(price);
     if (!match) continue;
+    if (item.quantity !== undefined && item.quantity !== 1) throw new ApiError(400, "STRIPE_SUBSCRIPTION_PAYLOAD_INVALID", "Vanteloq subscriptions require one unit of each selected product.");
     const period = unixDate(item.current_period_end);
     if (match.kind === "plan") {
       if (base) throw new ApiError(400, "STRIPE_SUBSCRIPTION_PAYLOAD_INVALID", "Stripe subscription contains more than one Vanteloq base plan.");
       base = { plan: match.key, interval: match.interval, priceId: string(price.id), period };
     } else {
+      if (addon || !/^si_[A-Za-z0-9]{8,128}$/.test(string(item.id))) throw new ApiError(400, "STRIPE_SUBSCRIPTION_PAYLOAD_INVALID", "Stripe subscription contains an invalid or duplicate BookLoQ add-on.");
       addon = { key: match.key, itemId: string(item.id), priceId: string(price.id), currentPeriodEndsAt: period };
     }
   }

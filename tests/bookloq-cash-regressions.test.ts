@@ -531,8 +531,46 @@ test("BookLoQ cash-flow route deduplicates commitments and only counts trusted c
         transaction(`cash-regression-disconnected-transaction-${suffix}`, disconnectedAccountId, 30_000),
       ]);
 
+      // More than a transaction page, plus same-day money in and money out.
+      for (let offset = 0; offset < 1002; offset += 100) {
+        await database.batch(Array.from({ length: Math.min(100, 1002 - offset) }, (_, index) =>
+          transaction(`cash-volume-${suffix}-${offset + index}`, operatingBank.financialAccountId, 1)));
+      }
+      await database.batch([
+        transaction(`cash-out-${suffix}`, operatingBank.financialAccountId, -4_000),
+        transaction(`cash-pending-${suffix}`, operatingBank.financialAccountId, 90_000),
+        transaction(`cash-removed-${suffix}`, operatingBank.financialAccountId, 90_000),
+        transaction(`cash-foreign-${suffix}`, operatingBank.financialAccountId, 90_000),
+        transaction(`cash-demo-${suffix}`, operatingBank.financialAccountId, 90_000),
+        transaction(`cash-pos-${suffix}`, operatingBank.financialAccountId, 90_000),
+      ]);
+      await database.batch([
+        database.prepare("UPDATE financial_transactions SET source_state='pending' WHERE id=?").bind(`cash-pending-${suffix}`),
+        database.prepare("UPDATE financial_transactions SET source_state='removed' WHERE id=?").bind(`cash-removed-${suffix}`),
+        database.prepare("UPDATE financial_transactions SET currency='USD' WHERE id=?").bind(`cash-foreign-${suffix}`),
+        database.prepare("UPDATE financial_transactions SET demo_record=1 WHERE id=?").bind(`cash-demo-${suffix}`),
+        database.prepare("UPDATE financial_transactions SET source_system='square' WHERE id=?").bind(`cash-pos-${suffix}`),
+      ]);
       const flow = await getCashFlow(worker, environment, email);
-      assert.equal(flow.weeks.reduce((sum: number, week: { actualNetCents: number }) => sum + week.actualNetCents, 0), 10_000);
+      assert.equal(flow.actualInflowCents, 11_002);
+      assert.equal(flow.actualOutflowCents, 4_000);
+      assert.equal(flow.weeks.reduce((sum: number, week: { actualNetCents: number }) => sum + week.actualNetCents, 0), 7_002);
+      const beforeCategory = await database.prepare("SELECT category_account_id category FROM financial_transactions WHERE id=?").bind(`cash-out-${suffix}`).first<{category:string|null}>();
+      const invalidRule = await dispatch(worker, environment, "/api/v1/bookloq/actions", { email, method:"POST", body:{ type:"categorize_transaction", transactionId:`cash-out-${suffix}`, accountId:operatingBank.financialAccountId, createRule:true, matchText:"a" } });
+      assert.equal(invalidRule.status, 400);
+      const afterCategory = await database.prepare("SELECT category_account_id category FROM financial_transactions WHERE id=?").bind(`cash-out-${suffix}`).first<{category:string|null}>();
+      assert.deepEqual(afterCategory, beforeCategory, "rejected rule cannot partially update its transaction");
+      const response = await dispatch(worker, environment, "/api/v1/bookloq", { email });
+      assert.equal(response.status, 200);
+      const payload = (await response.json()).bookloq;
+      for (const activity of Object.values(payload.cashActivity) as Array<{ transactionCount: number; inflowCents: number; outflowCents: number; netCashFlowCents: number; timeline: { inflowCents: number; outflowCents: number }[] }>) {
+        assert.equal(activity.transactionCount, 1004);
+        assert.equal(activity.inflowCents, 11_002);
+        assert.equal(activity.outflowCents, 4_000);
+        assert.equal(activity.netCashFlowCents, 7_002);
+        assert.equal(activity.timeline.reduce((sum, bucket) => sum + bucket.inflowCents, 0), activity.inflowCents);
+        assert.equal(activity.timeline.reduce((sum, bucket) => sum + bucket.outflowCents, 0), activity.outflowCents);
+      }
     });
 
     await t.test("malformed committed cash dates are rejected and legacy malformed values fail closed", async () => {

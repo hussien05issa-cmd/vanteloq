@@ -25,6 +25,7 @@ type Plan = {
 
 type BillingData = {
   configured: boolean;
+  canManageBilling?: boolean;
   accessType: BillingAccessType;
   current: {
     plan: string | null;
@@ -32,6 +33,7 @@ type BillingData = {
     addons: string[];
     features: string[];
     limits: BillingEntitlements["limits"];
+    hasCustomer?: boolean;
   };
   plans: Plan[];
   addon: {
@@ -66,7 +68,7 @@ async function loadAccess(): Promise<BillingData> {
   if (payload.accessType === "internal" || payload.accessType === "subscription") {
     return { ...payload, configured: true, plans: [], addon: { key: "bookloq", name: "BookLoQ", price: 0 }, currency: "CAD" };
   }
-  if (!payload.canManageBilling) throw new Error("Your company workspace is not currently active. Ask the owner to check access; you do not need to buy a personal subscription.");
+  if (!payload.canManageBilling) return { ...payload, configured: false, plans: [], addon: { key: "bookloq", name: "BookLoQ", price: 0 }, currency: "CAD" };
   const billing = await apiFetch("/api/v1/billing", { headers: { Accept: "application/json" } });
   const details = await billing.json();
   if (!billing.ok) throw new Error(problemMessage(details, "Billing settings could not be loaded."));
@@ -84,11 +86,14 @@ export default function BillingOnboardingGate({ children }: { children: ReactNod
   useEffect(() => {
     let active = true;
     let retry: number | undefined;
+    let inFlight = false;
     const billingReturn = new URLSearchParams(window.location.search).get("billing");
 
     let preferred = readPlanSelection();
     let selectionInitialized = false;
     const load = async (attempt = 0) => {
+      if (inFlight) return;
+      inFlight = true;
       try {
         const payload = await loadAccess();
         if (!preferred && payload.plans.length && !selectionInitialized) {
@@ -101,6 +106,7 @@ export default function BillingOnboardingGate({ children }: { children: ReactNod
         }
         selectionInitialized = true;
         setData(payload);
+        setError("");
         setPlan(current => current || (preferred && payload.plans.some(item => item.key === preferred?.plan) ? preferred.plan : "") || payload.plans.find(item => item.mostPopular)?.key || payload.plans[0]?.key || "");
         const state = billingGateState(payload);
         if (state === "ready") {
@@ -115,7 +121,7 @@ export default function BillingOnboardingGate({ children }: { children: ReactNod
           return;
         }
         if (billingReturn === "success" && attempt < 20) {
-          setMessage("Payment was received. We are confirming your subscription before opening the workspace.");
+          setMessage("Checking Stripe for confirmed payment and subscription access…");
           retry = window.setTimeout(() => void load(attempt + 1), 1_500);
         } else if (billingReturn === "success") {
           setMessage("Stripe is still confirming the subscription. Use Check payment status in a moment.");
@@ -125,12 +131,21 @@ export default function BillingOnboardingGate({ children }: { children: ReactNod
       } catch (caught) {
         if (!active) return;
         setError(caught instanceof Error ? caught.message : "Subscription status could not be loaded.");
+      } finally {
+        inFlight = false;
       }
     };
 
+    const refreshVisible = () => { if (document.visibilityState === "visible") void load(); };
+    window.addEventListener("focus", refreshVisible);
+    document.addEventListener("visibilitychange", refreshVisible);
+    const poll = window.setInterval(refreshVisible, 60_000);
     void load();
     return () => {
       active = false;
+      window.removeEventListener("focus", refreshVisible);
+      document.removeEventListener("visibilitychange", refreshVisible);
+      window.clearInterval(poll);
       if (retry !== undefined) window.clearTimeout(retry);
     };
   }, []);
@@ -145,6 +160,21 @@ export default function BillingOnboardingGate({ children }: { children: ReactNod
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Subscription status could not be loaded.");
     } finally {
+      setBusy(false);
+    }
+  }
+
+  async function manageBilling() {
+    setBusy(true);
+    setError("");
+    try {
+      const response = await apiFetch("/api/v1/billing/portal", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(problemMessage(payload, "Billing could not be opened."));
+      if (typeof payload.url !== "string" || !payload.url.startsWith("https://billing.stripe.com/")) throw new Error("Stripe did not return a secure billing page.");
+      window.location.assign(payload.url);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Billing could not be opened.");
       setBusy(false);
     }
   }
@@ -188,18 +218,21 @@ export default function BillingOnboardingGate({ children }: { children: ReactNod
   }
 
   const state = data ? billingGateState(data) : null;
+  const memberNeedsOwner = data?.canManageBilling === false;
+  const restoreExisting = data?.current.hasCustomer === true && !["canceled", "incomplete_expired"].includes(data.current.status ?? "");
   return <main className="billing-onboarding-gate">
     <section>
-      <header><ProductBrandLogo product="vanteloq" priority/><span><b>Final setup step</b><small>SECURE STRIPE SUBSCRIPTION</small></span></header>
+      <header><ProductBrandLogo product="vanteloq" priority/><span><b>{memberNeedsOwner || restoreExisting ? "Workspace access" : "Final setup step"}</b><small>SECURE STRIPE SUBSCRIPTION</small></span></header>
       <div className="billing-onboarding-copy">
-        <p>STEP 3 OF 3</p>
-        <h1>Choose your Vanteloq plan.</h1>
-        <span>Your account, email, 2FA, and business profile are complete. A verified subscription is required before the workspace opens.</span>
+        <p>{memberNeedsOwner || restoreExisting ? "BILLING REVIEW" : "STEP 3 OF 3"}</p>
+        <h1>{memberNeedsOwner ? "Workspace access needs attention." : restoreExisting ? "Restore your workspace access." : "Choose your Vanteloq plan."}</h1>
+        <span>{memberNeedsOwner ? "Ask your workspace owner to review billing. You do not need a personal subscription." : restoreExisting ? "Review your existing subscription and payment method in Stripe. Your workspace records are saved." : "Your account and business profile are ready. Choose a plan to open your workspace."}</span>
       </div>
       {message && <div className="billing-onboarding-message" aria-live="polite">{message}</div>}
       {error && <div className="billing-onboarding-message error" role="alert">{error}</div>}
-      {state === "configuration_required" && <div className="billing-onboarding-unavailable"><b>Checkout is temporarily unavailable.</b><span>Your workspace is saved. Contact support@vanteloq.com so billing can be enabled safely.</span></div>}
-      {data && state === "checkout_required" && <>
+      {!memberNeedsOwner && state === "configuration_required" && <div className="billing-onboarding-unavailable"><b>Checkout is temporarily unavailable.</b><span>Your workspace is saved. Contact support@vanteloq.com so billing can be enabled safely.</span></div>}
+      {restoreExisting && !memberNeedsOwner && <button className="billing-onboarding-submit" type="button" disabled={busy || !data?.configured} onClick={() => void manageBilling()}>{busy ? "Opening billing…" : "Manage Billing in Stripe"}</button>}
+      {data && state === "checkout_required" && !restoreExisting && !memberNeedsOwner && <>
         <div className="billing-plans" role="radiogroup" aria-label="Monthly Vanteloq plans">
           {data.plans.map(item => <button type="button" role="radio" aria-checked={plan === item.key} className={plan === item.key ? "selected" : ""} onClick={() => setPlan(item.key)} key={item.key}>
             <span>{item.mostPopular ? "MOST POPULAR" : "MONTH TO MONTH"}</span>
@@ -215,7 +248,7 @@ export default function BillingOnboardingGate({ children }: { children: ReactNod
         <div className="billing-onboarding-security"><b>Card information is required.</b><span>Stripe securely collects and stores payment details. Vanteloq never receives card numbers. The subscription is charged according to the amount shown in Checkout.</span></div>
         <button className="billing-onboarding-submit" type="button" disabled={busy || !plan} onClick={() => void checkout()}>{busy ? "Opening secure checkout…" : "Continue to Stripe and subscribe"}</button>
       </>}
-      <CustomPlanCallout/>
+      {!memberNeedsOwner && <CustomPlanCallout/>}
       <footer><button type="button" disabled={busy} onClick={() => void refresh()}>Check payment status</button><button type="button" onClick={() => void signOut()}>Sign out</button></footer>
     </section>
   </main>;

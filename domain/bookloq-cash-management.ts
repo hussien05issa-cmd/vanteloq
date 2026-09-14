@@ -4,6 +4,8 @@ export type BusinessCashTransaction = {
   category: string;
   categorized: boolean;
   matched: boolean;
+  /** Number of source rows represented by a server-side aggregate. */
+  recordCount?: number;
 };
 
 export type TransactionMatchCandidate = {
@@ -32,10 +34,17 @@ function subtractDays(date: string, days: number) {
 }
 
 export function buildBusinessCashSummary(transactions: BusinessCashTransaction[], asOf: string, days: number) {
+  if (!Number.isInteger(days) || days < 1 || days > 366) throw new Error("Cash activity requires a reporting window of 1 to 366 days.");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(asOf) || new Date(`${asOf}T00:00:00Z`).toISOString().slice(0, 10) !== asOf) throw new Error("Cash activity requires a valid reporting date.");
   const startDate = subtractDays(asOf, Math.max(1, days) - 1);
   const included = transactions.filter((transaction) => transaction.postingDate >= startDate && transaction.postingDate <= asOf);
-  const inflowCents = included.filter((transaction) => transaction.amountCents > 0).reduce((sum, transaction) => sum + transaction.amountCents, 0);
-  const outflowCents = included.filter((transaction) => transaction.amountCents < 0).reduce((sum, transaction) => sum + Math.abs(transaction.amountCents), 0);
+  for (const item of included) {
+    if (!Number.isSafeInteger(item.amountCents) || !Number.isSafeInteger(item.recordCount ?? 1) || (item.recordCount ?? 1) < 1) throw new Error("Cash activity amounts and record counts must preserve integer precision.");
+  }
+  const add = (left: number, right: number) => { const sum = left + right; if (!Number.isSafeInteger(sum)) throw new Error("Cash activity exceeds safe integer precision."); return sum; };
+  const countRecords = (items: BusinessCashTransaction[]) => items.reduce((sum, item) => sum + (item.recordCount ?? 1), 0);
+  const inflowCents = included.filter((transaction) => transaction.amountCents > 0).reduce((sum, transaction) => add(sum, transaction.amountCents), 0);
+  const outflowCents = included.filter((transaction) => transaction.amountCents < 0).reduce((sum, transaction) => add(sum, Math.abs(transaction.amountCents)), 0);
   const categoryTotals = new Map<string, number>();
   for (const transaction of included.filter((item) => item.amountCents < 0)) {
     categoryTotals.set(transaction.category, (categoryTotals.get(transaction.category) ?? 0) + Math.abs(transaction.amountCents));
@@ -43,7 +52,20 @@ export function buildBusinessCashSummary(transactions: BusinessCashTransaction[]
   const categories = [...categoryTotals.entries()]
     .map(([name, amountCents]) => ({ name, amountCents, shareBasisPoints: safeRatioBasisPoints(amountCents, outflowCents) }))
     .sort((left, right) => right.amountCents - left.amountCents || left.name.localeCompare(right.name));
-  const count = included.length;
+  const count = countRecords(included);
+  // Use the exact reporting interval for both chart and headline totals. No
+  // browser clock, independent currency filter or capped transaction page.
+  const bucketCount = Math.min(days, days > 90 ? 12 : 6);
+  const timeline = Array.from({ length: bucketCount }, (_, index) => {
+    const firstDay = Math.floor(index * days / bucketCount);
+    const lastDay = Math.floor((index + 1) * days / bucketCount) - 1;
+    const from = subtractDays(startDate, -firstDay);
+    const to = subtractDays(startDate, -lastDay);
+    const period = included.filter(item => item.postingDate >= from && item.postingDate <= to);
+    const inflow = period.reduce((sum, item) => sum + Math.max(0, item.amountCents), 0);
+    const outflow = period.reduce((sum, item) => sum + Math.max(0, -item.amountCents), 0);
+    return { startDate: from, endDate: to, inflowCents: inflow, outflowCents: outflow, netCashFlowCents: inflow - outflow, transactionCount: countRecords(period) };
+  });
   return {
     startDate,
     endDate: asOf,
@@ -52,9 +74,10 @@ export function buildBusinessCashSummary(transactions: BusinessCashTransaction[]
     outflowCents,
     netCashFlowCents: inflowCents - outflowCents,
     averageDailyOutflowCents: Math.round(outflowCents / Math.max(1, days)),
-    categorizedBasisPoints: safeRatioBasisPoints(included.filter((item) => item.categorized).length, count),
-    matchedBasisPoints: safeRatioBasisPoints(included.filter((item) => item.matched).length, count),
+    categorizedBasisPoints: safeRatioBasisPoints(countRecords(included.filter((item) => item.categorized)), count),
+    matchedBasisPoints: safeRatioBasisPoints(countRecords(included.filter((item) => item.matched)), count),
     categories,
+    timeline,
   };
 }
 
