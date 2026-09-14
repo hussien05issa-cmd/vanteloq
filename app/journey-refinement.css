@@ -10,6 +10,7 @@
 .journey-home h2 {font-size:clamp(30px,3vw,43px);line-height:1.13;letter-spacing:-.04em}
 .journey-home .home-section-heading>span {font-size:16px;line-height:1.65}
 .journey-home .home-decision-proof {background:#f5f8fc}
+.journey-home .home-connections {display:block;width:100%}
 .journey-home .home-decision-proof>div:first-of-type {max-width:720px}
 .journey-home .home-decision-proof p {color:#52657b;line-height:1.7}
 .journey-home .decision-proof-grid {margin-top:28px}
@@ -58,13 +59,52 @@
 .compatibility-result dt {font-weight:600;font-size:12px;margin-bottom:6px}
 .compatibility-result dd {margin:0}
 .compatibility-result>a {font-size:13px;font-weight:600;color:#155ac1;display:inline-block;padding:10px 0}
-.journey-home .home-connection-directory {margin-bottom:26px}
+.home-provider-directory {margin:36px 0 30px;color:#173653}
+.home-provider-directory>header {display:flex;justify-content:space-between;gap:24px;align-items:flex-start;margin-bottom:26px}
+.home-provider-directory h3 {font-size:25px;letter-spacing:-.035em;margin:0 0 8px}
+.home-provider-directory>header p {font-size:14px;line-height:1.6;color:#526b83;margin:0}
+.home-provider-directory>header>span {max-width:340px;font-size:12px;line-height:1.7;color:#65768a}
+.home-provider-group {display:grid;grid-template-columns:160px minmax(0,1fr);gap:24px;border-top:1px solid #dce5ef;padding:20px 0}
+.home-provider-group-heading {display:flex;justify-content:space-between;align-items:baseline;gap:15px;margin-bottom:15px}
+.home-provider-group h4,.home-provider-import h4 {font-size:15px;margin:0;color:#183b5d}
+.home-provider-group-heading p {font-size:12px;color:#60758b;margin:0;line-height:1.6}
+.home-provider-tiles {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.home-provider-tiles>button {display:flex;align-items:center;gap:14px;min-width:0;min-height:92px;background:#fff;border:1px solid #d7e3ef;border-radius:11px;padding:16px;text-align:left;font:inherit;cursor:pointer;color:#173653}
+.home-provider-tiles>button:hover,.home-provider-tiles>button[aria-expanded="true"] {background:#f1f6ff;border-color:#5686c9}
+.home-provider-tiles>button:focus-visible {outline:2px solid #2366c9;outline-offset:3px}
+.home-provider-tiles .integration-logo {flex:0 0 38px;width:38px;height:38px;min-width:38px;max-width:38px;margin:0;display:inline-flex;align-items:center;justify-content:center}
+.home-provider-tiles .integration-logo img,.home-provider-tiles .integration-logo svg {position:static;transform:none;width:26px;height:26px;object-fit:contain;object-position:center;margin:0}
+.provider-tile-label {display:flex;flex-direction:column;align-items:flex-start;gap:9px;min-width:0}
+.provider-tile-label>strong {font-size:13px;line-height:1.45;color:#183853;font-weight:650}
+.provider-setup-details {scroll-margin-top:160px;background:#f3f7fc;border:1px solid #d4e1ef;border-radius:12px;padding:24px;margin-top:14px}
+.provider-setup-details:focus-visible {outline:2px solid #2366c9;outline-offset:3px}
+.provider-setup-details>header {display:flex;align-items:center;justify-content:space-between;gap:16px}
+.provider-setup-details h4 {font-size:20px;margin:0}
+.provider-setup-details p,.provider-setup-details dd {font-size:13px;color:#526b82;line-height:1.7}
+.provider-setup-details dl {display:grid;grid-template-columns:1fr 1fr;gap:25px;margin:20px 0}
+.provider-setup-details dt {font-size:12px;font-weight:650;margin-bottom:7px}
+.provider-setup-details dd {margin:0}
+.provider-setup-details a {font-size:13px;display:inline-flex;min-height:44px;align-items:center;color:#195eaf}
+.home-provider-tiles article>div {min-width:0}
+.home-provider-tiles h5 {margin:0 0 10px;font-size:14px;line-height:1.5;font-weight:650;color:#183853}
+.home-provider-tiles .home-connection-status {font-size:11px;line-height:1.5;white-space:normal;display:inline-block}
+.home-provider-import {display:flex;align-items:center;gap:20px;background:#f1f6fd;border:1px solid #d2e0f0;border-radius:12px;padding:22px;margin-top:10px}
+.home-provider-import>div {flex:1}
+.home-provider-import p {font-size:13px;line-height:1.65;color:#506a83;margin:6px 0 0}
+.home-provider-import>.home-connection-status {flex:none;font-size:12px}
 .journey-home .home-feature-reel {margin-top:30px}
 .journey-home .home-ai {gap:40px;background:#f4f7fc;align-items:center}
 .journey-home .home-ai-copy>span {font-size:15px;line-height:1.7}
 .journey-home .home-ai-grid {grid-template-columns:1fr 1fr;gap:18px}
-.home-bookloq-compact {display:flex;gap:16px;border-top:1px solid #d6e1ef;padding-top:22px;margin-top:24px}
-.home-bookloq-compact img {max-width:46px;max-height:46px;object-fit:contain}
+.home-bookloq-compact {display:flex;flex-direction:column;gap:14px;border-top:1px solid #d6e1ef;padding-top:22px;margin-top:24px}
+.home-bookloq-compact .product-brand-logo.bookloq.full {display:block;width:225px;height:70px;max-width:100%;border:0;flex:none}
+.home-bookloq-compact .product-brand-logo.bookloq.full img {width:100%;height:100%;max-width:none;max-height:none;padding:0;object-fit:contain}
+.finance-proof .product-brand-logo.bookloq.full {display:block;width:280px;max-width:100%;height:85px;border:0;margin-bottom:22px}
+.finance-proof .product-brand-logo.bookloq.full img {padding:0}
+.bookloq-demo-intro {flex-direction:column;align-items:flex-start}
+.bookloq-demo-intro .product-brand-logo.bookloq.full {width:240px;max-width:100%;height:72px;border:0}
+.bookloq-demo-intro .product-brand-logo.bookloq.full img {padding:0}
+.journey-home .finance-proof {margin:0;width:100%;background:#fff;max-width:none}
 .home-bookloq-compact strong {font-size:14px;color:#173858}
 .home-bookloq-compact p {font-size:13px;line-height:1.65;color:#50667c;margin:8px 0}
 .home-bookloq-compact a {font-size:13px;color:#145dc0;font-weight:600}
@@ -113,6 +153,19 @@
 .billing-selected-total {padding:18px;border:1px solid #cbdaed;border-radius:9px;margin:16px 0;display:flex;justify-content:space-between;gap:18px;align-items:center}
 .billing-selected-total small {display:block;margin-top:5px;color:#536c84}
 .billing-selected-total strong {font-size:25px;color:#184d8b}
+.journey-home .public-nav {display:grid;grid-template-columns:auto 1fr auto;gap:8px 22px;padding:10px 28px;height:auto;min-height:76px}
+.journey-home .public-nav nav {display:flex;position:static;inset:auto;width:auto;max-height:none;overflow:visible;box-shadow:none;border:0;background:transparent;padding:0;gap:6px 20px;flex-wrap:wrap;align-items:center;justify-content:center}
+.journey-home .public-nav nav>a {display:flex;align-items:center;min-height:44px;padding:0;font-size:13px}
+.journey-home .public-nav-socials {display:flex;align-items:center}
+.journey-home .public-nav-socials .public-social-link {display:flex;align-items:center;justify-content:center;width:40px;min-width:40px;height:44px;min-height:44px;padding:0}
+.journey-home .public-nav>.public-nav-actions {display:flex;gap:10px;align-items:center;justify-content:flex-end}
+@media(max-width:1200px) {
+ .journey-home .public-nav {grid-template-columns:1fr auto}
+ .journey-home .public-nav nav {grid-column:1 / -1;grid-row:2;justify-content:space-between;border-top:1px solid #e5ebf3;padding-top:4px;width:100%}
+ .journey-home .public-nav>.public-nav-actions {grid-column:2;grid-row:1}
+ .home-provider-tiles {grid-template-columns:repeat(2,minmax(0,1fr))}
+ .home-provider-group {grid-template-columns:130px minmax(0,1fr);gap:18px}
+}
 @media(max-width:900px) {
  .journey-home main>section {padding:48px 24px}
  .journey-home .home-hero {grid-template-columns:1fr;gap:30px}
@@ -125,6 +178,23 @@
  .unified-public-nav nav {gap:8px 16px;justify-content:flex-end}
 }
 @media(max-width:620px) {
+ .journey-home .public-nav {position:relative;grid-template-columns:1fr;gap:8px;padding:12px 18px}
+ .journey-home .public-brand-family {grid-column:1;grid-row:1;justify-content:space-between;width:100%}
+ .journey-home .public-nav nav {grid-column:1;grid-row:2;justify-content:center;gap:0 10px}
+ .journey-home .public-nav nav>a {font-size:12px}
+ .journey-home .public-nav-socials {flex-basis:100%;justify-content:center}
+ .journey-home .public-nav>.public-nav-actions {grid-column:1;grid-row:3;justify-content:center;gap:12px}
+ .journey-home .public-nav>.public-nav-actions button {min-height:44px;font-size:13px}
+ .home-provider-directory>header,.home-provider-group-heading {flex-direction:column;gap:8px}
+ .home-provider-group {grid-template-columns:1fr;gap:0}
+ .provider-setup-details dl {grid-template-columns:1fr;gap:18px}
+ .provider-setup-details>header {align-items:flex-start;flex-direction:column;gap:10px}
+ .home-provider-tiles {gap:9px}
+ .home-provider-tiles>button {flex-direction:column;align-items:flex-start;gap:12px;padding:16px 12px}
+ .home-provider-tiles h5 {font-size:13px}
+ .home-provider-import {flex-wrap:wrap;padding:18px;gap:14px}
+ .home-provider-import>div {min-width:200px}
+ .home-provider-import>.home-connection-status {margin-left:0}
  .journey-home main>section {padding:40px 20px}
  .journey-home .home-hero {padding-top:36px}
  .journey-home .home-hero h1 {font-size:41px}

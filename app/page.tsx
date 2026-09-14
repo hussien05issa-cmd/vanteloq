@@ -3,15 +3,14 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import Link from "next/link";
-import IntegrationBrandLogo from "./integration-brand-logo";
 import VanteloqAiShowcase from "./vanteloq-ai-showcase";
 import VanteloqAiLogo from "./vanteloq-ai-logo";
-import { integrationCatalog, integrationPublicStatus } from "./integration-catalog";
 import CompatibilityCheck from "./compatibility-check";
 import PublicPlanCards from "./public-plan-cards";
 import HomeDecisionPreview from "./home-decision-preview";
 import ProductBrandLogo from "./product-brand-logo";
 import ProductDemo from "./product-demo";
+import FinanceProof from "./finance-proof";
 import SocialLinks from "./social-links";
 import AuthPanel, { type AuthPanelMode } from "./auth-panel";
 import { currentSession, getSupabase, signOut } from "./supabase-browser";
@@ -363,63 +362,22 @@ function FeatureReel() {
 }
 
 function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) {
-  const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const mobileMenuButton = useRef<HTMLButtonElement>(null);
-  const closeMobileNav = () => setMobileNavOpen(false);
-  const connectorBenefits: Record<string, string> = {
-    "Point of sale": "Unify sales, returns, products and inventory movement",
-    Commerce: "Connect orders, customers, products and channel performance",
-    Payments: "Reconcile payouts, fees, refunds and cash timing",
-    Accounting: "Keep books, balances and operating records aligned",
-    Marketplace: "Bring marketplace demand and settlement records into view",
-    Delivery: "Compare delivery revenue, commissions and order activity",
-    Marketing: "Connect discovery, campaigns and attributable customer action",
-    Banking: "Use owner-authorized balances and transactions in cash planning",
-    "File import": "Turn structured operating files into verified records",
-  };
-  const publicIntegrations = integrationCatalog.map(provider => ({
-    ...provider,
-    detail: provider.id === "moneris" ? "Review payment amounts, status and timing for reconciliation" : connectorBenefits[provider.category] ?? "Bring source records into one operating view",
-    publicStatus: integrationPublicStatus(provider),
-  }));
-
-  useEffect(() => {
-    if (!mobileNavOpen) return;
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") { setMobileNavOpen(false); mobileMenuButton.current?.focus(); }
-    };
-    window.addEventListener("keydown", closeOnEscape);
-    return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [mobileNavOpen]);
-
   return <div className="public-site journey-home">
     <a className="home-skip-link" href="#main-content">Skip to main content</a>
     <header className="public-nav">
       <div className="public-brand-family">
-      <button type="button" className="public-brand" aria-label="Vanteloq home" onClick={() => { closeMobileNav(); window.scrollTo({ top: 0, behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" }); }}>
+      <button type="button" className="public-brand" aria-label="Vanteloq home" onClick={() => { window.scrollTo({ top: 0, behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" }); }}>
         <ProductBrandLogo product="vanteloq" priority/>
         <span>Vanteloq<small>BUSINESS INTELLIGENCE</small></span>
       </button>
-      <a className="public-owner-brand" href="#company" onClick={closeMobileNav} aria-label="LexEdge Consulting, owner of Vanteloq">
+      <a className="public-owner-brand" href="#company" aria-label="LexEdge Consulting, owner of Vanteloq">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/brand/lexedge-consulting-logo.png" width={1536} height={1024} alt="LexEdge Consulting" decoding="async"/>
       </a>
       </div>
-      <button type="button" className="nav-menu-toggle" ref={mobileMenuButton} aria-label={mobileNavOpen ? "Close navigation menu" : "Open navigation menu"} aria-expanded={mobileNavOpen} aria-controls="public-navigation" onClick={() => setMobileNavOpen(open => !open)}>{mobileNavOpen ? "Close" : "Menu"}</button>
-      <nav id="public-navigation" className={mobileNavOpen ? "is-open" : ""} aria-label="Main navigation">
-        <a href="#platform" onClick={closeMobileNav}>Platform</a>
-        <a href="#connections" onClick={closeMobileNav}>Connections</a>
-        <a href="#demo" onClick={closeMobileNav}>Try the demo</a>
-        <Link data-public-event="pricing_view" href="/pricing" onClick={closeMobileNav}>Pricing</Link>
-        <Link href="/help" onClick={closeMobileNav}>Help</Link>
-        <div className="public-nav-mobile-actions">
-          <button type="button" className="nav-login" onClick={() => { closeMobileNav(); start("signin"); }}>Sign in</button>
-          <button type="button" onClick={() => { closeMobileNav(); start("signup"); }}>Create workspace</button>
-        </div>
-        <div className="public-nav-mobile-socials">
-          <span>Follow Vanteloq</span>
-          <SocialLinks/>
-        </div>
+      <nav id="public-navigation" aria-label="Main navigation">
+        <a href="#platform">Platform</a><a href="#connections">Connections</a><a href="#demo">Try the demo</a><Link data-public-event="pricing_view" href="/pricing">Pricing</Link><Link href="/help">Help</Link>
+        <div className="public-nav-socials"><SocialLinks/></div>
       </nav>
       <div className="public-nav-actions">
         <button type="button" className="nav-login" onClick={() => start("signin")}>Sign in</button>
@@ -450,13 +408,13 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
       <section className="home-connections" id="connections" aria-labelledby="connections-title">
         <div className="home-section-heading compact"><p>CHECK YOUR FIT FIRST</p><h2 id="connections-title">Keep your POS.<br/>Get more from its data.</h2><span>Choose your system to see what it can support, what you need to connect and what is still in development.</span></div>
         <CompatibilityCheck/>
-        <details className="home-connection-directory"><summary>See all providers and availability</summary><div className="home-connection-grid">{publicIntegrations.map(provider => <article key={provider.id}><IntegrationBrandLogo name={provider.name} compact/><div><strong>{provider.name}</strong><span className={`home-connection-status ${provider.publicStatus.tone}`}>{provider.publicStatus.label}</span><span>{provider.detail}</span></div></article>)}<article><strong>CSV import</strong><span>Available using supported templates</span></article></div></details>
         <FeatureReel/>
       </section>
       <section className="home-ai" id="vanteloq-ai" aria-labelledby="vanteloq-ai-title">
         <VanteloqAiShowcase/>
-        <div className="home-ai-copy"><p>VANTELOQ AI · POWERED BY OPENAI</p><h2 id="vanteloq-ai-title">Ask the question.<br/>Understand the evidence.</h2><span>Ask about sales, inventory, marketing, BookLoQ or how to use the app in one conversation. AI uses only the workspace information you permit it to use.</span><div className="home-ai-grid"><article><strong>Business analysis and app help</strong><span>Work through a financial question or get help finding your next step.</span></article><article><strong>Privacy you control</strong><span>Memory starts off. Turn workspace sharing off or delete saved chats in AI Settings.</span></article></div><div className="home-bookloq-compact"><ProductBrandLogo product="bookloq"/><div><strong>Add BookLoQ · $39 CAD / month</strong><p>Journals, reconciliation, financial checks and 13-week cash planning. Financial records stay distinct from operating reports.</p><Link href="/demo#bookloq">Try BookLoQ →</Link></div></div><small className="home-ai-note">Review important conclusions. AI does not replace your accountant or approve decisions for you.</small></div>
+        <div className="home-ai-copy"><p>VANTELOQ AI · POWERED BY OPENAI</p><h2 id="vanteloq-ai-title">Ask the question.<br/>Understand the evidence.</h2><span>Ask about sales, inventory, marketing, BookLoQ or how to use the app in one conversation. AI uses only the workspace information you permit it to use.</span><div className="home-ai-grid"><article><strong>Business analysis and app help</strong><span>Work through a financial question or get help finding your next step.</span></article><article><strong>Privacy you control</strong><span>Memory starts off. Turn workspace sharing off or delete saved chats in AI Settings.</span></article></div><div className="home-bookloq-compact"><ProductBrandLogo product="bookloq" variant="full"/><div><strong>Add BookLoQ · $39 CAD / month</strong><p>Journals, reconciliation, financial checks and 13-week cash planning. Financial records stay distinct from operating reports.</p><Link href="/demo#bookloq">Try BookLoQ →</Link></div></div><small className="home-ai-note">Review important conclusions. AI does not replace your accountant or approve decisions for you.</small></div>
       </section>
+      <FinanceProof/>
       <section className="journey-evidence" id="security" aria-labelledby="evidence-title">
         <div><p className="demo-eyebrow">PROOF YOU CAN INSPECT</p><h2 id="evidence-title">A useful answer shows its working.</h2><p>Try the sample records yourself. Change a location, inspect the revenue breakdown or remove a cost to see which results need more evidence.</p><div className="journey-evidence-links"><Link href="/demo#retail">Inspect the calculations →</Link><Link href="/demo#bookloq">Test financial checks →</Link></div></div>
         <div className="journey-trust"><article><strong>Your records, your workspace</strong><p>Membership and role permissions protect business and financial access.</p></article><article><strong>Missing data stays visible</strong><p>Missing costs do not become zero. An incomplete import does not prove the store was closed.</p></article><article><strong>Clear responsibility</strong><p>Vanteloq is owned and operated by LexEdge Consulting. You review consequential actions.</p></article><div><Link href="/privacy">Privacy and deletion</Link><Link href="/subprocessors">Data processors</Link><Link href="/contact">Contact us</Link></div></div>

@@ -81,8 +81,8 @@ test("homepage preserves responsive and keyboard interaction safeguards", async 
     readFile(new URL("../app/homepage.css", import.meta.url), "utf8"),
   ]);
 
-  assert.match(source, /event\.key === "Escape"/);
-  assert.match(source, /aria-label=\{mobileNavOpen \? "Close navigation menu" : "Open navigation menu"\}/);
+  assert.match(source, /aria-label="Main navigation"/);
+  assert.doesNotMatch(source, /nav-menu-toggle|<details className="home-connection-directory"/);
   assert.match(css, /overflow-x:\s*clip/);
   assert.match(css, /@media \(max-width: 620px\)/);
   assert.match(css, /@media \(max-width: 390px\)/);
@@ -98,7 +98,7 @@ test("homepage preserves responsive and keyboard interaction safeguards", async 
   assert.match(css, /@media \(max-width: 620px\)[\s\S]*?\.home-ai-grid \{ grid-template-columns: 1fr/);
   assert.match(css, /:focus-visible/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
-  assert.match(source, /public-nav-mobile-actions/);
+  assert.match(source, /public-nav-socials/);
   assert.match(css, /@media \(max-width: 620px\)[\s\S]*?\.public-nav\s*>\s*\.public-nav-actions\s*\{\s*display:\s*none/);
   assert.match(css, /@media \(max-width: 620px\)[\s\S]*?\.public-nav-mobile-actions\s*\{\s*display:\s*grid/);
   assert.match(css, /\.home-connection-grid article > div \.home-connection-status[\s\S]{0,260}font-size:\s*12px/);
