@@ -22,6 +22,7 @@ The generated alpine artwork is an illustrative sample workspace, explicitly lab
 3. Moved the photographic focal point to the top on desktop, keeping the laptop frame visible. Kept the device on the right when the image adapts to mobile.
 4. Strengthened the pale overlay behind the hero copy for readability over mountain detail.
 5. Applied the same restrained surfaces to shared workspace cards, navigation, BookLoQ and the AI composer. Financial records remain opaque.
+6. Follow-up consistency pass unified the primary-action gradient across account entry, workspace and AI controls; added frosted secondary actions; corrected BookLoQ navigation contrast and selection styling. Resolved an older input/control selector overriding action height. The opportunity heading action was rechecked at a 44px minimum height and 12px corners, with no horizontal document overflow at 960px.
 
 Intentional differences from the supplied artwork: preserved existing brand identities, truthful demo/signup actions, actual product modules, visible social links and provider availability labels. No free-trial or universal integration-readiness claim was introduced. The lower page retains working finance proof, provider details, pricing, privacy and help.
 
