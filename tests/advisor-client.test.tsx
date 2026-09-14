@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { requestAdvisorAnalysis } from "../app/advisor-client";
+import { readAdvisorAnswer, requestAdvisorAnalysis } from "../app/advisor-client";
 import AdvisorThinking from "../app/advisor-thinking";
 import AdvisorComposer from "../app/advisor-composer";
-import { AdvisorAnswerContent } from "../app/advisor-response";
+import AdvisorResponse, { AdvisorAnswerContent } from "../app/advisor-response";
 import { ADVISOR_CONSENT_NOTICE_VERSION, PRIVACY_POLICY_VERSION } from "../domain/privacy-controls";
 
 test("one chat combines business and product questions with data sharing in Settings", () => {
@@ -84,4 +84,51 @@ test("a pending availability check keeps sending disabled without claiming setup
   assert.match(markup, /type="submit" disabled=""/);
   assert.match(markup, /Checking OpenAI availability…/);
   assert.doesNotMatch(markup, /Provider setup needed/);
+});
+
+test("accepted consent stays out of the message box and can be withdrawn in Settings", () => {
+  const markup = renderToStaticMarkup(<AdvisorComposer question="Sales?" onQuestion={() => {}} dataUseAccepted onConsent={() => {}} loading={false} onSubmit={() => {}} providers={{openai:{ready:true}}}/>);
+  assert.doesNotMatch(markup, /I agree to send|class="ai-consent-row"/);
+  assert.match(markup, /New chats keep this choice/);
+  assert.ok(markup.indexOf("Withdraw agreement") > markup.indexOf("<dialog"));
+  const pending = renderToStaticMarkup(<AdvisorComposer question="Sales?" onQuestion={() => {}} dataUseAccepted consentLoading onConsent={() => {}} loading={false} onSubmit={() => {}} providers={{openai:{ready:true}}}/>);
+  assert.match(pending, /type="submit" disabled=""/);
+  assert.match(pending, /Checking your data-use setting/);
+});
+
+test("waiting has an enabled stop control and answers avoid duplicate headings", () => {
+  const markup = renderToStaticMarkup(<AdvisorComposer question="Sales?" onQuestion={() => {}} dataUseAccepted onConsent={() => {}} loading thinking onStop={() => {}} onSubmit={() => {}}/>);
+  assert.match(markup, /type="button" aria-label="Stop response"/);
+  const answer = renderToStaticMarkup(<AdvisorResponse title="Vanteloq AI" body="Review the evidence." limitation="Example only."/>);
+  assert.doesNotMatch(answer, /<h3>Vanteloq AI/);
+  assert.match(answer, /Review the evidence/);
+});
+
+const requestInput = { question: "Sales?", provider: "openai" as const, conversationId: null, dataUseAccepted: true, memoryEnabled: false };
+test("the entire request times out even when auth, fetch or response parsing stalls", async () => {
+  for (const fetcher of [
+    (async () => new Promise<Response>(() => {})) as typeof fetch,
+    (async () => ({ json: () => new Promise(() => {}) })) as unknown as typeof fetch,
+  ]) {
+    const controller = new AbortController();
+    await assert.rejects(readAdvisorAnswer(fetcher, requestInput, controller.signal, 20), error => error instanceof DOMException && error.name === "TimeoutError");
+  }
+});
+
+test("stop aborts the request transport and cannot return a late answer", async () => {
+  const controller = new AbortController();
+  let transport: AbortSignal | null | undefined;
+  let complete: (response: Response) => void = () => {};
+  const fetcher: typeof fetch = async (_, init) => { transport = init?.signal; return new Promise<Response>(resolve => { complete = resolve; }); };
+  const result = readAdvisorAnswer(fetcher, requestInput, controller.signal, 5000);
+  controller.abort();
+  await assert.rejects(result, error => error instanceof DOMException && error.name === "AbortError");
+  assert.equal(transport?.aborted, true);
+  complete(Response.json({answer:"Late answer"}));
+});
+
+test("progressive replies keep a financial table complete and provider markup inert", () => {
+  const markup = renderToStaticMarkup(<AdvisorAnswerContent visibleWords={1} text={"| KPI | Amount |\n| --- | --- |\n| Net sales | CAD $12,345.67 |\nDo not show this later paragraph yet."}/>);
+  assert.match(markup, /CAD \$12,345\.67/);
+  assert.doesNotMatch(markup, /later paragraph/);
 });

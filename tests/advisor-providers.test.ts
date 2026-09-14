@@ -6,6 +6,21 @@ import { Miniflare } from "miniflare";
 import { ADVISOR_APP_HELP_INSTRUCTIONS, ADVISOR_SYSTEM_INSTRUCTIONS } from "../server/advisor-instructions.ts";
 const env = { OPENAI_API_KEY: "fixture-openai-key" };
 
+test("cancellation reaches OpenAI and a cancelled request cannot return an answer", async () => {
+  const controller = new AbortController();
+  let sent = false;
+  await assert.rejects(callAdvisor("openai", "Question", env, async (_url, init) => {
+    sent = true;
+    controller.abort();
+    assert.equal(init?.signal?.aborted, true);
+    return Response.json({status:"completed",output:[{type:"message",content:[{type:"output_text",text:"Late answer"}]}]});
+  }, "analysis", controller.signal), /response was stopped/);
+  assert.equal(sent, true);
+  sent = false;
+  await assert.rejects(callAdvisor("openai", "Question", env, async () => { sent = true; return Response.json({}); }, "analysis", controller.signal), /response was stopped/);
+  assert.equal(sent, false);
+});
+
 test("the unified assistant retains financial and operational disciplines without workspace access", () => {
   for (const instructions of [ADVISOR_SYSTEM_INSTRUCTIONS, ADVISOR_APP_HELP_INSTRUCTIONS]) {
     for (const skill of ["Accounting review:", "Treasury and cash planning:", "Marketing:", "Operations and inventory:", "Risk analysis:"]) assert.ok(instructions.includes(skill));

@@ -1,5 +1,5 @@
 import type { AdvisorProvider } from "../domain/advisor-providers";
-import { and, eq } from "drizzle-orm";
+import { and, eq, or } from "drizzle-orm";
 import { getDb } from "../db";
 import { integrationConsents } from "../db/schema";
 import {
@@ -17,6 +17,58 @@ import {
 } from "../domain/privacy-controls";
 import { ApiError } from "./api";
 
+function advisorConsentScope(purpose: "analysis" | "help" = "analysis") {
+  return {
+    dataCategoriesJson: JSON.stringify(purpose === "help"
+      ? ["The question entered by the authorized user", "Vanteloq product guidance", "Optional recent conversation messages with matching evidence and access; no workspace records"]
+      : ADVISOR_DATA_CATEGORIES),
+    purposesJson: JSON.stringify(purpose === "help" ? ["Explain how to use Vanteloq and BookLoQ", "Explain financial and analytical concepts without workspace records"] : ADVISOR_PROCESSING_PURPOSES),
+  };
+}
+
+/** A receipt belongs to one person and workspace, not a browser or a chat. */
+export async function advisorConsentStatus(organizationId: string, actorUserId: string) {
+  const analysis = advisorConsentScope("analysis"), help = advisorConsentScope("help");
+  const rows = await getDb().selectDistinct({
+    data: integrationConsents.dataCategoriesJson,
+    purposes: integrationConsents.purposesJson,
+  }).from(integrationConsents).where(and(
+    eq(integrationConsents.organizationId, organizationId),
+    eq(integrationConsents.actorUserId, actorUserId),
+    eq(integrationConsents.provider, "openai"),
+    eq(integrationConsents.status, "accepted"),
+    eq(integrationConsents.noticeVersion, ADVISOR_CONSENT_NOTICE_VERSION),
+    eq(integrationConsents.privacyPolicyVersion, PRIVACY_POLICY_VERSION),
+    or(
+      and(eq(integrationConsents.dataCategoriesJson, analysis.dataCategoriesJson), eq(integrationConsents.purposesJson, analysis.purposesJson)),
+      and(eq(integrationConsents.dataCategoriesJson, help.dataCategoriesJson), eq(integrationConsents.purposesJson, help.purposesJson)),
+    ),
+  )).limit(2);
+  const analysisAccepted = rows.some(row => row.data === analysis.dataCategoriesJson && row.purposes === analysis.purposesJson);
+  // The current business-data notice also explicitly covers product guidance.
+  return { analysis: analysisAccepted, help: analysisAccepted || rows.some(row => row.data === help.dataCategoriesJson && row.purposes === help.purposesJson) };
+}
+
+export async function withdrawAdvisorConsent(organizationId: string, actorUserId: string) {
+  const now = new Date();
+  await getDb().update(integrationConsents).set({ status: "withdrawn", withdrawnAt: now, updatedAt: now }).where(and(
+    eq(integrationConsents.organizationId, organizationId),
+    eq(integrationConsents.actorUserId, actorUserId),
+    eq(integrationConsents.provider, "openai"),
+    eq(integrationConsents.status, "accepted"),
+  ));
+}
+
+export async function requireAdvisorConsent(input: {
+  organizationId: string; actorUserId: string; purpose: "analysis" | "help";
+  noticeVersion: unknown; privacyPolicyVersion: unknown;
+}) {
+  if (input.noticeVersion !== ADVISOR_CONSENT_NOTICE_VERSION || input.privacyPolicyVersion !== PRIVACY_POLICY_VERSION)
+    throw new ApiError(409, "ADVISOR_CONSENT_NOTICE_STALE", "The Vanteloq AI data-use notice changed. Review it again before asking a question.");
+  const status = await advisorConsentStatus(input.organizationId, input.actorUserId);
+  if (!status[input.purpose]) throw new ApiError(409, "ADVISOR_CONSENT_REQUIRED", "Review and accept the Vanteloq AI data-use notice before asking a question.");
+}
+
 export async function recordAdvisorConsent(input: {
   provider: AdvisorProvider;
   purpose?: "analysis" | "help";
@@ -33,10 +85,7 @@ export async function recordAdvisorConsent(input: {
   }
 
   const provider = input.provider;
-  const dataCategoriesJson = JSON.stringify(input.purpose === "help"
-    ? ["The question entered by the authorized user", "Vanteloq product guidance", "Optional recent conversation messages with matching evidence and access; no workspace records"]
-    : ADVISOR_DATA_CATEGORIES);
-  const purposesJson = JSON.stringify(input.purpose === "help" ? ["Explain how to use Vanteloq and BookLoQ", "Explain financial and analytical concepts without workspace records"] : ADVISOR_PROCESSING_PURPOSES);
+  const { dataCategoriesJson, purposesJson } = advisorConsentScope(input.purpose);
   const [existing] = await getDb().select({
     id: integrationConsents.id,
     acceptedAt: integrationConsents.acceptedAt,
