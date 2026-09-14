@@ -18,7 +18,11 @@ The additive migration creates two review tables and a uniqueness constraint for
 
 ## Import reliability
 
-Production logs showed automatic POS requests cancelled near the one-minute request limit. Inspection found the R-Series history rebuild making an individual database write and lease-renewal request for every business date. It now uses the existing bounded batch writer and renews the lease per batch. Publication remains closed until all writes finish. Provider authorization, scope, reconciliation and approval gates remain intact. Production recovery still requires checking a completed sync after deployment.
+Production logs showed automatic POS requests cancelled near the one-minute request limit. Inspection found the R-Series history rebuild making an individual database write and lease-renewal request for every business date. It now uses the existing bounded batch writer and renews the lease per batch. Publication remains closed until all writes finish. Provider authorization, scope, reconciliation and approval gates remain intact. A post-deployment manual sync completed successfully in approximately 43 seconds and refreshed approved records. Historical backfill remains resumable and must be checked separately from connection success.
+
+## AI evidence accuracy
+
+Live verification identified an AI response describing a retail window without observations as zero sales. The provider projection now sends absent current/prior summaries, product/category counts and sales-dependent inventory measures as null. Verified stock quantities remain available, and a genuine recorded zero sale remains zero. This removes ambiguous zero aggregates from empty retail windows without changing source calculations or permissions.
 
 ## Verification
 
@@ -28,6 +32,7 @@ Production logs showed automatic POS requests cancelled near the one-minute requ
 - Existing decision calculations, AI rendering and KPI rules, security boundaries, source interaction contracts and migration chain.
 - Fictional-data browser checks for snoozing, saved-history access, required outcome notes, linked actions and responsive layouts. Phone controls use a 44-pixel minimum and 16-pixel form text.
 - An additional R-Series flow checks rebuilding 150 historical dates without losing another merchant's records.
+- Nineteen retail calculation tests pass, including absent observations versus a recorded zero, prior-only evidence and stock quantities without sales velocity.
 
 ## Still outside this release
 
