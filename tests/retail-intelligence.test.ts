@@ -62,6 +62,20 @@ test("unmatched sources or an absent baseline cannot produce a growth assertion"
   assert.equal(otherSource.comparison.comparable, false); assert.equal(otherSource.products[0].growthRate, null);
   const empty = analyze([]); assert.equal(empty.current.grossProfitCents, null); assert.equal(empty.current.averageBasketCents, null);
 });
+
+test("AI evidence distinguishes absent retail observations from observed zero sales", () => {
+  const stock = [{ key: "one", name: "A", sku: "A", provider: "pos", connectionId: "a", outletRef: "one", onHand: 20, reorderPoint: 3, updatedAt: now }];
+  const empty = projectAdvisorRetail(analyze([], { stock }));
+  assert.equal(empty.status, "no_records"); assert.equal(empty.current, null); assert.equal(empty.prior, null);
+  assert.equal(empty.totalProducts, null); assert.equal(empty.totalCategories, null); assert.equal(empty.customers, null);
+  assert.deepEqual(empty.hours, []); assert.equal(empty.operations, null);
+  assert.equal(empty.inventory[0].recordedOnHand, 20);
+  for (const field of ["unitsSold", "dailyVelocity", "daysOfCover", "turnover", "daysOnHand", "sellThrough", "reorderReviewUnits", "overstockReview"] as const) assert.equal(empty.inventory[0][field], null);
+  const zero = projectAdvisorRetail(analyze([line("zero", "A", { netCents: 0, costCents: 0 })]));
+  assert.equal(zero.status, "available"); assert.equal(zero.current?.netCents, 0); assert.equal(zero.current?.lineCount, 1);
+  const prior = projectAdvisorRetail(analyze([line("prior", "A", { soldAt: "2026-09-10T11:00:00" })]));
+  assert.equal(prior.current, null); assert.equal(prior.prior?.netCents, 1000); assert.deepEqual(prior.products, []);
+});
 test("local hours and dates handle naive provider times, offsets and DST", () => {
   const result = analyze([line("1", "A", { soldAt: "2026-09-12T05:30:00Z" }), line("2", "A", { soldAt: "2026-09-11T23:30:00" }), line("3", "A", { soldAt: "2026-09-12T06:00:00Z" })]);
   assert.equal(result.current.netCents, 2000); assert.equal(result.hours[23].purchaseBaskets, 2); assert.equal(result.hours[0].netCents, null);
