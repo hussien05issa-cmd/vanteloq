@@ -3,7 +3,8 @@
 import { type ReactNode, useEffect, useState } from "react";
 import ProductBrandLogo from "./product-brand-logo";
 import CustomPlanCallout from "./custom-plan-callout";
-import { apiFetch, signOut } from "./supabase-browser";
+import { readPlanSelection, parsePlanSelection, savePlanSelection, clearPlanSelection } from "../shared/plan-selection";
+import { currentSession, apiFetch, signOut } from "./supabase-browser";
 import {
   billingGateState,
   type BillingAccessType,
@@ -85,16 +86,30 @@ export default function BillingOnboardingGate({ children }: { children: ReactNod
     let retry: number | undefined;
     const billingReturn = new URLSearchParams(window.location.search).get("billing");
 
+    let preferred = readPlanSelection();
+    let selectionInitialized = false;
     const load = async (attempt = 0) => {
       try {
         const payload = await loadAccess();
+        if (!preferred && payload.plans.length && !selectionInitialized) {
+          const session = await currentSession();
+          preferred = parsePlanSelection(session?.user.user_metadata?.signup_plan, session?.user.user_metadata?.signup_bookloq);
+        }
         if (!active) return;
+        if (!selectionInitialized && preferred && payload.plans.some(item => item.key === preferred?.plan)) {
+          setIncludeBookloq(preferred.bookloq);
+        }
+        selectionInitialized = true;
         setData(payload);
-        setPlan(current => current || payload.plans.find(item => item.mostPopular)?.key || payload.plans[0]?.key || "");
+        setPlan(current => current || (preferred && payload.plans.some(item => item.key === preferred?.plan) ? preferred.plan : "") || payload.plans.find(item => item.mostPopular)?.key || payload.plans[0]?.key || "");
         const state = billingGateState(payload);
         if (state === "ready") {
+          clearPlanSelection();
           const clean = new URL(window.location.href);
           clean.searchParams.delete("billing");
+          clean.searchParams.delete("plan");
+          clean.searchParams.delete("bookloq");
+          clean.searchParams.delete("start");
           clean.searchParams.delete("session_id");
           window.history.replaceState({}, "", `${clean.pathname}${clean.search}${clean.hash}`);
           return;
@@ -136,6 +151,7 @@ export default function BillingOnboardingGate({ children }: { children: ReactNod
 
   async function checkout() {
     if (!plan || busy) return;
+    savePlanSelection({ plan, bookloq: includeBookloq });
     setBusy(true);
     setError("");
     try {
@@ -195,6 +211,7 @@ export default function BillingOnboardingGate({ children }: { children: ReactNod
           </button>)}
         </div>
         <label className="billing-addon"><input type="checkbox" checked={includeBookloq} onChange={event => setIncludeBookloq(event.target.checked)}/><span><b>Add {data.addon.name} for {monthlyPrice(data.addon.price, data.currency)} per month</b><small>Include bookkeeping and cash control features in the same subscription.</small></span></label>
+        <div className="billing-selected-total" aria-live="polite"><span><b>{data.plans.find(item => item.key === plan)?.name}{includeBookloq ? " + BookLoQ" : ""}</b><small>Monthly total before tax. Confirm the final amount in Stripe.</small></span><strong>{monthlyPrice((data.plans.find(item => item.key === plan)?.price ?? 0) + (includeBookloq ? data.addon.price : 0), data.currency)}</strong></div>
         <div className="billing-onboarding-security"><b>Card information is required.</b><span>Stripe securely collects and stores payment details. Vanteloq never receives card numbers. The subscription is charged according to the amount shown in Checkout.</span></div>
         <button className="billing-onboarding-submit" type="button" disabled={busy || !plan} onClick={() => void checkout()}>{busy ? "Opening secure checkout…" : "Continue to Stripe and subscribe"}</button>
       </>}

@@ -26,7 +26,8 @@ const ANALYTICS_ID_PATTERN = /^G-[A-Z0-9]+$/;
 const CONSENT_STORAGE_KEY = "vanteloq:cookie-consent:v1";
 const SCRIPT_ID = "vanteloq-google-analytics";
 const READY_EVENT = "vanteloq:analytics-ready";
-const PUBLIC_MEASUREMENT_PATHS = new Set(["/", "/demo", "/help", "/pricing", "/cookies", "/data-processing", "/legal", "/privacy", "/subprocessors", "/terms"]);
+const PUBLIC_MEASUREMENT_PATHS = new Set(["/", "/demo", "/help", "/pricing", "/contact", "/custom-plan", "/cookies", "/data-processing", "/legal", "/privacy", "/subprocessors", "/terms"]);
+const PUBLIC_EVENTS = new Set(["demo_view", "demo_engaged", "signup_start", "plan_selected", "pricing_view", "compatibility_checked", "inquiry_sent"]);
 
 function runGtag(...args: GtagCommand) {
   window.dataLayer = window.dataLayer ?? [];
@@ -62,7 +63,7 @@ function configureAnalytics() {
 }
 
 function isPublicMeasurementPage(pathname: string) {
-  const isPublicPath = PUBLIC_MEASUREMENT_PATHS.has(pathname) || pathname === "/resources" || pathname.startsWith("/resources/");
+  const isPublicPath = PUBLIC_MEASUREMENT_PATHS.has(pathname) || pathname === "/resources" || pathname.startsWith("/resources/") || pathname.startsWith("/features/");
   return isPublicPath && window.location.search === "";
 }
 
@@ -184,17 +185,24 @@ export function GoogleAnalyticsConsent() {
 
   useEffect(() => {
     if (!configured || choice !== "analytics" || !pathname || !isPublicMeasurementPage(pathname)) return;
-    const measure = (event: MouseEvent) => {
+    const measure = (event: Event) => {
       if (!window.__vanteloqAnalyticsReady || !(event.target instanceof Element)) return;
       const control = event.target.closest<HTMLElement>("[data-public-event]");
       if (!control?.closest(".public-site")) return;
       const name = control.dataset.publicEvent;
-      if (name !== "demo_view" && name !== "signup_start" && name !== "pricing_view") return;
+      if (!name || !PUBLIC_EVENTS.has(name)) return;
+      if (event.type === "click" && control.matches("select,input")) return;
       // Fixed event vocabulary only. No input values, account data or URL queries.
       runGtag("event", name, { page_location: `${window.location.origin}${pathname}`, page_path: pathname });
     };
+    const confirmed = (event: Event) => {
+      if (!window.__vanteloqAnalyticsReady || !(event instanceof CustomEvent) || event.detail !== "inquiry_sent") return;
+      runGtag("event", "inquiry_sent", { page_location: `${window.location.origin}${pathname}`, page_path: pathname });
+    };
     document.addEventListener("click", measure);
-    return () => document.removeEventListener("click", measure);
+    document.addEventListener("change", measure);
+    window.addEventListener("vanteloq:public-conversion", confirmed);
+    return () => { document.removeEventListener("click", measure); document.removeEventListener("change", measure); window.removeEventListener("vanteloq:public-conversion", confirmed); };
   }, [choice, configured, pathname]);
 
   if (!configured || choice === undefined) return null;

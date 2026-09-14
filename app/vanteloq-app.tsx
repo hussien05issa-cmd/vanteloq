@@ -1576,12 +1576,22 @@ function LiveSalesPanel({ data, currency, paymentRange, setPaymentRange, compact
   );
 }
 
+function FirstInsightPath({ data, navigate }: { data: CommandCentre; navigate: (view: View) => void }) {
+  const records = data.source.rowCount > 0;
+  return <details className="first-insight-path" open={!records}><summary><span><strong>Your path to a useful insight</strong><small>{records ? data.source.verifiedDays + " days with verified records · Review coverage before comparing" : "Start with a source, then check its records"}</small></span><span>Setup & coverage</span></summary><div className="first-insight-steps">
+    <article><span>{records ? "Records received" : "Start here"}</span><h3>1. Connect your source</h3><p>{data.liveSource.lastSuccessfulSyncAt ? "Last successful sync: " + new Date(data.liveSource.lastSuccessfulSyncAt).toLocaleDateString("en-CA") + ". A successful sync does not establish complete coverage." : "Authorize a supported account or import a structured CSV. Map each source to the correct location."}</p><button onClick={() => navigate("Integrations")}>Review connections →</button></article>
+    <article><span>{data.ready ? "Review available" : "Evidence needed"}</span><h3>2. Check the coverage</h3><p>{records ? "Latest approved date: " + (data.source.latestBusinessDate ?? "unavailable") + ". " : ""}{data.dataQuality.missingDimensions.length ? "Missing inputs: " + data.dataQuality.missingDimensions.join(", ") + "." : "Check dates, source totals and product costs before relying on a comparison."} A missing day may be a closure or an incomplete import.</p><button onClick={() => navigate("Reports")}>Inspect reports →</button></article>
+    <article><span>{data.insights.length ? "Findings available" : "After source review"}</span><h3>3. Investigate and act</h3><p>Inspect the evidence, ask Vanteloq AI and create a review task. Record the decision and check the outcome when new data arrives.</p><button onClick={() => navigate("Action Centre")}>Open the Action Centre →</button></article>
+  </div></details>;
+}
+
 function Overview({ data, currency, navigate, createTask, paymentRange, setPaymentRange }: { data: CommandCentre; currency: string; navigate: (view: View) => void; createTask: (seed: TaskSeed) => void; paymentRange: PaymentRange; setPaymentRange: (range: PaymentRange) => void }) {
   const hasCurrentDayData = data.today.transactionCount > 0 || data.today.refundsCents > 0;
-  if ((!data.ready || !data.current) && !hasCurrentDayData) return <EmptyCommandCentre navigate={navigate} />;
+  if ((!data.ready || !data.current) && !hasCurrentDayData) return <><FirstInsightPath data={data} navigate={navigate}/><EmptyCommandCentre navigate={navigate} /></>;
   const sourceName = data.liveSource.accountName || (data.liveSource.provider ? providerLabel(data.liveSource.provider) : "the connected source");
   return (
     <div className="content command-page">
+      <FirstInsightPath data={data} navigate={navigate}/>
       <section className="live-sales-heading">
         <div>
           <p>LATEST VERIFIED SALES</p>
@@ -1782,7 +1792,7 @@ function Intelligence({
   navigate: (view: View) => void;
   createTask: (seed: TaskSeed) => void;
 }) {
-  if (!data.ready) return <EmptyCommandCentre navigate={navigate} />;
+  if (!data.ready) return <><FirstInsightPath data={data} navigate={navigate}/><EmptyCommandCentre navigate={navigate} /></>;
   const operating = data.operatingSystem;
   return (
     <div className="content intelligence-page">
@@ -3894,7 +3904,7 @@ function BusinessBrief({
   createTask: (seed: TaskSeed) => void;
 }) {
   if (!data.ready || !data.current)
-    return <EmptyCommandCentre navigate={navigate} />;
+    return <><FirstInsightPath data={data} navigate={navigate}/><EmptyCommandCentre navigate={navigate} /></>;
   const current = data.current;
   return (
     <div className="content brief-page">
@@ -4284,7 +4294,7 @@ function ModuleWorkspace({
   navigate: (view: View) => void;
   createTask: (seed: TaskSeed) => void;
 }) {
-  if (!definition) return <EmptyCommandCentre navigate={navigate} />;
+  if (!definition) return <><FirstInsightPath data={data} navigate={navigate}/><EmptyCommandCentre navigate={navigate} /></>;
   const immediate: Partial<Record<View, string | null>> = {
     Sales: data.current?.netSalesCents == null ? null : money(data.current.netSalesCents, currency),
     Profit: data.current?.grossProfitCents == null ? null : money(data.current.grossProfitCents, currency),

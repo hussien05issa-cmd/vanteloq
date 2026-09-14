@@ -53,6 +53,7 @@ export type IntegrationPublicStatus = {
  * customer can understand without implying production availability.
  */
 export function integrationPublicStatus(provider: IntegrationCatalogEntry): IntegrationPublicStatus {
+  if (provider.id === "meta") return { label: "Provider setup required", tone: "staging" };
   if (provider.id === "quickbooks") return { label: "Sandbox only", tone: "staging" };
   if (provider.id === "plaid") return { label: "Production approval needed", tone: "staging" };
 
@@ -190,7 +191,7 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
     category: "Marketing",
     availability: "credentials_required",
     activationRequirement:
-      "Authorize Meta, select the exact ad account, and approve a sample before reporting begins. Spend, reach, clicks, CTR and CPC remain source-linked; campaign status and supported daily-budget changes require an explicit owner confirmation.",
+      "Meta advertising requires app credentials, the required permissions and provider review before customer connections can be enabled. Facebook and Instagram organic insights are not currently available. After activation, select the exact ad account and review a sample. Spend, reach, clicks, CTR and CPC remain source-linked; campaign status and supported daily-budget changes require an explicit owner confirmation.",
   },
   {
     id: "plaid",

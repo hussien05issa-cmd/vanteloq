@@ -7,25 +7,21 @@ import IntegrationBrandLogo from "./integration-brand-logo";
 import VanteloqAiShowcase from "./vanteloq-ai-showcase";
 import VanteloqAiLogo from "./vanteloq-ai-logo";
 import { integrationCatalog, integrationPublicStatus } from "./integration-catalog";
-import SourceRecordIcon from "./source-record-icon";
-import WorkspaceIcon from "./workspace-icon";
-import ResourceGuideVisual from "./resource-guide-visual";
-import { AccountSteps, OperatingStepPreview } from "./home-journey-visuals";
+import CompatibilityCheck from "./compatibility-check";
+import PublicPlanCards from "./public-plan-cards";
+import HomeDecisionPreview from "./home-decision-preview";
 import ProductBrandLogo from "./product-brand-logo";
-import PlatformPreview from "./platform-preview";
 import ProductDemo from "./product-demo";
-import CustomPlanCallout from "./custom-plan-callout";
-import FinanceProof from "./finance-proof";
 import SocialLinks from "./social-links";
 import AuthPanel, { type AuthPanelMode } from "./auth-panel";
 import { currentSession, getSupabase, signOut } from "./supabase-browser";
+import { readPlanSelection } from "../shared/plan-selection";
 import { canonicalLocation } from "../shared/auth-urls";
 import {
   clearTeamInviteCallback,
   parseTeamInviteCallback,
   type TeamInviteCallback,
 } from "../shared/team-invite-auth";
-import { RESOURCE_ARTICLES, getCategory, getReadingTime } from "./resources/content";
 import type { TeamInvitationDetails } from "./team-invitation-flow";
 
 const SecureOnboardingFlow = lazy(() => import("./secure-onboarding-flow"));
@@ -143,6 +139,7 @@ export default function Home() {
     const recoveryRequested = query.get("recovery") === "1";
     const inviteRequested = query.get("team_invite") === "1";
     const callback = parseTeamInviteCallback(window.location.href);
+    readPlanSelection();
     const requestedStart = query.get("start");
     const requestedAuth = query.get("auth");
     const requestedMode = requestedStart === "signup" || requestedStart === "signin"
@@ -269,6 +266,9 @@ export default function Home() {
 
   function closeAuth() {
     if (authMode === "reset-password") window.history.replaceState({}, "", window.location.pathname);
+    const clean = new URL(window.location.href);
+    clean.searchParams.delete("start"); clean.searchParams.delete("auth");
+    window.history.replaceState({}, "", clean.pathname + clean.search + clean.hash);
     setAuthOpen(false);
     setAuthMode("signup");
   }
@@ -392,7 +392,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [mobileNavOpen]);
 
-  return <div className="public-site">
+  return <div className="public-site journey-home">
     <a className="home-skip-link" href="#main-content">Skip to main content</a>
     <header className="public-nav">
       <div className="public-brand-family">
@@ -412,13 +412,13 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
         <a href="#demo" onClick={closeMobileNav}>Try the demo</a>
         <Link data-public-event="pricing_view" href="/pricing" onClick={closeMobileNav}>Pricing</Link>
         <Link href="/help" onClick={closeMobileNav}>Help</Link>
-        <div className="public-nav-mobile-socials">
-          <span>Follow Vanteloq</span>
-          <SocialLinks/>
-        </div>
         <div className="public-nav-mobile-actions">
           <button type="button" className="nav-login" onClick={() => { closeMobileNav(); start("signin"); }}>Sign in</button>
           <button type="button" onClick={() => { closeMobileNav(); start("signup"); }}>Create workspace</button>
+        </div>
+        <div className="public-nav-mobile-socials">
+          <span>Follow Vanteloq</span>
+          <SocialLinks/>
         </div>
       </nav>
       <div className="public-nav-actions">
@@ -430,343 +430,61 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
     <main id="main-content">
       <section className="home-hero" aria-labelledby="home-title">
         <div className="home-hero-copy">
-          <p className="home-eyebrow">RETAIL ANALYTICS, CASH AND FOLLOW-THROUGH</p>
-          <h1 id="home-title">Know what sells.<br/><em>See where to act.</em></h1>
-          <p>Find your strongest products, understand buying patterns and see what drives a revenue change. Add BookLoQ for accounting and cash planning, with Vanteloq AI to help interpret the evidence.</p>
-          <div className="public-actions">
-            <a href="#demo">Try the interactive demo <span aria-hidden="true">→</span></a>
-            <Link data-public-event="pricing_view" href="/pricing">Compare plans <span aria-hidden="true">→</span></Link>
-          </div>
-          <ul className="home-proof" aria-label="Verified platform controls">
-            <li>Trace results to source records</li>
-            <li>Review before you act</li>
-            <li>Control AI data sharing</li>
-          </ul>
-
-          <p className="home-demo-caption">Try it with sample data. No signup required.</p>
-        </div>
-        <figure className="product-visual product-visual-reference home-product-visual">
-          {/* The image is a real Vanteloq interface composition; the values shown are illustrative. */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/brand/vanteloq-command-ledger.webp" alt="Vanteloq command centre interface with sales, gross profit, cash, inventory and a decision queue." width={1487} height={1058} loading="eager" fetchPriority="high" />
-          <figcaption>Vanteloq command centre · Illustrative values · Available views depend on connected and verified source data</figcaption>
-        </figure>
+          <p className="home-eyebrow">BUSINESS INTELLIGENCE FOR INDEPENDENT RETAIL</p>
+          <h1 id="home-title">Understand what sells.<br/><em>Know what to do next.</em></h1>
+          <p>See what drives sales, which products work together and where stock needs attention. Connect your records, investigate the change and make a better-informed decision.</p>
+          <div className="public-actions"><a href="#demo" data-public-event="demo_view">Try the demo <span aria-hidden="true">→</span></a><a href="#connections">Check your POS <span aria-hidden="true">→</span></a></div>
+          <ul className="home-proof"><li>Traceable calculations</li><li>You approve changes</li><li>AI privacy controls</li></ul><p className="home-demo-caption">Explore fictional data. No signup required.</p>
+        </div><HomeDecisionPreview/>
       </section>
-
-
-      <nav className="home-feature-shortcuts" aria-label="Explore a product feature"><span>Take a closer look</span><Link href="/demo#products">Product performance <span aria-hidden="true">↗</span></Link><Link href="/demo#baskets">Basket patterns <span aria-hidden="true">↗</span></Link><Link href="/demo#retail">Revenue drivers <span aria-hidden="true">↗</span></Link><Link href="/demo#bookloq">Cash planning <span aria-hidden="true">↗</span></Link></nav>
-
-      <section className="home-decision-proof" aria-labelledby="decision-proof-title">
-        <div><p className="demo-eyebrow">BUILT FOR THE DECISIONS YOU MAKE</p><h2 id="decision-proof-title">From a number to a next step.</h2><p>Explore the calculations with fictional records. See the inputs, the result and what still needs review.</p></div>
-        <div className="decision-proof-grid">
-          <article><span>1 / REVENUE DRIVERS</span><h3>Revenue is down. Tap “Why?”</h3><p>Break the change into purchase volume, basket value and returns. See how category revenue contributes, with a bridge that reconciles to the cent.</p><Link href="/demo#retail">Inspect the revenue bridge →</Link></article>
-          <article><span>2 / PRODUCT & BASKET INTELLIGENCE</span><h3>See what customers buy together.</h3><p>Compare product performance, category revenue and discount reliance. Inspect purchase combinations with sample sizes and formulas visible.</p><Link href="/demo#baskets">Explore basket patterns →</Link></article>
-          <article><span>3 / INVENTORY & CASH</span><h3>Review the stock. Check the cash.</h3><p>Understand stock cover and expiry risk. Use BookLoQ to test a purchase against a 13-week cash plan before committing.</p><Link href="/demo#bookloq">Test the cash impact →</Link></article>
-        </div>
-        <div className="home-retail-next"><p><strong>One practical workflow.</strong> Connect and review your source, inspect the result, ask Vanteloq AI for an interpretation, then assign a review task. BookLoQ adds the cash context before you commit.</p><Link href="/demo#bookloq">Test a purchase in BookLoQ →</Link><button type="button" data-public-event="signup_start" onClick={() => start("signup")}>Create your workspace</button></div>
-      </section>
-
       <ProductDemo/>
-
+      <section className="home-decision-proof" id="platform" aria-labelledby="decision-proof-title">
+        <span id="capabilities"/><div><p className="demo-eyebrow">BUILT AROUND YOUR NEXT DECISION</p><h2 id="decision-proof-title">Three questions.<br/>A more useful business picture.</h2><p>Go from a change in the numbers to evidence you can inspect and a next step you can review.</p></div>
+        <div className="decision-proof-grid">
+          <article><span>1 / SALES & BASKETS</span><h3>What is driving performance?</h3><p>Compare revenue, category demand, discounts and products bought together. Separate the size of the change from assumptions about its cause.</p><Link href="/demo#retail">Investigate a sales change →</Link><Link className="outcome-detail" href="/features/retail-intelligence">How retail analysis works</Link></article>
+          <article><span>2 / INVENTORY</span><h3>Where is cash tied up in stock?</h3><p>Review stock cover, sell-through, expiry and reorder inputs. Check costs and supplier timing before committing to a purchase.</p><Link href="/demo#inventory">Inspect inventory risks →</Link><Link className="outcome-detail" href="/features/inventory-and-cash">How stock and cash connect</Link></article>
+          <article><span>3 / CASH & FOLLOW-THROUGH</span><h3>What should happen next?</h3><p>Test the cash impact in BookLoQ. Use the Action Centre to assign a review, then record the decision and outcome.</p><Link href="/demo#bookloq">Test a purchase decision →</Link><Link className="outcome-detail" href="/features/financial-review">How financial review works</Link></article>
+        </div>
+        <div className="journey-steps" aria-label="From signup to the first insight"><div><b>1</b><span><strong>Set up your workspace</strong>Verify your email, secure your account and choose a plan.</span></div><div><b>2</b><span><strong>Connect and check</strong>Map locations, finish the import and review source totals.</span></div><div><b>3</b><span><strong>Investigate your first insight</strong>See the evidence, ask AI and assign a next step.</span></div></div>
+      </section>
       <section className="home-connections" id="connections" aria-labelledby="connections-title">
-        <div className="home-connection-intro">
-          <div className="home-section-heading compact">
-            <p>CONNECTED BUSINESS</p>
-            <h2 id="connections-title">Connect the tools that already run your business.</h2>
-            <span>Start with a supported sales source or a structured import. Add inventory, financial and marketing context as each connection is configured and its records are reviewed. Check availability before choosing your plan.</span>
-          </div>
-        </div>
-        <FeatureReel />
-        <details className="home-connection-directory">
-          <summary>Explore providers and current availability <span>Check your systems before you sign up</span></summary>
-          <p>Each business authorizes its own provider account and reviews its records. Sign in to see which sources are connected to your workspace.</p>
-        <div className="home-connection-grid">
-          {publicIntegrations.map(provider => <article key={provider.id}><IntegrationBrandLogo name={provider.name} compact/><div><strong>{provider.name}</strong><span className={`home-connection-status ${provider.publicStatus.tone}`}>{provider.publicStatus.label}</span><span>{provider.detail}</span></div></article>)}
-          <article><IntegrationBrandLogo name="Daily CSV" compact/><div><strong>CSV import</strong><span className="home-connection-status available">Available</span><span>Turn structured operating files into verified records</span></div></article>
-        </div>
-        </details>
+        <div className="home-section-heading compact"><p>CHECK YOUR FIT FIRST</p><h2 id="connections-title">Keep your POS.<br/>Get more from its data.</h2><span>Choose your system to see what it can support, what you need to connect and what is still in development.</span></div>
+        <CompatibilityCheck/>
+        <details className="home-connection-directory"><summary>See all providers and availability</summary><div className="home-connection-grid">{publicIntegrations.map(provider => <article key={provider.id}><IntegrationBrandLogo name={provider.name} compact/><div><strong>{provider.name}</strong><span className={`home-connection-status ${provider.publicStatus.tone}`}>{provider.publicStatus.label}</span><span>{provider.detail}</span></div></article>)}<article><strong>CSV import</strong><span>Available using supported templates</span></article></div></details>
+        <FeatureReel/>
       </section>
-
-      <section className="home-problem" aria-labelledby="problem-title">
-        <div className="home-problem-intro">
-          <div className="home-section-heading">
-            <p>THE VISIBILITY PROBLEM</p>
-            <h2 id="problem-title">Your business should not tell four different stories.</h2>
-            <span>A sale, a stock movement, a supplier bill and an assigned task may describe the same event. Reviewing them separately makes it harder to see what changed and what needs attention.</span>
-          </div>
-          <figure className="home-record-review" aria-labelledby="record-review-title">
-            <header>
-              <div>
-                <span>EXAMPLE RECORD REVIEW</span>
-                <strong id="record-review-title">One business event, four verified records.</strong>
-              </div>
-              <small>Example records</small>
-            </header>
-            <div className="home-record-review-body">
-              <div className="home-record-sources" aria-label="Source records">
-                <article className="sale">
-                  <span className="home-record-source-mark"><SourceRecordIcon kind="sale"/></span>
-                  <div><small>SALE</small><strong>Point of sale receipt</strong><em>Receipt 1458 · Today, 2:41 p.m.</em></div>
-                  <p><b>$128.40</b><span>Posted</span></p>
-                </article>
-                <article className="stock">
-                  <span className="home-record-source-mark"><SourceRecordIcon kind="stock"/></span>
-                  <div><small>STOCK</small><strong>Inventory movement</strong><em>3 products · 5 units recorded</em></div>
-                  <p><b>5 units</b><span>Matched</span></p>
-                </article>
-                <article className="cost">
-                  <span className="home-record-source-mark"><SourceRecordIcon kind="cost"/></span>
-                  <div><small>COST</small><strong>Supplier cost record</strong><em>3 lines · Cost basis confirmed</em></div>
-                  <p><b>3 lines</b><span>Linked</span></p>
-                </article>
-                <article className="work">
-                  <span className="home-record-source-mark"><SourceRecordIcon kind="work"/></span>
-                  <div><small>WORK</small><strong>Manager follow-up</strong><em>Assigned · Due today</em></div>
-                  <p><b>Owner set</b><span>Ready</span></p>
-                </article>
-              </div>
-              <div className="home-record-path" aria-hidden="true">
-                <i/>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/brand/vanteloq-mark.png" alt="" width={180} height={180}/>
-                <i/>
-              </div>
-              <aside>
-                <span className="home-review-status">RECORDS IN AGREEMENT</span>
-                <strong>Ready for owner review</strong>
-                <p>The sale, stock movement, cost basis and assigned work agree.</p>
-                <ul>
-                  <li>Source timestamps aligned</li>
-                  <li>Product quantities reconciled</li>
-                  <li>Responsible person recorded</li>
-                </ul>
-                <div className="home-review-summary"><span><b>4</b><small>source records</small></span><span><b>0</b><small>open conflicts</small></span></div>
-                <footer><span>Prepared for approval</span><i aria-hidden="true">→</i></footer>
-              </aside>
-            </div>
-            <figcaption>Example values show how Vanteloq keeps the source, calculation context and responsible person visible before approval.</figcaption>
-          </figure>
-        </div>
-        <div className="home-problem-grid">
-          <article><small>SALES</small><h3>Sales records show what happened at checkout.</h3><p>Dates, locations, refunds and source definitions must be consistent before revenue and product activity can be compared.</p></article>
-          <article><small>INVENTORY</small><h3>Stock records show what is on hand.</h3><p>Movements, costs, expiry context and count evidence explain whether the recorded quantity can be trusted.</p></article>
-          <article><small>CASH</small><h3>A bank balance is one part of the picture.</h3><p>Known obligations and planned purchases affect how much cash is actually available to commit.</p></article>
-          <article><small>OPERATIONS</small><h3>Every decision needs a clear owner.</h3><p>Important findings need an approval boundary, a responsible person and a recorded outcome.</p></article>
-        </div>
-      </section>
-
-      <section className="home-platform" id="platform" aria-labelledby="platform-title">
-        <div className="home-platform-copy">
-          <p>ONE OPERATING MODEL</p>
-          <h2 id="platform-title">Move from source records to a decision you can explain.</h2>
-          <span>Vanteloq keeps the source, calculation status and approval path visible. Missing inputs remain unavailable or provisional instead of being silently replaced with confident-looking numbers.</span>
-          <ol className="home-step-list">
-            <li><b>1</b><div><strong>Connect or import</strong><span>Authorize a supported source or upload structured operating records.</span></div><OperatingStepPreview step="connect"/></li>
-            <li><b>2</b><div><strong>Verify and organize</strong><span>Map locations, reconcile totals and apply consistent metric definitions.</span></div><OperatingStepPreview step="verify"/></li>
-            <li><b>3</b><div><strong>Review and act</strong><span>Turn a supported finding into assigned work with the right approval.</span></div><OperatingStepPreview step="review"/></li>
-          </ol>
-        </div>
-        <PlatformPreview/>
-      </section>
-
-      <section className="home-capabilities" id="capabilities" aria-labelledby="capabilities-title">
-        <div className="home-section-heading">
-          <p>IMPLEMENTED CAPABILITIES</p>
-          <h2 id="capabilities-title">One place to understand the operating picture.</h2>
-          <span>Focus on the workflows available in the current product, with source coverage and calculation limits kept visible.</span>
-        </div>
-        <div className="home-capability-grid">
-          {[
-            ["1","Sales performance","Review sales, transactions, basket size, discounts, refunds and trends using imported daily records or supported source data."],
-            ["2","Margin visibility","Calculate gross profit and gross margin from net sales and recorded cost, while marking incomplete cost coverage."],
-            ["3","Inventory lifecycle","Track lots, expiry dates, shelf-life risk, first-expiring-first-out order and inventory cost at risk."],
-            ["4","Cash context","Separate current cash from known obligations and model supported purchasing or operating scenarios."],
-            ["5","Purchasing decisions","Evaluate demand, lead time, case packs, supplier constraints, expiry and cash before reviewing an order quantity."],
-            ["6","Operational follow-through","Create tasks from supported findings, assign responsibility and preserve the event and audit context."],
-          ].map(([number, title, copy]) => <article key={number}><small>{number}</small><span className="home-capability-signal" aria-hidden="true"><i/><i/><i/></span><h3>{title}</h3><p>{copy}</p></article>)}
-        </div>
-      </section>
-
-      <section className="home-marketing" id="marketing" aria-labelledby="marketing-title">
-        <div className="home-section-heading"><p>FROM ATTENTION TO ACTION</p><h2 id="marketing-title">Make marketing decisions with the business in view.</h2><span>Understand how people find you, what they do next and which action deserves your time. Keep the source visible, the plan focused and the result measurable.</span></div>
-        <div className="home-marketing-grid">
-          <article><WorkspaceIcon name="Search"/><h3>Understand discovery</h3><p>Review website traffic, search queries and local discovery from approved Google resources. Compare the same source and time period.</p><span>Search and traffic reports</span></article>
-          <article><WorkspaceIcon name="Customers"/><h3>Find the measurement gaps</h3><p>See where recorded journeys stop. Matched sales remain separate from advertising platforms&apos; reported conversions.</p><span>Evidence before attribution</span></article>
-          <article><WorkspaceIcon name="Action Centre"/><h3>Give the next move a plan</h3><p>Prepare a campaign brief, build consistent campaign links and carry recommendations into your calendar for review.</p><span>Goal, action and measurement</span></article>
-        </div>
-        <div className="home-marketing-footer"><p>Provider authorization and sample approval are required. Facebook and Instagram organic insights are not yet available. Planning tools do not publish content or change advertising budgets.</p><button type="button" data-public-event="signup_start" onClick={() => start("signup")}>Build your business workspace →</button><a href="#connections">Check connection availability</a></div>
-      </section>
-
       <section className="home-ai" id="vanteloq-ai" aria-labelledby="vanteloq-ai-title">
         <VanteloqAiShowcase/>
-        <div className="home-ai-copy">
-          <p>GROUNDED BUSINESS INTELLIGENCE</p>
-          <h2 id="vanteloq-ai-title">Your business context.<br/>A clearer next question.</h2>
-          <div className="vanteloq-ai-engines" aria-label="Vanteloq AI provider"><span>Powered by OpenAI</span></div>
-          <span>Explore sales, margins, inventory, marketing and BookLoQ with Vanteloq AI, powered by OpenAI. Ask about your permitted business evidence, financial concepts or how to use the app in one conversation.</span>
-          <p className="vanteloq-ai-activation">You choose when to share data. Memory starts off, saved chats can be deleted, and Workspace data can be turned off in AI Settings.</p>
-          <div className="home-ai-grid">
-            <article><strong>Ask in plain language</strong><span>Ask why sales changed, where margin is leaking or what deserves attention next.</span></article>
-            <article><strong>Evidence stays visible</strong><span>Business questions use permitted summaries with source dates and coverage. Review the evidence and check important conclusions.</span></article>
-            <article><strong>Memory is your choice</strong><span>Memory starts off. Enable it for a chat, switch it off, or delete your saved chats. Permitted context stays scoped to your user and workspace.</span></article>
-          </div>
-          <small className="home-ai-note">Vanteloq AI supports analysis and planning. Actions remain behind Vanteloq permissions and your approval.</small>
-          <a className="home-ai-demo-link" href="#demo">Explore the evidence in the interactive demo →</a>
-        </div>
+        <div className="home-ai-copy"><p>VANTELOQ AI · POWERED BY OPENAI</p><h2 id="vanteloq-ai-title">Ask the question.<br/>Understand the evidence.</h2><span>Ask about sales, inventory, marketing, BookLoQ or how to use the app in one conversation. AI uses only the workspace information you permit it to use.</span><div className="home-ai-grid"><article><strong>Business analysis and app help</strong><span>Work through a financial question or get help finding your next step.</span></article><article><strong>Privacy you control</strong><span>Memory starts off. Turn workspace sharing off or delete saved chats in AI Settings.</span></article></div><div className="home-bookloq-compact"><ProductBrandLogo product="bookloq"/><div><strong>Add BookLoQ · $39 CAD / month</strong><p>Journals, reconciliation, financial checks and 13-week cash planning. Financial records stay distinct from operating reports.</p><Link href="/demo#bookloq">Try BookLoQ →</Link></div></div><small className="home-ai-note">Review important conclusions. AI does not replace your accountant or approve decisions for you.</small></div>
       </section>
+      <section className="journey-evidence" id="security" aria-labelledby="evidence-title">
+        <div><p className="demo-eyebrow">PROOF YOU CAN INSPECT</p><h2 id="evidence-title">A useful answer shows its working.</h2><p>Try the sample records yourself. Change a location, inspect the revenue breakdown or remove a cost to see which results need more evidence.</p><div className="journey-evidence-links"><Link href="/demo#retail">Inspect the calculations →</Link><Link href="/demo#bookloq">Test financial checks →</Link></div></div>
+        <div className="journey-trust"><article><strong>Your records, your workspace</strong><p>Membership and role permissions protect business and financial access.</p></article><article><strong>Missing data stays visible</strong><p>Missing costs do not become zero. An incomplete import does not prove the store was closed.</p></article><article><strong>Clear responsibility</strong><p>Vanteloq is owned and operated by LexEdge Consulting. You review consequential actions.</p></article><div><Link href="/privacy">Privacy and deletion</Link><Link href="/subprocessors">Data processors</Link><Link href="/contact">Contact us</Link></div></div>
+      </section>
+      <section className="journey-pricing" id="plans" aria-labelledby="home-plans-title"><div className="home-section-heading compact"><p>START WITH THE RIGHT CAPACITY</p><h2 id="home-plans-title">A clear plan for your next stage.</h2><span>Choose the locations and team capacity you need. Add BookLoQ when you need an accounting workspace.</span></div><PublicPlanCards compact/><div className="journey-custom"><div><h3>Need more locations or a custom scope?</h3><p>Tell us what you need. We’ll discuss the scope and price before checkout.</p></div><Link href="/custom-plan">Request a custom plan →</Link></div></section>
+      <section className="home-faq journey-faq" aria-labelledby="faq-title"><div className="home-section-heading compact"><p>BEFORE YOU START</p><h2 id="faq-title">A few clear answers.</h2><span>Get the details before connecting your business.</span><Link href="/help">Visit the help centre →</Link></div><div className="home-faq-list">
+        <details><summary>Can I try it before signing up?</summary><p>Yes. The interactive demo uses fictional records and working retail calculations. It does not access a customer&apos;s records or send a request to an AI provider.</p><Link href="/demo">Explore the demo →</Link></details>
+        <details><summary>Will it work with my POS?</summary><p>Check the provider selector for current availability and supported data. Each business authorizes its own account, maps locations and reviews imported totals before relying on reports. CSV is an alternative where a supported template fits your records.</p><a href="#connections">Check your system →</a></details>
+        <details><summary>What happens after signup?</summary><p>Verify your email, set up an authenticator, add your business and confirm a subscription. Then connect a source, map locations and review the import. Reports show their source coverage so you can identify what is ready and what is missing.</p></details>
+        <details><summary>What does BookLoQ add?</summary><p>BookLoQ adds accounting records, journals, financial statements, reconciliation and cash planning for $39 CAD per month on top of a base plan. It does not file tax returns or certify your books. Keep your accountant involved.</p></details>
+        <details><summary>Can I control what AI remembers?</summary><p>Yes. Memory starts off. Choose whether to share permitted workspace summaries, turn memory on or off, and delete saved chats in AI Settings. AI access remains limited by your role.</p><Link href="/privacy">Read the privacy details →</Link></details>
+        <details><summary>Can I change or cancel my subscription?</summary><p>Use workspace billing to open Stripe&apos;s billing portal and review available changes or cancellation. Check the effective date and any prorated charges before confirming.</p></details>
+        <div className="journey-final"><strong>See a decision take shape.</strong><a href="#demo">Try the demo →</a><button type="button" data-public-event="signup_start" onClick={() => start("signup")}>Create workspace</button></div>
+      </div></section>
 
-      <FinanceProof/><div className="home-custom-plan"><CustomPlanCallout/></div>
-      <section className="home-product-family" aria-labelledby="product-family-title">
-        <div className="home-section-heading compact">
-          <p>PRODUCT FAMILY</p>
-          <h2 id="product-family-title">Operating visibility and financial records, kept distinct.</h2>
-          <span>Vanteloq is the core operating workspace. BookLoQ is the separate accounting workspace inside the product, available where the workspace has the required access.</span>
-        </div>
-        <div className="home-product-family-grid">
-          <article className="home-product-card"><div className="home-product-logo-shell"><ProductBrandLogo product="vanteloq" variant="full"/></div><div><small>VANTELOQ</small><h3>Understand the operation.</h3><p>Sales, inventory, cash context, purchasing, reports, data quality and assigned operational work.</p><span className="home-product-chip">CORE WORKSPACE</span></div></article>
-          <article className="home-product-card"><div className="home-product-logo-shell bookloq-logo-shell"><ProductBrandLogo product="bookloq" variant="full"/></div><div><small>BOOKLOQ</small><h3>Maintain the accounting workspace.</h3><p>Chart of accounts, journal controls, reconciliation, bills, documents and financial reporting where access is entitled.</p><span className="home-product-chip">ACCOUNTING WORKSPACE</span></div></article>
-        </div>
-      </section>
 
-      <section className="home-use-cases" aria-labelledby="use-cases-title">
-        <div className="home-section-heading compact">
-          <p>QUESTIONS OPERATORS ASK</p>
-          <h2 id="use-cases-title">Know what deserves attention.</h2>
-          <span>Useful analysis begins with a specific operating question and enough evidence to answer it responsibly.</span>
-        </div>
-        <div className="home-use-case-grid">
-          <a href="#capabilities"><small>SALES</small><strong>What changed in sales this week?</strong><span>Compare supported periods, locations and transaction measures.</span></a>
-          <Link href="/resources/how-to-calculate-gross-margin-small-business"><small>MARGIN</small><strong>What is contributing to gross profit?</strong><span>Keep sales, recorded cost and missing-cost coverage visible.</span></Link>
-          <Link href="/resources/how-to-track-inventory-small-business"><small>INVENTORY</small><strong>Which stock records need attention?</strong><span>Connect quantities to movements, counts and lifecycle risk.</span></Link>
-          <a href="#platform"><small>OPERATIONS</small><strong>Who owns the next step?</strong><span>Move from a supported finding to review, approval and follow-through.</span></a>
-        </div>
-      </section>
-
-      <section className="home-seo-copy" aria-labelledby="seo-copy-title">
-        <div>
-          <p>BUSINESS INTELLIGENCE FOR EVERYDAY OPERATORS</p>
-          <h2 id="seo-copy-title">A clearer operating view for independent retail businesses.</h2>
-          <div className="home-intelligence-map" role="img" aria-label="Supported sources are organized with context before they become an approved action.">
-            <span><small>SUPPORTED SOURCES</small><b>Sales · Inventory · Cash</b></span>
-            <i aria-hidden="true"/>
-            <span><small>BUSINESS CONTEXT</small><b>Definitions · Limits · Owners</b></span>
-            <i aria-hidden="true"/>
-            <span><small>REVIEWED ACTION</small><b>Decide · Approve · Follow through</b></span>
-          </div>
-        </div>
-<div className="home-seo-columns"><p>Vanteloq brings sales, inventory, purchasing and assigned work into one operating view. BookLoQ adds accounting records and cash planning. Connect a supported source or import a structured file, review the records, then investigate what changed.</p><details><summary>How Vanteloq keeps the context visible</summary><p>Reports show their dates, source coverage and missing inputs. Margin requires recorded product costs. Growth comparisons require equivalent periods. Estimates remain separate from recorded results, and consequential actions require human review.</p><p>Available views depend on your plan, permissions and reviewed records. Vanteloq supports management decisions; it does not replace accounting review, physical stock counts or professional judgment.</p></details></div>
-      </section>
-
-      <section className="home-resources" aria-labelledby="resources-title">
-        <div className="home-section-heading compact">
-          <p>PRACTICAL FIELD GUIDES</p>
-          <h2 id="resources-title">Learn how to run a more informed business.</h2>
-          <span>Detailed, source-backed explanations for the operating questions behind the dashboard.</span>
-        </div>
-        <div className="home-resource-grid">
-          {RESOURCE_ARTICLES.map((article) => {
-            const category = getCategory(article.category);
-            return (
-              <Link href={`/resources/${article.slug}`} key={article.slug}>
-                <ResourceGuideVisual category={article.category} slug={article.slug}/>
-                <small>{category?.shortName.toUpperCase()} · {getReadingTime(article)} MIN</small>
-                <h3>{article.title}</h3>
-                <p>{article.description}</p>
-                <span>Read guide →</span>
-              </Link>
-            );
-          })}
-        </div>
-        <Link className="home-text-link" href="/resources">Explore all Vanteloq resources →</Link> <Link className="home-text-link" href="/help">Visit the help centre →</Link>
-      </section>
-
-      <section className="home-security" id="security" aria-labelledby="security-title">
-        <div className="home-section-heading">
-          <p>IMPLEMENTED SECURITY CONTROLS</p>
-          <h2 id="security-title">Business data is business-critical.</h2>
-          <span>Authentication, authorization and audit controls are enforced within the current application, with sensitive actions kept behind server-side permission checks.</span>
-        </div>
-        <div className="home-security-grid">
-          <article><strong>Organization separation</strong><p>Signed-in membership limits protected records to the correct organization, with automated boundary tests across application routes.</p></article>
-          <article><strong>Role permissions</strong><p>Server-side permissions control sensitive integration, finance, export and workspace actions.</p></article>
-          <article><strong>Protected connections</strong><p>Implemented provider flows use scoped authorization, one-time state and encrypted credentials.</p></article>
-          <article><strong>Change history</strong><p>Important operating and connection actions are recorded, and duplicate requests are handled safely.</p></article>
-        </div>
-        <div className="home-security-evidence"><a href="/privacy">Privacy and deletion choices →</a><a href="/subprocessors">Who processes your data →</a><a href="https://github.com/hussien05issa-cmd/vanteloq/blob/main/tests/release-security.test.ts" target="_blank" rel="noopener noreferrer">Inspect application security tests ↗</a></div>
-      </section>
-
-      <section className="home-ownership" id="company" aria-labelledby="ownership-title">
-        <div className="home-ownership-brand">
-          <span>PRODUCT OWNERSHIP</span>
-          {/* This is the supplied LexEdge Consulting logo. */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/brand/lexedge-consulting-logo-web.png" srcSet="/brand/lexedge-consulting-logo-web.png 480w, /brand/lexedge-consulting-logo.png 1536w" sizes="(max-width: 620px) 280px, (max-width: 1100px) 220px, 326px" alt="LexEdge Consulting" width={480} height={320} loading="lazy" decoding="async" />
-          <p>Company ownership and operating responsibility</p>
-        </div>
-        <div className="home-ownership-copy">
-          <p>BUILT AND OPERATED BY LEXEDGE CONSULTING</p>
-          <h2 id="ownership-title">Vanteloq is a LexEdge Consulting product.</h2>
-          <span>LexEdge Consulting owns and operates Vanteloq. The company is responsible for the product direction, service operations, privacy commitments and customer support behind the platform.</span>
-          <div className="home-ownership-ledger" aria-label="LexEdge Consulting owns and operates Vanteloq">
-            <article><small>COMPANY</small><strong>LexEdge Consulting</strong><span>Product owner and operator</span></article>
-            <i aria-hidden="true">→</i>
-            <article><small>PRODUCT</small><strong>Vanteloq</strong><span>Business operations and analytics platform</span></article>
-          </div>
-        </div>
-      </section>
-
-      <section className="home-faq" aria-labelledby="faq-title">
-        <div className="home-section-heading compact">
-          <p>FREQUENTLY ASKED QUESTIONS</p>
-          <h2 id="faq-title">Clear answers before you create a workspace.</h2>
-        </div>
-        <div className="home-faq-layout">
-          <aside className="home-faq-visual" aria-label="Vanteloq workspace principles">
-            <ProductBrandLogo product="vanteloq" variant="full"/>
-            <strong>Clarity before commitment.</strong>
-            <p>Know what connects, what needs verification and where a person stays in control.</p>
-            <div><span>Supported sources</span><span>Visible data limits</span><span>Human approvals</span></div>
-            <div className="home-faq-owner">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/brand/lexedge-consulting-logo-web.png" alt="" width={480} height={320} loading="lazy" />
-              <span>Owned and operated by LexEdge Consulting</span>
-            </div>
-          </aside>
-          <div className="home-faq-list">
-            <details><summary>What is Vanteloq?</summary><p>Vanteloq is a business operations and analytics platform for independent retailers. It brings supported sales, inventory, cash, purchasing and operational records into one workspace, then shows where each result came from, what is missing and what needs attention. It is designed to help owners make better decisions without hiding uncertainty behind a polished dashboard.</p></details>
-            <details><summary>Who owns Vanteloq?</summary><p>Vanteloq is owned and operated by LexEdge Consulting. LexEdge Consulting is responsible for the product direction, service operations, privacy commitments and customer support behind Vanteloq.</p></details>
-            <details><summary>How are LexEdge Consulting and Vanteloq connected?</summary><p>LexEdge Consulting is the company. Vanteloq is the company&apos;s business software product. A Vanteloq subscription provides access to the software and does not create a separate consulting engagement unless the customer and LexEdge Consulting agree to one in writing.</p></details>
-            <details><summary>Can I explore the product before signing up?</summary><p>Yes. The interactive demo includes retail revenue drivers, product and basket analysis, inventory evidence, hourly demand and BookLoQ cash scenarios. It uses fictional sample records and the same retail calculation engine as the workspace. Missing input scenarios show why unsupported results are withheld.</p><Link href="/demo#retail">Explore retail intelligence →</Link></details>
-            <details><summary>Who is Vanteloq designed for?</summary><p>The current product and connection work are designed primarily for independent retailers and the owners or managers who oversee sales, inventory, purchasing, cash and daily operations.</p></details>
-            <details><summary>What systems can I connect?</summary><p>The Connections section shows each provider&apos;s availability. Authorize and review means a connection path exists and each business must authorize its account, complete any required provider setup and review the imported records. Your workspace shows your own account&apos;s connection status. Sandbox only and Production approval needed connections still require production activation. In development and Coming soon connections remain unavailable. Structured CSV import is available.</p></details>
-            <details><summary>Do I need to replace my POS?</summary><p>No. Vanteloq is designed to use supported source records while the POS remains the transaction system. Availability and depth depend on the connector and successful reconciliation.</p></details>
-            <details><summary>Can Vanteloq help with inventory?</summary><p>Yes. Implemented inventory tools cover lots, expiry, shelf-life risk, first-expiring-first-out review and a constrained reorder calculation. Recommendations still require reliable demand, cost, lead-time, supplier and cash inputs.</p></details>
-            <details><summary>What is BookLoQ?</summary><p>BookLoQ is the accounting workspace inside the Vanteloq product family. It keeps journals, bills, documents, reconciliation and financial reporting separate from the main operating workspace. Access depends on the customer&apos;s plan and any required connection setup.</p></details>
-            <details><summary>Does Vanteloq make decisions or move money automatically?</summary><p>No. Vanteloq organizes evidence and prepares reviewable recommendations. Financial connections, accounting records and important operating actions stay behind user consent, role permissions and human approval.</p></details>
-            <details><summary>How does Vanteloq protect workspace data?</summary><p>The application uses secure authentication, organization-separated records, role-based server permissions, protected provider authorization, and recorded security events. Vanteloq does not claim SOC 2, ISO, or other certifications that have not been obtained.</p></details>
-            <details><summary>Can I delete my account and data?</summary><p>Yes. An authorized account owner can request account and workspace deletion from the application. Vanteloq removes eligible application data and disconnects supported providers, while retaining only information that must be kept for security, billing, fraud prevention or legal obligations. The privacy notice explains the current process and retention limits.</p></details>
-            <details><summary>Is Vanteloq a replacement for an accountant or legal adviser?</summary><p>No. Vanteloq provides software, records and decision support. It does not provide legal, tax, audit or professional accounting advice. Customers remain responsible for reviewing their records and using qualified advisers where appropriate.</p></details>
-          </div>
-        </div>
-      </section>
-
-      <div className="home-onboarding-summary"><AccountSteps/></div>
-      <section className="home-final-cta" aria-labelledby="final-cta-title">
-        <div><p>START WITH A CLEARER VIEW</p><h2 id="final-cta-title">Understand what is happening in your business.</h2><span>Create a workspace, add supported information and keep the source, calculation and next action connected.</span></div>
-        <div><button type="button" data-public-event="signup_start" onClick={() => start("signup")}>Create your workspace</button><a href="#platform">Explore the platform</a></div>
-      </section>
     </main>
 
-    <footer className="home-footer">
+    <footer className="home-footer" id="company">
       <div className="home-footer-brand"><div><ProductBrandLogo product="vanteloq"/><strong>Vanteloq</strong></div><p>Source-aware operations and analytics for independent retail.</p><div className="home-footer-owner">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/brand/lexedge-consulting-logo-web.png" alt="LexEdge Consulting" width={480} height={320} loading="lazy" />
         <span>Owned and operated by LexEdge Consulting</span>
       </div></div>
-      <div><strong>PRODUCT</strong><Link data-public-event="pricing_view" href="/pricing">Pricing</Link><Link href="/demo">Interactive demo</Link><a href="#platform">How it works</a><a href="#capabilities">Capabilities</a><a href="#connections">Connections</a><a href="#security">Security</a></div>
+      <div><strong>PRODUCT</strong><Link href="/features/retail-intelligence">Retail intelligence</Link><Link data-public-event="pricing_view" href="/pricing">Pricing</Link><Link href="/demo">Interactive demo</Link><a href="#platform">How it works</a><a href="#capabilities">Capabilities</a><a href="#connections">Connections</a><a href="#security">Security</a></div>
       <div><strong>RESOURCES</strong><Link href="/help">Help centre</Link><Link href="/resources">All resources</Link><Link href="/resources/inventory">Inventory</Link><Link href="/resources/finance">Finance</Link><Link href="/resources/analytics">Analytics</Link></div>
       <div><strong>LEGAL</strong><Link href="/legal">Legal centre</Link><Link href="/privacy">Privacy</Link><Link href="/terms">Terms</Link><Link href="/cookies">Cookies</Link></div>
-      <div><strong>ACCOUNT</strong><button type="button" onClick={() => start("signin")}>Sign in</button><button type="button" data-public-event="signup_start" onClick={() => start("signup")}>Create workspace</button></div>
+      <div><strong>ACCOUNT</strong><Link href="/contact">Contact</Link><button type="button" onClick={() => start("signin")}>Sign in</button><button type="button" data-public-event="signup_start" onClick={() => start("signup")}>Create workspace</button></div>
       <p className="home-footer-note">© {new Date().getFullYear()} LexEdge Consulting. Vanteloq is a product owned and operated by LexEdge Consulting. Feature availability depends on workspace access, configured sources and verified records.</p>
     </footer>
   </div>;

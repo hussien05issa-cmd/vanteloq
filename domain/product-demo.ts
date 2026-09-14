@@ -1,3 +1,4 @@
+import { retailDemoInput } from "./retail-demo";
 import { advisorDailySeries, advisorKpis, type AdvisorDay } from "./advisor-kpis";
 
 export type DemoLocation = "all" | "central" | "riverside";
@@ -8,14 +9,24 @@ const day = (offset: number) => new Date(Date.UTC(2026, 4, 1 + offset)).toISOStr
 
 /** Deliberately fictional daily records. Never seeded into a customer database. */
 export function demoRecords(location: DemoLocation = "all", quality: DemoQuality = "complete"): AdvisorDay[] {
-  return Object.keys(DEMO_LOCATIONS).flatMap((locationRef, shop) => Array.from({ length: 56 }, (_, index) => {
-    const transactions = 29 + shop * 7 + index % 7 * 3 + [-3, 2, -1, 2][Math.floor(index % 28 / 7)] + (index >= 28 ? 5 : 0);
-    const netSalesCents = transactions * (shop ? 3850 : 4250);
-    const costCents = Math.round(netSalesCents * (index >= 28 ? .61 : .58));
-    return { date: day(index), locationRef, netSalesCents, grossProfitCents: quality === "missing-cost" && index === 55 && shop === (location === "riverside" ? 1 : 0) ? null : netSalesCents - costCents,
-      transactions, discountsCents: transactions * 125, refundsCents: index % 6 === 0 ? 4250 : 0, unitsSold: transactions * 2,
-      labourCostCents: 22000 + shop * 4000, inventoryValueCents: 1850000 + shop * 500000, accountsPayableCents: 420000 + shop * 180000 };
-  })).filter(row => (location === "all" || row.locationRef === location) && !(quality === "missing-days" && row.date >= day(7) && row.date < day(14)));
+  const input = retailDemoInput(location, quality === "missing-cost");
+  const summaries = new Map<string, AdvisorDay>();
+  const receipts = new Map<string, Set<string>>();
+  for (const line of input.lines) {
+    const date = line.soldAt.slice(0, 10), locationRef = line.outletRef;
+    if (!locationRef) throw new Error("A sample receipt must identify its shop.");
+    if (quality === "missing-days" && date >= day(7) && date < day(14)) continue;
+    const key = date + ":" + locationRef;
+    const row = summaries.get(key) ?? { date, locationRef, netSalesCents: 0, grossProfitCents: 0, transactions: 0, discountsCents: 0, refundsCents: 0, unitsSold: 0, labourCostCents: null, inventoryValueCents: null, accountsPayableCents: null };
+    row.netSalesCents = (row.netSalesCents ?? 0) + line.netCents;
+    row.grossProfitCents = row.grossProfitCents === null || line.costCents === null ? null : row.grossProfitCents + line.netCents - line.costCents;
+    row.discountsCents = (row.discountsCents ?? 0) + line.discountCents;
+    row.unitsSold = (row.unitsSold ?? 0) + line.quantityMilli / 1000;
+    const sales = receipts.get(key) ?? new Set<string>();
+    sales.add(line.saleId); receipts.set(key, sales); row.transactions = sales.size;
+    summaries.set(key, row);
+  }
+  return [...summaries.values()];
 }
 
 export function demoAnalysis(location: DemoLocation, quality: DemoQuality) {

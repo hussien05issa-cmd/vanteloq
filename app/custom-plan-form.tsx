@@ -32,6 +32,7 @@ export default function CustomPlanForm({ purpose = "custom_plan" }: { purpose?: 
       const result = await response.json();
       if (!response.ok || result.sent !== true) throw new Error(result.error?.message ?? "Delivery could not be confirmed. Please retry.");
       setSent(true);
+      window.dispatchEvent(new CustomEvent("vanteloq:public-conversion", { detail: "inquiry_sent" }));
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Delivery could not be confirmed. Please retry."); }
     finally { setBusy(false); setToken(""); setReset(value => value + 1); }
   }

@@ -1,18 +1,25 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { retailDemo } from "../domain/retail-demo";
 import { demoAnalysis, demoRecords, demoScenario } from "../domain/product-demo";
 
 test("sample totals reconcile across shops and use the production KPI definitions", () => {
   const all = demoAnalysis("all", "complete").kpis;
-  assert.equal(all.current?.netSalesCents, 10_507_000);
-  assert.equal(all.current?.transactions, 2604);
-  assert.equal(all.current?.grossProfitCents, 4_097_716); // Each daily cost is rounded to cents before summing.
-  assert.ok(Math.abs(all.current!.grossMarginPercent! - 39) < .001);
-  assert.ok(Math.abs(all.previous!.grossMarginPercent! - 42) < .001);
+  assert.equal(all.current?.netSalesCents, 2_459_361);
+  assert.equal(all.current?.transactions, 420);
+  assert.equal(all.current?.grossProfitCents, 1_233_021); // Daily summaries aggregate the exact receipt-line cents.
+  const retail = retailDemo();
+  assert.equal(all.current!.netSalesCents, retail.current.netCents);
+  assert.equal(all.current!.grossProfitCents, retail.current.grossProfitCents);
+  assert.equal(all.current!.transactions, retail.current.purchaseBaskets);
+  assert.equal(all.current!.start, retail.period.from);
+  assert.equal(all.current!.end, retail.period.to);
+  assert.equal(all.previous!.netSalesCents, retail.prior.netCents);
   assert.equal(all.comparisonComplete, true);
   assert.equal(all.netProfitCents, null);
   const central = demoAnalysis("central", "complete").kpis.current!;
   const riverside = demoAnalysis("riverside", "complete").kpis.current!;
+  assert.notEqual(central.netSalesCents, riverside.netSalesCents);
   assert.equal(central.netSalesCents! + riverside.netSalesCents!, all.current.netSalesCents);
   assert.equal(central.transactions! + riverside.transactions!, all.current.transactions);
 });
