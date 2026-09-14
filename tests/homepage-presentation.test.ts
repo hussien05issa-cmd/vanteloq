@@ -18,13 +18,12 @@ test("homepage sequence labels do not use leading zeroes", () => {
 
   assert.ok(platform, "homepage should render the platform sequence");
   assert.ok(capabilities, "homepage should render the capability sequence");
-  assert.ok(advisor, "homepage should render the AI evidence sequence");
+  assert.ok(advisor, "homepage should render the AI presentation");
   assert.match(platform, /<b>1<\/b>/);
   assert.match(platform, /<b>2<\/b>/);
   assert.match(platform, /<b>3<\/b>/);
-  assert.match(advisor, /<b>1<\/b>/);
-  assert.match(advisor, /<b>2<\/b>/);
-  assert.match(advisor, /<b>3<\/b>/);
+  assert.match(advisor, /ai-orbit-showcase/);
+  assert.doesNotMatch(advisor, /Preview thinking|Pause logo animation/);
   for (const number of [1, 2, 3, 4, 5, 6]) assert.match(capabilities, new RegExp(`<small>${number}<\\/small>`));
   assert.doesNotMatch(`${platform}${capabilities}${advisor}`, />(?:01|02|03|04|05|06)</);
 });

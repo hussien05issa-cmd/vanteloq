@@ -95,13 +95,12 @@ test("homepage sequence labels do not use leading zeroes", async () => {
 
   assert.ok(platform, "homepage should render the platform sequence");
   assert.ok(capabilities, "homepage should render the capability sequence");
-  assert.ok(advisor, "homepage should render the OpenAI evidence sequence");
+  assert.ok(advisor, "homepage should render the AI presentation");
   assert.match(platform, /<b>1<\/b>/);
   assert.match(platform, /<b>2<\/b>/);
   assert.match(platform, /<b>3<\/b>/);
-  assert.match(advisor, /<b>1<\/b>/);
-  assert.match(advisor, /<b>2<\/b>/);
-  assert.match(advisor, /<b>3<\/b>/);
+  assert.match(advisor, /ai-orbit-showcase/);
+  assert.doesNotMatch(advisor, /Preview thinking|Pause logo animation/);
   for (const number of [1, 2, 3, 4, 5, 6]) assert.match(capabilities, new RegExp(`<small>${number}<\\/small>`));
   assert.doesNotMatch(`${platform}${capabilities}${advisor}`, />(?:01|02|03|04|05|06)</);
 });
@@ -129,7 +128,7 @@ test("homepage preserves responsive and keyboard interaction safeguards", async 
   assert.match(source, /function FeatureReelStage/);
   assert.match(source, /Illustrative interface/);
   assert.doesNotMatch(source, /vanteloq-feature-reel-v1\.webp/);
-  assert.match(source, /Pause feature tour/);
+  assert.doesNotMatch(source, /Pause feature tour|feature-reel-play/);
   assert.match(css, /prefers-reduced-motion: reduce/);
   assert.doesNotMatch(source, /className="tour-focus/);
   assert.match(css, /\.home-connection-grid \{ display: grid; grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
