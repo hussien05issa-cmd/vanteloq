@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { FieldLabel, FormInput, FormTextarea, FormLegend, RequiredMark } from "./form-primitives";
 import TurnstileField from "./turnstile-field";
 
 export default function CustomPlanForm({ purpose = "custom_plan" }: { purpose?: "custom_plan" | "contact" }) {
@@ -38,20 +39,21 @@ export default function CustomPlanForm({ purpose = "custom_plan" }: { purpose?: 
   }
   if (sent) return <section className="custom-plan-success" role="status"><span aria-hidden="true">✓</span><h2>Your request is with us.</h2><p>We’ll review your message and respond using the contact details you provided.{purpose === "custom_plan" && " Your subscription has not changed, and no payment was taken."}</p><Link href={purpose === "custom_plan" ? "/pricing" : "/"}>{purpose === "custom_plan" ? "Return to plans" : "Return to Vanteloq"} →</Link></section>;
   return <form className="custom-plan-form" onSubmit={event => void submit(event)} onChange={() => { if (!busy) submissionId.current = ""; }}>
+    <FormLegend/>
     <div className="custom-plan-fields">
-      <label>Your name<input name="name" autoComplete="name" required maxLength={100} disabled={busy}/></label>
-      <label>{purpose === "custom_plan" ? "Work email" : "Email address"}<input name="email" type="email" autoComplete="email" required maxLength={254} disabled={busy}/></label>
-      <label><span className="custom-plan-field-title">Business name{purpose === "contact" && <small> (optional)</small>}</span><input name="company" autoComplete="organization" required={purpose === "custom_plan"} maxLength={160} disabled={busy}/></label>
-      <label><span className="custom-plan-field-title">Phone <small>(optional)</small></span><input name="phone" type="tel" autoComplete="tel" maxLength={60} disabled={busy}/></label>
+      <label><FieldLabel>Your Name</FieldLabel><FormInput aria-label="Your Name" name="name" autoComplete="name" required maxLength={100} disabled={busy}/></label>
+      <label><FieldLabel>{purpose === "custom_plan" ? "Work Email" : "Email Address"}</FieldLabel><FormInput aria-label={purpose === "custom_plan" ? "Work Email" : "Email Address"} name="email" type="email" autoComplete="email" required maxLength={254} disabled={busy}/></label>
+      <label><FieldLabel required={purpose === "custom_plan"}>Business Name</FieldLabel><FormInput aria-label={purpose === "custom_plan" ? "Business Name" : "Business Name (Optional)"} name="company" autoComplete="organization" required={purpose === "custom_plan"} maxLength={160} disabled={busy}/></label>
+      <label><FieldLabel required={false}>Phone</FieldLabel><FormInput aria-label="Phone (Optional)" name="phone" type="tel" autoComplete="tel" maxLength={60} disabled={busy}/></label>
     </div>
-    <label>{purpose === "custom_plan" ? "What does your business need?" : "How can we help?"}<textarea name="needs" required minLength={20} maxLength={3000} rows={6} disabled={busy} placeholder={purpose === "custom_plan" ? "Tell us about your locations, team size, current systems and the workflows you want to improve." : "Describe your question or privacy request. If relevant, include your request receipt number."}/></label>
+    <label><FieldLabel>{purpose === "custom_plan" ? "Business Requirements" : "Your Message"}</FieldLabel><FormTextarea aria-label={purpose === "custom_plan" ? "Business Requirements" : "Your Message"} name="needs" required minLength={20} maxLength={3000} rows={6} disabled={busy} placeholder={purpose === "custom_plan" ? "Tell us about your locations, team size, current systems and the workflows you want to improve." : "Describe your question or privacy request. If relevant, include your request receipt number."}/></label>
     <p className="custom-plan-hint">Share business requirements only. Please leave out passwords, bank details and customer records.</p>
     <div className="custom-plan-honeypot" aria-hidden="true"><label>Website<input name="website" tabIndex={-1} autoComplete="off"/></label></div>
-    <label className="custom-plan-consent"><input name="consent" type="checkbox" required disabled={busy}/><span>I agree that Vanteloq, operated by LexEdge Consulting, may use these details to respond to this inquiry. <Link href="/privacy">Privacy policy</Link></span></label>
+    <label className="custom-plan-consent"><input name="consent" type="checkbox" required disabled={busy}/><span>I agree that Vanteloq, operated by LexEdge Consulting, may use these details to respond to this inquiry. <Link href="/privacy">Privacy Policy</Link> <RequiredMark/></span></label>
     {loading && <p role="status">Preparing the secure form…</p>}
     {config && <TurnstileField siteKey={config.siteKey} action={config.action} resetSignal={reset} onToken={setToken} onError={setError}/>}
     {error && <p className="custom-plan-error" role="alert">{error}</p>}
-    {!config && !loading ? <button type="button" onClick={() => { setLoading(true); setError(""); setAttempt(value => value + 1); }}>Retry loading the form</button> : <button type="submit" disabled={busy || !token || !config}>{busy ? "Sending your request…" : purpose === "custom_plan" ? "Send custom plan request" : "Send message"}</button>}
+    {!config && !loading ? <button type="button" onClick={() => { setLoading(true); setError(""); setAttempt(value => value + 1); }}>Retry loading the form</button> : <button type="submit" disabled={busy || !token || !config}>{busy ? "Sending your request…" : purpose === "custom_plan" ? "Send Custom Plan Request" : "Send Message"}</button>}
     <small>{purpose === "custom_plan" ? "No payment details required. Any custom scope and price are agreed before checkout." : "Your details are used to respond to this request. This does not subscribe you to marketing."}</small>
   </form>;
 }

@@ -6,3 +6,12 @@
 @media(max-width:760px){.analytics-consent{right:12px;bottom:12px;left:12px;grid-template-columns:auto 1fr;width:calc(100% - 24px);padding:17px}.analytics-consent-actions{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;width:100%}.analytics-consent-actions button{width:100%}.analytics-consent-copy h2{font-size:17px}.analytics-consent-copy p{font-size:11px}}
 @media(max-width:480px){.analytics-consent{grid-template-columns:1fr}.analytics-consent-brand.product-brand-logo.icon{width:44px;height:44px}.analytics-consent-actions{grid-template-columns:1fr}.analytics-settings-button{right:12px;bottom:12px}}
 @media(prefers-reduced-motion:reduce){.analytics-consent,.analytics-settings-button{scroll-behavior:auto}}
+/* On phones, privacy settings sit after the page content instead of floating
+   over chat controls, cards or the device's safe area. */
+@media(max-width:760px){
+  .analytics-settings-button{position:static;display:flex;align-items:center;width:fit-content;min-height:44px;margin:16px 18px max(18px,env(safe-area-inset-bottom));padding:10px 16px;border-radius:12px;background:#f3f6fb;color:#344f70;box-shadow:none;backdrop-filter:none;font-size:13px;font-weight:600}
+  .analytics-consent{bottom:max(12px,env(safe-area-inset-bottom));max-height:calc(100dvh - 24px);background:#f8faff;text-align:left}
+  .analytics-consent-copy p{font-size:14px;line-height:1.6}
+  .analytics-consent-copy a{font-size:13px;min-height:44px;display:inline-flex;align-items:center}
+  .analytics-consent-actions button{min-height:48px;font-size:14px}
+}

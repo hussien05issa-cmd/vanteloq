@@ -2,6 +2,7 @@
 
 import { type FormEvent, useState } from "react";
 import Link from "next/link";
+import { FieldLabel, FormInput, FormLegend, PasswordInput, RequiredMark } from "./form-primitives";
 import ProductBrandLogo from "./product-brand-logo";
 import { apiFetch, getSupabase, signOut } from "./supabase-browser";
 import { passwordExposureStatus } from "../shared/password-exposure";
@@ -96,10 +97,11 @@ export default function TeamInvitationFlow({
       <div className="team-invitation-copy"><p>WELCOME TO {invitation.businessName.toUpperCase()}</p><h1>Finish your secure team account.</h1><span>Your access is internal. You will not be asked for a card and this account will not be counted as a paid subscriber.</span></div>
       <div className="team-invitation-summary"><article><small>EMAIL</small><b>{invitation.email}</b><span>Verified invitation identity</span></article><article><small>VANTELOQ ROLE</small><b>{invitation.vanteloqRole.replaceAll("_", " ")}</b><span>Access to the existing workspace</span></article><article><small>PRIVATE CONSOLE</small><b>{invitation.consoleAccess ? invitation.consoleRole : "Not included"}</b><span>{invitation.consoleAccess ? invitation.consoleScopes.join(" + ") : "Vanteloq only"}</span></article></div>
       <form onSubmit={submit}>
-        <label>Full name<input value={displayName} onChange={(event) => setDisplayName(event.target.value)} maxLength={120} autoComplete="name" required/></label>
-        <div><label>Create a password<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="new-password" required/></label><label>Confirm password<input type="password" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} autoComplete="new-password" required/></label></div>
+        <FormLegend/>
+        <label><FieldLabel>Full Name</FieldLabel><FormInput aria-label="Full Name" value={displayName} onChange={(event) => setDisplayName(event.target.value)} maxLength={120} autoComplete="name" required/></label>
+        <div><label><FieldLabel>Create a Password</FieldLabel><PasswordInput value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="new-password" required/></label><label><FieldLabel>Confirm Password</FieldLabel><PasswordInput aria-label="Confirm Password" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} autoComplete="new-password" required/></label></div>
         <div className="team-password-rules">{passwordRules(password).map((rule) => <span className={rule.met ? "met" : ""} key={rule.label}>{rule.label}</span>)}</div>
-        <label className="team-invitation-legal"><input type="checkbox" checked={legalAccepted} onChange={(event) => setLegalAccepted(event.target.checked)}/><span>I agree to the <Link href="/terms" target="_blank">Terms of Service</Link> and acknowledge the <Link href="/privacy" target="_blank">Privacy Policy</Link>. This acceptance is recorded with the current document versions.</span></label>
+        <label className="team-invitation-legal"><input type="checkbox" required checked={legalAccepted} onChange={(event) => setLegalAccepted(event.target.checked)}/><span>I agree to the <Link href="/terms" target="_blank">Terms of Service</Link> and acknowledge the <Link href="/privacy" target="_blank">Privacy Policy</Link>. This acceptance is recorded with the current document versions. <RequiredMark/></span></label>
         {message && <p role="alert">{message}</p>}
         <button disabled={busy}>{busy ? "Creating secure access…" : invitation.consoleAccess ? "Accept and continue to the private console" : "Accept invitation and enter Vanteloq"}</button>
       </form>

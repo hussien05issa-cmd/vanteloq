@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   COUNTRIES,
@@ -8,6 +8,7 @@ import {
   REGIONS,
   validPostalCode,
 } from "./address-data";
+import { FieldLabel, FormInput, FormLegend, RequiredMark } from "./form-primitives";
 import ProductBrandLogo from "./product-brand-logo";
 import { apiFetch } from "./supabase-browser";
 import {
@@ -135,6 +136,9 @@ export default function SecureOnboardingFlow({
   signOut: () => void;
 }) {
   const [step, setStep] = useState(1);
+  const panelRef = useRef<HTMLElement>(null);
+  const previousStep = useRef(1);
+  useEffect(() => { if (step !== previousStep.current) { panelRef.current?.querySelector<HTMLElement>(".setup-step h2")?.focus(); previousStep.current = step; } }, [step]);
   const [form, setForm] = useState<Setup>(() => initialSetup(accountName));
   const [hours, setHours] = useState<Hour[]>(initialHours);
   const [logoFile, setLogoFile] = useState<File | null>(null);
@@ -235,6 +239,13 @@ export default function SecureOnboardingFlow({
 
   const next = () => {
     setError("");
+    const invalid = Array.from(panelRef.current?.querySelectorAll<HTMLInputElement | HTMLSelectElement>("input,select") || []).filter(input => !input.disabled && !input.checkValidity());
+    if (invalid.length) {
+      const details = invalid[0].closest("details");
+      if (details) details.open = true;
+      invalid[0].focus();
+      return setError("Review the highlighted fields before continuing.");
+    }
     if (step === 1 && !form.ownerName.trim())
       return setError("Enter the account owner's name.");
     if (
@@ -313,7 +324,7 @@ export default function SecureOnboardingFlow({
   };
 
   return (
-    <main className="onboarding">
+    <main className="onboarding setup-shell">
       <aside>
         <div className="public-brand">
           <ProductBrandLogo product="vanteloq" />
@@ -325,9 +336,8 @@ export default function SecureOnboardingFlow({
           <p>WELCOME TO VANTELOQ</p>
           <h1>Build a workspace around your real business.</h1>
           <span>
-            Your account identity is verified by the hosted sign-in service.
-            Vanteloq does not collect a pretend password or create sample
-            business data.
+            Add your business details, set your preferences and choose how to
+            connect your records.
           </span>
         </div>
         <ol>
@@ -370,8 +380,9 @@ export default function SecureOnboardingFlow({
           Trusted identity · Verified ownership · Organization-separated records
         </small>
       </aside>
-      <section className="setup-panel">
-        <div className="setup-progress">
+      <section ref={panelRef} className="setup-panel">
+        <FormLegend/>
+        <div className="setup-progress" role="progressbar" aria-label="Workspace setup" aria-valuemin={0} aria-valuemax={7} aria-valuenow={step} aria-valuetext={`Step ${step} of 7`}>
           <span>STEP {step} OF 7</span>
           <i>
             <b style={{ width: `${Math.round((step / 7) * 100)}%` }} />
@@ -381,8 +392,8 @@ export default function SecureOnboardingFlow({
         {step === 1 && (
           <Step
             eyebrow="VERIFIED IDENTITY"
-            title="Confirm the workspace owner."
-            copy="Your sign-in identity is supplied by the hosted authentication service and cannot be replaced by a browser-supplied email."
+            title="Workspace Owner"
+            copy="Confirm the name people will see in your workspace."
           >
             <div className="verified-identity">
               <span>ID</span>
@@ -395,7 +406,7 @@ export default function SecureOnboardingFlow({
               </div>
             </div>
             <Field
-              label="Owner display name"
+              label="Owner Display Name"
               value={form.ownerName}
               onChange={(value) => set("ownerName", value)}
               placeholder="Avery Chen"
@@ -409,18 +420,16 @@ export default function SecureOnboardingFlow({
                 }
               />
               <span>
-                <b>Account and workspace notifications</b>
+                <b>Account and Workspace Notifications <span className="field-optional">(Optional)</span></b>
                 <small>
-                  Remember this account’s preference for security, action and
-                  workspace email notifications. Delivery begins when the
-                  notification service is configured.
+                  Choose whether to receive workspace updates. Email delivery
+                  depends on your notification setup.
                 </small>
               </span>
             </label>
             <p className="auth-note">
-              Secure sign-in remembers this account according to its session
-              policy. Vanteloq stores workspace data and preferences
-              server-side, never in a pretend browser account.
+              Your business records and preferences belong to this workspace.
+              You can review account access in Settings.
             </p>
             <button className="text-action" onClick={signOut}>
               Use a different account
@@ -430,37 +439,37 @@ export default function SecureOnboardingFlow({
         {step === 2 && (
           <Step
             eyebrow="BUSINESS PROFILE"
-            title="Define the business identity."
+            title="Business Details"
             copy="Keep the customer-facing name separate from the registered legal entity."
           >
             <div className="form-grid">
               <Field
-                label="Store / business name"
+                label="Business Name"
                 value={form.businessName}
                 onChange={(value) => set("businessName", value)}
                 placeholder="Maple & Main Market"
               />
               <Field
-                label="Legal business name"
+                label="Legal Business Name"
                 value={form.legalName}
                 onChange={(value) => set("legalName", value)}
                 placeholder="Maple & Main Retail Ltd."
               />
               <Field
-                label="Business email"
+                label="Business Email" autoComplete="email"
                 type="email"
                 value={form.businessEmail}
                 onChange={(value) => set("businessEmail", value)}
                 placeholder="operations@example.com"
               />
               <Field
-                label="Phone (optional)"
+                label="Phone" required={false} type="tel" autoComplete="tel"
                 value={form.phone}
                 onChange={(value) => set("phone", value)}
                 placeholder="780-555-0142"
               />
               <Field
-                label="Website (optional)"
+                label="Website" required={false} type="url" autoComplete="url"
                 value={form.website}
                 onChange={(value) => set("website", value)}
                 placeholder="https://example.com"
@@ -485,8 +494,8 @@ export default function SecureOnboardingFlow({
         {step === 3 && (
           <Step
             eyebrow="LOCATION & REPORTING"
-            title="Set the operating context."
-            copy="Search the Canada Post AddressComplete database to confirm the business premise. The provider key stays on Vanteloq's server and the verified result is saved with the workspace."
+            title="Location and Reporting"
+            copy="Add your business address and reporting preferences. Use address search when available, then review the details."
           >
             {addressProvider === "checking" && (
               <p className="address-provider-state" role="status">Checking secure address verification…</p>
@@ -558,8 +567,8 @@ export default function SecureOnboardingFlow({
                 <Select
                   label={
                     form.country === "CA"
-                      ? "Province / territory"
-                      : "State or territory"
+                      ? "Province / Territory"
+                      : "State or Territory"
                   }
                   value={form.province}
                   onChange={(value) => setAddressField("province", value)}
@@ -576,7 +585,7 @@ export default function SecureOnboardingFlow({
                 />
               ) : (
                 <Field
-                  label="Administrative area / region"
+                  label="Administrative Area / Region"
                   value={form.province}
                   onChange={(value) => setAddressField("province", value)}
                   placeholder="Province, state, region or prefecture"
@@ -584,7 +593,7 @@ export default function SecureOnboardingFlow({
                 />
               )}
               <Field
-                label="Street address"
+                label="Street Address"
                 value={form.address}
                 onChange={(value) => setAddressField("address", value)}
                 placeholder="Street and building"
@@ -592,7 +601,7 @@ export default function SecureOnboardingFlow({
                 autoComplete="street-address"
               />
               <Field
-                label="City / locality"
+                label="City / Locality"
                 value={form.city}
                 onChange={(value) => setAddressField("city", value)}
                 autoComplete="address-level2"
@@ -600,11 +609,13 @@ export default function SecureOnboardingFlow({
               <Field
                 label={
                   form.country === "CA"
-                    ? "Postal code"
+                    ? "Postal Code"
                     : form.country === "US"
                       ? "ZIP or ZIP+4"
-                      : "Postal code"
+                      : "Postal Code"
                 }
+                hint={form.country === "CA" ? "Example: T5J 0N3. We add the space for you." : form.country === "US" ? "Example: 98101 or 98101-1234." : "Use the postal format for your country."}
+                validate={value => validPostalCode(form.country, value) ? "" : "Enter a valid postal code for the selected country."}
                 value={form.postalCode}
                 onChange={(value) => setAddressField("postalCode", value.toUpperCase())}
                 onBlur={() => {
@@ -616,18 +627,18 @@ export default function SecureOnboardingFlow({
                     ? "T5J 0N3"
                     : form.country === "US"
                       ? "98101"
-                      : "Postal code"
+                      : "Postal Code"
                 }
                 autoComplete="postal-code"
               />
               <Field
-                label="IANA timezone"
+                label="Timezone (IANA)" hint="For example, America/Edmonton. Reports follow this timezone."
                 value={form.timezone}
                 onChange={(value) => set("timezone", value)}
                 placeholder="Europe/London"
               />
               <Field
-                label="ISO currency"
+                label="Currency (ISO)" hint="Three-letter currency code, such as CAD or USD." validate={value => /^[A-Z]{3}$/.test(value) ? "" : "Enter a three-letter currency code, such as CAD."}
                 value={form.currency}
                 onChange={(value) =>
                   set("currency", value.toUpperCase().slice(0, 3))
@@ -635,7 +646,7 @@ export default function SecureOnboardingFlow({
                 placeholder="CAD"
               />
               <Select
-                label="Fiscal year starts"
+                label="Fiscal Year Starts"
                 value={form.fiscalYearStart}
                 onChange={(value) => set("fiscalYearStart", value)}
                 options={[
@@ -656,9 +667,10 @@ export default function SecureOnboardingFlow({
               <Field
                 label={
                   form.country === "CA"
-                    ? "GST/HST number (optional)"
-                    : "Tax identifier (optional)"
+                    ? "GST/HST Number"
+                    : "Tax Identifier"
                 }
+                required={false}
                 value={form.taxNumber}
                 onChange={(value) => set("taxNumber", value)}
                 placeholder="Optional"
@@ -666,11 +678,8 @@ export default function SecureOnboardingFlow({
             </div>
             {addressProvider === "manual" && <p className="address-note">Canada Post AddressComplete is not activated yet. Manual entry remains available and is stored as entered, not presented as provider verified.</p>}
             {addressProvider === "ready" && <p className="address-note">Selecting a result verifies the premise and fills the fields above. Editing any verified address field clears the verification and requires another selection.</p>}
-            <div className="hours-editor">
-              <div>
-                <b>Business hours</b>
-                <span>Used for daypart and close reporting.</span>
-              </div>
+            <details className="hours-editor">
+              <summary><b>Business Hours</b><span>Review the default schedule.</span></summary>
               {hours.map((row, index) => (
                 <div className="hours-row" key={row.day}>
                   <strong>{row.day}</strong>
@@ -696,7 +705,7 @@ export default function SecureOnboardingFlow({
                     Open
                   </label>
                   <input
-                    type="time"
+                    type="time" required={!row.closed} aria-label={row.day + " Opening Time"}
                     disabled={row.closed}
                     value={row.open}
                     onChange={(event) =>
@@ -711,7 +720,7 @@ export default function SecureOnboardingFlow({
                   />
                   <span>to</span>
                   <input
-                    type="time"
+                    type="time" required={!row.closed} aria-label={row.day + " Closing Time"}
                     disabled={row.closed}
                     value={row.close}
                     onChange={(event) =>
@@ -726,14 +735,14 @@ export default function SecureOnboardingFlow({
                   />
                 </div>
               ))}
-            </div>
+            </details>
           </Step>
         )}
         {step === 4 && (
           <Step
             eyebrow="BRAND IDENTITY"
-            title="Make the workspace recognizable."
-            copy="A customer logo replaces the organization initials while Vanteloq and BookLoQ product identities remain separate."
+            title="Workspace Logo"
+            copy="Add your business logo now, or do this later in Settings."
           >
             <label className="drop-zone">
               <input
@@ -771,8 +780,8 @@ export default function SecureOnboardingFlow({
         {step === 5 && (
           <Step
             eyebrow="SECURITY & NOTIFICATIONS"
-            title="Review the secure account boundary."
-            copy="Hosted sign-in owns passwords, passkeys, MFA, recovery and active sessions. Vanteloq owns organization authorization, financial privacy and append-only access records."
+            title="Security and Notifications"
+            copy="Your sign-in protects your account. Workspace roles control who can view records and take action."
           >
             <div className="verified-identity">
               <span>ID</span>
@@ -794,7 +803,7 @@ export default function SecureOnboardingFlow({
                 }
               />
               <span>
-                <b>Account and workspace notifications</b>
+                <b>Account and Workspace Notifications <span className="field-optional">(Optional)</span></b>
                 <small>
                   Store this owner’s preference for security, integration, task
                   and workspace notifications. External delivery remains
@@ -812,8 +821,8 @@ export default function SecureOnboardingFlow({
         {step === 6 && (
           <Step
             eyebrow="DATA SOURCES"
-            title="Choose the first ingestion path."
-            copy="This records a setup preference. It does not claim that a provider is connected."
+            title="Connect Your Data"
+            copy="Choose how to bring in your records. You can also connect a source after setup."
           >
             <div className="source-choice">
               {(
@@ -888,7 +897,7 @@ export default function SecureOnboardingFlow({
         {step === 7 && (
           <Step
             eyebrow="REVIEW"
-            title="Create your protected workspace."
+            title="Review Your Workspace"
             copy="Vanteloq will create the owner account and an empty workspace for this organization."
           >
             <div className="review-grid">
@@ -939,13 +948,13 @@ export default function SecureOnboardingFlow({
               </span>
             </div>
             <label className="onboarding-legal-consent">
-              <input
+              <input required
                 type="checkbox"
                 checked={legalAccepted}
                 onChange={(event) => setLegalAccepted(event.target.checked)}
               />
               <span>
-                I agree to the <Link href="/terms" target="_blank">Terms of Service</Link> and acknowledge the <Link href="/privacy" target="_blank">Privacy Policy</Link>. This acceptance is recorded with the current document versions when the workspace is created.
+                I agree to the <Link href="/terms" target="_blank">Terms of Service</Link> and acknowledge the <Link href="/privacy" target="_blank">Privacy Policy</Link>. This acceptance is recorded with the current document versions when the workspace is created. <RequiredMark/>
               </span>
             </label>
           </Step>
@@ -996,7 +1005,7 @@ function Step({
   return (
     <div className="setup-step">
       <p>{eyebrow}</p>
-      <h2>{title}</h2>
+      <h2 tabIndex={-1}>{title}</h2>
       <span>{copy}</span>
       {children}
     </div>
@@ -1012,6 +1021,9 @@ function Field({
   type = "text",
   full = false,
   autoComplete,
+  required = true,
+  hint,
+  validate,
 }: {
   label: string;
   value: string;
@@ -1021,11 +1033,18 @@ function Field({
   type?: string;
   full?: boolean;
   autoComplete?: string;
+  required?: boolean;
+  hint?: string;
+  validate?: (value: string) => string;
 }) {
   return (
     <label className={full ? "field full" : "field"}>
-      <span>{label}</span>
-      <input
+      <FieldLabel required={required}>{label}</FieldLabel>
+      <FormInput
+        aria-label={required ? label : label + " (Optional)"}
+        hint={hint}
+        validate={validate}
+        required={required}
         type={type}
         value={value}
         placeholder={placeholder}
@@ -1050,8 +1069,8 @@ function Select({
 }) {
   return (
     <label className="field">
-      <span>{label}</span>
-      <select value={value} onChange={(event) => onChange(event.target.value)}>
+      <FieldLabel>{label}</FieldLabel>
+      <select required value={value} onChange={(event) => onChange(event.target.value)}>
         {options.map((option) => {
           const item =
             typeof option === "string"

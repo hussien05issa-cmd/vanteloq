@@ -1,4 +1,5 @@
 "use client";
+import WorkspaceSkeleton from "./workspace-skeleton";
 import { isAwaitingSalesRecords } from "../domain/intraday-sales";
 
 import Image from "next/image";
@@ -61,6 +62,7 @@ import {
 import { navigationEntitlement } from "../domain/navigation-entitlements";
 import { integrationProviderFeature } from "../domain/paid-feature-routing";
 import { useBillingEntitlements } from "./billing-entitlements-context";
+import { FieldLabel } from "./form-primitives";
 
 type View =
   | "Dashboard"
@@ -1991,7 +1993,7 @@ function TaskCentre({
       {updateError && <p className="action-update-error" role="alert">{updateError}</p>}
       <article className="card task-board">
         {loading ? (
-          <div className="empty-state">Loading actions…</div>
+          <WorkspaceSkeleton compact label="Loading your actions"/>
         ) : error ? (
           <FailureState message={error} retry={load} />
         ) : !tasks.length ? (
@@ -2105,9 +2107,7 @@ function TaskComposer({
             ×
           </button>
         </div>
-        <label>
-          Action title
-          <input
+        <label><FieldLabel>Action Title</FieldLabel><input
             name="title"
             defaultValue={seed.title}
             required
@@ -2116,7 +2116,7 @@ function TaskComposer({
           />
         </label>
         <label>
-          What needs to happen
+          <FieldLabel required={false}>Action Details</FieldLabel>
           <textarea name="detail" defaultValue={seed.detail} maxLength={2000} />
         </label>
         <div className="form-row">
@@ -2133,12 +2133,12 @@ function TaskComposer({
             <input name="assignee" defaultValue="Owner" maxLength={80} />
           </label>
           <label>
-            Due date
+            <FieldLabel required={false}>Due Date</FieldLabel>
             <input type="date" name="dueDate" />
           </label>
         </div>
         <label>
-          Expected impact
+          <FieldLabel required={false}>Expected Impact</FieldLabel>
           <input
             name="expectedImpact"
             defaultValue={seed.expectedImpact ?? ""}
@@ -3569,33 +3569,23 @@ function DailyImport({
           <span>All amounts in dollars</span>
         </div>
         <div className="manual-grid">
-          <label>
-            Date
-            <input required type="date" name="date" />
+          <label><FieldLabel>Date</FieldLabel><input required type="date" name="date" />
           </label>
           <label>
             Location
             <input name="location" defaultValue="Main" maxLength={80} />
           </label>
-          <label>
-            Gross sales
-            <input required name="gross" inputMode="decimal" />
+          <label><FieldLabel>Gross Sales</FieldLabel><input required name="gross" inputMode="decimal" />
           </label>
-          <label>
-            Net sales
-            <input required name="net" inputMode="decimal" />
+          <label><FieldLabel>Net Sales</FieldLabel><input required name="net" inputMode="decimal" />
           </label>
-          <label>
-            Product cost (COGS)
-            <input required name="cogs" inputMode="decimal" />
+          <label><FieldLabel>Product Cost (COGS)</FieldLabel><input required name="cogs" inputMode="decimal" />
           </label>
           <label>
             Labour cost
             <input name="labour" inputMode="decimal" defaultValue="0" />
           </label>
-          <label>
-            Transactions
-            <input
+          <label><FieldLabel>Transactions</FieldLabel><input
               required
               name="transactions"
               type="number"
@@ -3603,9 +3593,7 @@ function DailyImport({
               step="1"
             />
           </label>
-          <label>
-            Units sold
-            <input required name="units" type="number" min="0" step="1" />
+          <label><FieldLabel>Units Sold</FieldLabel><input required name="units" type="number" min="0" step="1" />
           </label>
           <label>
             Refunds
@@ -3745,18 +3733,14 @@ function DecisionJournal({
                 <option value="other">Other</option>
               </select>
             </label>
-            <label>
-              Event date
-              <input required type="date" name="eventDate" />
+            <label><FieldLabel>Event Date</FieldLabel><input required type="date" name="eventDate" />
             </label>
             <label>
               Review date
               <input type="date" name="reviewDate" />
             </label>
           </div>
-          <label>
-            Title
-            <input required name="title" maxLength={120} />
+          <label><FieldLabel>Title</FieldLabel><input required name="title" maxLength={120} />
           </label>
           <label>
             Context
@@ -3771,7 +3755,7 @@ function DecisionJournal({
         </form>
         <section className="event-list">
           {loading ? (
-            <div className="empty-state">Loading business memory…</div>
+            <WorkspaceSkeleton compact label="Loading business memory"/>
           ) : !events.length ? (
             <div className="empty-state">
               <b>No events recorded.</b>

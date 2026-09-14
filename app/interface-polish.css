@@ -1,0 +1,345 @@
+/* Shared interface finish. Glass belongs to chrome; records and form fields
+   stay opaque so their contrast never depends on the content behind them. */
+:root {
+  --ui-ink: #142b45;
+  --ui-muted: #526277;
+  --ui-blue: #1557cf;
+  --ui-line: #d4deeb;
+  --ui-control-line: #8a9bb0;
+  --ui-canvas: #f3f6fb;
+  --ui-surface: #fbfcfe;
+  --ui-control-radius: 12px;
+  --ui-panel-radius: 20px;
+  --ui-glass: linear-gradient(135deg, #fffffff5, #f2f6ffed);
+  --ui-shadow: 0 8px 28px #1836540a, inset 0 1px 0 #fff;
+}
+.public-site, .operating-shell {
+  --ws-surface: var(--ui-surface);
+  --vql-surface: var(--ui-surface);
+  --vql-muted: var(--ui-muted);
+  --vql-subtle: var(--ui-muted);
+  --ws-muted: var(--ui-muted);
+  --ws-radius: var(--ui-panel-radius);
+  --ws-radius-control: var(--ui-control-radius);
+  --vql-radius: var(--ui-control-radius);
+}
+.operating-shell, .bookloq-main {
+  background: radial-gradient(ellipse at 85% 0, #e9eefc 0, transparent 48%), var(--ui-canvas);
+}
+.public-site .public-nav, .unified-public-nav, .operating-shell .topbar,
+.bookloq-top, .ai-studio-header, .ai-settings-header {
+  background: var(--ui-glass);
+  border-color: var(--ui-line);
+  box-shadow: var(--ui-shadow);
+  backdrop-filter: blur(18px) saturate(125%);
+  -webkit-backdrop-filter: blur(18px) saturate(125%);
+}
+.operating-shell .sidebar, .bookloq-side {
+  background: linear-gradient(155deg, #1a304d, #10233c 65%);
+  box-shadow: inset -1px 0 0 #ffffff14;
+}
+.public-site :is(button, .public-actions a, .public-nav-socials a),
+.unified-public-nav nav a, .operating-shell button,
+.auth-panel button, .setup-shell button, .custom-plan-form button,
+.founder-mfa-form button, .team-invitation-flow button {
+  border-radius: var(--ui-control-radius);
+  min-height: 44px;
+  line-height: 1.4;
+  transition: background-color .18s ease, border-color .18s ease, box-shadow .18s ease;
+}
+.public-site .public-actions a, .public-nav-actions button,
+.unified-public-nav .public-nav-create, .auth-submit,
+.setup-actions button, .custom-plan-form > button {
+  min-height: 48px;
+  padding: 12px 20px;
+  font-weight: 650;
+}
+.public-site .public-actions a:first-child, .public-nav-actions button:not(.nav-login),
+.unified-public-nav .public-nav-create, .auth-submit, .setup-actions .continue,
+.custom-plan-form > button, .operating-shell :is(button.primary, button.bookloq-primary) {
+  background: linear-gradient(180deg, #2468dc, #1554c5);
+  color: #fff;
+  border: 1px solid #174da8;
+  box-shadow: inset 0 1px 0 #ffffff36, 0 3px 8px #1557cf18;
+}
+.public-site .public-actions a:first-child:hover, .auth-submit:not(:disabled):hover,
+.operating-shell :is(button.primary, button.bookloq-primary):not(:disabled):hover {
+  background: linear-gradient(180deg, #1b5fcf, #1048ad);
+  box-shadow: inset 0 1px 0 #ffffff36, 0 5px 14px #1557cf22;
+}
+:is(.public-site,.operating-shell,.auth-panel,.setup-shell,.custom-plan-form,.team-invitation-flow) button:disabled {
+  cursor: not-allowed;
+}
+:is(.public-site,.operating-shell,.auth-panel,.setup-shell,.custom-plan-form,.team-invitation-flow) :is(a,button,input,select,textarea,summary):focus-visible {
+  outline: 3px solid #1557cf !important;
+  outline-offset: 3px;
+}
+.public-site :is(p,li), .operating-shell p { line-height: 1.65; }
+.public-site :is(.home-section-heading > span, .home-hero-copy > p) { max-width: 64ch; }
+.journey-home .home-hero h1 { letter-spacing: -.045em; }
+.journey-home h2 { letter-spacing: -.035em; }
+.public-nav nav a, .unified-public-nav nav a { color: #3e526b; font-weight: 550; }
+.public-nav nav a:hover, .unified-public-nav nav a:hover { color: #1557cf; }
+.public-site :is(.home-hero-note,.home-live-proof > footer,.home-live-proof-top small,
+  .home-live-proof > header > span,.home-proof-chart small,.demo-app-footer,.demo-no-account,
+  .demo-quality,.demo-ai-disclosure,.home-provider-directory small,.compatibility-picker p) {
+  font-size: 13px;
+  color: var(--ui-muted);
+  line-height: 1.6;
+}
+.public-site :is(.home-live-proof,.demo-app,.compatibility-check,.platform-product-preview),
+.operating-shell :is(.card,.dense-panel,.integration-card,.decision-explorer,.bookloq-card,.ai-studio) {
+  border-radius: var(--ui-panel-radius);
+  border-color: var(--ui-line);
+  box-shadow: var(--ui-shadow);
+}
+.operating-shell :is(.card,.dense-panel,.integration-card,.bookloq-card),
+.demo-content, .ai-chat-column { background: var(--ui-surface); }
+.operating-shell :is(.page-intro,.bookloq-page-intro) { gap: 20px; }
+.operating-shell :is(.page-intro > div > span,.bookloq-page-intro > div > span) { max-width: 72ch; line-height: 1.65; }
+.operating-shell :is(.metric-card > small,.bookloq-kpi small,.decision-findings small,
+  .decision-detail > header > span,.decision-toolbar > span,.bookloq-card-head p,
+  .first-insight-path small,.ai-chat-brand-note,.ai-composer-note) {
+  color: var(--ui-muted);
+  font-size: 13px !important;
+  line-height: 1.6;
+}
+.operating-shell :is(th, td, .generic-row, .bookloq-tr) { line-height: 1.55; }
+.operating-shell :is(th, .generic-head, .bookloq-th) { color: #40536c; background: #f4f7fb; }
+.operating-shell :is(button.metric-card,button.bookloq-kpi,.decision-findings button):hover {
+  background: #f2f6fe;
+  box-shadow: inset 0 0 0 1px #9ab8e4;
+}
+.operating-shell .decision-findings button[aria-pressed="true"] {
+  background: var(--ui-surface);
+  box-shadow: inset 3px 0 0 var(--ui-blue), 0 2px 8px #16355809;
+}
+/* Single-column data entry. Report filters and financial record tables retain
+   their useful horizontal structure; they are not multi-field signup forms. */
+:is(.setup-shell,.operating-shell) :is(.form-grid,.wizard-grid,.po-form-grid,.lot-form-grid),
+.action-modal .form-row, .invoice-composer-fields, .custom-plan-form .custom-plan-fields,
+.team-invitation-flow form > div:not(.team-password-rules),
+.operating-shell :is(.manual-entry,.event-form) .form-row {
+  grid-template-columns: minmax(0,1fr);
+  gap: 18px;
+}
+:is(.setup-shell,.operating-shell) :is(.form-grid,.wizard-grid,.po-form-grid,.lot-form-grid) > .full {
+  grid-column: auto;
+}
+.setup-step > .form-grid { max-width: 620px; }
+.operating-shell :is(.invoice-form-grid,.invoice-inline,.growth-field-grid,.mw-fields,.settings-grid,.journal-entry-line) {
+  grid-template-columns: minmax(0,1fr);
+  gap: 18px;
+}
+.operating-shell :is(.mw-fields,.growth-field-grid,.settings-grid) > :is(.full,.mw-wide) { grid-column: auto; }
+.operating-shell .journal-entry-line { padding: 18px; border-radius: 14px; }
+.operating-shell .invoice-form-grid > section + section { padding-top: 20px; border-top: 1px solid var(--ui-line); }
+.custom-plan-form { max-width: 680px; }
+.field-label-text { display: inline; font-weight: 600; color: var(--ui-ink); }
+.field-optional { color: var(--ui-muted); font-weight: 400; margin-left: 6px; font-size: .92em; white-space: nowrap; }
+.required-mark { color: #a5293c; font-weight: 650; margin-left: 4px; }
+.form-legend { margin: 0; font-size: 13px; color: var(--ui-muted); line-height: 1.5; }
+.form-legend .required-mark { margin-left: 0; }
+.setup-panel > .form-legend { margin-bottom: 14px; }
+.auth-panel form, .custom-plan-form, .founder-mfa-form { gap: 18px; }
+:is(.auth-panel,.custom-plan-form,.team-invitation-flow,.setup-shell,.founder-mfa-form) label,
+.operating-shell :is(.action-modal,.employee-wizard,.po-modal,.bookloq-journal-form,.invoice-composer,.lot-modal) label {
+  font-size: 14px;
+  line-height: 1.5;
+  gap: 8px;
+  color: #293f58;
+}
+:is(.auth-panel,.setup-shell,.custom-plan-form,.team-invitation-flow,.founder-mfa-form,.operating-shell)
+  :is(input,select,textarea):not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="hidden"]) {
+  min-height: 48px;
+  border: 1px solid var(--ui-control-line);
+  border-radius: var(--ui-control-radius);
+  background: var(--ui-surface);
+  color: var(--ui-ink);
+  font-size: 16px !important;
+  line-height: 1.5;
+  padding: 11px 14px;
+  box-shadow: inset 0 1px 2px #162c4505;
+  min-width: 0;
+  max-width: 100%;
+}
+:is(.auth-panel,.setup-shell,.custom-plan-form,.team-invitation-flow,.operating-shell) textarea { resize: vertical; }
+:is(.auth-panel,.setup-shell,.custom-plan-form,.team-invitation-flow,.operating-shell) ::placeholder { color: #5d6c80; opacity: 1; }
+:is(.auth-panel,.setup-shell,.custom-plan-form,.team-invitation-flow,.operating-shell) :is(input,select,textarea):disabled:not([type="checkbox"]):not([type="radio"]) { background: #eef2f7; color: #59687c; }
+.auth-panel :is(input[type="checkbox"],input[type="radio"]),
+.custom-plan-form input[type="checkbox"], .team-invitation-flow input[type="checkbox"],
+.setup-shell :is(input[type="checkbox"],input[type="radio"]) {
+  min-height: 20px !important;
+  width: 20px !important;
+  height: 20px !important;
+  accent-color: var(--ui-blue);
+  padding: 0;
+  flex-shrink: 0;
+}
+.auth-backdrop { background: #10233b75; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); padding: 20px; }
+.auth-panel { width: min(480px,100%); padding: 28px 32px; border-radius: 24px; background: linear-gradient(160deg,#fff,#f8faff); border: 1px solid #ffffffd9; box-shadow: 0 28px 90px #0b1b3533,inset 0 1px 0 #fff; max-height: calc(100dvh - 40px); }
+.auth-panel > header { margin-bottom: 18px; }
+.auth-panel > small { font-size: 11px; letter-spacing: .1em; }
+.auth-panel h2 { margin-top: 10px; font-size: 29px; line-height: 1.2; letter-spacing: -.035em; font-weight: 650; }
+.auth-panel > p { color: var(--ui-muted); line-height: 1.6; font-size: 14px; }
+.auth-panel .auth-switch { margin-top: 8px; padding: 10px; min-height: 44px; }
+.auth-panel .auth-password-details { color: var(--ui-muted); font-size: 13px; line-height: 1.6; }
+.auth-panel .auth-password-details summary { min-height: 32px; }
+.auth-panel .auth-legal-consent, .custom-plan-form .custom-plan-consent,
+.team-invitation-flow .team-invitation-legal, .onboarding-legal-consent {
+  grid-template-columns: 20px minmax(0,1fr);
+  font-size: 14px !important;
+  line-height: 1.6;
+  font-weight: 400;
+  align-items: start;
+  gap: 10px;
+}
+.auth-panel .auth-setup-progress { font-size: 12px; line-height: 1.65; }
+.password-control { position: relative; display: block; width: 100%; }
+.password-control > input { width: 100%; padding-right: 76px !important; }
+.password-control > .password-visibility {
+  position: absolute; right: 4px; top: 4px; min-height: 40px; height: 40px;
+  width: 64px; border: 0; border-radius: 9px; padding: 6px;
+  color: #174f9b; background: transparent; font-size: 13px; font-weight: 650; cursor: pointer;
+}
+.password-control > .password-visibility:hover { background: #eaf1fc; }
+.operating-shell :is(.action-modal,.po-modal,.employee-wizard,.bookloq-journal-form,.invoice-composer,.lot-modal),
+.ai-settings-panel { border-radius: 24px; background: #fff; box-shadow: 0 24px 72px #132e5424; }
+.operating-shell :is(.modal-title,.invoice-composer > header,.employee-wizard > header), .ai-settings-header { border-radius: 20px 20px 0 0; }
+.operating-shell .ai-compose-area form { border: 1px solid #a9bbd2; background: linear-gradient(150deg,#fff,#f7f9ff); box-shadow: 0 8px 28px #1b345612,inset 0 1px 0 #fff; }
+.operating-shell .ai-compose-area textarea { border: 0; background: transparent; box-shadow: none; padding: 6px; }
+.operating-shell .ai-compose-area textarea { border: 0 !important; background: transparent !important; box-shadow: none !important; }
+.ai-studio-header { border-radius: 19px 19px 0 0; }
+.operating-shell .ai-suggestions-toggle { text-align: left; align-self: flex-start; }
+.operating-shell :is(.ai-prompt-grid button,.ai-history-item) { font-size: 14px !important; line-height: 1.5; }
+.operating-shell :is(.ai-message-text,.ai-response-copy) { line-height: 1.75; }
+.demo-kpis > article { display: flex; flex-direction: column; border-radius: 16px; border: 1px solid var(--ui-line); overflow: hidden; padding: 0; background: #fff; }
+.demo-kpis > article > button { display: flex; flex-direction: column; gap: 10px; flex: 1; width: 100%; padding: 20px; border: 0; border-radius: 15px; background: transparent; text-align: left; color: var(--ui-ink); cursor: pointer; }
+.demo-kpis > article > button > span { font-size: 14px; font-weight: 600; color: #415770; }
+.demo-kpis > article > button > strong { font-size: 29px; line-height: 1.2; letter-spacing: -.03em; }
+.demo-kpis > article > button > small { color: var(--ui-muted); font-size: 13px; line-height: 1.6; }
+.demo-kpis > article > button > em { margin-top: auto; color: #1557cf; font-size: 12px; font-style: normal; }
+.demo-kpis > article:has(button[aria-expanded="true"]) { border-color: #4074c7; box-shadow: 0 0 0 2px #1557cf13; }
+.demo-kpis > article > button:hover { background: #f1f6ff; }
+.demo-metric-detail { margin: 16px 0 24px; padding: 20px 24px; border: 1px solid #b8cce8; border-radius: 16px; background: #f4f8ff; }
+.demo-metric-detail > header { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.demo-metric-detail h3 { font-size: 17px; margin: 0; }
+.demo-metric-detail p { color: #465e78; line-height: 1.65; margin: 8px 0; }
+.demo-metric-detail button { border: 1px solid #c4d2e5; padding: 8px 14px; background: #fff; color: #1856ab; }
+@media (max-width: 800px) {
+  .operating-shell :is(.decision-toolbar,.bookloq-toolbar) { flex-wrap: wrap; gap: 12px; }
+  .operating-shell .decision-toolbar label:first-child { max-width: none; flex-basis: 100%; }
+  .public-nav nav a { min-height: 44px; display: inline-flex; align-items: center; }
+  .operating-shell .content { padding-inline: 18px; }
+}
+@media (max-width: 560px) {
+  .auth-backdrop { padding: 12px; }
+  .auth-panel { padding: 22px; max-height: calc(100dvh - 24px); border-radius: 22px; }
+  .auth-panel h2 { font-size: 27px; }
+  .public-site .public-actions { gap: 12px; }
+  .public-site .public-actions a { justify-content: space-between; min-height: 48px; }
+  .operating-shell :is(.action-modal,.po-modal,.employee-wizard,.bookloq-journal-form,.invoice-composer,.lot-modal) { max-width: 100%; padding: 20px; }
+  .demo-kpis > article > button { padding: 16px; }
+  .demo-kpis > article > button > strong { font-size: 25px; }
+  .demo-metric-detail { padding: 18px; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .public-site .public-nav,.unified-public-nav,.operating-shell .topbar,.bookloq-top,.ai-studio-header,.ai-settings-header { background: #f8faff; backdrop-filter: none; -webkit-backdrop-filter: none; }
+  .auth-backdrop { backdrop-filter: none; -webkit-backdrop-filter: none; background: #10233bea; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .public-site *, .operating-shell *, .auth-panel *, .setup-shell * { scroll-behavior: auto !important; transition: none !important; }
+}
+@media (forced-colors: active) {
+  .required-mark, .field-optional { color: CanvasText; }
+  .demo-kpis > article:has(button[aria-expanded="true"]) { border: 2px solid Highlight; }
+}
+/* Field feedback is attached to the input and announced without a form-wide
+   guess about which value is wrong. Native validation still blocks submit. */
+.validated-field, .input-control { display: block; width: 100%; min-width: 0; }
+.validated-field .field-hint, .validated-field .field-error { display: block; margin-top: 7px; font-weight: 400; font-size: 13px; line-height: 1.5; letter-spacing: normal; }
+.validated-field .field-hint { color: var(--ui-muted); }
+.validated-field .field-error { color: #a3263b; }
+:is(.auth-panel,.setup-shell,.custom-plan-form,.team-invitation-flow,.operating-shell) :is(input,select,textarea):is([aria-invalid="true"],:user-invalid) {
+  border-color: #b52c43 !important;
+  background: #fff5f6 !important;
+  box-shadow: 0 0 0 1px #b52c4318;
+}
+.auth-panel .auth-submit:disabled { opacity: 1; background: #e0e8f4; color: #435773; border-color: #bdcbe0; box-shadow: inset 0 1px 0 #ffffffb0; }
+.auth-panel .auth-switch { text-align: left; }
+.public-site, .custom-plan-form, .setup-panel, .ai-settings-panel { background-color: var(--ui-surface); }
+.public-site :is(h1,h2,h3,h4,p,.home-section-heading,.home-live-proof > footer),
+.operating-shell :is(.page-intro,.bookloq-page-intro,.ai-welcome,.ai-welcome p,.empty-state),
+.auth-panel > p,.setup-step,.team-invitation-copy { text-align: left; }
+.public-site .home-section-heading { margin-inline: 0; }
+.journey-home .home-demo-entry { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding-block: 28px; background: linear-gradient(120deg,#edf3fe,#f4f3fc); border-block: 1px solid #d9e3f2; }
+.home-demo-entry p { margin: 0 0 7px; color: #3e5d85; font-size: 11px; font-weight: 650; letter-spacing: .08em; }
+.journey-home .home-demo-entry h2 { margin: 0 0 10px; font-size: 25px; letter-spacing: -.025em; }
+.home-demo-entry > div > span { color: var(--ui-muted); font-size: 15px; line-height: 1.65; }
+.home-demo-entry > a { display: inline-flex; justify-content: space-between; align-items: center; flex-shrink: 0; gap: 26px; border: 1px solid #b6c8e2; border-radius: 12px; padding: 12px 18px; min-height: 48px; color: #1854b0; background: #fbfcfe; font-size: 14px; font-weight: 650; text-decoration: none; }
+@media(max-width:600px) { .journey-home .home-demo-entry { flex-direction: column; align-items: stretch; padding: 24px 20px; }.home-demo-entry > a { align-self: flex-start; } }
+.operating-shell .workspace-icon { flex-shrink: 0; stroke-linecap: round; stroke-linejoin: round; }
+.operating-shell :is(.decision-next,.bookloq-provider-gate,.integration-card) > .workspace-icon { padding: 7px; box-sizing: content-box; border: 1px solid #d5e0ef; border-radius: 12px; background: linear-gradient(145deg,#fcfdff,#e8effa); box-shadow: inset 0 1px 0 #fff,0 3px 8px #1836540d; }
+.auth-panel { background: linear-gradient(145deg,#fcfdff,#f4f7fc); }
+.public-site :is(.home-platform,.home-connections,.home-how,.home-faq,.product-demo),
+.operating-shell :is(.action-modal,.employee-wizard,.po-modal,.invoice-composer,.lot-modal,.bookloq-journal-form,.settings-form) { background-color: var(--ui-surface); }
+:is(.public-site,.operating-shell,.setup-shell,.auth-panel) :is(button,summary) { touch-action: manipulation; }
+:is(.table-scroll,.demo-table-scroll,.bookloq-table,.bookloq-generic-table) { overscroll-behavior-x: contain; scrollbar-width: thin; }
+.setup-step h2:focus { outline: 0; }
+.setup-shell .field input, .validated-field :is(input,textarea) { width: 100%; }
+.setup-shell .field > .field-label-text { font-size: 14px; color: var(--ui-ink); }
+.setup-shell .notification-consent b,.setup-shell .verified-identity b { font-size: 14px; line-height: 1.5; }
+.setup-shell .notification-consent small,.setup-shell .verified-identity small,.setup-shell .auth-note { font-size: 13px; color: var(--ui-muted); line-height: 1.65; letter-spacing: normal; font-weight: 400; }
+.setup-shell .notification-consent { padding: 18px; gap: 12px; border-radius: 14px; background: var(--ui-surface); }
+.setup-shell .auth-note { padding: 16px; border-radius: 12px; }
+.setup-shell .text-action { font-size: 14px; }
+.setup-shell > aside .public-brand { color: #eff5ff; }
+.setup-shell > aside .public-brand small { color: #c5d5eb; }
+.setup-shell .setup-progress span,.setup-shell .setup-progress em { font-size: 12px; color: #526277; }
+.setup-shell .setup-step > p { margin-bottom: 10px; }
+.setup-shell .setup-step > h2 { margin-block: 8px 14px; font-size: clamp(26px,3vw,36px); }
+.setup-shell .setup-step > span { margin-bottom: 24px; }
+.password-control > .password-visibility { top: 2px; right: 2px; min-height: 44px; height: 44px; }
+.setup-shell .hours-editor { padding: 18px; border: 1px solid var(--ui-line); border-radius: 14px; margin-top: 24px; background: var(--ui-surface); }
+.setup-shell .hours-editor > summary { cursor: pointer; min-height: 44px; color: var(--ui-ink); }
+.setup-shell .hours-editor > summary span { display: block; margin-top: 6px; color: var(--ui-muted); font-size: 13px; }
+.setup-shell .hours-editor .hours-row { margin-top: 18px; }
+.setup-shell .hours-editor .hours-row > input { min-width: 0; }
+.public-site :is(.demo-view-switch button,.demo-period > div > span,.demo-toolbar label,.demo-period label) { font-size: 13px; line-height: 1.5; }
+.demo-kpis > article,.demo-kpis > article > button { background-color: var(--ui-surface); }
+.demo-kpis > article > button > em { font-size: 12px; white-space: nowrap; }
+@media (max-width:360px) {
+  .demo-kpis { grid-template-columns: minmax(0,1fr); }
+}
+@media(max-width:560px) {
+  .setup-shell .setup-actions { position: sticky; bottom: 0; z-index: 3; padding: 16px 0 max(16px,env(safe-area-inset-bottom)); background: linear-gradient(180deg,#fbfcfef0,#f3f6fb); backdrop-filter: blur(12px); }
+  .setup-shell .hours-row { display: grid; grid-template-columns: minmax(0,1fr); gap: 8px; padding-bottom: 18px; border-bottom: 1px solid var(--ui-line); }
+  .setup-shell .hours-row > :is(strong,label,input) { width: 100%; grid-column: 1; }
+  .demo-kpis > article > button { gap: 9px; padding: 14px; }
+  .demo-kpis > article > button > em { font-size: 11px; }
+}
+.workspace-skeleton { padding: 28px; width: 100%; color: var(--ui-muted); }
+.skeleton-status { display: block; font-size: 14px; margin-bottom: 18px; }
+.skeleton-heading { display: grid; gap: 12px; width: min(380px,70%); margin-bottom: 26px; }
+.workspace-skeleton i { display: block; height: 13px; border-radius: 6px; background: linear-gradient(100deg,#e5ebf3 25%,#f4f7fc 48%,#e5ebf3 72%); background-size: 220% 100%; animation: skeleton-shimmer 2s ease-in-out infinite; }
+.skeleton-heading i:first-child { height: 26px; width: 72%; }
+.skeleton-metrics { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 16px; margin-bottom: 24px; }
+.skeleton-metrics > div { display: grid; gap: 18px; padding: 22px; border: 1px solid var(--ui-line); border-radius: 18px; background: var(--ui-surface); }
+.skeleton-metrics i:nth-child(2) { height: 28px; width: 70%; }
+.skeleton-metrics i:last-child { width: 82%; }
+.skeleton-records { border: 1px solid var(--ui-line); background: var(--ui-surface); border-radius: 18px; padding: 14px 22px; }
+.skeleton-records > div { display: grid; grid-template-columns: 1.5fr 1fr 1fr; gap: 40px; padding: 18px 0; }
+.workspace-skeleton.compact { padding: 20px 0; }
+.workspace-skeleton.compact .skeleton-heading, .workspace-skeleton.compact .skeleton-metrics { display: none; }
+@keyframes skeleton-shimmer { from { background-position: 100% 0; } to { background-position: -120% 0; } }
+@media (max-width:600px) { .workspace-skeleton { padding: 18px; }.skeleton-metrics { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }.skeleton-metrics > div { padding: 16px; }.skeleton-records > div { gap: 20px; } }
+@media (prefers-reduced-motion:reduce) { .workspace-skeleton i { animation: none; } }
+.journey-home main > section { scroll-margin-top: var(--public-nav-height,140px); }
+.public-site .public-nav nav > a, .unified-public-nav nav > a { padding: 9px 11px; border-radius: 10px; min-height: 44px; display: inline-flex; align-items: center; }
+.public-site .public-nav nav > a[aria-current], .unified-public-nav nav > a[aria-current] { color: #164caa; background: #e6eefc; box-shadow: inset 0 -2px 0 #376bc0; font-weight: 650; }
+.operating-shell .sidebar .nav-item { color: #d4dfed; min-height: 46px; margin-block: 4px; }
+.operating-shell .sidebar .nav-item:hover { background: #ffffff10; color: #fff; }
+.operating-shell .sidebar .nav-item[aria-current="page"] { background: linear-gradient(115deg,#2355a0,#224777); box-shadow: inset 3px 0 0 #83b6ff,inset 0 1px 0 #ffffff20; color: #fff; font-weight: 650; }
+.operating-shell .sidebar .nav-group > p { color: #b4c6de; margin-top: 26px; }
+.bookloq-side nav button[aria-current="page"] { background: linear-gradient(115deg,#2355a0,#224777); color: #fff; box-shadow: inset 3px 0 0 #83b6ff; }
+@media (max-width:600px) { .public-site .public-nav nav > a,.unified-public-nav nav > a { padding: 9px 10px; }.operating-shell .sidebar.mobile-open { padding-bottom: max(24px,env(safe-area-inset-bottom)); }.public-nav-actions { gap: 10px; }.operating-shell .sidebar-close { position: sticky; top: 8px; min-height: 44px; z-index: 2; } }

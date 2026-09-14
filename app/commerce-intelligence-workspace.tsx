@@ -6,6 +6,7 @@ import RetailIntelligenceWorkspace, { type RetailAdvisorSeed } from "./retail-in
 import { apiFetch } from "./supabase-browser";
 import { providerDisplayName } from "../domain/display-labels";
 import { businessClock, businessDateOffset } from "../domain/intraday-sales";
+import { FieldLabel } from "./form-primitives";
 
 type Mode = "Sales" | "Inventory" | "Customers" | "Suppliers";
 type TaskSeed = { title: string; detail: string; priority: "high" | "medium" | "low"; sourceType?: "alert"; sourceRef?: string };
@@ -252,8 +253,8 @@ export default function CommerceIntelligenceWorkspace({ mode, currency, timeZone
     <section className="commerce-intelligence-head">
       <div><p>VERIFIED COMMERCE RECORDS</p><h2>{title}</h2><span>{description}</span></div>
       <form className="commerce-period-picker" onSubmit={(event) => { event.preventDefault(); setApplied({ from, to }); }}>
-        <label>From<input type="date" value={from} max={to} onChange={(event) => setFrom(event.target.value)} required /></label>
-        <label>To<input type="date" value={to} min={from} max={today()} onChange={(event) => setTo(event.target.value)} required /></label>
+        <label><FieldLabel>From</FieldLabel><input type="date" value={from} max={to} onChange={(event) => setFrom(event.target.value)} required /></label>
+        <label><FieldLabel>To</FieldLabel><input type="date" value={to} min={from} max={today()} onChange={(event) => setTo(event.target.value)} required /></label>
         <button disabled={loading}>{loading ? "Loading…" : "Apply dates"}</button>
       </form>
     </section>
