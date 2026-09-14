@@ -24,3 +24,7 @@ User-approved direction, September 14, 2026. Applies to public pages and the aut
 - [Nielsen Norman Group: Closeness of Actions and Objects](https://www.nngroup.com/articles/closeness-of-actions-and-objects-gui/). Place actions beside the data or item they affect.
 
 Use the attached broad brief as a reference. Reuse existing features, remove repetition and support claims with implemented behaviour.
+
+## Approved Alpine Reference
+
+The September 14 visual reference adds a light silver-blue alpine setting, a large left-aligned navy and blue headline, a glossy product display, frosted navigation, pill-shaped primary actions and lightly outlined feature cards. Carry the materials into shared workspace surfaces while keeping tables and inputs opaque. Preserve the existing Vanteloq, LexEdge, BookLoQ and animated AI identities. Use an explicitly labelled illustration for the hero and retain a working data preview below it. On smaller screens, place readable copy before the image and keep every navigation destination reachable.

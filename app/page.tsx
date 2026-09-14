@@ -11,6 +11,8 @@ import HomeDecisionPreview from "./home-decision-preview";
 import ProductBrandLogo from "./product-brand-logo";
 import FinanceProof from "./finance-proof";
 import SocialLinks from "./social-links";
+import IntegrationBrandLogo from "./integration-brand-logo";
+import WorkspaceIcon from "./workspace-icon";
 import AuthPanel, { type AuthPanelMode } from "./auth-panel";
 import { currentSession, getSupabase, signOut } from "./supabase-browser";
 import { readPlanSelection } from "../shared/plan-selection";
@@ -384,7 +386,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
     window.addEventListener("resize", schedule);
     return () => { window.cancelAnimationFrame(frame); resize.disconnect(); window.removeEventListener("scroll", schedule); window.removeEventListener("resize", schedule); };
   }, []);
-  return <div ref={siteRef} className="public-site journey-home">
+  return <div ref={siteRef} className="public-site journey-home reference-home">
     <a className="home-skip-link" href="#main-content">Skip to main content</a>
     <header className="public-nav">
       <div className="public-brand-family">
@@ -409,22 +411,30 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
 
     <main id="main-content">
       <section className="home-hero" aria-labelledby="home-title">
+        <picture className="reference-scene">
+          <source media="(max-width:1000px)" srcSet="/brand/vanteloq-alpine-hero-mobile.webp"/>
+          <img src="/brand/vanteloq-alpine-hero.webp" width={1832} height={859} alt="" fetchPriority="high" decoding="async"/>
+        </picture>
         <div className="home-hero-copy">
-          <p className="home-eyebrow">BUSINESS INTELLIGENCE FOR INDEPENDENT RETAIL</p>
-          <h1 id="home-title">Understand what sells.<br/><em>Know what to do next.</em></h1>
-          <p>See what drives sales, which products work together and where stock needs attention. Connect your records, investigate the change and make a better-informed decision.</p>
-          <div className="public-actions"><a href="/demo" data-public-event="demo_view">Try the Demo <span aria-hidden="true">→</span></a><a href="#connections">Check your POS <span aria-hidden="true">→</span></a></div>
-          <ul className="home-proof"><li>Traceable calculations</li><li>You approve changes</li><li>AI privacy controls</li></ul><p className="home-demo-caption">Explore fictional data. No signup required.</p>
-        </div><HomeDecisionPreview/>
-      </section>
-      <section className="home-demo-entry" id="demo" aria-labelledby="home-demo-entry-title"><div><p>INTERACTIVE DEMO</p><h2 id="home-demo-entry-title">Try the Workspace Yourself</h2><span>Explore sales, inventory and cash decisions with fictional records. No signup required.</span></div><Link href="/demo" data-public-event="demo_engaged">Open the Demo <span aria-hidden="true">→</span></Link></section>
-      <section className="home-decision-proof" id="platform" aria-labelledby="decision-proof-title">
-        <span id="capabilities"/><div><p className="demo-eyebrow">BUILT AROUND YOUR NEXT DECISION</p><h2 id="decision-proof-title">3 Questions.<br/>A Clearer Business Picture.</h2><p>Go from a change in the numbers to evidence you can inspect and a next step you can review.</p></div>
-        <div className="decision-proof-grid">
-          <article><span>1 / SALES & BASKETS</span><h3>What is driving performance?</h3><p>Compare revenue, category demand, discounts and products bought together. Separate the size of the change from assumptions about its cause.</p><Link href="/demo#retail">Investigate a sales change →</Link><Link className="outcome-detail" href="/features/retail-intelligence">How retail analysis works</Link></article>
-          <article><span>2 / INVENTORY</span><h3>Where is cash tied up in stock?</h3><p>Review stock cover, sell-through, expiry and reorder inputs. Check costs and supplier timing before committing to a purchase.</p><Link href="/demo#inventory">Inspect inventory risks →</Link><Link className="outcome-detail" href="/features/inventory-and-cash">How stock and cash connect</Link></article>
-          <article><span>3 / CASH & FOLLOW-THROUGH</span><h3>What should happen next?</h3><p>Test the cash impact in BookLoQ. Use the Action Centre to assign a review, then record the decision and outcome.</p><Link href="/demo#bookloq">Test a purchase decision →</Link><Link className="outcome-detail" href="/features/financial-review">How financial review works</Link></article>
+          <p className="home-eyebrow">YOUR BUSINESS. A CLEARER PICTURE.</p>
+          <h1 id="home-title">Run Smarter.<br/><em>Grow With Clarity.</em></h1>
+          <p>Bring sales, inventory and finances into focus. Understand what changed, follow the evidence and decide what to do next.</p>
+          <div className="public-actions"><a href="/demo" data-public-event="demo_view">Try the Demo <span aria-hidden="true">→</span></a><button type="button" data-public-event="signup_start" onClick={() => start("signup")}>Create Workspace</button></div>
+          <ul className="home-proof"><li>No signup for the demo</li><li>Traceable calculations</li><li>Privacy controls</li></ul>
         </div>
+        <Link className="hero-product-hotspot" href="/demo" aria-label="Explore the interactive Vanteloq workspace demo" data-public-event="demo_view"><span>Illustrative workspace <b>Explore the Demo <i aria-hidden="true">↗</i></b></span></Link>
+      </section>
+      <div className="reference-connections" aria-label="Explore data connections"><span>YOUR TOOLS, CONNECTED</span><div>{["Lightspeed","Square","Shopify","Stripe","Google"].map(name=><a key={name} href="#connections" aria-label={`Check ${name} availability`}><IntegrationBrandLogo name={name} compact/><strong>{name}</strong></a>)}</div><a href="#connections">View Availability <span aria-hidden="true">→</span></a></div>
+      <section className="home-decision-proof" id="platform" aria-labelledby="decision-proof-title">
+        <span id="capabilities"/><div className="reference-section-heading"><div><p className="demo-eyebrow">TURN DATA INTO OPPORTUNITY</p><h2 id="decision-proof-title">Your Next Move Starts Here.</h2></div><p>Connected records. Useful insights. Clear next steps.<br/>Built around the decisions you make every day.</p></div>
+        <div className="decision-proof-grid">
+          <article><WorkspaceIcon name="Reports"/><h3>Business Intelligence</h3><p>See sales patterns, product performance and what customers buy together.</p><Link href="/demo#retail">Explore Your Sales <span aria-hidden="true">↗</span></Link></article>
+          <article><WorkspaceIcon name="Inventory"/><h3>Inventory & Cash</h3><p>Review stock cover, expiry and reorder needs before committing cash.</p><Link href="/demo#inventory">Inspect Stock Risks <span aria-hidden="true">↗</span></Link></article>
+          <article><ProductBrandLogo product="bookloq"/><h3>BookLoQ</h3><p>Trace your books, review obligations and test a 13-week cash decision.</p><Link href="/demo#bookloq">See the Cash Impact <span aria-hidden="true">↗</span></Link></article>
+          <article><VanteloqAiLogo size={34} decorative/><h3>Vanteloq AI</h3><p>Ask about your permitted business data or get help using your workspace.</p><a href="#vanteloq-ai">Meet Your AI <span aria-hidden="true">↗</span></a></article>
+        </div>
+      </section>
+      <section className="home-proof-studio" id="demo" aria-labelledby="home-demo-entry-title"><div className="proof-studio-copy"><p className="demo-eyebrow">DON’T JUST TAKE OUR WORD FOR IT</p><h2 id="home-demo-entry-title">See the Thinking<br/>Behind the Total.</h2><p>Change the location. Watch the figures update. Follow the result into the records behind it.</p><p className="proof-studio-note">Fictional records. Working calculations. No signup required.</p><Link href="/demo" data-public-event="demo_engaged">Open the Full Demo <span aria-hidden="true">→</span></Link></div><HomeDecisionPreview/>
         <div className="journey-steps" aria-label="From signup to the first insight"><div><b>1</b><span><strong>Set up your workspace</strong>Verify your email, secure your account and choose a plan.</span></div><div><b>2</b><span><strong>Connect and check</strong>Map locations, finish the import and review source totals.</span></div><div><b>3</b><span><strong>Investigate your first insight</strong>See the evidence, ask AI and assign a next step.</span></div></div>
       </section>
       <section className="home-connections" id="connections" aria-labelledby="connections-title">

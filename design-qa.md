@@ -1,73 +1,42 @@
-# Vanteloq Landing Design QA
+# Reference Theme QA
 
-## Comparison target
+## Scope and Visual Source
 
-- Source visual truth:
-  - `/var/folders/ms/41mzs6q17j3c838jp_fvkjwr0000gn/T/TemporaryItems/NSIRD_screencaptureui_exs0Tm/Screenshot 2026-08-09 at 4.11.50 PM.png`
-  - `/var/folders/ms/41mzs6q17j3c838jp_fvkjwr0000gn/T/TemporaryItems/NSIRD_screencaptureui_NUR7Cy/Screenshot 2026-08-09 at 4.12.25 PM.png`
-  - `/var/folders/ms/41mzs6q17j3c838jp_fvkjwr0000gn/T/TemporaryItems/NSIRD_screencaptureui_ObCHoa/Screenshot 2026-08-09 at 4.13.07 PM.png`
-  - `/var/folders/ms/41mzs6q17j3c838jp_fvkjwr0000gn/T/TemporaryItems/NSIRD_screencaptureui_79wQQm/Screenshot 2026-08-09 at 4.14.12 PM.png`
-- Browser-rendered implementation evidence:
-  - `design/implementation-workspaces-v56-desktop.png`
-  - `design/implementation-products-v56-desktop-final.png`
-  - `design/implementation-landing-v56-mobile.png`
-  - `design/implementation-workspace-card-v56-mobile.png`
-  - `design/implementation-products-v56-mobile.png`
-- Source pixels: 1998 × 1280, 1998 × 1280, 1998 × 1280, and 1998 × 1280 PNG screenshots at 1×.
-- Implementation pixels: 1440 × 1000 desktop and 390 × 844 mobile PNG screenshots at 1×.
-- CSS viewport: 1440 × 1000 desktop; 390 × 844 mobile.
-- Density normalization: all implementation captures were taken at device scale 1. Source screenshots include surrounding browser/Codex chrome, so focused content regions rather than outer chrome were compared.
-- State: public landing page, workspace-card section, product-family section, and responsive mobile equivalents.
+User-provided reference: `ChatGPT Image Sep 14, 2026, 09_53_17 AM.png`, 1536 x 1024. Implemented the light alpine composition, left-aligned two-line headline, navy glossy actions, frosted navigation, product image on the right, provider strip and four outlined feature cards. Existing Vanteloq, LexEdge, BookLoQ and AI brand assets remain the product identities.
 
-## Full-view and focused comparison evidence
+The generated alpine artwork is an illustrative sample workspace, explicitly labelled in the interface. It is not a photograph of a customer account or a live report. Responsive WebP exports are 1832 x 859 (165,380 bytes) and 1200 x 562 (73,310 bytes). The real interactive demo remains separate and uses its existing deterministic calculations.
 
-- Full-view: the rebuilt page preserves the selected white commerce-tool composition, navy/cobalt operating language, crisp dividers, compact radii, and restrained elevation.
-- Focused workspace comparison: `design/implementation-workspaces-v56-desktop.png` shows the four formerly empty cards with compact product-interface previews and readable supporting copy.
-- Focused logo comparison: `design/implementation-products-v56-desktop-final.png` shows the complete BookLoQ lockup without clipping, stretching, or a square-crop mismatch.
-- Focused mobile comparison: `design/implementation-workspace-card-v56-mobile.png` and `design/implementation-products-v56-mobile.png` confirm the previews and both product lockups remain legible without horizontal overflow.
+## Viewports and Capture Normalization
 
-## Findings
+- Desktop layout checked at 1536 x 1024 CSS pixels.
+- Tablet checked at 768 x 1024; feature cards switch to two columns.
+- Phone checked at 390 x 844; navigation remains visible, copy precedes the image, and cards become one column.
+- AI and opportunity component fixtures checked at 960 x 800 with fictional records.
+- The desktop app initially cropped captures to its host panel and produced duplicate tiles in stitched screenshots. Those captures were rejected as visual evidence. A local QA-only iframe rendered the unchanged page at 1536 x 1024, scaled to 62.5% for capture. The source was normalized to the same 960 x 640 display size. Both full frames were inspected together. This harness is outside the application source and is not deployed.
+- Direct phone, AI settings and opportunity screenshots were also inspected. No content overflow was found in the tested document widths.
 
-- No actionable P0, P1, or P2 issues remain.
-- Fonts and typography: Geist remains consistent; supporting copy is now 14 to 15 px with high-contrast slate text, clear weight hierarchy, comfortable line height, and no clipped headings at desktop or mobile widths.
-- Spacing and layout rhythm: the four cards use consistent 22 px interiors, 7 to 9 px interface radii, aligned preview panels, and balanced whitespace. Product-family cards retain the original two-column rhythm on desktop and become single-column on mobile.
-- Colors and visual tokens: purple was removed from the operating layer. The interface now uses Vanteloq navy and cobalt, with semantic green and amber only for status meaning.
-- Image quality and asset fidelity: the supplied Vanteloq and BookLoQ raster brand assets remain the only logos. BookLoQ is shown as its intended horizontal lockup, centered and fully visible. No emoji, inline SVG, or replacement CSS illustration is used.
-- Copy and content: card figures are visibly presented as illustrative interface previews. They demonstrate the product model without implying that the visitor's account supplied those values.
-- Accessibility and responsiveness: the browser reported a 390 px document and 390 px client width, confirming no horizontal overflow. Semantic headings, visible labels, descriptive preview `aria-label`s, focus treatment, and readable contrast are retained.
-- Browser console: zero errors and zero warnings in the final local landing state.
+## Iterations and Findings
 
-## Comparison history
+1. Corrected inherited feature-section margins and width so the content aligns with the hero and provider strip.
+2. Corrected primary-button specificity so the navy glossy treatment overrides the earlier blue fill.
+3. Moved the photographic focal point to the top on desktop, keeping the laptop frame visible. Kept the device on the right when the image adapts to mobile.
+4. Strengthened the pale overlay behind the hero copy for readability over mountain detail.
+5. Applied the same restrained surfaces to shared workspace cards, navigation, BookLoQ and the AI composer. Financial records remain opaque.
 
-1. Initial screenshot review
-   - Earlier P1: the supporting text was nearly white on a white canvas because the readability layer overrode the final design tokens.
-   - Fix: added final public-site typography overrides using `#4b5d75` and `#4e5d73`, with 14 to 15 px supporting copy.
-   - Post-fix evidence: all desktop and mobile implementation captures listed above.
+Intentional differences from the supplied artwork: preserved existing brand identities, truthful demo/signup actions, actual product modules, visible social links and provider availability labels. No free-trial or universal integration-readiness claim was introduced. The lower page retains working finance proof, provider details, pricing, privacy and help.
 
-2. Initial workspace-card review
-   - Earlier P1: the four cards were mostly blank and did not show what the workspaces do.
-   - Fix: added compact, clearly illustrative product-interface previews for Owner Command, Cash CFO, Reorder Brain, and Back-office Agent.
-   - Post-fix evidence: `design/implementation-workspaces-v56-desktop.png` and `design/implementation-workspace-card-v56-mobile.png`.
+## Interaction Verification
 
-3. Initial BookLoQ review
-   - Earlier P1: the horizontal BookLoQ lockup was forced into a square presentation and then clipped when first enlarged.
-   - Fix: created a dedicated horizontal logo panel, reduced the crop scale from 145% to 118%, and repositioned the trademark.
-   - Post-fix evidence: `design/implementation-products-v56-desktop-final.png` and `design/implementation-products-v56-mobile.png`.
+- Central shop selection changes homepage sample sales from $24,594 to $11,584 and updates the comparison and evidence link.
+- The missing-journal-line control changes BookLoQ's result from four arithmetic checks passed to a statement difference requiring review.
+- Create Workspace opens the existing single-column signup dialog with required marks and unchecked legal acceptance. Local account submission is deliberately unavailable in the fixture.
+- Provider links reach the directory. QuickBooks visibly retains its sandbox-only explanation and production limitations.
+- AI Settings opens with workspace data, memory and saved-chat controls. No agreement or data-sharing setting was changed during QA.
+- Existing automated checks cover homepage routes, provider messaging, form semantics, accessible charts and financial display behavior.
+- No JavaScript console errors were reported in the checked opportunity fixture.
 
-4. Workflow and color review
-   - Earlier P2: the operating-layer gradient introduced purple and the follow-through section lacked an in-product example.
-   - Fix: replaced the gradient with navy-to-cobalt and added a source-labelled, approval-gated inventory workflow snippet.
-   - Post-fix evidence: `design/implementation-landing-v56-desktop.png` and the browser DOM snapshot.
+This is a visual and interaction regression review for the theme change, not a new audit of every production integration or a WCAG certification. No unresolved P0, P1 or P2 visual issue was found in the checked scope.
 
-## Primary interactions tested
+## Final Result
 
-- Landing navigation to Workspaces.
-- Responsive rendering at 1440 × 1000 and 390 × 844.
-- Product-family and workspace-card anchor/scroll states.
-- Production typecheck and build.
-
-## Follow-up polish
-
-- P3: replace the landing's illustrative R-Series example with a screenshot sourced from a connected staging tenant after the owner approves the first real R-Series reconciliation.
-
-final result: passed
+passed
