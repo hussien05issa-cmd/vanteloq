@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArticleCard, ResourceShell, ResourceVisual } from "./components";
+import { ResourceShell, ResourceVisual } from "./components";
+import ResourceArticleBrowser from "../resource-article-browser";
 import { RESOURCE_ARTICLES, RESOURCE_CATEGORIES, getArticlesByCategory } from "./content";
 import { DEFAULT_SOCIAL_IMAGE } from "../seo";
 
@@ -67,9 +68,7 @@ export default function ResourcesPage() {
               <p className="resource-eyebrow">LATEST GUIDES</p>
               <h2 id="latest-guides">Start with the fundamentals</h2>
             </div>
-            <div className="resource-card-grid">
-              {RESOURCE_ARTICLES.map((article, index) => <ArticleCard article={article} featured={index === 0} key={article.slug} />)}
-            </div>
+            <ResourceArticleBrowser articles={RESOURCE_ARTICLES}/>
           </section>
         )}
 

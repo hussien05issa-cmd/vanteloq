@@ -10,6 +10,8 @@ import PublicPlanCards from "./public-plan-cards";
 import HomeDecisionPreview from "./home-decision-preview";
 import ProductBrandLogo from "./product-brand-logo";
 import FinanceProof from "./finance-proof";
+import ResourceArticleBrowser from "./resource-article-browser";
+import { RESOURCE_ARTICLES } from "./resources/content";
 import SocialLinks from "./social-links";
 import IntegrationBrandLogo from "./integration-brand-logo";
 import WorkspaceIcon from "./workspace-icon";
@@ -430,7 +432,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
         <div className="decision-proof-grid">
           <article><WorkspaceIcon name="Reports"/><h3>Business Intelligence</h3><p>See sales patterns, product performance and what customers buy together.</p><Link href="/demo#retail">Explore Your Sales <span aria-hidden="true">↗</span></Link></article>
           <article><WorkspaceIcon name="Inventory"/><h3>Inventory & Cash</h3><p>Review stock cover, expiry and reorder needs before committing cash.</p><Link href="/demo#inventory">Inspect Stock Risks <span aria-hidden="true">↗</span></Link></article>
-          <article><ProductBrandLogo product="bookloq"/><h3>BookLoQ</h3><p>Trace your books, review obligations and test a 13-week cash decision.</p><Link href="/demo#bookloq">See the Cash Impact <span aria-hidden="true">↗</span></Link></article>
+          <article><ProductBrandLogo product="bookloq"/><h3>BookLoQ Accounting</h3><p>Review profit, reconcile transactions and plan cash flow across 13 weeks.</p><Link href="/features/financial-review">Explore BookLoQ <span aria-hidden="true">↗</span></Link></article>
           <article><VanteloqAiLogo size={34} decorative/><h3>Vanteloq AI</h3><p>Ask about your permitted business data or get help using your workspace.</p><a href="#vanteloq-ai">Meet Your AI <span aria-hidden="true">↗</span></a></article>
         </div>
       </section>
@@ -463,6 +465,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
       </div></section>
 
 
+      <section className="home-article-library" aria-label="Business resource articles"><ResourceArticleBrowser articles={RESOURCE_ARTICLES}/><Link href="/resources">Explore the Resource Library →</Link></section>
     </main>
 
     <footer className="home-footer" id="company">
