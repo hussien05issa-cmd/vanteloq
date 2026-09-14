@@ -3,7 +3,7 @@ import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { build } from "esbuild";
 const bundle = await build({ entryPoints: ["tests/fixtures/decision-preview.tsx"], bundle: true, write: false, format: "esm", platform: "browser", jsx: "automatic", logLevel: "error" });
-const css = (await Promise.all(["globals", "operating", "theme", "brand", "design-v2", "readability", "experience", "workspace-design", "typography", "decision-workspace", "interface-polish"].map(name => readFile(`app/${name}.css`, "utf8")))).join("\n");
+const css = (await Promise.all(["globals", "operating", "theme", "brand", "design-v2", "readability", "experience", "workspace-design", "typography", "decision-workspace", "interface-polish", "reference-theme"].map(name => readFile(`app/${name}.css`, "utf8")))).join("\n");
 createServer((request, response) => {
   if (request.url === "/preview.js") { response.setHeader("Content-Type", "application/javascript"); response.end(bundle.outputFiles[0].text); return; }
   response.setHeader("Content-Type", "text/html; charset=utf-8");
