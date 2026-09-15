@@ -15,6 +15,7 @@ import FinanceProof from "./finance-proof";
 import ResourceArticleBrowser from "./resource-article-browser";
 import { RESOURCE_ARTICLES } from "./resources/content";
 import SocialLinks from "./social-links";
+import HomeSocialSection from "./home-social-section";
 import IntegrationBrandLogo from "./integration-brand-logo";
 import WorkspaceIcon from "./workspace-icon";
 import AuthPanel, { type AuthPanelMode } from "./auth-panel";
@@ -413,7 +414,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
       </div>
       <nav id="public-navigation" aria-label="Main navigation">
         <a href="#platform" aria-current={activeSection === "platform" ? "location" : undefined}>Platform</a><a href="#connections" aria-current={activeSection === "connections" ? "location" : undefined}>Connections</a><a href="/demo" aria-current={activeSection === "demo" ? "location" : undefined}>Try the Demo</a><Link data-public-event="pricing_view" href="/pricing">Pricing</Link><Link href="/help">Help</Link>
-        <div className="public-nav-socials"><SocialLinks/></div>
+        <a href="#social" aria-current={activeSection === "social" ? "location" : undefined}>Socials</a><div className="public-nav-socials"><SocialLinks/></div>
       </nav>
       <div className="public-nav-actions">
         <button type="button" className="nav-login" onClick={() => start("signin")}>Sign In</button>
@@ -475,6 +476,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
       </div></section>
 
 
+      <HomeSocialSection/>
       <section className="home-article-library" aria-label="Business resource articles"><ResourceArticleBrowser articles={RESOURCE_ARTICLES}/><Link href="/resources">Explore the Resource Library →</Link></section>
     </main>
 
