@@ -10,6 +10,8 @@ test("scanner credentials cannot be sent to custom hosts or redirected requests"
   assert.equal(scannerConfiguration({ ...scannerEnv, AZURE_DOCUMENT_SCAN_KEY: "invalid" }), false);
   const operation = await beginAzureScan(scannerEnv, new Uint8Array([1, 2, 3]), "application/pdf", "a".repeat(64), (async (_url, init) => {
     assert.equal(init?.redirect, "manual");
+    assert.equal(init?.cache, "no-store");
+    assert.equal(new Headers(init?.headers).get("x-ms-blob-cache-control"), "private, no-store");
     assert.equal(new Headers(init?.headers).get("If-None-Match"), "*");
     assert.equal(new Headers(init?.headers).has("x-ms-tags"), false);
     return new Response(null, { status: 201, headers: { etag: '"0xABC"' } });

@@ -39,7 +39,9 @@ async function request(env: VanteloqRuntimeEnv, url: URL, method: string, option
   try {
     // Workers supports manual redirects. Non-success responses below reject every
     // redirect without sending the signed request or document to another URL.
-    const response = await transport(url.toString(), { method, headers, body: bytes ? new Uint8Array(bytes) : undefined, redirect: "manual", signal: AbortSignal.timeout(25_000) });
+    // Edge caching can convert HEAD to GET, invalidating Azure's method-bound
+    // signature. Private scan bytes and verdicts must always bypass that cache.
+    const response = await transport(url.toString(), { method, headers, body: bytes ? new Uint8Array(bytes) : undefined, redirect: "manual", cache: "no-store", signal: AbortSignal.timeout(25_000) });
     if (response.ok || (options.missingOkay && response.status === 404)) return response;
     const serviceCode = response.headers.get("x-ms-error-code") || "Unknown";
     console.error("DOCUMENT_STORAGE_REQUEST_FAILED", { method, status: response.status, serviceCode: /^[A-Za-z]{1,80}$/.test(serviceCode) ? serviceCode : "Unknown" });
@@ -53,7 +55,7 @@ async function request(env: VanteloqRuntimeEnv, url: URL, method: string, option
 export async function beginAzureScan(env: VanteloqRuntimeEnv, bytes: Uint8Array, contentType: string, sha256: string, transport?: typeof fetch) {
   if (!extensions[contentType] || !/^[a-f0-9]{64}$/.test(sha256) || !bytes.length || bytes.length > 10 * 1024 * 1024) throw new DocumentProviderError("DOCUMENT_FORMAT_UNSUPPORTED");
   const operation: AzureScanOperation = { blobName: `scan/${crypto.randomUUID()}.${extensions[contentType]}`, etag: "", submittedAt: Date.now(), size: bytes.length, sha256 };
-  const response = await request(env, operationUrl(env, operation), "PUT", { bytes, headers: { "Content-Type": contentType, "x-ms-blob-type": "BlockBlob", "x-ms-meta-sha256": sha256, "If-None-Match": "*" } }, transport);
+  const response = await request(env, operationUrl(env, operation), "PUT", { bytes, headers: { "Content-Type": contentType, "x-ms-blob-type": "BlockBlob", "x-ms-blob-cache-control": "private, no-store", "x-ms-meta-sha256": sha256, "If-None-Match": "*" } }, transport);
   const etag = response.headers.get("etag");
   if (response.status !== 201 || !etag || !/^"[A-Za-z0-9x-]{1,100}"$/.test(etag)) throw new DocumentProviderError("SCAN_RESULT_UNKNOWN");
   return { ...operation, etag };
