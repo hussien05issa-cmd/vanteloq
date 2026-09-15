@@ -39,7 +39,7 @@ test("document providers work in Workers and never forward credentials on redire
       }
       if (request.method === "PUT") return new Response(null, { status: 201, headers: { etag: '"0xABC"' } });
       if (request.method === "DELETE") return new Response(null, { status: 202 });
-      if (request.method === "HEAD") return new Response(null, { headers: { etag: '"0xABC"', "content-length": "3", "x-ms-meta-sha256": "a".repeat(64) } });
+      if (request.headers.get("range") === "bytes=0-0") return new Response(new Uint8Array([1]), { status: 206, headers: { etag: '"0xABC"', "content-range": "bytes 0-0/3", "content-length": "1", "x-ms-meta-sha256": "a".repeat(64) } });
       return new Response(`<Tags><TagSet><Tag><Key>Malware Scanning scan result</Key><Value>No threats found</Value></Tag><Tag><Key>Malware Scanning scan time UTC</Key><Value>${new Date().toISOString()}</Value></Tag></TagSet></Tags>`);
     },
   });

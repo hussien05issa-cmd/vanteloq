@@ -77,10 +77,15 @@ export async function pollAzureScan(env: VanteloqRuntimeEnv, operation: AzureSca
   const url = operationUrl(env, operation);
   if (!operation.etag || !Number.isSafeInteger(operation.submittedAt) || !Number.isSafeInteger(operation.size) || operation.size < 1 || !/^[a-f0-9]{64}$/.test(operation.sha256)) throw new DocumentProviderError("SCAN_REFERENCE_INVALID");
   if (Date.now() - operation.submittedAt > 10 * 60_000 || operation.submittedAt > Date.now() + 60_000) throw new DocumentProviderError("SCAN_TIMED_OUT");
-  const assertIdentity = (response: Response) => {
-    if (response.headers.get("etag") !== operation.etag || response.headers.get("x-ms-meta-sha256") !== operation.sha256 || Number(response.headers.get("content-length")) !== operation.size) throw new DocumentProviderError("DOCUMENT_CHANGED");
+  const assertIdentity = async () => {
+    // A one-byte GET avoids edge layers rewriting signed HEAD requests. The
+    // Content-Range total verifies full blob length without downloading it.
+    const response = await request(env, url, "GET", { headers: { "If-Match": operation.etag, Range: "bytes=0-0" } }, transport);
+    try {
+      if (response.status !== 206 || response.headers.get("content-range") !== `bytes 0-0/${operation.size}` || response.headers.get("etag") !== operation.etag || response.headers.get("x-ms-meta-sha256") !== operation.sha256) throw new DocumentProviderError("DOCUMENT_CHANGED");
+    } finally { await response.body?.cancel(); }
   };
-  assertIdentity(await request(env, url, "HEAD", { headers: { "If-Match": operation.etag } }, transport));
+  await assertIdentity();
   const tagsUrl = new URL(url); tagsUrl.searchParams.set("comp", "tags");
   const response = await request(env, tagsUrl, "GET", {}, transport);
   const tags = parseScannerTags(await response.text());
@@ -89,7 +94,7 @@ export async function pollAzureScan(env: VanteloqRuntimeEnv, operation: AzureSca
   const scanTime = Date.parse(tags["malware scanning scan time utc"] || "");
   if (!Number.isFinite(scanTime) || scanTime < operation.submittedAt - 60_000 || scanTime > Date.now() + 60_000) throw new DocumentProviderError("SCAN_RESULT_UNKNOWN");
   // Tags do not change the blob ETag. Recheck the bytes' identity after reading the verdict.
-  assertIdentity(await request(env, url, "HEAD", { headers: { "If-Match": operation.etag } }, transport));
+  await assertIdentity();
   if (result === "No threats found") return "clean";
   if (result === "Malicious") return "blocked";
   throw new DocumentProviderError("SCAN_NOT_COMPLETED");

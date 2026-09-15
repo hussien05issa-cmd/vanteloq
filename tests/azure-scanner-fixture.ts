@@ -15,7 +15,7 @@ export function scannerFixture(initialResult = "No threats found") {
     const blob = blobs.get(url.pathname);
     if (!blob) return new Response(null, { status: 404 });
     if (method === "DELETE") { blobs.delete(url.pathname); return new Response(null, { status: 202 }); }
-    if (method === "HEAD") return new Response(null, { headers: { etag: blob.etag, "content-length": String(blob.size), "x-ms-meta-sha256": blob.sha256 } });
+    if (method === "GET" && headers.get("range") === "bytes=0-0") return new Response(new Uint8Array([1]), { status: 206, headers: { etag: blob.etag, "content-range": `bytes 0-0/${blob.size}`, "content-length": "1", "x-ms-meta-sha256": blob.sha256 } });
     if (method === "GET" && url.searchParams.get("comp") === "tags") return new Response(`<Tags><TagSet>${result ? `<Tag><Key>Malware Scanning scan result</Key><Value>${result}</Value></Tag><Tag><Key>Malware Scanning scan time UTC</Key><Value>${new Date().toISOString()}</Value></Tag>` : ""}</TagSet></Tags>`);
     throw new Error("Unexpected storage operation");
   }) as typeof fetch;
