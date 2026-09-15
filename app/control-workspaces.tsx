@@ -11,6 +11,7 @@ import {
 } from "../domain/reorder-engine";
 import { humanizeIdentifier, providerDisplayName } from "../domain/display-labels";
 import { FieldLabel } from "./form-primitives";
+import { DOCUMENT_PROCESSING_NOTICE, DOCUMENT_PROCESSING_NOTICE_VERSION, type DocumentExtraction } from "../shared/document-processing";
 
 type TaskSeed = {
   title: string;
@@ -2109,6 +2110,10 @@ type DocumentData = {
     scanStatus: string;
     status: string;
     extractionStatus: string;
+    processingStage: string | null;
+    processingError: string | null;
+    processingAuthorized: boolean;
+    extractionReady: boolean;
     createdAt: string;
   }[];
   pipeline: Record<string, string>;
@@ -2120,6 +2125,37 @@ export function DocumentsWorkspace({ showNotice, canUpload }: SharedProps & { ca
   const [loadError, setLoadError] = useState("");
   const [downloading, setDownloading] = useState("");
   const [downloadError, setDownloadError] = useState("");
+  const [processing, setProcessing] = useState("");
+  const [processingError, setProcessingError] = useState("");
+  const [review, setReview] = useState<{ fileName: string; extraction: DocumentExtraction } | null>(null);
+  const [reviewLoading, setReviewLoading] = useState("");
+  const processFile = useCallback(async (id: string, retry = false) => {
+    setProcessing(id); setProcessingError("");
+    try {
+      const response = await apiFetch("/api/v1/documents", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, noticeVersion: DOCUMENT_PROCESSING_NOTICE_VERSION, retry }), signal: AbortSignal.timeout(60_000) });
+      const body: unknown = await response.json();
+      if (!response.ok) throw new Error(apiMessage(body, "Processing could not start."));
+      setData(body as DocumentData);
+    } catch (error) { setProcessingError(error instanceof Error && error.name !== "TimeoutError" ? error.message : "Processing took longer than expected. Refresh documents to check its saved status before retrying."); }
+    finally { setProcessing(""); }
+  }, []);
+  useEffect(() => {
+    if (!canUpload || processing || processingError || !data) return;
+    const next = data.documents.find(document => document.processingAuthorized && (document.processingStage === "queued" || document.processingStage === "reading" || (document.processingStage === "scanned" && data.pipeline.ocrExtraction === "configured")));
+    if (!next) return;
+    const timer = window.setTimeout(() => { if (window.document.visibilityState === "visible") void processFile(next.id); }, 4000);
+    return () => window.clearTimeout(timer);
+  }, [canUpload, data, processing, processingError, processFile]);
+  const openReview = async (document: DocumentData["documents"][number]) => {
+    setReviewLoading(document.id); setProcessingError("");
+    try {
+      const response = await apiFetch(`/api/v1/documents?id=${encodeURIComponent(document.id)}&view=extraction`);
+      const body: unknown = await response.json();
+      if (!response.ok) throw new Error(apiMessage(body, "The extraction could not load."));
+      setReview(body as { fileName: string; extraction: DocumentExtraction });
+    } catch (error) { setProcessingError(error instanceof Error ? error.message : "The extraction could not load."); }
+    finally { setReviewLoading(""); }
+  };
   const load = useCallback(async () => {
     setLoadError("");
     try {
@@ -2175,9 +2211,8 @@ export function DocumentsWorkspace({ showNotice, canUpload }: SharedProps & { ca
           <p>INVOICES & RECEIPTS</p>
           <h2>Capture the original. Trust only verified fields.</h2>
           <span>
-            File storage, MIME verification and duplicate detection are live.
-            Malware scanning and OCR are not configured, so uploads remain
-            review-required and no extraction is claimed.
+            Secure originals, clear source pages and proposed figures in one place.
+            Scanning checks file safety. Extracted figures need your review before you use them in your accounts.
           </span>
         </div>
       </section>
@@ -2198,9 +2233,9 @@ export function DocumentsWorkspace({ showNotice, canUpload }: SharedProps & { ca
               : "Add a document for review"}
           </h3>
           <p>
-            PDF, JPEG, PNG or WEBP · up to 10 MB · camera capture supported on
-            mobile
+            PDF, JPEG, PNG or WEBP · up to 10 MB · text extraction up to 50 pages
           </p>
+          <p className="document-processing-notice">{DOCUMENT_PROCESSING_NOTICE} <a href="/subprocessors" target="_blank" rel="noreferrer">Service provider details</a></p>
           {uploadError && <p className="document-upload-error" role="alert">{uploadError}</p>}
         </div>
         <div>
@@ -2230,13 +2265,23 @@ export function DocumentsWorkspace({ showNotice, canUpload }: SharedProps & { ca
         </div>
       </section>}
       {downloadError && <p className="document-upload-error" role="alert">{downloadError}</p>}
+      {processingError && <div className="document-upload-error" role="alert"><p>{processingError}</p><button onClick={() => { setProcessingError(""); void load(); }}>Refresh Documents</button></div>}
+      {processing && <p className="document-processing-status" role="status">Processing your document. You can leave this page and resume from its saved status.</p>}
+      {review && <section className="card document-extraction-review" aria-label={`Extraction review for ${review.fileName}`}>
+        <header><div><p>EXTRACTION REVIEW</p><h3>{review.fileName}</h3><span>{review.extraction.pages} pages · Proposed figures · No accounting entries posted</span></div><button onClick={() => setReview(null)}>Close Review</button></header>
+        <div className="document-review-checks">{review.extraction.checks.map(check => <article key={check.label} className={check.state}><b>{check.label}</b><p>{check.detail}</p></article>)}</div>
+        {Object.keys(review.extraction.fields).length > 0 && <div className="document-review-table" tabIndex={0} role="region" aria-label="Extracted document fields"><table><thead><tr><th>Field</th><th>Proposed Value</th><th>Confidence</th><th>Page</th></tr></thead><tbody>{Object.entries(review.extraction.fields).map(([name, field]) => <tr key={name}><th>{name.replace(/([a-z])([A-Z])/g, "$1 $2")}</th><td>{field.value ?? "Not identified"}{field.currency ? ` ${field.currency}` : ""}</td><td>{field.confidenceBasisPoints === null ? "Not supplied" : `${(field.confidenceBasisPoints / 100).toFixed(0)}%`}</td><td>{field.page ?? "Not supplied"}</td></tr>)}</tbody></table></div>}
+        {review.extraction.tables.map((table, index) => <details key={index}><summary>Table {index + 1}{table.page ? ` · Page ${table.page}` : ""} · {table.rows.length} rows</summary><div className="document-review-table" tabIndex={0} role="region" aria-label={`Extracted table ${index + 1}`}><table><tbody>{table.rows.map((row, rowIndex) => <tr key={rowIndex}>{row.map((cell, column) => <td key={column}>{cell}</td>)}</tr>)}</tbody></table></div></details>)}
+        {review.extraction.lines.length > 0 && <details><summary>Line Items · {review.extraction.lines.length}</summary>{review.extraction.lines.map((line, index) => <dl className="document-review-line" key={index}>{Object.entries(line).map(([name, field]) => <div key={name}><dt>{name.replace(/([a-z])([A-Z])/g, "$1 $2")}</dt><dd>{field.value ?? "Not identified"}{field.currency ? ` ${field.currency}` : ""}</dd></div>)}</dl>)}</details>}
+        <details><summary>Extracted Text</summary><pre>{review.extraction.text || "No readable text was returned."}</pre></details>
+      </section>}
       <article className="card document-table">
         <header>
           <span>Document</span>
           <span>Type</span>
           <span>Security state</span>
           <span>Extraction</span>
-          <span>Download</span>
+          <span>Actions</span>
         </header>
         {data.documents.map((document) => (
           <div key={document.id}>
@@ -2253,10 +2298,13 @@ export function DocumentsWorkspace({ showNotice, canUpload }: SharedProps & { ca
             </span>
             <span>
               <em className="gated">
-                {humanizeIdentifier(document.extractionStatus)}
+                {document.processingStage === "reading" ? "Reading document" : document.processingStage === "scanning" ? "Scanning file" : humanizeIdentifier(document.extractionStatus)}
               </em>
+              {document.processingError && <small className="document-processing-error">{document.processingError}</small>}
             </span>
             <span>
+              {document.extractionReady && <button disabled={Boolean(reviewLoading)} onClick={() => void openReview(document)}>{reviewLoading === document.id ? "Loading…" : "Review Figures"}</button>}
+              {canUpload && data.pipeline.malwareScanning === "configured" && document.securityState !== "rejected" && document.status !== "approved" && !document.extractionReady && <button disabled={Boolean(processing)} aria-label={`Scan and read ${document.fileName}`} onClick={() => void processFile(document.id, document.processingStage === "failed")}>{processing === document.id ? "Processing…" : document.processingStage === "failed" ? "Retry Processing" : document.processingAuthorized ? "Resume Processing" : "Scan and Read"}</button>}
               {document.securityState === "clean" && document.scanStatus === "clean"
                 ? <button disabled={Boolean(downloading)} aria-label={`Download ${document.fileName}`} onClick={() => void download(document)}>{downloading === document.id ? "Downloading…" : "Download"}</button>
                 : <em className="gated">{document.securityState === "clean" ? "Awaiting security verification" : "Quarantined, download unavailable"}</em>}

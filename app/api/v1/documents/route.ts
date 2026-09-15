@@ -1,5 +1,7 @@
 import { and, desc, eq } from "drizzle-orm";
-import { getD1, getDb, getR2 } from "../../../../db";
+import { getD1, getDb, getR2, getRuntimeEnv } from "../../../../db";
+import { processDocument, processingSummary, readProcessing } from "../../../../server/document-processing";
+import { documentProviderConfiguration, deleteExtractionResult } from "../../../../server/document-providers";
 import { workspaceDocuments } from "../../../../db/schema";
 import { recordAudit } from "../../../../server/audit";
 import { requireAccess } from "../../../../server/authorization";
@@ -9,6 +11,7 @@ import {
   handleApi,
   jsonResponse,
   requireSameOrigin,
+  readJsonObject,
 } from "../../../../server/api";
 import { requirePermission } from "../../../../server/permissions";
 import { requireOrganizationWideLocationAccess } from "../../../../server/location-access";
@@ -85,6 +88,7 @@ async function list(organizationId: string) {
       scanStatus: workspaceDocuments.scanStatus,
       scannedAt: workspaceDocuments.scannedAt,
       extractionStatus: workspaceDocuments.extractionStatus,
+      extractedJson: workspaceDocuments.extractedJson,
       createdAt: workspaceDocuments.createdAt,
       updatedAt: workspaceDocuments.updatedAt,
     })
@@ -92,15 +96,16 @@ async function list(organizationId: string) {
     .where(eq(workspaceDocuments.organizationId, organizationId))
     .orderBy(desc(workspaceDocuments.createdAt))
     .limit(200);
+  const providers = documentProviderConfiguration(getRuntimeEnv());
   return {
-    documents,
+    documents: documents.map(({ extractedJson, ...document }) => ({ ...document, ...processingSummary(extractedJson) })),
     pipeline: {
       upload: "live",
       tenantStorage: "live",
       duplicateDetection: "live",
       mimeVerification: "live",
-      malwareScanning: "not_configured",
-      ocrExtraction: "not_configured",
+      malwareScanning: providers.scanning ? "configured" : "not_configured",
+      ocrExtraction: providers.extraction ? "configured" : "not_configured",
       emailForwarding: "not_configured",
       cameraCapture: "browser_supported",
     },
@@ -115,7 +120,8 @@ export async function GET(request: Request) {
     await enforceRateLimit("documents:read", context.userId, 90, 60);
     const id = new URL(request.url).searchParams.get("id");
     if (!id) return jsonResponse(await list(context.organizationId));
-    await requirePermission(context, "documents.download");
+    const review = new URL(request.url).searchParams.get("view") === "extraction";
+    await requirePermission(context, review ? "documents.review" : "documents.download");
     const [document] = await getDb()
       .select()
       .from(workspaceDocuments)
@@ -143,6 +149,11 @@ export async function GET(request: Request) {
         "DOCUMENT_QUARANTINED",
         "This document cannot be downloaded until its independent security scan is complete.",
       );
+    }
+    if (review) {
+      const { extraction } = readProcessing(document.extractedJson);
+      if (!extraction || document.extractionStatus !== "complete") throw new ApiError(409, "EXTRACTION_NOT_READY", "This document is not ready for extraction review.");
+      return jsonResponse({ id: document.id, fileName: document.fileName, extraction, status: "review_required", postedToLedger: false });
     }
     return new Response(object.body, {
       headers: {
@@ -261,7 +272,23 @@ export async function POST(request: Request) {
         extractionStatus: "not_configured",
       },
     });
-    return jsonResponse(await list(context.organizationId), { status: 201 });
+    return jsonResponse({ ...await list(context.organizationId), uploadedId: id }, { status: 201 });
+  });
+}
+
+export async function PATCH(request: Request) {
+  return handleApi(request, async ({ requestId }) => {
+    requireSameOrigin(request);
+    const context = await requireAccess(request, users, "invoice.basic");
+    await requirePermission(context, "documents.upload");
+    await requirePermission(context, "documents.view");
+    await requireOrganizationWideLocationAccess(context);
+    await enforceRateLimit("documents:process", context.organizationId, 90, 60);
+    const body = await readJsonObject(request, 2048);
+    if (typeof body.id !== "string" || body.id.length > 80) throw new ApiError(400, "INVALID_FIELD", "Select a document.");
+    const result = await processDocument({ database: getD1(), bucket: getR2(), env: getRuntimeEnv(), organizationId: context.organizationId, documentId: body.id, actorUserId: context.userId, noticeVersion: body.noticeVersion, retry: body.retry === true, beforeProviderCall: () => enforceRateLimit("documents:provider-work", context.organizationId, 60, 3600) });
+    if (result.newlyAuthorized) await recordAudit({ request, requestId, organizationId: context.organizationId, actorUserId: context.userId, action: "document.processing_authorized", resourceType: "document", resourceId: body.id, details: { noticeVersion: String(body.noticeVersion), providers: "cloudmersive,azure-document-intelligence", purpose: "Security scan and provisional extraction; no ledger posting" } });
+    return jsonResponse({ ...await list(context.organizationId), processingState: result.state });
   });
 }
 
@@ -290,6 +317,8 @@ export async function DELETE(request: Request) {
         "RECORD_PROTECTED",
         "Approved documents must follow the organization retention workflow and cannot be directly deleted.",
       );
+    const { processing } = readProcessing(document.extractedJson);
+    if (processing?.operation) await deleteExtractionResult(getRuntimeEnv(), processing.operation).catch(() => {});
     await getD1()
       .prepare(
         "DELETE FROM workspace_documents WHERE id = ? AND organization_id = ?",

@@ -1,0 +1,141 @@
+import type { VanteloqRuntimeEnv } from "../db/index.ts";
+import { ApiError } from "./api.ts";
+import { DOCUMENT_PROCESSING_NOTICE_VERSION, type DocumentExtraction } from "../shared/document-processing.ts";
+import { deleteExtractionResult, documentProviderConfiguration, DocumentProviderError, pollExtraction, scanDocument, startExtraction } from "./document-providers.ts";
+
+type Processing = {
+  version: 1; noticeVersion: string; authorizedBy: string; authorizedAt: number;
+  stage: "queued" | "scanning" | "scanned" | "starting" | "reading" | "complete" | "failed" | "blocked";
+  lock?: string; leaseUntil?: number; operation?: string; expectedPages?: number; errorCode?: string; cleanupPending?: boolean;
+};
+export type ProcessingEnvelope = { processing?: Processing; extraction?: DocumentExtraction };
+type DocumentRow = { id: string; object_key: string; content_type: string; document_type: string; sha256_hex: string; security_state: string; scan_status: string; extraction_status: string; extracted_json: string; status: string };
+const errorMessages: Record<string, string> = {
+  PROVIDER_NOT_CONFIGURED: "Document processing is waiting for service setup.",
+  PROVIDER_ACCESS_DENIED: "The document service needs its credentials or subscription checked.",
+  PROVIDER_RATE_LIMIT: "The document service is busy. Try again shortly.",
+  PROVIDER_FILE_LIMIT: "This file exceeds the document service's current limit.",
+  EXTRACTION_FORMAT_UNSUPPORTED: "Security scanning supports WEBP. To read its text, upload a PDF, JPEG or PNG.",
+  DOCUMENT_CHANGED: "The stored file did not match its upload fingerprint. It remains quarantined.",
+  PROCESSING_INTERRUPTED: "Processing was interrupted. Retry to resume. A new extraction may use another provider request.",
+  SCAN_RESULT_UNKNOWN: "The scanner did not return a verified result. The file remains quarantined.",
+  EXTRACTION_TOO_LARGE: "The document is too large for a complete extraction preview. Split it into smaller files.",
+  EXTRACTION_PAGE_LIMIT: "Document extraction supports up to 50 pages per file. Split this PDF into smaller files to read every page.",
+  EXTRACTION_INCOMPLETE: "The service did not return every page. Check the Azure plan and file before starting a new extraction.",
+};
+export function readProcessing(value: string): ProcessingEnvelope {
+  try { const result = JSON.parse(value); return result && typeof result === "object" && !Array.isArray(result) ? result : {}; } catch { return {}; }
+}
+export function processingSummary(value: string) {
+  const { processing, extraction } = readProcessing(value);
+  return {
+    processingStage: processing && ["scanning", "starting"].includes(processing.stage) && (processing.leaseUntil ?? 0) < Date.now() ? "failed" : processing?.stage ?? null,
+    processingError: processing?.errorCode ? errorMessages[processing.errorCode] ?? "Document processing could not finish. Your original file is preserved. Try again." : null,
+    extractionReady: Boolean(extraction),
+    processingAuthorized: processing?.noticeVersion === DOCUMENT_PROCESSING_NOTICE_VERSION,
+  };
+}
+
+/** A bounded step with a persistent claim. Reloading resumes the stored Azure job. */
+export async function processDocument(input: {
+  database: D1Database; bucket: R2Bucket; env: VanteloqRuntimeEnv;
+  organizationId: string; documentId: string; actorUserId: string;
+  noticeVersion: unknown; retry?: boolean; transport?: typeof fetch; beforeProviderCall?: () => Promise<void>;
+}) {
+  const { database: db, bucket, env, organizationId, documentId } = input;
+  const row = await db.prepare("SELECT id, object_key, content_type, document_type, sha256_hex, security_state, scan_status, extraction_status, extracted_json, status FROM workspace_documents WHERE id = ? AND organization_id = ?").bind(documentId, organizationId).first<DocumentRow>();
+  if (!row) throw new ApiError(404, "NOT_FOUND", "Document not found.");
+  if (row.status === "approved" || row.status === "rejected" || row.security_state === "rejected") throw new ApiError(409, "DOCUMENT_NOT_PROCESSABLE", "This document is protected or rejected and cannot be reprocessed.");
+  let envelope = readProcessing(row.extracted_json);
+  const now = Date.now(), configuration = documentProviderConfiguration(env);
+  let job = envelope.processing;
+  if (job?.leaseUntil && job.leaseUntil > now) return { state: "busy", newlyAuthorized: false };
+  if (!job || job.noticeVersion !== DOCUMENT_PROCESSING_NOTICE_VERSION) {
+    if (input.noticeVersion !== DOCUMENT_PROCESSING_NOTICE_VERSION) throw new ApiError(409, "DOCUMENT_PROCESSING_NOTICE_REQUIRED", "Review the document processing notice before sending this file for scanning and extraction.");
+    if (!configuration.scanning) throw new ApiError(503, "DOCUMENT_SCANNER_NOT_CONFIGURED", "Document scanning is waiting for service setup.");
+    job = { version: 1, noticeVersion: DOCUMENT_PROCESSING_NOTICE_VERSION, authorizedBy: input.actorUserId, authorizedAt: now, stage: "queued" };
+    envelope = { processing: job };
+  }
+  const newlyAuthorized = !readProcessing(row.extracted_json).processing;
+  if (job.stage === "complete" && !job.cleanupPending) return { state: "complete", newlyAuthorized: false };
+  if (job.stage === "blocked") return { state: "blocked", newlyAuthorized: false };
+  if ((job.stage === "failed" || job.stage === "starting" || job.stage === "scanning") && !input.retry) {
+    if (job.stage !== "failed") {
+      job = { ...job, stage: "failed", errorCode: "PROCESSING_INTERRUPTED", lock: undefined, leaseUntil: undefined };
+      await db.prepare("UPDATE workspace_documents SET extracted_json = ?, updated_at = ? WHERE id = ? AND organization_id = ? AND extracted_json = ?").bind(JSON.stringify({ ...envelope, processing: job }), now, documentId, organizationId, row.extracted_json).run();
+    }
+    return { state: "failed", newlyAuthorized: false };
+  }
+  const restartExtraction = input.retry && job.errorCode === "EXTRACTION_INCOMPLETE";
+  if (input.retry && ["failed", "scanning", "starting"].includes(job.stage)) job = { ...job, stage: row.scan_status === "clean" && row.security_state === "clean" ? job.operation && !restartExtraction ? "reading" : "scanned" : "queued", errorCode: undefined };
+  const lock = crypto.randomUUID();
+  job = { ...job, lock, leaseUntil: now + 90_000 };
+  envelope = { ...envelope, processing: job };
+  const claim = await db.prepare("UPDATE workspace_documents SET extracted_json = ?, updated_at = ? WHERE id = ? AND organization_id = ? AND extracted_json = ? AND status NOT IN ('approved', 'rejected')").bind(JSON.stringify(envelope), now, documentId, organizationId, row.extracted_json).run();
+  if (claim.meta.changes !== 1) return { state: "busy", newlyAuthorized: false };
+  let scan = row.scan_status, security = row.security_state, extractionStatus = row.extraction_status;
+  const save = async (stage: Processing["stage"], release = true) => {
+    job = { ...job!, stage, lock: release ? undefined : lock, leaseUntil: release ? undefined : now + 90_000 };
+    envelope.processing = job;
+    const result = await db.prepare("UPDATE workspace_documents SET extracted_json = ?, scan_status = ?, security_state = ?, extraction_status = ?, scan_provider = CASE WHEN ? = 'clean' OR ? = 'blocked' THEN 'cloudmersive' ELSE scan_provider END, scanned_at = CASE WHEN ? = 'clean' OR ? = 'blocked' THEN COALESCE(scanned_at, ?) ELSE scanned_at END, status = 'review_required', updated_at = ? WHERE id = ? AND organization_id = ? AND json_extract(extracted_json, '$.processing.lock') = ? AND status NOT IN ('approved', 'rejected')").bind(JSON.stringify(envelope), scan, security, extractionStatus, scan, scan, scan, scan, Math.floor(Date.now() / 1000), Date.now(), documentId, organizationId, lock).run();
+    return result.meta.changes === 1;
+  };
+  try {
+    if (job.stage === "complete" && job.cleanupPending && job.operation) {
+      await deleteExtractionResult(env, job.operation, input.transport);
+      job = { ...job, cleanupPending: false, operation: undefined };
+      await save("complete");
+      return { state: "complete", newlyAuthorized };
+    }
+    if (job.stage === "reading" && job.operation) {
+      const extracted = await pollExtraction(env, job.operation, input.transport);
+      if (!extracted) { await save("reading"); return { state: "reading", newlyAuthorized }; }
+      if (job.expectedPages && extracted.pages !== job.expectedPages) throw new DocumentProviderError("EXTRACTION_INCOMPLETE");
+      envelope.extraction = extracted;
+      extractionStatus = "complete";
+      job = { ...job, cleanupPending: true, errorCode: undefined };
+      // Persist before asking Azure to delete its temporary copy.
+      await save("complete", false);
+      try { await deleteExtractionResult(env, job.operation!, input.transport); job = { ...job, cleanupPending: false, operation: undefined }; } catch { /* Azure deletes temporary results after its retention window; preserve a retry marker. */ }
+      await save("complete");
+      return { state: "complete", newlyAuthorized };
+    }
+    if (job.stage === "scanned" && !configuration.extraction) {
+      extractionStatus = "not_configured";
+      await save("scanned");
+      return { state: "awaiting_extraction_setup", newlyAuthorized };
+    }
+    const stored = await bucket.get(row.object_key);
+    if (!stored || stored.customMetadata?.organizationId !== organizationId) throw new DocumentProviderError("DOCUMENT_CHANGED");
+    const bytes = new Uint8Array(await new Response(stored.body).arrayBuffer());
+    const hash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)), byte => byte.toString(16).padStart(2, "0")).join("");
+    if (hash !== row.sha256_hex) { scan = "failed"; security = "quarantined"; throw new DocumentProviderError("DOCUMENT_CHANGED"); }
+    if (job.stage === "queued") {
+      await save("scanning", false);
+      await input.beforeProviderCall?.();
+      scan = await scanDocument(env, bytes, row.content_type, input.transport);
+      security = scan === "clean" ? "clean" : "rejected";
+      const stillExists = await db.prepare("SELECT id FROM workspace_documents WHERE id = ? AND organization_id = ? AND json_extract(extracted_json, '$.processing.lock') = ?").bind(documentId, organizationId, lock).first();
+      if (!stillExists) return { state: "removed", newlyAuthorized };
+      await bucket.put(row.object_key, bytes.buffer, { httpMetadata: stored.httpMetadata, customMetadata: { ...stored.customMetadata, securityState: security, scanProvider: "cloudmersive", sha256: hash } });
+      extractionStatus = configuration.extraction && scan === "clean" ? "pending" : "not_configured";
+      if (!await save(scan === "clean" ? "scanned" : "blocked")) await bucket.delete(row.object_key);
+      return { state: scan === "clean" ? "scanned" : "blocked", newlyAuthorized };
+    }
+    if (scan !== "clean" || security !== "clean" || stored.customMetadata?.securityState !== "clean") throw new DocumentProviderError("SCAN_RESULT_UNKNOWN");
+    await save("starting", false);
+    await input.beforeProviderCall?.();
+    const started = await startExtraction(env, bytes, row.content_type, row.document_type, input.transport);
+    job = { ...job, ...started, errorCode: undefined };
+    extractionStatus = "pending";
+    if (!await save("reading")) await deleteExtractionResult(env, job.operation!, input.transport).catch(() => {});
+    return { state: "reading", newlyAuthorized };
+  } catch (error) {
+    // Only stable error codes cross the API or enter logs. Provider response text is private.
+    job = { ...job, errorCode: error instanceof DocumentProviderError ? error.code : "PROCESSING_INTERRUPTED" };
+    if (scan !== "clean" && scan !== "blocked") { scan = "failed"; security = "quarantined"; }
+    if (job.stage === "complete" && envelope.extraction) await save("complete");
+    else { extractionStatus = scan === "clean" ? "failed" : "not_configured"; await save("failed"); }
+    return { state: job.stage, newlyAuthorized };
+  }
+}

@@ -2,6 +2,10 @@ import { drizzle } from "drizzle-orm/d1";
 import * as schema from "./schema.ts";
 
 export type VanteloqRuntimeEnv = {
+  CLOUDMERSIVE_API_KEY?: string;
+  CLOUDMERSIVE_ENDPOINT?: string;
+  AZURE_DOCUMENT_INTELLIGENCE_KEY?: string;
+  AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT?: string;
   POS_SYNC_SECRET?: string;
   DB?: D1Database;
   BUCKET?: R2Bucket;
