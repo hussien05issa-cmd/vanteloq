@@ -2141,7 +2141,7 @@ export function DocumentsWorkspace({ showNotice, canUpload }: SharedProps & { ca
   }, []);
   useEffect(() => {
     if (!canUpload || processing || processingError || !data) return;
-    const next = data.documents.find(document => document.processingAuthorized && (document.processingStage === "queued" || document.processingStage === "reading" || (document.processingStage === "scanned" && data.pipeline.ocrExtraction === "configured")));
+    const next = data.documents.find(document => document.processingAuthorized && (document.processingStage === "queued" || document.processingStage === "scan_waiting" || document.processingStage === "reading" || (document.processingStage === "scanned" && data.pipeline.ocrExtraction === "configured")));
     if (!next) return;
     const timer = window.setTimeout(() => { if (window.document.visibilityState === "visible") void processFile(next.id); }, 4000);
     return () => window.clearTimeout(timer);
@@ -2298,7 +2298,7 @@ export function DocumentsWorkspace({ showNotice, canUpload }: SharedProps & { ca
             </span>
             <span>
               <em className="gated">
-                {document.processingStage === "reading" ? "Reading document" : document.processingStage === "scanning" ? "Scanning file" : humanizeIdentifier(document.extractionStatus)}
+                {document.processingStage === "reading" ? "Reading document" : document.processingStage === "scanning" || document.processingStage === "scan_waiting" ? "Scanning file" : humanizeIdentifier(document.extractionStatus)}
               </em>
               {document.processingError && <small className="document-processing-error">{document.processingError}</small>}
             </span>

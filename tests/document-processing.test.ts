@@ -4,8 +4,9 @@ import { Miniflare } from "miniflare";
 import { PDFDocument } from "pdf-lib";
 import { processDocument, readProcessing } from "../server/document-processing.ts";
 import { DOCUMENT_PROCESSING_NOTICE_VERSION } from "../shared/document-processing.ts";
+import { scannerEnv, scannerFixture } from "./azure-scanner-fixture.ts";
 
-const env = { CLOUDMERSIVE_API_KEY: "test-scan-key", CLOUDMERSIVE_ENDPOINT: "https://api.cloudmersive.com", AZURE_DOCUMENT_INTELLIGENCE_KEY: "test-read-key", AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT: "https://qa.cognitiveservices.azure.com" };
+const env = { ...scannerEnv, AZURE_DOCUMENT_INTELLIGENCE_KEY: "test-read-key", AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT: "https://qa.cognitiveservices.azure.com" };
 const operation = `${env.AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT}/documentintelligence/documentModels/prebuilt-layout/analyzeResults/00000000-0000-0000-0000-000000000001?api-version=2024-11-30`;
 async function setup(t: { after: (callback: () => Promise<void>) => void }) {
   const mf = new Miniflare({ modules: true, script: "export default { fetch() { return new Response('ok'); } }", d1Databases: ["DB"], r2Buckets: ["BUCKET"] });
@@ -23,20 +24,24 @@ async function setup(t: { after: (callback: () => Promise<void>) => void }) {
 }
 test("scan, async extraction, restart, review and provider deletion preserve the accounting boundary", async t => {
   const { base, row, bucket } = await setup(t);
-  let starts = 0, scans = 0, polls = 0, deletes = 0;
+  let starts = 0, polls = 0, deletes = 0;
+  const scanner = scannerFixture();
   const transport = (async (url, init) => {
-    if (String(url).includes("cloudmersive")) { scans++; return Response.json({ CleanResult: true }); }
+    if (String(url).includes("blob.core.windows.net")) return scanner.transport(url, init);
     if (init?.method === "POST") { starts++; return new Response(null, { status: 202, headers: { "operation-location": operation } }); }
     if (init?.method === "DELETE") { deletes++; return new Response(null, { status: 204 }); }
     polls++; return Response.json(polls === 1 ? { status: "running" } : { status: "succeeded", analyzeResult: { modelId: "prebuilt-layout", content: "Synthetic statement", pages: [{}, {}, {}], tables: [] } });
   }) as typeof fetch;
+  assert.equal((await processDocument({ ...base, transport })).state, "scan_waiting");
+  assert.equal((await bucket.get("tenant-a/private.pdf"))?.customMetadata?.securityState, "quarantined");
   assert.equal((await processDocument({ ...base, transport })).state, "scanned");
   assert.equal((await bucket.get("tenant-a/private.pdf"))?.customMetadata?.securityState, "clean");
   assert.equal((await processDocument({ ...base, transport })).state, "reading");
   assert.equal((await processDocument({ ...base, transport })).state, "reading");
   assert.equal((await processDocument({ ...base, transport })).state, "complete");
   assert.equal((await processDocument({ ...base, transport })).state, "complete");
-  assert.deepEqual([scans, starts, polls, deletes], [1, 1, 2, 1]);
+  assert.deepEqual([scanner.calls.filter(call => call === "PUT").length, starts, polls, deletes], [1, 1, 2, 1]);
+  assert.equal(scanner.blobs.size, 0);
   const saved = await row();
   assert.equal(saved?.status, "review_required");
   const envelope = readProcessing(String(saved?.extracted_json));
@@ -57,9 +62,13 @@ test("different tenants, missing notice and modified files cannot reach the prov
 });
 test("rejected and unknown scans stay unavailable and never start extraction", async t => {
   const { base, row } = await setup(t);
-  await processDocument({ ...base, transport: (async () => Response.json({})) as typeof fetch });
-  assert.equal((await row())?.scan_status, "failed");
-  await processDocument({ ...base, retry: true, transport: (async () => Response.json({ CleanResult: false })) as typeof fetch });
+  const scanner = scannerFixture("");
+  await processDocument({ ...base, transport: scanner.transport });
+  await processDocument({ ...base, transport: scanner.transport });
+  assert.equal((await row())?.security_state, "quarantined");
+  assert.equal((await row())?.scan_status, "pending");
+  scanner.setResult("Malicious");
+  await processDocument({ ...base, transport: scanner.transport });
   assert.equal((await row())?.security_state, "rejected");
   assert.equal((await row())?.scan_status, "blocked");
 });
@@ -68,17 +77,37 @@ test("simultaneous requests acquire one scan claim", async t => {
   let release!: () => void, entered!: () => void;
   const gate = new Promise<void>(resolve => { release = resolve; }), started = new Promise<void>(resolve => { entered = resolve; });
   let calls = 0;
-  const transport = (async () => { calls++; entered(); await gate; return Response.json({ CleanResult: true }); }) as typeof fetch;
+  const scanner = scannerFixture();
+  const transport = (async (url, init) => { calls++; entered(); await gate; return scanner.transport(url, init); }) as typeof fetch;
   const first = processDocument({ ...base, transport });
   await started;
   try { assert.equal((await processDocument({ ...base, transport })).state, "busy"); } finally { release(); }
   await first;
   assert.equal(calls, 1);
 });
+
+test("failed scan-copy deletion keeps the original quarantined and can resume safely", async t => {
+  const { base, row, bucket } = await setup(t);
+  const scanner = scannerFixture();
+  let deletionFails = true;
+  const transport = (async (url, init) => init?.method === "DELETE" && deletionFails
+    ? new Response(null, { status: 503 }) : scanner.transport(url, init)) as typeof fetch;
+  await processDocument({ ...base, transport });
+  assert.equal((await processDocument({ ...base, transport })).state, "failed");
+  assert.equal((await row())?.security_state, "quarantined");
+  assert.equal((await bucket.get("tenant-a/private.pdf"))?.customMetadata?.securityState, "quarantined");
+  assert.equal(scanner.blobs.size, 1);
+  deletionFails = false;
+  assert.equal((await processDocument({ ...base, transport, retry: true })).state, "scanned");
+  assert.equal(scanner.blobs.size, 0);
+  assert.equal((await row())?.security_state, "clean");
+  assert.equal(scanner.calls.filter(call => call === "PUT").length, 1);
+});
 test("Azure free-tier or partial page results are not reported as complete", async t => {
   const { base, row } = await setup(t);
-  const transport = (async (url, init) => String(url).includes("cloudmersive") ? Response.json({ CleanResult: true }) : init?.method === "POST" ? new Response(null, { status: 202, headers: { "operation-location": operation } }) : Response.json({ status: "succeeded", analyzeResult: { modelId: "prebuilt-layout", pages: [{}, {}] } })) as typeof fetch;
-  await processDocument({ ...base, transport }); await processDocument({ ...base, transport }); await processDocument({ ...base, transport });
+  const scanner = scannerFixture();
+  const transport = (async (url, init) => String(url).includes("blob.core.windows.net") ? scanner.transport(url, init) : init?.method === "POST" ? new Response(null, { status: 202, headers: { "operation-location": operation } }) : Response.json({ status: "succeeded", analyzeResult: { modelId: "prebuilt-layout", pages: [{}, {}] } })) as typeof fetch;
+  await processDocument({ ...base, transport }); await processDocument({ ...base, transport }); await processDocument({ ...base, transport }); await processDocument({ ...base, transport });
   const saved = await row();
   assert.equal(saved?.extraction_status, "failed");
   assert.equal(readProcessing(String(saved?.extracted_json)).processing?.errorCode, "EXTRACTION_INCOMPLETE");

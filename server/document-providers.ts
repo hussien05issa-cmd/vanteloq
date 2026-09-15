@@ -1,36 +1,55 @@
 import type { VanteloqRuntimeEnv } from "../db/index.ts";
 import type { DocumentExtraction, ExtractedField } from "../shared/document-processing.ts";
-import { PDFDocument } from "pdf-lib";
+import { PDFArray, PDFDict, PDFDocument, PDFName, PDFStream } from "pdf-lib";
+import { scannerConfiguration } from "./azure-document-scanner.ts";
+import { DocumentProviderError } from "./document-errors.ts";
+export { DocumentProviderError } from "./document-errors.ts";
 
 type Json = Record<string, unknown>;
-export class DocumentProviderError extends Error {
-  constructor(readonly code: string) { super(code); }
-}
 const object = (value: unknown): Json => value !== null && typeof value === "object" && !Array.isArray(value) ? value as Json : {};
 const array = (value: unknown): unknown[] => Array.isArray(value) ? value : [];
 const text = (value: unknown, limit = 2000) => typeof value === "string" ? value.slice(0, limit) : "";
 const positiveInteger = (value: unknown) => typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? value : null;
 
 /** Only server-configured vendor origins are accepted. Never forward keys on redirects. */
-export function providerOrigin(value: string | undefined, vendor: "cloudmersive" | "azure") {
+export function providerOrigin(value: string | undefined) {
   let url: URL;
   try { url = new URL(value || ""); } catch { throw new DocumentProviderError("PROVIDER_NOT_CONFIGURED"); }
-  const allowed = vendor === "cloudmersive"
-    ? /^(?:[a-z0-9-]+\.)*cloudmersive\.com$/.test(url.hostname)
-    : /^[a-z0-9-]+\.cognitiveservices\.azure\.com$/.test(url.hostname);
+  const allowed = /^[a-z0-9-]+\.cognitiveservices\.azure\.com$/.test(url.hostname);
   if (!allowed || url.protocol !== "https:" || url.port || url.username || url.password || url.search || url.hash || url.pathname !== "/")
     throw new DocumentProviderError("PROVIDER_ENDPOINT_INVALID");
   return url.origin;
 }
 
 export function documentProviderConfiguration(env: VanteloqRuntimeEnv) {
-  const valid = (endpoint: string | undefined, vendor: "cloudmersive" | "azure") => {
-    try { providerOrigin(endpoint, vendor); return true; } catch { return false; }
+  const valid = (endpoint: string | undefined) => {
+    try { providerOrigin(endpoint); return true; } catch { return false; }
   };
   return {
-    scanning: Boolean(env.CLOUDMERSIVE_API_KEY?.trim()) && valid(env.CLOUDMERSIVE_ENDPOINT, "cloudmersive"),
-    extraction: Boolean(env.AZURE_DOCUMENT_INTELLIGENCE_KEY?.trim()) && valid(env.AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT, "azure"),
+    scanning: scannerConfiguration(env),
+    extraction: Boolean(env.AZURE_DOCUMENT_INTELLIGENCE_KEY?.trim()) && valid(env.AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT),
   };
+}
+
+/** Preserve active-content restrictions independently of the malware vendor. */
+export async function validateDocumentForProcessing(bytes: Uint8Array, contentType: string) {
+  if (contentType !== "application/pdf") return;
+  let pdf: PDFDocument;
+  try { pdf = await PDFDocument.load(bytes, { updateMetadata: false, throwOnInvalidObject: true }); }
+  catch { throw new DocumentProviderError("DOCUMENT_FORMAT_UNSUPPORTED"); }
+  if (pdf.getPageCount() > 50) throw new DocumentProviderError("EXTRACTION_PAGE_LIMIT");
+  const forbidden = new Set(["JavaScript", "JS", "Launch", "EmbeddedFiles", "EmbeddedFile", "RichMedia", "SubmitForm", "ImportData"]);
+  const seen = new Set<object>();
+  const inspect = (value: unknown, depth: number) => {
+    if (depth > 64 || seen.size > 20_000) throw new DocumentProviderError("EXTRACTION_TOO_LARGE");
+    if (!value || typeof value !== "object" || seen.has(value)) return;
+    seen.add(value);
+    if (value instanceof PDFName && forbidden.has(value.decodeText())) throw new DocumentProviderError("DOCUMENT_ACTIVE_CONTENT");
+    if (value instanceof PDFDict) for (const [key, entry] of value.entries()) { inspect(key, depth + 1); inspect(entry, depth + 1); }
+    else if (value instanceof PDFArray) for (const entry of value.asArray()) inspect(entry, depth + 1);
+    else if (value instanceof PDFStream) inspect(value.dict, depth + 1);
+  };
+  for (const [, value] of pdf.context.enumerateIndirectObjects()) inspect(value, 0);
 }
 
 async function request(url: string, init: RequestInit, transport: typeof fetch) {
@@ -50,33 +69,11 @@ async function json(response: Response): Promise<Json> {
   try { return object(JSON.parse(body)); } catch { throw new DocumentProviderError("PROVIDER_RESPONSE_INVALID"); }
 }
 
-export function scanVerdict(value: unknown): "clean" | "blocked" | "unknown" {
-  const body = object(value);
-  if (body.CleanResult === false || array(body.FoundViruses).length || Object.entries(body).some(([key, val]) => key.startsWith("Contains") && val === true)) return "blocked";
-  if (Object.entries(body).some(([key, value]) => key.startsWith("Contains") && typeof value !== "boolean") || (body.FoundViruses != null && !Array.isArray(body.FoundViruses))) return "unknown";
-  return body.CleanResult === true ? "clean" : "unknown";
-}
-
-export async function scanDocument(env: VanteloqRuntimeEnv, bytes: Uint8Array, contentType: string, transport: typeof fetch = fetch) {
-  const endpoint = providerOrigin(env.CLOUDMERSIVE_ENDPOINT, "cloudmersive");
-  if (!env.CLOUDMERSIVE_API_KEY) throw new DocumentProviderError("PROVIDER_NOT_CONFIGURED");
-  const extensions: Record<string, string> = { "application/pdf": "pdf", "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" };
-  if (!extensions[contentType]) throw new DocumentProviderError("DOCUMENT_FORMAT_UNSUPPORTED");
-  const form = new FormData();
-  // No customer name, object key, account number or workspace ID in the filename.
-  form.set("inputFile", new Blob([new Uint8Array(bytes)], { type: contentType }), `document.${extensions[contentType]}`);
-  const headers: Record<string, string> = { Apikey: env.CLOUDMERSIVE_API_KEY, Accept: "application/json", restrictFileTypes: ".pdf,.jpg,.jpeg,.png,.webp" };
-  for (const rule of ["allowExecutables", "allowInvalidFiles", "allowScripts", "allowPasswordProtectedFiles", "allowMacros", "allowXmlExternalEntities", "allowInsecureDeserialization", "allowHtml", "allowUnsafeArchives", "allowOleEmbeddedObject", "allowUnwantedAction"]) headers[rule] = "false";
-  const verdict = scanVerdict(await json(await request(`${endpoint}/virus/scan/file/advanced`, { method: "POST", headers, body: form }, transport)));
-  if (verdict === "unknown") throw new DocumentProviderError("SCAN_RESULT_UNKNOWN");
-  return verdict;
-}
-
 export function extractionModel(documentType: string) {
   return documentType === "invoice" ? "prebuilt-invoice" : documentType === "receipt" ? "prebuilt-receipt" : "prebuilt-layout";
 }
 export function azureOperationUrl(env: VanteloqRuntimeEnv, value: string) {
-  const origin = providerOrigin(env.AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT, "azure");
+  const origin = providerOrigin(env.AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT);
   let url: URL;
   try { url = new URL(value); } catch { throw new DocumentProviderError("PROVIDER_RESPONSE_INVALID"); }
   if (url.origin !== origin || url.username || url.password || url.hash || !/^\/documentintelligence\/documentModels\/[a-zA-Z0-9._~-]+\/analyzeResults\/[a-f0-9-]{36}$/.test(url.pathname) || url.search !== "?api-version=2024-11-30") throw new DocumentProviderError("PROVIDER_RESPONSE_INVALID");
@@ -92,7 +89,7 @@ export async function startExtraction(env: VanteloqRuntimeEnv, bytes: Uint8Array
     expectedPages = pdf.getPageCount();
     if (pdf.getPageCount() > 50) throw new DocumentProviderError("EXTRACTION_PAGE_LIMIT");
   }
-  const origin = providerOrigin(env.AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT, "azure");
+  const origin = providerOrigin(env.AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT);
   let binary = "";
   for (let i = 0; i < bytes.length; i += 8192) binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
   const response = await request(`${origin}/documentintelligence/documentModels/${extractionModel(documentType)}:analyze?api-version=2024-11-30`, {
