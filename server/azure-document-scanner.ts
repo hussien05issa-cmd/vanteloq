@@ -15,11 +15,17 @@ export function scannerConfiguration(env: VanteloqRuntimeEnv) {
 }
 
 /** Azure Shared Key requests stay on one server-configured, dedicated storage account. */
-export async function storageAuthorization(url: URL, method: string, headers: Headers, accountKey: string, length = 0) {
+function storageStringToSign(url: URL, method: string, headers: Headers, length = 0) {
   const account = url.hostname.split(".")[0];
   const canonicalHeaders = Array.from(headers.entries()).filter(([name]) => name.startsWith("x-ms-")).sort(([a], [b]) => a.localeCompare(b)).map(([name, value]) => `${name}:${value.trim()}\n`).join("");
   const queries = Array.from(new Set(Array.from(url.searchParams.keys(), key => key.toLowerCase()))).sort().map(key => `\n${key}:${url.searchParams.getAll(key).sort().join(",")}`).join("");
   const stringToSign = [method, headers.get("Content-Encoding") || "", headers.get("Content-Language") || "", length ? String(length) : "", headers.get("Content-MD5") || "", headers.get("Content-Type") || "", "", headers.get("If-Modified-Since") || "", headers.get("If-Match") || "", headers.get("If-None-Match") || "", headers.get("If-Unmodified-Since") || "", headers.get("Range") || ""].join("\n") + `\n${canonicalHeaders}/${account}${url.pathname}${queries}`;
+  return stringToSign;
+}
+
+export async function storageAuthorization(url: URL, method: string, headers: Headers, accountKey: string, length = 0) {
+  const account = url.hostname.split(".")[0];
+  const stringToSign = storageStringToSign(url, method, headers, length);
   const key = await crypto.subtle.importKey("raw", Uint8Array.from(atob(accountKey), char => char.charCodeAt(0)), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   const signature = new Uint8Array(await crypto.subtle.sign("HMAC", key, encoder.encode(stringToSign)));
   return `SharedKey ${account}:${btoa(String.fromCharCode(...signature))}`;
@@ -44,7 +50,23 @@ async function request(env: VanteloqRuntimeEnv, url: URL, method: string, option
     const response = await transport(url.toString(), { method, headers, body: bytes ? new Uint8Array(bytes) : undefined, redirect: "manual", cache: "no-store", signal: AbortSignal.timeout(25_000) });
     if (response.ok || (options.missingOkay && response.status === 404)) return response;
     const serviceCode = response.headers.get("x-ms-error-code") || "Unknown";
-    console.error("DOCUMENT_STORAGE_REQUEST_FAILED", { method, status: response.status, serviceCode: /^[A-Za-z]{1,80}$/.test(serviceCode) ? serviceCode : "Unknown" });
+    // Only fixed diagnostic labels may reach logs. Azure error bodies can include
+    // signatures and private object paths, so never print the body or its values.
+    let signingMismatch: string[] = [];
+    if (response.status === 403 && serviceCode === "AuthenticationFailed") {
+      const body = await response.text();
+      const detail = body.match(/<AuthenticationErrorDetail>([\s\S]*?)<\/AuthenticationErrorDetail>/)?.[1] || "";
+      const signed = detail.match(/Server used following string to sign: '([\s\S]*)'\.?$/)?.[1];
+      if (signed) {
+        const actual = decodeXml(signed).replace(/\r\n/g, "\n").split("\n");
+        const expected = storageStringToSign(url, method, headers, bytes?.byteLength).split("\n");
+        const labels = ["method", "encoding", "language", "length", "md5", "type", "date", "modifiedSince", "ifMatch", "ifNoneMatch", "unmodifiedSince", "range"];
+        signingMismatch = labels.filter((_, index) => actual[index] !== expected[index]);
+        if (actual.slice(12).join("\n") !== expected.slice(12).join("\n")) signingMismatch.push("serviceHeadersOrResource");
+        if (!signingMismatch.length) signingMismatch.push("signatureOnly");
+      } else signingMismatch = [/date|time/i.test(detail) ? "requestTime" : "unclassified"];
+    }
+    console.error("DOCUMENT_STORAGE_REQUEST_FAILED", { method, stage: url.searchParams.has("comp") ? "verdict" : method === "GET" ? "identity" : "transfer", status: response.status, serviceCode: /^[A-Za-z]{1,80}$/.test(serviceCode) ? serviceCode : "Unknown", signingMismatch });
     throw new DocumentProviderError(response.status === 401 || response.status === 403 ? "PROVIDER_ACCESS_DENIED" : response.status === 429 || response.status === 503 ? "PROVIDER_RATE_LIMIT" : response.status === 412 ? "DOCUMENT_CHANGED" : "PROVIDER_UNAVAILABLE");
   } catch (error) {
     if (error instanceof DocumentProviderError) throw error;

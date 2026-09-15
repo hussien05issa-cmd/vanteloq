@@ -36,6 +36,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: absoluteUrl("/cookies"), lastModified: "2026-08-24", changeFrequency: "monthly", priority: 0.4 },
     { url: absoluteUrl("/data-processing"), lastModified: "2026-08-24", changeFrequency: "monthly", priority: 0.4 },
     { url: absoluteUrl("/subprocessors"), lastModified: "2026-08-24", changeFrequency: "monthly", priority: 0.4 },
+    { url: absoluteUrl("/social"), lastModified: "2026-09-15", changeFrequency: "monthly", priority: 0.6 },
     ...categoryEntries,
     ...Object.keys(FEATURE_GUIDES).map(slug => ({url: absoluteUrl("/features/" + slug), lastModified: "2026-09-13", changeFrequency: "monthly" as const, priority: 0.8})),
     ...articleEntries,

@@ -51,3 +51,19 @@ test("changed blobs, stale results and unsafe tag payloads remain quarantined", 
   assert.throws(() => parseScannerTags('<!DOCTYPE Tags [<!ENTITY x "attack">]><Tags></Tags>'));
   assert.throws(() => parseScannerTags('<Tags><Tag><Key>Malware Scanning scan result</Key><Value>No threats found</Value></Tag><Tag><Key>malware scanning scan result</Key><Value>Malicious</Value></Tag></Tags>'));
 });
+
+test("identity checks require the exact bounded range and full-file length", async () => {
+  const fixture = scannerFixture();
+  const operation = await beginAzureScan(scannerEnv, new Uint8Array([1, 2]), "application/pdf", "a".repeat(64), fixture.transport);
+  for (const [status, range] of [[200, "bytes 0-0/2"], [206, "bytes 0-0/3"], [206, "bytes 0-1/2"]] as const) {
+    let cancelled = false;
+    const transport = (async (_url, init) => {
+      assert.equal(init?.method, "GET");
+      assert.equal(init?.cache, "no-store");
+      assert.equal(new Headers(init?.headers).get("range"), "bytes=0-0");
+      return new Response(new ReadableStream({ cancel() { cancelled = true; } }), { status, headers: { etag: operation.etag, "content-range": range, "x-ms-meta-sha256": operation.sha256 } });
+    }) as typeof fetch;
+    await assert.rejects(pollAzureScan(scannerEnv, operation, transport), { message: "DOCUMENT_CHANGED" });
+    assert.equal(cancelled, true, "An unbounded or changed response must not be downloaded");
+  }
+});
