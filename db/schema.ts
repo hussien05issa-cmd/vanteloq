@@ -8,6 +8,16 @@ import {
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 
+export const workspaceSessions = sqliteTable("workspace_sessions", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  startedAt: integer("started_at").notNull(),
+  lastSeenAt: integer("last_seen_at").notNull(),
+  expiresAt: integer("expires_at").notNull(),
+  revoked: integer("revoked").notNull().default(0),
+}, table => [index("workspace_sessions_user_idx").on(table.userId), index("workspace_sessions_expiry_idx").on(table.expiresAt)]);
+
 // Legacy prototype tables are retained so existing data is not destructively
 // dropped by the first secure migration. Application routes no longer use them.
 export const legacyTasks = sqliteTable("tasks", {

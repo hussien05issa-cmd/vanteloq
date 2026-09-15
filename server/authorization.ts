@@ -6,6 +6,7 @@ import type { FeatureKey } from "./entitlements/catalog";
 import { getTenantEntitlements, requireFeatureEntitlement, requireTenantServiceAccess } from "./entitlements/engine";
 import { bootstrapFounderInternalAccess } from "./internal-access";
 import { liveTeamMembershipAllowed } from "./team-invitations";
+import { requireActiveWorkspaceSession } from "./session-policy";
 
 export type Role = "owner" | "admin" | "manager" | "employee" | "read_only" | "integration";
 
@@ -65,6 +66,7 @@ export async function findAccessContext(identity: TrustedIdentity, request?: Req
     authProvider: row.authProvider,
     organization: row.organization,
   };
+  if (identity.provider === "supabase" && identity.assuranceLevel === "aal2") await requireActiveWorkspaceSession(context);
   await bootstrapFounderInternalAccess(context);
   return context;
 }

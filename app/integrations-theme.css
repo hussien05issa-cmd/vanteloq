@@ -53,6 +53,11 @@
 .operating-shell .data-hub .integration-feature-checklist p > :is(small,em) { color: var(--connection-muted); font-size: .875rem !important; line-height: 1.6; }
 .operating-shell .data-hub .feature-state { justify-self: start; font-size: .8125rem !important; }
 .operating-shell .data-hub .provider-parity-contract > header { border-color: var(--connection-line); padding: 20px; }
+.operating-shell .data-hub .provider-parity-contract > summary { background: #eef4fa; color: #19334f; border-radius: 17px; }
+.operating-shell .data-hub .provider-parity-contract[open] > summary { border-radius: 17px 17px 0 0; border-bottom: 1px solid #ccd9e7; }
+.operating-shell .data-hub .provider-parity-contract > header { background: #f9fbfe; color: #19334f; }
+.operating-shell .data-hub .provider-parity-contract :is(summary,h3,p,span,strong) { opacity: 1; text-shadow: none; }
+.operating-shell .data-hub .provider-parity-contract > summary:focus-visible { outline: 3px solid #2c67ac; outline-offset: 3px; }
 .operating-shell .data-hub .provider-parity-contract > header p { color: #365777; font-size: .75rem !important; }
 .operating-shell .data-hub .provider-parity-contract > header span { color: var(--connection-muted); font-size: 1rem !important; }
 .operating-shell .data-hub .provider-parity-contract > header > strong { background: #eaf2fb; color: #244e78; border-color: var(--connection-line); font-size: .875rem !important; }

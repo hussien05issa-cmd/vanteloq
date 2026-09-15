@@ -2,6 +2,8 @@
 
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
+import SessionTimeout from "./session-timeout";
+import WorkspaceSkeleton from "./workspace-skeleton";
 import Link from "next/link";
 import VanteloqAiShowcase from "./vanteloq-ai-showcase";
 import VanteloqAiLogo from "./vanteloq-ai-logo";
@@ -91,8 +93,16 @@ export default function Home() {
         user?: { email?: string; displayName?: string };
         organization?: { setupComplete?: boolean; businessName?: string; ownerName?: string } | null;
         invitation?: TeamInvitationDetails | null;
+        error?: { code?: string };
       };
       if (sequence !== loadSequence.current) return;
+      if (response.status === 401 && data.error?.code === "SESSION_EXPIRED") {
+        const client = await getSupabase();
+        await client?.auth.signOut({ scope: "local" });
+        setAuthMode("signin");
+        setAuthOpen(true);
+        return;
+      }
 
       if (response.ok && data.organization?.setupComplete && !data.invitation) {
         loadedUser.current = userId;
@@ -242,7 +252,7 @@ export default function Home() {
     }
   }
 
-  if (entry === "loading") return <div className="entry-loading" role="status" aria-live="polite"><ProductBrandLogo product="vanteloq" priority/><p>Preparing Vanteloq…</p></div>;
+  if (entry === "loading") return <AuthenticatedLoading/>;
   if (entry === "load-error") return <main className="entry-loading entry-load-error">
     <ProductBrandLogo product="vanteloq" priority/>
     <h1>Vanteloq did not finish loading</h1>
@@ -278,11 +288,11 @@ export default function Home() {
   if (entry === "landing") return <><LandingPage start={openAuth}/>{authOpen && <AuthPanel initialMode={authMode} close={closeAuth} authenticated={session => void loadWorkspace(session)}/>}</>;
   if (entry === "signup") return <Suspense fallback={<AuthenticatedLoading/>}><AccountMfaGate><SecureOnboardingFlow accountName={accountName} accountEmail={accountEmail} signOut={() => void signOut()} complete={(business, owner) => { setOrganizationName(business); setAccountName(owner); setEntry("app"); }}/></AccountMfaGate></Suspense>;
   if (entry === "invitation" && teamInvitation) return <Suspense fallback={<AuthenticatedLoading/>}><AccountMfaGate><TeamInvitationFlow invitation={teamInvitation} initialName={accountName} complete={(business, member) => { setOrganizationName(business); setAccountName(member); setTeamInvitation(null); setEntry("app"); }}/></AccountMfaGate></Suspense>;
-  return <Suspense fallback={<AuthenticatedLoading/>}><AccountMfaGate><LegalAcceptanceGate><BillingOnboardingGate><VanteloqApp organizationName={organizationName} accountName={accountName}/></BillingOnboardingGate></LegalAcceptanceGate></AccountMfaGate></Suspense>;
+  return <Suspense fallback={<AuthenticatedLoading/>}><AccountMfaGate><SessionTimeout><LegalAcceptanceGate><BillingOnboardingGate><VanteloqApp organizationName={organizationName} accountName={accountName}/></BillingOnboardingGate></LegalAcceptanceGate></SessionTimeout></AccountMfaGate></Suspense>;
 }
 
 function AuthenticatedLoading() {
-  return <div className="entry-loading" role="status" aria-live="polite"><ProductBrandLogo product="vanteloq" priority/><p>Preparing your workspace…</p></div>;
+  return <main className="workspace-entry-loading"><ProductBrandLogo product="vanteloq" priority/><WorkspaceSkeleton label="Preparing your workspace"/></main>;
 }
 
 const featureReelScenes = [

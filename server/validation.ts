@@ -1,3 +1,4 @@
+import { isCalendarDate } from "../domain/calendar-date";
 import { ApiError } from "./api";
 import { ISO_COUNTRY_CODES } from "../app/address-data";
 import {
@@ -544,8 +545,7 @@ function dailyMetricRow(value: unknown) {
   ]);
   const businessDate = requiredString(row.businessDate, "business date", 10);
   if (
-    !DATE.test(businessDate) ||
-    Number.isNaN(Date.parse(`${businessDate}T00:00:00Z`))
+    !isCalendarDate(businessDate)
   ) {
     throw new ApiError(400, "INVALID_FIELD", "Enter a valid business date.");
   }

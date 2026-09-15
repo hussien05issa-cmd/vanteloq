@@ -1,4 +1,6 @@
 "use client";
+
+import { parseDailyCsv } from "../domain/daily-summary-csv";
 import WorkspaceSkeleton from "./workspace-skeleton";
 import { isAwaitingSalesRecords } from "../domain/intraday-sales";
 
@@ -3349,32 +3351,6 @@ function lightspeedConfigurationLabel(value: string) {
   return labels[value] ?? "Provider configuration";
 }
 
-const requiredHeaders = [
-  "business_date",
-  "gross_sales",
-  "net_sales",
-  "cogs",
-  "transactions",
-  "units",
-];
-function csvCells(line: string) {
-  const cells: string[] = [];
-  let cell = "";
-  let quoted = false;
-  for (let index = 0; index < line.length; index++) {
-    const char = line[index];
-    if (char === '"' && line[index + 1] === '"' && quoted) {
-      cell += '"';
-      index++;
-    } else if (char === '"') quoted = !quoted;
-    else if (char === "," && !quoted) {
-      cells.push(cell.trim());
-      cell = "";
-    } else cell += char;
-  }
-  cells.push(cell.trim());
-  return cells;
-}
 const toCents = (
   value: string | FormDataEntryValue | null,
   optional = false,
@@ -3386,49 +3362,6 @@ const toCents = (
     throw new Error(`Invalid money value: ${String(value)}`);
   return Math.round(number * 100);
 };
-function parseDailyCsv(text: string) {
-  const lines = text
-    .replace(/^\uFEFF/, "")
-    .split(/\r?\n/)
-    .filter((line) => line.trim());
-  if (lines.length < 2)
-    throw new Error("The CSV needs a header and at least one data row.");
-  const headers = csvCells(lines[0]).map((value) =>
-    value.toLowerCase().replace(/\s+/g, "_"),
-  );
-  for (const required of requiredHeaders)
-    if (!headers.includes(required))
-      throw new Error(`Missing required column: ${required}.`);
-  if (lines.length - 1 > 366)
-    throw new Error("Import a maximum of 366 daily rows at a time.");
-  const get = (cells: string[], name: string) =>
-    cells[headers.indexOf(name)] ?? "";
-  return lines.slice(1).map((line, index) => {
-    const cells = csvCells(line);
-    const integer = (name: string) => {
-      const value = Number(get(cells, name) || 0);
-      if (!Number.isSafeInteger(value) || value < 0)
-        throw new Error(`Row ${index + 2}: ${name} must be a whole number.`);
-      return value;
-    };
-    return {
-      businessDate: get(cells, "business_date"),
-      locationRef: get(cells, "location") || "all",
-      grossSalesCents: toCents(get(cells, "gross_sales")),
-      netSalesCents: toCents(get(cells, "net_sales")),
-      costOfGoodsCents: toCents(get(cells, "cogs")),
-      transactionCount: integer("transactions"),
-      unitsSold: integer("units"),
-      refundsCents: toCents(get(cells, "refunds")),
-      discountsCents: toCents(get(cells, "discounts")),
-      labourCostCents: toCents(get(cells, "labour_cost")),
-      inventoryValueCents: toCents(get(cells, "inventory_value"), true),
-      cashBalanceCents: toCents(get(cells, "cash_balance"), true),
-      accountsPayableCents: toCents(get(cells, "accounts_payable"), true),
-    };
-  });
-}
-
 function DailyImport({
   refresh,
   showNotice,

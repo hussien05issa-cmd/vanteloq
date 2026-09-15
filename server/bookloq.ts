@@ -263,8 +263,8 @@ export function buildFinancialStatements(rows: readonly LedgerAccountRow[]) {
   return {
     accounts,
     trialBalance: {
-      totalDebitCents: exactMoney(rows.reduce((sum, row) => sum + ledgerCents(row.debitCents), BigInt(0))),
-      totalCreditCents: exactMoney(rows.reduce((sum, row) => sum + ledgerCents(row.creditCents), BigInt(0))),
+      totalDebitCents: exactMoney(rows.reduce((sum, row) => sum + (row.debitCents > row.creditCents ? ledgerCents(row.debitCents) - ledgerCents(row.creditCents) : BigInt(0)), BigInt(0))),
+      totalCreditCents: exactMoney(rows.reduce((sum, row) => sum + (row.creditCents > row.debitCents ? ledgerCents(row.creditCents) - ledgerCents(row.debitCents) : BigInt(0)), BigInt(0))),
     },
     profitAndLoss: { revenueCents, expenseCents, cogsCents, grossProfitCents, operatingProfitCents },
     balanceSheet: { assetCents, liabilityCents, equityCents: exactMoney(BigInt(equityBeforeEarningsCents) + BigInt(operatingProfitCents)) },

@@ -2105,6 +2105,7 @@ type DocumentData = {
     fileName: string;
     contentType: string;
     sizeBytes: number;
+    securityState: string;
     status: string;
     extractionStatus: string;
     createdAt: string;
@@ -2114,37 +2115,41 @@ type DocumentData = {
 export function DocumentsWorkspace({ showNotice, canUpload }: SharedProps & { canUpload: boolean }) {
   const [data, setData] = useState<DocumentData | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+  const [loadError, setLoadError] = useState("");
   const load = useCallback(async () => {
-    const response = await apiFetch("/api/v1/documents");
-    const body: unknown = await response.json();
-    if (response.ok) setData(body as DocumentData);
-    else showNotice(apiMessage(body, "Unable to load documents."));
-  }, [showNotice]);
+    setLoadError("");
+    try {
+      const response = await apiFetch("/api/v1/documents", { signal: AbortSignal.timeout(20_000) });
+      const body: unknown = await response.json();
+      if (!response.ok) throw new Error(apiMessage(body, "Unable to load documents."));
+      setData(body as DocumentData);
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : "Documents could not load. Check your connection and try again.");
+    }
+  }, []);
   useEffect(() => {
     const timer = window.setTimeout(() => void load(), 0);
     return () => window.clearTimeout(timer);
   }, [load]);
   const upload = async (file: File | null, documentType: string) => {
     if (!canUpload || !file) return;
+    setUploadError("");
     setUploading(true);
-    const form = new FormData();
-    form.set("file", file);
-    form.set("documentType", documentType);
-    const response = await apiFetch("/api/v1/documents", {
-      method: "POST",
-      body: form,
-    });
-    const body: unknown = await response.json();
-    if (response.ok) {
+    try {
+      const form = new FormData();
+      form.set("file", file);
+      form.set("documentType", documentType);
+      const response = await apiFetch("/api/v1/documents", { method: "POST", body: form, signal: AbortSignal.timeout(60_000) });
+      const body: unknown = await response.json();
+      if (!response.ok) throw new Error(apiMessage(body, "Upload failed. Please try again."));
       setData(body as DocumentData);
       showNotice("Document added to the secure review queue");
-    } else showNotice(apiMessage(body, "Upload failed."));
-    setUploading(false);
+    } catch (error) {
+      setUploadError(error instanceof Error && error.name !== "TimeoutError" ? error.message : "The upload did not finish. Check your connection and retry. Duplicate files are detected automatically.");
+    } finally { setUploading(false); }
   };
-  if (!data)
-    return (
-      <WorkspaceSkeleton label="Loading documents"/>
-    );
+  if (!data) return loadError ? <section className="card control-empty" role="alert"><h2>Documents could not load</h2><p>{loadError}</p><button onClick={() => void load()}>Try Again</button></section> : <WorkspaceSkeleton label="Loading documents"/>;
   return (
     <div className="content control-page documents-centre">
       <section className="page-intro">
@@ -2172,27 +2177,30 @@ export function DocumentsWorkspace({ showNotice, canUpload }: SharedProps & { ca
           <h3>
             {uploading
               ? "Uploading securely…"
-              : "Add an invoice, receipt or supplier document"}
+              : "Add a document for review"}
           </h3>
           <p>
             PDF, JPEG, PNG or WEBP · up to 10 MB · camera capture supported on
             mobile
           </p>
+          {uploadError && <p className="document-upload-error" role="alert">{uploadError}</p>}
         </div>
         <div>
-          {["invoice", "receipt", "supplier_statement", "packing_slip"].map(
-            (type) => (
-              <label key={type}>
+          {[{ type: "invoice", label: "Invoice" }, { type: "receipt", label: "Receipt" }, { type: "supplier_statement", label: "Supplier Statement" }, { type: "other", label: "Bank Statement" }, { type: "other", label: "Sales Report" }, { type: "packing_slip", label: "Packing Slip" }].map(
+            ({ type, label }) => (
+              <label key={label}>
                 <input
                   type="file"
                   accept="application/pdf,image/jpeg,image/png,image/webp"
                   capture={type === "receipt" ? "environment" : undefined}
                   disabled={uploading}
-                  onChange={(event) =>
-                    void upload(event.target.files?.[0] || null, type)
-                  }
+                  onChange={(event) => {
+                    const file = event.target.files?.[0] || null;
+                    event.target.value = "";
+                    void upload(file, type);
+                  }}
                 />
-                {humanizeIdentifier(type)}
+                {label}
               </label>
             ),
           )}
@@ -2209,7 +2217,7 @@ export function DocumentsWorkspace({ showNotice, canUpload }: SharedProps & { ca
           <span>Type</span>
           <span>Security state</span>
           <span>Extraction</span>
-          <span>Added</span>
+          <span>Download</span>
         </header>
         {data.documents.map((document) => (
           <div key={document.id}>
@@ -2222,7 +2230,7 @@ export function DocumentsWorkspace({ showNotice, canUpload }: SharedProps & { ca
             </span>
             <span>{humanizeIdentifier(document.documentType)}</span>
             <span>
-              <em>{humanizeIdentifier(document.status)}</em>
+              <em>{humanizeIdentifier(document.securityState)}</em>
             </span>
             <span>
               <em className="gated">

@@ -318,22 +318,31 @@
   .demo-kpis > article > button { gap: 9px; padding: 14px; }
   .demo-kpis > article > button > em { font-size: 11px; }
 }
-.workspace-skeleton { padding: 28px; width: 100%; color: var(--ui-muted); }
+.workspace-skeleton { padding: 28px; width: 100%; color: #465b73; }
 .skeleton-status { display: block; font-size: 14px; margin-bottom: 18px; }
 .skeleton-heading { display: grid; gap: 12px; width: min(380px,70%); margin-bottom: 26px; }
-.workspace-skeleton i { display: block; height: 13px; border-radius: 6px; background: linear-gradient(100deg,#e5ebf3 25%,#f4f7fc 48%,#e5ebf3 72%); background-size: 220% 100%; animation: skeleton-shimmer 2s ease-in-out infinite; }
+.workspace-skeleton i { display: block; height: 13px; border: 1px solid #c7d1de; border-radius: 6px; background: linear-gradient(100deg,#d8e0eb 25%,#edf2f8 48%,#d8e0eb 72%); background-size: 220% 100%; animation: skeleton-shimmer 2s ease-in-out infinite; }
 .skeleton-heading i:first-child { height: 26px; width: 72%; }
 .skeleton-metrics { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 16px; margin-bottom: 24px; }
-.skeleton-metrics > div { display: grid; gap: 18px; padding: 22px; border: 1px solid var(--ui-line); border-radius: 18px; background: var(--ui-surface); }
+.skeleton-metrics > div { display: grid; gap: 18px; padding: 22px; border: 1px solid #bdc9d8; border-radius: 18px; background: #f1f5fa; }
 .skeleton-metrics i:nth-child(2) { height: 28px; width: 70%; }
 .skeleton-metrics i:last-child { width: 82%; }
-.skeleton-records { border: 1px solid var(--ui-line); background: var(--ui-surface); border-radius: 18px; padding: 14px 22px; }
+.skeleton-records { border: 1px solid #bdc9d8; background: #f1f5fa; border-radius: 18px; padding: 14px 22px; }
 .skeleton-records > div { display: grid; grid-template-columns: 1.5fr 1fr 1fr; gap: 40px; padding: 18px 0; }
 .workspace-skeleton.compact { padding: 20px 0; }
 .workspace-skeleton.compact .skeleton-heading, .workspace-skeleton.compact .skeleton-metrics { display: none; }
 @keyframes skeleton-shimmer { from { background-position: 100% 0; } to { background-position: -120% 0; } }
 @media (max-width:600px) { .workspace-skeleton { padding: 18px; }.skeleton-metrics { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }.skeleton-metrics > div { padding: 16px; }.skeleton-records > div { gap: 20px; } }
 @media (prefers-reduced-motion:reduce) { .workspace-skeleton i { animation: none; } }
+.workspace-entry-loading { min-height: 100dvh; padding: clamp(20px,4vw,56px); background: #edf2f8; }
+.document-upload .document-upload-error { padding: 12px 16px; border: 1px solid #d8a8b0; border-radius: 10px; background: #fff1f3; color: #8d263b; font-size: .9375rem; line-height: 1.5; }
+.workspace-entry-loading > .workspace-skeleton { max-width: 1200px; margin: 30px auto; border: 1px solid #bdc9d8; border-radius: 22px; background: #f8fafd; }
+.session-warning { position: fixed; z-index: 1000; bottom: max(24px,env(safe-area-inset-bottom)); right: 24px; width: min(560px,calc(100% - 48px)); display: flex; align-items: center; gap: 20px; padding: 20px; border: 1px solid #b9c8da; border-radius: 18px; background: #f3f7fc; color: #19334f; box-shadow: 0 12px 50px #102a4d26; }
+.session-warning strong { font-size: 1rem; }.session-warning p { margin: 6px 0 0; font-size: .9375rem; line-height: 1.5; color: #465b73; }
+.session-warning button,.session-status-panel button { flex-shrink: 0; min-height: 44px; padding: 12px 16px; border: 1px solid #285b94; border-radius: 12px; background: #245a97; color: #f6f9fd; font-size: .9375rem; font-weight: 600; text-decoration: none; cursor: pointer; }
+.session-warning button:focus-visible,.session-status-panel button:focus-visible { outline: 3px solid #377bcc; outline-offset: 3px; }
+.session-status-panel { padding: 40px 24px; max-width: 640px; margin: 10vh auto; color: #19334f; }.session-status-panel p { margin: 18px 0 30px; line-height: 1.6; color: #465b73; }
+@media(max-width:600px) { .session-warning { flex-direction: column; align-items: stretch; gap: 14px; }.session-warning button { align-self: start; }.workspace-entry-loading { padding: 20px 12px; } }
 .journey-home main > section { scroll-margin-top: var(--public-nav-height,140px); }
 .public-site .public-nav nav > a, .unified-public-nav nav > a { padding: 9px 11px; border-radius: 10px; min-height: 44px; display: inline-flex; align-items: center; }
 .public-site .public-nav nav > a[aria-current], .unified-public-nav nav > a[aria-current] { color: #164caa; background: #e6eefc; box-shadow: inset 0 -2px 0 #376bc0; font-weight: 650; }
