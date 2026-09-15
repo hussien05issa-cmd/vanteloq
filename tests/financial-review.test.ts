@@ -22,6 +22,19 @@ test("contra assets, sales returns and owner draws preserve the accounting equat
  assert.equal(s.accounts.find(x=>x.id==="accumulated_depreciation")?.balanceCents,20000);
  assert.equal(buildFinancialReview(s,true).status,"balanced");
 });
+
+test("trial balance shows closing account balances, not gross journal turnover", () => {
+ const s=buildFinancialStatements([
+   row("cash","asset","debit",150000,70000),
+   row("clearing","asset","debit",100000,100000),
+   row("capital","equity","credit",0,100000),
+   row("expense","expense","debit",20000,0),
+ ]);
+ assert.deepEqual(s.trialBalance,{totalDebitCents:100000,totalCreditCents:100000});
+ assert.equal(s.accounts.find(x=>x.id==="clearing")?.balanceCents,0);
+ assert.equal(s.cashCents,0);
+ assert.equal(s.balanceSheet.assetCents,80000);
+});
 test("missing postings are flagged without inserting an automatic balancing entry",()=>{
  const s=buildFinancialStatements(ledger.map(x=>x.id==="cash"?{...x,debitCents:x.debitCents-1000}:x));
  const review=buildFinancialReview(s,true);

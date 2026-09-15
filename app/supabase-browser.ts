@@ -55,10 +55,16 @@ export async function apiFetch(input: RequestInfo | URL, init: RequestInit = {})
   const session = await currentSession();
   init.signal?.throwIfAborted();
   if (session?.access_token) headers.set("Authorization", `Bearer ${session.access_token}`);
-  return fetch(input, { ...init, headers });
+  const response = await fetch(input, { ...init, headers });
+  if (response.status === 401) {
+    const body = await response.clone().json().catch(() => null);
+    if (body?.error?.code === "SESSION_EXPIRED") window.dispatchEvent(new Event("vanteloq-session-expired"));
+  }
+  return response;
 }
 
 export async function signOut(): Promise<void> {
+  try { await apiFetch("/api/v1/session", { method: "DELETE", signal: AbortSignal.timeout(5000) }); } catch { /* Supabase logout still proceeds. */ }
   const supabase = await getSupabase();
   if (supabase) await supabase.auth.signOut();
 }
