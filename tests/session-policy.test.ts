@@ -27,7 +27,14 @@ test("server leases enforce idle, absolute, logout and concurrent expiry boundar
     const start = 1_800_000_000_000;
     const first = await requireActiveWorkspaceSession(context, start);
     assert.equal(first.expiresAt, start + SESSION_MAX_MS);
-    const prior = await requireActiveWorkspaceSession(context, start + SESSION_IDLE_MS - 1);
+    const unattended = { ...context, identity: { ...context.identity, sessionId: "unattended" } };
+    await requireActiveWorkspaceSession(unattended, start);
+    await requireActiveWorkspaceSession(unattended, start + 20 * 60_000);
+    await requireActiveWorkspaceSession(unattended, start + 28 * 60_000);
+    await assert.rejects(requireActiveWorkspaceSession(unattended, start + SESSION_IDLE_MS), { code: "SESSION_EXPIRED" });
+    const poll = await requireActiveWorkspaceSession(context, start + SESSION_IDLE_MS - 1000);
+    assert.equal(poll.lastSeenAt, start, "background reads cannot extend the idle deadline");
+    const prior = await requireActiveWorkspaceSession(context, start + SESSION_IDLE_MS - 1, true);
     assert.equal(prior.expiresAt, first.expiresAt, "refresh cannot reset the absolute limit");
     const expiredAt = prior.lastSeenAt + SESSION_IDLE_MS;
     const concurrent = await Promise.allSettled([requireActiveWorkspaceSession(context, expiredAt), requireActiveWorkspaceSession(context, expiredAt + 1)]);
@@ -35,7 +42,7 @@ test("server leases enforce idle, absolute, logout and concurrent expiry boundar
     assert.equal((await db.prepare("SELECT last_seen_at n FROM workspace_sessions WHERE id=?").bind(await sessionLeaseId(context)).first<{n:number}>())!.n, prior.lastSeenAt);
     const fresh = { ...context, identity: { ...context.identity, sessionId: "new-signin" } };
     await requireActiveWorkspaceSession(fresh, start);
-    for (let offset = 20 * 60_000; offset < SESSION_MAX_MS; offset += 20 * 60_000) await requireActiveWorkspaceSession(fresh, start + offset);
+    for (let offset = 20 * 60_000; offset < SESSION_MAX_MS; offset += 20 * 60_000) await requireActiveWorkspaceSession(fresh, start + offset, true);
     await assert.rejects(requireActiveWorkspaceSession(fresh, start + SESSION_MAX_MS), { code: "SESSION_EXPIRED" });
     const logout = { ...context, identity: { ...context.identity, sessionId: "logout" } };
     await requireActiveWorkspaceSession(logout, start);
