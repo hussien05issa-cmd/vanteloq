@@ -1,6 +1,7 @@
 import { and, desc, eq } from "drizzle-orm";
 import { getD1, getDb, getR2, getRuntimeEnv } from "../../../../db";
 import { processDocument, processingSummary, readProcessing } from "../../../../server/document-processing";
+import { deleteAzureScan } from "../../../../server/azure-document-scanner";
 import { documentProviderConfiguration, deleteExtractionResult } from "../../../../server/document-providers";
 import { workspaceDocuments } from "../../../../db/schema";
 import { recordAudit } from "../../../../server/audit";
@@ -287,7 +288,7 @@ export async function PATCH(request: Request) {
     const body = await readJsonObject(request, 2048);
     if (typeof body.id !== "string" || body.id.length > 80) throw new ApiError(400, "INVALID_FIELD", "Select a document.");
     const result = await processDocument({ database: getD1(), bucket: getR2(), env: getRuntimeEnv(), organizationId: context.organizationId, documentId: body.id, actorUserId: context.userId, noticeVersion: body.noticeVersion, retry: body.retry === true, beforeProviderCall: () => enforceRateLimit("documents:provider-work", context.organizationId, 60, 3600) });
-    if (result.newlyAuthorized) await recordAudit({ request, requestId, organizationId: context.organizationId, actorUserId: context.userId, action: "document.processing_authorized", resourceType: "document", resourceId: body.id, details: { noticeVersion: String(body.noticeVersion), providers: "cloudmersive,azure-document-intelligence", purpose: "Security scan and provisional extraction; no ledger posting" } });
+    if (result.newlyAuthorized) await recordAudit({ request, requestId, organizationId: context.organizationId, actorUserId: context.userId, action: "document.processing_authorized", resourceType: "document", resourceId: body.id, details: { noticeVersion: String(body.noticeVersion), providers: "azure-defender,azure-document-intelligence", purpose: "Security scan and provisional extraction; no ledger posting" } });
     return jsonResponse({ ...await list(context.organizationId), processingState: result.state });
   });
 }
@@ -319,6 +320,7 @@ export async function DELETE(request: Request) {
       );
     const { processing } = readProcessing(document.extractedJson);
     if (processing?.operation) await deleteExtractionResult(getRuntimeEnv(), processing.operation).catch(() => {});
+    if (processing?.azureScan) await deleteAzureScan(getRuntimeEnv(), processing.azureScan).catch(() => {});
     await getD1()
       .prepare(
         "DELETE FROM workspace_documents WHERE id = ? AND organization_id = ?",

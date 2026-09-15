@@ -1,41 +1,25 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { PDFDocument } from "pdf-lib";
-import { azureOperationUrl, documentProviderConfiguration, extractionModel, normalizeExtraction, pollExtraction, providerOrigin, scanDocument, scanVerdict, startExtraction } from "../server/document-providers.ts";
-const env = { CLOUDMERSIVE_API_KEY: "test-scan-key", CLOUDMERSIVE_ENDPOINT: "https://api.cloudmersive.com", AZURE_DOCUMENT_INTELLIGENCE_KEY: "test-extraction-key", AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT: "https://vanteloq-test.cognitiveservices.azure.com" };
+import { PDFDocument, PDFName } from "pdf-lib";
+import { azureOperationUrl, documentProviderConfiguration, extractionModel, normalizeExtraction, pollExtraction, providerOrigin, startExtraction, validateDocumentForProcessing } from "../server/document-providers.ts";
+import { scannerEnv } from "./azure-scanner-fixture.ts";
+const env = { ...scannerEnv, AZURE_DOCUMENT_INTELLIGENCE_KEY: "test-extraction-key", AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT: "https://vanteloq-test.cognitiveservices.azure.com" };
 const operation = `${env.AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT}/documentintelligence/documentModels/prebuilt-layout/analyzeResults/00000000-0000-0000-0000-000000000001?api-version=2024-11-30`;
+
+test("active PDF content is rejected before contacting either Azure service", async () => {
+  const pdf = await PDFDocument.create(); pdf.addPage();
+  await validateDocumentForProcessing(await pdf.save(), "application/pdf");
+  pdf.catalog.set(PDFName.of("OpenAction"), pdf.context.obj({ S: "JavaScript", JS: "/* harmless synthetic test */" }));
+  await assert.rejects(validateDocumentForProcessing(await pdf.save(), "application/pdf"), { message: "DOCUMENT_ACTIVE_CONTENT" });
+});
 
 test("provider configuration rejects destinations that could disclose keys", () => {
   assert.deepEqual(documentProviderConfiguration(env), { scanning: true, extraction: true });
   assert.deepEqual(documentProviderConfiguration({}), { scanning: false, extraction: false });
-  for (const value of ["http://api.cloudmersive.com", "https://api.cloudmersive.com.evil.example", "https://key@api.cloudmersive.com", "https://api.cloudmersive.com/scan", "https://127.0.0.1"]) assert.throws(() => providerOrigin(value, "cloudmersive"));
+  for (const value of ["http://qa.cognitiveservices.azure.com", "https://qa.cognitiveservices.azure.com.evil.example", "https://key@qa.cognitiveservices.azure.com", "https://qa.cognitiveservices.azure.com/scan", "https://127.0.0.1"]) assert.throws(() => providerOrigin(value));
   assert.throws(() => azureOperationUrl(env, operation.replace("vanteloq-test", "other-tenant")));
   assert.throws(() => azureOperationUrl(env, `${operation}&forward=https://example.invalid`));
   assert.equal(azureOperationUrl(env, operation), operation);
-});
-test("only an explicit clean verdict releases a document", () => {
-  assert.equal(scanVerdict({ CleanResult: true, FoundViruses: [] }), "clean");
-  for (const body of [{}, { CleanResult: "true" }, null, { error: "failed" }]) assert.equal(scanVerdict(body), "unknown");
-  for (const body of [{ CleanResult: false }, { CleanResult: true, ContainsScript: true }, { CleanResult: true, FoundViruses: [{ VirusName: "synthetic-test" }] }]) assert.equal(scanVerdict(body), "blocked");
-});
-test("scan blocks risky content, uses a generic filename and does not follow redirects", async () => {
-  let calls = 0;
-  const transport = (async (url, init) => {
-    calls++;
-    assert.equal(url, "https://api.cloudmersive.com/virus/scan/file/advanced");
-    assert.equal(init?.redirect, "error");
-    const headers = new Headers(init?.headers);
-    assert.equal(headers.get("allowScripts"), "false");
-    assert.equal(headers.get("allowPasswordProtectedFiles"), "false");
-    assert.equal(headers.get("allowUnwantedAction"), "false");
-    assert.equal((init?.body as FormData).get("inputFile") instanceof File, true);
-    assert.equal(((init?.body as FormData).get("inputFile") as File).name, "document.pdf");
-    return Response.json({ CleanResult: true });
-  }) as typeof fetch;
-  assert.equal(await scanDocument(env, new Uint8Array([1, 2]), "application/pdf", transport), "clean");
-  assert.equal(calls, 1);
-  await assert.rejects(scanDocument(env, new Uint8Array([1]), "text/html", transport));
-  await assert.rejects(scanDocument(env, new Uint8Array([1]), "application/pdf", (async () => new Response("private bank data should not escape", { status: 403 })) as typeof fetch), { message: "PROVIDER_ACCESS_DENIED" });
 });
 test("Canadian statements use layout; extracted totals are checked without silently filling blanks", () => {
   assert.equal(extractionModel("other"), "prebuilt-layout");
