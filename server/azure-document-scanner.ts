@@ -15,11 +15,17 @@ export function scannerConfiguration(env: VanteloqRuntimeEnv) {
 }
 
 /** Azure Shared Key requests stay on one server-configured, dedicated storage account. */
-export async function storageAuthorization(url: URL, method: string, headers: Headers, accountKey: string, length = 0) {
+function storageStringToSign(url: URL, method: string, headers: Headers, length = 0) {
   const account = url.hostname.split(".")[0];
   const canonicalHeaders = Array.from(headers.entries()).filter(([name]) => name.startsWith("x-ms-")).sort(([a], [b]) => a.localeCompare(b)).map(([name, value]) => `${name}:${value.trim()}\n`).join("");
   const queries = Array.from(new Set(Array.from(url.searchParams.keys(), key => key.toLowerCase()))).sort().map(key => `\n${key}:${url.searchParams.getAll(key).sort().join(",")}`).join("");
   const stringToSign = [method, headers.get("Content-Encoding") || "", headers.get("Content-Language") || "", length ? String(length) : "", headers.get("Content-MD5") || "", headers.get("Content-Type") || "", "", headers.get("If-Modified-Since") || "", headers.get("If-Match") || "", headers.get("If-None-Match") || "", headers.get("If-Unmodified-Since") || "", headers.get("Range") || ""].join("\n") + `\n${canonicalHeaders}/${account}${url.pathname}${queries}`;
+  return stringToSign;
+}
+
+export async function storageAuthorization(url: URL, method: string, headers: Headers, accountKey: string, length = 0) {
+  const account = url.hostname.split(".")[0];
+  const stringToSign = storageStringToSign(url, method, headers, length);
   const key = await crypto.subtle.importKey("raw", Uint8Array.from(atob(accountKey), char => char.charCodeAt(0)), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   const signature = new Uint8Array(await crypto.subtle.sign("HMAC", key, encoder.encode(stringToSign)));
   return `SharedKey ${account}:${btoa(String.fromCharCode(...signature))}`;
@@ -39,8 +45,28 @@ async function request(env: VanteloqRuntimeEnv, url: URL, method: string, option
   try {
     // Workers supports manual redirects. Non-success responses below reject every
     // redirect without sending the signed request or document to another URL.
-    const response = await transport(url.toString(), { method, headers, body: bytes ? new Uint8Array(bytes) : undefined, redirect: "manual", signal: AbortSignal.timeout(25_000) });
+    // Edge caching can convert HEAD to GET, invalidating Azure's method-bound
+    // signature. Private scan bytes and verdicts must always bypass that cache.
+    const response = await transport(url.toString(), { method, headers, body: bytes ? new Uint8Array(bytes) : undefined, redirect: "manual", cache: "no-store", signal: AbortSignal.timeout(25_000) });
     if (response.ok || (options.missingOkay && response.status === 404)) return response;
+    const serviceCode = response.headers.get("x-ms-error-code") || "Unknown";
+    // Only fixed diagnostic labels may reach logs. Azure error bodies can include
+    // signatures and private object paths, so never print the body or its values.
+    let signingMismatch: string[] = [];
+    if (response.status === 403 && serviceCode === "AuthenticationFailed") {
+      const body = await response.text();
+      const detail = body.match(/<AuthenticationErrorDetail>([\s\S]*?)<\/AuthenticationErrorDetail>/)?.[1] || "";
+      const signed = detail.match(/Server used following string to sign: '([\s\S]*)'\.?$/)?.[1];
+      if (signed) {
+        const actual = decodeXml(signed).replace(/\r\n/g, "\n").split("\n");
+        const expected = storageStringToSign(url, method, headers, bytes?.byteLength).split("\n");
+        const labels = ["method", "encoding", "language", "length", "md5", "type", "date", "modifiedSince", "ifMatch", "ifNoneMatch", "unmodifiedSince", "range"];
+        signingMismatch = labels.filter((_, index) => actual[index] !== expected[index]);
+        if (actual.slice(12).join("\n") !== expected.slice(12).join("\n")) signingMismatch.push("serviceHeadersOrResource");
+        if (!signingMismatch.length) signingMismatch.push("signatureOnly");
+      } else signingMismatch = [/date|time/i.test(detail) ? "requestTime" : "unclassified"];
+    }
+    console.error("DOCUMENT_STORAGE_REQUEST_FAILED", { method, stage: url.searchParams.has("comp") ? "verdict" : method === "GET" ? "identity" : "transfer", status: response.status, serviceCode: /^[A-Za-z]{1,80}$/.test(serviceCode) ? serviceCode : "Unknown", signingMismatch });
     throw new DocumentProviderError(response.status === 401 || response.status === 403 ? "PROVIDER_ACCESS_DENIED" : response.status === 429 || response.status === 503 ? "PROVIDER_RATE_LIMIT" : response.status === 412 ? "DOCUMENT_CHANGED" : "PROVIDER_UNAVAILABLE");
   } catch (error) {
     if (error instanceof DocumentProviderError) throw error;
@@ -51,7 +77,7 @@ async function request(env: VanteloqRuntimeEnv, url: URL, method: string, option
 export async function beginAzureScan(env: VanteloqRuntimeEnv, bytes: Uint8Array, contentType: string, sha256: string, transport?: typeof fetch) {
   if (!extensions[contentType] || !/^[a-f0-9]{64}$/.test(sha256) || !bytes.length || bytes.length > 10 * 1024 * 1024) throw new DocumentProviderError("DOCUMENT_FORMAT_UNSUPPORTED");
   const operation: AzureScanOperation = { blobName: `scan/${crypto.randomUUID()}.${extensions[contentType]}`, etag: "", submittedAt: Date.now(), size: bytes.length, sha256 };
-  const response = await request(env, operationUrl(env, operation), "PUT", { bytes, headers: { "Content-Type": contentType, "x-ms-blob-type": "BlockBlob", "x-ms-meta-sha256": sha256, "If-None-Match": "*" } }, transport);
+  const response = await request(env, operationUrl(env, operation), "PUT", { bytes, headers: { "Content-Type": contentType, "x-ms-blob-type": "BlockBlob", "x-ms-blob-cache-control": "private, no-store", "x-ms-meta-sha256": sha256, "If-None-Match": "*" } }, transport);
   const etag = response.headers.get("etag");
   if (response.status !== 201 || !etag || !/^"[A-Za-z0-9x-]{1,100}"$/.test(etag)) throw new DocumentProviderError("SCAN_RESULT_UNKNOWN");
   return { ...operation, etag };
@@ -73,10 +99,17 @@ export async function pollAzureScan(env: VanteloqRuntimeEnv, operation: AzureSca
   const url = operationUrl(env, operation);
   if (!operation.etag || !Number.isSafeInteger(operation.submittedAt) || !Number.isSafeInteger(operation.size) || operation.size < 1 || !/^[a-f0-9]{64}$/.test(operation.sha256)) throw new DocumentProviderError("SCAN_REFERENCE_INVALID");
   if (Date.now() - operation.submittedAt > 10 * 60_000 || operation.submittedAt > Date.now() + 60_000) throw new DocumentProviderError("SCAN_TIMED_OUT");
-  const assertIdentity = (response: Response) => {
-    if (response.headers.get("etag") !== operation.etag || response.headers.get("x-ms-meta-sha256") !== operation.sha256 || Number(response.headers.get("content-length")) !== operation.size) throw new DocumentProviderError("DOCUMENT_CHANGED");
+  const assertIdentity = async () => {
+    // Edge cache layers strip standard Range and conditional GET headers on some
+    // cache misses. Azure's signed service range survives that normalization.
+    // Compare the returned ETag on both sides of the verdict instead of signing
+    // If-Match on GET; deletion still uses its atomic If-Match precondition.
+    const response = await request(env, url, "GET", { headers: { "x-ms-range": "bytes=0-0" } }, transport);
+    try {
+      if (response.status !== 206 || response.headers.get("content-range") !== `bytes 0-0/${operation.size}` || response.headers.get("etag") !== operation.etag || response.headers.get("x-ms-meta-sha256") !== operation.sha256) throw new DocumentProviderError("DOCUMENT_CHANGED");
+    } finally { await response.body?.cancel(); }
   };
-  assertIdentity(await request(env, url, "HEAD", { headers: { "If-Match": operation.etag } }, transport));
+  await assertIdentity();
   const tagsUrl = new URL(url); tagsUrl.searchParams.set("comp", "tags");
   const response = await request(env, tagsUrl, "GET", {}, transport);
   const tags = parseScannerTags(await response.text());
@@ -85,7 +118,7 @@ export async function pollAzureScan(env: VanteloqRuntimeEnv, operation: AzureSca
   const scanTime = Date.parse(tags["malware scanning scan time utc"] || "");
   if (!Number.isFinite(scanTime) || scanTime < operation.submittedAt - 60_000 || scanTime > Date.now() + 60_000) throw new DocumentProviderError("SCAN_RESULT_UNKNOWN");
   // Tags do not change the blob ETag. Recheck the bytes' identity after reading the verdict.
-  assertIdentity(await request(env, url, "HEAD", { headers: { "If-Match": operation.etag } }, transport));
+  await assertIdentity();
   if (result === "No threats found") return "clean";
   if (result === "Malicious") return "blocked";
   throw new DocumentProviderError("SCAN_NOT_COMPLETED");
