@@ -15,6 +15,7 @@ type DocumentRow = { id: string; object_key: string; content_type: string; docum
 const errorMessages: Record<string, string> = {
   PROVIDER_NOT_CONFIGURED: "Document processing is waiting for service setup.",
   PROVIDER_ACCESS_DENIED: "The document service needs its credentials or subscription checked.",
+  PROVIDER_UNAVAILABLE: "The document service could not be reached. Your original is preserved. Try again shortly.",
   PROVIDER_RATE_LIMIT: "The document service is busy. Try again shortly.",
   PROVIDER_FILE_LIMIT: "This file exceeds the document service's current limit.",
   EXTRACTION_FORMAT_UNSUPPORTED: "Security scanning supports WEBP. To read its text, upload a PDF, JPEG or PNG.",
