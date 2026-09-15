@@ -2249,7 +2249,7 @@ export function DocumentsWorkspace({ showNotice, canUpload }: SharedProps & { ca
             </span>
             <span>{humanizeIdentifier(document.documentType)}</span>
             <span>
-              <em>{humanizeIdentifier(document.securityState)}</em>
+              <em>{document.securityState === "clean" && document.scanStatus !== "clean" ? "Verification pending" : humanizeIdentifier(document.securityState)}</em>
             </span>
             <span>
               <em className="gated">
@@ -2259,7 +2259,7 @@ export function DocumentsWorkspace({ showNotice, canUpload }: SharedProps & { ca
             <span>
               {document.securityState === "clean" && document.scanStatus === "clean"
                 ? <button disabled={Boolean(downloading)} aria-label={`Download ${document.fileName}`} onClick={() => void download(document)}>{downloading === document.id ? "Downloading…" : "Download"}</button>
-                : <em className="gated">Quarantined, download unavailable</em>}
+                : <em className="gated">{document.securityState === "clean" ? "Awaiting security verification" : "Quarantined, download unavailable"}</em>}
             </span>
           </div>
         ))}
