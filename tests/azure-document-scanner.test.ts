@@ -9,7 +9,7 @@ test("scanner credentials cannot be sent to custom hosts or redirected requests"
   for (const endpoint of ["http://qastore.blob.core.windows.net", "https://qastore.blob.core.windows.net.attacker.example", "https://secret@qastore.blob.core.windows.net", "https://qastore.blob.core.windows.net/container", "https://qastore.blob.core.windows.net?key=anything", "https://127.0.0.1"]) assert.equal(scannerConfiguration({ ...scannerEnv, AZURE_DOCUMENT_SCAN_ENDPOINT: endpoint }), false);
   assert.equal(scannerConfiguration({ ...scannerEnv, AZURE_DOCUMENT_SCAN_KEY: "invalid" }), false);
   const operation = await beginAzureScan(scannerEnv, new Uint8Array([1, 2, 3]), "application/pdf", "a".repeat(64), (async (_url, init) => {
-    assert.equal(init?.redirect, "error");
+    assert.equal(init?.redirect, "manual");
     assert.equal(new Headers(init?.headers).get("If-None-Match"), "*");
     assert.equal(new Headers(init?.headers).has("x-ms-tags"), false);
     return new Response(null, { status: 201, headers: { etag: '"0xABC"' } });

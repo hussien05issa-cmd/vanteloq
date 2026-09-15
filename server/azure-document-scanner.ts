@@ -37,7 +37,9 @@ async function request(env: VanteloqRuntimeEnv, url: URL, method: string, option
   if (bytes) headers.set("Content-Length", String(bytes.byteLength));
   headers.set("Authorization", await storageAuthorization(url, method, headers, env.AZURE_DOCUMENT_SCAN_KEY!, bytes?.byteLength));
   try {
-    const response = await transport(url.toString(), { method, headers, body: bytes ? new Uint8Array(bytes) : undefined, redirect: "error", signal: AbortSignal.timeout(25_000) });
+    // Workers supports manual redirects. Non-success responses below reject every
+    // redirect without sending the signed request or document to another URL.
+    const response = await transport(url.toString(), { method, headers, body: bytes ? new Uint8Array(bytes) : undefined, redirect: "manual", signal: AbortSignal.timeout(25_000) });
     if (response.ok || (options.missingOkay && response.status === 404)) return response;
     throw new DocumentProviderError(response.status === 401 || response.status === 403 ? "PROVIDER_ACCESS_DENIED" : response.status === 429 || response.status === 503 ? "PROVIDER_RATE_LIMIT" : response.status === 412 ? "DOCUMENT_CHANGED" : "PROVIDER_UNAVAILABLE");
   } catch (error) {
