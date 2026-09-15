@@ -2106,6 +2106,7 @@ type DocumentData = {
     contentType: string;
     sizeBytes: number;
     securityState: string;
+    scanStatus: string;
     status: string;
     extractionStatus: string;
     createdAt: string;
@@ -2117,6 +2118,8 @@ export function DocumentsWorkspace({ showNotice, canUpload }: SharedProps & { ca
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
   const [loadError, setLoadError] = useState("");
+  const [downloading, setDownloading] = useState("");
+  const [downloadError, setDownloadError] = useState("");
   const load = useCallback(async () => {
     setLoadError("");
     try {
@@ -2148,6 +2151,21 @@ export function DocumentsWorkspace({ showNotice, canUpload }: SharedProps & { ca
     } catch (error) {
       setUploadError(error instanceof Error && error.name !== "TimeoutError" ? error.message : "The upload did not finish. Check your connection and retry. Duplicate files are detected automatically.");
     } finally { setUploading(false); }
+  };
+  const download = async (file: DocumentData["documents"][number]) => {
+    setDownloading(file.id); setDownloadError("");
+    try {
+      const response = await apiFetch(`/api/v1/documents?id=${encodeURIComponent(file.id)}`, { signal: AbortSignal.timeout(30_000) });
+      if (!response.ok) throw new Error(apiMessage(await response.json(), "This document could not be downloaded."));
+      const blob = await response.blob();
+      if (!["application/pdf", "image/jpeg", "image/png", "image/webp"].includes(blob.type)) throw new Error("The download returned an unsupported file type.");
+      const url = URL.createObjectURL(blob), link = window.document.createElement("a");
+      link.href = url; link.download = file.fileName.replace(/[^A-Za-z0-9._-]/g, "-"); link.rel = "noopener";
+      window.document.body.appendChild(link); link.click(); link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) {
+      setDownloadError(error instanceof Error && error.name !== "TimeoutError" ? error.message : "The download timed out. Please try again.");
+    } finally { setDownloading(""); }
   };
   if (!data) return loadError ? <section className="card control-empty" role="alert"><h2>Documents could not load</h2><p>{loadError}</p><button onClick={() => void load()}>Try Again</button></section> : <WorkspaceSkeleton label="Loading documents"/>;
   return (
@@ -2211,6 +2229,7 @@ export function DocumentsWorkspace({ showNotice, canUpload }: SharedProps & { ca
           <p>You can review existing documents. A workspace owner can grant upload access when you need to add files.</p>
         </div>
       </section>}
+      {downloadError && <p className="document-upload-error" role="alert">{downloadError}</p>}
       <article className="card document-table">
         <header>
           <span>Document</span>
@@ -2238,7 +2257,9 @@ export function DocumentsWorkspace({ showNotice, canUpload }: SharedProps & { ca
               </em>
             </span>
             <span>
-              <em className="gated">Quarantined, download unavailable</em>
+              {document.securityState === "clean" && document.scanStatus === "clean"
+                ? <button disabled={Boolean(downloading)} aria-label={`Download ${document.fileName}`} onClick={() => void download(document)}>{downloading === document.id ? "Downloading…" : "Download"}</button>
+                : <em className="gated">Quarantined, download unavailable</em>}
             </span>
           </div>
         ))}

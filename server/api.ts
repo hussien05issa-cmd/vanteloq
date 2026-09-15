@@ -211,6 +211,18 @@ export async function handleApi(
     const status = known ? error.status : 500;
     const code = known ? error.code : "INTERNAL_ERROR";
     const message = known ? error.message : "The request could not be completed.";
+    // Classify operational failures without recording SQL, credentials or user data.
+    const failureText = [error, error instanceof Error ? error.cause : null]
+      .map(value => value instanceof Error ? value.message : "").join(" ");
+    const failureKind = known ? "application" :
+      /too many sql variables/i.test(failureText) ? "database_parameter_limit" :
+      /no such table|no such column/i.test(failureText) ? "database_schema" :
+      /foreign key|unique constraint|not null constraint/i.test(failureText) ? "database_constraint" :
+      /database.*locked|database.*busy|overloaded|too many requests/i.test(failureText) ? "database_busy" :
+      /timeout|timed out|deadline|reset/i.test(failureText) ? "upstream_timeout" :
+      /D1_|SQLITE_/i.test(failureText) ? "database_error" :
+      /fetch failed|network|connection/i.test(failureText) ? "network_error" :
+      error instanceof TypeError ? "type_error" : "unexpected";
 
     console.error(JSON.stringify({
       level: status >= 500 ? "error" : "warn",
@@ -220,6 +232,7 @@ export async function handleApi(
       method: request.method,
       status,
       code,
+      failureKind,
     }));
 
     return jsonResponse({ error: { code, message }, requestId: id }, { status, headers: { "X-Request-Id": id } });
