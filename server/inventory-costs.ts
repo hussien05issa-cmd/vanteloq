@@ -13,6 +13,24 @@ export async function applyOwnerInventoryCosts(
   options: { publishDailyMetrics?: boolean } = {},
 ) {
   const database = getD1();
+  // Most connector refreshes have no owner overrides. Avoid rewriting the
+  // entire historical ledger for those accounts, but still report cost gaps.
+  const ownerOverrides = await database.prepare(`SELECT 1 AS present FROM commerce_products
+    WHERE organization_id = ? AND connection_id = ? AND archived = 0
+      AND owner_cost_cents IS NOT NULL LIMIT 1`).bind(organizationId, connectionId).first();
+  // Separate reference and SKU lookups so SQLite can use their indexes. An OR
+  // inside the product join otherwise scans a catalog for every historic line.
+  const ownerCostMatch = `(
+    EXISTS (SELECT 1 FROM commerce_products product
+      WHERE product.organization_id = line.organization_id AND product.provider = line.provider
+        AND product.connection_id = line.connection_id AND product.external_product_id = line.product_ref
+        AND product.archived = 0 AND product.owner_cost_cents IS NOT NULL)
+    OR (line.product_ref IS NULL AND EXISTS (SELECT 1 FROM commerce_products product
+      WHERE product.organization_id = line.organization_id AND product.provider = line.provider
+        AND product.connection_id = line.connection_id AND product.sku = line.sku
+        AND product.archived = 0 AND product.owner_cost_cents IS NOT NULL))
+  )`;
+  if (ownerOverrides) {
   await database.prepare(`
     UPDATE commerce_sale_lines
     SET cost_cents = COALESCE(
@@ -78,20 +96,11 @@ export async function applyOwnerInventoryCosts(
       AND EXISTS (
         SELECT 1
         FROM commerce_sale_lines line
-        JOIN commerce_products product
-          ON product.organization_id = line.organization_id
-         AND product.provider = line.provider
-         AND product.connection_id = line.connection_id
-         AND (
-           product.external_product_id = line.product_ref
-           OR (line.product_ref IS NULL AND product.sku = line.sku)
-         )
         WHERE line.organization_id = sale.organization_id
           AND line.provider = sale.provider
           AND line.connection_id = sale.connection_id
           AND line.external_sale_id = sale.external_sale_id
-          AND product.archived = 0
-          AND product.owner_cost_cents IS NOT NULL
+          AND ${ownerCostMatch}
       )
   `).bind(organizationId, connectionId).run();
 
@@ -119,42 +128,32 @@ export async function applyOwnerInventoryCosts(
       AND EXISTS (
         SELECT 1
         FROM commerce_sale_lines line
-        JOIN commerce_products product
-          ON product.organization_id = line.organization_id
-         AND product.provider = line.provider
-         AND product.connection_id = line.connection_id
-         AND (
-           product.external_product_id = line.product_ref
-           OR (line.product_ref IS NULL AND product.sku = line.sku)
-         )
         WHERE line.organization_id = metric.organization_id
           AND line.connection_id = metric.source_connection_id
           AND ${window.sql}
           AND ${metricLocationMatches}
-          AND product.archived = 0
-          AND product.owner_cost_cents IS NOT NULL
+          AND ${ownerCostMatch}
       )
   `).bind(...window.bindings, updatedAt, organizationId, connectionId, date.businessDate, ...window.bindings);
     });
     for (let index = 0; index < statements.length; index += 50) await database.batch(statements.slice(index, index + 50));
   }
+  }
 
   const remaining = await database.prepare(`
     SELECT COUNT(*) AS count
     FROM commerce_sale_lines line
-    LEFT JOIN commerce_products product
-      ON product.organization_id = line.organization_id
-     AND product.provider = line.provider
-     AND product.connection_id = line.connection_id
-     AND (
-       product.external_product_id = line.product_ref
-       OR (line.product_ref IS NULL AND product.sku = line.sku)
-     )
     WHERE line.organization_id = ? AND line.connection_id = ?
       AND line.net_sales_cents <> 0 AND line.quantity_milli <> 0
       AND line.cost_cents = 0
-      AND product.owner_cost_cents IS NULL
-      AND product.default_cost_cents IS NULL
+      AND NOT EXISTS (SELECT 1 FROM commerce_products product
+        WHERE product.organization_id = line.organization_id AND product.provider = line.provider
+          AND product.connection_id = line.connection_id AND product.external_product_id = line.product_ref
+          AND (product.owner_cost_cents IS NOT NULL OR product.default_cost_cents IS NOT NULL))
+      AND (line.product_ref IS NOT NULL OR NOT EXISTS (SELECT 1 FROM commerce_products product
+        WHERE product.organization_id = line.organization_id AND product.provider = line.provider
+          AND product.connection_id = line.connection_id AND product.sku = line.sku
+          AND (product.owner_cost_cents IS NOT NULL OR product.default_cost_cents IS NOT NULL)))
   `).bind(organizationId, connectionId).first<{ count: number }>();
   return { missingCostLines: Number(remaining?.count ?? 0) };
 }

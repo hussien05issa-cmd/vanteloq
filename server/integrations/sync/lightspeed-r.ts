@@ -607,6 +607,7 @@ export async function runSync(request: Request, requestId: string, context: Sync
       }
 
       let importedInventory = 0;
+      syncStage = "inventory_balances";
       {
         const inventoryStatements = inventoryBalances
           .filter((balance) => mappedRaw.has(balance.outletRef))
@@ -648,6 +649,7 @@ export async function runSync(request: Request, requestId: string, context: Sync
           product.defaultPriceCents, product.archived ? 1 : 0, product.sourceUpdatedAt,
           product.sourcePayloadHash, runId, now,
         ));
+      syncStage = "product_catalog";
       const importedProducts = await runWriteBatches(productStatements);
       const customerStatements = customers.map((customer) => database.prepare(`
           INSERT INTO commerce_customers
@@ -664,6 +666,7 @@ export async function runSync(request: Request, requestId: string, context: Sync
           customer.displayName, customer.firstName, customer.lastName, customer.email, customer.phone,
           customer.archived ? 1 : 0, customer.sourceUpdatedAt, customer.sourcePayloadHash, runId, now,
         ));
+      syncStage = "customer_catalog";
       const importedCustomers = await runWriteBatches(customerStatements);
       const supplierStatements = suppliers.map((supplier) => database.prepare(`
           INSERT INTO commerce_suppliers
@@ -680,8 +683,11 @@ export async function runSync(request: Request, requestId: string, context: Sync
           supplier.name, supplier.accountNumber, supplier.contactName, supplier.email, supplier.phone,
           supplier.archived ? 1 : 0, supplier.sourceUpdatedAt, supplier.sourcePayloadHash, runId, now,
         ));
+      syncStage = "supplier_catalog";
       const importedSuppliers = await runWriteBatches(supplierStatements);
-      await applyOwnerInventoryCosts(context.organizationId, connection.id, now);
+      syncStage = "owner_inventory_costs";
+      await applyOwnerInventoryCosts(context.organizationId, connection.id, now, { publishDailyMetrics: publishCanonical });
+      syncStage = "complete_import";
       await renewIntegrationSyncLease(syncLease);
       await database.prepare(`
         UPDATE data_imports SET status = 'completed', row_count = ?

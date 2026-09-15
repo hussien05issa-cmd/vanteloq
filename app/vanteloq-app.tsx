@@ -671,6 +671,7 @@ export default function VanteloqApp({
   const [currency, setCurrency] = useState("CAD");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [refreshError, setRefreshError] = useState("");
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [taskSeed, setTaskSeed] = useState<TaskSeed | null>(null);
   const [notice, setNotice] = useState("");
@@ -699,13 +700,13 @@ export default function VanteloqApp({
     dashboardRequestRef.current?.abort();
     const request = new AbortController();
     dashboardRequestRef.current = request;
-    if (!silent) setLoading(true);
+    if (!silent) { setLoading(true); setRefreshError(""); }
     try {
       const parameters = new URLSearchParams({ payment_days: String(paymentRange) });
       if (activeLocationId) parameters.set("location", activeLocationId);
       const response = await apiFetch(`/api/v1/command-centre?${parameters.toString()}`, {
         headers: { Accept: "application/json" },
-        signal: request.signal,
+        signal: AbortSignal.any([request.signal, AbortSignal.timeout(20_000)]),
       });
       const body = await response.json();
       if (request.signal.aborted || dashboardRequestRef.current !== request) return;
@@ -723,9 +724,11 @@ export default function VanteloqApp({
         body.organization.logoAvailable ? body.organization.logoVersion : null,
       );
       setError("");
+      setRefreshError("");
     } catch (caught) {
       if (request.signal.aborted || dashboardRequestRef.current !== request) return;
-      setError(
+      const reportError = silent ? setRefreshError : setError;
+      reportError(
         caught instanceof Error
           ? caught.message
           : "Unable to load the command centre.",
@@ -1123,6 +1126,10 @@ export default function VanteloqApp({
             </button>
           </div>
         </header>
+        {refreshError && <div className="form-error" role="alert">
+          <p>Updates could not be loaded. Your open work is still here.</p>
+          <button className="secondary" onClick={() => void refresh(true)}>Retry refresh</button>
+        </div>}
         {loading ? (
           <LoadingState />
         ) : error ? (
