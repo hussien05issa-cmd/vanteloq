@@ -8,7 +8,7 @@ export const metadata: Metadata = {
 };
 
 export default function SubprocessorsPage() {
-  return <LegalShell updated="September 10, 2026" eyebrow="SERVICE PROVIDER NOTICE" title="Know where Vanteloq sends information." summary="This list separates core infrastructure from services a workspace chooses to connect.">
+  return <LegalShell updated="September 15, 2026" eyebrow="SERVICE PROVIDER NOTICE" title="Know where Vanteloq sends information." summary="This list separates core infrastructure from services a workspace chooses to connect.">
     <PolicySection id="core" title="Core subprocessors">
       <div className="legal-table"><table><thead><tr><th>Provider</th><th>Purpose and information</th><th>Location note</th></tr></thead><tbody>
         <tr><td>Cloudflare, Inc.</td><td>Hosting, network delivery and protection, managed application database, and encrypted file storage. Processes service traffic, workspace records, uploaded files, and security information.</td><td>Canada and Cloudflare&apos;s global network, subject to its service configuration and terms.</td></tr>
@@ -22,6 +22,8 @@ export default function SubprocessorsPage() {
     <PolicySection id="optional" title="Optional customer directed services">
       <p>These services receive information only after an authorized user enables the relevant feature and completes the displayed provider and Vanteloq controls. Their own terms and privacy materials also apply.</p>
       <ul>
+        <li><strong>Cloudmersive:</strong> document security scanning when configured and an authorized user chooses Scan and Read. Receives the uploaded file contents with a generic filename. Cloudmersive states that it does not retain the file payload after processing. The selected service endpoint determines the processing region; Canadian-only processing is not assumed.</li>
+        <li><strong>Microsoft Azure Document Intelligence:</strong> document extraction after a clean security scan. Receives the file to read text, tables, invoice and receipt fields. Proposed figures stay subject to review. Vanteloq requests deletion of Azure&apos;s temporary analysis copy after saving the result; Microsoft documents automatic deletion after 24 hours. Processing takes place in the selected Azure region. These actions do not send the document to OpenAI or automatically post accounting entries.</li>
         <li><strong>Plaid:</strong> read only business financial account connection, balances, and transactions selected by a workspace owner.</li>
         <li><strong>Google:</strong> selected marketing resources and Business Profile information after the specific authorization and resource selection shown in Vanteloq. Google does not provide Vanteloq AI responses.</li>
         <li><strong>OpenAI:</strong> optional Vanteloq AI analysis using the question, permission-filtered business and financial KPIs and bounded conversation context, only when configured and selected with affirmative acceptance. Processing may occur in the United States and other provider locations. Requests disable stored response objects; provider safety retention can still apply.</li>
