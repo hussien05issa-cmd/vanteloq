@@ -196,6 +196,7 @@ export async function runSync(request: Request, requestId: string, context: Sync
     const importId = `provider-${LIGHTSPEED_R_PROVIDER}-${runId}`;
     const previous = checkpoint(connection.lastSyncCursor);
     let publicationPointerDemoted = false;
+    let syncStage = "initialize_run";
     const claimed = await getDb().update(integrationConnections).set({
       lastErrorCode: null,
       updatedAt: startedAt,
@@ -244,10 +245,12 @@ export async function runSync(request: Request, requestId: string, context: Sync
     }
 
     try {
+      syncStage = "provider_account";
       const sourceAccount = await fetchLightspeedRAccount(context.organizationId, connection.id);
       if (sourceAccount && sourceAccount.accountId !== connection.externalAccountRef) {
         throw new ApiError(409, "LIGHTSPEED_R_ACCOUNT_CHANGED", "The authorized R-Series account changed. Reconnect it before importing data.");
       }
+      syncStage = "catalog_counts";
       const existingCommerce = await getD1().prepare(`
         SELECT
           (SELECT count(*) FROM commerce_products WHERE organization_id = ? AND provider = ? AND connection_id = ?) AS products,
@@ -262,6 +265,7 @@ export async function runSync(request: Request, requestId: string, context: Sync
         context.organizationId, LIGHTSPEED_R_PROVIDER, connection.id,
         context.organizationId, LIGHTSPEED_R_PROVIDER, connection.id,
       ).first<{ products: number; customers: number; suppliers: number; saleLines: number; payments: number }>();
+      syncStage = "provider_collections";
       const salesPage = previous.salesComplete
         ? { data: [], pages: 0, cursor: null as string | null }
         : await fetchLightspeedRCollection(context.organizationId, connection.id, connection.externalAccountRef, "Sale", {
@@ -464,6 +468,7 @@ export async function runSync(request: Request, requestId: string, context: Sync
           sale.totalCents, sale.taxCents, sale.costCents, sale.discountCents, sale.lineCount,
           sale.sourcePayloadHash, runId, Date.now(),
         ));
+      syncStage = "stage_sales";
       const stagedSales = await runWriteBatches(stagedSaleStatements);
       if (publishCanonical && connection.dataPromotionStatus === "approved") {
         const hidden = await getDb().update(integrationConnections).set({
@@ -502,6 +507,7 @@ export async function runSync(request: Request, requestId: string, context: Sync
           line.sku, line.productName, line.quantityMilli, line.netSalesCents, line.costCents,
           line.discountCents, line.sourcePayloadHash, runId, Date.now(),
         ));
+      syncStage = "sale_lines";
       const importedSaleLines = await runWriteBatches(saleLineStatements);
       const paymentStatements = uniquePayments.filter((row) => !row.outletRef || mappedRaw.has(row.outletRef)).map((payment) => database.prepare(`
           INSERT INTO commerce_payments
@@ -520,8 +526,10 @@ export async function runSync(request: Request, requestId: string, context: Sync
           scopedRef(payment.externalSaleId), scopedRef(payment.paymentTypeRef), payment.paymentTypeName, payment.category,
           payment.amountCents, payment.paidAt, scopedRef(payment.outletRef), payment.sourcePayloadHash, runId, Date.now(),
         ));
+      syncStage = "payments";
       const importedPayments = await runWriteBatches(paymentStatements);
 
+      syncStage = "latest_sale_versions";
       const latest = await database.prepare(`
         SELECT external_sale_id AS externalSaleId, outlet_ref AS outletRef, sold_at AS soldAt, state,
                total_cents AS totalCents, tax_cents AS taxCents, cost_cents AS costCents,
@@ -545,6 +553,7 @@ export async function runSync(request: Request, requestId: string, context: Sync
       const publishedDailyMetrics = publishCanonical ? dailyMetrics : [];
 
       const now = Date.now();
+      syncStage = "publish_records";
       await renewIntegrationSyncLease(syncLease);
       await database.prepare(`
         INSERT INTO data_imports
@@ -845,6 +854,7 @@ export async function runSync(request: Request, requestId: string, context: Sync
       });
     } catch (error) {
       const code = error instanceof ApiError ? error.code : "LIGHTSPEED_R_SYNC_FAILED";
+      console.error(JSON.stringify({ event: "integration.sync_failed", provider: LIGHTSPEED_R_PROVIDER, stage: syncStage, code }));
       await getD1().prepare(`UPDATE data_imports SET status = 'failed' WHERE id = ? AND organization_id = ?`)
         .bind(importId, context.organizationId).run().catch(() => undefined);
       await getDb().update(integrationSyncRuns).set({
