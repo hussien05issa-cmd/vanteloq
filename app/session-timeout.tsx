@@ -31,7 +31,7 @@ export default function SessionTimeout({ children }: { children: ReactNode }) {
       setState(remaining <= SESSION_WARNING_MS ? "warning" : "active");
       if (Date.now() - lastHeartbeat >= 60_000 && lastActivity > lastHeartbeat && Date.now() - lastActivity < SESSION_IDLE_MS) {
         lastHeartbeat = Date.now();
-        void apiFetch("/api/v1/session", { signal: AbortSignal.timeout(10_000) }).catch(() => undefined);
+        void apiFetch("/api/v1/session", { method: "POST", signal: AbortSignal.timeout(10_000) }).catch(() => undefined);
       }
     };
     const activity = () => {
@@ -62,10 +62,11 @@ export default function SessionTimeout({ children }: { children: ReactNode }) {
         const response = await apiFetch("/api/v1/session", { signal: AbortSignal.timeout(15_000) });
         if (response.status === 401) { await end(); return; }
         if (!response.ok) throw new Error("Session unavailable");
-        const body = await response.json() as { expiresAt: number; serverTime: number };
-        if (!Number.isFinite(body.expiresAt) || !Number.isFinite(body.serverTime)) throw new Error("Session unavailable");
+        const body = await response.json() as { expiresAt: number; lastSeenAt: number; serverTime: number };
+        if (!Number.isFinite(body.expiresAt) || !Number.isFinite(body.lastSeenAt) || !Number.isFinite(body.serverTime)) throw new Error("Session unavailable");
         if (disposed) return;
         absoluteExpiry = Date.now() + Math.max(0, body.expiresAt - body.serverTime);
+        lastActivity = Date.now() - Math.max(0, body.serverTime - body.lastSeenAt);
         try { const saved = Number(localStorage.getItem(key)); if (saved > 0) lastActivity = Math.min(saved, Date.now()); else localStorage.setItem(key, String(lastActivity)); } catch { /* Storage is optional. */ }
         if (!sessionRemaining(Date.now(), lastActivity, absoluteExpiry)) { await end(); return; }
         for (const name of ["pointerdown", "keydown", "wheel", "touchstart"]) window.addEventListener(name, trustedActivity, { passive: true });
@@ -80,7 +81,7 @@ export default function SessionTimeout({ children }: { children: ReactNode }) {
         };
         resume.current = () => {
           if (absoluteExpiry - Date.now() <= SESSION_WARNING_MS) { void end(); return; }
-          activity(); void apiFetch("/api/v1/session", { signal: AbortSignal.timeout(10_000) }).catch(() => undefined);
+          activity(); void apiFetch("/api/v1/session", { method: "POST", signal: AbortSignal.timeout(10_000) }).catch(() => undefined);
         };
         tick();
         timer = window.setInterval(tick, 1000);
