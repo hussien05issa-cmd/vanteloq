@@ -136,6 +136,12 @@ const worker = {
       headers.set("Cache-Control", "no-store, max-age=0");
       headers.set("Cross-Origin-Resource-Policy", "same-origin");
     }
+    // HTML and RSC contain this release's hashed module paths. Reusing an old
+    // shell after deployment can request removed chunks and strand sign-in.
+    // Hashed JS, CSS and images retain their normal asset caching policy.
+    if (/text\/(html|x-component)/i.test(headers.get("Content-Type") ?? "")) {
+      headers.set("Cache-Control", "no-store, max-age=0");
+    }
 
     const isNotFoundHtml = response.status === 404 && headers.get("Content-Type")?.includes("text/html");
     if (isNotFoundHtml) {
