@@ -60,10 +60,26 @@ test("identity checks require the exact bounded range and full-file length", asy
     const transport = (async (_url, init) => {
       assert.equal(init?.method, "GET");
       assert.equal(init?.cache, "no-store");
-      assert.equal(new Headers(init?.headers).get("range"), "bytes=0-0");
+      assert.equal(new Headers(init?.headers).get("x-ms-range"), "bytes=0-0");
       return new Response(new ReadableStream({ cancel() { cancelled = true; } }), { status, headers: { etag: operation.etag, "content-range": range, "x-ms-meta-sha256": operation.sha256 } });
     }) as typeof fetch;
     await assert.rejects(pollAzureScan(scannerEnv, operation, transport), { message: "DOCUMENT_CHANGED" });
     assert.equal(cancelled, true, "An unbounded or changed response must not be downloaded");
   }
+});
+
+test("scan identity remains authenticated when an edge strips standard GET conditions", async () => {
+  const fixture = scannerFixture();
+  const operation = await beginAzureScan(scannerEnv, new Uint8Array([1, 2]), "application/pdf", "a".repeat(64), fixture.transport);
+  const edgeTransport = (async (input, init) => {
+    const headers = new Headers(init?.headers);
+    headers.delete("range");
+    headers.delete("if-match");
+    const expected = await storageAuthorization(new URL(String(input)), "GET", headers, scannerEnv.AZURE_DOCUMENT_SCAN_KEY);
+    assert.equal(headers.get("authorization"), expected, "The signature must remain valid after edge normalization");
+    if (!String(input).includes("comp=tags")) assert.equal(headers.get("x-ms-range"), "bytes=0-0");
+    return fixture.transport(input, { ...init, headers });
+  }) as typeof fetch;
+  assert.equal(await pollAzureScan(scannerEnv, operation, edgeTransport), "clean");
+  await assert.rejects(pollAzureScan(scannerEnv, { ...operation, etag: '"changed"' }, edgeTransport), { message: "DOCUMENT_CHANGED" });
 });

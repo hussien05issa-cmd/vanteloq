@@ -100,9 +100,11 @@ export async function pollAzureScan(env: VanteloqRuntimeEnv, operation: AzureSca
   if (!operation.etag || !Number.isSafeInteger(operation.submittedAt) || !Number.isSafeInteger(operation.size) || operation.size < 1 || !/^[a-f0-9]{64}$/.test(operation.sha256)) throw new DocumentProviderError("SCAN_REFERENCE_INVALID");
   if (Date.now() - operation.submittedAt > 10 * 60_000 || operation.submittedAt > Date.now() + 60_000) throw new DocumentProviderError("SCAN_TIMED_OUT");
   const assertIdentity = async () => {
-    // A one-byte GET avoids edge layers rewriting signed HEAD requests. The
-    // Content-Range total verifies full blob length without downloading it.
-    const response = await request(env, url, "GET", { headers: { "If-Match": operation.etag, Range: "bytes=0-0" } }, transport);
+    // Edge cache layers strip standard Range and conditional GET headers on some
+    // cache misses. Azure's signed service range survives that normalization.
+    // Compare the returned ETag on both sides of the verdict instead of signing
+    // If-Match on GET; deletion still uses its atomic If-Match precondition.
+    const response = await request(env, url, "GET", { headers: { "x-ms-range": "bytes=0-0" } }, transport);
     try {
       if (response.status !== 206 || response.headers.get("content-range") !== `bytes 0-0/${operation.size}` || response.headers.get("etag") !== operation.etag || response.headers.get("x-ms-meta-sha256") !== operation.sha256) throw new DocumentProviderError("DOCUMENT_CHANGED");
     } finally { await response.body?.cancel(); }
