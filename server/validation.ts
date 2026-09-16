@@ -583,6 +583,7 @@ function dailyMetricRow(value: unknown) {
     refundsCents: integerValue(row.refundsCents ?? 0, "refund amount", 0),
     discountsCents: integerValue(row.discountsCents ?? 0, "discount amount", 0),
     labourCostCents: integerValue(row.labourCostCents ?? 0, "labour cost", 0),
+    labourCostReported: row.labourCostCents !== null && row.labourCostCents !== undefined,
     inventoryValueCents: nullableInteger(
       row.inventoryValueCents,
       "inventory value",

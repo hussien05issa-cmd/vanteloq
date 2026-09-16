@@ -120,8 +120,10 @@ test("homepage and resource cards keep the hosted visual layout", async () => {
 
   for (const slug of ["retail-intelligence", "inventory-and-cash", "financial-review"]) assert.ok(homepage.includes('/features/' + slug));
   assert.doesNotMatch(homepage, /home-resource-thumbnail/);
-  assert.match(resources, /resource-card-image/);
-  assert.match(resources, /inventory-tracking-editorial-v2\.webp/);
+  assert.match(resources, /<details class="resource-article-browser">/);
+  assert.match(resources, /<summary>/);
+  assert.match(resources, /resource-article-link/);
+  assert.doesNotMatch(resources, /<details[^>]*resource-article-browser[^>]*\bopen(?:[ =>])/);
   assert.doesNotMatch(resources, /resource-card-hero/);
   assert.match(homepageCss, /\.home-proof li::before[^}]*content:\s*"✓"/);
   assert.doesNotMatch(homepageCss, /home-step-review-visual|home-step-visual/);

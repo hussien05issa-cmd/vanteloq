@@ -174,3 +174,32 @@ test("margin rates use percentage points and do not turn association into causat
   assert.match(insight.probableCause, /does not isolate/);
   assert.doesNotMatch(result.insights.find(item => item.id === "sales-trend")!.suggestedTask.expectedImpact, /opportunity/);
 });
+
+
+test("missing provider labour stays unavailable across totals, comparisons and provenance", () => {
+  const rows = Array.from({ length: 60 }, (_, i) => ({ ...row(dateOffset("2026-08-03", i - 59), "current"), sourceProvider: "lightspeed-r", labourCostCents: 0 }));
+  const result = buildCommandCentre(rows, "CAD");
+  assert.equal(result.current?.labourCostCents, null);
+  assert.equal(result.current?.contributionCents, null);
+  assert.equal(result.current?.labourRate, null);
+  assert.equal(result.previous?.labourCostCents, null);
+  assert.equal(result.periodComparisons?.sevenDays.current.contributionCents, null);
+  for (const key of ["labour_cost", "labour_rate", "contribution_after_labour"]) {
+    assert.equal(result.metrics[key].actuality, "unavailable");
+    assert.equal(result.metrics[key].value, null);
+  }
+  assert.equal(result.insights.some(item => item.id === "labour-pressure"), false);
+});
+
+test("explicit zero labour is valid, but legacy zero and partly missing locations are unknown", () => {
+  const recorded = { ...row("2026-08-03", "current"), labourCostCents: 0, labourCostReported: true, locationRef: "one" };
+  const verified = buildCommandCentre([recorded], "CAD");
+  assert.equal(verified.current?.labourCostCents, 0);
+  assert.equal(verified.current?.contributionCents, 30000);
+  assert.equal(verified.metrics.labour_cost.actuality, "actual");
+  assert.equal(buildCommandCentre([{ ...recorded, labourCostReported: null }], "CAD").current?.labourCostCents, null);
+  const mixed = buildCommandCentre([recorded, { ...recorded, sourceProvider: "square", locationRef: "two" }], "CAD");
+  assert.equal(mixed.current?.netSalesCents, 160000);
+  assert.equal(mixed.current?.labourCostCents, null);
+  assert.equal(mixed.current?.contributionCents, null);
+});

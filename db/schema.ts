@@ -368,6 +368,7 @@ export const dailyBusinessMetrics = sqliteTable(
     refundsCents: integer("refunds_cents").notNull().default(0),
     discountsCents: integer("discounts_cents").notNull().default(0),
     labourCostCents: integer("labour_cost_cents").notNull().default(0),
+    labourCostReported: integer("labour_cost_reported", { mode: "boolean" }),
     inventoryValueCents: integer("inventory_value_cents"),
     cashBalanceCents: integer("cash_balance_cents"),
     accountsPayableCents: integer("accounts_payable_cents"),

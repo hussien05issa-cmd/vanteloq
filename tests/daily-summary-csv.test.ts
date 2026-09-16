@@ -30,3 +30,14 @@ test("API validation independently rejects normalized impossible calendar dates"
   rows[0].businessDate = "2026-02-30";
   assert.throws(() => dailyMetricImportInput(body), /valid business date/);
 });
+
+
+test("missing labour and an explicit zero remain different through CSV and API validation", () => {
+  const [missing] = parseDailyCsv(header + "\n2026-09-14,100,100,50,10,20");
+  const [zero] = parseDailyCsv(header + ",labour_cost\n2026-09-14,100,100,50,10,20,0");
+  assert.equal(missing.labourCostCents, null);
+  assert.equal(zero.labourCostCents, 0);
+  const parse = (row: ReturnType<typeof parseDailyCsv>[number]) => dailyMetricImportInput({ rows: [row] }).rows[0];
+  assert.equal(parse(missing).labourCostReported, false);
+  assert.equal(parse(zero).labourCostReported, true);
+});

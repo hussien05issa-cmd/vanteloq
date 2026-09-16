@@ -116,6 +116,8 @@ test("retail Worker enforces tenant/location/privacy boundaries, source approval
     const askBody = { question: "Explain the retail performance", provider: "openai", dataUseAccepted: true, noticeVersion: "vanteloq-ai-v7-unified", privacyPolicyVersion: "2026-09-10", memoryEnabled: true, from: "2026-09-11", to: "2026-09-11", locationId: owner.locationId };
     const ask = (changes = {}, identity = staff) => dispatch(worker, environment, "/api/v1/advisor/chat", { ...identity, method: "POST", body: { ...askBody, ...changes } });
     assert.equal((await ask({ dataUseAccepted: false })).status, 409); assert.equal(prompts.length, 0);
+    response = await dispatch(worker, environment, "/api/v1/advisor/consent", { ...staff, method: "POST", body: { accepted: true, purpose: "analysis", noticeVersion: askBody.noticeVersion, privacyPolicyVersion: askBody.privacyPolicyVersion } });
+    assert.equal(response.status, 200, await response.clone().text());
     response = await ask(); assert.equal(response.status, 200, await response.clone().text()); const chat = await response.json(); assert.ok(chat.conversationId);
     let evidence = JSON.parse(prompts[0].split("Evidence JSON: ")[1].split("\n\nConversation memory:")[0]);
     assert.equal(evidence.retail.current.netCents, 1000); assert.equal(evidence.retail.current.grossProfitCents, null); assert.equal(evidence.retail.customers, null); assert.equal(evidence.requestedRetailPeriod.from, "2026-09-11");
@@ -127,6 +129,8 @@ test("retail Worker enforces tenant/location/privacy boundaries, source approval
     assert.match(evidence.retail.reason, /overlap or a source is still syncing/);
     assert.doesNotMatch(prompts.at(-1), /customer-secret|private@example|OTHER TENANT|PRIVATE TEST SECRET/);
     await db.prepare("UPDATE integration_connections SET sync_lease_owner=NULL,sync_lease_expires_at=NULL WHERE id='real-retail'").run();
+    response = await dispatch(worker, environment, "/api/v1/advisor/consent", { ...staff, method: "POST", body: { accepted: true, purpose: "help", noticeVersion: askBody.noticeVersion, privacyPolicyVersion: askBody.privacyPolicyVersion } });
+    assert.equal(response.status, 200, await response.clone().text());
     response = await ask({ purpose: "help", memoryEnabled: false }); assert.equal(response.status, 200, await response.clone().text());
     evidence = JSON.parse(prompts.at(-1).split("Evidence JSON: ")[1].split("\n\nConversation memory:")[0]); assert.deepEqual(evidence, { purpose: "help", workspaceDataAttached: false });
     response = await dispatch(worker, environment, "/api/v1/advisor/chat", { ...other.owner, method: "DELETE", body: { conversationId: chat.conversationId } }); assert.equal(response.status, 404);

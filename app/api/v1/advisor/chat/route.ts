@@ -1,3 +1,4 @@
+import { recordedLabourCost } from "../../../../../domain/labour-evidence";
 import { advisorProviderStatus, callAdvisor } from "../../../../../server/advisor-providers";
 import { isAdvisorMode } from "../../../../../domain/advisor-providers";
 import { advisorKpis, advisorDailySeries, type AdvisorDay } from "../../../../../domain/advisor-kpis";
@@ -88,6 +89,7 @@ async function evidenceFor(
     locationRef: dailyBusinessMetrics.locationRef,
     unitsSold: dailyBusinessMetrics.unitsSold,
     labourCostCents: dailyBusinessMetrics.labourCostCents,
+    labourCostReported: dailyBusinessMetrics.labourCostReported,
     inventoryValueCents: dailyBusinessMetrics.inventoryValueCents,
     accountsPayableCents: dailyBusinessMetrics.accountsPayableCents,
   }).from(dailyBusinessMetrics).where(and(metricScope, gte(dailyBusinessMetrics.businessDate, startDate))).orderBy(desc(dailyBusinessMetrics.businessDate)).limit(5001);
@@ -110,7 +112,7 @@ async function evidenceFor(
       date: row.businessDate,
       locationRef: row.locationRef,
       unitsSold: includeRevenue ? row.unitsSold : null,
-      labourCostCents: permissions.includes("payroll.totals") && row.labourCostCents > 0 ? row.labourCostCents : null,
+      labourCostCents: permissions.includes("payroll.totals") ? recordedLabourCost(row) : null,
       inventoryValueCents: permissions.includes("inventory.value") ? row.inventoryValueCents : null,
       accountsPayableCents: permissions.includes("finance.ap_ar") ? row.accountsPayableCents : null,
       netSalesCents: includeRevenue ? row.netSalesCents : null,

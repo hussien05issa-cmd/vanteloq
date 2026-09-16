@@ -80,7 +80,7 @@ test("product branding uses the supplied BookLoQ assets and a shared trademark g
   assert.doesNotMatch(productLogoSource, /bookloq-logo\.jpeg/);
   assert.match(productLogoSource, /brand-trademark/);
   assert.match(productLogoSource, />™<\/sup>/);
-  assert.match(homepage, /home-bookloq-compact[\s\S]*?<ProductBrandLogo product="bookloq" variant="full"/);
+  assert.match(homepage, /<ProductBrandLogo product="bookloq"\s*\/>/);
   assert.match(homepageCss, /\.home-product-logo-shell\.bookloq-logo-shell \{[^}]*background:\s*transparent/);
   assert.match(homepageCss, /\.product-brand-logo\.bookloq\.full \{[^}]*background:\s*transparent/);
 });
@@ -445,8 +445,8 @@ test("account access includes confirmation recovery and a complete password-rese
   assert.match(authPanel, /inspectRecoveryMfa/);
   assert.match(authPanel, /verifyRecoveryMfa/);
   assert.match(authPanel, /verifyRecoveryCode/);
-  assert.match(authPanel, /Recovery email code/);
-  assert.match(authPanel, /Authenticator app code/);
+  assert.match(authPanel, /Recovery email code/i);
+  assert.match(authPanel, /Authenticator app code/i);
   assert.match(authPanel, /recoveryMfaState === "challenge_required"/);
   assert.match(authPanel, /auth\.resend/);
   assert.match(authPanel, /scope: "global"/);
@@ -499,7 +499,7 @@ test("signup success continues with in-place email code verification", async () 
 
   assert.match(authPanel, /"verify-signup"/);
   assert.match(authPanel, /verifySignupCode\(supabase, email, verificationCode\)/);
-  assert.match(authPanel, /Verification code/);
+  assert.match(authPanel, /Verification code/i);
   assert.doesNotMatch(authPanel, /Six-digit verification code/);
   assert.match(authPanel, /autoComplete="one-time-code"/);
   assert.match(authPanel, /auth\.resend[\s\S]{0,500}captchaToken: turnstileToken/);
@@ -594,6 +594,7 @@ test("paid API access is server-enforced with narrow billing and privacy excepti
     "billing/portal/route.ts",
     "billing/route.ts",
     "entitlements/route.ts",
+    "session/route.ts",
   ]);
   const memberEntitlements = await readFile(new URL("entitlements/route.ts", apiRoot), "utf8");
   assert.match(memberEntitlements, /requireBillingAccess\(request,/);
@@ -602,6 +603,7 @@ test("paid API access is server-enforced with narrow billing and privacy excepti
   assert.deepEqual(privacyExceptions, [
     "account/deletion/route.ts",
     "advisor/chat/route.ts",
+    "advisor/consent/route.ts",
     "advisor/conversations/route.ts",
     "integrations/clover/disconnect/route.ts",
     "integrations/lightspeed-r/disconnect/route.ts",

@@ -1527,6 +1527,27 @@ test("manual and CSV imports replace stale connector ownership and remain distin
     assert.match(csvText, /Source kind/);
     assert.match(csvText, /manual_entry/);
     assert.match(csvText, /daily_summary_csv/);
+
+    // Missing wages must survive persistence and reporting; explicit zero is evidence.
+    const labourRows = [
+      { ...baseRow, businessDate: "2026-08-12", labourCostCents: null },
+      { ...baseRow, businessDate: "2026-08-13", labourCostCents: 0 },
+    ];
+    const labourImport = await dispatch(worker, environment, "/api/v1/daily-metrics", {
+      method: "POST", ...workspace.owner, idempotencyKey: crypto.randomUUID(),
+      body: { importType: "daily_summary_csv", fileName: "labour-evidence.csv", rows: labourRows },
+    });
+    assert.equal(labourImport.status, 201, await labourImport.clone().text());
+    for (const [date, expected] of [["2026-08-12", null], ["2026-08-13", 0]]) {
+      const response = await dispatch(worker, environment, "/api/v1/reports?report=labour_summary&start=" + date + "&end=" + date, workspace.owner);
+      assert.equal(response.status, 200, await response.clone().text());
+      assert.equal((await response.json()).totals.labourCostCents, expected);
+    }
+    const command = await dispatch(worker, environment, "/api/v1/command-centre", workspace.owner);
+    assert.equal(command.status, 200, await command.clone().text());
+    const commandBody = (await command.json()).commandCentre;
+    assert.equal(commandBody.current.labourCostCents, null);
+    assert.equal(commandBody.metrics.contribution_after_labour.actuality, "unavailable");
   } finally {
     await dispose();
   }

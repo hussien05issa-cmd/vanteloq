@@ -3441,7 +3441,7 @@ function DailyImport({
             unitsSold: Number(form.get("units")),
             refundsCents: toCents(form.get("refunds")),
             discountsCents: toCents(form.get("discounts")),
-            labourCostCents: toCents(form.get("labour")),
+            labourCostCents: toCents(form.get("labour"), true),
             inventoryValueCents: toCents(form.get("inventory"), true),
             cashBalanceCents: toCents(form.get("cash"), true),
             accountsPayableCents: toCents(form.get("payable"), true),
@@ -3524,8 +3524,8 @@ function DailyImport({
           <label><FieldLabel>Product Cost (COGS)</FieldLabel><input required name="cogs" inputMode="decimal" />
           </label>
           <label>
-            Labour cost
-            <input name="labour" inputMode="decimal" defaultValue="0" />
+            Labour cost (Optional)
+            <input name="labour" inputMode="decimal" placeholder="Enter a recorded amount" />
           </label>
           <label><FieldLabel>Transactions</FieldLabel><input
               required

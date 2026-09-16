@@ -25,9 +25,9 @@ test("inventory costs are durable, tenant scoped, permission checked and audited
 test("manual and CSV cost workflows require review and survive connector refreshes", async () => {
   const [workspace, square, clover, lightspeed] = await Promise.all([
     source("app/commerce-intelligence-workspace.tsx"),
-    source("app/api/v1/integrations/square/sync/route.ts"),
-    source("app/api/v1/integrations/clover/sync/route.ts"),
-    source("app/api/v1/integrations/lightspeed-r/sync/route.ts"),
+    source("server/integrations/sync/square.ts"),
+    source("server/integrations/sync/clover.ts"),
+    source("server/integrations/sync/lightspeed-r.ts"),
   ]);
   assert.match(workspace, /Download template/);
   assert.match(workspace, /Choose cost CSV/);

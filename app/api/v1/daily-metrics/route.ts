@@ -81,10 +81,10 @@ export async function POST(request: Request) {
         INSERT INTO daily_business_metrics (
           organization_id, business_date, location_ref, gross_sales_cents, net_sales_cents,
           cost_of_goods_cents, transaction_count, units_sold, refunds_cents, discounts_cents,
-          labour_cost_cents, inventory_value_cents, cash_balance_cents, accounts_payable_cents,
+          labour_cost_cents, labour_cost_reported, inventory_value_cents, cash_balance_cents, accounts_payable_cents,
           source_provider, source_connection_id, source_import_id,
           created_by_user_id, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?)
         ON CONFLICT(organization_id, business_date, location_ref) DO UPDATE SET
           gross_sales_cents = excluded.gross_sales_cents,
           net_sales_cents = excluded.net_sales_cents,
@@ -94,6 +94,7 @@ export async function POST(request: Request) {
           refunds_cents = excluded.refunds_cents,
           discounts_cents = excluded.discounts_cents,
           labour_cost_cents = excluded.labour_cost_cents,
+          labour_cost_reported = excluded.labour_cost_reported,
           inventory_value_cents = excluded.inventory_value_cents,
           cash_balance_cents = excluded.cash_balance_cents,
           accounts_payable_cents = excluded.accounts_payable_cents,
@@ -104,7 +105,7 @@ export async function POST(request: Request) {
       `).bind(
         context.organizationId, row.businessDate, row.locationRef, row.grossSalesCents, row.netSalesCents,
         row.costOfGoodsCents, row.transactionCount, row.unitsSold, row.refundsCents, row.discountsCents,
-        row.labourCostCents, row.inventoryValueCents, row.cashBalanceCents, row.accountsPayableCents,
+        row.labourCostCents, row.labourCostReported ? 1 : 0, row.inventoryValueCents, row.cashBalanceCents, row.accountsPayableCents,
         importId, context.userId, now, now,
       ));
       await database.batch(statements);

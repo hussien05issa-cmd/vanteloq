@@ -1,4 +1,5 @@
-import { buildMetricResults, type FreshnessStatus } from "./data-trust.ts";
+import { recordedLabourCost } from "../domain/labour-evidence.ts";
+import { buildMetricResults, type FreshnessStatus, type MetricResult } from "./data-trust.ts";
 import { periodEvidence } from "../domain/period-evidence.ts";
 
 export type MetricRow = {
@@ -10,7 +11,9 @@ export type MetricRow = {
   unitsSold: number;
   refundsCents: number;
   discountsCents: number;
-  labourCostCents: number;
+  labourCostCents: number | null;
+  labourCostReported?: boolean | null;
+  sourceProvider?: string | null;
   inventoryValueCents: number | null;
   cashBalanceCents: number | null;
   accountsPayableCents: number | null;
@@ -28,9 +31,9 @@ type Totals = {
   unitsSold: number;
   refundsCents: number;
   discountsCents: number;
-  labourCostCents: number;
+  labourCostCents: number | null;
   grossProfitCents: number;
-  contributionCents: number;
+  contributionCents: number | null;
   grossMarginRate: number | null;
   averageTransactionCents: number | null;
   unitsPerTransaction: number | null;
@@ -67,18 +70,20 @@ function sum(rows: MetricRow[]): Totals {
     unitsSold: acc.unitsSold + row.unitsSold,
     refundsCents: acc.refundsCents + row.refundsCents,
     discountsCents: acc.discountsCents + row.discountsCents,
-    labourCostCents: acc.labourCostCents + row.labourCostCents,
+    labourCostCents: acc.labourCostCents + (row.labourCostCents ?? 0),
   }), { grossSalesCents: 0, netSalesCents: 0, costOfGoodsCents: 0, transactionCount: 0, unitsSold: 0, refundsCents: 0, discountsCents: 0, labourCostCents: 0 });
   const grossProfitCents = base.netSalesCents - base.costOfGoodsCents;
+  const labourCostCents = rows.length && rows.every(row => row.labourCostCents !== null) ? base.labourCostCents : null;
   return {
     days: rows.length,
     ...base,
     grossProfitCents,
-    contributionCents: grossProfitCents - base.labourCostCents,
+    labourCostCents,
+    contributionCents: labourCostCents === null ? null : grossProfitCents - labourCostCents,
     grossMarginRate: base.netSalesCents ? grossProfitCents / base.netSalesCents : null,
     averageTransactionCents: base.transactionCount ? base.netSalesCents / base.transactionCount : null,
     unitsPerTransaction: base.transactionCount ? base.unitsSold / base.transactionCount : null,
-    labourRate: base.netSalesCents ? base.labourCostCents / base.netSalesCents : null,
+    labourRate: base.netSalesCents && labourCostCents !== null ? labourCostCents / base.netSalesCents : null,
     discountRate: base.grossSalesCents ? base.discountsCents / base.grossSalesCents : null,
   };
 }
@@ -102,7 +107,7 @@ function aggregateDaily(rows: MetricRow[]): MetricRow[] {
     current.unitsSold += row.unitsSold;
     current.refundsCents += row.refundsCents;
     current.discountsCents += row.discountsCents;
-    current.labourCostCents += row.labourCostCents;
+    current.labourCostCents = current.labourCostCents === null || row.labourCostCents === null ? null : current.labourCostCents + row.labourCostCents;
     if (row.inventoryValueCents !== null) current.inventoryValueCents = (current.inventoryValueCents ?? 0) + row.inventoryValueCents;
     if (row.cashBalanceCents !== null) current.cashBalanceCents = (current.cashBalanceCents ?? 0) + row.cashBalanceCents;
     if (row.accountsPayableCents !== null) current.accountsPayableCents = (current.accountsPayableCents ?? 0) + row.accountsPayableCents;
@@ -292,7 +297,7 @@ function buildInsights(current: Totals, previous: Totals, currency: string, comp
     }
   }
 
-  if (current.labourRate !== null && previous.labourRate !== null) {
+  if (current.labourRate !== null && previous.labourRate !== null && current.labourCostCents !== null && previous.labourCostCents !== null) {
     const labourDelta = current.labourRate - previous.labourRate;
     if (labourDelta >= 0.02) {
       insights.push({
@@ -316,7 +321,7 @@ function buildInsights(current: Totals, previous: Totals, currency: string, comp
       id: "stable-performance",
       severity: "informational",
       title: "No material period-level exception was detected",
-      whatHappened: "Sales, margin and labour stayed inside the current exception thresholds.",
+      whatHappened: "The available metrics stayed inside the current exception thresholds. Missing inputs are not assessed.",
       probableCause: "The verified daily summaries do not show a change large enough to prioritize.",
       financialImpact: "No material impact is estimated from the available aggregates.",
       recommendedAction: "Keep collecting daily data and connect line-item feeds to unlock product, customer and promotion opportunities.",
@@ -330,6 +335,7 @@ function buildInsights(current: Totals, previous: Totals, currency: string, comp
 }
 
 export function buildCommandCentre(rows: MetricRow[], currency: string, asOf = new Date()) {
+  rows = rows.map(row => ({ ...row, labourCostCents: recordedLabourCost(row) }));
   const sourceRecordCount = rows.length;
   const sorted = aggregateDaily(rows);
   if (!sorted.length) {
@@ -340,7 +346,7 @@ export function buildCommandCentre(rows: MetricRow[], currency: string, asOf = n
       previous: null,
       comparisons: null,
       balances: null,
-      metrics: {},
+      metrics: {} as Record<string, MetricResult>,
       trend: [],
       periodComparisons: null,
       forecast: {

@@ -1,3 +1,4 @@
+import { recordedLabourCost } from "../../../../domain/labour-evidence";
 import { businessTimestampRange, businessTimestampExtrema, businessDatesFromExtrema, type TimestampExtrema } from "../../../../domain/business-period";
 import { and, asc, eq, gt, gte, inArray, isNull, lte, or, sql, type SQL } from "drizzle-orm";
 import { getD1, getDb } from "../../../../db";
@@ -65,6 +66,7 @@ function totalsFor(rows: Array<typeof dailyBusinessMetrics.$inferSelect>) {
   );
   return {
     ...totals,
+    labourCostCents: rows.length && rows.every(row => recordedLabourCost(row) !== null) ? totals.labourCostCents : null,
     grossProfitCents: totals.netSalesCents - totals.costOfGoodsCents,
     averageTransactionCents: totals.transactionCount ? Math.round(totals.netSalesCents / totals.transactionCount) : null,
   };
@@ -424,7 +426,7 @@ export async function GET(request: Request) {
           canViewVerifiedProfit
             ? row.netSalesCents - row.costOfGoodsCents
             : null,
-          canViewPayroll ? row.labourCostCents : null,
+          canViewPayroll ? recordedLabourCost(row) : null,
         ]
           .map(csvCell)
           .join(","),
