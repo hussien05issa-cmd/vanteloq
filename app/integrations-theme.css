@@ -98,7 +98,10 @@
 .operating-shell .data-hub :is(.integration-card-footer > button,.integration-card-footer .provider-actions button,button.primary):not(:disabled):hover { background: var(--ui-action-hover); color: #f6faff; }
 .operating-shell .data-hub button.danger-text { color: #9b293c; border-color: #dfbdc4; background: #fff5f6; }
 .operating-shell .data-hub :is(button.primary,.integration-card-footer .provider-actions button,button):disabled { background: #e9eef5; color: #53677d; border-color: #ced9e5; opacity: 1; cursor: not-allowed; box-shadow: none; }
-.operating-shell .data-hub .segmented button { border-color: transparent; background: transparent; color: var(--connection-muted); box-shadow: none; }
+.operating-shell .data-hub .page-intro { flex-wrap: wrap; }
+.operating-shell .data-hub .page-intro > div:first-child { flex: 1 1 24rem; }
+.operating-shell .data-hub .page-intro > .segmented { flex: 0 0 auto; max-width: 100%; }
+.operating-shell .data-hub .segmented button { border-color: transparent; background: transparent; color: var(--connection-muted); box-shadow: none; white-space: nowrap; }
 .operating-shell .data-hub .segmented button.active { background: #f9fbfe; border-color: #c2d3e6; color: #183e68; box-shadow: 0 2px 6px #17395f0b; }
 .operating-shell .data-hub :is(button,summary,input,select):focus-visible { outline: 3px solid #2e6baa; outline-offset: 3px; }
 .operating-shell .data-hub :is(.drop-zone b,.manual-entry label) { color: var(--connection-ink); font-size: .9375rem !important; }

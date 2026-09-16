@@ -4,6 +4,7 @@ import { parseDailyCsv } from "../domain/daily-summary-csv";
 import DailyImportReviewPanel from "./daily-import-review";
 import type { DailyImportReview } from "../server/daily-metric-import";
 import WorkspaceSkeleton from "./workspace-skeleton";
+import { documentEmailAccessKey } from "./document-email-client";
 import { isAwaitingSalesRecords } from "../domain/intraday-sales";
 
 import Image from "next/image";
@@ -681,6 +682,7 @@ export default function VanteloqApp({
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
   const [appRole, setAppRole] = useState("employee");
+  const [emailAccessKey, setEmailAccessKey] = useState("");
   const [appPermissions, setAppPermissions] = useState<string[]>([]);
   const [paymentRange, setPaymentRange] = useState<PaymentRange>(1);
   const [hiddenNavigation, setHiddenNavigation] = useState<View[]>([]);
@@ -720,6 +722,7 @@ export default function VanteloqApp({
       setData({ ...body.commandCentre, operatingSystem: body.operatingSystem });
       setCurrency(body.organization.currency);
       setAppRole(body.organization.role ?? "employee");
+      setEmailAccessKey(documentEmailAccessKey(body.organization));
       setAppPermissions(body.organization.permissions ?? []);
       setLocations(body.organization.locations ?? []);
       setWorkspaceName(body.organization.name || organizationName);
@@ -1161,6 +1164,7 @@ export default function VanteloqApp({
             view={view}
             data={data!}
             permissions={appPermissions}
+            emailAccessKey={emailAccessKey}
             subscriptionFeatures={subscriptionFeatures}
             currency={currency}
             navigate={navigate}
@@ -1298,6 +1302,7 @@ function Workspace({
   view,
   data,
   permissions,
+  emailAccessKey,
   subscriptionFeatures,
   currency,
   navigate,
@@ -1316,6 +1321,7 @@ function Workspace({
   view: View;
   data: CommandCentre;
   permissions: string[];
+  emailAccessKey: string;
   subscriptionFeatures: readonly string[];
   currency: string;
   navigate: (view: View) => void;
@@ -1425,6 +1431,7 @@ function Workspace({
   if (view === "Documents")
     return (
       <DocumentsWorkspace
+        emailAccessKey={emailAccessKey}
         currency={currency}
         showNotice={showNotice}
         createTask={createTask}

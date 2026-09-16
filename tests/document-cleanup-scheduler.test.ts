@@ -21,6 +21,7 @@ async function fixture(t: { after(callback: () => Promise<void>): void }) {
     "CREATE TABLE workspaces(id TEXT PRIMARY KEY)",
     "CREATE TABLE workspace_documents(id TEXT PRIMARY KEY,organization_id TEXT REFERENCES workspaces(id),object_key TEXT,extracted_json TEXT,status TEXT,security_state TEXT DEFAULT 'clean',extraction_status TEXT DEFAULT 'complete',updated_at INTEGER)",
     "CREATE TABLE audit_events(id TEXT PRIMARY KEY,organization_id TEXT,action TEXT,created_at INTEGER,details_json TEXT)",
+    "CREATE TABLE document_ingest_intents(id TEXT PRIMARY KEY,organization_id TEXT,object_key TEXT,sha256_hex TEXT,state TEXT,created_at INTEGER,lease_token TEXT,lease_until INTEGER DEFAULT 0)",
     ...["invoice_matches", "customer_invoices", "bank_statement_imports", "bookloq_transaction_matches"].map(table => `CREATE TABLE ${table}(id TEXT,document_id TEXT,status TEXT)`),
   ]) await database.prepare(sql).run();
   const guard = await readFile(new URL("../drizzle/0052_document_deletion_guards.sql", import.meta.url), "utf8");

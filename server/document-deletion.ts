@@ -121,9 +121,10 @@ export async function deleteDocument(input: {
     }
     if (pendingSteps(job).length) return pending();
     const removed = await database.prepare(`DELETE FROM workspace_documents WHERE organization_id=? AND id=?
-      AND status='deletion_pending' AND json_extract(extracted_json,'$.deletion.lock')=?`)
-      .bind(organizationId, documentId, lock).run();
-    return removed.meta.changes === 1
+      AND status='deletion_pending' AND json_extract(extracted_json,'$.deletion.lock')=? RETURNING id`)
+      .bind(organizationId, documentId, lock).first<{id:string}>();
+    // Receipt tombstone triggers also change rows; RETURNING identifies the original itself.
+    return removed?.id === documentId
       ? { deleted: true, status: "deleted" as const, pendingSteps: [] as string[] }
       : pending();
   } finally {

@@ -19,64 +19,11 @@ import {
 import { requirePermission } from "../../../../server/permissions";
 import { requireOrganizationWideLocationAccess } from "../../../../server/location-access";
 
+import { safeName, verifiedType, quarantineDocument } from "../../../../server/document-ingest";
+import { documentEmailConfigured } from "../../../../server/document-email";
+
 const users = ["owner", "admin", "manager", "employee", "read_only"] as const;
 const maximumBytes = 10 * 1024 * 1024;
-
-function hex(bytes: Uint8Array) {
-  return Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join(
-    "",
-  );
-}
-async function sha256(bytes: Uint8Array) {
-  const copy = new Uint8Array(bytes);
-  return hex(
-    new Uint8Array(await crypto.subtle.digest("SHA-256", copy.buffer)),
-  );
-}
-function safeName(value: string) {
-  return (
-    value
-      .normalize("NFC")
-      .replace(/[\u0000-\u001f\u007f/\\]/g, "_")
-      .slice(0, 160) || "document"
-  );
-}
-function verifiedType(bytes: Uint8Array, declared: string) {
-  const text = new TextDecoder().decode(bytes.slice(0, 12));
-  if (
-    bytes[0] === 0x25 &&
-    bytes[1] === 0x50 &&
-    bytes[2] === 0x44 &&
-    bytes[3] === 0x46 &&
-    declared === "application/pdf"
-  )
-    return { type: "application/pdf", extension: "pdf" };
-  if (
-    bytes[0] === 0xff &&
-    bytes[1] === 0xd8 &&
-    bytes[2] === 0xff &&
-    ["image/jpeg", "image/jpg"].includes(declared)
-  )
-    return { type: "image/jpeg", extension: "jpg" };
-  if (
-    [137, 80, 78, 71, 13, 10, 26, 10].every(
-      (value, index) => bytes[index] === value,
-    ) &&
-    declared === "image/png"
-  )
-    return { type: "image/png", extension: "png" };
-  if (
-    text.startsWith("RIFF") &&
-    text.slice(8, 12) === "WEBP" &&
-    declared === "image/webp"
-  )
-    return { type: "image/webp", extension: "webp" };
-  throw new ApiError(
-    400,
-    "UNSUPPORTED_DOCUMENT",
-    "Upload a verified PDF, JPEG, PNG or WEBP file. HEIC and TIFF remain disabled until their conversion and malware-scanning pipeline is configured.",
-  );
-}
 
 async function list(organizationId: string) {
   const documents = await getDb()
@@ -109,7 +56,7 @@ async function list(organizationId: string) {
       mimeVerification: "live",
       malwareScanning: providers.scanning ? "configured" : "not_configured",
       ocrExtraction: providers.extraction ? "configured" : "not_configured",
-      emailForwarding: "not_configured",
+      emailForwarding: documentEmailConfigured(undefined,organizationId) ? "configured" : "not_configured",
       cameraCapture: "browser_supported",
     },
   };
@@ -209,65 +156,9 @@ export async function POST(request: Request) {
       throw new ApiError(400, "INVALID_TYPE", "Select a valid document type.");
     const bytes = new Uint8Array(await file.arrayBuffer());
     const verified = verifiedType(bytes, file.type);
-    const digest = await sha256(bytes);
-    const [duplicate] = await getDb()
-      .select({
-        id: workspaceDocuments.id,
-        fileName: workspaceDocuments.fileName,
-      })
-      .from(workspaceDocuments)
-      .where(
-        and(
-          eq(workspaceDocuments.organizationId, context.organizationId),
-          eq(workspaceDocuments.sha256Hex, digest),
-        ),
-      )
-      .limit(1);
-    if (duplicate)
-      throw new ApiError(
-        409,
-        "DUPLICATE_DOCUMENT",
-        `This file already exists as ${duplicate.fileName}.`,
-      );
-    const id = crypto.randomUUID();
-    const objectKey = `${context.organizationId}/documents/quarantine/${id}.${verified.extension}`;
-    const now = Math.floor(Date.now() / 1000);
-    await getR2().put(objectKey, bytes.buffer, {
-      httpMetadata: {
-        contentType: verified.type,
-        cacheControl: "private, no-store",
-      },
-      customMetadata: {
-        organizationId: context.organizationId,
-        uploadedBy: context.userId,
-        securityState: "awaiting-malware-provider",
-      },
-    });
-    try {
-      await getD1()
-        .prepare(
-          `INSERT INTO workspace_documents
-      (id, organization_id, document_type, file_name, object_key, content_type, size_bytes, sha256_hex, security_state, status, scan_status, extraction_status, extracted_json, uploaded_by_user_id, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'quarantined', 'review_required', 'pending', 'not_configured', '{}', ?, ?, ?)`,
-        )
-        .bind(
-          id,
-          context.organizationId,
-          type,
-          safeName(file.name),
-          objectKey,
-          verified.type,
-          file.size,
-          digest,
-          context.userId,
-          now,
-          now,
-        )
-        .run();
-    } catch (error) {
-      await getR2().delete(objectKey);
-      throw error;
-    }
+    const stored = await quarantineDocument({ database: getD1(), bucket: getR2(), organizationId: context.organizationId, authorizedByUserId: context.userId, bytes, fileName: file.name, contentType: file.type, documentType: type });
+    if (stored.duplicate) throw new ApiError(409, "DUPLICATE_DOCUMENT", `This file already exists as ${stored.fileName}.`);
+    const id = stored.id;
     await recordAudit({
       request,
       requestId,

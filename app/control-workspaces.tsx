@@ -1,5 +1,6 @@
 "use client";
 import WorkspaceSkeleton from "./workspace-skeleton";
+import DocumentEmailInbox from "./document-email-inbox";
 import { documentPipelineLabel } from "../domain/document-pipeline-labels";
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -2127,7 +2128,7 @@ type DocumentData = {
   }[];
   pipeline: Record<string, string>;
 };
-export function DocumentsWorkspace({ showNotice, canUpload, canDelete }: SharedProps & { canUpload: boolean; canDelete: boolean }) {
+export function DocumentsWorkspace({ showNotice, canUpload, canDelete, emailAccessKey }: SharedProps & { canUpload: boolean; canDelete: boolean; emailAccessKey: string }) {
   const [data, setData] = useState<DocumentData | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
@@ -2256,6 +2257,7 @@ export function DocumentsWorkspace({ showNotice, canUpload, canDelete }: SharedP
           </span>
         </div>
       </section>
+      <DocumentEmailInbox key={emailAccessKey} refreshDocuments={load}/>
       <section className="document-pipeline">
         {Object.entries(data.pipeline).map(([key, state]) => (
           <article key={key}>

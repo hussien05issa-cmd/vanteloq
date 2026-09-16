@@ -1,0 +1,22 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .:
+    dependencies:
+      postal-mime:
+        specifier: 3.0.0
+        version: 3.0.0
+
+packages:
+
+  postal-mime@3.0.0:
+    resolution: {integrity: sha512-Z4a9ar2Bv3YpK3IXag+Yda30k7bMZfpRuUGyqtHnZ2pjHG8Bl62EhZIk4n1dzv00gfzP9g+94e9kd8+XmjVWLA==}
+
+snapshots:
+
+  postal-mime@3.0.0: {}

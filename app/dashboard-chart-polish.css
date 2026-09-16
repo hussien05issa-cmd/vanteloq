@@ -4,7 +4,7 @@
 .operating-shell .chart-legend { gap:12px 20px; margin-bottom:16px; }
 .operating-shell .chart-legend > span { color:#435b75; font-size:13px!important; }
 .operating-shell .workspace-series-chart .trend-gridline { stroke:#e1e9f2; stroke-dasharray:none; }
-.operating-shell .workspace-series-chart .trend-axis-label { fill:#4b6580; }
+.operating-shell .workspace-series-chart .trend-axis-label { fill:#4b6580; font-size:16px; }
 .operating-shell .workspace-series-chart .trend-sales-line { stroke:#2b78e6; stroke-width:2.6; }
 .operating-shell .workspace-series-chart .active-sales-point { fill:#2b78e6; stroke:#f8fbfe; stroke-width:2.5; }
 .operating-shell .workspace-series-chart .chart-zero-line { stroke:#9aafc6; stroke-width:1.2; }
@@ -19,6 +19,7 @@
 .operating-shell .workspace-chart-empty { align-items:flex-start; text-align:left; background:linear-gradient(145deg,#f8fbfe,#f0f5fb); border:1px dashed #c9d7e6; border-radius:16px; margin:16px 20px; min-height:210px; box-sizing:border-box; }
 .operating-shell .workspace-chart-empty p { text-align:left; color:#4a6179; line-height:1.65; }
 @media(max-width:640px) {
+  .operating-shell .workspace-series-chart .trend-axis-label { font-size:18px; }
   .operating-shell .workspace-series-chart { padding:16px 14px 0; }
   .operating-shell .workspace-chart-readout { display:grid; grid-template-columns:minmax(0,1fr); padding:14px; }
   .operating-shell .workspace-chart-readout select { width:100%; }

@@ -2,6 +2,8 @@
 
 # dependencies
 /node_modules
+/email-worker/node_modules/
+/email-worker/.wrangler/
 /.pnp
 .pnp.*
 .yarn/*
