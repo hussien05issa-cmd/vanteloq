@@ -21,3 +21,9 @@ Live acceptance must include a fictional attachment at the advertised size limit
 Originals remain subject to Vanteloq's document retention controls. A durable minimal disposal reference is reserved before object storage writes. Returned failed writes can be cleaned up; an interrupted writer of unknown status must be reviewed before disposal. Do not release such records solely because time has elapsed. Account deletion cannot confirm completion while an unresolved ingestion intent remains.
 
 The receiver rejects uncertain delivery rather than silently accepting it. A partially completed multi-attachment message may leave already accepted files in Documents. Users should check Documents before resending or uploading directly; replay markers prevent recreating a deleted original.
+
+## Transport verification
+
+The receiver uses Workers-supported manual redirect handling and accepts only an exact HTTP 200 response with `received: true`. Redirect destinations never receive the signed request or attachments. The runtime test exercises the default production fetch implementation, including a redirect rejection, rather than relying only on an injected mock transport.
+
+Rejection diagnostics contain only a fixed processing stage, an optional HTTP status and a fixed transport failure category. They exclude addresses, document contents, filenames, headers, secrets and exception text. On September 16, the controlled owner-workspace test accepted a fictional PDF, retained quarantine restrictions and reused an identical existing original. This is not evidence of complete production size, replay, deletion or subscriber-routing coverage. Keep public activation flags disabled until the remaining live acceptance checks pass.

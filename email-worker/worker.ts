@@ -12,8 +12,10 @@ async function boundedRaw(message:IncomingEmail){
 function base64(bytes:Uint8Array){let binary="";for(let offset=0;offset<bytes.length;offset+=16384)binary+=String.fromCharCode(...bytes.subarray(offset,offset+16384));return btoa(binary);}
 
 export async function receiveEmail(message:IncomingEmail,env:Env,transport:typeof fetch=fetch){
+  let stage="configuration",upstreamStatus:number|undefined;
   try{
     if(!/^[A-Za-z0-9_-]{43,128}$/.test(env.DOCUMENT_EMAIL_SECRET??"")||!new RegExp(`^inbox-[a-f0-9]{48}@${DOCUMENT_EMAIL_DOMAIN.replaceAll(".","\\.")}$`).test(message.to))throw new Error("not_configured");
+    stage="mime";
     const raw=await boundedRaw(message);
     const parsed=await PostalMime.parse(raw,{attachmentEncoding:"arraybuffer",maxNestingDepth:16,maxHeadersSize:32768,maxRfc822NestingDepth:0,forceRfc822Attachments:true});
     // Email HTML, text, header credentials and inline signature graphics are never forwarded or logged.
@@ -26,15 +28,25 @@ export async function receiveEmail(message:IncomingEmail,env:Env,transport:typeo
       if(!bytes.length||total>DOCUMENT_EMAIL_MAX_BYTES||!documentFileType(bytes,file.mimeType))throw new Error("unsupported");
       return {fileName:documentFileName(file.filename??"document"),contentType:file.mimeType,content:base64(bytes)};
     });
+    stage="signature";
     const body=JSON.stringify({version:1,recipient:message.to,sender:message.from,attachments:files});
     const digest=await documentDigest(new TextEncoder().encode(body));
     const deliveryId=await documentDigest(new TextEncoder().encode(`${message.to}\n${await documentDigest(raw)}`));
     const timestamp=String(Math.floor(Date.now()/1000));
     const signature=await emailSignature(env.DOCUMENT_EMAIL_SECRET!,timestamp,deliveryId,digest);
-    const response=await transport(DOCUMENT_EMAIL_ENDPOINT,{method:"POST",headers:{"Content-Type":"application/json","X-Vanteloq-Email-Time":timestamp,"X-Vanteloq-Email-Id":deliveryId,"X-Vanteloq-Email-Signature":signature},body,redirect:"error",signal:AbortSignal.timeout(45000)});
+    stage="delivery";
+    // Workerd supports manual redirects. The exact 200 check below rejects all redirects.
+    const response=await transport(DOCUMENT_EMAIL_ENDPOINT,{method:"POST",headers:{"Content-Type":"application/json","X-Vanteloq-Email-Time":timestamp,"X-Vanteloq-Email-Id":deliveryId,"X-Vanteloq-Email-Signature":signature},body,redirect:"manual",signal:AbortSignal.timeout(45000)});
+    upstreamStatus=response.status;
     if(response.status!==200)throw new Error("delivery_failed");
     const result=await response.json() as {received?:boolean};if(result.received!==true)throw new Error("delivery_failed");
-  }catch{
+  }catch(error){
+    // Fixed categories only. Never include addresses, headers, filenames, bodies or exception text.
+    const failureMessage=error instanceof Error?error.message.toLowerCase():"";
+    const transportFailure=stage==="delivery"&&upstreamStatus===undefined
+      ? failureMessage.includes("redirect")?"redirect":failureMessage.includes("1042")?"worker_routing":failureMessage.includes("ssl")||failureMessage.includes("tls")?"tls":failureMessage.includes("resolve")||failureMessage.includes("dns")?"dns":failureMessage.includes("abort")||failureMessage.includes("timeout")?"timeout":failureMessage.includes("illegal invocation")?"invocation":"network"
+      : undefined;
+    console.warn(JSON.stringify({event:"document_email_rejected",stage,upstreamStatus,transportFailure}));
     // Never silently accept, store raw mail, or forward customer records to an operator's inbox.
     message.setReject("Vanteloq could not accept this email. Check Documents and upload the attachment directly. Use up to 5 PDF or image attachments totalling 10 MB.");
   }
