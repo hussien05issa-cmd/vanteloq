@@ -2257,15 +2257,6 @@ export function DocumentsWorkspace({ showNotice, canUpload, canDelete, emailAcce
           </span>
         </div>
       </section>
-      <DocumentEmailInbox key={emailAccessKey} refreshDocuments={load}/>
-      <section className="document-pipeline">
-        {Object.entries(data.pipeline).map(([key, state]) => (
-          <article key={key}>
-            <span className={state}>{documentPipelineLabel(key, state).status}</span>
-            <b>{documentPipelineLabel(key, state).label}</b>
-          </article>
-        ))}
-      </section>
       {canUpload ? <section className="document-upload card">
         <div>
           <i>↑</i>
@@ -2306,6 +2297,18 @@ export function DocumentsWorkspace({ showNotice, canUpload, canDelete, emailAcce
           <p>You can review existing documents. A workspace owner can grant upload access when you need to add files.</p>
         </div>
       </section>}
+      <DocumentEmailInbox key={emailAccessKey} refreshDocuments={load}/>
+      <details className="document-service-status">
+        <summary>Document Services <span>Storage, file safety and reading</span></summary>
+        <section className="document-pipeline" aria-label="Document service availability">
+          {Object.entries(data.pipeline).filter(([key]) => key !== "emailForwarding").map(([key, state]) => (
+            <article key={key}>
+              <span className={state}>{documentPipelineLabel(key, state).status}</span>
+              <b>{documentPipelineLabel(key, state).label}</b>
+            </article>
+          ))}
+        </section>
+      </details>
       {downloadError && <p className="document-upload-error" role="alert">{downloadError}</p>}
       {deletionError && <p className="document-upload-error" role="alert">{deletionError}</p>}
       {processingError && <div className="document-upload-error" role="alert"><p>{processingError}</p><button onClick={() => { setProcessingError(""); void load(); }}>Refresh Documents</button></div>}
