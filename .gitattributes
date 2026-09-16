@@ -1,1 +1,2 @@
 *.pdf binary
+drizzle/*.sql text eol=lf

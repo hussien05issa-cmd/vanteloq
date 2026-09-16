@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { Miniflare } from "miniflare";
+import { unstable_splitSqlQuery } from "wrangler";
 import { deleteDocument, documentDeletionSummary } from "../server/document-deletion.ts";
 import { beginAzureScan } from "../server/azure-document-scanner.ts";
 import { scannerEnv, scannerFixture } from "./azure-scanner-fixture.ts";
@@ -21,7 +22,12 @@ async function setup(t: { after(callback: () => Promise<void>): void }) {
     "INSERT INTO workspace_documents(id,organization_id,object_key,extracted_json) VALUES ('doc-a','tenant-a','tenant-a/private.pdf','{\"extraction\":{\"text\":\"PRIVATE SYNTHETIC STATEMENT\"}}')",
   ]) await database.prepare(sql).run();
   const guards = await readFile(new URL("../drizzle/0052_document_deletion_guards.sql", import.meta.url), "utf8");
-  for (const sql of guards.split("--> statement-breakpoint").map(value => value.trim()).filter(Boolean)) await database.prepare(sql).run();
+  assert.doesNotMatch(guards, /\r/, "trigger migrations use consistent LF line endings for hosted parsing");
+  const statements = unstable_splitSqlQuery(guards);
+  assert.equal(statements.length, 9, "the deployment splitter must retain every complete trigger");
+  for (const sql of statements) await database.prepare(sql).run();
+  // Deployment retries may encounter guards already created by an earlier attempt.
+  for (const sql of statements) await database.prepare(sql).run();
   await bucket.put("tenant-a/private.pdf", new Uint8Array([1,2,3]).buffer, { customMetadata: { organizationId: "tenant-a", securityState: "clean" } });
   const row = () => database.prepare("SELECT * FROM workspace_documents WHERE id='doc-a'").first<{ status: string; security_state: string; extracted_json: string }>();
   const base = { database, bucket, env, organizationId: "tenant-a", documentId: "doc-a", actorUserId: "owner-a" };
