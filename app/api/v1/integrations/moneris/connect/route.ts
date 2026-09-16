@@ -4,7 +4,7 @@ import { integrationConnections, integrationConsents } from "../../../../../../d
 import { recordAudit } from "../../../../../../server/audit";
 import { requireAccess } from "../../../../../../server/authorization";
 import { ApiError, enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameOrigin } from "../../../../../../server/api";
-import { MONERIS_API_VERSION, MONERIS_PROVIDER, requestMonerisAccessToken, saveMonerisCredentials, validateMonerisCredentialInput } from "../../../../../../server/integrations/moneris";
+import { MONERIS_API_VERSION, MONERIS_PROVIDER, requestMonerisAccessToken, resolveMonerisEnvironment, saveMonerisCredentials, validateMonerisCredentialInput } from "../../../../../../server/integrations/moneris";
 import { requirePermission } from "../../../../../../server/permissions";
 
 export async function POST(request: Request) {
@@ -16,16 +16,19 @@ export async function POST(request: Request) {
     const body = await readJsonObject(request);
     if (body.accepted !== true) throw new ApiError(400, "MONERIS_CONSENT_REQUIRED", "Confirm the read-only payment-data notice before connecting Moneris.");
     const credentials = validateMonerisCredentialInput(body);
-    await requestMonerisAccessToken(credentials);
     const name = typeof body.accountName === "string" && body.accountName.trim()
       ? body.accountName.trim().slice(0, 120)
       : `Moneris ${credentials.environment === "production" ? "merchant" : "sandbox"}`;
     const now = new Date();
-    const [existing] = await getDb().select({ id: integrationConnections.id }).from(integrationConnections).where(and(
+    const [existing] = await getDb().select({ id: integrationConnections.id, sourceNamespace: integrationConnections.sourceNamespace, legacyEnvironment: integrationConnections.domainPrefix }).from(integrationConnections).where(and(
       eq(integrationConnections.organizationId, context.organizationId),
       eq(integrationConnections.provider, MONERIS_PROVIDER),
       eq(integrationConnections.externalAccountRef, credentials.merchantId),
     )).limit(1);
+    if (existing && resolveMonerisEnvironment(credentials.merchantId, existing.sourceNamespace, existing.legacyEnvironment) !== credentials.environment) {
+      throw new ApiError(409, "MONERIS_ENVIRONMENT_CONFLICT", "This merchant ID already belongs to another Moneris environment. Use the production merchant ID supplied by Moneris so test records stay separate.");
+    }
+    await requestMonerisAccessToken(credentials);
     const connectionId = existing?.id ?? crypto.randomUUID();
     if (existing) {
       await getDb().update(integrationConnections).set({

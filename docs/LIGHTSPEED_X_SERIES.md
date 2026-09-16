@@ -1,39 +1,46 @@
-# Lightspeed X-Series read-only staging pilot
+# Lightspeed X-Series read-only connector
 
 ## Status
 
-The adapter is implemented but not represented as live. It can authorize, discover outlets and stage a bounded normalized sales sample. Staged records never change Dashboard, BookLoQ or report metrics. Promotion requires a separate acceptance decision after reconciliation and a read-only canary.
+The adapter supports OAuth authorization, outlet discovery, resumable sales, product, category, stock, customer and supplier imports, and reviewed reporting. Connected credentials alone do not enable dashboard metrics. Records remain excluded until the account's completed import satisfies the reporting gates and an authorized owner or administrator approves it.
+
+The September 16, 2026 configuration review did not run merchant authorizations, sample imports, test transactions or acceptance tests, as requested by the owner. Configuration readiness is not a claim that a real merchant import has been verified.
 
 ## Hosted configuration
 
-Set these names in the hosted secret/environment manager; never add values to source control:
+Configure these values privately in the hosted environment:
 
-- `LIGHTSPEED_CLIENT_ID`: approved X-Series developer application client ID.
-- `LIGHTSPEED_CLIENT_SECRET`: approved developer application secret.
-- `INTEGRATION_ENCRYPTION_KEY`: base64-encoded 32-byte key managed as a hosted secret.
-- `LIGHTSPEED_REDIRECT_URI`: `https://vanteloq.com/api/v1/integrations/lightspeed/callback`.
-- `LIGHTSPEED_API_VERSION`: `2026-07`.
+- `LIGHTSPEED_X_CLIENT_ID`: the X-Series developer application client ID.
+- `LIGHTSPEED_X_CLIENT_SECRET`: its matching secret.
+- `LIGHTSPEED_X_TOKEN_ENCRYPTION_KEY`: base64-encoded 32-byte encryption key.
+- `LIGHTSPEED_X_REDIRECT_URI`: `https://vanteloq.com/api/v1/integrations/lightspeed/callback`.
+- `LIGHTSPEED_X_API_VERSION`: `2026-07`.
 
-Register the callback exactly. Vanteloq asks only for `outlets:read` and `sales:read`.
+The source also supports the older `LIGHTSPEED_CLIENT_ID`, `LIGHTSPEED_CLIENT_SECRET`, `LIGHTSPEED_REDIRECT_URI`, `LIGHTSPEED_API_VERSION` and `INTEGRATION_ENCRYPTION_KEY` names as fallbacks. Do not rotate a working credential or encryption key merely to rename it. This adapter has no separate sandbox/production environment switch; access follows the developer application and the retailer that authorizes it.
 
-The production Sites environment contains the required X-Series values and pins API version `2026-07`. This proves configuration readiness only; OAuth and sample reconciliation still determine whether a retailer connection is usable.
+Register the callback exactly. Vanteloq requests `customers:read`, `inventory:read`, `outlets:read`, `products:read`, `retailer:read`, `sales:read` and `suppliers:read`. Older connections with only outlet and sales scopes must reconnect before the expanded importer can run. No sales, inventory or customer write scope is requested.
 
-## Owner pilot
+The September 16 hosted review confirmed the X-prefixed client ID, secret, encryption key, exact callback and `2026-07` version are present. Provider application approval remains a separate dashboard state that must be recorded directly.
 
-1. Open Data → Connections as an owner or authorized administrator.
-2. Select Connect on Lightspeed and approve the read-only scopes.
-3. Discover outlets and map each relevant provider outlet to a tenant-owned Vanteloq location.
-4. Run Stage sample. Verify records read, newly staged, duplicates skipped and unmapped outlets.
-5. Reconcile source totals, taxes, refunds, discounts, costs, timestamps and outlet mapping for the acceptance window.
-6. Exercise revoked token, token refresh, rate limit, partial page, provider outage, duplicate delivery and disconnect recovery.
-7. Complete a read-only canary. Only then may a separately reviewed migration/service promote normalized facts.
+## Provider access and reporting gates
 
-## Security and lineage boundary
+Lightspeed's current documentation states that an unapproved application can connect up to 30 retailer accounts, and that production-ready public applications require approval. A public label, API health indicator or saved callback does not establish that approval. Inspect the existing application at [Lightspeed developer applications](https://developers.retail.lightspeed.app/applications).
 
-- OAuth state is random, stored only as a hash, bound to the organization and initiating user, expires in ten minutes and is consumed before token exchange.
-- Access and refresh tokens are encrypted with AES-GCM and never returned from APIs or written to audit details.
-- Retailer domains accept one constrained provider prefix, preventing arbitrary outbound hosts.
-- Sample staging retains only normalized accounting fields and source hashes, not customer identity or raw provider payloads.
-- Sale versions and webhook payload hashes have tenant/provider uniqueness for replay safety.
-- Webhooks are change signals only. Signed polling remains the recovery and completeness source of truth.
-- Disconnect deletes local encrypted tokens and blocks data promotion while retaining audit evidence.
+Each customer must authorize their own X-Series retailer account. The OAuth callback reads outlets before marking the connection Connected. Reporting then requires a completed history import, a matching workspace currency, reviewed outlet mappings, at least one verified sale, no unresolved sync error and sufficient product-cost coverage. Owner/admin approval is followed by a successful final sync that publishes the reviewed metrics. These gates remain in place when tests are deferred.
+
+## Security and lineage
+
+- OAuth state is hashed, expires after 10 minutes, is bound to the initiating browser, user and organization, and is consumed before code exchange.
+- Tokens use encrypted storage and rotation. API responses and audit details do not expose credentials.
+- Retailer domains accept only a constrained provider prefix.
+- Imports retain normalized records and source hashes. Customer names and source identifiers support repeat-customer analysis; the importer excludes birth dates, free-text notes, tax IDs and marketing permissions.
+- Versioned imports and webhook receipt hashes preserve source lineage and replay protection. Signed webhook receipts are change signals; polling remains the source of truth. The current read-only OAuth scope set does not include webhook-management access.
+- Disconnect removes local encrypted tokens and excludes the account from reporting while retaining its audit evidence.
+
+## Official references
+
+- [Authorization, exact callbacks, rotating refresh tokens and public-app approval](https://x-series-api.lightspeedhq.com/docs/authorization)
+- [OAuth scopes](https://x-series-api.lightspeedhq.com/docs/scopes)
+- [Mandatory scope parameter from June 1, 2026](https://x-series-api.lightspeedhq.com/changelog/2025-11-scope-parameter-required)
+- [Current 2026-07 product endpoint](https://x-series-api.lightspeedhq.com/reference/listproducts)
+- [Webhook delivery, signing and polling guidance](https://x-series-api.lightspeedhq.com/docs/webhooks)
