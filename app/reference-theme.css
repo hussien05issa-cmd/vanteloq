@@ -98,7 +98,39 @@
 /* Carry the same materials into the working application without translucency
    under financial records or changing any data/permission state. */
 .operating-shell,.bookloq-main { background:radial-gradient(ellipse at 90% 0,#dbe7f6 0,transparent 50%),#eff4fa; }
-.operating-shell .sidebar,.operating-shell .bookloq-side { background:linear-gradient(150deg,#f2f7fdef,#dce8f3ed); color:#19344f; border-color:#d1deec; box-shadow:inset -1px 0 0 #ffffffb8,7px 0 28px #17395505; }
+.operating-shell .sidebar,.operating-shell .bookloq-side { background:linear-gradient(150deg,#f2f7fd,#dce8f3); color:#19344f; border-color:#d1deec; box-shadow:inset -1px 0 0 #ffffffb8,7px 0 28px #17395505; }
+/* Keep inherited navigation controls on the same light material, including
+   BookLoQ, plan badges and the pinned account footer. */
+.operating-shell .sidebar {
+  --sidebar-bg:#e5eef8;
+  --sidebar-panel:#f4f9fd;
+  --sidebar-hover:#e0edff;
+  --sidebar-line:#c6d8e9;
+  --sidebar-text:#3e5875;
+  --sidebar-muted:#506b85;
+  --sidebar-heading:#16304c;
+  --sidebar-active:#2367aa;
+  --sidebar-current-bg:linear-gradient(115deg,#d4e7ff,#e8f2ff);
+  --sidebar-current-line:#aac8e8;
+  --sidebar-current-text:#102e51;
+  --sidebar-logo-filter:none;
+}
+.operating-shell .sidebar .side-bottom { background:transparent; border-color:var(--sidebar-line); }
+.operating-shell .sidebar .brand { padding-right:8px; }
+.operating-shell .sidebar .profile { border-color:var(--sidebar-line); }
+.operating-shell .sidebar .profile-signout { min-height:44px; border-radius:10px; }
+.operating-shell .sidebar :is(.profile-signout,.sidebar-close):hover { background:var(--sidebar-hover); color:var(--sidebar-heading); }
+.operating-shell .sidebar .sidebar-close { background:var(--sidebar-panel); border-color:var(--sidebar-line); }
+.operating-shell .sidebar .nav-item.subscription-locked { opacity:1; }
+.operating-shell .sidebar .nav-plan-lock { color:#365676; border-color:#bdd0e4; background:#edf4fc; }
+.operating-shell .sidebar .bookloq-main-nav.subscription-locked { flex-wrap:wrap; gap:4px 10px; padding-block:8px; }
+.operating-shell .sidebar .bookloq-main-nav .nav-plan-lock { margin-left:0; }
+.operating-shell .sidebar :is(button,select):focus-visible { outline:2px solid #2367aa; outline-offset:-2px; }
+@media (max-height:600px) {
+  .operating-shell .sidebar { overflow-y:auto!important; }
+  .operating-shell .sidebar > nav { flex:none!important; overflow:visible!important; }
+  .operating-shell .sidebar .sidebar-close { position:static; }
+}
 .operating-shell .sidebar :is(.brand,.brand-name,.workspace-switcher,.profile,.profile-signout,.sidebar-close) { color:#16304c; }
 .operating-shell .sidebar .profile b { color:#16304c; }
 .operating-shell .sidebar .nav-item { color:#3e5875; }
@@ -113,7 +145,7 @@
 .operating-shell .bookloq-search input::placeholder { color:#546c84; opacity:1; }
 .operating-shell .bookloq-brand > button { color:#365875; border-color:#bfcee0; background:#f4f8fca8; }
 .operating-shell .bookloq-side .product-brand-logo { filter:none; }
-.operating-shell .sidebar .nav-item[aria-current="page"],.bookloq-side nav button[aria-current="page"] { color:#102e51; background:linear-gradient(115deg,#d4e7ff,#e8f2ff); box-shadow:inset 0 1px 0 #ffffff96,0 3px 10px #3769a00a; border-radius:10px; font-weight:600; }
+.operating-shell .sidebar .nav-item[aria-current="page"],.bookloq-side nav button[aria-current="page"] { color:#102e51; background:linear-gradient(115deg,#d4e7ff,#e8f2ff); border-color:#aac8e8; box-shadow:inset 0 1px 0 #ffffff96,0 3px 10px #3769a00a; border-radius:10px; font-weight:600; }
 .operating-shell .sidebar .nav-item[aria-current="page"] .workspace-icon { color:#154f8c; }
 .operating-shell :is(.card,.dense-panel,.metric-card,.bookloq-card,.integration-card,.decision-explorer) { background-color:#f9fbfe; border-color:#d6e1ee; box-shadow:inset 0 1px 0 #ffffffde,0 6px 24px #19395f06; }
 .operating-shell :is(.page-intro h1,.bookloq-page-intro h1) { font-weight:600; letter-spacing:-.035em; }
@@ -147,6 +179,8 @@
   box-shadow:inset 3px 0 0 #e8f3ff,inset 0 1px 0 #ffffff96,0 3px 10px #3769a00a;
 }
 .operating-shell .bookloq-side nav section > p,.operating-shell .bookloq-side-foot { color:#4d6985; }
+.operating-shell .bookloq-side-foot { background:#e5eef8; border-color:#c6d8e9; }
+.operating-shell .bookloq-side-foot small { color:#506b85; }
 /* Clear data surfaces paired with restrained glass navigation. */
 .operating-shell .bookloq-promise { background:linear-gradient(120deg,#f7fbff,#e8f1fb); border:1px solid #d7e3f0; border-radius:18px; padding:24px; box-shadow:inset 0 1px 0 #fff; }
 .operating-shell .bookloq-promise h3 { color:#172f49; font-size:25px!important; line-height:1.35; letter-spacing:-.035em; }
