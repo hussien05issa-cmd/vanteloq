@@ -9,8 +9,8 @@ import { getTenantEntitlements } from "../../../../server/entitlements/engine";
 import { requirePermission } from "../../../../server/permissions";
 
 const planHighlights = {
-  starter: ["Core dashboard", "Sales and inventory basics", "Operations and reports", "Up to 1 active location and 3 users"],
-  growth: ["Everything in Starter", "Advanced sales and inventory intelligence", "Suppliers, customers, and marketing", "Up to 5 active locations and 15 users"],
+  starter: ["Core dashboard", "Sales and inventory basics", "Operations and reports"],
+  growth: ["Everything in Starter", "Advanced sales and inventory intelligence", "Suppliers, customers, and marketing"],
   pro: ["Everything in Growth", "Scenario planning and forecasting", "Advanced reports and CSV exports", "Advanced multi-location workflows"],
 } as const;
 
@@ -44,7 +44,10 @@ export async function GET(request: Request) {
         description: plan.description,
         mostPopular: plan.mostPopular,
         price: plan.prices.month.amountCents,
-        included: planHighlights[plan.key],
+        included: [
+          ...planHighlights[plan.key],
+          `Up to ${plan.limits.activeLocations} active ${plan.limits.activeLocations === 1 ? "location" : "locations"} and ${plan.limits.users} users`,
+        ],
       })),
       addon: { key: "bookloq", name: ADDONS.bookloq.displayName, price: ADDONS.bookloq.prices.month.amountCents },
       purchaseInterval: "month",

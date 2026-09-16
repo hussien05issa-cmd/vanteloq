@@ -8,6 +8,8 @@ Proceed toward a limited, assisted retail pilot. Do not describe every listed in
 
 ## Corrections in this release
 
+- Verification screens no longer guarantee email delivery when signup may refer to an already verified account. They offer a direct sign-in path, and resend requests recover from network failures.
+- Billing plan descriptions now derive location and user counts from the enforced entitlement catalogue. This corrects an outdated Growth description that promised 5 locations and 15 users instead of 3 locations and 10 users.
 - A real Stripe test checkout exposed simultaneous checkout/subscription events competing for the same subscription version. The webhook now retries one version conflict after re-reading both the stored version and the current Stripe subscription. Signature, ownership, atomic-write and stale-event protections remain enforced.
 - Workspace source labels show a loading or error state before declaring records missing. The privacy notice now accurately describes remembered, account/workspace-scoped AI consent; opening a new chat or changing memory does not require accepting it again.
 - Invoice aging counts issued, unpaid invoices only, uses the workspace business date, respects live/demonstration scope and does not stop at the 200-row display limit.
@@ -25,6 +27,7 @@ Proceed toward a limited, assisted retail pilot. Do not describe every listed in
 | --- | --- | --- |
 | Public routes | All 31 sitemap routes returned HTTP 200 with titles and main content. Health and readiness returned success. | Availability does not prove every mutation. |
 | Authentication | Signed-in workspace loaded after user verification. Anonymous protected APIs rejected requests with 401 and no-store headers. | A fresh customer signup/recovery cycle remains part of acceptance. |
+| Returning-customer acceptance | A separate, already verified account signed in with its existing MFA and accepted the current legal notice. The billing gate withheld paid access. Hosted production Checkout showed Starter CAD 49 plus BookLoQ CAD 39, totaling CAD 88 monthly. Returning without payment preserved the selections and withheld subscription access. | No payment was completed. This is not a fresh signup or a production subscription webhook acceptance test. A new-address signup message was independently shown as Delivered in Resend, but that address was not used for the completed sign-in. |
 | Data | Approved R-Series history and charts loaded. Square test data remained excluded from reports. | Backfill and source-specific coverage still require review. Closed days are not automatically import failures. |
 | AI | OpenAI answered a real workspace question, identified its reporting window, missing coverage and unavailable profit, and provided an import-review path. | Responses still require review; incomplete source data limits conclusions. |
 | AI privacy | Existing consent was recognized. Workspace-data sharing and memory controls were visible. Memory was off during the test. | No live stored conversations were deleted during this audit. |
