@@ -1,0 +1,57 @@
+/* Keep document entry readable within both the desktop sidebar and mobile shell. */
+.operating-shell .documents-centre .document-upload {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 20px;
+  padding: 24px;
+  margin-bottom: 16px;
+}
+.documents-centre .document-upload > div:first-child {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  column-gap: 12px;
+  min-width: 0;
+}
+.documents-centre .document-upload > div:first-child > :is(h3, p) { grid-column: 2; }
+.documents-centre .document-upload > div:first-child > i { grid-column: 1; grid-row: 1; }
+.documents-centre .document-upload > div:first-child > .document-processing-notice,
+.documents-centre .document-upload > div:first-child > .document-upload-error { grid-column: 1 / -1; margin-top: 14px; }
+.documents-centre .document-upload h3 { line-height: 1.4; }
+.operating-shell .documents-centre .document-upload p { color: #40556c; line-height: 1.65; font-size: 14px !important; }
+.documents-centre .document-upload > div:last-child {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr));
+  gap: 10px;
+  min-width: 0;
+}
+.operating-shell .documents-centre .document-upload label {
+  display: flex;
+  align-items: center;
+  min-height: 48px;
+  padding: 12px 16px;
+  border: 1px solid #a8bdd3;
+  border-radius: 12px;
+  background: linear-gradient(145deg, #f6f9fd, #eaf2fb);
+  color: #173c63;
+  font-size: 14px !important;
+  font-weight: 600;
+  line-height: 1.45;
+  text-align: left;
+}
+.documents-centre .document-upload input { width: 100%; height: 100%; cursor: pointer; }
+.documents-centre .document-upload label:hover { border-color: #527eae; background: #e5effa; }
+.documents-centre .document-upload label:focus-within { outline: 3px solid #4a88c7; outline-offset: 3px; }
+.documents-centre .document-upload label:has(input:disabled) { opacity: .65; cursor: progress; }
+.documents-centre .document-upload[aria-label="Document upload access required"] > div { display: block; }
+.documents-centre .document-email-inbox { margin-bottom: 12px; }
+.document-service-status { margin: 0 0 20px; border-bottom: 1px solid #c7d5e3; }
+.document-service-status > summary { padding: 12px 2px; min-height: 44px; cursor: pointer; color: #243f5d; font-size: 14px; font-weight: 600; }
+.document-service-status > summary span { margin-left: 10px; color: #4c6179; font-weight: 400; }
+.document-service-status > summary:focus-visible { outline: 3px solid #4a88c7; outline-offset: 3px; border-radius: 8px; }
+.document-service-status .document-pipeline { padding: 8px 0 16px; }
+@media (max-width: 600px) {
+  .operating-shell .documents-centre .document-upload { padding: 18px; }
+  .documents-centre .document-upload > div:last-child { grid-template-columns: 1fr; }
+  .document-service-status > summary span { display: block; margin: 6px 0 0 16px; line-height: 1.5; }
+}
