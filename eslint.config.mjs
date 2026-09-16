@@ -12,6 +12,7 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     ".sites-runtime/**",
+    "work/**", // Private, git-ignored acceptance fixtures and downloaded tooling.
     "next-env.d.ts",
   ]),
 ]);
