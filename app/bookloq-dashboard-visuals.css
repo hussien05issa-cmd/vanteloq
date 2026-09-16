@@ -1,0 +1,38 @@
+.bookloq-dashboard-visuals { margin:0 0 24px; min-width:0; color:var(--ink,#142237); font-family:var(--font-product,inherit); text-align:left; }
+.bq-cash-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:20px; margin-bottom:16px; }
+.bq-cash-heading>div:first-child { min-width:0; }
+.bq-cash-heading .bq-cash-eyebrow { color:#38618f; margin:0 0 7px; font-size:12px; font-weight:600; }
+.bq-cash-heading h3 { margin:0 0 7px; font-size:25px; font-weight:600; letter-spacing:-.035em; line-height:1.25; }
+.bq-cash-heading p { margin:0; max-width:600px; color:#50647d; font-size:14px; line-height:1.6; }
+.bq-cash-periods { display:flex; flex-shrink:0; padding:4px; gap:3px; border:1px solid #cedcea; border-radius:14px; background:linear-gradient(145deg,#eef4fc,#e5eef8); box-shadow:inset 0 1px 0 #f8fbfe; }
+.bookloq-dashboard-visuals .bq-cash-periods button { min-height:44px; margin:0; padding:10px 13px; background:transparent; border:1px solid transparent; border-radius:10px; color:#49617b; font-size:13px; font-weight:550; box-shadow:none; white-space:nowrap; cursor:pointer; transition:background .18s ease,color .18s ease; }
+.bookloq-dashboard-visuals .bq-cash-periods button[aria-pressed="true"] { color:#204f85; background:linear-gradient(#f9fcff,#edf4fc); border-color:#c6d9ec; box-shadow:0 2px 6px #274d7310; }
+.bookloq-dashboard-visuals button:focus-visible { outline:2px solid var(--focus-ring,#1557d0); outline-offset:3px; }
+.bq-cash-period-label { margin:0 0 13px; color:#50647d; font-size:12px; line-height:1.6; }
+.bq-cash-demo-note { padding:10px 14px; margin:0 0 12px; border:1px solid #cbdcf0; background:#eaf2fd; color:#345779; border-radius:10px; font-size:13px; line-height:1.5; }
+.bq-cash-metrics { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-bottom:16px; }
+.bq-cash-metrics article { display:grid; align-content:start; gap:8px; min-width:0; padding:20px; border:1px solid #d5e2ef; border-radius:18px; background:linear-gradient(145deg,#f8fbfe,#eff5fc); box-shadow:inset 0 1px 0 #fbfdff,0 7px 22px #24476506; }
+.bq-cash-metrics span { color:#354d67; font-size:13px; font-weight:550; }
+.bq-cash-metrics strong { color:var(--navy,#0f2544); font-size:clamp(20px,2.1vw,29px); font-weight:600; font-variant-numeric:tabular-nums; letter-spacing:-.035em; line-height:1.2; overflow-wrap:anywhere; }
+.bq-cash-metrics .bq-cash-negative { color:#a23f52; }
+.bq-cash-metrics small { color:#566d86; font-size:12px; line-height:1.5; }
+.bq-cash-detail-grid { display:grid; grid-template-columns:minmax(0,1.9fr) minmax(245px,.85fr); align-items:start; gap:16px; }
+.bq-cash-detail-grid>.finance-chart { min-width:0; }
+.bq-cash-observations { display:grid; gap:12px; min-width:0; }
+.bq-cash-observations article { padding:20px; border:1px solid #d6e2ef; border-radius:18px; background:linear-gradient(145deg,#f8fbfe,#f0f5fc); box-shadow:inset 0 1px 0 #fbfdff; overflow-wrap:anywhere; }
+.bq-cash-observation-label { display:block; margin:0 0 10px; color:#42668f; font-size:12px; font-weight:550; }
+.bq-cash-observations h4 { margin:0 0 10px; font-size:17px; font-weight:600; line-height:1.4; letter-spacing:-.02em; color:#16324f; }
+.bq-cash-observations article>strong { font-size:23px; font-weight:600; font-variant-numeric:tabular-nums; color:#204e85; letter-spacing:-.025em; }
+.bq-cash-observations p { margin:10px 0 0; color:#50647d; font-size:13px; line-height:1.65; }
+.bq-cash-observations dl { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:14px 0; }
+.bq-cash-observations dl div { display:grid; gap:5px; }
+.bq-cash-observations dt { font-size:12px; color:#4d6783; }
+.bq-cash-observations dd { margin:0; font-size:19px; font-weight:550; font-variant-numeric:tabular-nums; color:#173c66; }
+.bookloq-dashboard-visuals .bq-cash-review { display:flex; align-items:center; justify-content:space-between; gap:12px; min-height:46px; padding:12px 17px; border:1px solid #b9cee4; border-radius:13px; background:linear-gradient(#f8fbff,#e7f0fc); color:#20538c; font-size:13px; font-weight:600; box-shadow:inset 0 1px 0 #fbfdff; cursor:pointer; text-align:left; }
+.bookloq-dashboard-visuals .bq-cash-review:hover { background:linear-gradient(#edf5ff,#dfecfb); }
+.bq-cash-boundary { margin:12px 0 0; color:#586c82; font-size:12px; line-height:1.65; max-width:1000px; }
+@media(max-width:1180px) { .bq-cash-detail-grid { grid-template-columns:minmax(0,1fr); }.bq-cash-observations { grid-template-columns:1fr 1fr; }.bq-cash-observations>.bq-cash-review { grid-column:1/-1; }.bq-cash-empty-guide { grid-column:1/-1; } }
+@media(max-width:720px) { .bq-cash-heading { flex-direction:column; gap:14px; }.bq-cash-periods { width:100%; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); box-sizing:border-box; }.bookloq-dashboard-visuals .bq-cash-periods button { padding-inline:7px; }.bq-cash-metrics { gap:8px; }.bq-cash-metrics article { padding:14px 12px; border-radius:14px; }.bq-cash-metrics strong { font-size:20px; }.bq-cash-metrics small { font-size:11px; } }
+@media(max-width:480px) { .bq-cash-metrics { grid-template-columns:minmax(0,1fr); }.bq-cash-metrics article { grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:6px 14px; }.bq-cash-metrics strong { grid-column:2; grid-row:1/3; max-width:190px; text-align:right; }.bq-cash-metrics small { grid-column:1; }.bq-cash-observations { grid-template-columns:minmax(0,1fr); }.bq-cash-heading h3 { font-size:23px; } }
+@media(prefers-reduced-motion:reduce) { .bookloq-dashboard-visuals * { animation:none!important; transition:none!important; } }
+@media(forced-colors:active) { .bookloq-dashboard-visuals :is(article,.bq-cash-review,.bq-cash-periods) { border:1px solid CanvasText; }.bookloq-dashboard-visuals .bq-cash-periods button[aria-pressed="true"] { border:2px solid Highlight; } }

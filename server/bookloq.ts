@@ -298,7 +298,8 @@ export function forecastCash(openingCashCents: number, items: readonly { dueDate
   const asOfMs = Date.parse(`${asOf}T00:00:00Z`);
   return horizons.map((days) => {
     const end = new Date(asOfMs + days * 86_400_000).toISOString().slice(0, 10);
-    const included = items.filter((item) => item.dueDate >= asOf && item.dueDate <= end);
+    // The caller supplies outstanding balances, including unpaid overdue items.
+    const included = items.filter((item) => item.dueDate <= end);
     const confirmedNetCents = included.filter((item) => item.certainty === "confirmed").reduce((sum, item) => sum + (item.direction === "in" ? item.amountCents : -item.amountCents), 0);
     const probableNetCents = included.filter((item) => item.certainty === "probable").reduce((sum, item) => sum + (item.direction === "in" ? item.amountCents : -item.amountCents), 0);
     const estimatedNetCents = included.filter((item) => item.certainty === "estimated").reduce((sum, item) => sum + (item.direction === "in" ? item.amountCents : -item.amountCents), 0);

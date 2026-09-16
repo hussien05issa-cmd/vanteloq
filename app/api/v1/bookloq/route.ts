@@ -260,9 +260,18 @@ export async function GET(request: Request) {
       database.prepare(`SELECT b.id, b.account_id accountId, b.period_start periodStart, b.period_end periodEnd,
         b.location_ref locationRef, b.department_ref departmentRef, b.budget_cents budgetCents,
         b.committed_cents committedCents, b.forecast_cents forecastCents,
-        a.code accountCode, a.name accountName, a.account_type accountType
+        a.code accountCode, a.name accountName, a.account_type accountType,
+        (SELECT COALESCE(SUM(CASE WHEN a.account_type = 'revenue'
+          THEN jl.credit_cents - jl.debit_cents ELSE jl.debit_cents - jl.credit_cents END), 0)
+          FROM journal_lines jl
+          INNER JOIN journal_entries je ON je.id = jl.journal_entry_id AND je.organization_id = jl.organization_id
+          WHERE jl.organization_id = b.organization_id AND jl.account_id = b.account_id
+            AND je.status IN ('posted', 'reversed') AND je.entry_date BETWEEN b.period_start AND b.period_end
+            AND UPPER(je.currency) = UPPER(COALESCE((SELECT bs.base_currency FROM bookloq_settings bs WHERE bs.organization_id = b.organization_id), ?))
+            AND (b.location_ref = 'all' OR jl.location_ref = b.location_ref)
+            AND (b.department_ref = 'all' OR jl.department_ref = b.department_ref)) actualCents
         FROM bookloq_budgets b JOIN financial_accounts a ON a.id = b.account_id AND a.organization_id = b.organization_id
-        WHERE b.organization_id = ?${budgetLocationClause} ORDER BY a.code`).bind(organizationId, ...locationBindings).all(),
+        WHERE b.organization_id = ?${budgetLocationClause} ORDER BY a.code`).bind(context.organization.currency, organizationId, ...locationBindings).all(),
       database.prepare(`SELECT action, resource_type resourceType, resource_id resourceId,
         outcome, details_json detailsJson, created_at createdAt
         FROM audit_events WHERE organization_id = ? AND
@@ -296,7 +305,7 @@ export async function GET(request: Request) {
     const accountRows = rows(accountsResult);
     const statements = buildFinancialStatements(accountRows);
     const transactions = rows(transactionsResult) as Array<{
-      id: string; postingDate: string; description: string; originalDescription: string;
+      id: string; postingDate: string; description: string; originalDescription: string; sourceState: string;
       amountCents: number; currency: string; categorizationStatus: string;
       reconciliationStatus: string; accountName: string | null;
     }>;
@@ -320,8 +329,8 @@ export async function GET(request: Request) {
     // Complete ledger totals can reconstruct protected wage and bank balances.
     // Keep independent bank and invoice permissions, but do not publish a
     // partially redacted trial balance that still reveals the hidden accounts.
-    const ledgerReadable = ledgerAvailable && access.payrollTotals && access.bankBalances;
-    const fullLedgerPermission = access.payrollTotals && access.bankBalances;
+    const fullLedgerPermission = access.payrollTotals && access.bankBalances && access.accountsPayableReceivable;
+    const ledgerReadable = ledgerAvailable && fullLedgerPermission;
     // Raw bank feeds may contain uncategorized payroll. An account label alone
     // cannot reliably establish that a transaction is safe for payroll-limited roles.
     const transactionReadable = access.bankTransactions && access.payrollTotals;
@@ -448,14 +457,14 @@ export async function GET(request: Request) {
     const cashActivity = await loadBookloqCashActivity(database, {
       organizationId, currency: baseCurrency, asOf, dataMode, allowed: transactionReadable,
     });
-    const matchCandidates = transactions.flatMap((transaction) => rankTransactionMatches({
+    const matchCandidates = transactions.filter((transaction) => ["posted", "modified"].includes(transaction.sourceState)).flatMap((transaction) => rankTransactionMatches({
       id: transaction.id,
       postingDate: transaction.postingDate,
       amountCents: transaction.amountCents,
       description: `${transaction.description} ${transaction.originalDescription}`,
     }, [
-      ...visibleBillsForCash.map((bill) => ({ id: bill.id, kind: "supplier_bill" as const, date: bill.dueDate, amountCents: bill.totalCents - bill.paidCents, label: `${bill.supplierName} · ${bill.billNumber}`, reference: bill.billNumber })),
-      ...visibleInvoicesForCash.map((invoice) => ({ id: invoice.id, kind: "customer_invoice" as const, date: invoice.dueDate, amountCents: invoice.totalCents - invoice.paidCents, label: `${invoice.customerName} · ${invoice.invoiceNumber}`, reference: invoice.invoiceNumber })),
+      ...visibleBillsForCash.filter((bill) => transaction.amountCents < 0 && bill.currency.toUpperCase() === transaction.currency.toUpperCase() && bill.status !== "void" && bill.totalCents > bill.paidCents).map((bill) => ({ id: bill.id, kind: "supplier_bill" as const, date: bill.dueDate, amountCents: bill.totalCents - bill.paidCents, label: `${bill.supplierName} · ${bill.billNumber}`, reference: bill.billNumber })),
+      ...visibleInvoicesForCash.filter((invoice) => transaction.amountCents > 0 && invoice.currency.toUpperCase() === transaction.currency.toUpperCase() && !["draft", "void", "written_off"].includes(invoice.status) && invoice.totalCents > invoice.paidCents).map((invoice) => ({ id: invoice.id, kind: "customer_invoice" as const, date: invoice.dueDate, amountCents: invoice.totalCents - invoice.paidCents, label: `${invoice.customerName} · ${invoice.invoiceNumber}`, reference: invoice.invoiceNumber })),
     ])).filter((candidate) => !confirmedTransactionIds.has(candidate.transactionId)).slice(0, 100);
     const cashProjectionAllowed = access.bankBalances && access.accountsPayableReceivable && cashOpeningBalanceCents !== null;
     const thirteenWeekAllowed = cashProjectionAllowed && transactionReadable;
@@ -718,7 +727,7 @@ export async function GET(request: Request) {
         ledgerAccess: {
           available: ledgerReadable,
           reason: !fullLedgerPermission
-            ? "Complete ledger views require payroll totals and bank balance permissions. Other permitted sections remain available."
+            ? "Complete ledger views require payroll totals, bank balances and accounts payable/receivable permissions. Other permitted sections remain available."
             : !ledgerAvailable ? "Post verified journals before reviewing ledger totals." : null,
         },
         organization: {

@@ -41,16 +41,26 @@ function safeTimestamp(value: unknown) {
 /** Allowlist only. Never forward the underlying BookLoQ response to an AI. */
 export function projectAdvisorBookloq(payload: unknown) {
   const data = (payload as { bookloq?: { settings?: { status?: string; dataMode?: string; baseCurrency?: string }; ledgerAccess?: { available?: boolean }; summary?: Record<string, unknown> } } | null)?.bookloq;
-  if (!data || data.settings?.status !== "active" || data.settings?.dataMode !== "live") return { status: "unavailable", reason: "A configured live BookLoQ ledger is required. Demonstration data is excluded." };
-  const values = Object.fromEntries(numericFields.map(key => [key, typeof data.summary?.[key] === "number" && Number.isSafeInteger(data.summary[key]) ? data.summary[key] : null]));
   const source = record(data), statements = record(source.statements);
+  const activity = record(source.cashActivity);
+  const activityAllowed = record(source.transactionAccess).available === true;
+  const cashActivity = activityAllowed ? ["days30", "days90", "months12"].map(key => {
+    const period = record(activity[key]);
+    return { period: key, startDate: safeDate(period.startDate), endDate: safeDate(period.endDate), ...numericProjection(period, ["transactionCount", "inflowCents", "outflowCents", "netCashFlowCents", "categorizedBasisPoints", "matchedBasisPoints"]) };
+  }).filter(period => period.startDate && period.endDate && (period.transactionCount ?? 0) > 0) : [];
+  const liveCashOnly = source.configured === true && cashActivity.length > 0 && !data?.settings;
+  if (!data || (!liveCashOnly && (data.settings?.status !== "active" || data.settings?.dataMode !== "live"))) return { status: "unavailable", reason: "Configured live BookLoQ evidence is required. Demonstration data is excluded." };
+  const values = Object.fromEntries(numericFields.map(key => [key, typeof data.summary?.[key] === "number" && Number.isSafeInteger(data.summary[key]) ? data.summary[key] : null]));
   const aggregates = data.ledgerAccess?.available === true ? {
     trialBalance: numericProjection(statements.trialBalance, ["totalDebitCents", "totalCreditCents"]),
     balanceSheet: numericProjection(statements.balanceSheet, ["assetCents", "liabilityCents", "equityCents"]),
     profitAndLoss: numericProjection(statements.profitAndLoss, ["revenueCents", "expenseCents", "cogsCents", "grossProfitCents", "operatingProfitCents"]),
   } : null;
-  return { status: "available", source: "BookLoQ permission-filtered summaries", scope: "organization", currency: /^[A-Z]{3}$/.test(data.settings.baseCurrency ?? "") ? data.settings.baseCurrency : null, ledgerAvailable: data.ledgerAccess?.available === true, period: "Cumulative posted ledger balances as recorded; not the retail KPI date range", cashLastSyncAt: safeTimestamp(data.summary?.cashLastSyncAt), values,
+  const currency = data.settings?.baseCurrency ?? record(source.organization).currency;
+  return { status: "available", source: "BookLoQ permission-filtered summaries", scope: "organization", currency: typeof currency === "string" && /^[A-Z]{3}$/.test(currency) ? currency : null, ledgerAvailable: data.ledgerAccess?.available === true, period: "Cumulative posted ledger balances as recorded; not the retail KPI date range", cashLastSyncAt: safeTimestamp(data.summary?.cashLastSyncAt), values,
     statements: aggregates, financialReview: buildFinancialReview(aggregates as FinancialReviewStatements | null, data.ledgerAccess?.available === true),
     cashOutlook: projectCashOutlook(source.thirteenWeekCashFlow),
+    cashActivity,
+    cashActivityBoundary: "Historical approved bank movements in each explicit reporting window. Reviewed statement imports may supply these totals when Plaid is not active. They are not income, expenses, a current balance or a formal cash-flow statement. Raw document contents and transaction descriptions are excluded.",
     limitations: "Null means unavailable or withheld. No raw transactions, identities or account identifiers are included. Ledger results do not prove that every real-world expense or obligation has been recorded. Do not add these balances to POS totals." };
 }

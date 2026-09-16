@@ -2239,7 +2239,7 @@ export function DocumentsWorkspace({ showNotice, canUpload }: SharedProps & { ca
           {uploadError && <p className="document-upload-error" role="alert">{uploadError}</p>}
         </div>
         <div>
-          {[{ type: "invoice", label: "Invoice" }, { type: "receipt", label: "Receipt" }, { type: "supplier_statement", label: "Supplier Statement" }, { type: "other", label: "Bank Statement" }, { type: "other", label: "Sales Report" }, { type: "packing_slip", label: "Packing Slip" }].map(
+          {[{ type: "invoice", label: "Invoice" }, { type: "receipt", label: "Receipt" }, { type: "supplier_statement", label: "Supplier Statement" }, { type: "bank_statement", label: "Bank Statement" }, { type: "other", label: "Sales Report" }, { type: "packing_slip", label: "Packing Slip" }].map(
             ({ type, label }) => (
               <label key={label}>
                 <input

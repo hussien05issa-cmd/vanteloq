@@ -189,7 +189,7 @@ test("ledger authorization and period guards preserve legitimate accounting", as
       database.prepare("INSERT INTO team_members (id,organization_id,user_id,role_id,first_name,last_name,email,employee_code,permitted_locations_json,status,created_by_user_id,created_at,updated_at) VALUES (?,?,?,?,'Release','Reviewer',?,'RELEASE',?,'active',?,?,?)")
         .bind(crypto.randomUUID(), org, identity.userId, roleId, email, JSON.stringify([location.id]), identity.userId, now, now),
     ]);
-    for (const permission of [[], ["payroll.totals"], ["finance.bank_balances"], ["finance.bank_transactions", "audit.view", "finance.reconcile"]]) {
+    for (const permission of [[], ["payroll.totals"], ["finance.bank_balances"], ["payroll.totals", "finance.bank_balances"], ["finance.ap_ar"], ["finance.bank_transactions", "audit.view", "finance.reconcile"]]) {
       await database.prepare("UPDATE access_roles SET permissions_json=? WHERE id=?").bind(JSON.stringify(["finance.statements", ...permission]), roleId).run();
       const limited = await read();
       assert.deepEqual(limited.statements.accounts, []);
@@ -222,6 +222,52 @@ test("ledger authorization and period guards preserve legitimate accounting", as
     await database.prepare("UPDATE memberships SET role='owner' WHERE organization_id=? AND user_id=?").bind(org, identity.userId).run();
     const restored = await read();
     assert.equal(restored.statements.accounts.length, owner.statements.accounts.length);
+    const customCategory = await dispatch(worker, environment, "/api/v1/bookloq/actions", { method: "POST", email, body: { type: "create_category", categoryName: "Scoped budget regression", categoryType: "expense" } });
+    assert.equal(customCategory.status, 201, await customCategory.clone().text());
+    const expenseAccount = (await customCategory.json()).category.id;
+    const cashAccount = owner.statements.accounts.find((account: { accountType: string }) => account.accountType === "asset").id;
+    const budgetPeriod = owner.periods.find((period: { status: string }) => period.status === "open");
+    assert.ok(budgetPeriod);
+    const earlyDate = budgetPeriod.startDate;
+    const lateDate = budgetPeriod.endDate;
+    for (const [entryDate, amount, locationRef, departmentRef] of [
+      [earlyDate, 80_000, location.id, "retail"],
+      [lateDate, 20_000, location.id, "retail"],
+      [lateDate, 35_000, secondLocation, "retail"],
+      [lateDate, 15_000, location.id, "office"],
+    ] as const) {
+      const posted = await dispatch(worker, environment, "/api/v1/bookloq/journals", { method: "POST", email, idempotencyKey: crypto.randomUUID(), body: { entryDate, memo: "Scoped budget input", currency: "CAD", lines: [
+        { accountId: expenseAccount, description: "Expense", debitCents: amount, creditCents: 0, locationRef, departmentRef },
+        { accountId: cashAccount, description: "Cash", debitCents: 0, creditCents: amount, locationRef, departmentRef },
+      ] } });
+      assert.equal(posted.status, 201, await posted.clone().text());
+    }
+    for (const scope of [{ locationRef: location.id, departmentRef: "retail", expected: 20_000 }, { locationRef: "all", departmentRef: "all", expected: 70_000 }]) {
+      const budgetId = crypto.randomUUID();
+      await database.prepare("INSERT INTO bookloq_budgets (id,organization_id,account_id,period_start,period_end,location_ref,department_ref,budget_cents,committed_cents,forecast_cents,created_at,updated_at) VALUES (?,?,?,?,?,?,?,50000,0,0,?,?)").bind(budgetId, org, expenseAccount, lateDate, lateDate, scope.locationRef, scope.departmentRef, now, now).run();
+      const actual = (await read()).budgets.find((budget: { id: string }) => budget.id === budgetId).actualCents;
+      assert.equal(actual, scope.expected, "Budget actual excludes other dates, locations and departments, without reusing cumulative balances");
+    }
+    const matchTransaction = owner.transactions.find((item: { amountCents: number }) => item.amountCents < 0);
+    const matchBill = owner.bills.find((item: { status: string }) => item.status !== "void");
+    assert.ok(matchTransaction && matchBill);
+    const originalTransaction = await database.prepare("SELECT source_state sourceState, currency, demo_record demoRecord FROM financial_transactions WHERE id=? AND organization_id=?").bind(matchTransaction.id, org).first<{ sourceState: string; currency: string; demoRecord: number }>();
+    assert.ok(originalTransaction);
+    const matchBody = { type: "match_transaction", transactionId: matchTransaction.id, targetType: "supplier_bill", targetId: matchBill.id };
+    for (const scenario of [
+      { state: "pending", currency: matchBill.currency, demo: matchBill.demoRecord, code: "MATCH_POSTED_TRANSACTION_REQUIRED" },
+      { state: "posted", currency: "USD", demo: matchBill.demoRecord, code: "MATCH_SOURCE_MISMATCH" },
+      { state: "posted", currency: matchBill.currency, demo: matchBill.demoRecord ? 0 : 1, code: "MATCH_SOURCE_MISMATCH" },
+    ]) {
+      await database.prepare("UPDATE financial_transactions SET source_state=?,currency=?,demo_record=? WHERE id=? AND organization_id=?").bind(scenario.state, scenario.currency, scenario.demo, matchTransaction.id, org).run();
+      const result = await dispatch(worker, environment, "/api/v1/bookloq/actions", { method: "POST", email, body: matchBody });
+      assert.equal(result.status, 409, await result.clone().text());
+      assert.equal((await result.json()).error.code, scenario.code);
+    }
+    await database.prepare("UPDATE financial_transactions SET source_state=?,currency=?,demo_record=? WHERE id=? AND organization_id=?").bind("posted", matchBill.currency, matchBill.demoRecord, matchTransaction.id, org).run();
+    const confirmedMatch = await dispatch(worker, environment, "/api/v1/bookloq/actions", { method: "POST", email, body: matchBody });
+    assert.equal(confirmedMatch.status, 200, await confirmedMatch.clone().text());
+    await database.prepare("UPDATE financial_transactions SET source_state=?,currency=?,demo_record=? WHERE id=? AND organization_id=?").bind(originalTransaction.sourceState, originalTransaction.currency, originalTransaction.demoRecord, matchTransaction.id, org).run();
     const date = new Date().toISOString().slice(0, 10);
     const accounts = owner.statements.accounts;
     const body = { entryDate: date, memo: "Verified regression entry", currency: "CAD", lines: [
@@ -582,7 +628,7 @@ test("BookLoQ cash-flow route deduplicates commitments and only counts trusted c
       const response = await dispatch(worker, environment, "/api/v1/bookloq", { email });
       assert.equal(response.status, 200);
       const payload = (await response.json()).bookloq;
-      for (const activity of Object.values(payload.cashActivity) as Array<{ transactionCount: number; inflowCents: number; outflowCents: number; netCashFlowCents: number; timeline: { inflowCents: number; outflowCents: number }[] }>) {
+      for (const activity of ["days30", "days90", "months12"].map(key => payload.cashActivity[key]) as Array<{ transactionCount: number; inflowCents: number; outflowCents: number; netCashFlowCents: number; timeline: { inflowCents: number; outflowCents: number }[] }>) {
         assert.equal(activity.transactionCount, 1004);
         assert.equal(activity.inflowCents, 11_002);
         assert.equal(activity.outflowCents, 4_000);
