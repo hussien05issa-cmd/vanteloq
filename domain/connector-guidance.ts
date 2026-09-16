@@ -1,3 +1,5 @@
+import { customerIntegrationAvailability } from "./integration-availability";
+
 type Connector = {
   id?: string;
   name: string;
@@ -17,17 +19,15 @@ export function filterConnectors<T extends { name: string; category: string }>(p
 
 /** Guidance only. Authorization and promotion remain enforced by the server. */
 export function connectorNextStep(provider: Connector, entitled: boolean, canManage: boolean) {
-  if (provider.availability === "coming_soon" || provider.availability === "provider_build_required" || provider.availability === "provider_selection_required") {
-    return { stage: "Unavailable", detail: "This connection is not ready to activate. Use a supported source or import a validated file." };
+  if (provider.status === "error") return { stage: "Repair connection", detail: "Your connection needs attention. Review its error and restore access before using new results." };
+  if (provider.status !== "connected" && customerIntegrationAvailability(provider).comingSoon) {
+    return { stage: "Coming Soon", detail: "Use an available connection or add your records with a supported file import." };
   }
   if (!entitled) return { stage: "Plan access", detail: "Review the required plan or add-on before authorizing this provider." };
   if (!canManage) return { stage: "Owner action", detail: "Ask an owner or authorized integration manager to complete setup. You can review status here." };
   if (!provider.providerReadiness) return { stage: "Check status", detail: "Live readiness has not been confirmed. Refresh the connection status before continuing." };
-  if (!provider.providerReadiness.credentialsConfigured) return { stage: "Provider setup", detail: "Vanteloq still needs to finish this provider’s secure setup. You do not need to supply a platform secret key." };
-  if (provider.status === "error") return { stage: "Repair connection", detail: "Review the connection error and restore authorization or retry the failed sync before using its results." };
-  if (provider.status !== "connected" && (provider.id === "shopify" || provider.id === "shopify-pos")) {
-    return { stage: "App review pending", detail: "Public installation is awaiting Shopify review. Only an authorized test store can connect at this stage." };
-  }
+  if (!provider.providerReadiness.credentialsConfigured) return { stage: "Provider setup", detail: "This connection is temporarily unavailable. Your saved records are unchanged. Contact support if it does not recover." };
+
   if (provider.status !== "connected") return { stage: "Authorize account", detail: "Use the connection control below, review consent and select the correct business account." };
   if (provider.providerReadiness.ledgerImportEnabled === false) return { stage: "Company verification only", detail: "The company is authorized, but ledger imports are not available yet. This connection does not populate BookLoQ or business reports." };
   if (/sandbox|staging|development/i.test(provider.providerReadiness.mode)) {

@@ -75,15 +75,15 @@ test("connector guidance does not confuse entitlement, credentials, authorizatio
 test("sandbox and unavailable connectors never advertise live results", () => {
   assert.equal(connectorNextStep({ ...provider, category: "Marketing", dataPromotionStatus: "staging", providerReadiness: { credentialsConfigured: true, mode: "measurement", liveDataEligible: false } }, true, true).stage, "Select and review resources");
   assert.equal(connectorNextStep({ ...provider, providerReadiness: { ...provider.providerReadiness, mode: "sandbox" } }, true, true).stage, "Test data only");
-  assert.equal(connectorNextStep({ ...provider, availability: "coming_soon" }, true, true).stage, "Unavailable");
+  assert.equal(connectorNextStep({ ...provider, status: "not_connected", availability: "coming_soon" }, true, true).stage, "Coming Soon");
   assert.equal(connectorNextStep({ ...provider, lastSuccessfulSyncAt: null, providerReadiness: { ...provider.providerReadiness, mode: "sandbox" } }, true, true).stage, "Test data only");
   const verificationOnly = connectorNextStep({ ...provider, name: "QuickBooks", lastSuccessfulSyncAt: null, providerReadiness: { ...provider.providerReadiness, mode: "sandbox_read_only_staging", ledgerImportEnabled: false } }, true, true);
   assert.equal(verificationOnly.stage, "Company verification only");
   assert.match(verificationOnly.detail, /does not populate BookLoQ/);
   for (const id of ["shopify", "shopify-pos"]) {
     const waiting = connectorNextStep({ ...provider, id, status: "not_connected" }, true, true);
-    assert.equal(waiting.stage, "App review pending", "credentials alone do not establish public installation access");
-    assert.match(waiting.detail, /authorized test store/);
+    assert.equal(waiting.stage, "Coming Soon", "credentials alone do not establish public installation access");
+    assert.match(waiting.detail, /available connection/);
     assert.equal(connectorNextStep({ ...provider, id, status: "error" }, true, true).stage, "Repair connection");
   }
 });

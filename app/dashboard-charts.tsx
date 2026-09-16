@@ -4,6 +4,7 @@ import { useId, useState } from "react";
 import { chartDomain, chartY, quantityLabel } from "../domain/workspace-presentation";
 import WorkspaceIcon from "./workspace-icon";
 import { cumulativeSalesHours } from "../domain/intraday-sales";
+import "./dashboard-chart-polish.css";
 
 type TrendPoint = { date: string; netSalesCents: number; grossProfitCents: number | null; transactionCount?: number };
 type IntradayPoint = { hour: number; label: string; netSalesCents: number; grossProfitCents: number | null; transactionCount: number };
@@ -35,8 +36,14 @@ function linePath(values: (number | null)[], width: number, height: number, doma
   }).join(" ");
 }
 export function MetricSparkline({ values, tone }: { values: number[]; tone: Tone }) {
+  const id = useId().replaceAll(":", "");
   if (!values.length || !values.some(Number.isFinite)) return null;
-  return <svg className="metric-sparkline" viewBox="0 0 112 36" aria-hidden="true"><path d={linePath(values, 112, 30, chartDomain(values))} transform="translate(0 3)" fill="none" stroke={toneColour[tone]} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>;
+  const path = linePath(values, 220, 42, chartDomain(values));
+  const complete = values.length > 1 && values.every(Number.isFinite);
+  return <svg className="metric-sparkline" viewBox="0 0 220 50" preserveAspectRatio="none" aria-hidden="true">
+    <defs><linearGradient id={`${id}-spark`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor={toneColour[tone]} stopOpacity=".18"/><stop offset="1" stopColor={toneColour[tone]} stopOpacity="0"/></linearGradient></defs>
+    <g transform="translate(0 3)">{complete && <path className="metric-sparkline-fill" d={`${path} L220,47 L0,47 Z`} fill={`url(#${id}-spark)`}/>}<path d={path} fill="none" stroke={toneColour[tone]} strokeWidth="1.8" vectorEffect="non-scaling-stroke" strokeLinecap="round" strokeLinejoin="round"/></g>
+  </svg>;
 }
 function ChartEmpty({ intraday = false }: { intraday?: boolean }) {
   return <div className="workspace-chart-empty">
@@ -72,7 +79,7 @@ function FinancialSeriesChart({ data, currency, title, intraday = false, compari
       <svg viewBox="0 0 720 238" role="img" aria-labelledby={`${id}-title ${id}-description`}>
         <title id={`${id}-title`}>{title}</title>
         <desc id={`${id}-description`}>Negative values are shown below zero. Use the record selector or expand the data table for exact amounts.</desc>
-        <defs><linearGradient id={id} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#245fce" stopOpacity=".14"/><stop offset="1" stopColor="#245fce" stopOpacity=".015"/></linearGradient></defs>
+        <defs><linearGradient id={id} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#2d7be9" stopOpacity=".22"/><stop offset="1" stopColor="#2d7be9" stopOpacity=".025"/></linearGradient></defs>
         {domain.ticks.map((value, index) => {
           const y = top + chartY(value, plotHeight, domain);
           return <g key={index}><line className="trend-gridline" x1={left} x2={left + plotWidth} y1={y} y2={y}/><text className="trend-axis-label" x={left - 12} y={y + 4} textAnchor="end">{axisMoney(value, currency)}</text></g>;
@@ -95,7 +102,7 @@ function FinancialSeriesChart({ data, currency, title, intraday = false, compari
       </svg>
     </div>
     <div className="workspace-chart-readout">
-      <label htmlFor={`${id}-record`}>Inspect record<select id={`${id}-record`} value={active.key} onChange={(event) => setSelectedKey(event.target.value)}>{data.map((point) => <option key={point.key} value={point.key}>{point.label}</option>)}</select></label>
+      <label htmlFor={`${id}-record`}>Inspect Record<select id={`${id}-record`} value={active.key} onChange={(event) => setSelectedKey(event.target.value)}>{data.map((point) => <option key={point.key} value={point.key}>{point.label}</option>)}</select></label>
       <dl aria-live="polite" aria-atomic="true"><div><dt>Net sales</dt><dd>{fullMoney(active.netSalesCents, currency)}</dd></div>{comparisonLabel && <div><dt>{comparisonLabel}</dt><dd>{active.comparisonCents == null ? "Not available" : fullMoney(active.comparisonCents, currency)}</dd></div>}<div><dt>Gross profit</dt><dd>{active.grossProfitCents == null ? "Not available" : fullMoney(active.grossProfitCents, currency)}</dd></div>{active.transactionCount != null && <div><dt>Transactions</dt><dd>{active.transactionCount.toLocaleString("en-CA")}</dd></div>}</dl>
     </div>
     <details className="workspace-chart-data"><summary>View chart data <span>{quantityLabel(data.length, "record")}</span></summary><div className="workspace-table-scroll">

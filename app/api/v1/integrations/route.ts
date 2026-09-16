@@ -6,6 +6,8 @@ import { ApiError, handleApi, jsonResponse, requireSameOrigin } from "../../../.
 import { recordAudit } from "../../../../server/audit";
 import { effectivePermissions, requirePermission } from "../../../../server/permissions";
 import { integrationCatalog, preSyncControls } from "../../../integration-catalog";
+import { customerIntegrationAvailability } from "../../../../domain/integration-availability";
+import { getInternalAccessGrant } from "../../../../server/internal-access";
 import { lightspeedReadiness } from "../../../../server/integrations/lightspeed";
 import { lightspeedRReadiness } from "../../../../server/integrations/lightspeed-r";
 import { cloverReadiness } from "../../../../server/integrations/clover";
@@ -38,6 +40,7 @@ export async function GET(request: Request) {
     await requirePermission(context, "integrations.view");
     await requireOrganizationWideLocationAccess(context);
     const permissions = await effectivePermissions(context);
+    const previewAccess = Boolean(await getInternalAccessGrant(context));
     const scheduleStatus = await loadSyncSchedules(context.organizationId, context.role === "owner");
     const rows = await getDb()
       .select({
@@ -185,6 +188,35 @@ export async function GET(request: Request) {
         const marketingBase = provider.id === "google" || provider.id === "meta" ? marketingReadiness(provider.id) : null;
         const marketingSyncEligible = Boolean(marketingBase && providerConnections.some((connection) => (selectionsByConnection.get(connection.id)?.length ?? 0) > 0));
         const marketingLiveEligible = Boolean(marketingBase && providerConnections.some((connection) => connection.dataPromotionStatus === "approved" && (selectionsByConnection.get(connection.id)?.length ?? 0) > 0));
+        const providerReadiness = provider.id === "lightspeed"
+          ? lightspeedReadiness()
+          : provider.id === "lightspeed-r"
+            ? lightspeedRReadiness()
+            : provider.id === "clover"
+              ? cloverReadiness()
+            : provider.id === SHOPIFY_PROVIDER
+              ? shopifyReadiness(SHOPIFY_PROVIDER)
+            : provider.id === SHOPIFY_POS_PROVIDER
+              ? shopifyPosReadiness()
+            : provider.id === "square"
+              ? squareReadiness()
+            : provider.id === "stripe"
+              ? stripeReadiness()
+            : provider.id === QUICKBOOKS_PROVIDER
+              ? quickBooksReadiness()
+            : provider.id === MONERIS_PROVIDER
+              ? { ...monerisReadiness(), ...(providerConnections.length > 0 && !providerConnections.some(connection => connection.sourceNamespace?.startsWith("production:")) ? { mode: "sandbox_or_unverified", liveDataEligible: false } : {}) }
+              : provider.id === "plaid"
+                ? plaidReadiness()
+                : provider.id === "google" || provider.id === "meta"
+                  ? {
+                      ...marketingBase!,
+                      resourceSelectionStatus: marketingSyncEligible ? "selected" : "required",
+                      syncEligible: marketingSyncEligible,
+                      dataPromotionEnabled: marketingLiveEligible,
+                      liveDataEligible: marketingLiveEligible,
+                    }
+              : null;
         return ({
         ...provider,
         canManage: canManageProvider,
@@ -250,35 +282,8 @@ export async function GET(request: Request) {
           .map((connection) => connection.privacyDataDeletedAt)
           .filter((value): value is Date => Boolean(value))
           .sort((left, right) => right.getTime() - left.getTime())[0]?.toISOString() ?? null,
-        providerReadiness: provider.id === "lightspeed"
-          ? lightspeedReadiness()
-          : provider.id === "lightspeed-r"
-            ? lightspeedRReadiness()
-            : provider.id === "clover"
-              ? cloverReadiness()
-            : provider.id === SHOPIFY_PROVIDER
-              ? shopifyReadiness(SHOPIFY_PROVIDER)
-            : provider.id === SHOPIFY_POS_PROVIDER
-              ? shopifyPosReadiness()
-            : provider.id === "square"
-              ? squareReadiness()
-            : provider.id === "stripe"
-              ? stripeReadiness()
-            : provider.id === QUICKBOOKS_PROVIDER
-              ? quickBooksReadiness()
-            : provider.id === MONERIS_PROVIDER
-              ? { ...monerisReadiness(), ...(providerConnections.length > 0 && !providerConnections.some(connection => connection.sourceNamespace?.startsWith("production:")) ? { mode: "sandbox_or_unverified", liveDataEligible: false } : {}) }
-              : provider.id === "plaid"
-                ? plaidReadiness()
-                : provider.id === "google" || provider.id === "meta"
-                  ? {
-                      ...marketingBase!,
-                      resourceSelectionStatus: marketingSyncEligible ? "selected" : "required",
-                      syncEligible: marketingSyncEligible,
-                      dataPromotionEnabled: marketingLiveEligible,
-                      liveDataEligible: marketingLiveEligible,
-                    }
-              : null,
+        providerReadiness,
+        customerAvailability: customerIntegrationAvailability({ ...provider, providerReadiness }, previewAccess),
         canonicalCoverage,
         featureCoverage: buildProviderFeatureCoverage(provider.id, canonicalCoverage),
       });}),

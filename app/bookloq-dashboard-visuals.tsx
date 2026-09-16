@@ -14,6 +14,47 @@ const periods = [
 const percentage = (basisPoints: number) => `${new Intl.NumberFormat("en-CA", { maximumFractionDigits: 1 }).format(basisPoints / 100)}%`;
 const dateLabel = (value: string) => new Intl.DateTimeFormat("en-CA", { month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(`${value}T00:00:00Z`));
 
+type OutflowCategory = { name: string; amountCents: number; shareBasisPoints: number };
+const categoryColors = ["#2f76df", "#1196ac", "#7058c8", "#17856f", "#6a809b"];
+
+/** A parts-of-total view only when category cents reconcile to the supplied outflow total. */
+export function OutflowCategoryDonut({ categories, totalCents, currency }: { categories: OutflowCategory[]; totalCents: number; currency: string }) {
+  const id = useId().replaceAll(":", "");
+  const [selected, setSelected] = useState<number | null>(null);
+  const valid = Number.isSafeInteger(totalCents) && totalCents > 0 && categories.length > 0
+    && categories.every(category => Number.isSafeInteger(category.amountCents) && category.amountCents >= 0)
+    && categories.reduce((sum, category) => sum + category.amountCents, 0) === totalCents;
+  if (!valid) return <p className="bq-category-unavailable">A category chart appears when the category amounts match the recorded outflow total.</p>;
+  const ordered = [...categories].filter(category => category.amountCents > 0).sort((left, right) => right.amountCents - left.amountCents || left.name.localeCompare(right.name));
+  const groups = ordered.length <= 5 ? ordered : [
+    ...ordered.slice(0, 4),
+    { name: "Remaining Categories", amountCents: ordered.slice(4).reduce((sum, category) => sum + category.amountCents, 0), shareBasisPoints: 0 },
+  ];
+  const segments = groups.map((category, index) => {
+    const share = category.amountCents / totalCents * 100;
+    const offset = groups.slice(0, index).reduce((sum, previous) => sum + previous.amountCents, 0) / totalCents * 100;
+    return { ...category, share, offset, color: categoryColors[index] };
+  });
+  const activeIndex = selected !== null && segments[selected] ? selected : null;
+  const active = activeIndex === null ? null : segments[activeIndex];
+  const activeAmount = formatBookloqMoney(active?.amountCents ?? totalCents, currency);
+  return <div className="bq-outflow-categories">
+    <div className={`bq-category-visual${activeAmount.length > 12 ? " has-wide-amount" : ""}`}>
+      <svg viewBox="0 0 140 140" role="img" aria-labelledby={`${id}-category-title ${id}-category-description`}>
+        <title id={`${id}-category-title`}>Recorded cash outflows by category</title>
+        <desc id={`${id}-category-description`}>Category amounts add up to {formatBookloqMoney(totalCents, currency)}. Use the labelled categories to inspect exact amounts.</desc>
+        <circle cx="70" cy="70" r="51" fill="none" stroke="#e7eef6" strokeWidth="18"/>
+        {segments.map((segment, index) => <circle key={index} cx="70" cy="70" r="51" fill="none" pathLength="100" stroke={segment.color} strokeWidth={activeIndex === index ? 21 : 18} strokeDasharray={`${segment.share} ${100 - segment.share}`} strokeDashoffset={-segment.offset} transform="rotate(-90 70 70)" opacity={activeIndex === null || activeIndex === index ? 1 : .35}/>)}
+      </svg>
+      <div className="bq-category-centre" aria-live="polite" aria-atomic="true"><strong>{activeAmount}</strong><span>{active ? active.name : "Recorded Outflows"}</span></div>
+    </div>
+    <ul aria-label="Outflow categories">{segments.map((segment, index) => <li key={index}><button type="button" aria-pressed={activeIndex === index} onClick={() => setSelected(activeIndex === index ? null : index)}>
+      <i style={{ background: segment.color }} aria-hidden="true"/><span>{segment.name}<small>{formatBookloqMoney(segment.amountCents, currency)}</small></span><b>{new Intl.NumberFormat("en-CA", { maximumFractionDigits: 1 }).format(segment.share)}%</b>
+    </button></li>)}</ul>
+    {ordered.length > 5 && <details><summary>View All {ordered.length} Categories</summary><dl>{ordered.map(category => <div key={category.name}><dt>{category.name}</dt><dd>{formatBookloqMoney(category.amountCents, currency)}</dd></div>)}</dl></details>}
+  </div>;
+}
+
 /** Uses the server's complete, authorized cash summaries. It never estimates
  * account balances, profit, review counts or a cause from cash movement alone. */
 export default function BookloqDashboardVisuals({ data, onReview }: { data: BookLoQData; onReview: () => void }) {
@@ -56,7 +97,7 @@ export default function BookloqDashboardVisuals({ data, onReview }: { data: Book
       <aside className="bq-cash-observations" aria-label="Observations from the selected cash records">
         {available ? <>
           <article><span className="bq-cash-observation-label">Where Cash Went</span><h4>{largestCategory ? largestCategory.name : "No Recorded Outflows"}</h4>
-            {largestCategory ? <><strong>{money(largestCategory.amountCents)}</strong><p>{percentage(largestCategory.shareBasisPoints)} of recorded outflows fall in this category. Review its transactions and supporting documents before changing spending.</p></> : <p>This period contains {money(summary.inflowCents)} in inflows and no recorded cash outflows. Check that all intended cash accounts and dates are covered.</p>}
+            {largestCategory ? <><OutflowCategoryDonut key={selected.key} categories={summary.categories} totalCents={summary.outflowCents} currency={currency}/><p>{largestCategory.name} represents {percentage(largestCategory.shareBasisPoints)} of recorded outflows. Review the transactions before changing spending.</p></> : <p>This period contains {money(summary.inflowCents)} in inflows and no recorded cash outflows. Check that all intended cash accounts and dates are covered.</p>}
           </article>
           <article><span className="bq-cash-observation-label">Review Coverage</span><h4>{summary.categorizedBasisPoints < 10_000 ? "Finish Category Review" : summary.matchedBasisPoints < 10_000 ? "Review Supporting Records" : "Check the Source Coverage"}</h4>
             <dl><div><dt>Categorized</dt><dd>{percentage(summary.categorizedBasisPoints)}</dd></div><div><dt>Matched</dt><dd>{percentage(summary.matchedBasisPoints)}</dd></div></dl>
