@@ -32,6 +32,7 @@ Proceed toward a limited, assisted retail pilot. Do not describe every listed in
 | Stripe webhook | Live billing endpoint active; checkout completion and 8 subscription events configured. No deliveries were recorded for the displayed week. | This is configuration evidence, not a completed hosted checkout lifecycle. |
 | Customer portal | Invoice history, billing details, payment-method updates and cancellation at period end enabled; Vanteloq legal links present. | Self-service plan switching is disabled. Plan/add-on changes need the supported assisted route. |
 | Security | Enforced CSP, HSTS, frame denial, no-sniff and restricted permissions headers; tenant and entitlement boundaries covered by regression tests. | CSP still permits inline scripts. This is not penetration-test certification. |
+| Supabase security and backups | Pro confirmed active. Leaked-password protection saved and verified after reload. A fresh security-advisor response returned zero lints. Seven physical daily backups were visible, most recently September 15, 2026 at 11:36:16 UTC. | This closes the disabled-password-protection finding. It does not prove a restore or cover Sites-managed D1 and R2. |
 | Dependencies | Registry advisory check of 69 non-development lockfile packages returned no advisories. | Point-in-time registry result, not proof of zero vulnerabilities. |
 | Responsive demo | No-signup BookLoQ demo worked; removing opening-bank evidence withheld the forecast. Narrow layout inspected at 320 px. | Not an exhaustive physical-device certification. |
 
@@ -54,7 +55,7 @@ Proceed toward a limited, assisted retail pilot. Do not describe every listed in
 
 1. Complete a separate subscriber journey: signup, email verification, MFA, plan selection, hosted checkout, signed webhook, correct plan interface and BookLoQ add-on access. Verify payment failure, cancellation at period end and entitlement expiry in an isolated Stripe test environment before making a real charge.
 2. Complete a restore drill into an isolated environment. Record backup age, restore duration, tenant counts and representative file integrity. Confirm alert ownership and escalation. The repository runbook alone does not prove that recovery works.
-3. Resolve the Supabase security-advisor warning for disabled leaked-password protection, or record a conscious launch decision with the compensating application controls. Provider plan/setting changes require an owner action when paid.
+3. **Completed:** Supabase Pro is active, leaked-password protection is enabled and a fresh security-advisor check reports no lints. The approved change was verified after reloading the settings. The separate restore requirement in gate 2 remains open.
 4. Have an accountant review a pilot month-end close, bank reconciliation, tax working papers and opening balances before using BookLoQ as authoritative books.
 5. Limit launch promises to the provider boundaries above. A customer needing production banking or QuickBooks ledger synchronization cannot be onboarded as though those are ready.
 
