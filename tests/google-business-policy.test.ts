@@ -29,7 +29,7 @@ test("Google authorization requests the shipped measurement and Business Profile
   assert.match(marketing, /business\.manage/);
   assert.match(marketing, /webmasters\.readonly/);
   assert.match(marketing, /analytics\.readonly/);
-  assert.match(marketing, /GOOGLE_ADS_DEVELOPER_TOKEN/);
+  assert.match(marketing, /googleAdsEnabled/);
 });
 
 test("marketing synchronization fails closed until resource selection exists", async () => {

@@ -185,7 +185,7 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
     category: "Marketing",
     availability: "credentials_required",
     activationRequirement:
-      "Connect an owned Business Profile location, Search Console site and Analytics property for verified visibility reporting. Current reviews load only when requested and a reply is sent only after explicit confirmation. Google Ads reporting activates separately when its developer token is configured.",
+      "Connect an owned Business Profile location, Search Console site and Analytics property for verified visibility reporting. Current reviews load only when requested and a reply is sent only after explicit confirmation. Google Ads reporting requires Google Cloud project access and your authorized ad account.",
   },
   {
     id: "meta",

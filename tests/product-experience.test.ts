@@ -73,6 +73,7 @@ test("connector guidance does not confuse entitlement, credentials, authorizatio
   assert.equal(connectorNextStep(provider, true, true).stage, "Monitor freshness");
 });
 test("sandbox and unavailable connectors never advertise live results", () => {
+  assert.equal(connectorNextStep({ ...provider, category: "Marketing", dataPromotionStatus: "staging", providerReadiness: { credentialsConfigured: true, mode: "measurement", liveDataEligible: false } }, true, true).stage, "Select and review resources");
   assert.equal(connectorNextStep({ ...provider, providerReadiness: { ...provider.providerReadiness, mode: "sandbox" } }, true, true).stage, "Test data only");
   assert.equal(connectorNextStep({ ...provider, availability: "coming_soon" }, true, true).stage, "Unavailable");
   assert.equal(connectorNextStep({ ...provider, lastSuccessfulSyncAt: null, providerReadiness: { ...provider.providerReadiness, mode: "sandbox" } }, true, true).stage, "Test data only");

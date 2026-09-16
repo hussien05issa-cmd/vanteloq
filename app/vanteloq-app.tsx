@@ -2292,6 +2292,7 @@ function DataHub({
   const [canManageBankConnections, setCanManageBankConnections] = useState(false);
   const [providerActions, setProviderActions] = useState<Record<string, string>>({});
   const [marketingResourcePanel, setMarketingResourcePanel] = useState<MarketingResourcePanel | null>(null);
+  const [marketingResourceErrors, setMarketingResourceErrors] = useState<Record<string, { message: string; reconnect: boolean }>>({});
   const marketingResourcePanelRef = useRef<HTMLElement | null>(null);
   const marketingResourceTriggerRef = useRef<HTMLButtonElement | null>(null);
   const [pendingDataApproval, setPendingDataApproval] = useState<PendingDataApproval | null>(null);
@@ -2621,6 +2622,12 @@ function DataHub({
     marketingResourceTriggerRef.current = trigger ?? null;
     const actionKey = integrationActionKey(provider, connectionId);
     setProviderActions((current) => ({ ...current, [actionKey]: "resources" }));
+    setMarketingResourceErrors((current) => {
+      const next = { ...current };
+      delete next[actionKey];
+      return next;
+    });
+    let failureCode = "";
     try {
       const response = await apiFetch(`/api/v1/integrations/${provider}/resources`, {
         method: "POST",
@@ -2628,7 +2635,10 @@ function DataHub({
         body: JSON.stringify({ action: "discover", connectionId }),
       });
       const body = await response.json();
-      if (!response.ok) throw new Error(body.error?.message ?? "Provider resources could not be loaded.");
+      if (!response.ok) {
+        failureCode = typeof body.error?.code === "string" ? body.error.code : "";
+        throw new Error(body.error?.message ?? "Provider resources could not be loaded. Try again.");
+      }
       setMarketingResourcePanel({
         provider,
         connectionId,
@@ -2645,7 +2655,19 @@ function DataHub({
         })),
       });
     } catch (error) {
-      showNotice(error instanceof Error ? error.message : "Provider resources could not be loaded.");
+      setMarketingResourceErrors((current) => ({
+        ...current,
+        [actionKey]: {
+          message: error instanceof Error ? error.message : "Provider resources could not be loaded. Try again.",
+          reconnect: [
+            "GOOGLE_TOKEN_REFRESH_FAILED",
+            "GOOGLE_REAUTHORIZATION_REQUIRED",
+            "GOOGLE_OFFLINE_ACCESS_REQUIRED",
+            "META_REAUTHORIZATION_REQUIRED",
+            "MARKETING_REAUTHORIZATION_REQUIRED",
+          ].includes(failureCode),
+        },
+      }));
     } finally {
       setProviderActions((current) => {
         const next = { ...current };
@@ -2970,7 +2992,10 @@ function DataHub({
                 {supportsMultipleAccounts && Boolean(provider.connections?.length) && (
                   <div className="provider-account-list" aria-label={`${provider.name} provider accounts`}>
                     {provider.connections!.map((connection, index) => {
-                      const connectionAction = providerActions[integrationActionKey(provider.id, connection.id)] ?? "";
+                      const connectionKey = integrationActionKey(provider.id, connection.id);
+                      const connectionAction = providerActions[connectionKey] ?? "";
+                      const resourceError = marketingResourceErrors[connectionKey];
+                      const resourceErrorId = `marketing-resource-error-${connection.id}`;
                       const accountLabel = connection.externalAccountName || connection.maskedAccountRef || `Account ${index + 1}`;
                       return <article key={connection.id}>
                         <div>
@@ -2985,7 +3010,7 @@ function DataHub({
                           {(provider.category === "Point of sale" || provider.id === "shopify") && <small>{connection.reportCatalog.providerReports.filter((report) => report.status === "ready").length} of {connection.reportCatalog.providerReports.length} source-specific reports ready</small>}
                           {connection.lastErrorCode && <small role="alert">Needs attention: {humanizeIdentifier(connection.lastErrorCode)}</small>}
                         </div>
-                        <span className={`provider-account-state ${connection.status}`}>{humanizeIdentifier(connection.status)}</span>
+                        <span className={`provider-account-state ${resourceError?.reconnect ? "error" : connection.status}`}>{resourceError?.reconnect ? "Authorization needed" : humanizeIdentifier(connection.status)}</span>
                         {isMarketingProvider && connection.sampleSummary && <section className="marketing-sample-review" aria-label={`Warning-free ${provider.name} sample review`}>
                           <header><div><b>Warning-free exact-resource sample</b><small>Completed {connection.sampleSummary.completedAt ? new Date(connection.sampleSummary.completedAt).toLocaleString("en-CA") : "recently"} · version {connection.sampleSummary.selectionVersion}</small></div><strong>{connection.sampleSummary.recordsStaged} measurements</strong></header>
                           <div>{connection.resourceSelections.map((selection) => {
@@ -2997,13 +3022,32 @@ function DataHub({
                         {connection.automaticSync && connection.status === "connected" && <AutomaticSyncControl
                           provider={provider.id} connectionId={connection.id} accountName={accountLabel}
                           status={connection.automaticSync} refresh={loadConnections} />}
+                        {isMarketingProvider && resourceError && <section
+                          id={resourceErrorId}
+                          className="marketing-resource-error"
+                          role="alert"
+                          aria-atomic="true"
+                        >
+                          <b>{resourceError.reconnect ? `${provider.name} needs authorization` : "Resources could not be loaded"}</b>
+                          <p>{resourceError.message}</p>
+                          {resourceError.reconnect && <>
+                            <p>Sign in with this account again, then choose the resources for this business.</p>
+                            <button
+                              type="button"
+                              onClick={() => void connectProvider(provider.id as "google" | "meta")}
+                              disabled={!canManageProvider || Boolean(connectionAction) || Boolean(providerAction)}
+                            >{providerAction === "authorize" ? `Opening ${provider.name}…` : `Reconnect ${provider.name}`}</button>
+                          </>}
+                        </section>}
                         <div className="provider-account-actions">
                           {connection.status === "connected" && <>
                             {isQuickBooks ? <small>Company verified. Ledger import and dashboard metrics remain locked during the sandbox stage.</small> : isMarketingProvider ? <>
                               <button
                                 type="button"
                                 onClick={(event) => void loadMarketingResources(provider.id as "google" | "meta", connection.id, event.currentTarget)}
-                                disabled={!canManageProvider || Boolean(connectionAction)}
+                                aria-describedby={resourceError ? resourceErrorId : undefined}
+                                aria-busy={connectionAction === "resources"}
+                                disabled={!canManageProvider || Boolean(connectionAction) || Boolean(providerAction)}
                               >{connectionAction === "resources" ? "Loading…" : "Choose resources"}</button>
                               <button
                                 type="button"

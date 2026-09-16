@@ -12,10 +12,17 @@ export function googleAdsVersion() {
   return version;
 }
 
+export function googleAdsEnabled() {
+  const env = getRuntimeEnv();
+  // Preserve existing enabled installations during migration. This flag enables
+  // the feature; Google still enforces the OAuth project's API access level.
+  return env.GOOGLE_ADS_ENABLED === undefined
+    ? Boolean(env.GOOGLE_ADS_DEVELOPER_TOKEN?.trim())
+    : env.GOOGLE_ADS_ENABLED.trim() === "true";
+}
+
 export function googleAdsHeaders(accessToken: string, loginCustomerId: string | null = null) {
-  const developerToken = getRuntimeEnv().GOOGLE_ADS_DEVELOPER_TOKEN?.trim();
-  if (!developerToken) throw new ApiError(503, "GOOGLE_ADS_CONFIGURATION_REQUIRED", "Google Ads reporting requires a configured developer token.");
-  const headers: Record<string, string> = { Authorization: `Bearer ${accessToken}`, "developer-token": developerToken, Accept: "application/json" };
+  const headers: Record<string, string> = { Authorization: `Bearer ${accessToken}`, Accept: "application/json" };
   // Never apply a platform-wide manager to a subscriber's independently authorized account.
   if (loginCustomerId && /^\d{1,20}$/.test(loginCustomerId)) headers["login-customer-id"] = loginCustomerId;
   return headers;
@@ -48,9 +55,10 @@ function invalidDirectory(phase: DirectoryPhase, reason: DirectoryReason) {
 }
 
 export const GOOGLE_ADS_SETUP_MESSAGES: Record<string, string> = {
-  GOOGLE_ADS_TOKEN_PROJECT_REQUIRED: "Google has not authorized this app's Cloud project to use its Ads developer token. Vanteloq must resolve the token and project approval before customers can use Ads reporting.",
-  GOOGLE_ADS_TOKEN_APPROVAL_REQUIRED: "The Google Ads developer token is not approved for this account type. Vanteloq must complete Google's production API approval; customer account consent alone is not enough.",
-  GOOGLE_ADS_TOKEN_INVALID: "Google rejected Vanteloq's Ads developer token. The platform owner must verify the secure Google Ads setup.",
+  GOOGLE_ADS_PROJECT_APPROVAL_REQUIRED: "Google has not approved Vanteloq's OAuth Cloud project for production Ads reporting. The platform owner must review its access level in Google Cloud; customer consent alone is not enough.",
+  GOOGLE_ADS_TOKEN_PROJECT_REQUIRED: "Google has not authorized this app's Cloud project for Ads reporting. The platform owner must review API access in Google Cloud.",
+  GOOGLE_ADS_TOKEN_APPROVAL_REQUIRED: "Google Ads API access is not approved for this account type. Vanteloq must complete the Cloud project's production approval; customer consent alone is not enough.",
+  GOOGLE_ADS_TOKEN_INVALID: "Google rejected the legacy Ads authorization configuration. The platform owner must review the OAuth Cloud project's API access.",
   GOOGLE_ADS_CUSTOMER_UNAVAILABLE: "This Google Ads account is inactive or has not completed its Google setup. Existing resource selections are unchanged.",
   GOOGLE_ADS_USER_PERMISSION_REQUIRED: "This Google user does not have the required Ads account access. Check the account's Google Ads permissions before reconnecting.",
   GOOGLE_ADS_SCOPE_REQUIRED: "Google Ads permission was not granted. Reconnect Google and explicitly allow Ads reporting.",
@@ -58,6 +66,7 @@ export const GOOGLE_ADS_SETUP_MESSAGES: Record<string, string> = {
 
 function safeProviderFailure(body: unknown) {
   const aliases: Record<string, string> = {
+    CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION: "GOOGLE_ADS_PROJECT_APPROVAL_REQUIRED",
     DEVELOPER_TOKEN_PROHIBITED: "GOOGLE_ADS_TOKEN_PROJECT_REQUIRED",
     DEVELOPER_TOKEN_NOT_APPROVED: "GOOGLE_ADS_TOKEN_APPROVAL_REQUIRED",
     DEVELOPER_TOKEN_INVALID: "GOOGLE_ADS_TOKEN_INVALID",

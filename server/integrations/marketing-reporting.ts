@@ -2,7 +2,7 @@ import { getRuntimeEnv } from "../../db";
 import { ApiError } from "../api";
 import { finiteMetric, metricRatio, REPORT_VIEWS, reportingWindow, type MarketingReport, type ReportColumn, type ReportRow, type ReportView } from "../../domain/marketing-reporting";
 import type { SelectedMarketingResource } from "./marketing";
-import { googleAdsHeaders, googleAdsVersion, resolveGoogleAdsAccount } from "./google-ads-access";
+import { googleAdsEnabled, googleAdsHeaders, googleAdsVersion, resolveGoogleAdsAccount } from "./google-ads-access";
 
 const LIMIT = 250;
 const column = (key: string, label: string, unit: ReportColumn["unit"] = "count"): ReportColumn => ({ key, label, unit });
@@ -10,7 +10,7 @@ type Period = { start: string; end: string };
 
 async function providerReport<T>(url: string, token: string, body?: unknown, extraHeaders: Record<string, string> = {}): Promise<T> {
   const response = await fetch(url, {
-    method: body === undefined ? "GET" : "POST", redirect: "error", cache: "no-store",
+    method: body === undefined ? "GET" : "POST", redirect: "manual", cache: "no-store",
     headers: { ...extraHeaders, Authorization: `Bearer ${token}`, Accept: "application/json", ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: AbortSignal.timeout(20_000),
   });
@@ -189,10 +189,8 @@ export async function fetchMarketingReport(token: string, selection: SelectedMar
 }
 
 async function googleAdsReport(token: string, selection: SelectedMarketingResource, report: MarketingReport) {
-  const env = getRuntimeEnv();
   if (!/^customers\/\d+$/.test(selection.externalResourceRef)) throw new ApiError(409, "MARKETING_RESOURCE_INVALID", "Choose a valid Google Ads account.");
-  const developerToken = env.GOOGLE_ADS_DEVELOPER_TOKEN?.trim();
-  if (!developerToken) throw new ApiError(409, "GOOGLE_ADS_SETUP_REQUIRED", "Google Ads reporting needs a configured, production-approved developer token.");
+  if (!googleAdsEnabled()) throw new ApiError(409, "GOOGLE_ADS_SETUP_REQUIRED", "Google Ads reporting has not been enabled by the platform owner.");
   const version = googleAdsVersion();
   const access = await resolveGoogleAdsAccount(token, selection.externalResourceRef);
   if (access.testAccount) report.limitations.push("Google Ads test account: these results are for verification only and do not represent live advertising performance.");
@@ -219,5 +217,5 @@ async function googleAdsReport(token: string, selection: SelectedMarketingResour
   report.rows = (detail.results ?? []).slice(0, LIMIT).map((row) => ({ label: safeLabel(report.view === "campaigns" ? row.campaign?.name : row.segments?.date), values: convert(row) }));
   report.totals = convert(total.results?.[0]); report.previous = convert(previous.results?.[0]);
   report.truncated = Boolean(detail.nextPageToken) || (detail.results?.length ?? 0) >= LIMIT;
-  report.limitations.push("Conversions use the Google Ads account's conversion configuration and attribution model. They are not independently verified customers or profit.", "Spend is converted from micros into the ad account's currency. Different account currencies are never combined.", "Production availability depends on Google's developer-token approval and the signed-in user's account access.");
+  report.limitations.push("Conversions use the Google Ads account's conversion configuration and attribution model. They are not independently verified customers or profit.", "Spend is converted from micros into the ad account's currency. Different account currencies are never combined.", "Production availability depends on the OAuth Cloud project's API approval and the signed-in user's account access.");
 }

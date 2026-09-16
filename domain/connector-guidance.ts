@@ -26,9 +26,13 @@ export function connectorNextStep(provider: Connector, entitled: boolean, canMan
   if (provider.status === "error") return { stage: "Repair connection", detail: "Review the connection error and restore authorization or retry the failed sync before using its results." };
   if (provider.status !== "connected") return { stage: "Authorize account", detail: "Use the connection control below, review consent and select the correct business account." };
   if (provider.providerReadiness.ledgerImportEnabled === false) return { stage: "Company verification only", detail: "The company is authorized, but ledger imports are not available yet. This connection does not populate BookLoQ or business reports." };
-  if (provider.providerReadiness.liveDataEligible === false || /sandbox|staging|development/i.test(provider.providerReadiness.mode)) {
+  if (/sandbox|staging|development/i.test(provider.providerReadiness.mode)) {
     return { stage: "Test data only", detail: "The connection is in a test environment. Its data must not be treated as live business results." };
   }
+  if (provider.category === "Marketing" && provider.dataPromotionStatus !== "approved") {
+    return { stage: "Select and review resources", detail: "Choose this business's exact properties or accounts, then review a sample before enabling reports. Unreviewed data stays excluded." };
+  }
+  if (provider.providerReadiness.liveDataEligible === false) return { stage: "Review data eligibility", detail: "Live reporting has not been verified. Review the provider's requirements and account checks before using its results." };
   if (!provider.lastSuccessfulSyncAt) return { stage: "Import and review", detail: "Authorization is complete. Finish any account or location selection, then run the first supported import." };
   if (provider.dataPromotionStatus !== "approved") return { stage: "Review source data", detail: "An import exists. Review mappings, totals and outstanding checks for each account before approving eligible records." };
   return { stage: "Monitor freshness", detail: "Approved records are available. Check the latest sync, coverage and any account-level warnings before relying on results." };

@@ -45,7 +45,7 @@ describe("marketing reports", { concurrency: false }, () => {
       const url = String(input), body = JSON.parse(String(init?.body));
       calls.push({ url, body });
       assert.equal(new Headers(init?.headers).get("authorization"), "Bearer test-report-token");
-      assert.equal(init?.redirect, "error"); assert.equal(init?.cache, "no-store");
+      assert.equal(init?.redirect, "manual"); assert.equal(init?.cache, "no-store");
       assert.ok(!url.includes("test-report-token"));
       const metrics = body.dimensions.length ? ["20", "5", "55", "1.5"] : ["100", "60", "200", "3.5"];
       return Response.json({ rows: [{ dimensionValues: [{ value: "Organic Search" }], metricValues: metrics.map((value) => ({ value })) }], rowCount: body.dimensions.length ? 300 : 1, metadata: { timeZone: "America/Edmonton", subjectToThresholding: true } });
@@ -129,7 +129,7 @@ describe("marketing reports", { concurrency: false }, () => {
       if (String(input).endsWith("customers:listAccessibleCustomers")) return Response.json({ resourceNames: ["customers/123"] });
       if (JSON.parse(String(init?.body)).query.includes("FROM customer LIMIT")) return Response.json({ results: [{ customer: { resourceName: "customers/123" } }] });
       assert.match(String(input), /customers\/123\/googleAds:search$/);
-      assert.equal(new Headers(init?.headers).get("developer-token"), "test-developer");
+      assert.equal(new Headers(init?.headers).get("developer-token"), null);
       assert.match(JSON.parse(String(init?.body)).query, /BETWEEN '2026-/);
       return Response.json({ results: [{ customer: { currencyCode: "CAD", timeZone: "America/Edmonton" }, campaign: { name: "Store visits" }, metrics: { costMicros: "123450000", clicks: "100", impressions: "10000", conversions: 3.25 } }] });
     }, async () => {
@@ -142,7 +142,7 @@ describe("marketing reports", { concurrency: false }, () => {
     await withFetch(async () => { throw new Error("No provider request should happen"); }, async () => {
       await assert.rejects(fetchMarketingReport("test", source("google_analytics", "https://malicious.invalid"), "daily", 28), /valid Analytics property/);
       await assert.rejects(fetchMarketingReport("test", source("meta_ads", "act_456"), "queries", 28), /supported by this source/);
-      await assert.rejects(fetchMarketingReport("test", source("google_ads", "customers/123"), "daily", 28), /developer token/);
+      await assert.rejects(fetchMarketingReport("test", source("google_ads", "customers/123"), "daily", 28), /not been enabled/);
       await assert.rejects(fetchMarketingReport("test", source("google_analytics", "properties/123"), "daily", 365), /90 day report/);
     });
   });

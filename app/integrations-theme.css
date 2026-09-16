@@ -73,6 +73,14 @@
 .operating-shell .data-hub .provider-account-list > article > div:first-child b { color: var(--connection-ink); font-size: 1rem !important; white-space: normal; overflow-wrap: anywhere; }
 .operating-shell .data-hub .provider-account-list > article > div:first-child small { color: var(--connection-muted); font-size: .875rem !important; line-height: 1.55; }
 .operating-shell .data-hub :is(.provider-account-state,.status,.integration-coming-soon) { font-size: .8125rem !important; line-height: 1.4; }
+.operating-shell .data-hub .marketing-resource-error {
+  grid-column: 1 / -1; display: grid; gap: 8px; padding: 14px 16px;
+  border: 1px solid #dfbdc4; border-radius: 12px; background: #fff5f6;
+  color: #7f2537; overflow-wrap: anywhere;
+}
+.operating-shell .data-hub .marketing-resource-error > b { color: #7f2537; font-size: .9375rem !important; line-height: 1.5; }
+.operating-shell .data-hub .marketing-resource-error > p { margin: 0; color: #7f2537; font-size: .875rem !important; line-height: 1.6; }
+.operating-shell .data-hub .marketing-resource-error > button { justify-self: start; }
 .operating-shell .data-hub .status.planned { background: #e9eef5; color: #465c73; }
 .operating-shell .data-hub .automatic-sync-control { background: var(--connection-surface); border-color: var(--connection-line); }
 .operating-shell .data-hub .automatic-sync-heading { flex-wrap: wrap; }
