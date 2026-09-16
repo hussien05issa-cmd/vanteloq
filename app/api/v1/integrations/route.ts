@@ -355,6 +355,9 @@ export async function POST(request: Request) {
     if (connection.provider === MONERIS_PROVIDER && !connection.sourceNamespace?.startsWith("production:")) {
       throw new ApiError(409, "MONERIS_PRODUCTION_REQUIRED", "Sandbox or unverified Moneris records cannot be approved for business reporting. Connect and review a production merchant account.");
     }
+    if (connection.provider === MONERIS_PROVIDER && !monerisReadiness().dataPromotionEnabled) {
+      throw new ApiError(409, "MONERIS_REPORTING_REVIEW_REQUIRED", "Moneris payments remain in review while currency, refunds and settlement reconciliation are completed. They cannot be approved for business reports yet.");
+    }
     if (connection.dataPromotionStatus !== "staging") {
       throw new ApiError(409, "INTEGRATION_DATA_NOT_READY", "Sync and review this provider account before making its data available.");
     }

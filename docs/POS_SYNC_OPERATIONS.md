@@ -11,7 +11,7 @@ Updated 2026-09-13. This supersedes the staging-only assumptions in the August r
 | Clover | Orders, lines, payments, catalogue, inventory, customers and reviewed reporting | Production merchant canary and source reconciliation |
 | Shopify / Shopify POS | Separate online/POS order scopes, refunds, products, inventory, customers and reviewed reporting | Authorized store canary, required app distribution/scopes approval and reconciliation |
 | Lightspeed X-Series | Read-only OAuth, outlets, resumable sales/line/payment/catalog/category/stock/customer/supplier imports and reviewed reports | Authorized retailer canary; reconnect older two-scope authorizations; resolve missing costs or unsupported receipt adjustments |
-| Moneris | Read-only payments, resumable history and production-only reconciliation eligibility | Production merchant credentials and reconciliation; payments cannot supply SKU or labour facts |
+| Moneris | Read-only payment staging with resumable history; business-report approval is blocked | Each subscriber's production merchant credentials; currency, refunds, changed-payment history and settlement reconciliation; payments cannot supply SKU or labour facts |
 | Stripe Connect | Balance transactions, fees and payouts in isolated staging | Merchant reconciliation; settlements must not be counted as additional POS revenue |
 
 Configured OAuth credentials do not prove a customer's authorization or public app distribution approval. Test merchants must remain excluded from real business reports.

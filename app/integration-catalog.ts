@@ -145,7 +145,7 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
     category: "Payments",
     availability: "credentials_required",
     activationRequirement:
-      "The Moneris connector currently has a sandbox test connection. Live reporting requires approved production access for your merchant account and a reconciled payment sample. Test transactions stay separate from business reports; Vanteloq does not store raw card data.",
+        "Connect your own Moneris merchant credentials for read-only payment imports. Imported payments stay separate from business reports while currency, refund and settlement reconciliation are completed. Vanteloq does not store raw card data.",
   },
   {
     id: "quickbooks",

@@ -23,14 +23,14 @@ Do not request payment-processing, refund, employee-management, or other write p
 
 ## Production environment values
 
-Store these as encrypted server-side secrets. Never expose them to browser code or commit them to source control.
+Keep the client secret, webhook authorization value and encryption key as hosted secrets. The client ID, callback URL and environment are server configuration. Never expose credentials to browser code or commit them to source control.
 
 - `CLOVER_CLIENT_ID`: Clover application ID
 - `CLOVER_CLIENT_SECRET`: Clover application secret
 - `CLOVER_REDIRECT_URI`: `https://vanteloq.com/api/v1/integrations/clover/callback`
 - `CLOVER_ENV`: `production` (use `sandbox` only for developer testing)
 - `CLOVER_WEBHOOK_AUTH`: the webhook authorization value configured in Clover
-- `INTEGRATION_TOKEN_ENCRYPTION_KEY`: the existing 32-byte Vanteloq connector encryption key
+- `INTEGRATION_ENCRYPTION_KEY`: the existing 32-byte Vanteloq connector encryption key
 
 After saving the webhook URL in Clover, enter the displayed one-time verification code if Clover requests it. The Vanteloq endpoint acknowledges only the restricted verification payload. Merchant events must carry the configured `X-Clover-Auth` header and the exact application ID.
 

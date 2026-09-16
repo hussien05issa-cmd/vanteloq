@@ -787,7 +787,7 @@ export default function VanteloqApp({
   useEffect(() => {
     const parameters = new URLSearchParams(window.location.search);
     const integration = parameters.get("integration");
-    if (integration !== "lightspeed" && integration !== "lightspeed-r" && integration !== "shopify" && integration !== "shopify-pos" && integration !== "square" && integration !== "clover" && integration !== "stripe" && integration !== "plaid" && integration !== "google" && integration !== "meta") return;
+    if (integration !== "lightspeed" && integration !== "lightspeed-r" && integration !== "shopify" && integration !== "shopify-pos" && integration !== "square" && integration !== "clover" && integration !== "stripe" && integration !== "plaid" && integration !== "google" && integration !== "meta" && integration !== "quickbooks") return;
     const timer = window.setTimeout(() => {
       const destination: View = integration === "plaid"
         && parameters.has("oauth_state_id")
@@ -801,6 +801,19 @@ export default function VanteloqApp({
       }
       setView(destination);
       const state = parameters.get("connection");
+      if (integration === "quickbooks") {
+        setNotice(state === "connected"
+          ? "QuickBooks is connected. Review the selected company in Integrations."
+          : state === "declined"
+            ? "QuickBooks authorization was declined."
+            : parameters.get("action") === "disconnect"
+              ? "Open the QuickBooks card and select Disconnect to revoke its access."
+              : state
+                ? "QuickBooks authorization needs to be restarted. Open its connection card to continue."
+                : "Open the QuickBooks card to connect or reconnect your company.");
+        window.history.replaceState({}, "", window.location.pathname);
+        return;
+      }
       if (integration === "plaid") {
         if (parameters.has("oauth_state_id")) {
           sessionStorage.setItem(PLAID_REDIRECT_STORAGE_KEY, window.location.href);
@@ -2980,7 +2993,7 @@ function DataHub({
                   <label><span>Merchant ID</span><input value={monerisDraft.merchantId} minLength={13} maxLength={13} autoComplete="off" placeholder="13-character merchant ID" required onChange={(event) => setMonerisDraft((current) => ({ ...current, merchantId: event.target.value.trim() }))} /></label>
                   <label><span>Application ID</span><input value={monerisDraft.clientId} maxLength={256} autoComplete="off" required onChange={(event) => setMonerisDraft((current) => ({ ...current, clientId: event.target.value }))} /></label>
                   <label><span>Client secret</span><input type="password" value={monerisDraft.clientSecret} maxLength={512} autoComplete="new-password" required onChange={(event) => setMonerisDraft((current) => ({ ...current, clientSecret: event.target.value }))} /></label>
-                  <label><span>Read scope</span><input value={monerisDraft.scope} maxLength={256} required onChange={(event) => setMonerisDraft((current) => ({ ...current, scope: event.target.value }))} /><small>Use the exact payment-read scope shown in the Moneris application.</small></label>
+                  <label><span>Read scope</span><input value="payment.read" readOnly /><small>Vanteloq only requests permission to read payments.</small></label>
                   <label className="moneris-consent"><input type="checkbox" checked={monerisDraft.accepted} required onChange={(event) => setMonerisDraft((current) => ({ ...current, accepted: event.target.checked }))} /><span>I authorize Vanteloq to retrieve payment amounts, currency, status, timestamps and settlement references for reconciliation. No raw card data is requested or stored.</span></label>
                   <footer><button type="button" onClick={() => setMonerisFormOpen(false)}>Cancel</button><button type="submit" className="primary" disabled={!canManageProvider || providerAction === "connect" || !monerisDraft.accepted}>{providerAction === "connect" ? "Validating…" : "Validate and connect"}</button></footer>
                 </form>}
@@ -3079,7 +3092,7 @@ function DataHub({
                               onClick={() => requestConnectionDataApproval(provider.id, connection.id)}
                               disabled={!canManageProvider || Boolean(connectionAction)}
                             >{connectionAction === "approve" ? "Approving…" : "Approve reviewed data"}</button>}
-                            {provider.id === "moneris" && connection.reportingEnvironment === "production" && connection.dataPromotionStatus === "staging" && connection.lastSuccessfulSyncAt && <button
+                            {provider.id === "moneris" && provider.providerReadiness?.dataPromotionEnabled === true && connection.reportingEnvironment === "production" && connection.dataPromotionStatus === "staging" && connection.lastSuccessfulSyncAt && <button
                               type="button"
                               onClick={() => requestConnectionDataApproval(provider.id, connection.id)}
                               disabled={!canManageProvider || Boolean(connectionAction)}
@@ -3103,6 +3116,9 @@ function DataHub({
                       </article>;
                     })}
                   </div>
+                )}
+                {isMoneris && provider.providerReadiness?.dataPromotionEnabled !== true && (
+                  <div className="provider-setup-needed" role="note"><b>Payment import only</b><span>Imported payments stay separate from business reports while currency, refunds and settlement reconciliation are completed.</span></div>
                 )}
                 {isPlaid && configured && provider.providerReadiness?.mode !== "production" && (
                   <div className="provider-setup-needed" role="note"><b>Plaid sandbox</b><span>Test institutions only. Real bank authorization remains locked until Plaid approves Vanteloq for production access.</span></div>
