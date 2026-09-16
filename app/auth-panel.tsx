@@ -212,7 +212,7 @@ export default function AuthPanel({
         resetTurnstile();
         setVerificationCode("");
         setMode("verify-signup");
-        setMessage("We sent a verification code to your email. Enter the newest code here to continue.");
+        setMessage("For an account awaiting verification, check your inbox and Spam for the newest code. Already verified this address? Sign in with your existing password.");
       } catch {
         resetTurnstile();
         setMessageIsError(true);
@@ -414,20 +414,26 @@ export default function AuthPanel({
     }
     setBusy(true);
     setMessage("");
-    const result = await supabase.auth.resend({
-      type: "signup",
-      email: email.trim().toLowerCase(),
-      options: { emailRedirectTo: canonicalAuthUrl("/"), captchaToken: turnstileToken },
-    });
-    resetTurnstile();
-    setBusy(false);
-    if (result.error) {
+    try {
+      const result = await supabase.auth.resend({
+        type: "signup",
+        email: email.trim().toLowerCase(),
+        options: { emailRedirectTo: canonicalAuthUrl("/"), captchaToken: turnstileToken },
+      });
+      if (result.error) {
+        setMessageIsError(true);
+        setMessage("A new confirmation email could not be sent yet. Wait a moment and try again.");
+        return;
+      }
+      setMessageIsError(false);
+      setMessage("If this address still needs verification, a new code will be sent. Check your inbox and Spam. If you already verified it, sign in instead.");
+    } catch {
       setMessageIsError(true);
-      setMessage("A new confirmation email could not be sent yet. Wait a moment and try again.");
-      return;
+      setMessage("The email request could not be completed. Check your connection and try again.");
+    } finally {
+      resetTurnstile();
+      setBusy(false);
     }
-    setMessageIsError(false);
-    setMessage("A new verification code is on its way. Enter the newest code; earlier codes will no longer work.");
   }
 
   function changeMode(nextMode: AuthPanelMode) {
@@ -465,7 +471,7 @@ export default function AuthPanel({
   const description = mode === "signup"
     ? "Create your account, verify your email, then secure and set up your business."
     : mode === "verify-signup"
-      ? `Enter the verification code sent to ${email.trim().toLowerCase() || "your email"}. You will continue directly to two-factor authentication.`
+      ? `Enter the newest verification code for ${email.trim().toLowerCase() || "your email"} to continue to two-factor authentication.`
     : mode === "signin"
       ? "Sign in with your verified Vanteloq account."
       : mode === "request-reset"
@@ -519,6 +525,7 @@ export default function AuthPanel({
       {mode === "verify-recovery" && <button className="auth-switch auth-switch-secondary" type="button" onClick={() => changeMode("signin")}>Back to Sign In</button>}
       {mode === "reset-password" && recoveryReady === false && <button className="auth-switch" type="button" onClick={() => changeMode("request-reset")}>Request a new reset link</button>}
       {mode === "verify-signup" && <button className="auth-switch" type="button" onClick={() => changeMode("signup")}>Use a different email address</button>}
+      {mode === "verify-signup" && <button className="auth-switch auth-switch-secondary" type="button" onClick={() => changeMode("signin")}>Already verified? Sign In</button>}
       {(mode === "signup" || mode === "signin") && <button className="auth-switch auth-switch-secondary" type="button" onClick={() => { changeMode(mode === "signup" ? "signin" : "signup"); setSiteKey(""); }}>
         {mode === "signup" ? "Already have an account? Sign in" : "New to Vanteloq? Create an account"}
       </button>}
