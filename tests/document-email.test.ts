@@ -41,7 +41,7 @@ function email(raw:Uint8Array){let rejection="";return {message:{from:"fictional
 test("real MIME parser routes by envelope, excludes message body and sends only signed attachments to the fixed HTTPS endpoint",async()=>{
   const incoming=email(mime());let calls=0;
   await receiveEmail(incoming.message,{DOCUMENT_EMAIL_SECRET:secret},async(url,options)=>{
-    calls++;assert.equal(url,`https://vanteloq.com${DOCUMENT_EMAIL_PATH}`);assert.equal(options?.redirect,"error");
+    calls++;assert.equal(url,`https://vanteloq.com${DOCUMENT_EMAIL_PATH}`);assert.equal(options?.redirect,"manual");
     const body=String(options!.body);assert.equal(body.includes("PRIVATE BODY"),false);assert.equal(body.includes("Confidential text"),false);
     const verified=await verifiedEmailPayload(new Request(String(url),options),secret);assert.equal(verified.payload.recipient,recipient);assert.equal(verified.files[0].bytes[0],37);
     return Response.json({received:true});
@@ -60,4 +60,20 @@ test("production handler ignores the Cloudflare execution context as a transport
   globalThis.fetch=async()=>{called=true;return Response.json({received:true});};
   try{await Reflect.apply(emailWorker.email,emailWorker,[incoming.message,{DOCUMENT_EMAIL_SECRET:secret},{waitUntil(){},passThroughOnException(){}}]);assert.equal(called,true);assert.equal(incoming.rejected(),"");}
   finally{globalThis.fetch=prior;}
+});
+
+test("rejection diagnostics expose only fixed stages and upstream status",async()=>{
+  const prior=console.warn,logs:string[]=[];console.warn=(value:unknown)=>{logs.push(String(value));};
+  try{
+    const incoming=email(mime());
+    await receiveEmail(incoming.message,{DOCUMENT_EMAIL_SECRET:secret},async()=>new Response("PRIVATE UPSTREAM BODY",{status:403}));
+    assert.ok(incoming.rejected());
+    assert.deepEqual(logs.map(value=>JSON.parse(value)),[{event:"document_email_rejected",stage:"delivery",upstreamStatus:403}]);
+    const failed=email(mime());
+    await receiveEmail(failed.message,{DOCUMENT_EMAIL_SECRET:secret},async()=>{throw new Error("PRIVATE EXCEPTION "+secret);});
+    assert.deepEqual(JSON.parse(logs[1]),{event:"document_email_rejected",stage:"delivery",transportFailure:"network"});
+    assert.equal(logs.join("").includes(secret),false);
+    assert.equal(logs.join("").includes("fictional@example.invalid"),false);
+    assert.equal(logs.join("").includes("PRIVATE"),false);
+  }finally{console.warn=prior;}
 });
