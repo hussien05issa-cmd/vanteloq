@@ -39,9 +39,66 @@ export function processingSummary(value: string) {
     processingStage: processing && ["scanning", "starting"].includes(processing.stage) && (processing.leaseUntil ?? 0) < Date.now() ? "failed" : processing?.stage ?? null,
     processingError: processing?.errorCode ? errorMessages[processing.errorCode] ?? "Document processing could not finish. Your original file is preserved. Try again." : null,
     extractionReady: Boolean(extraction),
+    cleanupPending: processing?.stage === "complete" && processing.cleanupPending === true,
+    cleanupMessage: processing?.stage === "complete" && processing.cleanupPending === true ? "Temporary processing-copy cleanup is pending. Your original and reviewed figures are preserved." : null,
     processingAuthorized: processing?.noticeVersion === DOCUMENT_PROCESSING_NOTICE_VERSION,
   };
 }
+
+/** Deletes existing provider copies only. It never reads, uploads or re-extracts the original. */
+export async function cleanupCompletedDocument(input: {
+  database: D1Database; env: VanteloqRuntimeEnv; organizationId: string; documentId: string;
+  transport?: typeof fetch;
+}) {
+  const { database: db, env, organizationId, documentId } = input;
+  const row = await db.prepare("SELECT extracted_json, extraction_status, status FROM workspace_documents WHERE id=? AND organization_id=?")
+    .bind(documentId, organizationId).first<{ extracted_json: string; extraction_status: string; status: string }>();
+  if (!row) throw new ApiError(404, "NOT_FOUND", "Document not found.");
+  if (row.status === "deletion_pending") throw new ApiError(409, "DOCUMENT_DELETION_PENDING", "Use Retry Deletion to finish removing this document and its processing copies.");
+  const envelope = readProcessing(row.extracted_json);
+  let job = envelope.processing;
+  if (!job || job.stage !== "complete" || row.extraction_status !== "complete" || !envelope.extraction
+    || job.version !== 1 || !job.authorizedBy || !job.noticeVersion || !(job.authorizedAt > 0)) {
+    throw new ApiError(409, "DOCUMENT_CLEANUP_NOT_READY", "Cleanup is available only for an already authorized, completed extraction. No new processing was started.");
+  }
+  if (!job.cleanupPending && !job.operation && !job.azureScan) return { state: "complete" as const, cleanupPending: false };
+  if (!job.operation && !job.azureScan) throw new ApiError(409, "DOCUMENT_CLEANUP_REFERENCE_MISSING", "The saved cleanup reference needs review. Cleanup has not been confirmed.");
+  if (job.leaseUntil && job.leaseUntil > Date.now()) return { state: "busy" as const, cleanupPending: true };
+  const lock = crypto.randomUUID();
+  job = { ...job, lock, leaseUntil: Date.now() + 90_000 };
+  envelope.processing = job;
+  const claimed = await db.prepare(`UPDATE workspace_documents SET extracted_json=?,updated_at=?
+    WHERE id=? AND organization_id=? AND status<>'deletion_pending' AND extraction_status='complete' AND extracted_json=?`)
+    .bind(JSON.stringify(envelope), Date.now(), documentId, organizationId, row.extracted_json).run();
+  if (claimed.meta.changes !== 1) return { state: "busy" as const, cleanupPending: true };
+  try {
+    // Cleanup reuses the saved consent evidence and validated provider references.
+    // Failures retain each reference. No processor POST/PUT or original-file access exists here.
+    if (job.operation) {
+      try { await deleteExtractionResult(env, job.operation, input.transport); delete job.operation; }
+      catch { /* Preserve the reference for another explicit cleanup attempt. */ }
+    }
+    if (job.azureScan) {
+      try { await deleteAzureScan(env, job.azureScan, input.transport); delete job.azureScan; }
+      catch { /* Preserve the reference for another explicit cleanup attempt. */ }
+    }
+    job.cleanupPending = Boolean(job.operation || job.azureScan);
+    if (!job.cleanupPending) delete job.errorCode;
+    delete job.lock; delete job.leaseUntil;
+    envelope.processing = job;
+    const saved = await db.prepare(`UPDATE workspace_documents SET extracted_json=?,updated_at=?
+      WHERE id=? AND organization_id=? AND status<>'deletion_pending' AND json_extract(extracted_json,'$.processing.lock')=?`)
+      .bind(JSON.stringify(envelope), Date.now(), documentId, organizationId, lock).run();
+    if (saved.meta.changes !== 1) return { state: "busy" as const, cleanupPending: true };
+    return { state: job.cleanupPending ? "cleanup_pending" as const : "complete" as const, cleanupPending: job.cleanupPending };
+  } finally {
+    // Only our own claim is released. Retained extraction and approval states are untouched.
+    await db.prepare(`UPDATE workspace_documents SET extracted_json=json_remove(extracted_json,'$.processing.lock','$.processing.leaseUntil')
+      WHERE id=? AND organization_id=? AND json_extract(extracted_json,'$.processing.lock')=?`)
+      .bind(documentId, organizationId, lock).run();
+  }
+}
+
 
 /** A bounded step with a persistent claim. Reloading resumes the stored Azure job. */
 export async function processDocument(input: {
@@ -52,7 +109,7 @@ export async function processDocument(input: {
   const { database: db, bucket, env, organizationId, documentId } = input;
   const row = await db.prepare("SELECT id, object_key, content_type, document_type, sha256_hex, security_state, scan_status, extraction_status, extracted_json, status FROM workspace_documents WHERE id = ? AND organization_id = ?").bind(documentId, organizationId).first<DocumentRow>();
   if (!row) throw new ApiError(404, "NOT_FOUND", "Document not found.");
-  if (row.status === "approved" || row.status === "rejected" || row.security_state === "rejected") throw new ApiError(409, "DOCUMENT_NOT_PROCESSABLE", "This document is protected or rejected and cannot be reprocessed.");
+  if (row.status === "approved" || row.status === "deletion_pending" || row.status === "rejected" || row.security_state === "rejected") throw new ApiError(409, "DOCUMENT_NOT_PROCESSABLE", "This document is protected or rejected and cannot be reprocessed.");
   let envelope = readProcessing(row.extracted_json);
   const now = Date.now(), configuration = documentProviderConfiguration(env);
   let job = envelope.processing;
@@ -78,13 +135,13 @@ export async function processDocument(input: {
   const lock = crypto.randomUUID();
   job = { ...job, lock, leaseUntil: now + 90_000 };
   envelope = { ...envelope, processing: job };
-  const claim = await db.prepare("UPDATE workspace_documents SET extracted_json = ?, updated_at = ? WHERE id = ? AND organization_id = ? AND extracted_json = ? AND status NOT IN ('approved', 'rejected')").bind(JSON.stringify(envelope), now, documentId, organizationId, row.extracted_json).run();
+  const claim = await db.prepare("UPDATE workspace_documents SET extracted_json = ?, updated_at = ? WHERE id = ? AND organization_id = ? AND extracted_json = ? AND status NOT IN ('approved', 'rejected', 'deletion_pending')").bind(JSON.stringify(envelope), now, documentId, organizationId, row.extracted_json).run();
   if (claim.meta.changes !== 1) return { state: "busy", newlyAuthorized: false };
   let scan = row.scan_status, security = row.security_state, extractionStatus = row.extraction_status;
   const save = async (stage: Processing["stage"], release = true) => {
     job = { ...job!, stage, lock: release ? undefined : lock, leaseUntil: release ? undefined : now + 90_000 };
     envelope.processing = job;
-    const result = await db.prepare("UPDATE workspace_documents SET extracted_json = ?, scan_status = ?, security_state = ?, extraction_status = ?, scan_provider = CASE WHEN ? = 'clean' OR ? = 'blocked' THEN 'azure-defender' ELSE scan_provider END, scanned_at = CASE WHEN ? = 'clean' OR ? = 'blocked' THEN COALESCE(scanned_at, ?) ELSE scanned_at END, status = 'review_required', updated_at = ? WHERE id = ? AND organization_id = ? AND json_extract(extracted_json, '$.processing.lock') = ? AND status NOT IN ('approved', 'rejected')").bind(JSON.stringify(envelope), scan, security, extractionStatus, scan, scan, scan, scan, Math.floor(Date.now() / 1000), Date.now(), documentId, organizationId, lock).run();
+    const result = await db.prepare("UPDATE workspace_documents SET extracted_json = ?, scan_status = ?, security_state = ?, extraction_status = ?, scan_provider = CASE WHEN ? = 'clean' OR ? = 'blocked' THEN 'azure-defender' ELSE scan_provider END, scanned_at = CASE WHEN ? = 'clean' OR ? = 'blocked' THEN COALESCE(scanned_at, ?) ELSE scanned_at END, status = 'review_required', updated_at = ? WHERE id = ? AND organization_id = ? AND json_extract(extracted_json, '$.processing.lock') = ? AND status NOT IN ('approved', 'rejected', 'deletion_pending')").bind(JSON.stringify(envelope), scan, security, extractionStatus, scan, scan, scan, scan, Math.floor(Date.now() / 1000), Date.now(), documentId, organizationId, lock).run();
     return result.meta.changes === 1;
   };
   try {

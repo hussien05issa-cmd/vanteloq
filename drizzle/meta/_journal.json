@@ -365,6 +365,20 @@
       "when": 1789540597196,
       "tag": "0051_reviewed_bank_statements",
       "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "6",
+      "when": 1789552915027,
+      "tag": "0052_document_deletion_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "6",
+      "when": 1789552915028,
+      "tag": "0053_marketing_email_consent",
+      "breakpoints": true
     }
   ]
 }

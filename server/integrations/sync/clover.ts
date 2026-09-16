@@ -5,7 +5,7 @@ import { scopeExternalRef, unscopedExternalRef } from "../../../domain/integrati
 import { recordAudit } from "../../audit";
 import { ApiError, enforceRateLimit, jsonResponse, } from "../../api";
 import {
-  buildCloverDailyMetrics, CLOVER_PROVIDER, fetchCloverConnectionCollection, fetchCloverMerchant,
+  buildCloverDailyMetrics, cloverReadiness, CLOVER_PROVIDER, fetchCloverConnectionCollection, fetchCloverMerchant,
   normalizeCloverCustomer, normalizeCloverInventoryItem, normalizeCloverOrder, normalizeCloverPayments,
   type NormalizedCloverSale,
 } from "../../integrations/clover";
@@ -14,6 +14,7 @@ import {
   requireOwnedIntegrationConnection, sqliteTimestampSeconds,
 } from "../../integrations/connection";
 import { applyOwnerInventoryCosts } from "../../inventory-costs";
+import { CLOVER_LATEST_SALES_SQL, CloverSourceEvidenceError } from "../clover-reporting";
 
 const PAGE_SIZE = 100;
 const IMPORT_LABEL = "Clover read-only sync";
@@ -116,20 +117,30 @@ export async function runSync(request: Request, requestId: string, context: Sync
       const normalizedProducts = await Promise.all(itemsPage.elements.map((item) => normalizeCloverInventoryItem(connection.externalAccountRef!, item)));
       const normalizedOrders: Awaited<ReturnType<typeof normalizeCloverOrder>>[] = [];
       let normalizationWarnings = 0;
+      const normalizationIssues = new Map<string, number>();
+      const recordNormalizationIssue = (error: unknown) => {
+        normalizationWarnings += 1;
+        const code = error instanceof CloverSourceEvidenceError ? error.code : "CLOVER_SOURCE_REVIEW_REQUIRED";
+        normalizationIssues.set(code, (normalizationIssues.get(code) ?? 0) + 1);
+      };
       for (const order of ordersPage.elements) {
         try { normalizedOrders.push(await normalizeCloverOrder(connection.externalAccountRef, order)); }
-        catch { normalizationWarnings += 1; }
+        catch (error) { recordNormalizationIssue(error); }
       }
       const customers = [] as Awaited<ReturnType<typeof normalizeCloverCustomer>>[];
       for (const customer of customersPage.elements) {
-        try { customers.push(await normalizeCloverCustomer(customer)); } catch { normalizationWarnings += 1; }
+        try { customers.push(await normalizeCloverCustomer(customer)); } catch (error) { recordNormalizationIssue(error); }
       }
-      const paymentCandidates = paymentsPage.elements.filter((payment) => {
-        const order = payment.order;
-        return Boolean(order && typeof order === "object" && !Array.isArray(order) && typeof (order as Record<string, unknown>).id === "string");
-      });
-      normalizationWarnings += paymentsPage.elements.length - paymentCandidates.length;
-      const payments = await normalizeCloverPayments(connection.externalAccountRef, paymentCandidates);
+      const payments: Awaited<ReturnType<typeof normalizeCloverPayments>> = [];
+      let ignoredPayments = 0;
+      for (const payment of paymentsPage.elements) {
+        try {
+          const normalized = await normalizeCloverPayments(connection.externalAccountRef, [payment]);
+          if (normalized.length === 0) ignoredPayments += 1;
+          payments.push(...normalized);
+        } catch (error) { recordNormalizationIssue(error); }
+      }
+      const sourceIssues = [...normalizationIssues].map(([code, count]) => ({ code, count }));
 
       const mappings = await getDb().select().from(integrationLocationMappings).where(and(
         eq(integrationLocationMappings.organizationId, context.organizationId), eq(integrationLocationMappings.provider, CLOVER_PROVIDER), eq(integrationLocationMappings.connectionId, connection.id),
@@ -244,21 +255,20 @@ export async function runSync(request: Request, requestId: string, context: Sync
           AND (line.product_ref IS NULL OR (product.owner_cost_cents IS NULL AND product.default_cost_cents IS NULL))
       `).bind(context.organizationId, CLOVER_PROVIDER, connection.id).first<{ count: number }>();
       const missingCostCount = Number(missingCost?.count ?? 0);
+      const completedAt = new Date();
+      const cursor = normalizationWarnings ? connection.lastSyncCursor : nextCheckpoint(previous, { orders: ordersPage.elements.length, items: itemsPage.elements.length, customers: customersPage.elements.length, payments: paymentsPage.elements.length }, completedAt);
+      const backfillComplete = !normalizationWarnings && parseCheckpoint(cursor).watermark === completedAt.toISOString();
       const publishRequested = Boolean(connection.promotionAuthorizedAt || connection.dataPromotionStatus === "approved");
-      const publishCanonical = publishRequested && unmapped === 0 && normalizationWarnings === 0 && missingCostCount === 0;
+      const dataPromotionEnabled = cloverReadiness().dataPromotionEnabled;
+      // Keep Clover staged until tax/refund and complete snapshot reconciliation are implemented.
+      const publishCanonical = dataPromotionEnabled && backfillComplete && publishRequested && unmapped === 0 && normalizationWarnings === 0 && missingCostCount === 0;
 
       let publishedMetrics = 0;
       await database.prepare(`INSERT INTO data_imports (id, organization_id, import_type, status, file_name, row_count, idempotency_key, imported_by_user_id, created_at) VALUES (?, ?, 'manual_entry', 'processing', ?, 0, ?, ?, ?)`)
         .bind(importId, context.organizationId, IMPORT_LABEL, runId, context.userId, now).run();
       if (publishCanonical) {
-        const latest = await database.prepare(`
-          SELECT external_sale_id externalSaleId, outlet_ref outletRef, sold_at soldAt, state,
-            total_cents totalCents, tax_cents taxCents, cost_cents costCents,
-            discount_cents discountCents, line_count lineCount, external_version externalVersion,
-            source_payload_hash sourcePayloadHash
-          FROM (SELECT *, row_number() OVER (PARTITION BY external_sale_id ORDER BY staged_at DESC, id DESC) rank
-            FROM integration_staged_sales WHERE organization_id=? AND provider=? AND connection_id=?) WHERE rank=1
-        `).bind(context.organizationId, CLOVER_PROVIDER, connection.id).all<NormalizedCloverSale>();
+        const latest = await database.prepare(CLOVER_LATEST_SALES_SQL)
+          .bind(context.organizationId, CLOVER_PROVIDER, connection.id).all<NormalizedCloverSale>();
         const metrics = buildCloverDailyMetrics((latest.results ?? []).map((sale) => ({ ...sale, outletRef: unscopedExternalRef(connection.sourceNamespace, sale.outletRef) ?? sale.outletRef })), connection.sourceNamespace, context.organization.timezone);
         await database.prepare(`DELETE FROM daily_business_metrics WHERE organization_id=? AND source_connection_id=?`).bind(context.organizationId, connection.id).run();
         for (const row of metrics) {
@@ -280,9 +290,6 @@ export async function runSync(request: Request, requestId: string, context: Sync
         publishedMetrics = metrics.length;
       }
 
-      const completedAt = new Date();
-      const cursor = normalizationWarnings ? connection.lastSyncCursor : nextCheckpoint(previous, { orders: ordersPage.elements.length, items: itemsPage.elements.length, customers: customersPage.elements.length, payments: paymentsPage.elements.length }, completedAt);
-      const backfillComplete = !normalizationWarnings && parseCheckpoint(cursor).watermark === completedAt.toISOString();
       const warningCount = normalizationWarnings + unmapped + missingCostCount;
       const recordsRead = ordersPage.elements.length + itemsPage.elements.length + customersPage.elements.length + paymentsPage.elements.length;
       const recordsStaged = stagedSales + importedProducts + importedCustomers + importedLines + importedPayments + importedInventory;
@@ -294,7 +301,7 @@ export async function runSync(request: Request, requestId: string, context: Sync
         externalAccountName: typeof merchant.name === "string" ? merchant.name.slice(0, 160) : connection.externalAccountName,
         lastSuccessfulSyncAt: completedAt, lastSyncCursor: cursor, dataPromotionStatus: status,
         promotionAuthorizedAt: publishCanonical ? null : connection.promotionAuthorizedAt,
-        lastErrorCode: normalizationWarnings ? "CLOVER_NORMALIZATION_WARNINGS" : unmapped ? "CLOVER_LOCATION_UNMAPPED" : missingCostCount ? "CLOVER_ITEM_COST_REQUIRED" : null,
+        lastErrorCode: normalizationWarnings ? (sourceIssues[0]?.code ?? "CLOVER_NORMALIZATION_WARNINGS") : unmapped ? "CLOVER_LOCATION_UNMAPPED" : missingCostCount ? "CLOVER_ITEM_COST_REQUIRED" : null,
         syncLeaseOwner: null, syncLeaseExpiresAt: null, updatedAt: completedAt,
       }).where(and(
         eq(integrationConnections.id, connection.id), eq(integrationConnections.organizationId, context.organizationId),
@@ -304,17 +311,22 @@ export async function runSync(request: Request, requestId: string, context: Sync
       await recordAudit({
         request, requestId, organizationId: context.organizationId, actorUserId: context.userId,
         action: "integration.data_imported", resourceType: "integration_sync_run", resourceId: runId,
-        details: { provider: CLOVER_PROVIDER, connectionId: connection.id, recordsRead, recordsStaged, publishedMetrics, products: importedProducts, customers: importedCustomers, inventory: importedInventory, saleLines: importedLines, payments: importedPayments, missingCostCount, unmappedLocations: unmapped, dataPromotionEnabled: publishCanonical },
+        details: { provider: CLOVER_PROVIDER, connectionId: connection.id, recordsRead, recordsStaged, publishedMetrics, products: importedProducts, customers: importedCustomers, inventory: importedInventory, saleLines: importedLines, payments: importedPayments, missingCostCount, unmappedLocations: unmapped, ignoredPayments, sourceIssues: JSON.stringify(sourceIssues), dataPromotionEnabled: publishCanonical },
       });
       return jsonResponse({
         provider: CLOVER_PROVIDER, connectionId: connection.id,
-        backfillComplete, retryRequired: normalizationWarnings > 0,
+        backfillComplete, retryRequired: normalizationWarnings > 0, sourceIssues,
         run: { id: runId, status: "completed", recordsRead, recordsStaged, warningCount },
-        reconciliation: { orders: sales.length, saleLines: lines.length, payments: payments.length, products: normalizedProducts.length, customers: customers.length, inventoryBalances: normalizedProducts.length, locations: mappings.length, unmappedLocations: unmapped, missingItemCosts: missingCostCount, dailyMetrics: publishedMetrics },
-        readyForReview: sales.length > 0 && warningCount === 0,
+        reconciliation: { orders: sales.length, saleLines: lines.length, payments: payments.length, ignoredPayments, products: normalizedProducts.length, customers: customers.length, inventoryBalances: normalizedProducts.length, locations: mappings.length, unmappedLocations: unmapped, missingItemCosts: missingCostCount, dailyMetrics: publishedMetrics },
+        readyForReview: backfillComplete && sales.length > 0 && warningCount === 0,
         stagingOnly: !publishCanonical,
         dataPromotionEnabled: publishCanonical,
-        nextStep: publishCanonical ? "Clover data is synchronized and available across Vanteloq." : missingCostCount ? "Add item costs in Clover, then re-sync so gross profit can be calculated without estimates." : unmapped ? "Map the Clover merchant to a Vanteloq location, then review the import." : "Review and approve this Clover import, then run one final sync to publish it.",
+        nextStep: normalizationWarnings ? "Review the Clover source warnings before approving this import. Ambiguous records have not been included in reporting."
+          : missingCostCount ? "Add item costs in Clover, then re-sync so gross profit can be calculated without estimates."
+          : unmapped ? "Map the Clover merchant to a Vanteloq location, then review the import."
+          : !dataPromotionEnabled ? "Clover records are staged. Reporting remains off while source reconciliation is completed."
+          : publishCanonical ? "Clover data is synchronized and available across Vanteloq."
+          : "Complete the Clover import, then review its source records.",
       });
     } catch (error) {
       const code = error instanceof ApiError ? error.code : "CLOVER_SYNC_FAILED";

@@ -1460,7 +1460,7 @@ test("location-limited purchasing cannot list or approve another location's orde
   }
 });
 
-test("manual and CSV imports replace stale connector ownership and remain distinguishable in reports", async () => {
+test("manual and CSV imports preserve connector ownership and remain distinguishable in reports", async () => {
   const { worker, environment, database, dispose } = await createEnvironment();
   try {
     const workspace = await createReportWorkspace(worker, environment, database, "import-lineage");
@@ -1470,7 +1470,7 @@ test("manual and CSV imports replace stale connector ownership and remain distin
        cost_of_goods_cents, transaction_count, units_sold, refunds_cents, discounts_cents,
        labour_cost_cents, source_provider, source_connection_id, created_by_user_id,
        created_at, updated_at)
-      VALUES (?, '2026-08-10', ?, 1, 1, 0, 1, 1, 0, 0, 0,
+      VALUES (?, '2026-08-09', ?, 1, 1, 0, 1, 1, 0, 0, 0,
         'lightspeed-r', 'stale-connection', ?, ?, ?)`)
       .bind(workspace.organizationId, workspace.locationId, workspace.userId, staleTimestamp, staleTimestamp).run();
 
@@ -1488,6 +1488,15 @@ test("manual and CSV imports replace stale connector ownership and remain distin
       cashBalanceCents: null,
       accountsPayableCents: null,
     };
+    const protectedResponse = await dispatch(worker, environment, "/api/v1/daily-metrics", {
+      method: "POST", ...workspace.owner, idempotencyKey: crypto.randomUUID(),
+      body: { importType: "manual_entry", rows: [{ ...baseRow, businessDate: "2026-08-09" }] },
+    });
+    assert.equal(protectedResponse.status, 409);
+    assert.equal((await protectedResponse.json()).error.code, "IMPORT_PROVIDER_SOURCE_PROTECTED");
+    const protectedRow = await database.prepare("SELECT net_sales_cents, source_provider, source_connection_id FROM daily_business_metrics WHERE organization_id=? AND business_date='2026-08-09'")
+      .bind(workspace.organizationId).first();
+    assert.deepEqual(protectedRow, { net_sales_cents: 1, source_provider: "lightspeed-r", source_connection_id: "stale-connection" });
     const manualResponse = await dispatch(worker, environment, "/api/v1/daily-metrics", {
       method: "POST",
       ...workspace.owner,

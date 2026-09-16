@@ -1,5 +1,6 @@
 import { getD1, getRuntimeEnv } from "../db";
 import { ApiError, hashIdentifier } from "./api";
+import { eraseMarketingProfileForSubject } from "./communications";
 import { terminateStripeBilling } from "./billing/stripe";
 import { encryptIntegrationSecret, decryptIntegrationSecret } from "./integrations/lightspeed";
 
@@ -105,7 +106,7 @@ async function eraseLocal(job: DeletionJob, plan: DeletionPlan) {
     ...statements,
     db.prepare(`INSERT INTO account_deletion_receipts (id, account_hash, organization_hash, scope, result, retained_categories_json, provider_outcomes_json, completed_at, expires_at)
       VALUES (?, ?, ?, ?, 'auth_cleanup_pending', ?, '{}', ?, ?) ON CONFLICT(id) DO NOTHING`)
-      .bind(job.id, job.account_hash, organizationHash, job.scope, JSON.stringify(["Independent provider records and legally required accounting records", "Shared identities needed by another service or workspace", "Pseudonymous deletion receipt for 24 months"]), now, now + RECEIPT_TTL),
+      .bind(job.id, job.account_hash, organizationHash, job.scope, JSON.stringify(["Independent provider records and legally required accounting records", "Shared identities needed by another service or workspace", "Pseudonymous deletion receipt for 24 months", "Minimal keyed email suppression and unlinked consent evidence"]), now, now + RECEIPT_TTL),
     db.prepare("UPDATE account_deletion_jobs SET stage = 'local_deleted' WHERE id = ?").bind(job.id),
   ]);
 }
@@ -165,6 +166,12 @@ export async function advanceDeletion(job: DeletionJob, token: string) {
     if (job.scope === "workspace") await deleteWorkspaceObjects(job.organization_id, renewLease);
     await renewLease();
     const identity = await identityBridge(job, token, "cleanup");
+    await renewLease();
+    // A remaining Vanteloq membership keeps this person's separate preference.
+    // Shared Supabase identity in another product does not retain a closed
+    // Vanteloq newsletter profile. Never change other members' choices here.
+    const remainingMembership = await db.prepare("SELECT 1 present FROM memberships m JOIN users u ON u.id = m.user_id WHERE u.auth_subject = ? AND m.status = 'active' LIMIT 1").bind(plan.subject).first();
+    if (!remainingMembership) await eraseMarketingProfileForSubject(plan.subject);
     await renewLease();
     const result = JSON.stringify({ identityRetained: identity.identityRetained === true });
     await db.batch([

@@ -28,6 +28,8 @@ import {
   TERMS_OF_SERVICE_VERSION,
 } from "../shared/legal-versions";
 import { useModalFocus } from "./use-modal-focus";
+import { SignupMarketingChoice, saveSignupMarketingChoice } from "./marketing-consent";
+import type { MarketingConfig } from "../shared/communications";
 
 export type AuthPanelMode = "signin" | "signup" | "verify-signup" | "request-reset" | "verify-recovery" | "reset-password";
 
@@ -62,6 +64,9 @@ export default function AuthPanel({
   const [turnstileToken, setTurnstileToken] = useState("");
   const [turnstileResetSignal, setTurnstileResetSignal] = useState(0);
   const [legalAccepted, setLegalAccepted] = useState(false);
+  const [marketingSelected, setMarketingSelected] = useState(false);
+  const [marketingConfig, setMarketingConfig] = useState<MarketingConfig | null>(null);
+  const [marketingMessage, setMarketingMessage] = useState("");
   const protectedMode = mode === "signup" || mode === "signin" || mode === "request-reset";
   const showsTurnstile = protectedMode || mode === "verify-signup";
   const recoveryMfaRequired = mode === "reset-password" && recoveryMfaState === "challenge_required";
@@ -183,6 +188,7 @@ export default function AuthPanel({
         return;
       }
       try {
+        const marketingChoiceSaved = await saveSignupMarketingChoice(email.trim().toLowerCase(), marketingSelected, marketingConfig);
         const result = await supabase.auth.signUp({
           email: email.trim().toLowerCase(),
           password,
@@ -205,6 +211,7 @@ export default function AuthPanel({
           setMessage(signupErrorMessage(result.error));
           return;
         }
+        setMarketingMessage(marketingChoiceSaved ? "" : "Your account can continue. The optional email preference was not saved; choose it later in Settings.");
         if (result.data.session) {
           authenticated(result.data.session);
           return;
@@ -515,6 +522,8 @@ export default function AuthPanel({
         {message && <div className={`auth-message${messageIsError ? " error" : ""}`} aria-live="polite">{message}</div>}
         {mode === "verify-signup" && <button className="auth-secondary" type="button" onClick={() => void resendConfirmation()} disabled={busy || !siteKey || !turnstileToken}>Send a new code</button>}
         {mode === "signup" && <label className="auth-legal-consent"><input type="checkbox" checked={legalAccepted} onChange={event => setLegalAccepted(event.target.checked)} required/><span>I agree to the <Link href="/terms" target="_blank">Terms of Service</Link> and acknowledge the <Link href="/privacy" target="_blank">Privacy Policy</Link>. <RequiredMark/></span></label>}
+        {mode === "signup" && <SignupMarketingChoice selected={marketingSelected} change={setMarketingSelected} configure={setMarketingConfig} />}
+        {marketingMessage && <p className="auth-note" role="status">{marketingMessage}</p>}
         <button type="submit" className="auth-submit" disabled={busy || configured !== true || (protectedMode && (!siteKey || !turnstileToken)) || ((mode === "verify-signup" || mode === "verify-recovery") && !isCompleteEmailVerificationCode(verificationCode)) || (mode === "signup" && !legalAccepted) || (mode === "reset-password" && (recoveryReady !== true || recoveryMfaState === "checking" || recoveryMfaState === "error" || (recoveryMfaState === "challenge_required" && recoveryMfaCode.length !== 6)))}>{busy || configured === null || (mode === "reset-password" && (recoveryReady === null || recoveryMfaState === "checking")) ? "Please wait…" : submitLabel}</button>
       </form>
       {mode === "signup" && <p className="auth-setup-progress">Next: verify email · set up 2FA · add your business · confirm a plan</p>}

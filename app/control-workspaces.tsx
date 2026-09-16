@@ -2114,11 +2114,16 @@ type DocumentData = {
     processingError: string | null;
     processingAuthorized: boolean;
     extractionReady: boolean;
+    cleanupPending: boolean;
+    cleanupMessage: string | null;
+    deletionPending: boolean;
+    deletionRetryRequired: boolean;
+    deletionMessage: string | null;
     createdAt: string;
   }[];
   pipeline: Record<string, string>;
 };
-export function DocumentsWorkspace({ showNotice, canUpload }: SharedProps & { canUpload: boolean }) {
+export function DocumentsWorkspace({ showNotice, canUpload, canDelete }: SharedProps & { canUpload: boolean; canDelete: boolean }) {
   const [data, setData] = useState<DocumentData | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
@@ -2129,6 +2134,22 @@ export function DocumentsWorkspace({ showNotice, canUpload }: SharedProps & { ca
   const [processingError, setProcessingError] = useState("");
   const [review, setReview] = useState<{ fileName: string; extraction: DocumentExtraction } | null>(null);
   const [reviewLoading, setReviewLoading] = useState("");
+  const [deleting, setDeleting] = useState("");
+  const [deletionError, setDeletionError] = useState("");
+  const [cleaning, setCleaning] = useState("");
+  const retryCleanup = async (id: string) => {
+    if (!canUpload || cleaning) return;
+    setCleaning(id); setProcessingError("");
+    try {
+      const response = await apiFetch("/api/v1/documents", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, action: "cleanup" }), signal: AbortSignal.timeout(65_000) });
+      const body = await response.json();
+      if (!response.ok) throw new Error(apiMessage(body, "Cleanup could not finish."));
+      setData(body as DocumentData);
+      showNotice(body.cleanupState === "complete" ? "Temporary processing copies removed. Your original and extracted figures are unchanged. Provider recovery retention still applies." : "Cleanup is still pending. You can retry it without uploading or reading the document again.");
+    } catch (error) {
+      setProcessingError(error instanceof Error && error.name !== "TimeoutError" ? error.message : "Cleanup has not been confirmed. Refresh Documents and retry cleanup; your original and figures are preserved.");
+    } finally { setCleaning(""); }
+  };
   const processFile = useCallback(async (id: string, retry = false) => {
     setProcessing(id); setProcessingError("");
     try {
@@ -2171,6 +2192,21 @@ export function DocumentsWorkspace({ showNotice, canUpload }: SharedProps & { ca
     const timer = window.setTimeout(() => void load(), 0);
     return () => window.clearTimeout(timer);
   }, [load]);
+  const deleteFile = async (document: DocumentData["documents"][number]) => {
+    if (!canDelete || deleting) return;
+    if (!document.deletionPending && !window.confirm("Delete this file and its extracted text? This cannot be undone. Files supporting accounting records are protected.")) return;
+    setDeleting(document.id); setDeletionError("");
+    try {
+      const response = await apiFetch(`/api/v1/documents?id=${encodeURIComponent(document.id)}`, { method: "DELETE", signal: AbortSignal.timeout(95_000) });
+      const body = await response.json();
+      if (!response.ok) throw new Error(apiMessage(body, "Deletion could not be completed."));
+      setReview(null); await load();
+      showNotice(body.deleted ? "File deleted. Provider recovery retention still applies." : "Deletion is pending. Retry Deletion checks the remaining copies.");
+    } catch (error) {
+      setDeletionError(error instanceof Error && error.name !== "TimeoutError" ? error.message : "Deletion has not been confirmed. Refresh Documents and retry the saved deletion.");
+      await load();
+    } finally { setDeleting(""); }
+  };
   const upload = async (file: File | null, documentType: string) => {
     if (!canUpload || !file) return;
     setUploadError("");
@@ -2265,6 +2301,7 @@ export function DocumentsWorkspace({ showNotice, canUpload }: SharedProps & { ca
         </div>
       </section>}
       {downloadError && <p className="document-upload-error" role="alert">{downloadError}</p>}
+      {deletionError && <p className="document-upload-error" role="alert">{deletionError}</p>}
       {processingError && <div className="document-upload-error" role="alert"><p>{processingError}</p><button onClick={() => { setProcessingError(""); void load(); }}>Refresh Documents</button></div>}
       {processing && <p className="document-processing-status" role="status">Processing your document. You can leave this page and resume from its saved status.</p>}
       {review && <section className="card document-extraction-review" aria-label={`Extraction review for ${review.fileName}`}>
@@ -2294,20 +2331,24 @@ export function DocumentsWorkspace({ showNotice, canUpload }: SharedProps & { ca
             </span>
             <span>{humanizeIdentifier(document.documentType)}</span>
             <span>
-              <em>{document.securityState === "clean" && document.scanStatus !== "clean" ? "Verification pending" : humanizeIdentifier(document.securityState)}</em>
+              <em>{document.deletionPending ? "Deletion Pending" : document.securityState === "clean" && document.scanStatus !== "clean" ? "Verification pending" : humanizeIdentifier(document.securityState)}</em>
             </span>
             <span>
               <em className="gated">
                 {document.processingStage === "reading" ? "Reading document" : document.processingStage === "scanning" || document.processingStage === "scan_waiting" ? "Scanning file" : humanizeIdentifier(document.extractionStatus)}
               </em>
               {document.processingError && <small className="document-processing-error">{document.processingError}</small>}
+              {document.deletionMessage && <small className="document-processing-error" role="status">{document.deletionMessage}</small>}
+              {document.cleanupMessage && !document.deletionPending && <small className="document-processing-error" role="status">{document.cleanupMessage}</small>}
             </span>
             <span>
               {document.extractionReady && <button disabled={Boolean(reviewLoading)} onClick={() => void openReview(document)}>{reviewLoading === document.id ? "Loading…" : "Review Figures"}</button>}
-              {canUpload && data.pipeline.malwareScanning === "configured" && document.securityState !== "rejected" && document.status !== "approved" && !document.extractionReady && <button disabled={Boolean(processing)} aria-label={`Scan and read ${document.fileName}`} onClick={() => void processFile(document.id, document.processingStage === "failed")}>{processing === document.id ? "Processing…" : document.processingStage === "failed" ? "Retry Processing" : document.processingAuthorized ? "Resume Processing" : "Scan and Read"}</button>}
+              {canUpload && document.cleanupPending && !document.deletionPending && <button disabled={Boolean(cleaning) || Boolean(processing) || Boolean(deleting)} aria-label={`Retry cleanup for ${document.fileName}`} onClick={() => void retryCleanup(document.id)}>{cleaning === document.id ? "Removing Temporary Copies…" : "Retry Cleanup"}</button>}
+              {canUpload && data.pipeline.malwareScanning === "configured" && document.securityState !== "rejected" && document.status !== "approved" && !document.deletionPending && !document.extractionReady && <button disabled={Boolean(processing)} aria-label={`Scan and read ${document.fileName}`} onClick={() => void processFile(document.id, document.processingStage === "failed")}>{processing === document.id ? "Processing…" : document.processingStage === "failed" ? "Retry Processing" : document.processingAuthorized ? "Resume Processing" : "Scan and Read"}</button>}
               {document.securityState === "clean" && document.scanStatus === "clean"
                 ? <button disabled={Boolean(downloading)} aria-label={`Download ${document.fileName}`} onClick={() => void download(document)}>{downloading === document.id ? "Downloading…" : "Download"}</button>
-                : <em className="gated">{document.securityState === "clean" ? "Awaiting security verification" : "Quarantined, download unavailable"}</em>}
+                : <em className="gated">{document.deletionPending ? "Unavailable During Deletion" : document.securityState === "clean" ? "Awaiting security verification" : "Quarantined, download unavailable"}</em>}
+              {canDelete && document.status !== "approved" && <button disabled={Boolean(deleting) || processing === document.id} aria-label={`${document.deletionPending ? "Retry deletion of" : "Delete"} ${document.fileName}`} onClick={() => void deleteFile(document)}>{deleting === document.id ? "Deleting…" : document.deletionPending ? "Retry Deletion" : "Delete File"}</button>}
             </span>
           </div>
         ))}

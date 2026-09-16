@@ -1,4 +1,5 @@
 "use client";
+import MarketingPreferences from "./marketing-consent";
 import WorkspaceSkeleton from "./workspace-skeleton";
 import CustomPlanCallout from "./custom-plan-callout";
 
@@ -1153,6 +1154,7 @@ export function SettingsWorkspace({ showNotice, onBrandChange, navigationSetting
             />
           )}
           {section === "notifications" && (
+            <>
             <ProfileSettings
               data={data}
               saving={saving}
@@ -1178,6 +1180,8 @@ export function SettingsWorkspace({ showNotice, onBrandChange, navigationSetting
                 }
               }}
             />
+            <MarketingPreferences placement="settings" />
+            </>
           )}
           {section === "account" && (
             <>

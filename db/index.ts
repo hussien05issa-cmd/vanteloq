@@ -84,6 +84,8 @@ export type VanteloqRuntimeEnv = {
   VANTELOQ_INTERNAL_ACCESS_ENABLED?: string;
   RESEND_API_KEY?: string;
   CUSTOM_PLAN_INQUIRY_TO?: string;
+  NEWSLETTER_ENROLLMENT_ENABLED?: string;
+  NEWSLETTER_SENDER_POSTAL_ADDRESS?: string;
   INVOICE_EMAIL_FROM?: string;
   INVOICE_EMAIL_REPLY_TO?: string;
 };

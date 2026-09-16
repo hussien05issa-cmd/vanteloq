@@ -1,8 +1,8 @@
 import { and, desc, eq } from "drizzle-orm";
 import { getD1, getDb, getR2, getRuntimeEnv } from "../../../../db";
-import { processDocument, processingSummary, readProcessing } from "../../../../server/document-processing";
-import { deleteAzureScan } from "../../../../server/azure-document-scanner";
-import { documentProviderConfiguration, deleteExtractionResult } from "../../../../server/document-providers";
+import { cleanupCompletedDocument, processDocument, processingSummary, readProcessing } from "../../../../server/document-processing";
+import { deleteDocument, documentDeletionSummary } from "../../../../server/document-deletion";
+import { documentProviderConfiguration } from "../../../../server/document-providers";
 import { workspaceDocuments } from "../../../../db/schema";
 import { recordAudit } from "../../../../server/audit";
 import { requireAccess } from "../../../../server/authorization";
@@ -99,7 +99,7 @@ async function list(organizationId: string) {
     .limit(200);
   const providers = documentProviderConfiguration(getRuntimeEnv());
   return {
-    documents: documents.map(({ extractedJson, ...document }) => ({ ...document, ...processingSummary(extractedJson) })),
+    documents: documents.map(({ extractedJson, ...document }) => ({ ...document, ...processingSummary(extractedJson), ...documentDeletionSummary(extractedJson, document.status) })),
     pipeline: {
       upload: "live",
       tenantStorage: "live",
@@ -134,6 +134,7 @@ export async function GET(request: Request) {
       )
       .limit(1);
     if (!document) throw new ApiError(404, "NOT_FOUND", "Document not found.");
+    if (document.status === "deletion_pending") throw new ApiError(409, "DOCUMENT_DELETION_PENDING", "This document is unavailable while deletion is being completed.");
     if (document.securityState !== "clean") {
       throw new ApiError(
         409,
@@ -144,7 +145,7 @@ export async function GET(request: Request) {
     const object = await getR2().get(document.objectKey);
     if (!object)
       throw new ApiError(404, "NOT_FOUND", "Document file not found.");
-    if (document.scanStatus !== "clean" || object.customMetadata?.securityState !== "clean") {
+    if (document.scanStatus !== "clean" || object.customMetadata?.securityState !== "clean" || object.customMetadata?.organizationId !== context.organizationId) {
       throw new ApiError(
         423,
         "DOCUMENT_QUARANTINED",
@@ -288,6 +289,15 @@ export async function PATCH(request: Request) {
     await enforceRateLimit("documents:process", context.organizationId, 90, 60);
     const body = await readJsonObject(request, 2048);
     if (typeof body.id !== "string" || body.id.length > 80) throw new ApiError(400, "INVALID_FIELD", "Select a document.");
+    if (body.action === "cleanup") {
+      await enforceRateLimit("documents:cleanup", context.organizationId, 60, 3600);
+      const result = await cleanupCompletedDocument({ database: getD1(), env: getRuntimeEnv(), organizationId: context.organizationId, documentId: body.id });
+      await recordAudit({ request, requestId, organizationId: context.organizationId, actorUserId: context.userId,
+        action: "document.processing_cleanup_retried", resourceType: "document", resourceId: body.id,
+        details: { state: result.state, cleanupPending: result.cleanupPending, newProcessingStarted: false } });
+      return jsonResponse({ ...await list(context.organizationId), cleanupState: result.state });
+    }
+    if (body.action !== undefined && body.action !== "process") throw new ApiError(400, "INVALID_ACTION", "Choose document processing or cleanup.");
     const result = await processDocument({ database: getD1(), bucket: getR2(), env: getRuntimeEnv(), organizationId: context.organizationId, documentId: body.id, actorUserId: context.userId, noticeVersion: body.noticeVersion, retry: body.retry === true, beforeProviderCall: () => enforceRateLimit("documents:provider-work", context.organizationId, 60, 3600) });
     if (result.newlyAuthorized) await recordAudit({ request, requestId, organizationId: context.organizationId, actorUserId: context.userId, action: "document.processing_authorized", resourceType: "document", resourceId: body.id, details: { noticeVersion: String(body.noticeVersion), providers: "azure-defender,azure-document-intelligence", purpose: "Security scan and provisional extraction; no ledger posting" } });
     return jsonResponse({ ...await list(context.organizationId), processingState: result.state });
@@ -300,44 +310,17 @@ export async function DELETE(request: Request) {
     const context = await requireAccess(request, users, "invoice.basic");
     await requirePermission(context, "documents.retention");
     await requireOrganizationWideLocationAccess(context);
+    await enforceRateLimit("documents:delete", context.userId, 30, 3600);
     const id = new URL(request.url).searchParams.get("id");
-    if (!id) throw new ApiError(400, "INVALID_FIELD", "Select a document.");
-    const [document] = await getDb()
-      .select()
-      .from(workspaceDocuments)
-      .where(
-        and(
-          eq(workspaceDocuments.id, id),
-          eq(workspaceDocuments.organizationId, context.organizationId),
-        ),
-      )
-      .limit(1);
-    if (!document) throw new ApiError(404, "NOT_FOUND", "Document not found.");
-    if (document.status === "approved")
-      throw new ApiError(
-        409,
-        "RECORD_PROTECTED",
-        "Approved documents must follow the organization retention workflow and cannot be directly deleted.",
-      );
-    const { processing } = readProcessing(document.extractedJson);
-    if (processing?.operation) await deleteExtractionResult(getRuntimeEnv(), processing.operation).catch(() => {});
-    if (processing?.azureScan) await deleteAzureScan(getRuntimeEnv(), processing.azureScan).catch(() => {});
-    await getD1()
-      .prepare(
-        "DELETE FROM workspace_documents WHERE id = ? AND organization_id = ?",
-      )
-      .bind(id, context.organizationId)
-      .run();
-    await getR2().delete(document.objectKey);
-    await recordAudit({
-      request,
-      requestId,
-      organizationId: context.organizationId,
-      actorUserId: context.userId,
-      action: "document.unprocessed_deleted",
-      resourceType: "document",
-      resourceId: id,
-    });
-    return jsonResponse({ ok: true });
+    if (!id || id.length > 200) throw new ApiError(400, "INVALID_FIELD", "Select a document.");
+    const result = await deleteDocument({ database: getD1(), bucket: getR2(), env: getRuntimeEnv(),
+      organizationId: context.organizationId, documentId: id, actorUserId: context.userId });
+    await recordAudit({ request, requestId, organizationId: context.organizationId, actorUserId: context.userId,
+      action: result.deleted ? "document.deleted" : "document.deletion_pending", resourceType: "document", resourceId: id,
+      details: { pendingSteps: result.pendingSteps.join(",") } });
+    return jsonResponse({ ...result, ok: result.deleted, message: result.deleted
+      ? "The original file and tracked processing copies were deleted. Provider recovery copies remain subject to their disclosed retention policy."
+      : "Deletion is not complete. The file is unavailable while remaining copies are removed. Retry deletion to check cleanup." },
+      { status: result.deleted ? 200 : 202 });
   });
 }

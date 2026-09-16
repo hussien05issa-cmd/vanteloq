@@ -46,6 +46,7 @@ test("Clover readiness advertises only merchant-approved read access", () => {
   assert.equal(readiness.mode, "read_only_staged_sync");
   assert.deepEqual(readiness.permissions, ["merchant", "orders", "payments", "inventory", "customers"]);
   assert.equal(readiness.webhookConfigured, true);
+  assert.equal(readiness.dataPromotionEnabled, false);
 });
 
 test("Clover tokens use provider-bound authenticated encryption", async () => {
@@ -126,12 +127,14 @@ test("Clover order normalization preserves cents, fixed-point quantities, and so
   const order = await normalizeCloverOrder("merchant-1", {
     id: "order-1",
     state: "locked",
+    paymentState: "PAID",
     total: 4298,
     createdTime: 1_786_294_800_000,
     modifiedTime: 1_786_294_801_000,
     customers: { elements: [{ id: "customer-1", firstName: "Do not duplicate" }] },
     lineItems: { elements: [
       { id: "line-1", item: { id: "item-1" }, name: "Creatine", price: 1999, unitQty: 2000,
+        quantitySold: 2, discountAmount: 0, orderLevelDiscountAmount: 0,
         priceWithModifiersAndItemAndOrderDiscounts: 3998 },
     ] },
   });
@@ -140,6 +143,7 @@ test("Clover order normalization preserves cents, fixed-point quantities, and so
   assert.equal(order.sale.totalCents, 4298);
   assert.equal(order.sale.state, "completed");
   assert.equal(order.lines[0].quantityMilli, 2000);
+  assert.equal(order.sale.quantityMilli, 2000);
   assert.equal(order.lines[0].netSalesCents, 3998);
   assert.equal(order.lines[0].customerRef, "customer-1");
   assert.doesNotMatch(JSON.stringify(order.sale), /Do not duplicate/);
@@ -188,7 +192,7 @@ test("Clover daily metrics aggregate only completed sales and retain source line
     {
       externalSaleId: "o1", externalVersion: "1", outletRef: "merchant-1",
       soldAt: "2026-08-13T12:00:00.000Z", state: "completed", totalCents: 1200,
-      taxCents: 50, costCents: 400, discountCents: 100, lineCount: 2, sourcePayloadHash: "a",
+      taxCents: 50, costCents: 400, discountCents: 100, lineCount: 2, quantityMilli: 3500, sourcePayloadHash: "a",
     },
     {
       externalSaleId: "o2", externalVersion: "1", outletRef: "merchant-1",
@@ -199,6 +203,36 @@ test("Clover daily metrics aggregate only completed sales and retain source line
   assert.deepEqual(rows, [{
     businessDate: "2026-08-13", locationRef: "clover:connection-1:merchant-1",
     grossSalesCents: 1250, netSalesCents: 1150, costOfGoodsCents: 400,
-    transactionCount: 1, unitsSold: 2, refundsCents: 0, discountsCents: 100,
+    transactionCount: 1, unitsSold: 3.5, refundsCents: 0, discountsCents: 100,
   }]);
+});
+
+test("Clover normalization extends fixed and weighted prices without counting failed tenders", async () => {
+  const normalized = await normalizeCloverOrder("merchant-1", {
+    id: "quantity-sale", state: "locked", paymentState: "PAID", total: 1900,
+    createdTime: 1_786_294_800_000,
+    lineItems: { elements: [
+      { id: "fixed", item: { id: "fixed-item", priceType: "FIXED" }, price: 1000, unitQty: 1,
+        discounts: { elements: [] }, orderLevelDiscounts: { elements: [] } },
+      { id: "weighted", item: { id: "weighted-item", priceType: "PER_UNIT" }, price: 400, unitQty: 2500,
+        discounts: { elements: [{ amount: -100 }] }, orderLevelDiscounts: { elements: [] } },
+    ] },
+  });
+  assert.deepEqual(normalized.lines.map((line) => [line.quantityMilli, line.netSalesCents, line.discountCents]), [[1000, 1000, 0], [2500, 900, 100]]);
+  assert.equal(normalized.sale.quantityMilli, 3500);
+  assert.equal(buildCloverDailyMetrics([normalized.sale])[0].unitsSold, 3.5);
+  const payments = await normalizeCloverPayments("merchant-1", [
+    { id: "paid", order: { id: "quantity-sale" }, result: "SUCCESS", amount: 1900 },
+    { id: "failed", order: { id: "quantity-sale" }, result: "FAIL", amount: 1900 },
+    { id: "pending", order: { id: "quantity-sale" }, result: "PENDING", amount: 1900 },
+  ]);
+  assert.deepEqual(payments.map((payment) => [payment.externalPaymentId, payment.amountCents]), [["paid", 1900]]);
+});
+
+test("Clover daily reporting rejects missing line evidence and preserves known zero units", () => {
+  const sale = { externalSaleId: "order", externalVersion: "1", outletRef: "merchant-1", soldAt: "2026-09-16T12:00:00Z",
+    state: "completed", totalCents: 0, taxCents: 0, costCents: 0, discountCents: 0, lineCount: 0, sourcePayloadHash: "h" };
+  assert.throws(() => buildCloverDailyMetrics([sale]), /complete source lines/);
+  assert.throws(() => buildCloverDailyMetrics([{ ...sale, quantityMilli: null }]), /complete source lines/);
+  assert.equal(buildCloverDailyMetrics([{ ...sale, quantityMilli: 0 }])[0].unitsSold, 0);
 });

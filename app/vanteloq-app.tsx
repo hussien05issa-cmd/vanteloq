@@ -1,6 +1,8 @@
 "use client";
 
 import { parseDailyCsv } from "../domain/daily-summary-csv";
+import DailyImportReviewPanel from "./daily-import-review";
+import type { DailyImportReview } from "../server/daily-metric-import";
 import WorkspaceSkeleton from "./workspace-skeleton";
 import { isAwaitingSalesRecords } from "../domain/intraday-sales";
 
@@ -1426,6 +1428,7 @@ function Workspace({
         showNotice={showNotice}
         createTask={createTask}
         canUpload={permissions.includes("documents.upload")}
+        canDelete={permissions.includes("documents.retention")}
       />
     );
   if (view === "Data Quality")
@@ -3444,43 +3447,59 @@ function DailyImport({
   refresh: () => Promise<void>;
   showNotice: (message: string) => void;
 }) {
+  const manualForm = useRef<HTMLFormElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [pending, setPending] = useState<{
+    rows: unknown[]; importType: string; fileName: string; key: string; review: DailyImportReview;
+  } | null>(null);
+  const [reason, setReason] = useState("");
   const submitRows = async (
     rows: unknown[],
     importType: string,
     fileName = "",
+    key = crypto.randomUUID(),
+    replacement?: { snapshot: string; reason: string },
   ) => {
     const response = await apiFetch("/api/v1/daily-metrics", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Idempotency-Key": crypto.randomUUID(),
+        "Idempotency-Key": key,
       },
-      body: JSON.stringify({ importType, fileName, rows }),
+      body: JSON.stringify({ importType, fileName, rows, replacement }),
     });
     const body = await response.json();
+    if (response.status === 409 && body.review) {
+      setPending({ rows, importType, fileName, key, review: body.review });
+      setReason("");
+      setError(body.error?.message ?? "Review the existing records before replacing them.");
+      return false;
+    }
     if (!response.ok)
       throw new Error(
         body.error?.message ?? "The import could not be completed.",
       );
+    setPending(null);
+    setReason("");
     await refresh();
     showNotice(
       `${body.import.rowCount} verified daily record${body.import.rowCount === 1 ? "" : "s"} saved`,
     );
+    return true;
   };
   const importCsv = async () => {
-    if (!file) return;
+    if (!file || pending) return;
     setBusy(true);
     setError("");
     try {
-      await submitRows(
+      const saved = await submitRows(
         parseDailyCsv(await file.text()),
         "daily_summary_csv",
         file.name,
       );
-      setFile(null);
+      if (saved) setFile(null);
     } catch (caught) {
       setError(
         caught instanceof Error ? caught.message : "The CSV could not be read.",
@@ -3491,11 +3510,13 @@ function DailyImport({
   };
   const submitManual = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (pending) return;
+    const formElement = event.currentTarget;
     setBusy(true);
     setError("");
     try {
-      const form = new FormData(event.currentTarget);
-      await submitRows(
+      const form = new FormData(formElement);
+      const saved = await submitRows(
         [
           {
             businessDate: form.get("date"),
@@ -3515,13 +3536,29 @@ function DailyImport({
         ],
         "manual_entry",
       );
-      event.currentTarget.reset();
+      if (saved) formElement.reset();
     } catch (caught) {
       setError(
         caught instanceof Error
           ? caught.message
           : "The entry could not be saved.",
       );
+    } finally {
+      setBusy(false);
+    }
+  };
+  const confirmReplacement = async () => {
+    if (!pending || reason.trim().length < 3) return;
+    setBusy(true);
+    setError("");
+    try {
+      const saved = await submitRows(pending.rows, pending.importType, pending.fileName, pending.key, {
+        snapshot: pending.review.snapshot, reason: reason.trim(),
+      });
+      if (saved && pending.importType === "daily_summary_csv") setFile(null);
+      if (saved && pending.importType === "manual_entry") manualForm.current?.reset();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "The correction could not be saved.");
     } finally {
       setBusy(false);
     }
@@ -3555,6 +3592,7 @@ function DailyImport({
           <input
             type="file"
             accept=".csv,text/csv"
+            disabled={busy || Boolean(pending)}
             onChange={(event) => setFile(event.target.files?.[0] ?? null)}
           />
           <b>{file ? file.name : "Choose a CSV file"}</b>
@@ -3562,13 +3600,13 @@ function DailyImport({
         </label>
         <button
           className="primary wide"
-          disabled={!file || busy}
+          disabled={!file || busy || Boolean(pending)}
           onClick={() => void importCsv()}
         >
           {busy ? "Validating…" : "Validate and import"}
         </button>
       </article>
-      <form className="card manual-entry" onSubmit={submitManual}>
+      <form ref={manualForm} className="card manual-entry" onSubmit={submitManual}>
         <div className="card-head">
           <div>
             <p className="card-kicker">MANUAL ENTRY</p>
@@ -3576,7 +3614,7 @@ function DailyImport({
           </div>
           <span>All amounts in dollars</span>
         </div>
-        <div className="manual-grid">
+        <fieldset className="manual-grid" disabled={busy || Boolean(pending)} aria-label="Daily record values">
           <label><FieldLabel>Date</FieldLabel><input required type="date" name="date" />
           </label>
           <label>
@@ -3623,12 +3661,15 @@ function DailyImport({
             Accounts payable
             <input name="payable" inputMode="decimal" />
           </label>
-        </div>
-        <button className="primary wide" disabled={busy}>
+        </fieldset>
+        <button className="primary wide" disabled={busy || Boolean(pending)}>
           {busy ? "Saving…" : "Save verified day"}
         </button>
       </form>
-      {error && <p className="import-error">{error}</p>}
+      {error && <p className="import-error" role="alert">{error}</p>}
+      {pending && <DailyImportReviewPanel review={pending.review} reason={reason} onReasonChange={setReason}
+        busy={busy} onConfirm={() => void confirmReplacement()}
+        onCancel={() => { setPending(null); setReason(""); setError(""); }} />}
       <section className="data-contract">
         <div>
           <b>Analysis supported by this entry</b>

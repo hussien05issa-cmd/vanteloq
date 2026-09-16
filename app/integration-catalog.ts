@@ -54,6 +54,7 @@ export type IntegrationPublicStatus = {
  */
 export function integrationPublicStatus(provider: IntegrationCatalogEntry): IntegrationPublicStatus {
   if (provider.id === "meta") return { label: "Provider setup required", tone: "staging" };
+  if (provider.id === "clover") return { label: "Approval and reconciliation needed", tone: "staging" };
   if (provider.id === "quickbooks") return { label: "Sandbox only", tone: "staging" };
   if (provider.id === "plaid") return { label: "Production approval needed", tone: "staging" };
   if (provider.id === "shopify" || provider.id === "shopify-pos") return { label: "App review pending", tone: "staging" };
@@ -129,7 +130,7 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
     category: "Point of sale",
     availability: "credentials_required",
     activationRequirement:
-      "Authorize each merchant with read-only access, map its business location, stage orders, items, inventory, customers and tender activity, then review the reconciliation before publishing dashboards.",
+      "Clover is being prepared for merchant access. Authorized test imports stage orders, items, inventory, customers and payments. App approval and financial reconciliation are still required; these records do not yet contribute to business reports.",
   },
   {
     id: "stripe",

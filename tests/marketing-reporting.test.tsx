@@ -105,7 +105,7 @@ describe("marketing reports", { concurrency: false }, () => {
     });
   });
   test("Meta reach uses an independent period query and spend carries the account currency", async () => {
-    runtime.__vanteloqEnv = { META_GRAPH_API_VERSION: "v25.0" };
+    runtime.__vanteloqEnv = { META_GRAPH_API_VERSION: "v25.0", META_MARKETING_APP_SECRET: "fixture-meta-secret" };
     await withFetch(async (input, init) => {
       const url = new URL(String(input)); assert.ok(!url.searchParams.has("access_token"));
       assert.equal(new Headers(init?.headers).get("authorization"), "Bearer test");
