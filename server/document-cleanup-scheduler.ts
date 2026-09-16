@@ -3,6 +3,7 @@ import { ApiError } from "./api.ts";
 import { deleteDocument } from "./document-deletion.ts";
 import { cleanupCompletedDocument } from "./document-processing.ts";
 import { cleanupRetryDelay, type DocumentCleanupRetry } from "./document-cleanup-state.ts";
+import { cleanupDocumentIngests } from "./document-ingest.ts";
 
 type Kind = "deletion" | "processing";
 type Candidate = { id: string; organization_id: string; status: string; extracted_json: string; kind: Kind };
@@ -59,7 +60,10 @@ export async function runDocumentCleanupTick(input: Input) {
     const status = result.status === "fulfilled" ? result.value : "retrying";
     counts[status] = (counts[status] ?? 0) + 1;
   }
-  return { processed: jobs.length, counts };
+  // Share the same 3-job ceiling. Only known completed failed writes are disposable.
+  const ingests=input.bucket&&jobs.length<MAX_JOBS?await cleanupDocumentIngests(input.database,input.bucket,undefined,MAX_JOBS-jobs.length):null;
+  if(ingests)for(const [status,count] of Object.entries(ingests.counts))if(count)counts[`ingest_${status}`]=count;
+  return { processed: jobs.length+(ingests?.processed??0), counts };
 }
 
 async function runOne(input: Input, candidate: Candidate) {

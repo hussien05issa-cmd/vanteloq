@@ -2,6 +2,10 @@ import { drizzle } from "drizzle-orm/d1";
 import * as schema from "./schema.ts";
 
 export type VanteloqRuntimeEnv = {
+  DOCUMENT_EMAIL_SECRET?: string;
+  DOCUMENT_EMAIL_ENABLED?: string;
+  DOCUMENT_EMAIL_VERIFIED?: string;
+  DOCUMENT_EMAIL_VALIDATION_ORGANIZATION_ID?: string;
   AZURE_DOCUMENT_SCAN_KEY?: string;
   AZURE_DOCUMENT_SCAN_ENDPOINT?: string;
   AZURE_DOCUMENT_INTELLIGENCE_KEY?: string;

@@ -12,6 +12,8 @@ import { authorizedLocationDataScope } from "../../../../../server/location-acce
 import { approvedBankSource, approvedFactSource } from "../../../../../server/integrations/trusted-data";
 import { recordAudit } from "../../../../../server/audit";
 import { requireAdvisorConsent } from "../../../../../server/privacy";
+import { assertAdvisorAuthority, captureAdvisorAuthority, completeAdvisorTurn } from "../../../../../server/advisor-completion";
+import { sessionLeaseId } from "../../../../../server/session-policy";
 import { advisorMarketingEvidence } from "../../../../../server/marketing-evidence";
 import { advisorEvidenceFingerprint, permittedAdvisorMemory } from "../../../../../domain/advisor-memory";
 import { projectAdvisorBookloq } from "../../../../../domain/advisor-bookloq";
@@ -165,6 +167,8 @@ export async function POST(request: Request) {
       noticeVersion: typeof body.noticeVersion === "string" ? body.noticeVersion : "",
       privacyPolicyVersion: typeof body.privacyPolicyVersion === "string" ? body.privacyPolicyVersion : "",
     });
+    const authorityActor = { organizationId: context.organizationId, userId: context.userId, role: context.role, subject: context.identity.subject!, sessionId: await sessionLeaseId(context) };
+    const authorityStamp = await captureAdvisorAuthority(getD1(), authorityActor);
     const permissions = await effectivePermissions(context);
     if (body.locationId != null && (typeof body.locationId !== "string" || !body.locationId.trim() || body.locationId.length > 200)) throw new ApiError(400, "ADVISOR_LOCATION_INVALID", "Choose a valid reporting location.");
     const locationId = typeof body.locationId === "string" ? body.locationId : null;
@@ -219,25 +223,35 @@ export async function POST(request: Request) {
     const existingConversation = suppliedId ? await getD1().prepare("SELECT organization_id, user_id FROM assistant_conversations WHERE id = ?").bind(conversationId).first<{ organization_id: string; user_id: string }>() : null;
     if (suppliedId && (!existingConversation || existingConversation.organization_id !== context.organizationId || existingConversation.user_id !== context.userId)) throw new ApiError(404, "CONVERSATION_NOT_FOUND", "This conversation is unavailable. Start a new chat.");
     const accessFingerprint = await advisorEvidenceFingerprint(evidence, [...permissions, `advisor-provider:${mode}`], locationAccess.locationRefs);
-    const now = new Date();
     if (memoryEnabled) await getD1().prepare("DELETE FROM assistant_conversations WHERE organization_id = ? AND user_id = ? AND updated_at < ?").bind(context.organizationId, context.userId, Date.now() - 90 * 24 * 60 * 60 * 1_000).run();
-    const memoryRows = memoryEnabled ? await getD1().prepare("SELECT role, content, evidence_json FROM assistant_messages WHERE conversation_id = ? AND organization_id = ? AND user_id = ? ORDER BY created_at DESC LIMIT 6").bind(conversationId, context.organizationId, context.userId).all<{ role: string; content: string; evidence_json: string }>() : { results: [] };
+    const memoryRows = memoryEnabled ? await getD1().prepare("SELECT role, content, evidence_json FROM assistant_messages WHERE conversation_id = ? AND organization_id = ? AND user_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 6").bind(conversationId, context.organizationId, context.userId).all<{ role: string; content: string; evidence_json: string }>() : { results: [] };
     const memory = permittedAdvisorMemory(memoryRows.results ?? [], accessFingerprint);
     const coverage = retailCoverage as { sourceCount: number; days: number } | null;
     const evidenceSummary = { latestDate: evidence.latestDate, sourceCount: coverage?.sourceCount ?? evidence.sources.length, days: coverage?.days ?? evidence.days.length };
+    // Recheck current access before sending evidence, including a revocation
+    // that happened between the initial access check and authority capture.
+    const sendingAccess = await requireAccess(request, readers, "ai.basic");
+    await requirePermission(sendingAccess, "insights.view");
+    if (sendingAccess.organizationId !== context.organizationId || sendingAccess.userId !== context.userId)
+      throw new ApiError(409, "ADVISOR_CONTEXT_CHANGED", "Your workspace access changed. Refresh before trying again.");
     // Consent may be withdrawn from another tab while evidence is loading.
     await requireAdvisorConsent({ organizationId: context.organizationId, actorUserId: context.userId, purpose, noticeVersion: body.noticeVersion, privacyPolicyVersion: body.privacyPolicyVersion });
+    await assertAdvisorAuthority(getD1(), authorityActor, authorityStamp);
     const result = await callAdvisor(mode, prompt(question, evidence, memory), getRuntimeEnv(), undefined, purpose, request.signal);
+    // Provider calls can take long enough for another tab or administrator to
+    // revoke consent, suspend membership, expire the session or change access.
+    const currentAccess = await requireAccess(request, readers, "ai.basic");
+    await requirePermission(currentAccess, "insights.view");
+    if (currentAccess.organizationId !== context.organizationId || currentAccess.userId !== context.userId)
+      throw new ApiError(409, "ADVISOR_CONTEXT_CHANGED", "Your workspace access changed. Refresh before trying again.");
+    await requireAdvisorConsent({ organizationId: context.organizationId, actorUserId: context.userId, purpose, noticeVersion: body.noticeVersion, privacyPolicyVersion: body.privacyPolicyVersion });
+    await completeAdvisorTurn(getD1(), authorityActor, authorityStamp, result.configured && memoryEnabled ? {
+      conversationId, existing: Boolean(suppliedId), question, answer: result.text, model: result.model,
+      userEvidence: JSON.stringify({ accessFingerprint }), answerEvidence: JSON.stringify({ accessFingerprint, ...evidenceSummary }),
+    } : null);
     if (!result.configured) {
       return jsonResponse({ status: "configuration_required", conversationId: suppliedId, memoryEnabled, model: result.model, answer: null, evidence: evidenceSummary, message: result.message });
     }
-    if (memoryEnabled) await getD1().batch([
-      suppliedId
-        ? getD1().prepare("UPDATE assistant_conversations SET updated_at = ? WHERE id = ? AND organization_id = ? AND user_id = ?").bind(now.getTime(), conversationId, context.organizationId, context.userId)
-        : getD1().prepare("INSERT INTO assistant_conversations (id, organization_id, user_id, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)").bind(conversationId, context.organizationId, context.userId, "Vanteloq AI conversation", now.getTime(), now.getTime()),
-      getD1().prepare("INSERT INTO assistant_messages (id, conversation_id, organization_id, user_id, role, content, evidence_json, model, created_at) VALUES (?, ?, ?, ?, 'user', ?, ?, ?, ?)").bind(crypto.randomUUID(), conversationId, context.organizationId, context.userId, question, JSON.stringify({ accessFingerprint }), result.model, now.getTime()),
-      getD1().prepare("INSERT INTO assistant_messages (id, conversation_id, organization_id, user_id, role, content, evidence_json, model, created_at) VALUES (?, ?, ?, ?, 'assistant', ?, ?, ?, ?)").bind(crypto.randomUUID(), conversationId, context.organizationId, context.userId, result.text, JSON.stringify({ accessFingerprint, ...evidenceSummary }), result.model, now.getTime()),
-    ]);
     return jsonResponse({ status: "answered", providers: result.providers, partial: result.partial, kpis: evidence.kpis, conversationId: memoryEnabled ? conversationId : null, memoryEnabled, model: result.model, answer: result.text, evidence: evidenceSummary });
   });
 }

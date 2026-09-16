@@ -393,6 +393,13 @@
       "when": 1789584500000,
       "tag": "0055_document_cleanup_retry_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "6",
+      "when": 1789597000000,
+      "tag": "0056_document_email_inbox",
+      "breakpoints": true
     }
   ]
 }

@@ -3,6 +3,7 @@ import { ApiError, hashIdentifier } from "./api";
 import { eraseMarketingProfileForSubject } from "./communications";
 import { terminateStripeBilling } from "./billing/stripe";
 import { encryptIntegrationSecret, decryptIntegrationSecret } from "./integrations/lightspeed";
+import { assertDocumentIngestsDisposed } from "./document-ingest";
 
 export type DeletionPlan = {
   subject: string;
@@ -70,6 +71,7 @@ async function identityBridge(job: DeletionJob, token: string, action: "prepare"
 async function deleteWorkspaceObjects(organizationId: string, renewLease: () => Promise<void>) {
   const bucket = getRuntimeEnv().BUCKET;
   if (!bucket) throw new ApiError(503, "DELETION_STORAGE_UNAVAILABLE", "File deletion could not be verified. Please retry.");
+  await assertDocumentIngestsDisposed(getD1(),bucket,organizationId);
   // Re-list from the start after deletion. A cursor can skip objects in a mutating list.
   for (let page = 0; page < 100; page++) {
     await renewLease();

@@ -2253,3 +2253,29 @@ export const marketingEmailUnsubscribeTokens = sqliteTable("marketing_email_unsu
   createdAt: integer("created_at").notNull(),
   expiresAt: integer("expires_at").notNull(),
 }, table => [index("marketing_email_unsubscribe_expiry_idx").on(table.expiresAt)]);
+
+// An explicitly authorized inbox receives originals into the existing document quarantine.
+export const documentEmailAliases = sqliteTable("document_email_aliases", {
+  organizationId: text("organization_id").primaryKey().references(() => workspaces.id, {onDelete:"cascade"}),
+  alias: text("alias").notNull().unique(), enabled: integer("enabled").notNull().default(0),
+  authorizedByUserId: text("authorized_by_user_id").notNull().references(() => users.id,{onDelete:"cascade"}),
+  authSubject: text("auth_subject").notNull(), consentVersion: text("consent_version").notNull(), consentedAt: integer("consented_at").notNull(),
+  generation: text("generation").notNull(), createdAt: integer("created_at").notNull(), updatedAt: integer("updated_at").notNull(),
+});
+export const documentEmailDeliveries = sqliteTable("document_email_deliveries", {
+  id: text("id").primaryKey(), organizationId: text("organization_id").notNull().references(() => workspaces.id,{onDelete:"cascade"}),
+  aliasGeneration: text("alias_generation").notNull(),bodySha256:text("body_sha256").notNull(),status:text("status").notNull(),
+  leaseToken:text("lease_token"),leaseUntil:integer("lease_until").notNull().default(0),createdAt:integer("created_at").notNull(),updatedAt:integer("updated_at").notNull(),
+},table=>[index("document_email_delivery_org_time").on(table.organizationId,table.createdAt)]);
+export const documentEmailSources = sqliteTable("document_email_sources", {
+  deliveryId:text("delivery_id").notNull().references(()=>documentEmailDeliveries.id,{onDelete:"cascade"}),
+  attachmentIndex:integer("attachment_index").notNull(),organizationId:text("organization_id").notNull().references(()=>workspaces.id,{onDelete:"cascade"}),
+  documentId:text("document_id").references(()=>workspaceDocuments.id,{onDelete:"set null"}),senderUnverified:text("sender_unverified").notNull(),
+  authorizedByUserId:text("authorized_by_user_id").notNull().references(()=>users.id,{onDelete:"cascade"}),createdAt:integer("created_at").notNull(),
+},table=>[primaryKey({columns:[table.deliveryId,table.attachmentIndex]})]);
+// Keep a disposal reference until an uncommitted private object has been removed.
+export const documentIngestIntents = sqliteTable("document_ingest_intents", {
+  id:text("id").primaryKey(),organizationId:text("organization_id").notNull(),objectKey:text("object_key").notNull().unique(),
+  sha256Hex:text("sha256_hex").notNull(),state:text("state").notNull(),createdAt:integer("created_at").notNull(),
+  leaseToken:text("lease_token"),leaseUntil:integer("lease_until").notNull().default(0),
+},table=>[uniqueIndex("document_ingest_org_hash").on(table.organizationId,table.sha256Hex),index("document_ingest_cleanup_due").on(table.state,table.leaseUntil,table.createdAt)]);
