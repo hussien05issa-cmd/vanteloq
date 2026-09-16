@@ -107,7 +107,7 @@
   --sidebar-hover:#e0edff;
   --sidebar-line:#c6d8e9;
   --sidebar-text:#3e5875;
-  --sidebar-muted:#506b85;
+  --sidebar-muted:#48627d;
   --sidebar-heading:#16304c;
   --sidebar-active:#2367aa;
   --sidebar-current-bg:linear-gradient(115deg,#d4e7ff,#e8f2ff);
@@ -136,7 +136,7 @@
 .operating-shell .sidebar .nav-item { color:#3e5875; }
 .operating-shell .sidebar .nav-item > .workspace-icon { color:#476987; }
 .operating-shell .sidebar .nav-item:hover { background:#e0edff; color:#17497d; }
-.operating-shell .sidebar :is(.brand-name small,.subscription-summary span,.subscription-summary small,.nav-group > p,.profile small) { color:#506b85; }
+.operating-shell .sidebar :is(.brand-name small,.subscription-summary span,.subscription-summary small,.nav-group > p,.profile small) { color:#48627d; }
 .operating-shell .workspace-switcher { background:#f4f9fdb8; border-color:#c6d8e9; box-shadow:inset 0 1px 0 #ffffff; }
 .operating-shell .workspace-switcher > span:nth-child(2) small { color:#516982; }
 .operating-shell .workspace-switcher .location-switcher select { background:#f7fafe!important; border-color:#bdcfe2!important; color:#294b6d!important; }
@@ -180,12 +180,12 @@
 }
 .operating-shell .bookloq-side nav section > p,.operating-shell .bookloq-side-foot { color:#4d6985; }
 .operating-shell .bookloq-side-foot { background:#e5eef8; border-color:#c6d8e9; }
-.operating-shell .bookloq-side-foot small { color:#506b85; }
+.operating-shell .bookloq-side-foot small { color:#48627d; }
 /* Clear data surfaces paired with restrained glass navigation. */
 .operating-shell .bookloq-promise { background:linear-gradient(120deg,#f7fbff,#e8f1fb); border:1px solid #d7e3f0; border-radius:18px; padding:24px; box-shadow:inset 0 1px 0 #fff; }
 .operating-shell .bookloq-promise h3 { color:#172f49; font-size:25px!important; line-height:1.35; letter-spacing:-.035em; }
 .operating-shell .bookloq-promise p { color:#436589; }
-.operating-shell .bookloq-promise span { color:#506b85; }
+.operating-shell .bookloq-promise span { color:#48627d; }
 .operating-shell .bookloq-promise button { background:var(--ui-action); border-color:#365b7e; color:#f6faff; border-radius:12px; min-height:44px; }
 .operating-shell :is(.bookloq-card,.metric-card,.dense-panel,.integration-card,.decision-explorer) { border-radius:18px; }
 .operating-shell .bookloq-kpis { grid-template-columns:repeat(4,minmax(0,1fr)); gap:16px; }
