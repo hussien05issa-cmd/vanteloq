@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile, readdir } from "node:fs/promises";
 import { Miniflare } from "miniflare";
+import { unstable_splitSqlQuery } from "wrangler";
 import { reviewedBankStatement, statementFingerprint } from "../domain/bank-statement.ts";
 import { commitStatement, prepareStatement, statementAccounts, undoStatement } from "../server/bank-statement.ts";
 import { loadBookloqCashActivity } from "../server/bookloq-cash-activity.ts";
@@ -25,7 +26,12 @@ test("statement database import is atomic, scoped, duplicate-safe and supplies h
   try {
     const db = await mf.getD1Database("DB") as unknown as D1Database;
     for (const file of (await readdir(new URL("../drizzle/", import.meta.url))).filter(file => /^\d{4}.*\.sql$/.test(file)).sort()) {
-      for (const sql of (await readFile(new URL(`../drizzle/${file}`, import.meta.url), "utf8")).split("--> statement-breakpoint").map(text => text.trim()).filter(Boolean)) await db.prepare(sql).run();
+      const migration = await readFile(new URL(`../drizzle/${file}`, import.meta.url), "utf8");
+      // Exercise the provider SQL splitter too: CASE ... END; inside a trigger
+      // can be split differently from the local Drizzle breakpoint path.
+      const statements = file === "0051_reviewed_bank_statements.sql" ? unstable_splitSqlQuery(migration) : migration.split("--> statement-breakpoint").map(text => text.trim()).filter(Boolean);
+      if (file === "0051_reviewed_bank_statements.sql") assert.equal(statements.filter(sql => /^CREATE TRIGGER/i.test(sql)).length, 4);
+      for (const sql of statements) await db.prepare(sql).run();
     }
     await db.batch([
       db.prepare("INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES ('actor','statement@example.invalid','Test',1,1)"),
