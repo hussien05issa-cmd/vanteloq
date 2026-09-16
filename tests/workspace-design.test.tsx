@@ -3,10 +3,28 @@ import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { BusinessTrendChart, IntradaySalesChart, MetricSparkline, CashPositionRing } from "../app/dashboard-charts";
 import ResourceGuideVisual from "../app/resource-guide-visual";
-import { Metric } from "../app/vanteloq-app";
+import { Metric, BusinessBrief } from "../app/vanteloq-app";
+import type { ComponentProps } from "react";
 import { DataTable, FinancialKpi } from "../app/bookloq-workspace";
 import WorkspaceIcon from "../app/workspace-icon";
 import { chartDomain, chartY, comparisonCopy, quantityLabel, sourceDateFreshness } from "../domain/workspace-presentation";
+
+test("the business brief withholds unverified profit and labour rather than displaying fallback zeros", () => {
+  const data = {
+    ready: true, current: { netSalesCents: 10000, grossProfitCents: 5000, contributionCents: 5000, labourRate: 0 },
+    source: { latestBusinessDate: "2026-09-15" }, dataQuality: { status: "limited" },
+    metrics: { net_sales: { actuality: "actual" }, gross_profit: { actuality: "unavailable" }, contribution_after_labour: { actuality: "unavailable" } },
+    comparisons: null, insights: [],
+  } as unknown as ComponentProps<typeof BusinessBrief>["data"];
+  const render = () => renderToStaticMarkup(<BusinessBrief data={data} currency="CAD" navigate={() => {}} createTask={() => {}}/>);
+  assert.match(render(), /\$100/);
+  assert.doesNotMatch(render(), /\$50|0%|After recorded labour/);
+  assert.match(render(), /Verified sales, cost and labour records required/);
+  data.metrics.gross_profit.actuality = "actual";
+  data.metrics.contribution_after_labour.actuality = "actual";
+  assert.match(render(), /\$50/);
+  assert.match(render(), /After recorded labour costs/);
+});
 
 test("invalid future timestamps never masquerade as current source evidence", () => {
   const now = Date.parse("2026-09-07T12:00:00Z");

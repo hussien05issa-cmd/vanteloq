@@ -22,6 +22,7 @@ import {
 } from "../../../../domain/thirteen-week-cash-flow";
 import { rankTransactionMatches } from "../../../../domain/bookloq-cash-management";
 import { loadBookloqCashActivity } from "../../../../server/bookloq-cash-activity";
+import { businessClock } from "../../../../domain/intraday-sales";
 
 const readers = ["owner", "admin", "manager", "employee", "read_only"] as const;
 
@@ -344,7 +345,7 @@ export async function GET(request: Request) {
     const healthScore = missingReceiptCount === null
       ? null
       : bookkeepingHealthScore({ unbalancedJournalCount, uncategorizedCount, unreconciledCount, openCriticalAlerts, missingReceiptCount, monthEndCompletionRate });
-    const asOf = new Date().toISOString().slice(0, 10);
+    const asOf = businessClock(new Date(), context.organization.timezone)!.date;
     const integrationRows = rows(integrationsResult) as Array<{ provider: string; status: string; dataPromotionStatus: string; lastSuccessfulSyncAt: number | null }>;
     const documentRows = rows(documentsResult) as Array<{ id: string; documentType: string; fileName: string; status: string; securityState: string; extractionStatus: string; extractedJson: string; createdAt: number }>;
     const transactionMatches = (rows(transactionMatchesResult) as Array<{ id: string; transactionId: string; status: string; method: string; confidenceBasisPoints: number; matchedAmountCents: number; reasonsJson: string; note: string; supplierBillId: string | null; customerInvoiceId: string | null; documentId: string | null; targetLabel: string }>).map((match) => (
@@ -390,6 +391,15 @@ export async function GET(request: Request) {
     const matchesDataMode = (demoRecord: number) => dataMode === "demonstration" ? Boolean(demoRecord) : !Boolean(demoRecord);
     const visibleBills = access.accountsPayableReceivable ? bills.filter((bill) => matchesDataMode(bill.demoRecord)) : [];
     const visibleInvoices = access.accountsPayableReceivable ? invoices.filter((invoice) => matchesDataMode(invoice.demoRecord)) : [];
+    // Count issued, unpaid receivables across the entire tenant, not the capped table.
+    // Drafts have not been issued and must never create an overdue collection alert.
+    const overdueInvoices = access.accountsPayableReceivable
+      ? await database.prepare(`SELECT COUNT(*) count FROM customer_invoices
+          WHERE organization_id = ? AND demo_record = ? AND due_date < ?
+            AND status IN ('approved', 'sent', 'viewed', 'due', 'partially_paid', 'overdue')
+            AND total_cents > paid_cents`)
+        .bind(organizationId, dataMode === "demonstration" ? 1 : 0, asOf).first<{ count: number }>()
+      : null;
     const visibleContacts = access.contactIdentity ? rows(contactsResult) : [];
     const demonstrationCashBanks = visibleBanks.filter((bank) =>
       cashAccountTypes.has(bank.accountType)
@@ -747,7 +757,7 @@ export async function GET(request: Request) {
             : null,
           debtObligationsCents: ledgerReadable ? statements.accounts.filter((account) => account.systemKey === "loan_payable").reduce((sum, account) => sum + account.balanceCents, 0) : null,
           upcomingBillsCount: ledgerReadable && access.accountsPayableReceivable ? bills.filter((bill) => !["paid", "reconciled", "void"].includes(bill.status)).length : null,
-          overdueInvoicesCount: ledgerReadable && access.accountsPayableReceivable ? invoices.filter((invoice) => invoice.dueDate < asOf && !["paid", "written_off", "void"].includes(invoice.status)).length : null,
+          overdueInvoicesCount: overdueInvoices ? Number(overdueInvoices.count) : null,
           unreconciledCount: ledgerReadable && canReconcile ? unreconciledCount : null,
           uncategorizedCount: ledgerReadable && transactionReadable ? uncategorizedCount : null,
           missingReceiptsCount: ledgerReadable ? missingReceiptCount : null,

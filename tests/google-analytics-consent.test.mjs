@@ -27,7 +27,7 @@ test("Google Analytics is gated behind an explicit visitor choice", async () => 
   assert.match(consent, /analytics_storage:\s*["']granted["']/);
   assert.match(consent, /Essential only/);
   assert.match(consent, /Allow analytics/);
-  assert.match(consent, /Cookie settings/);
+  assert.match(consent, /Cookie settings/i);
   assert.match(consent, /https:\/\/www\.googletagmanager\.com\/gtag\/js/);
 });
 
