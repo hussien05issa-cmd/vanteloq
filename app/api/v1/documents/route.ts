@@ -13,6 +13,7 @@ import {
   jsonResponse,
   requireSameOrigin,
   readJsonObject,
+  readRequestBytes,
 } from "../../../../server/api";
 import { requirePermission } from "../../../../server/permissions";
 import { requireOrganizationWideLocationAccess } from "../../../../server/location-access";
@@ -175,14 +176,20 @@ export async function POST(request: Request) {
     await requirePermission(context, "documents.upload");
     await requireOrganizationWideLocationAccess(context);
     await enforceRateLimit("documents:write", context.userId, 30, 3_600);
-    const contentLength = Number(request.headers.get("content-length") || 0);
-    if (contentLength > maximumBytes + 100_000)
-      throw new ApiError(
-        413,
-        "FILE_TOO_LARGE",
-        "Documents must be 10 MB or smaller.",
-      );
-    const form = await request.formData();
+    const contentType = request.headers.get("content-type") ?? "";
+    if (!/^multipart\/form-data(?:\s*;|$)/i.test(contentType))
+      throw new ApiError(415, "UNSUPPORTED_CONTENT_TYPE", "Send the document as a multipart upload.");
+    // Bound actual streamed bytes before multipart parsing. Content-Length may be absent.
+    const uploadBytes = await readRequestBytes(request, maximumBytes + 100_000,
+      "FILE_TOO_LARGE", "Documents must be 10 MB or smaller.");
+    let form: FormData;
+    try {
+      form = await new Response(uploadBytes.buffer as ArrayBuffer, {
+        headers: { "Content-Type": contentType },
+      }).formData();
+    } catch {
+      throw new ApiError(400, "INVALID_MULTIPART", "The document upload could not be read. Choose the file and try again.");
+    }
     const file = form.get("file");
     if (!(file instanceof File) || file.size <= 0 || file.size > maximumBytes)
       throw new ApiError(400, "INVALID_FILE", "Choose a document up to 10 MB.");
@@ -223,7 +230,7 @@ export async function POST(request: Request) {
       );
     const id = crypto.randomUUID();
     const objectKey = `${context.organizationId}/documents/quarantine/${id}.${verified.extension}`;
-    const now = Date.now();
+    const now = Math.floor(Date.now() / 1000);
     await getR2().put(objectKey, bytes.buffer, {
       httpMetadata: {
         contentType: verified.type,

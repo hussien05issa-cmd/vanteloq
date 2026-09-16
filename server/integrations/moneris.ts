@@ -30,6 +30,16 @@ export type NormalizedMonerisPayment = {
 
 const text = (value: unknown) => typeof value === "string" ? value.trim() : "";
 
+export class MonerisSourceEvidenceError extends Error {
+  constructor(readonly code: string, message: string) { super(message); }
+}
+
+export function monerisPaymentId(payment: Record<string, unknown>) {
+  const id = text(payment.paymentId) || text(payment.id);
+  if (!id) throw new MonerisSourceEvidenceError("MONERIS_PAYMENT_ID_MISSING", "Moneris payment id missing.");
+  return id;
+}
+
 export function monerisReadiness() {
   const encryptionConfigured = Boolean(getRuntimeEnv().INTEGRATION_ENCRYPTION_KEY?.trim());
   return {
@@ -190,6 +200,8 @@ export async function fetchMonerisPayments(
     if (!response.ok) throw new ApiError(502, "MONERIS_PAYMENTS_FAILED", "Moneris could not return this merchant's payment history.");
     const body = await response.json().catch(() => null);
     if (!body || typeof body !== "object" || !Array.isArray((body as Record<string, unknown>).data)) throw new ApiError(502, "MONERIS_PAYMENTS_RESPONSE_INVALID", "Moneris returned an incomplete payment history response.");
+    const rows = (body as Record<string, unknown>).data as unknown[];
+    if (rows.some(row => !row || typeof row !== "object" || Array.isArray(row))) throw new ApiError(502, "MONERIS_PAYMENTS_RESPONSE_INVALID", "Moneris returned an invalid payment row. Retry before reviewing payment history.");
     payments.push(...listPayload(body));
     pages += 1;
     const next = monerisNextCursor(body, credentials.environment);
@@ -202,27 +214,45 @@ export async function fetchMonerisPayments(
 
 function amountCents(value: unknown) {
   const candidate = value && typeof value === "object" ? (value as Record<string, unknown>).amount : value;
-  if (typeof candidate !== "number" && (typeof candidate !== "string" || !/^\d+$/.test(candidate))) throw new Error("invalid amount");
+  if (typeof candidate !== "number" && (typeof candidate !== "string" || !/^\d+$/.test(candidate))) throw new MonerisSourceEvidenceError("MONERIS_AMOUNT_INVALID", "Moneris payment amount is invalid.");
   const parsed = Number(candidate);
-  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 9_000_000_000) throw new Error("invalid amount");
+  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 9_000_000_000) throw new MonerisSourceEvidenceError("MONERIS_AMOUNT_INVALID", "Moneris payment amount is invalid.");
   return parsed;
 }
 
-export async function normalizeMonerisPayment(payment: Record<string, unknown>): Promise<NormalizedMonerisPayment | null> {
+// Only use after the fresh payment has passed current currency/date validation.
+// This reproduces the exact former fingerprint for a hash-only re-attestation.
+export async function legacyMonerisPaymentHash(payment: NormalizedMonerisPayment) {
+  const sanitized = {
+    externalPaymentId: payment.externalPaymentId, externalSaleId: payment.externalSaleId,
+    status: "SUCCEEDED", amountCents: payment.amountCents, paidAt: payment.paidAt,
+    methodName: payment.paymentTypeName,
+  };
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(sanitized)));
+  return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, "0")).join("");
+}
+
+export async function normalizeMonerisPayment(payment: Record<string, unknown>, expectedCurrency = "CAD"): Promise<NormalizedMonerisPayment | null> {
   const status = (text(payment.paymentStatus) || text(payment.status)).toUpperCase();
-  if (!status) throw new Error("payment status missing");
+  if (!status) throw new MonerisSourceEvidenceError("MONERIS_PAYMENT_STATUS_MISSING", "Moneris payment status missing.");
   if (status !== "SUCCEEDED") return null;
-  const externalPaymentId = text(payment.paymentId) || text(payment.id);
-  if (!externalPaymentId) throw new Error("payment id missing");
+  const externalPaymentId = monerisPaymentId(payment);
+  const money = payment.amount && typeof payment.amount === "object" ? payment.amount as Record<string, unknown> : {};
+  const currency = text(money.currency).toUpperCase();
+  // This staging table has no currency column. Never combine unlike currencies
+  // or infer a currency from the workspace when Moneris did not provide one.
+  if (!currency || !["CAD", "USD"].includes(currency)) throw new MonerisSourceEvidenceError("MONERIS_CURRENCY_UNSUPPORTED", "Moneris payment currency is missing or unsupported.");
+  if (currency !== expectedCurrency.toUpperCase()) throw new MonerisSourceEvidenceError("MONERIS_CURRENCY_MISMATCH", "Moneris payment currency differs from the workspace currency.");
   const transaction = payment.transactionDetails && typeof payment.transactionDetails === "object" ? payment.transactionDetails as Record<string, unknown> : {};
   const externalSaleId = text(payment.orderId) || text(transaction.orderId) || externalPaymentId;
   const paidAtRaw = text(payment.transactionDateTime) || text(payment.createdAt) || text(payment.processedAt) || text(payment.updatedAt) || text(transaction.createdAt);
   const paidAtDate = paidAtRaw ? new Date(paidAtRaw) : null;
   const paidAt = paidAtDate && !Number.isNaN(paidAtDate.getTime()) ? paidAtDate.toISOString() : null;
+  if (!paidAt) throw new MonerisSourceEvidenceError("MONERIS_PAYMENT_DATE_INVALID", "Moneris payment date is missing or invalid.");
   const method = payment.paymentMethod && typeof payment.paymentMethod === "object" ? payment.paymentMethod as Record<string, unknown> : {};
   const methodInformation = method.paymentMethodInformation && typeof method.paymentMethodInformation === "object" ? method.paymentMethodInformation as Record<string, unknown> : {};
   const methodName = text(methodInformation.paymentMethodType) || text(method.type) || text(payment.paymentMethodType) || "Unknown";
-  const sanitized = { externalPaymentId, externalSaleId, status, amountCents: amountCents(payment.amount), paidAt, methodName };
+  const sanitized = { externalPaymentId, externalSaleId, status, currency, amountCents: amountCents(payment.amount), paidAt, methodName };
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(sanitized)));
   const sourcePayloadHash = [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
   return {

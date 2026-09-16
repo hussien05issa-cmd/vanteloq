@@ -3,12 +3,14 @@ import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
 import {
   CLOVER_LATEST_SALES_SQL,
+  CLOVER_VOIDED_PAYMENT_DELETE_SQL,
   CloverSourceEvidenceError,
   cloverLineDiscountCents,
   cloverLineNetSalesCents,
   cloverLineQuantityMilli,
   cloverOrderReportingState,
   cloverPaymentDisposition,
+  cloverVoidedPaymentExternalId,
 } from "../server/integrations/clover-reporting.ts";
 
 function issue(code: string) {
@@ -90,6 +92,53 @@ test("uncertain settlement or linked void states require review", () => {
   }
   assert.throws(() => cloverPaymentDisposition({ result: "SUCCESS", voidPaymentRef: { id: "void-reference" } }), issue("CLOVER_PAYMENT_VOID_REVIEW_REQUIRED"));
   assert.throws(() => cloverPaymentDisposition({ result: "SUCCESS", voided: "false" }), issue("CLOVER_PAYMENT_STATUS_REQUIRED"));
+});
+
+test("expanded void records cannot be mistaken for a clean successful payment", () => {
+  assert.equal(cloverPaymentDisposition({ result: "SUCCESS", voids: { elements: [] } }), "posted");
+  for (const voids of [{ elements: [{ id: "void-1" }] }, [{ id: "void-1" }], { href: "/voids" }, "invalid"]) {
+    assert.throws(() => cloverPaymentDisposition({ result: "SUCCESS", voids }), issue("CLOVER_PAYMENT_VOID_REVIEW_REQUIRED"));
+  }
+  // Explicit provider evidence is authoritative; ambiguous linked records alone are not.
+  assert.equal(cloverVoidedPaymentExternalId({ id: "payment-1", result: "SUCCESS", voided: true, voids: { elements: [{ id: "void-1" }] } }), "payment-1");
+});
+
+test("payment reversals require explicit void evidence and the original source ID", () => {
+  assert.equal(cloverVoidedPaymentExternalId({ id: "payment-1", result: "SUCCESS", voided: true }), "payment-1");
+  assert.equal(cloverVoidedPaymentExternalId({ id: "payment-1", result: "VOIDED" }), "payment-1");
+  for (const result of ["SUCCESS", "FAIL", "PENDING", "INITIATED", "AUTH", "OFFLINE_RETRYING"]) {
+    assert.equal(cloverVoidedPaymentExternalId({ id: "payment-1", result }), null);
+  }
+  for (const id of [undefined, "", " ", 12, "x".repeat(121)]) {
+    assert.throws(() => cloverVoidedPaymentExternalId({ id, result: "VOIDED" }), issue("CLOVER_PAYMENT_ID_REQUIRED"));
+  }
+  assert.throws(() => cloverVoidedPaymentExternalId({ id: "payment-1", result: "SUCCESS", voidPaymentRef: { id: "linked" } }), issue("CLOVER_PAYMENT_VOID_REVIEW_REQUIRED"));
+});
+
+test("a confirmed void retracts an earlier collection without touching another account or a partial page", () => {
+  const db = new DatabaseSync(":memory:");
+  try {
+    db.exec(`
+      CREATE TABLE commerce_payments (organization_id TEXT, provider TEXT, connection_id TEXT,
+        external_payment_id TEXT, amount_cents INTEGER);
+      INSERT INTO commerce_payments VALUES
+        ('org-a','clover','conn-a','namespace:payment-1',1130),
+        ('org-a','clover','conn-a','namespace:payment-2',2260),
+        ('org-b','clover','conn-a','namespace:payment-1',1130),
+        ('org-a','clover','conn-b','namespace:payment-1',1130),
+        ('org-a','square','conn-a','namespace:payment-1',1130);
+    `);
+    const total = () => db.prepare("SELECT SUM(amount_cents) amount FROM commerce_payments WHERE organization_id='org-a' AND provider='clover' AND connection_id='conn-a'").get()?.amount;
+    assert.equal(total(), 3390);
+    const id = cloverVoidedPaymentExternalId({ id: "payment-1", result: "SUCCESS", voided: true });
+    assert.equal(id, "payment-1");
+    const remove = db.prepare(CLOVER_VOIDED_PAYMENT_DELETE_SQL);
+    assert.equal(remove.run("org-a", "clover", "conn-a", `namespace:${id}`).changes, 1);
+    assert.equal(total(), 2260);
+    assert.equal(db.prepare("SELECT COUNT(*) count FROM commerce_payments").get()?.count, 4);
+    assert.equal(remove.run("org-a", "clover", "conn-a", `namespace:${id}`).changes, 0);
+    assert.equal(total(), 2260);
+  } finally { db.close(); }
 });
 
 test("daily quantity query isolates connections and distinguishes incomplete from empty orders", () => {
