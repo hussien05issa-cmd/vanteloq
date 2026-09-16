@@ -801,6 +801,11 @@ export default function VanteloqApp({
       }
       setView(destination);
       const state = parameters.get("connection");
+      if (integration === "clover" && !state && parameters.get("action") === "connect") {
+        setNotice("Open the Clover card and select Connect to authorize your merchant account.");
+        window.history.replaceState({}, "", window.location.pathname);
+        return;
+      }
       if (integration === "quickbooks") {
         setNotice(state === "connected"
           ? "QuickBooks is connected. Review the selected company in Integrations."
