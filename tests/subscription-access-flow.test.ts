@@ -137,6 +137,18 @@ test("verified subscription events control interface, BookLoQ and server access 
     const email = `billing-${crypto.randomUUID()}@example.invalid`;
     const created = await dispatch(worker, environment, "/api/v1/onboarding", { method: "POST", email, body: onboardingBody("Billing Owner", "Billing Pilot") });
     assert.equal(created.status, 201, await created.clone().text());
+    const catalogueResponse = await dispatch(worker, environment, "/api/v1/billing", { email });
+    assert.equal(catalogueResponse.status, 200);
+    const catalogue = await catalogueResponse.json();
+    for (const advertised of catalogue.plans) {
+      const definition = PLANS[advertised.key as keyof typeof PLANS];
+      const capacity = advertised.included.find((line: string) => line.startsWith("Up to "));
+      assert.ok(capacity, `${advertised.key} must disclose its capacity before checkout`);
+      const quantities = capacity.match(/\d+/g)?.map(Number);
+      assert.deepEqual(quantities, [definition.limits.activeLocations, definition.limits.users]);
+      assert.equal(advertised.price, definition.prices.month.amountCents);
+    }
+    assert.equal(catalogue.addon.price, ADDONS.bookloq.prices.month.amountCents);
     const identity = await database.prepare("SELECT u.id userId, m.organization_id organizationId FROM users u JOIN memberships m ON m.user_id=u.id WHERE u.email=?")
       .bind(email).first<{ userId: string; organizationId: string }>();
     assert.ok(identity);
