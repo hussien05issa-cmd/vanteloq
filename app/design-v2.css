@@ -67,6 +67,11 @@ button, a, input, select, textarea, summary { -webkit-tap-highlight-color: trans
   --sidebar-text: #dce7f3;
   --sidebar-muted: #90a6bf;
   --sidebar-active: #1f66e5;
+  --sidebar-heading: #fff;
+  --sidebar-current-bg: #0b315d;
+  --sidebar-current-line: #1d4d7f;
+  --sidebar-current-text: #fff;
+  --sidebar-logo-filter: brightness(0) invert(1);
   grid-template-columns: 246px minmax(0, 1fr);
   background: var(--vql-canvas);
 }
@@ -123,7 +128,7 @@ button, a, input, select, textarea, summary { -webkit-tap-highlight-color: trans
   color: #fff;
 }
 .operating-shell .workspace-switcher b,
-.operating-shell .profile b { color: #fff; font-weight: 650; }
+.operating-shell .profile b { color: var(--sidebar-heading); font-weight: 650; }
 .operating-shell .workspace-switcher small,
 .operating-shell .profile small { color: #a6b8cc; }
 .operating-shell .nav-group { margin-bottom: 11px; }
@@ -218,18 +223,18 @@ button, a, input, select, textarea, summary { -webkit-tap-highlight-color: trans
 }
 .operating-shell .bookloq-main-nav:hover {
   background: var(--sidebar-hover) !important;
-  border-color: rgba(93, 145, 199, .18) !important;
-  color: #fff !important;
+  border-color: var(--sidebar-line) !important;
+  color: var(--sidebar-heading) !important;
 }
 .operating-shell .bookloq-main-nav.active {
-  background: #0b315d !important;
-  border-color: #1d4d7f !important;
-  color: #fff !important;
+  background: var(--sidebar-current-bg) !important;
+  border-color: var(--sidebar-current-line) !important;
+  color: var(--sidebar-current-text) !important;
   font-weight: 700 !important;
 }
 .operating-shell .bookloq-main-nav { min-height: 48px; padding-block: 4px; }
 .operating-shell .bookloq-nav-lockup { flex: 0 0 auto; width: 132px; height: 38px; overflow: hidden; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
-.operating-shell .bookloq-nav-lockup img { width: 100% !important; height: 100% !important; margin: 0 !important; padding: 1px 4px !important; object-fit: contain !important; object-position: center !important; transform: none !important; filter: brightness(0) invert(1); }
+.operating-shell .bookloq-nav-lockup img { width: 100% !important; height: 100% !important; margin: 0 !important; padding: 1px 4px !important; object-fit: contain !important; object-position: center !important; transform: none !important; filter: var(--sidebar-logo-filter); }
 .operating-shell .bookloq-nav-lockup .brand-trademark { display: none; }
 .operating-shell .provider-setup-needed {
   display: grid;
