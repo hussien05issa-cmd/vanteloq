@@ -35,8 +35,9 @@ The obsolete Clover Sandbox Review callback and CORS origin were removed from th
 | Shopify and Shopify POS | Public installation and required provider review, followed by authorized store/location acceptance. |
 | Plaid | Production approval/configuration, security evidence and Canadian institution acceptance. |
 | Meta and Google restricted services | Required provider access/reviews and correct subscriber resource authorization. |
-| Documents | Automatic retries of already requested provider cleanup are not yet scheduled. A 24-hour abandoned-original purge is still a target, not an active promise. |
-| Newsletter | Enrollment and sending remain disabled until valid sender identification is supplied. No personal or placeholder address is published. |
+| Documents | The follow-up in `cleanup-and-quickbooks-review-2026-09-16.md` adds automatic retries of already authorized cleanup. A 24-hour abandoned-original purge is still a target, not an active promise. |
 | Live workspace | Complete authenticated acceptance of the released workflows; fictional local fixtures do not replace this. |
 
 See the original provider and launch verification notes for their historical test scope. Provider logos, saved credentials and a successful build do not establish complete financial coverage.
+
+The owner excluded newsletters from the remaining launch work on September 16. Enrollment and sending remain disabled; this is not an outstanding launch requirement.

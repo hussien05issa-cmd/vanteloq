@@ -2,6 +2,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { getD1, getDb, getR2, getRuntimeEnv } from "../../../../db";
 import { cleanupCompletedDocument, processDocument, processingSummary, readProcessing } from "../../../../server/document-processing";
 import { deleteDocument, documentDeletionSummary } from "../../../../server/document-deletion";
+import { documentCleanupRetrySummary } from "../../../../server/document-cleanup-state";
 import { documentProviderConfiguration } from "../../../../server/document-providers";
 import { workspaceDocuments } from "../../../../db/schema";
 import { recordAudit } from "../../../../server/audit";
@@ -100,7 +101,7 @@ async function list(organizationId: string) {
     .limit(200);
   const providers = documentProviderConfiguration(getRuntimeEnv());
   return {
-    documents: documents.map(({ extractedJson, ...document }) => ({ ...document, ...processingSummary(extractedJson), ...documentDeletionSummary(extractedJson, document.status) })),
+    documents: documents.map(({ extractedJson, ...document }) => ({ ...document, ...processingSummary(extractedJson), ...documentDeletionSummary(extractedJson, document.status), ...documentCleanupRetrySummary(extractedJson, document.status) })),
     pipeline: {
       upload: "live",
       tenantStorage: "live",

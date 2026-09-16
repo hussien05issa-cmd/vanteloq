@@ -9,6 +9,7 @@ import { requireFeature } from "../../../../../../server/entitlements/engine";
 import {
   buildQuickBooksAuthorizationUrl,
   newQuickBooksOAuthState,
+  newQuickBooksGrantNamespace,
   quickBooksReadiness,
   quickBooksStateHash,
   QUICKBOOKS_PROVIDER,
@@ -42,7 +43,7 @@ export async function POST(request: Request) {
       id: connectionId,
       organizationId: context.organizationId,
       provider: QUICKBOOKS_PROVIDER,
-      sourceNamespace: connectionId,
+      sourceNamespace: await newQuickBooksGrantNamespace(connectionId),
       status: "pending",
       externalAccountRef: null,
       externalAccountName: "New QuickBooks company",

@@ -1,11 +1,11 @@
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../../../../../../db";
-import { integrationConnections, integrationConsents, integrationOAuthStates, integrationSecrets } from "../../../../../../db/schema";
+import { integrationConsents, integrationOAuthStates } from "../../../../../../db/schema";
 import { recordAudit } from "../../../../../../server/audit";
 import { requirePrivacyAccess } from "../../../../../../server/authorization";
-import { ApiError, enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameOrigin } from "../../../../../../server/api";
+import { enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameOrigin } from "../../../../../../server/api";
 import { requireOwnedIntegrationConnection } from "../../../../../../server/integrations/connection";
-import { revokeQuickBooksAuthorization, storedQuickBooksRefreshToken, QUICKBOOKS_PROVIDER } from "../../../../../../server/integrations/quickbooks";
+import { removeQuickBooksGrant, QUICKBOOKS_PROVIDER } from "../../../../../../server/integrations/quickbooks";
 import { requirePermission } from "../../../../../../server/permissions";
 
 export async function POST(request: Request) {
@@ -20,16 +20,8 @@ export async function POST(request: Request) {
       QUICKBOOKS_PROVIDER,
       typeof body.connectionId === "string" ? body.connectionId : null,
     );
-    const refreshToken = await storedQuickBooksRefreshToken(context.organizationId, connection.id);
-    if (refreshToken && !(await revokeQuickBooksAuthorization(refreshToken))) {
-      throw new ApiError(502, "QUICKBOOKS_DEAUTHORIZATION_FAILED", "QuickBooks did not confirm revocation. The local connection was kept so access is not misrepresented.");
-    }
+    const removal = await removeQuickBooksGrant(context.organizationId, connection.id);
     const now = new Date();
-    await getDb().delete(integrationSecrets).where(and(
-      eq(integrationSecrets.organizationId, context.organizationId),
-      eq(integrationSecrets.provider, QUICKBOOKS_PROVIDER),
-      eq(integrationSecrets.connectionId, connection.id),
-    ));
     await getDb().delete(integrationOAuthStates).where(and(
       eq(integrationOAuthStates.organizationId, context.organizationId),
       eq(integrationOAuthStates.provider, QUICKBOOKS_PROVIDER),
@@ -40,29 +32,13 @@ export async function POST(request: Request) {
       eq(integrationConsents.provider, QUICKBOOKS_PROVIDER),
       eq(integrationConsents.status, "accepted"),
     ));
-    await getDb().update(integrationConnections).set({
-      status: "revoked",
-      externalAccountRef: null,
-      domainPrefix: null,
-      scopesJson: "[]",
-      dataPromotionStatus: "blocked",
-      promotionAuthorizedAt: null,
-      connectedAt: null,
-      lastSuccessfulSyncAt: null,
-      lastSyncCursor: null,
-      lastErrorCode: null,
-      syncLeaseOwner: null,
-      syncLeaseExpiresAt: null,
-      updatedAt: now,
-    }).where(and(
-      eq(integrationConnections.id, connection.id),
-      eq(integrationConnections.organizationId, context.organizationId),
-      eq(integrationConnections.provider, QUICKBOOKS_PROVIDER),
-    ));
     await recordAudit({ request, requestId, organizationId: context.organizationId, actorUserId: context.userId,
       action: "integration.disconnected", resourceType: "integration_connection", resourceId: connection.id,
-      details: { provider: QUICKBOOKS_PROVIDER, providerAuthorizationRevoked: Boolean(refreshToken), localCredentialsDeleted: true, dataPromotionEnabled: false },
+      details: { provider: QUICKBOOKS_PROVIDER, ...removal, dataPromotionEnabled: false },
     });
-    return jsonResponse({ disconnected: true, connectionId: connection.id, providerAuthorizationRevoked: Boolean(refreshToken), localCredentialsDeleted: true });
+    return jsonResponse({ disconnected: true, connectionId: connection.id, ...removal,
+      message: removal.providerRevocationRequired
+        ? "QuickBooks was removed from Vanteloq. Remove Vanteloq from your Intuit connected apps to finish revoking provider access."
+        : "QuickBooks was disconnected and local credentials were deleted." });
   });
 }

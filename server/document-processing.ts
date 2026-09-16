@@ -4,11 +4,13 @@ import { DOCUMENT_PROCESSING_NOTICE_VERSION, type DocumentExtraction } from "../
 import { deleteExtractionResult, documentProviderConfiguration, DocumentProviderError, pollExtraction, startExtraction, validateDocumentForProcessing } from "./document-providers.ts";
 import { beginAzureScan, deleteAzureScan, pollAzureScan, type AzureScanOperation } from "./azure-document-scanner.ts";
 
+import { matchesCleanupRetryLease, type DocumentCleanupRetry } from "./document-cleanup-state.ts";
+
 type Processing = {
   version: 1; noticeVersion: string; authorizedBy: string; authorizedAt: number;
   stage: "queued" | "scanning" | "scan_waiting" | "scanned" | "starting" | "reading" | "complete" | "failed" | "blocked";
   lock?: string; leaseUntil?: number; operation?: string; expectedPages?: number; errorCode?: string; cleanupPending?: boolean;
-  azureScan?: AzureScanOperation;
+  azureScan?: AzureScanOperation; cleanupRetry?: DocumentCleanupRetry;
 };
 export type ProcessingEnvelope = { processing?: Processing; extraction?: DocumentExtraction };
 type DocumentRow = { id: string; object_key: string; content_type: string; document_type: string; sha256_hex: string; security_state: string; scan_status: string; extraction_status: string; extracted_json: string; status: string };
@@ -48,7 +50,7 @@ export function processingSummary(value: string) {
 /** Deletes existing provider copies only. It never reads, uploads or re-extracts the original. */
 export async function cleanupCompletedDocument(input: {
   database: D1Database; env: VanteloqRuntimeEnv; organizationId: string; documentId: string;
-  transport?: typeof fetch;
+  transport?: typeof fetch; backgroundRetryLease?: string;
 }) {
   const { database: db, env, organizationId, documentId } = input;
   const row = await db.prepare("SELECT extracted_json, extraction_status, status FROM workspace_documents WHERE id=? AND organization_id=?")
@@ -60,6 +62,10 @@ export async function cleanupCompletedDocument(input: {
   if (!job || job.stage !== "complete" || row.extraction_status !== "complete" || !envelope.extraction
     || job.version !== 1 || !job.authorizedBy || !job.noticeVersion || !(job.authorizedAt > 0)) {
     throw new ApiError(409, "DOCUMENT_CLEANUP_NOT_READY", "Cleanup is available only for an already authorized, completed extraction. No new processing was started.");
+  }
+  if (input.backgroundRetryLease && (!matchesCleanupRetryLease(job.cleanupRetry, input.backgroundRetryLease)
+    || !Number.isSafeInteger(job.authorizedAt))) {
+    throw new ApiError(409, "DOCUMENT_CLEANUP_STATE_CHANGED", "The saved processing cleanup changed. No new processing was started.");
   }
   if (!job.cleanupPending && !job.operation && !job.azureScan) return { state: "complete" as const, cleanupPending: false };
   if (!job.operation && !job.azureScan) throw new ApiError(409, "DOCUMENT_CLEANUP_REFERENCE_MISSING", "The saved cleanup reference needs review. Cleanup has not been confirmed.");

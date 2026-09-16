@@ -3,10 +3,12 @@ import { ApiError } from "./api.ts";
 import { deleteAzureScan, type AzureScanOperation } from "./azure-document-scanner.ts";
 import { deleteExtractionResult } from "./document-providers.ts";
 
+import { matchesCleanupRetryLease, type DocumentCleanupRetry } from "./document-cleanup-state.ts";
+
 type Deletion = {
   version: 1; requestedAt: number; requestedBy: string; originalRemoved: boolean;
   operation?: string; azureScan?: AzureScanOperation; lock?: string; leaseUntil?: number;
-  retryRequired?: boolean;
+  retryRequired?: boolean; cleanupRetry?: DocumentCleanupRetry;
 };
 type Row = { id: string; object_key: string; extracted_json: string; status: string };
 type Envelope = { deletion?: Deletion; processing?: { lock?: string; operation?: string; azureScan?: AzureScanOperation } };
@@ -31,7 +33,7 @@ export function documentDeletionSummary(value: string, status: string) {
 /** Keep a quarantined tombstone until each immutable copy has been removed. */
 export async function deleteDocument(input: {
   database: D1Database; bucket: R2Bucket; env: VanteloqRuntimeEnv;
-  organizationId: string; documentId: string; actorUserId: string; transport?: typeof fetch;
+  organizationId: string; documentId: string; actorUserId: string; transport?: typeof fetch; backgroundRetryLease?: string;
 }) {
   const { database, bucket, env, organizationId, documentId } = input;
   const find = () => database.prepare("SELECT id, object_key, extracted_json, status FROM workspace_documents WHERE organization_id=? AND id=?")
@@ -39,6 +41,13 @@ export async function deleteDocument(input: {
   let row = await find();
   // An authorized retry is idempotent and reveals nothing about another tenant.
   if (!row) return { deleted: true, status: "deleted" as const, pendingSteps: [] as string[] };
+  if (input.backgroundRetryLease) {
+    const existing = envelope(row.extracted_json).deletion;
+    if (row.status !== "deletion_pending" || !existing || !matchesCleanupRetryLease(existing.cleanupRetry, input.backgroundRetryLease)
+      || !Number.isSafeInteger(existing.requestedAt) || existing.requestedAt <= 0 || !existing.requestedBy) {
+      throw new ApiError(409, "DOCUMENT_CLEANUP_STATE_CHANGED", "The saved deletion request changed. No new deletion was started.");
+    }
+  }
   if (row.status !== "deletion_pending") {
     if (row.status === "approved") throw new ApiError(409, "RECORD_PROTECTED", "Approved accounting documents cannot be deleted from Files. Review the linked record and retention requirements first.");
     const linked = await database.prepare(`SELECT 1 linked WHERE
