@@ -94,7 +94,7 @@ export async function POST(request: Request) {
     statements.push(database.prepare(`INSERT INTO workspace_documents
       (id, organization_id, document_type, file_name, object_key, content_type, size_bytes, sha256_hex, security_state, status, scan_status, scanned_at, scan_provider, extraction_status, extracted_json, uploaded_by_user_id, created_at, updated_at)
       VALUES (?, ?, 'invoice', ?, ?, 'application/pdf', ?, ?, 'clean', 'approved', 'clean', ?, 'vanteloq-trusted-text-pdf-generator', 'complete', ?, ?, ?, ?)`)
-      .bind(documentId, context.organizationId, `${safeFilePart(invoice.invoiceNumber)}.pdf`, objectKey, pdf.byteLength, digest, nowSeconds, JSON.stringify({ source: "bookloq_generated", invoiceId: id }), context.userId, nowMs, nowMs));
+      .bind(documentId, context.organizationId, `${safeFilePart(invoice.invoiceNumber)}.pdf`, objectKey, pdf.byteLength, digest, nowSeconds, JSON.stringify({ source: "bookloq_generated", invoiceId: id }), context.userId, nowSeconds, nowSeconds));
     statements.push(database.prepare(`INSERT INTO customer_invoices
       (id, organization_id, customer_id, invoice_number, invoice_date, due_date, status, subtotal_cents, tax_cents, total_cents, paid_cents, currency, location_ref, purchase_order_ref, issuer_snapshot_json, customer_snapshot_json, notes, payment_instructions, document_id, demo_record, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`)

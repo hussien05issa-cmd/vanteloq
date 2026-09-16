@@ -138,10 +138,33 @@ export function cloverPaymentDisposition(payment: Record<string, unknown>): "pos
   if (object(payment.voidPaymentRef).id != null) {
     return review("CLOVER_PAYMENT_VOID_REVIEW_REQUIRED", "Clover linked payment void needs reconciliation.");
   }
+  if (payment.voids != null) {
+    const voids = expanded(payment.voids);
+    if (voids == null || voids.length > 0) {
+      return review("CLOVER_PAYMENT_VOID_REVIEW_REQUIRED", "Clover payment void records need reconciliation.");
+    }
+  }
   if (result === "SUCCESS") return "posted";
   if (["FAIL", "INITIATED", "PENDING", "AUTH", "OFFLINE_RETRYING"].includes(result)) return "not_posted";
   return review("CLOVER_PAYMENT_STATUS_REQUIRED", "Clover payment result needs reconciliation before reporting.");
 }
+
+// Only an explicit source void can retract a previously posted payment. Pending
+// attempts, failed retries and an ambiguous linked void are not reversals.
+export function cloverVoidedPaymentExternalId(payment: Record<string, unknown>): string | null {
+  if (cloverPaymentDisposition(payment) !== "not_posted" ||
+      (payment.voided !== true && text(payment.result) !== "VOIDED")) return null;
+  const id = typeof payment.id === "string" ? payment.id.trim() : "";
+  if (!id || id.length > 120) {
+    return review("CLOVER_PAYMENT_ID_REQUIRED", "Clover voided payment needs its source payment ID.");
+  }
+  return id;
+}
+
+export const CLOVER_VOIDED_PAYMENT_DELETE_SQL = `
+  DELETE FROM commerce_payments
+  WHERE organization_id=? AND provider=? AND connection_id=? AND external_payment_id=?
+`;
 
 // Scope quantity evidence to the same merchant connection and latest staged order.
 // Missing/extra canonical lines remain unknown; an explicitly empty order is zero.

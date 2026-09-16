@@ -1371,7 +1371,7 @@ export async function POST(request: Request) {
           )
           .bind(
             status === "matched" ? "approved" : "review_required",
-            now,
+            Math.floor(now / 1000),
             documentId,
             context.organizationId,
           ),

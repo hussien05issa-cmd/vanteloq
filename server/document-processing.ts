@@ -69,7 +69,7 @@ export async function cleanupCompletedDocument(input: {
   envelope.processing = job;
   const claimed = await db.prepare(`UPDATE workspace_documents SET extracted_json=?,updated_at=?
     WHERE id=? AND organization_id=? AND status<>'deletion_pending' AND extraction_status='complete' AND extracted_json=?`)
-    .bind(JSON.stringify(envelope), Date.now(), documentId, organizationId, row.extracted_json).run();
+    .bind(JSON.stringify(envelope), Math.floor(Date.now() / 1000), documentId, organizationId, row.extracted_json).run();
   if (claimed.meta.changes !== 1) return { state: "busy" as const, cleanupPending: true };
   try {
     // Cleanup reuses the saved consent evidence and validated provider references.
@@ -88,7 +88,7 @@ export async function cleanupCompletedDocument(input: {
     envelope.processing = job;
     const saved = await db.prepare(`UPDATE workspace_documents SET extracted_json=?,updated_at=?
       WHERE id=? AND organization_id=? AND status<>'deletion_pending' AND json_extract(extracted_json,'$.processing.lock')=?`)
-      .bind(JSON.stringify(envelope), Date.now(), documentId, organizationId, lock).run();
+      .bind(JSON.stringify(envelope), Math.floor(Date.now() / 1000), documentId, organizationId, lock).run();
     if (saved.meta.changes !== 1) return { state: "busy" as const, cleanupPending: true };
     return { state: job.cleanupPending ? "cleanup_pending" as const : "complete" as const, cleanupPending: job.cleanupPending };
   } finally {
@@ -126,7 +126,7 @@ export async function processDocument(input: {
   if ((job.stage === "failed" || job.stage === "starting" || job.stage === "scanning") && !input.retry) {
     if (job.stage !== "failed") {
       job = { ...job, stage: "failed", errorCode: "PROCESSING_INTERRUPTED", lock: undefined, leaseUntil: undefined };
-      await db.prepare("UPDATE workspace_documents SET extracted_json = ?, updated_at = ? WHERE id = ? AND organization_id = ? AND extracted_json = ?").bind(JSON.stringify({ ...envelope, processing: job }), now, documentId, organizationId, row.extracted_json).run();
+      await db.prepare("UPDATE workspace_documents SET extracted_json = ?, updated_at = ? WHERE id = ? AND organization_id = ? AND extracted_json = ?").bind(JSON.stringify({ ...envelope, processing: job }), Math.floor(now / 1000), documentId, organizationId, row.extracted_json).run();
     }
     return { state: "failed", newlyAuthorized: false };
   }
@@ -135,13 +135,13 @@ export async function processDocument(input: {
   const lock = crypto.randomUUID();
   job = { ...job, lock, leaseUntil: now + 90_000 };
   envelope = { ...envelope, processing: job };
-  const claim = await db.prepare("UPDATE workspace_documents SET extracted_json = ?, updated_at = ? WHERE id = ? AND organization_id = ? AND extracted_json = ? AND status NOT IN ('approved', 'rejected', 'deletion_pending')").bind(JSON.stringify(envelope), now, documentId, organizationId, row.extracted_json).run();
+  const claim = await db.prepare("UPDATE workspace_documents SET extracted_json = ?, updated_at = ? WHERE id = ? AND organization_id = ? AND extracted_json = ? AND status NOT IN ('approved', 'rejected', 'deletion_pending')").bind(JSON.stringify(envelope), Math.floor(now / 1000), documentId, organizationId, row.extracted_json).run();
   if (claim.meta.changes !== 1) return { state: "busy", newlyAuthorized: false };
   let scan = row.scan_status, security = row.security_state, extractionStatus = row.extraction_status;
   const save = async (stage: Processing["stage"], release = true) => {
     job = { ...job!, stage, lock: release ? undefined : lock, leaseUntil: release ? undefined : now + 90_000 };
     envelope.processing = job;
-    const result = await db.prepare("UPDATE workspace_documents SET extracted_json = ?, scan_status = ?, security_state = ?, extraction_status = ?, scan_provider = CASE WHEN ? = 'clean' OR ? = 'blocked' THEN 'azure-defender' ELSE scan_provider END, scanned_at = CASE WHEN ? = 'clean' OR ? = 'blocked' THEN COALESCE(scanned_at, ?) ELSE scanned_at END, status = 'review_required', updated_at = ? WHERE id = ? AND organization_id = ? AND json_extract(extracted_json, '$.processing.lock') = ? AND status NOT IN ('approved', 'rejected', 'deletion_pending')").bind(JSON.stringify(envelope), scan, security, extractionStatus, scan, scan, scan, scan, Math.floor(Date.now() / 1000), Date.now(), documentId, organizationId, lock).run();
+    const result = await db.prepare("UPDATE workspace_documents SET extracted_json = ?, scan_status = ?, security_state = ?, extraction_status = ?, scan_provider = CASE WHEN ? = 'clean' OR ? = 'blocked' THEN 'azure-defender' ELSE scan_provider END, scanned_at = CASE WHEN ? = 'clean' OR ? = 'blocked' THEN COALESCE(scanned_at, ?) ELSE scanned_at END, status = 'review_required', updated_at = ? WHERE id = ? AND organization_id = ? AND json_extract(extracted_json, '$.processing.lock') = ? AND status NOT IN ('approved', 'rejected', 'deletion_pending')").bind(JSON.stringify(envelope), scan, security, extractionStatus, scan, scan, scan, scan, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000), documentId, organizationId, lock).run();
     return result.meta.changes === 1;
   };
   try {

@@ -14,7 +14,10 @@ import {
   requireOwnedIntegrationConnection, sqliteTimestampSeconds,
 } from "../../integrations/connection";
 import { applyOwnerInventoryCosts } from "../../inventory-costs";
-import { CLOVER_LATEST_SALES_SQL, CloverSourceEvidenceError } from "../clover-reporting";
+import {
+  CLOVER_LATEST_SALES_SQL, CLOVER_VOIDED_PAYMENT_DELETE_SQL,
+  CloverSourceEvidenceError, cloverVoidedPaymentExternalId,
+} from "../clover-reporting";
 
 const PAGE_SIZE = 100;
 const IMPORT_LABEL = "Clover read-only sync";
@@ -110,7 +113,7 @@ export async function runSync(request: Request, requestId: string, context: Sync
         previous.ordersComplete ? Promise.resolve({ elements: [] as Record<string, unknown>[] }) : fetchCloverConnectionCollection(context.organizationId, connection.id, connection.externalAccountRef, "orders", { ...queryBase, offset: previous.ordersOffset, expand: "lineItems,payments,customers,refunds" }),
         previous.itemsComplete ? Promise.resolve({ elements: [] as Record<string, unknown>[] }) : fetchCloverConnectionCollection(context.organizationId, connection.id, connection.externalAccountRef, "items", { ...queryBase, offset: previous.itemsOffset, expand: "categories,itemStock" }),
         previous.customersComplete ? Promise.resolve({ elements: [] as Record<string, unknown>[] }) : fetchCloverConnectionCollection(context.organizationId, connection.id, connection.externalAccountRef, "customers", { ...queryBase, offset: previous.customersOffset, expand: "emailAddresses,phoneNumbers" }),
-        previous.paymentsComplete ? Promise.resolve({ elements: [] as Record<string, unknown>[] }) : fetchCloverConnectionCollection(context.organizationId, connection.id, connection.externalAccountRef, "payments", { ...queryBase, offset: previous.paymentsOffset, expand: "tender,order" }),
+        previous.paymentsComplete ? Promise.resolve({ elements: [] as Record<string, unknown>[] }) : fetchCloverConnectionCollection(context.organizationId, connection.id, connection.externalAccountRef, "payments", { ...queryBase, offset: previous.paymentsOffset, expand: "tender,order,voids" }),
       ]);
       await renewIntegrationSyncLease(lease);
 
@@ -132,11 +135,16 @@ export async function runSync(request: Request, requestId: string, context: Sync
         try { customers.push(await normalizeCloverCustomer(customer)); } catch (error) { recordNormalizationIssue(error); }
       }
       const payments: Awaited<ReturnType<typeof normalizeCloverPayments>> = [];
+      const voidedPaymentIds = new Set<string>();
       let ignoredPayments = 0;
       for (const payment of paymentsPage.elements) {
         try {
           const normalized = await normalizeCloverPayments(connection.externalAccountRef, [payment]);
-          if (normalized.length === 0) ignoredPayments += 1;
+          if (normalized.length === 0) {
+            ignoredPayments += 1;
+            const voidedId = cloverVoidedPaymentExternalId(payment);
+            if (voidedId) voidedPaymentIds.add(voidedId);
+          }
           payments.push(...normalized);
         } catch (error) { recordNormalizationIssue(error); }
       }
@@ -201,6 +209,11 @@ export async function runSync(request: Request, requestId: string, context: Sync
           sync_run_id=excluded.sync_run_id, updated_at=excluded.updated_at
       `).bind(crypto.randomUUID(), context.organizationId, CLOVER_PROVIDER, connection.id, scoped(payment.externalPaymentId), scoped(payment.externalSaleId), scoped(payment.paymentTypeRef), payment.paymentTypeName, payment.category, payment.amountCents, payment.paidAt, scoped(payment.outletRef), payment.sourcePayloadHash, runId, now));
       const importedPayments = await runBatches(paymentStatements);
+      // Refreshes must retract an earlier successful payment when Clover later
+      // explicitly voids that same source ID. Never prune IDs absent from a page.
+      const voidedPaymentsRemoved = await runBatches([...voidedPaymentIds].map((id) =>
+        database.prepare(CLOVER_VOIDED_PAYMENT_DELETE_SQL)
+          .bind(context.organizationId, CLOVER_PROVIDER, connection.id, scoped(id))));
 
       const inventoryStatements = normalizedProducts.filter(({ balance }) => mappedRaw.has(balance.outletRef)).map(({ balance }) => database.prepare(`
         INSERT INTO inventory_balances
@@ -311,13 +324,13 @@ export async function runSync(request: Request, requestId: string, context: Sync
       await recordAudit({
         request, requestId, organizationId: context.organizationId, actorUserId: context.userId,
         action: "integration.data_imported", resourceType: "integration_sync_run", resourceId: runId,
-        details: { provider: CLOVER_PROVIDER, connectionId: connection.id, recordsRead, recordsStaged, publishedMetrics, products: importedProducts, customers: importedCustomers, inventory: importedInventory, saleLines: importedLines, payments: importedPayments, missingCostCount, unmappedLocations: unmapped, ignoredPayments, sourceIssues: JSON.stringify(sourceIssues), dataPromotionEnabled: publishCanonical },
+        details: { provider: CLOVER_PROVIDER, connectionId: connection.id, recordsRead, recordsStaged, publishedMetrics, products: importedProducts, customers: importedCustomers, inventory: importedInventory, saleLines: importedLines, payments: importedPayments, voidedPaymentsRemoved, missingCostCount, unmappedLocations: unmapped, ignoredPayments, sourceIssues: JSON.stringify(sourceIssues), dataPromotionEnabled: publishCanonical },
       });
       return jsonResponse({
         provider: CLOVER_PROVIDER, connectionId: connection.id,
         backfillComplete, retryRequired: normalizationWarnings > 0, sourceIssues,
         run: { id: runId, status: "completed", recordsRead, recordsStaged, warningCount },
-        reconciliation: { orders: sales.length, saleLines: lines.length, payments: payments.length, ignoredPayments, products: normalizedProducts.length, customers: customers.length, inventoryBalances: normalizedProducts.length, locations: mappings.length, unmappedLocations: unmapped, missingItemCosts: missingCostCount, dailyMetrics: publishedMetrics },
+        reconciliation: { orders: sales.length, saleLines: lines.length, payments: payments.length, ignoredPayments, voidedPaymentsRemoved, products: normalizedProducts.length, customers: customers.length, inventoryBalances: normalizedProducts.length, locations: mappings.length, unmappedLocations: unmapped, missingItemCosts: missingCostCount, dailyMetrics: publishedMetrics },
         readyForReview: backfillComplete && sales.length > 0 && warningCount === 0,
         stagingOnly: !publishCanonical,
         dataPromotionEnabled: publishCanonical,

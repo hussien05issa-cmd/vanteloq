@@ -63,7 +63,7 @@ export async function deleteDocument(input: {
       changed = await database.prepare(`UPDATE workspace_documents SET status='deletion_pending', security_state='quarantined',
         extracted_json=?, updated_at=? WHERE organization_id=? AND id=? AND status<>'approved'
         AND status<>'deletion_pending' AND extracted_json=? AND json_extract(extracted_json,'$.processing.lock') IS NULL`)
-        .bind(JSON.stringify({ deletion }), Date.now(), organizationId, documentId, row.extracted_json).run();
+        .bind(JSON.stringify({ deletion }), Math.floor(Date.now() / 1000), organizationId, documentId, row.extracted_json).run();
     } catch (error) {
       const message = error instanceof Error ? error.message : "";
       if (message.includes("DOCUMENT_LINKED")) throw new ApiError(409, "DOCUMENT_LINKED", "The document was linked to an accounting record. Refresh before making any retention change.");
@@ -85,13 +85,13 @@ export async function deleteDocument(input: {
   job = { ...job, lock, leaseUntil: Date.now() + 120_000, retryRequired: false };
   const claim = await database.prepare(`UPDATE workspace_documents SET extracted_json=?, updated_at=?
     WHERE organization_id=? AND id=? AND status='deletion_pending' AND extracted_json=?`)
-    .bind(JSON.stringify({ deletion: job }), Date.now(), organizationId, documentId, row.extracted_json).run();
+    .bind(JSON.stringify({ deletion: job }), Math.floor(Date.now() / 1000), organizationId, documentId, row.extracted_json).run();
   if (claim.meta.changes !== 1) return pending();
   const save = async () => {
     job = { ...job!, leaseUntil: Date.now() + 120_000 };
     const saved = await database.prepare(`UPDATE workspace_documents SET extracted_json=?, updated_at=?
       WHERE organization_id=? AND id=? AND status='deletion_pending' AND json_extract(extracted_json,'$.deletion.lock')=?`)
-      .bind(JSON.stringify({ deletion: job }), Date.now(), organizationId, documentId, lock).run();
+      .bind(JSON.stringify({ deletion: job }), Math.floor(Date.now() / 1000), organizationId, documentId, lock).run();
     return saved.meta.changes === 1;
   };
   try {

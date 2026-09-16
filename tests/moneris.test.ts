@@ -104,3 +104,14 @@ test("Moneris normalization uses documented transaction time and nested payment 
   assert.doesNotMatch(JSON.stringify(normalized), /lastFour/);
   await assert.rejects(() => normalizeMonerisPayment({ id: "missing-status", amount: { amount: 100, currency: "CAD" } }), /status missing/i);
 });
+
+test("Moneris requires explicit matching cents-based currency and a payment date", async () => {
+  const payment = { paymentId: "money", paymentStatus: "SUCCEEDED", amount: { amount: 100, currency: "CAD" }, transactionDateTime: "2026-09-16T12:00:00Z" };
+  assert.equal((await normalizeMonerisPayment(payment, "CAD"))?.amountCents, 100);
+  const usd = { ...payment, amount: { amount: 100, currency: "USD" } };
+  await assert.rejects(() => normalizeMonerisPayment(usd, "CAD"), /differs from/i);
+  assert.equal((await normalizeMonerisPayment(usd, "USD"))?.amountCents, 100);
+  assert.notEqual((await normalizeMonerisPayment(usd, "USD"))?.sourcePayloadHash, (await normalizeMonerisPayment(payment, "CAD"))?.sourcePayloadHash);
+  for (const currency of [undefined, "", "JPY", "CADUSD"]) await assert.rejects(() => normalizeMonerisPayment({ ...payment, amount: { amount: 100, currency } }), /currency/i);
+  for (const transactionDateTime of [undefined, "invalid"]) await assert.rejects(() => normalizeMonerisPayment({ ...payment, transactionDateTime }), /date/i);
+});
