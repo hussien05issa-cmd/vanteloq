@@ -58,7 +58,7 @@ export function parseDailyCsv(text: string) {
       businessDate, locationRef,
       grossSalesCents: money("gross_sales")!, netSalesCents: money("net_sales")!, costOfGoodsCents: money("cogs")!,
       transactionCount: integer("transactions"), unitsSold: integer("units"), refundsCents: money("refunds")!,
-      discountsCents: money("discounts")!, labourCostCents: money("labour_cost")!,
+      discountsCents: money("discounts")!, labourCostCents: money("labour_cost", true),
       inventoryValueCents: money("inventory_value", true), cashBalanceCents: money("cash_balance", true), accountsPayableCents: money("accounts_payable", true),
     };
   });

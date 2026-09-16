@@ -219,7 +219,7 @@ try {
   const measurements: RetailMeasurement[] = [];
   const stock: RetailStock[] = [];
   for (const outletRef of ["QA Main","QA West"]) {
-    const wagesCents = rows.filter(r=>r.locationRef===outletRef&&r.businessDate>=period.from).reduce((n,r)=>n+r.labourCostCents,0);
+    const wagesCents = rows.filter(r=>r.locationRef===outletRef&&r.businessDate>=period.from).reduce((n,r)=>{ if (r.labourCostCents === null) throw new Error("The payroll fixture must include wages."); return n+r.labourCostCents; },0);
     measurements.push({...source,outletRef,kind:"labour",reference:"QA aggregate payroll",from:period.from,to:period.to,source:"Fictional payroll, CAD $24/hour",values:{wagesCents,paidMinutes:wagesCents/2400*60,complete:true}});
     for (const product of fixture.products as Array<[string,string,string,string,number,number]>) {
       const [sku,name,,,,cost] = product;

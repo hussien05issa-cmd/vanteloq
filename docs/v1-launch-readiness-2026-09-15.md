@@ -11,7 +11,7 @@ Proceed toward a limited, assisted retail pilot. Do not describe every listed in
 - Invoice aging counts issued, unpaid invoices only, uses the workspace business date, respects live/demonstration scope and does not stop at the 200-row display limit.
 - The invoice screen uses the server count instead of applying a different browser calculation.
 - Removed the unverified payout bridge. Provider names alone could incorrectly classify sales, refunds and fees as a reconciled settlement. The replacement explains the evidence required and opens transaction review.
-- Business Brief withholds gross profit and contribution when their metric provenance is unavailable. Missing labour is not displayed as a verified zero cost.
+- Business Brief withholds gross profit and contribution when their metric provenance is unavailable. Missing labour is not displayed as a verified zero cost. A new nullable labour evidence flag distinguishes omitted wages from an explicitly recorded zero across manual entry, CSV persistence, reports, the Business Brief and AI. Legacy zeroes without evidence stay unavailable; POS feeds do not supply wages.
 - QuickBooks explains its company-verification-only limitation. Sandbox connections do not instruct customers to import them into live books.
 - Unavailable connectors no longer present an unnecessary subscription upsell.
 - Document capture describes the actual scan/extraction review workflow.
@@ -60,6 +60,6 @@ Proceed toward a limited, assisted retail pilot. Do not describe every listed in
 
 ## Regression evidence
 
-Build, TypeScript and lint passed after the application changes. The broad regression run was interrupted by the desktop session restarting. Completed output was retained. Two intelligence-flow checks that failed in the interrupted run passed when rerun against a stable build. The remaining tests and changed BookLoQ paths are rerun against the final build; record the final results in the release handoff.
+Build, TypeScript and lint passed after the application changes. The initial regression run was interrupted after intelligence-flow coverage when the desktop session restarted; completed output was retained. Two intelligence-flow checks that failed in that run passed against a stable build. The remaining batch completed 496 tests: 486 passed initially, and 10 outdated UI, consent-flow and OAuth-fixture tests required updates. The focused static/UI rerun passed all 60 tests. The final manual/CSV persistence and X-Series disconnect-race checks passed both cases. The final financial-engine, consent, retail and migration run passed all 26 tests. Every failure identified in the two broad batches was resolved and passed a focused rerun. The billing lifecycle also passed plan, BookLoQ entitlement, signed-event and cancellation tests in isolation. No single uninterrupted full-suite result is claimed.
 
 No financial test records were imported into the live store's reporting tables. Financial fixtures used isolated local databases. This review did not buy subscriptions, send new marketing or invoice emails, delete customer records, or accept contracts on a customer's behalf.

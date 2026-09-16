@@ -351,6 +351,13 @@
       "when": 1789445050511,
       "tag": "0049_even_toxin",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "6",
+      "when": 1789525455139,
+      "tag": "0050_lucky_madelyne_pryor",
+      "breakpoints": true
     }
   ]
 }

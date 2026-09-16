@@ -1,0 +1,1 @@
+ALTER TABLE `daily_business_metrics` ADD `labour_cost_reported` integer;

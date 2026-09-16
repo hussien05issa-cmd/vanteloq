@@ -203,7 +203,7 @@ test("X-Series callback removes artifacts when disconnected during outlet verifi
           access_token: "new-access",
           refresh_token: "new-refresh",
           expires_in: 3600,
-          scope: "outlets:read sales:read",
+          scope: "customers:read inventory:read outlets:read products:read retailer:read sales:read suppliers:read",
         });
       }
       if (url.origin === "https://race-store.retail.lightspeed.app" && url.pathname === "/api/2026-07/outlets") {
@@ -227,6 +227,7 @@ test("X-Series callback removes artifacts when disconnected during outlet verifi
     ), environment, context);
     assert.equal(callback.status, 303, await callback.clone().text());
     assert.equal(callback.headers.get("location"), `${origin}/?integration=lightspeed&connection=failed`);
+    assert.equal(disconnected, true, "The callback must reach outlet verification before testing disconnect cleanup");
     assert.deepEqual(await database.prepare(`SELECT status, external_account_ref externalAccountRef,
       data_promotion_status dataPromotionStatus FROM integration_connections WHERE id = ?`
     ).bind(authorizationBody.connectionId).first(), {

@@ -301,6 +301,8 @@ test("exact marketing resources remain versioned, approval-bound, separated, and
     const unauthorizedReport = await worker.fetch(new Request(`${origin}/api/v1/marketing/reports`), environment, executionContext);
     assert.equal(unauthorizedReport.status, 401);
     environment.OPENAI_API_KEY = "fixture-openai-key";
+    const savedConsent = await dispatch(worker, environment, "/api/v1/advisor/consent", { method: "POST", body: { accepted: true, purpose: "analysis", noticeVersion: "vanteloq-ai-v7-unified", privacyPolicyVersion: "2026-09-10" } });
+    assert.equal(savedConsent.status, 200, await savedConsent.clone().text());
     const advisor = await dispatch(worker, environment, "/api/v1/advisor/chat", { method: "POST", body: { question: "What does our marketing evidence show?", dataUseAccepted: true, noticeVersion: "vanteloq-ai-v7-unified", privacyPolicyVersion: "2026-09-10" } });
     assert.equal(advisor.status, 200, await advisor.clone().text());
     const advisorBody = await advisor.json();

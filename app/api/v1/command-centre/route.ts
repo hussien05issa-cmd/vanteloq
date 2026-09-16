@@ -116,6 +116,8 @@ export async function loadCommandCentre(request: Request) {
         refundsCents: dailyBusinessMetrics.refundsCents,
         discountsCents: dailyBusinessMetrics.discountsCents,
         labourCostCents: dailyBusinessMetrics.labourCostCents,
+        labourCostReported: dailyBusinessMetrics.labourCostReported,
+        sourceProvider: dailyBusinessMetrics.sourceProvider,
         inventoryValueCents: dailyBusinessMetrics.inventoryValueCents,
         cashBalanceCents: dailyBusinessMetrics.cashBalanceCents,
         accountsPayableCents: dailyBusinessMetrics.accountsPayableCents,
