@@ -184,7 +184,7 @@ test("Business Profile performance, review access, reply confirmation target, an
     assert.equal(reviews.reviews[0]?.reviewerName, "Customer");
     assert.equal(reply.comment, "Thank you for visiting.");
     const adsRequest = requests.find((request) => request.url.includes("googleAds:searchStream"));
-    assert.equal(adsRequest?.headers.get("developer-token"), "developer-token");
+    assert.equal(adsRequest?.headers.get("developer-token"), null);
     assert.equal(adsRequest?.headers.get("login-customer-id"), null, "Direct access must not inherit a platform-wide manager");
     const replyRequest = requests.find((request) => request.url.endsWith("/reviews/789/reply"));
     assert.equal(replyRequest?.method, "PUT");

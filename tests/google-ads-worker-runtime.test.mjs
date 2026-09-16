@@ -56,7 +56,7 @@ test("Google Ads discovery is Worker-compatible and never follows provider redir
       for (const call of calls) {
         assert.equal(new URL(call.url).origin, "https://googleads.googleapis.com");
         assert.equal(call.authorization, "Bearer fixture-oauth");
-        assert.equal(call.developerToken, "fixture-developer-token");
+        assert.equal(call.developerToken, null);
       }
     });
     for (const [index, phase] of ["list", "identity", "hierarchy"].entries()) {
@@ -77,6 +77,49 @@ test("Google Ads discovery is Worker-compatible and never follows provider redir
           });
         }
       }
+    }
+  } finally { await mf.dispose(); }
+});
+
+test("marketing reports run in Workers and reject redirects without forwarding authorization", async () => {
+  const bundle = await build({
+    absWorkingDir: fileURLToPath(new URL("../", import.meta.url)),
+    tsconfigRaw: { compilerOptions: { target: "ESNext" } },
+    stdin: { resolveDir: fileURLToPath(new URL("../", import.meta.url)), contents: `
+      import { fetchMarketingReport } from "./server/integrations/marketing-reporting";
+      export default { async fetch(request, env) {
+        globalThis.__vanteloqEnv = env;
+        try { return Response.json(await fetchMarketingReport("fixture-oauth", {
+          id: "fixture", provider: "google", dataset: "google_analytics",
+          externalResourceRef: "properties/123", scopeKind: "organization", localLocationId: null
+        }, "channels", 28, new Date("2026-09-16T00:00:00Z"))); }
+        catch (error) { return Response.json({ code: error.code }, { status: 502 }); }
+      }};` },
+    bundle: true, platform: "browser", format: "esm", write: false, logLevel: "error",
+  });
+  let redirectStatus = null;
+  const calls = [];
+  const mf = new Miniflare({
+    modules: true, script: bundle.outputFiles[0].text,
+    compatibilityDate: "2026-05-15", compatibilityFlags: ["nodejs_compat"], log: new NoOpLog(),
+    outboundService: async (request) => {
+      calls.push(request.url);
+      assert.equal(request.headers.get("authorization"), "Bearer fixture-oauth");
+      if (redirectStatus) return new Response(null, { status: redirectStatus, headers: { Location: "https://credential-sink.invalid/" } });
+      return new Response(JSON.stringify({ rows: [{ dimensionValues: [{ value: "Organic Search" }], metricValues: ["100", "60", "200", "3.5"].map(value => ({ value })) }] }), { headers: { "Content-Type": "application/json" } });
+    },
+  });
+  try {
+    const success = await mf.dispatchFetch("https://fixture.invalid/");
+    assert.equal(success.status, 200, await success.clone().text());
+    assert.equal((await success.json()).totals.sessions, 100);
+    for (const status of [300, 301, 302, 303, 304, 307, 308, 399]) {
+      redirectStatus = status; calls.length = 0;
+      const response = await mf.dispatchFetch("https://fixture.invalid/");
+      assert.equal(response.status, 502);
+      assert.equal((await response.json()).code, "MARKETING_REPORT_UNAVAILABLE");
+      assert.ok(calls.length > 0);
+      assert.ok(calls.every(url => url === "https://analyticsdata.googleapis.com/v1beta/properties/123:runReport"));
     }
   } finally { await mf.dispose(); }
 });

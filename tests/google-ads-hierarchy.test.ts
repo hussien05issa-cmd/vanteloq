@@ -2,11 +2,35 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { discoverGoogleMarketingResourceStatus, syncGoogleMarketing } from "../server/integrations/marketing";
 import { fetchMarketingReport } from "../server/integrations/marketing-reporting";
-import { discoverGoogleAdsAccounts, resolveGoogleAdsAccount } from "../server/integrations/google-ads-access";
+import { discoverGoogleAdsAccounts, googleAdsEnabled, googleAdsHeaders, resolveGoogleAdsAccount } from "../server/integrations/google-ads-access";
 
 const runtime = globalThis as typeof globalThis & { __vanteloqEnv?: Record<string, string> };
 const manager = "customers/1111111111";
 const child = "customers/2222222222";
+
+test("Ads feature activation is separate from project approval and no longer sends a developer token", () => {
+  const previous = runtime.__vanteloqEnv;
+  try {
+    runtime.__vanteloqEnv = { GOOGLE_ADS_ENABLED: "true" };
+    assert.equal(googleAdsEnabled(), true);
+    assert.equal(googleAdsHeaders("fixture")["developer-token"], undefined);
+    runtime.__vanteloqEnv = { GOOGLE_ADS_ENABLED: "false", GOOGLE_ADS_DEVELOPER_TOKEN: "legacy" };
+    assert.equal(googleAdsEnabled(), false);
+    runtime.__vanteloqEnv = { GOOGLE_ADS_DEVELOPER_TOKEN: "legacy" };
+    assert.equal(googleAdsEnabled(), true);
+    assert.equal(googleAdsHeaders("fixture")["developer-token"], undefined);
+    runtime.__vanteloqEnv = {};
+    assert.equal(googleAdsEnabled(), false);
+  } finally { runtime.__vanteloqEnv = previous; }
+});
+
+test("Ads project production denial gives safe Cloud approval guidance", async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({ error: { details: [{ errors: [{ errorCode: { authorizationError: "CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION" }, message: "private detail" }] }] } }, { status: 403 });
+  try {
+    await assert.rejects(discoverGoogleAdsAccounts("fixture"), (error: Error & { code?: string }) => error.code === "GOOGLE_ADS_PROJECT_APPROVAL_REQUIRED" && !error.message.includes("private detail"));
+  } finally { globalThis.fetch = original; }
+});
 
 test("manager-only access discovers the child and routes its reports without a global manager", async () => {
   const originalFetch = globalThis.fetch;

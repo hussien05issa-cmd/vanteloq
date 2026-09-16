@@ -2,7 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { getDb, getRuntimeEnv } from "../../db";
 import { integrationSecrets } from "../../db/schema";
 import { ApiError } from "../api";
-import { discoverGoogleAdsAccounts, googleAdsHeaders, googleAdsVersion, GOOGLE_ADS_SETUP_MESSAGES, resolveGoogleAdsAccount } from "./google-ads-access";
+import { discoverGoogleAdsAccounts, googleAdsEnabled, googleAdsHeaders, googleAdsVersion, GOOGLE_ADS_SETUP_MESSAGES, resolveGoogleAdsAccount } from "./google-ads-access";
 import {
   decryptIntegrationSecret,
   encryptIntegrationSecret,
@@ -46,7 +46,7 @@ export const GOOGLE_MARKETING_SCOPES = [
 export const GOOGLE_ADS_SCOPE = "https://www.googleapis.com/auth/adwords" as const;
 
 export function googleMarketingScopes() {
-  return getRuntimeEnv().GOOGLE_ADS_DEVELOPER_TOKEN?.trim()
+  return googleAdsEnabled()
     ? [...GOOGLE_MARKETING_SCOPES, GOOGLE_ADS_SCOPE]
     : [...GOOGLE_MARKETING_SCOPES];
 }
@@ -143,7 +143,7 @@ export function marketingReadiness(provider: MarketingProvider) {
     dataPromotionEnabled: false,
     liveDataEligible: false,
     supportedDatasets: provider === "google"
-      ? (env.GOOGLE_ADS_DEVELOPER_TOKEN?.trim()
+      ? (googleAdsEnabled()
           ? ["google_analytics", "google_search_console", "google_business_profile", "google_ads"] as const
           : ["google_analytics", "google_search_console", "google_business_profile"] as const)
       : ["meta_ads"] as const,
@@ -481,7 +481,7 @@ async function discoverGoogleBusinessProfileResources(accessToken: string) {
 }
 
 async function discoverGoogleAdsResources(accessToken: string) {
-  if (!getRuntimeEnv().GOOGLE_ADS_DEVELOPER_TOKEN?.trim()) return [];
+  if (!googleAdsEnabled()) return [];
   return (await discoverGoogleAdsAccounts(accessToken)).map((account) => ({
     dataset: "google_ads" as const,
     externalResourceRef: account.resourceRef,
@@ -510,7 +510,7 @@ export async function discoverGoogleMarketingResourceStatus(accessToken: string)
     { dataset: "google_analytics", run: () => discoverGoogleAnalyticsResources(accessToken) },
     { dataset: "google_business_profile", run: () => discoverGoogleBusinessProfileResources(accessToken) },
   ];
-  if (getRuntimeEnv().GOOGLE_ADS_DEVELOPER_TOKEN?.trim()) {
+  if (googleAdsEnabled()) {
     tasks.push({ dataset: "google_ads", run: () => discoverGoogleAdsResources(accessToken) });
   }
   const outcomes = await Promise.allSettled(tasks.map((task) => task.run()));
