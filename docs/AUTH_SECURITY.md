@@ -14,6 +14,7 @@ Vanteloq uses Supabase Auth for public email/password identity and Cloudflare fo
 - Passwords are sent only to Supabase Auth and are never persisted by Vanteloq.
 - The browser persists a rotating Supabase refresh token so separate phone and desktop sessions work. Business data and memory remain server-side and tenant-scoped; they are not copied into browser storage.
 - Access JWTs are short-lived and refresh tokens use Supabase rotation/reuse detection. Global sign-out is used after a password change.
+- Application sessions expire after 30 minutes without qualifying activity or 8 hours from their start. The server checks a tenant-scoped session lease; token refresh and background reads do not extend those limits. The interface warns 2 minutes before expiry. See `shared/session-policy.ts`, `server/session-policy.ts` and their regression tests.
 - PKCE protects email confirmation and recovery authorization codes. A recovery link should be opened in the browser that requested it.
 - The Worker enforces CSP, frame denial, HSTS, no-sniff, no-store API responses, and same-origin mutation checks.
 - Public Supabase tables have RLS enabled. Security-definer trigger functions are not executable by `anon` or `authenticated`; the authenticated tenant-role helper retains only the execution required by RLS.
@@ -22,7 +23,7 @@ Vanteloq uses Supabase Auth for public email/password identity and Cloudflare fo
 
 The Supabase security advisor currently reports one warning: leaked-password protection is disabled. The live dashboard confirms this control requires a Supabase Pro plan; the current project is on Free. After upgrading, enable **Authentication → Sign In / Providers → Email → Prevent use of leaked passwords**. This provider control checks new passwords against known breaches.
 
-Multiple active sessions remain enabled because the product supports the same account on a phone and desktop. The live JWT lifetime is 3,600 seconds, refresh-token compromise detection is enabled, and the reuse interval is 10 seconds. Supabase requires Pro to configure inactivity/time-box controls; choose and record those values during the final launch review without enabling single-session mode.
+Multiple active sessions remain enabled because the product supports the same account on a phone and desktop. The previously recorded provider JWT lifetime was 3,600 seconds, with refresh-token compromise detection and a 10-second reuse interval. Recheck provider settings before changing them. Provider-level inactivity and absolute time limits are additional protection; Vanteloq already enforces its own 30-minute idle and 8-hour absolute limits without requiring single-session mode.
 
 ## Verification evidence
 

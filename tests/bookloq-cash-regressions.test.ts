@@ -5,6 +5,7 @@ import test from "node:test";
 import { Miniflare } from "miniflare";
 import { registerSupabaseTestServer } from "./helpers/supabase-loopback-transport.mjs";
 import { buildThirteenWeekCashFlow } from "../domain/thirteen-week-cash-flow.ts";
+import { businessClock } from "../domain/intraday-sales.ts";
 
 const origin = "https://vanteloq.example";
 const executionContext = { waitUntil() {}, passThroughOnException() {} };
@@ -159,6 +160,24 @@ test("ledger authorization and period guards preserve legitimate accounting", as
     const owner = await read();
     assert.ok(owner.statements.accounts.length > 0);
     assert.ok(owner.journals.length > 0);
+    const customer = await database.prepare("SELECT id FROM bookloq_contacts WHERE organization_id=? AND contact_type='customer' LIMIT 1").bind(org).first<{ id: string }>();
+    assert.ok(customer);
+    const today = businessClock(new Date(), "America/Edmonton")!.date;
+    const overdueCases = [
+      ...Array.from({ length: 205 }, (_, index) => ({ id: `aging-issued-${index}`, status: index % 2 ? "sent" : "partially_paid", paid: index % 2 ? 0 : 500, due: "2020-01-01", demo: 1 })),
+      ...["draft", "paid", "void", "written_off"].map((status) => ({ id: `aging-${status}`, status, paid: 0, due: "2020-01-01", demo: 1 })),
+      { id: "aging-settled", status: "sent", paid: 1000, due: "2020-01-01", demo: 1 },
+      { id: "aging-today", status: "sent", paid: 0, due: today, demo: 1 },
+      { id: "aging-future", status: "sent", paid: 0, due: "2099-01-01", demo: 1 },
+      { id: "aging-other-mode", status: "sent", paid: 0, due: "2020-01-01", demo: 0 },
+    ];
+    await database.batch(overdueCases.map((invoice) => database.prepare(`INSERT INTO customer_invoices
+      (id,organization_id,customer_id,invoice_number,invoice_date,due_date,status,subtotal_cents,total_cents,paid_cents,demo_record,created_at,updated_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(invoice.id, org, customer.id, invoice.id, "2020-01-01", invoice.due, invoice.status, 1000, 1000, invoice.paid, invoice.demo, Date.now(), Date.now())));
+    const aged = await read();
+    assert.equal(aged.summary.overdueInvoicesCount, owner.summary.overdueInvoicesCount + 205, "Only issued unpaid invoices count, across the full list and the selected data mode");
+    assert.ok(aged.invoices.length <= 200, "The table limit must not cap the overdue summary");
+    await database.batch(overdueCases.map((invoice) => database.prepare("DELETE FROM customer_invoices WHERE id=? AND organization_id=?").bind(invoice.id, org)));
     const location = await database.prepare("SELECT id FROM organization_locations WHERE organization_id=? LIMIT 1").bind(org).first<{ id: string }>();
     assert.ok(location);
     const roleId = crypto.randomUUID();
@@ -267,7 +286,7 @@ async function seedPurchaseOrder(database: D1Database, input: {
   committedCashDate?: string | null;
   expectedDeliveryDate?: string | null;
 }) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = businessClock(new Date(), "America/Edmonton")!.date;
   const now = Date.now();
   const totalCents = input.totalCents ?? 100_000;
   await database.prepare(`INSERT INTO purchase_orders
@@ -302,7 +321,7 @@ async function seedSupplierBill(database: D1Database, input: {
   totalCents: number;
   paidCents: number;
 }) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = businessClock(new Date(), "America/Edmonton")!.date;
   const now = Date.now();
   await database.prepare(`INSERT INTO supplier_bills
     (id, organization_id, supplier_id, bill_number, invoice_date, due_date, status,
@@ -506,7 +525,7 @@ test("BookLoQ cash-flow route deduplicates commitments and only counts trusted c
             `plaid-disconnected-account-${suffix}`, disconnectedItemRef, nowSeconds - 60, nowSeconds, nowSeconds),
       ]);
 
-      const today = new Date().toISOString().slice(0, 10);
+      const today = businessClock(new Date(), "America/Edmonton")!.date;
       const transaction = (id: string, accountId: string, amountCents: number) => database.prepare(`INSERT INTO financial_transactions
         (id, organization_id, transaction_date, posting_date, description, original_description,
          amount_cents, currency, exchange_rate_ppm, tax_amount_cents, account_id, source_system,
@@ -575,7 +594,7 @@ test("BookLoQ cash-flow route deduplicates commitments and only counts trusted c
 
     await t.test("malformed committed cash dates are rejected and legacy malformed values fail closed", async () => {
       await clearLiveCommitments(database, identity.organizationId);
-      const today = new Date().toISOString().slice(0, 10);
+      const today = businessClock(new Date(), "America/Edmonton")!.date;
       const createResponse = await dispatch(worker, environment, "/api/v1/purchasing", {
         method: "POST",
         email,
@@ -611,7 +630,7 @@ test("BookLoQ cash-flow route deduplicates commitments and only counts trusted c
     });
 
     await t.test("foreign, undated, and combined commitments retain their specific review states", async () => {
-      const today = new Date().toISOString().slice(0, 10);
+      const today = businessClock(new Date(), "America/Edmonton")!.date;
       const cases = [
         {
           label: "foreign",

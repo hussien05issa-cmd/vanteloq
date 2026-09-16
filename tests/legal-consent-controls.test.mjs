@@ -32,13 +32,15 @@ test("material legal updates require a new affirmative acceptance before billing
 
 test("Vanteloq AI requires explicit versioned consent and supports scoped deletion", () => {
   const route = read("../app/api/v1/advisor/chat/route.ts");
+  const consentRoute = read("../app/api/v1/advisor/consent/route.ts");
   const privacy = read("../server/privacy.ts");
   const client = read("../app/vanteloq-app.tsx");
   const composer = read("../app/advisor-composer.tsx");
   const chatPrivacy = read("../app/advisor-privacy.tsx");
 
   assert.match(route, /ADVISOR_CONSENT_REQUIRED/);
-  assert.match(route, /recordAdvisorConsent/);
+  assert.match(consentRoute, /recordAdvisorConsent/);
+  assert.match(route, /requireAdvisorConsent/);
   assert.match(route, /export async function DELETE/);
   assert.match(route, /organization_id = \? AND user_id = \?/);
   assert.match(route, /privacy\.advisor_conversation_deleted/);
@@ -48,6 +50,7 @@ test("Vanteloq AI requires explicit versioned consent and supports scoped deleti
   assert.match(composer, /credentials, account numbers, customer names, search queries, page addresses, Business Profile content, invoice files and raw transactions/);
   assert.match(chatPrivacy, /Confirm deletion/);
   assert.match(chatPrivacy, /method: "DELETE"/);
-  assert.match(client, /onNewChat=\{resetVisibleChat\}/);
-  assert.match(composer, /type="checkbox" checked=\{dataUseAccepted\}/);
+  assert.match(client, /onNewChat=\{\(\) => \{ setAnalysisPeriod\(null\); resetVisibleChat\(\); \}\}/);
+  assert.match(composer, /!dataUseAccepted && !consentLoading && !consentError/);
+  assert.match(composer, /type="checkbox" checked=\{false\}/);
 });

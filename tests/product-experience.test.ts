@@ -75,6 +75,10 @@ test("connector guidance does not confuse entitlement, credentials, authorizatio
 test("sandbox and unavailable connectors never advertise live results", () => {
   assert.equal(connectorNextStep({ ...provider, providerReadiness: { ...provider.providerReadiness, mode: "sandbox" } }, true, true).stage, "Test data only");
   assert.equal(connectorNextStep({ ...provider, availability: "coming_soon" }, true, true).stage, "Unavailable");
+  assert.equal(connectorNextStep({ ...provider, lastSuccessfulSyncAt: null, providerReadiness: { ...provider.providerReadiness, mode: "sandbox" } }, true, true).stage, "Test data only");
+  const verificationOnly = connectorNextStep({ ...provider, name: "QuickBooks", lastSuccessfulSyncAt: null, providerReadiness: { ...provider.providerReadiness, mode: "sandbox_read_only_staging", ledgerImportEnabled: false } }, true, true);
+  assert.equal(verificationOnly.stage, "Company verification only");
+  assert.match(verificationOnly.detail, /does not populate BookLoQ/);
 });
 test("provider search combines trimmed case-insensitive query and category", () => {
   const rows = [provider, { name: "Plaid", category: "Banking" }];

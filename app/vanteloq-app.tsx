@@ -2232,6 +2232,7 @@ type IntegrationConnection = IntegrationCatalogEntry & {
     scopes?: string[];
     mode: string;
     dataPromotionEnabled?: boolean;
+    ledgerImportEnabled?: boolean;
     liveDataEligible?: boolean;
     resourceSelectionRequired?: boolean;
     syncEligible?: boolean;
@@ -2872,7 +2873,7 @@ function DataHub({
                   ? "Growth plan"
                   : "Starter plan";
               const connected = provider.status === "connected";
-              const hasLocationMapping = provider.id === "lightspeed" || provider.id === "lightspeed" || provider.id === "lightspeed-r" || provider.id === "shopify" || provider.id === "shopify-pos" || provider.id === "square" || provider.id === "clover";
+              const hasLocationMapping = provider.id === "lightspeed" || provider.id === "lightspeed-r" || provider.id === "shopify" || provider.id === "shopify-pos" || provider.id === "square" || provider.id === "clover";
               const isStripe = provider.id === "stripe";
               const isMoneris = provider.id === "moneris";
               const isQuickBooks = provider.id === "quickbooks";
@@ -2882,6 +2883,7 @@ function DataHub({
               const providerSetupRequired = provider.availability === "provider_selection_required";
               const providerUnavailable = provider.availability === "provider_build_required";
               const providerComingSoon = provider.availability === "coming_soon";
+              const showPlanRequirement = !providerEntitled && providerFeature !== null && !providerSetupRequired && !providerUnavailable && !providerComingSoon;
               const repairRequired = isPlaid && provider.status === "error" && Boolean(provider.maskedAccountRef);
               const canManageProvider = providerEntitled && (provider.id === "plaid"
                 ? provider.canManage ?? canManageBankConnections
@@ -2899,7 +2901,7 @@ function DataHub({
                   ? `Add the ${isPlaid ? "Plaid client ID, environment secret, approved redirect and webhook URLs, and encryption key" : isStripe ? "Stripe Connect credentials and webhook secret" : isMoneris ? "integration encryption key" : isQuickBooks ? "QuickBooks client ID, client secret, approved callback, environment, and encryption key" : provider.id === "google" ? "Google OAuth client, approved callback, and encryption key" : provider.id === "meta" ? "Meta app credentials, approved callback, and encryption key" : provider.id === "shopify" || provider.id === "shopify-pos" ? "Shopify client ID, client secret, approved callback, webhook URL, and encryption key" : provider.id === "lightspeed-r" ? "R-Series OAuth client ID and secret" : provider.id === "square" ? "Square application ID, application secret, approved redirect, webhook signature key, and encryption key" : provider.id === "clover" ? "Clover app ID, app secret, approved redirect, webhook authorization secret, and encryption key" : "X-Series OAuth client ID and secret"} to Vanteloq's hosted secrets first.`
                   : "";
               return (
-              <article className={`integration-card${providerEntitled ? "" : " subscription-locked"}`} key={provider.id}>
+              <article className={`integration-card${showPlanRequirement ? " subscription-locked" : ""}`} key={provider.id}>
                 <div className="integration-card-head">
                   <IntegrationBrandLogo name={provider.name} />
                   <div className="integration-card-labels">
@@ -2907,7 +2909,7 @@ function DataHub({
                     {providerSetupRequired && <span className="integration-coming-soon">Provider required</span>}
                     {providerUnavailable && <span className="integration-coming-soon">Unavailable</span>}
                     {providerComingSoon && <span className="integration-coming-soon">Coming soon</span>}
-                    {!providerEntitled && <span className="integration-coming-soon">{providerPlanLabel} required</span>}
+                    {showPlanRequirement && <span className="integration-coming-soon">{providerPlanLabel} required</span>}
                   </div>
                 </div>
                 <h3>{provider.name}</h3>
@@ -3129,7 +3131,7 @@ function DataHub({
                     >{providerAction === "authorize" ? "Opening…" : connected ? "Connect another account" : "Connect"}</button>
                   </div> : provider.externalApplicationUrl && providerEntitled ? <div className="provider-actions">
                     <a href={provider.externalApplicationUrl} target="_blank" rel="noreferrer">{provider.externalApplicationLabel ?? "Request provider access"}</a>
-                  </div> : !providerEntitled ? <div className="provider-actions"><button type="button" disabled title={disabledReason}>{providerPlanLabel} required</button></div> : null}
+                  </div> : showPlanRequirement ? <div className="provider-actions"><button type="button" disabled title={disabledReason}>{providerPlanLabel} required</button></div> : null}
                 </div>
               </article>
             );})}
@@ -3758,7 +3760,7 @@ function DecisionJournal({
 }
 
 
-function BusinessBrief({
+export function BusinessBrief({
   data,
   currency,
   navigate,
@@ -3772,6 +3774,8 @@ function BusinessBrief({
   if (!data.ready || !data.current)
     return <><FirstInsightPath data={data} navigate={navigate}/><EmptyCommandCentre navigate={navigate} /></>;
   const current = data.current;
+  const verified = (metricId: string) => data.metrics[metricId]?.actuality === "actual";
+  const contributionAvailable = verified("contribution_after_labour");
   return (
     <div className="content brief-page">
       <section className="brief-document">
@@ -3791,21 +3795,21 @@ function BusinessBrief({
         <div className="brief-numbers">
           <Metric
             label="Net sales"
-            value={money(current.netSalesCents, currency)}
+            value={verified("net_sales") ? money(current.netSalesCents, currency) : "Not available"}
             delta={percent(data.comparisons?.netSalesRate)}
             detail="Current 30-day window"
           />
           <Metric
             label="Gross profit"
-            value={money(current.grossProfitCents, currency)}
+            value={verified("gross_profit") ? money(current.grossProfitCents, currency) : "Not available"}
             delta={percent(data.comparisons?.grossProfitRate)}
             detail="Before operating expenses"
           />
           <Metric
             label="Contribution"
-            value={money(current.contributionCents, currency)}
-            delta={percent(current.labourRate)}
-            detail="After labour"
+            value={contributionAvailable ? money(current.contributionCents, currency) : "Not available"}
+            delta={contributionAvailable && verified("labour_rate") ? `Labour: ${percent(current.labourRate)} of sales` : ""}
+            detail={contributionAvailable ? "After recorded labour costs" : "Verified sales, cost and labour records required"}
           />
         </div>
         <h3>Prioritized actions</h3>

@@ -20,6 +20,8 @@ registerHooks({
     }
   },
   load(url, context, next) {
+    // Styles are bundled by Vite; server-rendered component tests need no CSS loader.
+    if (url.endsWith(".css")) return { format: "module", source: "export default {};", shortCircuit: true };
     if (!url.endsWith(".tsx")) return next(url, context);
     const source = require("esbuild").transformSync(readFileSync(fileURLToPath(url), "utf8"), { loader: "tsx", format: "esm", jsx: "automatic", target: "esnext" }).code;
     return { format: "module", source, shortCircuit: true };
