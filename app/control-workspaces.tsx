@@ -1,5 +1,6 @@
 "use client";
 import WorkspaceSkeleton from "./workspace-skeleton";
+import { documentPipelineLabel } from "../domain/document-pipeline-labels";
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "./supabase-browser";
@@ -2258,8 +2259,8 @@ export function DocumentsWorkspace({ showNotice, canUpload, canDelete }: SharedP
       <section className="document-pipeline">
         {Object.entries(data.pipeline).map(([key, state]) => (
           <article key={key}>
-            <span className={state}>{humanizeIdentifier(state)}</span>
-            <b>{humanizeIdentifier(key.replaceAll(/([A-Z])/g, " $1"))}</b>
+            <span className={state}>{documentPipelineLabel(key, state).status}</span>
+            <b>{documentPipelineLabel(key, state).label}</b>
           </article>
         ))}
       </section>

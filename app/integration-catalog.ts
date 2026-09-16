@@ -1,3 +1,5 @@
+import { PREVIEW_INTEGRATION_IDS } from "../domain/integration-availability";
+
 export type IntegrationAvailability =
   | "provider_build_required"
   | "provider_access_required"
@@ -39,6 +41,7 @@ export type IntegrationCatalogEntry = {
   category: IntegrationCategory;
   availability: IntegrationAvailability;
   activationRequirement: string;
+  setupDetails?: string;
   externalApplicationUrl?: string;
   externalApplicationLabel?: string;
 };
@@ -53,25 +56,9 @@ export type IntegrationPublicStatus = {
  * customer can understand without implying production availability.
  */
 export function integrationPublicStatus(provider: IntegrationCatalogEntry): IntegrationPublicStatus {
-  if (provider.id === "meta") return { label: "Provider setup required", tone: "staging" };
-  if (provider.id === "clover") return { label: "Approval and reconciliation needed", tone: "staging" };
-  if (provider.id === "quickbooks") return { label: "Sandbox only", tone: "staging" };
-  if (provider.id === "plaid") return { label: "Production approval needed", tone: "staging" };
-  if (provider.id === "shopify" || provider.id === "shopify-pos") return { label: "App review pending", tone: "staging" };
-  if (provider.id === "moneris") return { label: "Production setup needed", tone: "staging" };
-
-  switch (provider.availability) {
-    case "credentials_required":
-      return { label: "Authorize and review", tone: "setup" };
-    case "provider_access_required":
-      return { label: "Provider access needed", tone: "setup" };
-    case "provider_build_required":
-      return { label: "In development", tone: "development" };
-    case "provider_selection_required":
-      return { label: "Provider selection needed", tone: "development" };
-    case "coming_soon":
-      return { label: "Coming soon", tone: "future" };
-  }
+  if (PREVIEW_INTEGRATION_IDS.includes(provider.id) || provider.id === "plaid"
+    || provider.availability !== "credentials_required") return { label: "Coming Soon", tone: "future" };
+  return { label: "Available", tone: "setup" };
 }
 
 export const salesChannelGroups = [
@@ -105,16 +92,16 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
     name: "Shopify",
     category: "Commerce",
     availability: "credentials_required",
-    activationRequirement:
-      "The Shopify connector is built, but public installs are waiting for App Store registration and review. After approval, authorize your store, map its storefront and fulfilment locations, then review imported orders, refunds, products and stock before using the results.",
+    activationRequirement: "Coming soon. Bring online orders, products and inventory into one reviewed view.",
+    setupDetails: "The Shopify connector is built, but public installs are waiting for App Store registration and review. After approval, authorize your store, map its storefront and fulfilment locations, then review imported orders, refunds, products and stock before using the results.",
   },
   {
     id: "shopify-pos",
     name: "Shopify POS",
     category: "Point of sale",
     availability: "credentials_required",
-    activationRequirement:
-      "The Shopify POS connector is built, but public installs are waiting for App Store registration and review. After approval, authorize your store, map its retail locations, then review imported POS orders, tenders, products and stock before using the results.",
+    activationRequirement: "Coming soon. See in-store sales, products and stock alongside your other locations.",
+    setupDetails: "The Shopify POS connector is built, but public installs are waiting for App Store registration and review. After approval, authorize your store, map its retail locations, then review imported POS orders, tenders, products and stock before using the results.",
   },
   {
     id: "square",
@@ -129,8 +116,8 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
     name: "Clover",
     category: "Point of sale",
     availability: "credentials_required",
-    activationRequirement:
-      "Clover is being prepared for merchant access. Authorized test imports stage orders, items, inventory, customers and payments. App approval and financial reconciliation are still required; these records do not yet contribute to business reports.",
+    activationRequirement: "Coming soon. Explore sales, products and customer trends from your Clover account.",
+    setupDetails: "Clover is being prepared for merchant access. Authorized test imports stage orders, items, inventory, customers and payments. App approval and financial reconciliation are still required; these records do not yet contribute to business reports.",
   },
   {
     id: "stripe",
@@ -138,47 +125,47 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
     category: "Payments",
     availability: "credentials_required",
     activationRequirement:
-      "The Stripe Connect adapter is built for balance transactions and payouts. Authorize an account, then reconcile a staged sample before promotion.",
+      "Connect Stripe to review payments, fees and payouts. Check a sample before adding reviewed records to your reports.",
   },
   {
     id: "moneris",
     name: "Moneris",
     category: "Payments",
     availability: "credentials_required",
-    activationRequirement:
-        "Connect your own Moneris merchant credentials for read-only payment imports. Imported payments stay separate from business reports while currency, refund and settlement reconciliation are completed. Vanteloq does not store raw card data.",
+    activationRequirement: "Coming soon. Review payment history and compare it with your sales and deposits.",
+    setupDetails: "Connect your own Moneris merchant credentials for read-only payment imports. Imported payments stay separate from business reports while currency, refund and settlement reconciliation are completed. Vanteloq does not store raw card data.",
   },
   {
     id: "quickbooks",
     name: "QuickBooks",
     category: "Accounting",
     availability: "credentials_required",
-    activationRequirement:
-      "The read only QuickBooks Online authorization and company verification boundary is built. Sandbox remains staging only while ledger import, account and tax mapping, reconciliation, closed-period handling, recovery tests, and Intuit production review are completed.",
+    activationRequirement: "Coming soon. Connect QuickBooks accounting records with your business insights.",
+    setupDetails: "The read only QuickBooks Online authorization and company verification boundary is built. Sandbox remains staging only while ledger import, account and tax mapping, reconciliation, closed-period handling, recovery tests, and Intuit production review are completed.",
   },
   {
     id: "xero",
     name: "Xero",
     category: "Accounting",
     availability: "provider_build_required",
-    activationRequirement:
-      "Not available yet. A production connection still needs authorization, tenant selection, account and tax mapping, incremental import, and conflict recovery tests.",
+    activationRequirement: "Coming soon. Bring your accounting records and business performance into one view.",
+    setupDetails: "Not available yet. A production connection still needs authorization, tenant selection, account and tax mapping, incremental import, and conflict recovery tests.",
   },
   {
     id: "doordash",
     name: "DoorDash",
     category: "Delivery",
     availability: "coming_soon",
-    activationRequirement:
-      "Coming soon. DoorDash Marketplace orders, menus, stores, fees, and payout reconciliation will remain unavailable until partner access and Vanteloq reconciliation tests are complete.",
+    activationRequirement: "Coming soon. See delivery orders, fees and refunds alongside other sales channels.",
+    setupDetails: "Coming soon. DoorDash Marketplace orders, menus, stores, fees, and payout reconciliation will remain unavailable until partner access and Vanteloq reconciliation tests are complete.",
   },
   {
     id: "uber-eats",
     name: "Uber Eats",
     category: "Delivery",
     availability: "coming_soon",
-    activationRequirement:
-      "Coming soon. Uber Eats orders, stores, fees, refunds, and settlement reconciliation will remain unavailable until partner access and Vanteloq reconciliation tests are complete.",
+    activationRequirement: "Coming soon. Review delivery sales, refunds and settlement activity in one place.",
+    setupDetails: "Coming soon. Uber Eats orders, stores, fees, refunds, and settlement reconciliation will remain unavailable until partner access and Vanteloq reconciliation tests are complete.",
   },
   {
     id: "google",
@@ -193,24 +180,24 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
     name: "Meta",
     category: "Marketing",
     availability: "credentials_required",
-    activationRequirement:
-      "Meta advertising requires app credentials, the required permissions and provider review before customer connections can be enabled. Facebook and Instagram organic insights are not currently available. After activation, select the exact ad account and review a sample. Spend, reach, clicks, CTR and CPC remain source-linked; campaign status and supported daily-budget changes require an explicit owner confirmation.",
+    activationRequirement: "Coming soon. Review advertising performance alongside your business results.",
+    setupDetails: "Meta advertising requires app credentials, the required permissions and provider review before customer connections can be enabled. Facebook and Instagram organic insights are not currently available. After activation, select the exact ad account and review a sample. Spend, reach, clicks, CTR and CPC remain source-linked; campaign status and supported daily-budget changes require an explicit owner confirmation.",
   },
   {
     id: "plaid",
     name: "Plaid",
     category: "Banking",
     availability: "credentials_required",
-    activationRequirement:
-      "The BookLoQ bank-feed adapter uses resumable Plaid Link, encrypted tokens, signed webhooks, repair mode, cursor sync, balances, and reviewed transactions. Production access still requires Plaid approval, Canadian institution testing, and hosted credentials.",
+    activationRequirement: "Coming soon. Connect bank balances and transactions to BookLoQ. You can review bank statements in Documents today.",
+    setupDetails: "The BookLoQ bank-feed adapter uses resumable Plaid Link, encrypted tokens, signed webhooks, repair mode, cursor sync, balances, and reviewed transactions. Production access still requires Plaid approval, Canadian institution testing, and hosted credentials.",
   },
   {
     id: "payroll",
     name: "Payroll",
     category: "Labour",
     availability: "provider_selection_required",
-    activationRequirement:
-      "Choose a payroll provider before Vanteloq can define account permissions, pay-period mapping, privacy boundaries, and reconciliation tests.",
+    activationRequirement: "Coming soon. Review staffing costs alongside sales and operating performance.",
+    setupDetails: "Choose a payroll provider before Vanteloq can define account permissions, pay-period mapping, privacy boundaries, and reconciliation tests.",
   },
 ] as const;
 

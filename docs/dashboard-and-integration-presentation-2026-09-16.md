@@ -1,0 +1,11 @@
+# Dashboard and integration presentation
+
+Vanteloq and BookLoQ retain their existing records, calculations, permissions and report boundaries. The chart presentation uses restrained blue gradients, readable labels, full-width sparklines, exact-value period selectors and visible keyboard focus. No data is smoothed or manufactured.
+
+BookLoQ's cash chart has whole-cent 1/2/5 axis intervals and a labelled zero. Missing values break series; negative cash remains below zero. The outflow category ring appears only when every nonnegative safe-integer category amount exactly reconciles to the supplied total. Small categories are grouped with an exact remainder, and every category stays available in the detailed breakdown. Cash movement is explicitly distinguished from revenue, expenses and profit. Restricted and empty states withhold the corresponding amounts and charts. Existing export permission checks remain.
+
+Public integration cards and ordinary subscriber connection controls show Coming Soon for unfinished providers. Saved credentials do not establish production readiness. Existing connections retain their error, repair, disconnect and reporting-review controls, including errors on a sibling account when the provider's aggregate status is connected. Current subject-bound internal access can reveal optional preview setup controls. These presentation rules do not replace API authorization or activate any provider.
+
+Documents uses customer labels such as Private File Storage, File Safety Scan and Read Document Text. Its upload, scan, extraction, consent, review and deletion behavior is unchanged in this release. Email forwarding remains unavailable until its separate receiving implementation and provider setup pass verification.
+
+Verification covers signed values, cent-level axes, missing records, category reconciliation, access and export restrictions, provider availability, mixed-account errors and source-guidance behavior. The isolated design fixture contains fictional data only. Desktop and 390px mobile review confirmed readable controls, intentional chart scrolling without page overflow, working period/category selection and honest restricted/empty states. This work does not certify provider approvals or full application launch readiness.

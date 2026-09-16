@@ -56,11 +56,12 @@ function readPlaidResumeState(): { token: string; mode: LinkMode; redirect: stri
   return { token, mode, redirect, consentRecordId };
 }
 
-export default function PlaidLinkButton({ connected, repairRequired, configured, canManage, deletionAvailable, onChanged, showNotice, returnView = "Integrations" }: {
+export default function PlaidLinkButton({ connected, repairRequired, configured, canManage, canStartConnection = true, deletionAvailable, onChanged, showNotice, returnView = "Integrations" }: {
   connected: boolean;
   repairRequired: boolean;
   configured: boolean;
   canManage: boolean;
+  canStartConnection?: boolean;
   deletionAvailable: boolean;
   onChanged: () => Promise<void>;
   showNotice: (message: string) => void;
@@ -234,11 +235,11 @@ export default function PlaidLinkButton({ connected, repairRequired, configured,
   if (!connected) return (
     <>
       <div className="plaid-connect-actions">
-        <button onClick={() => setConsentDialog(repairRequired ? "update" : "connect")} disabled={!configured || !canManage || Boolean(busy)} title={!canManage ? "Your role cannot manage financial connections." : !configured ? "Add the hosted Plaid settings before connecting." : repairRequired ? "Review the notice, then re-authenticate this institution through Plaid Link." : "Review the notice, then open Plaid Link to authorize read-only Transactions and Balance access."}>
-          {busy === "prepare" ? "Preparing secure Link…" : repairRequired ? "Repair bank connection" : "Connect bank with Plaid"}
+        <button onClick={() => setConsentDialog(repairRequired ? "update" : "connect")} disabled={!configured || !canManage || (!repairRequired && !canStartConnection) || Boolean(busy)} title={!canManage ? "Your role cannot manage financial connections." : !canStartConnection && !repairRequired ? "Coming Soon" : !configured ? "This connection is temporarily unavailable." : repairRequired ? "Review the notice, then re-authenticate this institution through Plaid Link." : "Review the notice, then open Plaid Link to authorize read-only Transactions and Balance access."}>
+          {busy === "prepare" ? "Preparing secure Link…" : repairRequired ? "Repair bank connection" : !canStartConnection ? "Coming Soon" : "Connect Bank"}
         </button>
         {deletionAvailable && <button className="danger-text" onClick={() => void deleteRetainedData()} disabled={!canManage || Boolean(busy)} title="Delete unreviewed Plaid imports and de-identify accounting records that must remain.">{busy === "delete-data" ? "Deleting…" : "Delete retained Plaid data"}</button>}
-        <small>{repairRequired ? "Your saved bank records remain intact. Review the authorization notice before restoring access." : "Review the exact data categories, purposes, retention, and withdrawal choices before Plaid Link opens."}</small>
+        <small>{repairRequired ? "Your saved bank records remain intact. Review the authorization notice before restoring access." : !canStartConnection ? "You can add and review a bank statement in Documents." : "Review the data access and privacy choices before connecting."}</small>
       </div>
       {consentModal}
     </>

@@ -15,6 +15,7 @@ import type { RetailAdvisorSeed } from "./retail-intelligence-workspace";
 import GrowthWorkspace from "./growth-workspace";
 import ScenarioPlanner from "./scenario-planner";
 import { connectorNextStep, filterConnectors } from "../domain/connector-guidance";
+import { customerIntegrationAvailability, hasConnectionAttention, type CustomerIntegrationAvailability } from "../domain/integration-availability";
 import IntegrationBrandLogo from "./integration-brand-logo";
 import AutomaticSyncControl, { type AutomaticSyncStatus } from "./automatic-sync-control";
 import AdvisorComposer, { canAskAdvisor } from "./advisor-composer";
@@ -2196,6 +2197,7 @@ function TaskComposer({
 }
 
 type IntegrationConnection = IntegrationCatalogEntry & {
+  customerAvailability?: CustomerIntegrationAvailability;
   status: string;
   maskedAccountRef: string | null;
   externalAccountName: string | null;
@@ -2918,16 +2920,16 @@ function DataHub({
                   : "Starter plan";
               const connected = provider.status === "connected";
               const hasLocationMapping = provider.id === "lightspeed" || provider.id === "lightspeed-r" || provider.id === "shopify" || provider.id === "shopify-pos" || provider.id === "square" || provider.id === "clover";
-              const isStripe = provider.id === "stripe";
               const isMoneris = provider.id === "moneris";
               const isQuickBooks = provider.id === "quickbooks";
               const isPlaid = provider.id === "plaid";
               const isMarketingProvider = provider.id === "google" || provider.id === "meta";
               const supportsMultipleAccounts = supportsMultipleProviderAccounts(provider.id);
-              const providerSetupRequired = provider.availability === "provider_selection_required";
-              const providerUnavailable = provider.availability === "provider_build_required";
-              const providerComingSoon = provider.availability === "coming_soon";
-              const showPlanRequirement = !providerEntitled && providerFeature !== null && !providerSetupRequired && !providerUnavailable && !providerComingSoon;
+              const customerAvailability = provider.customerAvailability ?? customerIntegrationAvailability(provider);
+              const providerComingSoon = customerAvailability.comingSoon;
+              const hasSavedConnection = Boolean(provider.connections?.length) || connected || provider.status === "error";
+              const NewConnectionContainer = customerAvailability.previewAccess ? "details" : "div";
+              const showPlanRequirement = !providerEntitled && providerFeature !== null && !providerComingSoon;
               const repairRequired = isPlaid && provider.status === "error" && Boolean(provider.maskedAccountRef);
               const canManageProvider = providerEntitled && (provider.id === "plaid"
                 ? provider.canManage ?? canManageBankConnections
@@ -2937,22 +2939,19 @@ function DataHub({
               const anyProviderAction = Object.keys(providerActions).some((key) => key.startsWith(`${provider.id}:`));
               const configured = provider.providerReadiness?.credentialsConfigured === true;
               const nextStep = connectorNextStep(provider, providerEntitled, canManageProvider);
-              const disabledReason = !providerEntitled
-                ? `${providerPlanLabel} required for this connection.`
-                : !canManageProvider
-                ? "Your role can view connection status but cannot manage integrations."
-                : !configured
-                  ? `Add the ${isPlaid ? "Plaid client ID, environment secret, approved redirect and webhook URLs, and encryption key" : isStripe ? "Stripe Connect credentials and webhook secret" : isMoneris ? "integration encryption key" : isQuickBooks ? "QuickBooks client ID, client secret, approved callback, environment, and encryption key" : provider.id === "google" ? "Google OAuth client, approved callback, and encryption key" : provider.id === "meta" ? "Meta app credentials, approved callback, and encryption key" : provider.id === "shopify" || provider.id === "shopify-pos" ? "Shopify client ID, client secret, approved callback, webhook URL, and encryption key" : provider.id === "lightspeed-r" ? "R-Series OAuth client ID and secret" : provider.id === "square" ? "Square application ID, application secret, approved redirect, webhook signature key, and encryption key" : provider.id === "clover" ? "Clover app ID, app secret, approved redirect, webhook authorization secret, and encryption key" : "X-Series OAuth client ID and secret"} to Vanteloq's hosted secrets first.`
-                  : "";
+              const disabledReason = !customerAvailability.canStartConnection
+                ? "Coming Soon"
+                : !providerEntitled ? `${providerPlanLabel} required for this connection.`
+                : !canManageProvider ? "Your role can view connections. Ask a workspace owner to make changes."
+                : !configured ? "This connection is temporarily unavailable. Contact support for help." : "";
+
               return (
               <article className={`integration-card${showPlanRequirement ? " subscription-locked" : ""}`} key={provider.id}>
                 <div className="integration-card-head">
                   <IntegrationBrandLogo name={provider.name} />
                   <div className="integration-card-labels">
                     <span className="integration-type">{provider.category}</span>
-                    {providerSetupRequired && <span className="integration-coming-soon">Provider required</span>}
-                    {providerUnavailable && <span className="integration-coming-soon">Unavailable</span>}
-                    {providerComingSoon && <span className="integration-coming-soon">Coming soon</span>}
+                    {providerComingSoon && !hasSavedConnection && <span className="integration-coming-soon">Coming Soon</span>}
                     {showPlanRequirement && <span className="integration-coming-soon">{providerPlanLabel} required</span>}
                   </div>
                 </div>
@@ -2969,25 +2968,10 @@ function DataHub({
                     {provider.lastSuccessfulSyncAt && <small>Last synchronized {new Date(provider.lastSuccessfulSyncAt).toLocaleString("en-CA")}</small>}
                   </div>
                 )}
-                {hasLocationMapping && !configured && provider.providerReadiness && (
-                  <div className="provider-setup-needed" role="note">
-                    <b>Connection setup remaining</b>
-                    <span>
-                      {provider.providerReadiness.missingConfiguration
-                        .map(lightspeedConfigurationLabel)
-                        .join(" · ")}
-                    </span>
-                  </div>
-                )}
-                {isPlaid && !configured && provider.providerReadiness && (
-                  <div className="provider-setup-needed" role="note"><b>Hosted Plaid setup remaining</b><span>{provider.providerReadiness.missingConfiguration.map(lightspeedConfigurationLabel).join(" · ")}</span></div>
-                )}
-                {isMarketingProvider && !configured && provider.providerReadiness && (
-                  <div className="provider-setup-needed" role="note"><b>{provider.name} setup remaining</b><span>{provider.providerReadiness.missingConfiguration.map(lightspeedConfigurationLabel).join(" · ")}</span></div>
-                )}
-                {isQuickBooks && !configured && provider.providerReadiness && (
-                  <div className="provider-setup-needed" role="note"><b>QuickBooks setup remaining</b><span>{provider.providerReadiness.missingConfiguration.map(lightspeedConfigurationLabel).join(" · ")}</span></div>
-                )}
+                {customerAvailability.previewAccess && <details className="integration-enablement"><summary>Preview Setup Details</summary>
+                  {provider.setupDetails && <p>{provider.setupDetails}</p>}
+                  {!configured && provider.providerReadiness && <p>{provider.providerReadiness.missingConfiguration.map(lightspeedConfigurationLabel).join(" · ")}</p>}
+                </details>}
                 {isQuickBooks && quickBooksConsentOpen && <form className="moneris-connect-form" onSubmit={(event) => { event.preventDefault(); void connectQuickBooks(); }}>
                   <header><b>Connect a QuickBooks Online company</b><span>Verify your company and save its authorization securely. Accounting import is not available yet, so this connection does not update your reports.</span></header>
                   <label className="moneris-consent"><input type="checkbox" checked={quickBooksConsentAccepted} required onChange={(event) => setQuickBooksConsentAccepted(event.target.checked)} /><span>I authorize Vanteloq to receive the selected QuickBooks company identifier, company name, authorization status, and future read only accounting records for mapping, reconciliation, and reporting. Vanteloq will not create or change QuickBooks transactions during this stage.</span></label>
@@ -3011,6 +2995,8 @@ function DataHub({
                   <footer><button type="button" onClick={() => setShopifyConnectProvider(null)}>Cancel</button><button type="submit" className="primary" disabled={!canManageProvider || providerAction === "authorize"}>{providerAction === "authorize" ? "Opening Shopify…" : "Continue to Shopify"}</button></footer>
                 </form>}
                 {supportsMultipleAccounts && Boolean(provider.connections?.length) && (
+                  <details className="integration-enablement" open={!customerAvailability.comingSoon || hasConnectionAttention(provider)}>
+                    <summary>Connected Accounts ({provider.connections!.length})</summary>
                   <div className="provider-account-list" aria-label={`${provider.name} provider accounts`}>
                     {provider.connections!.map((connection, index) => {
                       const connectionKey = integrationActionKey(provider.id, connection.id);
@@ -3024,7 +3010,7 @@ function DataHub({
                           <b>{connection.externalAccountName || `${provider.name} account`}</b>
                           <small>{connection.maskedAccountRef ? `Protected reference ${connection.maskedAccountRef}` : connection.status === "pending" ? "Authorization pending" : "Protected provider identity"}</small>
                           {connection.lastSuccessfulSyncAt && <small>Last synced {formatRelativeSync(connection.lastSuccessfulSyncAt)}</small>}
-                          {connection.dataPromotionStatus !== "blocked" && <small>{connection.reportingEnvironment === "sandbox" ? "Sandbox · excluded from reports" : connection.reportingEnvironment === "unverified" ? "Environment verification required" : `Data ${humanizeIdentifier(connection.dataPromotionStatus)}`}</small>}
+                          {connection.dataPromotionStatus !== "blocked" && <small>{connection.reportingEnvironment === "sandbox" ? "Sandbox · excluded from reports" : connection.reportingEnvironment === "unverified" ? "Environment verification required" : connection.dataPromotionStatus === "approved" ? "Included in reports" : "Review before reporting"}</small>}
                           {isMarketingProvider && <small>{connection.resourceSelections.length
                             ? `${connection.resourceSelections.length} exact resource${connection.resourceSelections.length === 1 ? "" : "s"} selected`
                             : "No provider resources selected"}</small>}
@@ -3089,7 +3075,7 @@ function DataHub({
                               type="button"
                               onClick={() => void stageProviderSample(actionableProvider as "lightspeed" | "lightspeed-r" | "shopify" | "shopify-pos" | "square" | "clover" | "stripe" | "moneris", connection.id, connection.lastSuccessfulSyncAt)}
                               disabled={!canManageProvider || Boolean(connectionAction) || connection.syncActive}
-                            >{connectionAction === "sync" || connection.syncActive ? "Syncing…" : connectionAction === "sample" ? "Working…" : provider.id === "moneris" ? "Sync payments" : provider.id === "lightspeed" || provider.id === "lightspeed-r" || provider.id === "shopify" || provider.id === "shopify-pos" || provider.id === "square" || provider.id === "clover" ? "Re-sync now" : "Stage sample"}</button>}
+                            >{connectionAction === "sync" || connection.syncActive ? "Syncing…" : connectionAction === "sample" ? "Working…" : provider.id === "moneris" ? "Sync payments" : provider.id === "lightspeed" || provider.id === "lightspeed-r" || provider.id === "shopify" || provider.id === "shopify-pos" || provider.id === "square" || provider.id === "clover" ? "Re-sync now" : "Review sample"}</button>}
                             {hasLocationMapping && <button
                               type="button"
                               onClick={() => void loadProviderLocations(actionableProvider as "lightspeed" | "lightspeed-r" | "shopify" | "shopify-pos" | "square" | "clover", connection.id)}
@@ -3124,11 +3110,12 @@ function DataHub({
                       </article>;
                     })}
                   </div>
+                  </details>
                 )}
-                {isMoneris && provider.providerReadiness?.dataPromotionEnabled !== true && (
+                {isMoneris && hasSavedConnection && provider.providerReadiness?.dataPromotionEnabled !== true && (
                   <div className="provider-setup-needed" role="note"><b>Payment import only</b><span>Imported payments stay separate from business reports while currency, refunds and settlement reconciliation are completed.</span></div>
                 )}
-                {isPlaid && configured && provider.providerReadiness?.mode !== "production" && (
+                {isPlaid && hasSavedConnection && configured && provider.providerReadiness?.mode !== "production" && (
                   <div className="provider-setup-needed" role="note"><b>Plaid sandbox</b><span>Test institutions only. Real bank authorization remains locked until Plaid approves Vanteloq for production access.</span></div>
                 )}
                 <div className="integration-card-footer">
@@ -3138,14 +3125,10 @@ function DataHub({
                         ? "Repair required"
                         : connected
                         ? "Connected"
-                        : providerSetupRequired
-                          ? "Provider required"
-                        : providerUnavailable
-                          ? "Unavailable"
+                        : provider.status === "error"
+                          ? "Needs Attention"
                         : providerComingSoon
-                          ? "Coming soon"
-                        : provider.id === "shopify" || provider.id === "shopify-pos"
-                          ? "App review pending"
+                          ? "Coming Soon"
                         : configured
                           ? "Ready to authorize"
                           : availabilityLabel(provider.availability)}
@@ -3166,19 +3149,18 @@ function DataHub({
                                   ? "Measurements are available in Marketing"
                                   : "Resource selection required · measurements unavailable"
                               : "Reviewed source data is available"
-                          : "Staging only · metrics locked"
-                          : providerSetupRequired
-                            ? "Choose a supported provider before synchronization"
-                            : providerUnavailable
-                              ? "Connection not available"
+                          : "Review required before reporting"
+                          : provider.status === "error"
+                            ? "Restore this connection to resume updates"
                             : providerComingSoon
-                              ? "Planned connector · no data access"
+                              ? "Try an available connection or import a file"
                           : configured
-                            ? "Authorization required · metrics locked"
+                            ? "Connect your account to begin"
                             : "Synchronization unavailable"}
                     </span>
                   </div>
-                  {isPlaid ? <div className="provider-actions">
+                  {isPlaid ? <NewConnectionContainer className="provider-actions">
+                    {customerAvailability.previewAccess && <summary>{hasSavedConnection ? "Connection Controls" : "Preview Connection"}</summary>}
                     {connected && provider.dataPromotionStatus === "staging" && provider.connections?.[0]?.lastSuccessfulSyncAt && <button
                       type="button"
                       onClick={() => requestConnectionDataApproval(provider.id, provider.connections![0].id)}
@@ -3188,19 +3170,21 @@ function DataHub({
                       connected={connected}
                       repairRequired={repairRequired}
                       configured={configured}
+                      canStartConnection={customerAvailability.canStartConnection}
                       canManage={canManageProvider && canManageBankConnections}
                       deletionAvailable={provider.status === "revoked" && !provider.privacyDataDeletedAt}
                       onChanged={loadConnections}
                       showNotice={showNotice}
                     />
-                  </div> : supportsMultipleAccounts ? <div className="provider-actions">
+                  </NewConnectionContainer> : supportsMultipleAccounts ? <NewConnectionContainer className="provider-actions">
+                    {customerAvailability.previewAccess && <summary>Preview Connection</summary>}
                     <button
                       type="button"
                       onClick={() => isMoneris ? setMonerisFormOpen(true) : isQuickBooks ? setQuickBooksConsentOpen(true) : provider.id === "shopify" || provider.id === "shopify-pos" ? setShopifyConnectProvider(provider.id) : void connectProvider(actionableProvider)}
                       disabled={Boolean(disabledReason) || Boolean(providerAction)}
-                      title={disabledReason || (isQuickBooks ? "Authorize a QuickBooks Online company for secure sandbox verification." : `Authorize another ${provider.name} account with its own credentials and import history.`)}
-                    >{providerAction === "authorize" ? "Opening…" : connected ? "Connect another account" : "Connect"}</button>
-                  </div> : provider.externalApplicationUrl && providerEntitled ? <div className="provider-actions">
+                      title={disabledReason || `Connect a ${provider.name} account securely.`}
+                    >{providerAction === "authorize" ? "Opening…" : !customerAvailability.canStartConnection ? "Coming Soon" : customerAvailability.previewAccess ? "Connect Test Account" : connected ? "Connect another account" : "Connect"}</button>
+                  </NewConnectionContainer> : provider.externalApplicationUrl && providerEntitled ? <div className="provider-actions">
                     <a href={provider.externalApplicationUrl} target="_blank" rel="noreferrer">{provider.externalApplicationLabel ?? "Request provider access"}</a>
                   </div> : showPlanRequirement ? <div className="provider-actions"><button type="button" disabled title={disabledReason}>{providerPlanLabel} required</button></div> : null}
                 </div>

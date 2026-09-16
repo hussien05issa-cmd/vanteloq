@@ -31,6 +31,29 @@
 .bookloq-dashboard-visuals .bq-cash-review { display:flex; align-items:center; justify-content:space-between; gap:12px; min-height:46px; padding:12px 17px; border:1px solid #b9cee4; border-radius:13px; background:linear-gradient(#f8fbff,#e7f0fc); color:#20538c; font-size:13px; font-weight:600; box-shadow:inset 0 1px 0 #fbfdff; cursor:pointer; text-align:left; }
 .bookloq-dashboard-visuals .bq-cash-review:hover { background:linear-gradient(#edf5ff,#dfecfb); }
 .bq-cash-boundary { margin:12px 0 0; color:#586c82; font-size:12px; line-height:1.65; max-width:1000px; }
+.bq-outflow-categories { min-width:0; margin-top:4px; }
+.bq-category-visual { position:relative; width:min(100%,180px); margin:2px auto 12px; }
+.bq-category-visual svg { display:block; width:100%; height:auto; }
+.bq-category-centre { position:absolute; inset:29%; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px; pointer-events:none; }
+.bq-category-centre strong { color:#153651; font-size:16px; font-variant-numeric:tabular-nums; letter-spacing:-.025em; white-space:nowrap; }
+.bq-category-centre span { color:#52677f; font-size:10px; line-height:1.25; text-align:center; overflow-wrap:anywhere; max-width:86px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.bq-category-visual.has-wide-amount .bq-category-centre { position:static; margin-top:4px; }
+.bq-category-visual.has-wide-amount .bq-category-centre strong { white-space:normal; overflow-wrap:anywhere; }
+.bq-category-visual.has-wide-amount .bq-category-centre span { max-width:none; font-size:12px; }
+.bq-outflow-categories ul { list-style:none; padding:0; margin:0; display:grid; gap:3px; }
+.bookloq-dashboard-visuals .bq-outflow-categories li button { display:grid; grid-template-columns:8px minmax(0,1fr) auto; align-items:center; gap:8px; width:100%; min-height:46px; padding:7px 6px; border:1px solid transparent; border-radius:9px; box-sizing:border-box; background:transparent; color:#334f6b; text-align:left; font:inherit; font-size:12px; cursor:pointer; box-shadow:none; }
+.bookloq-dashboard-visuals .bq-outflow-categories li button:hover { background:#eaf2fb; }
+.bookloq-dashboard-visuals .bq-outflow-categories li button[aria-pressed="true"] { background:#e5effc; border-color:#bfd4ee; }
+.bq-outflow-categories li i { width:8px; height:8px; border-radius:3px; }
+.bq-outflow-categories li span { overflow-wrap:anywhere; }
+.bq-outflow-categories li small { display:block; margin-top:3px; font-size:11px; color:#4e6781; font-variant-numeric:tabular-nums; }
+.bq-outflow-categories li b { color:#264766; font-size:12px; font-weight:600; font-variant-numeric:tabular-nums; }
+.bq-outflow-categories details { border-top:1px solid #dce6f0; margin-top:8px; }
+.bq-outflow-categories summary { color:#285d96; cursor:pointer; font-size:12px; min-height:44px; padding:12px 0; box-sizing:border-box; }
+.bq-cash-observations .bq-outflow-categories details dl { display:grid; grid-template-columns:minmax(0,1fr); gap:9px; margin:0 0 8px; }
+.bq-cash-observations .bq-outflow-categories details dl div { display:flex; justify-content:space-between; gap:12px; }
+.bq-cash-observations .bq-outflow-categories details dd { font-size:12px; white-space:nowrap; }
+.bq-category-unavailable { padding:12px; border:1px dashed #c6d6e7; border-radius:10px; }
 @media(max-width:1180px) { .bq-cash-detail-grid { grid-template-columns:minmax(0,1fr); }.bq-cash-observations { grid-template-columns:1fr 1fr; }.bq-cash-observations>.bq-cash-review { grid-column:1/-1; }.bq-cash-empty-guide { grid-column:1/-1; } }
 @media(max-width:720px) { .bq-cash-heading { flex-direction:column; gap:14px; }.bq-cash-periods { width:100%; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); box-sizing:border-box; }.bookloq-dashboard-visuals .bq-cash-periods button { padding-inline:7px; }.bq-cash-metrics { gap:8px; }.bq-cash-metrics article { padding:14px 12px; border-radius:14px; }.bq-cash-metrics strong { font-size:20px; }.bq-cash-metrics small { font-size:11px; } }
 @media(max-width:480px) { .bq-cash-metrics { grid-template-columns:minmax(0,1fr); }.bq-cash-metrics article { grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:6px 14px; }.bq-cash-metrics strong { grid-column:2; grid-row:1/3; max-width:190px; text-align:right; }.bq-cash-metrics small { grid-column:1; }.bq-cash-observations { grid-template-columns:minmax(0,1fr); }.bq-cash-heading h3 { font-size:23px; } }
