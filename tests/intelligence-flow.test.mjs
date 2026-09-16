@@ -10,7 +10,7 @@ const origin = "https://vanteloq.example";
 const context = { waitUntil() {}, passThroughOnException() {} };
 
 async function acceptAdvisorConsent(worker, environment, user, purpose = "analysis") {
-  const response = await dispatch(worker, environment, "/api/v1/advisor/consent", { ...user, method: "POST", body: { accepted: true, purpose, noticeVersion: "vanteloq-ai-v7-unified", privacyPolicyVersion: "2026-09-10" } });
+  const response = await dispatch(worker, environment, "/api/v1/advisor/consent", { ...user, method: "POST", body: { accepted: true, purpose, noticeVersion: "vanteloq-ai-v8-reviewed-cash", privacyPolicyVersion: "2026-09-10" } });
   assert.equal(response.status, 200, await response.clone().text());
   return response.json();
 }
@@ -285,7 +285,7 @@ test("excluding a test POS preserves records and removes them from reporting wit
     };
     try {
       await acceptAdvisorConsent(worker, environment, identity.owner);
-      const analysis = await dispatch(worker, environment, "/api/v1/advisor/chat", { ...identity.owner, method:"POST", body:{question:"Review my sales",provider:"openai",dataUseAccepted:true,noticeVersion:"vanteloq-ai-v7-unified",privacyPolicyVersion:"2026-09-10"} });
+      const analysis = await dispatch(worker, environment, "/api/v1/advisor/chat", { ...identity.owner, method:"POST", body:{question:"Review my sales",provider:"openai",dataUseAccepted:true,noticeVersion:"vanteloq-ai-v8-reviewed-cash",privacyPolicyVersion:"2026-09-10"} });
       assert.equal(analysis.status,200,await analysis.clone().text());
       assert.equal(aiEvidence.kpis.current.netSalesCents,20000);
       assert.deepEqual(aiEvidence.sources.map(source => source.provider),["lightspeed-r"]);
@@ -416,7 +416,7 @@ test("intraday API compares matched hours and redacts all profit paths for reven
       return originalFetch(input, init);
     };
     try {
-      const ask = (user, body = {}) => dispatch(worker, environment, "/api/v1/advisor/chat", { method: "POST", ...user, body: { question: "Analyze available KPIs", dataUseAccepted: true, noticeVersion: "vanteloq-ai-v7-unified", privacyPolicyVersion: "2026-09-10", ...body } });
+      const ask = (user, body = {}) => dispatch(worker, environment, "/api/v1/advisor/chat", { method: "POST", ...user, body: { question: "Analyze available KPIs", dataUseAccepted: true, noticeVersion: "vanteloq-ai-v8-reviewed-cash", privacyPolicyVersion: "2026-09-10", ...body } });
       const consentFor = async user => (await dispatch(worker, environment, "/api/v1/advisor/consent", user)).json();
       assert.deepEqual((await consentFor(reader)).consent, { analysis: false, help: false });
       assert.equal((await ask(reader)).status, 409, "a chat checkbox cannot create its own persistent consent");
@@ -555,7 +555,7 @@ test("AI reads permitted BookLoQ summaries through its real access path and excl
       return originalFetch(input, init);
     };
     const ask = async (extra = {}) => {
-      const response = await dispatch(worker, environment, "/api/v1/advisor/chat", { ...identity.owner, method: "POST", body: { question: "Explain my recorded BookLoQ totals", provider: "openai", dataUseAccepted: true, noticeVersion: "vanteloq-ai-v7-unified", privacyPolicyVersion: "2026-09-10", ...extra } });
+      const response = await dispatch(worker, environment, "/api/v1/advisor/chat", { ...identity.owner, method: "POST", body: { question: "Explain my recorded BookLoQ totals", provider: "openai", dataUseAccepted: true, noticeVersion: "vanteloq-ai-v8-reviewed-cash", privacyPolicyVersion: "2026-09-10", ...extra } });
       assert.equal(response.status, 200, await response.clone().text());
       return JSON.parse(outbound.at(-1).split("Evidence JSON: ")[1].split("\n\nConversation memory:")[0]);
     };

@@ -17,13 +17,29 @@ const sample = JSON.parse(await readFile("tests/fixtures/bookloq-preview.json", 
 // The forecast example is isolated from the ledger fixture and clearly labelled.
 const scenario = await build({ stdin: { contents: 'export {bookloqDemo} from "./domain/bookloq-demo";', resolveDir: process.cwd(), loader: "ts" }, bundle: true, write: false, format: "esm", platform: "node" });
 const { bookloqDemo } = await import(`data:text/javascript;base64,${Buffer.from(scenario.outputFiles[0].text).toString("base64")}`);
+const statementModule = await build({ stdin: { contents: 'export {reviewedBankStatement,statementFingerprint} from "./domain/bank-statement";', resolveDir: process.cwd(), loader: "ts" }, bundle: true, write: false, format: "esm", platform: "node" });
+const { reviewedBankStatement, statementFingerprint } = await import(`data:text/javascript;base64,${Buffer.from(statementModule.outputFiles[0].text).toString("base64")}`);
 sample.bookloq.thirteenWeekCashFlow = bookloqDemo(600000, false, false);
+const port = Number(process.argv[2] || 5192);
 createServer(async (request, response) => {
   try {
     const path = new URL(request.url, "http://localhost").pathname;
     if (path.startsWith("/api/")) {
       response.setHeader("Content-Type", "application/json");
+      if (path === "/api/v1/bookloq/statements" && request.method === "POST") {
+        let raw = "";
+        for await (const chunk of request) { raw += chunk; if (raw.length > 400_000) throw new Error("Preview is too large"); }
+        try {
+          const body = JSON.parse(raw);
+          if (body.action !== "preview") { response.statusCode = 405; response.end(JSON.stringify({ error: { message: "This local preview cannot import or undo records." } })); return; }
+          const preview = reviewedBankStatement({ ...body, demoRecord: true }, "2026-09-16");
+          response.end(JSON.stringify({ preview, previewFingerprint: await statementFingerprint(preview), statementCashEnabled: true })); return;
+        } catch (error) { response.statusCode = 400; response.end(JSON.stringify({ error: { message: error.message } })); return; }
+      }
       if (request.method !== "GET") { response.statusCode = 405; response.end(JSON.stringify({ error: { message: "Local preview is read only." } })); return; }
+      if (path === "/api/v1/bookloq/statements") {
+        response.end(JSON.stringify({ accounts: [{ id: "fictional-manual", name: "Fictional Statement Account", maskedNumber: "••••4821", currency: "CAD" }], documents: [{ id: "fictional-statement", fileName: "Fictional statement.pdf", documentType: "bank_statement", extractionReady: false }], imports: [{ id: "fictional-history", bankAccountId: "fictional-manual", startDate: "2026-08-01", endDate: "2026-08-31", rowCount: 2, inflowCents: 40000, outflowCents: 15000, closingBalanceCents: 125000 }], statementCashEnabled: true, boundary: "Local fictional review. No real document or bank account is used. This preview cannot import records.", extraction: null })); return;
+      }
       response.end(JSON.stringify(path === "/api/v1/bookloq" ? sample : { integrations: [], canManageBankConnections: false })); return;
     }
     if (path === "/preview.js") { response.setHeader("Content-Type", "application/javascript"); response.end(bundle.outputFiles[0].text); return; }
@@ -37,4 +53,4 @@ createServer(async (request, response) => {
     response.setHeader("Content-Type", "text/html; charset=utf-8");
     response.end(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>BookLoQ · Local sample workspace</title><style>${css}\n.fixture-label{padding:12px 24px;color:#375777;background:#e7f0fa;font-size:13px}.main-panel{min-width:0}</style><div id="root"></div><script type="module" src="/preview.js"></script></html>`);
   } catch { response.statusCode = 404; response.end("Not found"); }
-}).listen(5192, "127.0.0.1", () => console.log("BookLoQ preview: http://127.0.0.1:5192"));
+}).listen(port, "127.0.0.1", () => console.log(`BookLoQ preview: http://127.0.0.1:${port}`));

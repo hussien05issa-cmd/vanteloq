@@ -113,7 +113,7 @@ test("retail Worker enforces tenant/location/privacy boundaries, source approval
       if (String(request) === "https://api.openai.com/v1/responses") { prompts.push(JSON.parse(init.body).input); return new Response(JSON.stringify({ status: "completed", output: [{ type: "message", content: [{ type: "output_text", text: "Fixture retail analysis" }] }] }), { headers: { "content-type": "application/json" } }); }
       return originalFetch(request, init);
     };
-    const askBody = { question: "Explain the retail performance", provider: "openai", dataUseAccepted: true, noticeVersion: "vanteloq-ai-v7-unified", privacyPolicyVersion: "2026-09-10", memoryEnabled: true, from: "2026-09-11", to: "2026-09-11", locationId: owner.locationId };
+    const askBody = { question: "Explain the retail performance", provider: "openai", dataUseAccepted: true, noticeVersion: "vanteloq-ai-v8-reviewed-cash", privacyPolicyVersion: "2026-09-10", memoryEnabled: true, from: "2026-09-11", to: "2026-09-11", locationId: owner.locationId };
     const ask = (changes = {}, identity = staff) => dispatch(worker, environment, "/api/v1/advisor/chat", { ...identity, method: "POST", body: { ...askBody, ...changes } });
     assert.equal((await ask({ dataUseAccepted: false })).status, 409); assert.equal(prompts.length, 0);
     response = await dispatch(worker, environment, "/api/v1/advisor/consent", { ...staff, method: "POST", body: { accepted: true, purpose: "analysis", noticeVersion: askBody.noticeVersion, privacyPolicyVersion: askBody.privacyPolicyVersion } });

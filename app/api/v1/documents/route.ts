@@ -190,6 +190,7 @@ export async function POST(request: Request) {
       ![
         "invoice",
         "receipt",
+        "bank_statement",
         "supplier_statement",
         "packing_slip",
         "purchase_order",

@@ -1,6 +1,6 @@
 export { PRIVACY_POLICY_VERSION } from "../shared/legal-versions";
 export const PLAID_CONSENT_NOTICE_VERSION = "plaid-financial-data-v3";
-export const ADVISOR_CONSENT_NOTICE_VERSION = "vanteloq-ai-v7-unified";
+export const ADVISOR_CONSENT_NOTICE_VERSION = "vanteloq-ai-v8-reviewed-cash";
 export const QUICKBOOKS_CONSENT_NOTICE_VERSION = "quickbooks-accounting-read-v1";
 
 export const PLAID_DATA_CATEGORIES = [
@@ -22,7 +22,7 @@ export const ADVISOR_DATA_CATEGORIES = [
   "The question entered by the authorized user",
   "Dated aggregate sales, gross profit, transaction, discount, refund and unit metrics; permission-filtered labour totals, inventory values and accounts payable snapshots",
   "Permitted synchronized website, search and paid-advertising totals, with source-specific periods and coverage limits; no queries, URLs, Business Profile content or advertising amounts",
-  "Permitted organization-wide BookLoQ ledger and cash summaries, only with the required finance access and a live ledger; no raw ledger records or identities",
+  "Permitted organization-wide BookLoQ ledger and cash summaries, including dated totals from reviewed bank statements, only with the required finance access; demonstration records, raw documents, transaction descriptions and identities are excluded",
   "Product guidance for Vanteloq and BookLoQ; disabling Workspace data excludes business records",
   "Connected-source status and freshness details",
   "Aggregate cash available only when the user has bank-balance permission",

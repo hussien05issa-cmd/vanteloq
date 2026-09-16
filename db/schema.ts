@@ -1,10 +1,13 @@
 import { sql } from "drizzle-orm";
+// Reviewed statement records retain their original document and separate cash activity from ledger posting.
 import {
   check,
   index,
   integer,
+  primaryKey,
   sqliteTable,
   text,
+  unique,
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 
@@ -1462,7 +1465,7 @@ export const workspaceDocuments = sqliteTable(
   {
     id: text("id").primaryKey(),
     organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
-    documentType: text("document_type", { enum: ["invoice", "receipt", "supplier_statement", "packing_slip", "purchase_order", "other"] }).notNull(),
+    documentType: text("document_type", { enum: ["invoice", "receipt", "bank_statement", "supplier_statement", "packing_slip", "purchase_order", "other"] }).notNull(),
     fileName: text("file_name").notNull(),
     objectKey: text("object_key").notNull(),
     contentType: text("content_type").notNull(),
@@ -2161,3 +2164,37 @@ export const assistantMessages = sqliteTable(
   },
   (table) => [index("assistant_messages_conversation_idx").on(table.conversationId, table.createdAt), index("assistant_messages_workspace_idx").on(table.organizationId, table.createdAt), check("assistant_messages_role_check", sql`${table.role} in ('user','assistant')`)],
 );
+
+export const bankStatementImports = sqliteTable("bank_statement_imports", {
+  id: text("id").primaryKey().notNull(),
+  organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  documentId: text("document_id").notNull().references(() => workspaceDocuments.id, { onDelete: "cascade" }),
+  bankAccountId: text("bank_account_id").notNull().references(() => bankAccounts.id, { onDelete: "cascade" }),
+  financialAccountId: text("financial_account_id").notNull().references(() => financialAccounts.id, { onDelete: "cascade" }),
+  startDate: text("start_date").notNull(), endDate: text("end_date").notNull(), currency: text("currency").notNull(),
+  openingBalanceCents: integer("opening_balance_cents").notNull(), closingBalanceCents: integer("closing_balance_cents").notNull(),
+  rowCount: integer("row_count").notNull(), inflowCents: integer("inflow_cents").notNull(), outflowCents: integer("outflow_cents").notNull(),
+  fingerprint: text("fingerprint").notNull(), demoRecord: integer("demo_record").notNull().default(0),
+  status: text("status", { enum: ["staging", "approved"] }).notNull(),
+  approvedByUserId: text("approved_by_user_id").notNull().references(() => users.id),
+  createdAt: integer("created_at").notNull(),
+}, table => [
+  unique().on(table.organizationId, table.documentId),
+  index("bank_statement_account_period").on(table.organizationId, table.bankAccountId, table.startDate, table.endDate),
+  check("bank_statement_row_count", sql`${table.rowCount} BETWEEN 1 AND 500`),
+  check("bank_statement_totals_positive", sql`${table.inflowCents} >= 0 AND ${table.outflowCents} >= 0`),
+  check("bank_statement_mode", sql`${table.demoRecord} IN (0, 1)`),
+  check("bank_statement_status", sql`${table.status} IN ('staging', 'approved')`),
+  check("bank_statement_dates", sql`${table.startDate} <= ${table.endDate}`),
+  check("bank_statement_balance", sql`${table.openingBalanceCents} + ${table.inflowCents} - ${table.outflowCents} = ${table.closingBalanceCents}`),
+]);
+
+export const bankStatementRows = sqliteTable("bank_statement_rows", {
+  importId: text("import_id").notNull().references(() => bankStatementImports.id, { onDelete: "cascade" }),
+  transactionId: text("transaction_id").notNull().references(() => financialTransactions.id, { onDelete: "cascade" }),
+  rowNumber: integer("row_number").notNull(),
+}, table => [
+  primaryKey({ columns: [table.importId, table.rowNumber] }),
+  unique().on(table.transactionId),
+  check("bank_statement_row_number", sql`${table.rowNumber} BETWEEN 1 AND 500`),
+]);

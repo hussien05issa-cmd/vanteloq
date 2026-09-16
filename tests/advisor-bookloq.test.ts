@@ -35,3 +35,17 @@ test("BookLoQ demo reserves known bills, separates expected receipts and blocks 
   assert.equal(Math.min(...bookloqDemo(1000000, false, false).weeks.map(week => week.conservativeClosingCashCents!)), 800000);
   assert.ok(bookloqDemo(600000, false, true).weeks.every(week => week.conservativeClosingCashCents === null && week.planningClosingCashCents === null));
 });
+
+test("reviewed bank activity reaches AI as dated aggregates without document or transaction content", () => {
+  const data = { configured: true, settings: null, organization: { currency: "CAD" }, transactionAccess: { available: true }, ledgerAccess: { available: false },
+    summary: { revenueCents: null, currentCashCents: null }, cashActivity: { days30: { startDate: "2026-08-18", endDate: "2026-09-16", transactionCount: 2, inflowCents: 50_000, outflowCents: 30_000, netCashFlowCents: 20_000, descriptions: ["Private salary"], documentId: "secret-document" } } };
+  const result = projectAdvisorBookloq({ bookloq: data });
+  assert.equal(result.status, "available");
+  assert.equal(result.ledgerAvailable, false);
+  assert.equal(result.statements, null);
+  assert.equal(result.cashActivity?.[0]?.netCashFlowCents, 20_000);
+  assert.equal(result.values?.currentCashCents, null);
+  assert.doesNotMatch(JSON.stringify(result), /Private salary|secret-document|"descriptions":/);
+  assert.equal(projectAdvisorBookloq({ bookloq: { ...data, transactionAccess: { available: false } } }).status, "unavailable");
+  assert.equal(projectAdvisorBookloq({ bookloq: { ...data, settings: { status: "suspended", dataMode: "live" } } }).status, "unavailable");
+});

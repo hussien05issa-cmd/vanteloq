@@ -113,17 +113,21 @@ export async function POST(request: Request) {
       const targetType = body.targetType === "supplier_bill" || body.targetType === "customer_invoice" || body.targetType === "receipt" ? body.targetType : null;
       const note = typeof body.note === "string" ? body.note.trim().normalize("NFC") : "";
       if (!transactionId || !targetId || !targetType || note.length > 1_000) return jsonResponse({ error: { code: "INVALID_MATCH", message: "Choose a transaction and supported invoice, bill, or receipt." } }, { status: 400 });
-      const transaction = await database.prepare(`SELECT amount_cents amountCents, reconciliation_status reconciliationStatus FROM financial_transactions WHERE organization_id = ? AND id = ? AND source_state <> 'removed'`).bind(context.organizationId, transactionId).first<{ amountCents: number; reconciliationStatus: string }>();
+      const transaction = await database.prepare(`SELECT amount_cents amountCents, currency, source_state sourceState, demo_record demoRecord, reconciliation_status reconciliationStatus FROM financial_transactions WHERE organization_id = ? AND id = ? AND source_state <> 'removed'`).bind(context.organizationId, transactionId).first<{ amountCents: number; currency: string; sourceState: string; demoRecord: number; reconciliationStatus: string }>();
       if (!transaction) return jsonResponse({ error: { code: "TRANSACTION_NOT_FOUND", message: "Transaction not found." } }, { status: 404 });
+      if (!["posted", "modified"].includes(transaction.sourceState)) return jsonResponse({ error: { code: "MATCH_POSTED_TRANSACTION_REQUIRED", message: "Wait for the transaction to post before confirming a match." } }, { status: 409 });
       if (targetType === "supplier_bill" && transaction.amountCents >= 0) return jsonResponse({ error: { code: "MATCH_DIRECTION_INVALID", message: "A supplier bill must be matched to a cash outflow." } }, { status: 409 });
       if (targetType === "customer_invoice" && transaction.amountCents <= 0) return jsonResponse({ error: { code: "MATCH_DIRECTION_INVALID", message: "A customer invoice must be matched to a cash inflow." } }, { status: 409 });
       const targetQuery = targetType === "supplier_bill"
-        ? `SELECT id FROM supplier_bills WHERE organization_id = ? AND id = ? AND status <> 'void'`
+        ? `SELECT id, currency, demo_record demoRecord FROM supplier_bills WHERE organization_id = ? AND id = ? AND status <> 'void'`
         : targetType === "customer_invoice"
-          ? `SELECT id FROM customer_invoices WHERE organization_id = ? AND id = ? AND status NOT IN ('void', 'written_off')`
+          ? `SELECT id, currency, demo_record demoRecord FROM customer_invoices WHERE organization_id = ? AND id = ? AND status NOT IN ('draft', 'void', 'written_off')`
           : `SELECT id FROM workspace_documents WHERE organization_id = ? AND id = ? AND document_type = 'receipt' AND security_state = 'clean' AND status <> 'deleted'`;
-      const target = await database.prepare(targetQuery).bind(context.organizationId, targetId).first<{ id: string }>();
+      const target = await database.prepare(targetQuery).bind(context.organizationId, targetId).first<{ id: string; currency?: string; demoRecord?: number }>();
       if (!target) return jsonResponse({ error: { code: "MATCH_TARGET_NOT_FOUND", message: "The selected supporting record is unavailable." } }, { status: 404 });
+      if (targetType !== "receipt" && (target.currency?.toUpperCase() !== transaction.currency.toUpperCase() || Boolean(target.demoRecord) !== Boolean(transaction.demoRecord))) {
+        return jsonResponse({ error: { code: "MATCH_SOURCE_MISMATCH", message: "Match records in the same currency and data mode. Currency conversion requires a separately reviewed accounting entry." } }, { status: 409 });
+      }
       const targetColumn = targetType === "supplier_bill" ? "supplier_bill_id" : targetType === "customer_invoice" ? "customer_invoice_id" : "document_id";
       const confirmedMatch = await database.prepare(`SELECT id, supplier_bill_id supplierBillId,
         customer_invoice_id customerInvoiceId, document_id documentId

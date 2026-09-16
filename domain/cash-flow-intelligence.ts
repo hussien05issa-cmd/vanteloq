@@ -43,7 +43,10 @@ export function calculateCashFlowIntelligence(input: {
   if (input.openingCashCents === null) {
     return { status: "unavailable", liquidity30Cents: null, liquidity60Cents: null, purchasingCapacityCents: null, risk: "unavailable", minimumCashCents: null, minimumCashDate: null, warning: null, evidence: ["A verified opening cash balance is required."] };
   }
-  const eligible = input.items.filter((item) => item.amountCents > 0 && item.dueDate >= input.asOf);
+  // These are outstanding items, not settled historical movements. An overdue
+  // balance remains due today; expected receipts never become confirmed cash.
+  const eligible = input.items.filter((item) => item.amountCents > 0)
+    .map((item) => ({ ...item, dueDate: item.dueDate < input.asOf ? input.asOf : item.dueDate }));
   const liquidity30Cents = closingCash(input.openingCashCents, eligible, endDate(input.asOf, 30));
   const liquidity60Cents = closingCash(input.openingCashCents, eligible, endDate(input.asOf, 60));
   const confirmed60 = eligible.filter((item) => item.direction === "out" && item.certainty === "confirmed" && item.dueDate <= endDate(input.asOf, 60));
@@ -51,13 +54,18 @@ export function calculateCashFlowIntelligence(input: {
   let running = input.openingCashCents;
   let minimumCashCents = running;
   let minimumCashDate = input.asOf;
-  for (const item of [...eligible].sort((a, b) => a.dueDate.localeCompare(b.dueDate))) {
-    running += item.direction === "in" ? item.amountCents : -item.amountCents;
-    if (running < minimumCashCents) { minimumCashCents = running; minimumCashDate = item.dueDate; }
+  // Daily balances must not change with the database's row order.
+  const dailyNet = new Map<string, number>();
+  for (const item of eligible.filter((item) => item.dueDate <= endDate(input.asOf, 60))) {
+    dailyNet.set(item.dueDate, (dailyNet.get(item.dueDate) ?? 0) + (item.direction === "in" ? item.amountCents : -item.amountCents));
+  }
+  for (const [date, net] of [...dailyNet].sort(([a], [b]) => a.localeCompare(b))) {
+    running += net;
+    if (running < minimumCashCents) { minimumCashCents = running; minimumCashDate = date; }
   }
   const risk = minimumCashCents < 0 ? "high" : minimumCashCents < input.safetyThresholdCents ? "moderate" : "low";
   const supplier = confirmed60.filter((item) => item.category === "supplier").sort((a, b) => b.amountCents - a.amountCents)[0];
-  const laterObligations = supplier ? confirmed60.filter((item) => item.id !== supplier.id && item.dueDate > input.asOf) : [];
+  const laterObligations = supplier ? confirmed60.filter((item) => item.id !== supplier.id) : [];
   const cashAfterPayingToday = supplier ? input.openingCashCents - supplier.amountCents : input.openingCashCents;
   let warning: string | null = null;
   if (supplier) {
@@ -76,6 +84,7 @@ export function calculateCashFlowIntelligence(input: {
     evidence: [
       `Opening cash as of ${input.asOf}.`,
       `${confirmed60.length} confirmed obligations included through ${endDate(input.asOf, 60)}.`,
+      "Outstanding overdue items are carried into today. Minimum cash uses daily closing balances over 60 days, not intraday payment order.",
       "Probable receivables affect liquidity but are excluded from purchasing capacity.",
     ],
   };

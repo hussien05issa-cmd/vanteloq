@@ -20,8 +20,8 @@ test("privacy notice explains financial connections, document review, and consen
     "TLS 1.2",
     "additional application-level AES-GCM encryption layer",
     "Vanteloq AI data-use acceptance",
-    "The checkbox is not preselected",
-    "Clear conversation",
+    "the agreement starts unchecked",
+    "Clearing a conversation",
     "full account numbers",
   ]) assert.match(privacy, new RegExp(phrase));
 });
