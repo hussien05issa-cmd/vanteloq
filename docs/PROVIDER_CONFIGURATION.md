@@ -1,14 +1,17 @@
 # Provider configuration and live-status register
 
-## Genuinely live now
+## Current status
 
-- Hosted ChatGPT/Sites authentication: verified identity and application session forwarding.
-- Cloudflare D1: tenant relational records and migrations.
-- Cloudflare R2 binding: tenant organization logos and quarantined document originals.
-- Manual entry and validated daily-summary CSV ingestion.
-- Internal BookLoQ ledger and deterministic calculation services.
+Last reviewed September 15, 2026. Use [the V1 launch review](v1-launch-readiness-2026-09-15.md) for acceptance evidence and [the provider dashboard review](provider-activation-review-2026-09-15.md) for current account and approval blockers.
 
-No external POS, bank, accounting, payroll, OCR, malware-scanning, email, billing or address-validation provider is represented as live.
+- Supabase email authentication with the application's tenant and session controls is in use.
+- Sites-managed Cloudflare D1 stores tenant business records; private R2 stores document originals and organization assets.
+- Lightspeed R-Series history is importing in the authorized pilot workspace. A complete merchant reconciliation is still an acceptance step.
+- OpenAI workspace analysis, Resend sending, Azure document extraction and the clean-file scanning path have live evidence recorded in the launch review.
+- Stripe live prices, billing webhook configuration and the customer portal are present. The separate subscriber hosted-checkout lifecycle is still outstanding.
+- Manual entry, validated imports, the internal BookLoQ ledger and deterministic calculations are implemented. An accountant-reviewed pilot close remains outstanding.
+
+The checklist below describes activation requirements, not proof that every provider is active. Credentials and an open provider dashboard do not establish production approval or successful data reconciliation.
 
 ## Gated providers
 

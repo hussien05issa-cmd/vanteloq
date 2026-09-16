@@ -61,6 +61,8 @@ test("QuickBooks exposes only the built sandbox company-verification boundary", 
 test("public connector labels disclose the real activation boundary", () => {
   assert.equal(integrationPublicStatus(integrationCatalog.find((provider) => provider.id === "quickbooks")!).label, "Sandbox only");
   assert.equal(integrationPublicStatus(integrationCatalog.find((provider) => provider.id === "plaid")!).label, "Production approval needed");
+  for (const id of ["shopify", "shopify-pos"]) assert.equal(integrationPublicStatus(integrationCatalog.find((provider) => provider.id === id)!).label, "App review pending");
+  assert.equal(integrationPublicStatus(integrationCatalog.find((provider) => provider.id === "moneris")!).label, "Production setup needed");
   assert.equal(integrationPublicStatus(integrationCatalog.find((provider) => provider.id === "xero")!).label, "In development");
   assert.equal(integrationPublicStatus(integrationCatalog.find((provider) => provider.id === "doordash")!).label, "Coming soon");
   assert.equal(integrationPublicStatus(integrationCatalog.find((provider) => provider.id === "payroll")!).label, "Provider selection needed");
