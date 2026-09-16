@@ -56,6 +56,8 @@ export function integrationPublicStatus(provider: IntegrationCatalogEntry): Inte
   if (provider.id === "meta") return { label: "Provider setup required", tone: "staging" };
   if (provider.id === "quickbooks") return { label: "Sandbox only", tone: "staging" };
   if (provider.id === "plaid") return { label: "Production approval needed", tone: "staging" };
+  if (provider.id === "shopify" || provider.id === "shopify-pos") return { label: "App review pending", tone: "staging" };
+  if (provider.id === "moneris") return { label: "Production setup needed", tone: "staging" };
 
   switch (provider.availability) {
     case "credentials_required":
@@ -103,7 +105,7 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
     category: "Commerce",
     availability: "credentials_required",
     activationRequirement:
-      "Authorize each Shopify store, map its online storefront and fulfilment locations, then import and review e-commerce orders, refunds, products, stock, customers and payment activity before results reach Vanteloq.",
+      "The Shopify connector is built, but public installs are waiting for App Store registration and review. After approval, authorize your store, map its storefront and fulfilment locations, then review imported orders, refunds, products and stock before using the results.",
   },
   {
     id: "shopify-pos",
@@ -111,7 +113,7 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
     category: "Point of sale",
     availability: "credentials_required",
     activationRequirement:
-      "Authorize each Shopify store, map its retail locations, then import and review POS orders, tenders, products, stock, customers and suppliers before results reach Vanteloq.",
+      "The Shopify POS connector is built, but public installs are waiting for App Store registration and review. After approval, authorize your store, map its retail locations, then review imported POS orders, tenders, products and stock before using the results.",
   },
   {
     id: "square",
@@ -143,7 +145,7 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
     category: "Payments",
     availability: "credentials_required",
     activationRequirement:
-      "Connect each merchant with its own read-only Moneris client credentials. Vanteloq imports payment amounts, status and timing for reconciliation without storing raw card data.",
+      "The Moneris connector currently has a sandbox test connection. Live reporting requires approved production access for your merchant account and a reconciled payment sample. Test transactions stay separate from business reports; Vanteloq does not store raw card data.",
   },
   {
     id: "quickbooks",
