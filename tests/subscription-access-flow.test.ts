@@ -162,13 +162,13 @@ test("verified subscription events control interface, BookLoQ and server access 
     };
     let sequence = 0;
     const event = (id = `evt_billing${++sequence}12345678`, created = 1_800_000_000 + sequence, eventSub = subscriptionId) => ({ id, created, type: "customer.subscription.updated", data: { object: { id: eventSub, metadata: { vanteloq_organization_id: org } } } });
-    const deliver = async (payload = event()) => {
+    const deliver = async (payload: unknown = event()) => {
       const body = JSON.stringify(payload);
       const timestamp = Math.floor(Date.now() / 1000);
       const signature = createHmac("sha256", environment.STRIPE_BILLING_WEBHOOK_SECRET).update(`${timestamp}.${body}`).digest("hex");
       return worker.fetch(new Request(`${origin}/api/v1/billing/stripe/webhook`, { method: "POST", headers: { "content-type": "application/json", "stripe-signature": `t=${timestamp},v1=${signature}` }, body }), environment, executionContext);
     };
-    const sync = async (payload = event()) => { const response = await deliver(payload); assert.equal(response.status, 200, await response.clone().text()); return response.json(); };
+    const sync = async (payload: unknown = event()) => { const response = await deliver(payload); assert.equal(response.status, 200, await response.clone().text()); return response.json(); };
     const access = async () => { const response = await dispatch(worker, environment, "/api/v1/entitlements", { email }); assert.equal(response.status, 200); return response.json(); };
     const assertAccess = async (expectedPlan: string | null, withBookloq: boolean) => {
       const result = await access();
@@ -181,7 +181,26 @@ test("verified subscription events control interface, BookLoQ and server access 
     };
     // Browser URL selections never grant paid access.
     assert.equal((await dispatch(worker, environment, "/api/v1/bookloq?plan=pro&bookloq=1", { email })).status, 402);
-    const initial = event(); await sync(initial); await assertAccess("starter", false);
+    // The actual hosted checkout emits two different events in the same second.
+    // Force both handlers to observe version zero before either can persist it.
+    let pairedReads = 0;
+    let releasePair!: () => void;
+    const pairReady = new Promise<void>(resolve => { releasePair = resolve; });
+    delayedFetch = async function pairedFetch() {
+      pairedReads += 1;
+      if (pairedReads === 1) delayedFetch = pairedFetch;
+      if (pairedReads === 2) { delayedFetch = null; releasePair(); }
+      await pairReady;
+      return Response.json(snapshot());
+    };
+    const initial = event();
+    const checkout = { ...initial, id: "evt_checkout12345678", type: "checkout.session.completed", data: { object: { subscription: subscriptionId, metadata: { vanteloq_organization_id: org } } } };
+    await Promise.all([sync(initial), sync(checkout)]);
+    assert.equal(pairedReads, 2);
+    const concurrentEvents = await database.prepare("SELECT status FROM stripe_billing_events WHERE event_id IN (?, ?)").bind(initial.id, checkout.id).all<{status:string}>();
+    assert.equal(concurrentEvents.results.length, 2);
+    assert.ok(concurrentEvents.results.every((row: {status: string}) => row.status === "processed"));
+    await assertAccess("starter", false);
     assert.equal((await sync(initial)).duplicate, true);
     bookloq = true; await sync(); await assertAccess("starter", true);
     const seeded = await dispatch(worker, environment, "/api/v1/bookloq/demo", { method: "POST", email, body: {} });

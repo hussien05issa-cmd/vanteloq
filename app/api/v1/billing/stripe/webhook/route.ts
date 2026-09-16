@@ -51,25 +51,34 @@ export async function POST(request: Request) {
         await getDb().update(stripeBillingEvents).set({ status: "ignored", processedAt: new Date() }).where(eq(stripeBillingEvents.eventId, eventId));
         return jsonResponse({ received: true, ignored: true });
       }
-      // Observe the version before requesting Stripe, so concurrent fetches cannot overwrite a newer snapshot.
       const metadata = object.metadata && typeof object.metadata === "object" ? object.metadata as Record<string, unknown> : {};
       const hintedOrganization = typeof metadata.vanteloq_organization_id === "string" ? metadata.vanteloq_organization_id : null;
-      const [current] = await getDb().select().from(tenantSubscriptions).where(hintedOrganization
-        ? eq(tenantSubscriptions.organizationId, hintedOrganization)
-        : eq(tenantSubscriptions.stripeSubscriptionId, subscriptionId)).limit(1);
-      const normalized = normalizeStripeSubscription(await retrieveStripeSubscription(subscriptionId));
-      if (normalized.subscriptionId !== subscriptionId || (hintedOrganization && hintedOrganization !== normalized.organizationId)
-        || (current && current.organizationId !== normalized.organizationId)) {
-        throw new ApiError(400, "STRIPE_SUBSCRIPTION_IDENTITY_MISMATCH", "Stripe subscription ownership could not be confirmed.");
+      // Checkout and subscription events often arrive together. Retry one version
+      // conflict, reading both the version and Stripe again so no old snapshot wins.
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const [current] = await getDb().select().from(tenantSubscriptions).where(hintedOrganization
+          ? eq(tenantSubscriptions.organizationId, hintedOrganization)
+          : eq(tenantSubscriptions.stripeSubscriptionId, subscriptionId)).limit(1);
+        const normalized = normalizeStripeSubscription(await retrieveStripeSubscription(subscriptionId));
+        if (normalized.subscriptionId !== subscriptionId || (hintedOrganization && hintedOrganization !== normalized.organizationId)
+          || (current && current.organizationId !== normalized.organizationId)) {
+          throw new ApiError(400, "STRIPE_SUBSCRIPTION_IDENTITY_MISMATCH", "Stripe subscription ownership could not be confirmed.");
+        }
+        try {
+          const result = await persistStripeSubscription(getD1(), {
+            subscription: normalized, eventId, eventCreated, expectedVersion: current?.version ?? 0,
+          });
+          if (result === "stale") {
+            await getDb().update(stripeBillingEvents).set({ organizationId: normalized.organizationId, status: "ignored", processedAt: new Date() }).where(eq(stripeBillingEvents.eventId, eventId));
+            return jsonResponse({ received: true, stale: true });
+          }
+          return jsonResponse({ received: true, synchronized: true });
+        } catch (conflict) {
+          if (attempt === 0 && conflict instanceof ApiError && conflict.code === "STRIPE_BILLING_SYNC_CONFLICT") continue;
+          throw conflict;
+        }
       }
-      const result = await persistStripeSubscription(getD1(), {
-        subscription: normalized, eventId, eventCreated, expectedVersion: current?.version ?? 0,
-      });
-      if (result === "stale") {
-        await getDb().update(stripeBillingEvents).set({ organizationId: normalized.organizationId, status: "ignored", processedAt: new Date() }).where(eq(stripeBillingEvents.eventId, eventId));
-        return jsonResponse({ received: true, stale: true });
-      }
-      return jsonResponse({ received: true, synchronized: true });
+      throw new ApiError(409, "STRIPE_BILLING_SYNC_CONFLICT", "Subscription access changed during synchronization. Stripe should retry this event.");
     } catch (error) {
       const code = error instanceof ApiError ? error.code : "STRIPE_BILLING_SYNC_FAILED";
       await getDb().update(stripeBillingEvents).set({ status: "failed", errorCode: code, processedAt: new Date() }).where(eq(stripeBillingEvents.eventId, eventId));

@@ -963,7 +963,7 @@ export default function VanteloqApp({
           <span>
             <b>{workspaceName}</b>
             <small>
-              {data?.source.latestBusinessDate
+              {loading ? "Loading your records…" : error ? "Records unavailable" : data?.source.latestBusinessDate
                 ? `Data through ${formatBusinessDate(data.source.latestBusinessDate)}`
                 : "Data source required"}
             </small>
@@ -1096,9 +1096,10 @@ export default function VanteloqApp({
           <div className="top-actions">
             <button className="command-trigger" onClick={() => setCommandOpen(true)} aria-label="Open workspace search"><WorkspaceIcon name="Search"/><span>Search workspace</span><kbd>⌘K</kbd></button>
             <span
-              className={`source-pill ${data?.liveSource.lastSuccessfulSyncAt ? "current" : data?.source.freshness ?? "missing"}`}
+              className={`source-pill ${loading || error ? "pending" : data?.liveSource.lastSuccessfulSyncAt ? "current" : data?.source.freshness ?? "missing"}`}
+              aria-busy={loading}
             >
-              {data?.liveSource.lastSuccessfulSyncAt
+              {loading ? "Loading records…" : error ? "Records unavailable" : data?.liveSource.lastSuccessfulSyncAt
                 ? "Connected sales"
                 : data?.source.latestBusinessDate
                 ? `${humanizeIdentifier(data.source.freshness)} data`
