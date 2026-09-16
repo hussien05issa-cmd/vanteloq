@@ -1,5 +1,5 @@
 import { requireOAuthBrowser } from "../../../../../../server/integrations/oauth-browser";
-import { and, eq, gt, isNull } from "drizzle-orm";
+import { and, eq, gt, isNull, or } from "drizzle-orm";
 import { getDb } from "../../../../../../db";
 import { integrationConnections, integrationOAuthStates, memberships, users, workspaces } from "../../../../../../db/schema";
 import { recordAudit } from "../../../../../../server/audit";
@@ -8,6 +8,7 @@ import { ApiError, handleApi } from "../../../../../../server/api";
 import { requireFeature } from "../../../../../../server/entitlements/engine";
 import {
   exchangeQuickBooksAuthorizationCode,
+  acquireQuickBooksGrantLease,
   quickBooksReadiness,
   quickBooksStateHash,
   revokeQuickBooksAuthorization,
@@ -15,6 +16,7 @@ import {
   verifyQuickBooksCompany,
   QUICKBOOKS_PROVIDER,
 } from "../../../../../../server/integrations/quickbooks";
+import { releaseIntegrationSyncLease, type IntegrationSyncLease } from "../../../../../../server/integrations/connection";
 import { requirePermission } from "../../../../../../server/permissions";
 
 function returnUrl(request: Request, status: "connected" | "declined" | "failed") {
@@ -101,7 +103,7 @@ export async function GET(request: Request) {
       gt(integrationOAuthStates.expiresAt, now),
     )).returning({ stateHash: integrationOAuthStates.stateHash });
     if (!consumed) throw new ApiError(400, "QUICKBOOKS_STATE_INVALID", "The QuickBooks authorization attempt expired or was already used. Start again.");
-    const [pending] = await getDb().select({ id: integrationConnections.id }).from(integrationConnections).where(and(
+    const [pending] = await getDb().select({ id: integrationConnections.id, sourceNamespace: integrationConnections.sourceNamespace }).from(integrationConnections).where(and(
       eq(integrationConnections.id, storedState.connectionId),
       eq(integrationConnections.organizationId, context.organizationId),
       eq(integrationConnections.provider, QUICKBOOKS_PROVIDER),
@@ -123,27 +125,47 @@ export async function GET(request: Request) {
 
     let accessToken = "";
     let preserveGrant = false;
+    let grantLease: IntegrationSyncLease | null = null;
+    let pendingLease: IntegrationSyncLease | null = null;
+    let grantSaved = false;
+    let savedNamespace = pending.sourceNamespace;
     try {
-      const token = await exchangeQuickBooksAuthorizationCode(code);
+      const token = await exchangeQuickBooksAuthorizationCode(code, pending.sourceNamespace);
       accessToken = token.accessToken;
-      const company = await verifyQuickBooksCompany(realmId, token.accessToken);
+      const company = await verifyQuickBooksCompany(realmId, token.accessToken, pending.sourceNamespace);
       const [existing] = await getDb().select({
         id: integrationConnections.id,
         organizationId: integrationConnections.organizationId,
+        sourceNamespace: integrationConnections.sourceNamespace,
+        status: integrationConnections.status,
       }).from(integrationConnections).where(and(
         eq(integrationConnections.provider, QUICKBOOKS_PROVIDER),
         eq(integrationConnections.externalAccountRef, company.realmId),
-        eq(integrationConnections.status, "connected"),
+        or(eq(integrationConnections.status, "connected"), eq(integrationConnections.status, "error"), eq(integrationConnections.status, "pending")),
       )).limit(1);
       preserveGrant = Boolean(existing);
       if (existing && existing.organizationId !== context.organizationId) {
         throw new ApiError(409, "QUICKBOOKS_COMPANY_UNAVAILABLE", "This QuickBooks company is already assigned to another organization.");
       }
+      pendingLease = await acquireQuickBooksGrantLease(context.organizationId, pending.id);
+      const [activeAttempt] = await getDb().select({ id: integrationConnections.id }).from(integrationConnections).where(and(
+        eq(integrationConnections.id, pending.id), eq(integrationConnections.organizationId, context.organizationId),
+        eq(integrationConnections.provider, QUICKBOOKS_PROVIDER), eq(integrationConnections.status, "pending"),
+        eq(integrationConnections.sourceNamespace, pending.sourceNamespace), eq(integrationConnections.syncLeaseOwner, pendingLease.owner),
+        eq(integrationConnections.syncVersion, pendingLease.version), gt(integrationConnections.syncLeaseExpiresAt, new Date()),
+      )).limit(1);
+      if (!activeAttempt) throw new ApiError(409, "QUICKBOOKS_GRANT_CHANGED", "This authorization attempt was removed. Start a new connection.");
       const readiness = quickBooksReadiness();
       const connectionId = existing?.id ?? pending.id;
+      grantLease = existing ? await acquireQuickBooksGrantLease(context.organizationId, connectionId) : pendingLease;
       if (existing) {
-        await getDb().update(integrationConnections).set({
-          status: "connected",
+        // The pending attempt still owns its unique namespace. Preserve its
+        // verified app/environment binding with a distinct generation for the
+        // existing connection; never rebind it from current global settings.
+        savedNamespace = pending.sourceNamespace.replace(/:[^:]+$/, `:${crypto.randomUUID()}`);
+        const [reconnected] = await getDb().update(integrationConnections).set({
+          status: "pending",
+          sourceNamespace: savedNamespace,
           externalAccountName: company.name,
           domainPrefix: null,
           apiVersion: readiness.apiVersion,
@@ -158,8 +180,15 @@ export async function GET(request: Request) {
           eq(integrationConnections.id, existing.id),
           eq(integrationConnections.organizationId, context.organizationId),
           eq(integrationConnections.provider, QUICKBOOKS_PROVIDER),
-        ));
-        await saveQuickBooksTokens(context.organizationId, existing.id, token);
+          eq(integrationConnections.status, existing.status),
+          eq(integrationConnections.sourceNamespace, existing.sourceNamespace),
+          eq(integrationConnections.syncLeaseOwner, grantLease.owner),
+          eq(integrationConnections.syncVersion, grantLease.version),
+          gt(integrationConnections.syncLeaseExpiresAt, new Date()),
+        )).returning({ id: integrationConnections.id });
+        if (!reconnected) throw new ApiError(409, "QUICKBOOKS_GRANT_CHANGED", "The company connection changed during authorization. Start again.");
+        await saveQuickBooksTokens(context.organizationId, existing.id, token, savedNamespace, grantLease, { lease: pendingLease, sourceNamespace: pending.sourceNamespace });
+        grantSaved = true;
         await getDb().delete(integrationConnections).where(and(
           eq(integrationConnections.id, pending.id),
           eq(integrationConnections.organizationId, context.organizationId),
@@ -167,7 +196,8 @@ export async function GET(request: Request) {
         ));
       } else {
         const [connected] = await getDb().update(integrationConnections).set({
-          status: "connected",
+          status: "pending",
+          sourceNamespace: pending.sourceNamespace,
           externalAccountRef: company.realmId,
           externalAccountName: company.name,
           domainPrefix: null,
@@ -184,9 +214,14 @@ export async function GET(request: Request) {
           eq(integrationConnections.organizationId, context.organizationId),
           eq(integrationConnections.provider, QUICKBOOKS_PROVIDER),
           eq(integrationConnections.status, "pending"),
+          eq(integrationConnections.sourceNamespace, pending.sourceNamespace),
+          eq(integrationConnections.syncLeaseOwner, grantLease.owner),
+          eq(integrationConnections.syncVersion, grantLease.version),
+          gt(integrationConnections.syncLeaseExpiresAt, new Date()),
         )).returning({ id: integrationConnections.id });
         if (!connected) throw new ApiError(409, "QUICKBOOKS_CONNECTION_MISSING", "The QuickBooks connection attempt is no longer available. Start again.");
-        await saveQuickBooksTokens(context.organizationId, pending.id, token);
+        await saveQuickBooksTokens(context.organizationId, pending.id, token, pending.sourceNamespace, grantLease, { lease: pendingLease, sourceNamespace: pending.sourceNamespace });
+        grantSaved = true;
         preserveGrant = true;
       }
       await recordAudit({ request, requestId, organizationId: context.organizationId, actorUserId: context.userId,
@@ -195,20 +230,48 @@ export async function GET(request: Request) {
       });
       return Response.redirect(returnUrl(request, "connected"), 303);
     } catch (error) {
-      if (accessToken && !preserveGrant) await revokeQuickBooksAuthorization(accessToken).catch(() => false);
+      if (accessToken && !preserveGrant) await revokeQuickBooksAuthorization(accessToken, pending.sourceNamespace).catch(() => false);
       const errorCode = error instanceof ApiError ? error.code : "QUICKBOOKS_CONNECTION_FAILED";
-      await getDb().update(integrationConnections).set({
+      if (!grantSaved && grantLease && grantLease.connectionId !== pending.id) {
+        // A failed reconnect save cannot leave the previous secret readable
+        // under the new authorization generation.
+        await getDb().update(integrationConnections).set({
+          status: "error", dataPromotionStatus: "blocked", connectedAt: null, lastErrorCode: errorCode, updatedAt: new Date(),
+        }).where(and(
+          eq(integrationConnections.id, grantLease.connectionId),
+          eq(integrationConnections.organizationId, context.organizationId),
+          eq(integrationConnections.provider, QUICKBOOKS_PROVIDER),
+          eq(integrationConnections.sourceNamespace, savedNamespace),
+          eq(integrationConnections.status, "pending"),
+          eq(integrationConnections.syncLeaseOwner, grantLease.owner),
+          eq(integrationConnections.syncVersion, grantLease.version),
+        ));
+      }
+      if (!grantSaved) await getDb().update(integrationConnections).set({
         status: "error", dataPromotionStatus: "blocked", connectedAt: null, lastErrorCode: errorCode, updatedAt: new Date(),
       }).where(and(
         eq(integrationConnections.id, pending.id),
         eq(integrationConnections.organizationId, context.organizationId),
         eq(integrationConnections.provider, QUICKBOOKS_PROVIDER),
+        eq(integrationConnections.sourceNamespace, pending.sourceNamespace),
+        ...(pendingLease ? [eq(integrationConnections.syncLeaseOwner, pendingLease.owner), eq(integrationConnections.syncVersion, pendingLease.version)] : [isNull(integrationConnections.syncLeaseOwner)]),
+        or(eq(integrationConnections.status, "pending"), ...(grantLease ? [and(
+          eq(integrationConnections.status, "connected"),
+          eq(integrationConnections.syncLeaseOwner, grantLease.owner),
+          eq(integrationConnections.syncVersion, grantLease.version),
+        )] : [])),
       ));
       await recordAudit({ request, requestId, organizationId: context.organizationId, actorUserId: context.userId,
         action: "integration.connection_failed", resourceType: "integration_connection", resourceId: pending.id,
         details: { provider: QUICKBOOKS_PROVIDER, connectionId: pending.id, errorCode, dataPromotionEnabled: false },
       });
       return Response.redirect(returnUrl(request, "failed"), 303);
+    } finally {
+      try {
+        if (grantLease && grantLease !== pendingLease) await releaseIntegrationSyncLease(grantLease);
+      } finally {
+        if (pendingLease) await releaseIntegrationSyncLease(pendingLease);
+      }
     }
   });
 }

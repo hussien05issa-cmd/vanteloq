@@ -1,7 +1,8 @@
 import { and, eq } from "drizzle-orm";
-import { getDb, getRuntimeEnv } from "../../db";
+import { getD1, getDb, getRuntimeEnv } from "../../db";
 import { integrationConnections, integrationSecrets } from "../../db/schema";
 import { ApiError } from "../api";
+import { acquireIntegrationSyncLease, releaseIntegrationSyncLease, sqliteTimestampSeconds, type IntegrationSyncLease } from "./connection";
 
 export const QUICKBOOKS_PROVIDER = "quickbooks";
 export const QUICKBOOKS_API_VERSION = "QuickBooks Online Accounting API v3";
@@ -46,13 +47,14 @@ export function quickBooksReadiness() {
     ["INTEGRATION_ENCRYPTION_KEY", env.INTEGRATION_ENCRYPTION_KEY],
   ].filter(([, value]) => !value?.trim()).map(([name]) => name);
   const environment = normalizeEnvironment(env.QUICKBOOKS_ENV);
+  if (!environment) missingConfiguration.push("QUICKBOOKS_ENV");
   return {
     adapterBuilt: true,
     credentialsConfigured: missingConfiguration.length === 0,
     missingConfiguration,
     apiVersion: QUICKBOOKS_API_VERSION,
     scopes: [...QUICKBOOKS_SCOPES],
-    mode: environment === "production" ? "production_read_only_staging" as const : "sandbox_read_only_staging" as const,
+    mode: !environment ? "configuration_required" as const : environment === "production" ? "production_read_only_staging" as const : "sandbox_read_only_staging" as const,
     environment,
     companyVerificationEnabled: true,
     ledgerImportEnabled: false,
@@ -60,13 +62,15 @@ export function quickBooksReadiness() {
   };
 }
 
-function normalizeEnvironment(value: string | undefined): QuickBooksEnvironment {
-  return value?.trim().toLowerCase() === "production" ? "production" : "sandbox";
+function normalizeEnvironment(value: string | undefined): QuickBooksEnvironment | null {
+  const environment = value?.trim().toLowerCase();
+  return environment === "sandbox" || environment === "production" ? environment : null;
 }
 
 function config(): QuickBooksConfig {
   const env = getRuntimeEnv();
   const readiness = quickBooksReadiness();
+  if (!readiness.environment) throw new ApiError(503, "QUICKBOOKS_ENVIRONMENT_INVALID", "Set the QuickBooks environment explicitly to sandbox or production before connecting.");
   if (!readiness.credentialsConfigured) {
     throw new ApiError(503, "QUICKBOOKS_CONFIGURATION_REQUIRED", "QuickBooks developer credentials, an approved callback, and encrypted token storage must be configured before authorization can begin.");
   }
@@ -96,6 +100,28 @@ function config(): QuickBooksConfig {
   };
 }
 
+// A fresh namespace identifies each authorization generation. It contains no
+// credentials and does not use domainPrefix, whose uniqueness is cross-tenant.
+export async function newQuickBooksGrantNamespace(grantId = crypto.randomUUID()) {
+  const current = config();
+  return `quickbooks:v1:${current.environment}:${await quickBooksStateHash(current.clientId)}:${grantId}`;
+}
+
+async function boundConfig(sourceNamespace: string) {
+  const match = /^quickbooks:v1:(sandbox|production):([A-Za-z0-9_-]{43}):([0-9a-f-]{36})$/.exec(sourceNamespace);
+  if (!match) throw new ApiError(409, "QUICKBOOKS_GRANT_RECONNECT_REQUIRED", "Reconnect QuickBooks to confirm the company environment and application. Existing accounting access remains disabled.");
+  const current = config();
+  if (match[1] !== current.environment || match[2] !== await quickBooksStateHash(current.clientId)) {
+    throw new ApiError(409, "QUICKBOOKS_GRANT_RECONNECT_REQUIRED", "QuickBooks configuration changed. Reconnect this company before using its authorization.");
+  }
+  return current;
+}
+
+export async function requireQuickBooksGrantBinding(sourceNamespace: string) {
+  const current = await boundConfig(sourceNamespace);
+  return { environment: current.environment };
+}
+
 export function newQuickBooksOAuthState() {
   const bytes = crypto.getRandomValues(new Uint8Array(32));
   return base64Url(bytes);
@@ -118,9 +144,9 @@ export function buildQuickBooksAuthorizationUrl(state: string) {
   return url.toString();
 }
 
-export async function exchangeQuickBooksAuthorizationCode(code: string, fetcher: typeof fetch = fetch) {
+export async function exchangeQuickBooksAuthorizationCode(code: string, sourceNamespace: string, fetcher: typeof fetch = fetch) {
   if (!code || code.length > 2_048) throw new ApiError(400, "QUICKBOOKS_CALLBACK_INVALID", "QuickBooks returned an invalid authorization code.");
-  const current = config();
+  const current = await boundConfig(sourceNamespace);
   return requestToken(new URLSearchParams({
     grant_type: "authorization_code",
     code,
@@ -128,12 +154,12 @@ export async function exchangeQuickBooksAuthorizationCode(code: string, fetcher:
   }), current, fetcher);
 }
 
-async function refreshQuickBooksAuthorization(refreshToken: string, fetcher: typeof fetch) {
+async function refreshQuickBooksAuthorization(refreshToken: string, current: QuickBooksConfig, fetcher: typeof fetch) {
   if (!refreshToken || refreshToken.length > 4_096) throw new ApiError(409, "QUICKBOOKS_REFRESH_TOKEN_MISSING", "Reconnect QuickBooks before accessing accounting data.");
   return requestToken(new URLSearchParams({
     grant_type: "refresh_token",
     refresh_token: refreshToken,
-  }), config(), fetcher);
+  }), current, fetcher);
 }
 
 async function requestToken(body: URLSearchParams, current: QuickBooksConfig, fetcher: typeof fetch): Promise<QuickBooksToken> {
@@ -146,6 +172,7 @@ async function requestToken(body: URLSearchParams, current: QuickBooksConfig, fe
       "User-Agent": "Vanteloq-QuickBooks-Connector/1.0",
     },
     body,
+    redirect: "error",
     signal: AbortSignal.timeout(15_000),
   });
   const payload = await response.json().catch(() => ({})) as Record<string, unknown>;
@@ -174,10 +201,10 @@ async function requestToken(body: URLSearchParams, current: QuickBooksConfig, fe
   };
 }
 
-export async function verifyQuickBooksCompany(realmId: string, accessToken: string, fetcher: typeof fetch = fetch): Promise<QuickBooksCompany> {
+export async function verifyQuickBooksCompany(realmId: string, accessToken: string, sourceNamespace: string, fetcher: typeof fetch = fetch): Promise<QuickBooksCompany> {
   if (!REALM_ID.test(realmId)) throw new ApiError(400, "QUICKBOOKS_REALM_INVALID", "QuickBooks returned an invalid company identifier.");
   if (!accessToken) throw new ApiError(400, "QUICKBOOKS_ACCESS_TOKEN_INVALID", "QuickBooks authorization is incomplete.");
-  const current = config();
+  const current = await boundConfig(sourceNamespace);
   const origin = current.environment === "production"
     ? "https://quickbooks.api.intuit.com"
     : "https://sandbox-quickbooks.api.intuit.com";
@@ -188,6 +215,7 @@ export async function verifyQuickBooksCompany(realmId: string, accessToken: stri
       Authorization: `Bearer ${accessToken}`,
       "User-Agent": "Vanteloq-QuickBooks-Connector/1.0",
     },
+    redirect: "error",
     signal: AbortSignal.timeout(15_000),
   });
   const payload = await response.json().catch(() => ({})) as Record<string, unknown>;
@@ -202,27 +230,66 @@ export async function verifyQuickBooksCompany(realmId: string, accessToken: stri
   return { realmId, name: name.slice(0, 160), country: text(companyInfo.Country).slice(0, 2).toUpperCase() || null };
 }
 
-export async function saveQuickBooksTokens(organizationId: string, connectionId: string, token: QuickBooksToken) {
-  const now = new Date();
-  const encrypted = {
-    accessTokenCiphertext: await encryptQuickBooksSecret(token.accessToken),
-    refreshTokenCiphertext: await encryptQuickBooksSecret(token.refreshToken),
-    tokenExpiresAt: token.accessTokenExpiresAt,
-  };
-  await getDb().insert(integrationSecrets).values({
-    id: crypto.randomUUID(), organizationId, provider: QUICKBOOKS_PROVIDER, connectionId,
-    ...encrypted, createdAt: now, updatedAt: now,
-  }).onConflictDoUpdate({
-    target: integrationSecrets.connectionId,
-    set: { provider: QUICKBOOKS_PROVIDER, ...encrypted, updatedAt: now },
-  });
+function requireMatchingLease(organizationId: string, connectionId: string, lease: IntegrationSyncLease) {
+  if (lease.organizationId !== organizationId || lease.connectionId !== connectionId || lease.provider !== QUICKBOOKS_PROVIDER) {
+    throw new ApiError(409, "QUICKBOOKS_GRANT_CHANGED", "The QuickBooks authorization changed. Try again from Integrations.");
+  }
 }
 
-export async function quickBooksAccessToken(organizationId: string, connectionId: string, fetcher: typeof fetch = fetch) {
+export async function acquireQuickBooksGrantLease(organizationId: string, connectionId: string) {
+  const lease = await acquireIntegrationSyncLease(organizationId, QUICKBOOKS_PROVIDER, connectionId, 60_000);
+  if (!lease) throw new ApiError(409, "QUICKBOOKS_CONNECTION_BUSY", "QuickBooks is updating this connection. Try again shortly.");
+  return lease;
+}
+
+// Initial saves are insert-select, never an unconditional upsert. The same
+// generation must still be pending/connected and own the unexpired lease. Token
+// persistence and activation share a D1 transaction, so reconnect never exposes
+// an old secret under new metadata, even if the process stops between steps.
+export async function saveQuickBooksTokens(organizationId: string, connectionId: string, token: QuickBooksToken, sourceNamespace: string, lease: IntegrationSyncLease,
+  authorizationAttempt?: { lease: IntegrationSyncLease; sourceNamespace: string }) {
+  requireMatchingLease(organizationId, connectionId, lease);
+  await requireQuickBooksGrantBinding(sourceNamespace);
+  if (authorizationAttempt) {
+    requireMatchingLease(organizationId, authorizationAttempt.lease.connectionId, authorizationAttempt.lease);
+    await requireQuickBooksGrantBinding(authorizationAttempt.sourceNamespace);
+  }
+  const access = await encryptQuickBooksSecret(token.accessToken);
+  const refresh = await encryptQuickBooksSecret(token.refreshToken);
+  const now = sqliteTimestampSeconds();
+  const attemptGuard = authorizationAttempt ? ` AND EXISTS (SELECT 1 FROM integration_connections p WHERE p.id = ?
+    AND p.organization_id = ? AND p.provider = ? AND p.status = 'pending' AND p.source_namespace = ?
+    AND p.sync_lease_owner = ? AND p.sync_version = ? AND p.sync_lease_expires_at > ?)` : "";
+  const guard = `id = ? AND organization_id = ? AND provider = ? AND status IN ('pending', 'connected') AND source_namespace = ?
+      AND sync_lease_owner = ? AND sync_version = ? AND sync_lease_expires_at > ?${attemptGuard}`;
+  const bindings = [connectionId, organizationId, QUICKBOOKS_PROVIDER, sourceNamespace, lease.owner, lease.version, now,
+    ...(authorizationAttempt ? [authorizationAttempt.lease.connectionId, organizationId, QUICKBOOKS_PROVIDER, authorizationAttempt.sourceNamespace,
+      authorizationAttempt.lease.owner, authorizationAttempt.lease.version, now] : [])];
+  const results = await getD1().batch([getD1().prepare(`
+    INSERT INTO integration_secrets (id, organization_id, provider, connection_id, access_token_ciphertext, refresh_token_ciphertext, token_expires_at, created_at, updated_at)
+    SELECT ?, organization_id, provider, id, ?, ?, ?, ?, ? FROM integration_connections
+    WHERE ${guard}
+    ON CONFLICT(connection_id) DO UPDATE SET access_token_ciphertext = excluded.access_token_ciphertext,
+      refresh_token_ciphertext = excluded.refresh_token_ciphertext, token_expires_at = excluded.token_expires_at, updated_at = excluded.updated_at
+    WHERE integration_secrets.organization_id = excluded.organization_id AND integration_secrets.provider = excluded.provider
+  `).bind(crypto.randomUUID(), access, refresh, sqliteTimestampSeconds(token.accessTokenExpiresAt.getTime()), now, now,
+    ...bindings),
+    getD1().prepare(`UPDATE integration_connections SET status = 'connected', updated_at = ? WHERE ${guard}
+      AND EXISTS (SELECT 1 FROM integration_secrets s WHERE s.connection_id = integration_connections.id
+        AND s.organization_id = integration_connections.organization_id AND s.provider = integration_connections.provider
+        AND s.access_token_ciphertext = ? AND s.refresh_token_ciphertext = ?)`)
+      .bind(now, ...bindings, access, refresh),
+  ]);
+  if (results.some(result => Number(result.meta.changes ?? 0) !== 1)) throw new ApiError(409, "QUICKBOOKS_GRANT_CHANGED", "The QuickBooks authorization changed before it could be saved. Reconnect the company.");
+}
+
+async function connectedQuickBooksSecret(organizationId: string, connectionId: string) {
   const [row] = await getDb().select({
     access: integrationSecrets.accessTokenCiphertext,
     refresh: integrationSecrets.refreshTokenCiphertext,
     expiresAt: integrationSecrets.tokenExpiresAt,
+    sourceNamespace: integrationConnections.sourceNamespace,
+    realmId: integrationConnections.externalAccountRef,
   }).from(integrationSecrets).innerJoin(integrationConnections, and(
     eq(integrationConnections.id, integrationSecrets.connectionId),
     eq(integrationConnections.organizationId, integrationSecrets.organizationId),
@@ -234,15 +301,42 @@ export async function quickBooksAccessToken(organizationId: string, connectionId
     eq(integrationConnections.status, "connected"),
   )).limit(1);
   if (!row) throw new ApiError(409, "QUICKBOOKS_NOT_CONNECTED", "Authorize a QuickBooks company before accessing accounting data.");
-  if (row.expiresAt.getTime() > Date.now() + 5 * 60_000) return decryptQuickBooksSecret(row.access);
-  const refreshed = await refreshQuickBooksAuthorization(await decryptQuickBooksSecret(row.refresh), fetcher);
-  await saveQuickBooksTokens(organizationId, connectionId, refreshed);
-  return refreshed.accessToken;
+  if (!row.realmId || !REALM_ID.test(row.realmId)) throw new ApiError(409, "QUICKBOOKS_GRANT_RECONNECT_REQUIRED", "Reconnect QuickBooks to confirm its company identifier.");
+  return row;
 }
 
-export async function revokeQuickBooksAuthorization(token: string, fetcher: typeof fetch = fetch) {
+export async function quickBooksAccessToken(organizationId: string, connectionId: string, fetcher: typeof fetch = fetch) {
+  let row = await connectedQuickBooksSecret(organizationId, connectionId);
+  await requireQuickBooksGrantBinding(row.sourceNamespace);
+  if (row.expiresAt.getTime() > Date.now() + 5 * 60_000) return decryptQuickBooksSecret(row.access);
+  const lease = await acquireQuickBooksGrantLease(organizationId, connectionId);
+  try {
+    // A prior refresher may have completed after the first read.
+    row = await connectedQuickBooksSecret(organizationId, connectionId);
+    const current = await boundConfig(row.sourceNamespace);
+    if (row.expiresAt.getTime() > Date.now() + 5 * 60_000) return decryptQuickBooksSecret(row.access);
+    const refreshed = await refreshQuickBooksAuthorization(await decryptQuickBooksSecret(row.refresh), current, fetcher);
+    const access = await encryptQuickBooksSecret(refreshed.accessToken);
+    const refresh = await encryptQuickBooksSecret(refreshed.refreshToken);
+    const now = sqliteTimestampSeconds();
+    const result = await getD1().prepare(`
+      UPDATE integration_secrets SET access_token_ciphertext = ?, refresh_token_ciphertext = ?, token_expires_at = ?, updated_at = ?
+      WHERE organization_id = ? AND provider = ? AND connection_id = ? AND access_token_ciphertext = ? AND refresh_token_ciphertext = ?
+        AND EXISTS (SELECT 1 FROM integration_connections c WHERE c.id = integration_secrets.connection_id
+          AND c.organization_id = integration_secrets.organization_id AND c.provider = integration_secrets.provider
+          AND c.status = 'connected' AND c.source_namespace = ? AND c.sync_lease_owner = ? AND c.sync_version = ? AND c.sync_lease_expires_at > ?)
+    `).bind(access, refresh, sqliteTimestampSeconds(refreshed.accessTokenExpiresAt.getTime()), now,
+      organizationId, QUICKBOOKS_PROVIDER, connectionId, row.access, row.refresh, row.sourceNamespace, lease.owner, lease.version, now).run();
+    if (Number(result.meta.changes ?? 0) !== 1) throw new ApiError(409, "QUICKBOOKS_GRANT_CHANGED", "QuickBooks was disconnected or reconnected during this request. Try again from Integrations.");
+    return refreshed.accessToken;
+  } finally {
+    await releaseIntegrationSyncLease(lease);
+  }
+}
+
+export async function revokeQuickBooksAuthorization(token: string, sourceNamespace: string, fetcher: typeof fetch = fetch) {
   if (!token) return false;
-  const current = config();
+  const current = await boundConfig(sourceNamespace);
   const response = await fetcher(REVOCATION_URL, {
     method: "POST",
     headers: {
@@ -252,18 +346,48 @@ export async function revokeQuickBooksAuthorization(token: string, fetcher: type
       "User-Agent": "Vanteloq-QuickBooks-Connector/1.0",
     },
     body: JSON.stringify({ token }),
+    redirect: "error",
     signal: AbortSignal.timeout(15_000),
   });
   return response.ok;
 }
 
-export async function storedQuickBooksRefreshToken(organizationId: string, connectionId: string) {
-  const [secret] = await getDb().select({ refresh: integrationSecrets.refreshTokenCiphertext }).from(integrationSecrets).where(and(
-    eq(integrationSecrets.organizationId, organizationId),
-    eq(integrationSecrets.provider, QUICKBOOKS_PROVIDER),
-    eq(integrationSecrets.connectionId, connectionId),
-  )).limit(1);
-  return secret ? decryptQuickBooksSecret(secret.refresh) : null;
+export async function removeQuickBooksGrant(organizationId: string, connectionId: string, fetcher: typeof fetch = fetch) {
+  const lease = await acquireQuickBooksGrantLease(organizationId, connectionId);
+  try {
+    const [connection] = await getDb().select().from(integrationConnections).where(and(
+      eq(integrationConnections.id, connectionId), eq(integrationConnections.organizationId, organizationId), eq(integrationConnections.provider, QUICKBOOKS_PROVIDER),
+    )).limit(1);
+    if (!connection) throw new ApiError(404, "QUICKBOOKS_NOT_CONNECTED", "The selected QuickBooks connection is unavailable.");
+    const [secret] = await getDb().select({ refresh: integrationSecrets.refreshTokenCiphertext }).from(integrationSecrets).where(and(
+      eq(integrationSecrets.organizationId, organizationId), eq(integrationSecrets.provider, QUICKBOOKS_PROVIDER), eq(integrationSecrets.connectionId, connectionId),
+    )).limit(1);
+    let providerAuthorizationRevoked = false;
+    if (secret) {
+      // Old unbound grants and changed app configuration cannot safely use the
+      // current client credentials. Local withdrawal must still remain possible.
+      try {
+        await requireQuickBooksGrantBinding(connection.sourceNamespace);
+        providerAuthorizationRevoked = await revokeQuickBooksAuthorization(await decryptQuickBooksSecret(secret.refresh), connection.sourceNamespace, fetcher);
+      } catch { /* Report unconfirmed remote revocation without retaining local access. */ }
+    }
+    const now = sqliteTimestampSeconds();
+    const guard = `id = ? AND organization_id = ? AND provider = ? AND source_namespace = ? AND sync_lease_owner = ? AND sync_version = ? AND sync_lease_expires_at > ?`;
+    const bindings = [connectionId, organizationId, QUICKBOOKS_PROVIDER, connection.sourceNamespace, lease.owner, lease.version, now];
+    const results = await getD1().batch([
+      getD1().prepare(`DELETE FROM integration_secrets WHERE organization_id = ? AND provider = ? AND connection_id = ?
+        AND EXISTS (SELECT 1 FROM integration_connections WHERE ${guard})`).bind(organizationId, QUICKBOOKS_PROVIDER, connectionId, ...bindings),
+      getD1().prepare(`UPDATE integration_connections SET status = 'revoked', external_account_ref = NULL, domain_prefix = NULL,
+        scopes_json = '[]', data_promotion_status = 'blocked', promotion_authorized_at = NULL, connected_at = NULL,
+        last_successful_sync_at = NULL, last_sync_cursor = NULL, last_error_code = NULL, updated_at = ?
+        WHERE ${guard}`).bind(now, ...bindings),
+    ]);
+    if (Number(results[1].meta.changes ?? 0) !== 1) throw new ApiError(409, "QUICKBOOKS_GRANT_CHANGED", "The QuickBooks connection changed during removal. Try again.");
+    return { providerAuthorizationRevoked, localCredentialsDeleted: true,
+      providerRevocationRequired: !providerAuthorizationRevoked && Boolean(secret || connection.externalAccountRef) };
+  } finally {
+    await releaseIntegrationSyncLease(lease);
+  }
 }
 
 function positiveInteger(value: unknown) {

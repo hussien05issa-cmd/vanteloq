@@ -26,13 +26,20 @@ test("QuickBooks callback retains verified initiation MFA and rechecks the actor
   const mf = new Miniflare({ modules: true, script: "export default { fetch() { return new Response('ok') } }",
     d1Databases: { DB: `quickbooks-mfa-${crypto.randomUUID()}` } });
   const originalFetch = globalThis.fetch;
+  const originalEnv = globalThis.__vanteloqEnv;
   try {
     const db = await mf.getD1Database("DB");
     for (const filename of (await readdir(new URL("../drizzle/", import.meta.url))).filter(f => /^\d{4}.*\.sql$/.test(f)).sort()) {
       const sql = await readFile(new URL(`../drizzle/${filename}`, import.meta.url), "utf8");
       for (const statement of sql.split("--> statement-breakpoint").map(s => s.trim()).filter(Boolean)) await db.prepare(statement).run();
     }
-    const worker = (await import(new URL("../dist/server/index.js", import.meta.url).href)).default;
+    // Exercise actual route modules against real D1 without depending on a stale build.
+    const routes = new Map([
+      ["/api/v1/onboarding", (await import("../app/api/v1/onboarding/route.ts")).POST],
+      ["/api/v1/integrations/quickbooks/authorize", (await import("../app/api/v1/integrations/quickbooks/authorize/route.ts")).POST],
+      ["/api/v1/integrations/quickbooks/callback", (await import("../app/api/v1/integrations/quickbooks/callback/route.ts")).GET],
+    ]);
+    const worker = { fetch(request, env) { globalThis.__vanteloqEnv = env; return routes.get(new URL(request.url).pathname)(request); } };
     const env = { DB: db, ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) },
       SUPABASE_URL: authOrigin, SUPABASE_PUBLISHABLE_KEY: "test-publishable-key", VANTELOQ_INTERNAL_ACCESS_ENABLED: "true",
       QUICKBOOKS_CLIENT_ID: "test_quickbooks_client_12345", QUICKBOOKS_CLIENT_SECRET: "test_quickbooks_secret_12345",
@@ -59,17 +66,26 @@ test("QuickBooks callback retains verified initiation MFA and rechecks the actor
     assert.equal(weak.status, 403);
     assert.equal((await weak.json()).error.code, "MFA_REQUIRED");
     let tokenExchanges = 0;
+    let revocations = 0;
+    let onTokenExchange = async () => {};
     globalThis.fetch = async (input, init) => {
       const url = new URL(typeof input === "string" || input instanceof URL ? input : input.url);
       if (url.origin === authOrigin) return originalFetch(input, init);
       if (url.origin === "https://oauth.platform.intuit.com" && url.pathname.endsWith("/tokens/bearer")) {
         tokenExchanges++;
+        assert.equal(init?.redirect, "error");
+        await onTokenExchange();
         return Response.json({ access_token: "test-access-token", refresh_token: "test-refresh-token", expires_in: 3600,
           x_refresh_token_expires_in: 86400, token_type: "bearer" });
       }
       if (url.origin === "https://sandbox-quickbooks.api.intuit.com") {
         assert.equal(url.pathname, "/v3/company/123456789/companyinfo/123456789");
+        assert.equal(init?.redirect, "error");
         return Response.json({ CompanyInfo: { Id: "1", CompanyName: "Test company", Country: "CA" } });
+      }
+      if (url.origin === "https://developer.api.intuit.com" && url.pathname === "/v2/oauth2/tokens/revoke") {
+        revocations++; assert.equal(init?.redirect, "error");
+        return new Response(null, { status: 200 });
       }
       throw Error(`Unexpected external destination: ${url.origin}${url.pathname}`);
     };
@@ -122,8 +138,63 @@ test("QuickBooks callback retains verified initiation MFA and rechecks the actor
     await db.prepare("UPDATE internal_access SET active=0 WHERE id='test-founder'").run();
     assert.equal((await grantRevoked.finish()).status, 403);
     assert.equal(tokenExchanges, 1, "revoked identity, membership, grant or state cannot exchange tokens");
+    await db.prepare("UPDATE internal_access SET active=1 WHERE id='test-founder'").run();
+    await db.prepare("DELETE FROM rate_limit_buckets").run();
+
+    const changedConfig = await start();
+    env.QUICKBOOKS_ENV = "production";
+    assert.equal((await changedConfig.finish()).status, 303);
+    assert.equal(tokenExchanges, 1, "a pending sandbox grant cannot be exchanged under production configuration");
+    assert.equal((await db.prepare("SELECT last_error_code FROM integration_connections WHERE id=?").bind(changedConfig.connectionId).first()).last_error_code, "QUICKBOOKS_GRANT_RECONNECT_REQUIRED");
+    env.QUICKBOOKS_ENV = "sandbox";
+
+    // Inject a real SQLite persistence failure after reconnect metadata changes.
+    const retry = await start();
+    const beforeRetrySecret = await db.prepare("SELECT * FROM integration_secrets WHERE connection_id=?").bind(valid.connectionId).first();
+    await db.prepare(`CREATE TRIGGER test_qb_save_failure BEFORE INSERT ON integration_secrets WHEN NEW.connection_id='${valid.connectionId}' BEGIN SELECT RAISE(ABORT, 'injected save failure'); END`).run();
+    assert.equal((await retry.finish()).status, 303);
+    await db.prepare("DROP TRIGGER test_qb_save_failure").run();
+    const failedGrant = await db.prepare("SELECT status,data_promotion_status,source_namespace FROM integration_connections WHERE id=?").bind(valid.connectionId).first();
+    assert.equal(failedGrant.status, "error"); assert.equal(failedGrant.data_promotion_status, "blocked");
+    assert.deepEqual(await db.prepare("SELECT * FROM integration_secrets WHERE connection_id=?").bind(valid.connectionId).first(), beforeRetrySecret);
+    const recovered = await start();
+    assert.equal((await recovered.finish()).headers.get("location"), `${origin}/?integration=quickbooks&connection=connected`);
+    assert.equal((await db.prepare("SELECT status FROM integration_connections WHERE id=?").bind(valid.connectionId).first()).status, "connected", "the failed realm can deliberately reconnect without a uniqueness dead end");
+
+    // A later audit error must not invalidate a successfully persisted grant.
+    const auditFailure = await start();
+    await db.prepare("CREATE TRIGGER test_qb_audit_failure BEFORE INSERT ON audit_events WHEN NEW.action='integration.connected' BEGIN SELECT RAISE(ABORT, 'injected audit failure'); END").run();
+    assert.equal((await auditFailure.finish()).status, 303);
+    await db.prepare("DROP TRIGGER test_qb_audit_failure").run();
+    const savedDespiteAudit = await db.prepare("SELECT status,source_namespace FROM integration_connections WHERE id=?").bind(valid.connectionId).first();
+    assert.equal(savedDespiteAudit.status, "connected");
+    assert.match(savedDespiteAudit.source_namespace, /^quickbooks:v1:sandbox:/);
+
+    // Withdrawal of attempt B must not reconnect the already connected A.
+    const removedRetry = await start();
+    const existingBeforeRemoval = await db.prepare("SELECT source_namespace,status FROM integration_connections WHERE id=?").bind(valid.connectionId).first();
+    const secretBeforeRemoval = await db.prepare("SELECT * FROM integration_secrets WHERE connection_id=?").bind(valid.connectionId).first();
+    const revocationsBeforeRemoval = revocations;
+    const { removeQuickBooksGrant } = await import("../server/integrations/quickbooks.ts");
+    onTokenExchange = async () => { await removeQuickBooksGrant(organizationId, removedRetry.connectionId); };
+    assert.equal((await removedRetry.finish()).headers.get("location"), `${origin}/?integration=quickbooks&connection=failed`);
+    onTokenExchange = async () => {};
+    assert.equal(revocations, revocationsBeforeRemoval, "a cancelled reconnect must not revoke the still-connected company authorization");
+    assert.deepEqual(await db.prepare("SELECT source_namespace,status FROM integration_connections WHERE id=?").bind(valid.connectionId).first(), existingBeforeRemoval);
+    assert.deepEqual(await db.prepare("SELECT * FROM integration_secrets WHERE connection_id=?").bind(valid.connectionId).first(), secretBeforeRemoval);
+    assert.equal((await db.prepare("SELECT status FROM integration_connections WHERE id=?").bind(removedRetry.connectionId).first()).status, "revoked");
+
+    // Remove the old realm so this exercises a first-time callback, not reconnect.
+    await db.prepare("UPDATE integration_connections SET status='revoked',external_account_ref=NULL WHERE id=?").bind(valid.connectionId).run();
+    const removedPending = await start();
+    onTokenExchange = async () => { await db.prepare("UPDATE integration_connections SET status='revoked' WHERE id=?").bind(removedPending.connectionId).run(); };
+    assert.equal((await removedPending.finish()).status, 303);
+    onTokenExchange = async () => {};
+    assert.equal((await db.prepare("SELECT status FROM integration_connections WHERE id=?").bind(removedPending.connectionId).first()).status, "revoked", "failure handling must not overwrite a concurrent withdrawal");
+    assert.equal(await db.prepare("SELECT id FROM integration_secrets WHERE connection_id=?").bind(removedPending.connectionId).first(), null);
   } finally {
     globalThis.fetch = originalFetch;
+    globalThis.__vanteloqEnv = originalEnv;
     await mf.dispose();
     await new Promise(resolve => authServer.close(resolve));
   }

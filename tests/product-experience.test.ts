@@ -80,6 +80,12 @@ test("sandbox and unavailable connectors never advertise live results", () => {
   const verificationOnly = connectorNextStep({ ...provider, name: "QuickBooks", lastSuccessfulSyncAt: null, providerReadiness: { ...provider.providerReadiness, mode: "sandbox_read_only_staging", ledgerImportEnabled: false } }, true, true);
   assert.equal(verificationOnly.stage, "Company verification only");
   assert.match(verificationOnly.detail, /does not populate BookLoQ/);
+  for (const id of ["shopify", "shopify-pos"]) {
+    const waiting = connectorNextStep({ ...provider, id, status: "not_connected" }, true, true);
+    assert.equal(waiting.stage, "App review pending", "credentials alone do not establish public installation access");
+    assert.match(waiting.detail, /authorized test store/);
+    assert.equal(connectorNextStep({ ...provider, id, status: "error" }, true, true).stage, "Repair connection");
+  }
 });
 test("provider search combines trimmed case-insensitive query and category", () => {
   const rows = [provider, { name: "Plaid", category: "Banking" }];

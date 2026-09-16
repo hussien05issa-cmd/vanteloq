@@ -2119,6 +2119,9 @@ type DocumentData = {
     deletionPending: boolean;
     deletionRetryRequired: boolean;
     deletionMessage: string | null;
+    cleanupRetryStatus: "running" | "retrying" | "attention" | "complete" | null;
+    cleanupRetryMessage: string | null;
+    cleanupNextAttemptAt: string | null;
     createdAt: string;
   }[];
   pipeline: Record<string, string>;
@@ -2338,8 +2341,9 @@ export function DocumentsWorkspace({ showNotice, canUpload, canDelete }: SharedP
                 {document.processingStage === "reading" ? "Reading document" : document.processingStage === "scanning" || document.processingStage === "scan_waiting" ? "Scanning file" : humanizeIdentifier(document.extractionStatus)}
               </em>
               {document.processingError && <small className="document-processing-error">{document.processingError}</small>}
-              {document.deletionMessage && <small className="document-processing-error" role="status">{document.deletionMessage}</small>}
-              {document.cleanupMessage && !document.deletionPending && <small className="document-processing-error" role="status">{document.cleanupMessage}</small>}
+              {document.cleanupRetryMessage && <small role="status">{document.cleanupRetryMessage}{document.cleanupNextAttemptAt && document.cleanupRetryStatus === "retrying" && <> Next attempt: <time dateTime={document.cleanupNextAttemptAt}>{new Date(document.cleanupNextAttemptAt).toLocaleString()}</time>.</>}</small>}
+              {document.deletionMessage && !document.cleanupRetryMessage && <small className="document-processing-error" role="status">{document.deletionMessage}</small>}
+              {document.cleanupMessage && !document.deletionPending && !document.cleanupRetryMessage && <small className="document-processing-error" role="status">{document.cleanupMessage}</small>}
             </span>
             <span>
               {document.extractionReady && <button disabled={Boolean(reviewLoading)} onClick={() => void openReview(document)}>{reviewLoading === document.id ? "Loading…" : "Review Figures"}</button>}

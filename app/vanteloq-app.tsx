@@ -810,7 +810,7 @@ export default function VanteloqApp({
       }
       if (integration === "quickbooks") {
         setNotice(state === "connected"
-          ? "QuickBooks is connected. Review the selected company in Integrations."
+          ? "QuickBooks company verified. Accounting import is not available yet."
           : state === "declined"
             ? "QuickBooks authorization was declined."
             : parameters.get("action") === "disconnect"
@@ -2774,7 +2774,7 @@ function DataHub({
       setSampleResult(null);
       if (provider !== "stripe") setOutletData(null);
     }
-    showNotice(`${providerLabel} disconnected`);
+    showNotice(provider === "quickbooks" && typeof body.message === "string" ? body.message : `${providerLabel} disconnected`);
     await loadConnections();
   };
   const loadProviderLocations = async (provider: "lightspeed" | "lightspeed-r" | "shopify" | "shopify-pos" | "square" | "clover", connectionId?: string) => {
@@ -2989,7 +2989,7 @@ function DataHub({
                   <div className="provider-setup-needed" role="note"><b>QuickBooks setup remaining</b><span>{provider.providerReadiness.missingConfiguration.map(lightspeedConfigurationLabel).join(" · ")}</span></div>
                 )}
                 {isQuickBooks && quickBooksConsentOpen && <form className="moneris-connect-form" onSubmit={(event) => { event.preventDefault(); void connectQuickBooks(); }}>
-                  <header><b>Connect a QuickBooks Online company</b><span>The current connector verifies the company and stores refreshable authorization securely. Ledger records and dashboard calculations remain locked during the sandbox stage.</span></header>
+                  <header><b>Connect a QuickBooks Online company</b><span>Verify your company and save its authorization securely. Accounting import is not available yet, so this connection does not update your reports.</span></header>
                   <label className="moneris-consent"><input type="checkbox" checked={quickBooksConsentAccepted} required onChange={(event) => setQuickBooksConsentAccepted(event.target.checked)} /><span>I authorize Vanteloq to receive the selected QuickBooks company identifier, company name, authorization status, and future read only accounting records for mapping, reconciliation, and reporting. Vanteloq will not create or change QuickBooks transactions during this stage.</span></label>
                   <small>Intuit will show its own company selection and permission screen next. You can disconnect later to revoke the authorization and delete the stored token.</small>
                   <footer><button type="button" onClick={() => { setQuickBooksConsentOpen(false); setQuickBooksConsentAccepted(false); }}>Cancel</button><button type="submit" className="primary" disabled={!canManageProvider || providerAction === "authorize" || !quickBooksConsentAccepted}>{providerAction === "authorize" ? "Opening QuickBooks…" : "Continue to Intuit"}</button></footer>
@@ -3062,7 +3062,7 @@ function DataHub({
                         </section>}
                         <div className="provider-account-actions">
                           {connection.status === "connected" && <>
-                            {isQuickBooks ? <small>Company verified. Ledger import and dashboard metrics remain locked during the sandbox stage.</small> : isMarketingProvider ? <>
+                            {isQuickBooks ? <small>Company verified. Accounting import is not available yet. This connection does not update your reports.</small> : isMarketingProvider ? <>
                               <button
                                 type="button"
                                 onClick={(event) => void loadMarketingResources(provider.id as "google" | "meta", connection.id, event.currentTarget)}
@@ -3144,6 +3144,8 @@ function DataHub({
                           ? "Unavailable"
                         : providerComingSoon
                           ? "Coming soon"
+                        : provider.id === "shopify" || provider.id === "shopify-pos"
+                          ? "App review pending"
                         : configured
                           ? "Ready to authorize"
                           : availabilityLabel(provider.availability)}

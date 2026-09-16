@@ -3,6 +3,7 @@ import { getD1, getDb, getRuntimeEnv } from "../../db";
 import { integrationSyncSchedules, internalAccess, memberships, users, workspaces } from "../../db/schema";
 import { ApiError, readRequestBytes } from "../api";
 import { recordAudit } from "../audit";
+import { runDocumentCleanupTick } from "../document-cleanup-scheduler";
 import { internalAccessEnabled } from "../internal-access";
 import { resolveInternalEntitlements, resolveSubscriptionEntitlements, subscriptionSnapshot, requireFeatureEntitlement, requireTenantServiceAccess } from "../entitlements/engine";
 import { dispatchScheduledSync } from "./sync-dispatch";
@@ -110,6 +111,22 @@ export async function runScheduledSyncTick(request: Request, requestId: string) 
   const receipt = await getD1().prepare("INSERT OR IGNORE INTO integration_sync_ticks(id,created_at) VALUES (?,?)").bind(nonce, now).run();
   if (Number(receipt.meta.changes ?? 0) !== 1) throw new ApiError(409, "SYNC_REPLAY_REJECTED", "This scheduler tick was already accepted.");
   await getD1().prepare("DELETE FROM integration_sync_ticks WHERE created_at<?").bind(now - 86400).run();
+  // Start disposal retries alongside POS work only after the signed, replay-safe tick is accepted.
+  // Existing deletion/processing consent is sufficient to finish cleanup even after a plan ends.
+  const cleanupPromise = runDocumentCleanupTick({ database: getD1(), bucket: getRuntimeEnv().BUCKET, env: getRuntimeEnv(),
+    audit: event => recordAudit({ request, requestId, organizationId: event.organizationId, actorUserId: null,
+      action: event.status === "started" ? "document.cleanup_retry.started" : "document.cleanup_retry.finished",
+      resourceType: "document", resourceId: event.documentId,
+      outcome: ["started", "complete", "coalesced"].includes(event.status) ? "success" : "failure",
+      details: { kind: event.kind, status: event.status, attempts: event.attempts, errorCode: event.errorCode,
+        nextAttemptAt: event.nextAttemptAt, authorization: "existing_document_request", newProcessingStarted: false } }),
+  }).catch(() => ({ processed: 0, counts: { scheduler_error: 1 } }));
+  const posPromise = runDuePosBatch(request, requestId, now).catch(() => ({ processed: 0, counts: { scheduler_error: 1 } }));
+  const [pos, documentCleanup] = await Promise.all([posPromise, cleanupPromise]);
+  return { accepted: true, ...pos, documentCleanup };
+}
+
+async function runDuePosBatch(request: Request, requestId: string, now: number) {
   const due = await getD1().prepare(`SELECT connection_id FROM integration_sync_schedules
     WHERE enabled=1 AND next_run_at<=? AND (lease_owner IS NULL OR lease_expires_at<=?)
     ORDER BY next_run_at, COALESCE(last_started_at,0), connection_id LIMIT 3`).bind(now, now).all<{connection_id:string}>();
@@ -125,5 +142,5 @@ export async function runScheduledSyncTick(request: Request, requestId: string) 
     const status = item.status === "fulfilled" ? item.value : "retrying";
     counts[status] = (counts[status] ?? 0) + 1;
   }
-  return { accepted: true, processed: jobs.length, counts };
+  return { processed: jobs.length, counts };
 }

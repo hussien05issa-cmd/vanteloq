@@ -1,4 +1,5 @@
 type Connector = {
+  id?: string;
   name: string;
   category: string;
   status: string;
@@ -24,6 +25,9 @@ export function connectorNextStep(provider: Connector, entitled: boolean, canMan
   if (!provider.providerReadiness) return { stage: "Check status", detail: "Live readiness has not been confirmed. Refresh the connection status before continuing." };
   if (!provider.providerReadiness.credentialsConfigured) return { stage: "Provider setup", detail: "Vanteloq still needs to finish this provider’s secure setup. You do not need to supply a platform secret key." };
   if (provider.status === "error") return { stage: "Repair connection", detail: "Review the connection error and restore authorization or retry the failed sync before using its results." };
+  if (provider.status !== "connected" && (provider.id === "shopify" || provider.id === "shopify-pos")) {
+    return { stage: "App review pending", detail: "Public installation is awaiting Shopify review. Only an authorized test store can connect at this stage." };
+  }
   if (provider.status !== "connected") return { stage: "Authorize account", detail: "Use the connection control below, review consent and select the correct business account." };
   if (provider.providerReadiness.ledgerImportEnabled === false) return { stage: "Company verification only", detail: "The company is authorized, but ledger imports are not available yet. This connection does not populate BookLoQ or business reports." };
   if (/sandbox|staging|development/i.test(provider.providerReadiness.mode)) {
