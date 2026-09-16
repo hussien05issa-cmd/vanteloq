@@ -161,7 +161,7 @@ body:has(.operating-shell .marketing-resource-panel) .analytics-settings-button 
   align-items: center;
   width: fit-content;
   min-height: 44px;
-  margin: 16px 18px max(18px, env(safe-area-inset-bottom));
+  margin: 16px 18px max(18px, env(safe-area-inset-bottom)) auto;
   padding: 10px 16px;
   border-radius: 12px;
   background: #f3f6fb;
