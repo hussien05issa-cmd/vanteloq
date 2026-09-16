@@ -52,11 +52,11 @@ export async function validateDocumentForProcessing(bytes: Uint8Array, contentTy
   for (const [, value] of pdf.context.enumerateIndirectObjects()) inspect(value, 0);
 }
 
-async function request(url: string, init: RequestInit, transport: typeof fetch) {
+async function request(url: string, init: RequestInit, transport: typeof fetch, allowAbsent = false) {
   try {
     // Reject redirects explicitly, using the redirect mode supported by Workers.
     const response = await transport(url, { ...init, redirect: "manual", cache: "no-store", signal: AbortSignal.timeout(25_000) });
-    if (!response.ok) throw new DocumentProviderError(response.status === 429 ? "PROVIDER_RATE_LIMIT" : response.status === 401 || response.status === 403 ? "PROVIDER_ACCESS_DENIED" : response.status === 413 ? "PROVIDER_FILE_LIMIT" : "PROVIDER_UNAVAILABLE");
+    if (!response.ok && !(allowAbsent && response.status === 404)) throw new DocumentProviderError(response.status === 429 ? "PROVIDER_RATE_LIMIT" : response.status === 401 || response.status === 403 ? "PROVIDER_ACCESS_DENIED" : response.status === 413 ? "PROVIDER_FILE_LIMIT" : "PROVIDER_UNAVAILABLE");
     return response;
   } catch (error) {
     if (error instanceof DocumentProviderError) throw error;
@@ -163,5 +163,5 @@ export async function pollExtraction(env: VanteloqRuntimeEnv, operation: string,
   return normalizeExtraction(body.analyzeResult);
 }
 export async function deleteExtractionResult(env: VanteloqRuntimeEnv, operation: string, transport: typeof fetch = fetch) {
-  await request(azureOperationUrl(env, operation), { method: "DELETE", headers: { "Ocp-Apim-Subscription-Key": env.AZURE_DOCUMENT_INTELLIGENCE_KEY || "" } }, transport);
+  await request(azureOperationUrl(env, operation), { method: "DELETE", headers: { "Ocp-Apim-Subscription-Key": env.AZURE_DOCUMENT_INTELLIGENCE_KEY || "" } }, transport, true);
 }

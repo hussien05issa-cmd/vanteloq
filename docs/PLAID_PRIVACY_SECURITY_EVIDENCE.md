@@ -1,10 +1,11 @@
 # Vanteloq Plaid privacy and security evidence
 
-Evidence version: 1.0
+Evidence version: 1.1
 Prepared: August 11, 2026
+Last protocol review: September 16, 2026
 Application: Vanteloq at `https://vanteloq.com`
 Organization: LexEdge Consulting, operating as Vanteloq
-Review result: Proceed with conditions; Plaid production access must remain disabled until the TLS blocker and legal review are complete.
+Review result: TLS control remains blocked. Plaid production access must remain disabled until the TLS blocker and legal review are complete. No overall launch approval is recorded here.
 
 ## Executive statement
 
@@ -68,7 +69,20 @@ Vanteloq does not receive the online-banking password entered in Plaid Link, doe
 - The Worker sets one-year HSTS and `upgrade-insecure-requests` in the Content Security Policy.
 - Protocol checks performed August 11, 2026 confirmed TLS 1.2 succeeds but also found TLS 1.1 succeeds. The Cloudflare customer-zone dashboard was set to a TLS 1.2 minimum and even temporarily raised to TLS 1.3, but the Sites/custom-hostname edge continued to negotiate TLS 1.1. The dashboard was restored to TLS 1.2. This control remains blocked until the hosting edge is corrected and both tests are rerun; a dashboard screenshot alone is not completion evidence.
 
-Required release evidence:
+### September 16, 2026 protocol recheck
+
+At 09:49:19 UTC, certificate-verified protocol probes produced the following results:
+
+| Hostname | TLS 1.1 | TLS 1.2 | TLS 1.3 |
+| --- | --- | --- | --- |
+| `vanteloq.com` | Accepted and negotiated, **blocker remains** | Accepted | Accepted |
+| `connectors.vanteloq.com` | Rejected with `ERR_SSL_TLSV1_ALERT_PROTOCOL_VERSION` | Accepted | Accepted |
+
+The customer Cloudflare zone is set to a TLS 1.2 minimum, but the main Sites-managed custom hostname still accepts TLS 1.1. The dated raw evidence is `output/public-tls-2026-09-16.json` in the local review artifacts. A hosting support request has been prepared; preparation does not establish provider remediation or delivery of that request.
+
+The current source also contains `server/transport-security.ts`, a supplemental request guard that rejects legacy TLS metadata supplied by the hosting platform. It does not trust client headers to identify the protocol. This guard executes after the TLS handshake and therefore cannot satisfy the required handshake-rejection evidence. Its passing application tests are not evidence that the hosting minimum changed.
+
+Required release evidence after the hosting correction:
 
 ```text
 TLS 1.1 maximum -> handshake rejected

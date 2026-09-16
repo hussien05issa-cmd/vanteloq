@@ -1,5 +1,6 @@
 import { getRuntimeEnv } from "../../db";
 import { ApiError } from "../api";
+import { prepareMetaGraphRequest } from "./meta-security";
 import { finiteMetric, metricRatio, REPORT_VIEWS, reportingWindow, type MarketingReport, type ReportColumn, type ReportRow, type ReportView } from "../../domain/marketing-reporting";
 import type { SelectedMarketingResource } from "./marketing";
 import { googleAdsEnabled, googleAdsHeaders, googleAdsVersion, resolveGoogleAdsAccount } from "./google-ads-access";
@@ -9,11 +10,15 @@ const column = (key: string, label: string, unit: ReportColumn["unit"] = "count"
 type Period = { start: string; end: string };
 
 async function providerReport<T>(url: string, token: string, body?: unknown, extraHeaders: Record<string, string> = {}): Promise<T> {
-  const response = await fetch(url, {
+  const requestInit: RequestInit = {
     method: body === undefined ? "GET" : "POST", redirect: "manual", cache: "no-store",
     headers: { ...extraHeaders, Authorization: `Bearer ${token}`, Accept: "application/json", ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: AbortSignal.timeout(20_000),
-  });
+  };
+  const prepared = new URL(url).origin === "https://graph.facebook.com"
+    ? await prepareMetaGraphRequest(url, requestInit)
+    : { url, init: requestInit };
+  const response = await fetch(prepared.url, prepared.init);
   if (!response.ok) {
     await response.body?.cancel().catch(() => undefined);
     throw new ApiError(response.status === 429 ? 429 : 502, "MARKETING_REPORT_UNAVAILABLE", response.status === 429 ? "The provider is limiting reporting requests. Wait before refreshing." : "The provider could not return this report. Check the selected account, API permissions and provider setup in Integrations.");

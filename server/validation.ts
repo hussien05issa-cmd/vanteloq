@@ -603,7 +603,7 @@ function dailyMetricRow(value: unknown) {
 }
 
 export function dailyMetricImportInput(value: Record<string, unknown>) {
-  rejectUnknown(value, ["importType", "fileName", "rows"]);
+  rejectUnknown(value, ["importType", "fileName", "rows", "replacement"]);
   const importType = selected(
     value.importType ?? "daily_summary_csv",
     ["daily_summary_csv", "manual_entry"] as const,
@@ -633,7 +633,26 @@ export function dailyMetricImportInput(value: Record<string, unknown>) {
       );
     keys.add(key);
   }
-  return { importType, fileName, rows };
+  for (const row of rows) {
+    if (row.locationRef === "all" && rows.some((other) => other.businessDate === row.businessDate && other.locationRef !== "all")) {
+      throw new ApiError(400, "IMPORT_OVERLAPPING_LOCATIONS", "Do not mix an all-location total with individual locations on the same date.");
+    }
+  }
+  let replacement: { snapshot: string; reason: string } | null = null;
+  if (value.replacement != null) {
+    if (typeof value.replacement !== "object" || Array.isArray(value.replacement)) {
+      throw new ApiError(400, "INVALID_IMPORT_REVIEW", "Review the existing records before replacing them.");
+    }
+    const review = value.replacement as Record<string, unknown>;
+    rejectUnknown(review, ["snapshot", "reason"]);
+    const snapshot = requiredString(review.snapshot, "review snapshot", 64);
+    const reason = requiredString(review.reason, "reason for the correction", 300);
+    if (!/^[0-9a-f]{64}$/.test(snapshot) || reason.length < 3) {
+      throw new ApiError(400, "INVALID_IMPORT_REVIEW", "Review the existing records and enter a correction reason of 3 to 300 characters.");
+    }
+    replacement = { snapshot, reason };
+  }
+  return { importType, fileName, rows, replacement };
 }
 
 export function businessEventCreateInput(value: Record<string, unknown>) {

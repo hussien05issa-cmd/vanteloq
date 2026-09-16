@@ -1472,7 +1472,7 @@ export const workspaceDocuments = sqliteTable(
     sizeBytes: integer("size_bytes").notNull(),
     sha256Hex: text("sha256_hex").notNull(),
     securityState: text("security_state", { enum: ["quarantined", "clean", "rejected"] }).notNull().default("quarantined"),
-    status: text("status", { enum: ["uploaded", "review_required", "approved", "rejected"] }).notNull().default("uploaded"),
+    status: text("status", { enum: ["uploaded", "review_required", "approved", "rejected", "deletion_pending"] }).notNull().default("uploaded"),
     scanStatus: text("scan_status", { enum: ["pending", "clean", "blocked", "failed"] }).notNull().default("pending"),
     scannedAt: integer("scanned_at", { mode: "timestamp" }),
     scanProvider: text("scan_provider"),
@@ -2198,3 +2198,58 @@ export const bankStatementRows = sqliteTable("bank_statement_rows", {
   unique().on(table.transactionId),
   check("bank_statement_row_number", sql`${table.rowNumber} BETWEEN 1 AND 500`),
 ]);
+
+
+// Personal newsletter preferences are independent of workspace notifications.
+// Hashes and audit evidence are private server records, never client edit targets.
+export const marketingEmailIntents = sqliteTable("marketing_email_intents", {
+  tokenHash: text("token_hash").primaryKey(),
+  emailHash: text("email_hash").notNull(),
+  selected: integer("selected").notNull(),
+  noticeJson: text("notice_json").notNull(),
+  createdAt: integer("created_at").notNull(),
+  expiresAt: integer("expires_at").notNull(),
+  sourceHash: text("source_hash"),
+  userAgentHash: text("user_agent_hash"),
+}, table => [
+  check("marketing_email_intents_choice_check", sql`${table.selected} IN (0,1)`),
+  index("marketing_email_intents_expiry_idx").on(table.expiresAt),
+  index("marketing_email_intents_email_idx").on(table.emailHash),
+]);
+
+export const marketingEmailPreferences = sqliteTable("marketing_email_preferences", {
+  emailHash: text("email_hash").primaryKey(),
+  subjectHash: text("subject_hash"),
+  emailEncrypted: text("email_encrypted"),
+  status: text("status").notNull(),
+  currentEventId: text("current_event_id").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+}, table => [
+  check("marketing_email_preferences_status_check", sql`${table.status} IN ('subscribed','declined','unsubscribed','suppressed')`),
+  check("marketing_email_preferences_recipient_check", sql`${table.status} <> 'subscribed' OR (${table.emailEncrypted} IS NOT NULL AND ${table.subjectHash} IS NOT NULL)`),
+  index("marketing_email_preferences_subject_idx").on(table.subjectHash),
+]);
+
+export const marketingEmailEvents = sqliteTable("marketing_email_events", {
+  id: text("id").primaryKey(),
+  emailHash: text("email_hash").notNull(),
+  subjectHash: text("subject_hash"),
+  action: text("action").notNull(),
+  source: text("source").notNull(),
+  noticeJson: text("notice_json").notNull(),
+  occurredAt: integer("occurred_at").notNull(),
+  intentAt: integer("intent_at"),
+  sourceHash: text("source_hash"),
+  userAgentHash: text("user_agent_hash"),
+}, table => [
+  check("marketing_email_events_action_check", sql`${table.action} IN ('subscribed','declined','unsubscribed','suppressed')`),
+  index("marketing_email_events_email_idx").on(table.emailHash, table.occurredAt),
+  index("marketing_email_events_subject_idx").on(table.subjectHash),
+]);
+
+export const marketingEmailUnsubscribeTokens = sqliteTable("marketing_email_unsubscribe_tokens", {
+  tokenHash: text("token_hash").primaryKey(),
+  emailHash: text("email_hash").notNull().references(() => marketingEmailPreferences.emailHash, { onDelete: "cascade" }),
+  createdAt: integer("created_at").notNull(),
+  expiresAt: integer("expires_at").notNull(),
+}, table => [index("marketing_email_unsubscribe_expiry_idx").on(table.expiresAt)]);

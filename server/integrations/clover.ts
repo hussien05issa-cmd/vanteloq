@@ -3,6 +3,7 @@ import { businessDateForTimestamp } from "../../domain/intraday-sales";
 import { getDb, getRuntimeEnv } from "../../db";
 import { integrationSecrets } from "../../db/schema";
 import { ApiError } from "../api";
+import { cloverLineDiscountCents, cloverLineNetSalesCents, cloverLineQuantityMilli, cloverOrderReportingState, cloverPaymentDisposition } from "./clover-reporting";
 
 export const CLOVER_PROVIDER = "clover";
 export const CLOVER_READ_PERMISSIONS = ["merchant", "orders", "payments", "inventory", "customers"] as const;
@@ -41,6 +42,7 @@ export type NormalizedCloverSale = {
   costCents: number;
   discountCents: number;
   lineCount: number;
+  quantityMilli?: number | null;
   sourcePayloadHash: string;
 };
 
@@ -359,16 +361,10 @@ export async function normalizeCloverOrder(merchantId: string, order: Record<str
   const soldAt = timestamp(order.clientCreatedTime ?? order.createdTime);
   const customerRef = limitedText(firstRecord(objectValue(order.customers).elements).id, 120);
   const lineItems = records(objectValue(order.lineItems).elements);
-  const stateValue = stringValue(order.state).toLowerCase();
-  const state = ["locked", "paid", "fulfilled"].includes(stateValue) ? "completed"
-    : ["deleted", "voided", "cancelled", "canceled"].includes(stateValue) ? "voided"
-      : stateValue || "open";
+  const state = cloverOrderReportingState(order);
   const lines = await Promise.all(lineItems.map(async (line, index) => {
-    const quantityMilli = finiteInteger(line.unitQty) ?? 1000;
-    const reportingAmount = line.priceWithModifiersAndItemAndOrderDiscounts ?? line.priceWithModifiers;
-    const priceCents = cents(reportingAmount ?? line.price);
-    const discounts = records(line.discounts).reduce((sum, discount) => sum + Math.abs(cents(discount.amount)), 0)
-      + records(line.orderLevelDiscounts).reduce((sum, discount) => sum + Math.abs(cents(discount.amount)), 0);
+    const quantityMilli = cloverLineQuantityMilli(line);
+    const discounts = cloverLineDiscountCents(line);
     const item = objectValue(line.item);
     const normalized = {
       externalSaleId,
@@ -380,7 +376,7 @@ export async function normalizeCloverOrder(merchantId: string, order: Record<str
       sku: limitedText(line.itemCode, 160),
       productName: limitedText(line.name, 240),
       quantityMilli,
-      netSalesCents: reportingAmount == null ? Math.round(priceCents * quantityMilli / 1000) : priceCents,
+      netSalesCents: cloverLineNetSalesCents(line, quantityMilli, discounts),
       costCents: 0,
       discountCents: discounts,
     };
@@ -397,6 +393,7 @@ export async function normalizeCloverOrder(merchantId: string, order: Record<str
     costCents: lines.reduce((sum, line) => sum + line.costCents, 0),
     discountCents: lines.reduce((sum, line) => sum + line.discountCents, 0),
     lineCount: lines.length,
+    quantityMilli: lines.reduce((sum, line) => sum + line.quantityMilli, 0),
   };
   return {
     sale: { ...saleBase, sourcePayloadHash: await cloverSha256(JSON.stringify(saleBase)) } satisfies NormalizedCloverSale,
@@ -468,7 +465,8 @@ function paymentCategory(name: string): CloverPaymentCategory {
 
 export async function normalizeCloverPayments(merchantId: string, values: Record<string, unknown>[]) {
   validateMerchantId(merchantId);
-  return Promise.all(values.map(async (payment, index) => {
+  const posted = values.filter((payment) => cloverPaymentDisposition(payment) === "posted");
+  return Promise.all(posted.map(async (payment, index) => {
     const externalSaleId = limitedText(objectValue(payment.order).id, 120);
     if (!externalSaleId) throw new Error("Clover payment order ID is missing.");
     const tender = objectValue(payment.tender);
@@ -495,6 +493,10 @@ export function buildCloverDailyMetrics(
   const grouped = new Map<string, CloverDailyMetric>();
   for (const sale of sales) {
     if (!sale.soldAt || sale.state !== "completed") continue;
+    const quantityMilli = sale.quantityMilli;
+    if (typeof quantityMilli !== "number" || !Number.isSafeInteger(quantityMilli) || quantityMilli < 0) {
+      throw new ApiError(409, "CLOVER_QUANTITY_EVIDENCE_REQUIRED", "Clover sale quantities need complete source lines before reporting.");
+    }
     const businessDate = businessDateForTimestamp(sale.soldAt, timeZone);
     if (!businessDate) continue;
     const scopedMerchant = namespace === "legacy" ? sale.outletRef : `${namespace}:${sale.outletRef}`;
@@ -510,7 +512,11 @@ export function buildCloverDailyMetrics(
     row.netSalesCents += netSalesCents;
     row.costOfGoodsCents += Math.max(0, sale.costCents);
     row.transactionCount += 1;
-    row.unitsSold += Math.max(0, sale.lineCount);
+    const dailyQuantityMilli = Math.round(row.unitsSold * 1000) + quantityMilli;
+    if (!Number.isSafeInteger(dailyQuantityMilli)) {
+      throw new ApiError(409, "CLOVER_QUANTITY_EVIDENCE_REQUIRED", "Clover daily quantity exceeds supported precision.");
+    }
+    row.unitsSold = dailyQuantityMilli / 1000;
     row.discountsCents += Math.max(0, sale.discountCents);
     grouped.set(key, row);
   }

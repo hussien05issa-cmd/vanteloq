@@ -69,3 +69,17 @@ Disconnection is not the same as deletion of lawfully retained accounting record
 - Failed deletion jobs must be investigated, retried, and recorded. The requester receives a clear limitation rather than a false completion message.
 
 Vanteloq must update this inventory and add a verified disposal workflow before introducing a new personal-information category.
+
+## Vanteloq newsletter choices
+
+Newsletter enrollment is separate from required legal acceptance, the private contact form and operational account notifications. No existing user, customer import or subscriber plan is enrolled automatically. A valid public sender mailing address and an explicit enrollment switch are required before the optional signup or onboarding notice appears.
+
+Signup drafts contain a keyed email hash, the displayed notice, selected choice, server timestamps and limited hashed request evidence. They cannot authorize a send. They expire after 7 days and expired rows are physically removed on the next signup-intent creation. A verified matching email and the originating HttpOnly browser cookie are required to claim a draft; changed notices or expired drafts require a fresh choice. Supabase user metadata is not consent evidence.
+
+Current newsletter recipients are encrypted. Durable consent/withdrawal events contain the notice, server timestamps, manner and keyed identity/address references. Record only the minimum evidence needed while consent is relied upon and to answer a documented compliance matter afterward. The newsletter unsubscribe page does not require sign-in. GET displays the choice; POST suppresses immediately. Tokens last 400 days from issuance and are never rotated simply because another email is issued. Expired tokens cannot authorize changes and may be purged during maintenance.
+
+When the acting account has no remaining Vanteloq membership after verified deletion, remove its email ciphertext, identity association and device/request hashes. Keep minimal keyed address suppression and unlinked consent/withdrawal evidence, never for targeting or enrichment. Do not withdraw another workspace member's independently granted consent when an owner deletes a workspace. The existing identity cleanup contract does not confirm which other shared identities were removed; a separate reviewed cleanup is needed if that contract expands to delete other subscribers.
+
+This release stores preferences and prepares suppression/unsubscribe only. It does not dispatch campaigns, sync a provider audience or send confirmation messages. Before sending commercial emails, wire the current eligibility check, sender identification, valid unsubscribe links, signed provider bounce/complaint events, unsubscribe-request handling through support and confirmation of express consent. Account and invoice senders must not be reused as an unrestricted marketing broadcast.
+
+Key rotation must migrate newsletter address/subject hashes and recipient ciphertext before removing the previous integration encryption key. The Lightspeed-specific key is not used for newsletter data.

@@ -10,6 +10,7 @@ import {
 } from "./address-data";
 import { FieldLabel, FormInput, FormLegend, RequiredMark } from "./form-primitives";
 import ProductBrandLogo from "./product-brand-logo";
+import MarketingPreferences from "./marketing-consent";
 import { apiFetch } from "./supabase-browser";
 import {
   ACCOUNT_ACCEPTANCE_NOTICE_VERSION,
@@ -427,6 +428,7 @@ export default function SecureOnboardingFlow({
                 </small>
               </span>
             </label>
+            <MarketingPreferences placement="onboarding" />
             <p className="auth-note">
               Your business records and preferences belong to this workspace.
               You can review account access in Settings.

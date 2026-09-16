@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { getDb, getRuntimeEnv } from "../../db";
 import { integrationSecrets } from "../../db/schema";
 import { ApiError } from "../api";
+import { metaTokenExpiry, prepareMetaGraphRequest } from "./meta-security";
 import { discoverGoogleAdsAccounts, googleAdsEnabled, googleAdsHeaders, googleAdsVersion, GOOGLE_ADS_SETUP_MESSAGES, resolveGoogleAdsAccount } from "./google-ads-access";
 import {
   decryptIntegrationSecret,
@@ -213,7 +214,10 @@ export function buildMarketingAuthorizationUrl(provider: MarketingProvider, stat
 }
 
 async function providerJson<T>(url: string, init: RequestInit, code: string, message: string): Promise<T> {
-  const response = await fetch(url, { ...init, signal: init.signal ?? AbortSignal.timeout(15_000) });
+  const prepared = new URL(url).origin === "https://graph.facebook.com"
+    ? await prepareMetaGraphRequest(url, init)
+    : { url, init };
+  const response = await fetch(prepared.url, { ...prepared.init, signal: init.signal ?? AbortSignal.timeout(15_000) });
   if (!response.ok) {
     await response.body?.cancel().catch(() => undefined);
     throw new ApiError(502, code, message);
@@ -257,8 +261,10 @@ export async function exchangeMarketingAuthorizationCode(provider: MarketingProv
   url.searchParams.set("client_secret", current.clientSecret);
   url.searchParams.set("redirect_uri", current.redirectUri);
   url.searchParams.set("code", code);
+  const tokenRequestedAt = Date.now();
   const token = await providerJson<{ access_token?: string; expires_in?: number }>(url.toString(), { headers: { Accept: "application/json" } }, "META_TOKEN_EXCHANGE_FAILED", "Meta could not complete the authorization exchange.");
   if (!token.access_token) throw new ApiError(502, "META_TOKEN_MISSING", "Meta did not return an access token.");
+  const expiresAt = metaTokenExpiry(token.expires_in, tokenRequestedAt);
   const permissionsUrl = new URL(`https://graph.facebook.com/${current.apiVersion}/me/permissions`);
   permissionsUrl.searchParams.set("access_token", token.access_token);
   const permissionResult = await providerJson<{ data?: Array<{ permission?: string; status?: string }> }>(permissionsUrl.toString(), { headers: { Accept: "application/json" } }, "META_PERMISSION_CHECK_FAILED", "Meta permissions could not be verified.");
@@ -268,7 +274,7 @@ export async function exchangeMarketingAuthorizationCode(provider: MarketingProv
   return {
     accessToken: token.access_token,
     refreshToken: "",
-    expiresAt: new Date(Date.now() + Math.max(3_600, token.expires_in ?? 60 * 86_400) * 1_000),
+    expiresAt,
     scopes: granted,
   };
 }
@@ -967,7 +973,8 @@ export async function revokeMarketingAccess(provider: MarketingProvider, accessT
   const current = config("meta");
   const url = new URL(`https://graph.facebook.com/${current.apiVersion}/me/permissions`);
   url.searchParams.set("access_token", accessToken);
-  const response = await fetch(url, { method: "DELETE", signal: AbortSignal.timeout(5_000) });
+  const prepared = await prepareMetaGraphRequest(url, { method: "DELETE", signal: AbortSignal.timeout(5_000) });
+  const response = await fetch(prepared.url, prepared.init);
   await response.body?.cancel().catch(() => undefined);
   return response.ok;
 }

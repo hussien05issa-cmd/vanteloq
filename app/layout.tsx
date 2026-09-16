@@ -37,6 +37,7 @@ import "./integrations-theme.css";
 import "./bookloq-discovery.css";
 import "./bookloq-statement-import.css";
 import "./bookloq-dashboard-visuals.css";
+import "./marketing-consent.css";
 const GOOGLE_ANALYTICS_CONSENT_DEFAULT = `
 window.dataLayer = window.dataLayer || [];
 window.gtag = window.gtag || function () { window.dataLayer.push(arguments); };

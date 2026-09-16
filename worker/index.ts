@@ -1,6 +1,7 @@
 /** Cloudflare Worker entry point for the vinext-starter template. */
 import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } from "vinext/server/image-optimization";
 import handler from "vinext/server/app-router-entry";
+import { rejectLegacyTls } from "../server/transport-security";
 
 interface Env {
   POS_SYNC_SECRET?: string;
@@ -96,6 +97,8 @@ function rewriteNotFoundMetadata(html: string) {
 
 const worker = {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    const transportDenied = rejectLegacyTls(request);
+    if (transportDenied) return transportDenied;
     (globalThis as typeof globalThis & { __vanteloqEnv?: Env }).__vanteloqEnv = env;
     const url = new URL(request.url);
 

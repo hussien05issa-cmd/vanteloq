@@ -58,17 +58,21 @@ export function onboardingBody(ownerName, businessName) {
   };
 }
 
-export async function createEnvironment() {
+export async function createEnvironment({ authResponse } = {}) {
   const authServer = createServer((request, response) => {
     const token = request.headers.authorization?.replace(/^Bearer\s+/i, "") ?? "";
     const payload = JSON.parse(Buffer.from(token.split(".")[1] ?? "", "base64url").toString("utf8"));
-    response.writeHead(200, { "content-type": "application/json" });
-    response.end(JSON.stringify({
+    const user = {
       id: `test-user:${payload.email}`,
       email: payload.email,
       email_confirmed_at: "2026-08-01T00:00:00.000Z",
       user_metadata: { full_name: payload.email },
-    }));
+    };
+    // Supply identity variants at the HTTP boundary used by the built Worker.
+    // Default fixtures keep their existing verified response.
+    const body = authResponse ? authResponse({ request, payload, user }) : user;
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify(body));
   });
   await new Promise((resolve) => authServer.listen(0, "127.0.0.1", resolve));
   const address = authServer.address();

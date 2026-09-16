@@ -4,7 +4,8 @@
 | --- | --- |
 | Organization | LexEdge Consulting, operating Vanteloq |
 | Policy owner | Hussien Issa, Owner and Security Lead |
-| Version | 1.1 |
+| Version | 1.2 |
+| Implementation review | 2026-09-16 |
 | Prepared | 2026-08-24 |
 | Review cycle | Quarterly enforcement review; full annual review |
 | Approval status | Awaiting owner approval |
@@ -37,7 +38,9 @@ Vanteloq retains data only while it is needed for a disclosed product purpose, s
 | Application and request logs | 90 days by default | Automated expiry; restricted incident copies follow the incident record period |
 | Support records | 2 years after closure | Delete or de-identify after expiry and dispute review |
 | Temporary exports and generated files | 30 days or shorter when no longer needed | Automated expiry or immediate secure deletion after delivery |
-| Failed or abandoned uploads | 24 hours | Automatic purge from quarantine and temporary storage |
+| Failed or abandoned application uploads | Target: 24 hours after they are classified as abandoned; enforcement pending | A state-aware automatic purge job is not implemented. Until activated and verified, originals remain in application storage until authorized document or workspace deletion. |
+
+Implementation status: the 24-hour application-original purge is a target, not an active control. The Azure temporary scan-copy lifecycle is separate and does not expire Vanteloq originals. Original object keys can retain the quarantine prefix after successful processing, so a blanket prefix expiry would risk deleting retained accounting evidence. Activation requires a state-aware cleanup job that excludes active processing and protected or linked records, an enabled schedule, and dated deletion evidence. Do not advertise automatic 24-hour original deletion before those checks pass.
 
 Where another law, contract, or provider rule requires a different period, Vanteloq records the applicable source, category, period, and owner in the retention register.
 

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { Miniflare } from "miniflare";
 import { PDFDocument } from "pdf-lib";
-import { processDocument, readProcessing } from "../server/document-processing.ts";
+import { cleanupCompletedDocument, processDocument, processingSummary, readProcessing } from "../server/document-processing.ts";
 import { DOCUMENT_PROCESSING_NOTICE_VERSION } from "../shared/document-processing.ts";
 import { scannerEnv, scannerFixture } from "./azure-scanner-fixture.ts";
 
@@ -111,4 +111,79 @@ test("Azure free-tier or partial page results are not reported as complete", asy
   const saved = await row();
   assert.equal(saved?.extraction_status, "failed");
   assert.equal(readProcessing(String(saved?.extracted_json)).processing?.errorCode, "EXTRACTION_INCOMPLETE");
+});
+
+test("explicit cleanup retry preserves approved originals, extraction and old consent without another analysis", async t => {
+  const { base, row, bucket, database } = await setup(t);
+  const scanner = scannerFixture();
+  let analysisStarts = 0, reads = 0, deletes = 0, deletionFails = true;
+  const transport = (async (url, init) => {
+    if (String(url).includes("blob.core.windows.net")) return scanner.transport(url, init);
+    if (init?.method === "POST") { analysisStarts++; return new Response(null, { status: 202, headers: { "operation-location": operation } }); }
+    if (init?.method === "DELETE") { deletes++; return new Response(null, { status: deletionFails ? 503 : 404 }); }
+    reads++; return Response.json({ status: "succeeded", analyzeResult: { modelId: "prebuilt-layout", content: "Synthetic statement", pages: [{}, {}, {}], tables: [] } });
+  }) as typeof fetch;
+  await processDocument({ ...base, transport }); await processDocument({ ...base, transport });
+  await processDocument({ ...base, transport }); await processDocument({ ...base, transport });
+  const completed = readProcessing(String((await row())?.extracted_json));
+  assert.equal(completed.processing?.cleanupPending, true);
+  assert.equal(processingSummary(JSON.stringify(completed)).cleanupPending, true);
+  completed.processing!.noticeVersion = "previously-accepted-notice";
+  await database.prepare("UPDATE workspace_documents SET status='approved',extracted_json=? WHERE id='doc-a'").bind(JSON.stringify(completed)).run();
+  const original = await new Response((await bucket.get("tenant-a/private.pdf"))!.body).arrayBuffer();
+  const failed = await cleanupCompletedDocument({ ...base, transport });
+  assert.equal(failed.state, "cleanup_pending"); assert.equal(failed.cleanupPending, true);
+  assert.equal(readProcessing(String((await row())?.extracted_json)).processing?.operation, operation);
+  deletionFails = false;
+  const success = await cleanupCompletedDocument({ ...base, transport });
+  assert.equal(success.state, "complete"); assert.equal(success.cleanupPending, false);
+  const after = (await row())!, saved = readProcessing(String(after.extracted_json));
+  assert.equal(after.status, "approved"); assert.equal(after.security_state, "clean"); assert.equal(after.extraction_status, "complete");
+  assert.deepEqual(saved.extraction, completed.extraction);
+  assert.equal(saved.processing?.authorizedAt, completed.processing?.authorizedAt);
+  assert.equal(saved.processing?.authorizedBy, completed.processing?.authorizedBy);
+  assert.equal(saved.processing?.noticeVersion, "previously-accepted-notice");
+  assert.equal(saved.processing?.operation, undefined); assert.equal(saved.processing?.lock, undefined);
+  assert.equal(processingSummary(String(after.extracted_json)).cleanupPending, false);
+  assert.deepEqual(await new Response((await bucket.get("tenant-a/private.pdf"))!.body).arrayBuffer(), original);
+  assert.deepEqual([analysisStarts, reads, deletes], [1, 1, 3], "cleanup only deletes the existing analysis result");
+  assert.equal((await cleanupCompletedDocument({ ...base, transport })).state, "complete");
+  assert.deepEqual([analysisStarts, reads, deletes], [1, 1, 3], "completed cleanup replays without another provider request");
+});
+
+test("cleanup rejects another tenant, incomplete or unconsented extraction, and pending deletion before provider access", async t => {
+  const { base, database } = await setup(t);
+  let calls = 0;
+  const transport = (async () => { calls++; throw new Error("No provider access expected"); }) as typeof fetch;
+  await assert.rejects(cleanupCompletedDocument({ ...base, organizationId: "tenant-b", transport }), { code: "NOT_FOUND" });
+  await assert.rejects(cleanupCompletedDocument({ ...base, transport }), { code: "DOCUMENT_CLEANUP_NOT_READY" });
+  await database.prepare("UPDATE workspace_documents SET extraction_status='complete',extracted_json=? WHERE id='doc-a'")
+    .bind(JSON.stringify({ processing: { version: 1, stage: "complete", cleanupPending: true, operation }, extraction: { text: "Synthetic" } })).run();
+  await assert.rejects(cleanupCompletedDocument({ ...base, transport }), { code: "DOCUMENT_CLEANUP_NOT_READY" });
+  await database.prepare("UPDATE workspace_documents SET status='deletion_pending' WHERE id='doc-a'").run();
+  await assert.rejects(cleanupCompletedDocument({ ...base, transport }), { code: "DOCUMENT_DELETION_PENDING" });
+  assert.equal(calls, 0);
+});
+
+test("cleanup claim serializes double clicks and cannot fall through into extraction", async t => {
+  const { base, database, row } = await setup(t);
+  await database.prepare("UPDATE workspace_documents SET extraction_status='complete',extracted_json=? WHERE id='doc-a'")
+    .bind(JSON.stringify({ processing: { version: 1, noticeVersion: DOCUMENT_PROCESSING_NOTICE_VERSION, authorizedBy: "owner-a", authorizedAt: Date.now(), stage: "complete", cleanupPending: true, operation }, extraction: { text: "Synthetic" } })).run();
+  let entered!: () => void, release!: () => void, calls = 0;
+  const started = new Promise<void>(resolve => { entered = resolve; });
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const transport = (async (url, init) => {
+    calls++; assert.equal(String(url), operation); assert.equal(init?.method, "DELETE");
+    entered(); await gate; return new Response(null, { status: 204 });
+  }) as typeof fetch;
+  const first = cleanupCompletedDocument({ ...base, transport });
+  await started;
+  try {
+    assert.equal((await cleanupCompletedDocument({ ...base, transport })).state, "busy");
+    assert.equal((await processDocument({ ...base, transport })).state, "busy");
+    assert.equal(calls, 1);
+  } finally { release(); }
+  assert.equal((await first).cleanupPending, false);
+  assert.equal(readProcessing(String((await row())?.extracted_json)).processing?.lock, undefined);
+  assert.equal(calls, 1);
 });
