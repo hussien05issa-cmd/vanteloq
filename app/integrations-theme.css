@@ -116,3 +116,58 @@
   .operating-shell .data-hub .provider-account-actions { grid-row: auto; display: grid; grid-template-columns: 1fr; }
   .operating-shell .data-hub .provider-capability-list { padding: 16px; }
 }
+
+.operating-shell .data-hub .marketing-resource-row {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+.operating-shell .data-hub .marketing-resource-row > label {
+  min-width: 0;
+  min-height: 44px;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 10px;
+}
+.operating-shell .data-hub .marketing-resource-row > label > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.operating-shell .data-hub .marketing-resource-scope {
+  min-width: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.operating-shell .data-hub .marketing-resource-panel > footer {
+  align-items: flex-start;
+  flex-direction: column;
+}
+.operating-shell .data-hub .marketing-resource-panel > footer > .provider-actions {
+  width: 100%;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+.operating-shell .data-hub .marketing-resource-panel > footer > .provider-actions > button { min-height: 44px; }
+@media (min-width: 1100px) {
+  .operating-shell .data-hub .marketing-resource-row:has(> .marketing-resource-scope) {
+    grid-template-columns: minmax(0, 1fr) minmax(260px, 360px);
+  }
+}
+@media (max-width: 620px) {
+  .operating-shell .data-hub .marketing-resource-scope { grid-template-columns: minmax(0, 1fr); }
+  .operating-shell .data-hub .marketing-resource-panel > footer > .provider-actions > button { flex: 1 1 160px; }
+}
+/* Keep privacy settings available without covering exact-selection actions. */
+body:has(.operating-shell .marketing-resource-panel) .analytics-settings-button {
+  position: static;
+  display: flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 44px;
+  margin: 16px 18px max(18px, env(safe-area-inset-bottom));
+  padding: 10px 16px;
+  border-radius: 12px;
+  background: #f3f6fb;
+  color: #344f70;
+  box-shadow: none;
+  backdrop-filter: none;
+  font-size: 13px;
+  font-weight: 600;
+}
