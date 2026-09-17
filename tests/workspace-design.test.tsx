@@ -26,7 +26,8 @@ test("a missing current day keeps historical amounts dated and withholds unverif
   assert.match(summary,/Verified product costs required/);
   assert.doesNotMatch(summary,/>\$50</);
   assert.ok(html.indexOf('class="card period-trend-card"')<html.indexOf('class="dashboard-current-day-details"'));
-  assert.match(html,/Today’s sales are not yet verified/);
+  assert.match(html,/Records through Sep 1/);
+  assert.doesNotMatch(html,/Today’s sales are not yet verified|Your path to a useful insight/);
   assert.doesNotMatch(html,/<details class="dashboard-current-day-details" open/);
 });
 

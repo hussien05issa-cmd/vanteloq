@@ -4,7 +4,7 @@ Owner-approved names, recorded September 17, 2026.
 
 | Release | Name | Status |
 | --- | --- | --- |
-| 1.0 | Vanteloq 1.0 Origin | First launch under verification |
+| v1.0 | Vanteloq v1.0 Origin | First launch under verification |
 | 2.0 | Vanteloq 2.0 Nexus | Future name, scope and date not set |
 | 3.0 | Vanteloq 3.0 Cognition | Future name, scope and date not set |
 | 4.0 | Vanteloq 4.0 Autonomous | Future name, scope and date not set |

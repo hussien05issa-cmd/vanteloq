@@ -1,1 +1,1 @@
-export const PRODUCT_RELEASE_NAME = "Vanteloq 1.0 Origin";
+export const PRODUCT_RELEASE_NAME = "Vanteloq v1.0 Origin";
