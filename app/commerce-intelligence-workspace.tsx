@@ -1,4 +1,5 @@
 "use client";
+import { executivePeriod } from "../domain/executive-metrics";
 
 import WorkspaceIcon from "./workspace-icon";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -150,12 +151,12 @@ function DataEmpty({ mode, navigate }: { mode: Mode; navigate: (view: "Integrati
   </section>;
 }
 
-export default function CommerceIntelligenceWorkspace({ mode, currency, timeZone = "UTC", activeLocationId, navigate, createTask, onAsk }: {
-  mode: Mode; currency: string; timeZone?: string; activeLocationId: string | null; navigate: (view: "Integrations") => void; createTask: (seed: TaskSeed) => void; onAsk?: (seed: RetailAdvisorSeed) => void;
+export default function CommerceIntelligenceWorkspace({ initialPeriod, mode, currency, timeZone = "UTC", activeLocationId, navigate, createTask, onAsk }: {
+  initialPeriod?:{from:string;to:string}; mode: Mode; currency: string; timeZone?: string; activeLocationId: string | null; navigate: (view: "Integrations") => void; createTask: (seed: TaskSeed) => void; onAsk?: (seed: RetailAdvisorSeed) => void;
 }) {
   const today = () => businessClock(new Date(), timeZone)!.date;
-  const [from, setFrom] = useState(() => businessDateOffset(today(), -29));
-  const [to, setTo] = useState(today);
+  const [from, setFrom] = useState(() => initialPeriod?.from??businessDateOffset(today(), -29));
+  const [to, setTo] = useState(()=>initialPeriod?.to??today());
   const [applied, setApplied] = useState({ from, to });
   const params = new URLSearchParams({ from: applied.from, to: applied.to, mode });
   if (activeLocationId) params.set("location", activeLocationId);
@@ -247,6 +248,7 @@ export default function CommerceIntelligenceWorkspace({ mode, currency, timeZone
         <button disabled={loading}>{loading ? "Loading…" : "Apply dates"}</button>
       </form>
     </section>
+    <div className="executive-filters" role="group" aria-label="Quick reporting period"><div>{[["today","Today"],["7d","7D"],["30d","30D"],["mtd","MTD"],["qtd","QTD"],["ytd","YTD"]].map(([key,label])=><button type="button" key={key} onClick={()=>{const p=executivePeriod(new URLSearchParams({period:key}),today());setFrom(p.from);setTo(p.to);setApplied({from:p.from,to:p.to});}}>{label}</button>)}</div></div>
     {error ? <section className="commerce-api-error" role="alert"><b>Commerce data could not be loaded.</b><span>{error}</span><button type="button" disabled={loading} onClick={() => void load()}>Try Again</button></section> : null}
     {mode !== "Suppliers" && <RetailIntelligenceWorkspace key={mode + applied.from + applied.to + activeLocationId} from={applied.from} to={applied.to} locationId={activeLocationId} currency={currency} navigate={navigate} createTask={createTask} onAsk={onAsk} initialSection={mode === "Sales" ? "Why it changed" : mode}/>}
     {data ? <details className="commerce-source-detail" open={mode === "Suppliers"}><summary>Source records and controls</summary>

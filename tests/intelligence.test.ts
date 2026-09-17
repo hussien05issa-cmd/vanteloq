@@ -203,3 +203,13 @@ test("explicit zero labour is valid, but legacy zero and partly missing location
   assert.equal(mixed.current?.labourCostCents, null);
   assert.equal(mixed.current?.contributionCents, null);
 });
+
+
+test("executive inventory comparisons require complete dated snapshots and never carry forward missing balances",()=>{
+  const period={from:"2026-09-16",to:"2026-09-17",comparisonFrom:"2026-09-14",comparisonTo:"2026-09-15"};
+  const rows=[row("2026-09-14","previous"),row("2026-09-15","previous"),row("2026-09-16","current"),{...row("2026-09-17","current"),inventoryValueCents:null}];
+  const report=buildCommandCentre(rows,"CAD",new Date("2026-09-17T20:00:00Z"),period);
+  assert.equal(report.metrics.inventory_value.value,null);
+  assert.ok("reportingPeriod" in report);assert.equal(report.reportingPeriod?.previousInventoryValueCents,2000000);
+  assert.equal(report.trend.at(-1)?.inventoryValueCents,null);
+});

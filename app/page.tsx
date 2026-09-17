@@ -13,6 +13,7 @@ import CompatibilityCheck from "./compatibility-check";
 import PublicPlanCards from "./public-plan-cards";
 import CustomPlanCallout from "./custom-plan-callout";
 import HomeDecisionPreview from "./home-decision-preview";
+import FeatureCarousel from "./feature-carousel";
 import ProductBrandLogo from "./product-brand-logo";
 import FinanceProof from "./finance-proof";
 import ResourceArticleBrowser from "./resource-article-browser";
@@ -20,7 +21,6 @@ import { RESOURCE_ARTICLES } from "./resources/content";
 import SocialLinks from "./social-links";
 import HomeSocialSection from "./home-social-section";
 import IntegrationBrandLogo from "./integration-brand-logo";
-import WorkspaceIcon from "./workspace-icon";
 import AuthPanel, { type AuthPanelMode } from "./auth-panel";
 import { currentSession, getSupabase, signOut } from "./supabase-browser";
 import { readPlanSelection } from "../shared/plan-selection";
@@ -441,12 +441,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
       <div className="reference-connections" aria-label="Explore data connections"><span>YOUR TOOLS, CONNECTED</span><div>{["Lightspeed","Square","Shopify","Stripe","Google"].map(name=><a key={name} href="#connections" aria-label={`Check ${name} availability`}><IntegrationBrandLogo name={name} compact/><strong>{name}</strong></a>)}</div><a href="#connections">View Availability <span aria-hidden="true">→</span></a></div>
       <section className="home-decision-proof" id="platform" aria-labelledby="decision-proof-title">
         <span id="capabilities"/><div className="reference-section-heading"><div><p className="demo-eyebrow">THE QUESTIONS BEHIND THE COUNTER</p><h2 id="decision-proof-title">Before you reorder, discount or close the week.</h2></div><p>A sales total is a starting point. Look at what sold, what it earned and what your store needs next.</p></div>
-        <div className="decision-proof-grid">
-          <article><WorkspaceIcon name="Reports"/><span className="home-feature-label">Sales analytics</span><h3>Why was this week down?</h3><p>Compare product mix, discounts and locations. Open the records behind the change.</p><Link href="/demo#retail">Explore your sales <span aria-hidden="true">↗</span></Link></article>
-          <article><WorkspaceIcon name="Inventory"/><span className="home-feature-label">Inventory planning</span><h3>What could expire before it sells?</h3><p>Review stock cover, expiry and reorder needs before committing more cash.</p><Link href="/demo#inventory">Inspect stock risks <span aria-hidden="true">↗</span></Link></article>
-          <article><ProductBrandLogo product="bookloq"/><span className="home-feature-label">BookLoQ accounting</span><h3>Can I afford the next order?</h3><p>Use BookLoQ to review bills, expected cash and a 13-week forecast before making a commitment.</p><Link href="/features/financial-review">Explore BookLoQ <span aria-hidden="true">↗</span></Link></article>
-          <article><VanteloqAiLogo size={34} decorative/><span className="home-feature-label">Vanteloq AI</span><h3>What are my numbers telling me?</h3><p>Ask Vanteloq AI about the business information you permit it to use, or get help using the app.</p><a href="#vanteloq-ai">Meet Vanteloq AI <span aria-hidden="true">↗</span></a></article>
-        </div>
+        <FeatureCarousel/>
       </section>
       <section className="home-proof-studio" id="demo" aria-labelledby="home-demo-entry-title"><div className="proof-studio-copy"><p className="demo-eyebrow">TRY IT WITH SAMPLE RECORDS</p><h2 id="home-demo-entry-title">Sales changed.<br/>Show me why.</h2><p>Choose a location. Watch the totals update. Follow the result into the baskets, products and discounts behind it.</p><p className="proof-studio-note">Fictional records. Working calculations. No signup required.</p><Link href="/demo" data-public-event="demo_engaged">Open the full demo <span aria-hidden="true">→</span></Link></div><HomeDecisionPreview/>
         <div className="journey-steps" aria-label="From signup to the first insight"><div><b>1</b><span><strong>Set up your account</strong>Verify your email, secure your account and choose a plan.</span></div><div><b>2</b><span><strong>Bring in your records</strong>Connect your source, map locations and review the imported totals.</span></div><div><b>3</b><span><strong>Work through a store question</strong>Inspect the evidence, ask AI for help and assign a next step.</span></div></div>

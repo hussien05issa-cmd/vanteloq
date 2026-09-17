@@ -161,6 +161,12 @@ export function buildRetailIntelligence(input: {
   for (const basket of current.baskets) if (basket.customers.size === 1) {
     const buyer = [...basket.customers][0]; if (!buyerBaskets.has(buyer)) buyerBaskets.set(buyer, new Set()); buyerBaskets.get(buyer)!.add(basket.key);
   }
+  const priorBuyers=new Set(prior.baskets.filter(b=>b.customers.size===1).map(b=>[...b.customers][0]));
+  const retainedBuyers=[...priorBuyers].filter(b=>buyerBaskets.has(b)).length;
+  const buyerRevenue=new Map<string,number>();
+  for(const basket of current.baskets)if(basket.customers.size===1){const buyer=[...basket.customers][0];buyerRevenue.set(buyer,checked((buyerRevenue.get(buyer)??0)+basket.netCents));}
+  const identifiedPurchaseRevenue=checked([...buyerRevenue.values()].reduce((a,b)=>a+b,0));
+  const rankedRevenue=[...buyerRevenue.values()].sort((a,b)=>b-a);
   const products: Product[] = [...groups].map(([key, rows]) => {
     const first = rows[0], active = rows.filter(row => row.date! >= period.from), previous = rows.filter(row => row.date! <= period.comparisonTo);
     const costsKnown = active.filter(row => row.costCents != null).length;
@@ -270,6 +276,8 @@ export function buildRetailIntelligence(input: {
     baskets: { products: associations(current.baskets, "products", names), categories: associations(current.baskets, "categories", new Map()),
       sizeBands: [1, 2, 3, 4, 5].map(size => ({ label: size === 5 ? "Over 4 items" : "Up to " + size + " item" + (size === 1 ? "" : "s"), baskets: current.baskets.filter(b => size === 5 ? b.unitsMilli > 4000 : b.unitsMilli > (size - 1) * 1000 && b.unitsMilli <= size * 1000).length })) },
     customers: { identifiedBuyers: buyerBaskets.size, repeatBuyers: [...buyerBaskets.values()].filter(b => b.size >= 2).length,
+      priorBuyers:priorBuyers.size,retainedBuyers,observedRetentionRate:comparable?ratio(retainedBuyers,priorBuyers.size):null,
+      topCustomerRevenueShare:ratio(rankedRevenue[0]??0,identifiedPurchaseRevenue),topFiveCustomerRevenueShare:ratio(rankedRevenue.slice(0,5).reduce((a,b)=>a+b,0),identifiedPurchaseRevenue),identifiedPurchaseRevenueCents:identifiedPurchaseRevenue,
       repeatPurchaseRate: ratio([...buyerBaskets.values()].filter(b => b.size >= 2).length, buyerBaskets.size), identityCoverage: ratio(current.baskets.filter(b => b.customers.size === 1).length, current.purchaseBaskets),
       loyalty: { member: cohort(cohorts.member), beforeEnrollment: cohort(cohorts.nonMember), unknown: cohort(cohorts.unknown) } },
     inventory: stocks, expiry: lots, hours, days, anomalies,
@@ -282,6 +290,8 @@ export function buildRetailIntelligence(input: {
       score: "Sales performance score: 40% revenue percentile + 30% purchased-unit percentile + 30% full-price share. Relative to products in this selection; at least 10 baskets and 3 selling products. Not a forecast.",
       baskets: "Distinct purchase receipts; returned items within the same receipt are removed from pairs. Minimum 3 paired baskets. Support, confidence and lift use only baskets from the same source account. Association does not prove causation.",
       repeat: "Identified buyers with at least two purchase baskets in this period / identified buyers. Per-SKU repeat uses distinct baskets containing that SKU. This is observed repeat activity, not cohort retention.",
+      retention: "Observed prior-period buyers who purchased again / identified prior-period buyers. Requires the same source outlets in both periods. Incomplete sync or missing identities can understate retention. This is a period cohort, not lifetime retention.",
+      concentration: "Top customer and top 5 customer shares use identified purchase-basket revenue only. Guest baskets and standalone return adjustments are excluded; review identity coverage before generalizing to all revenue.",
       inventory: "Turnover = period COGS / mean of opening and closing inventory cost. Days on hand = period days / turnover. Sell-through = net units sold / (opening units + receipts). Recorded stock adjustments may require reconciliation.",
       planning: "Reorder review targets 21 days of recent velocity or the configured reorder point, whichever is larger. Overstock review threshold is 90 days. Assumptions exclude lead times, seasonality and lost sales. Current stock must be at most 36 hours old.",
       hours: "Revenue grouped by business-local hour. Hours without sale records are unknown, not verified closed or zero. Sales per labour hour requires reviewed, complete paid minutes for every observed source outlet.",

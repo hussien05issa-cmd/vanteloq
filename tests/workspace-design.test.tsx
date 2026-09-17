@@ -18,14 +18,10 @@ test("a missing current day keeps historical amounts dated and withholds unverif
   } as unknown as ComponentProps<typeof Overview>["data"];
   data.metrics.gross_profit.actuality="unavailable";
   const html=renderToStaticMarkup(<Overview data={data} currency="CAD" navigate={()=>{}} createTask={()=>{}} paymentRange={1} setPaymentRange={()=>{}}/>);
-  const summary=html.slice(html.indexOf('class="recorded-period-overview"'),html.indexOf('class="card period-trend-card"'));
-  assert.match(summary,/Historical totals, not today/);
-  assert.match(summary,/Sep 1/);
-  assert.match(summary,/\$100/);
-  assert.match(summary,/Gross Profit/);
-  assert.match(summary,/Verified product costs required/);
-  assert.doesNotMatch(summary,/>\$50</);
-  assert.ok(html.indexOf('class="card period-trend-card"')<html.indexOf('class="dashboard-current-day-details"'));
+  assert.match(html,/Loading executive overview/);
+  assert.doesNotMatch(html,/class="recorded-period-overview"/);
+  assert.match(html,/Today’s Sales Details/);
+  assert.doesNotMatch(html,/>\$50</);
   assert.match(html,/Records through Sep 1/);
   assert.doesNotMatch(html,/Today’s sales are not yet verified|Your path to a useful insight/);
   assert.doesNotMatch(html,/<details class="dashboard-current-day-details" open/);
