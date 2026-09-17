@@ -2,6 +2,7 @@
 .document-email-inbox summary{cursor:pointer;min-height:44px;align-content:center;font-weight:650}
 .document-email-inbox summary small{margin-left:12px;color:#405a74;font-weight:500}
 .document-email-content{display:grid;gap:16px;padding-top:12px;max-width:920px}
+.document-email-settings{display:grid;gap:16px;padding:18px;border:1px solid #c7d5e3;border-radius:14px;background:#f5f8fc}
 .document-email-inbox p{margin:0;line-height:1.6;color:#40556c;font-size:14px}
 .document-email-address{display:grid;gap:8px;grid-template-columns:1fr auto}.document-email-address label{grid-column:1/-1;font-size:14px;font-weight:650}
 .document-email-address input{width:100%;min-width:0;padding:12px;border:1px solid #9caec2;border-radius:12px;min-height:46px;background:#f9fbfe;color:#173453;font:inherit;font-size:14px}

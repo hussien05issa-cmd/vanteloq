@@ -1,0 +1,16 @@
+.recorded-period-overview{margin-bottom:20px;min-width:0}
+.recorded-period-heading{display:flex;justify-content:space-between;align-items:end;gap:14px;margin-bottom:14px}
+.recorded-period-heading h3{margin:5px 0 0;font-size:18px;font-weight:600;letter-spacing:-.02em}
+.recorded-period-heading>span{color:#4c6179;font-size:13px;line-height:1.5}
+.recorded-period-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+.recorded-period-metrics .metric-card{min-width:0;padding:20px}
+.recorded-period-metrics .metric-card h3{font-size:clamp(24px,2.4vw,34px);font-weight:600;letter-spacing:-.035em;overflow-wrap:anywhere}
+.recorded-period-metrics .metric-card.metric-unavailable h3{font-size:23px}
+.dashboard-current-day-details{margin-top:20px;border:1px solid #d1deec;border-radius:16px;background:#f1f6fc;padding:0 20px}
+.dashboard-current-day-details>summary{cursor:pointer;min-height:56px;padding:16px 0;color:#254b73;font-size:14px;font-weight:600}
+.dashboard-current-day-details>summary>span{display:block;margin-top:7px;color:#4c6179;font-weight:400;line-height:1.5}
+.dashboard-current-day-details>summary:focus-visible{outline:3px solid #4079b8;outline-offset:3px;border-radius:10px}
+.dashboard-current-day-details[open]>summary{margin-bottom:16px;border-bottom:1px solid #d1deec}
+@media(max-width:1100px){.recorded-period-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:600px){.recorded-period-heading{display:block}.recorded-period-heading>span{display:block;margin-top:8px}.recorded-period-metrics{gap:10px}.recorded-period-metrics .metric-card{padding:16px}.recorded-period-metrics .metric-card h3{font-size:24px}.recorded-period-metrics .metric-card.metric-unavailable h3{font-size:20px}.dashboard-current-day-details{padding-inline:16px}}
+@media(max-width:359px){.recorded-period-metrics{grid-template-columns:minmax(0,1fr)}}

@@ -3,11 +3,32 @@ import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { BusinessTrendChart, IntradaySalesChart, MetricSparkline, CashPositionRing } from "../app/dashboard-charts";
 import ResourceGuideVisual from "../app/resource-guide-visual";
-import { Metric, BusinessBrief } from "../app/vanteloq-app";
+import { Metric, BusinessBrief, Overview } from "../app/vanteloq-app";
+import { buildCommandCentre, type MetricRow } from "../server/intelligence";
 import type { ComponentProps } from "react";
 import { DataTable, FinancialKpi } from "../app/bookloq-workspace";
 import WorkspaceIcon from "../app/workspace-icon";
 import { chartDomain, chartY, comparisonCopy, quantityLabel, sourceDateFreshness } from "../domain/workspace-presentation";
+
+test("a missing current day keeps historical amounts dated and withholds unverified profit", () => {
+  const rows: MetricRow[] = [{ businessDate:"2026-09-01",locationRef:"fictional",grossSalesCents:12000,netSalesCents:10000,costOfGoodsCents:5000,transactionCount:2,unitsSold:3,refundsCents:0,discountsCents:2000,labourCostCents:null,inventoryValueCents:null,cashBalanceCents:null,accountsPayableCents:null }];
+  const data = { ...buildCommandCentre(rows,"CAD",new Date("2026-09-16T12:00:00Z")),
+    today:{businessDate:"2026-09-16",sourceGranularity:"intraday",lastSaleAt:null,transactionCount:0,unitsSold:0,netSalesCents:0,refundsCents:0,discountsCents:0,grossProfitCents:null,averageTransactionCents:null,hourly:[]},
+    todayComparison:null,paymentMix:{period:"No current records",sourceAvailable:false,rows:[]},liveSource:{provider:null,providers:[],accountName:"Fictional",lastSuccessfulSyncAt:null,lastErrorCode:null,refreshIntervalSeconds:null},
+  } as unknown as ComponentProps<typeof Overview>["data"];
+  data.metrics.gross_profit.actuality="unavailable";
+  const html=renderToStaticMarkup(<Overview data={data} currency="CAD" navigate={()=>{}} createTask={()=>{}} paymentRange={1} setPaymentRange={()=>{}}/>);
+  const summary=html.slice(html.indexOf('class="recorded-period-overview"'),html.indexOf('class="card period-trend-card"'));
+  assert.match(summary,/Historical totals, not today/);
+  assert.match(summary,/Sep 1/);
+  assert.match(summary,/\$100/);
+  assert.match(summary,/Gross Profit/);
+  assert.match(summary,/Verified product costs required/);
+  assert.doesNotMatch(summary,/>\$50</);
+  assert.ok(html.indexOf('class="card period-trend-card"')<html.indexOf('class="dashboard-current-day-details"'));
+  assert.match(html,/Today’s sales are not yet verified/);
+  assert.doesNotMatch(html,/<details class="dashboard-current-day-details" open/);
+});
 
 test("the business brief withholds unverified profit and labour rather than displaying fallback zeros", () => {
   const data = {

@@ -50,6 +50,16 @@
 .document-service-status > summary span { margin-left: 10px; color: #4c6179; font-weight: 400; }
 .document-service-status > summary:focus-visible { outline: 3px solid #4a88c7; outline-offset: 3px; border-radius: 8px; }
 .document-service-status .document-pipeline { padding: 8px 0 16px; }
+.document-delete-backdrop { position:fixed; inset:0; z-index:400; display:grid; place-items:center; padding:20px; background:#142b4666; backdrop-filter:blur(6px); }
+.document-delete-dialog { width:min(100%,480px); max-height:90dvh; overflow:auto; padding:28px; border:1px solid #ccd9e6; border-radius:20px; background:linear-gradient(145deg,#f9fbfe,#edf3fa); box-shadow:0 24px 70px #102a4930; text-align:left; color:#173453; }
+.document-delete-dialog h3 { margin:0 0 16px; font-size:23px; letter-spacing:-.025em; }
+.document-delete-dialog p { font-size:14px; line-height:1.65; color:#40556c; }
+.document-delete-dialog .document-delete-name { font-weight:600; color:#173453; overflow-wrap:anywhere; padding:12px; border:1px solid #d2deeb; border-radius:10px; background:#eef4fb; }
+.document-delete-dialog > div { display:flex; flex-wrap:wrap; gap:10px; margin-top:24px; }
+.operating-shell .document-delete-dialog button { flex:1 1 160px; min-height:46px; border:1px solid #a8bdd3; border-radius:12px; background:#f2f6fb; color:#173c63; padding:10px 16px; font:inherit; font-size:14px; font-weight:600; }
+.operating-shell .document-delete-dialog .document-delete-confirm { background:#9b2f41; border-color:#9b2f41; color:#fdf7f8; }
+.document-delete-dialog button:focus-visible { outline:3px solid #4079b8; outline-offset:3px; }
+.document-delete-dialog button:disabled { opacity:.6; cursor:wait; }
 @media (max-width: 600px) {
   .operating-shell .documents-centre .document-upload { padding: 18px; }
   .documents-centre .document-upload > div:last-child { grid-template-columns: 1fr; }

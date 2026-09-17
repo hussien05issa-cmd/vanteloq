@@ -10,7 +10,7 @@ Run the document-email test suites from the application root. The maximum-size t
 
 ## Deployment and activation
 
-The configuration requests a 30-second CPU budget and requires Workers Paid. Set `DOCUMENT_EMAIL_SECRET` privately in both this Worker and the application. Never put it in source, a URL or a client environment variable. Deploy this Worker, then configure only the dedicated documents subdomain to invoke it. Do not change the root domain's support forwarding or enable subaddress matching.
+The configuration requests a 30-second CPU budget and requires Workers Paid. Set `DOCUMENT_EMAIL_SECRET` privately in both this Worker and the application. Never put it in source, a URL or a client environment variable. Cloudflare's zone-wide catch-all was explicitly approved for automatic document routing on September 16. Preserve the 4 exact public forwarding rules. The receiver must reject every recipient except an exact private address on `documents.vanteloq.com` before accessing raw mail. Do not enable subaddress matching.
 
 Keep `DOCUMENT_EMAIL_ENABLED` and `DOCUMENT_EMAIL_VERIFIED` absent or false until live acceptance succeeds. A server-only `DOCUMENT_EMAIL_VALIDATION_ORGANIZATION_ID` can restrict the controlled test to one eligible workspace. This does not bypass identity, role, BookLoQ, consent or exact-address checks. Remove the validation setting when activating both public flags.
 
@@ -27,3 +27,5 @@ The receiver rejects uncertain delivery rather than silently accepting it. A par
 The receiver uses Workers-supported manual redirect handling and accepts only an exact HTTP 200 response with `received: true`. Redirect destinations never receive the signed request or attachments. The runtime test exercises the default production fetch implementation, including a redirect rejection, rather than relying only on an injected mock transport.
 
 Rejection diagnostics contain only a fixed processing stage, an optional HTTP status and a fixed transport failure category. They exclude addresses, document contents, filenames, headers, secrets and exception text. On September 16, the controlled owner-workspace test accepted a fictional PDF, retained quarantine restrictions and reused an identical existing original. This is not evidence of complete production size, replay, deletion or subscriber-routing coverage. Keep public activation flags disabled until the remaining live acceptance checks pass.
+
+The later acceptance pass also verified a 10 MiB production attachment, the authorized deletion of 2 fictional files, disabled-address rejection and automatic delivery to a replacement address without an exact provider route. Identical-file deduplication passed. Exact authenticated production replay remains a separate check. See `docs/friday-release-verification-2026-09-16.md` for the current evidence and rollout gate.

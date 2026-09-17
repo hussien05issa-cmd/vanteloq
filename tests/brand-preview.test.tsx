@@ -43,7 +43,7 @@ test("advisor visibly explains its disabled state and labels its controls", () =
 
 test("the public platform preview renders real chart components, labelled fictional data and no account calls", () => {
   const markup = renderToStaticMarkup(<PlatformPreview/>);
-  for (const text of ["Interactive preview", "Example data", "Sales pulse", "BookLoQ cash", "Inspect record", "Running total", "Gross profit", "fictional CAD records"]) assert.ok(markup.includes(text), text);
+  for (const text of ["Interactive preview", "Example data", "Sales pulse", "BookLoQ cash", "Inspect Record", "Running total", "Gross profit", "fictional CAD records"]) assert.ok(markup.includes(text), text);
   assert.match(markup, /<table/);
   assert.doesNotMatch(markup, /inventory-decision-visual|configuration_required|NaN|Infinity/);
   const source = readFileSync("app/platform-preview.tsx", "utf8");

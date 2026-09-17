@@ -2,6 +2,7 @@
 import WorkspaceSkeleton from "./workspace-skeleton";
 import DocumentEmailInbox from "./document-email-inbox";
 import { documentPipelineLabel } from "../domain/document-pipeline-labels";
+import { useModalFocus } from "./use-modal-focus";
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "./supabase-browser";
@@ -2141,6 +2142,9 @@ export function DocumentsWorkspace({ showNotice, canUpload, canDelete, emailAcce
   const [reviewLoading, setReviewLoading] = useState("");
   const [deleting, setDeleting] = useState("");
   const [deletionError, setDeletionError] = useState("");
+  const [deleteCandidate, setDeleteCandidate] = useState<DocumentData["documents"][number] | null>(null);
+  const deleteDialogRef = useRef<HTMLDivElement>(null);
+  useModalFocus(deleteDialogRef, Boolean(deleteCandidate) && canDelete, () => { if (!deleting) setDeleteCandidate(null); });
   const [cleaning, setCleaning] = useState("");
   const retryCleanup = async (id: string) => {
     if (!canUpload || cleaning) return;
@@ -2197,9 +2201,9 @@ export function DocumentsWorkspace({ showNotice, canUpload, canDelete, emailAcce
     const timer = window.setTimeout(() => void load(), 0);
     return () => window.clearTimeout(timer);
   }, [load]);
-  const deleteFile = async (document: DocumentData["documents"][number]) => {
+  const deleteFile = async (document: DocumentData["documents"][number], confirmed = false) => {
     if (!canDelete || deleting) return;
-    if (!document.deletionPending && !window.confirm("Delete this file and its extracted text? This cannot be undone. Files supporting accounting records are protected.")) return;
+    if (!document.deletionPending && !confirmed) { setDeletionError(""); setDeleteCandidate(document); return; }
     setDeleting(document.id); setDeletionError("");
     try {
       const response = await apiFetch(`/api/v1/documents?id=${encodeURIComponent(document.id)}`, { method: "DELETE", signal: AbortSignal.timeout(95_000) });
@@ -2210,7 +2214,7 @@ export function DocumentsWorkspace({ showNotice, canUpload, canDelete, emailAcce
     } catch (error) {
       setDeletionError(error instanceof Error && error.name !== "TimeoutError" ? error.message : "Deletion has not been confirmed. Refresh Documents and retry the saved deletion.");
       await load();
-    } finally { setDeleting(""); }
+    } finally { setDeleting(""); setDeleteCandidate(null); }
   };
   const upload = async (file: File | null, documentType: string) => {
     if (!canUpload || !file) return;
@@ -2249,11 +2253,10 @@ export function DocumentsWorkspace({ showNotice, canUpload, canDelete, emailAcce
     <div className="content control-page documents-centre">
       <section className="page-intro">
         <div>
-          <p>INVOICES & RECEIPTS</p>
-          <h2>Capture the original. Trust only verified fields.</h2>
+          <p>YOUR BUSINESS DOCUMENTS</p>
+          <h2>Upload, Review and Keep the Record.</h2>
           <span>
-            Secure originals, clear source pages and proposed figures in one place.
-            Scanning checks file safety. Extracted figures need your review before you use them in your accounts.
+            Keep invoices, receipts and statements together. Scan files, review extracted figures and approve them before using them in your accounts.
           </span>
         </div>
       </section>
@@ -2310,6 +2313,13 @@ export function DocumentsWorkspace({ showNotice, canUpload, canDelete, emailAcce
         </section>
       </details>
       {downloadError && <p className="document-upload-error" role="alert">{downloadError}</p>}
+      {deleteCandidate && canDelete && <div className="document-delete-backdrop"><div ref={deleteDialogRef} className="document-delete-dialog" role="alertdialog" aria-modal="true" aria-labelledby="document-delete-title" aria-describedby="document-delete-description" tabIndex={-1}>
+        <h3 id="document-delete-title">Delete This File?</h3>
+        <p className="document-delete-name">{deleteCandidate.fileName}</p>
+        <p id="document-delete-description">This permanently deletes the file and its extracted text. It cannot be undone. Files supporting accounting records are protected. Provider recovery retention still applies.</p>
+        <div><button type="button" disabled={Boolean(deleting)} onClick={()=>setDeleteCandidate(null)}>Keep File</button><button type="button" className="document-delete-confirm" disabled={Boolean(deleting)} onClick={()=>void deleteFile(deleteCandidate,true)}>{deleting?"Deleting…":"Delete Permanently"}</button></div>
+        {deleting&&<p role="status">Removing the file. Keep this window open until the result appears.</p>}
+      </div></div>}
       {deletionError && <p className="document-upload-error" role="alert">{deletionError}</p>}
       {processingError && <div className="document-upload-error" role="alert"><p>{processingError}</p><button onClick={() => { setProcessingError(""); void load(); }}>Refresh Documents</button></div>}
       {processing && <p className="document-processing-status" role="status">Processing your document. You can leave this page and resume from its saved status.</p>}
@@ -2344,7 +2354,7 @@ export function DocumentsWorkspace({ showNotice, canUpload, canDelete, emailAcce
             </span>
             <span>
               <em className="gated">
-                {document.processingStage === "reading" ? "Reading document" : document.processingStage === "scanning" || document.processingStage === "scan_waiting" ? "Scanning file" : humanizeIdentifier(document.extractionStatus)}
+                {document.processingStage === "reading" ? "Reading document" : document.processingStage === "scanning" || document.processingStage === "scan_waiting" ? "Scanning file" : document.extractionStatus === "not_configured" && data.pipeline.ocrExtraction === "configured" ? "Not Started" : humanizeIdentifier(document.extractionStatus)}
               </em>
               {document.processingError && <small className="document-processing-error">{document.processingError}</small>}
               {document.cleanupRetryMessage && <small role="status">{document.cleanupRetryMessage}{document.cleanupNextAttemptAt && document.cleanupRetryStatus === "retrying" && <> Next attempt: <time dateTime={document.cleanupNextAttemptAt}>{new Date(document.cleanupNextAttemptAt).toLocaleString()}</time>.</>}</small>}
