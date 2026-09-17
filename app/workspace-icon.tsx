@@ -34,6 +34,9 @@ export default function WorkspaceIcon({ name, className = "" }: { name: string; 
     Menu: <path d="M4 6h16M4 12h16M4 18h16"/>,
     Alerts: <path d="M6 9a6 6 0 0 1 12 0v6l2 3H4l2-3V9ZM10 21h4"/>,
     Chevron: <path d="m14 6-6 6 6 6"/>,
+    Refresh: <path d="M20 7a8 8 0 1 0 1 8M20 3v5h-5"/>,
+    Maximize: <path d="M9 3H3v6M15 3h6v6M3 15v6h6M21 15v6h-6"/>,
+    Minimize: <path d="M3 9h6V3M15 3v6h6M9 21v-6H3M21 15h-6v6"/>,
   };
   const aliases: Record<string, string> = { Team: "Customers", Overview: "Dashboard", "BookLoQ Assistant": "Advisor", "Chart of Accounts": "Decision Journal", "Journal Entries": "Business Brief", "Audit Trail": "Decision Journal", "Cash Flow": "Intelligence", Invoicing: "Sales", Bills: "Sales", Expenses: "Payroll", "Sales Tax": "Payroll", "Inventory Accounting": "Inventory", "Assets and Loans": "Banking", Budgets: "Scenario Planner", "Month-End": "Action Centre", "Accountant Portal": "Customers" };
   return <svg className={`workspace-icon ${className}`} width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">{paths[aliases[name] ?? name] ?? paths.Documents}</svg>;

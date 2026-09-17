@@ -21,6 +21,7 @@ import { FieldLabel } from "./form-primitives";
 import { budgetControl, bookloqReportHeadings } from "../domain/bookloq-budget";
 import BookloqStatementImport from "./bookloq-statement-import";
 import BookloqDashboardVisuals from "./bookloq-dashboard-visuals";
+import { startBookloqAutoRefresh, type BookloqRefreshState } from "./bookloq-auto-refresh";
 
 type Permission = "view_revenue" | "view_profit" | "view_banking" | "view_payroll" | "create_transactions" | "edit_drafts" | "post_journals" | "approve_bills" | "initiate_payments" | "reconcile_accounts" | "change_tax_settings" | "lock_periods" | "unlock_periods" | "export_data" | "manage_integrations" | "view_audit_logs";
 type Section = typeof sectionDefinitions[number]["name"];
@@ -120,12 +121,15 @@ export default function BookLoQWorkspace({ initialSection = "Overview", createTa
   const [snapshot, setSnapshot] = useState<{ location: string | null; data: BookLoQData } | null>(null);
   const data = snapshot?.location === activeLocationId ? snapshot.data : null;
   const dataRequests = useRef(createDocumentEmailRequests());
+  const refreshState = useRef<BookloqRefreshState>({ inFlight: false, hasError: false, lastSuccessfulReadAt: null });
   const plaidRequests = useRef(createDocumentEmailRequests());
   const [section, setSection] = useState<Section>(initialSection);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [navSearch, setNavSearch] = useState("");
   const [collapsed, setCollapsed] = useState(false);
+  const [fullScreen, setFullScreen] = useState(false);
+  const displayButton = useRef<HTMLButtonElement>(null);
   const [journalOpen, setJournalOpen] = useState(false);
   const [plaidAccess, setPlaidAccess] = useState<PlaidAccess | null>(null);
   const [plaidLoading, setPlaidLoading] = useState(true);
@@ -134,15 +138,31 @@ export default function BookLoQWorkspace({ initialSection = "Overview", createTa
 
   const refresh = useCallback(async () => {
     const request = dataRequests.current.begin();
+    refreshState.current.inFlight = true;
     setLoading(true);
     try {
       const body = await bookloqRequest(apiFetch, `/api/v1/bookloq${activeLocationId ? `?location=${encodeURIComponent(activeLocationId)}` : ""}`, { headers: { Accept: "application/json" }, signal: request.signal });
       if (!body?.bookloq) throw new Error("BookLoQ returned an incomplete response. Try again.");
-      if (request.current()) { setSnapshot({ location: activeLocationId, data: body.bookloq }); setError(""); }
-    } catch (caught) { if (request.current()) { if (bookloqAccessDenied(caught)) { setSnapshot(null); setPlaidAccess(null); setCanManageBankConnections(false); } setError(caught instanceof Error ? caught.message : "BookLoQ could not be loaded."); } }
-    finally { if (request.current()) setLoading(false); }
+      if (request.current()) { refreshState.current.hasError = false; refreshState.current.lastSuccessfulReadAt = Date.now(); setSnapshot({ location: activeLocationId, data: body.bookloq }); setError(""); }
+    } catch (caught) { if (request.current()) { refreshState.current.hasError = true; if (bookloqAccessDenied(caught)) { setSnapshot(null); setPlaidAccess(null); setCanManageBankConnections(false); } setError(caught instanceof Error ? caught.message : "BookLoQ could not be loaded."); } }
+    finally { if (request.current()) { refreshState.current.inFlight = false; setLoading(false); } }
   }, [activeLocationId]);
-  useEffect(() => { const requests = dataRequests.current; const timer = window.setTimeout(() => void refresh(), 0); return () => { window.clearTimeout(timer); requests.cancel(); }; }, [refresh]);
+  useEffect(() => {
+    const requests = dataRequests.current;
+    refreshState.current = { inFlight: false, hasError: false, lastSuccessfulReadAt: null };
+    const timer = window.setTimeout(() => void refresh(), 0);
+    const stopAutoRefresh = startBookloqAutoRefresh({
+      refresh,
+      getState: () => refreshState.current,
+      runtime: {
+        now: Date.now,
+        isVisible: () => document.visibilityState === "visible",
+        every: (callback, milliseconds) => { const interval = window.setInterval(callback, milliseconds); return () => window.clearInterval(interval); },
+        onVisibilityChange: callback => { document.addEventListener("visibilitychange", callback); return () => document.removeEventListener("visibilitychange", callback); },
+      },
+    });
+    return () => { stopAutoRefresh(); window.clearTimeout(timer); requests.cancel(); };
+  }, [refresh]);
 
   const refreshPlaidAccess = useCallback(async () => {
     const request = plaidRequests.current.begin();
@@ -170,21 +190,36 @@ export default function BookLoQWorkspace({ initialSection = "Overview", createTa
   const visible = useMemo(() => authorizedSections.filter((item) => item.name.toLowerCase().includes(navSearch.toLowerCase())), [authorizedSections, navSearch]);
   const activeSection = authorizedSections.some((item) => item.name === section) ? section : (authorizedSections[0]?.name ?? "Overview");
 
-  if (loading && !data) return <WorkspaceSkeleton label="Loading BookLoQ"/>;
-  if (error && !data) return <div className="bookloq-loading error" role="alert"><span>!</span><b>BookLoQ needs attention</b><small>{error}</small><button onClick={refresh}>Try again</button></div>;
+  useEffect(() => {
+    if (!fullScreen) return;
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented || event.target instanceof HTMLSelectElement || document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+      setFullScreen(false);
+      displayButton.current?.focus({ preventScroll: true });
+    };
+    document.addEventListener("keydown", escape);
+    return () => document.removeEventListener("keydown", escape);
+  }, [fullScreen]);
+
+  const displayControls = <div className="bookloq-display-controls">
+    <button type="button" disabled={loading} onClick={() => void refresh()}><WorkspaceIcon name="Refresh"/><span>{loading ? "Updating" : "Refresh Records"}</span></button>
+    <button ref={displayButton} type="button" aria-pressed={fullScreen} title={fullScreen ? "Restore the Vanteloq navigation. Escape also exits." : "Expand BookLoQ to fill the browser window"} onClick={() => setFullScreen(value => !value)}><WorkspaceIcon name={fullScreen ? "Minimize" : "Maximize"}/><span>{fullScreen ? "Exit Full Screen" : "Full Screen"}</span></button>
+  </div>;
+  const displayClass = `bookloq-display${fullScreen ? " bookloq-fullscreen" : ""}`;
+  if (!data && (loading || error)) return <section className={displayClass} aria-label="BookLoQ" aria-busy={loading}><header className="bookloq-pending-controls">{displayControls}</header>{loading ? <WorkspaceSkeleton label="Loading BookLoQ"/> : <div className="bookloq-loading error" role="alert"><span>!</span><b>BookLoQ needs attention</b><small>{error}</small><button onClick={refresh}>Try again</button></div>}</section>;
   if (!data) return null;
   const health = bookloqHealthPresentation(data.summary.healthScore);
 
-  return <div className={`bookloq-shell ${collapsed ? "bookloq-collapsed" : ""}`}>
+  return <section className={displayClass} aria-label="BookLoQ" aria-busy={loading}><div className={`bookloq-shell ${collapsed ? "bookloq-collapsed" : ""}`}>
     <aside className="bookloq-side">
       <div className="bookloq-brand"><ProductBrandLogo product="bookloq" variant="full" className="bookloq-brand-lockup"/><ProductBrandLogo product="bookloq" className="bookloq-brand-mark"/><button aria-label={collapsed ? "Expand BookLoQ navigation" : "Collapse BookLoQ navigation"} onClick={() => setCollapsed((value) => !value)}>‹</button></div>
       {!collapsed && <><label className="bookloq-search"><WorkspaceIcon name="Search"/><input aria-label="Search BookLoQ navigation" value={navSearch} onChange={(event) => setNavSearch(event.target.value)} placeholder="Find a finance workspace"/></label><nav aria-label="BookLoQ navigation">{[...new Set(visible.map((item) => item.group))].map((group) => <section key={group}><p>{group}</p>{visible.filter((item) => item.group === group).map((item) => <button key={item.name} className={activeSection === item.name ? "active" : ""} aria-current={activeSection === item.name ? "page" : undefined} onClick={() => { setSection(item.name); window.scrollTo({ top: 0, behavior: "instant" }); }}><WorkspaceIcon name={item.name}/>{item.name}</button>)}</section>)}</nav></>}
       <div className="bookloq-side-foot"><i className={data.settings?.dataMode === "demonstration" ? "demo" : "live"}/>{!collapsed && <span><b>{!data.configured ? "Ready for first records" : !data.settings ? "Financial sources connected" : data.settings.dataMode === "demonstration" ? "Demonstration data" : "Live ledger"}</b><small>{data.organization.currency}{data.settings ? ` · ${label(data.settings.accountingBasis)}` : " · review controls active"}</small></span>}</div>
     </aside>
     <main className="bookloq-main">
-      {loading && <div className="bookloq-scope-banner" role="status">Updating your records…</div>}
+      {loading && <span className="sr-only" role="status">Updating your records…</span>}
       {error && <div className="bookloq-scope-banner" role="alert"><span>{error} The previous records are still shown.</span><button disabled={loading} onClick={() => void refresh()}>Try again</button></div>}
-      <header className="bookloq-top"><div><p>VANTELOQ / BOOKLOQ</p><h2>{activeSection}</h2><label className="bookloq-mobile-nav"><span>BookLoQ workspace</span><select value={activeSection} onChange={(event) => setSection(event.target.value as Section)}>{[...new Set(authorizedSections.map((item) => item.group))].map((group) => <optgroup label={group} key={group}>{authorizedSections.filter((item) => item.group === group).map((item) => <option key={item.name} value={item.name}>{item.name}</option>)}</optgroup>)}</select></label></div><div><button type="button" className="bookloq-ai-link" onClick={() => navigate("Advisor")}>Ask Vanteloq AI</button>{health && <span className="bookloq-health"><i style={{ "--health": `${health.degrees}deg` } as React.CSSProperties}/><b>{health.score}</b><small>BOOKS HEALTH</small></span>}{data.permissions.includes("post_journals") && <button className="bookloq-primary" disabled={(data.accountCatalog ?? data.statements.accounts).length < 2} title={(data.accountCatalog ?? data.statements.accounts).length < 2 ? "Configure the chart of accounts and an open accounting period first." : undefined} onClick={() => setJournalOpen(true)}>+ Journal entry</button>}</div></header>
+      <header className="bookloq-top"><div><p>VANTELOQ / BOOKLOQ</p><h2>{activeSection}</h2><label className="bookloq-mobile-nav"><span>BookLoQ workspace</span><select value={activeSection} onChange={(event) => setSection(event.target.value as Section)}>{[...new Set(authorizedSections.map((item) => item.group))].map((group) => <optgroup label={group} key={group}>{authorizedSections.filter((item) => item.group === group).map((item) => <option key={item.name} value={item.name}>{item.name}</option>)}</optgroup>)}</select></label></div><div>{displayControls}<button type="button" className="bookloq-ai-link" onClick={() => navigate("Advisor")}>Ask Vanteloq AI</button>{health && <span className="bookloq-health"><i style={{ "--health": `${health.degrees}deg` } as React.CSSProperties}/><b>{health.score}</b><small>BOOKS HEALTH</small></span>}{data.permissions.includes("post_journals") && <button className="bookloq-primary" disabled={(data.accountCatalog ?? data.statements.accounts).length < 2} title={(data.accountCatalog ?? data.statements.accounts).length < 2 ? "Configure the chart of accounts and an open accounting period first." : undefined} onClick={() => setJournalOpen(true)}>+ Journal entry</button>}</div></header>
       {!data.configured && <BookLoQStart navigate={navigate} setSection={setSection}/>}
       {data.settings?.dataMode === "demonstration" && <div className="bookloq-demo-banner"><b>Demonstration workspace</b><span>Every figure below is clearly separated from live Vanteloq and exists only to evaluate BookLoQ workflows.</span></div>}
       {data.locationScope && <div className="bookloq-scope-banner"><b>{data.locationScope.name} scope</b><span>{data.locationScope.boundary}</span></div>}
@@ -196,7 +231,7 @@ export default function BookLoQWorkspace({ initialSection = "Overview", createTa
       <BookLoQSection section={activeSection} data={data} setSection={setSection} createTask={createTask} showNotice={showNotice} refresh={refresh} openJournal={() => setJournalOpen(true)} navigate={navigate}/>
     </main>
     {journalOpen && (data.accountCatalog ?? data.statements.accounts).length > 0 && <JournalComposer data={data} close={() => setJournalOpen(false)} saved={async () => { setJournalOpen(false); await refresh(); showNotice("Balanced journal posted and added to the audit trail"); }}/>}
-  </div>;
+  </div></section>;
 }
 
 function BookLoQStart({ navigate, setSection }: { navigate: (view: "Integrations" | "Documents") => void; setSection: (section: Section) => void }) {
