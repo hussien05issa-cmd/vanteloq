@@ -222,9 +222,77 @@ test("ledger authorization and period guards preserve legitimate accounting", as
     await database.prepare("UPDATE memberships SET role='owner' WHERE organization_id=? AND user_id=?").bind(org, identity.userId).run();
     const restored = await read();
     assert.equal(restored.statements.accounts.length, owner.statements.accounts.length);
-    const customCategory = await dispatch(worker, environment, "/api/v1/bookloq/actions", { method: "POST", email, body: { type: "create_category", categoryName: "Scoped budget regression", categoryType: "expense" } });
+    const categoryRequestId = crypto.randomUUID();
+    const categoryBody = { type: "create_category", categoryRequestId,
+      categoryName: "Scoped budget regression", categoryType: "expense" };
+    const createCategory = (body: Record<string, unknown>, actor = email) =>
+      dispatch(worker, environment, "/api/v1/bookloq/actions", { method: "POST", email: actor, body });
+    for (const invalidId of [undefined, "not-a-uuid"]) {
+      const invalid = await createCategory({ ...categoryBody, categoryRequestId: invalidId });
+      assert.equal(invalid.status, 400, await invalid.clone().text());
+      assert.equal((await invalid.json()).error.code, "INVALID_CATEGORY_REQUEST");
+    }
+    const customCategory = await createCategory(categoryBody);
     assert.equal(customCategory.status, 201, await customCategory.clone().text());
-    const expenseAccount = (await customCategory.json()).category.id;
+    const originalCategory = (await customCategory.json()).category;
+    const expenseAccount = originalCategory.id;
+    assert.equal(expenseAccount, categoryRequestId);
+    // The caller can recover after discarding/losing the first successful response.
+    const categoryReplay = await createCategory({ ...categoryBody,
+      categoryRequestId: categoryRequestId.toUpperCase(), categoryName: ` ${categoryBody.categoryName} ` });
+    assert.equal(categoryReplay.status, 200, await categoryReplay.clone().text());
+    const replayBody = await categoryReplay.json();
+    assert.equal(replayBody.replayed, true);
+    assert.deepEqual(replayBody.category, originalCategory);
+    for (const changed of [{ categoryName: "Changed payload" }, { categoryType: "revenue" }]) {
+      const rejected = await createCategory({ ...categoryBody, ...changed });
+      assert.equal(rejected.status, 409, await rejected.clone().text());
+      assert.equal((await rejected.json()).error.code, "CATEGORY_REQUEST_CONFLICT");
+    }
+    const categoryRows = await database.prepare(`SELECT id, name, account_type accountType
+      FROM financial_accounts WHERE organization_id = ? AND id = ?`)
+      .bind(org, categoryRequestId).all();
+    assert.deepEqual(categoryRows.results, [{ id: categoryRequestId,
+      name: categoryBody.categoryName, accountType: "expense" }]);
+
+    const concurrentId = crypto.randomUUID();
+    const concurrentBody = { ...categoryBody, categoryRequestId: concurrentId, categoryName: "Concurrent category" };
+    const concurrent = await Promise.all(Array.from({ length: 3 }, () => createCategory(concurrentBody)));
+    assert.deepEqual(concurrent.map(response => response.status).sort(), [200, 200, 201]);
+    const concurrentCategories = await Promise.all(concurrent.map(response => response.json()));
+    assert.ok(concurrentCategories.every(result => result.category.id === concurrentId));
+    assert.equal((await database.prepare(`SELECT COUNT(*) count FROM financial_accounts
+      WHERE organization_id = ? AND name = ?`).bind(org, concurrentBody.categoryName)
+      .first<{ count: number }>())?.count, 1);
+    assert.equal((await database.prepare(`SELECT COUNT(*) count FROM audit_events
+      WHERE organization_id = ? AND action = 'financial_account.custom_category_created' AND resource_id = ?`)
+      .bind(org, concurrentId).first<{ count: number }>())?.count, 1);
+
+    // Different legitimate attempts must also allocate distinct codes successfully.
+    const independent = await Promise.all(["A", "B"].map(suffix => createCategory({ ...categoryBody,
+      categoryRequestId: crypto.randomUUID(), categoryName: `Independent ${suffix}` })));
+    assert.ok(independent.every(response => response.status === 201));
+    const independentCategories = await Promise.all(independent.map(response => response.json()));
+    assert.equal(new Set(independentCategories.map(result => result.category.code)).size, 2);
+
+    // A request ID from another tenant must never replay or change that tenant's category.
+    const otherEmail = `category-other-${crypto.randomUUID()}@example.invalid`;
+    const otherOnboarding = await dispatch(worker, environment, "/api/v1/onboarding", {
+      method: "POST", email: otherEmail, body: onboardingBody("Other Owner", "Other Category") });
+    assert.equal(otherOnboarding.status, 201, await otherOnboarding.clone().text());
+    const otherIdentity = await database.prepare(`SELECT m.organization_id organizationId FROM users u
+      JOIN memberships m ON m.user_id = u.id WHERE u.email = ?`).bind(otherEmail)
+      .first<{ organizationId: string }>();
+    assert.ok(otherIdentity);
+    await grantBookLoQ(database, otherIdentity.organizationId);
+    const foreignReplay = await createCategory(categoryBody, otherEmail);
+    assert.equal(foreignReplay.status, 409, await foreignReplay.clone().text());
+    const foreignBody = await foreignReplay.json();
+    assert.equal(foreignBody.error.code, "CATEGORY_REQUEST_CONFLICT");
+    assert.equal(foreignBody.category, undefined);
+    assert.equal((await database.prepare(`SELECT COUNT(*) count FROM financial_accounts
+      WHERE organization_id = ? AND id = ?`).bind(otherIdentity.organizationId, categoryRequestId)
+      .first<{ count: number }>())?.count, 0);
     const cashAccount = owner.statements.accounts.find((account: { accountType: string }) => account.accountType === "asset").id;
     const budgetPeriod = owner.periods.find((period: { status: string }) => period.status === "open");
     assert.ok(budgetPeriod);

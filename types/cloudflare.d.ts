@@ -26,13 +26,20 @@ interface Fetcher {
 interface R2ObjectBody {
   body: ReadableStream;
   httpEtag: string;
+  etag: string;
   size: number;
   httpMetadata?: { contentType?: string; cacheControl?: string };
   customMetadata?: Record<string, string>;
 }
 
+interface R2PutOptions {
+  httpMetadata?: { contentType?: string; cacheControl?: string };
+  customMetadata?: Record<string, string>;
+  onlyIf?: { etagMatches?: string; etagDoesNotMatch?: string };
+}
+
 interface R2Bucket {
-  put(key: string, value: ArrayBuffer | ReadableStream | Blob, options?: { httpMetadata?: { contentType?: string; cacheControl?: string }; customMetadata?: Record<string, string> }): Promise<{ key: string; httpEtag: string }>;
+  put(key: string, value: ArrayBuffer | ReadableStream | Blob, options?: R2PutOptions): Promise<{ key: string; httpEtag: string } | null>;
   get(key: string): Promise<R2ObjectBody | null>;
   delete(key: string | string[]): Promise<void>;
   list(options?: { prefix?: string; cursor?: string; limit?: number }): Promise<{

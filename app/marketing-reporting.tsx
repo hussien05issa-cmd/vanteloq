@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { apiFetch } from "./supabase-browser";
 import type { MarketingPlanDraft } from "../domain/marketing-workbench";
+import { signedBarGeometry } from "../domain/chart-geometry";
 import { metricChange, REPORT_NAMES, REPORT_VIEWS, reportSuggestions, type MarketingReport, type ReportColumn, type ReportSource, type ReportView } from "../domain/marketing-reporting";
 
 const viewLabels: Record<ReportView, string> = { daily: "Daily trend", channels: "Acquisition channels", pages: "Top pages", devices: "Devices", queries: "Search queries", realtime: "Realtime activity", keywords: "Local search terms", campaigns: "Campaigns", platforms: "Facebook and Instagram ads" };
@@ -21,6 +22,12 @@ export function MarketingReportVisual({ report }: { report: MarketingReport }) {
   const daily = report.view === "daily";
   const max = Math.max(1, ...data.map((point) => point.value));
   const min = Math.min(0, ...data.map((point) => point.value));
+  const barMaximum = Math.max(0, ...data.map(point => point.value));
+  const unit = column.unit === "currency" ? report.currency ?? "Currency not supplied" : column.unit === "percent" ? "Percent" : column.unit === "position" ? "Average position" : "Count";
+  const axisValue = (value: number) => new Intl.NumberFormat("en-CA", {
+    notation: "compact", maximumFractionDigits: 2,
+    ...(column.unit === "currency" && report.currency ? { style: "currency", currency: report.currency } : {}),
+  }).format(value) + (column.unit === "percent" ? "%" : "");
   const start = Date.parse(report.period.start), end = Date.parse(report.period.end);
   const y = (value: number) => 188 - (value - min) / (max - min) * 150;
   // Date-based spacing and explicit gaps: absent observations are not interpolated into sales.
@@ -33,14 +40,17 @@ export function MarketingReportVisual({ report }: { report: MarketingReport }) {
     return `${command}${point.x.toFixed(2)},${y(point.value).toFixed(2)}`;
   }).join(" ");
   return <section className="mr-visual" aria-label="Marketing performance chart">
-    <header><div><p className="mr-eyebrow">{daily ? "PERFORMANCE OVER TIME" : "WHERE ACTIVITY COMES FROM"}</p><h3>{column.label}</h3></div><label>Chart metric<select value={column.key} onChange={(event) => setMetricKey(event.target.value)}>{report.columns.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}</select></label></header>
+    <header><div><p className="mr-eyebrow">{daily ? "PERFORMANCE OVER TIME" : "WHERE ACTIVITY COMES FROM"}</p><h3>{column.label}</h3><p className="mr-chart-unit">{unit}</p></div><label>Chart metric<select value={column.key} onChange={(event) => setMetricKey(event.target.value)}>{report.columns.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}</select></label></header>
     {!data.length ? <div className="mr-empty"><b>No values returned for this metric</b><p>The provider did not return usable observations. Nothing has been replaced with zero.</p></div> : daily ? <div className="mr-chart-scroll" role="region" aria-label="Scrollable performance chart" tabIndex={0}><svg viewBox="0 0 800 235" role="img" aria-labelledby={chartId}>
       <title id={chartId}>{`${column.label} from ${report.period.start} to ${report.period.end}. Exact values are in the table below.`}</title>
-      {[0, 0.5, 1].map((fraction) => { const value = min + (max - min) * fraction; return <g key={fraction}><line x1="62" x2="750" y1={y(value)} y2={y(value)} className="mr-grid"/><text x="50" y={y(value) + 4} textAnchor="end">{new Intl.NumberFormat("en-CA", { notation: "compact", maximumFractionDigits: 1 }).format(value)}{column.unit === "percent" ? "%" : ""}</text></g>; })}
+      {[0, 0.5, 1].map((fraction) => { const value = min + (max - min) * fraction; return <g key={fraction}><line x1="62" x2="750" y1={y(value)} y2={y(value)} className="mr-grid"/><text x="50" y={y(value) + 4} textAnchor="end">{axisValue(value)}</text></g>; })}
       <path d={path} className="mr-line"/>{points.filter((point) => point.value !== null && point.value !== undefined && Number.isFinite(point.x)).map((point) => <circle key={point.row.label} cx={point.x} cy={y(point.value!)} r={points.length > 35 ? 2 : 3.5}><title>{`${point.row.label}: ${formatMarketingValue(point.value, column, report.currency)}`}</title></circle>)}
       <text x="62" y="220">{report.period.start}</text><text x="750" y="220" textAnchor="end">{report.period.end}</text>
-    </svg></div> : <div className="mr-bars">{[...data].sort((a,b) => b.value - a.value).slice(0, 8).map(({ row, value }, index) => <div key={`${row.label}:${index}`}><span title={row.label}>{row.label}</span><div><i style={{ width: `${Math.max(0, value) / max * 100}%` }}/></div><b>{formatMarketingValue(value, column, report.currency)}</b></div>)}</div>}
-    <p className="mr-muted">{daily ? "Gaps mean no observation was returned. Dates follow the provider's reporting calendar." : "Largest returned values, up to eight shown. See the complete returned list below."}</p>
+    </svg></div> : <div className="mr-bars">{[...data].sort((a,b) => b.value - a.value).slice(0, 8).map(({ row, value }, index) => {
+      const bar = signedBarGeometry(value, min, barMaximum);
+      return <div key={`${row.label}:${index}`}><span title={row.label}>{row.label}</span><div className="mr-bar-track" aria-hidden="true"><em className="mr-bar-zero" style={{ left: `${bar.zero}%` }}/><i className={bar.negative ? "is-negative" : undefined} style={{ left: `${bar.left}%`, width: `${bar.width}%` }}/></div><b data-negative={bar.negative || undefined}>{formatMarketingValue(value, column, report.currency)}</b></div>;
+    })}</div>}
+    <p className="mr-muted">{daily ? "Gaps mean no observation was returned. Dates follow the provider's reporting calendar." : "Largest returned values, up to eight shown. Bars extend from zero; negative values extend left. See the complete returned list below."}</p>
   </section>;
 }
 

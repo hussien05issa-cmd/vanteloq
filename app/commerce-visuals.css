@@ -1,0 +1,110 @@
+/* Shared financial presentation. Keep values, domains, permissions and source gaps intact. */
+:root {
+  --commerce-ink:#142b45;
+  --commerce-muted:#51657b;
+  --commerce-line:#d9e2ec;
+  --commerce-grid:#e4eaf1;
+  --commerce-blue:#245fce;
+  --commerce-teal:#087f78;
+  --commerce-negative:#a43f50;
+  --commerce-comparison:#687a94;
+  --commerce-surface:#f8fafc;
+}
+.operating-shell .workspace-series-chart.commerce-chart { padding:18px 22px 0; }
+.commerce-chart-context { margin:0 0 10px; color:var(--commerce-muted); font-size:12px; line-height:1.5; }
+.operating-shell .workspace-series-chart.commerce-chart .chart-legend { justify-content:flex-start; gap:12px 20px; margin-bottom:10px; }
+.operating-shell .workspace-series-chart.commerce-chart .chart-legend>span { color:var(--commerce-muted); font-size:12px!important; }
+.operating-shell .workspace-series-chart.commerce-chart .legend-sales { background:var(--commerce-blue); }
+.operating-shell .workspace-series-chart.commerce-chart .legend-profit { background:none; height:0; border-top:2px solid var(--commerce-teal); border-radius:0; }
+.operating-shell .workspace-series-chart.commerce-chart .legend-comparison { background:none; height:0; border-top:2px dashed var(--commerce-comparison); border-radius:0; }
+.operating-shell .workspace-series-chart.commerce-chart .trend-sales-line { stroke:var(--commerce-blue); stroke-width:2; }
+.operating-shell .workspace-series-chart.commerce-chart .trend-profit-line { stroke:var(--commerce-teal); stroke-width:1.8; stroke-dasharray:none; }
+.operating-shell .workspace-series-chart.commerce-chart .trend-comparison-line { stroke:var(--commerce-comparison); stroke-width:1.5; stroke-dasharray:5 5; }
+.operating-shell .workspace-series-chart.commerce-chart :is(.trend-sales-line,.trend-profit-line,.trend-comparison-line) { stroke-linecap:butt; stroke-linejoin:round; }
+.commerce-chart svg :is(path,line,circle,rect) { vector-effect:non-scaling-stroke; }
+.operating-shell .workspace-series-chart.commerce-chart .trend-gridline,.finance-chart.commerce-chart .finance-chart-grid { stroke:var(--commerce-grid); stroke-width:1; stroke-dasharray:none; }
+.operating-shell .workspace-series-chart.commerce-chart .chart-zero-line,.finance-chart.commerce-chart .finance-chart-zero { stroke:#98aabe; stroke-width:1; }
+.operating-shell .workspace-series-chart.commerce-chart .trend-axis-label { fill:var(--commerce-muted); font-size:14px; font-weight:400; font-variant-numeric:tabular-nums; }
+.operating-shell .workspace-series-chart.commerce-chart .chart-active-marker line,.finance-chart.commerce-chart .finance-chart-cursor { stroke:#9cabbc; stroke-width:1; stroke-dasharray:3 4; }
+.operating-shell .workspace-series-chart.commerce-chart .active-sales-point { fill:var(--commerce-surface); stroke:var(--commerce-blue); stroke-width:1.8; }
+.operating-shell .workspace-series-chart.commerce-chart .active-profit-point { fill:var(--commerce-surface); stroke:var(--commerce-teal); stroke-width:1.8; }
+.operating-shell .workspace-series-chart.commerce-chart .workspace-chart-plot>svg { min-width:520px; }
+.finance-chart.commerce-chart { --chart-blue:var(--commerce-blue); --chart-mint:var(--commerce-teal); --chart-coral:var(--commerce-negative); --chart-violet:#6d5b98; padding:22px; border-color:var(--commerce-line); border-radius:14px; background:linear-gradient(180deg,#fafbfd,#f5f8fc); box-shadow:0 1px 3px #142b4505; }
+.finance-chart.commerce-chart header h3 { font-size:20px; letter-spacing:-.025em; }
+.finance-chart.commerce-chart header p { font-size:13px; color:var(--commerce-muted); }
+.finance-chart.commerce-chart .finance-chart-currency { color:var(--commerce-muted); background:#f1f5f9; border-color:var(--commerce-line); border-radius:6px; }
+.finance-chart.commerce-chart .finance-chart-canvas { min-width:520px; }
+.finance-chart.commerce-chart .finance-chart-axis { fill:var(--commerce-muted); font-size:14px; font-variant-numeric:tabular-nums; }
+.finance-chart.commerce-chart .finance-chart-grid.vertical { opacity:.22; }
+.finance-chart.commerce-chart .finance-chart-bar { opacity:.7; }
+.finance-chart.commerce-chart .finance-chart-legend { margin:16px 0 4px; }
+.finance-chart.commerce-chart .finance-chart-legend li { color:var(--commerce-muted); font-size:12px; }
+.operating-shell .workspace-series-chart.commerce-chart .workspace-chart-readout,.finance-chart.commerce-chart .finance-chart-readout { display:grid; grid-template-columns:minmax(170px,210px) minmax(0,1fr); align-items:end; gap:24px; background:transparent; border:0; border-top:1px solid var(--commerce-line); box-shadow:none; border-radius:0; padding:14px 0; }
+.operating-shell .workspace-series-chart.commerce-chart .workspace-chart-readout dl,.finance-chart.commerce-chart .finance-chart-readout dl { justify-content:flex-start; padding-bottom:4px; }
+.operating-shell .workspace-series-chart.commerce-chart .workspace-chart-readout dd,.finance-chart.commerce-chart .finance-chart-readout dd { color:var(--commerce-ink); font-size:17px!important; font-weight:600; letter-spacing:-.015em; font-variant-numeric:tabular-nums; }
+.operating-shell .workspace-series-chart.commerce-chart [data-negative="true"],.finance-chart.commerce-chart [data-negative="true"] { color:var(--commerce-negative)!important; }
+.operating-shell .workspace-series-chart.commerce-chart .workspace-chart-readout select,.finance-chart.commerce-chart .finance-chart-readout select { min-height:44px; border-radius:8px; background:#f9fbfd; border-color:#c5d1df; }
+.operating-shell .workspace-series-chart.commerce-chart .workspace-chart-data,.finance-chart.commerce-chart .finance-chart-data { border-top:1px solid var(--commerce-line); }
+.commerce-chart :is(.workspace-chart-data,.finance-chart-data) table { color:var(--commerce-ink); background:var(--commerce-surface); font-size:13px; font-variant-numeric:tabular-nums; }
+.commerce-chart :is(.workspace-chart-data,.finance-chart-data) :is(th,td) { padding:12px; border-bottom:1px solid #e1e8f0; }
+.commerce-chart :is(.workspace-chart-data,.finance-chart-data) thead th { color:#40556d; background:#f0f4f8; font-weight:600; }
+.operating-shell .workspace-chart-empty { border:1px solid var(--commerce-line); border-radius:12px; background:#f5f8fb; box-shadow:none; }
+.bookloq-forecast-card>.finance-chart.commerce-chart { background:transparent; border:0; box-shadow:none; }
+.bookloq-dashboard-visuals :is(.bq-cash-metrics article,.bq-cash-observations article) { background:linear-gradient(180deg,#fafbfd,#f5f8fb); border-color:var(--commerce-line); border-radius:14px; box-shadow:0 1px 3px #142b4505; }
+.bookloq-dashboard-visuals .bq-cash-periods { border-radius:10px; background:#edf2f7; box-shadow:none; }
+.bookloq-dashboard-visuals .bq-cash-periods button { border-radius:7px; }
+.bookloq-dashboard-visuals .bq-cash-periods button[aria-pressed="true"] { background:#f9fbfd; border-color:#ced8e5; box-shadow:0 1px 2px #142b4508; }
+.bookloq-dashboard-visuals .bq-category-visual { width:min(100%,164px); }
+.bookloq-dashboard-visuals .bq-category-centre strong { color:var(--commerce-ink); font-weight:600; }
+.bookloq-dashboard-visuals .bq-outflow-categories li button { border-radius:7px; }
+.bookloq-dashboard-visuals .bq-outflow-categories li button[aria-pressed="true"] { background:#edf3fb; border-color:#c4d5eb; }
+.retail-intelligence .retail-bar-track { border-radius:3px; background:#e7edf4; height:8px; }
+.retail-intelligence .retail-bar-track i { border-radius:3px; background:var(--commerce-blue); }
+.retail-intelligence .retail-bar-track i.retail-negative-bar { background:var(--commerce-negative); }
+.retail-intelligence .retail-hour-positive i { background:var(--commerce-blue); border-radius:2px 2px 0 0; }
+.retail-intelligence .retail-hour-negative i { background:var(--commerce-negative); border-radius:0 0 2px 2px; }
+.retail-intelligence .retail-down { color:var(--commerce-negative); }
+.retail-intelligence .retail-up { color:var(--commerce-teal); }
+.operating-shell .retail-table-wrap th { position:static; top:auto; text-transform:none; letter-spacing:normal; }
+.retail-intelligence .retail-category-table { border-color:var(--commerce-line); }
+.retail-intelligence .retail-category-table table { min-width:720px; table-layout:auto; }
+.retail-intelligence .retail-category-table caption { padding:16px 24px; color:var(--commerce-muted); }
+.retail-intelligence .retail-category-table :is(th,td) { padding:18px 24px; line-height:1.5; }
+.retail-intelligence .retail-category-table thead th { color:#40556d; font-size:13px; font-weight:600; }
+.retail-intelligence .retail-category-table tr>:first-child { min-width:190px; padding-inline-start:24px; text-align:left; }
+.retail-intelligence .retail-category-table tr>:not(:first-child) { min-width:124px; text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.retail-intelligence .retail-category-table tr>:last-child { padding-inline-end:28px; }
+.retail-intelligence .retail-view .retail-table-help { margin:10px 0 0; color:var(--commerce-muted); font-size:13px; line-height:1.6; }
+.retail-category-table:focus-visible { outline:3px solid #268cd0; outline-offset:3px; }
+.operating-shell :is(.mr-line,.growth-position-line,.marketing-measurement-trend svg path) { stroke:var(--commerce-blue); stroke-width:2; stroke-linecap:butt; stroke-linejoin:round; fill:none; vector-effect:non-scaling-stroke; }
+.operating-shell :is(.mr-grid,.growth-gridline,.marketing-measurement-trend svg line) { stroke:var(--commerce-grid); stroke-width:1; vector-effect:non-scaling-stroke; }
+.operating-shell :is(.mr-visual,.search-position-chart,.marketing-measurement-trend) svg circle { fill:var(--commerce-surface); stroke:var(--commerce-blue); stroke-width:1.5; vector-effect:non-scaling-stroke; }
+.operating-shell .mr-visual { background:var(--commerce-surface); border-color:var(--commerce-line); border-radius:14px; }
+.operating-shell .mr-visual svg text { fill:var(--commerce-muted); font-family:var(--font-product,inherit); font-size:14px; }
+.operating-shell :is(.mr-bars,.mw-stage-bars) i { background:var(--commerce-blue); border-radius:2px; }
+@media(max-width:640px) {
+  .operating-shell .workspace-series-chart.commerce-chart { padding:16px 14px 0; }
+  .finance-chart.commerce-chart { padding:18px 14px; border-radius:12px; }
+  .operating-shell .workspace-series-chart.commerce-chart .trend-axis-label,.finance-chart.commerce-chart .finance-chart-axis { font-size:14px; }
+  .commerce-chart-context { font-size:12px; }
+  .operating-shell .workspace-series-chart.commerce-chart .workspace-chart-readout,.finance-chart.commerce-chart .finance-chart-readout { grid-template-columns:minmax(0,1fr); gap:16px; }
+}
+@media(prefers-reduced-motion:reduce) {
+  .commerce-chart *,.bookloq-dashboard-visuals .bq-category-visual * { animation:none!important; transition:none!important; }
+}
+@media(forced-colors:active) {
+  .commerce-chart :is(.workspace-chart-readout,.finance-chart-readout) { border-color:CanvasText; }
+  .commerce-chart :is(.trend-sales-line,.trend-profit-line,.trend-comparison-line) { stroke:CanvasText; }
+  .commerce-chart .trend-profit-line { stroke-dasharray:2 4!important; }
+  .commerce-chart .trend-comparison-line { stroke-dasharray:6 4!important; }
+}
+
+/* Accurate signed bar geometry and explicit numeric axis labels. */
+.operating-shell .workspace-series-chart.commerce-chart .comparison-observation-point { fill:var(--commerce-surface); stroke:var(--commerce-comparison); stroke-width:1.5; }
+.operating-shell .mr-chart-unit { margin:6px 0 0; color:var(--commerce-muted); font-size:12px; }
+.operating-shell .mr-bars .mr-bar-track { position:relative; overflow:visible; }
+.operating-shell .mr-bars .mr-bar-track i { position:absolute; top:0; height:100%; }
+.operating-shell .mr-bars .mr-bar-zero { position:absolute; top:-3px; height:16px; width:1px; background:#8c9eb3; transform:translateX(-.5px); z-index:1; }
+.operating-shell .mr-bars i.is-negative { background:var(--commerce-negative); }
+.operating-shell .mr-bars [data-negative="true"] { color:var(--commerce-negative); }
+.operating-shell :is(.search-position-chart,.marketing-measurement-trend) .growth-axis-label { fill:var(--commerce-muted); font-family:var(--font-product,inherit); font-size:12px; font-variant-numeric:tabular-nums; }

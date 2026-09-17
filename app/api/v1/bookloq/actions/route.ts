@@ -36,7 +36,7 @@ export async function POST(request: Request) {
     const actionFeature = typeof body.type === "string" ? bookloqActionFeature(body.type) : null;
     if (!actionFeature) return jsonResponse({ error: { code: "UNKNOWN_ACTION", message: "Select a supported BookLoQ action." } }, { status: 400 });
     await requireFeature(context, actionFeature);
-    const allowed = ["type", "itemId", "status", "alertId", "periodId", "reason", "transactionId", "accountId", "periodStart", "periodEnd", "budgetCents", "committedCents", "forecastCents", "locationRef", "departmentRef", "categoryName", "categoryType", "matchText", "direction", "createRule", "targetType", "targetId", "note"];
+    const allowed = ["type", "itemId", "status", "alertId", "periodId", "reason", "transactionId", "accountId", "periodStart", "periodEnd", "budgetCents", "committedCents", "forecastCents", "locationRef", "departmentRef", "categoryName", "categoryType", "categoryRequestId", "matchText", "direction", "createRule", "targetType", "targetId", "note"];
     const unknown = Object.keys(body).find((field) => !allowed.includes(field));
     if (unknown) return jsonResponse({ error: { code: "UNKNOWN_FIELD", message: `Unexpected field: ${unknown}.` } }, { status: 400 });
     const database = getD1();
@@ -84,25 +84,61 @@ export async function POST(request: Request) {
       requireBookLoQPermission(context.role, "edit_drafts");
       const categoryName = typeof body.categoryName === "string" ? body.categoryName.trim().normalize("NFC") : "";
       const categoryType = body.categoryType === "revenue" || body.categoryType === "expense" ? body.categoryType : null;
+      const accountId = typeof body.categoryRequestId === "string"
+        && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.categoryRequestId)
+        ? body.categoryRequestId.toLowerCase() : null;
+      if (!accountId) return jsonResponse({ error: { code: "INVALID_CATEGORY_REQUEST", message: "Refresh the category form and try again." } }, { status: 400 });
       if (categoryName.length < 2 || categoryName.length > 120 || !categoryType) return jsonResponse({ error: { code: "INVALID_CATEGORY", message: "Enter a category name and choose income or expense." } }, { status: 400 });
-      const prefix = categoryType === "revenue" ? "49" : "69";
-      const used = await database.prepare(`SELECT code FROM financial_accounts WHERE organization_id = ? AND code LIKE ? ORDER BY code`).bind(context.organizationId, `${prefix}%`).all<{ code: string }>();
-      const codes = new Set((used.results ?? []).map((row) => Number(row.code)));
-      let numericCode = Number(`${prefix}00`);
-      while (codes.has(numericCode) && numericCode < Number(`${prefix}99`)) numericCode += 1;
-      if (codes.has(numericCode)) return jsonResponse({ error: { code: "CATEGORY_LIMIT", message: "No custom category codes remain in this category group." } }, { status: 409 });
-      const accountId = crypto.randomUUID();
-      await database.prepare(`INSERT INTO financial_accounts
+
+      type CategoryRow = { id: string; code: string; name: string; accountType: string; accountSubtype: string; active: number };
+      const readExisting = () => database.prepare(`SELECT id, code, name, account_type accountType,
+        account_subtype accountSubtype, active FROM financial_accounts WHERE organization_id = ? AND id = ?`)
+        .bind(context.organizationId, accountId).first<CategoryRow>();
+      const conflict = () => jsonResponse({ error: { code: "CATEGORY_REQUEST_CONFLICT", message: "This category request cannot be reused. Refresh your categories before trying again." } }, { status: 409 });
+      const replay = (row: CategoryRow) => row.name === categoryName && row.accountType === categoryType
+        && row.accountSubtype === "custom" && row.active === 1
+        ? jsonResponse({ created: false, replayed: true, type: body.type,
+          category: { id: row.id, code: row.code, name: row.name, accountType: row.accountType } })
+        : conflict();
+      const existing = await readExisting();
+      if (existing) return replay(existing);
+
+      const firstCode = categoryType === "revenue" ? 4900 : 6900;
+      // Allocate from the current table inside the write statement. A separate
+      // read-used-codes step races when different creation attempts overlap.
+      const inserted = await database.prepare(`WITH RECURSIVE category_codes(code) AS (
+          SELECT CAST(? AS INTEGER)
+          UNION ALL SELECT code + 1 FROM category_codes WHERE code < CAST(? AS INTEGER)
+        ) INSERT INTO financial_accounts
         (id, organization_id, code, name, account_type, account_subtype, normal_balance,
          system_key, description, plain_language, tax_treatment, restricted, active, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, 'custom', ?, NULL, ?, ?, 'review_required', 0, 1, ?, ?)`)
-        .bind(accountId, context.organizationId, String(numericCode), categoryName, categoryType,
+        SELECT ?, ?, CAST(candidate.code AS TEXT), ?, ?, 'custom', ?, NULL, ?, ?, 'review_required', 0, 1, ?, ?
+        FROM category_codes candidate
+        WHERE NOT EXISTS (SELECT 1 FROM financial_accounts used
+          WHERE used.organization_id = ? AND used.code = CAST(candidate.code AS TEXT))
+        ORDER BY candidate.code LIMIT 1
+        ON CONFLICT(id) DO NOTHING
+        RETURNING id, code, name, account_type accountType`)
+        .bind(firstCode, firstCode + 99, accountId, context.organizationId, categoryName, categoryType,
           categoryType === "revenue" ? "credit" : "debit", `Custom ${categoryType} category`,
-          `${categoryName} is a workspace-defined category. Confirm tax treatment with the appropriate reviewer.`, timestamp, timestamp).run();
+          `${categoryName} is a workspace-defined category. Confirm tax treatment with the appropriate reviewer.`,
+          timestamp, timestamp, context.organizationId)
+        .first<{ id: string; code: string; name: string; accountType: string }>();
+      if (!inserted) {
+        const concurrent = await readExisting();
+        if (concurrent) return replay(concurrent);
+        // A full group and an ID unavailable to this organization both fail closed.
+        // Never retrieve or expose another organization's row to resolve a collision.
+        const capacity = await database.prepare(`SELECT COUNT(*) count FROM financial_accounts
+          WHERE organization_id = ? AND length(code) = 4 AND code BETWEEN ? AND ?`)
+          .bind(context.organizationId, String(firstCode), String(firstCode + 99)).first<{ count: number }>();
+        if (capacity?.count === 100) return jsonResponse({ error: { code: "CATEGORY_LIMIT", message: "No custom category codes remain in this category group." } }, { status: 409 });
+        return conflict();
+      }
       await recordAudit({ request, requestId, organizationId: context.organizationId, actorUserId: context.userId,
-        action: "financial_account.custom_category_created", resourceType: "bookloq_category", resourceId: accountId,
-        details: { code: String(numericCode), name: categoryName, accountType: categoryType, taxTreatment: "review_required" } });
-      return jsonResponse({ created: true, type: body.type, category: { id: accountId, code: String(numericCode), name: categoryName, accountType: categoryType } }, { status: 201 });
+        action: "financial_account.custom_category_created", resourceType: "bookloq_category", resourceId: inserted.id,
+        details: { code: inserted.code, name: categoryName, accountType: categoryType, taxTreatment: "review_required" } });
+      return jsonResponse({ created: true, type: body.type, category: inserted }, { status: 201 });
     }
 
     if (body.type === "match_transaction") {

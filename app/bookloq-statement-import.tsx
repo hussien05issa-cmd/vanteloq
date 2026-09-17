@@ -1,6 +1,8 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetch } from "./supabase-browser";
+import { bookloqRequest, bookloqAccessDenied } from "./bookloq-request";
+import { createDocumentEmailRequests } from "./document-email-client";
 import { formatBookloqMoney } from "../domain/bookloq-presentation";
 
 type Account = { id: string; name: string; institutionName: string; maskedNumber: string; currency: string };
@@ -19,15 +21,15 @@ function cents(value: string) {
   if (!Number.isSafeInteger(result)) throw new Error("An amount is too large. Check the statement.");
   return result;
 }
-async function request(path: string, body?: unknown) {
-  const response = await apiFetch(path, body ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) } : undefined);
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.error?.message || "The statement could not be processed. Try again.");
-  return data;
+async function request(path: string, body?: unknown, signal?: AbortSignal) {
+  return bookloqRequest(apiFetch, path, body ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal } : { signal });
 }
 
 export default function BookloqStatementImport({ currency, onUploaded, onComplete }: { currency: string; onUploaded: () => void; onComplete: () => Promise<void> }) {
   const [catalog, setCatalog] = useState<Catalog | null>(null);
+  const catalogRequests = useRef(createDocumentEmailRequests());
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [catalogError, setCatalogError] = useState("");
   const [expanded, setExpanded] = useState(false);
   const [step, setStep] = useState(1);
   const [busy, setBusy] = useState(false);
@@ -48,8 +50,17 @@ export default function BookloqStatementImport({ currency, onUploaded, onComplet
   const [previewFingerprint, setPreviewFingerprint] = useState("");
   const [reviewConfirmed, setReviewConfirmed] = useState(false);
   const [undo, setUndo] = useState<{ id: string; reason: string; confirmation: string } | null>(null);
-  const load = () => request("/api/v1/bookloq/statements").then(setCatalog);
-  useEffect(() => { if (expanded) void load().catch(e => setError(e.message)); }, [expanded]);
+  const load = useCallback(async () => {
+    const active = catalogRequests.current.begin();
+    setCatalogLoading(true); setCatalogError("");
+    try {
+      const result = await request("/api/v1/bookloq/statements", undefined, active.signal);
+      if (active.current()) setCatalog(result);
+    } catch (caught) {
+      if (active.current()) { if (bookloqAccessDenied(caught)) setCatalog(null); setCatalogError(caught instanceof Error ? caught.message : "Statement sources could not be loaded."); }
+    } finally { if (active.current()) setCatalogLoading(false); }
+  }, []);
+  useEffect(() => { const requests = catalogRequests.current; const timer = window.setTimeout(() => { if (expanded) void load(); }, 0); return () => { window.clearTimeout(timer); requests.cancel(); }; }, [expanded, load]);
   const payload = () => ({ documentId, documentKindConfirmed: "bank_statement", ...(bankAccountId ? { bankAccountId } : { newAccount }), currency, startDate, endDate, openingBalanceCents: cents(opening), closingBalanceCents: cents(closing), rows: rows.map(row => ({ postingDate: row.postingDate, description: row.description, amountCents: cents(row.amount) })) });
   const updateRow = (index: number, key: keyof DraftRow, value: string) => setRows(current => current.map((row, i) => i === index ? { ...row, [key]: value } : row));
   const downloadOriginal = async () => {
@@ -115,7 +126,8 @@ export default function BookloqStatementImport({ currency, onUploaded, onComplet
     <header className="statement-import-heading"><div><p className="bookloq-muted">BANK STATEMENTS</p><h3>Bring Your Statement Into BookLoQ</h3><p>Upload a statement, check the extracted rows, then import balanced cash activity.</p></div><button type="button" className="bookloq-primary" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>{expanded ? "Close Import" : "Import a Statement"}</button></header>
     {expanded && <>
       <div className="statement-progress" aria-label={`Step ${step} of 3`}><progress value={step} max={3}/><span>{step} of 3 · {step === 1 ? "Choose Your Source" : step === 2 ? "Check the Numbers" : "Confirm Import"}</span></div>
-      {!catalog && !error && <div className="statement-loading" role="status">Loading your statement sources…</div>}
+      {catalogLoading && <div className="statement-loading" role="status">{catalog ? "Updating statement sources…" : "Loading your statement sources…"}</div>}
+      {catalogError && <div className="statement-error" role="alert"><p>{catalogError}{catalog ? " Previously loaded sources are still shown." : ""}</p><button type="button" disabled={catalogLoading} onClick={() => void load()}>Try Again</button></div>}
       {catalog && <><p className="calculation-note">{catalog.boundary || "Statements supply historical cash movements. They do not confirm today's available balance or post accounting entries."}</p>
         {!catalog.statementCashEnabled && <p className="statement-warning" role="status">A live Plaid source is active. Statement activity stays separate from combined cash charts to prevent duplicate counting.</p>}
         <form className="statement-form" onSubmit={event => { event.preventDefault(); void next(); }}>

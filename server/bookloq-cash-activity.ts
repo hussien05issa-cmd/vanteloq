@@ -7,7 +7,8 @@ export async function loadBookloqCashActivity(database: D1Database, input: {
   dataMode: "live" | "demonstration"; allowed: boolean;
 }) {
   const start = new Date(Date.parse(`${input.asOf}T00:00:00Z`) - 364 * 86_400_000).toISOString().slice(0, 10);
-  const result = input.allowed ? await database.prepare(`
+  const [result, statementCoverage] = input.allowed ? await Promise.all([
+    database.prepare(`
     SELECT t.posting_date postingDate, SUM(t.amount_cents) amountCents,
       COUNT(*) recordCount, COALESCE(a.name, 'Uncategorized') category,
       (t.categorization_status = 'confirmed') categorized,
@@ -49,12 +50,13 @@ export async function loadBookloqCashActivity(database: D1Database, input: {
     GROUP BY t.posting_date, COALESCE(a.name, 'Uncategorized'), (t.amount_cents < 0), categorized, matched
     ORDER BY t.posting_date
   `).bind(input.organizationId, input.currency.toUpperCase(), input.dataMode === "demonstration" ? 1 : 0,
-    start, input.asOf, input.dataMode, input.dataMode).all<BusinessCashTransaction>() : null;
-  const activity = (result?.results ?? []).map(row => ({ ...row, categorized: Boolean(row.categorized), matched: Boolean(row.matched) }));
-  const statementCoverage = input.allowed ? await database.prepare(`SELECT
+    start, input.asOf, input.dataMode, input.dataMode).all<BusinessCashTransaction>(),
+    database.prepare(`SELECT
     (SELECT COUNT(*) FROM bank_statement_imports s WHERE s.organization_id=? AND s.status='approved' AND s.demo_record=?) approvedCount,
     EXISTS(SELECT 1 FROM integration_connections c WHERE c.organization_id=? AND c.provider='plaid' AND c.status='connected' AND c.data_promotion_status='approved') plaidActive`)
-    .bind(input.organizationId, input.dataMode === "demonstration" ? 1 : 0, input.organizationId).first<{ approvedCount: number; plaidActive: number }>() : null;
+    .bind(input.organizationId, input.dataMode === "demonstration" ? 1 : 0, input.organizationId).first<{ approvedCount: number; plaidActive: number }>(),
+  ]) : [null, null];
+  const activity = (result?.results ?? []).map(row => ({ ...row, categorized: Boolean(row.categorized), matched: Boolean(row.matched) }));
   return {
     sourceBoundary: statementCoverage && statementCoverage.approvedCount > 0
       ? statementCoverage.plaidActive

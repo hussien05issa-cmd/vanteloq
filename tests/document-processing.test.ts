@@ -187,3 +187,216 @@ test("cleanup claim serializes double clicks and cannot fall through into extrac
   assert.equal(readProcessing(String((await row())?.extracted_json)).processing?.lock, undefined);
   assert.equal(calls, 1);
 });
+
+
+test("a scan claim lost during provider cleanup preserves the original and newer claim", async t => {
+  const { base, database, row, bucket } = await setup(t);
+  const scanner = scannerFixture();
+  await processDocument({ ...base, transport: scanner.transport });
+  const original = await bucket.get("tenant-a/private.pdf");
+  let originalWrites = 0, originalDeletes = 0;
+  const watchedBucket = {
+    get: bucket.get.bind(bucket),
+    put: async (...args: Parameters<R2Bucket["put"]>) => { originalWrites++; return bucket.put(...args); },
+    delete: async (...args: Parameters<R2Bucket["delete"]>) => { originalDeletes++; return bucket.delete(...args); },
+  } as R2Bucket;
+  const transport = (async (url, init) => {
+    if (init?.method === "DELETE") {
+      await database.prepare("UPDATE workspace_documents SET extracted_json=json_set(extracted_json,'$.processing.lock','newer-claim','$.processing.leaseUntil',?) WHERE id='doc-a'")
+        .bind(Date.now() + 90_000).run();
+    }
+    return scanner.transport(url, init);
+  }) as typeof fetch;
+  assert.equal((await processDocument({ ...base, bucket: watchedBucket, transport })).state, "busy");
+  assert.equal(originalWrites, 0); assert.equal(originalDeletes, 0);
+  assert.equal((await bucket.get("tenant-a/private.pdf"))?.etag, original!.etag);
+  assert.equal((await bucket.get("tenant-a/private.pdf"))?.customMetadata?.securityState, "quarantined");
+  assert.equal(readProcessing(String((await row())?.extracted_json)).processing?.lock, "newer-claim");
+});
+
+test("a delayed scan cannot recreate an original deleted before its conditional write", async t => {
+  const { base, database, row, bucket } = await setup(t);
+  const scanner = scannerFixture();
+  await processDocument({ ...base, transport: scanner.transport });
+  const original = await bucket.get("tenant-a/private.pdf");
+  const racedBucket = {
+    get: bucket.get.bind(bucket), delete: bucket.delete.bind(bucket),
+    put: async (key: string, value: Parameters<R2Bucket["put"]>[1], options?: R2PutOptions) => {
+      assert.deepEqual(options?.onlyIf, { etagMatches: original!.etag });
+      // Models a newer request finishing and an authorized deletion completing
+      // while the older conditional R2 write is delayed.
+      await database.prepare("DELETE FROM workspace_documents WHERE id='doc-a'").run();
+      await bucket.delete(key);
+      return bucket.put(key, value, options);
+    },
+  } as R2Bucket;
+  assert.equal((await processDocument({ ...base, bucket: racedBucket, transport: scanner.transport })).state, "busy");
+  assert.equal(await bucket.get("tenant-a/private.pdf"), null);
+  assert.equal(await row(), null);
+});
+
+test("a delayed scan cannot overwrite a replaced original", async t => {
+  const { base, bucket } = await setup(t);
+  const scanner = scannerFixture();
+  await processDocument({ ...base, transport: scanner.transport });
+  const original = await bucket.get("tenant-a/private.pdf"), replacement = new Uint8Array([4, 5, 6]);
+  const racedBucket = {
+    get: bucket.get.bind(bucket), delete: bucket.delete.bind(bucket),
+    put: async (key: string, value: Parameters<R2Bucket["put"]>[1], options?: R2PutOptions) => {
+      assert.deepEqual(options?.onlyIf, { etagMatches: original!.etag });
+      await bucket.put(key, replacement.buffer, { customMetadata: { organizationId: "tenant-a", securityState: "quarantined" } });
+      return bucket.put(key, value, options);
+    },
+  } as R2Bucket;
+  assert.equal((await processDocument({ ...base, bucket: racedBucket, transport: scanner.transport })).state, "busy");
+  const remaining = await bucket.get("tenant-a/private.pdf");
+  assert.deepEqual(new Uint8Array(await new Response(remaining!.body).arrayBuffer()), replacement);
+  assert.equal(remaining!.customMetadata?.securityState, "quarantined");
+});
+
+test("a claim lost after the conditional original write never deletes retained data", async t => {
+  const { base, database, row, bucket } = await setup(t);
+  const scanner = scannerFixture();
+  await processDocument({ ...base, transport: scanner.transport });
+  const original = await bucket.get("tenant-a/private.pdf");
+  let deletes = 0;
+  const racedBucket = {
+    get: bucket.get.bind(bucket),
+    delete: async (key: string | string[]) => { deletes++; return bucket.delete(key); },
+    put: async (key: string, value: Parameters<R2Bucket["put"]>[1], options?: R2PutOptions) => {
+      const result = await bucket.put(key, value, options);
+      await database.prepare("UPDATE workspace_documents SET extracted_json=json_set(extracted_json,'$.processing.lock','newer-claim','$.processing.leaseUntil',?) WHERE id='doc-a'")
+        .bind(Date.now() + 90_000).run();
+      return result;
+    },
+  } as R2Bucket;
+  assert.equal((await processDocument({ ...base, bucket: racedBucket, transport: scanner.transport })).state, "busy");
+  assert.equal(deletes, 0);
+  assert.equal((await bucket.get("tenant-a/private.pdf"))?.etag, original!.etag);
+  const current = await row();
+  assert.equal(current?.security_state, "quarantined", "DB quarantine still blocks downloads despite the stale metadata write");
+  assert.equal(readProcessing(String(current?.extracted_json)).processing?.lock, "newer-claim");
+});
+
+test("scan promotion renews its claim using the time after slow provider cleanup", async t => {
+  const { base, row, bucket } = await setup(t);
+  const scanner = scannerFixture();
+  await processDocument({ ...base, transport: scanner.transport });
+  const realNow = Date.now;
+  let elapsed = 0, remainingLease = 0;
+  Date.now = () => realNow() + elapsed;
+  const watchedBucket = {
+    get: bucket.get.bind(bucket), delete: bucket.delete.bind(bucket),
+    put: async (key: string, value: Parameters<R2Bucket["put"]>[1], options?: R2PutOptions) => {
+      remainingLease = (readProcessing(String((await row())?.extracted_json)).processing?.leaseUntil ?? 0) - Date.now();
+      return bucket.put(key, value, options);
+    },
+  } as R2Bucket;
+  const transport = (async (url, init) => {
+    if (init?.method === "DELETE") elapsed = 91_000;
+    return scanner.transport(url, init);
+  }) as typeof fetch;
+  try {
+    assert.equal((await processDocument({ ...base, bucket: watchedBucket, transport })).state, "scanned");
+    assert.ok(remainingLease > 85_000, `Expected a fresh claim; only ${remainingLease} ms remained`);
+  } finally { Date.now = realNow; }
+});
+
+// Append these two tests to tests/document-processing.test.ts.
+// They reuse that file's setup, env, operation, scannerFixture and imports.
+
+test("a reading claim lost before persistence keeps the shared result for its successor", async t => {
+  const { base, database, row, bucket } = await setup(t);
+  const scanner = scannerFixture();
+  let starts = 0, deletes = 0, resultExists = true, stealOnPoll = true;
+  const transport = (async (url, init) => {
+    if (String(url).includes("blob.core.windows.net")) return scanner.transport(url, init);
+    if (init?.method === "POST") {
+      starts++;
+      return new Response(null, { status: 202, headers: { "operation-location": operation } });
+    }
+    assert.equal(String(url), operation);
+    if (init?.method === "DELETE") {
+      deletes++; resultExists = false;
+      return new Response(null, { status: 204 });
+    }
+    if (stealOnPoll) {
+      stealOnPoll = false;
+      await database.prepare("UPDATE workspace_documents SET extracted_json=json_set(extracted_json,'$.processing.lock','newer-reader','$.processing.leaseUntil',?) WHERE id='doc-a'")
+        .bind(Date.now() + 90_000).run();
+    }
+    return resultExists
+      ? Response.json({ status: "succeeded", analyzeResult: { modelId: "prebuilt-layout", content: "Fictional retained result", pages: [{}, {}, {}], tables: [] } })
+      : new Response(null, { status: 404 });
+  }) as typeof fetch;
+
+  assert.equal((await processDocument({ ...base, transport })).state, "scan_waiting");
+  assert.equal((await processDocument({ ...base, transport })).state, "scanned");
+  assert.equal((await processDocument({ ...base, transport })).state, "reading");
+  const original = await bucket.get("tenant-a/private.pdf");
+  const originalBytes = await new Response(original!.body).arrayBuffer();
+
+  assert.equal((await processDocument({ ...base, transport })).state, "busy");
+  const afterStale = readProcessing(String((await row())?.extracted_json));
+  assert.equal(afterStale.processing?.lock, "newer-reader");
+  assert.equal(afterStale.processing?.stage, "reading");
+  assert.equal(afterStale.processing?.operation, operation);
+  assert.equal(afterStale.extraction, undefined);
+  assert.equal(deletes, 0, "a stale request must not delete an unpersisted shared extraction result");
+  assert.equal(resultExists, true);
+
+  // Model expiry of the successor's processing lease without waiting in real time.
+  await database.prepare("UPDATE workspace_documents SET extracted_json=json_set(extracted_json,'$.processing.leaseUntil',0) WHERE id='doc-a'").run();
+  assert.equal((await processDocument({ ...base, transport })).state, "complete");
+  const saved = (await row())!, completed = readProcessing(String(saved.extracted_json));
+  assert.equal(completed.extraction?.text, "Fictional retained result");
+  assert.equal(completed.extraction?.pages, 3);
+  assert.equal(completed.processing?.operation, undefined);
+  assert.equal(completed.processing?.lock, undefined);
+  assert.equal(saved.status, "review_required");
+  assert.deepEqual([starts, deletes], [1, 1], "resume must use the existing analysis and delete it only after persistence");
+  const remaining = await bucket.get("tenant-a/private.pdf");
+  assert.equal(remaining?.etag, original!.etag);
+  assert.deepEqual(await new Response(remaining!.body).arrayBuffer(), originalBytes);
+});
+
+test("a scan claim lost during polling keeps the shared scan reference for its successor", async t => {
+  const { base, database, row, bucket } = await setup(t);
+  const scanner = scannerFixture();
+  assert.equal((await processDocument({ ...base, transport: scanner.transport })).state, "scan_waiting");
+  const original = await bucket.get("tenant-a/private.pdf");
+  const originalBytes = await new Response(original!.body).arrayBuffer();
+  const savedScan = readProcessing(String((await row())?.extracted_json)).processing?.azureScan;
+  let stealOnVerdict = true;
+  const transport = (async (url, init) => {
+    const response = await scanner.transport(url, init);
+    if (stealOnVerdict && new URL(String(url)).searchParams.get("comp") === "tags") {
+      stealOnVerdict = false;
+      await database.prepare("UPDATE workspace_documents SET extracted_json=json_set(extracted_json,'$.processing.lock','newer-scanner','$.processing.leaseUntil',?) WHERE id='doc-a'")
+        .bind(Date.now() + 90_000).run();
+    }
+    return response;
+  }) as typeof fetch;
+
+  assert.equal((await processDocument({ ...base, transport })).state, "busy");
+  const staleRow = (await row())!, afterStale = readProcessing(String(staleRow.extracted_json));
+  assert.equal(afterStale.processing?.lock, "newer-scanner");
+  assert.equal(afterStale.processing?.stage, "scan_waiting");
+  assert.deepEqual(afterStale.processing?.azureScan, savedScan);
+  assert.equal(staleRow.security_state, "quarantined");
+  assert.equal(scanner.blobs.size, 1);
+  assert.equal(scanner.calls.filter(call => call === "DELETE").length, 0, "lost ownership does not mean the shared scan is orphaned");
+  const unchanged = await bucket.get("tenant-a/private.pdf");
+  assert.equal(unchanged?.etag, original!.etag);
+  assert.equal(unchanged?.customMetadata?.securityState, "quarantined");
+  assert.deepEqual(await new Response(unchanged!.body).arrayBuffer(), originalBytes);
+
+  await database.prepare("UPDATE workspace_documents SET extracted_json=json_set(extracted_json,'$.processing.leaseUntil',0) WHERE id='doc-a'").run();
+  assert.equal((await processDocument({ ...base, transport: scanner.transport })).state, "scanned");
+  assert.equal(scanner.blobs.size, 0);
+  assert.equal(scanner.calls.filter(call => call === "PUT").length, 1, "resume must not upload a second scan copy");
+  assert.equal(scanner.calls.filter(call => call === "DELETE").length, 1);
+  assert.equal((await row())?.security_state, "clean");
+  assert.equal(readProcessing(String((await row())?.extracted_json)).processing?.lock, undefined);
+  assert.deepEqual(await new Response((await bucket.get("tenant-a/private.pdf"))!.body).arrayBuffer(), originalBytes);
+});
