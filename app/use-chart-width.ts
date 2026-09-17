@@ -7,7 +7,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 export function useChartWidth(initialWidth: number, minimumWidth = 520) {
   const [width, setWidth] = useState(initialWidth);
   const observer = useRef<ResizeObserver | null>(null);
-  const ref = useCallback((element: HTMLDivElement | null) => {
+  const elementRef = useRef<HTMLDivElement | null>(null);
+  const observe = useCallback((element: HTMLDivElement | null) => {
     observer.current?.disconnect();
     observer.current = null;
     if (!element) return;
@@ -22,6 +23,14 @@ export function useChartWidth(initialWidth: number, minimumWidth = 520) {
     });
     observer.current.observe(element);
   }, [minimumWidth]);
-  useEffect(() => () => observer.current?.disconnect(), []);
+  const ref = useCallback((element: HTMLDivElement | null) => {
+    elementRef.current = element;
+    observe(element);
+  }, [observe]);
+  useEffect(() => {
+    // Reattach after Strict Mode's effect cleanup as well as a minimum-width change.
+    observe(elementRef.current);
+    return () => observer.current?.disconnect();
+  }, [observe]);
   return { ref, width };
 }
