@@ -4,6 +4,7 @@ import { integrationSyncSchedules, internalAccess, memberships, users, workspace
 import { ApiError, readRequestBytes } from "../api";
 import { recordAudit } from "../audit";
 import { runDocumentCleanupTick } from "../document-cleanup-scheduler";
+import { cleanupExpiredRateLimits } from "../rate-limit-maintenance";
 import { internalAccessEnabled } from "../internal-access";
 import { resolveInternalEntitlements, resolveSubscriptionEntitlements, subscriptionSnapshot, requireFeatureEntitlement, requireTenantServiceAccess } from "../entitlements/engine";
 import { dispatchScheduledSync } from "./sync-dispatch";
@@ -122,8 +123,9 @@ export async function runScheduledSyncTick(request: Request, requestId: string) 
         nextAttemptAt: event.nextAttemptAt, authorization: "existing_document_request", newProcessingStarted: false } }),
   }).catch(() => ({ processed: 0, counts: { scheduler_error: 1 } }));
   const posPromise = runDuePosBatch(request, requestId, now).catch(() => ({ processed: 0, counts: { scheduler_error: 1 } }));
-  const [pos, documentCleanup] = await Promise.all([posPromise, cleanupPromise]);
-  return { accepted: true, ...pos, documentCleanup };
+  const [pos, documentCleanup, rateLimitCleanup] = await Promise.all([posPromise, cleanupPromise,
+    cleanupExpiredRateLimits(getD1(), now).catch(() => ({ schedulerError: true }))]);
+  return { accepted: true, ...pos, documentCleanup, rateLimitCleanup };
 }
 
 async function runDuePosBatch(request: Request, requestId: string, now: number) {

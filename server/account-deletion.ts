@@ -2,6 +2,7 @@ import { getD1, getRuntimeEnv } from "../db";
 import { ApiError, hashIdentifier } from "./api";
 import { eraseMarketingProfileForSubject } from "./communications";
 import { terminateStripeBilling } from "./billing/stripe";
+import { closeCheckoutBeforeDeletion } from "./billing/checkout";
 import { encryptIntegrationSecret, decryptIntegrationSecret } from "./integrations/lightspeed";
 import { assertDocumentIngestsDisposed } from "./document-ingest";
 
@@ -154,6 +155,16 @@ export async function advanceDeletion(job: DeletionJob, token: string) {
         const result = JSON.parse(job.result_json) as Record<string, unknown>;
         if (!result.billingCanceled) {
           await renewLease();
+          // A checkout may finish after the original deletion plan was prepared.
+          // Only the verified webhook's current organization billing record can update that plan.
+          const billing = await db.prepare("SELECT stripe_subscription_id,stripe_customer_id FROM tenant_subscriptions WHERE organization_id=?")
+            .bind(job.organization_id).first<{stripe_subscription_id:string|null;stripe_customer_id:string|null}>();
+          if (billing?.stripe_subscription_id && (billing.stripe_subscription_id !== plan.subscriptionId || billing.stripe_customer_id !== plan.customerId)) {
+            plan.subscriptionId = billing.stripe_subscription_id;
+            plan.customerId = billing.stripe_customer_id;
+            await db.prepare("UPDATE account_deletion_jobs SET plan_encrypted=? WHERE id=? AND stage='confirmed'").bind(await sealDeletionPlan(plan),job.id).run();
+          }
+          await closeCheckoutBeforeDeletion(job.organization_id, plan.subscriptionId);
           await terminateStripeBilling({ subscriptionId: plan.subscriptionId, customerId: plan.customerId });
           await renewLease();
           result.billingCanceled = true;

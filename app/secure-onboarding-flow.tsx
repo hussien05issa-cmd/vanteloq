@@ -142,7 +142,6 @@ export default function SecureOnboardingFlow({
   useEffect(() => { if (step !== previousStep.current) { panelRef.current?.querySelector<HTMLElement>(".setup-step h2")?.focus(); previousStep.current = step; } }, [step]);
   const [form, setForm] = useState<Setup>(() => initialSetup(accountName));
   const [hours, setHours] = useState<Hour[]>(initialHours);
-  const [logoFile, setLogoFile] = useState<File | null>(null);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [legalAccepted, setLegalAccepted] = useState(false);
@@ -270,9 +269,9 @@ export default function SecureOnboardingFlow({
       );
     if (step === 3 && addressProvider === "ready" && !form.addressVerificationToken)
       return setError("Select a complete business address verified by Canada Post AddressComplete.");
-    if (step === 6 && form.sourceMode === "live" && !form.selectedPos)
+    if (step === 5 && form.sourceMode === "live" && !form.selectedPos)
       return setError("Select the POS system you plan to connect.");
-    setStep((current) => Math.min(7, current + 1));
+    setStep((current) => Math.min(6, current + 1));
   };
 
   const submit = async () => {
@@ -298,22 +297,6 @@ export default function SecureOnboardingFlow({
       const data: unknown = await response.json();
       if (!response.ok)
         return setError(messageFrom(data, "Unable to create the workspace."));
-      if (logoFile) {
-        try {
-          await apiFetch("/api/v1/governance", {
-            headers: { Accept: "application/json" },
-          });
-          const logo = new FormData();
-          logo.set("logo", logoFile);
-          await apiFetch("/api/v1/organization-logo", {
-            method: "POST",
-            body: logo,
-          });
-        } catch {
-          // The workspace is valid even if the optional brand upload is interrupted.
-          // Settings exposes the same verified upload flow for a retry.
-        }
-      }
       complete(form.businessName, form.ownerName);
     } catch {
       setError(
@@ -346,10 +329,9 @@ export default function SecureOnboardingFlow({
             "Verified owner",
             "Business profile",
             "Location & hours",
-            "Brand identity",
             "Security preferences",
-            "Data source plan",
-            "Review & launch",
+            "Connect your data",
+            "Review & continue",
           ].map((label, index) => (
             <li
               className={
@@ -366,10 +348,9 @@ export default function SecureOnboardingFlow({
                       "Trusted account identity",
                       "Identity & reporting",
                       "Operating context",
-                      "Optional company logo",
-                      "Provider boundaries",
+                      "Account preferences",
                       "POS or CSV",
-                      "Create protected workspace",
+                      "Confirm your details",
                     ][index]
                   }
                 </small>
@@ -378,17 +359,17 @@ export default function SecureOnboardingFlow({
           ))}
         </ol>
         <small className="setup-security">
-          Trusted identity · Verified ownership · Organization-separated records
+          Verified sign-in · Private business records
         </small>
       </aside>
       <section ref={panelRef} className="setup-panel">
         <FormLegend/>
-        <div className="setup-progress" role="progressbar" aria-label="Workspace setup" aria-valuemin={0} aria-valuemax={7} aria-valuenow={step} aria-valuetext={`Step ${step} of 7`}>
-          <span>STEP {step} OF 7</span>
+        <div className="setup-progress" role="progressbar" aria-label="Workspace setup" aria-valuemin={0} aria-valuemax={6} aria-valuenow={step} aria-valuetext={`Step ${step} of 6`}>
+          <span>STEP {step} OF 6</span>
           <i>
-            <b style={{ width: `${Math.round((step / 7) * 100)}%` }} />
+            <b style={{ width: `${Math.round((step / 6) * 100)}%` }} />
           </i>
-          <em>{Math.round((step / 7) * 100)}%</em>
+          <em>{Math.round((step / 6) * 100)}%</em>
         </div>
         {step === 1 && (
           <Step
@@ -634,13 +615,13 @@ export default function SecureOnboardingFlow({
                 autoComplete="postal-code"
               />
               <Field
-                label="Timezone (IANA)" hint="For example, America/Edmonton. Reports follow this timezone."
+                label="Reporting Timezone" hint="For example, America/Edmonton. Reports follow this timezone."
                 value={form.timezone}
                 onChange={(value) => set("timezone", value)}
                 placeholder="Europe/London"
               />
               <Field
-                label="Currency (ISO)" hint="Three-letter currency code, such as CAD or USD." validate={value => /^[A-Z]{3}$/.test(value) ? "" : "Enter a three-letter currency code, such as CAD."}
+                label="Currency" hint="Three-letter currency code, such as CAD or USD." validate={value => /^[A-Z]{3}$/.test(value) ? "" : "Enter a three-letter currency code, such as CAD."}
                 value={form.currency}
                 onChange={(value) =>
                   set("currency", value.toUpperCase().slice(0, 3))
@@ -678,7 +659,7 @@ export default function SecureOnboardingFlow({
                 placeholder="Optional"
               />
             </div>
-            {addressProvider === "manual" && <p className="address-note">Canada Post AddressComplete is not activated yet. Manual entry remains available and is stored as entered, not presented as provider verified.</p>}
+            {addressProvider === "manual" && <p className="address-note">Enter your address manually and check it for accuracy before continuing.</p>}
             {addressProvider === "ready" && <p className="address-note">Selecting a result verifies the premise and fills the fields above. Editing any verified address field clears the verification and requires another selection.</p>}
             <details className="hours-editor">
               <summary><b>Business Hours</b><span>Review the default schedule.</span></summary>
@@ -742,45 +723,6 @@ export default function SecureOnboardingFlow({
         )}
         {step === 4 && (
           <Step
-            eyebrow="BRAND IDENTITY"
-            title="Workspace Logo"
-            copy="Add your business logo now, or do this later in Settings."
-          >
-            <label className="drop-zone">
-              <input
-                type="file"
-                accept="image/png,image/jpeg,image/webp"
-                onChange={(event) => {
-                  const file = event.target.files?.[0] || null;
-                  if (file && file.size > 2 * 1024 * 1024) {
-                    setError(
-                      "Choose a PNG, JPEG or WEBP logo no larger than 2 MB.",
-                    );
-                    return;
-                  }
-                  setError("");
-                  setLogoFile(file);
-                }}
-              />
-              <b>
-                {logoFile
-                  ? logoFile.name
-                  : "Choose an optional organization logo"}
-              </b>
-              <span>
-                PNG, JPEG or WEBP · maximum 2 MB · can always be changed in
-                Settings
-              </span>
-            </label>
-            <p className="address-note">
-              The server verifies the file signature and stores the logo inside
-              this organization’s isolated file namespace. SVG remains disabled
-              until a sanitizer is configured.
-            </p>
-          </Step>
-        )}
-        {step === 5 && (
-          <Step
             eyebrow="SECURITY & NOTIFICATIONS"
             title="Security and Notifications"
             copy="Your sign-in protects your account. Workspace roles control who can view records and take action."
@@ -788,11 +730,10 @@ export default function SecureOnboardingFlow({
             <div className="verified-identity">
               <span>ID</span>
               <div>
-                <b>Verified hosted authentication</b>
+                <b>Secure Sign-In</b>
                 <small>
-                  Password changes, MFA enrollment, passkeys and recovery stay
-                  with the identity provider. Vanteloq never stores those
-                  secrets.
+                  Your account uses verified sign-in and an authenticator code.
+                  Manage your security preferences in Settings.
                 </small>
               </div>
             </div>
@@ -807,20 +748,18 @@ export default function SecureOnboardingFlow({
               <span>
                 <b>Account and Workspace Notifications <span className="field-optional">(Optional)</span></b>
                 <small>
-                  Store this owner’s preference for security, integration, task
-                  and workspace notifications. External delivery remains
-                  disabled until a notification provider is connected.
+                  Save your preference for optional workspace updates. Essential
+                  account and security messages are sent separately.
                 </small>
               </span>
             </label>
             <p className="auth-note">
-              Sensitive financial, export, employee-access and integration
-              actions require server authorization. Workplace PINs are created
-              later per employee and cannot replace remote authentication.
+              You control which records your team can view and which actions
+              they can take. Manage team permissions in Settings.
             </p>
           </Step>
         )}
-        {step === 6 && (
+        {step === 5 && (
           <Step
             eyebrow="DATA SOURCES"
             title="Connect Your Data"
@@ -832,20 +771,20 @@ export default function SecureOnboardingFlow({
                   [
                     "live",
                     "⇄",
-                    "Prepare a live POS connection",
-                    "Select a provider now; authorization remains disabled until production credentials are configured.",
+                    "Choose Your POS",
+                    "Choose your provider. Connect an available integration from your workspace after setup.",
                   ],
                   [
                     "csv",
                     "↑",
                     "Start with CSV",
-                    "Import mapping and validation is the next data-ingestion milestone.",
+                    "Upload a CSV, match its columns and review the results before importing.",
                   ],
                   [
                     "connect_later",
                     "○",
                     "Continue empty",
-                    "Use the workspace shell without sample business data.",
+                    "Start with an empty workspace and add your records when you are ready.",
                   ],
                 ] as const
               ).map(([id, icon, title, copy]) => (
@@ -896,7 +835,7 @@ export default function SecureOnboardingFlow({
             )}
           </Step>
         )}
-        {step === 7 && (
+        {step === 6 && (
           <Step
             eyebrow="REVIEW"
             title="Review Your Workspace"
@@ -907,9 +846,9 @@ export default function SecureOnboardingFlow({
                 <small>OWNER</small>
                 <b>{form.ownerName}</b>
                 <span>
-                  Verified hosted identity
+                  Verified account
                   <br />
-                  Protected owner permission
+                  Workspace owner
                 </span>
               </article>
               <article>
@@ -920,7 +859,7 @@ export default function SecureOnboardingFlow({
                   <br />
                   {form.city}, {form.province}, {form.country}
                   <br />
-                  {logoFile ? "Custom logo selected" : "Initials fallback"}
+                  Add your logo in Settings after activation.
                 </span>
               </article>
               <article>
@@ -935,17 +874,17 @@ export default function SecureOnboardingFlow({
                 <span>
                   No demo data
                   <br />
-                  No browser-stored secret
+                  Review imports before they update reports
                 </span>
               </article>
             </div>
             <div className="launch-note">
               <i>OK</i>
               <span>
-                <b>Ready for a clean launch</b>
+                <b>Ready to Continue</b>
                 <small>
-                  Ownership is derived from the authenticated account and
-                  recorded in the audit trail.
+                  Create your workspace, then activate your chosen plan.
+                  Your reports will use the records you connect or import.
                 </small>
               </span>
             </div>
@@ -974,7 +913,7 @@ export default function SecureOnboardingFlow({
           >
             {step === 1 ? "Sign out" : "← Back"}
           </button>
-          {step < 7 ? (
+          {step < 6 ? (
             <button className="continue" onClick={next}>
               Continue →
             </button>

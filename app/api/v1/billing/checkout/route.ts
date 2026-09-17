@@ -3,7 +3,7 @@ import { getDb } from "../../../../../db";
 import { tenantSubscriptions } from "../../../../../db/schema";
 import { requireBillingAccess } from "../../../../../server/authorization";
 import { enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameOrigin, ApiError } from "../../../../../server/api";
-import { createStripeCheckout } from "../../../../../server/billing/stripe";
+import { startStripeCheckout } from "../../../../../server/billing/checkout";
 import { isPlanKey } from "../../../../../server/entitlements/catalog";
 import { requirePermission } from "../../../../../server/permissions";
 import { getTenantEntitlements } from "../../../../../server/entitlements/engine";
@@ -28,7 +28,8 @@ export async function POST(request: Request) {
       throw new ApiError(409, "BILLING_PORTAL_REQUIRED", "Use Manage billing to update or restore your existing subscription.");
     }
     const origin = new URL(request.url).origin;
-    return jsonResponse(await createStripeCheckout({
+    return jsonResponse(await startStripeCheckout({
+      userId: context.userId,
       organizationId: context.organizationId,
       email: context.identity.email,
       plan,
