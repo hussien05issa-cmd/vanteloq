@@ -8,6 +8,7 @@ import "./dashboard-chart-polish.css";
 import { useChartWidth } from "./use-chart-width";
 import { temporalPositions, temporalLabelIndices, observationSegments } from "../domain/chart-geometry";
 import { financialChartDomain } from "../domain/financial-chart-domain";
+import { summarizeRecordedTrend } from "../domain/recorded-trend-summary";
 
 type TrendPoint = { date: string; netSalesCents: number; grossProfitCents: number | null; transactionCount?: number };
 type IntradayPoint = { hour: number; label: string; netSalesCents: number; grossProfitCents: number | null; transactionCount: number };
@@ -68,7 +69,7 @@ function FinancialSeriesChart({ data, currency, title, intraday = false, compari
   const selectedIndex = matchingIndex < 0 ? data.length - 1 : matchingIndex;
   const active = data[selectedIndex];
   if (!active) return <ChartEmpty intraday={intraday}/>;
-  const plotHeight = chartWidth < 480 ? 230 : 276, left = chartWidth < 480 ? 52 : 66, top = 18, plotWidth = chartWidth - left - 18;
+  const plotHeight = chartWidth < 480 ? 238 : 300, left = chartWidth < 480 ? 52 : 66, top = 18, plotWidth = chartWidth - left - 18;
   const domain = financialChartDomain(data.flatMap((point) => [point.netSalesCents, ...(point.grossProfitCents == null ? [] : [point.grossProfitCents]), ...(point.comparisonCents == null ? [] : [point.comparisonCents])]));
   const times = data.map(point => intraday ? Number(point.key) : Date.parse(`${point.key}T00:00:00Z`));
   const positions = temporalPositions(times, plotWidth);
@@ -84,7 +85,6 @@ function FinancialSeriesChart({ data, currency, title, intraday = false, compari
   const visibleSeries = series === "profit" && !profitAvailable ? "sales" : series;
   return <div className={`workspace-series-chart commerce-chart financial-explorer series-${visibleSeries}`}>
     <div className="financial-explorer-toolbar">
-      <span>Inspect the Recorded Values</span>
       <div className="financial-series-switch" role="group" aria-label="Visible chart series">
         {([["both", "Both"], ["sales", "Net Sales"], ["profit", "Gross Profit"]] as const).map(([value,label]) => <button key={value} type="button" aria-pressed={visibleSeries === value} disabled={value === "profit" && !profitAvailable} onClick={() => setSeries(value)}>{label}</button>)}
       </div>
@@ -117,7 +117,7 @@ function FinancialSeriesChart({ data, currency, title, intraday = false, compari
             const zoneEnd = index === data.length - 1 ? plotWidth : (x + positions[index + 1]) / 2;
             return <g key={point.key}>
               {labels.has(index) && <text className="trend-axis-label" x={x} y={plotHeight + 25} textAnchor={index === 0 ? "start" : index === data.length - 1 ? "end" : "middle"}>{point.shortLabel}</text>}
-              <rect className="chart-hit-zone" x={zoneStart} y="0" width={Math.max(0, zoneEnd - zoneStart)} height={plotHeight} onPointerEnter={() => setSelectedKey(point.key)} onClick={() => setSelectedKey(point.key)}/>
+              <rect className="chart-hit-zone" x={zoneStart} y="0" width={Math.max(0, zoneEnd - zoneStart)} height={plotHeight} onPointerMove={() => setSelectedKey(point.key)} onClick={() => setSelectedKey(point.key)}/>
             </g>;
           })}
         </g>
@@ -142,8 +142,17 @@ export function BusinessTrendChart({ data, currency }: { data: TrendPoint[]; cur
   const latest = points.at(-1);
   const cutoff = latest && range !== "all" ? Date.parse(`${latest.key}T00:00:00Z`) - (range - 1) * 86_400_000 : -Infinity;
   const shown = points.filter(point => Date.parse(`${point.key}T00:00:00Z`) >= cutoff);
+  const summary = summarizeRecordedTrend(shown);
+  const peakLabel = shown.find(point => point.key === summary.peakDay?.date)?.label;
   return <div className="business-performance-explorer">
-    {!!points.length && <div className="performance-range-toolbar"><p>{shown[0]?.label} to {shown.at(-1)?.label}<span>{quantityLabel(shown.length,"recorded day")} · Gaps indicate missing records</span></p><div className="financial-series-switch" role="group" aria-label="Chart date range">{([30,90,"all"] as const).map(value => <button key={value} type="button" aria-pressed={range === value} onClick={() => setRange(value)}>{value === "all" ? "Available Records" : `${value} Days`}</button>)}</div></div>}
+    {!!points.length && <>
+      <div className="performance-range-toolbar"><p>{shown[0]?.label} to {shown.at(-1)?.label}<span>{quantityLabel(shown.length,"recorded day")} · Missing dates stay blank</span></p><div className="financial-series-switch" role="group" aria-label="Chart date range">{([30,90,"all"] as const).map(value => <button key={value} type="button" aria-pressed={range === value} onClick={() => setRange(value)}>{value === "all" ? "Available Records" : `${value} Days`}</button>)}</div></div>
+      <dl className="performance-summary" aria-label="Selected recorded period summary">
+        <div className="performance-summary-primary"><dt>Recorded Net Sales</dt><dd data-negative={summary.netSalesCents !== null && summary.netSalesCents < 0 || undefined}>{summary.netSalesCents === null ? "Not available" : fullMoney(summary.netSalesCents,currency)}</dd><small>{currency} · Selected records, after returns</small></div>
+        <div><dt>Average per Recorded Day</dt><dd data-negative={summary.averageSalesPerRecordedDayCents !== null && summary.averageSalesPerRecordedDayCents < 0 || undefined}>{summary.averageSalesPerRecordedDayCents === null ? "Not available" : fullMoney(summary.averageSalesPerRecordedDayCents,currency)}</dd><small>Across {quantityLabel(summary.recordedDayCount,"recorded day")}</small></div>
+        <div><dt>Peak Recorded Day</dt><dd data-negative={summary.peakDay !== null && summary.peakDay.netSalesCents < 0 || undefined}>{summary.peakDay === null ? "Not available" : fullMoney(summary.peakDay.netSalesCents,currency)}</dd><small>{peakLabel ?? "Not available"}</small></div>
+      </dl>
+    </>}
     <FinancialSeriesChart data={shown} currency={currency} title="Daily net sales and gross profit"/>
   </div>;
 }

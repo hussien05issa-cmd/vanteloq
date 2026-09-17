@@ -4,6 +4,7 @@ import { parseDailyCsv } from "../domain/daily-summary-csv";
 import DailyImportReviewPanel from "./daily-import-review";
 import type { DailyImportReview } from "../server/daily-metric-import";
 import WorkspaceSkeleton from "./workspace-skeleton";
+import DashboardGreeting from "./dashboard-greeting";
 import { PRODUCT_RELEASE_NAME } from "../domain/product-release";
 import { documentEmailAccessKey } from "./document-email-client";
 import { isAwaitingSalesRecords } from "../domain/intraday-sales";
@@ -1347,6 +1348,7 @@ function Workspace({
   if (view === "Dashboard")
     return (
       <Overview
+        accountName={accountName}
         data={data}
         currency={currency}
         navigate={navigate}
@@ -1479,13 +1481,6 @@ function Workspace({
       createTask={createTask}
     />
   );
-}
-
-function formatTime(value: string) {
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime())
-    ? value.slice(11, 16)
-    : new Intl.DateTimeFormat("en-CA", { hour: "numeric", minute: "2-digit" }).format(parsed);
 }
 
 function formatRelativeSync(value: string) {
@@ -1630,32 +1625,16 @@ function LiveSalesPanel({ data, currency, paymentRange, setPaymentRange, compact
   );
 }
 
-function FirstInsightPath({ data, navigate }: { data: CommandCentre; navigate: (view: View) => void }) {
-  const records = data.source.rowCount > 0;
-  return <details className="first-insight-path" open={!records}><summary><span><strong>Your path to a useful insight</strong><small>{records ? data.source.verifiedDays + " days with verified records · Review coverage before comparing" : "Start with a source, then check its records"}</small></span><span>Setup & coverage</span></summary><div className="first-insight-steps">
-    <article><span>{records ? "Records received" : "Start here"}</span><h3>1. Connect your source</h3><p>{data.liveSource.lastSuccessfulSyncAt ? "Last successful sync: " + new Date(data.liveSource.lastSuccessfulSyncAt).toLocaleDateString("en-CA") + ". A successful sync does not establish complete coverage." : "Authorize a supported account or import a structured CSV. Map each source to the correct location."}</p><button onClick={() => navigate("Integrations")}>Review connections →</button></article>
-    <article><span>{data.ready ? "Review available" : "Evidence needed"}</span><h3>2. Check the coverage</h3><p>{records ? "Latest approved date: " + (data.source.latestBusinessDate ?? "unavailable") + ". " : ""}{data.dataQuality.missingDimensions.length ? "Missing inputs: " + data.dataQuality.missingDimensions.join(", ") + "." : "Check dates, source totals and product costs before relying on a comparison."} A missing day may be a closure or an incomplete import.</p><button onClick={() => navigate("Reports")}>Inspect reports →</button></article>
-    <article><span>{data.insights.length ? "Findings available" : "After source review"}</span><h3>3. Investigate and act</h3><p>Inspect the evidence, ask Vanteloq AI and create a review task. Record the decision and check the outcome when new data arrives.</p><button onClick={() => navigate("Action Centre")}>Open the Action Centre →</button></article>
-  </div></details>;
-}
-
-export function Overview({ data, currency, navigate, createTask, paymentRange, setPaymentRange }: { data: CommandCentre; currency: string; navigate: (view: View) => void; createTask: (seed: TaskSeed) => void; paymentRange: PaymentRange; setPaymentRange: (range: PaymentRange) => void }) {
+export function Overview({ accountName = "", data, currency, navigate, createTask, paymentRange, setPaymentRange }: { accountName?: string; data: CommandCentre; currency: string; navigate: (view: View) => void; createTask: (seed: TaskSeed) => void; paymentRange: PaymentRange; setPaymentRange: (range: PaymentRange) => void }) {
   const hasCurrentDayData = data.today.transactionCount > 0 || data.today.refundsCents > 0;
-  if ((!data.ready || !data.current) && !hasCurrentDayData) return <><FirstInsightPath data={data} navigate={navigate}/><EmptyCommandCentre navigate={navigate} /></>;
+  if ((!data.ready || !data.current) && !hasCurrentDayData) return <><EmptyCommandCentre navigate={navigate} /></>;
   const sourceName = data.liveSource.accountName || (data.liveSource.provider ? providerLabel(data.liveSource.provider) : "the connected source");
   const showRecordedPeriod = isAwaitingSalesRecords(data.today) && Boolean(data.current);
   return (
     <div className="content command-page">
-      <FirstInsightPath data={data} navigate={navigate}/>
-      <section className="live-sales-heading">
-        <div>
-          <p>LATEST VERIFIED SALES</p>
-          <h2>{showRecordedPeriod ? "Your Recorded Sales at a Glance" : "Your Latest Sales Performance"}</h2>
-          <span>{data.today.lastSaleAt ? `${data.today.sourceGranularity === "intraday" ? "Through" : "Daily summary updated"} ${formatBusinessDate(data.today.businessDate)} at ${formatTime(data.today.lastSaleAt)} · ${sourceName}` : `No verified sale has been received for ${data.today.businessDate} from ${sourceName}.`}</span>
-        </div>
-        <span className={`live-sync-state ${data.source.freshness}`}><i />{data.liveSource.lastSuccessfulSyncAt ? `Synced ${formatRelativeSync(data.liveSource.lastSuccessfulSyncAt)}` : "Waiting for first sync"}</span>
-      </section>
-      {(isAwaitingSalesRecords(data.today) || data.source.freshness === "stale") && <section className="sales-evidence-notice" aria-label="Sales data coverage"><div><strong>{isAwaitingSalesRecords(data.today) ? "Today’s sales are not yet verified" : "Your sales records need a refresh"}</strong><p>{data.source.latestBusinessDate ? `The latest approved daily record is ${formatBusinessDate(data.source.latestBusinessDate)}. ` : "No approved daily records are available. "}A successful connection sync does not confirm complete sales coverage. Review source status and approved imports before using these figures for a decision.</p></div><button type="button" onClick={() => navigate("Integrations")}>Review data connections →</button></section>}
+      
+      <DashboardGreeting accountName={accountName} sourceName={sourceName} latestBusinessDate={data.source.latestBusinessDate}
+        lastSuccessfulSyncAt={data.liveSource.lastSuccessfulSyncAt} needsAttention={Boolean(data.liveSource.lastErrorCode)} onConnections={() => navigate("Integrations")}/>
       {showRecordedPeriod && data.current ? <section className="recorded-period-overview" aria-label="Latest recorded 30-day window">
         <div className="recorded-period-heading"><div><p className="card-kicker">LATEST RECORDED 30-DAY WINDOW</p><h3>{data.source.latestBusinessDate ? `Through ${formatBusinessDate(data.source.latestBusinessDate)}` : "Recorded Period"}</h3></div><span>Historical totals, not today’s sales</span></div>
         <div className="recorded-period-metrics">
@@ -3884,7 +3863,7 @@ export function BusinessBrief({
   createTask: (seed: TaskSeed) => void;
 }) {
   if (!data.ready || !data.current)
-    return <><FirstInsightPath data={data} navigate={navigate}/><EmptyCommandCentre navigate={navigate} /></>;
+    return <><EmptyCommandCentre navigate={navigate} /></>;
   const current = data.current;
   const verified = (metricId: string) => data.metrics[metricId]?.actuality === "actual";
   const contributionAvailable = verified("contribution_after_labour");
@@ -4298,7 +4277,7 @@ function ModuleWorkspace({
   navigate: (view: View) => void;
   createTask: (seed: TaskSeed) => void;
 }) {
-  if (!definition) return <><FirstInsightPath data={data} navigate={navigate}/><EmptyCommandCentre navigate={navigate} /></>;
+  if (!definition) return <><EmptyCommandCentre navigate={navigate} /></>;
   const immediate: Partial<Record<View, string | null>> = {
     Sales: data.current?.netSalesCents == null ? null : money(data.current.netSalesCents, currency),
     Profit: data.current?.grossProfitCents == null ? null : money(data.current.grossProfitCents, currency),
