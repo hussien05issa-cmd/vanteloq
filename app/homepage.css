@@ -91,7 +91,7 @@
 .public-nav a.public-social-link:hover { border-color: #c8d3e0; background: #f1f6fc; }
 .public-nav a.social-instagram:hover { color: #b52a63; }
 .public-nav a.social-youtube:hover { color: #c90000; }
-.public-nav a.social-tiktok:hover { color: #111827; }
+.public-nav a.social-tiktok:is(:hover, :focus-visible) { color: #fe2c55; }
 .public-nav a.social-facebook:hover { color: #0866ff; }
 
 .home-hero,
