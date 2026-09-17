@@ -1637,27 +1637,37 @@ function FirstInsightPath({ data, navigate }: { data: CommandCentre; navigate: (
   </div></details>;
 }
 
-function Overview({ data, currency, navigate, createTask, paymentRange, setPaymentRange }: { data: CommandCentre; currency: string; navigate: (view: View) => void; createTask: (seed: TaskSeed) => void; paymentRange: PaymentRange; setPaymentRange: (range: PaymentRange) => void }) {
+export function Overview({ data, currency, navigate, createTask, paymentRange, setPaymentRange }: { data: CommandCentre; currency: string; navigate: (view: View) => void; createTask: (seed: TaskSeed) => void; paymentRange: PaymentRange; setPaymentRange: (range: PaymentRange) => void }) {
   const hasCurrentDayData = data.today.transactionCount > 0 || data.today.refundsCents > 0;
   if ((!data.ready || !data.current) && !hasCurrentDayData) return <><FirstInsightPath data={data} navigate={navigate}/><EmptyCommandCentre navigate={navigate} /></>;
   const sourceName = data.liveSource.accountName || (data.liveSource.provider ? providerLabel(data.liveSource.provider) : "the connected source");
+  const showRecordedPeriod = isAwaitingSalesRecords(data.today) && Boolean(data.current);
   return (
     <div className="content command-page">
       <FirstInsightPath data={data} navigate={navigate}/>
       <section className="live-sales-heading">
         <div>
           <p>LATEST VERIFIED SALES</p>
-          <h2>Your latest verified business performance.</h2>
+          <h2>{showRecordedPeriod ? "Your Recorded Sales at a Glance" : "Your Latest Sales Performance"}</h2>
           <span>{data.today.lastSaleAt ? `${data.today.sourceGranularity === "intraday" ? "Through" : "Daily summary updated"} ${formatBusinessDate(data.today.businessDate)} at ${formatTime(data.today.lastSaleAt)} · ${sourceName}` : `No verified sale has been received for ${data.today.businessDate} from ${sourceName}.`}</span>
         </div>
         <span className={`live-sync-state ${data.source.freshness}`}><i />{data.liveSource.lastSuccessfulSyncAt ? `Synced ${formatRelativeSync(data.liveSource.lastSuccessfulSyncAt)}` : "Waiting for first sync"}</span>
       </section>
       {(isAwaitingSalesRecords(data.today) || data.source.freshness === "stale") && <section className="sales-evidence-notice" aria-label="Sales data coverage"><div><strong>{isAwaitingSalesRecords(data.today) ? "Today’s sales are not yet verified" : "Your sales records need a refresh"}</strong><p>{data.source.latestBusinessDate ? `The latest approved daily record is ${formatBusinessDate(data.source.latestBusinessDate)}. ` : "No approved daily records are available. "}A successful connection sync does not confirm complete sales coverage. Review source status and approved imports before using these figures for a decision.</p></div><button type="button" onClick={() => navigate("Integrations")}>Review data connections →</button></section>}
-      <LiveSalesPanel data={data} currency={currency} paymentRange={paymentRange} setPaymentRange={setPaymentRange} />
+      {showRecordedPeriod && data.current ? <section className="recorded-period-overview" aria-label="Latest recorded 30-day window">
+        <div className="recorded-period-heading"><div><p className="card-kicker">LATEST RECORDED 30-DAY WINDOW</p><h3>{data.source.latestBusinessDate ? `Through ${formatBusinessDate(data.source.latestBusinessDate)}` : "Recorded Period"}</h3></div><span>Historical totals, not today’s sales</span></div>
+        <div className="recorded-period-metrics">
+          <Metric label="Net Sales" value={money(data.current.netSalesCents,currency)} delta="Recorded period" detail="Excludes sales tax" tone="indigo"/>
+          <Metric label="Gross Profit" value={data.metrics.gross_profit?.actuality === "actual" ? money(data.current.grossProfitCents,currency) : "Not available"} delta="Recorded period" detail={data.metrics.gross_profit?.actuality === "actual" ? "Net sales less product cost" : "Verified product costs required"} tone="emerald"/>
+          <Metric label="Average Transaction" value={data.current.averageTransactionCents == null ? "Not available" : money(data.current.averageTransactionCents,currency,2)} delta="Recorded period" detail="Net sales ÷ completed transactions" tone="indigo"/>
+          <Metric label="Transactions" value={data.current.transactionCount == null ? "Not available" : data.current.transactionCount.toLocaleString()} delta="Recorded period" detail="Completed transactions in this window" tone="cyan"/>
+        </div>
+      </section> : <LiveSalesPanel data={data} currency={currency} paymentRange={paymentRange} setPaymentRange={setPaymentRange} />}
       <section className="card period-trend-card">
         <div className="card-head"><div><p className="card-kicker">PERIOD TREND</p><h3>Net sales and gross profit</h3></div><span className="verified-tag">{data.trend.length} verified days</span></div>
         <BusinessTrendChart data={data.trend} currency={currency} />
       </section>
+      {showRecordedPeriod && <details className="dashboard-current-day-details"><summary>Today’s Status and Sales Details<span>View coverage, payment mix and outlook</span></summary><LiveSalesPanel data={data} currency={currency} paymentRange={paymentRange} setPaymentRange={setPaymentRange} compact/></details>}
       {data.insights[0] && (
         <section className="owner-priority-strip">
           <div><p>TODAY&apos;S PRIORITY</p><h3>{data.insights[0].title}</h3><span>{data.insights[0].recommendedAction}</span></div>

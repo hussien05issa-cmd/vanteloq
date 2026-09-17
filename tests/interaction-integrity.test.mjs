@@ -38,7 +38,7 @@ test("BookLoQ connects Plaid directly with versioned consent and guarded financi
     readFile(new URL("../app/api/v1/purchasing/route.ts", import.meta.url), "utf8"),
   ]);
   assert.match(workspace, /<PlaidLinkButton[\s\S]{0,500}returnView="BookLoQ"/);
-  assert.match(workspace, /setSection\("Banking"\)\}>Connect a bank/);
+  assert.match(workspace, /setSection\("Banking"\)\}>Review Banking/);
   assert.match(workspace, /The authorization checkbox, exact data categories, purposes, retention choices/);
   assert.match(workspace, /Transactions remain unposted until an authorized person categorizes and reconciles them/);
   assert.match(workspace, /action: "approve_data", connectionId: stagedConnection\.id, confirmed: true/);
@@ -92,7 +92,7 @@ test("Lightspeed Retail X-Series and R-Series are distinct, actionable connectio
   assert.match(catalog, /id: "lightspeed-r"[\s\S]*name: "Lightspeed Retail R-Series"/);
   assert.match(app, /integrations\/\$\{provider\}\/authorize/);
   assert.match(app, /provider === "lightspeed-r" \? "shops" : provider === "clover" \|\| provider === "square" \|\| provider === "shopify" \|\| provider === "shopify-pos" \? "locations" : "outlets"/);
-  assert.match(app, /providerActions\[integrationActionKey\(provider\.id, connection\.id\)\]/);
+  assert.match(app, /const connectionKey = integrationActionKey\(provider\.id, connection\.id\);[\s\S]{0,100}providerActions\[connectionKey\]/);
   assert.match(app, /integrationActionKey\(provider, connectionId\)/);
   assert.match(app, /delete next\[actionKey\]/);
   assert.doesNotMatch(app, /disabled=\{[^}]*Boolean\(providerActions\)[^}]*\}/);
@@ -593,9 +593,15 @@ test("paid API access is server-enforced with narrow billing and privacy excepti
     "billing/checkout/route.ts",
     "billing/portal/route.ts",
     "billing/route.ts",
+    "documents/email/route.ts",
     "entitlements/route.ts",
     "session/route.ts",
   ]);
+  const emailSettings = await readFile(new URL("documents/email/route.ts", apiRoot), "utf8");
+  assert.match(emailSettings, /body\.action==="disable"[\s\S]*SET enabled=0/);
+  assert.match(emailSettings, /requireTenantServiceAccess\(entitlement\);requireAddonEntitlement\(entitlement,"bookloq"\)/);
+  assert.match(emailSettings, /body\.consent!==true\|\|body\.noticeVersion!==DOCUMENT_EMAIL_NOTICE_VERSION/);
+  assert.match(emailSettings, /requireOrganizationWideLocationAccess\(context\)/);
   const memberEntitlements = await readFile(new URL("entitlements/route.ts", apiRoot), "utf8");
   assert.match(memberEntitlements, /requireBillingAccess\(request,/);
   assert.match(memberEntitlements, /getTenantEntitlements\(context\)/);

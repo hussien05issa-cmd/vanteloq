@@ -62,6 +62,16 @@ test("production handler ignores the Cloudflare execution context as a transport
   finally{globalThis.fetch=prior;}
 });
 
+test("routing rejects non-document and malformed envelope recipients before reading their email",async()=>{
+  const disallowed=["support@vanteloq.com","unknown@vanteloq.com","invoices@vanteloq.com","inbox@documents.vanteloq.com",`${recipient}.attacker.invalid`,recipient.replace("inbox-","inbox+"),recipient.replace("@","+extra@"),recipient.toUpperCase()];
+  for(const to of disallowed){
+    let reads=0,calls=0,rejected=false;
+    const message={from:"private@example.invalid",to,rawSize:100,get raw():never{reads++;throw new Error("Email body must not be opened");},setReject(){rejected=true;}};
+    await receiveEmail(message,{DOCUMENT_EMAIL_SECRET:secret},async()=>{calls++;return Response.json({received:true});});
+    assert.equal(rejected,true,to);assert.equal(reads,0,to);assert.equal(calls,0,to);
+  }
+});
+
 test("rejection diagnostics expose only fixed stages and upstream status",async()=>{
   const prior=console.warn,logs:string[]=[];console.warn=(value:unknown)=>{logs.push(String(value));};
   try{

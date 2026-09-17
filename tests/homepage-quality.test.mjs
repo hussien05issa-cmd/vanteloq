@@ -37,7 +37,8 @@ test("homepage keeps every crawlable internal link on a working route", async ()
 test("homepage copy stays within the verified product boundary", async () => {
   const html = await (await fetchRoute("/")).text();
   for (const provider of ["Lightspeed Retail R-Series", "Lightspeed Retail X-Series", "Square", "Moneris", "QuickBooks", "Xero", "Plaid", "Google", "Meta"]) assert.ok(html.includes(provider), provider);
-  for (const label of ["Sandbox only", "Production approval needed", "App review pending", "Production setup needed", "In development", "Coming soon", "Provider setup required"]) assert.ok(html.includes(label), label);
+  for (const label of ["Available", "Coming Soon"]) assert.ok(html.includes(label), label);
+  assert.doesNotMatch(html, /Sandbox only|Production approval needed|App review pending|Production setup needed|Provider setup required/);
   assert.doesNotMatch(html, /Start (?:Your )?Free Trial/i);
   assert.doesNotMatch(html, /\b(?:SOC 2|ISO 27001|HIPAA|PCI)\s+(?:certified|compliant|accredited)\b/i);
   assert.doesNotMatch(html, /\u2014/u);
