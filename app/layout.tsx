@@ -43,6 +43,7 @@ import "./document-workspace-polish.css";
 import "./dashboard-release-polish.css";
 import "./commerce-visuals.css";
 import "./dashboard-explorer.css";
+import "./bookloq-display.css";
 const GOOGLE_ANALYTICS_CONSENT_DEFAULT = `
 window.dataLayer = window.dataLayer || [];
 window.gtag = window.gtag || function () { window.dataLayer.push(arguments); };
