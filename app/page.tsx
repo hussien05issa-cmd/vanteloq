@@ -428,8 +428,8 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
     <main id="main-content">
       <section className="home-hero" aria-labelledby="home-title">
         <picture className="reference-scene">
-          <source media="(max-width:1000px)" srcSet="/brand/vanteloq-alpine-hero-mobile.webp"/>
-          <img src="/brand/vanteloq-alpine-hero.webp" width={1832} height={859} alt="" fetchPriority="high" decoding="async"/>
+          <source media="(max-width:1000px)" srcSet="/brand/vanteloq-alpine-hero-mobile-v2.webp"/>
+          <img src="/brand/vanteloq-alpine-hero-v2.webp" width={1832} height={859} alt="" fetchPriority="high" decoding="async"/>
         </picture>
         <div className="home-hero-copy">
           <p className="home-eyebrow">{PRODUCT_RELEASE_NAME}</p>
