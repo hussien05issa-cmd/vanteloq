@@ -58,20 +58,20 @@ window.gtag("consent", "default", {
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_ORIGIN),
   title: "Vanteloq | Business Analytics for Independent Retail",
-  description: "Retail analytics, BookLoQ cash planning and Vanteloq AI in one workspace. Explore the interactive demo and trace business KPIs to verified source records.",
+  description: "Inspect sales, stock and cash with the records behind the numbers. Built for independent retail, with BookLoQ accounting and Vanteloq AI. Try the demo without signup.",
   alternates: { canonical: "/" },
   openGraph: {
     type: "website",
     url: "/",
     siteName: "Vanteloq",
     title: "Vanteloq | Business Analytics for Independent Retail",
-    description: "Bring verified sales, inventory, cash and operational records into clearer views for independent retail.",
+    description: "Sales, stock and cash, with the records behind the numbers. Explore Vanteloq for independent retail.",
     images: [{ url: DEFAULT_SOCIAL_IMAGE, width: 1487, height: 1058, alt: "Vanteloq business operating view" }],
   },
   twitter: {
     card: "summary_large_image",
     title: "Vanteloq | Business Analytics for Independent Retail",
-    description: "Bring verified sales, inventory, cash and operational records into clearer views for independent retail.",
+    description: "Sales, stock and cash, with the records behind the numbers. Explore Vanteloq for independent retail.",
     images: [DEFAULT_SOCIAL_IMAGE],
   },
   icons: {

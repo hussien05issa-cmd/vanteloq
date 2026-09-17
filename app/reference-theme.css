@@ -22,7 +22,7 @@
 .reference-home .public-brand-family { gap:20px; }
 .reference-home .public-brand { gap:12px; }
 .reference-home .public-brand > span { font-size:21px; font-weight:600; letter-spacing:.1em; text-transform:uppercase; }
-.reference-home .public-brand small { font-size:8px; font-weight:500; letter-spacing:.2em; margin-top:5px; }
+.reference-home .public-brand small { font-size:12px; font-weight:500; letter-spacing:.01em; text-transform:none; margin-top:5px; }
 .reference-home .public-brand > .product-brand-logo { width:40px; height:40px; flex:0 0 40px; }
 .reference-home .public-owner-brand { width:72px; height:44px; padding-left:14px; border-color:#7187a626; }
 .reference-home .public-owner-brand img { width:72px; height:48px; object-fit:contain; }
@@ -44,12 +44,17 @@
 .reference-home .home-hero { position:relative; display:block; min-height:562px; padding-block:46px 56px; background:none; isolation:isolate; overflow:visible; }
 .reference-scene { position:absolute; top:calc(20px - var(--public-nav-height,102px)); left:0; width:100%; height:calc(100% + var(--public-nav-height,102px) - 20px); z-index:-2; pointer-events:none; }
 .reference-scene img { width:100%; height:100%; object-fit:cover; object-position:center top; display:block; }
-.reference-home .home-hero::before { content:""; position:absolute; inset:0; z-index:-1; pointer-events:none; background:linear-gradient(90deg,#f7fafec9,transparent 48%); }
+.reference-home .home-hero::before { content:""; position:absolute; inset:0; z-index:-1; pointer-events:none; background:linear-gradient(90deg,#f7fafef2,#f7fafed9 34%,transparent 52%); }
 .reference-home .home-hero-copy { position:relative; z-index:1; max-width:600px; width:43%; }
 .reference-home .home-eyebrow { font-size:10px; font-weight:500; letter-spacing:.26em; color:#233f60; margin:0 0 20px; line-height:1.6; }
-.reference-home .home-hero h1 { font-size:clamp(48px,4.75vw,76px); font-weight:620; line-height:1.02; letter-spacing:-.06em; max-width:none; margin:0 0 20px; text-wrap:nowrap; color:#081e35; }
+.reference-home .home-hero h1 { font-size:clamp(48px,4.75vw,76px); font-weight:620; line-height:1.02; letter-spacing:-.06em; max-width:none; margin:0 0 20px; text-wrap:balance; color:#081e35; }
 .reference-home .home-hero h1 em { font-style:normal; color:#245e9b; background:linear-gradient(115deg,#397dba,#164b85); background-clip:text; -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
 .reference-home .home-hero-copy > p:not(.home-eyebrow) { font-size:18px; line-height:1.55; font-weight:400; color:#435d79; max-width:500px; margin:0 0 23px; }
+.reference-home .home-hero-copy > p.home-hero-support:not(.home-eyebrow) { font-size:16px; line-height:1.6; }
+.reference-home .home-hero-copy > p.home-company-credit:not(.home-eyebrow) { margin:14px 0 0; font-size:12px; line-height:1.6; color:#3c526d; }
+.home-company-credit a { color:#254e7b; text-decoration:underline; text-underline-offset:3px; }
+.reference-home .decision-proof-grid .home-feature-label { display:block; margin-top:16px; color:#456483; font-size:12px; font-weight:550; letter-spacing:.015em; }
+.reference-home .decision-proof-grid .home-feature-label+h3 { margin-top:6px; }
 .reference-home .public-actions { gap:12px; margin:0; }
 .reference-home .public-actions :is(a,button) { min-height:52px; border-radius:999px; padding:13px 24px; font-size:14px; font-weight:550; display:inline-flex; align-items:center; justify-content:center; gap:30px; text-decoration:none; transition:transform .2s,box-shadow .2s,background-color .2s; }
 .reference-home .public-actions button { background:#f8fbffc9; color:#132e4d; border:1px solid #fff; box-shadow:inset 0 1px 0 #ffffffb5,0 4px 20px #23456908; backdrop-filter:blur(12px); cursor:pointer; }
@@ -90,6 +95,33 @@
 .proof-studio-copy > a { min-height:48px; display:inline-flex; align-items:center; gap:35px; border:1px solid #b4c9e1; border-radius:999px; padding:12px 22px; color:#164d88; background:#f8fbfc; font-size:14px; text-decoration:none; }
 .home-proof-studio > .journey-steps { grid-column:1/-1; margin-top:0; }
 .reference-home .home-live-proof { border-radius:18px; background:#f9fcffed; border-color:#c7d8eb; box-shadow:0 22px 50px #183b6813,inset 0 1px 0 #fff; }
+.reference-home .home-product-preview { background:linear-gradient(145deg,#fcfdfff2,#edf4fbe8); backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px); }
+.home-product-preview .home-live-proof-top { padding-bottom:18px; }
+.home-product-preview .home-live-proof-top>div>span { color:#59677b; }
+.home-sample-metrics { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:0; margin:0 24px 20px; padding:16px 0; border-block:1px solid #d5e1ed; }
+.home-sample-metrics>div { min-width:0; padding:0 16px; border-left:1px solid #d5e1ed; }
+.home-sample-metrics>div:first-child { padding-left:0; border:0; }
+.home-sample-metrics dt { font-size:12px; line-height:1.5; color:#52657c; }
+.home-sample-metrics dd { margin:5px 0 0; color:#143353; font-size:23px; font-weight:600; letter-spacing:-.035em; font-variant-numeric:tabular-nums; }
+.home-product-preview>.finance-chart { margin:0 16px 20px; padding:18px; border-radius:14px; background:#f7faffba; box-shadow:inset 0 1px 0 #fff; }
+.home-product-preview>.finance-chart header h3 { font-size:19px; }
+.home-product-preview>.finance-chart header p { font-size:13px; }
+.home-product-preview .finance-chart-readout { padding:12px; gap:12px; }
+.home-product-preview .finance-chart-readout select { max-width:none; }
+.home-product-preview>footer { text-align:left; padding-inline:24px; font-size:12px; }
+.reference-home .home-footer-owner span { max-width:none; font-size:12px; line-height:1.65; color:#c3d0e0; }
+@media(min-width:1001px) {
+  .reference-home .home-proof-studio { grid-template-columns:minmax(0,.82fr) minmax(0,1.35fr); grid-template-rows:auto 1fr; gap:30px 60px; align-items:start; }
+  .home-proof-studio>.home-product-preview { grid-column:2; grid-row:1/span 2; }
+  .home-proof-studio>.journey-steps { grid-column:1; grid-row:2; grid-template-columns:1fr; align-self:start; gap:20px; }
+}
+@media(max-width:600px) {
+  .home-sample-metrics { margin-inline:18px; }
+  .home-sample-metrics>div { padding-inline:10px; }
+  .home-sample-metrics dd { font-size:20px; }
+  .home-sample-metrics dt { font-size:12px; }
+  .home-product-preview>.finance-chart { margin-inline:10px; padding:14px; }
+}
 .reference-home :is(.home-connections,.home-ai,.journey-evidence,.journey-pricing,.journey-faq) { background-color:#f7f9fc; }
 .reference-home :is(.home-section-heading h2,.home-ai-copy h2) { font-weight:550; }
 .reference-home :is(.home-provider-group button,.journey-plan,.home-faq details) { border-color:#d7e2ee; background-color:#fbfcfe; }
@@ -213,7 +245,7 @@
 @media (max-width:1300px) and (min-width:1001px) {
   .reference-home .public-nav { grid-template-columns:auto 1fr auto; column-gap:12px; padding-inline:30px; }
   .reference-home .public-brand > span { font-size:17px; }
-  .reference-home .public-brand small { font-size:7px; }
+  .reference-home .public-brand small { font-size:11px; }
   .reference-home .public-brand-family { gap:12px; }
   .reference-home .public-owner-brand { width:54px; padding-left:10px; }
   .reference-home .public-owner-brand img { width:54px; }
@@ -258,7 +290,7 @@
   .reference-home .public-nav { grid-template-columns:1fr; padding:12px 20px; gap:6px; }
   .reference-home .public-brand-family { justify-content:space-between; }
   .reference-home .public-brand > span { font-size:19px; }
-  .reference-home .public-brand small { display:block; font-size:7px; }
+  .reference-home .public-brand small { display:block; font-size:11px; }
   .reference-home .public-nav nav { grid-column:1; grid-row:2; justify-content:flex-start; flex-wrap:wrap; gap:0 4px; }
   .reference-home .public-nav nav > a { padding:8px 7px; min-height:44px; font-size:12px; }
   .reference-home .public-nav-socials { flex-basis:auto; margin-left:auto; gap:3px; }
@@ -271,7 +303,7 @@
   .reference-home .home-hero h1 { font-size:clamp(35px,8.5vw,49px); line-height:1.08; letter-spacing:-.06em; margin-bottom:18px; }
   .reference-home .home-hero-copy > p:not(.home-eyebrow) { font-size:16px; line-height:1.65; margin-bottom:22px; }
   .reference-home .public-actions { flex-wrap:wrap; }
-  .reference-home .public-actions :is(a,button) { min-height:48px; padding:12px 19px; font-size:13px; gap:20px; }
+  .reference-home .public-actions :is(a,button) { min-height:48px; padding:12px 10px; font-size:13px; gap:10px; white-space:nowrap; }
   .reference-home .home-proof { gap:9px 15px; margin-top:17px; }
   .reference-connections { padding-inline:22px; }
   .reference-connections > div { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:0 12px; }

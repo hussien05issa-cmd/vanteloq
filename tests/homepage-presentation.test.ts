@@ -14,6 +14,6 @@ test("the focused homepage retains its buying journey and reachable deep links",
 });
 test("setup explains verification, security and billing before a source is connected", () => {
   for(const text of ["Verify your email","authenticator","add your business","subscription","review the import"]) assert.ok(homepage.includes(text),text);
-  assert.match(homepage,/sample workspace/i);
+  assert.match(homepage,/sample store/i);
   assert.match(homepage,/incomplete import/i);
 });

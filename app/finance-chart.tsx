@@ -25,12 +25,12 @@ export function financeChartDomain(values: number[]) {
 
 /** A presentation layer over already-authorized, deterministic minor-unit data.
  * Missing points break lines; zero is a real value; negative bars keep their sign. */
-export default function FinanceChart({ title, description, points: sourcePoints, series, currency, forecast = false, allowExport = false, emptyMessage = "No records are available for this period." }: {
+export default function FinanceChart({ title, description, points: sourcePoints, series, currency, forecast = false, sample = false, allowExport = false, emptyMessage = "No records are available for this period." }: {
   title: string; description: string; points: FinanceChartPoint[]; series: FinanceChartSeries[];
-  currency: string; forecast?: boolean; allowExport?: boolean; emptyMessage?: string;
+  currency: string; forecast?: boolean; sample?: boolean; allowExport?: boolean; emptyMessage?: string;
 }) {
   const id = useId().replace(/:/g, "");
-  const { ref: plotRef, width: chartWidth } = useChartWidth(780);
+  const { ref: plotRef, width: chartWidth } = useChartWidth(780, sample ? 320 : 520);
   const [selected, setSelected] = useState<number | null>(null);
   // A sparse or non-finite presentation value must not become an SVG coordinate,
   // an exported zero or a mismatched table column. Do not alter finite cents.
@@ -43,7 +43,7 @@ export default function FinanceChart({ title, description, points: sourcePoints,
   const values = points.flatMap(point => point.values).filter((value): value is number => value !== null && Number.isFinite(value));
   const available = values.length > 0;
   const { min: lower, max: upper, step: tickStep, ticks } = financeChartDomain(values);
-  const plot = { left: 84, right: chartWidth - 32, top: 24, bottom: 254 };
+  const plot = { left: sample ? 60 : 84, right: chartWidth - (sample ? 20 : 32), top: 24, bottom: 254 };
   const y = (value: number) => plot.bottom - (value - lower) / (upper - lower) * (plot.bottom - plot.top);
   const step = (plot.right - plot.left) / Math.max(1, points.length);
   const x = (index: number) => plot.left + step * (index + .5);
@@ -67,10 +67,10 @@ export default function FinanceChart({ title, description, points: sourcePoints,
     const link = document.createElement("a"); link.href = url; link.download = `${forecast ? "cash-forecast" : "cash-activity"}.csv`; link.click(); URL.revokeObjectURL(url);
   };
   return <section className="finance-chart commerce-chart" aria-labelledby={`${id}-title`}>
-    <header><div><h3 id={`${id}-title`}>{title}</h3><p>{description}</p></div><span className="finance-chart-currency">{currency}{forecast ? " · Forecast" : " · Recorded"}</span></header>
+    <header><div><h3 id={`${id}-title`}>{title}</h3><p>{description}</p></div><span className="finance-chart-currency">{currency}{sample ? " · Sample" : forecast ? " · Forecast" : " · Recorded"}</span></header>
     <ul className="finance-chart-legend" aria-label="Chart legend">{series.map(item => <li key={item.label}><i aria-hidden="true" className={`series-${item.color} ${item.kind}${item.dashed ? " dashed" : ""}`}/>{item.label}</li>)}</ul>
     {available ? <><div className="finance-chart-scroll" ref={plotRef} role="region" tabIndex={0} aria-label={`${title} interactive chart. Scroll horizontally on a small screen.`}>
-      <div className="finance-chart-canvas">
+      <div className="finance-chart-canvas" style={sample ? { minWidth: 320 } : undefined}>
         <svg viewBox={`0 0 ${chartWidth} 298`} aria-hidden="true" focusable="false">
           <defs>{series.map((item, index) => <linearGradient id={`${id}-fill-${index}`} key={index} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" className={`series-${item.color}`} stopColor="currentColor" stopOpacity=".08"/><stop offset="100%" className={`series-${item.color}`} stopColor="currentColor" stopOpacity=".008"/></linearGradient>)}</defs>
           {ticks.map((tick, index) => <g key={index}><line className="finance-chart-grid" x1={plot.left} x2={plot.right} y1={y(tick)} y2={y(tick)}/><text className="finance-chart-axis" x={plot.left - 12} y={y(tick) + 4} textAnchor="end">{axisMoney(tick)}</text></g>)}
@@ -108,6 +108,6 @@ export default function FinanceChart({ title, description, points: sourcePoints,
       <label htmlFor={`${id}-period`}>Inspect Period<select id={`${id}-period`} value={activeIndex} onChange={event => setSelected(Number(event.target.value))}>{points.map((point, index) => <option key={point.detail} value={index}>{point.detail}</option>)}</select></label>
       <dl aria-live="polite" aria-atomic="true">{series.map((item, index) => <div key={item.label}><dt><i className={`series-${item.color}`} aria-hidden="true"/>{item.label}</dt><dd data-negative={activePoint.values[index] != null && activePoint.values[index]! < 0 || undefined}>{money(activePoint.values[index])}</dd></div>)}</dl>
     </div>
-    <details className="finance-chart-data"><summary>View data table</summary><div role="region" tabIndex={0} aria-label={`${title} data table`}><table><caption>{title}. {currency}. {forecast ? "Projected values, not recorded cash." : "Recorded bank activity in this reporting period."}</caption><thead><tr><th scope="col">Period</th>{series.map(item => <th scope="col" key={item.label}>{item.label}</th>)}</tr></thead><tbody>{points.map(point => <tr key={point.detail}><th scope="row">{point.detail}</th>{point.values.map((value, index) => <td key={index}>{money(value)}</td>)}</tr>)}</tbody></table></div>{allowExport && <button type="button" onClick={exportCsv}>Export chart CSV</button>}</details></> : <div className="finance-chart-empty"><b>{emptyMessage}</b><p>Missing evidence stays unavailable. No balance or trend has been assumed.</p></div>}
+    <details className="finance-chart-data"><summary>View data table</summary><div role="region" tabIndex={0} aria-label={`${title} data table`}><table><caption>{title}. {currency}. {sample ? "Fictional store records. Comparison values use the corresponding week in the previous period." : forecast ? "Projected values, not recorded cash." : "Recorded bank activity in this reporting period."}</caption><thead><tr><th scope="col">Period</th>{series.map(item => <th scope="col" key={item.label}>{item.label}</th>)}</tr></thead><tbody>{points.map(point => <tr key={point.detail}><th scope="row">{point.detail}</th>{point.values.map((value, index) => <td key={index}>{money(value)}</td>)}</tr>)}</tbody></table></div>{allowExport && <button type="button" onClick={exportCsv}>Export chart CSV</button>}</details></> : <div className="finance-chart-empty"><b>{emptyMessage}</b><p>Missing evidence stays unavailable. No balance or trend has been assumed.</p></div>}
   </section>;
 }
