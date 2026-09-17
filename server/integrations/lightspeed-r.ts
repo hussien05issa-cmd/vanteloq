@@ -187,7 +187,8 @@ export function lightspeedRCheckpointReadyForApproval(value: string | null) {
     }
     const cursorKeys = ["salesCursor", "saleLinesCursor", "itemsCursor", "customersCursor", "suppliersCursor"];
     const completionKeys = ["salesComplete", "saleLinesComplete", "itemsComplete", "customersComplete", "suppliersComplete"];
-    return cursorKeys.every((key) => parsed[key] === null)
+    return (parsed.recentSalesCursor === undefined || parsed.recentSalesCursor === null)
+      && cursorKeys.every((key) => parsed[key] === null)
       && completionKeys.every((key) => parsed[key] === false);
   } catch {
     return false;

@@ -41,6 +41,7 @@ type SyncCheckpoint = {
   catalogVersion: number;
   watermark: string | null;
   salesCursor: string | null;
+  recentSalesCursor: string | null;
   saleLinesCursor: string | null;
   itemsCursor: string | null;
   customersCursor: string | null;
@@ -65,6 +66,7 @@ function checkpoint(value: string | null): SyncCheckpoint {
     catalogVersion: 0,
     watermark: null,
     salesCursor: null,
+    recentSalesCursor: null,
     saleLinesCursor: null,
     itemsCursor: null,
     customersCursor: null,
@@ -86,6 +88,7 @@ function checkpoint(value: string | null): SyncCheckpoint {
       catalogVersion: parsed.catalogVersion === 1 ? 1 : 0,
       watermark: typeof parsed.watermark === "string" ? parsed.watermark : null,
       salesCursor: typeof parsed.salesCursor === "string" ? parsed.salesCursor : null,
+      recentSalesCursor: typeof parsed.recentSalesCursor === "string" ? parsed.recentSalesCursor : null,
       saleLinesCursor: typeof parsed.saleLinesCursor === "string" ? parsed.saleLinesCursor : null,
       itemsCursor: parsed.catalogVersion === 1 && typeof parsed.itemsCursor === "string" ? parsed.itemsCursor : null,
       customersCursor: typeof parsed.customersCursor === "string" ? parsed.customersCursor : null,
@@ -115,13 +118,15 @@ function nextCheckpoint(
   customersComplete: boolean,
   suppliersComplete: boolean,
   catalogVersion: number,
+  recentSalesCursor: string | null,
 ) {
-  if (salesComplete && saleLinesComplete && itemsComplete && customersComplete && suppliersComplete) {
+  if (salesComplete && saleLinesComplete && itemsComplete && customersComplete && suppliersComplete && recentSalesCursor === null) {
     return JSON.stringify({
       version: 5,
       catalogVersion,
       watermark: completedAt.toISOString(),
       salesCursor: null,
+      recentSalesCursor: null,
       saleLinesCursor: null,
       itemsCursor: null,
       customersCursor: null,
@@ -138,6 +143,7 @@ function nextCheckpoint(
     catalogVersion,
     watermark: previous.watermark,
     salesCursor,
+    recentSalesCursor,
     saleLinesCursor,
     itemsCursor,
     customersCursor,
@@ -278,8 +284,9 @@ export async function runSync(request: Request, requestId: string, context: Sync
             loadRelations: ["SaleLines", "SalePayments"],
           });
       // Do not make today's dashboard wait behind a long historical backfill.
-      // R-Series supports timestamp filters on collection reads, so every run
-      // also stages the newest 24 hours before continuing the saved cursor.
+      // Resume the recent-sales page independently of the historical cursor.
+      // Restarting the first 100 recent records would strand later receipts.
+      // A new recent sweep starts with the last 24 hours after its saved pages finish.
       const recentSalesPage = await fetchLightspeedRCollection(
         context.organizationId,
         connection.id,
@@ -287,7 +294,8 @@ export async function runSync(request: Request, requestId: string, context: Sync
         "Sale",
         {
           maxPages: 1,
-          modifiedSince: new Date(Date.now() - 24 * 60 * 60 * 1_000).toISOString(),
+          cursor: previous.recentSalesCursor,
+          modifiedSince: previous.recentSalesCursor ? null : new Date(Date.now() - 24 * 60 * 60 * 1_000).toISOString(),
           loadRelations: ["SaleLines", "SalePayments"],
         },
       );
@@ -700,7 +708,7 @@ export async function runSync(request: Request, requestId: string, context: Sync
       const itemsComplete = previous.itemsComplete || (!itemsPage.failed && itemsPage.cursor === null);
       const customersComplete = previous.customersComplete || (!customersPage.failed && customersPage.cursor === null);
       const suppliersComplete = previous.suppliersComplete || (!suppliersPage.failed && suppliersPage.cursor === null);
-      const backfillComplete = salesComplete && saleLinesComplete && itemsComplete && customersComplete && suppliersComplete;
+      const backfillComplete = salesComplete && saleLinesComplete && itemsComplete && customersComplete && suppliersComplete && recentSalesPage.cursor === null;
       // Keep the primary sales cursor eligible for another incremental read
       // while any secondary dataset is unavailable. The 24-hour fast path
       // updates today's dashboard, and the preserved watermark prevents older
@@ -720,6 +728,7 @@ export async function runSync(request: Request, requestId: string, context: Sync
         customersComplete,
         suppliersComplete,
         itemsPage.failed ? previous.catalogVersion : 1,
+        recentSalesPage.cursor,
       );
       const safeCheckpoint = computedCheckpoint;
       const recordsRead = recentSalesPage.data.length + salesPage.data.length + saleLinesPage.data.length + itemsPage.data.length + customersPage.data.length + suppliersPage.data.length + paymentTypesPage.data.length;
