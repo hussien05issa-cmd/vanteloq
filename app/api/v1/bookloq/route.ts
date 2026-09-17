@@ -281,7 +281,7 @@ export async function GET(request: Request) {
         last_successful_sync_at lastSuccessfulSyncAt
         FROM integration_connections WHERE organization_id = ?`).bind(organizationId).all(),
       database.prepare(`SELECT id, document_type documentType, file_name fileName, status,
-        security_state securityState, extraction_status extractionStatus, extracted_json extractedJson,
+        security_state securityState, extraction_status extractionStatus,
         created_at createdAt FROM workspace_documents WHERE organization_id = ?
         ORDER BY created_at DESC LIMIT 200`).bind(organizationId).all(),
       database.prepare(`SELECT m.id, m.transaction_id transactionId, m.status, m.method,
@@ -356,7 +356,7 @@ export async function GET(request: Request) {
       : bookkeepingHealthScore({ unbalancedJournalCount, uncategorizedCount, unreconciledCount, openCriticalAlerts, missingReceiptCount, monthEndCompletionRate });
     const asOf = businessClock(new Date(), context.organization.timezone)!.date;
     const integrationRows = rows(integrationsResult) as Array<{ provider: string; status: string; dataPromotionStatus: string; lastSuccessfulSyncAt: number | null }>;
-    const documentRows = rows(documentsResult) as Array<{ id: string; documentType: string; fileName: string; status: string; securityState: string; extractionStatus: string; extractedJson: string; createdAt: number }>;
+    const documentRows = rows(documentsResult) as Array<{ id: string; documentType: string; fileName: string; status: string; securityState: string; extractionStatus: string; createdAt: number }>;
     const transactionMatches = (rows(transactionMatchesResult) as Array<{ id: string; transactionId: string; status: string; method: string; confidenceBasisPoints: number; matchedAmountCents: number; reasonsJson: string; note: string; supplierBillId: string | null; customerInvoiceId: string | null; documentId: string | null; targetLabel: string }>).map((match) => (
       !canViewDocuments && match.documentId ? { ...match, documentId: null, targetLabel: "Financial document" } : match
     ));
@@ -402,13 +402,18 @@ export async function GET(request: Request) {
     const visibleInvoices = access.accountsPayableReceivable ? invoices.filter((invoice) => matchesDataMode(invoice.demoRecord)) : [];
     // Count issued, unpaid receivables across the entire tenant, not the capped table.
     // Drafts have not been issued and must never create an overdue collection alert.
-    const overdueInvoices = access.accountsPayableReceivable
-      ? await database.prepare(`SELECT COUNT(*) count FROM customer_invoices
+    const [overdueInvoices, cashActivity] = await Promise.all([
+      access.accountsPayableReceivable
+      ? database.prepare(`SELECT COUNT(*) count FROM customer_invoices
           WHERE organization_id = ? AND demo_record = ? AND due_date < ?
             AND status IN ('approved', 'sent', 'viewed', 'due', 'partially_paid', 'overdue')
             AND total_cents > paid_cents`)
         .bind(organizationId, dataMode === "demonstration" ? 1 : 0, asOf).first<{ count: number }>()
-      : null;
+      : Promise.resolve(null),
+      loadBookloqCashActivity(database, {
+        organizationId, currency: baseCurrency, asOf, dataMode, allowed: transactionReadable,
+      }),
+    ]);
     const visibleContacts = access.contactIdentity ? rows(contactsResult) : [];
     const demonstrationCashBanks = visibleBanks.filter((bank) =>
       cashAccountTypes.has(bank.accountType)
@@ -454,9 +459,7 @@ export async function GET(request: Request) {
     const visibleBillsForCash = access.accountsPayableReceivable ? bills.filter((bill) => matchesDataMode(bill.demoRecord)) : [];
     const visibleInvoicesForCash = access.accountsPayableReceivable ? invoices.filter((invoice) => matchesDataMode(invoice.demoRecord)) : [];
     const confirmedTransactionIds = new Set(transactionMatches.filter((match) => match.status === "confirmed").map((match) => match.transactionId));
-    const cashActivity = await loadBookloqCashActivity(database, {
-      organizationId, currency: baseCurrency, asOf, dataMode, allowed: transactionReadable,
-    });
+
     const matchCandidates = transactions.filter((transaction) => ["posted", "modified"].includes(transaction.sourceState)).flatMap((transaction) => rankTransactionMatches({
       id: transaction.id,
       postingDate: transaction.postingDate,

@@ -15,7 +15,7 @@ const percentage = (basisPoints: number) => `${new Intl.NumberFormat("en-CA", { 
 const dateLabel = (value: string) => new Intl.DateTimeFormat("en-CA", { month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(`${value}T00:00:00Z`));
 
 type OutflowCategory = { name: string; amountCents: number; shareBasisPoints: number };
-const categoryColors = ["#2f76df", "#1196ac", "#7058c8", "#17856f", "#6a809b"];
+const categoryColors = ["#245fce", "#087f78", "#586b8c", "#8c6cb2", "#788b9f"];
 
 /** A parts-of-total view only when category cents reconcile to the supplied outflow total. */
 export function OutflowCategoryDonut({ categories, totalCents, currency }: { categories: OutflowCategory[]; totalCents: number; currency: string }) {
@@ -43,8 +43,8 @@ export function OutflowCategoryDonut({ categories, totalCents, currency }: { cat
       <svg viewBox="0 0 140 140" role="img" aria-labelledby={`${id}-category-title ${id}-category-description`}>
         <title id={`${id}-category-title`}>Recorded cash outflows by category</title>
         <desc id={`${id}-category-description`}>Category amounts add up to {formatBookloqMoney(totalCents, currency)}. Use the labelled categories to inspect exact amounts.</desc>
-        <circle cx="70" cy="70" r="51" fill="none" stroke="#e7eef6" strokeWidth="18"/>
-        {segments.map((segment, index) => <circle key={index} cx="70" cy="70" r="51" fill="none" pathLength="100" stroke={segment.color} strokeWidth={activeIndex === index ? 21 : 18} strokeDasharray={`${segment.share} ${100 - segment.share}`} strokeDashoffset={-segment.offset} transform="rotate(-90 70 70)" opacity={activeIndex === null || activeIndex === index ? 1 : .35}/>)}
+        <circle cx="70" cy="70" r="51" fill="none" stroke="#e2e8f0" strokeWidth="14"/>
+        {segments.map((segment, index) => <circle key={index} cx="70" cy="70" r="51" fill="none" pathLength="100" stroke={segment.color} strokeWidth="14" strokeDasharray={`${segment.share} ${100 - segment.share}`} strokeDashoffset={-segment.offset} transform="rotate(-90 70 70)" opacity={activeIndex === null || activeIndex === index ? 1 : .48}/>)}
       </svg>
       <div className="bq-category-centre" aria-live="polite" aria-atomic="true"><strong>{activeAmount}</strong><span>{active ? active.name : "Recorded Outflows"}</span></div>
     </div>

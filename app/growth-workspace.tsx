@@ -10,6 +10,8 @@ import type { MarketingPlanDraft } from "../domain/marketing-workbench";
 import { metricRatio } from "../domain/marketing-reporting";
 import { apiFetch } from "./supabase-browser";
 import { FieldLabel } from "./form-primitives";
+import { chartDomain, chartY } from "../domain/workspace-presentation";
+import { axisNumber, temporalPositions, observationSegments } from "../domain/chart-geometry";
 
 type Profile = {
   businessModel: string;
@@ -170,7 +172,7 @@ const csvRequirements: Record<CsvKind, { label: string; required: string[]; samp
   transaction: { label: "Attributed transactions", required: ["occurredAt", "journeyRef", "revenueCents"], sample: "occurredAt,journeyRef,revenueCents,grossProfitCents,sourceSystem,sourceEventId" },
 };
 
-function SearchVisibilityChart({ rows }: { rows: GrowthData["searchSeries"] }) {
+export function SearchVisibilityChart({ rows }: { rows: GrowthData["searchSeries"] }) {
   const [selected, setSelected] = useState("");
   if (!rows.length) return <div className="growth-chart-empty"><b>No search observations yet</b><span>Add an owner-entered Search Console observation to establish a baseline.</span></div>;
   const series = comparableSearchSeries(rows);
@@ -182,13 +184,16 @@ function SearchVisibilityChart({ rows }: { rows: GrowthData["searchSeries"] }) {
   const maximum = Math.max(...positions);
   const range = Math.max(1, maximum - minimum);
   const start = Date.parse(points[0].observedDate), end = Date.parse(points.at(-1)!.observedDate);
-  const coordinates = points.map((row) => ({ row, x: 38 + (Date.parse(row.observedDate) - start) / Math.max(86400000, end - start) * 652, y: 24 + ((row.position - minimum) / range) * 144 }));
+  const coordinates = points.map((row) => ({ row, x: 68 + (Date.parse(row.observedDate) - start) / Math.max(86400000, end - start) * 622, y: 24 + ((row.position - minimum) / range) * 144 }));
   const path = coordinates.map((point, index) => `${index ? "L" : "M"}${point.x},${point.y}`).join(" ");
   return <div className="search-position-chart">
     <label>Query and source<select value={current.key} onChange={(event) => setSelected(event.target.value)}>{series.map((item) => <option key={item.key} value={item.key}>{item.rows[0].query} · {label(item.rows[0].sourceSystem)}</option>)}</select></label>
-    <div className="growth-chart-key"><span><i />Search position</span><small>Lower is better</small></div>
+    <div className="growth-chart-key"><span><i />Average search position</span><small>Lower is better</small></div>
     <svg viewBox="0 0 728 220" role="img" aria-label="Recorded search position over time">
-      {[24, 72, 120, 168].map((y) => <line key={y} x1="38" x2="690" y1={y} y2={y} className="growth-gridline" />)}
+      {[0, .25, .5, .75, 1].map(fraction => {
+        const value = minimum + range * fraction, y = 24 + fraction * 144;
+        return <g key={fraction}><line x1="68" x2="690" y1={y} y2={y} className="growth-gridline"/><text className="growth-axis-label" x="56" y={y + 4} textAnchor="end">{axisNumber(value, range / 4)}</text></g>;
+      })}
       <path d={path} className="growth-position-line" />
       {coordinates.map(({ row, x, y }, index) => <g key={`${row.query}-${row.observedDate}-${index}`} tabIndex={0} role="img" aria-label={`${row.query}, position ${row.position}, ${row.observedDate}`}>
         <circle cx={x} cy={y} r="5" />
@@ -236,23 +241,24 @@ function weightedMetricAverage(rows: GrowthData["measurementSeries"], metric: st
   return weight > 0 ? weighted / weight : null;
 }
 
-function MeasurementTrend({ rows, metric, labelText }: { rows: GrowthData["measurementSeries"]; metric: string; labelText: string }) {
-  const points = rows.filter((row) => row.metrics[metric] !== undefined).slice(-30);
+export function MeasurementTrend({ rows, metric, labelText }: { rows: GrowthData["measurementSeries"]; metric: string; labelText: string }) {
+  const points = rows.filter(row => Number.isFinite(row.metrics[metric]) && Number.isFinite(Date.parse(`${row.metricDate}T00:00:00Z`))).sort((left, right) => left.metricDate.localeCompare(right.metricDate)).slice(-30);
   if (!points.length) return <div className="marketing-metric-empty"><b>No {labelText.toLowerCase()} yet</b><span>Select the exact resource, map its location, and approve a sample before measurement import is enabled.</span></div>;
-  const maximum = Math.max(...points.map((row) => row.metrics[metric]), 1);
-  const coordinates = points.map((row, index) => ({
-    row,
-    x: 28 + index * (632 / Math.max(1, points.length - 1)),
-    y: 164 - (row.metrics[metric] / maximum) * 136,
-  }));
-  const path = coordinates.map((point, index) => `${index ? "L" : "M"}${point.x},${point.y}`).join(" ");
+  const values = points.map(row => row.metrics[metric]);
+  const domain = chartDomain(values), tickStep = domain.ticks[1] - domain.ticks[0];
+  const times = points.map(row => Date.parse(`${row.metricDate}T00:00:00Z`));
+  const positions = temporalPositions(times, 592).map(x => x + 68);
+  const ordinate = (value: number) => 28 + chartY(value, 136, domain);
+  const coordinates = points.map((row, index) => ({ row, x: positions[index], y: ordinate(values[index]) }));
+  const path = observationSegments(values, times, positions, ordinate, 86_400_000).map(segment => segment.path).join(" ");
   return <div className="marketing-measurement-trend">
     <svg viewBox="0 0 688 196" role="img" aria-label={`${labelText} over the latest measured days`}>
-      {[28, 73, 118, 164].map((y) => <line key={y} x1="28" x2="660" y1={y} y2={y} />)}
+      {domain.ticks.map(value => <g key={value}><line x1="68" x2="660" y1={ordinate(value)} y2={ordinate(value)}/><text className="growth-axis-label" x="56" y={ordinate(value) + 4} textAnchor="end">{axisNumber(value, tickStep)}</text></g>)}
       <path d={path} />
       {coordinates.map(({ row, x, y }) => <circle key={`${row.selectionId}:${row.metricDate}`} cx={x} cy={y} r="4"><title>{`${row.metricDate}: ${row.metrics[metric].toLocaleString("en-CA", { maximumFractionDigits: 2 })}`}</title></circle>)}
     </svg>
     <span>{points[0]?.metricDate}</span><span>{points.at(-1)?.metricDate}</span>
+    <p className="mw-chart-note">{labelText}. Missing observation dates leave gaps; no value is estimated.</p>
   </div>;
 }
 

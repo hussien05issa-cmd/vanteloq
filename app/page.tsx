@@ -6,6 +6,7 @@ import SessionTimeout from "./session-timeout";
 import ClientLoadBoundary from "./client-load-boundary";
 import WorkspaceSkeleton from "./workspace-skeleton";
 import Link from "next/link";
+import { PRODUCT_RELEASE_NAME } from "../domain/product-release";
 import VanteloqAiShowcase from "./vanteloq-ai-showcase";
 import VanteloqAiLogo from "./vanteloq-ai-logo";
 import CompatibilityCheck from "./compatibility-check";
@@ -430,7 +431,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
           <img src="/brand/vanteloq-alpine-hero.webp" width={1832} height={859} alt="" fetchPriority="high" decoding="async"/>
         </picture>
         <div className="home-hero-copy">
-          <p className="home-eyebrow">YOUR BUSINESS. A CLEARER PICTURE.</p>
+          <p className="home-eyebrow">{PRODUCT_RELEASE_NAME}</p>
           <h1 id="home-title">Run Smarter.<br/><em>Grow With Clarity.</em></h1>
           <p>Bring sales, inventory and finances into focus. Understand what changed, follow the evidence and decide what to do next.</p>
           <div className="public-actions"><a href="/demo" data-public-event="demo_view">Try the Demo <span aria-hidden="true">→</span></a><button type="button" data-public-event="signup_start" onClick={() => start("signup")}>Create Workspace</button></div>
@@ -491,7 +492,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
       <div><strong>RESOURCES</strong><Link href="/social">Follow Vanteloq</Link><Link href="/help">Help centre</Link><Link href="/resources">All resources</Link><Link href="/resources/inventory">Inventory</Link><Link href="/resources/finance">Finance</Link><Link href="/resources/analytics">Analytics</Link></div>
       <div><strong>LEGAL</strong><Link href="/legal">Legal centre</Link><Link href="/privacy">Privacy</Link><Link href="/terms">Terms</Link><Link href="/cookies">Cookies</Link></div>
       <div><strong>ACCOUNT</strong><Link href="/contact">Contact</Link><button type="button" onClick={() => start("signin")}>Sign In</button><button type="button" data-public-event="signup_start" onClick={() => start("signup")}>Create Workspace</button></div>
-      <p className="home-footer-note">© {new Date().getFullYear()} LexEdge Consulting. Vanteloq is a product owned and operated by LexEdge Consulting. Feature availability depends on workspace access, configured sources and verified records.</p>
+      <p className="home-footer-note"><strong>{PRODUCT_RELEASE_NAME}</strong><br/>© {new Date().getFullYear()} LexEdge Consulting. Vanteloq is a product owned and operated by LexEdge Consulting. Feature availability depends on workspace access, configured sources and verified records.</p>
     </footer>
   </div>;
 }

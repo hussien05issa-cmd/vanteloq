@@ -4,6 +4,7 @@ import { parseDailyCsv } from "../domain/daily-summary-csv";
 import DailyImportReviewPanel from "./daily-import-review";
 import type { DailyImportReview } from "../server/daily-metric-import";
 import WorkspaceSkeleton from "./workspace-skeleton";
+import { PRODUCT_RELEASE_NAME } from "../domain/product-release";
 import { documentEmailAccessKey } from "./document-email-client";
 import { isAwaitingSalesRecords } from "../domain/intraday-sales";
 
@@ -1091,6 +1092,7 @@ export default function VanteloqApp({
               Sign out
             </button>
           </div>
+          <p className="workspace-release-name">{PRODUCT_RELEASE_NAME}</p>
         </div>
       </aside>
       {mobileNavOpen && (

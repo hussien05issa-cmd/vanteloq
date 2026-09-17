@@ -145,7 +145,7 @@ export async function processDocument(input: {
   if (claim.meta.changes !== 1) return { state: "busy", newlyAuthorized: false };
   let scan = row.scan_status, security = row.security_state, extractionStatus = row.extraction_status;
   const save = async (stage: Processing["stage"], release = true) => {
-    job = { ...job!, stage, lock: release ? undefined : lock, leaseUntil: release ? undefined : now + 90_000 };
+    job = { ...job!, stage, lock: release ? undefined : lock, leaseUntil: release ? undefined : Date.now() + 90_000 };
     envelope.processing = job;
     const result = await db.prepare("UPDATE workspace_documents SET extracted_json = ?, scan_status = ?, security_state = ?, extraction_status = ?, scan_provider = CASE WHEN ? = 'clean' OR ? = 'blocked' THEN 'azure-defender' ELSE scan_provider END, scanned_at = CASE WHEN ? = 'clean' OR ? = 'blocked' THEN COALESCE(scanned_at, ?) ELSE scanned_at END, status = 'review_required', updated_at = ? WHERE id = ? AND organization_id = ? AND json_extract(extracted_json, '$.processing.lock') = ? AND status NOT IN ('approved', 'rejected', 'deletion_pending')").bind(JSON.stringify(envelope), scan, security, extractionStatus, scan, scan, scan, scan, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000), documentId, organizationId, lock).run();
     return result.meta.changes === 1;
@@ -169,7 +169,7 @@ export async function processDocument(input: {
       extractionStatus = "complete";
       job = { ...job, cleanupPending: true, errorCode: undefined };
       // Persist before asking Azure to delete its temporary copy.
-      await save("complete", false);
+      if (!await save("complete", false)) return { state: "busy", newlyAuthorized };
       try { await deleteExtractionResult(env, job.operation!, input.transport); job = { ...job, cleanupPending: false, operation: undefined }; } catch { /* Azure deletes temporary results after its retention window; preserve a retry marker. */ }
       await save("complete");
       return { state: "complete", newlyAuthorized };
@@ -186,7 +186,7 @@ export async function processDocument(input: {
     if (hash !== row.sha256_hex) { scan = "failed"; security = "quarantined"; throw new DocumentProviderError("DOCUMENT_CHANGED"); }
     if (job.stage === "queued") {
       await validateDocumentForProcessing(bytes, row.content_type);
-      await save("scanning", false);
+      if (!await save("scanning", false)) return { state: "busy", newlyAuthorized };
       await input.beforeProviderCall?.();
       job = { ...job, azureScan: await beginAzureScan(env, bytes, row.content_type, hash, input.transport) };
       scan = "pending"; security = "quarantined";
@@ -198,19 +198,27 @@ export async function processDocument(input: {
       const verdict = await pollAzureScan(env, job.azureScan, input.transport);
       if (!verdict) { await save("scan_waiting"); return { state: "scan_waiting", newlyAuthorized }; }
       const stillExists = await db.prepare("SELECT id FROM workspace_documents WHERE id = ? AND organization_id = ? AND json_extract(extracted_json, '$.processing.lock') = ?").bind(documentId, organizationId, lock).first();
-      if (!stillExists) { await deleteAzureScan(env, job.azureScan, input.transport).catch(() => {}); return { state: "removed", newlyAuthorized }; }
+      if (!stillExists) return { state: "busy", newlyAuthorized };
       // Remove the temporary scan copy before releasing the original from quarantine.
       await deleteAzureScan(env, job.azureScan, input.transport);
       job = { ...job, azureScan: undefined, errorCode: undefined };
+      // Revalidate and renew ownership after the slow provider operations.
+      // Never let a stale request mutate an original held by another attempt.
+      const renewedAt = Date.now();
+      const renewed = await db.prepare("UPDATE workspace_documents SET extracted_json=json_set(extracted_json,'$.processing.leaseUntil',?),updated_at=? WHERE id=? AND organization_id=? AND json_extract(extracted_json,'$.processing.lock')=? AND status NOT IN ('approved','rejected','deletion_pending')")
+        .bind(renewedAt + 90_000, Math.floor(renewedAt / 1000), documentId, organizationId, lock).run();
+      if (renewed.meta.changes !== 1) return { state: "busy", newlyAuthorized };
       scan = verdict;
       security = scan === "clean" ? "clean" : "rejected";
-      await bucket.put(row.object_key, bytes.buffer, { httpMetadata: stored.httpMetadata, customMetadata: { ...stored.customMetadata, securityState: security, scanProvider: "azure-defender", sha256: hash } });
+      if (!stored.etag) throw new DocumentProviderError("DOCUMENT_CHANGED");
+      const promoted = await bucket.put(row.object_key, bytes.buffer, { onlyIf: { etagMatches: stored.etag }, httpMetadata: stored.httpMetadata, customMetadata: { ...stored.customMetadata, securityState: security, scanProvider: "azure-defender", sha256: hash } });
+      if (!promoted) return { state: "busy", newlyAuthorized };
       extractionStatus = configuration.extraction && scan === "clean" ? "pending" : "not_configured";
-      if (!await save(scan === "clean" ? "scanned" : "blocked")) await bucket.delete(row.object_key);
+      if (!await save(scan === "clean" ? "scanned" : "blocked")) return { state: "busy", newlyAuthorized };
       return { state: scan === "clean" ? "scanned" : "blocked", newlyAuthorized };
     }
     if (scan !== "clean" || security !== "clean" || stored.customMetadata?.securityState !== "clean") throw new DocumentProviderError("SCAN_RESULT_UNKNOWN");
-    await save("starting", false);
+    if (!await save("starting", false)) return { state: "busy", newlyAuthorized };
     await input.beforeProviderCall?.();
     const started = await startExtraction(env, bytes, row.content_type, row.document_type, input.transport);
     job = { ...job, ...started, errorCode: undefined };
