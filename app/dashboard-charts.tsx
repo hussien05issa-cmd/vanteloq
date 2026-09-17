@@ -7,6 +7,7 @@ import { cumulativeSalesHours } from "../domain/intraday-sales";
 import "./dashboard-chart-polish.css";
 import { useChartWidth } from "./use-chart-width";
 import { temporalPositions, temporalLabelIndices, observationSegments } from "../domain/chart-geometry";
+import { financialChartDomain } from "../domain/financial-chart-domain";
 
 type TrendPoint = { date: string; netSalesCents: number; grossProfitCents: number | null; transactionCount?: number };
 type IntradayPoint = { hour: number; label: string; netSalesCents: number; grossProfitCents: number | null; transactionCount: number };
@@ -60,13 +61,15 @@ function FinancialSeriesChart({ data, currency, title, intraday = false, compari
   data: PlotPoint[]; currency: string; title: string; intraday?: boolean; comparisonLabel?: string;
 }) {
   const id = useId().replaceAll(":", "");
-  const { ref: plotRef, width: chartWidth } = useChartWidth(720);
+  const { ref: plotRef, width: chartWidth } = useChartWidth(720, 280);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
-  const selectedIndex = Math.max(0, selectedKey == null ? data.length - 1 : data.findIndex((point) => point.key === selectedKey));
+  const [series, setSeries] = useState<"both" | "sales" | "profit">("both");
+  const matchingIndex = selectedKey == null ? -1 : data.findIndex((point) => point.key === selectedKey);
+  const selectedIndex = matchingIndex < 0 ? data.length - 1 : matchingIndex;
   const active = data[selectedIndex];
   if (!active) return <ChartEmpty intraday={intraday}/>;
-  const plotHeight = 184, left = 66, top = 16, plotWidth = chartWidth - left - 18;
-  const domain = chartDomain(data.flatMap((point) => [point.netSalesCents, ...(point.grossProfitCents == null ? [] : [point.grossProfitCents]), ...(point.comparisonCents == null ? [] : [point.comparisonCents])]));
+  const plotHeight = chartWidth < 480 ? 230 : 276, left = chartWidth < 480 ? 52 : 66, top = 18, plotWidth = chartWidth - left - 18;
+  const domain = financialChartDomain(data.flatMap((point) => [point.netSalesCents, ...(point.grossProfitCents == null ? [] : [point.grossProfitCents]), ...(point.comparisonCents == null ? [] : [point.comparisonCents])]));
   const times = data.map(point => intraday ? Number(point.key) : Date.parse(`${point.key}T00:00:00Z`));
   const positions = temporalPositions(times, plotWidth);
   const interval = intraday ? 1 : 86_400_000;
@@ -76,23 +79,30 @@ function FinancialSeriesChart({ data, currency, title, intraday = false, compari
   const comparisonSegments = observationSegments(data.map(point => point.comparisonCents ?? null), times, positions, ordinate, interval);
   const zeroY = chartY(0, plotHeight, domain);
   const activeX = positions[selectedIndex];
-  const labels = new Set(temporalLabelIndices(positions, Math.max(84, plotWidth / 6)));
+  const labels = new Set(temporalLabelIndices(positions, Math.max(88, plotWidth / 6)));
   const profitAvailable = data.some((point) => point.grossProfitCents != null);
-  return <div className="workspace-series-chart commerce-chart">
+  const visibleSeries = series === "profit" && !profitAvailable ? "sales" : series;
+  return <div className={`workspace-series-chart commerce-chart financial-explorer series-${visibleSeries}`}>
+    <div className="financial-explorer-toolbar">
+      <span>Inspect the Recorded Values</span>
+      <div className="financial-series-switch" role="group" aria-label="Visible chart series">
+        {([["both", "Both"], ["sales", "Net Sales"], ["profit", "Gross Profit"]] as const).map(([value,label]) => <button key={value} type="button" aria-pressed={visibleSeries === value} disabled={value === "profit" && !profitAvailable} onClick={() => setSeries(value)}>{label}</button>)}
+      </div>
+    </div>
     <p className="commerce-chart-context">{currency} · {intraday ? "Business-local time" : "Recorded daily values"}</p>
-    <div className="chart-legend"><span><i className="legend-sales" aria-hidden="true"/>Net sales</span>{comparisonLabel && <span><i className="legend-comparison" aria-hidden="true"/>{comparisonLabel}</span>}<span><i className="legend-profit" aria-hidden="true"/>Gross profit{!profitAvailable && " unavailable"}</span></div>
-    <div className="workspace-chart-plot" ref={plotRef} tabIndex={0} role="region" aria-label="Scrollable financial chart">
-      <svg viewBox={`0 0 ${chartWidth} 238`} role="img" aria-labelledby={`${id}-title ${id}-description`}>
+    <div className="chart-legend">{visibleSeries !== "profit" && <span><i className="legend-sales" aria-hidden="true"/>Net sales</span>}{comparisonLabel && visibleSeries !== "profit" && <span><i className="legend-comparison" aria-hidden="true"/>{comparisonLabel}</span>}{visibleSeries !== "sales" && <span><i className="legend-profit" aria-hidden="true"/>Gross profit{!profitAvailable && " unavailable"}</span>}</div>
+    <div className="workspace-chart-plot" ref={plotRef} tabIndex={0} role="region" aria-label="Interactive financial chart. Use left and right arrow keys to inspect records." onKeyDown={event => { if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return; event.preventDefault(); const next = Math.max(0,Math.min(data.length - 1,selectedIndex + (event.key === "ArrowRight" ? 1 : -1))); setSelectedKey(data[next].key); }}>
+      <svg viewBox={`0 0 ${chartWidth} ${plotHeight + 58}`} role="img" aria-labelledby={`${id}-title ${id}-description`}>
         <title id={`${id}-title`}>{title}</title>
         <desc id={`${id}-description`}>Negative values are shown below zero. Missing observation dates leave gaps. Use the record selector or expand the data table for exact amounts.</desc>
-        <defs><linearGradient id={id} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#2d7be9" stopOpacity=".08"/><stop offset="1" stopColor="#2d7be9" stopOpacity=".008"/></linearGradient></defs>
+        <defs><linearGradient id={id} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#2d7be9" stopOpacity=".16"/><stop offset="1" stopColor="#2d7be9" stopOpacity=".015"/></linearGradient></defs>
         {domain.ticks.map((value, index) => {
           const y = top + chartY(value, plotHeight, domain);
           return <g key={index}><line className="trend-gridline" x1={left} x2={left + plotWidth} y1={y} y2={y}/><text className="trend-axis-label" x={left - 12} y={y + 4} textAnchor="end">{axisMoney(value, currency)}</text></g>;
         })}
         <g transform={`translate(${left} ${top})`}>
           <line className="chart-zero-line" x1="0" x2={plotWidth} y1={zeroY} y2={zeroY}/>
-          {salesSegments.filter(segment => segment.lastIndex > segment.firstIndex).map(segment => <path key={`area-${segment.firstIndex}`} d={`${segment.path} L${segment.lastX},${zeroY} L${segment.firstX},${zeroY} Z`} fill={`url(#${id})`}/>)}
+          {salesSegments.filter(segment => segment.lastIndex > segment.firstIndex).map(segment => <path className="trend-sales-area" key={`area-${segment.firstIndex}`} d={`${segment.path} L${segment.lastX},${zeroY} L${segment.firstX},${zeroY} Z`} fill={`url(#${id})`}/>)}
           {comparisonLabel && <path d={comparisonSegments.map(segment => segment.path).join(" ")} className="trend-comparison-line"/>}
           <path d={salesSegments.map(segment => segment.path).join(" ")} className="trend-sales-line"/><path d={profitSegments.map(segment => segment.path).join(" ")} className="trend-profit-line"/>
           {[
@@ -114,8 +124,8 @@ function FinancialSeriesChart({ data, currency, title, intraday = false, compari
       </svg>
     </div>
     <div className="workspace-chart-readout">
-      <label htmlFor={`${id}-record`}>Inspect Record<select id={`${id}-record`} value={active.key} onChange={(event) => setSelectedKey(event.target.value)}>{data.map((point) => <option key={point.key} value={point.key}>{point.label}</option>)}</select></label>
-      <dl aria-live="polite" aria-atomic="true"><div><dt>Net sales</dt><dd data-negative={active.netSalesCents < 0 || undefined}>{fullMoney(active.netSalesCents, currency)}</dd></div>{comparisonLabel && <div><dt>{comparisonLabel}</dt><dd data-negative={active.comparisonCents != null && active.comparisonCents < 0 || undefined}>{active.comparisonCents == null ? "Not available" : fullMoney(active.comparisonCents, currency)}</dd></div>}<div><dt>Gross profit</dt><dd data-negative={active.grossProfitCents != null && active.grossProfitCents < 0 || undefined}>{active.grossProfitCents == null ? "Not available" : fullMoney(active.grossProfitCents, currency)}</dd></div>{active.transactionCount != null && <div><dt>Transactions</dt><dd>{active.transactionCount.toLocaleString("en-CA")}</dd></div>}</dl>
+      <label htmlFor={`${id}-record`}>{intraday ? "Selected Hour" : "Selected Day"}<select id={`${id}-record`} value={active.key} onChange={(event) => setSelectedKey(event.target.value)}>{data.map((point) => <option key={point.key} value={point.key}>{point.label}</option>)}</select></label>
+      <dl aria-live="polite" aria-atomic="true"><div className="chart-selection-announcement"><dt>{intraday ? "Selected hour" : "Selected day"}</dt><dd>{active.label}</dd></div><div><dt>Net sales</dt><dd data-negative={active.netSalesCents < 0 || undefined}>{fullMoney(active.netSalesCents, currency)}</dd></div>{comparisonLabel && <div><dt>{comparisonLabel}</dt><dd data-negative={active.comparisonCents != null && active.comparisonCents < 0 || undefined}>{active.comparisonCents == null ? "Not available" : fullMoney(active.comparisonCents, currency)}</dd></div>}<div><dt>Gross profit</dt><dd data-negative={active.grossProfitCents != null && active.grossProfitCents < 0 || undefined}>{active.grossProfitCents == null ? "Not available" : fullMoney(active.grossProfitCents, currency)}</dd></div>{active.transactionCount != null && <div><dt>Transactions</dt><dd>{active.transactionCount.toLocaleString("en-CA")}</dd></div>}</dl>
     </div>
     <details className="workspace-chart-data"><summary>View chart data <span>{quantityLabel(data.length, "record")}</span></summary><div className="workspace-table-scroll">
       <table><caption>{title}. Amounts in {currency}.</caption><thead><tr><th scope="col">{intraday ? "Time" : "Date"}</th><th scope="col">Net sales</th>{comparisonLabel && <th scope="col">{comparisonLabel}</th>}<th scope="col">Gross profit</th><th scope="col">Transactions</th></tr></thead><tbody>{data.map((point) => <tr key={point.key}><th scope="row">{point.label}</th><td>{fullMoney(point.netSalesCents, currency)}</td>{comparisonLabel && <td>{point.comparisonCents == null ? "Not available" : fullMoney(point.comparisonCents, currency)}</td>}<td>{point.grossProfitCents == null ? "Not available" : fullMoney(point.grossProfitCents, currency)}</td><td>{point.transactionCount ?? "Not supplied"}</td></tr>)}</tbody></table>
@@ -123,12 +133,19 @@ function FinancialSeriesChart({ data, currency, title, intraday = false, compari
   </div>;
 }
 export function BusinessTrendChart({ data, currency }: { data: TrendPoint[]; currency: string }) {
+  const [range, setRange] = useState<30 | 90 | "all">("all");
   const points = data.filter((point) => Number.isFinite(point.netSalesCents) && !Number.isNaN(Date.parse(`${point.date}T00:00:00Z`))).map((point) => ({
     ...point, grossProfitCents: point.grossProfitCents != null && Number.isFinite(point.grossProfitCents) ? point.grossProfitCents : null, key: point.date,
     label: new Intl.DateTimeFormat("en-CA", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }).format(new Date(`${point.date}T00:00:00Z`)),
     shortLabel: new Intl.DateTimeFormat("en-CA", { month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(`${point.date}T00:00:00Z`)),
   })).sort((left, right) => left.key.localeCompare(right.key));
-  return <FinancialSeriesChart data={points} currency={currency} title="Daily net sales and gross profit"/>;
+  const latest = points.at(-1);
+  const cutoff = latest && range !== "all" ? Date.parse(`${latest.key}T00:00:00Z`) - (range - 1) * 86_400_000 : -Infinity;
+  const shown = points.filter(point => Date.parse(`${point.key}T00:00:00Z`) >= cutoff);
+  return <div className="business-performance-explorer">
+    {!!points.length && <div className="performance-range-toolbar"><p>{shown[0]?.label} to {shown.at(-1)?.label}<span>{quantityLabel(shown.length,"recorded day")} · Gaps indicate missing records</span></p><div className="financial-series-switch" role="group" aria-label="Chart date range">{([30,90,"all"] as const).map(value => <button key={value} type="button" aria-pressed={range === value} onClick={() => setRange(value)}>{value === "all" ? "Available Records" : `${value} Days`}</button>)}</div></div>}
+    <FinancialSeriesChart data={shown} currency={currency} title="Daily net sales and gross profit"/>
+  </div>;
 }
 export function IntradaySalesChart({ data, currency, comparison, comparisonDate, asOf, timeZone = "UTC" }: {
   data: IntradayPoint[]; currency: string; comparison?: IntradayPoint[];

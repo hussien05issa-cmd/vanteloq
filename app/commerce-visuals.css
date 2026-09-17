@@ -108,3 +108,22 @@
 .operating-shell .mr-bars i.is-negative { background:var(--commerce-negative); }
 .operating-shell .mr-bars [data-negative="true"] { color:var(--commerce-negative); }
 .operating-shell :is(.search-position-chart,.marketing-measurement-trend) .growth-axis-label { fill:var(--commerce-muted); font-family:var(--font-product,inherit); font-size:12px; font-variant-numeric:tabular-nums; }
+
+/* Retail date filters: fit the full native date at the readable product font. */
+.operating-shell .commerce-intelligence-head { flex-wrap:wrap; }
+.operating-shell .commerce-period-picker { gap:10px; max-width:100%; }
+.operating-shell .commerce-period-picker input[type="date"] {
+  width:184px!important;
+  min-width:184px;
+  height:44px!important;
+  padding:0 12px!important;
+  font-size:14px!important;
+}
+@media(max-width:1180px) {
+  .operating-shell .commerce-period-picker label { min-width:0; }
+  .operating-shell .commerce-period-picker input[type="date"] {
+    width:100%!important;
+    min-width:0;
+    font-size:16px!important;
+  }
+}

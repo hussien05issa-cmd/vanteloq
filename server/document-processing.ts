@@ -11,6 +11,11 @@ type Processing = {
   stage: "queued" | "scanning" | "scan_waiting" | "scanned" | "starting" | "reading" | "complete" | "failed" | "blocked";
   lock?: string; leaseUntil?: number; operation?: string; expectedPages?: number; errorCode?: string; cleanupPending?: boolean;
   azureScan?: AzureScanOperation; cleanupRetry?: DocumentCleanupRetry;
+  verifiedScan?: {
+    version: 1; verdict: "clean" | "blocked"; organizationId: string; documentId: string;
+    objectKey: string; sha256: string; size: number; blobName: string; etag: string;
+    scanEndpoint: string; submittedAt: number; authorizedAt: number;
+  };
 };
 export type ProcessingEnvelope = { processing?: Processing; extraction?: DocumentExtraction };
 type DocumentRow = { id: string; object_key: string; content_type: string; document_type: string; sha256_hex: string; security_state: string; scan_status: string; extraction_status: string; extracted_json: string; status: string };
@@ -153,7 +158,7 @@ export async function processDocument(input: {
   try {
     if (job.azureScan && !["scanning", "scan_waiting"].includes(job.stage)) {
       await deleteAzureScan(env, job.azureScan, input.transport);
-      job = { ...job, azureScan: undefined };
+      job = { ...job, azureScan: undefined, verifiedScan: undefined };
     }
     if (job.stage === "complete" && job.cleanupPending && job.operation) {
       await deleteExtractionResult(env, job.operation, input.transport);
@@ -188,20 +193,35 @@ export async function processDocument(input: {
       await validateDocumentForProcessing(bytes, row.content_type);
       if (!await save("scanning", false)) return { state: "busy", newlyAuthorized };
       await input.beforeProviderCall?.();
-      job = { ...job, azureScan: await beginAzureScan(env, bytes, row.content_type, hash, input.transport) };
+      job = { ...job, verifiedScan: undefined, azureScan: await beginAzureScan(env, bytes, row.content_type, hash, input.transport) };
       scan = "pending"; security = "quarantined";
       if (!await save("scan_waiting")) await deleteAzureScan(env, job.azureScan!, input.transport).catch(() => {});
       return { state: "scan_waiting", newlyAuthorized };
     }
     if (job.stage === "scan_waiting" && job.azureScan) {
       if (job.azureScan.sha256 !== hash || job.azureScan.size !== bytes.length) throw new DocumentProviderError("DOCUMENT_CHANGED");
-      const verdict = await pollAzureScan(env, job.azureScan, input.transport);
-      if (!verdict) { await save("scan_waiting"); return { state: "scan_waiting", newlyAuthorized }; }
-      const stillExists = await db.prepare("SELECT id FROM workspace_documents WHERE id = ? AND organization_id = ? AND json_extract(extracted_json, '$.processing.lock') = ?").bind(documentId, organizationId, lock).first();
-      if (!stillExists) return { state: "busy", newlyAuthorized };
+      const receipt = job.verifiedScan;
+      const cachedVerdict = receipt?.version === 1 && ["clean", "blocked"].includes(receipt.verdict)
+        && receipt.organizationId === organizationId && receipt.documentId === documentId
+        && receipt.objectKey === row.object_key && receipt.sha256 === hash && receipt.size === bytes.length
+        && receipt.blobName === job.azureScan.blobName && receipt.etag === job.azureScan.etag
+        && receipt.scanEndpoint === env.AZURE_DOCUMENT_SCAN_ENDPOINT && receipt.submittedAt === job.azureScan.submittedAt
+        && receipt.authorizedAt === job.authorizedAt ? receipt.verdict : null;
+      const verdict = cachedVerdict ?? await pollAzureScan(env, job.azureScan, input.transport);
+      if (!verdict) { return { state: await save("scan_waiting") ? "scan_waiting" : "busy", newlyAuthorized }; }
+      // Preserve verified identity and verdict before cleanup, while the original
+      // remains quarantined. A successor can repeat DELETE after a lost response
+      // without depending on a scan blob that the previous owner already removed.
+      job = { ...job, verifiedScan: {
+        version: 1, verdict, organizationId, documentId, objectKey: row.object_key,
+        sha256: hash, size: bytes.length, blobName: job.azureScan.blobName,
+        etag: job.azureScan.etag, scanEndpoint: env.AZURE_DOCUMENT_SCAN_ENDPOINT!,
+        submittedAt: job.azureScan.submittedAt, authorizedAt: job.authorizedAt,
+      } };
+      if (!await save("scan_waiting", false)) return { state: "busy", newlyAuthorized };
       // Remove the temporary scan copy before releasing the original from quarantine.
-      await deleteAzureScan(env, job.azureScan, input.transport);
-      job = { ...job, azureScan: undefined, errorCode: undefined };
+      await deleteAzureScan(env, job.azureScan!, input.transport);
+      job = { ...job, azureScan: undefined, verifiedScan: undefined, errorCode: undefined };
       // Revalidate and renew ownership after the slow provider operations.
       // Never let a stale request mutate an original held by another attempt.
       const renewedAt = Date.now();
