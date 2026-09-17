@@ -39,6 +39,7 @@ import DecisionWorkspace from "./decision-workspace";
 import { useModalFocus } from "./use-modal-focus";
 import { comparisonCopy, quantityLabel } from "../domain/workspace-presentation";
 import PlaidLinkButton, { PLAID_REDIRECT_STORAGE_KEY, PLAID_RETURN_VIEW_STORAGE_KEY } from "./plaid-link-button";
+import ExecutiveOverview from "./executive-overview";
 import { apiFetch, signOut } from "./supabase-browser";
 import { useOpportunityReviews } from "./use-opportunity-reviews";
 import {
@@ -1341,6 +1342,7 @@ function Workspace({
   navigationSettings: React.ReactNode;
 }) {
   const [reportSeed, setReportSeed] = useState<{ from: string; to: string; locationId: string | null } | null>(null);
+  const [executiveDrill,setExecutiveDrill]=useState<{from:string;to:string}|undefined>();
   const [intelligenceTab, setIntelligenceTab] = useState<"opportunities" | "retail">("opportunities");
   const [retailAdvisorSeed, setRetailAdvisorSeed] = useState<RetailAdvisorSeed | null>(null);
   const askRetailAdvisor = (seed: RetailAdvisorSeed) => { setRetailAdvisorSeed(seed); navigate("Advisor"); };
@@ -1348,6 +1350,8 @@ function Workspace({
   if (view === "Dashboard")
     return (
       <Overview
+        onDrill={(view,period)=>{setExecutiveDrill(period);navigate(view);}}
+        activeLocationId={activeLocationId}
         accountName={accountName}
         data={data}
         currency={currency}
@@ -1420,7 +1424,7 @@ function Workspace({
       />
     );
   if (view === "Sales" || view === "Inventory" || view === "Customers" || view === "Suppliers")
-    return <CommerceIntelligenceWorkspace key={view + activeLocationId} mode={view} currency={currency} timeZone={data.today.timeZone} activeLocationId={activeLocationId} navigate={navigate} createTask={createTask} onAsk={askRetailAdvisor} />;
+    return <CommerceIntelligenceWorkspace initialPeriod={executiveDrill} key={view + activeLocationId + (executiveDrill?.from??"") + (executiveDrill?.to??"")} mode={view} currency={currency} timeZone={data.today.timeZone} activeLocationId={activeLocationId} navigate={navigate} createTask={createTask} onAsk={askRetailAdvisor} />;
   if (view === "Purchase Orders")
     return (
       <PurchaseOrdersWorkspace
@@ -1625,30 +1629,16 @@ function LiveSalesPanel({ data, currency, paymentRange, setPaymentRange, compact
   );
 }
 
-export function Overview({ accountName = "", data, currency, navigate, createTask, paymentRange, setPaymentRange }: { accountName?: string; data: CommandCentre; currency: string; navigate: (view: View) => void; createTask: (seed: TaskSeed) => void; paymentRange: PaymentRange; setPaymentRange: (range: PaymentRange) => void }) {
-  const hasCurrentDayData = data.today.transactionCount > 0 || data.today.refundsCents > 0;
-  if ((!data.ready || !data.current) && !hasCurrentDayData) return <><EmptyCommandCentre navigate={navigate} /></>;
+export function Overview({ onDrill, activeLocationId, accountName = "", data, currency, navigate, createTask, paymentRange, setPaymentRange }: { onDrill?: (view:"Sales"|"BookLoQ"|"Integrations"|"Intelligence",period?:{from:string;to:string})=>void; activeLocationId?: string | null; accountName?: string; data: CommandCentre; currency: string; navigate: (view: View) => void; createTask: (seed: TaskSeed) => void; paymentRange: PaymentRange; setPaymentRange: (range: PaymentRange) => void }) {
+
   const sourceName = data.liveSource.accountName || (data.liveSource.provider ? providerLabel(data.liveSource.provider) : "the connected source");
-  const showRecordedPeriod = isAwaitingSalesRecords(data.today) && Boolean(data.current);
   return (
     <div className="content command-page">
       
       <DashboardGreeting accountName={accountName} sourceName={sourceName} latestBusinessDate={data.source.latestBusinessDate}
         lastSuccessfulSyncAt={data.liveSource.lastSuccessfulSyncAt} needsAttention={Boolean(data.liveSource.lastErrorCode)} onConnections={() => navigate("Integrations")}/>
-      {showRecordedPeriod && data.current ? <section className="recorded-period-overview" aria-label="Latest recorded 30-day window">
-        <div className="recorded-period-heading"><div><p className="card-kicker">LATEST RECORDED 30-DAY WINDOW</p><h3>{data.source.latestBusinessDate ? `Through ${formatBusinessDate(data.source.latestBusinessDate)}` : "Recorded Period"}</h3></div><span>Historical totals, not today’s sales</span></div>
-        <div className="recorded-period-metrics">
-          <Metric label="Net Sales" value={money(data.current.netSalesCents,currency)} delta="Recorded period" detail="Excludes sales tax" tone="indigo"/>
-          <Metric label="Gross Profit" value={data.metrics.gross_profit?.actuality === "actual" ? money(data.current.grossProfitCents,currency) : "Not available"} delta="Recorded period" detail={data.metrics.gross_profit?.actuality === "actual" ? "Net sales less product cost" : "Verified product costs required"} tone="emerald"/>
-          <Metric label="Average Transaction" value={data.current.averageTransactionCents == null ? "Not available" : money(data.current.averageTransactionCents,currency,2)} delta="Recorded period" detail="Net sales ÷ completed transactions" tone="indigo"/>
-          <Metric label="Transactions" value={data.current.transactionCount == null ? "Not available" : data.current.transactionCount.toLocaleString()} delta="Recorded period" detail="Completed transactions in this window" tone="cyan"/>
-        </div>
-      </section> : <LiveSalesPanel data={data} currency={currency} paymentRange={paymentRange} setPaymentRange={setPaymentRange} />}
-      <section className="card period-trend-card">
-        <div className="card-head"><div><p className="card-kicker">PERIOD TREND</p><h3>Net sales and gross profit</h3></div><span className="verified-tag">{data.trend.length} verified days</span></div>
-        <BusinessTrendChart data={data.trend} currency={currency} />
-      </section>
-      {showRecordedPeriod && <details className="dashboard-current-day-details"><summary>Today’s Status and Sales Details<span>View coverage, payment mix and outlook</span></summary><LiveSalesPanel data={data} currency={currency} paymentRange={paymentRange} setPaymentRange={setPaymentRange} compact/></details>}
+      <ExecutiveOverview currency={currency} activeLocationId={activeLocationId} navigate={onDrill??navigate} refreshKey={data.liveSource.lastSuccessfulSyncAt}/>
+      <details className="dashboard-current-day-details"><summary>Today’s Sales Details<span>Payment mix, transactions and hourly activity</span></summary><LiveSalesPanel data={data} currency={currency} paymentRange={paymentRange} setPaymentRange={setPaymentRange} compact/></details>
       {data.insights[0] && (
         <section className="owner-priority-strip">
           <div><p>TODAY&apos;S PRIORITY</p><h3>{data.insights[0].title}</h3><span>{data.insights[0].recommendedAction}</span></div>

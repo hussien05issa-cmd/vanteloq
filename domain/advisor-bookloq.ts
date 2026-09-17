@@ -54,7 +54,7 @@ export function projectAdvisorBookloq(payload: unknown) {
   const aggregates = data.ledgerAccess?.available === true ? {
     trialBalance: numericProjection(statements.trialBalance, ["totalDebitCents", "totalCreditCents"]),
     balanceSheet: numericProjection(statements.balanceSheet, ["assetCents", "liabilityCents", "equityCents"]),
-    profitAndLoss: numericProjection(statements.profitAndLoss, ["revenueCents", "expenseCents", "cogsCents", "grossProfitCents", "operatingProfitCents"]),
+    profitAndLoss: numericProjection(statements.profitAndLoss, ["revenueCents", "expenseCents", "cogsCents", "grossProfitCents", "operatingProfitCents", "operatingRevenueCents", "operatingExpensesCents", "otherIncomeCents", "financeAndTaxCents", "netProfitCents"]),
   } : null;
   const currency = data.settings?.baseCurrency ?? record(source.organization).currency;
   return { status: "available", source: "BookLoQ permission-filtered summaries", scope: "organization", currency: typeof currency === "string" && /^[A-Z]{3}$/.test(currency) ? currency : null, ledgerAvailable: data.ledgerAccess?.available === true, period: "Cumulative posted ledger balances as recorded; not the retail KPI date range", cashLastSyncAt: safeTimestamp(data.summary?.cashLastSyncAt), values,

@@ -334,7 +334,7 @@ function buildInsights(current: Totals, previous: Totals, currency: string, comp
   return insights;
 }
 
-export function buildCommandCentre(rows: MetricRow[], currency: string, asOf = new Date()) {
+export function buildCommandCentre(rows: MetricRow[], currency: string, asOf = new Date(), period?: { from: string; to: string; comparisonFrom: string; comparisonTo: string }) {
   rows = rows.map(row => ({ ...row, labourCostCents: recordedLabourCost(row) }));
   const sourceRecordCount = rows.length;
   const sorted = aggregateDaily(rows);
@@ -365,26 +365,44 @@ export function buildCommandCentre(rows: MetricRow[], currency: string, asOf = n
     };
   }
   const latestBusinessDate = sorted.at(-1)!.businessDate;
-  const currentStart = dateOffset(latestBusinessDate, -29);
-  const previousStart = dateOffset(latestBusinessDate, -59);
-  const previousEnd = dateOffset(latestBusinessDate, -30);
-  const currentRows = sorted.filter((row) => row.businessDate >= currentStart && row.businessDate <= latestBusinessDate);
+  const periodEnd = period?.to ?? latestBusinessDate;
+  const currentStart = period?.from ?? dateOffset(latestBusinessDate, -29);
+  const previousStart = period?.comparisonFrom ?? dateOffset(latestBusinessDate, -59);
+  const previousEnd = period?.comparisonTo ?? dateOffset(latestBusinessDate, -30);
+  const currentRows = sorted.filter((row) => row.businessDate >= currentStart && row.businessDate <= periodEnd);
   const previousRows = sorted.filter((row) => row.businessDate >= previousStart && row.businessDate <= previousEnd);
   const current = sum(currentRows);
   const previous = sum(previousRows);
   const thirtyDays = windowComparison(rows, latestBusinessDate, 30);
+  const locations = [...new Set(rows.map(row => row.locationRef || "all"))];
+  const coverage = { current: periodEvidence(rows,currentStart,periodEnd,locations), previous: periodEvidence(rows,previousStart,previousEnd,locations) };
+  const comparable = period ? coverage.current.complete && coverage.previous.complete : thirtyDays.comparable;
+  // Inventory is a point-in-time balance. Never carry a prior snapshot forward as today's stock.
+  const inventorySnapshots = new Map<string, { total: bigint; complete: boolean; locations: Set<string> }>();
+  for (const row of rows) {
+    const snapshot = inventorySnapshots.get(row.businessDate) ?? { total: BigInt(0), complete: true, locations: new Set<string>() };
+    if (row.inventoryValueCents === null || !Number.isSafeInteger(row.inventoryValueCents)) snapshot.complete = false;
+    else snapshot.total += BigInt(row.inventoryValueCents);
+    snapshot.locations.add(row.locationRef || "all");
+    inventorySnapshots.set(row.businessDate, snapshot);
+  }
+  const inventoryAt = (date: string): number | null => {
+    const snapshot = inventorySnapshots.get(date);
+    if (!snapshot?.complete || !locations.every(location => snapshot.locations.has(location))) return null;
+    return snapshot.total <= BigInt(Number.MAX_SAFE_INTEGER) && snapshot.total >= BigInt(Number.MIN_SAFE_INTEGER) ? Number(snapshot.total) : null;
+  };
   const latestWith = <K extends keyof MetricRow>(key: K) => [...sorted].reverse().find((row) => row[key] !== null)?.[key] ?? null;
   const latestAgeDays = Math.max(0, Math.floor((asOf.getTime() - Date.parse(`${latestBusinessDate}T23:59:59Z`)) / 86_400_000));
   const freshness: FreshnessStatus = latestAgeDays <= 1 ? "current" : latestAgeDays <= 7 ? "aging" : "stale";
   const comparisons = {
-    ...thirtyDays.changes,
-    marginPointChange: thirtyDays.comparable && current.grossMarginRate !== null && previous.grossMarginRate !== null ? current.grossMarginRate - previous.grossMarginRate : null,
+    ...(period ? {netSalesRate: comparable ? percentChange(current.netSalesCents,previous.netSalesCents):null, grossProfitRate:comparable ? percentChange(current.grossProfitCents,previous.grossProfitCents):null, transactionRate:comparable ? percentChange(current.transactionCount,previous.transactionCount):null, averageTransactionRate:comparable && current.averageTransactionCents !== null && previous.averageTransactionCents !== null ? percentChange(current.averageTransactionCents,previous.averageTransactionCents):null} : thirtyDays.changes),
+    marginPointChange: comparable && current.grossMarginRate !== null && previous.grossMarginRate !== null ? current.grossMarginRate - previous.grossMarginRate : null,
   };
   const metrics = buildMetricResults({
-    rows: rows.filter(row => row.businessDate >= currentStart && row.businessDate <= latestBusinessDate),
+    rows: rows.filter(row => row.businessDate >= currentStart && row.businessDate <= periodEnd),
     currency,
     periodStart: currentStart,
-    periodEnd: latestBusinessDate,
+    periodEnd: periodEnd,
     comparisonPeriodStart: previousStart,
     comparisonPeriodEnd: previousEnd,
     freshnessStatus: freshness,
@@ -403,7 +421,7 @@ export function buildCommandCentre(rows: MetricRow[], currency: string, asOf = n
       labour_cost: current.labourCostCents,
       labour_rate: current.labourRate,
       contribution_after_labour: current.contributionCents,
-      inventory_value: latestWith("inventoryValueCents") as number | null,
+      inventory_value: period ? inventoryAt(periodEnd) : latestWith("inventoryValueCents") as number | null,
       operating_cash: latestWith("cashBalanceCents") as number | null,
       accounts_payable: latestWith("accountsPayableCents") as number | null,
     },
@@ -416,14 +434,15 @@ export function buildCommandCentre(rows: MetricRow[], currency: string, asOf = n
     comparisons,
     balances: { inventoryValueCents: latestWith("inventoryValueCents"), cashBalanceCents: latestWith("cashBalanceCents"), accountsPayableCents: latestWith("accountsPayableCents") },
     metrics,
-    trend: sorted.slice(-90).map((row) => ({ date: row.businessDate, netSalesCents: row.netSalesCents, grossProfitCents: row.netSalesCents - row.costOfGoodsCents, transactionCount: row.transactionCount })),
+    trend: (period ? currentRows : sorted.slice(-90)).map((row) => ({ date: row.businessDate, netSalesCents: row.netSalesCents, grossProfitCents: row.netSalesCents - row.costOfGoodsCents, transactionCount: row.transactionCount, ...(period ? {inventoryValueCents:inventoryAt(row.businessDate)}: {}) })),
     periodComparisons: {
       sevenDays: windowComparison(rows, latestBusinessDate, 7),
       thirtyDays,
     },
     forecast: sevenDayForecast(sorted, latestBusinessDate, asOf, rows),
-    insights: buildInsights(current, previous, currency, thirtyDays.comparable),
-    dataQuality: { status: thirtyDays.comparable ? "usable" : "limited", verifiedFields: 10, missingDimensions: ["Product and category detail", "Customer identity", "Marketing attribution", "Hourly traffic", "Supplier invoices"] },
+    insights: period && !comparable ? [] : buildInsights(current, previous, currency, comparable),
+    ...(period ? { reportingPeriod: { ...period, coverage, comparable, previousInventoryValueCents:inventoryAt(previousEnd) } } : {}),
+    dataQuality: { status: comparable ? "usable" : "limited", verifiedFields: 10, missingDimensions: ["Product and category detail", "Customer identity", "Marketing attribution", "Hourly traffic", "Supplier invoices"] },
   };
 }
 

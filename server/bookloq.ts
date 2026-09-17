@@ -1,3 +1,4 @@
+import { ledgerIntelligence } from "../domain/executive-metrics.ts";
 import type { Role } from "./authorization";
 import { ApiError } from "./api.ts";
 import { isCalendarDate } from "../domain/calendar-date.ts";
@@ -252,10 +253,12 @@ export function buildFinancialStatements(rows: readonly LedgerAccountRow[]) {
   const assetCents = sumType("asset");
   const liabilityCents = sumType("liability");
   const equityBeforeEarningsCents = sumType("equity");
-  const operatingProfitCents = exactMoney(BigInt(revenueCents) - BigInt(expenseCents));
-  const cogsCents = total(accounts.filter((row) => row.systemKey === "cost_of_goods_sold"));
-  const grossProfitCents = exactMoney(BigInt(revenueCents) - BigInt(cogsCents));
-  const cashCents = accounts.filter((row) => row.systemKey === "operating_cash").reduce((sum, row) => sum + row.balanceCents, 0);
+  const canonical=ledgerIntelligence(rows);
+  const operatingProfitCents = canonical.operatingProfitCents;
+  const netProfitCents=canonical.netProfitCents;
+  const cogsCents = canonical.cogsCents;
+  const grossProfitCents = canonical.grossProfitCents;
+  const cashCents = canonical.cashCents;
   const accountsReceivableCents = accounts.filter((row) => row.systemKey === "accounts_receivable").reduce((sum, row) => sum + row.balanceCents, 0);
   const accountsPayableCents = accounts.filter((row) => row.systemKey === "accounts_payable").reduce((sum, row) => sum + row.balanceCents, 0);
   const gstCollectedCents = accounts.filter((row) => row.systemKey === "gst_collected").reduce((sum, row) => sum + row.balanceCents, 0);
@@ -266,8 +269,8 @@ export function buildFinancialStatements(rows: readonly LedgerAccountRow[]) {
       totalDebitCents: exactMoney(rows.reduce((sum, row) => sum + (row.debitCents > row.creditCents ? ledgerCents(row.debitCents) - ledgerCents(row.creditCents) : BigInt(0)), BigInt(0))),
       totalCreditCents: exactMoney(rows.reduce((sum, row) => sum + (row.creditCents > row.debitCents ? ledgerCents(row.creditCents) - ledgerCents(row.debitCents) : BigInt(0)), BigInt(0))),
     },
-    profitAndLoss: { revenueCents, expenseCents, cogsCents, grossProfitCents, operatingProfitCents },
-    balanceSheet: { assetCents, liabilityCents, equityCents: exactMoney(BigInt(equityBeforeEarningsCents) + BigInt(operatingProfitCents)) },
+    profitAndLoss: { revenueCents, expenseCents, cogsCents, grossProfitCents, operatingProfitCents, netProfitCents, operatingRevenueCents:canonical.operatingRevenueCents, operatingExpensesCents:canonical.operatingExpensesCents, otherIncomeCents:canonical.otherIncomeCents, financeAndTaxCents:canonical.financeAndTaxCents },
+    balanceSheet: { assetCents, liabilityCents, equityCents: exactMoney(BigInt(equityBeforeEarningsCents) + BigInt(netProfitCents)) },
     cashCents,
     accountsReceivableCents,
     accountsPayableCents,

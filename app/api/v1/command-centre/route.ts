@@ -1,4 +1,8 @@
-import { and, desc, eq } from "drizzle-orm";
+import { hasAddon } from "../../../../server/entitlements/engine";
+import { loadExecutiveFinance } from "../../../../server/executive-finance";
+import { buildExecutiveReport } from "../../../../server/executive-report";
+import { executivePeriod } from "../../../../domain/executive-metrics";
+import { and, desc, eq, gte, lte } from "drizzle-orm";
 import { getD1, getDb } from "../../../../db";
 import { bankAccounts, dailyBusinessMetrics, integrationConnections, integrationLocationMappings, organizationProfiles } from "../../../../db/schema";
 import { requireAccess } from "../../../../server/authorization";
@@ -94,6 +98,9 @@ export async function loadCommandCentre(request: Request) {
     await requirePermission(context, "dashboard.view");
     await enforceRateLimit("command-centre:read", `${context.userId}:${clientSource(request)}`, 120, 60);
     const permissions = await effectivePermissions(context);
+    const executive = new URL(request.url).searchParams.get("executive") === "1";
+    let period: ReturnType<typeof executivePeriod> | undefined;
+    if (executive) { try { period = executivePeriod(new URL(request.url).searchParams,businessClock(new Date(),context.organization.timezone)!.date); } catch(error) { throw new ApiError(400,"REPORT_PERIOD_INVALID",error instanceof Error ? error.message : "Invalid reporting period."); } }
     const requestedLocationId = new URL(request.url).searchParams.get("location");
     const locationAccess = await authorizedLocationDataScope(context, requestedLocationId);
     const availableLocations = locationAccess.locations;
@@ -128,10 +135,12 @@ export async function loadCommandCentre(request: Request) {
       .from(dailyBusinessMetrics)
       .where(and(
         eq(dailyBusinessMetrics.organizationId, context.organizationId),
+        ...(period ? [gte(dailyBusinessMetrics.businessDate, period.comparisonFrom < period.from ? period.comparisonFrom : period.from), lte(dailyBusinessMetrics.businessDate, period.to)] : []),
         approvedFactSource(dailyBusinessMetrics.organizationId, dailyBusinessMetrics.sourceProvider, dailyBusinessMetrics.sourceConnectionId),
       ))
       .orderBy(desc(dailyBusinessMetrics.businessDate))
-      .limit(730);
+      .limit(period ? 20001 : 730);
+    if (period && recentRows.length > 20000) throw new ApiError(422,"REPORT_TOO_LARGE","Choose a shorter period or one location. No partial totals are shown.");
     const rows = [...recentRows].reverse();
     const [branding] = await getDb().select({ displayName: organizationProfiles.displayName, logoObjectKey: organizationProfiles.logoObjectKey, logoVersion: organizationProfiles.logoVersion })
       .from(organizationProfiles).where(eq(organizationProfiles.organizationId, context.organizationId)).limit(1);
@@ -237,7 +246,7 @@ export async function loadCommandCentre(request: Request) {
           sourceGranularity: "intraday" as const,
         }
       : buildDailySourceSnapshot(trustedRows, context.organization.timezone);
-    const baseCommandCentre = buildCommandCentre(trustedRows, context.organization.currency);
+    const baseCommandCentre = buildCommandCentre(trustedRows, context.organization.currency, new Date(), period);
     const plaidConnections = connectionRows.filter((row) => row.provider === "plaid"
       && row.status === "connected"
       && row.dataPromotionStatus === "approved"
@@ -255,7 +264,7 @@ export async function loadCommandCentre(request: Request) {
         lastSyncAtMs: account.lastSyncAt?.getTime() ?? null,
       })),
     });
-    if (!locationRestricted && plaidCash.status === "available" && plaidCash.verifiedCashCents !== null) {
+    if (!period && !locationRestricted && plaidCash.status === "available" && plaidCash.verifiedCashCents !== null) {
       const latestBankSync = plaidAccountRows
         .map((account) => account.lastSyncAt)
         .filter((value): value is Date => Boolean(value))
@@ -449,6 +458,8 @@ export async function loadCommandCentre(request: Request) {
       commandCentre.insights = commandCentre.insights.filter((insight) => insight.id !== "labour-pressure");
     }
     if (!permissions.includes("inventory.value")) {
+      if ("reportingPeriod" in commandCentre && commandCentre.reportingPeriod) commandCentre.reportingPeriod.previousInventoryValueCents = null;
+      for(const point of commandCentre.trend) if("inventoryValueCents" in point) Object.assign(point,{inventoryValueCents:null});
       if (commandCentre.balances) Object.assign(commandCentre.balances, { inventoryValueCents: null });
       delete (commandCentre.metrics as Record<string, unknown>).inventory_value;
     }
@@ -460,7 +471,16 @@ export async function loadCommandCentre(request: Request) {
       insights: commandCentre.insights,
       dataQuality: commandCentre.dataQuality,
     });
+    let executiveReport;
+    if(period){
+      const hasBookloq=await hasAddon(context,"bookloq");
+      const fullFinance=["finance.statements","finance.bank_balances","finance.ap_ar","payroll.totals","finance.costs","metrics.profit","metrics.revenue","metrics.cash","inventory.value"].every(p=>permissions.includes(p as typeof permissions[number]));
+      const financeReason=!hasBookloq?"BookLoQ access is required for ledger metrics.":!locationAccess.organizationWide||selectedLocation?"Select All locations to review company financial statements.":!fullFinance?"Your role does not include the full financial permissions required for these totals.":null;
+      const finance=financeReason?null:await loadExecutiveFinance(context.organizationId,context.organization.currency,period,businessClock(new Date(),context.organization.timezone)!.date,permissions.includes("customers.identity"));
+      executiveReport=buildExecutiveReport(period,commandCentre,finance,financeReason,new URL(request.url).searchParams.get("basis")==="ledger"?"ledger":"commerce");
+    }
     return {
+      ...(executiveReport?{executiveReport}:{}),
       organization: {
         name: branding?.displayName ?? context.organization.businessName,
         currency: context.organization.currency,

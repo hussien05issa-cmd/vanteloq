@@ -2,7 +2,7 @@
 export type FinancialReviewStatements = {
   trialBalance?: { totalDebitCents?: number | null; totalCreditCents?: number | null };
   balanceSheet?: { assetCents?: number | null; liabilityCents?: number | null; equityCents?: number | null };
-  profitAndLoss?: { revenueCents?: number | null; expenseCents?: number | null; cogsCents?: number | null; grossProfitCents?: number | null; operatingProfitCents?: number | null };
+  profitAndLoss?: { revenueCents?: number | null; expenseCents?: number | null; cogsCents?: number | null; grossProfitCents?: number | null; operatingProfitCents?: number | null; operatingRevenueCents?: number | null; netProfitCents?: number | null };
 };
 
 function exactDifference(values: (number | null | undefined)[]) {
@@ -23,8 +23,8 @@ export function buildFinancialReview(statements: FinancialReviewStatements | nul
   const definitions = [
     { id: "trial_balance", label: "Debits equal credits", formula: "Debits − credits", values: [s?.trialBalance?.totalDebitCents, s?.trialBalance?.totalCreditCents] },
     { id: "balance_sheet", label: "Assets equal liabilities plus equity", formula: "Assets − liabilities − equity", values: [s?.balanceSheet?.assetCents, s?.balanceSheet?.liabilityCents, s?.balanceSheet?.equityCents] },
-    { id: "gross_profit", label: "Gross profit reconciles", formula: "Revenue − cost of goods sold − gross profit", values: [p?.revenueCents, p?.cogsCents, p?.grossProfitCents] },
-    { id: "recorded_earnings", label: "Recorded earnings reconcile", formula: "Revenue − recorded expenses − recorded earnings", values: [p?.revenueCents, p?.expenseCents, p?.operatingProfitCents] },
+    { id: "gross_profit", label: "Gross profit reconciles", formula: "Operating revenue − cost of goods sold − gross profit", values: [p?.operatingRevenueCents ?? p?.revenueCents, p?.cogsCents, p?.grossProfitCents] },
+    { id: "recorded_earnings", label: "Recorded earnings reconcile", formula: "Revenue − recorded expenses − recorded earnings", values: [p?.revenueCents, p?.expenseCents, p?.netProfitCents ?? p?.operatingProfitCents] },
   ];
   const checks = definitions.map(({ values, ...definition }) => {
     const differenceCents = exactDifference(values);
@@ -33,8 +33,8 @@ export function buildFinancialReview(statements: FinancialReviewStatements | nul
   return {
     status: checks.some(check => check.status === "needs_review") ? "needs_review" as const : checks.every(check => check.status === "balanced") ? "balanced" as const : "unavailable" as const,
     checks,
-    grossMarginBasisPoints: financialRatioBasisPoints(p?.grossProfitCents, p?.revenueCents),
-    recordedEarningsMarginBasisPoints: financialRatioBasisPoints(p?.operatingProfitCents, p?.revenueCents),
+    grossMarginBasisPoints: financialRatioBasisPoints(p?.grossProfitCents, p?.operatingRevenueCents ?? p?.revenueCents),
+    recordedEarningsMarginBasisPoints: financialRatioBasisPoints(p?.netProfitCents ?? p?.operatingProfitCents, p?.revenueCents),
     boundary: "Cumulative posted ledger balances. Balanced checks do not establish complete records, bank reconciliation, tax accuracy or an audit opinion. Recorded earnings include only the expenses entered in the ledger.",
   };
 }

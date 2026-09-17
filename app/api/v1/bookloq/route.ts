@@ -753,7 +753,7 @@ export async function GET(request: Request) {
           bankCashStatus: verifiedBankCash.status,
           revenueCents: ledgerReadable ? statements.profitAndLoss.revenueCents : null,
           grossProfitCents: ledgerReadable ? statements.profitAndLoss.grossProfitCents : null,
-          grossMarginBasisPoints: ledgerReadable && statements.profitAndLoss.revenueCents ? Math.round(statements.profitAndLoss.grossProfitCents * 10_000 / statements.profitAndLoss.revenueCents) : null,
+          grossMarginBasisPoints: ledgerReadable && statements.profitAndLoss.operatingRevenueCents > 0 ? Math.round(statements.profitAndLoss.grossProfitCents * 10_000 / statements.profitAndLoss.operatingRevenueCents) : null,
           operatingProfitCents: ledgerReadable ? statements.profitAndLoss.operatingProfitCents : null,
           totalExpensesCents: ledgerReadable ? statements.profitAndLoss.expenseCents : null,
           accountsReceivableCents: ledgerReadable && access.accountsPayableReceivable ? statements.accountsReceivableCents : null,

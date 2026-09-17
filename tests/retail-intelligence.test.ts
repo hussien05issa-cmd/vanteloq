@@ -148,3 +148,10 @@ test("a large selection retains all records and tied products receive equal scor
   const report = analyze(rows); assert.equal(report.current.purchaseBaskets, 10000); assert.equal(report.current.netCents, 10000000);
   assert.equal(new Set(report.products.map(row => row.score)).size, 1);
 });
+
+
+test("observed cohort retention and concentration preserve source identities and exclude guests",()=>{
+  const r=analyze([line('prior-a','A',{customerRef:'buyer-a',soldAt:'2026-09-10T11:00:00'}),line('prior-b','A',{customerRef:'buyer-b',soldAt:'2026-09-10T11:00:00'}),line('now-a','A',{customerRef:'buyer-a',netCents:3000}),line('now-c','A',{customerRef:'buyer-c',netCents:1000}),line('guest','A',{netCents:6000})]);
+  assert.equal(r.customers.observedRetentionRate,.5);assert.equal(r.customers.identifiedPurchaseRevenueCents,4000);assert.equal(r.customers.topCustomerRevenueShare,.75);assert.equal(r.customers.topFiveCustomerRevenueShare,1);assert.equal(r.customers.identityCoverage,2/3);
+  assert.equal(analyze([line('guest','A')]).customers.topCustomerRevenueShare,null);
+});

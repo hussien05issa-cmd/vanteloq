@@ -18,7 +18,7 @@ test("contra assets, sales returns and owner draws preserve the accounting equat
  const s=buildFinancialStatements(ledger);
  assert.deepEqual(s.trialBalance,{totalDebitCents:400000,totalCreditCents:400000});
  assert.deepEqual(s.balanceSheet,{assetCents:320000,liabilityCents:0,equityCents:320000});
- assert.deepEqual(s.profitAndLoss,{revenueCents:75000,expenseCents:45000,cogsCents:25000,grossProfitCents:50000,operatingProfitCents:30000});
+ assert.deepEqual(s.profitAndLoss,{revenueCents:75000,expenseCents:45000,cogsCents:25000,grossProfitCents:50000,operatingProfitCents:30000,operatingRevenueCents:75000,operatingExpensesCents:20000,otherIncomeCents:0,financeAndTaxCents:0,netProfitCents:30000});
  assert.equal(s.accounts.find(x=>x.id==="accumulated_depreciation")?.balanceCents,20000);
  assert.equal(buildFinancialReview(s,true).status,"balanced");
 });

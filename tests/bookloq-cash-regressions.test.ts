@@ -863,3 +863,28 @@ test("cash-flow UI names every commitment blocker and reserves bank guidance for
     "Commitment review must select its specific warning before the generic bank-unavailable remediation.",
   );
 });
+
+
+test("executive report keeps period accounting behind add-on and organization scope", async () => {
+  const {worker,environment,database,dispose}=await createEnvironment();
+  try {
+    const email='executive-'+crypto.randomUUID()+'@example.invalid';
+    const response=await dispatch(worker,environment,'/api/v1/onboarding',{method:'POST',email,body:onboardingBody('Executive Owner','Executive Fixture')});
+    assert.equal(response.status,201,await response.clone().text());
+    const identity=await database.prepare('SELECT m.organization_id organizationId FROM users u JOIN memberships m ON m.user_id=u.id WHERE u.email=?').bind(email).first<{organizationId:string}>();
+    assert.ok(identity);const org=identity.organizationId;await grantBookLoQ(database,org);
+    const seed=await dispatch(worker,environment,'/api/v1/bookloq/demo',{method:'POST',email,body:{}});assert.equal(seed.status,201,await seed.clone().text());
+    const path='/api/v1/command-centre?executive=1&period=ytd&basis=ledger';
+    const read=async(suffix='')=>{const r=await dispatch(worker,environment,path+suffix,{email});assert.equal(r.status,200,await r.clone().text());return (await r.json()).executiveReport;};
+    assert.equal((await read()).finance,null,'demo ledger never flows into live overview');
+    // Only the isolated, synthetic database is switched to exercise the live-code query path.
+    await database.prepare("UPDATE bookloq_settings SET data_mode='live' WHERE organization_id=?").bind(org).run();
+    const report=await read();assert.equal(report.metrics.length,8);assert.ok(report.finance);assert.equal(report.finance.closing.balanceDifferenceCents,0);assert.ok(report.finance.cashClassification);
+    assert.ok(report.finance.current);assert.equal(report.finance.current.operatingProfitCents,report.finance.current.operatingRevenueCents-report.finance.current.cogsCents-report.finance.current.operatingExpensesCents);
+    const location=await database.prepare('SELECT id FROM organization_locations WHERE organization_id=? LIMIT 1').bind(org).first<{id:string}>();assert.ok(location);
+    assert.equal((await read('&location='+location.id)).finance,null,'location view cannot silently show whole-company ledger totals');
+    await database.prepare("UPDATE tenant_addons SET status='inactive' WHERE organization_id=? AND addon_key='bookloq'").bind(org).run();
+    const revoked=await read();assert.equal(revoked.finance,null);assert.equal(revoked.metrics.find((m:{key:string})=>m.key==='operating_profit').value,null);
+    const invalid=await dispatch(worker,environment,'/api/v1/command-centre?executive=1&period=custom&from=2026-02-30&to=2026-03-01',{email});assert.equal(invalid.status,400);
+  } finally {await dispose();}
+});
