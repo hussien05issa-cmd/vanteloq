@@ -4,6 +4,7 @@ import WorkspaceIcon from "./workspace-icon";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import RetailIntelligenceWorkspace, { type RetailAdvisorSeed } from "./retail-intelligence-workspace";
 import { apiFetch } from "./supabase-browser";
+import { createCommerceReportLoader, type CommerceReportState } from "./commerce-read";
 import { providerDisplayName } from "../domain/display-labels";
 import { businessClock, businessDateOffset } from "../domain/intraday-sales";
 import { FieldLabel } from "./form-primitives";
@@ -156,40 +157,28 @@ export default function CommerceIntelligenceWorkspace({ mode, currency, timeZone
   const [from, setFrom] = useState(() => businessDateOffset(today(), -29));
   const [to, setTo] = useState(today);
   const [applied, setApplied] = useState({ from, to });
-  const [data, setData] = useState<Snapshot | null>(null);
+  const params = new URLSearchParams({ from: applied.from, to: applied.to, mode });
+  if (activeLocationId) params.set("location", activeLocationId);
+  const scope = `/api/v1/commerce-intelligence?${params}`;
+  const [read, setRead] = useState<CommerceReportState<Snapshot>>({ scope: "", data: null, error: "", loading: true });
+  const { data, error, loading } = read.scope === scope ? read : { data: null, error: "", loading: true };
   const [query, setQuery] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
   const [costPreview, setCostPreview] = useState<CostImportRow[]>([]);
   const [costFileName, setCostFileName] = useState("");
   const [costError, setCostError] = useState("");
   const [costSaving, setCostSaving] = useState(false);
   const [editingCostKey, setEditingCostKey] = useState("");
   const [costDraft, setCostDraft] = useState("");
-  const requestRef = useRef<AbortController | null>(null);
-  const load = useCallback(async () => {
-    requestRef.current?.abort();
-    const controller = new AbortController(); requestRef.current = controller;
-    setLoading(true);
-    setData(null);
-    try {
-      const params = new URLSearchParams({ from: applied.from, to: applied.to, mode });
-      if (activeLocationId) params.set("location", activeLocationId);
-      const response = await apiFetch(`/api/v1/commerce-intelligence?${params}`, { headers: { Accept: "application/json" }, signal: controller.signal });
-      const body = await response.json();
-      if (controller.signal.aborted) return;
-      if (!response.ok) throw new Error(body.error?.message ?? "Commerce intelligence could not be loaded.");
-      setData(body);
-      setError("");
-    } catch (caught) {
-      if (controller.signal.aborted) return;
-      setError(caught instanceof Error ? caught.message : "Commerce intelligence could not be loaded.");
-    } finally { if (!controller.signal.aborted) setLoading(false); }
-  }, [activeLocationId, applied, mode]);
+  const requests = useRef<ReturnType<typeof createCommerceReportLoader<Snapshot>> | null>(null);
+  if (requests.current === null) { requests.current = createCommerceReportLoader<Snapshot>(apiFetch, setRead); }
+  const currentScope = useRef<string | null>(scope);
+  const load = useCallback(() => requests.current!.load(scope, () => currentScope.current === scope), [scope]);
   useEffect(() => {
+    const loader = requests.current!;
+    currentScope.current = scope;
     const timer = window.setTimeout(() => void load(), 0);
-    return () => { window.clearTimeout(timer); requestRef.current?.abort(); };
-  }, [load]);
+    return () => { currentScope.current = null; window.clearTimeout(timer); loader.cancel(); };
+  }, [load, scope]);
 
   const saveCosts = useCallback(async (source: "manual" | "csv", entries: Array<Record<string, unknown>>) => {
     setCostSaving(true);
@@ -252,13 +241,13 @@ export default function CommerceIntelligenceWorkspace({ mode, currency, timeZone
   return <div className="content commerce-intelligence-page">
     <section className="commerce-intelligence-head">
       <div><p>VERIFIED COMMERCE RECORDS</p><h2>{title}</h2><span>{description}</span></div>
-      <form className="commerce-period-picker" onSubmit={(event) => { event.preventDefault(); setApplied({ from, to }); }}>
+      <form className="commerce-period-picker" aria-busy={loading} onSubmit={(event) => { event.preventDefault(); setApplied({ from, to }); }}>
         <label><FieldLabel>From</FieldLabel><input type="date" value={from} max={to} onChange={(event) => setFrom(event.target.value)} required /></label>
         <label><FieldLabel>To</FieldLabel><input type="date" value={to} min={from} max={today()} onChange={(event) => setTo(event.target.value)} required /></label>
         <button disabled={loading}>{loading ? "Loading…" : "Apply dates"}</button>
       </form>
     </section>
-    {error ? <section className="commerce-api-error" role="alert"><b>Commerce data could not be loaded.</b><span>{error}</span><button onClick={() => void load()}>Try again</button></section> : null}
+    {error ? <section className="commerce-api-error" role="alert"><b>Commerce data could not be loaded.</b><span>{error}</span><button type="button" disabled={loading} onClick={() => void load()}>Try Again</button></section> : null}
     {mode !== "Suppliers" && <RetailIntelligenceWorkspace key={mode + applied.from + applied.to + activeLocationId} from={applied.from} to={applied.to} locationId={activeLocationId} currency={currency} navigate={navigate} createTask={createTask} onAsk={onAsk} initialSection={mode === "Sales" ? "Why it changed" : mode}/>}
     {data ? <details className="commerce-source-detail" open={mode === "Suppliers"}><summary>Source records and controls</summary>
       <section className="commerce-date-context"><span>{data.period.from} → {data.period.to}</span><b>{data.period.days} calendar {data.period.days === 1 ? "day" : "days"}</b><small>Compared with {data.period.comparisonFrom} → {data.period.comparisonTo}</small></section>

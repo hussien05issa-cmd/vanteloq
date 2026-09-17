@@ -1,0 +1,30 @@
+.custom-plan-cta.custom-plan-callout {
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  align-items:center;
+  gap:24px 40px;
+  margin:28px 0 0;
+  padding:32px;
+  border:1px solid #ccdbea;
+  border-radius:20px;
+  background:linear-gradient(115deg,#edf4fb 0%,#f5f8fc 64%,#ecf0fa 100%);
+  box-shadow:inset 0 1px 0 #ffffffb3,0 6px 20px #15334c05;
+  text-align:left;
+}
+.custom-plan-callout-copy {min-width:0;max-width:640px}
+.custom-plan-callout-label {display:block;margin:0 0 10px;color:#315b80;font-size:12px;font-weight:650;line-height:1.4;letter-spacing:.025em}
+.custom-plan-callout.custom-plan-cta h2,.custom-plan-callout.custom-plan-cta h3 {margin:0;color:#142e47;font-size:clamp(20px,2.1vw,25px);font-weight:650;line-height:1.25;letter-spacing:-.025em;text-align:left}
+.custom-plan-callout.custom-plan-cta p {max-width:60ch;margin:12px 0 0;color:#455f77;font-size:14px;line-height:1.65;text-align:left}
+.custom-plan-callout.custom-plan-cta>a.custom-plan-callout-action {display:inline-flex;align-items:center;justify-content:center;gap:14px;min-height:48px;padding:13px 20px;border:1px solid #173b5e;border-radius:12px;background:linear-gradient(180deg,#244c6d,#15364f);box-shadow:inset 0 1px 0 #ffffff30,0 3px 8px #15364f12;color:#f6f9fd;font-size:14px;font-weight:650;line-height:1.4;text-decoration:none;white-space:nowrap;transition:background-color .15s,box-shadow .15s}
+.custom-plan-callout.custom-plan-cta>a.custom-plan-callout-action:hover {background:#173f5d;box-shadow:inset 0 1px 0 #ffffff30,0 5px 14px #15364f20}
+.custom-plan-callout-action svg {flex-shrink:0}
+.custom-plan-callout-action:focus-visible {outline:3px solid #357ac7;outline-offset:4px}
+@media(max-width:800px) {
+  .custom-plan-cta.custom-plan-callout {grid-template-columns:1fr;gap:22px;padding:26px;align-items:start}
+  .custom-plan-callout.custom-plan-cta>a.custom-plan-callout-action {justify-self:start}
+}
+@media(max-width:480px) {
+  .custom-plan-cta.custom-plan-callout {padding:24px 20px;border-radius:16px}
+  .custom-plan-callout.custom-plan-cta>a.custom-plan-callout-action {width:100%;white-space:normal;box-sizing:border-box}
+}
+@media(prefers-reduced-motion:reduce) {.custom-plan-callout.custom-plan-cta>a.custom-plan-callout-action {transition:none}}

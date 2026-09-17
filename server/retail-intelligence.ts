@@ -35,8 +35,11 @@ export const approvedRetailSource = (alias: string, connectionColumn = "connecti
     AND (approved.provider <> 'moneris' OR approved.source_namespace LIKE 'production:%')
     AND (approved.sync_lease_owner IS NULL OR approved.sync_lease_expires_at IS NULL OR approved.sync_lease_expires_at <= CAST(strftime('%s','now') AS INTEGER)))`;
 
+type RetailLocationScope = Awaited<ReturnType<typeof authorizedLocationDataScope>>;
 export async function retailOutlets(context: AccessContext, locationId: string | null) {
-  const scope = await authorizedLocationDataScope(context, locationId);
+  return retailOutletsInScope(context, await authorizedLocationDataScope(context, locationId));
+}
+async function retailOutletsInScope(context: AccessContext, scope: RetailLocationScope) {
   const mappings = await getD1().prepare(`SELECT m.provider, m.connection_id AS connectionId, m.external_location_ref AS externalRef,
     c.source_namespace AS sourceNamespace, l.name AS locationName, l.id AS locationId
     FROM integration_location_mappings m JOIN integration_connections c ON c.id = m.connection_id AND c.organization_id = m.organization_id
@@ -48,7 +51,9 @@ export async function retailOutlets(context: AccessContext, locationId: string |
     .map(row => ({ provider: row.provider, connectionId: row.connectionId, outletRef: scopeExternalRef(row.sourceNamespace ?? "legacy", row.externalRef)!, locationId: row.locationId, label: row.locationName + " · " + row.provider }));
 }
 export async function readRetailMeasurements(context: AccessContext, locationId: string | null, access: RetailAccess) {
-  const scope = await authorizedLocationDataScope(context, locationId);
+  return retailMeasurementsInScope(context, access, await authorizedLocationDataScope(context, locationId));
+}
+async function retailMeasurementsInScope(context: AccessContext, access: RetailAccess, scope: RetailLocationScope) {
   const result = await getD1().prepare(`SELECT id, kind, provider, connection_id AS connectionId, outlet_ref AS outletRef,
     period_from AS "from", period_to AS "to", source_label AS source, values_json AS valuesJson, version, updated_at AS updatedAt
     FROM retail_measurements m WHERE m.organization_id = ? AND ${approvedRetailSource("m")}
@@ -59,7 +64,8 @@ export async function readRetailMeasurements(context: AccessContext, locationId:
     .map(row => ({ ...row, entries: JSON.parse(row.valuesJson) as Array<{ reference: string; values: RetailMeasurement["values"] }> }));
 }
 export async function readRetailReport(context: AccessContext, locationId: string | null, from: string | null, to: string | null) {
-  const period = retailPeriod(from, to, context.organization.timezone), access = await retailAccess(context), scope = await authorizedLocationDataScope(context, locationId);
+  const period = retailPeriod(from, to, context.organization.timezone);
+  const [access, scope] = await Promise.all([retailAccess(context), authorizedLocationDataScope(context, locationId)]);
   const localIds = scope.locationIds ?? scope.locations.map(location => location.id);
   const salesAuthority = await commerceSourceAuthority({ organizationId: context.organizationId, localLocationIds: localIds, factFamily: "sales", salesLineFacts: true });
   if (salesAuthority.status === "conflict") throw new ApiError(409, "RETAIL_SOURCE_OVERLAP", "Sales sources overlap or are still syncing. Open Reports to review the authoritative source for this location before combining records.");
@@ -93,7 +99,7 @@ export async function readRetailReport(context: AccessContext, locationId: strin
       quantity_remaining AS quantity, unit_cost_cents AS costCents FROM inventory_lots
       WHERE organization_id = ? AND quantity_remaining > 0 AND expiration_date IS NOT NULL AND source_system <> 'pos'
       ORDER BY expiration_date LIMIT 5001`).bind(context.organizationId).all<RetailLot>() : { results: [] },
-    readRetailMeasurements(context, locationId, access),
+    retailMeasurementsInScope(context, access, scope),
   ]);
   if ((lines.results ?? []).length > 50000 || (stocks.results ?? []).length > 5000 || (lots.results ?? []).length > 5000) throw new ApiError(413, "RETAIL_EVIDENCE_LIMIT", "This selection exceeds the complete-record analysis limit. Narrow the dates or location; Vanteloq will not calculate from a partial sample.");
   const inventoryAuthority = access.inventory ? await commerceSourceAuthority({ organizationId: context.organizationId, localLocationIds: localIds, factFamily: "inventory" }) : null;
@@ -102,7 +108,7 @@ export async function readRetailReport(context: AccessContext, locationId: strin
   const scopedLots = (lots.results ?? []).filter(row => scope.locationRefs === null || scope.locationRefs.includes(row.locationRef)).map(row => ({ ...row, costCents: access.costs ? row.costCents : null }));
   const measurements = measured.flatMap(m => m.entries.map(entry => ({ kind: m.kind, provider: m.provider, connectionId: m.connectionId, outletRef: m.outletRef, from: m.from, to: m.to, source: m.source, ...entry })));
   if (access.labour) {
-    const outlets = await retailOutlets(context, locationId), measuredLocations = new Set<string>();
+    const outlets = await retailOutletsInScope(context, scope), measuredLocations = new Set<string>();
     for (const measurement of measurements.filter(m => m.kind === "labour" && m.from === period.from && m.to === period.to)) {
       const outlet = outlets.find(o => o.provider === measurement.provider && o.connectionId === measurement.connectionId && o.outletRef === measurement.outletRef);
       if (!outlet) { measurement.values.complete = false; continue; }

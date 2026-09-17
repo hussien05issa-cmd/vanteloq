@@ -15,7 +15,7 @@ test("Period Trend does not draw a sales line or area through a missing calendar
   const sales = html.match(/<path d="([^"]*)" class="trend-sales-line"/)?.[1] ?? "";
   assert.equal((sales.match(/M/g) ?? []).length, 2);
   assert.equal((sales.match(/L/g) ?? []).length, 1);
-  const fillPaths = [...html.matchAll(/<path d="([^"]*)" fill="url\([^)]*\)"/g)].map(match => match[1]);
+  const fillPaths = [...html.matchAll(/<path class="trend-sales-area" d="([^"]*)" fill="url\([^)]*\)"/g)].map(match => match[1]);
   assert.equal(fillPaths.length, 1);
   assert.equal((fillPaths[0].match(/M/g) ?? []).length, 1);
   assert.match(html, /-\$59\.99/);

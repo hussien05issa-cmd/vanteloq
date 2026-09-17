@@ -400,20 +400,6 @@ export async function GET(request: Request) {
     const matchesDataMode = (demoRecord: number) => dataMode === "demonstration" ? Boolean(demoRecord) : !Boolean(demoRecord);
     const visibleBills = access.accountsPayableReceivable ? bills.filter((bill) => matchesDataMode(bill.demoRecord)) : [];
     const visibleInvoices = access.accountsPayableReceivable ? invoices.filter((invoice) => matchesDataMode(invoice.demoRecord)) : [];
-    // Count issued, unpaid receivables across the entire tenant, not the capped table.
-    // Drafts have not been issued and must never create an overdue collection alert.
-    const [overdueInvoices, cashActivity] = await Promise.all([
-      access.accountsPayableReceivable
-      ? database.prepare(`SELECT COUNT(*) count FROM customer_invoices
-          WHERE organization_id = ? AND demo_record = ? AND due_date < ?
-            AND status IN ('approved', 'sent', 'viewed', 'due', 'partially_paid', 'overdue')
-            AND total_cents > paid_cents`)
-        .bind(organizationId, dataMode === "demonstration" ? 1 : 0, asOf).first<{ count: number }>()
-      : Promise.resolve(null),
-      loadBookloqCashActivity(database, {
-        organizationId, currency: baseCurrency, asOf, dataMode, allowed: transactionReadable,
-      }),
-    ]);
     const visibleContacts = access.contactIdentity ? rows(contactsResult) : [];
     const demonstrationCashBanks = visibleBanks.filter((bank) =>
       cashAccountTypes.has(bank.accountType)
@@ -478,11 +464,20 @@ export async function GET(request: Request) {
     type CalculationBill = { id: string; billNumber: string; supplierName: string; dueDate: string; totalCents: number; paidCents: number; status: string; currency: string; approvalStatus: string; demoRecord: number; purchaseOrderRef: string | null };
     type CalculationInvoice = { id: string; invoiceNumber: string; customerName: string; dueDate: string; totalCents: number; paidCents: number; status: string; currency: string; demoRecord: number };
     type CalculationPurchaseOrder = { id: string; orderNumber: string; supplierName: string; committedCashDate: string | null; expectedDeliveryDate: string | null; totalCents: number; currency: string; status: string };
-    let calculationBills: CalculationBill[] = [];
-    let calculationInvoices: CalculationInvoice[] = [];
-    let calculationPurchaseOrders: CalculationPurchaseOrder[] = [];
-    if (cashProjectionAllowed) {
-      const [calculationBillsResult, calculationInvoicesResult, calculationPurchaseOrdersResult] = await Promise.all([
+    // These reads use the same already-authorized organization, currency and
+    // data mode. Await one group so no rejected read is left unobserved.
+    const [overdueInvoices, cashActivity, calculationResults, actualTransactionResult] = await Promise.all([
+      access.accountsPayableReceivable
+      ? database.prepare(`SELECT COUNT(*) count FROM customer_invoices
+          WHERE organization_id = ? AND demo_record = ? AND due_date < ?
+            AND status IN ('approved', 'sent', 'viewed', 'due', 'partially_paid', 'overdue')
+            AND total_cents > paid_cents`)
+        .bind(organizationId, dataMode === "demonstration" ? 1 : 0, asOf).first<{ count: number }>()
+      : Promise.resolve(null),
+      loadBookloqCashActivity(database, {
+        organizationId, currency: baseCurrency, asOf, dataMode, allowed: transactionReadable,
+      }),
+      cashProjectionAllowed ? Promise.all([
         database.prepare(`SELECT b.id, b.bill_number billNumber, b.due_date dueDate, b.status,
           b.total_cents totalCents, b.paid_cents paidCents, b.currency,
           b.approval_status approvalStatus, b.demo_record demoRecord,
@@ -506,11 +501,41 @@ export async function GET(request: Request) {
             AND ? = 'live'
             AND status IN ('sent', 'acknowledged', 'partially_received', 'received', 'partially_invoiced', 'invoiced', 'disputed')`)
           .bind(organizationId, dataMode).all<CalculationPurchaseOrder>(),
-      ]);
-      calculationBills = rows(calculationBillsResult);
-      calculationInvoices = rows(calculationInvoicesResult);
-      calculationPurchaseOrders = rows(calculationPurchaseOrdersResult);
-    }
+      ]) : Promise.resolve(null),
+      thirteenWeekAllowed
+      ? database.prepare(`SELECT t.posting_date postingDate, SUM(t.amount_cents) amountCents
+          FROM financial_transactions t
+          INNER JOIN bank_accounts b ON b.organization_id = t.organization_id AND b.financial_account_id = t.account_id
+          WHERE t.organization_id = ? AND UPPER(t.currency) = ? AND t.demo_record = ?
+            AND UPPER(b.currency) = ? AND b.demo_record = ?
+            AND b.account_type IN ('chequing', 'savings', 'merchant')
+            AND t.source_state IN ('posted', 'modified')
+            AND t.posting_date BETWEEN ? AND ?
+            AND ((? = 'live'
+              AND t.source_system = 'plaid' AND b.provider = 'plaid' AND b.connection_status = 'healthy'
+              AND b.external_item_ref IS NOT NULL
+              AND (b.available_balance_cents IS NOT NULL OR b.live_balance_cents IS NOT NULL)
+              AND b.last_sync_at >= CAST(strftime('%s', 'now') AS INTEGER) - 172800
+              AND EXISTS (
+                SELECT 1 FROM integration_connections c
+                WHERE c.organization_id = t.organization_id AND c.provider = 'plaid'
+                  AND c.external_account_ref = b.external_item_ref
+                  AND c.status = 'connected' AND c.data_promotion_status = 'approved'
+                  AND (c.sync_lease_owner IS NULL OR c.sync_lease_expires_at IS NULL
+                    OR c.sync_lease_expires_at <= CAST(strftime('%s', 'now') AS INTEGER))))
+              OR (? = 'demonstration' AND b.demo_record = 1))
+          GROUP BY t.posting_date, (t.amount_cents < 0) ORDER BY t.posting_date`)
+          .bind(
+            organizationId, baseCurrency, dataMode === "demonstration" ? 1 : 0,
+            baseCurrency, dataMode === "demonstration" ? 1 : 0,
+            firstWeekStart, asOf, dataMode, dataMode,
+          )
+          .all<{ postingDate: string; amountCents: number }>()
+      : null,
+    ]);
+    const calculationBills: CalculationBill[] = calculationResults ? rows(calculationResults[0]) : [];
+    const calculationInvoices: CalculationInvoice[] = calculationResults ? rows(calculationResults[1]) : [];
+    const calculationPurchaseOrders: CalculationPurchaseOrder[] = calculationResults ? rows(calculationResults[2]) : [];
     const openBillStatuses = new Set(["draft", "received", "extracted", "under_review", "matched", "awaiting_approval", "approved", "scheduled", "partially_paid", "disputed"]);
     const isConfirmedBill = (bill: CalculationBill) =>
       ["approved", "scheduled", "partially_paid"].includes(bill.status)
@@ -659,36 +684,6 @@ export async function GET(request: Request) {
         }
       : calculatedCashIntelligence;
     const dueNext30Cents = cashFlowItems.filter((item) => item.direction === "out" && item.certainty === "confirmed" && item.dueDate <= forecasts[1].endDate).reduce((sum, item) => sum + item.amountCents, 0);
-    const actualTransactionResult = thirteenWeekAllowed
-      ? await database.prepare(`SELECT t.posting_date postingDate, SUM(t.amount_cents) amountCents
-          FROM financial_transactions t
-          INNER JOIN bank_accounts b ON b.organization_id = t.organization_id AND b.financial_account_id = t.account_id
-          WHERE t.organization_id = ? AND UPPER(t.currency) = ? AND t.demo_record = ?
-            AND UPPER(b.currency) = ? AND b.demo_record = ?
-            AND b.account_type IN ('chequing', 'savings', 'merchant')
-            AND t.source_state IN ('posted', 'modified')
-            AND t.posting_date BETWEEN ? AND ?
-            AND ((? = 'live'
-              AND t.source_system = 'plaid' AND b.provider = 'plaid' AND b.connection_status = 'healthy'
-              AND b.external_item_ref IS NOT NULL
-              AND (b.available_balance_cents IS NOT NULL OR b.live_balance_cents IS NOT NULL)
-              AND b.last_sync_at >= CAST(strftime('%s', 'now') AS INTEGER) - 172800
-              AND EXISTS (
-                SELECT 1 FROM integration_connections c
-                WHERE c.organization_id = t.organization_id AND c.provider = 'plaid'
-                  AND c.external_account_ref = b.external_item_ref
-                  AND c.status = 'connected' AND c.data_promotion_status = 'approved'
-                  AND (c.sync_lease_owner IS NULL OR c.sync_lease_expires_at IS NULL
-                    OR c.sync_lease_expires_at <= CAST(strftime('%s', 'now') AS INTEGER))))
-              OR (? = 'demonstration' AND b.demo_record = 1))
-          GROUP BY t.posting_date, (t.amount_cents < 0) ORDER BY t.posting_date`)
-          .bind(
-            organizationId, baseCurrency, dataMode === "demonstration" ? 1 : 0,
-            baseCurrency, dataMode === "demonstration" ? 1 : 0,
-            firstWeekStart, asOf, dataMode, dataMode,
-          )
-          .all<{ postingDate: string; amountCents: number }>()
-      : null;
     const actualTransactions = actualTransactionResult ? rows(actualTransactionResult).map((transaction) => ({ postingDate: transaction.postingDate, amountCents: Number(transaction.amountCents) })) : [];
     const thirteenWeekItems: ThirteenWeekCashFlowItem[] = [
       ...unlinkedForecastBills.map((bill) => ({ id: bill.id, label: `${bill.supplierName} bill ${bill.billNumber}`, dueDate: bill.dueDate, amountCents: bill.totalCents - bill.paidCents, direction: "out" as const, certainty: isConfirmedBill(bill) ? "confirmed" as const : "expected" as const })),

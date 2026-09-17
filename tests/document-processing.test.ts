@@ -400,3 +400,119 @@ test("a scan claim lost during polling keeps the shared scan reference for its s
   assert.equal(readProcessing(String((await row())?.extracted_json)).processing?.lock, undefined);
   assert.deepEqual(await new Response((await bucket.get("tenant-a/private.pdf"))!.body).arrayBuffer(), originalBytes);
 });
+
+// Append after the existing document-processing tests. Reuses setup and scannerFixture.
+async function interruptedScanCleanup(t: { after: (callback: () => Promise<void>) => void }, verdict = "No threats found", lostResponse = false) {
+  const fixture = await setup(t), scanner = scannerFixture(verdict);
+  await processDocument({ ...fixture.base, transport: scanner.transport });
+  const original = await fixture.bucket.get("tenant-a/private.pdf");
+  const originalBytes = await new Response(original!.body).arrayBuffer();
+  let interrupted = false;
+  const transport = (async (url, init) => {
+    if (init?.method === "DELETE" && !interrupted) {
+      interrupted = true;
+      const saved = (await fixture.row())!, job = readProcessing(String(saved.extracted_json)).processing!;
+      assert.equal(saved.security_state, "quarantined");
+      assert.equal(job.verifiedScan?.verdict, verdict === "Malicious" ? "blocked" : "clean");
+      assert.equal(job.verifiedScan?.documentId, "doc-a");
+      assert.equal(job.verifiedScan?.organizationId, "tenant-a");
+      assert.equal(job.verifiedScan?.objectKey, "tenant-a/private.pdf");
+      assert.equal(job.verifiedScan?.sha256, saved.sha256_hex);
+      assert.equal(job.verifiedScan?.size, originalBytes.byteLength);
+      assert.equal(job.verifiedScan?.etag, job.azureScan?.etag);
+      assert.equal(job.verifiedScan?.scanEndpoint, fixture.base.env.AZURE_DOCUMENT_SCAN_ENDPOINT);
+      assert.equal(job.verifiedScan?.submittedAt, job.azureScan?.submittedAt);
+      assert.equal(new Headers(init.headers).get("If-Match"), job.azureScan?.etag);
+      if (!lostResponse) await fixture.database.prepare("UPDATE workspace_documents SET extracted_json=json_set(extracted_json,'$.processing.lock','successor-cleanup','$.processing.leaseUntil',?) WHERE id='doc-a'")
+        .bind(Date.now() + 90_000).run();
+      const response = await scanner.transport(url, init);
+      if (lostResponse) throw new Error("Fictional response lost after provider deletion");
+      return response;
+    }
+    return scanner.transport(url, init);
+  }) as typeof fetch;
+  assert.equal((await processDocument({ ...fixture.base, transport })).state, lostResponse ? "failed" : "busy");
+  assert.equal(scanner.blobs.size, 0);
+  assert.equal((await fixture.row())?.security_state, "quarantined");
+  assert.equal((await fixture.bucket.get("tenant-a/private.pdf"))?.etag, original!.etag);
+  const expiredEnvelope = readProcessing(String((await fixture.row())?.extracted_json));
+  assert.ok(expiredEnvelope.processing?.verifiedScan);
+  await fixture.database.prepare("UPDATE workspace_documents SET extracted_json=json_set(extracted_json,'$.processing.leaseUntil',0) WHERE id='doc-a'").run();
+  return { ...fixture, scanner, originalBytes, originalEtag: original!.etag };
+}
+
+test("scan cleanup claim loss resumes from its exact verified verdict without rereading a deleted blob", async t => {
+  for (const verdict of ["No threats found", "Malicious"]) await t.test(verdict, async subtest => {
+    const { base, row, bucket, scanner, originalBytes } = await interruptedScanCleanup(subtest, verdict);
+    const gets = scanner.calls.filter(call => call === "GET").length;
+    const result = await processDocument({ ...base, transport: scanner.transport });
+    assert.equal(result.state, verdict === "Malicious" ? "blocked" : "scanned");
+    assert.equal(scanner.calls.filter(call => call === "GET").length, gets, "a verified cleanup resume must not poll the deleted blob");
+    assert.equal(scanner.calls.filter(call => call === "PUT").length, 1, "cleanup resume must not start a new scan");
+    assert.equal(scanner.calls.filter(call => call === "DELETE").length, 2, "DELETE404 is safe only for the retained exact scan identity");
+    const saved = (await row())!, job = readProcessing(String(saved.extracted_json)).processing!;
+    assert.equal(saved.security_state, verdict === "Malicious" ? "rejected" : "clean");
+    assert.equal(job.verifiedScan, undefined); assert.equal(job.azureScan, undefined); assert.equal(job.lock, undefined);
+    assert.equal(job.operation, undefined, "the scan step cannot start extraction");
+    assert.deepEqual(await new Response((await bucket.get("tenant-a/private.pdf"))!.body).arrayBuffer(), originalBytes);
+  });
+});
+
+test("a lost scan DELETE response retains the verified receipt until explicit cleanup retry succeeds", async t => {
+  const { base, row, scanner } = await interruptedScanCleanup(t, "No threats found", true);
+  assert.equal(readProcessing(String((await row())?.extracted_json)).processing?.stage, "failed");
+  const calls = scanner.calls.length;
+  assert.equal((await processDocument({ ...base, transport: scanner.transport })).state, "failed");
+  assert.equal(scanner.calls.length, calls, "failed cleanup needs the existing explicit retry action");
+  assert.equal((await processDocument({ ...base, transport: scanner.transport, retry: true })).state, "scanned");
+  assert.equal((await row())?.security_state, "clean");
+  assert.equal(scanner.calls.filter(call => call === "PUT").length, 1);
+});
+
+test("a mismatched scan receipt cannot authorize original release or another tenant's processing", async t => {
+  const { base, database, row, bucket, scanner, originalEtag } = await interruptedScanCleanup(t);
+  const savedEnvelope = JSON.parse(String((await row())?.extracted_json));
+  const beforeForeign = scanner.calls.length;
+  await assert.rejects(processDocument({ ...base, organizationId: "tenant-b", transport: scanner.transport }), { status: 404 });
+  assert.equal(scanner.calls.length, beforeForeign);
+  for (const [key, value] of Object.entries({ version: 2, verdict: "unknown", organizationId: "tenant-b", documentId: "different", objectKey: "tenant-a/different.pdf", sha256: "0".repeat(64), size: 1, blobName: "scan/00000000-0000-0000-0000-000000000002.pdf", etag: '"different"', scanEndpoint: "https://otheraccount.blob.core.windows.net/", submittedAt: 1, authorizedAt: 1 })) {
+    const envelope = structuredClone(savedEnvelope);
+    envelope.processing.verifiedScan[key] = value;
+    delete envelope.processing.lock; envelope.processing.leaseUntil = 0;
+    await database.prepare("UPDATE workspace_documents SET extracted_json=? WHERE id='doc-a'").bind(JSON.stringify(envelope)).run();
+    const gets = scanner.calls.filter(call => call === "GET").length;
+    assert.equal((await processDocument({ ...base, transport: scanner.transport })).state, "failed", key);
+    assert.ok(scanner.calls.filter(call => call === "GET").length > gets, `${key}: mismatched receipt requires a real verified verdict`);
+    assert.equal((await row())?.security_state, "quarantined", key);
+    assert.equal((await bucket.get("tenant-a/private.pdf"))?.etag, originalEtag, key);
+  }
+  assert.equal(scanner.calls.filter(call => call === "DELETE").length, 1, "no mismatched receipt reaches provider deletion");
+});
+
+test("changed original bytes reject a saved clean scan receipt before provider access", async t => {
+  const { base, row, bucket, scanner } = await interruptedScanCleanup(t);
+  const replacement = new Uint8Array([4, 5, 6]);
+  await bucket.put("tenant-a/private.pdf", replacement.buffer, { customMetadata: { organizationId: "tenant-a", securityState: "quarantined" } });
+  const calls = scanner.calls.length;
+  assert.equal((await processDocument({ ...base, transport: scanner.transport })).state, "failed");
+  assert.equal(readProcessing(String((await row())?.extracted_json)).processing?.errorCode, "DOCUMENT_CHANGED");
+  assert.equal(scanner.calls.length, calls);
+  const remaining = await bucket.get("tenant-a/private.pdf");
+  assert.equal(remaining?.customMetadata?.securityState, "quarantined");
+  assert.deepEqual(new Uint8Array(await new Response(remaining!.body).arrayBuffer()), replacement);
+});
+
+test("starting a replacement scan discards the old clean receipt and requires a fresh verdict", async t => {
+  const { base, database, row, bucket, scanner } = await interruptedScanCleanup(t);
+  await database.prepare("UPDATE workspace_documents SET extracted_json=json_set(extracted_json,'$.processing.stage','failed','$.processing.errorCode','SCAN_TIMED_OUT') WHERE id='doc-a'").run();
+  scanner.setResult("");
+  assert.equal((await processDocument({ ...base, transport: scanner.transport, retry: true })).state, "scan_waiting");
+  assert.equal(readProcessing(String((await row())?.extracted_json)).processing?.verifiedScan, undefined);
+  assert.equal(scanner.calls.filter(call => call === "PUT").length, 2);
+  assert.equal((await processDocument({ ...base, transport: scanner.transport })).state, "scan_waiting");
+  assert.equal((await row())?.security_state, "quarantined");
+  assert.equal((await bucket.get("tenant-a/private.pdf"))?.customMetadata?.securityState, "quarantined");
+  scanner.setResult("Malicious");
+  assert.equal((await processDocument({ ...base, transport: scanner.transport })).state, "blocked");
+  assert.equal((await row())?.security_state, "rejected");
+});
