@@ -9,6 +9,7 @@ import { deletionHandler } from "../supabase/functions/vanteloq-account-deletion
 import { requireBillingAccess } from "../server/authorization";
 import { advanceDeletion, authorizeDeletionJob } from "../server/account-deletion";
 import { type VanteloqRuntimeEnv } from "../db";
+import { activateTestSubscription } from "./helpers/subscription-fixture.mjs";
 
 const owner = "aaaaaaaa-1111-4444-8888-111111111111";
 const teammate = "bbbbbbbb-2222-4444-8888-222222222222";
@@ -112,6 +113,33 @@ test("self-service deletion removes only the confirmed workspace, preserves cons
     assert.equal((await (await resume(request("/api/v1/account/deletion/resume", session))).json()).deleted,true);
     assert.equal((await resume(request("/api/v1/account/deletion/resume", {...session,token:"f".repeat(64)}))).status,403);
     assert.equal(f.state.deletes.filter((path)=>path.includes("admin/users")).length,0);
+  } finally { await f.close(); }
+});
+
+test("deletion reconciles a checkout completed after its original billing snapshot", async () => {
+  const f = await fixture(true);
+  try {
+    const session = jobSession();
+    assert.equal((await begin(request("/api/v1/account/deletion", input(session)))).status,202);
+    await activateTestSubscription(f.db,"target");
+    await f.db.prepare("UPDATE tenant_subscriptions SET stripe_subscription_id='sub_newfixture123',stripe_customer_id='cus_newfixture123' WHERE organization_id='target'").run();
+    const attempt=crypto.randomUUID();
+    await f.db.prepare("INSERT INTO billing_checkout_attempts VALUES ('target',?,'starter:month:base','', 'cs_test_fixture123',?)").bind(attempt,Math.floor(Date.now()/1000)).run();
+    const env=(globalThis as typeof globalThis & {__vanteloqEnv:VanteloqRuntimeEnv}).__vanteloqEnv;
+    env.STRIPE_SECRET_KEY="sk_test_fixture_only";
+    const previous=globalThis.fetch, canceled:string[]=[];
+    globalThis.fetch=async (url,init)=>{
+      const req=new Request(url,init), parsed=new URL(req.url);
+      if(parsed.origin!=="https://api.stripe.com")return previous(url,init);
+      if(parsed.pathname.includes("checkout/sessions"))return Response.json({id:"cs_test_fixture123",client_reference_id:"target",metadata:{vanteloq_checkout_attempt:attempt},status:"complete",subscription:"sub_newfixture123"});
+      if(req.method==="DELETE")canceled.push(parsed.pathname);
+      if(parsed.pathname.includes("subscriptions"))return Response.json({id:"sub_newfixture123",status:req.method==="DELETE"?"canceled":"active"});
+      return Response.json({id:"cus_newfixture123",deleted:req.method==="DELETE"});
+    };
+    const result=await resume(request("/api/v1/account/deletion/resume",session));
+    assert.equal(result.status,200,await result.clone().text());
+    assert.deepEqual(canceled,["/v1/subscriptions/sub_newfixture123","/v1/customers/cus_newfixture123"]);
+    assert.equal(await f.db.prepare("SELECT id FROM workspaces WHERE id='target'").first(),null);
   } finally { await f.close(); }
 });
 

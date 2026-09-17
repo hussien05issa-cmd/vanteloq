@@ -12,7 +12,9 @@ Target: September 18, 2026. This is an evidence record, not a certification of e
 - Sending a duplicate fictional original to the new address was Handled through automatic routing without a new exact provider rule. The application returned HTTP 200. Documents retained one original and recorded the new receipt.
 - Private forwarding addresses, recipient identifiers, credentials and customer records are excluded from this source document.
 
-Global subscriber activation remains disabled while the final production acceptance gate is open. The owner workspace is enabled for controlled validation. A resend with the same attachment proves deduplication, not replay of an identical authenticated delivery. Exact signed replay and deletion-replay behavior are covered by isolated runtime/database tests; a production replay check is not claimed.
+The final exact authenticated production replay passed on September 17 at 02:11 UTC. A temporary, time-limited receiver wrapper matched only the approved fictional attachment and exact private recipient, delivered the same signed request twice, and required HTTP 200 with `received: true` followed by HTTP 200 with `received: true, replayed: true`. The live Documents view retained one original. The unmodified receiver was restored immediately afterward. No customer payload or address is included in this evidence.
+
+The subscriber activation environment is prepared with both public flags enabled and the owner-only validation restriction removed. It takes effect with the next successful application deployment. Per-workspace consent, membership, BookLoQ access, location scope and revocation checks remain mandatory. See the continuation record for deployment verification.
 
 ## Interface corrections
 
@@ -39,7 +41,7 @@ The current production dependency audit reported 0 known vulnerabilities. That r
 ## Outstanding release gates
 
 1. The main hostname still accepts certificate-verified TLS 1.1 with HTTP 200. TLS 1.2 and 1.3 also work. Hosting support has been contacted, but the minimum protocol requirement is unresolved. Recheck after the hosting provider confirms its fix.
-2. Complete the remaining document-email production replay acceptance before global subscriber activation. Per-workspace consent, active membership, BookLoQ access, location scope and revocation checks remain required after activation.
+2. Confirm the prepared subscriber-forwarding environment is applied in the next successful deployment. The production email acceptance checks, including exact signed replay, have passed.
 3. Finish a fresh subscriber's signup, email verification, MFA, checkout and entitlement acceptance. Isolated Stripe results do not replace the complete live subscriber journey.
 4. Validate backup restoration, agreed concurrent-user capacity and an accountant-reviewed closing workflow before making corresponding reliability or accounting claims.
 5. Keep provider capabilities unavailable until their actual approval and financial acceptance gates pass. The prior integration checklist remains applicable: Clover review and reconciliation, Moneris refunds and settlements, Intuit production and ledger import, Shopify public installation, Plaid production approval, and restricted Meta/Google access. Saved credentials and logos do not establish completion.

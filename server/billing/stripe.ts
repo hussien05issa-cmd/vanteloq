@@ -62,7 +62,7 @@ function billingWebhookSecret() {
   return value;
 }
 
-async function stripeFormRequest(path: string, fields?: URLSearchParams, method: "GET" | "POST" | "DELETE" = "POST", fetcher: typeof fetch = fetch) {
+async function stripeFormRequest(path: string, fields?: URLSearchParams, method: "GET" | "POST" | "DELETE" = "POST", fetcher: typeof fetch = fetch, idempotencyKey?: string) {
   const url = new URL(path, STRIPE_API);
   if (method === "GET" && fields) url.search = fields.toString();
   const response = await fetcher(url, {
@@ -72,6 +72,7 @@ async function stripeFormRequest(path: string, fields?: URLSearchParams, method:
       Authorization: `Basic ${btoa(`${secretKey()}:`)}`,
       ...(method !== "GET" ? { "Content-Type": "application/x-www-form-urlencoded" } : {}),
       "User-Agent": "Vanteloq-Stripe-Billing/1.0",
+      ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
     },
     body: method !== "GET" ? fields : undefined,
     signal: AbortSignal.timeout(15_000),
@@ -102,7 +103,7 @@ async function resolveVerifiedPrice(plan: PlanKey | AddonKey, interval: BillingI
   return price.id;
 }
 
-export async function createStripeCheckout(input: {
+export async function prepareStripeCheckout(input: {
   organizationId: string;
   email: string;
   plan: PlanKey;
@@ -142,10 +143,22 @@ export async function createStripeCheckout(input: {
     fields.set("line_items[1][price]", addonPriceId);
     fields.set("line_items[1][quantity]", "1");
   }
-  const session = await stripeFormRequest("/v1/checkout/sessions", fields, "POST", fetcher);
-  const url = typeof session.url === "string" ? session.url : "";
-  if (!url.startsWith("https://checkout.stripe.com/")) throw new ApiError(502, "STRIPE_CHECKOUT_RESPONSE_INVALID", "Stripe did not return a secure Checkout URL.");
-  return { url };
+  return fields;
+}
+
+export async function submitStripeCheckout(fields: URLSearchParams, attemptId: string, fetcher: typeof fetch = fetch) {
+  if (!/^[0-9a-f-]{36}$/.test(attemptId) || !fields.has("expires_at")) throw new Error("A persisted checkout attempt is required.");
+  return stripeFormRequest("/v1/checkout/sessions", fields, "POST", fetcher, `vanteloq-checkout-${attemptId}`);
+}
+
+export async function retrieveStripeCheckout(sessionId: string, fetcher: typeof fetch = fetch) {
+  if (!/^cs_(?:test_|live_)?[A-Za-z0-9]{8,256}$/.test(sessionId)) throw new ApiError(502, "STRIPE_CHECKOUT_RESPONSE_INVALID", "Stripe checkout could not be verified.");
+  return stripeFormRequest(`/v1/checkout/sessions/${sessionId}`, undefined, "GET", fetcher);
+}
+
+export async function expireStripeCheckout(sessionId: string, attemptId: string, fetcher: typeof fetch = fetch) {
+  await retrieveStripeCheckout(sessionId, fetcher);
+  return stripeFormRequest(`/v1/checkout/sessions/${sessionId}/expire`, new URLSearchParams(), "POST", fetcher, `vanteloq-expire-${attemptId}`);
 }
 
 export async function createStripePortal(customerId: string, origin: string, fetcher: typeof fetch = fetch) {

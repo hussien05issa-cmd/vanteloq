@@ -3,7 +3,7 @@ import { createHmac } from "node:crypto";
 import test from "node:test";
 import { ApiError } from "../server/api.ts";
 import {
-  createStripeCheckout,
+  prepareStripeCheckout,
   normalizeStripeSubscription,
   stripeBillingReadiness,
   terminateStripeBilling,
@@ -51,7 +51,7 @@ test("Checkout uses only verified catalogue prices and binds the organization", 
     requests.push({ url, body });
     return Response.json({ url: "https://checkout.stripe.com/c/pay/test-session" });
   };
-  const result = await createStripeCheckout({
+  const body = await prepareStripeCheckout({
     organizationId: "org_verified_123",
     email: "owner@example.com",
     plan: "growth",
@@ -61,9 +61,7 @@ test("Checkout uses only verified catalogue prices and binds the organization", 
     origin: "https://vanteloq.example",
     fetcher,
   });
-  assert.match(result.url, /^https:\/\/checkout\.stripe\.com\//);
-  assert.equal(requests.length, 1);
-  const body = requests[0].body;
+  assert.equal(requests.length, 0);
   assert.equal(body.get("integration_identifier"), "vanteloq_checkout_hpxqzrma");
   assert.equal(body.get("client_reference_id"), "org_verified_123");
   assert.equal(body.get("metadata[vanteloq_organization_id]"), "org_verified_123");
@@ -80,7 +78,7 @@ test("Checkout rejects annual purchases before contacting Stripe", async () => {
   let requested = false;
   const fetcher: typeof fetch = async () => { requested = true; return Response.json({}); };
   await assert.rejects(
-    createStripeCheckout({ organizationId: "org_verified_123", email: "owner@example.com", plan: "starter", interval: "year", includeBookloq: false, customerId: null, origin: "https://vanteloq.example", fetcher } as unknown as Parameters<typeof createStripeCheckout>[0]),
+    prepareStripeCheckout({ organizationId: "org_verified_123", email: "owner@example.com", plan: "starter", interval: "year", includeBookloq: false, customerId: null, origin: "https://vanteloq.example", fetcher } as unknown as Parameters<typeof prepareStripeCheckout>[0]),
     (error: unknown) => error instanceof ApiError && error.code === "BILLING_INTERVAL_UNAVAILABLE",
   );
   assert.equal(requested, false);
@@ -125,7 +123,7 @@ test("Checkout fails closed when a Stripe monthly price differs from the catalog
     return Response.json({ data: [{ ...verifiedPrice(lookup), unit_amount: 1 }] });
   };
   await assert.rejects(
-    createStripeCheckout({ organizationId: "org_verified_123", email: "owner@example.com", plan: "starter", interval: "month", includeBookloq: false, customerId: null, origin: "https://vanteloq.example", fetcher }),
+    prepareStripeCheckout({ organizationId: "org_verified_123", email: "owner@example.com", plan: "starter", interval: "month", includeBookloq: false, customerId: null, origin: "https://vanteloq.example", fetcher }),
     (error: unknown) => error instanceof ApiError && error.code === "STRIPE_PRICE_CONFIGURATION_INVALID",
   );
 });

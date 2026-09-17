@@ -2134,6 +2134,15 @@ export const rateLimitBuckets = sqliteTable("rate_limit_buckets", {
   windowStart: integer("window_start").notNull(),
   requestCount: integer("request_count").notNull().default(1),
   expiresAt: integer("expires_at").notNull(),
+}, (table) => [index("rate_limit_expiry_idx").on(table.expiresAt)]);
+
+export const billingCheckoutAttempts = sqliteTable("billing_checkout_attempts", {
+  organizationId: text("organization_id").primaryKey().references(() => workspaces.id, { onDelete: "cascade" }),
+  attemptId: text("attempt_id").notNull().unique(),
+  selectionKey: text("selection_key").notNull(),
+  requestBody: text("request_body").notNull(),
+  sessionId: text("session_id"),
+  createdAt: integer("created_at").notNull(),
 });
 
 export const assistantConversations = sqliteTable(
