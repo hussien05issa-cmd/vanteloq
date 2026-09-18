@@ -30,8 +30,10 @@ import {
   parseTeamInviteCallback,
   type TeamInviteCallback,
 } from "../shared/team-invite-auth";
+import type { ComplimentaryWorkspaceOffer } from "./complimentary-workspace-flow";
 import type { TeamInvitationDetails } from "./team-invitation-flow";
 
+const ComplimentaryWorkspaceFlow = lazy(() => import("./complimentary-workspace-flow"));
 const SecureOnboardingFlow = lazy(() => import("./secure-onboarding-flow"));
 const VanteloqApp = lazy(() => import("./vanteloq-app"));
 const AccountMfaGate = lazy(() => import("./founder-mfa-gate"));
@@ -48,6 +50,7 @@ export default function Home() {
   const [accountName, setAccountName] = useState("Account owner");
   const [accountEmail, setAccountEmail] = useState("");
   const [loadError, setLoadError] = useState("");
+  const [complimentaryOffer, setComplimentaryOffer] = useState<ComplimentaryWorkspaceOffer | null>(null);
   const [teamInvitation, setTeamInvitation] = useState<TeamInvitationDetails | null>(null);
   const [inviteCallback, setInviteCallback] = useState<TeamInviteCallback | null>(null);
   const [inviteVerificationBusy, setInviteVerificationBusy] = useState(false);
@@ -71,6 +74,7 @@ export default function Home() {
       loadingUser.current = null;
       loadedUser.current = null;
       setLoadError("");
+      setComplimentaryOffer(null);
       setEntry("landing");
       return;
     }
@@ -97,6 +101,7 @@ export default function Home() {
         user?: { email?: string; displayName?: string };
         organization?: { setupComplete?: boolean; businessName?: string; ownerName?: string } | null;
         invitation?: TeamInvitationDetails | null;
+        complimentary?: ComplimentaryWorkspaceOffer | null;
         error?: { code?: string };
       };
       if (sequence !== loadSequence.current) return;
@@ -125,6 +130,7 @@ export default function Home() {
         return;
       }
       if (response.ok && data.authenticated) {
+        setComplimentaryOffer(data.complimentary ?? null);
         loadedUser.current = userId;
         setAccountEmail(data.user?.email ?? "");
         setAccountName(data.user?.displayName || "Account owner");
@@ -290,6 +296,7 @@ export default function Home() {
   }
 
   if (entry === "landing") return <><LandingPage start={openAuth}/>{authOpen && <AuthPanel initialMode={authMode} close={closeAuth} authenticated={session => void loadWorkspace(session)}/>}</>;
+  if (entry === "signup" && complimentaryOffer) return <ClientLoadBoundary><Suspense fallback={<AuthenticatedLoading/>}><AccountMfaGate><ComplimentaryWorkspaceFlow offer={complimentaryOffer} complete={(business, owner) => { setOrganizationName(business); setAccountName(owner); setComplimentaryOffer(null); setEntry("app"); }}/></AccountMfaGate></Suspense></ClientLoadBoundary>;
   if (entry === "signup") return <ClientLoadBoundary><Suspense fallback={<AuthenticatedLoading/>}><AccountMfaGate><SecureOnboardingFlow accountName={accountName} accountEmail={accountEmail} signOut={() => void signOut()} complete={(business, owner) => { setOrganizationName(business); setAccountName(owner); setEntry("app"); }}/></AccountMfaGate></Suspense></ClientLoadBoundary>;
   if (entry === "invitation" && teamInvitation) return <ClientLoadBoundary><Suspense fallback={<AuthenticatedLoading/>}><AccountMfaGate><TeamInvitationFlow invitation={teamInvitation} initialName={accountName} complete={(business, member) => { setOrganizationName(business); setAccountName(member); setTeamInvitation(null); setEntry("app"); }}/></AccountMfaGate></Suspense></ClientLoadBoundary>;
   return <ClientLoadBoundary><Suspense fallback={<AuthenticatedLoading/>}><AccountMfaGate><SessionTimeout><LegalAcceptanceGate><BillingOnboardingGate><VanteloqApp organizationName={organizationName} accountName={accountName}/></BillingOnboardingGate></LegalAcceptanceGate></SessionTimeout></AccountMfaGate></Suspense></ClientLoadBoundary>;

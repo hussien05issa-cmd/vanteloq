@@ -88,6 +88,20 @@
   .billing-plans { grid-template-columns: 1fr; }
 }
 
+.complimentary-workspace > section { max-width: 580px; }
+.complimentary-workspace .billing-onboarding-copy { padding: 24px 0 12px; }
+.complimentary-workspace .billing-onboarding-copy h1 { font-size: clamp(25px, 5vw, 32px); }
+.complimentary-workspace .billing-onboarding-copy p { margin: 12px 0; color: #425a70; font-size: 15px; font-weight: 400; line-height: 1.6; letter-spacing: 0; }
+.complimentary-workspace .onboarding-legal-consent { display: flex; align-items: flex-start; gap: 12px; margin: 12px 36px 24px; color: #344e66; font-size: 14px; line-height: 1.6; }
+.complimentary-workspace .onboarding-legal-consent input { width: 20px; height: 20px; flex: 0 0 20px; margin-top: 2px; accent-color: #1767b6; }
+.complimentary-workspace .form-error { margin: 12px 36px; }
+.complimentary-actions { display: grid; gap: 10px; padding: 0 36px 28px; }
+.complimentary-actions button { min-height: 46px; padding: 12px 20px; border: 1px solid #cbd8e6; border-radius: 12px; background: #f5f8fc; color: #254660; font: inherit; font-weight: 600; cursor: pointer; }
+.complimentary-actions button.primary { background: linear-gradient(150deg, #224b70, #102a43); border-color: #26455e; color: #f5f8fc; }
+.complimentary-actions button:disabled { opacity: .55; cursor: not-allowed; }
+.complimentary-actions button:focus-visible { outline: 3px solid #5198de; outline-offset: 3px; }
+@media (max-width: 600px) { .complimentary-workspace .onboarding-legal-consent { margin-inline: 20px; } .complimentary-actions { padding-inline: 20px; } }
+
 .billing-onboarding-gate {
   min-height: 100vh;
   display: grid;

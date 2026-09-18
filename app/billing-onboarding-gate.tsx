@@ -65,7 +65,7 @@ async function loadAccess(): Promise<BillingData> {
   const response = await apiFetch("/api/v1/entitlements", { headers: { Accept: "application/json" } });
   const payload = await response.json();
   if (!response.ok || !payload.accessType) throw new Error(problemMessage(payload, "Workspace access could not be loaded."));
-  if (payload.accessType === "internal" || payload.accessType === "subscription") {
+  if (payload.accessType === "internal" || payload.accessType === "complimentary" || payload.accessType === "subscription") {
     return { ...payload, configured: true, plans: [], addon: { key: "bookloq", name: "BookLoQ", price: 0 }, currency: "CAD" };
   }
   if (!payload.canManageBilling) return { ...payload, configured: false, plans: [], addon: { key: "bookloq", name: "BookLoQ", price: 0 }, currency: "CAD" };
@@ -206,7 +206,7 @@ export default function BillingOnboardingGate({ children }: { children: ReactNod
     return <div className="entry-loading" role="status" aria-live="polite"><ProductBrandLogo product="vanteloq" priority/><p>Checking subscription access…</p></div>;
   }
 
-  if (data && (data.accessType === "internal" || data.accessType === "subscription")) {
+  if (data && (data.accessType === "internal" || data.accessType === "complimentary" || data.accessType === "subscription")) {
     return <BillingEntitlementsProvider value={{
       accessType: data.accessType,
       plan: data.current.plan as BillingEntitlements["plan"],

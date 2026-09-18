@@ -3,6 +3,7 @@ import { getDb } from "../../db/index.ts";
 import { organizationLocations, teamMembers, tenantAddons, tenantSubscriptions } from "../../db/schema.ts";
 import { ApiError } from "../api.ts";
 import type { AccessContext } from "../authorization.ts";
+import { getComplimentaryGrant, type ComplimentaryOffer } from "../complimentary-access.ts";
 import { getInternalAccessGrant, type InternalAccessGrant, type InternalAccessLevel } from "../internal-access.ts";
 import {
   ADDONS,
@@ -39,7 +40,7 @@ export type SubscriptionSnapshot = {
 };
 
 export type EffectiveEntitlements = {
-  readonly accessType: "internal" | "subscription" | "none";
+  readonly accessType: "internal" | "complimentary" | "subscription" | "none";
   readonly internalAccessLevel: InternalAccessLevel | null;
   readonly plan: PlanKey | null;
   readonly subscriptionStatus: SubscriptionStatus | null;
@@ -140,6 +141,15 @@ export function resolveInternalEntitlements(grant: InternalAccessGrant): Effecti
   });
 }
 
+export function resolveComplimentaryEntitlements(offer: ComplimentaryOffer): EffectiveEntitlements {
+  const base = resolveSubscriptionEntitlements({
+    basePlan: offer.plan, status: "active", addons: offer.bookloq ? ["bookloq"] : [],
+    trialEndsAt: null, currentPeriodEndsAt: offer.expiresAt ? new Date(offer.expiresAt) : null,
+    cancelAtPeriodEnd: false, scheduledBasePlan: null, scheduledEffectiveAt: null, version: 1,
+  });
+  return Object.freeze({ ...base, accessType: "complimentary", subscriptionStatus: null });
+}
+
 export function requireInternalAccessMfa(
   grant: InternalAccessGrant,
   assuranceLevel: AccessContext["identity"]["assuranceLevel"],
@@ -175,6 +185,8 @@ export async function getTenantEntitlements(context: AccessContext): Promise<Eff
     requireInternalAccessMfa(internalGrant, context.identity.assuranceLevel);
     return resolveInternalEntitlements(internalGrant);
   }
+  const complimentary = await getComplimentaryGrant(context);
+  if (complimentary) return resolveComplimentaryEntitlements(complimentary);
   return resolveSubscriptionEntitlements(await subscriptionSnapshot(context.organizationId));
 }
 

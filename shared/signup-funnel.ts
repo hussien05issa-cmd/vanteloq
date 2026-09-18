@@ -1,4 +1,4 @@
-export type BillingAccessType = "internal" | "subscription" | "none";
+export type BillingAccessType = "internal" | "complimentary" | "subscription" | "none";
 
 export type BillingGateSnapshot = {
   configured: boolean;
@@ -8,7 +8,7 @@ export type BillingGateSnapshot = {
 export function billingGateState(
   snapshot: BillingGateSnapshot,
 ): "ready" | "checkout_required" | "configuration_required" {
-  if (snapshot.accessType === "internal" || snapshot.accessType === "subscription") {
+  if (snapshot.accessType === "internal" || snapshot.accessType === "complimentary" || snapshot.accessType === "subscription") {
     return "ready";
   }
   return snapshot.configured ? "checkout_required" : "configuration_required";

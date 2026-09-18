@@ -5,8 +5,9 @@ import { ApiError, readRequestBytes } from "../api";
 import { recordAudit } from "../audit";
 import { runDocumentCleanupTick } from "../document-cleanup-scheduler";
 import { cleanupExpiredRateLimits } from "../rate-limit-maintenance";
+import { complimentaryGrantForOwner } from "../complimentary-access";
 import { internalAccessEnabled } from "../internal-access";
-import { resolveInternalEntitlements, resolveSubscriptionEntitlements, subscriptionSnapshot, requireFeatureEntitlement, requireTenantServiceAccess } from "../entitlements/engine";
+import { resolveComplimentaryEntitlements, resolveInternalEntitlements, resolveSubscriptionEntitlements, subscriptionSnapshot, requireFeatureEntitlement, requireTenantServiceAccess } from "../entitlements/engine";
 import { dispatchScheduledSync } from "./sync-dispatch";
 import { isScheduledPosProvider, nextSyncAt, shouldPauseSync, syncHasMore, syncRetryDelay } from "./sync-policy";
 import { verifySyncSignature } from "./sync-signature";
@@ -43,9 +44,10 @@ export async function scheduledSyncContext(schedule: Schedule): Promise<SyncCont
     eq(internalAccess.userId, actor.user.id), eq(internalAccess.organizationId, schedule.organizationId),
     eq(internalAccess.active, true), eq(internalAccess.accessLevel, "founder"),
   )).limit(1) : [];
+  const complimentary = await complimentaryGrantForOwner({ userId: actor.user.id, organizationId: schedule.organizationId, authSubject: actor.user.authSubject, email: actor.user.email });
   const entitlements = internal
     ? resolveInternalEntitlements({ accessLevel: internal.accessLevel, mfaRequired: internal.mfaRequired })
-    : resolveSubscriptionEntitlements(await subscriptionSnapshot(schedule.organizationId));
+    : complimentary ? resolveComplimentaryEntitlements(complimentary) : resolveSubscriptionEntitlements(await subscriptionSnapshot(schedule.organizationId));
   requireTenantServiceAccess(entitlements);
   requireFeatureEntitlement(entitlements, "pos.reporting.core");
   return { userId: actor.user.id, organizationId: schedule.organizationId, organization: actor.organization };

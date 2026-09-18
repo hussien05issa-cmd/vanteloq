@@ -407,6 +407,13 @@
       "when": 1789610698162,
       "tag": "0057_checkout_coordination",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "6",
+      "when": 1789698908273,
+      "tag": "0058_complimentary_access",
+      "breakpoints": true
     }
   ]
 }

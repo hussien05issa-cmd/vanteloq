@@ -13,7 +13,9 @@ export async function POST(request: Request) {
     requireSameOrigin(request);
     const context = await requireBillingAccess(request, ["owner", "admin"]);
     await requirePermission(context, "organization.billing");
-    if ((await getTenantEntitlements(context)).accessType === "internal") {
+    const access = await getTenantEntitlements(context);
+    if (access.accessType === "complimentary") throw new ApiError(409, "COMPLIMENTARY_ACCESS_INCLUDED", "Your complimentary access is already included. No subscription is required.");
+    if (access.accessType === "internal") {
       throw new ApiError(409, "INTERNAL_ACCESS_INCLUDED", "Your internal company access is already included. No subscription is required.");
     }
     await enforceRateLimit("billing:checkout", context.userId, 10, 3_600);

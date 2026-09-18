@@ -1878,7 +1878,7 @@ export function AccountDeletionSettings() {
 
 type BillingData = {
   configured: boolean;
-  accessType: "internal" | "subscription" | "none";
+  accessType: "internal" | "complimentary" | "subscription" | "none";
   current: { plan: "starter" | "growth" | "pro" | null; status: string | null; addons: string[]; billingInterval: "month" | "year" | null; currentPeriodEndsAt: string | null; cancelAtPeriodEnd: boolean; hasCustomer: boolean };
   plans: Array<{ key: "starter" | "growth" | "pro"; name: string; description: string; mostPopular: boolean; price: number; included: string[] }>;
   addon: { key: "bookloq"; name: string; price: number };
@@ -1913,7 +1913,7 @@ function BillingSettings() {
   const managed = data?.current.hasCustomer === true;
   return <section className="settings-form billing-settings"><header><p>STRIPE BILLING</p><h2>Billing & subscription</h2><span>Stripe hosts payment collection, invoices, renewals and cancellation. Vanteloq stores only synchronized subscription identifiers and entitlement status. It never stores card details.</span></header>
     {error && <p className="form-error">{error}</p>}
-    {data?.accessType === "internal" ? <div className="billing-internal"><b>Internal access active</b><span>This workspace has verified internal access and does not require a Stripe subscription.</span></div> : <>
+    {data?.accessType === "complimentary" ? <div className="billing-internal"><b>Complimentary access active</b><span>Your included plan does not require a payment method or a Stripe subscription.</span></div> : data?.accessType === "internal" ? <div className="billing-internal"><b>Internal access active</b><span>This workspace has verified internal access and does not require a Stripe subscription.</span></div> : <>
       <p className="billing-monthly-note"><b>Monthly billing</b><span>Plans renew month to month. Cancel before renewal to stop the next charge.</span></p>
       <div className="billing-plans">{data?.plans.map((item) => <button key={item.key} className={plan === item.key ? "selected" : ""} onClick={() => setPlan(item.key)} disabled={managed}><span>{item.mostPopular ? "MOST POPULAR" : "PLAN"}</span><b>{item.name}</b><strong>${(item.price / 100).toLocaleString("en-CA")}</strong><small>CAD / month</small><p>{item.description}</p><ul>{item.included.map(feature => <li key={feature}>{feature}</li>)}</ul></button>)}</div>
       <label className="billing-addon"><input type="checkbox" checked={bookloq} onChange={(event) => setBookloq(event.target.checked)} disabled={managed}/><span><b>Add BookLoQ</b><small>${((data?.addon.price ?? 0) / 100).toLocaleString("en-CA")} CAD / month</small></span></label>

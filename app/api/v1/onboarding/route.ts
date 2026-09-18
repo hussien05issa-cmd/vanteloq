@@ -18,6 +18,7 @@ import {
 import { onboardingInput } from "../../../../server/validation";
 import { bootstrapSupabaseOrganization } from "../../../../server/supabase";
 import { onboardingIdentityDisposition } from "../../../../server/onboarding-identity";
+import { pendingComplimentaryOffer, complimentarySetupInput } from "../../../../server/complimentary-access";
 import { pendingTeamInvitation } from "../../../../server/team-invitations";
 import {
   addressCompleteReadiness,
@@ -50,6 +51,7 @@ export async function GET(request: Request) {
       role: context?.role ?? null,
       organization: context ? organizationDto(context) : null,
       invitation,
+      complimentary: !context && !invitation ? await pendingComplimentaryOffer(identity) : null,
     });
   });
 }
@@ -74,7 +76,10 @@ export async function POST(request: Request) {
     const existingAccess = await findAccessContext(identity, request);
     if (existingAccess) throw new ApiError(409, "WORKSPACE_EXISTS", "This account already belongs to a workspace.");
 
-    const input = onboardingInput(await readJsonObject(request));
+    const body = await readJsonObject(request);
+    const complimentary = typeof body.complimentaryId === "string" ? await pendingComplimentaryOffer(identity) : null;
+    if (body.complimentaryId !== undefined && !complimentary) throw new ApiError(403, "INVITATION_INVALID", "This invitation is not available for this account.");
+    const input = complimentary ? complimentarySetupInput(body, identity, complimentary) : onboardingInput(body);
     const [existingUser] = await getDb()
       .select({ id: users.id, status: users.status, authSubject: users.authSubject, authProvider: users.authProvider })
       .from(users)
@@ -101,7 +106,7 @@ export async function POST(request: Request) {
     });
 
     const addressReadiness = addressCompleteReadiness();
-    const verifiedAddress = addressReadiness.configured
+    const verifiedAddress = !complimentary && addressReadiness.configured
       ? await verifyAddressVerificationToken(input.addressVerificationToken)
       : null;
     if (verifiedAddress && verifiedAddress.country !== input.country) {
@@ -155,6 +160,7 @@ export async function POST(request: Request) {
       // convergent upserts make a retry safe if execution stops partway through.
       // The audit row precedes membership activation so visible access is never
       // granted without the corresponding creation record.
+      const subjectHash = complimentary ? await hashIdentifier(`complimentary-subject:${identity.subject}`) : null;
       await database.batch([
         database.prepare(`
           INSERT INTO workspaces (
@@ -222,7 +228,8 @@ export async function POST(request: Request) {
           sourceMode: input.sourceMode,
           legalAcceptanceId,
           identityDisposition,
-          addressValidationStatus: businessAddress.validationStatus,
+          addressValidationStatus: complimentary ? "not_provided" : businessAddress.validationStatus,
+          complimentaryGrantId: complimentary?.id ?? null,
         }), now),
         database.prepare(`
           INSERT INTO account_preferences (
@@ -240,6 +247,13 @@ export async function POST(request: Request) {
             id, user_id, organization_id, notification_type, title, message, delivery_status, created_at
           ) VALUES (?, ?, ?, 'workspace_created', 'Workspace created', ?, 'in_app', ?)
         `).bind(`notification-workspace-created-${stableIdentityHash}`, userId, organizationId, `${input.businessName} is ready. Your verified account, preferences and workspace history are stored securely.`, now),
+        ...(complimentary ? [
+          database.prepare("INSERT INTO complimentary_access (grant_id,user_id,organization_id,auth_subject_hash,active,created_at) VALUES (?,?,?,?,1,?)")
+            .bind(complimentary.id, userId, organizationId, subjectHash, now),
+          database.prepare("INSERT INTO audit_events (id,organization_id,actor_user_id,action,resource_type,resource_id,outcome,request_id,details_json,created_at) VALUES (?,?,?,'complimentary_access.accepted','complimentary_access',?,'success',?,?,?)")
+            .bind("audit-complimentary-" + complimentary.id, organizationId, userId, complimentary.id, requestId,
+              JSON.stringify({ plan: complimentary.plan, bookloq: complimentary.bookloq, expiresAt: complimentary.expiresAt, source: "operator_configured_invitation", legalAcceptanceId }), now),
+        ] : []),
         database.prepare(`
           INSERT INTO memberships (id, user_id, organization_id, role, status, created_at, updated_at)
           VALUES (?, ?, ?, 'owner', 'active', ?, ?)
