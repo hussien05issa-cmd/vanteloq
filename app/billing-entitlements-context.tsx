@@ -3,7 +3,7 @@
 import { createContext, useContext, type ReactNode } from "react";
 
 export type BillingEntitlements = {
-  accessType: "internal" | "subscription";
+  accessType: "internal" | "complimentary" | "subscription";
   plan: "starter" | "growth" | "pro" | null;
   status: string | null;
   addons: readonly string[];

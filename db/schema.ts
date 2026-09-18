@@ -241,6 +241,15 @@ export const internalAccess = sqliteTable(
   ],
 );
 
+export const complimentaryAccess = sqliteTable("complimentary_access", {
+  grantId: text("grant_id").primaryKey(),
+  userId: text("user_id").notNull().unique().references(() => users.id, { onDelete: "cascade" }),
+  organizationId: text("organization_id").notNull().unique().references(() => workspaces.id, { onDelete: "cascade" }),
+  authSubjectHash: text("auth_subject_hash").notNull(),
+  active: integer("active", { mode: "boolean" }).notNull().default(true),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+}, table => [check("complimentary_access_active_check", sql`${table.active} in (0, 1)`)]);
+
 export const accountPreferences = sqliteTable("account_preferences", {
   userId: text("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
   emailNotifications: integer("email_notifications", { mode: "boolean" }).notNull().default(true),
