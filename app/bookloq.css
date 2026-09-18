@@ -53,3 +53,26 @@
 .journal-approval { display: flex !important; align-items: flex-start; gap: 10px; line-height: 1.5; }
 .journal-approval input { flex: 0 0 auto; width: 20px !important; height: 20px; margin-top: 3px; }
 @media (max-width: 600px) { .journal-entry-line { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .journal-entry-line label:first-of-type { grid-column: 1 / -1; } }
+.invoice-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.invoice-line-row>label{display:grid;min-width:0;gap:6px}
+.invoice-line-row>label>input{width:100%;min-width:0}
+.invoice-line-label{display:none}
+.invoice-email-composer{max-width:640px}
+.transaction-status-row .transaction-stat{display:grid;gap:6px;padding:18px;border:1px solid #dbe5f0;border-radius:16px;background:#f6f9fc}
+@media(max-width:760px){.invoice-line-label{display:block;font-size:12px;color:#3e536d;font-weight:600}.invoice-line-row>label:first-child{grid-column:1/-1}}
+.bookloq-drawer{position:fixed;inset:0;z-index:500;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(13,30,49,.32);backdrop-filter:blur(8px);box-sizing:border-box}
+.bookloq-drawer .invoice-composer{background:#f8fafc;color:#17364e;max-height:calc(100dvh - 40px);box-sizing:border-box}
+.bookloq-drawer .invoice-composer label{font-size:13px;line-height:1.4}
+.bookloq-drawer .invoice-composer input,.bookloq-drawer .invoice-composer select,.bookloq-drawer .invoice-composer textarea{font-size:15px;min-height:46px}
+.bookloq-drawer .invoice-composer h4{font-size:16px}
+.bookloq-drawer .invoice-composer>header p{font-size:13px;line-height:1.5}
+.bookloq-drawer .invoice-composer>header small{font-size:10px}
+.bookloq-drawer .invoice-composer .calculation-note{font-size:13px;line-height:1.5;color:#506477;letter-spacing:normal;padding:0;border:0;margin:0 0 6px}
+.bookloq-drawer .invoice-composer input,.bookloq-drawer .invoice-composer textarea{font-weight:500}
+.bookloq-drawer .invoice-composer>header>button{width:44px;height:44px;flex:0 0 44px}
+.bookloq-drawer .invoice-composer>footer button{font-size:13px;min-height:44px}
+.bookloq-drawer .invoice-lines>div:first-of-type{display:flex;align-items:center;justify-content:space-between;padding:12px 14px}
+.bookloq-drawer .invoice-line-head{font-size:11px}
+.bookloq-drawer .invoice-lines button{font-size:13px;min-height:38px}
+.bookloq-drawer .invoice-bottom aside span,.bookloq-drawer .invoice-bottom aside strong{font-size:14px}
+@media(max-width:760px){.bookloq-drawer{padding:10px}.bookloq-drawer .invoice-composer{border-radius:18px;max-height:calc(100dvh - 20px)}.bookloq-drawer .invoice-composer input,.bookloq-drawer .invoice-composer textarea{font-size:16px}.bookloq-drawer .invoice-composer>footer button{min-height:48px}}

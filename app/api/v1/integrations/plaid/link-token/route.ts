@@ -1,3 +1,4 @@
+import { requireIntegrationRollout } from "../../../../../../server/integrations/rollout-access";
 import { requireAccess } from "../../../../../../server/authorization";
 import { ApiError, enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameOrigin } from "../../../../../../server/api";
 import { recordAudit } from "../../../../../../server/audit";
@@ -14,6 +15,7 @@ export async function POST(request: Request) {
     await requireAddon(context, "bookloq");
     await requirePermission(context, "finance.connections");
     await requireOrganizationWideLocationAccess(context);
+    await requireIntegrationRollout(context, "plaid");
     await enforceRateLimit("plaid:link-token", context.userId, 10, 3_600);
     const input = await readJsonObject(request, 2_000);
     const mode = input.mode === "update" ? "update" : input.mode === "connect" ? "connect" : null;

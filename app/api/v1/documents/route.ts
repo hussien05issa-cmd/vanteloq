@@ -16,7 +16,7 @@ import {
   readJsonObject,
   readRequestBytes,
 } from "../../../../server/api";
-import { requirePermission } from "../../../../server/permissions";
+import { effectivePermissions, requirePermission } from "../../../../server/permissions";
 import { requireOrganizationWideLocationAccess } from "../../../../server/location-access";
 
 import { safeName, verifiedType, quarantineDocument } from "../../../../server/document-ingest";
@@ -123,6 +123,7 @@ export async function POST(request: Request) {
     const context = await requireAccess(request, users, "invoice.basic");
     await requirePermission(context, "documents.upload");
     await requireOrganizationWideLocationAccess(context);
+    const canViewDocuments = (await effectivePermissions(context)).includes("documents.view");
     await enforceRateLimit("documents:write", context.userId, 30, 3_600);
     const contentType = request.headers.get("content-type") ?? "";
     if (!/^multipart\/form-data(?:\s*;|$)/i.test(contentType))
@@ -157,7 +158,7 @@ export async function POST(request: Request) {
     const bytes = new Uint8Array(await file.arrayBuffer());
     const verified = verifiedType(bytes, file.type);
     const stored = await quarantineDocument({ database: getD1(), bucket: getR2(), organizationId: context.organizationId, authorizedByUserId: context.userId, bytes, fileName: file.name, contentType: file.type, documentType: type });
-    if (stored.duplicate) throw new ApiError(409, "DUPLICATE_DOCUMENT", `This file already exists as ${stored.fileName}.`);
+    if (stored.duplicate) throw new ApiError(409, "DUPLICATE_DOCUMENT", canViewDocuments ? `This file already exists as ${stored.fileName}.` : "This file has already been uploaded.");
     const id = stored.id;
     await recordAudit({
       request,
@@ -174,7 +175,7 @@ export async function POST(request: Request) {
         extractionStatus: "not_configured",
       },
     });
-    return jsonResponse({ ...await list(context.organizationId), uploadedId: id }, { status: 201 });
+    return jsonResponse({ ...(canViewDocuments ? await list(context.organizationId) : {}), uploadedId: id }, { status: 201 });
   });
 }
 

@@ -49,7 +49,7 @@ export async function POST(request: Request) {
       WHERE i.organization_id = ? AND i.id = ? AND d.security_state = 'clean' AND d.scan_status = 'clean'`)
       .bind(context.organizationId, invoiceId).first<{ id: string; invoiceNumber: string; invoiceDate: string; dueDate: string; totalCents: number; currency: string; status: string; issuerJson: string; customerJson: string; documentId: string; objectKey: string; fileName: string; scanStatus: string }>();
     if (!invoice) throw new ApiError(404, "INVOICE_NOT_FOUND", "Invoice not found.");
-    if (invoice.status === "void") throw new ApiError(409, "INVOICE_VOID", "A void invoice cannot be emailed.");
+    if (["void", "written_off"].includes(invoice.status)) throw new ApiError(409, "INVOICE_CLOSED", "A void or written-off invoice cannot be emailed.");
     const object = await getR2().get(invoice.objectKey);
     if (!object) throw new ApiError(404, "INVOICE_FILE_NOT_FOUND", "The saved invoice PDF could not be found.");
     if (invoice.scanStatus !== "clean" || object.customMetadata?.securityState !== "clean") {
@@ -69,7 +69,7 @@ export async function POST(request: Request) {
     const personalMessage = message ? `<p style="margin:0 0 18px;color:#38516b;line-height:1.55">${escapeHtml(message)}</p>` : "";
     const response = await fetch("https://api.resend.com/emails", {
       method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json", "Idempotency-Key": `invoice-${invoiceId}-${await emailFingerprint(recipient, message)}` },
       body: JSON.stringify({
         from: env.INVOICE_EMAIL_FROM?.trim() || `${issuerName} <invoices@vanteloq.com>`,
         reply_to: env.INVOICE_EMAIL_REPLY_TO?.trim() || safeText(issuer.email) || context.organization.businessEmail,
@@ -86,9 +86,15 @@ export async function POST(request: Request) {
     }
     const result = await response.json().catch(() => ({})) as { id?: unknown };
     const now = Math.floor(Date.now() / 1_000);
-    await database.prepare("UPDATE customer_invoices SET status = 'sent', sent_at = ?, emailed_to = ?, updated_at = ? WHERE organization_id = ? AND id = ?")
+    await database.prepare("UPDATE customer_invoices SET status = CASE WHEN status IN ('draft','approved') THEN 'sent' ELSE status END, sent_at = ?, emailed_to = ?, updated_at = ? WHERE organization_id = ? AND id = ?")
       .bind(now, recipient, now, context.organizationId, invoiceId).run();
     await recordAudit({ request, requestId, organizationId: context.organizationId, actorUserId: context.userId, action: "customer_invoice.emailed", resourceType: "customer_invoice", resourceId: invoiceId, details: { recipient, providerMessageId: typeof result.id === "string" ? result.id : null, documentId: invoice.documentId } });
-    return jsonResponse({ emailed: true, invoiceId, to: recipient, status: "sent" });
+    const current = await database.prepare("SELECT status FROM customer_invoices WHERE organization_id = ? AND id = ?").bind(context.organizationId, invoiceId).first<{ status: string }>();
+    return jsonResponse({ emailed: true, invoiceId, to: recipient, status: current?.status ?? invoice.status });
   });
+}
+
+async function emailFingerprint(recipient: string, message: string) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify([recipient, message])));
+  return Array.from(new Uint8Array(digest), value => value.toString(16).padStart(2, "0")).join("");
 }

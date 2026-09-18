@@ -1,3 +1,4 @@
+import { requireIntegrationRollout } from "../../../../../../server/integrations/rollout-access";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../../../../../../db";
 import { integrationConnections, integrationConsents } from "../../../../../../db/schema";
@@ -12,6 +13,7 @@ export async function POST(request: Request) {
     requireSameOrigin(request);
     const context = await requireAccess(request, ["owner", "admin"], "pos.reporting.core");
     await requirePermission(context, "integrations.manage");
+    await requireIntegrationRollout(context, "moneris");
     await enforceRateLimit("moneris:connect", context.userId, 6, 3_600);
     const body = await readJsonObject(request);
     if (body.accepted !== true) throw new ApiError(400, "MONERIS_CONSENT_REQUIRED", "Confirm the read-only payment-data notice before connecting Moneris.");

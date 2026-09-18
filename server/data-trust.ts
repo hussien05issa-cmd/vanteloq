@@ -61,12 +61,23 @@ function confidence(input: BuildInput): { level: ConfidenceLevel; basis: string[
   return { level: "high", basis };
 }
 
+export function normalizedSourceTimestamp(value: Date | number | string): string | null {
+  let milliseconds = value instanceof Date ? value.getTime() : typeof value === "number"
+    ? (Math.abs(value) < 100_000_000_000 ? value * 1000 : value) : Date.parse(value);
+  // Older raw R-Series writes stored milliseconds in a seconds-mode column.
+  // Drizzle decodes them a second time; preserve the original instant on read.
+  if (milliseconds >= Date.UTC(2000, 0, 1) * 1000 && milliseconds <= (Date.now() + 86_400_000) * 1000) milliseconds /= 1000;
+  if (!Number.isFinite(milliseconds) || Math.abs(milliseconds) > 8_640_000_000_000_000) return null;
+  return new Date(milliseconds).toISOString();
+}
+
 function sourceTimestamp(rows: TrustedMetricRow[]): string | null {
   const timestamps = rows
     .map((row) => row.updatedAt)
     .filter((value): value is Date | number | string => value !== null && value !== undefined)
-    .map((value) => value instanceof Date ? value.toISOString() : new Date(value).toISOString())
-    .sort();
+    .map(normalizedSourceTimestamp)
+    .filter((value): value is string => value !== null)
+    .sort((left, right) => Date.parse(left) - Date.parse(right));
   return timestamps.at(-1) ?? null;
 }
 

@@ -2,7 +2,7 @@ import { getD1, getR2 } from "../../../../../db";
 import { parseCustomerInvoice } from "../../../../../domain/invoice";
 import { recordAudit } from "../../../../../server/audit";
 import { requireAccess } from "../../../../../server/authorization";
-import { ApiError, enforceRateLimit, handleApi, jsonResponse, requireSameOrigin } from "../../../../../server/api";
+import { ApiError, enforceRateLimit, handleApi, jsonResponse, readRequestBytes, requireSameOrigin } from "../../../../../server/api";
 import { requireBookLoQPermission } from "../../../../../server/bookloq";
 import { requireAddon } from "../../../../../server/entitlements/engine";
 import { createInvoicePdf } from "../../../../../server/invoice-pdf";
@@ -37,7 +37,10 @@ export async function POST(request: Request) {
     if (!request.headers.get("content-type")?.toLowerCase().startsWith("multipart/form-data")) {
       throw new ApiError(415, "UNSUPPORTED_CONTENT_TYPE", "Send the invoice as multipart form data.");
     }
-    const form = await request.formData();
+    const bytes = await readRequestBytes(request, 2_500_000, "REQUEST_TOO_LARGE", "Invoice requests must be 2.5 MB or smaller.");
+    let form: FormData;
+    try { form = await new Response(bytes.buffer as ArrayBuffer, { headers: { "Content-Type": request.headers.get("content-type")! } }).formData(); }
+    catch { throw new ApiError(400, "INVALID_MULTIPART", "The invoice request could not be read. Please try again."); }
     const rawInvoice = form.get("invoice");
     if (typeof rawInvoice !== "string" || new TextEncoder().encode(rawInvoice).byteLength > 100_000) {
       throw new ApiError(400, "INVALID_INVOICE", "Invoice details are required.");
