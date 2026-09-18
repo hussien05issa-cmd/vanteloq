@@ -1,3 +1,4 @@
+import { requireIntegrationRollout } from "../../../../../../server/integrations/rollout-access";
 import { oauthBrowserCookie } from "../../../../../../server/integrations/oauth-browser";
 import { getDb } from "../../../../../../db";
 import { and, eq, inArray } from "drizzle-orm";
@@ -15,6 +16,7 @@ export async function POST(request: Request) {
     requireSameOrigin(request);
     const context = await requireAccess(request, ["owner", "admin"], "pos.reporting.core");
     await requirePermission(context, "integrations.manage");
+    await requireIntegrationRollout(context, provider);
     await enforceRateLimit(`${provider}:authorize`, context.userId, 10, 3600);
     const input = await readJsonObject(request);
     if (typeof input.shop !== "string") throw new ApiError(400, "SHOPIFY_SHOP_REQUIRED", "Enter the store's permanent .myshopify.com domain.");

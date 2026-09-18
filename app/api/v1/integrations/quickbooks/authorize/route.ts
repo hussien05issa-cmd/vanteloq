@@ -1,3 +1,4 @@
+import { requireIntegrationRollout } from "../../../../../../server/integrations/rollout-access";
 import { oauthBrowserCookie } from "../../../../../../server/integrations/oauth-browser";
 import { getDb } from "../../../../../../db";
 import { integrationConnections, integrationOAuthStates } from "../../../../../../db/schema";
@@ -23,6 +24,7 @@ export async function POST(request: Request) {
     const context = await requireAccess(request, ["owner", "admin"], "bookloq.reconciliation");
     await requireFeature(context, "bookloq.reconciliation");
     await requirePermission(context, "integrations.manage");
+    await requireIntegrationRollout(context, "quickbooks");
     await enforceRateLimit("quickbooks:authorize", context.userId, 10, 3_600);
     const body = await readJsonObject(request);
     if (body.consentAcknowledged !== true) {

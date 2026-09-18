@@ -7,7 +7,9 @@ import { getD1, getDb } from "../../../../db";
 import { bankAccounts, dailyBusinessMetrics, integrationConnections, integrationLocationMappings, organizationProfiles } from "../../../../db/schema";
 import { requireAccess } from "../../../../server/authorization";
 import { ApiError, clientSource, enforceRateLimit, handleApi, jsonResponse } from "../../../../server/api";
+import { ambiguousRSeriesCostDates } from "../../../../server/integrations/cost-evidence";
 import { buildCommandCentre } from "../../../../server/intelligence";
+import { normalizedSourceTimestamp } from "../../../../server/data-trust";
 import { buildOperatingSystem } from "../../../../server/operating-system";
 import { effectivePermissions, requirePermission } from "../../../../server/permissions";
 import { buildLightspeedRLiveSalesSnapshot, LIGHTSPEED_R_PROVIDER, type LightspeedRLiveSale } from "../../../../server/integrations/lightspeed-r";
@@ -74,7 +76,7 @@ function buildDailySourceSnapshot(
     unitsSold: latestRows.reduce((sum, row) => sum + row.unitsSold, 0),
     refundsCents: latestRows.reduce((sum, row) => sum + row.refundsCents, 0),
     discountsCents: latestRows.reduce((sum, row) => sum + row.discountsCents, 0),
-    lastSaleAt: [...latestRows].sort((left, right) => right.updatedAt.getTime() - left.updatedAt.getTime())[0]?.updatedAt.toISOString() ?? null,
+    lastSaleAt: latestRows.map(row => normalizedSourceTimestamp(row.updatedAt)).filter((value): value is string => value !== null).sort().at(-1) ?? null,
     hourly: Array.from({ length: 24 }, (_, hour) => ({
       hour,
       label: new Intl.DateTimeFormat("en-CA", { hour: "numeric", hour12: true, timeZone: "UTC" }).format(new Date(Date.UTC(2020, 0, 1, hour))),
@@ -125,6 +127,7 @@ export async function loadCommandCentre(request: Request) {
         labourCostCents: dailyBusinessMetrics.labourCostCents,
         labourCostReported: dailyBusinessMetrics.labourCostReported,
         sourceProvider: dailyBusinessMetrics.sourceProvider,
+        sourceConnectionId: dailyBusinessMetrics.sourceConnectionId,
         inventoryValueCents: dailyBusinessMetrics.inventoryValueCents,
         cashBalanceCents: dailyBusinessMetrics.cashBalanceCents,
         accountsPayableCents: dailyBusinessMetrics.accountsPayableCents,
@@ -246,6 +249,7 @@ export async function loadCommandCentre(request: Request) {
           sourceGranularity: "intraday" as const,
         }
       : buildDailySourceSnapshot(trustedRows, context.organization.timezone);
+    const unknownCostDates = await ambiguousRSeriesCostDates(context.organizationId, trustedRows, context.organization.timezone);
     const baseCommandCentre = buildCommandCentre(trustedRows, context.organization.currency, new Date(), period);
     const plaidConnections = connectionRows.filter((row) => row.provider === "plaid"
       && row.status === "connected"
@@ -401,6 +405,42 @@ export async function loadCommandCentre(request: Request) {
           Object.assign(comparison.previous, { costOfGoodsCents: null, grossProfitCents: null, contributionCents: null, grossMarginRate: null, labourCostCents: null, labourRate: null });
           Object.assign(comparison.changes, { grossProfitRate: null });
         }
+      }
+      for (const point of commandCentre.forecast.points) Object.assign(point, { grossProfitCents: null });
+    }
+    // Cost evidence belongs to the metric's own dates, never to an unrelated
+    // comparison period or the intervening year in a year-over-year query.
+    if (canViewVerifiedProfit && unknownCostDates.size) {
+      const unknownBetween = (from: string | null | undefined, to: string | null | undefined) =>
+        Boolean(from && to && [...unknownCostDates].some(date => date >= from && date <= to));
+      const clearProfit = (total: object | null) => { if (total) Object.assign(total, { costOfGoodsCents: null, grossProfitCents: null, contributionCents: null, grossMarginRate: null }); };
+      const window = commandCentre.metrics.net_sales;
+      const currentUnknown = unknownBetween(window?.periodStart, window?.periodEnd);
+      const previousUnknown = unknownBetween(window?.comparisonPeriodStart, window?.comparisonPeriodEnd);
+      if (currentUnknown) {
+        clearProfit(commandCentre.current);
+        for (const key of ["cost_of_goods", "gross_profit", "gross_margin", "contribution_after_labour"]) delete (commandCentre.metrics as Record<string, unknown>)[key];
+      }
+      if (previousUnknown) clearProfit(commandCentre.previous);
+      if (currentUnknown || previousUnknown) {
+        if (commandCentre.comparisons) Object.assign(commandCentre.comparisons, { grossProfitRate: null, marginPointChange: null });
+        commandCentre.insights = commandCentre.insights.filter(insight => insight.id !== "margin-trend" && insight.id !== "labour-pressure");
+      }
+      for (const point of commandCentre.trend) if (unknownCostDates.has(point.date)) Object.assign(point, { grossProfitCents: null });
+      if (!rSeriesIntraday && unknownCostDates.has(today.businessDate)) {
+        Object.assign(commandCentre.today, { grossProfitCents: null });
+        for (const hour of commandCentre.today.hourly) Object.assign(hour, { grossProfitCents: null });
+      }
+      if (!rSeriesIntraday && commandCentre.todayComparison) {
+        if (unknownCostDates.has(comparisonDate)) Object.assign(commandCentre.todayComparison.baseline, { grossProfitCents: null });
+        if (unknownCostDates.has(comparisonDate) || unknownCostDates.has(today.businessDate)) Object.assign(commandCentre.todayComparison.changes, { grossProfitRate: null });
+      }
+      if (commandCentre.periodComparisons) for (const comparison of [commandCentre.periodComparisons.sevenDays, commandCentre.periodComparisons.thirtyDays]) {
+        const currentMissing = unknownBetween(comparison.periodStart, comparison.periodEnd);
+        const previousMissing = unknownBetween(comparison.comparisonStart, comparison.comparisonEnd);
+        if (currentMissing) clearProfit(comparison.current);
+        if (previousMissing) clearProfit(comparison.previous);
+        if (currentMissing || previousMissing) Object.assign(comparison.changes, { grossProfitRate: null });
       }
       for (const point of commandCentre.forecast.points) Object.assign(point, { grossProfitCents: null });
     }

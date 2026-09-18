@@ -560,7 +560,8 @@ export async function runSync(request: Request, requestId: string, context: Sync
       const verifiedSalesReady = dailyMetrics.length > 0 && unmappedLocations === 0;
       const publishedDailyMetrics = publishCanonical ? dailyMetrics : [];
 
-      const now = Date.now();
+      // These raw SQL columns use Drizzle's second-based timestamp mode.
+      const now = Math.floor(Date.now() / 1_000);
       syncStage = "publish_records";
       await renewIntegrationSyncLease(syncLease);
       await database.prepare(`

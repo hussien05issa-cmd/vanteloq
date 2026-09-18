@@ -11,7 +11,7 @@ const bundle = await build({ stdin: { contents: `
   createRoot(document.getElementById('root')).render(<div className="app-shell operating-shell"><aside className="sidebar"><button className="brand"><ProductBrandLogo product="vanteloq"/><span className="brand-name">Vanteloq</span></button><div className="nav-group"><p>Sample Workspace</p>{['Dashboard','Sales','Inventory','BookLoQ','Integrations','Advisor'].map(name=><button key={name} className="nav-item" aria-current={name==='BookLoQ'?'page':undefined} onClick={announce}><WorkspaceIcon name={name}/><span className="nav-label">{name}</span></button>)}</div></aside><div className="main-panel"><div className="fixture-label">Local QA · Fictional records · No external actions</div><BookLoQWorkspace initialSection={new URLSearchParams(location.search).get('section')==='cash'?'Cash Flow':'Overview'} activeLocationId={null} createTask={announce} navigate={announce} showNotice={announce}/></div></div>);
 `, resolveDir: process.cwd(), loader: "tsx" }, plugins: [{ name: "local-data", setup(builder) {
   builder.onLoad({ filter: /app[\\/]supabase-browser\.ts$/ }, () => ({ contents: 'export const apiFetch = (...args) => fetch(...args);', loader: 'ts' }));
-} }], define: { "process.env": "{}" }, bundle: true, write: false, format: "esm", platform: "browser", jsx: "automatic", logLevel: "error" });
+} }], define: { "process.env": "{}" }, bundle: true, write: false, outdir: "preview-memory", format: "esm", platform: "browser", jsx: "automatic", logLevel: "error" });
 const styles = [...(await readFile("app/layout.tsx", "utf8")).matchAll(/import "\.\/([^"\n]+\.css)"/g)].map(match => match[1]);
 const sample = JSON.parse(await readFile("tests/fixtures/bookloq-preview.json", "utf8"));
 // The forecast example is isolated from the ledger fixture and clearly labelled.
@@ -42,14 +42,14 @@ createServer(async (request, response) => {
       }
       response.end(JSON.stringify(path === "/api/v1/bookloq" ? sample : { integrations: [], canManageBankConnections: false })); return;
     }
-    if (path === "/preview.js") { response.setHeader("Content-Type", "application/javascript"); response.end(bundle.outputFiles[0].text); return; }
+    if (path === "/preview.js") { response.setHeader("Content-Type", "application/javascript"); response.end(bundle.outputFiles.find(file => file.path.endsWith(".js")).text); return; }
     if (path.startsWith("/brand/") || path.startsWith("/fonts/")) {
       const root = resolve("public"), file = resolve(root, "." + path);
       if (!file.startsWith(root + sep)) throw new Error("Invalid path");
       response.setHeader("Content-Type", ({ ".png": "image/png", ".webp": "image/webp", ".woff2": "font/woff2", ".svg": "image/svg+xml" })[extname(file)] || "application/octet-stream");
       response.end(await readFile(file)); return;
     }
-    const css = (await Promise.all(styles.map(file => readFile("app/" + file, "utf8")))).join("\n");
+    const css = (await Promise.all(styles.map(file => readFile("app/" + file, "utf8")))).join("\n") + "\n" + bundle.outputFiles.filter(file => file.path.endsWith(".css")).map(file => file.text).join("\n");
     response.setHeader("Content-Type", "text/html; charset=utf-8");
     response.end(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>BookLoQ · Local sample workspace</title><style>${css}\n.fixture-label{padding:12px 24px;color:#375777;background:#e7f0fa;font-size:13px}.main-panel{min-width:0}</style><div id="root"></div><script type="module" src="/preview.js"></script></html>`);
   } catch { response.statusCode = 404; response.end("Not found"); }

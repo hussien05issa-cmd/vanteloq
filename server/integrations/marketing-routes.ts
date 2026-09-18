@@ -1,3 +1,4 @@
+import { requireIntegrationRollout } from "./rollout-access";
 import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import { getD1, getDb } from "../../db";
 import {
@@ -77,6 +78,7 @@ export function marketingAuthorize(request: Request, provider: MarketingProvider
     if (!requiredFeature) throw new ApiError(400, "MARKETING_PROVIDER_INVALID", "Choose Google or Meta.");
     const context = await requireAccess(request, ["owner", "admin"], requiredFeature);
     await requireMarketingPermissions(context);
+    await requireIntegrationRollout(context, provider);
     await enforceRateLimit(`${provider}:marketing:authorize`, context.userId, 10, 3_600);
     const state = newMarketingOAuthState();
     const connectionId = crypto.randomUUID();

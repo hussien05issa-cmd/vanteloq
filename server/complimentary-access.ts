@@ -41,8 +41,7 @@ export async function pendingComplimentaryOffer(identity: TrustedIdentity): Prom
   if (!offer) return null;
   const claimed = await getD1().prepare("SELECT grant_id FROM complimentary_access WHERE grant_id = ?").bind(offer.id).first();
   if (claimed) return null;
-  const { email: _email, ...details } = offer;
-  return details;
+  return { id: offer.id, plan: offer.plan, bookloq: offer.bookloq, expiresAt: offer.expiresAt };
 }
 
 export async function complimentaryGrantForOwner(input: { userId: string; organizationId: string; authSubject: string | null; email: string }): Promise<ComplimentaryOffer | null> {
@@ -81,4 +80,3 @@ export function complimentarySetupInput(body: Record<string, unknown>, identity:
     legalNoticeVersion: ACCOUNT_ACCEPTANCE_NOTICE_VERSION,
   };
 }
-

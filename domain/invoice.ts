@@ -1,6 +1,7 @@
 import { ApiError } from "../server/api";
+import { isCalendarDate } from "./calendar-date";
+import { invoiceLineAmounts, invoiceTotals } from "./invoice-amounts";
 
-const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const CURRENCY = /^[A-Z]{3}$/;
 const EMAIL = /^[^\s@]{1,64}@[^\s@]{1,190}$/;
 
@@ -52,13 +53,14 @@ function rejectUnknown(value: Record<string, unknown>, allowed: readonly string[
   if (unknown) throw new ApiError(400, "UNKNOWN_FIELD", `Unexpected invoice field: ${unknown}.`);
 }
 
-function text(value: unknown, label: string, maximum: number, required = true): string {
+function text(value: unknown, label: string, maximum: number, required = true, multiline = false): string {
   if (typeof value !== "string") {
     if (!required && (value === undefined || value === null)) return "";
     throw new ApiError(400, "INVALID_INVOICE", `Enter a valid ${label}.`);
   }
-  const normalized = value.trim().normalize("NFC");
-  if ((required && !normalized) || normalized.length > maximum || /[\u0000-\u001f\u007f]/.test(normalized)) {
+  const normalized = value.replace(/\r\n?/g, "\n").trim().normalize("NFC");
+  const controls = multiline ? /[\u0000-\u0009\u000b-\u001f\u007f]/ : /[\u0000-\u001f\u007f]/;
+  if ((required && !normalized) || normalized.length > maximum || controls.test(normalized)) {
     throw new ApiError(400, "INVALID_INVOICE", `Enter a valid ${label}.`);
   }
   return normalized;
@@ -78,7 +80,7 @@ function party(value: unknown, label: string): InvoiceParty {
   if (email && !EMAIL.test(email)) throw new ApiError(400, "INVALID_INVOICE", `Enter a valid ${label} email.`);
   return {
     name: text(input.name, `${label} name`, 180),
-    address: text(input.address, `${label} address`, 500),
+    address: text(input.address, `${label} address`, 500, true, true),
     email,
     phone: text(input.phone, `${label} phone`, 60, false),
     taxNumber: text(input.taxNumber, `${label} tax number`, 80, false),
@@ -90,8 +92,8 @@ export function parseCustomerInvoice(value: unknown): CustomerInvoiceInput {
   rejectUnknown(input, ["invoiceNumber", "invoiceDate", "dueDate", "currency", "locationRef", "purchaseOrderRef", "issuer", "customerId", "customer", "notes", "paymentInstructions", "lines"]);
   const invoiceDate = text(input.invoiceDate, "invoice date", 10);
   const dueDate = text(input.dueDate, "due date", 10);
-  if (!DATE.test(invoiceDate) || Number.isNaN(Date.parse(`${invoiceDate}T00:00:00Z`))) throw new ApiError(400, "INVALID_INVOICE", "Enter a valid invoice date.");
-  if (!DATE.test(dueDate) || Number.isNaN(Date.parse(`${dueDate}T00:00:00Z`)) || dueDate < invoiceDate) throw new ApiError(400, "INVALID_INVOICE", "The due date must be on or after the invoice date.");
+  if (!isCalendarDate(invoiceDate)) throw new ApiError(400, "INVALID_INVOICE", "Enter a valid invoice date.");
+  if (!isCalendarDate(dueDate) || dueDate < invoiceDate) throw new ApiError(400, "INVALID_INVOICE", "The due date must be on or after the invoice date.");
   const currency = text(input.currency, "currency", 3).toUpperCase();
   if (!CURRENCY.test(currency)) throw new ApiError(400, "INVALID_INVOICE", "Enter a valid three-letter currency code.");
   if (!Array.isArray(input.lines) || input.lines.length < 1 || input.lines.length > 100) {
@@ -104,21 +106,20 @@ export function parseCustomerInvoice(value: unknown): CustomerInvoiceInput {
     if (quantityMilli <= 0) throw new ApiError(400, "INVALID_INVOICE", `Line ${index + 1} requires a quantity greater than zero.`);
     const unitPriceCents = safeInteger(line.unitPriceCents, `unit price for line ${index + 1}`, 100_000_000_000);
     const taxRateBasisPoints = safeInteger(line.taxRateBasisPoints ?? 0, `tax rate for line ${index + 1}`, 10_000);
-    const subtotalCents = Math.round((quantityMilli * unitPriceCents) / 1_000);
-    const taxCents = Math.round((subtotalCents * taxRateBasisPoints) / 10_000);
-    if (!Number.isSafeInteger(subtotalCents) || !Number.isSafeInteger(taxCents)) throw new ApiError(400, "INVALID_INVOICE", `Line ${index + 1} exceeds the supported amount.`);
+    let amounts;
+    try { amounts = invoiceLineAmounts(quantityMilli, unitPriceCents, taxRateBasisPoints); }
+    catch { throw new ApiError(400, "INVALID_INVOICE", `Line ${index + 1} exceeds the supported amount.`); }
     return {
       description: text(line.description, `description for line ${index + 1}`, 500),
       quantityMilli,
       unitPriceCents,
       taxRateBasisPoints,
-      subtotalCents,
-      taxCents,
-      totalCents: subtotalCents + taxCents,
+      ...amounts,
     };
   });
-  const subtotalCents = lines.reduce((sum, line) => sum + line.subtotalCents, 0);
-  const taxCents = lines.reduce((sum, line) => sum + line.taxCents, 0);
+  let totals;
+  try { totals = invoiceTotals(lines); }
+  catch { throw new ApiError(400, "INVALID_INVOICE", "The invoice exceeds the supported amount."); }
   const customerId = input.customerId === null || input.customerId === undefined || input.customerId === "" ? null : text(input.customerId, "customer", 180);
   return {
     invoiceNumber: text(input.invoiceNumber, "invoice number", 80),
@@ -130,11 +131,9 @@ export function parseCustomerInvoice(value: unknown): CustomerInvoiceInput {
     issuer: party(input.issuer, "business"),
     customerId,
     customer: party(input.customer, "customer"),
-    notes: text(input.notes, "invoice notes", 2_000, false),
-    paymentInstructions: text(input.paymentInstructions, "payment instructions", 2_000, false),
+    notes: text(input.notes, "invoice notes", 2_000, false, true),
+    paymentInstructions: text(input.paymentInstructions, "payment instructions", 2_000, false, true),
     lines,
-    subtotalCents,
-    taxCents,
-    totalCents: subtotalCents + taxCents,
+    ...totals,
   };
 }

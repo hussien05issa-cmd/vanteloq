@@ -1,3 +1,4 @@
+import { hasAmbiguousRSeriesCosts } from "../../../../server/integrations/cost-evidence";
 import { recordedLabourCost } from "../../../../domain/labour-evidence";
 import { businessTimestampRange, businessTimestampExtrema, businessDatesFromExtrema, type TimestampExtrema } from "../../../../domain/business-period";
 import { and, asc, eq, gt, gte, inArray, isNull, lte, or, sql, type SQL } from "drizzle-orm";
@@ -164,9 +165,10 @@ export async function GET(request: Request) {
     const now = Date.now();
     const approvedPosRows = connectedPosRows.filter((row) => row.dataPromotionStatus === "approved"
       && (!row.syncLeaseOwner || !row.syncLeaseExpiresAt || row.syncLeaseExpiresAt.getTime() <= now));
-    const canViewVerifiedProfit = canViewProfit && !approvedPosRows.some((row) =>
+    const hasProfitAccess = canViewProfit && !approvedPosRows.some((row) =>
       row.provider === "square" && row.lastErrorCode === "SQUARE_PRODUCT_COST_UNAVAILABLE"
     );
+    let canViewVerifiedProfit = hasProfitAccess;
     const connectedPosProviders = new Set(approvedPosRows.map((row) => row.provider));
     const localLocationIds = locationAccess.locationIds ?? locationAccess.locations.map((location) => location.id);
     const [salesAuthority, paymentAuthority] = await Promise.all([
@@ -241,6 +243,7 @@ export async function GET(request: Request) {
       filters.push(inArray(dailyBusinessMetrics.locationRef, locationRefs));
     const unscopedRows = await loadAllDailyMetricRows(and(...filters, sourcePredicate));
     const rows = unscopedRows;
+    canViewVerifiedProfit = canViewVerifiedProfit && !await hasAmbiguousRSeriesCosts(context.organizationId, rows, context.organization.timezone);
     const generatedAt = new Date().toISOString();
     const distinctDates = [...new Set(rows.map((row) => row.businessDate))];
     const paymentWindow = businessTimestampRange("p.paid_at", start, end, context.organization.timezone);
@@ -457,6 +460,7 @@ export async function GET(request: Request) {
       if (locationRefs !== null) comparisonFilters.push(inArray(dailyBusinessMetrics.locationRef, locationRefs));
       comparisonRows = await loadAllDailyMetricRows(and(...comparisonFilters, sourcePredicate));
     }
+    const comparisonCostsVerified = hasProfitAccess && !await hasAmbiguousRSeriesCosts(context.organizationId, comparisonRows, context.organization.timezone);
     const comparisonTotals = totalsFor(comparisonRows);
     const resolvedPaymentWindow = businessTimestampRange("p.paid_at", resolvedStart, resolvedEnd, context.organization.timezone);
     const paymentMixResult = !consolidationBlocked && paymentScopes.length && resolvedStart && resolvedEnd
@@ -629,13 +633,13 @@ export async function GET(request: Request) {
         verifiedDays: new Set(comparisonRows.map((row) => row.businessDate)).size,
         totals: {
           netSalesCents: comparisonTotals.netSalesCents,
-          grossProfitCents: canViewVerifiedProfit ? comparisonTotals.grossProfitCents : null,
+          grossProfitCents: comparisonCostsVerified ? comparisonTotals.grossProfitCents : null,
           transactionCount: comparisonTotals.transactionCount,
           averageTransactionCents: comparisonTotals.averageTransactionCents,
         },
         changes: {
           netSalesRate: change(totals.netSalesCents, comparisonTotals.netSalesCents),
-          grossProfitRate: canViewVerifiedProfit ? change(totals.grossProfitCents, comparisonTotals.grossProfitCents) : null,
+          grossProfitRate: canViewVerifiedProfit && comparisonCostsVerified ? change(totals.grossProfitCents, comparisonTotals.grossProfitCents) : null,
           transactionRate: change(totals.transactionCount, comparisonTotals.transactionCount),
           averageTransactionRate: totals.averageTransactionCents !== null && comparisonTotals.averageTransactionCents !== null
             ? change(totals.averageTransactionCents, comparisonTotals.averageTransactionCents)
