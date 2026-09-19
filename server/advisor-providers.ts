@@ -2,6 +2,7 @@ import { ADVISOR_APP_HELP_INSTRUCTIONS, ADVISOR_SYSTEM_INSTRUCTIONS } from "./ad
 import type { VanteloqRuntimeEnv } from "../db/index.ts";
 import { ADVISOR_PROVIDER_LABELS, isAdvisorMode, type AdvisorMode, type AdvisorProvider } from "../domain/advisor-providers.ts";
 import { ApiError } from "./api.ts";
+import type { AdvisorAttachmentContent } from "./advisor-attachments.ts";
 
 export function advisorProviderStatus(env: VanteloqRuntimeEnv) {
   return {
@@ -9,7 +10,7 @@ export function advisorProviderStatus(env: VanteloqRuntimeEnv) {
   };
 }
 
-async function callProvider(provider: AdvisorProvider, text: string, env: VanteloqRuntimeEnv, request: typeof fetch, purpose: "analysis" | "help", signal?: AbortSignal) {
+async function callProvider(provider: AdvisorProvider, text: string, env: VanteloqRuntimeEnv, request: typeof fetch, purpose: "analysis" | "help", signal?: AbortSignal, attachments: AdvisorAttachmentContent[] = []) {
   const instructions = purpose === "help" ? ADVISOR_APP_HELP_INSTRUCTIONS : ADVISOR_SYSTEM_INSTRUCTIONS;
   const model = env.OPENAI_MODEL?.trim() || "gpt-5-mini";
   const url = "https://api.openai.com/v1/responses";
@@ -21,7 +22,7 @@ async function callProvider(provider: AdvisorProvider, text: string, env: Vantel
       // the response.ok check below, so credentials never follow a redirect.
       method: "POST", redirect: "manual", signal: signal ? AbortSignal.any([signal, deadline]) : deadline,
       headers: { "content-type": "application/json", authorization: `Bearer ${env.OPENAI_API_KEY!.trim()}` },
-      body: JSON.stringify({ model, instructions, input: text, store: false, max_output_tokens: 3200, reasoning: { effort: "medium" } }),
+      body: JSON.stringify({ model, instructions, input: attachments.length ? [{ role: "user", content: [{ type: "input_text", text }, ...attachments] }] : text, store: false, max_output_tokens: 3200, reasoning: { effort: "medium" } }),
     });
     if (!response.ok) {
       // Provider diagnostics can contain sensitive details. Expose only our own
@@ -54,11 +55,11 @@ async function callProvider(provider: AdvisorProvider, text: string, env: Vantel
   }
 }
 
-export async function callAdvisor(mode: AdvisorMode, text: string, env: VanteloqRuntimeEnv, request: typeof fetch = fetch, purpose: "analysis" | "help" = "analysis", signal?: AbortSignal) {
+export async function callAdvisor(mode: AdvisorMode, text: string, env: VanteloqRuntimeEnv, request: typeof fetch = fetch, purpose: "analysis" | "help" = "analysis", signal?: AbortSignal, attachments: AdvisorAttachmentContent[] = []) {
   // Reject legacy or forged modes even when called outside the HTTP handler.
   if (!isAdvisorMode(mode)) throw new ApiError(400, "ADVISOR_PROVIDER_INVALID", "Vanteloq AI supports OpenAI only.");
   const status = advisorProviderStatus(env).openai;
   if (!status.ready) return { configured: false as const, message: status.reason, model: "", text: "", providers: [] };
-  const answer = await callProvider("openai", text, env, request, purpose, signal);
+  const answer = await callProvider("openai", text, env, request, purpose, signal, attachments);
   return { configured: true as const, model: answer.model, text: answer.text, providers: [answer.provider], partial: false };
 }

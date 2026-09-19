@@ -191,3 +191,26 @@
   .ai-studio.is-empty .ai-chat-column { padding-bottom: 28px; }
 }
 @media (prefers-reduced-motion: reduce) { .ai-studio *, .ai-studio *::after { animation: none !important; transition: none !important; } .ai-thinking-label { background: none; -webkit-text-fill-color: currentColor; } }
+
+.ai-attach-tools { display:flex; align-items:center; gap:12px; min-width:0; flex-wrap:wrap; }
+.ai-attach-tools .ai-attach-button { display:inline-flex; align-items:center; gap:7px; min-height:44px; padding:8px 12px; border:1px solid #cbd8e6; border-radius:12px; background:#f1f6fc; color:#193f68; font-family:inherit; font-size:14px; font-weight:500; line-height:1.35; cursor:pointer; }
+.ai-attach-tools .ai-attach-button:hover { background:#e7f0fc; border-color:#8daed6; }
+.ai-attach-button .workspace-icon { width:18px; height:18px; }
+.ai-attachment-list { display:flex; flex-wrap:wrap; gap:8px; list-style:none; margin:0 0 12px; padding:0; }
+.ai-attachment-list li { display:flex; align-items:center; gap:9px; max-width:100%; min-width:0; border:1px solid #cbd8e6; border-radius:12px; background:#f2f6fb; padding:8px 6px 8px 12px; }
+.ai-attachment-list li > .workspace-icon { flex:0 0 20px; color:#366baf; }
+.ai-attachment-list li > span { display:grid; gap:2px; min-width:0; }
+.ai-attachment-list strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:230px; font-size:14px; font-weight:500; color:#193553; }
+.ai-attachment-list small { font-size:12px; color:#526783; }
+.ai-attachment-list button { flex:0 0 44px; width:44px; height:44px; border:0; border-radius:9px; background:transparent; color:#344b69; font-size:22px; cursor:pointer; }
+.ai-attachment-list button:hover { background:#e2eaf4; }
+.ai-attachment-notice { margin-top:12px; padding:14px 16px; border:1px solid #d4e0ed; border-radius:14px; background:#f1f6fb; color:#294564; text-align:left; }
+.ai-attachment-notice label { display:flex; align-items:flex-start; gap:10px; font-size:14px; line-height:1.5; cursor:pointer; }
+.ai-attachment-notice input { width:18px; height:18px; flex:0 0 18px; margin:2px 0 0; accent-color:#2460ad; }
+.ai-attachment-notice p { font-size:14px; line-height:1.5; margin:9px 0; }
+.ai-attachment-notice small { display:block; font-size:12px; line-height:1.5; color:#4a627c; }
+.ai-attachment-notice a { color:#175da3; text-decoration:underline; }
+.ai-user-message .ai-sent-files { margin-top:10px; color:#415c7b; overflow-wrap:anywhere; }
+@media(max-width:600px) { .ai-attach-tools .ai-powered-by { display:none; } .ai-attachment-list li { width:100%; } .ai-attachment-list li > span { flex:1; } .ai-attachment-list strong { max-width:100%; } }
+
+.ai-attach-tools .ai-powered-by { color:#526783; font-size:12px; }

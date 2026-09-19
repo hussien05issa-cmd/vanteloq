@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { ADVISOR_ATTACHMENT_NOTICE_VERSION } from "../shared/advisor-attachments.ts";
 import { POST, DELETE, ADVISOR_CONSENT_VERSIONS } from "../app/api/v1/advisor/chat/route.ts";
 import { createEnvironment, createReportWorkspace, dispatch, identityHeaders, origin, seedReportMetric } from "./helpers/retail-worker-fixture.mjs";
 
@@ -51,7 +52,8 @@ test("AI requests isolate overlapping tenants and reject access or consent chang
     const prompts = [];
     globalThis.fetch = async (input, init) => {
       if (String(input) !== "https://api.openai.com/v1/responses") return originalFetch(input, init);
-      const prompt = JSON.parse(init.body).input;
+      const inputBody = JSON.parse(init.body).input;
+      const prompt = Array.isArray(inputBody) ? inputBody[0].content[0].text : inputBody;
       prompts.push(prompt);
       if (beforeReply) {
         try { await beforeReply(); }
@@ -82,6 +84,29 @@ test("AI requests isolate overlapping tenants and reject access or consent chang
     assert.match(beta, /Private marker beta/); assert.doesNotMatch(beta, /Private marker alpha|123456/);
     assert.equal((await ask(b, "Foreign conversation", { conversationId: ids[0] })).status, 404);
     assert.equal(await totalMessages(a), 4); assert.equal(await totalMessages(b), 4);
+
+    // A malicious client cannot persist an attachment turn by enabling memory.
+    const attach = async (consent = ADVISOR_ATTACHMENT_NOTICE_VERSION) => {
+      const form = new FormData();
+      form.set("request", JSON.stringify({ ...versions, question: "Read the fictional file", provider: "openai", purpose: "help", dataUseAccepted: true, memoryEnabled: true, conversationId: ids[0], attachmentConsent: consent }));
+      form.append("files", new File(["Fictional product,cost\nA,14.50"], "fictional.csv", {type:"text/csv"}));
+      const headers = identityHeaders(a.owner.email, a.owner.name, true); delete headers["content-type"];
+      globalThis.__vanteloqEnv = { ...environment, DB: wrappedDatabase };
+      return POST(new Request(`${origin}/api/v1/advisor/chat`, { method:"POST", headers, body:form }));
+    };
+    const documentsBefore = await database.prepare("SELECT COUNT(*) count FROM workspace_documents").first();
+    const missingConsentCalls = prompts.length;
+    const noConsent = await attach(null); assert.equal(noConsent.status,409,await noConsent.clone().text());
+    assert.equal(prompts.length,missingConsentCalls);
+    const attachmentReply = await attach(); assert.equal(attachmentReply.status,200,await attachmentReply.clone().text());
+    const attachmentPayload = await attachmentReply.json();
+    assert.equal(attachmentPayload.memoryEnabled,false); assert.equal(attachmentPayload.conversationId,null);
+    assert.equal(await totalMessages(a),4);
+    assert.deepEqual(await database.prepare("SELECT COUNT(*) count FROM workspace_documents").first(),documentsBefore);
+    beforeReply = () => withdraw(a);
+    const attachmentRevoked = await attach(); assert.equal(attachmentRevoked.status,409,await attachmentRevoked.clone().text());
+    assert.equal(Boolean((await attachmentRevoked.json()).answer),false); assert.equal(await totalMessages(a),4);
+    beforeReply = null; await accept(a);
 
     beforeReply = () => withdraw(a);
     const withdrawn = await ask(a, "Reply after withdrawal");

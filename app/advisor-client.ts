@@ -1,5 +1,6 @@
 import type { AdvisorMode } from "../domain/advisor-providers";
 import { ADVISOR_CONSENT_NOTICE_VERSION, PRIVACY_POLICY_VERSION } from "../domain/privacy-controls";
+import { ADVISOR_ATTACHMENT_NOTICE_VERSION } from "../shared/advisor-attachments";
 
 export type AdvisorRequest = {
   question: string;
@@ -11,15 +12,25 @@ export type AdvisorRequest = {
   purpose?: "analysis" | "help";
   from?: string;
   to?: string;
+  attachments?: File[];
+  attachmentAccepted?: boolean;
 };
 
 /** The signal is transport-only and must never enter the business prompt. */
 export function requestAdvisorAnalysis(fetcher: typeof fetch, input: AdvisorRequest, signal?: AbortSignal) {
+  const { attachments, attachmentAccepted, ...message } = input;
+  const metadata = { ...message, ...(attachments?.length ? { memoryEnabled: false, attachmentConsent: attachmentAccepted ? ADVISOR_ATTACHMENT_NOTICE_VERSION : null } : {}), noticeVersion: ADVISOR_CONSENT_NOTICE_VERSION, privacyPolicyVersion: PRIVACY_POLICY_VERSION };
+  if (attachments?.length) {
+    const form = new FormData();
+    form.set("request", JSON.stringify(metadata));
+    attachments.forEach(file => form.append("files", file));
+    return fetcher("/api/v1/advisor/chat", { method: "POST", signal, body: form });
+  }
   return fetcher("/api/v1/advisor/chat", {
     method: "POST",
     signal,
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ ...input, noticeVersion: ADVISOR_CONSENT_NOTICE_VERSION, privacyPolicyVersion: PRIVACY_POLICY_VERSION }),
+    body: JSON.stringify(metadata),
   });
 }
 
