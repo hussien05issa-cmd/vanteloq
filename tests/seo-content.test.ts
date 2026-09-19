@@ -79,7 +79,7 @@ test("resource catalogue preserves one canonical route namespace", () => {
 test("homepage links the published catalogue through the shared article browser", () => {
   const homepage = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
   const browser = readFileSync(new URL("../app/resource-article-browser.tsx", import.meta.url), "utf8");
-  assert.ok(homepage.includes("<ResourceArticleBrowser articles={RESOURCE_ARTICLES}"));
+  assert.ok(homepage.includes("<ResourceArticleBrowser articles={RESOURCE_ARTICLE_SUMMARIES}"));
   assert.ok(browser.includes("getCategory(article.category)"));
   assert.ok(browser.includes("getReadingTime(article)"));
 });

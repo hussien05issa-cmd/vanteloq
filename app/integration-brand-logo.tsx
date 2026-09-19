@@ -34,14 +34,14 @@ export default function IntegrationBrandLogo({ name, compact = false }: { name: 
     return <span className={`integration-logo brand-${slug(name)}${compact ? " compact" : ""}`} role="img" aria-label={`${name} logo`}>
       {/* Local brand artwork; provenance is recorded in docs/brand-asset-sources.md. */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={name === "Google" ? "/brand/google-g.png" : "/brand/meta-mark.svg"} width={28} height={28} alt="" aria-hidden="true" />
+      <img src={name === "Google" ? "/brand/google-g-ui.webp" : "/brand/meta-mark.svg"} width={28} height={28} alt="" aria-hidden="true" />
     </span>;
   }
   if (name === "Lightspeed" || name.startsWith("Lightspeed ")) {
     return <span className={`integration-logo brand-lightspeed${compact ? " compact" : ""}`} role="img" aria-label="Lightspeed logo">
       {/* Standalone Lightspeed flame artwork; the wordmark is intentionally excluded. */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/brand/lightspeed-mark.png" alt="" aria-hidden="true" />
+      <img src="/brand/lightspeed-mark-ui.webp" alt="" aria-hidden="true" />
     </span>;
   }
 
@@ -49,7 +49,7 @@ export default function IntegrationBrandLogo({ name, compact = false }: { name: 
     return <span className={`integration-logo brand-plaid${compact ? " compact" : ""}`} role="img" aria-label="Plaid logo">
       {/* Plaid's standalone knot mark, cropped from the unchanged brand lockup. */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/brand/plaid-mark.png" alt="" aria-hidden="true" />
+      <img src="/brand/plaid-mark-ui.webp" alt="" aria-hidden="true" />
     </span>;
   }
 

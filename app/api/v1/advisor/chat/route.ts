@@ -17,7 +17,7 @@ import { requireAdvisorConsent } from "../../../../../server/privacy";
 import { assertAdvisorAuthority, captureAdvisorAuthority, completeAdvisorTurn } from "../../../../../server/advisor-completion";
 import { sessionLeaseId } from "../../../../../server/session-policy";
 import { advisorMarketingEvidence } from "../../../../../server/marketing-evidence";
-import { advisorEvidenceFingerprint, permittedAdvisorMemory } from "../../../../../domain/advisor-memory";
+import { advisorEvidenceFingerprint, advisorHistoryFingerprint, permittedAdvisorMemory, type AdvisorHistoryScope } from "../../../../../domain/advisor-memory";
 import { projectAdvisorBookloq } from "../../../../../domain/advisor-bookloq";
 import { GET as readBookloq } from "../../bookloq/route";
 import { GET as readRetail } from "../../retail-intelligence/route";
@@ -228,9 +228,11 @@ export async function POST(request: Request) {
     const existingConversation = suppliedId ? await getD1().prepare("SELECT organization_id, user_id FROM assistant_conversations WHERE id = ?").bind(conversationId).first<{ organization_id: string; user_id: string }>() : null;
     if (suppliedId && (!existingConversation || existingConversation.organization_id !== context.organizationId || existingConversation.user_id !== context.userId)) throw new ApiError(404, "CONVERSATION_NOT_FOUND", "This conversation is unavailable. Start a new chat.");
     const accessFingerprint = await advisorEvidenceFingerprint(evidence, [...permissions, `advisor-provider:${mode}`], locationAccess.locationRefs);
+    const historyScope: AdvisorHistoryScope = { purpose, locationId, from: requestedPeriod?.from ?? null, to: requestedPeriod?.to ?? null };
+    const authorityFingerprint = await advisorHistoryFingerprint(authorityStamp, historyScope);
     if (memoryEnabled) await getD1().prepare("DELETE FROM assistant_conversations WHERE organization_id = ? AND user_id = ? AND updated_at < ?").bind(context.organizationId, context.userId, Date.now() - 90 * 24 * 60 * 60 * 1_000).run();
     const memoryRows = memoryEnabled ? await getD1().prepare("SELECT role, content, evidence_json FROM assistant_messages WHERE conversation_id = ? AND organization_id = ? AND user_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 6").bind(conversationId, context.organizationId, context.userId).all<{ role: string; content: string; evidence_json: string }>() : { results: [] };
-    const memory = permittedAdvisorMemory(memoryRows.results ?? [], accessFingerprint);
+    const memory = permittedAdvisorMemory(memoryRows.results ?? [], authorityFingerprint, "authorityFingerprint");
     const coverage = retailCoverage as { sourceCount: number; days: number } | null;
     const evidenceSummary = { latestDate: evidence.latestDate, sourceCount: coverage?.sourceCount ?? evidence.sources.length, days: coverage?.days ?? evidence.days.length };
     // Recheck current access before sending evidence, including a revocation
@@ -253,7 +255,7 @@ export async function POST(request: Request) {
     await requireAdvisorConsent({ organizationId: context.organizationId, actorUserId: context.userId, purpose, noticeVersion: body.noticeVersion, privacyPolicyVersion: body.privacyPolicyVersion });
     await completeAdvisorTurn(getD1(), authorityActor, authorityStamp, result.configured && memoryEnabled ? {
       conversationId, existing: Boolean(suppliedId), question, answer: result.text, model: result.model,
-      userEvidence: JSON.stringify({ accessFingerprint }), answerEvidence: JSON.stringify({ accessFingerprint, ...evidenceSummary }),
+      userEvidence: JSON.stringify({ accessFingerprint, authorityFingerprint, historyScope }), answerEvidence: JSON.stringify({ accessFingerprint, authorityFingerprint, historyScope, ...evidenceSummary }),
     } : null);
     if (!result.configured) {
       return jsonResponse({ status: "configuration_required", conversationId: suppliedId, memoryEnabled, model: result.model, answer: null, evidence: evidenceSummary, message: result.message });

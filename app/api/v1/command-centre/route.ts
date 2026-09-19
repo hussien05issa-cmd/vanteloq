@@ -2,7 +2,7 @@ import { hasAddon } from "../../../../server/entitlements/engine";
 import { loadExecutiveFinance } from "../../../../server/executive-finance";
 import { buildExecutiveReport } from "../../../../server/executive-report";
 import { executivePeriod } from "../../../../domain/executive-metrics";
-import { and, desc, eq, gte, lte } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lte } from "drizzle-orm";
 import { getD1, getDb } from "../../../../db";
 import { bankAccounts, dailyBusinessMetrics, integrationConnections, integrationLocationMappings, organizationProfiles } from "../../../../db/schema";
 import { requireAccess } from "../../../../server/authorization";
@@ -153,6 +153,7 @@ export async function loadCommandCentre(request: Request) {
       sourceNamespace: integrationConnections.sourceNamespace,
       status: integrationConnections.status,
       dataPromotionStatus: integrationConnections.dataPromotionStatus,
+      promotionAuthorizedAt: integrationConnections.promotionAuthorizedAt,
       lastSuccessfulSyncAt: integrationConnections.lastSuccessfulSyncAt,
       externalAccountRef: integrationConnections.externalAccountRef,
       externalAccountName: integrationConnections.externalAccountName,
@@ -181,6 +182,25 @@ export async function loadCommandCentre(request: Request) {
     const posConnectionRows = connectionRows.filter((row) => supportedPosProviders.has(row.provider));
     const connectedSourceConnections = posConnectionRows.filter((row) => row.status === "connected");
     const now = Date.now();
+    const syncingSourceIds = connectedSourceConnections.filter((row) =>
+      Boolean(row.syncLeaseOwner && row.syncLeaseExpiresAt && row.syncLeaseExpiresAt.getTime() > now)
+      && (row.dataPromotionStatus === "approved" || (row.dataPromotionStatus === "staging" && row.promotionAuthorizedAt !== null)),
+    ).map((row) => row.id);
+    // Publication gates may temporarily remove these mappings from the data
+    // scope. Consult authorized local mappings only to label that sync, never
+    // to bypass approval or expose another location's records.
+    const scopedSyncingMappings = syncingSourceIds.length && locationRestricted && locationAccess.locationIds?.length
+      ? await getDb().select({ id: integrationLocationMappings.id }).from(integrationLocationMappings).where(and(
+        eq(integrationLocationMappings.organizationId, context.organizationId),
+        inArray(integrationLocationMappings.connectionId, syncingSourceIds),
+        inArray(integrationLocationMappings.localLocationId, locationAccess.locationIds),
+        eq(integrationLocationMappings.status, "mapped"),
+      )).limit(1)
+      : [];
+    const sourceSyncing = syncingSourceIds.length > 0 && (!locationRestricted || scopedSyncingMappings.length > 0);
+    if (period && sourceSyncing && new URL(request.url).searchParams.get("basis") !== "ledger") {
+      throw new ApiError(503, "SOURCE_SYNCING", "Syncing source records. Verified totals will return when the refresh finishes. Try again shortly.");
+    }
     const sourceConnections = connectedSourceConnections.filter((row) => row.dataPromotionStatus === "approved"
       && (!row.syncLeaseOwner || !row.syncLeaseExpiresAt || row.syncLeaseExpiresAt.getTime() <= now));
     const canViewVerifiedProfit = permissions.includes("metrics.revenue") && permissions.includes("metrics.profit") && !sourceConnections.some((row) =>
@@ -334,6 +354,7 @@ export async function loadCommandCentre(request: Request) {
     ).all<PaymentMixRow & { provider: string }>() : { results: [] as Array<PaymentMixRow & { provider: string }> };
     const commandCentre = {
       ...baseCommandCentre,
+      source: { ...baseCommandCentre.source, syncing: sourceSyncing },
       today: {
         ...today,
         grossProfitCents: canViewVerifiedProfit ? today.grossProfitCents : null,
