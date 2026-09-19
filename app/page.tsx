@@ -396,7 +396,7 @@ function FeatureReel() {
       <div className="reel-window-bar"><span className="reel-app-symbol" aria-hidden="true">V</span><strong>{scene.label}</strong><span>Illustrative interface</span></div>
       <FeatureReelStage key={scene.id} scene={scene}/>
     </div>
-    <footer><span>Illustrative data. Every decision stays yours.</span><Link href="/demo#retail">Explore the demo <span aria-hidden="true">↗</span></Link></footer>
+    <footer><span>Illustrative data. Every decision stays yours.</span><Link prefetch={false} href="/demo#retail">Explore the demo <span aria-hidden="true">↗</span></Link></footer>
   </div>;
 }
 
@@ -410,11 +410,14 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
     const update = () => {
       frame = 0;
       const height = header.getBoundingClientRect().height;
-      site.style.setProperty("--public-nav-height", `${height + 20}px`);
       const section = Array.from(site.querySelectorAll<HTMLElement>("main > section")).find(element => {
         const box = element.getBoundingClientRect();
         return box.top <= height + 80 && box.bottom > height + 80;
       });
+      // Complete geometry reads before invalidating layout, and avoid writing
+      // the same header height on every scroll frame.
+      const offset = `${height + 20}px`;
+      if (site.style.getPropertyValue("--public-nav-height") !== offset) site.style.setProperty("--public-nav-height", offset);
       setActiveSection(section?.id ?? "");
     };
     const schedule = () => { if (!frame) frame = window.requestAnimationFrame(update); };
@@ -434,7 +437,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
       </button>
       </div>
       <nav id="public-navigation" aria-label="Main navigation">
-        <a href="#platform" aria-current={activeSection === "platform" ? "location" : undefined}>How it works</a><a href="#connections" aria-current={activeSection === "connections" ? "location" : undefined}>Connections</a><a href="/demo" aria-current={activeSection === "demo" ? "location" : undefined}>Open the demo</a><Link data-public-event="pricing_view" href="/pricing">Pricing</Link><Link href="/help">Help</Link>
+        <a href="#platform" aria-current={activeSection === "platform" ? "location" : undefined}>How it works</a><a href="#connections" aria-current={activeSection === "connections" ? "location" : undefined}>Connections</a><a href="/demo" aria-current={activeSection === "demo" ? "location" : undefined}>Open the demo</a><Link prefetch={false} data-public-event="pricing_view" href="/pricing">Pricing</Link><Link prefetch={false} href="/help">Help</Link>
         <a href="#social" aria-current={activeSection === "social" ? "location" : undefined}>Socials</a><div className="public-nav-socials"><SocialLinks/></div>
       </nav>
       <div className="public-nav-actions">
@@ -458,14 +461,14 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
           <ul className="home-proof"><li>No signup for the demo</li><li>Totals open to source rows</li><li>AI memory starts off</li></ul>
           <p className="home-company-credit">A product built and operated by <a href="#company">LexEdge Consulting</a>.</p>
         </div>
-        <Link className="hero-product-hotspot" href="/demo" aria-label="Open the interactive Vanteloq demo" data-public-event="demo_view"><span>Sample store <b>Open the demo <i aria-hidden="true">↗</i></b></span></Link>
+        <Link prefetch={false} className="hero-product-hotspot" href="/demo" aria-label="Open the interactive Vanteloq demo" data-public-event="demo_view"><span>Sample store <b>Open the demo <i aria-hidden="true">↗</i></b></span></Link>
       </section>
       <div className="reference-connections" aria-label="Explore data connections"><span>YOUR TOOLS, CONNECTED</span><div>{["Lightspeed","Square","Shopify","Stripe","Google"].map(name=><a key={name} href="#connections" aria-label={`Check ${name} availability`}><IntegrationBrandLogo name={name} compact/><strong>{name}</strong></a>)}</div><a href="#connections">View Availability <span aria-hidden="true">→</span></a></div>
       <section className="home-decision-proof" id="platform" aria-labelledby="decision-proof-title">
         <span id="capabilities"/><div className="reference-section-heading"><div><p className="demo-eyebrow">THE QUESTIONS BEHIND THE COUNTER</p><h2 id="decision-proof-title">Before you reorder, discount or close the week.</h2></div><p>A sales total is a starting point. Look at what sold, what it earned and what your store needs next.</p></div>
         <FeatureCarousel/>
       </section>
-      <section className="home-proof-studio" id="demo" aria-labelledby="home-demo-entry-title"><div className="proof-studio-copy"><p className="demo-eyebrow">TRY IT WITH SAMPLE RECORDS</p><h2 id="home-demo-entry-title">Sales changed.<br/>Show me why.</h2><p>Choose a location. Watch the totals update. Follow the result into the baskets, products and discounts behind it.</p><p className="proof-studio-note">Fictional records. Working calculations. No signup required.</p><Link href="/demo" data-public-event="demo_engaged">Open the full demo <span aria-hidden="true">→</span></Link></div><HomeDecisionPreview/>
+      <section className="home-proof-studio" id="demo" aria-labelledby="home-demo-entry-title"><div className="proof-studio-copy"><p className="demo-eyebrow">TRY IT WITH SAMPLE RECORDS</p><h2 id="home-demo-entry-title">Sales changed.<br/>Show me why.</h2><p>Choose a location. Watch the totals update. Follow the result into the baskets, products and discounts behind it.</p><p className="proof-studio-note">Fictional records. Working calculations. No signup required.</p><Link prefetch={false} href="/demo" data-public-event="demo_engaged">Open the full demo <span aria-hidden="true">→</span></Link></div><HomeDecisionPreview/>
         <div className="journey-steps" aria-label="From signup to the first insight"><div><b>1</b><span><strong>Set up your account</strong>Verify your email, secure your account and choose a plan.</span></div><div><b>2</b><span><strong>Bring in your records</strong>Connect your source, map locations and review the imported totals.</span></div><div><b>3</b><span><strong>Work through a store question</strong>Inspect the evidence, ask AI for help and assign a next step.</span></div></div>
       </section>
       <section className="home-connections" id="connections" aria-labelledby="connections-title">
@@ -480,22 +483,22 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
       <FinanceProof/>
       <section className="journey-evidence" id="security" aria-labelledby="evidence-title">
         <div><p className="demo-eyebrow">KNOW WHAT IS BEHIND THE NUMBER</p><h2 id="evidence-title">Missing records should not look like a quiet day.</h2><p>See what information is available, what needs review and who can access it.</p></div>
-        <div className="journey-trust"><article><strong>Access follows responsibility</strong><p>Workspace membership and role permissions control access to business and financial information.</p></article><article><strong>Missing data stays visible</strong><p>Missing costs do not become zero. An incomplete import does not prove the store was closed.</p></article><article><strong>You own the decision</strong><p>LexEdge Consulting provides business analysis, financial review, operations and marketing support. It builds and operates Vanteloq. You review consequential actions and own the decision.</p></article><div><Link href="/privacy">Privacy and deletion</Link><Link href="/subprocessors">Data processors</Link><Link href="/contact">Contact us</Link></div></div>
+        <div className="journey-trust"><article><strong>Access follows responsibility</strong><p>Workspace membership and role permissions control access to business and financial information.</p></article><article><strong>Missing data stays visible</strong><p>Missing costs do not become zero. An incomplete import does not prove the store was closed.</p></article><article><strong>You own the decision</strong><p>LexEdge Consulting provides business analysis, financial review, operations and marketing support. It builds and operates Vanteloq. You review consequential actions and own the decision.</p></article><div><Link prefetch={false} href="/privacy">Privacy and deletion</Link><Link prefetch={false} href="/subprocessors">Data processors</Link><Link prefetch={false} href="/contact">Contact us</Link></div></div>
       </section>
       <section className="journey-pricing" id="plans" aria-labelledby="home-plans-title"><div className="home-section-heading compact"><p>CHOOSE YOUR CAPACITY</p><h2 id="home-plans-title">One store or several. Start with what you need.</h2><span>Choose the locations and team capacity that fit your operation. Add BookLoQ for accounting and cash planning.</span></div><PublicPlanCards compact/><CustomPlanCallout className="journey-custom" headingLevel={3} title="Need more locations or a custom scope?"/></section>
-      <section className="home-faq journey-faq" aria-labelledby="faq-title"><div className="home-section-heading compact"><p>BEFORE YOU CONNECT YOUR STORE</p><h2 id="faq-title">What happens next?</h2><Link href="/help">Visit the help centre →</Link></div><div className="home-faq-list">
-        <details><summary>Can I try it before signing up?</summary><p>Yes. The demo uses fictional records and working retail calculations. It does not access customer records or send requests to an AI provider.</p><Link href="/demo">Open the demo →</Link></details>
+      <section className="home-faq journey-faq" aria-labelledby="faq-title"><div className="home-section-heading compact"><p>BEFORE YOU CONNECT YOUR STORE</p><h2 id="faq-title">What happens next?</h2><Link prefetch={false} href="/help">Visit the help centre →</Link></div><div className="home-faq-list">
+        <details><summary>Can I try it before signing up?</summary><p>Yes. The demo uses fictional records and working retail calculations. It does not access customer records or send requests to an AI provider.</p><Link prefetch={false} href="/demo">Open the demo →</Link></details>
         <details><summary>Will it work with my POS?</summary><p>Check the provider selector for current availability and supported data. Each business authorizes its own account, maps locations and reviews imported totals before relying on reports. CSV is an alternative where a supported template fits your records.</p><a href="#connections">Check your system →</a></details>
         <details><summary>What happens after signup?</summary><p>Verify your email, set up an authenticator, add your business and confirm a subscription. Then connect a source, map locations and review the import. Reports show which records are available so you can see what is ready and what is missing.</p></details>
         <details><summary>What does BookLoQ add?</summary><p>BookLoQ adds accounting records, journals, financial statements, reconciliation and cash planning for $39 CAD per month on top of a base plan. It does not file tax returns or certify your books. Keep your accountant involved.</p></details>
-        <details><summary>Can I control what AI remembers?</summary><p>Yes. Memory starts off. Choose whether to share permitted workspace summaries, turn memory on or off, and delete saved chats in AI Settings. AI access remains limited by your role.</p><Link href="/privacy">Read the privacy details →</Link></details>
+        <details><summary>Can I control what AI remembers?</summary><p>Yes. Memory starts off. Choose whether to share permitted workspace summaries, turn memory on or off, and delete saved chats in AI Settings. AI access remains limited by your role.</p><Link prefetch={false} href="/privacy">Read the privacy details →</Link></details>
         <details><summary>Can I change or cancel my subscription?</summary><p>Open Stripe’s billing portal from workspace billing to review available changes or cancellation. Check the effective date and any prorated charges before confirming.</p></details>
         <div className="journey-final"><strong>Start with a question you would ask about your own store.</strong><a href="/demo">Open the demo →</a><button type="button" data-public-event="signup_start" onClick={() => start("signup")}>Create a workspace</button></div>
       </div></section>
 
 
       <HomeSocialSection/>
-      <section className="home-article-library" aria-label="Business resource articles"><ResourceArticleBrowser articles={RESOURCE_ARTICLE_SUMMARIES} title="Browse articles"/><Link href="/resources">Explore the resource library →</Link></section>
+      <section className="home-article-library" aria-label="Business resource articles"><ResourceArticleBrowser articles={RESOURCE_ARTICLE_SUMMARIES} title="Browse articles"/><Link prefetch={false} href="/resources">Explore the resource library →</Link></section>
     </main>
 
     <footer className="home-footer" id="company">
@@ -504,10 +507,10 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
         <img src="/brand/lexedge-consulting-logo-web.png" alt="LexEdge Consulting" width={480} height={320} loading="lazy" />
         <span>LexEdge Consulting is the consulting business behind Vanteloq, covering business analysis, financial review, operations and marketing support. It builds and operates the software; your business decisions stay yours.</span>
       </div></div>
-      <div><strong>PRODUCT</strong><Link href="/features/retail-intelligence">Retail intelligence</Link><Link href="/features/inventory-and-cash">Inventory and cash</Link><Link data-public-event="pricing_view" href="/pricing">Pricing</Link><Link href="/demo">Interactive demo</Link><a href="#platform">How it works</a><a href="#capabilities">Capabilities</a><a href="#connections">Connections</a><a href="#security">Security</a></div>
-      <div><strong>RESOURCES</strong><Link href="/social">Follow Vanteloq</Link><Link href="/help">Help centre</Link><Link href="/resources">All resources</Link><Link href="/resources/inventory">Inventory</Link><Link href="/resources/finance">Finance</Link><Link href="/resources/analytics">Analytics</Link></div>
-      <div><strong>LEGAL</strong><Link href="/legal">Legal centre</Link><Link href="/privacy">Privacy</Link><Link href="/terms">Terms</Link><Link href="/cookies">Cookies</Link></div>
-      <div><strong>ACCOUNT</strong><Link href="/contact">Contact</Link><button type="button" onClick={() => start("signin")}>Sign in</button><button type="button" data-public-event="signup_start" onClick={() => start("signup")}>Create a workspace</button></div>
+      <div><strong>PRODUCT</strong><Link prefetch={false} href="/features/retail-intelligence">Retail intelligence</Link><Link prefetch={false} href="/features/inventory-and-cash">Inventory and cash</Link><Link prefetch={false} data-public-event="pricing_view" href="/pricing">Pricing</Link><Link prefetch={false} href="/demo">Interactive demo</Link><a href="#platform">How it works</a><a href="#capabilities">Capabilities</a><a href="#connections">Connections</a><a href="#security">Security</a></div>
+      <div><strong>RESOURCES</strong><Link prefetch={false} href="/social">Follow Vanteloq</Link><Link prefetch={false} href="/help">Help centre</Link><Link prefetch={false} href="/resources">All resources</Link><Link prefetch={false} href="/resources/inventory">Inventory</Link><Link prefetch={false} href="/resources/finance">Finance</Link><Link prefetch={false} href="/resources/analytics">Analytics</Link></div>
+      <div><strong>LEGAL</strong><Link prefetch={false} href="/legal">Legal centre</Link><Link prefetch={false} href="/privacy">Privacy</Link><Link prefetch={false} href="/terms">Terms</Link><Link prefetch={false} href="/cookies">Cookies</Link></div>
+      <div><strong>ACCOUNT</strong><Link prefetch={false} href="/contact">Contact</Link><button type="button" onClick={() => start("signin")}>Sign in</button><button type="button" data-public-event="signup_start" onClick={() => start("signup")}>Create a workspace</button></div>
       <p className="home-footer-note"><strong>{PRODUCT_RELEASE_NAME}</strong><br/>© {new Date().getFullYear()} LexEdge Consulting. Feature availability depends on workspace access, configured sources and verified records.</p>
     </footer>
   </div>;

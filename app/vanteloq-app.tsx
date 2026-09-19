@@ -1,5 +1,6 @@
 "use client";
 
+import "./workspace-base-styles";
 import "./workspace-styles";
 import { parseDailyCsv } from "../domain/daily-summary-csv";
 import DailyImportReviewPanel from "./daily-import-review";
