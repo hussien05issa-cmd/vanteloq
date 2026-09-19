@@ -32,12 +32,12 @@ export function documentProviderConfiguration(env: VanteloqRuntimeEnv) {
 }
 
 /** Preserve active-content restrictions independently of the malware vendor. */
-export async function validateDocumentForProcessing(bytes: Uint8Array, contentType: string) {
+export async function validateDocumentForProcessing(bytes: Uint8Array, contentType: string, maximumPages = 50) {
   if (contentType !== "application/pdf") return;
   let pdf: PDFDocument;
   try { pdf = await PDFDocument.load(bytes, { updateMetadata: false, throwOnInvalidObject: true }); }
   catch { throw new DocumentProviderError("DOCUMENT_FORMAT_UNSUPPORTED"); }
-  if (pdf.getPageCount() > 50) throw new DocumentProviderError("EXTRACTION_PAGE_LIMIT");
+  if (pdf.getPageCount() < 1 || pdf.getPageCount() > maximumPages) throw new DocumentProviderError("EXTRACTION_PAGE_LIMIT");
   const forbidden = new Set(["JavaScript", "JS", "Launch", "EmbeddedFiles", "EmbeddedFile", "RichMedia", "SubmitForm", "ImportData"]);
   const seen = new Set<object>();
   const inspect = (value: unknown, depth: number) => {
@@ -50,6 +50,7 @@ export async function validateDocumentForProcessing(bytes: Uint8Array, contentTy
     else if (value instanceof PDFStream) inspect(value.dict, depth + 1);
   };
   for (const [, value] of pdf.context.enumerateIndirectObjects()) inspect(value, 0);
+  return pdf.getPageCount();
 }
 
 async function request(url: string, init: RequestInit, transport: typeof fetch, allowAbsent = false) {

@@ -1,5 +1,7 @@
 import { recordedLabourCost } from "../../../../../domain/labour-evidence";
 import { advisorProviderStatus, callAdvisor } from "../../../../../server/advisor-providers";
+import { prepareAdvisorAttachments, readAdvisorRequest } from "../../../../../server/advisor-attachments";
+import { ADVISOR_ATTACHMENT_NOTICE_VERSION } from "../../../../../shared/advisor-attachments";
 import { isAdvisorMode } from "../../../../../domain/advisor-providers";
 import { advisorKpis, advisorDailySeries, type AdvisorDay } from "../../../../../domain/advisor-kpis";
 import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
@@ -144,17 +146,19 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  return handleApi(request, async () => {
+  return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
     const context = await requireAccess(request, readers, "ai.basic");
     await requirePermission(context, "insights.view");
     await enforceRateLimit("advisor:chat", `${context.userId}:${clientSource(request)}`, 20, 60);
-    const body = await readJsonObject(request);
+    const { body, files } = await readAdvisorRequest(request);
     const question = cleanQuestion(body.question);
     if (body.purpose !== undefined && body.purpose !== "analysis" && body.purpose !== "help") throw new ApiError(400, "ADVISOR_PURPOSE_INVALID", "Choose a valid workspace-data setting.");
     const purpose = body.purpose === "help" ? "help" : "analysis";
     if (body.memoryEnabled !== undefined && typeof body.memoryEnabled !== "boolean") throw new ApiError(400, "ADVISOR_MEMORY_INVALID", "Choose whether to enable conversation memory.");
-    const memoryEnabled = body.memoryEnabled === true;
+    // A file answer can reproduce private file contents. Never persist either
+    // side of an attachment turn, even if a client forges memoryEnabled:true.
+    const memoryEnabled = files.length === 0 && body.memoryEnabled === true;
     const mode = body.provider ?? "openai";
     if (!isAdvisorMode(mode)) throw new ApiError(400, "ADVISOR_PROVIDER_INVALID", "Vanteloq AI supports OpenAI only. Refresh the app and try again.");
     if (body.dataUseAccepted !== true) {
@@ -167,6 +171,7 @@ export async function POST(request: Request) {
       noticeVersion: typeof body.noticeVersion === "string" ? body.noticeVersion : "",
       privacyPolicyVersion: typeof body.privacyPolicyVersion === "string" ? body.privacyPolicyVersion : "",
     });
+    const attachments = await prepareAdvisorAttachments(files);
     const authorityActor = { organizationId: context.organizationId, userId: context.userId, role: context.role, subject: context.identity.subject!, sessionId: await sessionLeaseId(context) };
     const authorityStamp = await captureAdvisorAuthority(getD1(), authorityActor);
     const permissions = await effectivePermissions(context);
@@ -237,7 +242,8 @@ export async function POST(request: Request) {
     // Consent may be withdrawn from another tab while evidence is loading.
     await requireAdvisorConsent({ organizationId: context.organizationId, actorUserId: context.userId, purpose, noticeVersion: body.noticeVersion, privacyPolicyVersion: body.privacyPolicyVersion });
     await assertAdvisorAuthority(getD1(), authorityActor, authorityStamp);
-    const result = await callAdvisor(mode, prompt(question, evidence, memory), getRuntimeEnv(), undefined, purpose, request.signal);
+    if (files.length) await recordAudit({ request, requestId, organizationId: context.organizationId, actorUserId: context.userId, action: "privacy.advisor_attachments_authorized", resourceType: "advisor_request", resourceId: requestId, details: { noticeVersion: ADVISOR_ATTACHMENT_NOTICE_VERSION, fileCount: files.length, bytes: files.reduce((sum, file) => sum + file.size, 0), provider: "openai", memoryEnabled: false } });
+    const result = await callAdvisor(mode, prompt(question, evidence, memory), getRuntimeEnv(), undefined, purpose, request.signal, attachments);
     // Provider calls can take long enough for another tab or administrator to
     // revoke consent, suspend membership, expire the session or change access.
     const currentAccess = await requireAccess(request, readers, "ai.basic");

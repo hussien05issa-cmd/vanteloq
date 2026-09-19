@@ -29,14 +29,14 @@ test("the unified assistant retains financial and operational disciplines withou
     assert.match(instructions, /Never recommend a balancing plug/);
     assert.match(instructions, /Handle mixed app and business questions/);
   }
-  assert.match(ADVISOR_APP_HELP_INSTRUCTIONS, /No workspace records were requested or attached/);
+  assert.match(ADVISOR_APP_HELP_INSTRUCTIONS, /No automatic workspace records were requested or attached/);
   assert.match(ADVISOR_APP_HELP_INSTRUCTIONS, /general guidance/);
 });
 test("App help selects instructions that do not claim to inspect a user's account", async () => {
   const request = (async (_url, init) => {
     const body = JSON.parse(String(init?.body));
     assert.equal(body.instructions, ADVISOR_APP_HELP_INSTRUCTIONS);
-    assert.match(body.instructions, /No workspace records were requested or attached/);
+    assert.match(body.instructions, /No automatic workspace records were requested or attached/);
     assert.equal(body.store, false);
     return Response.json({status:"completed",output:[{type:"message",content:[{type:"output_text",text:"Product help only"}]}]});
   }) as typeof fetch;

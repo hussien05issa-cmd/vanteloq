@@ -3933,6 +3933,9 @@ function Advisor({
   retailSeed?: RetailAdvisorSeed | null;
 }) {
   const [question, setQuestion] = useState(retailSeed?.question ?? "");
+  const [attachments, setAttachments] = useState<File[]>([]);
+  const [attachmentAccepted, setAttachmentAccepted] = useState(false);
+  const [submittedFiles, setSubmittedFiles] = useState<string[]>([]);
   const [analysisPeriod, setAnalysisPeriod] = useState<{ from: string; to: string } | null>(retailSeed ? { from: retailSeed.from, to: retailSeed.to } : null);
   const [memoryEnabled, setMemoryEnabled] = useState(false);
   const provider: AdvisorMode = "openai";
@@ -3967,18 +3970,19 @@ function Advisor({
   const [history, setHistory] = useState<Array<{ question: string; answer: NonNullable<typeof answer> }>>([]);
   const ask = async (event: FormEvent) => {
     event.preventDefault();
-    if (activeRequest.current || savedConsent.busy || savedConsent.error || !advisorProviders(provider).every(item => providers[item].ready) || !canAskAdvisor(question, dataUseAccepted, loading)) return;
+    if (activeRequest.current || savedConsent.busy || savedConsent.error || (attachments.length > 0 && !attachmentAccepted) || !advisorProviders(provider).every(item => providers[item].ready) || !canAskAdvisor(question, dataUseAccepted, loading)) return;
     const controller = new AbortController();
     activeRequest.current = controller;
     if (answer) setHistory(previous => [...previous, { question: submittedQuestion, answer }].slice(-5));
     setAnswer(null);
     setResponseError("");
     setSubmittedQuestion(question);
+    setSubmittedFiles(attachments.map(file => file.name));
     setLoading(true);
     setThinking(true);
     const normalized = question.toLowerCase();
     try {
-      const { response, payload } = await readAdvisorAnswer(apiFetch, { question, provider, purpose, conversationId, dataUseAccepted, memoryEnabled, locationId: activeLocationId, ...(purpose === "analysis" && analysisPeriod ? analysisPeriod : {}) }, controller.signal);
+      const { response, payload } = await readAdvisorAnswer(apiFetch, { question, provider, purpose, conversationId, dataUseAccepted, memoryEnabled, attachments, attachmentAccepted, locationId: activeLocationId, ...(purpose === "analysis" && analysisPeriod ? analysisPeriod : {}) }, controller.signal);
       if (activeRequest.current !== controller) return;
       if (!response.ok) {
         if (payload.error?.code?.startsWith("ADVISOR_CONSENT")) void savedConsent.refresh();
@@ -3991,7 +3995,8 @@ function Advisor({
       }
       if (payload.answer) {
         setQuestion("");
-        setAnswer({ title: "Vanteloq AI", body: payload.answer, limitation: purpose === "help" ? "Workspace data is off." : "Based on the permitted records available for this question.", animate: true });
+        setAttachments([]); setAttachmentAccepted(false);
+        setAnswer({ title: "Vanteloq AI", body: payload.answer, limitation: attachments.length ? "Attachment analysis is unverified. This exchange is not saved in chat history and does not update your records. Attach the files again for a follow-up." : purpose === "help" ? "Workspace data is off." : "Based on the permitted records available for this question.", animate: true });
         return;
       }
     } catch (error) {
@@ -4044,7 +4049,7 @@ function Advisor({
     setLoading(false); setThinking(false);
     setResponseError("Response stopped. You can edit or resend your question.");
   };
-  const resetVisibleChat = () => { setConversationId(null); setAnswer(null); setResponseError(""); setSubmittedQuestion(""); setHistory([]); setQuestion(""); };
+  const resetVisibleChat = () => { setConversationId(null); setAnswer(null); setResponseError(""); setSubmittedQuestion(""); setSubmittedFiles([]); setAttachments([]); setAttachmentAccepted(false); setHistory([]); setQuestion(""); };
   const changeMemory = (enabled: boolean) => { setMemoryEnabled(enabled); resetVisibleChat(); };
   const reply = (value: NonNullable<typeof answer>, latest = false) => <AdvisorResponse title={value.title} body={value.body} limitation={value.limitation} animate={latest && value.animate}>
     {purpose === "help" ? <a href="/help" target="_blank" rel="noreferrer">Open help centre →</a> : value.seed ? <button onClick={() => createTask(value.seed!)}>Create action →</button> : <button onClick={() => navigate("Integrations")}>Review connected sources →</button>}
@@ -4052,9 +4057,9 @@ function Advisor({
   return (
     <div className="content advisor-page">
       {analysisPeriod && purpose === "analysis" && <div className="retail-ai-period"><span>Retail evidence: {analysisPeriod.from} to {analysisPeriod.to}</span><button onClick={() => { setAnalysisPeriod(null); resetVisibleChat(); }}>Use recent workspace evidence</button></div>}
-      <AdvisorComposer purpose={purpose} onPurpose={value => { if (value !== purpose) { setPurpose(value); resetVisibleChat(); } }} memoryEnabled={memoryEnabled} onMemory={changeMemory} privacyControls={<AdvisorPrivacy fetcher={apiFetch} disabled={loading} onDeleted={id => { if (id === null || id === conversationId) resetVisibleChat(); }}/>} provider={provider} providers={providers} providersLoading={providersLoading} question={question} onQuestion={setQuestion} dataUseAccepted={dataUseAccepted} onConsent={accepted => { if (!accepted) resetVisibleChat(); void savedConsent.refresh(accepted, purpose); }} consentLoading={savedConsent.busy} consentError={savedConsent.error} onConsentRetry={() => void savedConsent.refresh()} onStop={stopResponse} loading={loading} thinking={thinking} onSubmit={ask} hasConversation={Boolean(submittedQuestion || answer || history.length)} onNewChat={() => { setAnalysisPeriod(null); resetVisibleChat(); }}>
+      <AdvisorComposer attachments={attachments} onAttachments={setAttachments} attachmentAccepted={attachmentAccepted} onAttachmentConsent={setAttachmentAccepted} purpose={purpose} onPurpose={value => { if (value !== purpose) { setPurpose(value); resetVisibleChat(); } }} memoryEnabled={memoryEnabled} onMemory={changeMemory} privacyControls={<AdvisorPrivacy fetcher={apiFetch} disabled={loading} onDeleted={id => { if (id === null || id === conversationId) resetVisibleChat(); }}/>} provider={provider} providers={providers} providersLoading={providersLoading} question={question} onQuestion={setQuestion} dataUseAccepted={dataUseAccepted} onConsent={accepted => { if (!accepted) resetVisibleChat(); void savedConsent.refresh(accepted, purpose); }} consentLoading={savedConsent.busy} consentError={savedConsent.error} onConsentRetry={() => void savedConsent.refresh()} onStop={stopResponse} loading={loading} thinking={thinking} onSubmit={ask} hasConversation={Boolean(submittedQuestion || answer || history.length)} onNewChat={() => { setAnalysisPeriod(null); resetVisibleChat(); }}>
         {history.map((item, index) => <Fragment key={index}><div className="ai-user-message"><small>You</small>{item.question}</div>{reply(item.answer)}</Fragment>)}
-        {submittedQuestion && <div className="ai-user-message"><small>You</small>{submittedQuestion}</div>}
+        {submittedQuestion && <div className="ai-user-message"><small>You</small>{submittedQuestion}{submittedFiles.length > 0 && <small className="ai-sent-files">Attached: {submittedFiles.join(", ")}</small>}</div>}
         {thinking && <AdvisorThinking/>}
         {responseError && <div className="ai-response-error" role="status"><strong>Reply not completed</strong><p>{responseError}</p><span>Your question remains in the message box.</span></div>}
         {answer && reply(answer, true)}
