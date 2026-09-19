@@ -10,6 +10,7 @@ import { publicSurfaceCss } from "../build/public-surface-css.mjs";
 const workspace = resolve("app/vanteloq-app.tsx");
 const styleEntry = resolve("app/workspace-styles.ts");
 const source = (file: string) => readFileSync(file, "utf8");
+const routeEntry = /(?:^|[\\/])(?:page|layout|template|loading|error|global-error|not-found|default)\.tsx$/;
 
 function localImport(from: string, specifier: string) {
   if (!specifier.startsWith(".")) return null;
@@ -48,9 +49,9 @@ function runtimeGraph(entries: string[], dynamic: boolean, skipWorkspace = false
 
 const deferredStyles = [...runtimeGraph([styleEntry], false)].filter(file => file.endsWith(".css"));
 
-test("public style projection removes only explicitly owned workspace selectors", () => {
+test("public style projection removes only audited non-public selectors", () => {
   const entries = readdirSync("app", { recursive: true }).map(String)
-    .filter(file => /(?:^|[\\/])(?:page|layout)\.tsx$/.test(file)).map(file => resolve("app", file));
+    .filter(file => routeEntry.test(file)).map(file => resolve("app", file));
   const publicSource = [...runtimeGraph(entries, true, true)].filter(file => !file.endsWith(".css"))
     .map(file => source(file).replace(/^import[^;]+;/gm, "")).join("\n");
   for (const anchor of workspaceAnchors) assert.doesNotMatch(publicSource, new RegExp(`(?<![\\w-])${anchor}(?![\\w-])`), `Public/auth/demo code now needs ${anchor}; remove it from workspace-only anchors.`);
@@ -63,7 +64,8 @@ test("public style projection removes only explicitly owned workspace selectors"
     @keyframes pulse{from{opacity:0}to{opacity:1}}`;
   const projected = publicSurfaceCss(input);
   assert.doesNotMatch(projected, /\.operating-shell \.primary/);
-  for (const keep of ['@font-face', ':root', '.primary{color:navy}', '.public-site .primary', '.operating-shell,.public-site', ':not(.operating-shell)', ':is(.operating-shell,.public-site)', '.public-site .operating-shell', '@keyframes pulse']) assert.ok(projected.includes(keep), keep);
+  assert.doesNotMatch(projected, /\.operating-shell,\.public-site\{display:grid\}/);
+  for (const keep of ['@font-face', ':root', '.primary{color:navy}', '.public-site .primary', '.public-site{display:grid}', ':not(.operating-shell)', ':is(.operating-shell,.public-site)', '.public-site .operating-shell', '@keyframes pulse']) assert.ok(projected.includes(keep), keep);
 });
 
 test("the complete original cascade is ready before rendering the workspace", () => {
@@ -79,7 +81,7 @@ test("the complete original cascade is ready before rendering the workspace", ()
 test("workspace CSS is excluded from public, demo and authentication import graphs", () => {
   const publicEntries = readdirSync("app", { recursive: true })
     .map(String)
-    .filter(file => /(?:^|[\\/])(?:page|layout)\.tsx$/.test(file))
+    .filter(file => routeEntry.test(file))
     .map(file => resolve("app", file));
   const publicGraph = runtimeGraph(publicEntries, true, true);
   assert.ok(deferredStyles.length > 0);
