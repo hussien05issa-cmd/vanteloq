@@ -4,6 +4,8 @@ import { dirname, resolve } from "node:path";
 import test from "node:test";
 import postcss from "postcss";
 import ts from "typescript";
+import workspaceAnchors from "../build/workspace-style-anchors.json" with { type: "json" };
+import { publicSurfaceCss } from "../build/public-surface-css.mjs";
 
 const workspace = resolve("app/vanteloq-app.tsx");
 const styleEntry = resolve("app/workspace-styles.ts");
@@ -45,6 +47,34 @@ function runtimeGraph(entries: string[], dynamic: boolean, skipWorkspace = false
 }
 
 const deferredStyles = [...runtimeGraph([styleEntry], false)].filter(file => file.endsWith(".css"));
+
+test("public style projection removes only explicitly owned workspace selectors", () => {
+  const entries = readdirSync("app", { recursive: true }).map(String)
+    .filter(file => /(?:^|[\\/])(?:page|layout)\.tsx$/.test(file)).map(file => resolve("app", file));
+  const publicSource = [...runtimeGraph(entries, true, true)].filter(file => !file.endsWith(".css"))
+    .map(file => source(file).replace(/^import[^;]+;/gm, "")).join("\n");
+  for (const anchor of workspaceAnchors) assert.doesNotMatch(publicSource, new RegExp(`(?<![\\w-])${anchor}(?![\\w-])`), `Public/auth/demo code now needs ${anchor}; remove it from workspace-only anchors.`);
+  const input = `@font-face{font-family:test;src:url(test.woff2)}
+    :root{--shared:1}.primary{color:navy}
+    @media(max-width:600px){.operating-shell .primary{color:blue}.public-site .primary{color:black}}
+    .operating-shell,.public-site{display:grid}
+    :not(.operating-shell){color:red}:is(.operating-shell,.public-site){color:green}
+    .public-site .operating-shell{color:purple}
+    @keyframes pulse{from{opacity:0}to{opacity:1}}`;
+  const projected = publicSurfaceCss(input);
+  assert.doesNotMatch(projected, /\.operating-shell \.primary/);
+  for (const keep of ['@font-face', ':root', '.primary{color:navy}', '.public-site .primary', '.operating-shell,.public-site', ':not(.operating-shell)', ':is(.operating-shell,.public-site)', '.public-site .operating-shell', '@keyframes pulse']) assert.ok(projected.includes(keep), keep);
+});
+
+test("the complete original cascade is ready before rendering the workspace", () => {
+  const publicSheets = [...source(resolve("app/layout.tsx")).matchAll(/import "\.\/([^"\n]+\.css)\?public-surface";/g)].map(match => match[1]);
+  const originalSheets = [...source(resolve("app/workspace-base-styles.ts")).matchAll(/import "\.\/([^"\n]+\.css)";/g)].map(match => match[1]);
+  assert.ok(publicSheets.length > 30);
+  assert.deepEqual(originalSheets, publicSheets, "Public projection and complete workspace cascade must retain identical source order.");
+  const app = source(workspace);
+  assert.ok(app.indexOf('import "./workspace-base-styles"') < app.indexOf('import "./workspace-styles"'));
+  assert.ok(!runtimeGraph([resolve("app/page.tsx")], false).has(resolve("app/workspace-base-styles.ts")));
+});
 
 test("workspace CSS is excluded from public, demo and authentication import graphs", () => {
   const publicEntries = readdirSync("app", { recursive: true })

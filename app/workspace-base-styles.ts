@@ -1,0 +1,35 @@
+// Full original cascade, loaded before the authenticated workspace renders.
+// Keep this order identical to the public projections in app/layout.tsx.
+import "./globals.css";
+import "./operating.css";
+import "./bookloq.css";
+import "./governance.css";
+import "./billing.css";
+import "./control.css";
+import "./theme.css";
+import "./brand.css";
+import "./design-v2.css";
+import "./homepage.css";
+import "./legal.css";
+import "./readability.css";
+import "./analytics-consent.css";
+import "./experience.css";
+import "./workspace-design.css";
+import "./vanteloq-ai-brand.css";
+import "./typography.css";
+import "./product-demo.css";
+import "./retail-intelligence.css";
+import "./customer-journey.css";
+import "./launch.css";
+import "./launch-polish.css";
+import "./ai-orbit-showcase.css";
+import "./journey-refinement.css";
+import "./decision-workspace.css";
+import "./interface-polish.css";
+import "./reference-theme.css";
+import "./custom-plan-callout.css";
+import "./finance-chart.css";
+import "./bookloq-discovery.css";
+import "./bookloq-dashboard-visuals.css";
+import "./marketing-consent.css";
+import "./commerce-visuals.css";
