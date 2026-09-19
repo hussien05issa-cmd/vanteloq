@@ -67,6 +67,20 @@ test("BookLoq unlocks only from the independent add-on state", () => {
   assert.equal(withAddon.features.includes("inventory.expiry"), false);
 });
 
+test("standalone BookLoQ synthesizes add-on access without retail feature leakage", () => {
+  const effective = resolveSubscriptionEntitlements(snapshot({ basePlan: "bookloq", addons: [] }));
+  assert.equal(effective.plan, "bookloq");
+  assert.deepEqual(effective.addons, ["bookloq"]);
+  assert.equal(effective.features.includes("bookloq"), true);
+  assert.equal(effective.features.includes("bookloq.financial_statements"), true);
+  assert.equal(effective.features.includes("business.settings"), true);
+  assert.equal(effective.features.includes("reporting.basic"), true);
+  assert.equal(effective.features.includes("ai.basic"), true);
+  assert.equal(effective.features.includes("analytics.sales.basic"), false);
+  assert.equal(effective.features.includes("inventory.basic"), false);
+  assert.equal(effective.features.includes("marketing.overview"), false);
+});
+
 test("non-entitled billing states fail closed and retain no add-on leakage", () => {
   for (const status of ["incomplete", "past_due", "canceled", "unpaid", "paused"] as const) {
     const effective = resolveSubscriptionEntitlements(snapshot({ basePlan: "pro", status, addons: ["bookloq"] }));
@@ -137,6 +151,9 @@ test("BookLoQ API entitlement fails closed without the independent add-on", asyn
   const withAddon = resolveSubscriptionEntitlements(snapshot({ basePlan: "starter", addons: ["bookloq"] }));
   assert.doesNotThrow(() => requireAddonEntitlement(withAddon, "bookloq"));
   assert.doesNotThrow(() => requireFeatureEntitlement(withAddon, "bookloq.dashboard"));
+  const standalone = resolveSubscriptionEntitlements(snapshot({ basePlan: "bookloq", addons: [] }));
+  assert.doesNotThrow(() => requireAddonEntitlement(standalone, "bookloq"));
+  assert.doesNotThrow(() => requireFeatureEntitlement(standalone, "bookloq.dashboard"));
 });
 
 test("server feature enforcement rejects lower tiers and accepts the subscribed feature", async () => {

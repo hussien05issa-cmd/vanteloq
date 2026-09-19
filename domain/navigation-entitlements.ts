@@ -74,7 +74,7 @@ const proFeatures = new Set<FeatureKey>([
 ]);
 
 function upgradeLabel(feature: FeatureKey): string {
-  if (feature === "bookloq") return "BookLoQ add-on";
+  if (feature === "bookloq") return "BookLoQ access";
   if (proFeatures.has(feature)) return "Pro";
   if (growthFeatures.has(feature)) return "Growth";
   return "Starter";

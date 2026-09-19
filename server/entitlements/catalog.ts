@@ -1,5 +1,9 @@
-export const PLAN_KEYS = ["starter", "growth", "pro"] as const;
+export const PLAN_KEYS = ["starter", "growth", "pro", "bookloq"] as const;
 export type PlanKey = (typeof PLAN_KEYS)[number];
+
+/** Vanteloq operating plans, excluding the separately purchasable BookLoQ product. */
+export const VANTELOQ_PLAN_KEYS = ["starter", "growth", "pro"] as const;
+export type VanteloqPlanKey = (typeof VANTELOQ_PLAN_KEYS)[number];
 
 export const ADDON_KEYS = ["bookloq"] as const;
 export type AddonKey = (typeof ADDON_KEYS)[number];
@@ -143,7 +147,7 @@ export type PlanDefinition = {
   readonly displayName: string;
   readonly description: string;
   readonly mostPopular: boolean;
-  readonly prices: Readonly<Record<BillingInterval, MoneyPrice>>;
+  readonly prices: Readonly<{ month: MoneyPrice; year?: MoneyPrice }>;
   readonly limits: PlanLimits;
   readonly features: readonly FeatureKey[];
 };
@@ -270,6 +274,25 @@ const bookloqFeatures = [
   "bookloq.ai",
 ] as const satisfies readonly FeatureKey[];
 
+/**
+ * A standalone BookLoQ subscription receives only the shared workspace shell
+ * needed to configure the business, review documents, manage access and open
+ * BookLoQ. Retail analytics and marketing features remain Vanteloq-plan
+ * entitlements.
+ */
+const bookloqStandaloneFeatures = [
+  "dashboard.core",
+  "business.profile",
+  "business.settings",
+  "pos.reporting.core",
+  "invoice.basic",
+  "reporting.basic",
+  "ai.basic",
+  "permissions.standard",
+  "multi_location.basic",
+  ...bookloqFeatures,
+] as const satisfies readonly FeatureKey[];
+
 function uniqueFeatures(...groups: readonly (readonly FeatureKey[])[]): readonly FeatureKey[] {
   return Object.freeze([...new Set(groups.flat())]);
 }
@@ -278,7 +301,7 @@ function price(amountCents: number, interval: BillingInterval, lookupKey: string
   return Object.freeze({ currency: "CAD", amountCents, interval, lookupKey });
 }
 
-export const PLANS: Readonly<Record<PlanKey, PlanDefinition>> = Object.freeze({
+export const PLANS = Object.freeze({
   starter: Object.freeze({
     key: "starter",
     displayName: "Starter",
@@ -327,7 +350,22 @@ export const PLANS: Readonly<Record<PlanKey, PlanDefinition>> = Object.freeze({
     }),
     features: uniqueFeatures(starterFeatures, growthOnlyFeatures, proOnlyFeatures),
   }),
-});
+  bookloq: Object.freeze({
+    key: "bookloq",
+    displayName: "BookLoQ",
+    description: "Commerce-first accounting, cash planning and financial review on its own.",
+    mostPopular: false,
+    prices: Object.freeze({
+      month: price(5_900, "month", "bookloq_standalone_monthly_cad"),
+    }),
+    limits: Object.freeze({
+      activeLocations: 1,
+      users: 3,
+      ai: Object.freeze({ capability: "basic", requestsPerMonth: null, meteringStatus: "not_launched" }),
+    }),
+    features: uniqueFeatures(bookloqStandaloneFeatures),
+  }),
+} satisfies Readonly<Record<PlanKey, PlanDefinition>>);
 
 export const ADDONS: Readonly<Record<AddonKey, AddonDefinition>> = Object.freeze({
   bookloq: Object.freeze({
@@ -348,6 +386,10 @@ export const ALL_NORMAL_PAID_FEATURES = uniqueFeatures(
 
 export function isPlanKey(value: unknown): value is PlanKey {
   return typeof value === "string" && PLAN_KEYS.includes(value as PlanKey);
+}
+
+export function isVanteloqPlanKey(value: unknown): value is VanteloqPlanKey {
+  return typeof value === "string" && VANTELOQ_PLAN_KEYS.includes(value as VanteloqPlanKey);
 }
 
 export function isAddonKey(value: unknown): value is AddonKey {

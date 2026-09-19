@@ -89,7 +89,7 @@ test("Starter, Growth, Pro, and BookLoQ features unlock only their intended view
   assert.deepEqual(access("BookLoQ", ["reporting.advanced"]), {
     allowed: false,
     requiredFeature: "bookloq",
-    upgradeLabel: "BookLoQ add-on",
+    upgradeLabel: "BookLoQ access",
   });
   assert.deepEqual(access("BookLoQ", ["bookloq"]), {
     allowed: true,

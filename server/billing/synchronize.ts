@@ -13,6 +13,21 @@ export async function persistStripeSubscription(database: D1Database, input: {
   const seconds = (date: Date | null) => date ? Math.floor(date.getTime() / 1000) : null;
   const addon = s.addon;
   const addonStatus = addon && (s.status === "active" || s.status === "trialing") ? s.status : "inactive";
+  const addonWrite = s.basePlan === "bookloq"
+    ? database.prepare(`DELETE FROM tenant_addons WHERE organization_id = ? AND addon_key = 'bookloq'
+        AND EXISTS (SELECT 1 FROM tenant_subscriptions WHERE organization_id = ? AND last_stripe_event_id = ?)`)
+      .bind(s.organizationId, s.organizationId, eventId)
+    : database.prepare(`INSERT INTO tenant_addons
+      (id, organization_id, addon_key, status, stripe_subscription_item_id, stripe_price_id,
+       current_period_ends_at, scheduled_removal_at, last_synced_at, created_at, updated_at)
+      SELECT ?, ?, 'bookloq', ?, ?, ?, ?, NULL, ?, ?, ?
+      WHERE EXISTS (SELECT 1 FROM tenant_subscriptions WHERE organization_id = ? AND last_stripe_event_id = ?)
+      ON CONFLICT(organization_id, addon_key) DO UPDATE SET
+        status = excluded.status, stripe_subscription_item_id = excluded.stripe_subscription_item_id,
+        stripe_price_id = excluded.stripe_price_id, current_period_ends_at = excluded.current_period_ends_at,
+        scheduled_removal_at = NULL, last_synced_at = excluded.last_synced_at, updated_at = excluded.updated_at`)
+      .bind(crypto.randomUUID(), s.organizationId, addonStatus, addon?.itemId ?? null, addon?.priceId ?? null,
+        seconds(addon?.currentPeriodEndsAt ?? null), now, now, now, s.organizationId, eventId);
   const [saved] = await database.batch([
     database.prepare(`INSERT INTO tenant_subscriptions
       (organization_id, base_plan, billing_interval, status, stripe_customer_id, stripe_subscription_id,
@@ -36,17 +51,7 @@ export async function persistStripeSubscription(database: D1Database, input: {
       .bind(s.organizationId, s.basePlan, s.billingInterval, s.status, s.customerId, s.subscriptionId,
         s.basePriceId, seconds(s.trialEndsAt), seconds(s.currentPeriodEndsAt), Number(s.cancelAtPeriodEnd),
         eventId, eventCreated, now, now, now, expectedVersion, s.organizationId, expectedVersion, eventCreated),
-    database.prepare(`INSERT INTO tenant_addons
-      (id, organization_id, addon_key, status, stripe_subscription_item_id, stripe_price_id,
-       current_period_ends_at, scheduled_removal_at, last_synced_at, created_at, updated_at)
-      SELECT ?, ?, 'bookloq', ?, ?, ?, ?, NULL, ?, ?, ?
-      WHERE EXISTS (SELECT 1 FROM tenant_subscriptions WHERE organization_id = ? AND last_stripe_event_id = ?)
-      ON CONFLICT(organization_id, addon_key) DO UPDATE SET
-        status = excluded.status, stripe_subscription_item_id = excluded.stripe_subscription_item_id,
-        stripe_price_id = excluded.stripe_price_id, current_period_ends_at = excluded.current_period_ends_at,
-        scheduled_removal_at = NULL, last_synced_at = excluded.last_synced_at, updated_at = excluded.updated_at`)
-      .bind(crypto.randomUUID(), s.organizationId, addonStatus, addon?.itemId ?? null, addon?.priceId ?? null,
-        seconds(addon?.currentPeriodEndsAt ?? null), now, now, now, s.organizationId, eventId),
+    addonWrite,
     database.prepare(`UPDATE stripe_billing_events SET organization_id = ?, status = 'processed', processed_at = ?
       WHERE event_id = ? AND EXISTS (SELECT 1 FROM tenant_subscriptions WHERE organization_id = ? AND last_stripe_event_id = ?)`)
       .bind(s.organizationId, now, eventId, s.organizationId, eventId),

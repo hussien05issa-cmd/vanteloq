@@ -1,11 +1,12 @@
-export type SignupPlan = "starter" | "growth" | "pro";
+export type SignupPlan = "starter" | "growth" | "pro" | "bookloq";
 export type PlanSelection = { plan: SignupPlan; bookloq: boolean };
 const KEY = "vanteloq:plan-selection:v1";
 export function parsePlanSelection(plan: unknown, bookloq: unknown): PlanSelection | null {
-  return plan === "starter" || plan === "growth" || plan === "pro" ? { plan, bookloq: bookloq === true || bookloq === "1" } : null;
+  if (plan !== "starter" && plan !== "growth" && plan !== "pro" && plan !== "bookloq") return null;
+  return { plan, bookloq: plan === "bookloq" ? false : bookloq === true || bookloq === "1" };
 }
 export function planSelectionUrl(selection: PlanSelection) {
-  return "/?start=signup&plan=" + selection.plan + (selection.bookloq ? "&bookloq=1" : "");
+  return "/?start=signup&plan=" + selection.plan + (selection.plan !== "bookloq" && selection.bookloq ? "&bookloq=1" : "");
 }
 /** A local purchase preference only, never an entitlement or a trusted price. */
 export function readPlanSelection(): PlanSelection | null {

@@ -414,6 +414,13 @@
       "when": 1789698908273,
       "tag": "0058_complimentary_access",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "6",
+      "when": 1789790400000,
+      "tag": "0059_bookloq_standalone_plan",
+      "breakpoints": true
     }
   ]
 }

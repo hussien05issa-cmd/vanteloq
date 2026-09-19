@@ -1879,8 +1879,8 @@ export function AccountDeletionSettings() {
 type BillingData = {
   configured: boolean;
   accessType: "internal" | "complimentary" | "subscription" | "none";
-  current: { plan: "starter" | "growth" | "pro" | null; status: string | null; addons: string[]; billingInterval: "month" | "year" | null; currentPeriodEndsAt: string | null; cancelAtPeriodEnd: boolean; hasCustomer: boolean };
-  plans: Array<{ key: "starter" | "growth" | "pro"; name: string; description: string; mostPopular: boolean; price: number; included: string[] }>;
+  current: { plan: "starter" | "growth" | "pro" | "bookloq" | null; status: string | null; addons: string[]; billingInterval: "month" | "year" | null; currentPeriodEndsAt: string | null; cancelAtPeriodEnd: boolean; hasCustomer: boolean };
+  plans: Array<{ key: "starter" | "growth" | "pro" | "bookloq"; name: string; description: string; mostPopular: boolean; price: number; included: string[] }>;
   addon: { key: "bookloq"; name: string; price: number };
   purchaseInterval: "month";
 };
@@ -1889,14 +1889,14 @@ function BillingSettings() {
   const [data, setData] = useState<BillingData | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [plan, setPlan] = useState<"starter" | "growth" | "pro">("growth");
+  const [plan, setPlan] = useState<"starter" | "growth" | "pro" | "bookloq">("growth");
   const [bookloq, setBookloq] = useState(false);
   useEffect(() => {
     let active = true;
     void apiFetch("/api/v1/billing", { headers: { Accept: "application/json" } }).then(async (response) => {
       const body = await response.json();
       if (!response.ok) throw new Error(message(body, "Billing status could not be loaded."));
-      if (active) { setData(body); if (body.current?.plan) setPlan(body.current.plan); setBookloq(body.current?.addons?.includes("bookloq") === true); }
+      if (active) { setData(body); if (body.current?.plan) setPlan(body.current.plan); setBookloq(body.current?.plan === "bookloq" ? false : body.current?.addons?.includes("bookloq") === true); }
     }).catch((reason) => { if (active) setError(reason instanceof Error ? reason.message : "Billing status could not be loaded."); });
     return () => { active = false; };
   }, []);
@@ -1911,15 +1911,39 @@ function BillingSettings() {
   };
   if (!data && !error) return <section className="settings-form"><header><p>STRIPE BILLING</p><h2>Loading verified subscription status…</h2></header></section>;
   const managed = data?.current.hasCustomer === true;
+  const vanteloqPlans = data?.plans.filter((item) => item.key !== "bookloq") ?? [];
+  const standaloneBookloq = data?.plans.find((item) => item.key === "bookloq");
+  const choosePlan = (item: BillingData["plans"][number]) => {
+    setPlan(item.key);
+    if (item.key === "bookloq") setBookloq(false);
+  };
+  const planOption = (item: BillingData["plans"][number]) => <label className={`billing-plan-option ${plan === item.key ? "selected" : ""}`} key={item.key}>
+    <input type="radio" name="billing-settings-plan" value={item.key} checked={plan === item.key} onChange={() => choosePlan(item)} disabled={managed} />
+    <span className="billing-plan-badge">{item.key === "bookloq" ? "STANDALONE PRODUCT" : item.mostPopular ? "MOST POPULAR" : "VANTELOQ PLAN"}</span>
+    <b>{item.name}</b>
+    <strong>${(item.price / 100).toLocaleString("en-CA")}</strong>
+    <small>CAD / month</small>
+    <p>{item.description}</p>
+    <ul>{item.included.map(feature => <li key={feature}>{feature}</li>)}</ul>
+  </label>;
   return <section className="settings-form billing-settings"><header><p>STRIPE BILLING</p><h2>Billing & subscription</h2><span>Stripe hosts payment collection, invoices, renewals and cancellation. Vanteloq stores only synchronized subscription identifiers and entitlement status. It never stores card details.</span></header>
     {error && <p className="form-error">{error}</p>}
     {data?.accessType === "complimentary" ? <div className="billing-internal"><b>Complimentary access active</b><span>Your included plan does not require a payment method or a Stripe subscription.</span></div> : data?.accessType === "internal" ? <div className="billing-internal"><b>Internal access active</b><span>This workspace has verified internal access and does not require a Stripe subscription.</span></div> : <>
       <p className="billing-monthly-note"><b>Monthly billing</b><span>Plans renew month to month. Cancel before renewal to stop the next charge.</span></p>
-      <div className="billing-plans">{data?.plans.map((item) => <button key={item.key} className={plan === item.key ? "selected" : ""} onClick={() => setPlan(item.key)} disabled={managed}><span>{item.mostPopular ? "MOST POPULAR" : "PLAN"}</span><b>{item.name}</b><strong>${(item.price / 100).toLocaleString("en-CA")}</strong><small>CAD / month</small><p>{item.description}</p><ul>{item.included.map(feature => <li key={feature}>{feature}</li>)}</ul></button>)}</div>
-      <label className="billing-addon"><input type="checkbox" checked={bookloq} onChange={(event) => setBookloq(event.target.checked)} disabled={managed}/><span><b>Add BookLoQ</b><small>${((data?.addon.price ?? 0) / 100).toLocaleString("en-CA")} CAD / month</small></span></label>
+      <fieldset className="billing-product-choice">
+        <legend>Vanteloq operating plans</legend>
+        <p>Retail operations, sales and inventory intelligence.</p>
+        <div className="billing-plans billing-vanteloq-plans">{vanteloqPlans.map(planOption)}</div>
+      </fieldset>
+      {standaloneBookloq && <fieldset className="billing-product-choice standalone-product">
+        <legend>BookLoQ finance workspace</legend>
+        <p>Financial review, reconciliation and cash planning without a Vanteloq plan.</p>
+        <div className="billing-plans billing-standalone-plan">{planOption(standaloneBookloq)}</div>
+      </fieldset>}
+      {plan === "bookloq" ? <div className="billing-addon standalone"><span><b>BookLoQ is complete on its own</b><small>No Vanteloq plan or separate BookLoQ add-on is required.</small></span></div> : <label className="billing-addon"><input type="checkbox" checked={bookloq} onChange={(event) => setBookloq(event.target.checked)} disabled={managed}/><span><b>Add BookLoQ</b><small>${((data?.addon.price ?? 0) / 100).toLocaleString("en-CA")} CAD / month</small></span></label>}
       {managed && <p className="billing-monthly-note"><span>Use Stripe to manage payment details and cancellation. To add or remove BookLoQ, <a href="/custom-plan">request a subscription change</a>. Changes take effect after billing confirmation.</span></p>}
-      <div className="provider-settings"><article><div><b>Current access</b><p>{data?.current.plan ? `${data.current.plan} · ${data.current.status}` : "No synchronized paid subscription."}</p></div><span>{data?.current.cancelAtPeriodEnd ? "Cancels at renewal" : data?.current.status ?? "Not subscribed"}</span></article></div>
-      <footer>{managed ? <button className="primary" disabled={busy || !data?.configured} onClick={() => void open("/api/v1/billing/portal")}>{busy ? "Opening…" : "Manage billing in Stripe"}</button> : <button className="primary" disabled={busy || !data?.configured} title={!data?.configured ? "Stripe products, prices and webhook secret must be configured first." : "Open secure Stripe Checkout"} onClick={() => void open("/api/v1/billing/checkout", { plan, interval: "month", includeBookloq: bookloq })}>{busy ? "Opening…" : data?.configured ? "Continue to secure checkout" : "Stripe setup required"}</button>}</footer>
+      <div className="provider-settings"><article><div><b>Current access</b><p>{data?.current.plan ? `${humanizeIdentifier(data.current.plan)} · ${data.current.status}` : "No synchronized paid subscription."}</p></div><span>{data?.current.cancelAtPeriodEnd ? "Cancels at renewal" : data?.current.status ?? "Not subscribed"}</span></article></div>
+      <footer>{managed ? <button className="primary" disabled={busy || !data?.configured} onClick={() => void open("/api/v1/billing/portal")}>{busy ? "Opening…" : "Manage billing in Stripe"}</button> : <button className="primary" disabled={busy || !data?.configured} title={!data?.configured ? "Stripe products, prices and webhook secret must be configured first." : "Open secure Stripe Checkout"} onClick={() => void open("/api/v1/billing/checkout", { plan, interval: "month", includeBookloq: plan === "bookloq" ? false : bookloq })}>{busy ? "Opening…" : data?.configured ? "Continue to secure checkout" : "Stripe setup required"}</button>}</footer>
     </>}
     <CustomPlanCallout/>
   </section>;

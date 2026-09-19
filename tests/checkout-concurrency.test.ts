@@ -27,7 +27,7 @@ async function fixture() {
     assert.equal(url.origin,"https://api.stripe.com");
     if(url.pathname==="/v1/prices") {
       const lookup=url.searchParams.get("lookup_keys[]");
-      const price=[...Object.values(PLANS),...Object.values(ADDONS)].flatMap(v=>[v.prices.month,v.prices.year]).find(p=>p.lookupKey===lookup)!;
+      const price=[...Object.values(PLANS),...Object.values(ADDONS)].flatMap(v=>Object.values(v.prices)).find(p=>p.lookupKey===lookup)!;
       return Response.json({data:[{id:`price_${lookup!.replaceAll('_','')}`,lookup_key:lookup,unit_amount:price.amountCents,currency:"cad",active:true,recurring:{interval:"month"}}]});
     }
     if(url.pathname==="/v1/checkout/sessions") {

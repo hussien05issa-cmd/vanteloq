@@ -35,10 +35,10 @@ export const FEATURE_GUIDES = {
   },
   "financial-review": {
     title: "BookLoQ Accounting and Cash Flow for Small Businesses",
-    description: "Explore BookLoQ bookkeeping, bank reconciliation, financial statements and 13-week cash flow forecasts. Try a working example without signing up.",
+    description: "Explore BookLoQ bookkeeping, transaction review, evidence matching, financial statements and 13-week cash flow forecasts. Try a working example without signing up.",
     question: "Can the business afford the next commitment?",
     demo: "/demo#bookloq",
-    lead: "Understand profit, review what you owe and plan the next cash commitment. BookLoQ brings bookkeeping, financial statements, transaction reconciliation and cash flow forecasting into your Vanteloq workspace.",
+    lead: "Understand profit, review what you owe and plan the next cash commitment. BookLoQ brings bookkeeping, financial statements, transaction review, evidence matching and cash flow forecasting into your Vanteloq workspace.",
     steps: [
       ["Review Bookkeeping and Financial Statements", "Follow posted journals into the trial balance, profit and loss statement and balance sheet. See how revenue, cost of goods sold and other posted expenses contribute to profit. Keep operating sales, payment settlements and ledger revenue separate so the same sale is not counted twice."],
       ["Reconcile Transactions and Prepare Month-End", "Review imported transactions, assign supported categories and match records to bills, invoices or receipts. Use the month-end checklist to track unresolved work. A balanced ledger can still contain missing records or incorrect classifications, so reconcile the evidence and keep your accountant involved."],
@@ -46,7 +46,7 @@ export const FEATURE_GUIDES = {
       ["Ask Vanteloq AI About Your Financial Data", "Ask why cash differs from profit, which commitments need review or how to use BookLoQ. AI can explain the financial summaries your role and AI Settings permit it to see. It does not post a journal or approve a payment on your behalf."],
     ],
     calculation: "Assets = liabilities + equity. Period cash movement = cash inflows − cash outflows. Neither gross profit nor an uncollected invoice is the same as cash available to spend.",
-    limits: "BookLoQ costs $39 CAD per month in addition to a base plan. It does not file tax returns, certify financial statements or replace accounting advice. QuickBooks connectivity remains sandbox-only; check production availability before depending on an external accounting import.",
+    limits: "BookLoQ costs $59 CAD per month on its own, or $39 CAD per month when added to a Vanteloq plan. It does not file tax returns, certify financial statements or replace accounting advice. QuickBooks connectivity remains sandbox-only; check production availability before depending on an external accounting import.",
     resource: "/resources/small-business-cash-flow-management-guide",
     resourceLabel: "Read the cash-flow guide",
   },

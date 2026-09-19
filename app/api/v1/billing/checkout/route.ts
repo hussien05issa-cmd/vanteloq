@@ -23,7 +23,7 @@ export async function POST(request: Request) {
     const plan = input.plan;
     const interval = input.interval;
     if (!isPlanKey(plan) || interval !== "month") {
-      throw new ApiError(400, "BILLING_SELECTION_INVALID", "Select a valid Vanteloq monthly plan.");
+      throw new ApiError(400, "BILLING_SELECTION_INVALID", "Select a valid monthly Vanteloq or BookLoQ plan.");
     }
     const [subscription] = await getDb().select().from(tenantSubscriptions).where(eq(tenantSubscriptions.organizationId, context.organizationId)).limit(1);
     if (subscription?.stripeSubscriptionId && !["canceled", "incomplete_expired"].includes(subscription.status)) {

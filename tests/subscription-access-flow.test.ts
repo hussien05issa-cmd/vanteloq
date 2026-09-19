@@ -5,7 +5,7 @@ import test from "node:test";
 import { Miniflare } from "miniflare";
 import { registerSupabaseTestServer } from "./helpers/supabase-loopback-transport.mjs";
 import { createHmac } from "node:crypto";
-import { PLANS, ADDONS } from "../server/entitlements/catalog.ts";
+import { PLANS, ADDONS, type AddonDefinition, type PlanDefinition } from "../server/entitlements/catalog.ts";
 import { navigationEntitlement } from "../domain/navigation-entitlements.ts";
 
 const origin = "https://vanteloq.example";
@@ -153,7 +153,7 @@ test("verified subscription events control interface, BookLoQ and server access 
       .bind(email).first<{ userId: string; organizationId: string }>();
     assert.ok(identity);
     const org = identity.organizationId;
-    const price = (definition: typeof PLANS.starter | typeof ADDONS.bookloq) => ({ id: `price_${definition.key}12345678`, lookup_key: definition.prices.month.lookupKey, unit_amount: definition.prices.month.amountCents, currency: "cad", recurring: { interval: "month" } });
+    const price = (definition: PlanDefinition | AddonDefinition) => ({ id: `price_${definition.key}12345678`, lookup_key: definition.prices.month.lookupKey, unit_amount: definition.prices.month.amountCents, currency: "cad", recurring: { interval: "month" } });
     let plan: keyof typeof PLANS = "starter";
     let bookloq = false;
     let status = "active";

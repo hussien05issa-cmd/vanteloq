@@ -1,0 +1,253 @@
+.bookloq-review-workspace {
+  margin: 0 0 20px;
+  overflow: hidden;
+  border: 1px solid #cbd9e5;
+  border-radius: 18px;
+  background: linear-gradient(145deg, rgba(255, 255, 255, .98), rgba(242, 247, 251, .96));
+  box-shadow: 0 16px 36px rgba(18, 49, 72, .07), inset 0 1px 0 rgba(255, 255, 255, .92);
+}
+
+.bookloq-review-workspace > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 22px 24px 18px;
+  border-bottom: 1px solid #dbe5ec;
+}
+
+.bookloq-review-workspace > header p {
+  margin: 0 0 7px;
+  color: #1769d7;
+  font-size: 10px !important;
+  font-weight: 800;
+  letter-spacing: .12em;
+}
+
+.bookloq-review-workspace > header h3 {
+  margin: 0;
+  color: #102f49;
+  font-size: clamp(18px, 2vw, 25px);
+  line-height: 1.18;
+  letter-spacing: -.035em;
+}
+
+.bookloq-review-workspace > header div > span {
+  display: block;
+  max-width: 650px;
+  margin-top: 8px;
+  color: #566f82;
+  font-size: 13px !important;
+}
+
+.bookloq-review-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(100px, 1fr));
+  flex: none;
+  overflow: hidden;
+  border: 1px solid #cfdae4;
+  border-radius: 13px;
+  background: rgba(255, 255, 255, .82);
+}
+
+.bookloq-review-summary span {
+  display: grid !important;
+  gap: 2px;
+  min-width: 118px;
+  margin: 0 !important;
+  padding: 12px 14px;
+  color: #61778a !important;
+  font-size: 11px !important;
+}
+
+.bookloq-review-summary span + span { border-left: 1px solid #dde6ed; }
+.bookloq-review-summary b { color: #102f49; font-size: 18px; font-variant-numeric: tabular-nums; }
+
+.bookloq-review-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 14px 24px;
+  border-bottom: 1px solid #e0e8ee;
+  background: rgba(247, 250, 252, .82);
+}
+
+.operating-shell .bookloq-review-filters button {
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid #c7d5e1;
+  border-radius: 999px;
+  background: #fff;
+  color: #36536a;
+  font: inherit;
+  font-size: 12px !important;
+  font-weight: 680;
+  cursor: pointer;
+}
+
+.operating-shell .bookloq-review-filters button:hover,
+.operating-shell .bookloq-review-filters button[aria-pressed="true"] {
+  border-color: #4f8edb;
+  background: #eaf3ff;
+  color: #0c58b7;
+}
+
+.bookloq-review-body {
+  display: grid;
+  grid-template-columns: minmax(330px, .92fr) minmax(360px, 1.08fr);
+  min-height: 420px;
+}
+
+.bookloq-review-list {
+  max-height: 560px;
+  overflow-y: auto;
+  border-right: 1px solid #dce5ec;
+  background: rgba(249, 251, 253, .68);
+}
+
+.operating-shell .bookloq-review-list > button {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 12px;
+  width: 100%;
+  min-height: 92px;
+  padding: 16px 18px;
+  border: 0;
+  border-bottom: 1px solid #e0e8ee;
+  background: transparent;
+  color: #29485e;
+  text-align: left;
+  cursor: pointer;
+}
+
+.operating-shell .bookloq-review-list > button:hover { background: #f1f6fb; }
+.operating-shell .bookloq-review-list > button.selected {
+  background: linear-gradient(90deg, #eaf3ff, rgba(242, 247, 252, .96));
+  box-shadow: inset 3px 0 0 #1769d7;
+}
+
+.bookloq-review-list button > span:nth-child(2) { display: grid; min-width: 0; gap: 4px; }
+.bookloq-review-list button b { overflow: hidden; color: #122f45; font-size: 13px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.bookloq-review-list button small { color: #5f7485; font-size: 11px !important; line-height: 1.45; }
+.bookloq-review-list button em { color: #788b99; font-size: 10px; font-style: normal; }
+.bookloq-review-list button strong { color: #183d57; font-size: 12px; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+
+.review-priority {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: #e8eef3;
+  color: #526a7d;
+  font-size: 9px !important;
+  font-weight: 800;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.review-priority.high { background: #fbe9e9; color: #9c3434; }
+.review-priority.medium { background: #fff2d8; color: #895a12; }
+.review-priority.low { background: #e8f3ef; color: #246850; }
+
+.bookloq-review-detail {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 26px;
+  background: rgba(255, 255, 255, .9);
+}
+
+.bookloq-review-detail h4 {
+  margin: 14px 0 7px;
+  color: #102f49;
+  font-size: 22px;
+  line-height: 1.2;
+  letter-spacing: -.03em;
+}
+
+.bookloq-review-detail > p { margin: 0; color: #536c7f; font-size: 13px !important; line-height: 1.55; }
+.bookloq-review-detail dl { display: grid; grid-template-columns: 1fr 1fr; gap: 0; width: 100%; margin: 22px 0 0; border-block: 1px solid #dee7ed; }
+.bookloq-review-detail dl div { min-width: 0; padding: 13px 10px 13px 0; }
+.bookloq-review-detail dl div:nth-child(even) { padding-left: 16px; border-left: 1px solid #e3eaf0; }
+.bookloq-review-detail dt { color: #718493; font-size: 10px !important; }
+.bookloq-review-detail dd { margin: 3px 0 0; color: #173a53; font-size: 12px !important; font-weight: 650; overflow-wrap: anywhere; }
+
+.bookloq-review-next {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  margin-top: 20px;
+  padding: 15px 16px;
+  border: 1px solid #cbdcec;
+  border-radius: 12px;
+  background: #f3f8fd;
+}
+
+.bookloq-review-next small { color: #1769d7; font-size: 9px !important; font-weight: 800; letter-spacing: .1em; }
+.bookloq-review-next b { color: #193d56; font-size: 13px; line-height: 1.45; }
+.bookloq-review-detail footer { display: flex; flex-wrap: wrap; gap: 9px; margin-top: auto; padding-top: 24px; }
+.bookloq-review-detail footer button { min-height: 44px; padding: 0 15px; border: 1px solid #c7d6e2; border-radius: 10px; background: #fff; color: #2b526f; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+.bookloq-review-detail footer .bookloq-primary { border-color: #145da8; background: #145da8; color: #fff; }
+
+.bookloq-review-empty {
+  display: grid;
+  place-items: center;
+  gap: 7px;
+  min-height: 220px;
+  padding: 32px;
+  color: #617789;
+  text-align: center;
+}
+.bookloq-review-empty b { color: #173a53; font-size: 15px; }
+.bookloq-review-empty span { max-width: 580px; font-size: 12px !important; }
+
+.bookloq-review-workspace :is(button, [tabindex]):focus-visible {
+  outline: 3px solid rgba(23, 105, 215, .32);
+  outline-offset: 2px;
+}
+
+@media (max-width: 1400px) {
+  .operating-shell .bookloq-shell,
+  .operating-shell .bookloq-collapsed { grid-template-columns: minmax(0, 1fr); }
+  .operating-shell .bookloq-side { display: none; }
+  .operating-shell .bookloq-mobile-nav { display: grid; gap: 6px; margin-top: 12px; }
+  .operating-shell .bookloq-mobile-nav select { width: min(100%, 360px); }
+}
+
+@media (max-width: 900px) {
+  .bookloq-review-workspace > header { flex-direction: column; }
+  .bookloq-review-summary { width: 100%; }
+  .bookloq-review-body { grid-template-columns: minmax(0, 1fr); }
+  .bookloq-review-list { max-height: 410px; border-right: 0; border-bottom: 1px solid #dce5ec; }
+}
+
+@media (max-width: 620px) {
+  .bookloq-review-workspace { border-radius: 14px; }
+  .bookloq-review-workspace > header { padding: 18px 16px 15px; }
+  .bookloq-review-summary span { min-width: 0; padding: 10px 12px; }
+  .bookloq-review-filters { padding: 12px 16px; flex-wrap: nowrap; overflow-x: auto; }
+  .operating-shell .bookloq-review-filters button { flex: 0 0 auto; }
+  .operating-shell .bookloq-review-list > button { grid-template-columns: auto minmax(0, 1fr); padding: 15px 14px; }
+  .bookloq-review-list button > strong { grid-column: 2; text-align: left; }
+  .bookloq-review-detail { padding: 20px 16px; }
+  .bookloq-review-detail dl { grid-template-columns: 1fr; }
+  .bookloq-review-detail dl div:nth-child(even) { padding-left: 0; border-left: 0; }
+  .bookloq-review-detail footer { width: 100%; }
+  .bookloq-review-detail footer button { flex: 1 1 150px; }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .bookloq-review-workspace,
+  .bookloq-review-workspace > header,
+  .bookloq-review-detail { background: #fff; }
+}
+
+@media (forced-colors: active) {
+  .bookloq-review-workspace,
+  .bookloq-review-summary,
+  .bookloq-review-next { border: 1px solid CanvasText; }
+  .operating-shell .bookloq-review-list > button.selected { outline: 2px solid Highlight; }
+}

@@ -215,6 +215,26 @@ const viewPermission: Partial<Record<View, string>> = {
   Settings: "organization.settings",
 };
 
+const standaloneBookloqViews = new Set<View>([
+  "BookLoQ",
+  "Advisor",
+  "Documents",
+  "Reports",
+  "Integrations",
+  "Settings",
+]);
+
+function viewIsAvailable(
+  view: View,
+  permissions: readonly string[],
+  features: readonly string[],
+  standaloneBookloq: boolean,
+) {
+  return (!standaloneBookloq || standaloneBookloqViews.has(view))
+    && (!viewPermission[view] || permissions.includes(viewPermission[view]!))
+    && navigationEntitlement(view, features).allowed;
+}
+
 const moduleDefinitions: Record<
   string,
   { promise: string; metrics: string[]; sources: string[]; actions: string[] }
@@ -674,7 +694,8 @@ export default function VanteloqApp({
 }) {
   const billingEntitlements = useBillingEntitlements();
   const subscriptionFeatures = billingEntitlements.features;
-  const [view, setView] = useState<View>("Dashboard");
+  const standaloneBookloq = billingEntitlements.plan === "bookloq";
+  const [view, setView] = useState<View>(() => billingEntitlements.plan === "bookloq" ? "BookLoQ" : "Dashboard");
   const [workspaceName, setWorkspaceName] = useState(organizationName);
   const [logoVersion, setLogoVersion] = useState<number | null>(null);
   const [data, setData] = useState<CommandCentre | null>(null);
@@ -899,9 +920,13 @@ export default function VanteloqApp({
   };
   const navigate = (next: View) => {
     const subscriptionAccess = navigationEntitlement(next, subscriptionFeatures);
+    if (standaloneBookloq && !standaloneBookloqViews.has(next)) {
+      showNotice("This standalone subscription includes the BookLoQ finance workspace and its supporting records.");
+      return;
+    }
     if (!subscriptionAccess.allowed) {
-      showNotice(subscriptionAccess.upgradeLabel === "BookLoQ add-on"
-        ? "Add BookLoQ to open this workspace."
+      showNotice(subscriptionAccess.upgradeLabel === "BookLoQ access"
+        ? "Choose BookLoQ in Billing to open this finance workspace."
         : `${subscriptionAccess.upgradeLabel ?? "A different plan"} is required to open this workspace.`);
       return;
     }
@@ -918,13 +943,13 @@ export default function VanteloqApp({
     window.scrollTo({ top: 0, behavior: "instant" });
   };
   useEffect(() => {
-    if (navigationEntitlement(view, subscriptionFeatures).allowed) return;
+    if (viewIsAvailable(view, appPermissions, subscriptionFeatures, standaloneBookloq)) return;
     const timer = window.setTimeout(() => {
-      setView("Dashboard");
+      setView(standaloneBookloq ? "BookLoQ" : "Dashboard");
       setMobileNavOpen(false);
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [subscriptionFeatures, view]);
+  }, [appPermissions, standaloneBookloq, subscriptionFeatures, view]);
   const savePreferences = (patch: Partial<{ hiddenNavigation: View[]; activeLocationId: string | null }>) => {
     const current = preferenceStateRef.current;
     const next = {
@@ -980,10 +1005,10 @@ export default function VanteloqApp({
         >
           Close
         </button>
-        <button className="brand" onClick={() => navigate("Dashboard")}>
-          <ProductBrandLogo product="vanteloq" />
+        <button className="brand" onClick={() => navigate(standaloneBookloq ? "BookLoQ" : "Dashboard")}>
+          <ProductBrandLogo product={standaloneBookloq ? "bookloq" : "vanteloq"} />
           <span className="brand-name">
-            Vanteloq<small>OPERATING INTELLIGENCE</small>
+            {standaloneBookloq ? "BookLoQ" : "Vanteloq"}<small>{standaloneBookloq ? "FINANCIAL REVIEW" : "OPERATING INTELLIGENCE"}</small>
           </span>
         </button>
         <div className="workspace-switcher">
@@ -1023,8 +1048,8 @@ export default function VanteloqApp({
           </label>
         </div>
         <div className="subscription-summary" aria-label="Current subscription">
-          <span>{billingEntitlements.accessType === "internal" ? "Internal access" : billingEntitlements.accessType === "complimentary" ? "Complimentary access" : `${billingEntitlements.plan ? humanizeIdentifier(billingEntitlements.plan) : "Paid"} plan`}</span>
-          {billingEntitlements.addons.includes("bookloq") && <small>BookLoQ active</small>}
+          <span>{billingEntitlements.accessType === "internal" ? "Internal access" : billingEntitlements.accessType === "complimentary" ? "Complimentary access" : billingEntitlements.plan === "bookloq" ? "BookLoQ standalone" : `${billingEntitlements.plan ? humanizeIdentifier(billingEntitlements.plan) : "Paid"} plan`}</span>
+          {billingEntitlements.addons.includes("bookloq") && <small>{billingEntitlements.plan === "bookloq" ? "Finance workspace active" : "BookLoQ active"}</small>}
         </div>
         <nav aria-label="Primary navigation">
           {nav
@@ -1035,7 +1060,7 @@ export default function VanteloqApp({
                   items.filter(
                     (item) =>
                       !hiddenNavigation.includes(item) &&
-                      (!viewPermission[item] || appPermissions.includes(viewPermission[item]!)),
+                      viewIsAvailable(item, appPermissions, subscriptionFeatures, standaloneBookloq),
                   ),
                 ] as [string, View[]],
             )
@@ -1066,7 +1091,7 @@ export default function VanteloqApp({
             ))}
         </nav>
         <div className="side-bottom">
-          {appPermissions.includes("integrations.view") && !hiddenNavigation.includes("Integrations") && (
+          {viewIsAvailable("Integrations", appPermissions, subscriptionFeatures, standaloneBookloq) && !hiddenNavigation.includes("Integrations") && (
             <button
               className={
                 `${view === "Integrations" ? "nav-item active" : "nav-item"}${navigationEntitlement("Integrations", subscriptionFeatures).allowed ? "" : " subscription-locked"}`
@@ -1079,7 +1104,7 @@ export default function VanteloqApp({
               {!navigationEntitlement("Integrations", subscriptionFeatures).allowed && <small className="nav-plan-lock">{navigationEntitlement("Integrations", subscriptionFeatures).upgradeLabel}</small>}
             </button>
           )}
-          {appPermissions.includes("organization.settings") && (
+          {viewIsAvailable("Settings", appPermissions, subscriptionFeatures, standaloneBookloq) && (
             <button
               className={`${view === "Settings" ? "nav-item active" : "nav-item"}${navigationEntitlement("Settings", subscriptionFeatures).allowed ? "" : " subscription-locked"}`}
               onClick={() => navigate("Settings")}
@@ -1206,6 +1231,8 @@ export default function VanteloqApp({
               <NavigationSettingsPanel
                 hidden={hiddenNavigation}
                 permissions={appPermissions}
+                subscriptionFeatures={subscriptionFeatures}
+                standaloneBookloq={standaloneBookloq}
                 update={(item, visible) => {
                   const next = setNavigationVisibility(preferenceStateRef.current.hiddenNavigation, item, visible, allNavigationViews, protectedNavigation);
                   void savePreferences({ hiddenNavigation: next })
@@ -1246,28 +1273,32 @@ export default function VanteloqApp({
           {notice}
         </div>
       )}
-      {commandOpen && <GlobalCommand permissions={appPermissions} navigate={(next) => { setCommandOpen(false); navigate(next); }} close={() => setCommandOpen(false)} />}
+      {commandOpen && <GlobalCommand permissions={appPermissions} subscriptionFeatures={subscriptionFeatures} standaloneBookloq={standaloneBookloq} navigate={(next) => { setCommandOpen(false); navigate(next); }} close={() => setCommandOpen(false)} />}
     </main>
   );
 }
 
-function GlobalCommand({ permissions, navigate, close }: { permissions: string[]; navigate: (view: View) => void; close: () => void }) {
+function GlobalCommand({ permissions, subscriptionFeatures, standaloneBookloq, navigate, close }: { permissions: string[]; subscriptionFeatures: readonly string[]; standaloneBookloq: boolean; navigate: (view: View) => void; close: () => void }) {
   const [query, setQuery] = useState("");
   const options = useMemo(() => ([...nav.flatMap(([, items]) => items), "Integrations", "Settings"] as View[])
     .filter((item, index, list) => list.indexOf(item) === index)
-    .filter((item) => !viewPermission[item] || permissions.includes(viewPermission[item]!))
-    .filter((item) => !query || `${item} ${workspaceViewLabel(item)}`.toLowerCase().includes(query.toLowerCase())), [permissions, query]);
+    .filter((item) => viewIsAvailable(item, permissions, subscriptionFeatures, standaloneBookloq))
+    .filter((item) => !query || `${item} ${workspaceViewLabel(item)}`.toLowerCase().includes(query.toLowerCase())), [permissions, query, standaloneBookloq, subscriptionFeatures]);
   return <div className="modal-backdrop command-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}><section className="command-modal" role="dialog" aria-modal="true" aria-label="Workspace search"><div className="command-input"><span>⌕</span><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Go to a workspace…"/><button onClick={close}>ESC</button></div><div className="command-results"><small>WORKSPACES</small>{options.map((option) => <button key={option} onClick={() => navigate(option)}><span>↳</span><span>{workspaceViewLabel(option)}</span><b>→</b></button>)}{!options.length && <p>No matching workspace.</p>}</div></section></div>;
 }
 
 function NavigationSettingsPanel({
   hidden,
   permissions,
+  subscriptionFeatures,
+  standaloneBookloq,
   update,
   restoreAll,
 }: {
   hidden: View[];
   permissions: string[];
+  subscriptionFeatures: readonly string[];
+  standaloneBookloq: boolean;
   update: (item: View, visible: boolean) => void;
   restoreAll: () => void;
 }) {
@@ -1287,7 +1318,7 @@ function NavigationSettingsPanel({
       </header>
       <div className="navigation-settings-list">
           {sections.map(([group, items]) => {
-            const available = items.filter((item) => !viewPermission[item] || permissions.includes(viewPermission[item]!));
+            const available = items.filter((item) => viewIsAvailable(item, permissions, subscriptionFeatures, standaloneBookloq));
             if (!available.length) return null;
             return <section key={group}>
               <h3>{group}</h3>
@@ -2917,7 +2948,7 @@ function DataHub({
               const providerFeature = integrationProviderFeature(provider.id);
               const providerEntitled = providerFeature !== null && subscriptionFeatures.includes(providerFeature);
               const providerPlanLabel = providerFeature?.startsWith("bookloq")
-                ? "BookLoQ add-on"
+                ? "BookLoQ access"
                 : providerFeature?.startsWith("marketing.")
                   ? "Growth plan"
                   : "Starter plan";

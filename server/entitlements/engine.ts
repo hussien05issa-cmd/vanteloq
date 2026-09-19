@@ -79,7 +79,7 @@ export function requireTenantServiceAccess(entitlements: EffectiveEntitlements):
     throw new ApiError(
       402,
       "SUBSCRIPTION_REQUIRED",
-      "Choose a Vanteloq plan or restore billing to continue.",
+      "Choose a Vanteloq or BookLoQ plan, or restore billing to continue.",
     );
   }
 }
@@ -103,8 +103,15 @@ export function resolveSubscriptionEntitlements(snapshot: SubscriptionSnapshot):
     });
   }
 
-  const addons = Object.freeze([...new Set(snapshot.addons)]);
-  const addonFeatures = addons.map((addon) => ADDONS[addon].features);
+  // BookLoQ is a standalone base plan as well as an add-on. Synthesize the
+  // effective entitlement in memory so Stripe synchronization does not need to
+  // create a false tenant_addons row for a standalone subscription.
+  const addons = Object.freeze([
+    ...new Set<AddonKey>(snapshot.basePlan === "bookloq" ? [...snapshot.addons, "bookloq"] : snapshot.addons),
+  ]);
+  const addonFeatures = snapshot.basePlan === "bookloq"
+    ? []
+    : addons.map((addon) => ADDONS[addon].features);
   return Object.freeze({
     accessType: "subscription",
     internalAccessLevel: null,

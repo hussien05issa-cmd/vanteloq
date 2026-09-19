@@ -17,6 +17,7 @@ import {
   PRIVACY_POLICY_VERSION,
   TERMS_OF_SERVICE_VERSION,
 } from "../shared/legal-versions";
+import { readPlanSelection, type PlanSelection } from "../shared/plan-selection";
 
 type Hour = { day: string; open: string; close: string; closed: boolean };
 type SourceMode = "connect_later" | "csv" | "live";
@@ -137,6 +138,7 @@ export default function SecureOnboardingFlow({
   signOut: () => void;
 }) {
   const [step, setStep] = useState(1);
+  const [planSelection, setPlanSelection] = useState<PlanSelection | null>(null);
   const panelRef = useRef<HTMLElement>(null);
   const previousStep = useRef(1);
   useEffect(() => { if (step !== previousStep.current) { panelRef.current?.querySelector<HTMLElement>(".setup-step h2")?.focus(); previousStep.current = step; } }, [step]);
@@ -150,8 +152,13 @@ export default function SecureOnboardingFlow({
   const [addressSuggestions, setAddressSuggestions] = useState<AddressSuggestion[]>([]);
   const [addressBusy, setAddressBusy] = useState(false);
   const [addressMessage, setAddressMessage] = useState("");
+  const standaloneBookloq = planSelection?.plan === "bookloq";
   const set = <K extends keyof Setup>(key: K, value: Setup[K]) =>
     setForm((current) => ({ ...current, [key]: value }));
+
+  useEffect(() => {
+    queueMicrotask(() => setPlanSelection(readPlanSelection()));
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -311,17 +318,18 @@ export default function SecureOnboardingFlow({
     <main className="onboarding setup-shell">
       <aside>
         <div className="public-brand">
-          <ProductBrandLogo product="vanteloq" />
+          <ProductBrandLogo product={standaloneBookloq ? "bookloq" : "vanteloq"} />
           <span>
-            Vanteloq<small>SECURE WORKSPACE SETUP</small>
+            {standaloneBookloq ? "BookLoQ" : "Vanteloq"}<small>SECURE WORKSPACE SETUP</small>
           </span>
         </div>
         <div className="setup-message">
-          <p>WELCOME TO VANTELOQ</p>
-          <h1>Build a workspace around your real business.</h1>
+          <p>WELCOME TO {standaloneBookloq ? "BOOKLOQ" : "VANTELOQ"}</p>
+          <h1>{standaloneBookloq ? "Set up your financial review workspace." : "Build a workspace around your real business."}</h1>
           <span>
-            Add your business details, set your preferences and choose how to
-            connect your records.
+            {standaloneBookloq
+              ? "Add your business details, then choose how you will bring in statements, documents and commerce evidence."
+              : "Add your business details, set your preferences and choose how to connect your records."}
           </span>
         </div>
         <ol>
@@ -330,7 +338,7 @@ export default function SecureOnboardingFlow({
             "Business profile",
             "Location & hours",
             "Security preferences",
-            "Connect your data",
+            standaloneBookloq ? "Add financial records" : "Connect your data",
             "Review & continue",
           ].map((label, index) => (
             <li
@@ -349,7 +357,7 @@ export default function SecureOnboardingFlow({
                       "Identity & reporting",
                       "Operating context",
                       "Account preferences",
-                      "POS or CSV",
+                      standaloneBookloq ? "Statements, files or POS" : "POS or CSV",
                       "Confirm your details",
                     ][index]
                   }
@@ -762,12 +770,33 @@ export default function SecureOnboardingFlow({
         {step === 5 && (
           <Step
             eyebrow="DATA SOURCES"
-            title="Connect Your Data"
-            copy="Choose how to bring in your records. You can also connect a source after setup."
+            title={standaloneBookloq ? "Add Financial Records" : "Connect Your Data"}
+            copy={standaloneBookloq
+              ? "Start with statements or structured files, add optional commerce evidence, or connect sources after setup. Every import is reviewed before it affects reports."
+              : "Choose how to bring in your records. You can also connect a source after setup."}
           >
             <div className="source-choice">
               {(
-                [
+                (standaloneBookloq ? [
+                  [
+                    "csv",
+                    "↑",
+                    "Start with Statements or CSV",
+                    "Upload bank statements, invoices, receipts or structured CSV files after setup, then review extracted records before use.",
+                  ],
+                  [
+                    "connect_later",
+                    "○",
+                    "Connect Financial Sources Later",
+                    "Open BookLoQ first, then authorize an available bank or accounting connection when you are ready.",
+                  ],
+                  [
+                    "live",
+                    "⇄",
+                    "Add POS Evidence (Optional)",
+                    "Connect a supported POS after setup when commerce records should support sales, fees and settlement review.",
+                  ],
+                ] : [
                   [
                     "live",
                     "⇄",
@@ -786,7 +815,7 @@ export default function SecureOnboardingFlow({
                     "Continue empty",
                     "Start with an empty workspace and add your records when you are ready.",
                   ],
-                ] as const
+                ]) as readonly (readonly [SourceMode, string, string, string])[]
               ).map(([id, icon, title, copy]) => (
                 <button
                   type="button"
@@ -838,8 +867,8 @@ export default function SecureOnboardingFlow({
         {step === 6 && (
           <Step
             eyebrow="REVIEW"
-            title="Review Your Workspace"
-            copy="Vanteloq will create the owner account and an empty workspace for this organization."
+            title={`Review Your ${standaloneBookloq ? "BookLoQ " : ""}Workspace`}
+            copy={`${standaloneBookloq ? "BookLoQ" : "Vanteloq"} will create the owner account and an empty workspace for this organization.`}
           >
             <div className="review-grid">
               <article>
@@ -883,7 +912,7 @@ export default function SecureOnboardingFlow({
               <span>
                 <b>Ready to Continue</b>
                 <small>
-                  Create your workspace, then activate your chosen plan.
+                  Create your workspace, then activate your chosen {standaloneBookloq ? "BookLoQ" : "Vanteloq"} plan.
                   Your reports will use the records you connect or import.
                 </small>
               </span>

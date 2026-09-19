@@ -12,6 +12,7 @@ const planHighlights = {
   starter: ["Core dashboard", "Sales and inventory basics", "Operations and reports"],
   growth: ["Everything in Starter", "Advanced sales and inventory intelligence", "Suppliers, customers, and marketing"],
   pro: ["Everything in Growth", "Scenario planning and forecasting", "Advanced reports and CSV exports", "Advanced multi-location workflows"],
+  bookloq: ["BookLoQ financial workspace", "Documents, evidence matching and reporting", "Cash planning and financial review"],
 } as const;
 
 export async function GET(request: Request) {

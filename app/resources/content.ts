@@ -1137,6 +1137,125 @@ const articles: readonly ResourceArticle[] = [
     ],
     related: ["small-business-bookkeeping-system", "how-to-calculate-gross-margin-small-business", "what-should-small-business-dashboard-show"],
   },
+  {
+    slug: "bookloq-vs-traditional-accounting-software",
+    title: "BookLoQ vs. Traditional Accounting Software",
+    seoTitle: "BookLoQ vs. Traditional Accounting Software | Vanteloq",
+    description: "Compare BookLoQ with traditional accounting software and see how sales, payouts, reconciliation, documents and cash decisions can work together.",
+    dek: "BookLoQ combines an accounting foundation with the operating evidence a commerce business needs to understand what happened, what needs review and what a decision could do to cash.",
+    quickAnswer: "Traditional accounting software is built to maintain financial records across banking, invoicing, expenses, reporting and month-end work. BookLoQ uses the same need for controlled records, then organizes the owner experience around commerce activity, supporting evidence and cash decisions. Its current public capabilities include posted journals, financial statements, transaction reconciliation, a month-end checklist and a 13-week cash forecast with visible assumptions. The difference should be judged through those workflows, not unsupported claims about speed, accuracy or universal superiority.",
+    searchIntent: "Comparative informational: the reader wants to understand how BookLoQ differs in purpose and workflow from a conventional accounting system.",
+    category: "finance",
+    author: "Vanteloq Editorial Team",
+    published: "2026-09-19",
+    updated: "2026-09-19",
+    hero: {
+      src: "/brand/bookloq-cash-control-v1.png",
+      alt: "A BookLoQ financial workspace connecting source records, reviewed accounting activity and a visible cash forecast.",
+      width: 1774,
+      height: 887,
+    },
+    sections: [
+      {
+        id: "accounting-foundation",
+        heading: "Start with a credible accounting foundation",
+        paragraphs: [
+          "Traditional accounting software can cover bank feeds, invoices, bills, expenses, reports, inventory, projects, permissions and month-end work. Those capabilities are useful because a business still needs balanced journals, reliable financial statements, reconciled accounts and controlled access.",
+          "BookLoQ does not avoid that foundation. Posted journals flow into the trial balance, profit and loss statement and balance sheet. Imported transactions can be reviewed, assigned supported categories and matched to bills, invoices or receipts. The design opportunity is to make those controls understandable without placing every advanced setting in the owner's daily path.",
+        ],
+      },
+      {
+        id: "sale-to-bank",
+        heading: "Follow the complete sale-to-bank trail",
+        paragraphs: [
+          "A bank deposit does not explain the commerce activity behind it. A payout can include sales, discounts, returns, tax, processing fees, reserves and adjustments. Recording only the deposit can hide that composition or create duplicate revenue when operating sales records are also present.",
+          "BookLoQ's strongest direction is a traceable chain from the sale through the payout and into the ledger. A user should be able to begin with a bank deposit, journal line or financial-statement total and follow the records in either direction.",
+        ],
+        formula: {
+          label: "Commerce accounting trail",
+          value: "Sale -> discounts and returns -> tax and fees -> payout -> bank deposit -> journal -> financial statement",
+          example: "Each step should retain its source, amount, status and relationship to the next record so the same sale is not counted twice.",
+        },
+      },
+      {
+        id: "reconciliation-review",
+        heading: "Turn reconciliation into a review workspace",
+        paragraphs: [
+          "Modern financial workflows separate clear matches from items that still require judgment. A useful review screen places the bank item, proposed match, related document, explanation and remaining difference together. The reviewer can accept the proposal, choose another record, correct the classification or leave the item unresolved with a reason.",
+          "BookLoQ already includes transaction review, record matching and a month-end checklist. Developing those capabilities as one evidence-led queue would help a user answer what the system attempted, why an item remains open and what action will resolve it.",
+        ],
+        callout: {
+          title: "Balanced does not mean complete",
+          body: "A ledger can balance while records are missing, duplicated or classified incorrectly. Reconciliation needs source evidence as well as arithmetic checks.",
+        },
+      },
+      {
+        id: "document-workflow",
+        heading: "Keep documents beside the proposed accounting treatment",
+        paragraphs: [
+          "Invoice and receipt capture is useful when a reviewer can compare proposed fields with the original record. Supplier, date, amount, tax, category and line items should remain visibly provisional until an authorized person accepts or corrects them.",
+          "The workflow should distinguish uploading, reviewing, approving, posting and paying. Those actions have different meanings, permissions and audit consequences. Keeping the document, extracted values, changes and review history together makes the record easier to explain later.",
+        ],
+      },
+      {
+        id: "inventory-and-cash",
+        heading: "Connect inventory decisions to cash",
+        paragraphs: [
+          "Financial reports explain recorded activity. Commerce owners also need to understand what a proposed purchase could do to cash. BookLoQ's 13-week forecast starts with verified opening cash, separates confirmed commitments from expected receipts and keeps its assumptions visible.",
+          "A proposed stock purchase can therefore be reviewed as a cash decision rather than an isolated order. The useful context includes payment timing, known obligations, expected receipts, the lowest projected balance and the owner's safety threshold. Uncertain receipts should remain in a planning case instead of increasing the conservative cash estimate.",
+        ],
+      },
+      {
+        id: "work-states",
+        heading: "Show the state of the work",
+        paragraphs: [
+          "Financial records move through stages. Imported does not mean reviewed. Categorized does not mean approved. Posted does not mean reconciled. Paid does not prove that the correct source document is attached.",
+          "Each BookLoQ task should show its status, owner, evidence, next action and effect on the ledger or forecast. Connection status deserves the same clarity: available, authorized, synchronized, mapped, reviewed and ready for reporting are different states.",
+        ],
+        bullets: [
+          "Keep proposed and approved values visually distinct.",
+          "Explain why an item needs review instead of showing a generic warning.",
+          "Preserve who changed or approved a record and when.",
+          "Show missing or stale source data instead of treating it as zero.",
+        ],
+      },
+      {
+        id: "fair-comparison",
+        heading: "Compare observable workflows",
+        paragraphs: [
+          "BookLoQ should be compared through defined tasks, not broad claims that it is faster, more accurate or universally better. Useful tests include tracing a payout, resolving an uncertain transaction, verifying a document, preparing month-end work and testing an inventory purchase against cash.",
+          "Those outcomes need representative data and measured task criteria before they support a performance claim. Until then, BookLoQ's public case is specific: it brings commerce activity, accounting evidence and cash consequences into one reviewable workspace.",
+        ],
+        callout: {
+          title: "Current connection boundary",
+          body: "QuickBooks connectivity remains sandbox-only. Check production availability before depending on an external accounting import.",
+        },
+      },
+    ],
+    sources: [
+      {
+        title: "BookLoQ accounting and cash flow for small businesses",
+        publisher: "Vanteloq",
+        url: "https://vanteloq.com/features/financial-review",
+      },
+      {
+        title: "Setup, BookLoQ, reports and AI privacy",
+        publisher: "Vanteloq Help Centre",
+        url: "https://vanteloq.com/help",
+      },
+      {
+        title: "Vanteloq pricing and BookLoQ availability",
+        publisher: "Vanteloq",
+        url: "https://vanteloq.com/pricing",
+      },
+      {
+        title: "Service limits and customer responsibilities",
+        publisher: "Vanteloq",
+        url: "https://vanteloq.com/terms",
+      },
+    ],
+    related: ["small-business-bookkeeping-system", "small-business-cash-flow-management-guide", "how-to-track-inventory-small-business"],
+  },
 ];
 
 export const RESOURCE_ARTICLES = articles;

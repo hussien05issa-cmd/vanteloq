@@ -19,6 +19,7 @@ const PROVIDER_LABELS: Record<string, string> = {
 const PRESERVED_TERMS: Record<string, string> = {
   aal2: "AAL2",
   api: "API",
+  bookloq: "BookLoQ",
   csv: "CSV",
   gst: "GST",
   hst: "HST",

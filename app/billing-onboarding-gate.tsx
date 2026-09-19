@@ -15,7 +15,7 @@ import {
 } from "./billing-entitlements-context";
 
 type Plan = {
-  key: "starter" | "growth" | "pro";
+  key: "starter" | "growth" | "pro" | "bookloq";
   name: string;
   description: string;
   mostPopular: boolean;
@@ -181,14 +181,15 @@ export default function BillingOnboardingGate({ children }: { children: ReactNod
 
   async function checkout() {
     if (!plan || busy) return;
-    savePlanSelection({ plan, bookloq: includeBookloq });
+    const selectedBookloqAddon = plan === "bookloq" ? false : includeBookloq;
+    savePlanSelection({ plan, bookloq: selectedBookloqAddon });
     setBusy(true);
     setError("");
     try {
       const response = await apiFetch("/api/v1/billing/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ plan, interval: "month", includeBookloq }),
+        body: JSON.stringify({ plan, interval: "month", includeBookloq: selectedBookloqAddon }),
       });
       const payload = await response.json() as { url?: unknown; error?: unknown };
       if (!response.ok) throw new Error(problemMessage(payload, "Secure checkout could not be opened."));
@@ -220,31 +221,46 @@ export default function BillingOnboardingGate({ children }: { children: ReactNod
   const state = data ? billingGateState(data) : null;
   const memberNeedsOwner = data?.canManageBilling === false;
   const restoreExisting = data?.current.hasCustomer === true && !["canceled", "incomplete_expired"].includes(data.current.status ?? "");
+  const vanteloqPlans = data?.plans.filter((item) => item.key !== "bookloq") ?? [];
+  const standaloneBookloq = data?.plans.find((item) => item.key === "bookloq");
+  const choosePlan = (item: Plan) => {
+    setPlan(item.key);
+    if (item.key === "bookloq") setIncludeBookloq(false);
+  };
+  const planOption = (item: Plan) => <label className={`billing-plan-option ${plan === item.key ? "selected" : ""}`} key={item.key}>
+    <input type="radio" name="billing-onboarding-plan" value={item.key} checked={plan === item.key} onChange={() => choosePlan(item)} />
+    <span className="billing-plan-badge">{item.key === "bookloq" ? "STANDALONE PRODUCT" : item.mostPopular ? "MOST POPULAR" : "VANTELOQ PLAN"}</span>
+    <b>{item.name}</b>
+    <strong>{monthlyPrice(item.price, data?.currency ?? "CAD")}</strong>
+    <small>per month</small>
+    <p>{item.description}</p>
+    <ul>{item.included.map(feature => <li key={feature}>{feature}</li>)}</ul>
+  </label>;
   return <main className="billing-onboarding-gate">
     <section>
       <header><ProductBrandLogo product="vanteloq" priority/><span><b>{memberNeedsOwner || restoreExisting ? "Workspace access" : "Final setup step"}</b><small>SECURE STRIPE SUBSCRIPTION</small></span></header>
       <div className="billing-onboarding-copy">
         <p>{memberNeedsOwner || restoreExisting ? "BILLING REVIEW" : "STEP 3 OF 3"}</p>
-        <h1>{memberNeedsOwner ? "Workspace access needs attention." : restoreExisting ? "Restore your workspace access." : "Choose your Vanteloq plan."}</h1>
-        <span>{memberNeedsOwner ? "Ask your workspace owner to review billing. You do not need a personal subscription." : restoreExisting ? "Review your existing subscription and payment method in Stripe. Your workspace records are saved." : "Your account and business profile are ready. Choose a plan to open your workspace."}</span>
+        <h1>{memberNeedsOwner ? "Workspace access needs attention." : restoreExisting ? "Restore your workspace access." : "Choose your product and plan."}</h1>
+        <span>{memberNeedsOwner ? "Ask your workspace owner to review billing. You do not need a personal subscription." : restoreExisting ? "Review your existing subscription and payment method in Stripe. Your workspace records are saved." : "Your account and business profile are ready. Choose Vanteloq, or open BookLoQ as its own finance workspace."}</span>
       </div>
       {message && <div className="billing-onboarding-message" aria-live="polite">{message}</div>}
       {error && <div className="billing-onboarding-message error" role="alert">{error}</div>}
       {!memberNeedsOwner && state === "configuration_required" && <div className="billing-onboarding-unavailable"><b>Checkout is temporarily unavailable.</b><span>Your workspace is saved. Contact support@vanteloq.com so billing can be enabled safely.</span></div>}
       {restoreExisting && !memberNeedsOwner && <button className="billing-onboarding-submit" type="button" disabled={busy || !data?.configured} onClick={() => void manageBilling()}>{busy ? "Opening billing…" : "Manage Billing in Stripe"}</button>}
       {data && state === "checkout_required" && !restoreExisting && !memberNeedsOwner && <>
-        <div className="billing-plans" role="radiogroup" aria-label="Monthly Vanteloq plans">
-          {data.plans.map(item => <button type="button" role="radio" aria-checked={plan === item.key} className={plan === item.key ? "selected" : ""} onClick={() => setPlan(item.key)} key={item.key}>
-            <span>{item.mostPopular ? "MOST POPULAR" : "MONTH TO MONTH"}</span>
-            <b>{item.name}</b>
-            <strong>{monthlyPrice(item.price, data.currency)}</strong>
-            <small>per month</small>
-            <p>{item.description}</p>
-            <ul>{item.included.map(feature => <li key={feature}>{feature}</li>)}</ul>
-          </button>)}
-        </div>
-        <label className="billing-addon"><input type="checkbox" checked={includeBookloq} onChange={event => setIncludeBookloq(event.target.checked)}/><span><b>Add {data.addon.name} for {monthlyPrice(data.addon.price, data.currency)} per month</b><small>Include bookkeeping and cash control features in the same subscription.</small></span></label>
-        <div className="billing-selected-total" aria-live="polite"><span><b>{data.plans.find(item => item.key === plan)?.name}{includeBookloq ? " + BookLoQ" : ""}</b><small>Monthly total before tax. Confirm the final amount in Stripe.</small></span><strong>{monthlyPrice((data.plans.find(item => item.key === plan)?.price ?? 0) + (includeBookloq ? data.addon.price : 0), data.currency)}</strong></div>
+        <fieldset className="billing-product-choice">
+          <legend>Vanteloq operating plans</legend>
+          <p>Choose Vanteloq for retail operations, sales and inventory intelligence.</p>
+          <div className="billing-plans billing-vanteloq-plans">{vanteloqPlans.map(planOption)}</div>
+        </fieldset>
+        {standaloneBookloq && <fieldset className="billing-product-choice standalone-product">
+          <legend>BookLoQ finance workspace</legend>
+          <p>Choose BookLoQ on its own when you need financial review, evidence matching and cash planning without a Vanteloq plan.</p>
+          <div className="billing-plans billing-standalone-plan">{planOption(standaloneBookloq)}</div>
+        </fieldset>}
+        {plan === "bookloq" ? <div className="billing-addon standalone"><span><b>BookLoQ is complete on its own</b><small>No Vanteloq plan or separate BookLoQ add-on is required.</small></span></div> : <label className="billing-addon"><input type="checkbox" checked={includeBookloq} onChange={event => setIncludeBookloq(event.target.checked)}/><span><b>Add {data.addon.name} for {monthlyPrice(data.addon.price, data.currency)} per month</b><small>Include BookLoQ in the same Vanteloq workspace and subscription.</small></span></label>}
+        <div className="billing-selected-total" aria-live="polite"><span><b>{data.plans.find(item => item.key === plan)?.name}{plan !== "bookloq" && includeBookloq ? " + BookLoQ" : ""}</b><small>Monthly total before tax. Confirm the final amount in Stripe.</small></span><strong>{monthlyPrice((data.plans.find(item => item.key === plan)?.price ?? 0) + (plan !== "bookloq" && includeBookloq ? data.addon.price : 0), data.currency)}</strong></div>
         <div className="billing-onboarding-security"><b>Card information is required.</b><span>Stripe securely collects and stores payment details. Vanteloq never receives card numbers. The subscription is charged according to the amount shown in Checkout.</span></div>
         <button className="billing-onboarding-submit" type="button" disabled={busy || !plan} onClick={() => void checkout()}>{busy ? "Opening secure checkout…" : "Continue to Stripe and subscribe"}</button>
       </>}

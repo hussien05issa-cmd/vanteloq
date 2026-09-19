@@ -20,15 +20,14 @@ const webhookSecret = "whsec_test_billing_webhook_secret";
 function verifiedPrice(lookupKey: string) {
   const definitions = [...Object.values(PLANS), ...Object.values(ADDONS)];
   for (const definition of definitions) {
-    for (const interval of ["month", "year"] as const) {
-      const expected = definition.prices[interval];
+    for (const expected of Object.values(definition.prices)) {
       if (expected.lookupKey === lookupKey) return {
         id: `price_${lookupKey.replaceAll("_", "")}`,
         lookup_key: lookupKey,
         unit_amount: expected.amountCents,
         currency: "cad",
         active: true,
-        recurring: { interval },
+        recurring: { interval: expected.interval },
       };
     }
   }
@@ -72,6 +71,42 @@ test("Checkout uses only verified catalogue prices and binds the organization", 
   assert.equal(body.get("line_items[0][price]"), verifiedPrice(PLANS.growth.prices.month.lookupKey).id);
   assert.equal(body.get("line_items[1][price]"), verifiedPrice(ADDONS.bookloq.prices.month.lookupKey).id);
   assert.doesNotMatch(body.toString(), /sk_test|whsec_|card/i);
+});
+
+test("standalone BookLoQ checkout charges one verified $59 CAD monthly price", async () => {
+  const requestedLookups: string[] = [];
+  const fetcher: typeof fetch = async (input) => {
+    const url = new URL(typeof input === "string" ? input : input instanceof URL ? input : input.url);
+    const lookup = url.searchParams.get("lookup_keys[]") ?? "";
+    requestedLookups.push(lookup);
+    return Response.json({ data: [verifiedPrice(lookup)] });
+  };
+  const body = await prepareStripeCheckout({
+    organizationId: "org_bookloq_123",
+    email: "bookloq@example.com",
+    plan: "bookloq",
+    interval: "month",
+    includeBookloq: false,
+    customerId: null,
+    origin: "https://vanteloq.example",
+    fetcher,
+  });
+  assert.deepEqual(requestedLookups, ["bookloq_standalone_monthly_cad"]);
+  assert.equal(PLANS.bookloq.prices.month.amountCents, 5_900);
+  assert.equal(ADDONS.bookloq.prices.month.amountCents, 3_900);
+  assert.equal(body.get("metadata[vanteloq_plan]"), "bookloq");
+  assert.equal(body.get("line_items[0][price]"), verifiedPrice("bookloq_standalone_monthly_cad").id);
+  assert.equal(body.has("line_items[1][price]"), false);
+});
+
+test("standalone BookLoQ checkout rejects a duplicate add-on before contacting Stripe", async () => {
+  let requested = false;
+  const fetcher: typeof fetch = async () => { requested = true; return Response.json({}); };
+  await assert.rejects(
+    prepareStripeCheckout({ organizationId: "org_bookloq_123", email: "bookloq@example.com", plan: "bookloq", interval: "month", includeBookloq: true, customerId: null, origin: "https://vanteloq.example", fetcher }),
+    (error: unknown) => error instanceof ApiError && error.code === "BILLING_SELECTION_INVALID",
+  );
+  assert.equal(requested, false);
 });
 
 test("Checkout rejects annual purchases before contacting Stripe", async () => {
@@ -149,6 +184,22 @@ test("Subscription normalization accepts catalogue facts and excludes payment da
   assert.doesNotMatch(JSON.stringify(normalized), /4242|payment_method|card/i);
 });
 
+test("Subscription normalization accepts standalone BookLoQ without an add-on item", () => {
+  const normalized = normalizeStripeSubscription({
+    id: "sub_bookloq123456",
+    customer: "cus_bookloq123456",
+    status: "active",
+    metadata: { vanteloq_organization_id: "org_bookloq_123" },
+    cancel_at_period_end: false,
+    items: { data: [
+      { id: "si_bookloqbase123", quantity: 1, price: verifiedPrice(PLANS.bookloq.prices.month.lookupKey), current_period_end: 1_800_000_000 },
+    ] },
+  });
+  assert.equal(normalized.basePlan, "bookloq");
+  assert.equal(normalized.billingInterval, "month");
+  assert.equal(normalized.addon, null);
+});
+
 test("Billing webhook verification rejects tampering and stale replay", async () => {
   const timestamp = 1_786_265_000;
   const body = new TextEncoder().encode('{"id":"evt_123","type":"customer.subscription.updated"}');
@@ -166,4 +217,21 @@ test("normalization rejects duplicate add-ons, invalid quantities and partial it
   for (const items of [{ data:[base,addon,addon] }, { data:[{...base,quantity:2}] }, { data:[base],has_more:true }]) {
     assert.throws(() => normalizeStripeSubscription({...subscription,items}), (error: unknown) => error instanceof ApiError && error.code === "STRIPE_SUBSCRIPTION_PAYLOAD_INVALID");
   }
+});
+
+test("normalization rejects standalone BookLoQ combined with the BookLoQ add-on", () => {
+  const subscription = {
+    id: "sub_bookloq123456",
+    customer: "cus_bookloq123456",
+    status: "active",
+    metadata: { vanteloq_organization_id: "org_bookloq_123" },
+    items: { data: [
+      { id: "si_bookloqbase123", quantity: 1, price: verifiedPrice(PLANS.bookloq.prices.month.lookupKey) },
+      { id: "si_bookloqaddon12", quantity: 1, price: verifiedPrice(ADDONS.bookloq.prices.month.lookupKey) },
+    ] },
+  };
+  assert.throws(
+    () => normalizeStripeSubscription(subscription),
+    (error: unknown) => error instanceof ApiError && error.code === "STRIPE_SUBSCRIPTION_PAYLOAD_INVALID",
+  );
 });

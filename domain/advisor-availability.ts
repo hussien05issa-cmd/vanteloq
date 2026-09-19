@@ -9,7 +9,7 @@ export function advisorUnavailableReason(area: "retail" | "bookloq", body: unkno
     return "Retail evidence was withheld because paid-hours datasets overlap for the same location and period. Review the paid-hours inputs in Intelligence before comparing labour efficiency.";
   }
   if (area === "bookloq" && code === "ADDON_NOT_INCLUDED") {
-    return "BookLoQ summaries were not included because this account does not currently have access to the BookLoQ add-on. Check Billing for access; this is not evidence that a ledger is empty.";
+    return "BookLoQ summaries were not included because this account does not currently have access to BookLoQ. Check Billing for access; this is not evidence that a ledger is empty.";
   }
   return area === "retail"
     ? "Retail records were not supplied for this request. Check Intelligence for source, date-range or access requirements. Do not infer that the account has no records."

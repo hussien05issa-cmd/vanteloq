@@ -1,5 +1,5 @@
 import { getRuntimeEnv } from "../../db";
-import { ADDONS, PLANS, type AddonKey, type BillingInterval, type PlanKey, type PurchaseBillingInterval } from "../entitlements/catalog";
+import { ADDONS, PLANS, type AddonKey, type BillingInterval, type MoneyPrice, type PlanKey, type PurchaseBillingInterval } from "../entitlements/catalog";
 import { SUBSCRIPTION_STATUSES, type SubscriptionStatus } from "../entitlements/engine";
 import { ApiError } from "../api";
 
@@ -85,7 +85,11 @@ async function stripeFormRequest(path: string, fields?: URLSearchParams, method:
 
 async function resolveVerifiedPrice(plan: PlanKey | AddonKey, interval: BillingInterval, kind: "plan" | "addon", fetcher: typeof fetch) {
   const definition = kind === "plan" ? PLANS[plan as PlanKey] : ADDONS[plan as AddonKey];
-  const expected = definition.prices[interval];
+  const prices: Readonly<Partial<Record<BillingInterval, MoneyPrice>>> = definition.prices;
+  const expected = prices[interval];
+  if (!expected) {
+    throw new ApiError(400, "BILLING_INTERVAL_UNAVAILABLE", "This subscription is not available on the selected billing interval.");
+  }
   const query = new URLSearchParams({ active: "true", limit: "2" });
   query.append("lookup_keys[]", expected.lookupKey);
   const response = await stripeFormRequest("/v1/prices", query, "GET", fetcher);
@@ -114,7 +118,10 @@ export async function prepareStripeCheckout(input: {
   fetcher?: typeof fetch;
 }) {
   if (input.interval !== "month") {
-    throw new ApiError(400, "BILLING_INTERVAL_UNAVAILABLE", "Vanteloq plans are available month to month.");
+    throw new ApiError(400, "BILLING_INTERVAL_UNAVAILABLE", "Vanteloq and BookLoQ subscriptions are available month to month.");
+  }
+  if (input.plan === "bookloq" && input.includeBookloq) {
+    throw new ApiError(400, "BILLING_SELECTION_INVALID", "Standalone BookLoQ already includes BookLoQ access and cannot include the add-on again.");
   }
   if (!stripeBillingReadiness().configured) throw new ApiError(503, "STRIPE_BILLING_CONFIGURATION_REQUIRED", "Stripe Billing must be configured before checkout can begin.");
   const fetcher = input.fetcher ?? fetch;
@@ -242,6 +249,9 @@ export function normalizeStripeSubscription(object: Record<string, unknown>): No
     }
   }
   if (!base) throw new ApiError(400, "STRIPE_SUBSCRIPTION_PAYLOAD_INVALID", "Stripe subscription does not contain a verified Vanteloq base plan.");
+  if (base.plan === "bookloq" && addon) {
+    throw new ApiError(400, "STRIPE_SUBSCRIPTION_PAYLOAD_INVALID", "A standalone BookLoQ subscription cannot also contain the BookLoQ add-on.");
+  }
   return {
     organizationId,
     customerId,
@@ -260,14 +270,17 @@ export function normalizeStripeSubscription(object: Record<string, unknown>): No
 function matchCatalogPrice(price: StripePrice): null | { kind: "plan"; key: PlanKey; interval: BillingInterval } | { kind: "addon"; key: AddonKey; interval: BillingInterval } {
   const lookup = string(price.lookup_key);
   for (const [key, definition] of Object.entries(PLANS)) {
+    const prices: Readonly<Partial<Record<BillingInterval, MoneyPrice>>> = definition.prices;
     for (const interval of ["month", "year"] as const) {
-      const expected = definition.prices[interval];
+      const expected = prices[interval];
+      if (!expected) continue;
       if (lookup === expected.lookupKey && validPrice(price, expected.amountCents, interval)) return { kind: "plan", key: key as PlanKey, interval };
     }
   }
   for (const [key, definition] of Object.entries(ADDONS)) {
     for (const interval of ["month", "year"] as const) {
       const expected = definition.prices[interval];
+      if (!expected) continue;
       if (lookup === expected.lookupKey && validPrice(price, expected.amountCents, interval)) return { kind: "addon", key: key as AddonKey, interval };
     }
   }

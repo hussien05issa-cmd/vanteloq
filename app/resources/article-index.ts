@@ -50,5 +50,12 @@ export const RESOURCE_ARTICLE_SUMMARIES = [
     "description": "Learn how to build a source-backed cash-flow statement, 13-week forecast, category budget and receipt-review routine without confusing profit with cash.",
     "category": "finance",
     "readingTime": 5
+  },
+  {
+    "slug": "bookloq-vs-traditional-accounting-software",
+    "title": "BookLoQ vs. Traditional Accounting Software",
+    "description": "Compare BookLoQ with traditional accounting software and see how sales, payouts, reconciliation, documents and cash decisions can work together.",
+    "category": "finance",
+    "readingTime": 5
   }
 ] as const satisfies readonly ResourceArticleSummary[];

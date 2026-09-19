@@ -8,6 +8,7 @@ test("provider names and connector states use professional presentation labels",
   assert.equal(providerDisplayName("square"), "Square");
   assert.equal(humanizeIdentifier("approval_paused"), "Approval paused");
   assert.equal(humanizeIdentifier("oauth_callback_required"), "OAuth callback required");
+  assert.equal(humanizeIdentifier("bookloq"), "BookLoQ");
 });
 
 test("the advisor is consistently identified as Vanteloq AI", () => {

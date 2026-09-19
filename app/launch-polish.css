@@ -65,6 +65,14 @@
 .plan-not-included { color:#667689; font-size:11px; }
 .pricing-page .public-bookloq-price { padding:32px; border:1px solid #cedeee; background:linear-gradient(120deg,#edf4ff,#f5f8fc); }
 .pricing-page .public-bookloq-price a { color:#1956a7; font-size:13px; text-underline-offset:4px; }
+.pricing-page .public-bookloq-price { align-items:stretch; }
+.pricing-page .public-bookloq-price-options { display:grid; grid-template-columns:repeat(2,minmax(190px,1fr)); gap:12px; flex:0 1 560px; width:min(560px,100%); }
+.pricing-page .public-bookloq-price-options article { display:flex; flex-direction:column; gap:8px; padding:18px; border:1px solid #c9d8e7; border-radius:13px; background:rgba(255,255,255,.82); }
+.pricing-page .public-bookloq-price-options article>span { color:#356188; font-size:10px; font-weight:800; letter-spacing:.09em; }
+.pricing-page .public-bookloq-price-options strong { color:#173e60; font-size:29px; letter-spacing:-.04em; }
+.pricing-page .public-bookloq-price-options strong small { font-size:11px; font-weight:500; letter-spacing:0; }
+.pricing-page .public-bookloq-price-options p { margin:0; color:#607589; font-size:12px; line-height:1.55; }
+.pricing-page .public-bookloq-price-options a { display:flex; align-items:center; justify-content:center; min-height:43px; margin-top:auto; border-radius:9px; background:#185ebc; color:#fff; font-weight:700; text-decoration:none; }
 .pricing-questions { margin:42px 0; }
 .pricing-questions details { border-bottom:1px solid #d5e0ed; }
 .pricing-questions summary { padding:21px 4px; font-size:15px; font-weight:600; color:#193d59; cursor:pointer; }
@@ -81,6 +89,9 @@
  .home-feature-shortcuts > span { width:100%; padding-bottom:4px; }
  .plan-fit { grid-template-columns:1fr 1fr; gap:20px; }
  .plan-fit > div:first-child { grid-column:1/-1; }
+}
+@media(max-width:760px) {
+ .pricing-page .public-bookloq-price-options { flex:0 1 auto; width:100%; }
 }
 @media(max-width:620px) {
  .public-site .home-hero { padding:32px 20px; }
@@ -100,6 +111,7 @@
  .plan-fit { padding:22px; grid-template-columns:1fr; }
  .plan-fit-result { border-left:0; border-top:1px solid #dae3ee; padding:16px 0 0; }
  .pricing-page .public-price-grid article { padding:26px; }
+ .pricing-page .public-bookloq-price-options { grid-template-columns:1fr; width:100%; }
  .plan-table-scroll th,.plan-table-scroll td { padding:15px; }
 }
 @media(prefers-reduced-motion:reduce) { .public-site .decision-proof-grid article { transition:none; } }

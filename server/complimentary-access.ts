@@ -1,10 +1,10 @@
 import { getD1, getRuntimeEnv } from "../db/index.ts";
 import { ApiError, hashIdentifier, requireAal2, type TrustedIdentity } from "./api.ts";
 import type { AccessContext } from "./authorization.ts";
-import { isPlanKey, type PlanKey } from "./entitlements/catalog.ts";
+import { isVanteloqPlanKey, type VanteloqPlanKey } from "./entitlements/catalog.ts";
 import { ACCOUNT_ACCEPTANCE_NOTICE_VERSION, PRIVACY_POLICY_VERSION, TERMS_OF_SERVICE_VERSION } from "../shared/legal-versions.ts";
 
-export type ComplimentaryOffer = { id: string; email: string; plan: PlanKey; bookloq: boolean; expiresAt: string | null };
+export type ComplimentaryOffer = { id: string; email: string; plan: VanteloqPlanKey; bookloq: boolean; expiresAt: string | null };
 export type ComplimentaryDetails = Omit<ComplimentaryOffer, "email">;
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -19,7 +19,7 @@ export function configuredOffers(raw = getRuntimeEnv().VANTELOQ_COMPLIMENTARY_IN
     for (const row of rows) {
       if (!row || typeof row !== "object" || !uuid.test(row.id) || typeof row.email !== "string"
         || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email) || row.email.length > 254
-        || !isPlanKey(row.plan) || typeof row.bookloq !== "boolean"
+        || !isVanteloqPlanKey(row.plan) || typeof row.bookloq !== "boolean"
         || (row.expiresAt !== null && (typeof row.expiresAt !== "string" || !Number.isFinite(Date.parse(row.expiresAt))))) return [];
       const email = row.email.trim().toLowerCase();
       if (ids.has(row.id) || emails.has(email)) return [];

@@ -1,7 +1,7 @@
-import { PLANS, type PlanKey } from "../server/entitlements/catalog.ts";
-export function planForCapacity(locations: number, users: number): PlanKey | null {
+import { PLANS, VANTELOQ_PLAN_KEYS, type VanteloqPlanKey } from "../server/entitlements/catalog.ts";
+export function planForCapacity(locations: number, users: number): VanteloqPlanKey | null {
   if (!Number.isInteger(locations) || !Number.isInteger(users) || locations < 1 || users < 1) return null;
-  return (Object.keys(PLANS) as PlanKey[]).find(key => PLANS[key].limits.activeLocations >= locations && PLANS[key].limits.users >= users) ?? null;
+  return VANTELOQ_PLAN_KEYS.find(key => PLANS[key].limits.activeLocations >= locations && PLANS[key].limits.users >= users) ?? null;
 }
 export const DEMO_RETAIL_ROUTES = {
   "#retail": "Why it changed",

@@ -6,48 +6,68 @@
   color: #223b55;
 }
 
-.billing-monthly-note b { font-size: 10px; }
+.billing-monthly-note b { font-size: 12px; }
 .billing-monthly-note span {
   color: #65768a;
-  font-size: 8px;
+  font-size: 12px;
   line-height: 1.5;
 }
 
 .billing-plans {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 9px;
 }
 
-.billing-plans > button {
+.billing-plan-option {
+  position: relative;
   text-align: left;
   border: 1px solid #dfe5ec;
   background: #fff;
   border-radius: 11px;
-  padding: 16px;
+  padding: 16px 48px 16px 16px;
   display: flex;
   flex-direction: column;
   gap: 5px;
   color: #223b55;
+  cursor: pointer;
 }
 
-.billing-plans > button.selected {
+.billing-plan-option.selected {
   border-color: #2a75c6;
   box-shadow: 0 0 0 3px rgba(42, 117, 198, .08);
 }
 
-.billing-plans span {
-  font-size: 8px;
-  color: #2a70bb;
-  letter-spacing: .8px;
+.billing-plan-option > input {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 19px;
+  height: 19px;
+  margin: 0;
+  accent-color: #1767b6;
 }
 
-.billing-plans b { font-size: 13px; }
-.billing-plans strong { font-size: 21px; }
+.billing-plan-option:has(input:focus-visible) {
+  outline: 3px solid rgba(42, 117, 198, .24);
+  outline-offset: 3px;
+}
+
+.billing-plan-option:has(input:disabled) { cursor: default; opacity: .72; }
+
+.billing-plan-badge {
+  font-size: 10px;
+  font-weight: 750;
+  color: #2a70bb;
+  letter-spacing: .08em;
+}
+
+.billing-plans b { font-size: 15px; }
+.billing-plans strong { font-size: 24px; }
 
 .billing-plans small,
 .billing-plans p {
-  font-size: 8px;
+  font-size: 12px;
   color: #65768a;
   line-height: 1.5;
 }
@@ -69,14 +89,47 @@
 .billing-addon span,
 .billing-internal { flex-direction: column; }
 .billing-addon b,
-.billing-internal b { font-size: 9px; }
+.billing-internal b { font-size: 13px; }
 
 .billing-addon small,
 .billing-internal span {
-  font-size: 8px;
+  font-size: 12px;
   color: #65768a;
   line-height: 1.5;
 }
+
+.billing-addon.standalone { border-color: #bfd8ef; background: #f1f7fd; }
+
+.billing-product-choice {
+  min-width: 0;
+  margin: 18px 0 0;
+  padding: 18px;
+  border: 1px solid #d8e2ec;
+  border-radius: 14px;
+  background: #fbfcfe;
+}
+
+.billing-product-choice.standalone-product {
+  border-color: #c5d9ee;
+  background: linear-gradient(145deg, #f2f7fd, #fbfdff);
+}
+
+.billing-product-choice legend {
+  padding: 0 7px;
+  color: #173f64;
+  font-size: 14px;
+  font-weight: 760;
+}
+
+.billing-product-choice > p {
+  margin: 0 0 14px;
+  color: #5b7186;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.billing-vanteloq-plans { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.billing-standalone-plan { grid-template-columns: minmax(0, 1fr); }
 
 .billing-internal {
   background: #eaf7f1;
@@ -85,7 +138,8 @@
 }
 
 @media (max-width: 680px) {
-  .billing-plans { grid-template-columns: 1fr; }
+  .billing-plans,
+  .billing-vanteloq-plans { grid-template-columns: 1fr; }
 }
 
 .complimentary-workspace > section { max-width: 580px; }
@@ -141,7 +195,7 @@
 .billing-onboarding-gate > section > header small { margin-top: 2px; color: #62778d; font-size: 11px; letter-spacing: .6px; }
 
 .billing-onboarding-copy,
-.billing-onboarding-gate .billing-plans,
+.billing-onboarding-gate .billing-product-choice,
 .billing-onboarding-gate .billing-addon,
 .billing-onboarding-security,
 .billing-onboarding-submit,
@@ -155,8 +209,8 @@
 .billing-onboarding-copy p { margin: 0; color: #1767b6; font-size: 11px; font-weight: 800; letter-spacing: 1px; }
 .billing-onboarding-copy h1 { margin: 8px 0 10px; color: #173a5d; font-size: clamp(29px, 4vw, 42px); letter-spacing: -1.2px; }
 .billing-onboarding-copy span { display: block; max-width: 720px; color: #526a82; font-size: 15px; line-height: 1.65; }
-.billing-onboarding-gate .billing-plans { margin-top: 8px; }
-.billing-onboarding-gate .billing-plans > button { cursor: pointer; }
+.billing-onboarding-gate .billing-product-choice { margin-top: 18px; }
+.billing-onboarding-gate .billing-product-choice .billing-plans { margin-top: 0; }
 .billing-onboarding-gate .billing-plans b { font-size: 17px; }
 .billing-onboarding-gate .billing-plans strong { font-size: 28px; }
 .billing-onboarding-gate .billing-plans ul { margin-top: 10px; padding-top: 10px; color: #42627f; }
@@ -167,6 +221,7 @@
 .billing-onboarding-gate .billing-addon b,
 .billing-onboarding-gate .billing-addon small { font-size: 13px; }
 .billing-onboarding-gate .billing-addon { flex-direction: row; align-items: center; cursor: pointer; }
+.billing-onboarding-gate .billing-addon.standalone { cursor: default; }
 .billing-onboarding-gate .billing-addon input { width: 18px; height: 18px; accent-color: #1767b6; }
 .billing-onboarding-gate .billing-addon span { display: flex; flex-direction: column; gap: 3px; }
 
@@ -197,7 +252,7 @@
 @media (max-width: 680px) {
   .billing-onboarding-gate { padding: 12px; }
   .billing-onboarding-copy,
-  .billing-onboarding-gate .billing-plans,
+  .billing-onboarding-gate .billing-product-choice,
   .billing-onboarding-gate .billing-addon,
   .billing-onboarding-security,
   .billing-onboarding-submit,

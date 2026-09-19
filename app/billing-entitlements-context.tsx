@@ -4,7 +4,7 @@ import { createContext, useContext, type ReactNode } from "react";
 
 export type BillingEntitlements = {
   accessType: "internal" | "complimentary" | "subscription";
-  plan: "starter" | "growth" | "pro" | null;
+  plan: "starter" | "growth" | "pro" | "bookloq" | null;
   status: string | null;
   addons: readonly string[];
   features: readonly string[];

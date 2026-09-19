@@ -7,7 +7,9 @@ test("purchase preferences accept only real plan keys and an explicit add-on", (
   assert.equal(parsePlanSelection({plan:"pro"},true),null);
   assert.deepEqual(parsePlanSelection("starter","true"),{plan:"starter",bookloq:false});
   assert.deepEqual(parsePlanSelection("growth","1"),{plan:"growth",bookloq:true});
+  assert.deepEqual(parsePlanSelection("bookloq","1"),{plan:"bookloq",bookloq:false});
   assert.equal(planSelectionUrl({plan:"growth",bookloq:true}),"/?start=signup&plan=growth&bookloq=1");
+  assert.equal(planSelectionUrl({plan:"bookloq",bookloq:true}),"/?start=signup&plan=bookloq");
 });
 test("plan choice survives a same-browser verification journey and expires safely", () => {
   const original = Object.getOwnPropertyDescriptor(globalThis,"window");
