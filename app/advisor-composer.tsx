@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { cloneElement, isValidElement, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import VanteloqAiLogo from "./vanteloq-ai-logo";
 import WorkspaceIcon from "./workspace-icon";
 import { ADVISOR_ATTACHMENT_ACCEPT, advisorAttachmentSelectionError } from "../shared/advisor-attachments";
@@ -47,6 +47,7 @@ export default function AdvisorComposer({ question, onQuestion, dataUseAccepted,
   const savedHeading = useRef<HTMLHeadingElement>(null);
   const [settingsSection, setSettingsSection] = useState<"general" | "history">("general");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [historyRequest, setHistoryRequest] = useState(0);
   const [dataDetailsOpen, setDataDetailsOpen] = useState(false);
   const [suggestionsOpen, setSuggestionsOpen] = useState(!hasConversation);
 
@@ -77,7 +78,7 @@ export default function AdvisorComposer({ question, onQuestion, dataUseAccepted,
       <div className="vanteloq-ai-heading"><VanteloqAiLogo size={36} thinking={thinking} active={Boolean(question.trim())} decorative/><strong>Vanteloq AI</strong></div>
       <div className="ai-header-tools">
         {onNewChat && <button type="button" disabled={loading} onClick={() => { onNewChat(); input.current?.focus(); }} title="Start a new chat. Saved chats stay in History."><WorkspaceIcon name="Business Brief"/><span>New chat</span></button>}
-        {privacyControls && <button type="button" aria-haspopup="dialog" aria-controls="advisor-settings" onClick={() => openSettings(false, "history")}><WorkspaceIcon name="Reports"/><span>History</span></button>}
+        {privacyControls && <button type="button" aria-haspopup="dialog" aria-controls="advisor-settings" onClick={() => { setHistoryRequest(value => value + 1); openSettings(false, "history"); }}><WorkspaceIcon name="Reports"/><span>History</span></button>}
         <button type="button" aria-haspopup="dialog" aria-controls="advisor-settings" onClick={() => openSettings()}><WorkspaceIcon name="Settings"/><span>Settings</span></button>
       </div>
     </header>
@@ -149,7 +150,7 @@ export default function AdvisorComposer({ question, onQuestion, dataUseAccepted,
           <p>{memoryEnabled ? "On. New messages are saved. Up to 6 recent messages from this chat can inform replies when access and reporting scope still match." : "Off. Each question uses current permitted evidence. New questions and replies are not saved in Vanteloq’s chat database."}</p>
           <p>Off by default when you open Vanteloq AI. Changing memory starts a new chat. Saved chats are removed after 90 days of inactivity, or sooner if you delete them. Messages with attachments are never saved, even when memory is on. Attach the file again for a follow-up.</p>
         </section>
-        <section aria-labelledby="advisor-saved-title"><h3 ref={savedHeading} tabIndex={-1} id="advisor-saved-title">Saved Chats</h3>{privacyControls ?? <p>No saved chats available.</p>}</section>
+        <section aria-labelledby="advisor-saved-title"><h3 ref={savedHeading} tabIndex={-1} id="advisor-saved-title">Saved Chats</h3>{isValidElement<{refreshKey?:number}>(privacyControls) ? cloneElement(privacyControls, {refreshKey:historyRequest}) : privacyControls ?? <p>No saved chats available.</p>}</section>
         <section aria-labelledby="advisor-provider-title"><h3 id="advisor-provider-title">AI Provider</h3><a href="/help" target="_blank" rel="noreferrer">Help centre ↗</a><p>Powered by {ADVISOR_PROVIDER_LABELS[provider]}.</p>{!selectedReady && <p className="ai-provider-pending" role="status">{advisorProviders(provider).filter(item => !providers[item].ready).map(item => providers[item].reason ?? `${ADVISOR_PROVIDER_LABELS[item]} setup is pending.`).join(" ")}</p>}</section>
         <section><details className="ai-data-details" open={dataDetailsOpen} onToggle={event => setDataDetailsOpen(event.currentTarget.open)}><summary>Data Use and Privacy</summary>{purpose === "help" ? <p>With workspace data off, your question and verified product guidance{memoryEnabled ? " and up to six recent messages from this chat" : " (without conversation history)"} are sent to OpenAI. Workspace records are not attached.</p> : <p>With workspace data on, your question, permitted aggregate financial and marketing KPIs, labour totals, inventory values, accounts payable, source status, aggregate cash and permitted BookLoQ ledger summaries{memoryEnabled ? " and up to six recent conversation messages" : " (without conversation history)"} and product guidance are sent to {ADVISOR_PROVIDER_LABELS[provider]} to answer your question.</p>}<p>Automatic evidence excludes credentials, account numbers, customer names, search queries, page addresses, Business Profile content, invoice files and raw transactions. Do not enter personal information or secrets.</p><p>Files selected with Attach files need separate confirmation for each message. Selected file contents go to OpenAI even when Workspace data is off. Vanteloq does not save those files or the attached exchange in Documents or chat history. Structural checks do not certify a file as malware-free.</p><p>Provider safety logs and managed backups follow separate retention periods. No automated business actions are taken.</p><a href="/privacy#automation" target="_blank" rel="noreferrer">Privacy policy and retention details</a></details></section>
       </div>

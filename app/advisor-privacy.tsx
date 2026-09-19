@@ -1,16 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 type SavedChat = { id: string; createdAt: number; updatedAt: number };
-type Props = { fetcher: typeof fetch; disabled: boolean; onDeleted: (id: string | null) => void; onResume?: (id:string) => Promise<void> };
+type Props = { fetcher: typeof fetch; disabled: boolean; onDeleted: (id: string | null) => void; onResume?: (id:string) => Promise<void>; refreshKey?: number };
 
-export default function AdvisorPrivacy({ fetcher, disabled, onDeleted, onResume }: Props) {
+export default function AdvisorPrivacy({ fetcher, disabled, onDeleted, onResume, refreshKey = 0 }: Props) {
   const [chats, setChats] = useState<SavedChat[]>([]);
   const [open, setOpen] = useState(false), [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState(""), [hasMore, setHasMore] = useState(false);
   const [confirm, setConfirm] = useState<string | null>(null);
-  async function load() {
+  const load = useCallback(async () => {
     setOpen(true); setBusy(true); setNotice("");
     try {
       const response = await fetcher("/api/v1/advisor/conversations");
@@ -19,7 +19,12 @@ export default function AdvisorPrivacy({ fetcher, disabled, onDeleted, onResume 
       setChats(payload.conversations); setHasMore(payload.hasMore);
     } catch (error) { setNotice(error instanceof Error ? error.message : "Try again shortly."); }
     finally { setBusy(false); }
-  }
+  }, [fetcher]);
+  useEffect(() => {
+    if (!refreshKey) return;
+    const timer = setTimeout(() => void load(), 0);
+    return () => clearTimeout(timer);
+  }, [refreshKey, load]);
   async function remove(id: string) {
     setBusy(true); setNotice("");
     try {

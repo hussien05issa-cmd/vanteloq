@@ -111,7 +111,7 @@ function parseBlocks(lines: string[], depth = 0): AnswerBlock[] {
 
 function inline(text: string, reveal: (value: string) => ReactNode, depth = 0): ReactNode {
   if (depth > 8) return reveal(text);
-  return text.split(/(`[^`]+`|\*\*[^*]+\*\*|__[^_]+__|\*[^*\n]+\*|_[^_\n]+_)/g).map((part, index) => {
+  return text.split(/(`[^`]+`|\*\*[^*]+\*\*|(?<![A-Za-z0-9])__[^_]+__(?![A-Za-z0-9])|\*[^*\n]+\*|(?<![A-Za-z0-9])_[^_\n]+_(?![A-Za-z0-9]))/g).map((part, index) => {
     if (/^`[^`]+`$/.test(part)) return <code key={index}>{reveal(part.slice(1, -1))}</code>;
     if (/^(\*\*[^*]+\*\*|__[^_]+__)$/.test(part)) return <strong key={index}>{inline(part.slice(2, -2), reveal, depth + 1)}</strong>;
     if (/^(\*[^*\n]+\*|_[^_\n]+_)$/.test(part)) return <em key={index}>{inline(part.slice(1, -1), reveal, depth + 1)}</em>;

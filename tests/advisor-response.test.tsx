@@ -49,3 +49,11 @@ test("the initial accessible answer includes its complete text and limitation", 
   assert.match(markup, /Reply ready/);
   assert.doesNotMatch(markup, /Vanteloq AI is writing|Show full answer|class="ai-response-body" aria-hidden/);
 });
+
+
+test("filenames and metric identifiers keep their literal underscores", () => {
+  const markup = renderToStaticMarkup(<AdvisorAnswerContent text={"TEST_ONLY_AI_receipt.pdf, net_revenue_cents and sample__file.csv. _Emphasis_ and __strong text__ remain supported."}/>);
+  assert.match(markup, /TEST_ONLY_AI_receipt\.pdf, net_revenue_cents and sample__file\.csv/);
+  assert.match(markup, /<em>Emphasis<\/em>/);
+  assert.match(markup, /<strong>strong text<\/strong>/);
+});
