@@ -10,6 +10,16 @@ const rows = (table: string, fields: string, where: string, order = "id") =>
   `(SELECT json_group_array(item) FROM (SELECT json_array(${fields}) item FROM ${table} WHERE ${where} ORDER BY ${order}))`;
 const organization = "organization_id = a.organization_id";
 const person = `${organization} AND user_id = a.user_id`;
+// R-Series temporarily unpublishes rows while rebuilding them. Its retained
+// approval and live lease preserve authority for an already-collected snapshot,
+// not permission to read partially refreshed rows. Exclusion/remapping clears
+// the approval; a failed, expired or released refresh must still fail closed.
+const promotionAuthority = `CASE
+  WHEN provider='lightspeed-r' AND status='connected' AND data_promotion_status='staging'
+    AND promotion_authorized_at IS NOT NULL AND last_error_code IS NULL
+    AND sync_lease_owner IS NOT NULL
+    AND sync_lease_expires_at > CAST(strftime('%s','now') AS INTEGER)
+  THEN 'approved' ELSE data_promotion_status END`;
 const authoritySql = `SELECT json_object(
   'user', (SELECT json_array(status,auth_provider,auth_subject) FROM users WHERE id=a.user_id),
   'workspace', (SELECT json_array(currency,timezone) FROM workspaces WHERE id=a.organization_id),
@@ -21,7 +31,7 @@ const authoritySql = `SELECT json_object(
   'subscription', ${rows("tenant_subscriptions", "base_plan,status,version", organization, "organization_id")},
   'addons', ${rows("tenant_addons", "id,addon_key,status", organization)},
   'internal', ${rows("internal_access", "id,access_level,active,mfa_required", person)},
-  'connections', ${rows("integration_connections", "id,provider,status,source_namespace,data_promotion_status,resource_selection_version", organization)},
+  'connections', ${rows("integration_connections", `id,provider,status,source_namespace,${promotionAuthority},resource_selection_version`, organization)},
   'mappings', ${rows("integration_location_mappings", "id,connection_id,local_location_id,external_location_ref,status", organization)},
   'sourceAuthority', ${rows("integration_source_authorities", "id,connection_id,local_location_id,channel,fact_family,version", organization)},
   'deletion', ${rows("account_deletion_jobs", "id,scope,stage", "stage IN ('confirmed','local_deleted') AND (user_id=a.user_id OR (scope='workspace' AND organization_id=a.organization_id))")}

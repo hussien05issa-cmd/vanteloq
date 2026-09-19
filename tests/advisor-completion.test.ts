@@ -137,6 +137,91 @@ test("a changed business resource selection is fenced while ordinary source refr
   } finally { sqlite.close(); }
 });
 
+async function approvedRSource(db: D1Database, provider = "lightspeed-r") {
+  await db.prepare("INSERT INTO integration_connections (id,organization_id,provider,status,data_promotion_status,source_namespace,created_at,updated_at) VALUES ('retail-a','org-a',?,'connected','approved','source-a',1,1)").bind(provider).run();
+}
+
+async function stageAuthorizedRRefresh(db: D1Database) {
+  const now = Math.floor(Date.now() / 1000);
+  await db.prepare("UPDATE integration_connections SET data_promotion_status='staging',promotion_authorized_at=?,sync_lease_owner='fixture-refresh',sync_lease_expires_at=?,sync_version=sync_version+1 WHERE id='retail-a'").bind(now, now + 300).run();
+}
+
+test("an authorized R-Series publication does not discard already-permitted replies or paired history", async () => {
+  const { sqlite, db, a } = await fixture();
+  try {
+    await approvedRSource(db);
+    const stamp = await captureAdvisorAuthority(db, a);
+    await stageAuthorizedRRefresh(db);
+    await assertAdvisorAuthority(db, a, stamp);
+    await completeAdvisorTurn(db, a, stamp, null);
+    await completeAdvisorTurn(db, a, stamp, turn("during-publication"));
+    assert.equal(await count(db, "assistant_messages"), 2);
+    await db.prepare("UPDATE integration_connections SET data_promotion_status='approved',promotion_authorized_at=NULL,sync_lease_owner=NULL,sync_lease_expires_at=NULL,last_successful_sync_at=? WHERE id='retail-a'").bind(Math.floor(Date.now() / 1000)).run();
+    await completeAdvisorTurn(db, a, stamp, null);
+  } finally { sqlite.close(); }
+});
+
+test("source exclusions, failed refreshes and unrelated provider staging remain fenced", async () => {
+  for (const change of [
+    "promotion_authorized_at=NULL",
+    "sync_lease_owner=NULL",
+    "sync_lease_expires_at=NULL",
+    "sync_lease_expires_at=1",
+    "last_error_code='LIGHTSPEED_R_SYNC_FAILED'",
+    "data_promotion_status='blocked'",
+    "status='revoked'",
+    "source_namespace='another-source'",
+    "resource_selection_version=resource_selection_version+1",
+  ]) {
+    const { sqlite, db, a } = await fixture();
+    try {
+      await approvedRSource(db);
+      const stamp = await captureAdvisorAuthority(db, a);
+      await stageAuthorizedRRefresh(db);
+      await db.prepare(`UPDATE integration_connections SET ${change} WHERE id='retail-a'`).run();
+      await assert.rejects(assertAdvisorAuthority(db, a, stamp), denied, change);
+      await assert.rejects(completeAdvisorTurn(db, a, stamp, null), denied, change);
+      await assert.rejects(completeAdvisorTurn(db, a, stamp, turn("blocked-source")), denied, change);
+      assert.equal(await count(db, "assistant_messages"), 0);
+      assert.equal(await count(db, "assistant_conversations"), 0);
+    } finally { sqlite.close(); }
+  }
+  const { sqlite, db, a } = await fixture();
+  try {
+    await approvedRSource(db, "square");
+    const stamp = await captureAdvisorAuthority(db, a);
+    await stageAuthorizedRRefresh(db);
+    await assert.rejects(completeAdvisorTurn(db, a, stamp, null), denied);
+  } finally { sqlite.close(); }
+});
+
+test("a transient source refresh cannot mask access, privacy, location or source-authority changes", async () => {
+  for (const change of [
+    "UPDATE memberships SET status='suspended' WHERE user_id='user-a'",
+    "UPDATE memberships SET role='read_only' WHERE user_id='user-a'",
+    "UPDATE integration_consents SET status='withdrawn' WHERE actor_user_id='user-a'",
+    "UPDATE tenant_subscriptions SET status='paused' WHERE organization_id='org-a'",
+    "UPDATE workspace_sessions SET revoked=1 WHERE user_id='user-a'",
+    "UPDATE organization_locations SET status='archived' WHERE id='location-a'",
+    "UPDATE integration_location_mappings SET status='ignored' WHERE id='mapping-a'",
+    "UPDATE integration_source_authorities SET version=version+1 WHERE id='authority-a'",
+  ]) {
+    const { sqlite, db, a } = await fixture();
+    try {
+      await approvedRSource(db);
+      await db.prepare("INSERT INTO organization_locations (id,organization_id,name,country_code,address_line_1,locality,administrative_area,timezone,currency,created_at,updated_at) VALUES ('location-a','org-a','Fictional location','CA','Test','Edmonton','AB','America/Edmonton','CAD',1,1)").run();
+      await db.prepare("INSERT INTO integration_location_mappings (id,organization_id,provider,connection_id,external_location_ref,external_name,local_location_id,status,last_seen_at,created_at,updated_at) VALUES ('mapping-a','org-a','lightspeed-r','retail-a','1','Test shop','location-a','mapped',1,1,1)").run();
+      await db.prepare("INSERT INTO integration_source_authorities (id,organization_id,local_location_id,channel,fact_family,provider,connection_id,created_by_user_id,updated_by_user_id,created_at,updated_at) VALUES ('authority-a','org-a','location-a','retail','sales','lightspeed-r','retail-a','user-a','user-a',1,1)").run();
+      const stamp = await captureAdvisorAuthority(db, a);
+      await stageAuthorizedRRefresh(db);
+      await db.prepare(change).run();
+      await assert.rejects(completeAdvisorTurn(db, a, stamp, null), denied, change);
+      await assert.rejects(completeAdvisorTurn(db, a, stamp, turn("blocked-authority")), denied, change);
+      assert.equal(await count(db, "assistant_messages"), 0);
+    } finally { sqlite.close(); }
+  }
+});
+
 test("a failed message insert rolls back the conversation row", async () => {
   const { sqlite, db, a } = await fixture();
   try {

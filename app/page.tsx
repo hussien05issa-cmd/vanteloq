@@ -17,11 +17,12 @@ import FeatureCarousel from "./feature-carousel";
 import ProductBrandLogo from "./product-brand-logo";
 import FinanceProof from "./finance-proof";
 import ResourceArticleBrowser from "./resource-article-browser";
-import { RESOURCE_ARTICLES } from "./resources/content";
+import { RESOURCE_ARTICLE_SUMMARIES } from "./resources/article-index";
 import SocialLinks from "./social-links";
 import HomeSocialSection from "./home-social-section";
 import IntegrationBrandLogo from "./integration-brand-logo";
-import AuthPanel, { type AuthPanelMode } from "./auth-panel";
+import type { AuthPanelMode } from "./auth-panel";
+import { useModalFocus } from "./use-modal-focus";
 import { currentSession, getSupabase, signOut } from "./supabase-browser";
 import { readPlanSelection } from "../shared/plan-selection";
 import { canonicalLocation } from "../shared/auth-urls";
@@ -33,6 +34,7 @@ import {
 import type { ComplimentaryWorkspaceOffer } from "./complimentary-workspace-flow";
 import type { TeamInvitationDetails } from "./team-invitation-flow";
 
+const AuthPanel = lazy(() => import("./auth-panel"));
 const ComplimentaryWorkspaceFlow = lazy(() => import("./complimentary-workspace-flow"));
 const SecureOnboardingFlow = lazy(() => import("./secure-onboarding-flow"));
 const VanteloqApp = lazy(() => import("./vanteloq-app"));
@@ -295,11 +297,24 @@ export default function Home() {
     setAuthMode("signup");
   }
 
-  if (entry === "landing") return <><LandingPage start={openAuth}/>{authOpen && <AuthPanel initialMode={authMode} close={closeAuth} authenticated={session => void loadWorkspace(session)}/>}</>;
+  if (entry === "landing") return <ClientLoadBoundary><LandingPage start={openAuth}/>{authOpen && <Suspense fallback={<AccountFormLoading close={closeAuth}/>}><AuthPanel initialMode={authMode} close={closeAuth} authenticated={session => void loadWorkspace(session)}/></Suspense>}</ClientLoadBoundary>;
   if (entry === "signup" && complimentaryOffer) return <ClientLoadBoundary><Suspense fallback={<AuthenticatedLoading/>}><AccountMfaGate><ComplimentaryWorkspaceFlow offer={complimentaryOffer} complete={(business, owner) => { setOrganizationName(business); setAccountName(owner); setComplimentaryOffer(null); setEntry("app"); }}/></AccountMfaGate></Suspense></ClientLoadBoundary>;
   if (entry === "signup") return <ClientLoadBoundary><Suspense fallback={<AuthenticatedLoading/>}><AccountMfaGate><SecureOnboardingFlow accountName={accountName} accountEmail={accountEmail} signOut={() => void signOut()} complete={(business, owner) => { setOrganizationName(business); setAccountName(owner); setEntry("app"); }}/></AccountMfaGate></Suspense></ClientLoadBoundary>;
   if (entry === "invitation" && teamInvitation) return <ClientLoadBoundary><Suspense fallback={<AuthenticatedLoading/>}><AccountMfaGate><TeamInvitationFlow invitation={teamInvitation} initialName={accountName} complete={(business, member) => { setOrganizationName(business); setAccountName(member); setTeamInvitation(null); setEntry("app"); }}/></AccountMfaGate></Suspense></ClientLoadBoundary>;
   return <ClientLoadBoundary><Suspense fallback={<AuthenticatedLoading/>}><AccountMfaGate><SessionTimeout><LegalAcceptanceGate><BillingOnboardingGate><VanteloqApp organizationName={organizationName} accountName={accountName}/></BillingOnboardingGate></LegalAcceptanceGate></SessionTimeout></AccountMfaGate></Suspense></ClientLoadBoundary>;
+}
+
+function AccountFormLoading({ close }: { close: () => void }) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useModalFocus(dialogRef, true, close);
+  return <div ref={dialogRef} className="auth-backdrop" role="dialog" aria-modal="true" aria-labelledby="auth-loading-title" tabIndex={-1}>
+    <section className="auth-panel">
+      <header><ProductBrandLogo product="vanteloq"/><button type="button" onClick={close} aria-label="Close account form">×</button></header>
+      <small>SECURE VANTELOQ ACCOUNT</small>
+      <h2 id="auth-loading-title">Loading Your Account Form</h2>
+      <p role="status">Preparing your secure account form…</p>
+    </section>
+  </div>;
 }
 
 function AuthenticatedLoading() {
@@ -431,7 +446,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
     <main id="main-content">
       <section className="home-hero" aria-labelledby="home-title">
         <picture className="reference-scene">
-          <source media="(max-width:1000px)" srcSet="/brand/vanteloq-alpine-hero-mobile-v2.webp"/>
+          <source media="(max-width:1000px)" srcSet="/brand/vanteloq-alpine-mobile-480.webp 480w, /brand/vanteloq-alpine-mobile-768.webp 768w, /brand/vanteloq-alpine-hero-mobile-v2.webp 924w" sizes="(max-width:640px) calc(100vw - 32px), 100vw" width={924} height={563}/>
           <img src="/brand/vanteloq-alpine-hero-v2.webp" width={1832} height={859} alt="" fetchPriority="high" decoding="async"/>
         </picture>
         <div className="home-hero-copy">
@@ -480,7 +495,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
 
 
       <HomeSocialSection/>
-      <section className="home-article-library" aria-label="Business resource articles"><ResourceArticleBrowser articles={RESOURCE_ARTICLES} title="Browse articles"/><Link href="/resources">Explore the resource library →</Link></section>
+      <section className="home-article-library" aria-label="Business resource articles"><ResourceArticleBrowser articles={RESOURCE_ARTICLE_SUMMARIES} title="Browse articles"/><Link href="/resources">Explore the resource library →</Link></section>
     </main>
 
     <footer className="home-footer" id="company">

@@ -43,7 +43,7 @@
 .ai-studio-header .vanteloq-ai-heading { margin: 0; gap: 9px; }
 .ai-studio-header .vanteloq-ai-heading strong { color: #26354d; font-size: 16px; font-weight: 650; letter-spacing: -.035em; white-space: nowrap; }
 .ai-header-tools { display: flex; align-items: center; gap: 4px; }
-.ai-header-tools button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 40px; border: 0; border-radius: 9px; padding: 8px 10px; background: transparent; color: #526078; font: inherit; font-size: 12px; cursor: pointer; }
+.ai-header-tools button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 44px; border: 0; border-radius: 9px; padding: 8px 10px; background: transparent; color: #526078; font: inherit; font-size: 12px; cursor: pointer; }
 .ai-header-tools button:hover:not(:disabled) { background: #f2f5fa; color: #223852; }
 .ai-header-tools .workspace-icon { width: 17px; height: 17px; }
 .ai-studio button:disabled { cursor: not-allowed; }
@@ -98,13 +98,11 @@
 .ai-studio .advisor-thinking p { max-width: 350px; margin: 5px 0 0; font-size: 12px; line-height: 1.6; }
 .ai-input-toolbar .ai-stop { background: #293e62; }
 .ai-stop > span { width: 12px; height: 12px; border-radius: 3px; background: currentColor; }
-.operating-shell .advisor-answer > .ai-response-body { padding: 0; margin: 0; background: transparent; border: 0; }
-.ai-reply-word { animation: ai-word-appear .22s ease-out both; }
-@keyframes ai-word-appear { from { opacity: 0; filter: blur(1px); } to { opacity: 1; filter: blur(0); } }
-.ai-writing-label { color: #728198; font-size: 11px; font-weight: 400; }
-.ai-reply-end { display: block; height: 1px; scroll-margin-bottom: 28px; }
+.operating-shell .advisor-answer > .ai-response-body { padding: 0; margin: 0; background: transparent; border: 0; color: #172b43; font-size: 16px; line-height: 1.75; }
+.ai-reply-chunk { animation: ai-chunk-appear .16s ease-out both; animation-delay: var(--ai-reveal-delay, 0ms); }
+@keyframes ai-chunk-appear { from { opacity: 0; } to { opacity: 1; } }
 .ai-response-footer { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 6px 18px; padding-top: 14px; margin-top: 18px; border-top: 1px solid #edf0f5; }
-.operating-shell .ai-response-footer p { margin: 0; font-size: 11px !important; line-height: 1.65; color: #728097; }
+.operating-shell .ai-response-footer p { margin: 0; font-size: 12px !important; line-height: 1.65; color: #4c6079; }
 .ai-studio .ai-response-footer :is(button, a) { min-height: 30px; padding: 0; border: 0; background: none; color: #486397; font: inherit; font-size: 11px; cursor: pointer; text-decoration: none; }
 .ai-response-footer :is(button, a):hover { text-decoration: underline; text-underline-offset: 3px; }
 .ai-response-error { margin: 0 0 26px; padding: 16px 18px; border: 1px solid #dde4ee; border-radius: 12px; background: #f8fafd; color: #465772; }
@@ -115,17 +113,36 @@
 .ai-withdraw-consent { margin-top: 12px; text-decoration: underline; text-underline-offset: 3px; }
 .ai-studio .advisor-answer { margin: 0 0 32px; padding: 0; border: 0; border-radius: 0; box-shadow: none; }
 .ai-studio .advisor-response-heading { gap: 10px; }
-.ai-studio .advisor-response-heading strong { color: #2c3c56; font-size: 13px; font-weight: 600; }
+.ai-studio .advisor-response-heading strong { color: #172b43; font-size: 14px; font-weight: 650; }
 .ai-studio .advisor-answer > h3 { margin: 16px 0 12px; color: #293d58; font-size: 18px; letter-spacing: -.025em; }
-.ai-answer-content { background: transparent !important; padding: 0 !important; overflow-wrap: anywhere; }
-.operating-shell .ai-answer-content :is(p, li) { color: #3c4e67; font-size: 14px !important; line-height: 1.85; }
-.ai-answer-content h4 { margin: 22px 0 8px; color: #293d58; }
-.ai-answer-content :is(ul, ol) { padding-left: 22px; }
+.ai-answer-content { background: transparent !important; padding: 0 !important; color: #172b43; font-size: 16px; line-height: 1.75; overflow-wrap: anywhere; }
+.operating-shell .ai-answer-content :is(p, li) { color: #172b43; font-size: 16px !important; line-height: 1.75; }
+.ai-answer-content p { margin: 0 0 16px; }
+.operating-shell .ai-answer-content h4 { margin: 26px 0 10px; color: #11263f; font-size: 18px; font-weight: 700; line-height: 1.4; letter-spacing: -.015em; }
+.ai-answer-content > :first-child { margin-top: 0; }
+.ai-answer-content > :last-child { margin-bottom: 0; }
+.ai-answer-content strong { color: #11263f; font-weight: 700; }
+.ai-answer-content :is(ul, ol) { margin: 12px 0 18px; padding-left: 26px; }
+.ai-answer-content li { padding-left: 3px; margin: 8px 0; }
+.ai-answer-content li::marker { color: #344e70; font-weight: 600; }
+.ai-answer-content li :is(ul, ol) { margin: 6px 0 10px; }
+.ai-answer-content li p { margin: 10px 0; }
+.ai-answer-content blockquote { margin: 18px 0; border-left: 3px solid #adc4df; padding: 4px 0 4px 16px; }
+.ai-answer-content blockquote > :last-child { margin-bottom: 0; }
+.ai-answer-content hr { margin: 24px 0; border: 0; border-top: 1px solid #dce5ef; }
+.ai-answer-content :not(pre) > code { border: 1px solid #dce5ef; border-radius: 5px; padding: 1px 5px; background: #f2f6fa; color: #173b61; font-size: .9em; }
+.ai-answer-code { margin: 18px 0; overflow: hidden; border: 1px solid #d5dfeb; border-radius: 10px; background: #f4f7fb; }
+.ai-code-language { display: block; border-bottom: 1px solid #dce5ef; padding: 7px 14px; color: #415773; font-size: 12px; font-weight: 600; }
+.ai-answer-code pre { margin: 0; padding: 16px; max-width: 100%; overflow-x: auto; color: #17304e; font-size: 14px; line-height: 1.7; white-space: pre; overflow-wrap: normal; tab-size: 4; }
+.ai-answer-code code { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
 .ai-answer-table { overflow-x: auto; max-width: 100%; margin: 18px 0; }
-.ai-answer-table table { border-collapse: collapse; width: 100%; font-size: 13px; }
-.ai-answer-table th, .ai-answer-table td { padding: 12px; border-bottom: 1px solid #e0e6ef; text-align: left; white-space: normal; }
-.ai-answer-table th { position: static; background: #f5f7fb; color: #394d69; }
-.ai-answer-table caption { text-align: left; color: #68788e; font-size: 11px; margin-bottom: 8px; }
+.ai-answer-table table { border-collapse: collapse; width: 100%; font-size: 14px; font-variant-numeric: tabular-nums; }
+.operating-shell .ai-answer-table :is(th, td) { padding: 12px 14px; border-bottom: 1px solid #dce5ef; color: #172b43; font-size: 14px; line-height: 1.6; white-space: normal; vertical-align: top; }
+.operating-shell .ai-answer-table th { position: static; background: #edf3fa; color: #173453; font-weight: 650; }
+.ai-answer-table caption { text-align: left; color: #4c6079; font-size: 12px; margin-bottom: 8px; }
+.ai-answer-content :is(.ai-answer-table, pre):focus-visible { outline: 3px solid #577bdb; outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) { .ai-reply-chunk { animation: none; } }
+@media print { .ai-reply-chunk { animation: none; } }
 .ai-studio .ai-settings { position: fixed; inset: 0; width: min(540px, calc(100vw - 32px)); max-height: min(760px, calc(100dvh - 48px)); margin: auto; padding: 0; border: 1px solid #e1e6ef; border-radius: 20px; background: #fff; color: #35465f; box-shadow: 0 24px 90px #14294736; overflow: auto; }
 .ai-settings::backdrop { background: #15233b65; backdrop-filter: blur(3px); }
 .ai-settings-header { position: sticky; z-index: 1; top: 0; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 22px 26px 18px; border-bottom: 1px solid #e9edf4; background: #fff; }
@@ -214,3 +231,11 @@
 @media(max-width:600px) { .ai-attach-tools .ai-powered-by { display:none; } .ai-attachment-list li { width:100%; } .ai-attachment-list li > span { flex:1; } .ai-attachment-list strong { max-width:100%; } }
 
 .ai-attach-tools .ai-powered-by { color:#526783; font-size:12px; }
+
+/* Keep chat actions readable and reachable on narrow phones. */
+.operating-shell .ai-studio .ai-header-tools button { min-height: 44px; white-space: nowrap; }
+@media (max-width: 480px) {
+  .ai-studio .ai-studio-header { flex-wrap: wrap; gap: 8px; }
+  .ai-studio .ai-header-tools { flex-basis: 100%; margin-left: 0; justify-content: flex-end; }
+  .ai-studio .ai-header-tools button { flex: 1; }
+}

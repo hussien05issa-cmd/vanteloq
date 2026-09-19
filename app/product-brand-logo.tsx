@@ -19,11 +19,11 @@ export default function ProductBrandLogo({
   const name = PRODUCT_NAMES[product];
   const source = product === "vanteloq"
     ? variant === "full"
-      ? "/brand/vanteloq-logo.png"
-      : "/brand/vanteloq-mark.png"
+      ? "/brand/vanteloq-logo-ui.webp"
+      : "/brand/vanteloq-mark-ui.webp"
     : variant === "full"
-      ? "/brand/bookloq-logo-transparent.png"
-      : "/brand/bookloq-mark.png";
+      ? "/brand/bookloq-logo-ui.webp"
+      : "/brand/bookloq-mark-ui.webp";
 
   const dimensions = product === "vanteloq"
     ? variant === "full" ? { width: 1030, height: 576 } : { width: 447, height: 402 }

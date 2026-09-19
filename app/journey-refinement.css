@@ -127,7 +127,7 @@
 .journey-pricing .public-price-grid article>p {font-size:14px;line-height:1.6;color:#52677d}
 .journey-pricing .public-price-grid article>ul {padding-left:17px;font-size:13px;line-height:1.75;flex:1}
 .journey-pricing .pricing-tax-note {font-size:12px;line-height:1.6;color:#52677d}
-.journey-pricing .pricing-tax-note a {color:#205cab;margin-left:8px}
+.journey-pricing .pricing-tax-note a {color:#205cab;margin-left:8px;text-decoration:underline;text-underline-offset:3px;text-decoration-thickness:1px}
 .journey-custom {display:flex;justify-content:space-between;gap:22px;align-items:center;border-top:1px solid #d3dfed;padding-top:24px;margin-top:28px}
 .journey-custom h3 {font-size:18px;margin:0}
 .journey-custom p {font-size:13px;color:#556b80}

@@ -1,6 +1,7 @@
 "use client";
 
 import WorkspaceIcon from "./workspace-icon";
+import "maplibre-gl/dist/maplibre-gl.css";
 import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import IntegrationBrandLogo from "./integration-brand-logo";
 import MarketingReporting from "./marketing-reporting";

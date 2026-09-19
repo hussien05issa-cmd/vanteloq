@@ -22,7 +22,7 @@ async function callProvider(provider: AdvisorProvider, text: string, env: Vantel
       // the response.ok check below, so credentials never follow a redirect.
       method: "POST", redirect: "manual", signal: signal ? AbortSignal.any([signal, deadline]) : deadline,
       headers: { "content-type": "application/json", authorization: `Bearer ${env.OPENAI_API_KEY!.trim()}` },
-      body: JSON.stringify({ model, instructions, input: attachments.length ? [{ role: "user", content: [{ type: "input_text", text }, ...attachments] }] : text, store: false, max_output_tokens: 3200, reasoning: { effort: "medium" } }),
+      body: JSON.stringify({ model, instructions, input: attachments.length ? [{ role: "user", content: [{ type: "input_text", text }, ...attachments] }] : text, store: false, max_output_tokens: 3200, reasoning: { effort: "low" }, text: { verbosity: "low" } }),
     });
     if (!response.ok) {
       // Provider diagnostics can contain sensitive details. Expose only our own

@@ -10,13 +10,13 @@ import { documentEmailAccessKey } from "./document-email-client";
 import { isAwaitingSalesRecords } from "../domain/intraday-sales";
 
 import Image from "next/image";
-import { FormEvent, Fragment, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import BookLoQWorkspace from "./bookloq-workspace";
-import CommunicationsWorkspace from "./communications-workspace";
-import CommerceIntelligenceWorkspace from "./commerce-intelligence-workspace";
+import { lazy, Suspense, FormEvent, Fragment, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+const BookLoQWorkspace = lazy(() => import("./bookloq-workspace"));
+const CommunicationsWorkspace = lazy(() => import("./communications-workspace"));
+const CommerceIntelligenceWorkspace = lazy(() => import("./commerce-intelligence-workspace"));
 import type { RetailAdvisorSeed } from "./retail-intelligence-workspace";
-import GrowthWorkspace from "./growth-workspace";
-import ScenarioPlanner from "./scenario-planner";
+const GrowthWorkspace = lazy(() => import("./growth-workspace"));
+const ScenarioPlanner = lazy(() => import("./scenario-planner"));
 import { connectorNextStep, filterConnectors } from "../domain/connector-guidance";
 import { customerIntegrationAvailability, hasConnectionAttention, type CustomerIntegrationAvailability } from "../domain/integration-availability";
 import IntegrationBrandLogo from "./integration-brand-logo";
@@ -35,7 +35,7 @@ import {
 } from "./integration-catalog";
 import ProductBrandLogo from "./product-brand-logo";
 import WorkspaceIcon from "./workspace-icon";
-import DecisionWorkspace from "./decision-workspace";
+const DecisionWorkspace = lazy(() => import("./decision-workspace"));
 import { useModalFocus } from "./use-modal-focus";
 import { comparisonCopy, quantityLabel } from "../domain/workspace-presentation";
 import PlaidLinkButton, { PLAID_REDIRECT_STORAGE_KEY, PLAID_RETURN_VIEW_STORAGE_KEY } from "./plaid-link-button";
@@ -498,6 +498,7 @@ type MetricProvenance = {
 type CommandCentre = {
   ready: boolean;
   source: {
+    syncing?: boolean;
     rowCount: number;
     verifiedDays: number;
     earliestBusinessDate: string | null;
@@ -708,7 +709,7 @@ export default function VanteloqApp({
     dashboardRequestRef.current?.abort();
     const request = new AbortController();
     dashboardRequestRef.current = request;
-    if (!silent) { setLoading(true); setRefreshError(""); }
+    if (!silent) { setLoading(true); setData(null); setRefreshError(""); }
     try {
       const parameters = new URLSearchParams({ payment_days: String(paymentRange) });
       if (activeLocationId) parameters.set("location", activeLocationId);
@@ -718,6 +719,16 @@ export default function VanteloqApp({
       });
       const body = await response.json();
       if (request.signal.aborted || dashboardRequestRef.current !== request) return;
+      if (!response.ok && (response.status === 401 || response.status === 403)) {
+        // A background refresh must not leave a revoked snapshot on screen.
+        setData(null);
+        setAppPermissions([]);
+        setEmailAccessKey("");
+        setLocations([]);
+        setError(body.error?.message ?? "Your access to this workspace changed. Refresh before continuing.");
+        setRefreshError("");
+        return;
+      }
       if (!response.ok)
         throw new Error(
           body.error?.message ?? "Unable to load the command centre.",
@@ -990,7 +1001,7 @@ export default function VanteloqApp({
           <span>
             <b>{workspaceName}</b>
             <small>
-              {loading ? "Loading your records…" : error ? "Records unavailable" : data?.source.latestBusinessDate
+              {loading ? "Loading your records…" : error ? "Records unavailable" : data?.source.syncing ? "Syncing source records" : data?.source.latestBusinessDate
                 ? `Data through ${formatBusinessDate(data.source.latestBusinessDate)}`
                 : "Data source required"}
             </small>
@@ -1124,10 +1135,10 @@ export default function VanteloqApp({
           <div className="top-actions">
             <button className="command-trigger" onClick={() => setCommandOpen(true)} aria-label="Open workspace search"><WorkspaceIcon name="Search"/><span>Search workspace</span><kbd>⌘K</kbd></button>
             <span
-              className={`source-pill ${loading || error ? "pending" : data?.liveSource.lastSuccessfulSyncAt ? "current" : data?.source.freshness ?? "missing"}`}
-              aria-busy={loading}
+              className={`source-pill ${loading || error || data?.source.syncing ? "pending" : data?.liveSource.lastSuccessfulSyncAt ? "current" : data?.source.freshness ?? "missing"}`}
+              aria-busy={loading || Boolean(data?.source.syncing)}
             >
-              {loading ? "Loading records…" : error ? "Records unavailable" : data?.liveSource.lastSuccessfulSyncAt
+              {loading ? "Loading records…" : error ? "Records unavailable" : data?.source.syncing ? "Syncing source records" : data?.liveSource.lastSuccessfulSyncAt
                 ? "Connected sales"
                 : data?.source.latestBusinessDate
                 ? `${humanizeIdentifier(data.source.freshness)} data`
@@ -1163,8 +1174,10 @@ export default function VanteloqApp({
           <LoadingState />
         ) : error ? (
           <FailureState message={error} retry={refresh} />
+        ) : data?.source.syncing && ["Dashboard", "Intelligence", "Business Brief", "Scenario Planner", "Operations"].includes(view) ? (
+          <SourceSyncingState refresh={refreshWorkspace} />
         ) : (
-          <Workspace
+          <Suspense fallback={<WorkspaceSkeleton label="Loading this workspace"/>}><Workspace
             view={view}
             data={data!}
             permissions={appPermissions}
@@ -1202,7 +1215,7 @@ export default function VanteloqApp({
                   .catch((caught) => showNotice(caught instanceof Error ? caught.message : "Navigation preference could not be saved."))}
               />
             }
-          />
+          /></Suspense>
         )}
       </section>
       {taskSeed && (
@@ -4051,13 +4064,35 @@ function Advisor({
   };
   const resetVisibleChat = () => { setConversationId(null); setAnswer(null); setResponseError(""); setSubmittedQuestion(""); setSubmittedFiles([]); setAttachments([]); setAttachmentAccepted(false); setHistory([]); setQuestion(""); };
   const changeMemory = (enabled: boolean) => { setMemoryEnabled(enabled); resetVisibleChat(); };
+  const resumeChat = async (id: string) => {
+    if (activeRequest.current) return;
+    const controller = new AbortController(); activeRequest.current = controller; setLoading(true);
+    try {
+      const response = await apiFetch('/api/v1/advisor/conversations?id=' + encodeURIComponent(id), { signal:controller.signal });
+      const payload = await response.json();
+      if (activeRequest.current !== controller) return;
+      if (!response.ok) throw new Error(payload.error?.message ?? 'This chat could not be opened.');
+      if (payload.scope.locationId !== activeLocationId) throw new Error('Select the same dashboard location used for this chat, then reopen it. Chats for all locations need All locations selected.');
+      const turns: Array<{ question:string; answer:NonNullable<typeof answer> }> = [];
+      let priorQuestion = '';
+      for (const message of payload.messages) {
+        if (message.role === 'user') priorQuestion = message.content;
+        else if (message.role === 'assistant' && priorQuestion) {
+          turns.push({ question:priorQuestion, answer:{ title:'Vanteloq AI', body:message.content, limitation:'Saved reply. Figures reflect the evidence available when this was written.' } });
+          priorQuestion = '';
+        }
+      }
+      resetVisibleChat(); setHistory(turns); setConversationId(payload.conversationId); setMemoryEnabled(true); setPurpose(payload.scope.purpose);
+      setAnalysisPeriod(payload.scope.from && payload.scope.to ? {from:payload.scope.from,to:payload.scope.to} : null);
+    } finally { if (activeRequest.current === controller) { activeRequest.current=null; setLoading(false); } }
+  };
   const reply = (value: NonNullable<typeof answer>, latest = false) => <AdvisorResponse title={value.title} body={value.body} limitation={value.limitation} animate={latest && value.animate}>
     {purpose === "help" ? <a href="/help" target="_blank" rel="noreferrer">Open help centre →</a> : value.seed ? <button onClick={() => createTask(value.seed!)}>Create action →</button> : <button onClick={() => navigate("Integrations")}>Review connected sources →</button>}
   </AdvisorResponse>;
   return (
     <div className="content advisor-page">
       {analysisPeriod && purpose === "analysis" && <div className="retail-ai-period"><span>Retail evidence: {analysisPeriod.from} to {analysisPeriod.to}</span><button onClick={() => { setAnalysisPeriod(null); resetVisibleChat(); }}>Use recent workspace evidence</button></div>}
-      <AdvisorComposer attachments={attachments} onAttachments={setAttachments} attachmentAccepted={attachmentAccepted} onAttachmentConsent={setAttachmentAccepted} purpose={purpose} onPurpose={value => { if (value !== purpose) { setPurpose(value); resetVisibleChat(); } }} memoryEnabled={memoryEnabled} onMemory={changeMemory} privacyControls={<AdvisorPrivacy fetcher={apiFetch} disabled={loading} onDeleted={id => { if (id === null || id === conversationId) resetVisibleChat(); }}/>} provider={provider} providers={providers} providersLoading={providersLoading} question={question} onQuestion={setQuestion} dataUseAccepted={dataUseAccepted} onConsent={accepted => { if (!accepted) resetVisibleChat(); void savedConsent.refresh(accepted, purpose); }} consentLoading={savedConsent.busy} consentError={savedConsent.error} onConsentRetry={() => void savedConsent.refresh()} onStop={stopResponse} loading={loading} thinking={thinking} onSubmit={ask} hasConversation={Boolean(submittedQuestion || answer || history.length)} onNewChat={() => { setAnalysisPeriod(null); resetVisibleChat(); }}>
+      <AdvisorComposer attachments={attachments} onAttachments={setAttachments} attachmentAccepted={attachmentAccepted} onAttachmentConsent={setAttachmentAccepted} purpose={purpose} onPurpose={value => { if (value !== purpose) { setPurpose(value); resetVisibleChat(); } }} memoryEnabled={memoryEnabled} onMemory={changeMemory} privacyControls={<AdvisorPrivacy fetcher={apiFetch} disabled={loading} onResume={resumeChat} onDeleted={id => { if (id === null || id === conversationId) resetVisibleChat(); }}/>} provider={provider} providers={providers} providersLoading={providersLoading} question={question} onQuestion={setQuestion} dataUseAccepted={dataUseAccepted} onConsent={accepted => { if (!accepted) resetVisibleChat(); void savedConsent.refresh(accepted, purpose); }} consentLoading={savedConsent.busy} consentError={savedConsent.error} onConsentRetry={() => void savedConsent.refresh()} onStop={stopResponse} loading={loading} thinking={thinking} onSubmit={ask} hasConversation={Boolean(submittedQuestion || answer || history.length)} onNewChat={() => { setAnalysisPeriod(null); resetVisibleChat(); }}>
         {history.map((item, index) => <Fragment key={index}><div className="ai-user-message"><small>You</small>{item.question}</div>{reply(item.answer)}</Fragment>)}
         {submittedQuestion && <div className="ai-user-message"><small>You</small>{submittedQuestion}{submittedFiles.length > 0 && <small className="ai-sent-files">Attached: {submittedFiles.join(", ")}</small>}</div>}
         {thinking && <AdvisorThinking/>}
@@ -4433,7 +4468,9 @@ function AlertDrawer({
         <button onClick={close}>×</button>
       </div>
       <h2>Needs attention</h2>
-      {!actionable.length ? (
+      {data?.source.syncing ? (
+        <div className="empty-state" role="status"><b>Syncing source records</b><span>Alerts will return when verified records are available.</span></div>
+      ) : !actionable.length ? (
         <div className="empty-state">
           <b>No verified exception.</b>
           <span>Alerts appear only when a source supports them.</span>
@@ -4477,6 +4514,13 @@ function LoadingState() {
       </div>
     </div>
   );
+}
+export function SourceSyncingState({ refresh }: { refresh: () => void | Promise<void> }) {
+  return <section className="failure-state" role="status" aria-live="polite" aria-busy="true">
+    <b>Syncing source records</b>
+    <span>Verified totals will return when the refresh finishes. Your other workspaces remain available.</span>
+    <button onClick={() => void refresh()}>Check again</button>
+  </section>;
 }
 function FailureState({
   message,

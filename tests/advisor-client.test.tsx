@@ -51,7 +51,7 @@ test("thinking is announced as status and clearing never claims to analyze data"
 test("financial answers render readable tables and lists while keeping provider text inert", () => {
   const markup = renderToStaticMarkup(<AdvisorAnswerContent text={'## Sales review\n| KPI | Value |\n| --- | ---: |\n| Gross margin | **Unavailable** |\n- Verify missing product costs\n1. Review the source\n<img src=x onerror=alert(1)>\n[Run code](javascript:alert(1))'}/>);
   assert.match(markup, /<h4>Sales review<\/h4>/);
-  assert.match(markup, /<th scope="col">KPI/);
+  assert.match(markup, /<th scope="col"[^>]*>KPI/);
   assert.match(markup, /<strong>Unavailable<\/strong>/);
   assert.match(markup, /<ul><li>Verify missing product costs/);
   assert.match(markup, /<ol start="1"><li>Review the source/);
@@ -66,7 +66,7 @@ test("chat settings are labelled and closed initially while consent stays in the
   assert.doesNotMatch(markup, /<dialog[^>]* open=/);
   assert.match(markup, /role="switch" aria-label="Conversation memory"/);
   assert.doesNotMatch(markup, /type="checkbox"[^>]*checked=""/);
-  assert.match(markup, /Saved chats stay until you delete them/);
+  assert.match(markup, /Saved chats are removed after 90 days of inactivity/);
   assert.match(markup, /New chat/);
   assert.ok(markup.indexOf('class="ai-consent"') < markup.indexOf('<dialog'));
   assert.match(markup, /aria-controls="advisor-suggestions"/);
@@ -127,8 +127,9 @@ test("stop aborts the request transport and cannot return a late answer", async 
   complete(Response.json({answer:"Late answer"}));
 });
 
-test("progressive replies keep a financial table complete and provider markup inert", () => {
-  const markup = renderToStaticMarkup(<AdvisorAnswerContent visibleWords={1} text={"| KPI | Amount |\n| --- | --- |\n| Net sales | CAD $12,345.67 |\nDo not show this later paragraph yet."}/>);
+test("progressive replies retain full financial tables and accessible text immediately", () => {
+  const markup = renderToStaticMarkup(<AdvisorAnswerContent animate text={"| KPI | Amount |\n| --- | --- |\n| Net sales | CAD $12,345.67 |\nThe complete answer is available immediately."}/>);
   assert.match(markup, /CAD \$12,345\.67/);
-  assert.doesNotMatch(markup, /later paragraph/);
+  assert.match(markup, /The complete answer is available immediately/);
+  assert.doesNotMatch(markup, /aria-hidden|visibility:hidden|display:none/);
 });

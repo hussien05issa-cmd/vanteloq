@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import "maplibre-gl/dist/maplibre-gl.css";
 import { GoogleAnalyticsConsent } from "./google-analytics-consent";
 import { DEFAULT_SOCIAL_IMAGE, organizationJsonLd, safeJsonLd, SITE_ORIGIN } from "./seo";
 import "./globals.css";
