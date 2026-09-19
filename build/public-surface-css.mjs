@@ -4,7 +4,7 @@ import workspaceAnchors from "./workspace-style-anchors.json" with { type: "json
 const anchors = new Set(workspaceAnchors);
 export const PUBLIC_STYLE_QUERY = "public-surface";
 
-// These positive root classes belong only to authenticated components. Never
+// These audited positive roots are absent from public/auth/demo components. Never
 // infer a required class from :not(), :is(), :where() or a descendant selector.
 export function requiresWorkspace(selector) {
   const value = selector.trim();
@@ -16,7 +16,9 @@ export function requiresWorkspace(selector) {
 export function publicSurfaceCss(css, from) {
   const root = postcss.parse(css, { from });
   root.walkRules(rule => {
-    if (rule.selectors.every(requiresWorkspace)) rule.remove();
+    const selectors = rule.selectors.filter(selector => !requiresWorkspace(selector));
+    if (!selectors.length) rule.remove();
+    else if (selectors.length !== rule.selectors.length) rule.selectors = selectors;
   });
   root.walkAtRules(rule => {
     if (rule.nodes && rule.nodes.every(node => node.type === "comment")) rule.remove();

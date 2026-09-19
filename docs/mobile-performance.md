@@ -5,10 +5,11 @@ The public homepage must remain responsive and readable while preserving the wor
 ## Stylesheet boundaries
 
 - Original CSS files remain the source of truth. The root layout imports their public projections through the `public-surface` query.
-- `build/public-surface-css.mjs` omits only selectors whose positively required first class is in the audited workspace anchor list. It keeps mixed selectors, shared styles, fonts, variables, animations and public/authentication/demo styles.
+- `build/public-surface-css.mjs` omits only selectors whose positively required first class is in the audited non-public anchor list. For comma-separated rules it retains every public selector with the same declarations and cascade position. It keeps shared styles, fonts, variables, animations and public/authentication/demo styles. Mixed `:is()` expressions remain untouched.
 - Do not expand this to substring matching, broad prefixes, negated classes or approximate dead-code removal.
 - The lazy workspace imports the complete originals in exactly the old order, before its isolated component styles. This preserves the cascade, including after sign-out. There is a deliberate transfer tradeoff: shared public rules can be downloaded again with the complete workspace styles. Do not claim this reduces every authenticated page's CSS payload.
-- The boundary tests verify that excluded anchors are absent from public, demo and authentication code. A new shared component may require an anchor to be removed from the list.
+- The boundary tests verify that excluded anchors are absent from public, demo and authentication code, including loading, error and not-found routes. A new shared component may require an anchor to be removed from the list. Dynamic class prefixes and ambiguous generic roots must not be added just because a literal search finds no match.
+- The expanded audit also covers retired presentation roots that no current runtime route uses. Their source rules remain intact in the originals; this is a delivery optimisation, not deletion of the original design system.
 - Keep `app/workspace-base-styles.ts` in the same order as `app/layout.tsx`. Do not edit generated production assets.
 
 ## Rendering and navigation
