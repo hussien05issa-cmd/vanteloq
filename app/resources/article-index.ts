@@ -54,8 +54,8 @@ export const RESOURCE_ARTICLE_SUMMARIES = [
   {
     "slug": "bookloq-vs-traditional-accounting-software",
     "title": "BookLoQ vs. Traditional Accounting Software",
-    "description": "Compare BookLoQ with traditional accounting software and see how sales, payouts, reconciliation, documents and cash decisions can work together.",
+    "description": "Compare BookLoQ with other financial tools and see how sales, payouts, transaction review, documents and cash decisions can work together.",
     "category": "finance",
-    "readingTime": 5
+    "readingTime": 7
   }
 ] as const satisfies readonly ResourceArticleSummary[];

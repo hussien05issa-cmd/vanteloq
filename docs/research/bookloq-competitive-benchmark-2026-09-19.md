@@ -29,7 +29,7 @@ Source: [BookLoQ Accounting and Cash Flow for Small Businesses](https://vanteloq
 
 ## Product conclusions
 
-1. Preserve the existing BookLoQ ledger, reconciliation, month-end and 13-week cash capabilities. Deepen them instead of describing them as missing.
+1. Preserve the existing BookLoQ ledger, transaction review and matching, month-end and 13-week cash capabilities. Deepen them instead of describing them as missing.
 2. Make sale-to-bank lineage a core commerce workflow: sale, refund, tax, fee, reserve, payout, deposit, journal and financial statement.
 3. Use an evidence-led review queue instead of a chatbot as the primary accounting interaction.
 4. Keep original documents beside extracted or proposed accounting values.

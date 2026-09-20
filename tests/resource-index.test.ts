@@ -42,6 +42,20 @@ test("BookLoQ comparison metadata stays aligned and the public copy keeps the ve
     sections: article.sections,
   });
   assert.match(publicCopy, /QuickBooks connectivity remains sandbox-only/);
+  assert.doesNotMatch(publicCopy, /transaction reconciliation/i);
   assert.doesNotMatch(publicCopy, /\b(?:Xero|Zoho|FreshBooks|Wave|Sage|Digits|Puzzle|A2X|Dext|Ramp|Fathom)\b/i);
   assert.doesNotMatch(publicCopy, /\b(?:BookLoQ is faster|BookLoQ is more accurate|BookLoQ is the best|BookLoQ is better than)\b/i);
+
+  const chart = article.sections.find((section) => section.id === "comparison-chart");
+  assert.ok(chart?.table, "BookLoQ comparison chart is missing");
+  assert.deepEqual(chart.table.headers, [
+    "Capability",
+    "BookLoQ today",
+    "General accounting software",
+    "Commerce settlement tools",
+    "Reporting and planning tools",
+  ]);
+  assert.equal(chart.table.rows.length, 8);
+  assert.match(JSON.stringify(chart.table.rows), /13-week forecast/);
+  assert.match(JSON.stringify(chart.table.rows), /does not file returns, move money or certify completeness/i);
 });

@@ -73,11 +73,19 @@
 .pricing-page .public-bookloq-price-options strong small { font-size:11px; font-weight:500; letter-spacing:0; }
 .pricing-page .public-bookloq-price-options p { margin:0; color:#607589; font-size:12px; line-height:1.55; }
 .pricing-page .public-bookloq-price-options a { display:flex; align-items:center; justify-content:center; min-height:43px; margin-top:auto; border-radius:9px; background:#185ebc; color:#fff; font-weight:700; text-decoration:none; }
+.bookloq-price-links { display:flex; flex-wrap:wrap; gap:8px 20px; margin-top:14px; }
+.bookloq-price-links a { min-height:38px; display:inline-flex; align-items:center; font-weight:650; }
 .pricing-questions { margin:42px 0; }
 .pricing-questions details { border-bottom:1px solid #d5e0ed; }
 .pricing-questions summary { padding:21px 4px; font-size:15px; font-weight:600; color:#193d59; cursor:pointer; }
 .pricing-questions p { max-width:850px; color:#52677d; font-size:14px; line-height:1.8; padding:0 4px 20px; margin:0; }
-.pricing-page .demo-conversion h2 { color:#173b58; font-size:25px; line-height:1.25; letter-spacing:-.03em; margin:0 0 10px; }
+.pricing-page .pricing-demo-conversion { position:relative; overflow:hidden; border:1px solid #274d72; background:linear-gradient(120deg,#0e2b47 0%,#123e66 62%,#17588f 100%); box-shadow:0 18px 44px rgba(19,52,81,.16); }
+.pricing-page .pricing-demo-conversion::after { content:""; position:absolute; inset:-70% -12% auto 58%; width:360px; height:260px; border-radius:50%; background:radial-gradient(circle,rgba(99,181,255,.26),transparent 66%); pointer-events:none; }
+.pricing-page .pricing-demo-conversion > * { position:relative; z-index:1; }
+.pricing-page .pricing-demo-conversion h2 { color:#f7fbff; font-size:25px; line-height:1.25; letter-spacing:-.03em; margin:5px 0 10px; }
+.pricing-page .pricing-demo-conversion p { max-width:670px; color:#e5eef8; font-size:14px; line-height:1.65; }
+.pricing-demo-label { color:#b9d9fb; font-size:10px; font-weight:750; letter-spacing:.13em; }
+.pricing-page .pricing-demo-conversion > a:first-of-type { min-height:46px; display:inline-flex; align-items:center; justify-content:center; padding-inline:20px; border:1px solid rgba(255,255,255,.7); background:#f7fbff; color:#153d62; box-shadow:0 8px 22px rgba(5,24,44,.2); }
 .pricing-footer { display:flex; flex-wrap:wrap; gap:10px 26px; margin-top:42px; padding-top:24px; border-top:1px solid #d7e1ed; }
 .pricing-footer a { padding:8px 0; font-size:12px; color:#425e78; }
 @media(max-width:1000px) {
