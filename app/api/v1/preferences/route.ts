@@ -6,6 +6,7 @@ import {
   PROTECTED_NAVIGATION_VIEW_IDS,
   normalizeHiddenNavigation,
 } from "../../../../domain/navigation-preferences";
+import { normalizeDashboardPreferences, parseDashboardPreferencesJson } from "../../../../domain/dashboard-preferences";
 import {
   ApiError,
   enforceRateLimit,
@@ -47,6 +48,7 @@ async function preferencePayload(context: Awaited<ReturnType<typeof requireAcces
       PROTECTED_NAVIGATION_VIEW_IDS,
     ),
     preferredLocationId,
+    dashboardPreferences: parseDashboardPreferencesJson(preferences?.dashboardPreferencesJson),
     locations,
   };
 }
@@ -65,16 +67,24 @@ export async function POST(request: Request) {
     const context = await requireAccess(request, readers, "business.settings");
     await enforceRateLimit("preferences:write", context.userId, 60, 3_600);
     const input = await readJsonObject(request, 16_000);
+    const [existing] = await getDb()
+      .select()
+      .from(accountPreferences)
+      .where(eq(accountPreferences.userId, context.userId))
+      .limit(1);
     const hiddenNavigation = normalizeHiddenNavigation(
       Array.isArray(input.hiddenNavigation)
         ? input.hiddenNavigation.filter((item): item is string => typeof item === "string")
-        : [],
+        : jsonStrings(existing?.hiddenNavigationJson),
       NAVIGATION_VIEW_IDS,
       PROTECTED_NAVIGATION_VIEW_IDS,
     );
-    const preferredLocationId = typeof input.preferredLocationId === "string" && input.preferredLocationId
-      ? input.preferredLocationId
-      : null;
+    const preferredLocationId = Object.prototype.hasOwnProperty.call(input, "preferredLocationId")
+      ? (typeof input.preferredLocationId === "string" && input.preferredLocationId ? input.preferredLocationId : null)
+      : existing?.preferredLocationId ?? null;
+    const dashboardPreferences = Object.prototype.hasOwnProperty.call(input, "dashboardPreferences")
+      ? normalizeDashboardPreferences(input.dashboardPreferences)
+      : parseDashboardPreferencesJson(existing?.dashboardPreferencesJson);
     if (preferredLocationId) {
       await requireAccessibleLocation(context, preferredLocationId).catch(() => {
         throw new ApiError(400, "INVALID_LOCATION", "Select an active location available to this account.");
@@ -88,6 +98,7 @@ export async function POST(request: Request) {
         emailNotifications: true,
         rememberedProfile: true,
         hiddenNavigationJson: JSON.stringify(hiddenNavigation),
+        dashboardPreferencesJson: JSON.stringify(dashboardPreferences),
         preferredLocationId,
         createdAt: now,
         updatedAt: now,
@@ -96,6 +107,7 @@ export async function POST(request: Request) {
         target: accountPreferences.userId,
         set: {
           hiddenNavigationJson: JSON.stringify(hiddenNavigation),
+          dashboardPreferencesJson: JSON.stringify(dashboardPreferences),
           preferredLocationId,
           updatedAt: now,
         },

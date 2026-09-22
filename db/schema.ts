@@ -255,6 +255,7 @@ export const accountPreferences = sqliteTable("account_preferences", {
   emailNotifications: integer("email_notifications", { mode: "boolean" }).notNull().default(true),
   rememberedProfile: integer("remembered_profile", { mode: "boolean" }).notNull().default(true),
   hiddenNavigationJson: text("hidden_navigation_json").notNull().default("[]"),
+  dashboardPreferencesJson: text("dashboard_preferences_json").notNull().default("{}"),
   preferredLocationId: text("preferred_location_id"),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),

@@ -434,7 +434,15 @@ export function buildCommandCentre(rows: MetricRow[], currency: string, asOf = n
     comparisons,
     balances: { inventoryValueCents: latestWith("inventoryValueCents"), cashBalanceCents: latestWith("cashBalanceCents"), accountsPayableCents: latestWith("accountsPayableCents") },
     metrics,
-    trend: (period ? currentRows : sorted.slice(-90)).map((row) => ({ date: row.businessDate, netSalesCents: row.netSalesCents, grossProfitCents: row.netSalesCents - row.costOfGoodsCents, transactionCount: row.transactionCount, ...(period ? {inventoryValueCents:inventoryAt(row.businessDate)}: {}) })),
+    trend: (period ? currentRows : sorted.slice(-90)).map((row) => ({
+      date: row.businessDate,
+      netSalesCents: row.netSalesCents,
+      grossProfitCents: row.netSalesCents - row.costOfGoodsCents,
+      transactionCount: row.transactionCount,
+      averageTransactionCents: row.transactionCount ? row.netSalesCents / row.transactionCount : null,
+      unitsSold: row.unitsSold,
+      ...(period ? { inventoryValueCents: inventoryAt(row.businessDate) } : {}),
+    })),
     periodComparisons: {
       sevenDays: windowComparison(rows, latestBusinessDate, 7),
       thirtyDays,

@@ -9,19 +9,25 @@ export const executiveDefinitions = [
   { key: "cash_balance", label: "Cash Balance", formula: "Recorded cash account balance at the selected period end. Credit limits are excluded.", unit: "money" },
   { key: "cash_flow", label: "Cash Flow", formula: "Posted cash-account debits minus credits within the selected period. Internal transfers net to zero.", unit: "money" },
   { key: "inventory_value", label: "Inventory Value", formula: "Recorded inventory at cost at period end. Never summed across dates.", unit: "money" },
+  { key: "transactions", label: "Transactions", formula: "Count of recorded completed sales transactions in the selected period.", unit: "count" },
+  { key: "average_order_value", label: "Average Order Value", formula: "Net revenue divided by recorded completed transactions in the selected period.", unit: "money" },
+  { key: "units_sold", label: "Units Sold", formula: "Recorded item quantity sold, net of recorded returns, in the selected period.", unit: "count" },
 ] as const;
 export type ExecutiveKey = typeof executiveDefinitions[number]["key"];
 export type ExecutivePeriod = ReturnType<typeof executivePeriod>;
 export function executivePeriod(params: URLSearchParams, today: string) {
   const preset = params.get("period") ?? "30d";
   const comparison = params.get("compare") ?? "previous";
-  if (!["today", "7d", "30d", "mtd", "qtd", "ytd", "custom"].includes(preset) || !["previous", "yoy", "budget", "target"].includes(comparison)) throw new Error("Choose a supported reporting period and comparison.");
+  if (!["today", "yesterday", "7d", "30d", "90d", "mtd", "qtd", "ytd", "1y", "custom"].includes(preset) || !["previous", "yoy", "budget", "target"].includes(comparison)) throw new Error("Choose a supported reporting period and comparison.");
   let from = shiftCommerceDate(today, -29), to = today;
   if (preset === "today") from = today;
+  if (preset === "yesterday") from = to = shiftCommerceDate(today, -1);
   if (preset === "7d") from = shiftCommerceDate(today, -6);
+  if (preset === "90d") from = shiftCommerceDate(today, -89);
   if (preset === "mtd") from = today.slice(0,7) + "-01";
   if (preset === "qtd") from = today.slice(0,4) + "-" + String(Math.floor((Number(today.slice(5,7)) - 1) / 3) * 3 + 1).padStart(2,"0") + "-01";
   if (preset === "ytd") from = today.slice(0,4) + "-01-01";
+  if (preset === "1y") from = shiftCommerceDate(today, -364);
   if (preset === "custom") { from = params.get("from") ?? ""; to = params.get("to") ?? ""; }
   const period = parseCommercePeriod(from,to,today);
   if (period.days > 366 || to > today) throw new Error("Choose up to 366 days ending today or earlier.");

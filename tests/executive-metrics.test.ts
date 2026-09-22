@@ -7,6 +7,8 @@ const row=(accountType:string,systemKey:string,debitCents=0,creditCents=0):Execu
 test("executive date windows use real calendar periods and clamp leap-day year comparisons",()=>{
   const p=(query:string,today="2026-09-17")=>executivePeriod(new URLSearchParams(query),today);
   assert.equal(p("period=qtd").from,"2026-07-01");assert.equal(p("period=mtd").from,"2026-09-01");assert.equal(p("period=ytd").days,260);
+  assert.deepEqual({from:p("period=yesterday").from,to:p("period=yesterday").to},{from:"2026-09-16",to:"2026-09-16"});
+  assert.equal(p("period=90d").days,90);assert.equal(p("period=1y").days,365);
   const leap=p("period=today&compare=yoy","2024-02-29");assert.equal(leap.comparisonFrom,"2023-02-28");assert.equal(leap.comparisonTo,"2023-02-28");
   assert.throws(()=>p("period=custom&from=2026-02-30&to=2026-03-03"));assert.throws(()=>p("period=custom&from=2024-01-01&to=2026-01-01"));assert.throws(()=>p("period=custom&from=2026-09-18&to=2026-09-18"));
   assert.equal(changePercent(100,0),null);assert.equal(changePercent(-50,-100),50);
