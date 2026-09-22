@@ -66,7 +66,7 @@ test("public connector labels disclose the real activation boundary", () => {
   assert.equal(integrationPublicStatus(integrationCatalog.find((provider) => provider.id === "xero")!).label, "Coming Soon");
   assert.equal(integrationPublicStatus(integrationCatalog.find((provider) => provider.id === "doordash")!).label, "Coming Soon");
   assert.equal(integrationPublicStatus(integrationCatalog.find((provider) => provider.id === "payroll")!).label, "Coming Soon");
-  assert.equal(integrationPublicStatus(integrationCatalog.find((provider) => provider.id === "stripe")!).label, "Available");
+  assert.equal(integrationPublicStatus(integrationCatalog.find((provider) => provider.id === "stripe")!).label, "Coming Soon");
 });
 
 test("integration cards use one canonical ordered category taxonomy", () => {

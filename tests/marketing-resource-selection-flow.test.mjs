@@ -7,7 +7,7 @@ import { registerSupabaseTestServer } from "./helpers/supabase-loopback-transpor
 import { activateTestSubscription } from "./helpers/subscription-fixture.mjs";
 
 const origin = "https://vanteloq.example";
-const owner = { email: "marketing-flow-owner@example.invalid", name: "Marketing Flow Owner" };
+const owner = { email: "hussienissa@lexedgeconsulting.com", name: "Marketing Flow Owner" };
 const executionContext = { waitUntil() {}, passThroughOnException() {} };
 
 function identityHeaders(write = false) {
@@ -88,6 +88,7 @@ async function createEnvironment() {
     GOOGLE_MARKETING_CLIENT_SECRET: "google-secret",
     GOOGLE_MARKETING_REDIRECT_URI: `${origin}/api/v1/integrations/google/callback`,
     INTEGRATION_ENCRYPTION_KEY: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    VANTELOQ_INTERNAL_ACCESS_ENABLED: "true",
     ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) },
   };
   return { authServer, miniflare, database, worker, environment };

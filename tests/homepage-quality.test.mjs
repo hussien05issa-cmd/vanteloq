@@ -46,11 +46,12 @@ test("homepage copy stays within the verified product boundary", async () => {
   assert.match(html, /ai-orbit-showcase/);
   assert.doesNotMatch(html, /Preview thinking|Pause logo animation/);
   for (const path of ["/privacy", "/terms", "/cookies", "/contact", "/pricing", "/custom-plan"]) assert.ok(html.includes('href="' + path + '"'),path);
-  assert.match(html, /owned and operated by LexEdge Consulting/);
+  assert.match(html, /built and operated by/);
+  assert.match(html, /LexEdge Consulting/);
   assert.match(html, /lexedge-consulting-logo-web\.png/);
   assert.match(html, /Memory starts off/);
   assert.match(html, /Which system do you use/);
-  assert.match(html, /review source totals/);
+  assert.match(html, /review the imported totals/);
 });
 
 test("homepage omits the former independent retail label", async () => {
@@ -62,7 +63,7 @@ test("homepage omits the former independent retail label", async () => {
 test("homepage keeps the three-step journey and explicit subscription context", async () => {
   const html = await (await fetchRoute("/")).text();
   assert.match(html, /From signup to the first insight/);
-  for (const label of ["Set up your workspace", "Connect and check", "Investigate your first insight"]) assert.ok(html.includes(label));
+  for (const label of ["Set up your account", "Bring in your records", "Work through a store question"]) assert.ok(html.includes(label));
   assert.match(html, /BookLoQ/);
   assert.match(html, /CAD \/ month/);
 });

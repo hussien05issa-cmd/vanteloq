@@ -65,22 +65,24 @@ test("the Lightspeed integration uses the standalone image asset", async () => {
     new URL("../app/integration-brand-logo.tsx", import.meta.url),
     "utf8",
   );
-  assert.match(source, /\/brand\/lightspeed-mark\.png/);
+  assert.match(source, /\/brand\/lightspeed-mark-ui\.webp/);
   assert.doesNotMatch(source, /name === "Lightspeed"[\s\S]{0,200}<path/);
 });
 
 test("product branding uses the supplied BookLoQ assets and a shared trademark glyph", async () => {
-  const [productLogoSource, homepage, homepageCss] = await Promise.all([
+  const [productLogoSource, homepage, financeProof, homepageCss] = await Promise.all([
     readFile(new URL("../app/product-brand-logo.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/finance-proof.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/homepage.css", import.meta.url), "utf8"),
   ]);
-  assert.match(productLogoSource, /\/brand\/bookloq-logo-transparent\.png/);
-  assert.match(productLogoSource, /\/brand\/bookloq-mark\.png/);
+  assert.match(productLogoSource, /\/brand\/bookloq-logo-ui\.webp/);
+  assert.match(productLogoSource, /\/brand\/bookloq-mark-ui\.webp/);
   assert.doesNotMatch(productLogoSource, /bookloq-logo\.jpeg/);
   assert.match(productLogoSource, /brand-trademark/);
   assert.match(productLogoSource, />™<\/sup>/);
-  assert.match(homepage, /<ProductBrandLogo product="bookloq"\s*\/>/);
+  assert.match(homepage, /<FinanceProof\s*\/>/);
+  assert.match(financeProof, /<ProductBrandLogo product="bookloq" variant="full"/);
   assert.match(homepageCss, /\.home-product-logo-shell\.bookloq-logo-shell \{[^}]*background:\s*transparent/);
   assert.match(homepageCss, /\.product-brand-logo\.bookloq\.full \{[^}]*background:\s*transparent/);
 });
@@ -409,7 +411,7 @@ test("the banking catalogue uses Plaid's standalone mark and omits removed aggre
     new URL("../app/integration-catalog.ts", import.meta.url),
     "utf8",
   );
-  assert.match(logoSource, /\/brand\/plaid-mark\.png/);
+  assert.match(logoSource, /\/brand\/plaid-mark-ui\.webp/);
   assert.doesNotMatch(catalogue, /\bMX\b|\bFlinks\b/);
   assert.match(catalogue, /name: "Plaid"/);
 });
