@@ -28,8 +28,8 @@ test("saved credentials alone never offer unfinished providers to ordinary subsc
   assert.equal(customerIntegrationAvailability({ ...provider("xero"), availability: "provider_build_required" }, true).canStartConnection, false);
 });
 
-test("working providers retain connection access and missing configuration never pretends to be ready", () => {
-  for (const id of ["lightspeed-r", "lightspeed", "square", "stripe", "google"]) {
+test("only the accepted R-Series pilot is public while missing configuration never pretends to be ready", () => {
+  for (const id of ["lightspeed-r"]) {
     assert.deepEqual(customerIntegrationAvailability(provider(id)), { comingSoon: false, canStartConnection: true, previewAccess: false });
     assert.equal(customerIntegrationAvailability({ ...provider(id), providerReadiness: null }).canStartConnection, false);
   }

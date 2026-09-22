@@ -2,17 +2,24 @@
   position: relative; display: flex; flex-direction: column; align-items: center; gap: 0;
   min-width: 0; min-height: 0; padding: 30px 25px 24px; overflow: clip; text-align: center;
   border: 1px solid #294872; border-radius: 22px;
-  background: radial-gradient(ellipse at 52% 27%, #124174 0%, #091c38 43%, #060e1e 80%);
-  box-shadow: inset 0 1px 0 #74adff2b, 0 18px 48px #142b4517;
+  background: radial-gradient(ellipse at 52% 25%, #143d70 0%, #0a203f 44%, #060e1e 82%);
+  box-shadow: inset 0 1px 0 #a5c8ff2b, inset 0 -1px 0 #02081580, 0 18px 48px #142b4517;
 }
 .public-site .ai-orbit-showcase::before {
   content: ""; position: absolute; inset: -20% -54%; pointer-events: none;
-  border: 1px solid #539cff35; border-radius: 34%; transform: rotate(-31deg);
-  box-shadow: 0 0 22px #267df923, inset 0 0 24px #267df913;
+  border: 1px solid #6d8fff20; border-radius: 34%; transform: rotate(-31deg);
+  box-shadow: 0 0 24px #267df917, inset 0 0 26px #6e54d912;
 }
 .public-site .ai-orbit-showcase::after { display: none; }
 .ai-orbit-stage { position: relative; display: grid; place-items: center; width: 100%; min-height: 230px; }
-.ai-orbit-stage > .vanteloq-ai-logo { width: min(236px, 100%) !important; height: auto !important; aspect-ratio: 1; filter: drop-shadow(0 0 14px #378dff3b); }
+.ai-orbit-stage > .vanteloq-ai-logo {
+  width: min(236px, 100%) !important;
+  height: auto !important;
+  aspect-ratio: 1;
+  filter: drop-shadow(0 12px 22px #0108177a) drop-shadow(0 0 10px #477fff2b);
+  transition: filter .45s ease;
+}
+.ai-orbit-stage > .vanteloq-ai-logo:hover { filter: drop-shadow(0 14px 24px #01081780) drop-shadow(0 0 14px #6e72ff40); }
 .ai-orbit-wordmark { position: relative; }
 .ai-orbit-wordmark > span { color: #f0f6ff; font-size: clamp(19px, 2.2vw, 28px); font-weight: 550; letter-spacing: .13em; white-space: nowrap; }
 .ai-orbit-wordmark b { color: #72baff; font-weight: 550; }

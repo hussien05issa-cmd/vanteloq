@@ -4,7 +4,7 @@ import {
   PRIVACY_POLICY_VERSION,
   TERMS_OF_SERVICE_VERSION,
 } from "../shared/legal-versions.ts";
-import { ApiError, hashIdentifier, type TrustedIdentity } from "./api.ts";
+import { ApiError, clientSource, hashIdentifier, type TrustedIdentity } from "./api.ts";
 import { invitationIdentityAllowed, invitationSessionAllowed } from "./team-invitation-security.ts";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -250,7 +250,7 @@ export async function acceptTeamInvitation(
   const firstName = names[0] ?? "Team";
   const lastName = names.slice(1).join(" ") || "Member";
   const now = Date.now();
-  const sourceHash = await hashIdentifier(`team-acceptance-source:${request.headers.get("cf-connecting-ip") ?? "unknown"}`);
+  const sourceHash = await hashIdentifier(`team-acceptance-source:${clientSource(request)}`);
   const userAgentHash = await hashIdentifier(`team-acceptance-agent:${request.headers.get("user-agent") ?? "unknown"}`);
   const database = getD1();
   await database.batch([

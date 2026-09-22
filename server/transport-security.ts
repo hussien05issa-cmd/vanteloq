@@ -15,3 +15,25 @@ export function rejectLegacyTls(request: Request): Response | null {
     },
   });
 }
+
+const CLOUDFLARE_CROSS_ZONE_WORKER_IP = "2a06:98c0:3600::103";
+const TRUSTED_TLS_EDGE_ZONES = new Set(["vanteloq.com", "hussien05issa.workers.dev"]);
+const CLIENT_IP_PATTERN = /^[0-9a-f:.]{3,64}$/i;
+
+/**
+ * Identifies the narrow Cloudflare-to-Sites hop used by Vanteloq's TLS edge.
+ * Cloudflare overwrites CF-Connecting-IP with this reserved address for
+ * cross-zone Worker subrequests and adds CF-Worker itself.
+ */
+export function isTrustedTlsEdgeProxy(request: Request): boolean {
+  const workerZone = request.headers.get("cf-worker")?.trim().toLowerCase() ?? "";
+  return request.headers.get("x-vanteloq-edge-proxy") === "1"
+    && request.headers.get("cf-connecting-ip")?.trim().toLowerCase() === CLOUDFLARE_CROSS_ZONE_WORKER_IP
+    && TRUSTED_TLS_EDGE_ZONES.has(workerZone);
+}
+
+export function trustedTlsEdgeClientIp(request: Request): string | null {
+  if (!isTrustedTlsEdgeProxy(request)) return null;
+  const candidate = request.headers.get("x-vanteloq-client-ip")?.trim() ?? "";
+  return CLIENT_IP_PATTERN.test(candidate) ? candidate : null;
+}

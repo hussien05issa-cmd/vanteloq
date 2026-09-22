@@ -1,6 +1,17 @@
 // Public rollout is separate from credentials and a customer's saved connection.
 // Remove a provider only after its public access and reporting path are verified.
-export const PREVIEW_INTEGRATION_IDS: readonly string[] = ["clover", "moneris", "quickbooks", "shopify", "shopify-pos", "meta"];
+export const PREVIEW_INTEGRATION_IDS: readonly string[] = [
+  "clover",
+  "google",
+  "lightspeed",
+  "meta",
+  "moneris",
+  "quickbooks",
+  "shopify",
+  "shopify-pos",
+  "square",
+  "stripe",
+];
 
 type Provider = {
   id?: string;

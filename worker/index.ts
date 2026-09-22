@@ -1,7 +1,7 @@
 /** Cloudflare Worker entry point for the vinext-starter template. */
 import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } from "vinext/server/image-optimization";
 import handler from "vinext/server/app-router-entry";
-import { rejectLegacyTls } from "../server/transport-security";
+import { isTrustedTlsEdgeProxy, rejectLegacyTls } from "../server/transport-security";
 
 interface Env {
   POS_SYNC_SECRET?: string;
@@ -100,9 +100,18 @@ const worker = {
     const transportDenied = rejectLegacyTls(request);
     if (transportDenied) return transportDenied;
     (globalThis as typeof globalThis & { __vanteloqEnv?: Env }).__vanteloqEnv = env;
-    const url = new URL(request.url);
+    const trustedTlsEdge = isTrustedTlsEdgeProxy(request);
+    let appRequest = request;
+    if (trustedTlsEdge) {
+      const publicUrl = new URL(request.url);
+      publicUrl.protocol = "https:";
+      publicUrl.hostname = "vanteloq.com";
+      publicUrl.port = "";
+      appRequest = new Request(publicUrl, request);
+    }
+    const url = new URL(appRequest.url);
 
-    if (url.hostname === "vanteloq.hussien05issa.chatgpt.site") {
+    if (url.hostname === "vanteloq.hussien05issa.chatgpt.site" && !trustedTlsEdge) {
       const destination = new URL("https://vanteloq.com");
       destination.pathname = url.pathname;
       destination.search = url.search;
@@ -111,8 +120,8 @@ const worker = {
 
     if (url.pathname === "/_vinext/image") {
       const allowedWidths = [...DEFAULT_DEVICE_SIZES, ...DEFAULT_IMAGE_SIZES];
-      return handleImageOptimization(request, {
-        fetchAsset: (path) => env.ASSETS.fetch(new Request(new URL(path, request.url))),
+      return handleImageOptimization(appRequest, {
+        fetchAsset: (path) => env.ASSETS.fetch(new Request(new URL(path, appRequest.url))),
         transformImage: async (body, { width, format, quality }) => {
           const result = await env.IMAGES.input(body).transform(width > 0 ? { width } : {}).output({ format, quality });
           return result.response();
@@ -120,7 +129,7 @@ const worker = {
       }, allowedWidths);
     }
 
-    const response = await handler.fetch(request, env, ctx);
+    const response = await handler.fetch(appRequest, env, ctx);
     const headers = new Headers(response.headers);
     headers.delete("Server");
     headers.delete("X-Powered-By");

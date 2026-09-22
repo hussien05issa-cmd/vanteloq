@@ -1,5 +1,6 @@
 import { getD1, getRuntimeEnv } from "../db/index.ts";
 import { isRecentMfa, latestMfaTime } from "../shared/recent-mfa.ts";
+import { trustedTlsEdgeClientIp } from "./transport-security.ts";
 
 const EMAIL_PATTERN = /^[^\s@]{1,64}@[^\s@]{1,190}$/;
 const JSON_CONTENT_TYPE = /^application\/json(?:\s*;|$)/i;
@@ -240,7 +241,7 @@ export async function handleApi(
 }
 
 export function clientSource(request: Request): string {
-  return request.headers.get("cf-connecting-ip")?.trim() || "unknown";
+  return trustedTlsEdgeClientIp(request) ?? (request.headers.get("cf-connecting-ip")?.trim() || "unknown");
 }
 
 export async function hashIdentifier(value: string): Promise<string> {
