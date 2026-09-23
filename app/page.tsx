@@ -469,7 +469,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
         <FeatureCarousel/>
       </section>
       <section className="home-operating-ring-story" aria-labelledby="home-operating-ring-title">
-        <div className="home-ring-visual" role="img" aria-label="Illustration of sales, margin and cash evidence bands completing">
+        <div className="home-ring-visual" role="img" aria-label="Sales, margin and cash evidence bands with 9 of 9 checks complete">
           <svg viewBox="0 0 150 150" aria-hidden="true"><g className="home-ring-sales"><circle cx="75" cy="75" r="61" pathLength="100"/></g><g className="home-ring-margin"><circle cx="75" cy="75" r="47" pathLength="100"/></g><g className="home-ring-cash"><circle cx="75" cy="75" r="33" pathLength="100"/></g></svg>
           <span><strong>9 of 9</strong><small>Evidence checks</small></span>
         </div>
