@@ -471,7 +471,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
       <section className="home-operating-ring-story" aria-labelledby="home-operating-ring-title">
         <div className="home-ring-visual" role="img" aria-label="Illustration of sales, margin and cash evidence bands completing">
           <svg viewBox="0 0 150 150" aria-hidden="true"><g className="home-ring-sales"><circle cx="75" cy="75" r="61" pathLength="100"/></g><g className="home-ring-margin"><circle cx="75" cy="75" r="47" pathLength="100"/></g><g className="home-ring-cash"><circle cx="75" cy="75" r="33" pathLength="100"/></g></svg>
-          <span><strong>9 of 9</strong><small>Illustrative progress</small></span>
+          <span><strong>9 of 9</strong><small>Evidence checks</small></span>
         </div>
         <div><p className="demo-eyebrow">THE VANTELOQ OPERATING RING</p><h2 id="home-operating-ring-title">Complete the picture before you act.</h2><p>Sales, margin and cash form one source-aware progress view. A band fills only when the required KPI evidence is available for the period. It never treats missing information as a completed result.</p><div className="home-ring-steps"><span><i/>Connect and review sales records</span><span><i/>Confirm product costs and inventory</span><span><i/>Post and review cash records in BookLoQ</span></div><Link prefetch={false} href="/demo#retail">See how the evidence connects <span aria-hidden="true">↗</span></Link></div>
       </section>
