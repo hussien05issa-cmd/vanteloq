@@ -30,6 +30,11 @@ const simpleMarks: Record<string, SimpleIcon> = {
 };
 
 export default function IntegrationBrandLogo({ name, compact = false }: { name: string; compact?: boolean }) {
+  if (name === "QuickBooks" || name === "Shopify" || name === "Shopify POS") {
+    return <span className={`integration-logo brand-provider-reference${compact ? " compact" : ""}`} role="img" aria-label={`${name} integration`}>
+      <svg viewBox="0 0 48 48" aria-hidden="true"><path fill="currentColor" d="M12 13h16a7 7 0 0 1 0 14h-3v5h3a12 12 0 0 0 0-24H12v5Zm24 22H20a7 7 0 0 1 0-14h3v-5h-3a12 12 0 0 0 0 24h16v-5Z"/></svg>
+    </span>;
+  }
   if (name === "Google" || name === "Meta") {
     return <span className={`integration-logo brand-${slug(name)}${compact ? " compact" : ""}`} role="img" aria-label={`${name} logo`}>
       {/* Local brand artwork; provenance is recorded in docs/brand-asset-sources.md. */}

@@ -381,3 +381,14 @@
 .operating-shell .sidebar .nav-group > p { color: #b4c6de; margin-top: 26px; }
 .bookloq-side nav button[aria-current="page"] { background: linear-gradient(115deg,#2355a0,#224777); color: #fff; box-shadow: inset 3px 0 0 #83b6ff; }
 @media (max-width:600px) { .public-site .public-nav nav > a,.unified-public-nav nav > a { padding: 9px 10px; }.operating-shell .sidebar.mobile-open { padding-bottom: max(24px,env(safe-area-inset-bottom)); }.public-nav-actions { gap: 10px; }.operating-shell .sidebar-close { position: sticky; top: 8px; min-height: 44px; z-index: 2; } }
+.onboarding-kpi-guide { display:grid; gap:13px; max-width:620px; margin-top:18px; padding:18px; border:1px solid #c9d8e8; border-radius:17px; background:linear-gradient(145deg,rgba(253,254,255,.96),rgba(235,243,251,.93)); box-shadow:inset 0 1px 0 rgba(255,255,255,.92),0 12px 28px rgba(24,65,107,.07); }
+.onboarding-kpi-guide header { display:flex; justify-content:space-between; align-items:start; gap:16px; }
+.onboarding-kpi-guide header p { margin:0 0 5px; color:#2a64ad; font-size:10px!important; font-weight:750; letter-spacing:.11em; }
+.onboarding-kpi-guide h3 { margin:0; color:#173652; font-size:18px; letter-spacing:-.02em; }
+.onboarding-kpi-guide header>span { max-width:220px; color:#52667b; font-size:11px!important; text-align:right; }
+.onboarding-kpi-guide>p,.onboarding-kpi-guide>small { margin:0; color:#445d75; font-size:12px!important; line-height:1.6; }
+.onboarding-kpi-guide>div { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+.onboarding-kpi-guide article { display:grid; gap:3px; padding:12px; border:1px solid #d7e2ee; border-radius:12px; background:rgba(250,252,255,.86); }
+.onboarding-kpi-guide article strong { color:#173a60; font-size:12px; text-transform:capitalize; }
+.onboarding-kpi-guide article span { color:#53697f; font-size:11px!important; line-height:1.5; }
+@media(max-width:600px){.onboarding-kpi-guide header{display:grid}.onboarding-kpi-guide header>span{max-width:none;text-align:left}.onboarding-kpi-guide>div{grid-template-columns:1fr}}

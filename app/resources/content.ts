@@ -319,7 +319,7 @@ const articles: readonly ResourceArticle[] = [
     category: "analytics",
     author: "Vanteloq Editorial Team",
     published: "2026-08-10",
-    updated: "2026-08-10",
+    updated: "2026-09-23",
     hero: {
       src: "/brand/dashboard-measures-editorial-v2.webp",
       alt: "Sales, cash, inventory and action signals connected to one central decision hub.",
@@ -357,6 +357,28 @@ const articles: readonly ResourceArticle[] = [
             ["Inventory", "Value, stockouts and at-risk items", "Cost basis, location and last verified quantity"],
             ["Operations", "Open exceptions and overdue work", "Owner, priority, due date and approval status"],
           ],
+        },
+      },
+      {
+        id: "industry-starting-points",
+        heading: "Choose a starting view that fits how the business earns money",
+        paragraphs: [
+          "A useful first screen changes with the operating model. Retail and health-and-wellness businesses usually need product margin and inventory evidence close to sales. Food-and-beverage operators need transaction, margin, waste and cash context. Professional-services firms usually need operating earnings, cash collection and receivables before inventory measures.",
+          "Vanteloq uses the business type recorded during onboarding to suggest a starting set of existing dashboard measures. The owner can apply, reorder, hide or replace those measures and set their own targets. The recommendation changes presentation only. It does not create a benchmark, invent a healthy range or change the underlying calculation.",
+        ],
+        table: {
+          caption: "Industry-aware KPI starting points",
+          headers: ["Business type", "Start with", "Add when the required records exist"],
+          rows: [
+            ["Retail and health & wellness", "Net revenue, gross profit, gross margin, average order value and inventory value", "Inventory turnover, sell-through, days on hand and expiry exposure"],
+            ["Food & beverage", "Net revenue, transactions, average order value, gross margin and cash flow", "Waste rate, item contribution and capacity measures"],
+            ["E-commerce", "Net revenue, orders, average order value, gross profit and cash flow", "Settlement timing, returns and inventory efficiency"],
+            ["Professional services", "Revenue, operating profit, net margin, cash balance and cash flow", "Receivables aging, utilization and realization"],
+          ],
+        },
+        callout: {
+          title: "A recommendation is not a benchmark",
+          body: "Use a suggested KPI to decide what to inspect. Use your reviewed plan, comparable periods and documented targets to judge performance. Industry averages require an identified source, a comparable peer group and a matching definition.",
         },
       },
       {
@@ -450,6 +472,16 @@ const articles: readonly ResourceArticle[] = [
         title: "Financial Performance Data",
         publisher: "Innovation, Science and Economic Development Canada",
         url: "https://ised-isde.canada.ca/site/financial-performance-data/en",
+      },
+      {
+        title: "Retail Inventory and Sales Reporting",
+        publisher: "Lightspeed",
+        url: "https://www.lightspeedhq.com/blog/retail-inventory-sales-report/",
+      },
+      {
+        title: "Inventory Reporting for Retail Businesses",
+        publisher: "Shopify",
+        url: "https://www.shopify.com/retail/inventory-reporting/",
       },
     ],
     related: ["data-analytics-for-small-business", "how-to-track-inventory-small-business", "how-to-calculate-gross-margin-small-business"],

@@ -18,6 +18,7 @@ import {
   TERMS_OF_SERVICE_VERSION,
 } from "../shared/legal-versions";
 import { readPlanSelection, type PlanSelection } from "../shared/plan-selection";
+import { industryKpiRecommendation } from "../domain/industry-kpis";
 
 type Hour = { day: string; open: string; close: string; closed: boolean };
 type SourceMode = "connect_later" | "csv" | "live";
@@ -143,6 +144,7 @@ export default function SecureOnboardingFlow({
   const previousStep = useRef(1);
   useEffect(() => { if (step !== previousStep.current) { panelRef.current?.querySelector<HTMLElement>(".setup-step h2")?.focus(); previousStep.current = step; } }, [step]);
   const [form, setForm] = useState<Setup>(() => initialSetup(accountName));
+  const kpiGuide = industryKpiRecommendation(form.industry);
   const [hours, setHours] = useState<Hour[]>(initialHours);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -480,6 +482,12 @@ export default function SecureOnboardingFlow({
                 ]}
               />
             </div>
+            <section className="onboarding-kpi-guide" aria-live="polite" aria-label={`${kpiGuide.industry} KPI recommendations`}>
+              <header><div><p>RECOMMENDED STARTING VIEW</p><h3>{kpiGuide.industry} KPIs</h3></div><span>These are a starting point, not an industry benchmark.</span></header>
+              <p>{kpiGuide.summary}</p>
+              <div>{kpiGuide.recommended.slice(0, 4).map(item => <article key={item.key}><strong>{item.key.replaceAll("_", " ")}</strong><span>{item.reason}</span></article>)}</div>
+              <small>You can apply this view, choose different metrics and set your own targets from Dashboard → Customize. Vanteloq never invents a target from your industry selection.</small>
+            </section>
           </Step>
         )}
         {step === 3 && (

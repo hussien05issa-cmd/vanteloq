@@ -23,6 +23,7 @@ import { GET as readBookloq } from "../../bookloq/route";
 import { GET as readRetail } from "../../retail-intelligence/route";
 import { projectAdvisorRetail } from "../../../../../domain/advisor-retail";
 import { advisorUnavailableReason } from "../../../../../domain/advisor-availability";
+import { industryKpiRecommendation } from "../../../../../domain/industry-kpis";
 import { retailPeriod } from "../../../../../server/retail-intelligence";
 import {
   ADVISOR_CONSENT_NOTICE_VERSION,
@@ -33,6 +34,7 @@ const readers = ["owner", "admin", "manager", "employee", "read_only"] as const;
 
 
 type Evidence = {
+  businessContext?: { industry: string; recommendedKpis: Array<{ name: string; reason: string }> };
   retail?: ReturnType<typeof projectAdvisorRetail> | { status: "unavailable"; reason: string };
   requestedRetailPeriod?: { from: string; to: string };
   purpose?: "analysis" | "help";
@@ -191,6 +193,10 @@ export async function POST(request: Request) {
     );
     evidence.scope = locationId ? "selected_location" : locationAccess.organizationWide ? "organization" : "permitted_locations";
     evidence.purpose = purpose;
+    if (purpose === "analysis") {
+      const guide = industryKpiRecommendation(context.organization.industry);
+      evidence.businessContext = { industry: guide.industry, recommendedKpis: guide.recommended.map(item => ({ name: item.key.replaceAll("_", " "), reason: item.reason })) };
+    }
     let retailCoverage: { sourceCount: number; days: number } | null = null;
     await Promise.all([
     (async () => {

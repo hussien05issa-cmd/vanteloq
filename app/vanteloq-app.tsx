@@ -700,6 +700,7 @@ export default function VanteloqApp({
   const [logoVersion, setLogoVersion] = useState<number | null>(null);
   const [data, setData] = useState<CommandCentre | null>(null);
   const [currency, setCurrency] = useState("CAD");
+  const [businessIndustry, setBusinessIndustry] = useState("Other");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [refreshError, setRefreshError] = useState("");
@@ -758,6 +759,7 @@ export default function VanteloqApp({
         );
       setData({ ...body.commandCentre, operatingSystem: body.operatingSystem });
       setCurrency(body.organization.currency);
+      setBusinessIndustry(body.organization.industry || "Other");
       setAppRole(body.organization.role ?? "employee");
       setEmailAccessKey(documentEmailAccessKey(body.organization));
       setAppPermissions(body.organization.permissions ?? []);
@@ -1211,6 +1213,7 @@ export default function VanteloqApp({
             emailAccessKey={emailAccessKey}
             subscriptionFeatures={subscriptionFeatures}
             currency={currency}
+            businessIndustry={businessIndustry}
             navigate={navigate}
             refresh={refreshWorkspace}
             showNotice={showNotice}
@@ -1355,6 +1358,7 @@ function Workspace({
   emailAccessKey,
   subscriptionFeatures,
   currency,
+  businessIndustry,
   navigate,
   refresh,
   showNotice,
@@ -1374,6 +1378,7 @@ function Workspace({
   emailAccessKey: string;
   subscriptionFeatures: readonly string[];
   currency: string;
+  businessIndustry: string;
   navigate: (view: View) => void;
   refresh: () => Promise<void>;
   showNotice: (message: string) => void;
@@ -1401,6 +1406,7 @@ function Workspace({
         accountName={accountName}
         data={data}
         currency={currency}
+        industry={businessIndustry}
         navigate={navigate}
         createTask={createTask}
         paymentRange={paymentRange}
@@ -1675,7 +1681,7 @@ function LiveSalesPanel({ data, currency, paymentRange, setPaymentRange, compact
   );
 }
 
-export function Overview({ onDrill, activeLocationId, accountName = "", data, currency, navigate, createTask, paymentRange, setPaymentRange }: { onDrill?: (view:"Sales"|"BookLoQ"|"Integrations"|"Intelligence",period?:{from:string;to:string})=>void; activeLocationId?: string | null; accountName?: string; data: CommandCentre; currency: string; navigate: (view: View) => void; createTask: (seed: TaskSeed) => void; paymentRange: PaymentRange; setPaymentRange: (range: PaymentRange) => void }) {
+export function Overview({ onDrill, activeLocationId, accountName = "", data, currency, industry, navigate, createTask, paymentRange, setPaymentRange }: { onDrill?: (view:"Sales"|"BookLoQ"|"Integrations"|"Intelligence",period?:{from:string;to:string})=>void; activeLocationId?: string | null; accountName?: string; data: CommandCentre; currency: string; industry?: string | null; navigate: (view: View) => void; createTask: (seed: TaskSeed) => void; paymentRange: PaymentRange; setPaymentRange: (range: PaymentRange) => void }) {
 
   const sourceName = data.liveSource.accountName || (data.liveSource.provider ? providerLabel(data.liveSource.provider) : "the connected source");
   return (
@@ -1683,7 +1689,7 @@ export function Overview({ onDrill, activeLocationId, accountName = "", data, cu
       
       <DashboardGreeting accountName={accountName} sourceName={sourceName} latestBusinessDate={data.source.latestBusinessDate}
         lastSuccessfulSyncAt={data.liveSource.lastSuccessfulSyncAt} needsAttention={Boolean(data.liveSource.lastErrorCode)} onConnections={() => navigate("Integrations")}/>
-      <ExecutiveOverview currency={currency} activeLocationId={activeLocationId} navigate={onDrill??navigate} refreshKey={data.liveSource.lastSuccessfulSyncAt}/>
+      <ExecutiveOverview currency={currency} industry={industry} activeLocationId={activeLocationId} navigate={onDrill??navigate} refreshKey={data.liveSource.lastSuccessfulSyncAt}/>
       <details className="dashboard-current-day-details"><summary>Today’s Sales Details<span>Payment mix, transactions and hourly activity</span></summary><LiveSalesPanel data={data} currency={currency} paymentRange={paymentRange} setPaymentRange={setPaymentRange} compact/></details>
       {data.insights[0] && (
         <section className="owner-priority-strip">

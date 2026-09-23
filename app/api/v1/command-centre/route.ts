@@ -544,6 +544,7 @@ export async function loadCommandCentre(request: Request) {
       ...(executiveReport?{executiveReport}:{}),
       organization: {
         name: branding?.displayName ?? context.organization.businessName,
+        industry: context.organization.industry,
         currency: context.organization.currency,
         role: context.role,
         logoAvailable: Boolean(branding?.logoObjectKey),
