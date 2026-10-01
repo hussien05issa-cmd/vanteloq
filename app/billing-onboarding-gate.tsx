@@ -5,6 +5,8 @@ import ProductBrandLogo from "./product-brand-logo";
 import CustomPlanCallout from "./custom-plan-callout";
 import { readPlanSelection, parsePlanSelection, savePlanSelection, clearPlanSelection } from "../shared/plan-selection";
 import { currentSession, apiFetch, signOut } from "./supabase-browser";
+import Link from "next/link";
+import { TERMS_OF_SERVICE_VERSION, PRIVACY_POLICY_VERSION, ACCOUNT_ACCEPTANCE_NOTICE_VERSION } from "../shared/legal-versions";
 import {
   billingGateState,
   type BillingAccessType,
@@ -24,8 +26,12 @@ type Plan = {
 };
 
 type BillingData = {
+  needsWorkspace?: boolean;
   configured: boolean;
   canManageBilling?: boolean;
+  legalAcceptanceCurrent?: boolean;
+  trialEligible?: boolean;
+  trialDays?: number;
   accessType: BillingAccessType;
   current: {
     plan: string | null;
@@ -34,6 +40,8 @@ type BillingData = {
     features: string[];
     limits: BillingEntitlements["limits"];
     hasCustomer?: boolean;
+    trialEndsAt?: string | null;
+    cancelAtPeriodEnd?: boolean;
   };
   plans: Plan[];
   addon: {
@@ -61,7 +69,13 @@ function monthlyPrice(cents: number, currency: string) {
   }).format(cents / 100);
 }
 
-async function loadAccess(): Promise<BillingData> {
+async function loadAccess(beforeSetup = false): Promise<BillingData> {
+  if (beforeSetup) {
+    const response = await apiFetch("/api/v1/billing?onboarding=1", { headers: { Accept: "application/json" } });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(problemMessage(payload, "Subscription options could not be loaded."));
+    return payload;
+  }
   const response = await apiFetch("/api/v1/entitlements", { headers: { Accept: "application/json" } });
   const payload = await response.json();
   if (!response.ok || !payload.accessType) throw new Error(problemMessage(payload, "Workspace access could not be loaded."));
@@ -75,7 +89,8 @@ async function loadAccess(): Promise<BillingData> {
   return details;
 }
 
-export default function BillingOnboardingGate({ children }: { children: ReactNode }) {
+export default function BillingOnboardingGate({ children, beforeSetup = false }: { children: ReactNode; beforeSetup?: boolean }) {
+  const [legalAccepted, setLegalAccepted] = useState(false);
   const [data, setData] = useState<BillingData | null>(null);
   const [plan, setPlan] = useState<Plan["key"] | "">("");
   const [includeBookloq, setIncludeBookloq] = useState(false);
@@ -95,7 +110,7 @@ export default function BillingOnboardingGate({ children }: { children: ReactNod
       if (inFlight) return;
       inFlight = true;
       try {
-        const payload = await loadAccess();
+        const payload = await loadAccess(beforeSetup);
         if (!preferred && payload.plans.length && !selectionInitialized) {
           const session = await currentSession();
           preferred = parsePlanSelection(session?.user.user_metadata?.signup_plan, session?.user.user_metadata?.signup_bookloq);
@@ -110,7 +125,8 @@ export default function BillingOnboardingGate({ children }: { children: ReactNod
         setPlan(current => current || (preferred && payload.plans.some(item => item.key === preferred?.plan) ? preferred.plan : "") || payload.plans.find(item => item.mostPopular)?.key || payload.plans[0]?.key || "");
         const state = billingGateState(payload);
         if (state === "ready") {
-          clearPlanSelection();
+          if (!beforeSetup) clearPlanSelection();
+          else { const paidSelection = parsePlanSelection(payload.current.plan, payload.current.addons.includes("bookloq")); if (paidSelection) savePlanSelection(paidSelection); }
           const clean = new URL(window.location.href);
           clean.searchParams.delete("billing");
           clean.searchParams.delete("plan");
@@ -121,10 +137,10 @@ export default function BillingOnboardingGate({ children }: { children: ReactNod
           return;
         }
         if (billingReturn === "success" && attempt < 20) {
-          setMessage("Checking Stripe for confirmed payment and subscription access…");
+          setMessage("Checking Stripe for confirmed subscription access…");
           retry = window.setTimeout(() => void load(attempt + 1), 1_500);
         } else if (billingReturn === "success") {
-          setMessage("Stripe is still confirming the subscription. Use Check payment status in a moment.");
+          setMessage("Stripe is still confirming the subscription. Use Check subscription status in a moment.");
         } else if (billingReturn === "canceled") {
           setMessage("Checkout was canceled. Your workspace is saved, and no subscription was activated.");
         }
@@ -148,13 +164,17 @@ export default function BillingOnboardingGate({ children }: { children: ReactNod
       window.clearInterval(poll);
       if (retry !== undefined) window.clearTimeout(retry);
     };
-  }, []);
+  }, [beforeSetup]);
 
   async function refresh() {
     setBusy(true);
     setError("");
     try {
-      const payload = await loadAccess();
+      const payload = await loadAccess(beforeSetup);
+      if (beforeSetup && billingGateState(payload) === "ready") {
+        const paidSelection = parsePlanSelection(payload.current.plan, payload.current.addons.includes("bookloq"));
+        if (paidSelection) savePlanSelection(paidSelection);
+      }
       setData(payload);
       setMessage(billingGateState(payload) === "ready" ? "Subscription confirmed." : "Stripe has not confirmed an active subscription yet.");
     } catch (caught) {
@@ -181,11 +201,30 @@ export default function BillingOnboardingGate({ children }: { children: ReactNod
 
   async function checkout() {
     if (!plan || busy) return;
+    if ((data?.needsWorkspace || data?.legalAcceptanceCurrent === false) && !legalAccepted) { setError("Review and accept the Terms of Service and Privacy Policy before checkout."); return; }
     const selectedBookloqAddon = plan === "bookloq" ? false : includeBookloq;
     savePlanSelection({ plan, bookloq: selectedBookloqAddon });
     setBusy(true);
     setError("");
     try {
+      if (beforeSetup) {
+        const prepared = await apiFetch("/api/v1/onboarding", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ stage: "checkout", legalAccepted: true, termsVersion: TERMS_OF_SERVICE_VERSION,
+            privacyPolicyVersion: PRIVACY_POLICY_VERSION, legalNoticeVersion: ACCOUNT_ACCEPTANCE_NOTICE_VERSION }),
+        });
+        const preparation = await prepared.json();
+        if (!prepared.ok) throw new Error(problemMessage(preparation, "Your account could not be prepared for checkout."));
+      }
+      if (!data?.needsWorkspace && data?.legalAcceptanceCurrent === false) {
+        const acceptance = await apiFetch("/api/v1/legal/acceptance", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ accepted: true, termsVersion: TERMS_OF_SERVICE_VERSION,
+            privacyPolicyVersion: PRIVACY_POLICY_VERSION, noticeVersion: ACCOUNT_ACCEPTANCE_NOTICE_VERSION }),
+        });
+        const confirmation = await acceptance.json();
+        if (!acceptance.ok || confirmation.accepted !== true) throw new Error(problemMessage(confirmation, "Your acceptance could not be recorded. Review the current policies and try again."));
+      }
       const response = await apiFetch("/api/v1/billing/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
@@ -215,7 +254,7 @@ export default function BillingOnboardingGate({ children }: { children: ReactNod
       addons: data.current.addons,
       features: data.current.features,
       limits: data.current.limits,
-    }}>{children}</BillingEntitlementsProvider>;
+    }}>{data.current.status === "trialing" && data.current.trialEndsAt && <div className="billing-onboarding-message" role="status">{data.current.cancelAtPeriodEnd ? "Trial access ends" : "First billing date"}: {new Date(data.current.trialEndsAt).toLocaleString("en-CA")}. {data.current.cancelAtPeriodEnd ? "Your subscription is scheduled to cancel." : "Your selected monthly subscription renews automatically after the trial."} {data.canManageBilling && <button type="button" disabled={busy} onClick={() => void manageBilling()}>Manage Billing</button>}</div>}{children}</BillingEntitlementsProvider>;
   }
 
   const state = data ? billingGateState(data) : null;
@@ -238,11 +277,11 @@ export default function BillingOnboardingGate({ children }: { children: ReactNod
   </label>;
   return <main className="billing-onboarding-gate">
     <section>
-      <header><ProductBrandLogo product="vanteloq" priority/><span><b>{memberNeedsOwner || restoreExisting ? "Workspace access" : "Final setup step"}</b><small>SECURE STRIPE SUBSCRIPTION</small></span></header>
+      <header><ProductBrandLogo product="vanteloq" priority/><span><b>{memberNeedsOwner || restoreExisting ? "Workspace access" : "Choose your subscription"}</b><small>SECURE STRIPE SUBSCRIPTION</small></span></header>
       <div className="billing-onboarding-copy">
-        <p>{memberNeedsOwner || restoreExisting ? "BILLING REVIEW" : "STEP 3 OF 3"}</p>
+        <p>{memberNeedsOwner || restoreExisting ? "BILLING REVIEW" : beforeSetup ? "1. SUBSCRIBE · 2. SET UP YOUR BUSINESS" : "ACTIVATE YOUR SUBSCRIPTION"}</p>
         <h1>{memberNeedsOwner ? "Workspace access needs attention." : restoreExisting ? "Restore your workspace access." : "Choose your product and plan."}</h1>
-        <span>{memberNeedsOwner ? "Ask your workspace owner to review billing. You do not need a personal subscription." : restoreExisting ? "Review your existing subscription and payment method in Stripe. Your workspace records are saved." : "Your account and business profile are ready. Choose Vanteloq, or open BookLoQ as its own finance workspace."}</span>
+        <span>{memberNeedsOwner ? "Ask your workspace owner to review billing. You do not need a personal subscription." : restoreExisting ? "Review your existing subscription and payment method in Stripe. Your workspace records are saved." : beforeSetup ? "Choose a plan and confirm your subscription securely with Stripe. Then add your business details and connect your records." : "Choose Vanteloq, or open BookLoQ as its own finance workspace."}</span>
       </div>
       {message && <div className="billing-onboarding-message" aria-live="polite">{message}</div>}
       {error && <div className="billing-onboarding-message error" role="alert">{error}</div>}
@@ -261,11 +300,12 @@ export default function BillingOnboardingGate({ children }: { children: ReactNod
         </fieldset>}
         {plan === "bookloq" ? <div className="billing-addon standalone"><span><b>BookLoQ is complete on its own</b><small>No Vanteloq plan or separate BookLoQ add-on is required.</small></span></div> : <label className="billing-addon"><input type="checkbox" checked={includeBookloq} onChange={event => setIncludeBookloq(event.target.checked)}/><span><b>Add {data.addon.name} for {monthlyPrice(data.addon.price, data.currency)} per month</b><small>Include BookLoQ in the same Vanteloq workspace and subscription.</small></span></label>}
         <div className="billing-selected-total" aria-live="polite"><span><b>{data.plans.find(item => item.key === plan)?.name}{plan !== "bookloq" && includeBookloq ? " + BookLoQ" : ""}</b><small>Monthly total before tax. Confirm the final amount in Stripe.</small></span><strong>{monthlyPrice((data.plans.find(item => item.key === plan)?.price ?? 0) + (plan !== "bookloq" && includeBookloq ? data.addon.price : 0), data.currency)}</strong></div>
-        <div className="billing-onboarding-security"><b>Card information is required.</b><span>Stripe securely collects and stores payment details. Vanteloq never receives card numbers. The subscription is charged according to the amount shown in Checkout.</span></div>
-        <button className="billing-onboarding-submit" type="button" disabled={busy || !plan} onClick={() => void checkout()}>{busy ? "Opening secure checkout…" : "Continue to Stripe and subscribe"}</button>
+        <div className="billing-onboarding-security"><b>{data.trialEligible ? "Your first subscription includes a 7-day free trial." : "A paid subscription is required to restore access."}</b><span>{data.trialEligible ? "A payment method is required. Pay $0 for the trial, then the selected monthly total plus applicable taxes renews automatically. Stripe shows the exact first billing date before you confirm. Cancel through Manage Billing before the trial ends to avoid the first charge. BookLoQ selected with your first subscription shares this trial; adding it later does not start another trial. " : "Returning subscriptions do not receive another trial. "}Stripe securely collects payment details. Vanteloq never receives card numbers. Access opens only after Stripe confirms your subscription.</span></div>
+        {(data.needsWorkspace || data.legalAcceptanceCurrent === false) && <label className="onboarding-legal-consent"><input type="checkbox" checked={legalAccepted} disabled={busy} onChange={event => setLegalAccepted(event.target.checked)}/><span>I agree to the current <Link href="/terms" target="_blank">Terms of Service</Link> and acknowledge the <Link href="/privacy" target="_blank">Privacy Policy</Link>. Required before checkout.</span></label>}
+        <button className="billing-onboarding-submit" type="button" disabled={busy || !plan || ((data.needsWorkspace || data.legalAcceptanceCurrent === false) && !legalAccepted)} onClick={() => void checkout()}>{busy ? "Opening secure checkout…" : "Continue to Stripe and subscribe"}</button>
       </>}
       {!memberNeedsOwner && <CustomPlanCallout/>}
-      <footer><button type="button" disabled={busy} onClick={() => void refresh()}>Check payment status</button><button type="button" onClick={() => void signOut()}>Sign out</button></footer>
+      <footer><button type="button" disabled={busy} onClick={() => void refresh()}>Check subscription status</button><button type="button" onClick={() => void signOut()}>Sign out</button></footer>
     </section>
   </main>;
 }

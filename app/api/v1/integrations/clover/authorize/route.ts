@@ -1,3 +1,4 @@
+import { requireProviderPrivacy } from "../../../../../../server/integrations/provider-privacy";
 import { requireIntegrationRollout } from "../../../../../../server/integrations/rollout-access";
 import { oauthBrowserCookie } from "../../../../../../server/integrations/oauth-browser";
 import { getDb } from "../../../../../../db";
@@ -21,6 +22,7 @@ export async function POST(request: Request) {
     await requirePermission(context, "integrations.manage");
     await requireIntegrationRollout(context, "clover");
     await enforceRateLimit("clover:authorize", context.userId, 10, 3600);
+    await requireProviderPrivacy(request, context, "clover", requestId);
     const state = newCloverState();
     const connectionId = crypto.randomUUID();
     const now = new Date();

@@ -1,0 +1,3 @@
+export const SUBSCRIPTION_TRIAL_DAYS = 7;
+export const SUBSCRIPTION_TRIAL_POLICY = "first-subscription-7-days-v1";
+export const SUBSCRIPTION_TRIAL_SECONDS = SUBSCRIPTION_TRIAL_DAYS * 86_400;

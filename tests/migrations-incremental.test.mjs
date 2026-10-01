@@ -15,6 +15,16 @@ async function applyMigration(database, file) {
 test("Drizzle snapshots form one continuous journal chain", async () => {
   const metaUrl = new URL("../drizzle/meta/", import.meta.url);
   const journal = JSON.parse(await readFile(new URL("_journal.json", metaUrl), "utf8"));
+  const migrationFiles = (await readdir(new URL("../drizzle/", import.meta.url)))
+    .filter(file => /^\d{4}.*\.sql$/.test(file)).sort();
+  assert.deepEqual(journal.entries.map(entry => `${entry.tag}.sql`), migrationFiles,
+    "every SQL migration must be listed once in deployment order");
+  for (let index = 0; index < journal.entries.length; index += 1) {
+    assert.equal(journal.entries[index].idx, index, "journal indices must remain consecutive");
+    // Preserve the already deployed historical timestamps; new entries must advance them.
+    if (index >= 61) assert.ok(journal.entries[index].when > Math.max(...journal.entries.slice(0, index).map(entry => entry.when)),
+      "new migration timestamps must advance the deployed journal");
+  }
   const snapshotFiles = new Set(
     (await readdir(metaUrl)).filter((file) => /^\d{4}_snapshot\.json$/.test(file)),
   );

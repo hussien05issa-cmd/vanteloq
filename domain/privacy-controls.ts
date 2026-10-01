@@ -1,6 +1,6 @@
 export { PRIVACY_POLICY_VERSION } from "../shared/legal-versions";
 export const PLAID_CONSENT_NOTICE_VERSION = "plaid-financial-data-v3";
-export const ADVISOR_CONSENT_NOTICE_VERSION = "vanteloq-ai-v8-reviewed-cash";
+export const ADVISOR_CONSENT_NOTICE_VERSION = "vanteloq-ai-v9-personalization-context";
 export const QUICKBOOKS_CONSENT_NOTICE_VERSION = "quickbooks-accounting-read-v1";
 
 export const PLAID_DATA_CATEGORIES = [
@@ -18,22 +18,27 @@ export const PLAID_PROCESSING_PURPOSES = [
   "Financial reports, tax working papers, connection support, security, and audit evidence",
 ] as const;
 
+export const ADVISOR_PERSONALIZATION_DATA_CATEGORY = "A validated preferred first name, workspace role, currency and time zone, and allowlisted response and display preferences";
+export const ADVISOR_CONVERSATION_DATA_CATEGORY = "Up to six recent messages from the current open chat, including when saving is off, or from an authorized saved conversation when memory is enabled; current user, workspace, access and reporting scope must match, and earlier replies are historical context rather than current evidence";
+
 export const ADVISOR_DATA_CATEGORIES = [
   "The question entered by the authorized user",
+  ADVISOR_PERSONALIZATION_DATA_CATEGORY,
   "Dated aggregate sales, gross profit, transaction, discount, refund and unit metrics; permission-filtered labour totals, inventory values and accounts payable snapshots",
   "Permitted synchronized website, search and paid-advertising totals, with source-specific periods and coverage limits; no queries, URLs, Business Profile content or advertising amounts",
-  "Permitted organization-wide BookLoQ ledger and cash summaries, including dated totals from reviewed bank statements, only with the required finance access; demonstration records, raw documents, transaction descriptions and identities are excluded",
+  "Permitted organization-wide BookLoQ ledger and cash summaries, including dated totals from reviewed bank statements, only with the required finance access; demonstration records, raw documents, transaction descriptions and identities in those records are excluded",
   "Product guidance for Vanteloq and BookLoQ; disabling Workspace data excludes business records",
   "Connected-source status and freshness details",
   "Aggregate cash available only when the user has bank-balance permission",
-  "An optional short user-and-workspace-scoped conversation history, only when memory is enabled and its evidence and access fingerprint match the current request",
+  ADVISOR_CONVERSATION_DATA_CATEGORY,
 ] as const;
 
 export const ADVISOR_PROCESSING_PURPOSES = [
   "Explain verified business performance and calculations",
   "Explain financial and analytical concepts and how to use Vanteloq and BookLoQ",
   "Identify missing evidence and data-quality limits",
-  "Maintain the authorized user's organization-scoped advisor conversation only when they enable memory",
+  "Personalize explanation, format and priorities using limited account information and selected preferences",
+  "Continue the authorized user's open chat using bounded context; save eligible conversation messages only when memory is enabled",
 ] as const;
 
 export const QUICKBOOKS_DATA_CATEGORIES = [

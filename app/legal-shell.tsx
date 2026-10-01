@@ -44,7 +44,7 @@ export function LegalShell({
             <span>{summary}</span>
             <dl>
               <div><dt>Last updated</dt><dd>{updated}</dd></div>
-              <div><dt>Operator</dt><dd>LexEdge Consulting, operating as Vanteloq</dd></div>
+              <div><dt>Operator</dt><dd>2855706 ALBERTA INC, doing business as LexEdge Consulting and operating Vanteloq</dd></div>
             </dl>
           </div>
           <aside aria-label="Document principles">
@@ -68,7 +68,7 @@ export function LegalShell({
       </main>
 
       <footer className="legal-footer">
-        <div><ProductBrandLogo product="vanteloq"/><span><strong>Vanteloq</strong><small>Operated by LexEdge Consulting</small></span></div>
+        <div><ProductBrandLogo product="vanteloq"/><span><strong>Vanteloq</strong><small>2855706 ALBERTA INC · LexEdge Consulting</small></span></div>
         <nav aria-label="Legal footer navigation"><Link href="/">Home</Link><Link href="/resources">Resources</Link><Link href="/privacy">Privacy</Link><Link href="/terms">Terms</Link><Link href="/cookies">Cookies</Link><Link href="/data-processing">Data processing</Link><Link href="/subprocessors">Subprocessors</Link></nav>
         <p>Questions about these documents can be sent through <LegalContactLink/>.</p>
       </footer>

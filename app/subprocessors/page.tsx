@@ -8,14 +8,14 @@ export const metadata: Metadata = {
 };
 
 export default function SubprocessorsPage() {
-  return <LegalShell updated="September 15, 2026" eyebrow="SERVICE PROVIDER NOTICE" title="Know where Vanteloq sends information." summary="This list separates core infrastructure from services a workspace chooses to connect.">
+  return <LegalShell eyebrow="SERVICE PROVIDER NOTICE" title="Know where Vanteloq sends information." summary="This list separates core infrastructure from services a workspace chooses to connect.">
     <PolicySection id="core" title="Core subprocessors">
       <div className="legal-table"><table><thead><tr><th>Provider</th><th>Purpose and information</th><th>Location note</th></tr></thead><tbody>
         <tr><td>Cloudflare, Inc.</td><td>Hosting, network delivery and protection, managed application database, and encrypted file storage. Processes service traffic, workspace records, uploaded files, and security information.</td><td>Canada and Cloudflare&apos;s global network, subject to its service configuration and terms.</td></tr>
         <tr><td>Supabase, Inc.</td><td>Authentication, account verification, multifactor authentication, password recovery, and protected team invitations. Processes account identifiers, email, authentication records, and security metadata.</td><td>The configured project region and Supabase subprocessors.</td></tr>
         <tr><td>Stripe, Inc. and affiliates</td><td>Subscription checkout, payment method collection, recurring billing, billing portal, tax related checkout fields, and payment status. Vanteloq receives references and status, not full card numbers.</td><td>Canada, the United States, and other locations described by Stripe.</td></tr>
         <tr><td>Resend, Inc.</td><td>Transactional email delivery, such as an invoice email initiated by an authorized user. Processes recipient, sender, subject, message content, and delivery metadata.</td><td>The United States and provider locations described by Resend.</td></tr>
-        <tr><td>Canada Post AddressComplete</td><td>Customer directed business address search and validation. Processes the address search text, country, returned suggestion identifier, and requested address result.</td><td>Canada and locations identified in the AddressComplete service terms.</td></tr>
+        <tr><td>Canada Post AddressComplete</td><td>Optional customer directed business address search where offered. Signup currently uses manual address fields. Processes the address search text, country, returned suggestion identifier, and requested address result.</td><td>Canada and locations identified in the AddressComplete service terms.</td></tr>
         <tr><td>Google LLC, Google Analytics</td><td>Optional public website measurement after the visitor explicitly allows analytics. Processes page paths without URL query text, device and browser context, approximate region, timestamps, and configured interaction events. Advertising signals and ad personalization remain disabled.</td><td>The United States and other locations described in Google&apos;s service materials.</td></tr>
       </tbody></table></div>
     </PolicySection>

@@ -1,3 +1,6 @@
+/** Immutable commercial contract identifier. New price or allowance policies require a new version. */
+export const PLAN_CATALOG_VERSION = "origin-1";
+
 export const PLAN_KEYS = ["starter", "growth", "pro", "bookloq"] as const;
 export type PlanKey = (typeof PLAN_KEYS)[number];
 

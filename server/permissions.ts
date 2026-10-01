@@ -125,6 +125,7 @@ export const permissionGroups = [
       ],
       ["data.import", "Upload and map data", "sensitive"],
       ["audit.view", "View audit history", "restricted"],
+      ["privacy.manage", "Manage provider privacy requests", "restricted"],
       [
         "organization.settings",
         "Manage organization settings and branding",

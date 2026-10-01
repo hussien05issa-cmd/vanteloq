@@ -4,13 +4,15 @@ import { createServer } from "node:http";
 import test, { describe } from "node:test";
 import { Miniflare } from "miniflare";
 import { registerSupabaseTestServer } from "./helpers/supabase-loopback-transport.mjs";
+import { TERMS_OF_SERVICE_VERSION, PRIVACY_POLICY_VERSION, ACCOUNT_ACCEPTANCE_NOTICE_VERSION } from "../shared/legal-versions.ts";
 import { activateTestSubscription } from "./helpers/subscription-fixture.mjs";
+import { scopeExternalRef } from "../domain/integration-source.ts";
 
 const origin = "https://vanteloq.example";
 const context = { waitUntil() {}, passThroughOnException() {} };
 
 async function acceptAdvisorConsent(worker, environment, user, purpose = "analysis") {
-  const response = await dispatch(worker, environment, "/api/v1/advisor/consent", { ...user, method: "POST", body: { accepted: true, purpose, noticeVersion: "vanteloq-ai-v8-reviewed-cash", privacyPolicyVersion: "2026-09-10" } });
+  const response = await dispatch(worker, environment, "/api/v1/advisor/consent", { ...user, method: "POST", body: { accepted: true, purpose, noticeVersion: "vanteloq-ai-v9-personalization-context", privacyPolicyVersion: "2026-10-01" } });
   assert.equal(response.status, 200, await response.clone().text());
   return response.json();
 }
@@ -59,9 +61,9 @@ function onboardingBody(ownerName, businessName) {
     sourceMode: "csv",
     selectedPos: "",
     legalAccepted: true,
-    termsVersion: "2026-09-05",
-    privacyPolicyVersion: "2026-09-10",
-    legalNoticeVersion: "account-creation-v2",
+    termsVersion: TERMS_OF_SERVICE_VERSION,
+    privacyPolicyVersion: PRIVACY_POLICY_VERSION,
+    legalNoticeVersion: ACCOUNT_ACCEPTANCE_NOTICE_VERSION,
   };
 }
 
@@ -184,7 +186,7 @@ async function seedReportConnection(database, {
       .bind(`mapping-${connectionId}`, organizationId, connectionId, externalLocationRef,
         `Outlet ${externalLocationRef}`, locationId, timestamp, timestamp, timestamp),
   ]);
-  return `lightspeed-r:${namespace}:${externalLocationRef}`;
+  return `lightspeed-r:${scopeExternalRef(namespace, externalLocationRef)}`;
 }
 
 async function seedReportMetric(database, {
@@ -243,13 +245,24 @@ test("excluding a test POS preserves records and removes them from reporting wit
       await seedReportMetric(database, { ...identity, businessDate: today, locationRef, netSalesCents: cents, sourceConnectionId: id });
     }
     await database.prepare("UPDATE integration_connections SET provider='square', last_error_code='SQUARE_PRODUCT_COST_UNAVAILABLE', promotion_authorized_at=? WHERE id=?").bind(Math.floor(Date.now()/1000), sample).run();
-    await database.prepare("UPDATE daily_business_metrics SET source_provider='square' WHERE source_connection_id=?").bind(sample).run();
+    await database.prepare("UPDATE daily_business_metrics SET source_provider='square', location_ref=? WHERE source_connection_id=?").bind(`square:${sample}:shop`, sample).run();
     await database.prepare("UPDATE integration_location_mappings SET provider='square' WHERE connection_id=?").bind(sample).run();
+    const salesPath = `/api/v1/reports?report=sales_totals&start=${today}&end=${today}`;
+    const conflict = await dispatch(worker, environment, salesPath, identity.owner);
+    assert.equal(conflict.status, 200);
+    const conflictReport = await conflict.json();
+    assert.equal(conflictReport.reportStatus, "source_conflict", "two feeds for one retail location must not be added together");
+    assert.equal(conflictReport.totals, null);
+    const selectSource = (connectionId, expectedVersion) => dispatch(worker, environment, "/api/v1/reports", {
+      ...identity.owner, method: "POST", body: { action: "set_source_authority", locationId: identity.locationId, connectionId, factFamily: "sales", expectedVersion },
+    });
+    const sampleSelection = await selectSource(sample, 0);
+    assert.equal(sampleSelection.status, 200, await sampleSelection.clone().text());
     const before = await dispatch(worker, environment, "/api/v1/command-centre", identity.owner);
     assert.equal(before.status, 200);
     const dashboard = (await before.json()).commandCentre;
     assert.ok(dashboard.trend.length > 0, "missing costs must not erase verified revenue history");
-    assert.equal(dashboard.trend.reduce((sum, day) => sum + day.netSalesCents, 0), 20100);
+    assert.equal(dashboard.trend.reduce((sum, day) => sum + day.netSalesCents, 0), 100, "only the explicitly selected retail source contributes");
     assert.ok(dashboard.trend.every(day => day.grossProfitCents === null));
     const exclude = (owner, confirmed=true) => dispatch(worker, environment, "/api/v1/integrations", {
       ...owner, method: "POST", body: { action: "exclude_data", connectionId: sample, confirmed },
@@ -265,6 +278,13 @@ test("excluding a test POS preserves records and removes them from reporting wit
     const state = await database.prepare("SELECT status, data_promotion_status promotion, promotion_authorized_at authorization FROM integration_connections WHERE id=?").bind(sample).first();
     assert.deepEqual(state, { status: "connected", promotion: "staging", authorization: null });
     assert.equal((await database.prepare("SELECT COUNT(*) count FROM daily_business_metrics WHERE source_connection_id=?").bind(sample).first()).count, 1);
+    const excludedReport = await dispatch(worker, environment, salesPath, identity.owner);
+    assert.equal(excludedReport.status, 200);
+    const excludedBody = await excludedReport.json();
+    assert.equal(excludedBody.reportStatus, "source_conflict", "excluding the selected source must not silently switch to another feed");
+    assert.equal(excludedBody.totals, null);
+    const realSelection = await selectSource(real, 1);
+    assert.equal(realSelection.status, 200, await realSelection.clone().text());
     const after = await dispatch(worker, environment, "/api/v1/command-centre", identity.owner);
     assert.equal(after.status, 200);
     const revised = (await after.json()).commandCentre;
@@ -285,7 +305,7 @@ test("excluding a test POS preserves records and removes them from reporting wit
     };
     try {
       await acceptAdvisorConsent(worker, environment, identity.owner);
-      const analysis = await dispatch(worker, environment, "/api/v1/advisor/chat", { ...identity.owner, method:"POST", body:{question:"Review my sales",provider:"openai",dataUseAccepted:true,noticeVersion:"vanteloq-ai-v8-reviewed-cash",privacyPolicyVersion:"2026-09-10"} });
+      const analysis = await dispatch(worker, environment, "/api/v1/advisor/chat", { ...identity.owner, method:"POST", body:{question:"Review my sales",provider:"openai",dataUseAccepted:true,noticeVersion:"vanteloq-ai-v9-personalization-context",privacyPolicyVersion:"2026-10-01"} });
       assert.equal(analysis.status,200,await analysis.clone().text());
       assert.equal(aiEvidence.kpis.current.netSalesCents,20000);
       assert.deepEqual(aiEvidence.sources.map(source => source.provider),["lightspeed-r"]);
@@ -354,7 +374,7 @@ test("intraday API compares matched hours and redacts all profit paths for reven
     const now = Math.floor(Date.now() / 1000), currentDate = new Date(now * 1000).toISOString().slice(0, 10);
     const baselineDate = dateOffset(currentDate, -7);
     const connectionId = `intraday-${crypto.randomUUID()}`;
-    await seedReportConnection(database, { ...identity, connectionId, namespace: "legacy", externalLocationRef: "shop" });
+    const metricLocationRef = await seedReportConnection(database, { ...identity, connectionId, namespace: "legacy", externalLocationRef: "shop" });
     const runId = crypto.randomUUID();
     await database.prepare(`INSERT INTO integration_sync_runs
       (id, organization_id, provider, connection_id, mode, status, started_at, completed_at)
@@ -375,6 +395,11 @@ test("intraday API compares matched hours and redacts all profit paths for reven
       assert.equal(response.status, 200);
       return (await response.json()).commandCentre;
     };
+    const stagedOnly = await load(identity.owner, `?location=${identity.locationId}`);
+    assert.equal(stagedOnly.today.sourceGranularity, "daily", "staged sales without promoted daily facts cannot establish reporting authority");
+    assert.equal(stagedOnly.today.netSalesCents, 0);
+    assert.ok(stagedOnly.today.hourly.every(hour => hour.netSalesCents === 0 && hour.transactionCount === 0), "staged sales must not leak into hourly amounts");
+    await seedReportMetric(database, { ...identity, businessDate: currentDate, locationRef: metricLocationRef, netSalesCents: 10000, sourceConnectionId: connectionId });
     const ownerView = await load(identity.owner, `?location=${identity.locationId}`);
     assert.equal(ownerView.today.sourceGranularity, "intraday");
     assert.equal(ownerView.today.netSalesCents, 10000);
@@ -401,6 +426,8 @@ test("intraday API compares matched hours and redacts all profit paths for reven
     assert.ok(staffView.today.hourly.every((hour) => hour.grossProfitCents === null));
     assert.ok(staffView.todayComparison.baseline.hourly.every((hour) => hour.grossProfitCents === null));
     // Assert the actual outbound AI evidence, not just the displayed dashboard.
+    // This phase independently exercises manual summaries and their per-location permissions.
+    await database.prepare("DELETE FROM daily_business_metrics WHERE organization_id=? AND source_connection_id=?").bind(identity.organizationId, connectionId).run();
     await database.prepare("UPDATE access_roles SET permissions_json = ? WHERE id = ?").bind(JSON.stringify(["dashboard.view", "metrics.revenue", "insights.view"]), roleId).run();
     await seedReportMetric(database, { ...identity, businessDate: currentDate, locationRef: identity.locationId, netSalesCents: 432100 });
     const otherLocation = await seedReportLocation(database, identity.organizationId, "Private location");
@@ -416,7 +443,7 @@ test("intraday API compares matched hours and redacts all profit paths for reven
       return originalFetch(input, init);
     };
     try {
-      const ask = (user, body = {}) => dispatch(worker, environment, "/api/v1/advisor/chat", { method: "POST", ...user, body: { question: "Analyze available KPIs", dataUseAccepted: true, noticeVersion: "vanteloq-ai-v8-reviewed-cash", privacyPolicyVersion: "2026-09-10", ...body } });
+      const ask = (user, body = {}) => dispatch(worker, environment, "/api/v1/advisor/chat", { method: "POST", ...user, body: { question: "Analyze available KPIs", dataUseAccepted: true, noticeVersion: "vanteloq-ai-v9-personalization-context", privacyPolicyVersion: "2026-10-01", ...body } });
       const consentFor = async user => (await dispatch(worker, environment, "/api/v1/advisor/consent", user)).json();
       assert.deepEqual((await consentFor(reader)).consent, { analysis: false, help: false });
       assert.equal((await ask(reader)).status, 409, "a chat checkbox cannot create its own persistent consent");
@@ -513,7 +540,7 @@ test("intraday API compares matched hours and redacts all profit paths for reven
       const helpEvidence = JSON.parse(outbound.at(-1).split("Evidence JSON: ")[1].split("\n\nConversation memory:")[0]);
       assert.deepEqual(helpEvidence, { purpose: "help", workspaceDataAttached: false });
       assert.doesNotMatch(outbound.at(-1), /432100|987654321|Fixture analysis/);
-      const helpConsent = await database.prepare("SELECT data_categories_json categories FROM integration_consents WHERE organization_id = ? AND provider = 'openai' AND purposes_json = ?").bind(identity.organizationId, JSON.stringify(["Explain how to use Vanteloq and BookLoQ", "Explain financial and analytical concepts without workspace records"])).first();
+      const helpConsent = await database.prepare("SELECT data_categories_json categories FROM integration_consents WHERE organization_id = ? AND actor_user_id = ? AND provider = 'openai' AND purposes_json = ?").bind(identity.organizationId, userId, JSON.stringify(["Explain how to use Vanteloq and BookLoQ", "Explain financial and analytical concepts without workspace records", "Personalize replies using limited account information and selected preferences", "Continue the authorized user's open chat using bounded context; save eligible conversation messages only when memory is enabled"])).first();
       assert.ok(helpConsent);
       assert.doesNotMatch(helpConsent.categories, /ledger|financial|payroll|aggregate cash/);
       const acceptedCount = (await database.prepare("SELECT count(*) count FROM integration_consents WHERE actor_user_id = ? AND provider='openai'").bind(userId).first()).count;
@@ -531,6 +558,7 @@ test("intraday API compares matched hours and redacts all profit paths for reven
       await database.prepare("UPDATE integration_consents SET notice_version='expired-notice' WHERE actor_user_id = ? AND provider='openai'").bind(userId).run();
       assert.deepEqual((await consentFor(reader)).consent, { analysis: false, help: false }, "changed notices require a new explicit choice");
     } finally { globalThis.fetch = originalFetch; }
+    await seedReportMetric(database, { ...identity, businessDate: currentDate, locationRef: metricLocationRef, netSalesCents: 10000, sourceConnectionId: connectionId });
     await database.prepare("UPDATE integration_connections SET last_successful_sync_at = ? WHERE id = ?").bind(now - 86400, connectionId).run();
     const stale = await load();
     assert.equal(stale.today.sourceGranularity, "daily");
@@ -555,7 +583,7 @@ test("AI reads permitted BookLoQ summaries through its real access path and excl
       return originalFetch(input, init);
     };
     const ask = async (extra = {}) => {
-      const response = await dispatch(worker, environment, "/api/v1/advisor/chat", { ...identity.owner, method: "POST", body: { question: "Explain my recorded BookLoQ totals", provider: "openai", dataUseAccepted: true, noticeVersion: "vanteloq-ai-v8-reviewed-cash", privacyPolicyVersion: "2026-09-10", ...extra } });
+      const response = await dispatch(worker, environment, "/api/v1/advisor/chat", { ...identity.owner, method: "POST", body: { question: "Explain my recorded BookLoQ totals", provider: "openai", dataUseAccepted: true, noticeVersion: "vanteloq-ai-v9-personalization-context", privacyPolicyVersion: "2026-10-01", ...extra } });
       assert.equal(response.status, 200, await response.clone().text());
       return JSON.parse(outbound.at(-1).split("Evidence JSON: ")[1].split("\n\nConversation memory:")[0]);
     };
@@ -627,7 +655,8 @@ test("migrations, tenant isolation and the complete intelligence-to-action flow 
       const unavailableAuthorization = await dispatch(worker, environment, `/api/v1/integrations/${provider}/authorize`, {
         method: "POST", ...owner, body: {},
       });
-      assert.equal(unavailableAuthorization.status, 503, provider);
+      assert.equal(unavailableAuthorization.status, 403, provider);
+      assert.equal((await unavailableAuthorization.json()).error.code, "INTEGRATION_COMING_SOON", provider);
     }
     assert.equal((await database.prepare(`SELECT COUNT(*) count FROM integration_connections
       WHERE provider IN ('lightspeed', 'stripe')`).first()).count, 0);

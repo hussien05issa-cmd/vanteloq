@@ -52,6 +52,7 @@ test("real D1 inbox delivery enforces tenant, consent, live plan, revocation, du
       ["UPDATE users SET status='suspended' WHERE id='a'","UPDATE users SET status='active' WHERE id='a'"],
       ["UPDATE users SET auth_subject='replaced-identity' WHERE id='a'","UPDATE users SET auth_subject='subject-a' WHERE id='a'"],
       ["UPDATE memberships SET role='employee' WHERE user_id='a'","UPDATE memberships SET role='owner' WHERE user_id='a'"],
+      ["UPDATE tenant_subscriptions SET status='trialing' WHERE organization_id='a'","UPDATE tenant_subscriptions SET status='active' WHERE organization_id='a'"],
       ["UPDATE tenant_subscriptions SET status='canceled' WHERE organization_id='a'","UPDATE tenant_subscriptions SET status='active' WHERE organization_id='a'"],
       ["UPDATE tenant_addons SET status='inactive' WHERE organization_id='a'","UPDATE tenant_addons SET status='active' WHERE organization_id='a'"],
     ]){await database.prepare(sql).run();await assert.rejects(()=>deliver(a,4,"%PDF should not arrive"));await database.prepare(undo).run();assert.equal(writes,2);}

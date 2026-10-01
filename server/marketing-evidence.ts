@@ -25,6 +25,13 @@ export async function accessibleMarketingSources(context: AccessContext, locatio
   });
 }
 
+export function marketingSourceReady(selection: { dataset: string }, connection: { status: string; promotion: string }) {
+  // Explicitly selected Business Profile content is fetched for each report and
+  // never promoted into stored measurements. Keep connection/access guards.
+  return connection.status === "connected"
+    && (selection.dataset === "google_business_profile" || connection.promotion === "approved");
+}
+
 export async function advisorMarketingEvidence(context: AccessContext, location: string | null = null) {
   const sources = (await accessibleMarketingSources(context, location)).filter(({ selection, connection }) => selection.dataset !== "google_business_profile" && connection.status === "connected" && connection.promotion === "approved");
   const window = reportingWindow(28, new Date(), 3);

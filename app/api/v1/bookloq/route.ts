@@ -781,6 +781,7 @@ export async function GET(request: Request) {
         } : null,
         forecasts: cashFactsAllowed ? forecasts : [],
         thirteenWeekCashFlow,
+        planningSchedule: thirteenWeekAllowed ? thirteenWeekItems : [],
         cashIntelligence: cashFactsAllowed ? cashIntelligence : {
           status: "unavailable",
           liquidity30Cents: null,

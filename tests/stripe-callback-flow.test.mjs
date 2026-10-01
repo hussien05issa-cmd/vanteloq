@@ -1,3 +1,4 @@
+import { providerPrivacyAcceptance } from "../domain/provider-privacy.ts";
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import { readFile, readdir } from "node:fs/promises";
@@ -5,7 +6,9 @@ import { createServer } from "node:http";
 import test from "node:test";
 import { Miniflare } from "miniflare";
 import { registerSupabaseTestServer } from "./helpers/supabase-loopback-transport.mjs";
+import { TERMS_OF_SERVICE_VERSION, PRIVACY_POLICY_VERSION, ACCOUNT_ACCEPTANCE_NOTICE_VERSION } from "../shared/legal-versions.ts";
 import { activateTestSubscription } from "./helpers/subscription-fixture.mjs";
+import { grantIntegrationPreview } from "./helpers/integration-preview-fixture.mjs";
 
 const origin = "https://vanteloq.example";
 const context = { waitUntil() {}, passThroughOnException() {} };
@@ -36,8 +39,8 @@ function onboardingPayload(businessName, businessEmail) {
     country: "CA", province: "AB", city: "Edmonton", address: "1 Test Avenue",
     postalCode: "T5A 1A1", emailNotifications: true, timezone: "America/Edmonton",
     currency: "CAD", fiscalYearStart: "January", taxNumber: "", sourceMode: "connect_later",
-    selectedPos: "", legalAccepted: true, termsVersion: "2026-09-05",
-    privacyPolicyVersion: "2026-09-10", legalNoticeVersion: "account-creation-v2",
+    selectedPos: "", legalAccepted: true, termsVersion: TERMS_OF_SERVICE_VERSION,
+    privacyPolicyVersion: PRIVACY_POLICY_VERSION, legalNoticeVersion: ACCOUNT_ACCEPTANCE_NOTICE_VERSION,
     hours: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
       .map((day) => ({ day, open: "09:00", close: "17:00", closed: false })),
   };
@@ -116,10 +119,12 @@ test("Stripe callback ownership and signed webhooks preserve unambiguous tenant 
       body: JSON.stringify(onboardingPayload("Stripe Store", "stripe-store@example.invalid")),
     }), environment, context);
     assert.equal(onboarding.status, 201);
-    await activateTestSubscription(database, (await onboarding.json()).organization.id);
+    const previewOrganizationId = (await onboarding.json()).organization.id;
+    await activateTestSubscription(database, previewOrganizationId);
+    await grantIntegrationPreview(database, environment, previewOrganizationId, "stripe-owner@example.invalid");
 
     const authorization = await worker.fetch(new Request(`${origin}/api/v1/integrations/stripe/authorize`, {
-      method: "POST", headers: ownerHeaders(true), body: "{}",
+      method: "POST", headers: ownerHeaders(true), body: JSON.stringify(providerPrivacyAcceptance(true)),
     }), environment, context);
     assert.equal(authorization.status, 200, await authorization.clone().text());
     const authorizationBody = await authorization.json();
@@ -207,7 +212,7 @@ test("Stripe callback ownership and signed webhooks preserve unambiguous tenant 
     assert.equal(typeof replayedReceipt.processedAt, "number");
 
     const duplicateAuthorization = await worker.fetch(new Request(`${origin}/api/v1/integrations/stripe/authorize`, {
-      method: "POST", headers: ownerHeaders(true), body: "{}",
+      method: "POST", headers: ownerHeaders(true), body: JSON.stringify(providerPrivacyAcceptance(true)),
     }), environment, context);
     assert.equal(duplicateAuthorization.status, 200, await duplicateAuthorization.clone().text());
     const duplicateAuthorizationBody = await duplicateAuthorization.json();
@@ -240,8 +245,9 @@ test("Stripe callback ownership and signed webhooks preserve unambiguous tenant 
     assert.equal(secondOnboarding.status, 201, await secondOnboarding.clone().text());
     const secondOrganizationId = (await secondOnboarding.json()).organization.id;
     await activateTestSubscription(database, secondOrganizationId);
+    await grantIntegrationPreview(database, environment, secondOrganizationId, secondEmail);
     const crossTenantAuthorization = await worker.fetch(new Request(`${origin}/api/v1/integrations/stripe/authorize`, {
-      method: "POST", headers: ownerHeaders(true, secondEmail), body: "{}",
+      method: "POST", headers: ownerHeaders(true, secondEmail), body: JSON.stringify(providerPrivacyAcceptance(true)),
     }), environment, context);
     assert.equal(crossTenantAuthorization.status, 200, await crossTenantAuthorization.clone().text());
     const crossTenantAuthorizationBody = await crossTenantAuthorization.json();

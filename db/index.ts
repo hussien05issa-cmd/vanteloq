@@ -2,6 +2,12 @@ import { drizzle } from "drizzle-orm/d1";
 import * as schema from "./schema.ts";
 
 export type VanteloqRuntimeEnv = {
+  GOOGLE_FILES_ENABLED?: string;
+  GOOGLE_FILES_CLIENT_ID?: string;
+  GOOGLE_FILES_CLIENT_SECRET?: string;
+  MICROSOFT_FILES_ENABLED?: string;
+  MICROSOFT_FILES_CLIENT_ID?: string;
+  MICROSOFT_FILES_CLIENT_SECRET?: string;
   DOCUMENT_EMAIL_SECRET?: string;
   DOCUMENT_EMAIL_ENABLED?: string;
   DOCUMENT_EMAIL_VERIFIED?: string;
@@ -30,6 +36,14 @@ export type VanteloqRuntimeEnv = {
   CLOVER_REDIRECT_URI?: string;
   CLOVER_ENV?: string;
   CLOVER_WEBHOOK_AUTH?: string;
+  DEEL_CLIENT_ID?: string;
+  DEEL_CLIENT_SECRET?: string;
+  DEEL_REDIRECT_URI?: string;
+  DEEL_ENV?: string;
+  DEEL_PARTNER_APPROVED?: string;
+  SLACK_CLIENT_ID?: string;
+  SLACK_CLIENT_SECRET?: string;
+  SLACK_REDIRECT_URI?: string;
   SQUARE_APPLICATION_ID?: string;
   SQUARE_APPLICATION_SECRET?: string;
   SQUARE_REDIRECT_URI?: string;

@@ -5,6 +5,8 @@ import test from "node:test";
 import { Miniflare } from "miniflare";
 import { registerSupabaseTestServer } from "./helpers/supabase-loopback-transport.mjs";
 import { activateTestSubscription } from "./helpers/subscription-fixture.mjs";
+import { providerPrivacyAcceptance } from "../domain/provider-privacy.ts";
+import { TERMS_OF_SERVICE_VERSION, PRIVACY_POLICY_VERSION, ACCOUNT_ACCEPTANCE_NOTICE_VERSION } from "../shared/legal-versions.ts";
 
 test("Square imports resume without publishing partial data or counting tax as revenue", async () => {
   const origin = "https://vanteloq.example";
@@ -48,7 +50,7 @@ test("Square imports resume without publishing partial data or counting tax as r
       country: "CA", province: "AB", city: "Edmonton", address: "1 Test Avenue", postalCode: "T5A 1A1",
       emailNotifications: true, timezone: "America/Edmonton", currency: "CAD", fiscalYearStart: "January",
       taxNumber: "", sourceMode: "connect_later", selectedPos: "", legalAccepted: true,
-      termsVersion: "2026-09-05", privacyPolicyVersion: "2026-09-10", legalNoticeVersion: "account-creation-v2",
+      termsVersion: TERMS_OF_SERVICE_VERSION, privacyPolicyVersion: PRIVACY_POLICY_VERSION, legalNoticeVersion: ACCOUNT_ACCEPTANCE_NOTICE_VERSION,
       hours: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
         .map((day) => ({ day, open: "09:00", close: "17:00", closed: false })),
     });
@@ -61,12 +63,21 @@ test("Square imports resume without publishing partial data or counting tax as r
     let paginateApprovedUpdate = false;
     let quantity = 1;
     let archiveProduct = false;
+    let returnedItem = false;
+    let financialRevision = 0;
+    let wrongCurrency = false;
+    const cad = amount => ({ amount, currency: "CAD" });
     const order = (id, total, tax) => ({
-      id, location_id: "store-one", state: "COMPLETED", version: updatedOrder ? quantity + 1 + Number(archiveProduct) : 1,
+      id, location_id: "store-one", state: "COMPLETED", version: updatedOrder ? quantity + 1 + Number(archiveProduct) + financialRevision : 1,
       closed_at: "2026-09-07T15:00:00Z", updated_at: updatedOrder ? "2026-09-08T10:00:00Z" : "2026-09-07T15:00:00Z",
-      total_money: { amount: total }, total_tax_money: { amount: tax }, total_discount_money: { amount: 0 },
+      total_money: { amount: total, currency: wrongCurrency ? "USD" : "CAD" }, total_tax_money: cad(tax), total_discount_money: cad(0),
       line_items: [{ uid: `line-${id}`, name: "Test item", quantity: String(quantity), catalog_object_id: "item-one",
-        total_money: { amount: total }, total_tax_money: { amount: tax } }],
+        total_money: cad(total), total_tax_money: cad(tax) }],
+      ...(returnedItem ? {
+        returns: [{ source_order_id: "prior-order", return_line_items: [{ uid: "returned-item", source_line_item_uid: "prior-line", catalog_object_id: "item-one", quantity: "1", total_money: cad(1575), total_tax_money: cad(75) }] }],
+        return_amounts: { total_money: cad(1575), tax_money: cad(75) },
+        net_amounts: { total_money: cad(total - 1575), tax_money: cad(tax - 75) },
+      } : {}),
     });
     globalThis.fetch = async (input, init) => {
       const url = new URL(input instanceof Request ? input.url : String(input));
@@ -104,7 +115,7 @@ test("Square imports resume without publishing partial data or counting tax as r
       }
       throw new Error(`Unexpected Square fixture request: ${url.pathname}`);
     };
-    const authorize = await dispatch("/api/v1/integrations/square/authorize", {});
+    const authorize = await dispatch("/api/v1/integrations/square/authorize", providerPrivacyAcceptance(true));
     assert.equal(authorize.status, 200, await authorize.clone().text());
     const authorization = await authorize.json();
     const state = new URL(authorization.authorizationUrl).searchParams.get("state");
@@ -167,6 +178,62 @@ test("Square imports resume without publishing partial data or counting tax as r
     const archivedUpdate = await sync();
     assert.equal(archivedUpdate.status, 200, await archivedUpdate.clone().text());
     assert.equal((await metrics()).results[0].cost_of_goods_cents, 6000);
+    // Reusing the same line ID cannot attach its archived cost to a different quantity.
+    quantity = 3;
+    const changedArchivedQuantity = await sync();
+    assert.equal(changedArchivedQuantity.status, 409, await changedArchivedQuantity.clone().text());
+    assert.equal((await changedArchivedQuantity.json()).error.code, "SQUARE_ARCHIVED_COST_REVIEW_REQUIRED");
+    assert.equal((await connection()).data_promotion_status, "staging");
+    const archivedSnapshot = await database.prepare("SELECT quantity_milli, cost_cents FROM commerce_sale_lines WHERE connection_id=? AND external_line_id LIKE '%:line-sale-one'").bind(connectionId).first();
+    assert.equal(archivedSnapshot.quantity_milli, 2000);
+    assert.equal(archivedSnapshot.cost_cents, 4000);
+    assert.equal((await metrics()).results[0].cost_of_goods_cents, 6000);
+    quantity = 2;
+    financialRevision += 2;
+    // Itemized returns reverse revenue and known owner costs without inventing another sale.
+    returnedItem = true;
+    financialRevision++;
+    const archivedReturn = await sync();
+    assert.equal(archivedReturn.status, 409, await archivedReturn.clone().text());
+    assert.equal((await archivedReturn.json()).error.code, "SQUARE_RETURN_REVIEW_REQUIRED");
+    assert.equal((await connection()).data_promotion_status, "staging");
+    assert.equal((await metrics()).results[0].cost_of_goods_cents, 6000);
+    archiveProduct = false;
+    financialRevision += 2;
+    const costReviewed = await sync();
+    assert.equal(costReviewed.status, 200, await costReviewed.clone().text());
+    const costApproval = await dispatch("/api/v1/integrations", { action: "approve_data", connectionId, confirmed: true });
+    assert.equal(costApproval.status, 200, await costApproval.clone().text());
+    const exchangeUpdate = await sync();
+    assert.equal(exchangeUpdate.status, 200, await exchangeUpdate.clone().text());
+    assert.equal((await metrics()).results[0].net_sales_cents, 11500);
+    assert.equal((await metrics()).results[0].refunds_cents, 1500);
+    assert.equal((await metrics()).results[0].cost_of_goods_cents, 4000);
+    assert.equal((await metrics()).results[0].transaction_count, 2);
+    const duplicateReturn = await sync();
+    assert.equal(duplicateReturn.status, 200, await duplicateReturn.clone().text());
+    assert.equal((await metrics()).results[0].net_sales_cents, 11500);
+    returnedItem = false;
+    financialRevision++;
+    const correctedReturn = await sync();
+    assert.equal(correctedReturn.status, 200, await correctedReturn.clone().text());
+    assert.equal((await metrics()).results[0].net_sales_cents, 13000);
+    assert.equal((await metrics()).results[0].refunds_cents, 0);
+    assert.equal((await metrics()).results[0].cost_of_goods_cents, 6000);
+    assert.equal((await database.prepare("SELECT COUNT(*) n FROM commerce_sale_lines WHERE connection_id=? AND quantity_milli<0").bind(connectionId).first()).n, 0);
+    // A currency mismatch withdraws trust without rewriting the old snapshot.
+    wrongCurrency = true;
+    const currencyMismatch = await sync();
+    assert.equal(currencyMismatch.status, 409, await currencyMismatch.clone().text());
+    assert.equal((await currencyMismatch.json()).error.code, "SQUARE_CURRENCY_MISMATCH");
+    assert.equal((await connection()).data_promotion_status, "staging");
+    assert.equal((await connection()).promotion_authorized_at, null);
+    assert.equal((await metrics()).results[0].net_sales_cents, 13000);
+    wrongCurrency = false;
+    const reviewedAgain = await sync();
+    assert.equal(reviewedAgain.status, 200, await reviewedAgain.clone().text());
+    const reapproved = await dispatch("/api/v1/integrations", { action: "approve_data", connectionId, confirmed: true });
+    assert.equal(reapproved.status, 200, await reapproved.clone().text());
     // A failed replacement must preserve the previously published daily snapshot.
     await database.prepare("CREATE TRIGGER fail_square_snapshot BEFORE INSERT ON daily_business_metrics WHEN NEW.source_provider = 'square' BEGIN SELECT RAISE(ABORT, 'fixture snapshot failure'); END").run();
     const failedPublish = await sync();
@@ -174,6 +241,11 @@ test("Square imports resume without publishing partial data or counting tax as r
     assert.equal((await metrics()).results[0].net_sales_cents, 13000);
     assert.equal((await metrics()).results[0].cost_of_goods_cents, 6000);
     await database.prepare("DROP TRIGGER fail_square_snapshot").run();
+    assert.equal((await connection()).data_promotion_status, "staging");
+    const resumeStaging = await sync();
+    assert.equal(resumeStaging.status, 200, await resumeStaging.clone().text());
+    const resumeApproval = await dispatch("/api/v1/integrations", { action: "approve_data", connectionId, confirmed: true });
+    assert.equal(resumeApproval.status, 200, await resumeApproval.clone().text());
     // Inject a new lease after renewal but immediately before the publication batch.
     const publicationGuards = new WeakSet();
     environment.DB = new Proxy(database, { get(target, key) {

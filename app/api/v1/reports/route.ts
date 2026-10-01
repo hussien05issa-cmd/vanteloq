@@ -1,7 +1,7 @@
 import { hasAmbiguousRSeriesCosts } from "../../../../server/integrations/cost-evidence";
 import { recordedLabourCost } from "../../../../domain/labour-evidence";
 import { businessTimestampRange, businessTimestampExtrema, businessDatesFromExtrema, type TimestampExtrema } from "../../../../domain/business-period";
-import { and, asc, eq, gt, gte, inArray, isNull, lte, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, eq, gt, gte, inArray, lte, sql, type SQL } from "drizzle-orm";
 import { getD1, getDb } from "../../../../db";
 import { dailyBusinessMetrics, dataImports, integrationConnections, integrationLocationMappings } from "../../../../db/schema";
 import { requireAccess } from "../../../../server/authorization";
@@ -19,6 +19,7 @@ import {
 } from "../../../../server/permissions";
 import { authorizedLocationDataScope } from "../../../../server/location-access";
 import { approvedFactSource, noActiveIntegrationLease } from "../../../../server/integrations/trusted-data";
+import { authoritativeDailySalesScope } from "../../../../server/integrations/daily-sales-scope";
 import { commerceSourceAuthority, defaultCommerceChannel } from "../../../../server/integrations/source-authority";
 import { buildCanonicalReportCatalog, buildProviderReportCatalog, reportCapableCommerceProviders } from "../../../../domain/provider-report-contracts";
 import type { CanonicalCommerceCoverage } from "../../../../domain/provider-feature-coverage";
@@ -185,41 +186,9 @@ export async function GET(request: Request) {
     }
     const presentation = url.searchParams.get("view") === "payment_mix" ? "payment_mix" : "sales";
     const consolidationBlocked = !requestedConnectionId && (salesAuthority.status === "conflict" || (presentation === "payment_mix" && paymentAuthority.status === "conflict"));
-    const selectedLocations = new Set(salesAuthority.selections.map((selection) => selection.localLocationId));
-    const manualLocationIds = localLocationIds.filter((locationId) => !selectedLocations.has(locationId));
-    const authorityPredicates = salesAuthority.selections
-      .filter((selection) => Boolean(selection.metricLocationRef))
-      .map((selection) => and(
-        eq(dailyBusinessMetrics.sourceConnectionId, selection.connectionId),
-        eq(dailyBusinessMetrics.locationRef, selection.metricLocationRef!),
-      ));
-    const manualPredicate = !locationRestricted && salesAuthority.selections.length === 0
-      ? isNull(dailyBusinessMetrics.sourceConnectionId)
-      : manualLocationIds.length
-        ? and(
-            isNull(dailyBusinessMetrics.sourceConnectionId),
-            inArray(dailyBusinessMetrics.locationRef, manualLocationIds),
-          )
-        : undefined;
-    const requestedMetricLocationRefs = requestedConnectionId
-      ? [...new Set(salesAuthority.candidates
-          .filter((candidate) => candidate.connectionId === requestedConnectionId)
-          .map((candidate) => candidate.metricLocationRef)
-          .filter((value): value is string => Boolean(value)))]
-      : [];
-    const sourcePredicate = requestedConnectionId
-      ? requestedMetricLocationRefs.length
-        ? and(
-            eq(dailyBusinessMetrics.sourceConnectionId, requestedConnectionId),
-            inArray(dailyBusinessMetrics.locationRef, requestedMetricLocationRefs),
-          )
-        : sql`0 = 1`
-      : consolidationBlocked
-        ? sql`0 = 1`
-        : or(
-            ...authorityPredicates,
-            ...(manualPredicate ? [manualPredicate] : []),
-          ) ?? sql`0 = 1`;
+    const selectedLocations = new Set(salesAuthority.selections.map(selection => selection.localLocationId));
+    const manualLocationIds = localLocationIds.filter(locationId => !selectedLocations.has(locationId));
+    const sourcePredicate = authoritativeDailySalesScope({ authority: salesAuthority, localLocationIds, locationRestricted, requestedConnectionId, blocked: consolidationBlocked });
     const paymentScopes = [...new Map((requestedConnectionId
       ? paymentAuthority.candidates.filter((candidate) => candidate.connectionId === requestedConnectionId)
       : paymentAuthority.selections

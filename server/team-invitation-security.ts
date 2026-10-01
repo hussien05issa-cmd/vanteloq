@@ -10,6 +10,24 @@ export function invitationIdentityAllowed(row: Invitation, email: string, subjec
   return row.status === "accepted" && row.auth_user_id === subject && Boolean(row.accepted_at);
 }
 
+// Console acceptance must not force an employee to discard a working sign-in.
+// Recovery still requires a current product grant and a deleted (not merely
+// revoked) identity in the inviting owner's workspace.
+export function deletedTeamIdentityRecoveryAllowed(
+  row: Invitation & { console_access: boolean; acceptance_notice_version: string | null },
+  email: string,
+  subject: string | null,
+  existingStatus: string,
+  latestAccessAction: string | undefined,
+) {
+  if (!invitationIdentityAllowed(row, email, subject) || row.auth_user_id !== subject) return false;
+  const recoverableInvitation = row.status === "pending" || (
+    row.status === "accepted" && row.console_access
+    && row.acceptance_notice_version === "private-console-access-v1"
+  );
+  return recoverableInvitation && existingStatus === "suspended" && latestAccessAction === "team_access.deleted";
+}
+
 export function invitationSessionAllowed(token: string, now = Date.now()) {
   try {
     const part = token.split(".")[1];

@@ -1,3 +1,4 @@
+import { advisorSse } from "../shared/advisor-stream.ts";
 import { ADVISOR_APP_HELP_INSTRUCTIONS, ADVISOR_SYSTEM_INSTRUCTIONS } from "./advisor-instructions.ts";
 import type { VanteloqRuntimeEnv } from "../db/index.ts";
 import { ADVISOR_PROVIDER_LABELS, isAdvisorMode, type AdvisorMode, type AdvisorProvider } from "../domain/advisor-providers.ts";
@@ -10,7 +11,7 @@ export function advisorProviderStatus(env: VanteloqRuntimeEnv) {
   };
 }
 
-async function callProvider(provider: AdvisorProvider, text: string, env: VanteloqRuntimeEnv, request: typeof fetch, purpose: "analysis" | "help", signal?: AbortSignal, attachments: AdvisorAttachmentContent[] = []) {
+async function callProvider(provider: AdvisorProvider, text: string, env: VanteloqRuntimeEnv, request: typeof fetch, purpose: "analysis" | "help", signal?: AbortSignal, attachments: AdvisorAttachmentContent[] = [], onDelta?: (text: string) => Promise<void>) {
   const instructions = purpose === "help" ? ADVISOR_APP_HELP_INSTRUCTIONS : ADVISOR_SYSTEM_INSTRUCTIONS;
   const model = env.OPENAI_MODEL?.trim() || "gpt-5-mini";
   const url = "https://api.openai.com/v1/responses";
@@ -22,7 +23,7 @@ async function callProvider(provider: AdvisorProvider, text: string, env: Vantel
       // the response.ok check below, so credentials never follow a redirect.
       method: "POST", redirect: "manual", signal: signal ? AbortSignal.any([signal, deadline]) : deadline,
       headers: { "content-type": "application/json", authorization: `Bearer ${env.OPENAI_API_KEY!.trim()}` },
-      body: JSON.stringify({ model, instructions, input: attachments.length ? [{ role: "user", content: [{ type: "input_text", text }, ...attachments] }] : text, store: false, max_output_tokens: 3200, reasoning: { effort: "low" }, text: { verbosity: "low" } }),
+      body: JSON.stringify({ model, instructions, input: attachments.length ? [{ role: "user", content: [{ type: "input_text", text }, ...attachments] }] : text, store: false, ...(onDelta ? { stream: true } : {}), max_output_tokens: 3200, reasoning: { effort: "low" }, text: { verbosity: "low" } }),
     });
     if (!response.ok) {
       // Provider diagnostics can contain sensitive details. Expose only our own
@@ -39,14 +40,27 @@ async function callProvider(provider: AdvisorProvider, text: string, env: Vantel
       if (response.status === 401 || response.status === 403) throw new ApiError(503, "ADVISOR_SETUP_REQUIRED", `${ADVISOR_PROVIDER_LABELS[provider]} access needs administrator attention. No analysis was completed.`);
       throw new Error("provider rejected request");
     }
-    const body = await response.json() as {
-      status?: string;
-      output?: Array<{ type?: string; content?: Array<{ type?: string; text?: string }> }>;
-    };
+    type ProviderBody = { status?: string; output?: Array<{ type?: string; content?: Array<{ type?: string; text?: string }> }>; usage?: {input_tokens?:number;output_tokens?:number;input_tokens_details?:{cached_tokens?:number}} };
+    let body: ProviderBody, streamed = "";
+    if(onDelta && response.headers.get("content-type")?.includes("text/event-stream")) {
+      if(!response.body) throw new Error("missing stream");
+      let completed: ProviderBody | null = null;
+      for await (const event of advisorSse(response.body, signal)) {
+        if(event.type === "response.output_text.delta" && typeof event.delta === "string") {
+          streamed += event.delta;
+          if(streamed.length>40_000) throw new Error("answer limit");
+          await onDelta(event.delta);
+        } else if(event.type === "response.completed") completed=event.response as ProviderBody;
+        else if(["error","response.failed","response.incomplete"].includes(String(event.type))) throw new Error("incomplete provider response");
+      }
+      if(!completed) throw new Error("interrupted provider stream");
+      body=completed;
+    } else body=await response.json() as ProviderBody;
     const answer = body.status === "completed" ? body.output?.filter(item => item.type === "message").flatMap(item => item.content ?? []).filter(item => item.type === "output_text").map(item => item.text ?? "").join("\n").trim() : "";
+    if(streamed && streamed.trim()!==answer) throw new Error("stream completion mismatch");
     if (!answer) throw new Error("provider returned no complete answer");
     signal?.throwIfAborted();
-    return { provider, model, text: answer };
+    return { provider, model, text: answer, usage: { inputTokens: body.usage?.input_tokens ?? null, outputTokens: body.usage?.output_tokens ?? null, cachedInputTokens: body.usage?.input_tokens_details?.cached_tokens ?? null } };
   } catch (error) {
     if (error instanceof ApiError) throw error;
     if (signal?.aborted) throw new ApiError(408, "ADVISOR_REQUEST_CANCELLED", "The response was stopped.");
@@ -55,11 +69,11 @@ async function callProvider(provider: AdvisorProvider, text: string, env: Vantel
   }
 }
 
-export async function callAdvisor(mode: AdvisorMode, text: string, env: VanteloqRuntimeEnv, request: typeof fetch = fetch, purpose: "analysis" | "help" = "analysis", signal?: AbortSignal, attachments: AdvisorAttachmentContent[] = []) {
+export async function callAdvisor(mode: AdvisorMode, text: string, env: VanteloqRuntimeEnv, request: typeof fetch = fetch, purpose: "analysis" | "help" = "analysis", signal?: AbortSignal, attachments: AdvisorAttachmentContent[] = [], onDelta?: (text: string) => Promise<void>) {
   // Reject legacy or forged modes even when called outside the HTTP handler.
   if (!isAdvisorMode(mode)) throw new ApiError(400, "ADVISOR_PROVIDER_INVALID", "Vanteloq AI supports OpenAI only.");
   const status = advisorProviderStatus(env).openai;
   if (!status.ready) return { configured: false as const, message: status.reason, model: "", text: "", providers: [] };
-  const answer = await callProvider("openai", text, env, request, purpose, signal, attachments);
-  return { configured: true as const, model: answer.model, text: answer.text, providers: [answer.provider], partial: false };
+  const answer = await callProvider("openai", text, env, request, purpose, signal, attachments, onDelta);
+  return { configured: true as const, model: answer.model, text: answer.text, usage: answer.usage, providers: [answer.provider], partial: false };
 }

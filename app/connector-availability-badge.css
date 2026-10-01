@@ -1,0 +1,27 @@
+/* Lightweight, branded paper stickers. Provider marks and readiness logic stay intact. */
+.connector-availability-sticker{--sticker-ink:#1956a8;--sticker-fill:#e8f2ff;position:relative;display:inline-flex;align-items:center;justify-content:center;max-width:100%;box-sizing:border-box;padding:6px 13px 7px;border:2px solid #fff;border-radius:9px 13px 9px 13px;background:var(--sticker-fill);color:var(--sticker-ink);box-shadow:0 0 0 1px #c2d6ed,0 3px 6px #173b6320;transform:rotate(-4deg);font-family:"Segoe Print","Bradley Hand",Georgia,serif;font-style:italic;font-size:15px;font-weight:600;line-height:1.3;letter-spacing:0;white-space:normal;text-align:center}
+.connector-availability-sticker::after{content:"";position:absolute;right:0;bottom:0;width:8px;height:8px;border-radius:5px 0 5px 0;background:#fff9;box-shadow:-1px -1px 0 #ffffffa6}
+.connector-availability-sticker.is-coming-soon{--sticker-ink:#584986;--sticker-fill:#f0ecfb;box-shadow:0 0 0 1px #d6cfee,0 3px 6px #332a591b;transform:rotate(3deg)}
+.home-provider-tiles{row-gap:23px}
+.home-provider-tiles>button{position:relative;min-height:110px;padding-top:32px}
+.home-provider-tiles>button>.connector-availability-sticker{position:absolute;right:10px;top:-9px;z-index:1;max-width:calc(100% - 20px)}
+.home-provider-tiles .provider-tile-label>strong{font-size:14px;color:#153451}
+.operating-shell .data-hub .integration-card-head{flex-wrap:wrap;min-width:0}
+.operating-shell .data-hub .integration-card-labels{min-width:0;max-width:100%;gap:9px}
+.operating-shell .data-hub .integration-card-labels>.connector-availability-sticker{margin:3px 3px 3px 8px}
+@media(hover:hover) and (pointer:fine) and (prefers-reduced-motion:no-preference){
+  .connector-availability-sticker{transition:transform 180ms ease}
+  .home-provider-tiles>button:hover>.connector-availability-sticker{transform:rotate(-1deg) translateY(-2px)}
+  .home-provider-tiles>button:hover>.connector-availability-sticker.is-coming-soon{transform:rotate(1deg) translateY(-2px)}
+}
+@media(prefers-reduced-motion:no-preference){
+  .home-provider-tiles>button[aria-expanded=true]>.connector-availability-sticker{animation:connector-sticker-settle 260ms ease-out}
+  @keyframes connector-sticker-settle{from{scale:.96}to{scale:1}}
+}
+@media(max-width:620px){
+  .home-provider-tiles>button{padding:31px 12px 16px;gap:10px;min-height:135px}
+  .home-provider-tiles .integration-logo,.home-provider-tiles .integration-logo:is(.brand-stripe,.brand-moneris,.brand-uber-eats){flex-basis:auto}
+  .home-provider-tiles>button>.connector-availability-sticker{right:7px;max-width:calc(100% - 14px);padding:6px 10px;font-size:14px}
+}
+@media(prefers-reduced-motion:reduce){.connector-availability-sticker{animation:none!important;transition:none!important}}
+html[data-motion-paused=true] .connector-availability-sticker{animation:none!important;transition:none!important}

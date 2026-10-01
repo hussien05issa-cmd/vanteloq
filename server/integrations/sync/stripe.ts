@@ -130,7 +130,7 @@ export async function runSync(request: Request, requestId: string, context: Sync
         completedAt,
       }).where(eq(integrationSyncRuns.id, runId));
       const completed = await getDb().update(integrationConnections).set({
-        lastSuccessfulSyncAt: completedAt,
+        lastSuccessfulSyncAt: warnings > 0 ? connection.lastSuccessfulSyncAt : completedAt,
         lastSyncCursor: cursorAfterJson,
         dataPromotionStatus: "staging",
         lastErrorCode: warnings ? "STRIPE_RECORD_REVIEW_REQUIRED" : null,

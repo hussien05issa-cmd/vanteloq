@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "
 import { createCookieNoticeNavigation, shouldShowConsentPanel } from "./analytics-consent-navigation";
 import ProductBrandLogo from "./product-brand-logo";
 import { useModalFocus } from "./use-modal-focus";
+import { getPublicRoot, getServerPublicRoot, subscribePublicRoot } from "./analytics-public-surface";
 
 type ConsentChoice = "analytics" | "essential";
 type GtagCommand = [string, ...unknown[]];
@@ -26,6 +27,7 @@ const ANALYTICS_ID_PATTERN = /^G-[A-Z0-9]+$/;
 const CONSENT_STORAGE_KEY = "vanteloq:cookie-consent:v1";
 const SCRIPT_ID = "vanteloq-google-analytics";
 const READY_EVENT = "vanteloq:analytics-ready";
+let analyticsAllowed = false;
 const PUBLIC_MEASUREMENT_PATHS = new Set(["/", "/demo", "/help", "/pricing", "/contact", "/custom-plan", "/cookies", "/data-processing", "/legal", "/privacy", "/subprocessors", "/terms"]);
 const PUBLIC_EVENTS = new Set(["demo_view", "demo_engaged", "signup_start", "plan_selected", "pricing_view", "compatibility_checked", "inquiry_sent"]);
 
@@ -64,17 +66,18 @@ function configureAnalytics() {
 
 function isPublicMeasurementPage(pathname: string) {
   const isPublicPath = PUBLIC_MEASUREMENT_PATHS.has(pathname) || pathname === "/resources" || pathname.startsWith("/resources/") || pathname.startsWith("/features/");
-  return isPublicPath && window.location.search === "";
+  return isPublicPath && window.location.pathname === pathname && window.location.search === "" && (pathname !== "/" || getPublicRoot());
 }
 
 function markAnalyticsReady() {
-  if (window.__vanteloqAnalyticsReady) return;
-  configureAnalytics();
   window.__vanteloqAnalyticsReady = true;
+  if (!analyticsAllowed || !isPublicMeasurementPage(window.location.pathname)) return;
+  configureAnalytics();
   window.dispatchEvent(new Event(READY_EVENT));
 }
 
 function loadAnalytics() {
+  analyticsAllowed = true;
   setAnalyticsDisabled(false);
   runGtag("consent", "update", {
     analytics_storage: "granted",
@@ -85,6 +88,7 @@ function loadAnalytics() {
 
   const existing = document.getElementById(SCRIPT_ID) as HTMLScriptElement | null;
   if (existing) {
+    if (window.__vanteloqAnalyticsReady) configureAnalytics();
     if (!window.__vanteloqAnalyticsReady) existing.addEventListener("load", markAnalyticsReady, { once: true });
     return;
   }
@@ -98,7 +102,8 @@ function loadAnalytics() {
   document.head.append(script);
 }
 
-function stopAnalytics() {
+function stopAnalytics(clearCookies = true) {
+  analyticsAllowed = false;
   runGtag("consent", "update", {
     analytics_storage: "denied",
     ad_storage: "denied",
@@ -106,7 +111,7 @@ function stopAnalytics() {
     ad_personalization: "denied",
   });
   setAnalyticsDisabled(true);
-  clearAnalyticsCookies();
+  if (clearCookies) clearAnalyticsCookies();
 }
 
 function readSavedChoice(): ConsentChoice | null {
@@ -132,6 +137,7 @@ const getServerHydrationSnapshot = () => false;
 
 export function GoogleAnalyticsConsent() {
   const pathname = usePathname();
+  const publicRoot = useSyncExternalStore(subscribePublicRoot, getPublicRoot, getServerPublicRoot);
   const hydrated = useSyncExternalStore(subscribeToHydration, getClientHydrationSnapshot, getServerHydrationSnapshot);
   const [choiceOverride, setChoiceOverride] = useState<ConsentChoice | null>();
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -156,21 +162,29 @@ export function GoogleAnalyticsConsent() {
   useModalFocus(panelRef, configured && panelOpen, dismissPanel);
 
   useEffect(() => {
-    if (!configured || choice === undefined) return;
-    if (choice === "essential") {
-      stopAnalytics();
-      return;
-    }
-    if (choice !== "analytics" || !pathname) return;
-    if (!isPublicMeasurementPage(pathname)) {
-      stopAnalytics();
+    const sync = (event: StorageEvent) => {
+      if (event.key !== null && event.key !== CONSENT_STORAGE_KEY) return;
+      const next = readSavedChoice();
+      if (next !== "analytics") stopAnalytics();
+      setChoiceOverride(next);
+    };
+    const stopPrivateRoot = () => {
+      if (window.location.pathname === "/" && !getPublicRoot()) stopAnalytics(false);
+    };
+    const unsubscribe = subscribePublicRoot(stopPrivateRoot);
+    window.addEventListener("storage", sync);
+    return () => { window.removeEventListener("storage", sync); unsubscribe(); };
+  }, []);
+
+  useEffect(() => {
+    if (!configured || choice !== "analytics" || !pathname || !isPublicMeasurementPage(pathname)) {
+      stopAnalytics(choice === "essential" || choice === null);
       return;
     }
 
-    setAnalyticsDisabled(false);
     let pageViewSent = false;
     const sendPageView = () => {
-      if (pageViewSent) return;
+      if (pageViewSent || !analyticsAllowed || !isPublicMeasurementPage(pathname)) return;
       pageViewSent = true;
       runGtag("event", "page_view", {
         page_location: `${window.location.origin}${pathname}`,
@@ -178,15 +192,15 @@ export function GoogleAnalyticsConsent() {
       });
     };
     window.addEventListener(READY_EVENT, sendPageView);
+    loadAnalytics();
     if (window.__vanteloqAnalyticsReady) sendPageView();
-    else loadAnalytics();
-    return () => window.removeEventListener(READY_EVENT, sendPageView);
-  }, [choice, configured, pathname]);
+    return () => { window.removeEventListener(READY_EVENT, sendPageView); stopAnalytics(false); };
+  }, [choice, configured, pathname, publicRoot]);
 
   useEffect(() => {
     if (!configured || choice !== "analytics" || !pathname || !isPublicMeasurementPage(pathname)) return;
     const measure = (event: Event) => {
-      if (!window.__vanteloqAnalyticsReady || !(event.target instanceof Element)) return;
+      if (!analyticsAllowed || !isPublicMeasurementPage(pathname) || !window.__vanteloqAnalyticsReady || !(event.target instanceof Element)) return;
       const control = event.target.closest<HTMLElement>("[data-public-event]");
       if (!control?.closest(".public-site")) return;
       const name = control.dataset.publicEvent;
@@ -196,14 +210,14 @@ export function GoogleAnalyticsConsent() {
       runGtag("event", name, { page_location: `${window.location.origin}${pathname}`, page_path: pathname });
     };
     const confirmed = (event: Event) => {
-      if (!window.__vanteloqAnalyticsReady || !(event instanceof CustomEvent) || event.detail !== "inquiry_sent") return;
+      if (!analyticsAllowed || !isPublicMeasurementPage(pathname) || !window.__vanteloqAnalyticsReady || !(event instanceof CustomEvent) || event.detail !== "inquiry_sent") return;
       runGtag("event", "inquiry_sent", { page_location: `${window.location.origin}${pathname}`, page_path: pathname });
     };
     document.addEventListener("click", measure);
     document.addEventListener("change", measure);
     window.addEventListener("vanteloq:public-conversion", confirmed);
     return () => { document.removeEventListener("click", measure); document.removeEventListener("change", measure); window.removeEventListener("vanteloq:public-conversion", confirmed); };
-  }, [choice, configured, pathname]);
+  }, [choice, configured, pathname, publicRoot]);
 
   if (!configured || choice === undefined) return null;
 

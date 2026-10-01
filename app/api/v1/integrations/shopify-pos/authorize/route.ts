@@ -1,3 +1,4 @@
+import { requireProviderPrivacy } from "../../../../../../server/integrations/provider-privacy";
 import { requireIntegrationRollout } from "../../../../../../server/integrations/rollout-access";
 import { oauthBrowserCookie } from "../../../../../../server/integrations/oauth-browser";
 import { getDb } from "../../../../../../db";
@@ -18,6 +19,7 @@ export async function POST(request: Request) {
     await requirePermission(context, "integrations.manage");
     await requireIntegrationRollout(context, provider);
     await enforceRateLimit(`${provider}:authorize`, context.userId, 10, 3600);
+    await requireProviderPrivacy(request, context, provider, requestId);
     const input = await readJsonObject(request);
     if (typeof input.shop !== "string") throw new ApiError(400, "SHOPIFY_SHOP_REQUIRED", "Enter the store's permanent .myshopify.com domain.");
     const shop = normalizeShopDomain(input.shop);

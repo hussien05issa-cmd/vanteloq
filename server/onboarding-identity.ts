@@ -30,14 +30,14 @@ export function onboardingIdentityDisposition(input: {
 
   if (input.hasMembership) {
     if (subjectMismatch) {
-      throw new ApiError(403, "IDENTITY_CONFLICT", "This verified identity does not match the existing Vanteloq account.");
+      throw new ApiError(403, "IDENTITY_CONFLICT", "This email is linked to an earlier sign-in. Sign in with the original account, or contact support@vanteloq.com for account recovery. Your existing workspace has not been changed.");
     }
     throw new ApiError(409, "WORKSPACE_EXISTS", "This account already belongs to a workspace.");
   }
 
   if (subjectMismatch) {
     if (!canRecoverSupabaseIdentity) {
-      throw new ApiError(403, "IDENTITY_CONFLICT", "This verified identity does not match the existing Vanteloq account.");
+      throw new ApiError(403, "IDENTITY_CONFLICT", "Finish verifying your account to continue setup. Your existing account has not been changed.");
     }
     return "rebind";
   }

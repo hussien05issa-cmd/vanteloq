@@ -55,7 +55,7 @@ export async function marketingConfig(): Promise<MarketingConfig> {
   try { validKey = encryptionMaterial().byteLength === 32; } catch { /* Public readiness never exposes secret configuration details. */ }
   const base = {
     noticeVersion: MARKETING_NOTICE_VERSION,
-    senderName: "LexEdge Consulting, operating as Vanteloq",
+    senderName: "2855706 ALBERTA INC, doing business as LexEdge Consulting",
     postalAddress: validAddress ? postalAddress : null,
     contactUrl: "https://vanteloq.com/contact",
     purpose: MARKETING_PURPOSE,

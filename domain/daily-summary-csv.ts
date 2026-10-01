@@ -2,7 +2,7 @@ import { isCalendarDate } from "./calendar-date";
 
 const requiredHeaders = ["business_date", "gross_sales", "net_sales", "cogs", "transactions", "units"];
 
-function csvCells(line: string, row: number): string[] {
+export function csvCells(line: string, row: number): string[] {
   const cells: string[] = [];
   let cell = "", quoted = false, closed = false;
   for (let i = 0; i < line.length; i++) {
@@ -40,12 +40,13 @@ export function parseDailyCsv(text: string) {
     const key = JSON.stringify([businessDate, locationRef]);
     if (seen.has(key)) throw new Error(`Row ${row}: this date and location already appear in the file.`);
     seen.add(key);
-    const money = (name: string, nullable = false): number | null => {
+    const money = (name: string, nullable = false, signed = false): number | null => {
       const raw = get(name);
       if (!raw) return nullable ? null : 0;
-      if (!/^\$?(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d{1,2})?$/.test(raw)) throw new Error(`Row ${row}: ${name} must be a nonnegative amount with no more than 2 decimal places.`);
-      const [whole, decimals = ""] = raw.replace(/[$,]/g, "").split(".");
-      const cents = Number(whole) * 100 + Number(decimals.padEnd(2, "0"));
+      const unsigned = signed && raw.startsWith("-") ? raw.slice(1) : raw;
+      if (!/^\$?(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d{1,2})?$/.test(unsigned)) throw new Error(`Row ${row}: ${name} must be ${signed ? "an amount" : "a nonnegative amount"} with no more than 2 decimal places.`);
+      const [whole, decimals = ""] = unsigned.replace(/[$,]/g, "").split(".");
+      const cents = (raw.startsWith("-") ? -1 : 1) * (Number(whole) * 100 + Number(decimals.padEnd(2, "0")));
       if (!Number.isSafeInteger(cents)) throw new Error(`Row ${row}: ${name} is too large.`);
       return cents;
     };
@@ -56,10 +57,10 @@ export function parseDailyCsv(text: string) {
     };
     return {
       businessDate, locationRef,
-      grossSalesCents: money("gross_sales")!, netSalesCents: money("net_sales")!, costOfGoodsCents: money("cogs")!,
+      grossSalesCents: money("gross_sales")!, netSalesCents: money("net_sales", false, true)!, costOfGoodsCents: money("cogs", false, true)!,
       transactionCount: integer("transactions"), unitsSold: integer("units"), refundsCents: money("refunds")!,
       discountsCents: money("discounts")!, labourCostCents: money("labour_cost", true),
-      inventoryValueCents: money("inventory_value", true), cashBalanceCents: money("cash_balance", true), accountsPayableCents: money("accounts_payable", true),
+      inventoryValueCents: money("inventory_value", true), cashBalanceCents: money("cash_balance", true, true), accountsPayableCents: money("accounts_payable", true),
     };
   });
 }

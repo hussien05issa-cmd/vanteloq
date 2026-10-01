@@ -10,6 +10,7 @@ import {
   verifyStripeBillingSignature,
 } from "../server/billing/stripe.ts";
 import { ADDONS, PLANS } from "../server/entitlements/catalog.ts";
+import { SUBSCRIPTION_TRIAL_POLICY } from "../shared/subscription-trial.ts";
 
 const webhookSecret = "whsec_test_billing_webhook_secret";
 (globalThis as typeof globalThis & { __vanteloqEnv?: Record<string, string> }).__vanteloqEnv = {
@@ -27,7 +28,7 @@ function verifiedPrice(lookupKey: string) {
         unit_amount: expected.amountCents,
         currency: "cad",
         active: true,
-        recurring: { interval: expected.interval },
+        recurring: { interval: expected.interval, interval_count: 1, usage_type: "licensed" }, type: "recurring", billing_scheme: "per_unit", transform_quantity: null,
       };
     }
   }
@@ -36,6 +37,24 @@ function verifiedPrice(lookupKey: string) {
 
 test("Stripe Billing readiness requires both the platform and dedicated webhook secrets", () => {
   assert.deepEqual(stripeBillingReadiness(), { configured: true, missingConfiguration: [] });
+});
+
+test("production checkout fails closed when a test Stripe key is configured", async () => {
+  let requested = false;
+  await assert.rejects(
+    prepareStripeCheckout({
+      organizationId: "org_verified_123",
+      email: "owner@example.com",
+      plan: "starter",
+      interval: "month",
+      includeBookloq: false,
+      customerId: null,
+      origin: "https://vanteloq.com",
+      fetcher: async () => { requested = true; return Response.json({}); },
+    }),
+    (error: unknown) => error instanceof ApiError && error.code === "STRIPE_LIVE_BILLING_REQUIRED",
+  );
+  assert.equal(requested, false);
 });
 
 test("Checkout uses only verified catalogue prices and binds the organization", async () => {
@@ -70,6 +89,7 @@ test("Checkout uses only verified catalogue prices and binds the organization", 
   assert.equal(body.get("customer_email"), "owner@example.com");
   assert.equal(body.get("line_items[0][price]"), verifiedPrice(PLANS.growth.prices.month.lookupKey).id);
   assert.equal(body.get("line_items[1][price]"), verifiedPrice(ADDONS.bookloq.prices.month.lookupKey).id);
+  assert.equal([...body.keys()].some(key => key.toLowerCase().includes("trial")), false);
   assert.doesNotMatch(body.toString(), /sk_test|whsec_|card/i);
 });
 
@@ -208,6 +228,54 @@ test("Billing webhook verification rejects tampering and stale replay", async ()
   assert.equal(await verifyStripeBillingSignature(body, header, timestamp + 60), true);
   assert.equal(await verifyStripeBillingSignature(new TextEncoder().encode("{}"), header, timestamp + 60), false);
   assert.equal(await verifyStripeBillingSignature(body, header, timestamp + 301), false);
+});
+
+test("eligible first checkout applies one seven-day trial to selected items and keeps payment collection mandatory", async () => {
+  const fetcher: typeof fetch = async input => Response.json({ data: [verifiedPrice(new URL(String(input)).searchParams.get("lookup_keys[]")!)] });
+  for (const plan of ["starter", "growth", "pro", "bookloq"] as const) {
+    const input = { organizationId: "org_trial_123", email: "owner@example.invalid", plan, interval: "month" as const, includeBookloq: plan !== "bookloq", customerId: null, origin: "https://vanteloq.example", fetcher };
+    const trial = await prepareStripeCheckout({ ...input, trialEligible: true });
+    assert.equal(trial.get("subscription_data[trial_period_days]"), "7");
+    assert.equal(trial.get("payment_method_collection"), "always");
+    assert.equal(trial.get("subscription_data[trial_settings][end_behavior][missing_payment_method]"), "cancel");
+    assert.equal(trial.get("subscription_data[metadata][vanteloq_trial_policy]"), SUBSCRIPTION_TRIAL_POLICY);
+    assert.match(trial.get("custom_text[submit][message]")!, /first billing date.*Cancel/);
+    const paid = await prepareStripeCheckout({ ...input, trialEligible: false });
+    assert.equal(paid.has("subscription_data[trial_period_days]"), false);
+    assert.equal(paid.get("line_items[0][price]"), trial.get("line_items[0][price]"));
+  }
+});
+
+test("trial conversion evidence requires a paid invoice for the exact customer, subscription and base item", () => {
+  const periodEnd = 1_800_000_000;
+  const price = verifiedPrice(PLANS.starter.prices.month.lookupKey);
+  const invoice = { status: "paid", currency: "cad", customer: "cus_trial123456", parent: { subscription_details: { subscription: "sub_trial123456" } },
+    lines: { has_more: false, data: [{ pricing: { price_details: { price: price.id } }, parent: { subscription_item_details: { subscription_item: "si_trial123456", proration: false } }, period: { end: periodEnd } }] } };
+  const object = { id: "sub_trial123456", customer: "cus_trial123456", status: "active", metadata: { vanteloq_organization_id: "org_trial" }, items: { data: [{ id: "si_trial123456", price, current_period_end: periodEnd }] }, latest_invoice: invoice };
+  assert.equal(normalizeStripeSubscription(object).paidInvoicePeriodEndsAt?.getTime(), periodEnd * 1000);
+  for (const changed of [{ ...invoice, status: "open" }, { ...invoice, currency: "usd" }, { ...invoice, customer: "cus_other123456" }, { ...invoice, parent: {} }, { ...invoice, lines: { ...invoice.lines, has_more: true } }, { ...invoice, lines: { data: [{ ...invoice.lines.data[0], pricing: { price_details: { price: "price_other123456" } } }] } }]) {
+    assert.equal(normalizeStripeSubscription({ ...object, latest_invoice: changed }).paidInvoicePeriodEndsAt, null);
+  }
+  const legacy = { ...invoice, subscription: object.id, lines: { data: [{ subscription_item: "si_trial123456", price, period: { end: periodEnd } }] } };
+  assert.equal(normalizeStripeSubscription({ ...object, latest_invoice: legacy }).paidInvoicePeriodEndsAt?.getTime(), periodEnd * 1000);
+});
+
+test("fixed catalogue prices reject quarterly, metered and transformed billing", async () => {
+  const good=verifiedPrice(PLANS.starter.prices.month.lookupKey);
+  for(const bad of [
+    {...good,recurring:{...good.recurring,interval_count:3}},
+    {...good,recurring:{...good.recurring,usage_type:"metered"}},
+    {...good,transform_quantity:{divide_by:10,round:"down"}},
+    {...good,billing_scheme:"tiered"},
+  ]) {
+    await assert.rejects(prepareStripeCheckout({organizationId:"org_price_test",email:"test@example.invalid",plan:"starter",interval:"month",includeBookloq:false,customerId:null,origin:"https://vanteloq.example",fetcher:async()=>Response.json({data:[bad]})}),/does not match/);
+    assert.throws(()=>normalizeStripeSubscription({id:"sub_contract1234",customer:"cus_contract1234",status:"active",metadata:{vanteloq_organization_id:"org_price_test"},items:{data:[{price:bad,quantity:1}]}}),/does not match/);
+  }
+});
+
+test("a malformed recognized add-on cannot become a silent removal",()=>{
+  const payload={id:"sub_contract1234",customer:"cus_contract1234",status:"active",metadata:{vanteloq_organization_id:"org_price_test"},items:{data:[{price:verifiedPrice(PLANS.starter.prices.month.lookupKey),quantity:1},{id:"si_addon123456",price:{...verifiedPrice(ADDONS.bookloq.prices.month.lookupKey),unit_amount:1},quantity:1}]}};
+  assert.throws(()=>normalizeStripeSubscription(payload),/add-on does not match/);
 });
 
 test("normalization rejects duplicate add-ons, invalid quantities and partial item lists", () => {

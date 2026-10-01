@@ -33,5 +33,24 @@ test("cash classification reconciles movements while keeping mixed and policy-se
 });
 test("aging distinguishes due today, overdue, part payments and draft documents",()=>{
   const buckets=agingBuckets([{dueDate:"2026-09-17",totalCents:1000,paidCents:0,status:"sent"},{dueDate:"2026-08-17",totalCents:2000,paidCents:500,status:"partially_paid"},{dueDate:"2025-01-01",totalCents:9000,paidCents:0,status:"draft"}],"2026-09-17");
-  assert.deepEqual(buckets.map(r=>r.cents),[1000,0,1500,0,0]);
+  assert.deepEqual(buckets.map(r=>r.cents),[1000,0,1500,0,0,0]);
+});
+
+test("aging retains undated balances without accepting impossible calendar dates", () => {
+  const items = [null, "", "not-a-date", "2026-02-30", "2026-2-03", "2026-02-29"].map(dueDate => ({ dueDate, totalCents: 1001, paidCents: 1, status: "sent" }));
+  const buckets = agingBuckets(items, "2026-09-27");
+  assert.equal(buckets.at(-1)?.label, "No valid due date");
+  assert.deepEqual(buckets.map(bucket => bucket.cents), [0, 0, 0, 0, 0, 6000]);
+  assert.throws(() => agingBuckets(items, "2026-02-30"), /valid business date/);
+  assert.equal(agingBuckets([{ dueDate: "2024-02-29", totalCents: 1000, paidCents: 0, status: "sent" }], "2024-03-01")[1].cents, 1000);
+});
+
+test("aging uses distinct day boundaries and excludes every closed document status", () => {
+  const asOf = "2026-09-27";
+  const items = [-1, 0, 1, 30, 31, 60, 61, 90, 91].map(days => ({ dueDate: new Date(Date.parse(asOf + "T00:00:00Z") - days * 86400000).toISOString().slice(0, 10), totalCents: 1000, paidCents: 0, status: "sent" }));
+  items.push(...["draft", "void", "cancelled", "paid", "reconciled", "written_off"].map(status => ({ dueDate: asOf, totalCents: 9000, paidCents: 0, status })));
+  const buckets = agingBuckets(items, asOf);
+  assert.deepEqual(buckets.map(bucket => bucket.cents), [2000, 2000, 2000, 2000, 1000, 0]);
+  assert.equal(buckets[0].label, "Not overdue");
+  assert.equal(buckets[4].label, "91+ days");
 });

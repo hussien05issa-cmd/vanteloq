@@ -21,7 +21,7 @@ test("integration response derives preview controls from the current subject-bou
       return (await response.json()).integrations;
     };
     const ordinary = await load();
-    for (const path of ["/api/v1/integrations/clover/authorize", "/api/v1/integrations/shopify/authorize", "/api/v1/integrations/shopify-pos/authorize", "/api/v1/integrations/moneris/connect"]) {
+    for (const path of ["/api/v1/integrations/lightspeed/authorize", "/api/v1/integrations/stripe/authorize", "/api/v1/integrations/clover/authorize", "/api/v1/integrations/shopify/authorize", "/api/v1/integrations/shopify-pos/authorize", "/api/v1/integrations/moneris/connect"]) {
       const denied = await dispatch(worker, environment, path, { ...account.owner, method: "POST", body: {} });
       assert.equal(denied.status, 403, await denied.clone().text());
       assert.equal((await denied.json()).error.code, "INTEGRATION_COMING_SOON");

@@ -1,4 +1,4 @@
-client_id = "1e62317af62ab9a74c426da205506a43"
+client_id = "eeb1934e31ab2bc3d36c6dc207d2ba41"
 name = "Vanteloq"
 application_url = "https://vanteloq.com"
 embedded = false
@@ -7,7 +7,7 @@ embedded = false
 automatically_update_urls_on_dev = false
 
 [access_scopes]
-scopes = "read_all_orders,read_customers,read_inventory,read_locations,read_orders,read_products"
+scopes = "read_customers,read_inventory,read_locations,read_orders,read_products"
 
 [auth]
 redirect_urls = [

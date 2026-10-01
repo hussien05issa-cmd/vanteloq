@@ -1,4 +1,5 @@
 import type { CanonicalCommerceCoverage } from "./provider-feature-coverage.ts";
+import type { ConnectionDataReadiness } from "./integration-data-readiness";
 
 type CoverageKey = keyof CanonicalCommerceCoverage;
 
@@ -107,14 +108,20 @@ export function buildProviderReportCatalog(input: {
   provider: string;
   connectionId: string;
   coverage: CanonicalCommerceCoverage;
+  dataReadiness?: ConnectionDataReadiness;
 }) {
   const vocabulary = providerVocabulary(input.provider);
+  const scoped = (reports: ProviderReportDefinition[]) => reports.map(report => {
+    if (!input.dataReadiness) return report;
+    const readiness = input.dataReadiness.metrics.find(metric => metric.id === (report.presentation === "payment_mix" ? "payment_mix" : report.presentation === "sales" ? "sales_performance" : report.id));
+    return { ...report, status: report.implementationStatus === "available" && input.dataReadiness.connectionId === input.connectionId && readiness?.ready ? "ready" as const : "needs_data" as const };
+  });
   return {
     provider: input.provider,
     connectionId: input.connectionId,
     vocabulary,
-    canonicalReports: buildCanonicalReportCatalog(input.coverage),
-    providerReports: resolveDefinitions(providerContracts(input.provider, vocabulary), input.coverage),
+    canonicalReports: scoped(buildCanonicalReportCatalog(input.coverage)),
+    providerReports: scoped(resolveDefinitions(providerContracts(input.provider, vocabulary), input.coverage)),
     boundary: "Canonical reports use Vanteloq definitions. Provider reports retain source terminology and never silently change consolidated totals.",
   };
 }

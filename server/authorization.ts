@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { getDb, getD1 } from "../db";
 import { memberships, users, workspaces } from "../db/schema";
 import { ApiError, requireAal2, requireIdentity, type TrustedIdentity } from "./api";
@@ -35,7 +35,13 @@ export async function findAccessContext(identity: TrustedIdentity, request?: Req
     .from(users)
     .innerJoin(memberships, eq(memberships.userId, users.id))
     .innerJoin(workspaces, eq(workspaces.id, memberships.organizationId))
-    .where(and(eq(users.email, identity.email), eq(users.status, "active"), eq(memberships.status, "active")))
+    .where(and(identity.provider === "supabase" && identity.subject
+      ? or(and(eq(users.authSubject, identity.subject), eq(users.authProvider, "supabase")),
+          and(eq(users.email, identity.email), isNull(users.authSubject)))
+      : eq(users.email, identity.email), eq(users.status, "active"), eq(memberships.status, "active")))
+    .orderBy(identity.provider === "supabase" && identity.subject
+      ? sql`CASE WHEN ${users.authSubject} = ${identity.subject} AND ${users.authProvider} = 'supabase' THEN 0 ELSE 1 END`
+      : users.id)
     .limit(1);
 
   if (!row) return null;
@@ -99,6 +105,7 @@ export async function requireAccess(
   const context = await requireWorkspaceMembership(request, allowedRoles);
   const entitlements = await getTenantEntitlements(context);
   requireTenantServiceAccess(entitlements);
+  if (!context.organization.setupComplete) throw new ApiError(409, "SETUP_REQUIRED", "Finish your business setup to open this feature.");
   requireFeatureEntitlement(entitlements, requiredFeature);
   return context;
 }

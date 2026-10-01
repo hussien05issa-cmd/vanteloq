@@ -9,6 +9,7 @@ import { readPlanSelection, type PlanSelection } from "../shared/plan-selection"
 import { PLANS, ADDONS } from "../server/entitlements/catalog";
 import { getSupabase } from "./supabase-browser";
 import TurnstileField from "./turnstile-field";
+import { loadTurnstileConfiguration } from "./turnstile-loader";
 import { MINIMUM_PASSWORD_LENGTH, passwordRules, strongPasswordError } from "../shared/password-security";
 import { canonicalAuthUrl } from "../shared/auth-urls";
 import { recoveryEmailErrorMessage, signupErrorMessage } from "../shared/auth-error-messages";
@@ -28,8 +29,6 @@ import {
   TERMS_OF_SERVICE_VERSION,
 } from "../shared/legal-versions";
 import { useModalFocus } from "./use-modal-focus";
-import { SignupMarketingChoice, saveSignupMarketingChoice } from "./marketing-consent";
-import type { MarketingConfig } from "../shared/communications";
 
 export type AuthPanelMode = "signin" | "signup" | "verify-signup" | "request-reset" | "verify-recovery" | "reset-password";
 
@@ -63,9 +62,9 @@ export default function AuthPanel({
   const [turnstileAction, setTurnstileAction] = useState("");
   const [turnstileToken, setTurnstileToken] = useState("");
   const [turnstileResetSignal, setTurnstileResetSignal] = useState(0);
+  const [verificationAttempt, setVerificationAttempt] = useState(0);
+  const [verificationUnavailable, setVerificationUnavailable] = useState(false);
   const [legalAccepted, setLegalAccepted] = useState(false);
-  const [marketingSelected, setMarketingSelected] = useState(false);
-  const [marketingConfig, setMarketingConfig] = useState<MarketingConfig | null>(null);
   const [marketingMessage, setMarketingMessage] = useState("");
   const protectedMode = mode === "signup" || mode === "signin" || mode === "request-reset";
   const showsTurnstile = protectedMode || mode === "verify-signup";
@@ -119,22 +118,24 @@ export default function AuthPanel({
   useEffect(() => {
     if (!showsTurnstile) return;
     const requestedAction = mode === "signin" ? "signin" : mode === "request-reset" ? "password-recovery" : "signup";
+    let active = true;
     const controller = new AbortController();
-    void fetch(`/api/v1/auth/signup?action=${encodeURIComponent(requestedAction)}`, { headers: { accept: "application/json" }, signal: controller.signal })
-      .then(async response => {
-        const payload = await response.json() as { configured?: boolean; siteKey?: string; action?: string };
-        if (!response.ok || !payload.configured || !payload.siteKey || payload.action !== requestedAction) throw new Error("Account protection is unavailable.");
+    const deadline = window.setTimeout(() => controller.abort(), 10_000);
+    void loadTurnstileConfiguration(requestedAction, controller.signal)
+      .then(payload => {
+        if (!active) return;
         setSiteKey(payload.siteKey);
         setTurnstileAction(payload.action);
+        setVerificationUnavailable(false);
       })
-      .catch(error => {
-        if ((error as Error).name !== "AbortError") {
-          setMessageIsError(true);
-          setMessage("Secure account verification is temporarily unavailable. Please try again shortly.");
-        }
-      });
-    return () => controller.abort();
-  }, [mode, showsTurnstile]);
+      .catch(() => {
+        if (!active) return;
+        setVerificationUnavailable(true);
+        setMessageIsError(true);
+        setMessage("Secure account verification could not load. Check your connection and retry.");
+      }).finally(() => window.clearTimeout(deadline));
+    return () => { active = false; controller.abort(); window.clearTimeout(deadline); };
+  }, [mode, showsTurnstile, verificationAttempt]);
 
   function resetTurnstile() {
     setTurnstileToken("");
@@ -188,7 +189,6 @@ export default function AuthPanel({
         return;
       }
       try {
-        const marketingChoiceSaved = await saveSignupMarketingChoice(email.trim().toLowerCase(), marketingSelected, marketingConfig);
         const result = await supabase.auth.signUp({
           email: email.trim().toLowerCase(),
           password,
@@ -211,7 +211,7 @@ export default function AuthPanel({
           setMessage(signupErrorMessage(result.error));
           return;
         }
-        setMarketingMessage(marketingChoiceSaved ? "" : "Your account can continue. The optional email preference was not saved; choose it later in Settings.");
+        setMarketingMessage("");
         if (result.data.session) {
           authenticated(result.data.session);
           return;
@@ -445,6 +445,7 @@ export default function AuthPanel({
 
   function changeMode(nextMode: AuthPanelMode) {
     setMode(nextMode);
+    setVerificationUnavailable(false);
     setSiteKey("");
     setTurnstileAction("");
     setTurnstileToken("");
@@ -507,7 +508,7 @@ export default function AuthPanel({
         <FormLegend/>
         {mode === "signup" && <label><FieldLabel>Full Name</FieldLabel><FormInput aria-label="Full Name" autoComplete="name" value={name} onChange={event => setName(event.target.value)} minLength={2} maxLength={120} required/></label>}
         {mode !== "reset-password" && mode !== "verify-signup" && <label><FieldLabel>Email Address</FieldLabel><FormInput aria-label="Email Address" type="email" autoComplete="email" value={email} onChange={event => setEmail(event.target.value)} required/></label>}
-        {(mode === "verify-signup" || mode === "verify-recovery") && <label><FieldLabel>{mode === "verify-recovery" ? "Recovery Email Code" : "Verification Code"}</FieldLabel><FormInput aria-label={mode === "verify-recovery" ? "Recovery Email Code" : "Verification Code"} autoFocus value={verificationCode} onChange={event => setVerificationCode(normalizeEmailVerificationCode(event.target.value).slice(0, MAXIMUM_EMAIL_VERIFICATION_CODE_LENGTH))} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6,10}" title="Enter the 6 to 10 digit code from your email." hint="Numbers only, 6 to 10 digits." minLength={MINIMUM_EMAIL_VERIFICATION_CODE_LENGTH} maxLength={MAXIMUM_EMAIL_VERIFICATION_CODE_LENGTH} required/></label>}
+        {(mode === "verify-signup" || mode === "verify-recovery") && <label><FieldLabel>{mode === "verify-recovery" ? "Recovery Email Code" : "Verification Code"}</FieldLabel><FormInput aria-label={mode === "verify-recovery" ? "Recovery Email Code" : "Verification Code"} autoFocus value={verificationCode} onChange={event => setVerificationCode(normalizeEmailVerificationCode(event.target.value).slice(0, MAXIMUM_EMAIL_VERIFICATION_CODE_LENGTH))} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6,10}" title="Enter the 6 to 10 digit code from your email." hint="Enter the code from your email." minLength={MINIMUM_EMAIL_VERIFICATION_CODE_LENGTH} maxLength={MAXIMUM_EMAIL_VERIFICATION_CODE_LENGTH} required/></label>}
         {recoveryMfaRequired && <label><FieldLabel>Authenticator App Code</FieldLabel><FormInput aria-label="Authenticator App Code" autoFocus value={recoveryMfaCode} onChange={event => setRecoveryMfaCode(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" title="Enter the six-digit code from your authenticator." hint="Enter the current six-digit code." minLength={6} maxLength={6} required/></label>}
         {(mode === "signup" || mode === "signin" || (mode === "reset-password" && recoveryMfaState === "ready")) && <label><FieldLabel>{mode === "reset-password" ? "New Password" : "Password"}</FieldLabel><PasswordInput aria-label={mode === "reset-password" ? "New Password" : "Password"} autoComplete={mode === "signin" ? "current-password" : "new-password"} validate={mode === "signin" ? undefined : value => passwordRules(value).find(rule => !rule.met)?.label || ""} value={password} onChange={event => setPassword(event.target.value)} minLength={mode === "signin" ? 1 : MINIMUM_PASSWORD_LENGTH} required/></label>}
         {mode === "reset-password" && recoveryMfaState === "ready" && <label><FieldLabel>Confirm New Password</FieldLabel><PasswordInput aria-label="Confirm New Password" autoComplete="new-password" value={passwordConfirmation} onChange={event => setPasswordConfirmation(event.target.value)} minLength={MINIMUM_PASSWORD_LENGTH} required/></label>}
@@ -520,13 +521,17 @@ export default function AuthPanel({
           onError={error => { setTurnstileToken(""); setMessageIsError(true); setMessage(error); }}
         />}
         {message && <div className={`auth-message${messageIsError ? " error" : ""}`} aria-live="polite">{message}</div>}
+        {showsTurnstile && verificationUnavailable && <button className="auth-secondary" type="button" onClick={() => {
+          setVerificationUnavailable(false);
+          setMessage("");
+          setVerificationAttempt(value => value + 1);
+        }}>Retry account verification</button>}
         {mode === "verify-signup" && <button className="auth-secondary" type="button" onClick={() => void resendConfirmation()} disabled={busy || !siteKey || !turnstileToken}>Send a new code</button>}
         {mode === "signup" && <label className="auth-legal-consent"><input type="checkbox" checked={legalAccepted} onChange={event => setLegalAccepted(event.target.checked)} required/><span>I agree to the <Link href="/terms" target="_blank">Terms of Service</Link> and acknowledge the <Link href="/privacy" target="_blank">Privacy Policy</Link>. <RequiredMark/></span></label>}
-        {mode === "signup" && <SignupMarketingChoice selected={marketingSelected} change={setMarketingSelected} configure={setMarketingConfig} />}
         {marketingMessage && <p className="auth-note" role="status">{marketingMessage}</p>}
         <button type="submit" className="auth-submit" disabled={busy || configured !== true || (protectedMode && (!siteKey || !turnstileToken)) || ((mode === "verify-signup" || mode === "verify-recovery") && !isCompleteEmailVerificationCode(verificationCode)) || (mode === "signup" && !legalAccepted) || (mode === "reset-password" && (recoveryReady !== true || recoveryMfaState === "checking" || recoveryMfaState === "error" || (recoveryMfaState === "challenge_required" && recoveryMfaCode.length !== 6)))}>{busy || configured === null || (mode === "reset-password" && (recoveryReady === null || recoveryMfaState === "checking")) ? "Please wait…" : submitLabel}</button>
       </form>
-      {mode === "signup" && <p className="auth-setup-progress">Next: verify email · set up 2FA · add your business · confirm a plan</p>}
+      {mode === "signup" && <p className="auth-setup-progress">Next: verify email · set up 2FA · confirm a plan · add your business</p>}
       {mode === "signin" && <button className="auth-switch" type="button" onClick={() => changeMode("request-reset")}>Forgot Password?</button>}
       {mode === "request-reset" && <button className="auth-switch" type="button" onClick={() => changeMode("signin")}>Back to Sign In</button>}
       {(mode === "request-reset" || (mode === "reset-password" && recoveryReady === false)) && <button className="auth-switch" type="button" onClick={() => changeMode("verify-recovery")}>I already have a recovery email code</button>}

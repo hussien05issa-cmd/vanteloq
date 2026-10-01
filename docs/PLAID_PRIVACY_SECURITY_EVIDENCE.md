@@ -1,11 +1,11 @@
 # Vanteloq Plaid privacy and security evidence
 
-Evidence version: 1.1
+Evidence version: 1.2
 Prepared: August 11, 2026
-Last protocol review: September 16, 2026
+Last protocol review: October 1, 2026
 Application: Vanteloq at `https://vanteloq.com`
-Organization: LexEdge Consulting, operating as Vanteloq
-Review result: TLS control remains blocked. Plaid production access must remain disabled until the TLS blocker and legal review are complete. No overall launch approval is recorded here.
+Operator: 2855706 ALBERTA INC, doing business as LexEdge Consulting
+Current result: Certificate-verified probes on October 1, 2026 rejected TLS 1.0 and 1.1 and accepted TLS 1.2 and 1.3 on all four public endpoints below. The earlier transport blocker is resolved in the observed public endpoints. Plaid remains configured in sandbox; this protocol result does not confer Plaid production approval or overall launch certification.
 
 ## Executive statement
 
@@ -24,7 +24,7 @@ This document is technical evidence, not a legal opinion or a statement that eve
 | Consent bound to connection | Link-token endpoint records consent; exchange endpoint rejects missing, stale, wrong-user, or wrong-workspace consent | Plaid link-token and exchange API routes | Implemented and tested |
 | Data minimization | Plaid Transactions product plus Balance data; Canadian institutions; read-only disclosure; pseudonymous Plaid client user ID | `server/integrations/plaid.ts` and Plaid tests | Implemented and tested |
 | Encryption at rest | Cloudflare D1 platform encryption; additional AES-GCM encryption for access token and item ID; key held in hosted environment | `server/integrations/plaid.ts`; Cloudflare D1 data-security documentation | Implemented and tested in code |
-| Encryption in transit | HTTPS, HSTS, CSP upgrade-insecure-requests; target minimum is TLS 1.2 | `worker/index.ts`; live curl protocol check | **Blocked: live edge currently accepts TLS 1.1** |
+| Encryption in transit | HTTPS, HSTS, CSP upgrade-insecure-requests; target minimum is TLS 1.2 | `worker/index.ts`; certificate-verified Node TLS probe, `docs/evidence/public-tls-2026-10-01.json` | Verified October 1, 2026: TLS 1.0/1.1 rejected, TLS 1.2/1.3 accepted |
 | Access control | Supabase identity, confirmed AAL2/TOTP, tenant membership, RBAC permission `finance.connections`, same-origin checks, bounded payloads, rate limits | authorization/API/permission modules and protected routes | Implemented and tested |
 | Revocation | Plaid `/item/remove`, encrypted credential deletion, sync blocked, consent withdrawn | disconnect route and Plaid integration module | Implemented and tested |
 | Data deletion | Owner-only, AAL2, exact confirmation, three attempts/day, atomic deletion/de-identification batch, audit result | delete-data route; Plaid integration module; retention policy | Implemented and tested |
@@ -67,9 +67,9 @@ Vanteloq does not receive the online-banking password entered in Plaid Link, doe
 
 - Vanteloq redirects the legacy preview hostname to the canonical HTTPS origin.
 - The Worker sets one-year HSTS and `upgrade-insecure-requests` in the Content Security Policy.
-- Protocol checks performed August 11, 2026 confirmed TLS 1.2 succeeds but also found TLS 1.1 succeeds. The Cloudflare customer-zone dashboard was set to a TLS 1.2 minimum and even temporarily raised to TLS 1.3, but the Sites/custom-hostname edge continued to negotiate TLS 1.1. The dashboard was restored to TLS 1.2. This control remains blocked until the hosting edge is corrected and both tests are rerun; a dashboard screenshot alone is not completion evidence.
+- Protocol checks performed August 11, 2026 confirmed TLS 1.2 succeeds but also found TLS 1.1 succeeds. The Cloudflare customer-zone dashboard was set to a TLS 1.2 minimum and even temporarily raised to TLS 1.3, but the Sites/custom-hostname edge continued to negotiate TLS 1.1. The dashboard was restored to TLS 1.2. This was the historical blocker; the October 1 negative/positive probes below supersede that finding. A dashboard screenshot alone is not completion evidence.
 
-### September 16, 2026 protocol recheck
+### Historical September 16, 2026 protocol recheck (superseded)
 
 At 09:49:19 UTC, certificate-verified protocol probes produced the following results:
 
@@ -78,7 +78,7 @@ At 09:49:19 UTC, certificate-verified protocol probes produced the following res
 | `vanteloq.com` | Accepted and negotiated, **blocker remains** | Accepted | Accepted |
 | `connectors.vanteloq.com` | Rejected with `ERR_SSL_TLSV1_ALERT_PROTOCOL_VERSION` | Accepted | Accepted |
 
-The customer Cloudflare zone is set to a TLS 1.2 minimum, but the main Sites-managed custom hostname still accepts TLS 1.1. The dated raw evidence is `output/public-tls-2026-09-16.json` in the local review artifacts. A hosting support request has been prepared; preparation does not establish provider remediation or delivery of that request.
+At that historical check, the customer Cloudflare zone was set to a TLS 1.2 minimum, but the main Sites-managed custom hostname still accepted TLS 1.1. The dated raw evidence is `output/public-tls-2026-09-16.json` in the local review artifacts. A hosting support request has been prepared; preparation does not establish provider remediation or delivery of that request.
 
 The current source also contains `server/transport-security.ts`, a supplemental request guard that rejects legacy TLS metadata supplied by the hosting platform. It does not trust client headers to identify the protocol. This guard executes after the TLS handshake and therefore cannot satisfy the required handshake-rejection evidence. Its passing application tests are not evidence that the hosting minimum changed.
 
@@ -88,6 +88,19 @@ Required release evidence after the hosting correction:
 TLS 1.1 maximum -> handshake rejected
 TLS 1.2 exact   -> request succeeds
 ```
+
+### Current October 1, 2026 protocol recheck
+
+At 08:03:05 UTC, exact-version TLS handshakes with certificate validation enabled produced:
+
+| Hostname | TLS 1.0 | TLS 1.1 | TLS 1.2 | TLS 1.3 |
+| --- | --- | --- | --- | --- |
+| `vanteloq.com` | Rejected | Rejected | Accepted | Accepted |
+| `www.vanteloq.com` | Rejected | Rejected | Accepted | Accepted |
+| `connectors.vanteloq.com` | Rejected | Rejected | Accepted | Accepted |
+| `vanteloq.hussien05issa.chatgpt.site` | Rejected | Rejected | Accepted | Accepted |
+
+All legacy probes failed with `ERR_SSL_TLSV1_ALERT_PROTOCOL_VERSION`; all accepted connections reported `authorized: true`. Raw evidence is retained at `docs/evidence/public-tls-2026-10-01.json`. These are live observations, not evidence of a configuration change made during this review. Recheck after hosting or DNS changes. Production database and uploaded-file restoration is a separate unresolved operational control.
 
 ## Deletion and retention behavior
 
@@ -118,7 +131,7 @@ The following checks passed on August 11, 2026:
 
 ## Remaining launch conditions
 
-1. Escalate the Sites/custom-hostname edge TLS policy to the hosting provider. The Cloudflare customer zone is already set to TLS 1.2, but live traffic still negotiates TLS 1.1. Rerun the negative/positive protocol tests after the provider-side correction.
+1. Attach the October 1 protocol evidence to the next Plaid review and recheck after hosting changes. The previously reported public TLS blocker is no longer reproduced.
 2. Obtain qualified Alberta/Canadian privacy counsel review of the public policy, retention periods, cross-border disclosures, customer/controller terms, and response procedure.
 3. Keep Plaid in sandbox/development until Plaid approves production access and the conditions above are recorded as complete.
 4. Capture a clean MFA challenge screenshot for the Plaid questionnaire. Do not submit the QR enrollment screen or any setup secret.

@@ -10,6 +10,15 @@ export type AdvisorHistoryScope = { purpose: "analysis" | "help"; locationId: st
 /** Data can grow between turns. History authority is tied to access and scope,
  * not the current balances. Historical numbers never become current evidence. */
 export function advisorHistoryFingerprint(authorityStamp: string, scope: AdvisorHistoryScope) {
+  // Delete-all fences pending requests. Its audit retention must not invalidate
+  // newer saved chats. Actual access and source authority remain in the hash.
+  try {
+    const authority = JSON.parse(authorityStamp);
+    if (Object.hasOwn(authority, "historyGeneration")) {
+      delete authority.historyGeneration;
+      authorityStamp = JSON.stringify(authority);
+    }
+  } catch { /* Non-JSON stamps remain opaque. */ }
   return advisorEvidenceFingerprint({ authorityStamp, scope }, [], null);
 }
 

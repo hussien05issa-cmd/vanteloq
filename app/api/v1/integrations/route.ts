@@ -1,3 +1,7 @@
+import { buildIntegrationCapabilities, hasCanonicalCommerceMapping } from "../../../../domain/integration-capabilities";
+import { buildConnectionDataReadiness } from "../../../../domain/integration-data-readiness";
+import { connectorHealth } from "../../../../domain/connector-guidance";
+import { loadCommerceFieldEvidence } from "../../../../server/integrations/data-readiness";
 import { and, eq, gt, isNull, or } from "drizzle-orm";
 import { getD1, getDb } from "../../../../db";
 import { integrationConnections, integrationSyncRuns, marketingResourceSelections } from "../../../../db/schema";
@@ -18,7 +22,9 @@ import { marketingReadiness } from "../../../../server/integrations/marketing";
 import { monerisReadiness, MONERIS_PROVIDER } from "../../../../server/integrations/moneris";
 import { quickBooksReadiness, QUICKBOOKS_PROVIDER } from "../../../../server/integrations/quickbooks";
 import { shopifyPosReadiness, shopifyReadiness, SHOPIFY_POS_PROVIDER, SHOPIFY_PROVIDER } from "../../../../server/integrations/shopify-pos";
-import { buildProviderFeatureCoverage, type CanonicalCommerceCoverage } from "../../../../domain/provider-feature-coverage";
+import { deelReadiness, DEEL_PROVIDER } from "../../../../server/integrations/deel";
+import { slackReadiness, SLACK_PROVIDER } from "../../../../server/integrations/slack";
+import { buildProviderFeatureCoverage, buildProviderFeatureCoverageByConnection, type CanonicalCommerceCoverage } from "../../../../domain/provider-feature-coverage";
 import { aggregateConnectionStatus } from "../../../../domain/integration-source";
 import { requireOrganizationWideLocationAccess } from "../../../../server/location-access";
 import { buildProviderReportCatalog } from "../../../../domain/provider-report-contracts";
@@ -95,6 +101,7 @@ export async function GET(request: Request) {
         FROM marketing_daily_metrics metric
         INNER JOIN marketing_resource_selections selection ON selection.id = metric.resource_selection_id
         WHERE selection.organization_id = ?
+          AND selection.dataset <> 'google_business_profile'
         GROUP BY metric.resource_selection_id
       `).bind(context.organizationId).all<{ selectionId: string; recordsRead: number }>(),
     ]);
@@ -104,7 +111,7 @@ export async function GET(request: Request) {
       selectionsByConnection.set(selection.connectionId, [...(selectionsByConnection.get(selection.connectionId) ?? []), selection]);
     }
     const matchingSample = (connection: typeof rows[number]) => {
-      const selections = selectionsByConnection.get(connection.id) ?? [];
+      const selections = (selectionsByConnection.get(connection.id) ?? []).filter((selection) => selection.dataset !== "google_business_profile");
       const activeLease = Boolean(connection.syncLeaseOwner && connection.syncLeaseExpiresAt && connection.syncLeaseExpiresAt.getTime() > Date.now());
       if (connection.lastErrorCode || activeLease || !selections.length || selections.some((selection) => (marketingMetricCountBySelection.get(selection.id) ?? 0) === 0)) return undefined;
       const currentMetricCount = selections.reduce((sum, selection) => sum + (marketingMetricCountBySelection.get(selection.id) ?? 0), 0);
@@ -127,41 +134,15 @@ export async function GET(request: Request) {
     for (const row of activeRows) byProvider.set(row.provider, [...(byProvider.get(row.provider) ?? []), row]);
     const database = getD1();
     const emptyCoverage = (): CanonicalCommerceCoverage => ({ sales: false, payments: false, products: false, inventory: false, customers: false, suppliers: false, locations: false });
-    const connectionCoverageRows = await Promise.all(activeRows.map(async (connection) => {
+    const connectionEvidenceRows = await Promise.all(activeRows.map(async (connection) => {
       const syncActive = Boolean(connection.syncLeaseOwner && connection.syncLeaseExpiresAt && connection.syncLeaseExpiresAt.getTime() > Date.now());
-      if (connection.status !== "connected" || connection.dataPromotionStatus !== "approved" || syncActive) {
-        return [connection.id, emptyCoverage()] as const;
+      if (!hasCanonicalCommerceMapping(connection.provider) || connection.status !== "connected" || syncActive) {
+        return [connection.id, null] as const;
       }
-      const facts = await database.prepare(`
-        SELECT
-          (SELECT COUNT(*) FROM daily_business_metrics WHERE organization_id = ? AND source_connection_id = ?) AS sales,
-          (SELECT COUNT(*) FROM commerce_payments WHERE organization_id = ? AND connection_id = ? AND paid_at IS NOT NULL AND amount_cents > 0) AS payments,
-          (SELECT COUNT(*) FROM commerce_products WHERE organization_id = ? AND connection_id = ? AND archived = 0) AS products,
-          (SELECT COUNT(*) FROM commerce_customers WHERE organization_id = ? AND connection_id = ? AND archived = 0) AS customers,
-          (SELECT COUNT(*) FROM commerce_suppliers WHERE organization_id = ? AND connection_id = ? AND archived = 0) AS suppliers,
-          (SELECT COUNT(*) FROM integration_location_mappings WHERE organization_id = ? AND connection_id = ? AND status = 'mapped') AS locations,
-          (SELECT COUNT(*) FROM inventory_balances WHERE organization_id = ? AND source_connection_id = ?) AS inventory
-      `).bind(
-        context.organizationId, connection.id,
-        context.organizationId, connection.id,
-        context.organizationId, connection.id,
-        context.organizationId, connection.id,
-        context.organizationId, connection.id,
-        context.organizationId, connection.id,
-        context.organizationId, connection.id,
-      ).first<Record<keyof CanonicalCommerceCoverage, number>>();
-      const coverage: CanonicalCommerceCoverage = {
-        sales: Number(facts?.sales ?? 0) > 0,
-        payments: Number(facts?.payments ?? 0) > 0,
-        products: Number(facts?.products ?? 0) > 0,
-        inventory: Number(facts?.inventory ?? 0) > 0,
-        customers: Number(facts?.customers ?? 0) > 0,
-        suppliers: Number(facts?.suppliers ?? 0) > 0,
-        locations: Number(facts?.locations ?? 0) > 0,
-      };
-      return [connection.id, coverage] as const;
+      return [connection.id, await loadCommerceFieldEvidence(database, context.organizationId, connection.id, permissions)] as const;
     }));
-    const coverageByConnection = new Map(connectionCoverageRows);
+    const evidenceByConnection = new Map(connectionEvidenceRows);
+    const coverageByConnection = new Map(activeRows.map(connection => [connection.id, connection.dataPromotionStatus === "approved" ? evidenceByConnection.get(connection.id)?.coverage ?? emptyCoverage() : emptyCoverage()]));
     const syncEnabled = activeRows.some((row) => row.status === "connected");
     const dataPromotionEnabled = activeRows.some((row) => row.dataPromotionStatus === "approved");
     return jsonResponse({
@@ -186,8 +167,8 @@ export async function GET(request: Request) {
           ? permissions.includes("finance.connections")
           : permissions.includes("integrations.manage");
         const marketingBase = provider.id === "google" || provider.id === "meta" ? marketingReadiness(provider.id) : null;
-        const marketingSyncEligible = Boolean(marketingBase && providerConnections.some((connection) => (selectionsByConnection.get(connection.id)?.length ?? 0) > 0));
-        const marketingLiveEligible = Boolean(marketingBase && providerConnections.some((connection) => connection.dataPromotionStatus === "approved" && (selectionsByConnection.get(connection.id)?.length ?? 0) > 0));
+        const marketingSyncEligible = Boolean(marketingBase && providerConnections.some((connection) => selectionsByConnection.get(connection.id)?.some((selection) => selection.dataset !== "google_business_profile")));
+        const marketingLiveEligible = Boolean(marketingBase && providerConnections.some((connection) => connection.dataPromotionStatus === "approved" && selectionsByConnection.get(connection.id)?.some((selection) => selection.dataset !== "google_business_profile")));
         const providerReadiness = provider.id === "lightspeed"
           ? lightspeedReadiness()
           : provider.id === "lightspeed-r"
@@ -206,6 +187,10 @@ export async function GET(request: Request) {
               ? quickBooksReadiness()
             : provider.id === MONERIS_PROVIDER
               ? { ...monerisReadiness(), ...(providerConnections.length > 0 && !providerConnections.some(connection => connection.sourceNamespace?.startsWith("production:")) ? { mode: "sandbox_or_unverified", liveDataEligible: false } : {}) }
+            : provider.id === DEEL_PROVIDER
+              ? deelReadiness()
+            : provider.id === SLACK_PROVIDER
+              ? slackReadiness()
               : provider.id === "plaid"
                 ? plaidReadiness()
                 : provider.id === "google" || provider.id === "meta"
@@ -217,7 +202,7 @@ export async function GET(request: Request) {
                       liveDataEligible: marketingLiveEligible,
                     }
               : null;
-        return ({
+        const result = {
         ...provider,
         canManage: canManageProvider,
         status: providerConnections.length
@@ -234,7 +219,16 @@ export async function GET(request: Request) {
         connectionCount: providerConnections.length,
         connections: providerConnections.map((connection) => {
           const selections = selectionsByConnection.get(connection.id) ?? [];
+          const storedSelections = selections.filter((selection) => selection.dataset !== "google_business_profile");
           const sample = matchingSample(connection);
+          const evidence = evidenceByConnection.get(connection.id);
+          const syncActive = Boolean(connection.syncLeaseOwner && connection.syncLeaseExpiresAt && connection.syncLeaseExpiresAt.getTime() > Date.now());
+          const health = connectorHealth({ ...provider, ...connection, id: provider.id, providerReadiness,
+            lastSuccessfulSyncAt: connection.lastSuccessfulSyncAt?.toISOString() ?? null, syncActive, automaticSync: scheduleStatus(provider.id, connection.id) });
+          const dataReadiness = buildConnectionDataReadiness({ connectionId: connection.id, commerceImplemented: hasCanonicalCommerceMapping(provider.id),
+            authorised: connection.status === "connected" && health.state !== "reauthorize",
+            approved: connection.dataPromotionStatus === "approved" && ["synced", "stale"].includes(health.state), stale: health.state === "stale",
+            fields: evidence?.fields, observedPeriod: evidence?.observedPeriod });
           return ({
           id: connection.id,
           status: connection.status,
@@ -245,7 +239,7 @@ export async function GET(request: Request) {
           lastErrorCode: connection.lastErrorCode,
           connectedAt: connection.connectedAt?.toISOString() ?? null,
           dataPromotionStatus: connection.dataPromotionStatus,
-          reportingEnvironment: provider.id === MONERIS_PROVIDER ? connection.sourceNamespace?.startsWith("production:") ? "production" : connection.sourceNamespace?.startsWith("sandbox:") ? "sandbox" : "unverified" : null,
+          reportingEnvironment: provider.id === MONERIS_PROVIDER ? connection.sourceNamespace?.startsWith("production:") ? "production" as const : connection.sourceNamespace?.startsWith("sandbox:") ? "sandbox" as const : "unverified" as const : null,
           syncActive: Boolean(connection.syncLeaseOwner && connection.syncLeaseExpiresAt && connection.syncLeaseExpiresAt.getTime() > Date.now()),
           resourceSelectionVersion: connection.resourceSelectionVersion,
           resourceSelections: selections.map((selection) => ({
@@ -256,7 +250,7 @@ export async function GET(request: Request) {
             scopeKind: selection.scopeKind,
             localLocationId: selection.localLocationId,
           })),
-          syncEligible: selections.length > 0,
+          syncEligible: storedSelections.length > 0,
           sampleReady: Boolean(sample),
           sampleRunId: sample?.id ?? null,
           sampleSummary: sample ? {
@@ -267,7 +261,7 @@ export async function GET(request: Request) {
             recordsStaged: sample.recordsStaged,
             warningCount: sample.warningCount,
             warnings: [] as string[],
-            resourceResults: selections.map((selection) => ({
+            resourceResults: storedSelections.map((selection) => ({
               resourceSelectionId: selection.id,
               recordsRead: marketingMetricCountBySelection.get(selection.id) ?? 0,
               warningCodes: [] as string[],
@@ -275,8 +269,9 @@ export async function GET(request: Request) {
           } : null,
           privacyDataDeletedAt: connection.privacyDataDeletedAt?.toISOString() ?? null,
           canonicalCoverage: coverageByConnection.get(connection.id) ?? emptyCoverage(),
+          dataReadiness,
           featureCoverage: buildProviderFeatureCoverage(provider.id, coverageByConnection.get(connection.id) ?? emptyCoverage()),
-          reportCatalog: buildProviderReportCatalog({ provider: provider.id, connectionId: connection.id, coverage: coverageByConnection.get(connection.id) ?? emptyCoverage() }),
+          reportCatalog: buildProviderReportCatalog({ provider: provider.id, connectionId: connection.id, coverage: coverageByConnection.get(connection.id) ?? emptyCoverage(), dataReadiness }),
         });}),
         privacyDataDeletedAt: allProviderConnections
           .map((connection) => connection.privacyDataDeletedAt)
@@ -285,8 +280,9 @@ export async function GET(request: Request) {
         providerReadiness,
         customerAvailability: customerIntegrationAvailability({ ...provider, providerReadiness }, previewAccess),
         canonicalCoverage,
-        featureCoverage: buildProviderFeatureCoverage(provider.id, canonicalCoverage),
-      });}),
+        featureCoverage: buildProviderFeatureCoverageByConnection(provider.id, providerConnections.map(connection => ({ connectionId: connection.id, coverage: coverageByConnection.get(connection.id) ?? emptyCoverage() }))),
+      };
+      return { ...result, capabilities: buildIntegrationCapabilities(result) };}),
     });
   });
 }
@@ -487,9 +483,11 @@ export async function POST(request: Request) {
               ON current_selection.id = metric.resource_selection_id
             WHERE current_selection.organization_id = ?
               AND current_selection.connection_id = ?
-              AND current_selection.provider = ?) currentMetricCount
+              AND current_selection.provider = ?
+              AND current_selection.dataset <> 'google_business_profile') currentMetricCount
         FROM marketing_resource_selections selection
         WHERE selection.organization_id = ? AND selection.connection_id = ? AND selection.provider = ?
+          AND selection.dataset <> 'google_business_profile'
       `).bind(
         context.organizationId, connection.id, connection.provider,
         context.organizationId, connection.id, connection.provider,

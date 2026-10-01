@@ -82,11 +82,14 @@ export async function requestMonerisAccessToken(credentials: MonerisCredentialIn
       scope: MONERIS_DEFAULT_SCOPE,
     }),
     signal: AbortSignal.timeout(15_000),
-    redirect: "error",
+    redirect: "manual",
   });
+  if (!response.ok) {
+    await response.body?.cancel().catch(() => undefined);
+    if (response.status === 429) throw new ApiError(503, "MONERIS_RATE_LIMITED", "Moneris is rate limiting this connection. Wait a moment and retry.");
+    throw new ApiError(502, "MONERIS_CREDENTIALS_REJECTED", "Moneris did not accept these merchant credentials or scope.");
+  }
   const body = await response.json().catch(() => ({})) as Record<string, unknown>;
-  if (response.status === 429) throw new ApiError(503, "MONERIS_RATE_LIMITED", "Moneris is rate limiting this connection. Wait a moment and retry.");
-  if (!response.ok) throw new ApiError(502, "MONERIS_CREDENTIALS_REJECTED", "Moneris did not accept these merchant credentials or scope.");
   const accessToken = text(body.access_token);
   if (!accessToken) throw new ApiError(502, "MONERIS_TOKEN_RESPONSE_INVALID", "Moneris returned an incomplete access-token response.");
   return { accessToken, expiresIn: Math.max(60, Number(body.expires_in) || 900) };
@@ -194,10 +197,13 @@ export async function fetchMonerisPayments(
         "X-Correlation-Id": crypto.randomUUID(),
       },
       signal: AbortSignal.timeout(15_000),
-      redirect: "error",
+      redirect: "manual",
     });
-    if (response.status === 429) throw new ApiError(503, "MONERIS_RATE_LIMITED", "Moneris is rate limiting payment history. Wait a moment and resume the sync.");
-    if (!response.ok) throw new ApiError(502, "MONERIS_PAYMENTS_FAILED", "Moneris could not return this merchant's payment history.");
+    if (!response.ok) {
+      await response.body?.cancel().catch(() => undefined);
+      if (response.status === 429) throw new ApiError(503, "MONERIS_RATE_LIMITED", "Moneris is rate limiting payment history. Wait a moment and resume the sync.");
+      throw new ApiError(502, "MONERIS_PAYMENTS_FAILED", "Moneris could not return this merchant's payment history.");
+    }
     const body = await response.json().catch(() => null);
     if (!body || typeof body !== "object" || !Array.isArray((body as Record<string, unknown>).data)) throw new ApiError(502, "MONERIS_PAYMENTS_RESPONSE_INVALID", "Moneris returned an incomplete payment history response.");
     const rows = (body as Record<string, unknown>).data as unknown[];

@@ -24,8 +24,9 @@ test("the integration directory uses the approved sales-channel taxonomy", () =>
     { label: "Payments", providers: ["Stripe", "Square", "Moneris"] },
     { label: "Accounting", providers: ["QuickBooks", "Xero"] },
     { label: "Marketing", providers: ["Google", "Meta"] },
+    { label: "People & collaboration", providers: ["Deel", "Slack"] },
   ]);
-  for (const provider of ["shopify", "shopify-pos", "google", "meta"]) {
+  for (const provider of ["shopify", "shopify-pos", "google", "meta", "deel", "slack"]) {
     assert.ok(integrationCatalog.some((entry) => entry.id === provider));
   }
   assert.ok(integrationCatalog.every((entry) => entry.id !== "amazon" && entry.id !== "woocommerce"));
@@ -33,7 +34,7 @@ test("the integration directory uses the approved sales-channel taxonomy", () =>
 
 test("only built pilots may claim that credentials are the remaining connection prerequisite", () => {
   const credentialReady = integrationCatalog.filter((provider) => provider.availability === "credentials_required");
-  assert.deepEqual(credentialReady.map((provider) => provider.id).sort(), ["clover", "google", "lightspeed", "lightspeed-r", "meta", "moneris", "plaid", "quickbooks", "shopify", "shopify-pos", "square", "stripe"]);
+  assert.deepEqual(credentialReady.map((provider) => provider.id).sort(), ["clover", "deel", "google", "lightspeed", "lightspeed-r", "meta", "moneris", "plaid", "quickbooks", "shopify", "shopify-pos", "slack", "square", "stripe"]);
   assert.ok(integrationCatalog.filter((provider) => !credentialReady.includes(provider)).every((provider) => provider.availability !== "credentials_required"));
 });
 
@@ -59,13 +60,15 @@ test("QuickBooks exposes only the built sandbox company-verification boundary", 
 });
 
 test("public connector labels disclose the real activation boundary", () => {
+  assert.equal(integrationPublicStatus(integrationCatalog.find((provider) => provider.id === "lightspeed")!).label, "Coming Soon");
   assert.equal(integrationPublicStatus(integrationCatalog.find((provider) => provider.id === "quickbooks")!).label, "Coming Soon");
   assert.equal(integrationPublicStatus(integrationCatalog.find((provider) => provider.id === "plaid")!).label, "Coming Soon");
   for (const id of ["shopify", "shopify-pos"]) assert.equal(integrationPublicStatus(integrationCatalog.find((provider) => provider.id === id)!).label, "Coming Soon");
   assert.equal(integrationPublicStatus(integrationCatalog.find((provider) => provider.id === "moneris")!).label, "Coming Soon");
   assert.equal(integrationPublicStatus(integrationCatalog.find((provider) => provider.id === "xero")!).label, "Coming Soon");
   assert.equal(integrationPublicStatus(integrationCatalog.find((provider) => provider.id === "doordash")!).label, "Coming Soon");
-  assert.equal(integrationPublicStatus(integrationCatalog.find((provider) => provider.id === "payroll")!).label, "Coming Soon");
+  assert.equal(integrationPublicStatus(integrationCatalog.find((provider) => provider.id === "deel")!).label, "Coming Soon");
+  assert.equal(integrationPublicStatus(integrationCatalog.find((provider) => provider.id === "slack")!).label, "Available");
   assert.equal(integrationPublicStatus(integrationCatalog.find((provider) => provider.id === "stripe")!).label, "Coming Soon");
 });
 
@@ -83,6 +86,17 @@ test("integration cards use one canonical ordered category taxonomy", () => {
     "Delivery",
     "Marketing",
     "Labour",
+    "Collaboration",
     "Manual imports",
   ]);
+});
+
+test("third-party connector records name the responsible provider company", () => {
+  for (const provider of integrationCatalog) {
+    assert.ok(provider.providerCompany?.trim(), `${provider.id} must name its third-party provider company`);
+  }
+  assert.equal(integrationCatalog.find((provider) => provider.id === "square")?.providerCompany, "Block, Inc.");
+  assert.equal(integrationCatalog.find((provider) => provider.id === "clover")?.providerCompany, "Clover Network, LLC, a Fiserv company");
+  assert.equal(integrationCatalog.find((provider) => provider.id === "deel")?.providerCompany, "Deel Inc.");
+  assert.equal(integrationCatalog.find((provider) => provider.id === "slack")?.providerCompany, "Slack Technologies, LLC, a Salesforce company");
 });

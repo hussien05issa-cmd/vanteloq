@@ -50,7 +50,8 @@ const posIntegrationProviders = new Set([
 
 export function integrationProviderFeature(provider: string): FeatureKey | null {
   if (posIntegrationProviders.has(provider)) return "pos.reporting.core";
-  if (provider === "plaid" || provider === "quickbooks" || provider === "xero") return "bookloq.reconciliation";
+  if (provider === "plaid" || provider === "quickbooks" || provider === "xero" || provider === "deel") return "bookloq.reconciliation";
+  if (provider === "slack") return "communications.basic";
   return marketingProviderFeature(provider);
 }
 

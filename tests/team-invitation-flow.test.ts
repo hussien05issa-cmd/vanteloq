@@ -121,8 +121,33 @@ test("real D1 employee provisioning, free entitlements, retries, and revocation"
     row.expires_at = "2020-01-01";
     assert.ok(await findAccessContext(manager, request(manager)), "accepted access survives invitation expiry");
     assert.equal(await liveTeamMembershipAllowed(undefined, manager, (await findAccessContext(manager, request(manager)))!.userId, "company", "manager"), false);
+    // A console-only signup has already accepted its invitation when the owner
+    // later adds product access. Recover the deleted old identity without
+    // changing that accepted status or the working console identity.
+    const recovered = identity("recovered@example.invalid", crypto.randomUUID());
+    const oldSubject = crypto.randomUUID();
+    await db.prepare("INSERT INTO users (id,email,auth_subject,auth_provider,display_name,status,created_at,updated_at) VALUES ('old-employee',?,?,'supabase','Old Employee','suspended',?,?)")
+      .bind(recovered.email, oldSubject, now, now).run();
+    await db.prepare("INSERT INTO memberships (id,user_id,organization_id,role,status,created_at,updated_at) VALUES ('old-membership','old-employee','company','manager','suspended',?,?)").bind(now, now).run();
+    await db.prepare("INSERT INTO audit_events (id,organization_id,actor_user_id,action,resource_type,resource_id,outcome,request_id,details_json,created_at) VALUES ('old-deletion','company','owner','team_access.deleted','team_member','old-employee','success','old-delete','{}',?)").bind(now).run();
+    const recoveredRow = { id: crypto.randomUUID(), email: recovered.email, invited_by_email: ownerEmail, invited_by_user_id: ownerSubject,
+      vanteloq_access: true, vanteloq_role: "read_only", console_access: true, console_role: "viewer", console_scopes: ["lexedge", "vanteloq"],
+      invitation_generation: crypto.randomUUID(), status: "accepted", expires_at: new Date(now + 86_400_000).toISOString(),
+      auth_user_id: recovered.subject, accepted_at: new Date(now).toISOString(), acceptance_notice_version: "private-console-access-v1", lifecycle_operation: null };
+    rows.set(recovered.email, recoveredRow);
+    assert.equal((await pendingTeamInvitation(request(recovered), recovered))?.consoleSetupComplete, true);
+    const recovery = await acceptTeamInvitation(request(recovered), recovered, legal, crypto.randomUUID());
+    assert.equal(recovery.consoleActivationUrl, null);
+    const recoveredContext = await findAccessContext(recovered, request(recovered));
+    assert.ok(recoveredContext);
+    assert.equal(recoveredContext.role, "read_only");
+    assert.equal(recoveredContext.userId, "old-employee");
+    assert.equal(recoveredRow.status, "accepted");
+    assert.equal((await getTenantEntitlements(recoveredContext)).accessType, "internal");
+    assert.equal(await verifiedTeamProvisioning(request(recovered), recovered, recoveredRow.id), true);
+    assert.equal(await pendingTeamInvitation(request(recovered), recovered), null);
     assert.equal((await db.prepare("SELECT count(*) n FROM tenant_subscriptions").first<{ n: number }>())!.n, 0);
-    assert.equal((await db.prepare("SELECT count(*) n FROM memberships WHERE role != 'owner'").first<{ n: number }>())!.n, 3);
+    assert.equal((await db.prepare("SELECT count(*) n FROM memberships WHERE role != 'owner'").first<{ n: number }>())!.n, 4);
   } finally {
     globalThis.fetch = originalFetch;
     sqlite.close();

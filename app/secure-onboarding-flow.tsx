@@ -10,7 +10,6 @@ import {
 } from "./address-data";
 import { FieldLabel, FormInput, FormLegend, RequiredMark } from "./form-primitives";
 import ProductBrandLogo from "./product-brand-logo";
-import MarketingPreferences from "./marketing-consent";
 import { apiFetch } from "./supabase-browser";
 import {
   ACCOUNT_ACCEPTANCE_NOTICE_VERSION,
@@ -20,23 +19,11 @@ import {
 import { readPlanSelection, type PlanSelection } from "../shared/plan-selection";
 import { industryKpiRecommendation } from "../domain/industry-kpis";
 
+import BuildYourOverview from "./build-your-overview";
+import { recommendedOverview } from "../domain/dashboard-personalization";
+
 type Hour = { day: string; open: string; close: string; closed: boolean };
 type SourceMode = "connect_later" | "csv" | "live";
-type AddressSuggestion = {
-  id: string;
-  text: string;
-  description: string;
-  next: "Find" | "Retrieve";
-};
-type VerifiedAddress = {
-  address: string;
-  city: string;
-  province: string;
-  postalCode: string;
-  country: string;
-  validationStatus: "validated";
-};
-
 type Setup = {
   ownerName: string;
   businessName: string;
@@ -50,7 +37,6 @@ type Setup = {
   city: string;
   address: string;
   postalCode: string;
-  addressVerificationToken: string;
   timezone: string;
   currency: string;
   fiscalYearStart: string;
@@ -88,7 +74,6 @@ const initialSetup = (accountName: string): Setup => ({
   city: "",
   address: "",
   postalCode: "",
-  addressVerificationToken: "",
   timezone: "America/Edmonton",
   currency: "CAD",
   fiscalYearStart: "January",
@@ -144,16 +129,14 @@ export default function SecureOnboardingFlow({
   const previousStep = useRef(1);
   useEffect(() => { if (step !== previousStep.current) { panelRef.current?.querySelector<HTMLElement>(".setup-step h2")?.focus(); previousStep.current = step; } }, [step]);
   const [form, setForm] = useState<Setup>(() => initialSetup(accountName));
+  const [overview,setOverview] = useState(()=>recommendedOverview("Retail"));
+  const [overviewTouched,setOverviewTouched] = useState(false);
+  const overviewLayout=overviewTouched?overview:recommendedOverview(form.industry);
   const kpiGuide = industryKpiRecommendation(form.industry);
   const [hours, setHours] = useState<Hour[]>(initialHours);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [legalAccepted, setLegalAccepted] = useState(false);
-  const [addressProvider, setAddressProvider] = useState<"checking" | "ready" | "manual">("checking");
-  const [addressSearch, setAddressSearch] = useState("");
-  const [addressSuggestions, setAddressSuggestions] = useState<AddressSuggestion[]>([]);
-  const [addressBusy, setAddressBusy] = useState(false);
-  const [addressMessage, setAddressMessage] = useState("");
   const standaloneBookloq = planSelection?.plan === "bookloq";
   const set = <K extends keyof Setup>(key: K, value: Setup[K]) =>
     setForm((current) => ({ ...current, [key]: value }));
@@ -162,88 +145,8 @@ export default function SecureOnboardingFlow({
     queueMicrotask(() => setPlanSelection(readPlanSelection()));
   }, []);
 
-  useEffect(() => {
-    let active = true;
-    void apiFetch("/api/v1/address", { headers: { Accept: "application/json" } })
-      .then(async (response) => {
-        const data = await response.json() as { configured?: unknown };
-        if (active) setAddressProvider(response.ok && data.configured === true ? "ready" : "manual");
-      })
-      .catch(() => {
-        if (active) setAddressProvider("manual");
-      });
-    return () => { active = false; };
-  }, []);
-
   const setAddressField = (key: "country" | "province" | "city" | "address" | "postalCode", value: string) => {
-    setForm((current) => ({ ...current, [key]: value, addressVerificationToken: "" }));
-    setAddressSuggestions([]);
-    setAddressMessage("");
-  };
-
-  const findAddress = async (lastId?: string) => {
-    if (addressSearch.trim().length < 3 && !lastId) {
-      setAddressMessage("Enter at least three characters of the business address.");
-      return;
-    }
-    setAddressBusy(true);
-    setAddressMessage("");
-    try {
-      const response = await apiFetch("/api/v1/address", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ action: "find", search: addressSearch, country: form.country, ...(lastId ? { lastId } : {}) }),
-      });
-      const data = await response.json() as { suggestions?: unknown; error?: unknown };
-      if (!response.ok) throw new Error(messageFrom(data, "Address search is temporarily unavailable."));
-      const suggestions = Array.isArray(data.suggestions) ? data.suggestions as AddressSuggestion[] : [];
-      setAddressSuggestions(suggestions);
-      if (!suggestions.length) setAddressMessage("No matching premises were found. Add more of the street address and try again.");
-    } catch (caught) {
-      setAddressMessage(caught instanceof Error ? caught.message : "Address search is temporarily unavailable.");
-    } finally {
-      setAddressBusy(false);
-    }
-  };
-
-  const selectAddress = async (suggestion: AddressSuggestion) => {
-    if (suggestion.next === "Find") {
-      await findAddress(suggestion.id);
-      return;
-    }
-    setAddressBusy(true);
-    setAddressMessage("");
-    try {
-      const response = await apiFetch("/api/v1/address", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ action: "retrieve", id: suggestion.id }),
-      });
-      const data = await response.json() as { address?: VerifiedAddress; verificationToken?: unknown; error?: unknown };
-      if (!response.ok || !data.address || typeof data.verificationToken !== "string") {
-        throw new Error(messageFrom(data, "The selected address could not be verified."));
-      }
-      const address = data.address;
-      const verificationToken = data.verificationToken;
-      const defaults = countryDefaults(address.country);
-      setForm((current) => ({
-        ...current,
-        country: address.country,
-        province: address.province,
-        city: address.city,
-        address: address.address,
-        postalCode: address.postalCode,
-        addressVerificationToken: verificationToken,
-        ...defaults,
-      }));
-      setAddressSearch(`${address.address}, ${address.city}, ${address.province} ${address.postalCode}`);
-      setAddressSuggestions([]);
-      setAddressMessage("Verified against Canada Post AddressComplete.");
-    } catch (caught) {
-      setAddressMessage(caught instanceof Error ? caught.message : "The selected address could not be verified.");
-    } finally {
-      setAddressBusy(false);
-    }
+    setForm((current) => ({ ...current, [key]: value }));
   };
 
   const next = () => {
@@ -276,11 +179,9 @@ export default function SecureOnboardingFlow({
       return setError(
         `Complete the primary business address and enter a valid ${form.country === "CA" ? "Canadian postal code" : form.country === "US" ? "U.S. ZIP code" : "postal code"}.`,
       );
-    if (step === 3 && addressProvider === "ready" && !form.addressVerificationToken)
-      return setError("Select a complete business address verified by Canada Post AddressComplete.");
     if (step === 5 && form.sourceMode === "live" && !form.selectedPos)
       return setError("Select the POS system you plan to connect.");
-    setStep((current) => Math.min(6, current + 1));
+    setStep((current) => Math.min(7, current + 1));
   };
 
   const submit = async () => {
@@ -297,6 +198,7 @@ export default function SecureOnboardingFlow({
         body: JSON.stringify({
           ...form,
           hours,
+          dashboardPreferences: overviewLayout,
           legalAccepted: true,
           termsVersion: TERMS_OF_SERVICE_VERSION,
           privacyPolicyVersion: PRIVACY_POLICY_VERSION,
@@ -306,7 +208,8 @@ export default function SecureOnboardingFlow({
       const data: unknown = await response.json();
       if (!response.ok)
         return setError(messageFrom(data, "Unable to create the workspace."));
-      complete(form.businessName, form.ownerName);
+      const saved = (data as { organization?: { businessName?: string; ownerName?: string } }).organization;
+      complete(saved?.businessName ?? form.businessName, saved?.ownerName ?? form.ownerName);
     } catch {
       setError(
         "Unable to create the workspace. Check your connection and try again.",
@@ -341,6 +244,7 @@ export default function SecureOnboardingFlow({
             "Location & hours",
             "Security preferences",
             standaloneBookloq ? "Add financial records" : "Connect your data",
+            "Build your overview",
             "Review & continue",
           ].map((label, index) => (
             <li
@@ -374,12 +278,12 @@ export default function SecureOnboardingFlow({
       </aside>
       <section ref={panelRef} className="setup-panel">
         <FormLegend/>
-        <div className="setup-progress" role="progressbar" aria-label="Workspace setup" aria-valuemin={0} aria-valuemax={6} aria-valuenow={step} aria-valuetext={`Step ${step} of 6`}>
-          <span>STEP {step} OF 6</span>
+        <div className="setup-progress" role="progressbar" aria-label="Workspace setup" aria-valuemin={0} aria-valuemax={7} aria-valuenow={step} aria-valuetext={`Step ${step} of 7`}>
+          <span>STEP {step} OF 7</span>
           <i>
-            <b style={{ width: `${Math.round((step / 6) * 100)}%` }} />
+            <b style={{ width: `${Math.round((step / 7) * 100)}%` }} />
           </i>
-          <em>{Math.round((step / 6) * 100)}%</em>
+          <em>{Math.round((step / 7) * 100)}%</em>
         </div>
         {step === 1 && (
           <Step
@@ -419,7 +323,6 @@ export default function SecureOnboardingFlow({
                 </small>
               </span>
             </label>
-            <MarketingPreferences placement="onboarding" />
             <p className="auth-note">
               Your business records and preferences belong to this workspace.
               You can review account access in Settings.
@@ -473,6 +376,7 @@ export default function SecureOnboardingFlow({
                 onChange={(value) => set("industry", value)}
                 options={[
                   "Retail",
+                  "Dealership",
                   "Food & beverage",
                   "Health & wellness",
                   "Professional services",
@@ -494,52 +398,12 @@ export default function SecureOnboardingFlow({
           <Step
             eyebrow="LOCATION & REPORTING"
             title="Location and Reporting"
-            copy="Add your business address and reporting preferences. Use address search when available, then review the details."
+            copy="Choose your country and province or state, then enter your business address and reporting preferences."
           >
-            {addressProvider === "checking" && (
-              <p className="address-provider-state" role="status">Checking secure address verification…</p>
-            )}
-            {addressProvider === "ready" && (
-              <div className="address-finder">
-                <label>
-                  <span>Find the business address</span>
-                  <div>
-                    <input
-                      value={addressSearch}
-                      onChange={(event) => {
-                        setAddressSearch(event.target.value);
-                        setForm((current) => ({ ...current, addressVerificationToken: "" }));
-                      }}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") {
-                          event.preventDefault();
-                          void findAddress();
-                        }
-                      }}
-                      placeholder="Start typing the street address"
-                      autoComplete="off"
-                    />
-                    <button type="button" disabled={addressBusy} onClick={() => void findAddress()}>
-                      {addressBusy ? "Checking…" : "Find address"}
-                    </button>
-                  </div>
-                </label>
-                {addressSuggestions.length > 0 && (
-                  <div className="address-suggestions" role="listbox" aria-label="Canada Post address suggestions">
-                    {addressSuggestions.map((suggestion) => (
-                      <button type="button" role="option" aria-selected="false" onClick={() => void selectAddress(suggestion)} key={`${suggestion.id}:${suggestion.text}`}>
-                        <b>{suggestion.text}</b>
-                        <span>{suggestion.description || (suggestion.next === "Find" ? "Show matching premises" : "Select this premise")}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {addressMessage && <p className={form.addressVerificationToken ? "address-verified" : "address-provider-message"} aria-live="polite">{addressMessage}</p>}
-              </div>
-            )}
             <div className="form-grid">
               <Select
                 label="Country"
+                autoComplete="country"
                 value={form.country}
                 onChange={(country) => {
                   const defaults = countryDefaults(country);
@@ -550,12 +414,8 @@ export default function SecureOnboardingFlow({
                     city: "",
                     address: "",
                     postalCode: "",
-                    addressVerificationToken: "",
                     ...defaults,
                   }));
-                  setAddressSearch("");
-                  setAddressSuggestions([]);
-                  setAddressMessage("");
                 }}
                 options={COUNTRIES.map((item) => ({
                   value: item.code,
@@ -569,6 +429,7 @@ export default function SecureOnboardingFlow({
                       ? "Province / Territory"
                       : "State or Territory"
                   }
+                  autoComplete="address-level1"
                   value={form.province}
                   onChange={(value) => setAddressField("province", value)}
                   options={[
@@ -675,8 +536,7 @@ export default function SecureOnboardingFlow({
                 placeholder="Optional"
               />
             </div>
-            {addressProvider === "manual" && <p className="address-note">Enter your address manually and check it for accuracy before continuing.</p>}
-            {addressProvider === "ready" && <p className="address-note">Selecting a result verifies the premise and fills the fields above. Editing any verified address field clears the verification and requires another selection.</p>}
+            <p className="address-note">Check your address for accuracy before continuing.</p>
             <details className="hours-editor">
               <summary><b>Business Hours</b><span>Review the default schedule.</span></summary>
               {hours.map((row, index) => (
@@ -872,7 +732,8 @@ export default function SecureOnboardingFlow({
             )}
           </Step>
         )}
-        {step === 6 && (
+        {step === 6 && <Step eyebrow="YOUR PRIORITIES" title="Build Your Overview" copy="A dashboard built around your business, with the numbers you want to follow."><BuildYourOverview industry={form.industry} value={overviewLayout} onChange={next=>{setOverview(next);setOverviewTouched(true);}}/><button type="button" className="overview-skip" onClick={()=>{setOverview(recommendedOverview(form.industry));setOverviewTouched(true);setStep(7);}}>Skip for Now</button></Step>}
+        {step === 7 && (
           <Step
             eyebrow="REVIEW"
             title={`Review Your ${standaloneBookloq ? "BookLoQ " : ""}Workspace`}
@@ -920,7 +781,7 @@ export default function SecureOnboardingFlow({
               <span>
                 <b>Ready to Continue</b>
                 <small>
-                  Create your workspace, then activate your chosen {standaloneBookloq ? "BookLoQ" : "Vanteloq"} plan.
+                  Finish setting up your {standaloneBookloq ? "BookLoQ" : "Vanteloq"} workspace.
                   Your reports will use the records you connect or import.
                 </small>
               </span>
@@ -950,7 +811,7 @@ export default function SecureOnboardingFlow({
           >
             {step === 1 ? "Sign out" : "← Back"}
           </button>
-          {step < 6 ? (
+          {step < 7 ? (
             <button className="continue" onClick={next}>
               Continue →
             </button>
@@ -960,7 +821,7 @@ export default function SecureOnboardingFlow({
               disabled={saving || !legalAccepted}
               onClick={() => void submit()}
             >
-              {saving ? "Creating secure workspace…" : "Create workspace →"}
+              {saving ? "Saving your business details…" : "Finish setup →"}
             </button>
           )}
         </div>
@@ -1039,16 +900,18 @@ function Select({
   value,
   onChange,
   options,
+  autoComplete,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   options: readonly (string | { value: string; label: string })[];
+  autoComplete?: string;
 }) {
   return (
     <label className="field">
       <FieldLabel>{label}</FieldLabel>
-      <select required value={value} onChange={(event) => onChange(event.target.value)}>
+      <select required aria-label={label} autoComplete={autoComplete} value={value} onChange={(event) => onChange(event.target.value)}>
         {options.map((option) => {
           const item =
             typeof option === "string"

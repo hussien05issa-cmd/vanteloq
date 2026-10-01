@@ -38,13 +38,13 @@ test("each provider selection travels with its consent and conversation to the a
   }
 });
 
-test("thinking is announced as status and clearing never claims to analyze data", () => {
+test("thinking and history loading announce their actual operations", () => {
   const status = renderToStaticMarkup(<AdvisorThinking/>);
   assert.match(status, /role="status"/);
-  assert.match(status, /Vanteloq AI is thinking/);
+  assert.match(status, /Vanteloq AI is preparing a response/);
   assert.match(status, /is-thinking/);
   const clearing = renderToStaticMarkup(<AdvisorComposer question="Sales?" onQuestion={() => {}} dataUseAccepted loading thinking={false} onConsent={() => {}} onSubmit={() => {}}/>);
-  assert.match(clearing, /Clearing…/);
+  assert.match(clearing, /Loading conversation…/);
   assert.doesNotMatch(clearing, /Analyzing…|Reviewing the permitted business context/);
 });
 
@@ -66,7 +66,7 @@ test("chat settings are labelled and closed initially while consent stays in the
   assert.doesNotMatch(markup, /<dialog[^>]* open=/);
   assert.match(markup, /role="switch" aria-label="Conversation memory"/);
   assert.doesNotMatch(markup, /type="checkbox"[^>]*checked=""/);
-  assert.match(markup, /Saved chats are removed after 90 days of inactivity/);
+  assert.match(markup, /Chats inactive for 90 days are removed when you next use AI or open saved chats/);
   assert.match(markup, /New chat/);
   assert.ok(markup.indexOf('class="ai-consent"') < markup.indexOf('<dialog'));
   assert.match(markup, /aria-controls="advisor-suggestions"/);

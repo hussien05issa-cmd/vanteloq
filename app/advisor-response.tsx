@@ -1,5 +1,5 @@
 "use client";
-import { Fragment, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import VanteloqAiLogo from "./vanteloq-ai-logo";
 
 const reducedMotionQuery = "(prefers-reduced-motion: reduce)";
@@ -120,23 +120,8 @@ function inline(text: string, reveal: (value: string) => ReactNode, depth = 0): 
 }
 
 function renderAnswerContent(text: string, animate: boolean) {
-  let words = 0;
-  const transition = (value: string) => {
-    const delay = Math.min(1200, Math.floor(words / 6) * 30);
-    words += value.match(/\S+/g)?.length ?? 0;
-    return animate ? { className: "ai-reply-chunk", style: { "--ai-reveal-delay": `${delay}ms` } as CSSProperties } : {};
-  };
-  const reveal = (value: string) => {
-    if (!animate) return value;
-    const tokens = value.match(/\s*\S+\s*/g);
-    if (!tokens) return value;
-    const chunks: ReactNode[] = [];
-    for (let index = 0; index < tokens.length; index += 6) {
-      const chunk = tokens.slice(index, index + 6).join("");
-      chunks.push(<span key={index} {...transition(chunk)}>{chunk}</span>);
-    }
-    return chunks;
-  };
+  const transition = () => animate ? {className:"ai-reply-chunk"} : {};
+  const reveal = (value: string) => value;
   const rendered = (value: string) => inline(value, reveal);
   const renderBlocks = (blocks: AnswerBlock[], inList = false): ReactNode => blocks.map((block, index) => {
     switch (block.kind) {
@@ -148,9 +133,9 @@ function renderAnswerContent(text: string, animate: boolean) {
         const items = block.items.map((item, itemIndex) => <li key={itemIndex}>{renderBlocks(item, true)}</li>);
         return block.ordered ? <ol start={block.start} key={index}>{items}</ol> : <ul key={index}>{items}</ul>;
       }
-      case "code": return <div className="ai-answer-code" key={index}><div {...transition(block.text)}>{block.language && <span className="ai-code-language">{block.language}</span>}<pre tabIndex={0} aria-label="Code example"><code>{block.text}</code></pre></div></div>;
+      case "code": return <div className="ai-answer-code" key={index}><div {...transition()}>{block.language && <span className="ai-code-language">{block.language}</span>}<pre tabIndex={0} aria-label="Code example"><code>{block.text}</code></pre></div></div>;
       case "table": {
-        const animation = transition([block.headers, ...block.rows].flat().join(" "));
+        const animation = transition();
         return <div className="ai-answer-table" key={index} tabIndex={0} role="region" aria-label="Analysis data table"><table {...animation}><caption>Analysis data</caption><thead><tr>{block.headers.map((header, cell) => <th scope="col" key={cell} style={{ textAlign: block.align[cell] }}>{inline(header, value => value)}</th>)}</tr></thead><tbody>{block.rows.map((row, rowIndex) => <tr key={rowIndex}>{block.headers.map((_, cell) => <td key={cell} style={{ textAlign: block.align[cell] }}>{inline(row[cell] ?? "", value => value)}</td>)}</tr>)}</tbody></table></div>;
       }
     }
@@ -162,15 +147,26 @@ export function AdvisorAnswerContent({ text, animate = false }: { text: string; 
   return renderAnswerContent(text, animate);
 }
 
-export default function AdvisorResponse({ title, body, limitation, children, animate = false }: { title: string; body: string; limitation: string; children?: ReactNode; animate?: boolean }) {
+export default function AdvisorResponse({ title, body, limitation, children, animate = false, onReuse, coverage, streaming = false }: { title: string; body: string; limitation: string; children?: ReactNode; animate?: boolean; onReuse?: () => void; streaming?: boolean; coverage?: { latestDate: string | null; sourceCount: number; days: number; from?: string | null; to?: string | null; sources?: string[]; lastUpdated?: string | null } }) {
   const reducedMotion = useSyncExternalStore(subscribeMotion, motionSnapshot, serverMotionSnapshot);
+  const [copyState, setCopyState] = useState("");
+  const [sourcesOpen,setSourcesOpen]=useState(false);
+  const sources=useRef<HTMLDialogElement>(null);
+  useEffect(()=>{if(sourcesOpen)sources.current?.showModal();else sources.current?.close();},[sourcesOpen]);
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(body); setCopyState("Copied"); }
+    catch { setCopyState("Could not copy. Select the response text to copy it."); }
+  };
   // Text and final geometry are present immediately. Only opacity is staggered,
   // so assistive technology can read the answer without waiting for animation.
   return <article className="advisor-answer" aria-label="Vanteloq AI response">
     <header className="advisor-response-heading"><VanteloqAiLogo size={36} decorative/><strong>Vanteloq AI</strong></header>
     {title !== "Vanteloq AI" && <h3>{title}</h3>}
-    <div className="ai-response-body"><AdvisorAnswerContent key={body} text={body} animate={animate && !reducedMotion}/></div>
-    <span className="ai-visually-hidden" role="status">Reply ready.</span>
-    <footer className="ai-response-footer"><p>{limitation}</p>{children}</footer>
+    <div className="ai-response-body"><AdvisorAnswerContent text={body} animate={animate && !reducedMotion}/></div>
+    <span className="ai-visually-hidden" role="status">{streaming ? "Reply in progress." : "Reply ready."}</span>
+    {!streaming && <footer className="ai-response-footer">
+      <div className="ai-response-actions"><button type="button" onClick={() => void copy()} aria-label="Copy response">Copy</button>{onReuse && <button type="button" onClick={onReuse}>Edit question</button>}<button type="button" aria-haspopup="dialog" onClick={()=>setSourcesOpen(true)}>Sources</button><span role="status" className="ai-copy-status">{copyState}</span></div>
+      <dialog ref={sources} className="ai-settings ai-answer-sources-dialog" aria-label="Response sources" onCancel={()=>setSourcesOpen(false)} onClose={()=>setSourcesOpen(false)}><header className="ai-settings-header"><h2>Response Sources</h2><button type="button" onClick={()=>setSourcesOpen(false)}>Done</button></header><div className="ai-settings-body"><p>{limitation}</p>{coverage && <dl><div><dt>Sales records through</dt><dd>{coverage.latestDate ?? "No recorded sales dates"}</dd></div><div><dt>Daily summaries</dt><dd>{coverage.days}</dd></div><div><dt>Sources included</dt><dd>{coverage.sourceCount}</dd></div>{coverage.sources?.length ? <div><dt>Record sources</dt><dd>{coverage.sources.join(", ")}</dd></div> : null}<div><dt>Last updated</dt><dd>{coverage.lastUpdated ? new Date(coverage.lastUpdated).toLocaleString() : "Not confirmed for this answer"}</dd></div>{coverage.from && coverage.to && <div><dt>Requested period</dt><dd>{coverage.from} to {coverage.to}</dd></div>}</dl>}{children}</div></dialog>
+    </footer>}
   </article>;
 }

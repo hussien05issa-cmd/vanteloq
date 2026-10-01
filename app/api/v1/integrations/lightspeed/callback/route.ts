@@ -17,6 +17,7 @@ import {
   exchangeAuthorizationCode,
   fetchLightspeedCollection,
   LIGHTSPEED_PROVIDER,
+  LIGHTSPEED_SCOPES,
   lightspeedOAuthBindingCookie,
   lightspeedReadiness,
   requireLightspeedOAuthBrowserBinding,
@@ -142,7 +143,9 @@ export async function GET(request: Request) {
       throw new ApiError(400, "LIGHTSPEED_STATE_INVALID", "The Lightspeed authorization attempt expired or was already used. Start again.");
     }
 
-    const activeConnectionId = storedState.connectionId;
+    let activeConnectionId = storedState.connectionId;
+    let reauthorizingExisting = false;
+    let preservedPromotionStatus: (typeof integrationConnections.$inferSelect)["dataPromotionStatus"] = "blocked";
     const [pendingConnection] = await getDb().select({ id: integrationConnections.id }).from(integrationConnections).where(and(
       eq(integrationConnections.id, activeConnectionId),
       eq(integrationConnections.organizationId, context.organizationId),
@@ -186,7 +189,11 @@ export async function GET(request: Request) {
       return returnToVanteloq(request, "declined");
     }
 
-    const [existing] = await getDb().select({ id: integrationConnections.id }).from(integrationConnections).where(and(
+    const [existing] = await getDb().select({
+      id: integrationConnections.id,
+      scopesJson: integrationConnections.scopesJson,
+      dataPromotionStatus: integrationConnections.dataPromotionStatus,
+    }).from(integrationConnections).where(and(
       eq(integrationConnections.organizationId, context.organizationId),
       eq(integrationConnections.provider, LIGHTSPEED_PROVIDER),
       eq(integrationConnections.externalAccountRef, domainPrefix),
@@ -207,23 +214,54 @@ export async function GET(request: Request) {
         eq(integrationSecrets.organizationId, context.organizationId),
         eq(integrationSecrets.provider, LIGHTSPEED_PROVIDER),
       ));
-      await recordAudit({
-        request,
-        requestId,
-        organizationId: context.organizationId,
-        actorUserId: context.userId,
-        action: "integration.authorization_reused",
-        resourceType: "integration",
-        resourceId: existing.id,
-        details: {
-          provider: LIGHTSPEED_PROVIDER,
-          connectionId: existing.id,
-          discardedConnectionId: activeConnectionId,
-          reason: "account_already_connected",
-          dataPromotionEnabled: false,
-        },
-      });
-      return returnToVanteloq(request, "connected");
+      let existingScopes: string[] = [];
+      try {
+        const parsed = JSON.parse(existing.scopesJson ?? "[]");
+        if (Array.isArray(parsed)) existingScopes = parsed.filter((scope): scope is string => typeof scope === "string");
+      } catch {
+        existingScopes = [];
+      }
+      const expectedScopes = [...LIGHTSPEED_SCOPES].sort();
+      const normalizedExistingScopes = [...new Set(existingScopes)].sort();
+      const scopeRefreshRequired = expectedScopes.length !== normalizedExistingScopes.length
+        || expectedScopes.some((scope, index) => scope !== normalizedExistingScopes[index]);
+      if (scopeRefreshRequired) {
+        const [claimedExisting] = await getDb().update(integrationConnections).set({
+          status: "pending",
+          connectedAt: null,
+          lastErrorCode: null,
+          updatedAt: now,
+        }).where(and(
+          eq(integrationConnections.id, existing.id),
+          eq(integrationConnections.organizationId, context.organizationId),
+          eq(integrationConnections.provider, LIGHTSPEED_PROVIDER),
+          eq(integrationConnections.status, "connected"),
+        )).returning({ id: integrationConnections.id });
+        if (!claimedExisting) {
+          throw new ApiError(409, "LIGHTSPEED_CONNECTION_MISSING", "The existing X-Series connection changed while it was being reauthorized. Start again.");
+        }
+        activeConnectionId = existing.id;
+        reauthorizingExisting = true;
+        preservedPromotionStatus = existing.dataPromotionStatus ?? "blocked";
+      } else {
+        await recordAudit({
+          request,
+          requestId,
+          organizationId: context.organizationId,
+          actorUserId: context.userId,
+          action: "integration.authorization_reused",
+          resourceType: "integration",
+          resourceId: existing.id,
+          details: {
+            provider: LIGHTSPEED_PROVIDER,
+            connectionId: existing.id,
+            discardedConnectionId: activeConnectionId,
+            reason: "account_already_connected",
+            dataPromotionEnabled: false,
+          },
+        });
+        return returnToVanteloq(request, "connected");
+      }
     }
 
     let finalized = false;
@@ -238,7 +276,7 @@ export async function GET(request: Request) {
         domainPrefix,
         apiVersion: readiness.apiVersion,
         scopesJson: JSON.stringify(grantedScopes),
-        dataPromotionStatus: "blocked",
+        dataPromotionStatus: reauthorizingExisting ? preservedPromotionStatus : "blocked",
         connectedAt: null,
         lastErrorCode: null,
         updatedAt: now,
@@ -335,7 +373,8 @@ export async function GET(request: Request) {
         mode: "read_only_staging",
         outletsDiscovered: outlets.data.length,
         grantedScopeCount: grantedScopes.length,
-        dataPromotionEnabled: false,
+        dataPromotionEnabled: reauthorizingExisting && preservedPromotionStatus === "approved",
+        reauthorizedExistingConnection: reauthorizingExisting,
         connectionId: activeConnectionId,
       },
     });

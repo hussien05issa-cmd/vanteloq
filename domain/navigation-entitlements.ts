@@ -3,6 +3,7 @@ import type { FeatureKey } from "../server/entitlements/catalog.ts";
 export const navigationEntitlementViews = [
   "Dashboard",
   "Intelligence",
+  "Forecasting",
   "Action Centre",
   "Business Brief",
   "Advisor",
@@ -34,6 +35,7 @@ export type NavigationEntitlementView = (typeof navigationEntitlementViews)[numb
 const requiredFeatureByView: Readonly<Record<NavigationEntitlementView, FeatureKey>> = Object.freeze({
   Dashboard: "dashboard.core",
   Intelligence: "analytics.sales.advanced",
+  Forecasting: "forecasting.revenue",
   "Action Centre": "operations.basic",
   "Business Brief": "business.brief.basic",
   Advisor: "ai.basic",
@@ -61,6 +63,7 @@ const requiredFeatureByView: Readonly<Record<NavigationEntitlementView, FeatureK
 });
 
 const growthFeatures = new Set<FeatureKey>([
+  "forecasting.revenue",
   "analytics.sales.advanced",
   "ai.tools.customers",
   "growth.strategy",

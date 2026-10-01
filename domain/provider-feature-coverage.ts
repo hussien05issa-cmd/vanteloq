@@ -87,3 +87,13 @@ export function buildProviderFeatureCoverage(
     };
   });
 }
+
+/** Compatibility checklist of record presence; never combine sibling accounts. */
+export function buildProviderFeatureCoverageByConnection(provider: string, accounts: readonly { connectionId: string; coverage: CanonicalCommerceCoverage }[]) {
+  const records = accounts.map(account => ({ ...account, features: buildProviderFeatureCoverage(provider, account.coverage) }));
+  return featureContracts.map(contract => {
+    const candidates = records.map(account => account.features.find(feature => feature.id === contract.id)!);
+    const best = [...candidates].sort((a, b) => a.dataNeeded.length - b.dataNeeded.length)[0];
+    return best ?? buildProviderFeatureCoverage(provider, { sales: false, payments: false, products: false, inventory: false, customers: false, suppliers: false, locations: false }).find(feature => feature.id === contract.id)!;
+  });
+}

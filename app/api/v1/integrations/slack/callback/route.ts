@@ -1,0 +1,244 @@
+import { and, eq, gt, isNull } from "drizzle-orm";
+import { getDb } from "../../../../../../db";
+import {
+  integrationConnections,
+  integrationOAuthStates,
+  integrationSecrets,
+  memberships,
+  users,
+  workspaces,
+} from "../../../../../../db/schema";
+import { recordAudit } from "../../../../../../server/audit";
+import type { AccessContext } from "../../../../../../server/authorization";
+import { ApiError, handleApi } from "../../../../../../server/api";
+import { requireFeature } from "../../../../../../server/entitlements/engine";
+import { requireOAuthBrowser } from "../../../../../../server/integrations/oauth-browser";
+import {
+  encryptSlackCredentials,
+  encryptedSlackNoRefreshToken,
+  exchangeSlackAuthorizationCode,
+  SLACK_API_VERSION,
+  SLACK_PROVIDER,
+  slackCredentialEnvelope,
+  slackStateHash,
+} from "../../../../../../server/integrations/slack";
+import { requirePermission } from "../../../../../../server/permissions";
+
+function returnUrl(request: Request, status: "connected" | "declined" | "failed") {
+  return new URL(`/?integration=slack&connection=${status}`, new URL(request.url).origin).toString();
+}
+
+function returnToVanteloq(request: Request, status: "connected" | "declined" | "failed") {
+  return new Response(null, {
+    status: 303,
+    headers: {
+      Location: returnUrl(request, status),
+      "Set-Cookie": "__Host-vanteloq-oauth-slack=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0",
+    },
+  });
+}
+
+async function callbackStage<T>(stage: string, operation: () => Promise<T>): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    if (!(error instanceof ApiError)) {
+      console.error(JSON.stringify({
+        level: "error",
+        event: "slack.callback_stage_failed",
+        stage,
+        errorName: error instanceof Error ? error.name : "unknown",
+      }));
+    }
+    throw error;
+  }
+}
+
+async function callbackActor(initiation: typeof integrationOAuthStates.$inferSelect): Promise<AccessContext> {
+  const [actor] = await getDb().select({
+    userId: users.id,
+    email: users.email,
+    displayName: users.displayName,
+    authSubject: users.authSubject,
+    authProvider: users.authProvider,
+    role: memberships.role,
+    organizationId: memberships.organizationId,
+    organization: workspaces,
+  }).from(users).innerJoin(memberships, and(
+    eq(memberships.userId, users.id),
+    eq(memberships.organizationId, initiation.organizationId),
+  )).innerJoin(workspaces, eq(workspaces.id, memberships.organizationId)).where(and(
+    eq(users.id, initiation.actorUserId),
+    eq(users.status, "active"),
+    eq(memberships.status, "active"),
+  )).limit(1);
+  if (!actor || (actor.role !== "owner" && actor.role !== "admin")) {
+    throw new ApiError(403, "SLACK_INITIATOR_INELIGIBLE", "The account that started this connection can no longer manage integrations.");
+  }
+  if (!initiation.initiatorAuthSubject || initiation.initiatorAuthSubject !== actor.authSubject
+    || initiation.initiatorAuthProvider !== actor.authProvider) {
+    throw new ApiError(403, "SLACK_INITIATOR_SESSION_INVALID", "Start a new Slack connection from your signed-in workspace.");
+  }
+  const context: AccessContext = {
+    identity: {
+      email: actor.email,
+      displayName: actor.displayName,
+      subject: actor.authSubject,
+      provider: actor.authProvider ?? "sites",
+      emailVerified: true,
+      assuranceLevel: initiation.initiatorAssuranceLevel === "aal2" ? "aal2" : initiation.initiatorAssuranceLevel === "aal1" ? "aal1" : null,
+      sessionId: null,
+    },
+    userId: actor.userId,
+    organizationId: actor.organizationId,
+    role: actor.role,
+    authSubject: actor.authSubject,
+    authProvider: actor.authProvider,
+    organization: actor.organization,
+  };
+  await requireFeature(context, "communications.basic");
+  await requirePermission(context, "integrations.manage");
+  return context;
+}
+
+export async function GET(request: Request) {
+  return handleApi(request, async ({ requestId }) => {
+    const url = new URL(request.url);
+    const state = url.searchParams.get("state")?.trim() ?? "";
+    const code = url.searchParams.get("code")?.trim() ?? "";
+    const providerError = url.searchParams.get("error")?.trim() ?? "";
+    requireOAuthBrowser(request, SLACK_PROVIDER, state);
+    if (!/^[A-Za-z0-9_-]{43}$/.test(state) || (!providerError && (!code || code.length > 2_048))) {
+      throw new ApiError(400, "SLACK_CALLBACK_INVALID", "Slack returned an incomplete callback.");
+    }
+
+    const now = new Date();
+    const stateHash = await callbackStage("state_hash", () => slackStateHash(state));
+    const [storedState] = await callbackStage("state_lookup", () => getDb().select().from(integrationOAuthStates).where(and(
+      eq(integrationOAuthStates.stateHash, stateHash),
+      eq(integrationOAuthStates.provider, SLACK_PROVIDER),
+      isNull(integrationOAuthStates.consumedAt),
+      gt(integrationOAuthStates.expiresAt, now),
+    )).limit(1));
+    if (!storedState) throw new ApiError(400, "SLACK_STATE_INVALID", "The Slack authorization attempt expired or was already used. Start again.");
+    const context = await callbackStage("actor_validation", () => callbackActor(storedState));
+    const [consumed] = await callbackStage("state_consume", () => getDb().update(integrationOAuthStates).set({ consumedAt: now }).where(and(
+      eq(integrationOAuthStates.stateHash, stateHash),
+      eq(integrationOAuthStates.provider, SLACK_PROVIDER),
+      isNull(integrationOAuthStates.consumedAt),
+      gt(integrationOAuthStates.expiresAt, now),
+    )).returning({ stateHash: integrationOAuthStates.stateHash }));
+    if (!consumed) throw new ApiError(400, "SLACK_STATE_INVALID", "The Slack authorization attempt expired or was already used. Start again.");
+
+    const [pending] = await callbackStage("pending_lookup", () => getDb().select({ id: integrationConnections.id }).from(integrationConnections).where(and(
+      eq(integrationConnections.id, storedState.connectionId),
+      eq(integrationConnections.organizationId, context.organizationId),
+      eq(integrationConnections.provider, SLACK_PROVIDER),
+      eq(integrationConnections.status, "pending"),
+    )).limit(1));
+    if (!pending) throw new ApiError(409, "SLACK_CONNECTION_MISSING", "The Slack connection attempt is no longer available. Start again.");
+
+    if (providerError) {
+      await getDb().delete(integrationConnections).where(and(
+        eq(integrationConnections.id, pending.id),
+        eq(integrationConnections.organizationId, context.organizationId),
+        eq(integrationConnections.provider, SLACK_PROVIDER),
+        eq(integrationConnections.status, "pending"),
+      ));
+      await recordAudit({
+        request,
+        requestId,
+        organizationId: context.organizationId,
+        actorUserId: context.userId,
+        action: "integration.authorization_declined",
+        resourceType: "integration",
+        resourceId: pending.id,
+        details: { provider: SLACK_PROVIDER, connectionId: pending.id },
+      });
+      return returnToVanteloq(request, "declined");
+    }
+
+    const grant = await callbackStage("token_exchange", () => exchangeSlackAuthorizationCode(code));
+    const [alreadyAssigned] = await callbackStage("assignment_lookup", () => getDb().select({
+      id: integrationConnections.id,
+      organizationId: integrationConnections.organizationId,
+      status: integrationConnections.status,
+    }).from(integrationConnections).where(and(
+      eq(integrationConnections.provider, SLACK_PROVIDER),
+      eq(integrationConnections.externalAccountRef, grant.teamId),
+    )).limit(1));
+    if (alreadyAssigned) {
+      await getDb().delete(integrationConnections).where(and(
+        eq(integrationConnections.id, pending.id),
+        eq(integrationConnections.organizationId, context.organizationId),
+        eq(integrationConnections.provider, SLACK_PROVIDER),
+        eq(integrationConnections.status, "pending"),
+      ));
+      throw new ApiError(409, "SLACK_WORKSPACE_UNAVAILABLE", "This Slack workspace is already connected. Disconnect it before selecting another channel.");
+    }
+
+    const accessTokenCiphertext = await callbackStage("credential_encryption", () => encryptSlackCredentials(slackCredentialEnvelope(grant)));
+    const refreshTokenCiphertext = await callbackStage("placeholder_encryption", () => encryptedSlackNoRefreshToken());
+    await callbackStage("secret_storage", () => getDb().insert(integrationSecrets).values({
+      id: crypto.randomUUID(),
+      organizationId: context.organizationId,
+      provider: SLACK_PROVIDER,
+      connectionId: pending.id,
+      accessTokenCiphertext,
+      refreshTokenCiphertext,
+      tokenExpiresAt: new Date("2100-01-01T00:00:00.000Z"),
+      createdAt: now,
+      updatedAt: now,
+    }));
+    try {
+      const [connected] = await getDb().update(integrationConnections).set({
+        status: "connected",
+        externalAccountRef: grant.teamId,
+        externalAccountName: `${grant.teamName} · #${grant.channelName}`,
+        domainPrefix: grant.channelId,
+        apiVersion: SLACK_API_VERSION,
+        scopesJson: JSON.stringify(grant.scopes),
+        dataPromotionStatus: "blocked",
+        connectedAt: now,
+        lastSuccessfulSyncAt: null,
+        lastSyncCursor: null,
+        lastErrorCode: null,
+        updatedAt: now,
+      }).where(and(
+        eq(integrationConnections.id, pending.id),
+        eq(integrationConnections.organizationId, context.organizationId),
+        eq(integrationConnections.provider, SLACK_PROVIDER),
+        eq(integrationConnections.status, "pending"),
+      )).returning({ id: integrationConnections.id });
+      if (!connected) throw new ApiError(409, "SLACK_CONNECTION_MISSING", "The Slack connection attempt is no longer available. Start again.");
+    } catch (error) {
+      await getDb().delete(integrationSecrets).where(and(
+        eq(integrationSecrets.organizationId, context.organizationId),
+        eq(integrationSecrets.provider, SLACK_PROVIDER),
+        eq(integrationSecrets.connectionId, pending.id),
+      ));
+      throw error;
+    }
+
+    await callbackStage("audit", () => recordAudit({
+      request,
+      requestId,
+      organizationId: context.organizationId,
+      actorUserId: context.userId,
+      action: "integration.connected",
+      resourceType: "integration_connection",
+      resourceId: pending.id,
+      details: {
+        provider: SLACK_PROVIDER,
+        connectionId: pending.id,
+        teamId: grant.teamId,
+        channelId: grant.channelId,
+        scopes: grant.scopes.join(","),
+        mode: "single_channel_notifications",
+        readsSlackMessages: false,
+        accessesSlackFiles: false,
+      },
+    }));
+    return returnToVanteloq(request, "connected");
+  });
+}

@@ -17,6 +17,7 @@ export const integrationCategoryOrder = [
   "Delivery",
   "Marketing",
   "Labour",
+  "Collaboration",
   "Manual imports",
 ] as const;
 
@@ -32,12 +33,14 @@ export const integrationCategoryGuide: Record<IntegrationCategory, { enables: st
   Delivery: { enables: "Delivery-channel sales, fees, refunds, store performance, and order reconciliation.", data: "Orders, items, fees, refunds, store identifiers, order state, and settlement records." },
   Marketing: { enables: "Campaign planning, spend review, attributable demand signals, and recorded marketing experiments.", data: "Campaigns, spend, clicks, attributed events, audience and location identifiers, and verified sales outcomes." },
   Labour: { enables: "Labour cost, pay-period review, staffing context, and controlled payroll reconciliation.", data: "Pay periods, hours, gross pay, employer costs, departments, locations, and protected employee identifiers." },
+  Collaboration: { enables: "Share a secure Vanteloq link with one approved Slack channel after confirmation. Automatic alerts and incoming Slack activity are not enabled.", data: "The authorized workspace, channel and delivery result. Messages, files and conversations are not read. Business records remain in Vanteloq." },
   "Manual imports": { enables: "Reviewed operating or financial history when a supported direct connection is unavailable.", data: "A validated file format, stable row identifiers, dates, locations, currencies, and reviewable source totals." },
 };
 
 export type IntegrationCatalogEntry = {
   id: string;
   name: string;
+  providerCompany?: string;
   category: IntegrationCategory;
   availability: IntegrationAvailability;
   activationRequirement: string;
@@ -68,12 +71,14 @@ export const salesChannelGroups = [
   { label: "Payments", providers: ["Stripe", "Square", "Moneris"] },
   { label: "Accounting", providers: ["QuickBooks", "Xero"] },
   { label: "Marketing", providers: ["Google", "Meta"] },
+  { label: "People & collaboration", providers: ["Deel", "Slack"] },
 ] as const;
 
 export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
   {
     id: "lightspeed",
     name: "Lightspeed Retail X-Series",
+    providerCompany: "Lightspeed Commerce Inc. and its affiliates",
     category: "Point of sale",
     availability: "credentials_required",
     activationRequirement:
@@ -82,6 +87,7 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
   {
     id: "lightspeed-r",
     name: "Lightspeed Retail R-Series",
+    providerCompany: "Lightspeed Commerce Inc. and its affiliates",
     category: "Point of sale",
     availability: "credentials_required",
     activationRequirement:
@@ -90,6 +96,7 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
   {
     id: "shopify",
     name: "Shopify",
+    providerCompany: "Shopify Inc.",
     category: "Commerce",
     availability: "credentials_required",
     activationRequirement: "Coming soon. Bring online orders, products and inventory into one reviewed view.",
@@ -98,6 +105,7 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
   {
     id: "shopify-pos",
     name: "Shopify POS",
+    providerCompany: "Shopify Inc.",
     category: "Point of sale",
     availability: "credentials_required",
     activationRequirement: "Coming soon. See in-store sales, products and stock alongside your other locations.",
@@ -106,6 +114,7 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
   {
     id: "square",
     name: "Square",
+    providerCompany: "Block, Inc.",
     category: "Point of sale",
     availability: "credentials_required",
     activationRequirement:
@@ -114,6 +123,7 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
   {
     id: "clover",
     name: "Clover",
+    providerCompany: "Clover Network, LLC, a Fiserv company",
     category: "Point of sale",
     availability: "credentials_required",
     activationRequirement: "Coming soon. Explore sales, products and customer trends from your Clover account.",
@@ -122,6 +132,7 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
   {
     id: "stripe",
     name: "Stripe",
+    providerCompany: "Stripe, Inc.",
     category: "Payments",
     availability: "credentials_required",
     activationRequirement:
@@ -130,6 +141,7 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
   {
     id: "moneris",
     name: "Moneris",
+    providerCompany: "Moneris Solutions Corporation",
     category: "Payments",
     availability: "credentials_required",
     activationRequirement: "Coming soon. Review payment history and compare it with your sales and deposits.",
@@ -138,6 +150,7 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
   {
     id: "quickbooks",
     name: "QuickBooks",
+    providerCompany: "Intuit Inc.",
     category: "Accounting",
     availability: "credentials_required",
     activationRequirement: "Coming soon. Connect QuickBooks accounting records with your business insights.",
@@ -146,6 +159,7 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
   {
     id: "xero",
     name: "Xero",
+    providerCompany: "Xero Limited",
     category: "Accounting",
     availability: "provider_build_required",
     activationRequirement: "Coming soon. Bring your accounting records and business performance into one view.",
@@ -154,6 +168,7 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
   {
     id: "doordash",
     name: "DoorDash",
+    providerCompany: "DoorDash, Inc.",
     category: "Delivery",
     availability: "coming_soon",
     activationRequirement: "Coming soon. See delivery orders, fees and refunds alongside other sales channels.",
@@ -162,6 +177,7 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
   {
     id: "uber-eats",
     name: "Uber Eats",
+    providerCompany: "Uber Technologies, Inc.",
     category: "Delivery",
     availability: "coming_soon",
     activationRequirement: "Coming soon. Review delivery sales, refunds and settlement activity in one place.",
@@ -170,6 +186,7 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
   {
     id: "google",
     name: "Google",
+    providerCompany: "Google LLC",
     category: "Marketing",
     availability: "credentials_required",
     activationRequirement:
@@ -178,6 +195,7 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
   {
     id: "meta",
     name: "Meta",
+    providerCompany: "Meta Platforms, Inc.",
     category: "Marketing",
     availability: "credentials_required",
     activationRequirement: "Coming soon. Review advertising performance alongside your business results.",
@@ -186,18 +204,29 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
   {
     id: "plaid",
     name: "Plaid",
+    providerCompany: "Plaid Inc.",
     category: "Banking",
     availability: "credentials_required",
     activationRequirement: "Coming soon. Connect bank balances and transactions to BookLoQ. You can review bank statements in Documents today.",
     setupDetails: "The BookLoQ bank-feed adapter uses resumable Plaid Link, encrypted tokens, signed webhooks, repair mode, cursor sync, balances, and reviewed transactions. Production access still requires Plaid approval, Canadian institution testing, and hosted credentials.",
   },
   {
-    id: "payroll",
-    name: "Payroll",
+    id: "deel",
+    name: "Deel",
+    providerCompany: "Deel Inc.",
     category: "Labour",
-    availability: "provider_selection_required",
-    activationRequirement: "Coming soon. Review staffing costs alongside sales and operating performance.",
-    setupDetails: "Choose a payroll provider before Vanteloq can define account permissions, pay-period mapping, privacy boundaries, and reconciliation tests.",
+    availability: "credentials_required",
+    activationRequirement: "Coming soon. Reconcile finalized payroll-cycle totals with labour cost, cash planning and BookLoQ without exposing individual payroll details.",
+    setupDetails: "Vanteloq is preparing a read-only Deel connection for aggregate payroll-cycle evidence. Public access requires a Deel organization app, sandbox payroll verification, partner review and production approval. Employee names, banking details and payslip files are outside the initial connection.",
+  },
+  {
+    id: "slack",
+    name: "Slack",
+    providerCompany: "Slack Technologies, LLC, a Salesforce company",
+    category: "Collaboration",
+    availability: "credentials_required",
+    activationRequirement: "Share a secure Vanteloq link with one approved Slack channel. Choose the channel, confirm each message and keep business records inside Vanteloq.",
+    setupDetails: "Direct installation is enabled for Slack workspaces. Test delivery, share a sign-in link or disconnect access. Vanteloq does not read messages, files or conversations. Incoming activity and automatic alerts need additional implementation and permissions; they are not enabled by this connection.",
   },
 ] as const;
 

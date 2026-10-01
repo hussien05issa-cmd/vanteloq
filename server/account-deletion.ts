@@ -90,11 +90,15 @@ async function eraseLocal(job: DeletionJob, plan: DeletionPlan) {
   const organizationHash = await hashIdentifier(`vanteloq-workspace:${job.organization_id}`);
   const alias = `deleted+${job.account_hash.slice(0, 24)}@invalid.vanteloq`;
   const statements = job.scope === "workspace" ? [
+    db.prepare("DELETE FROM inventory_vehicles WHERE organization_id = ?").bind(job.organization_id),
     db.prepare("DELETE FROM tasks WHERE organization_id = ?").bind(job.organization_id),
     db.prepare("DELETE FROM audit_events WHERE organization_id = ?").bind(job.organization_id),
     db.prepare("DELETE FROM workspaces WHERE id = ?").bind(job.organization_id),
     ...plan.exclusiveUserIds.map((id) => db.prepare("DELETE FROM users WHERE id = ? AND NOT EXISTS (SELECT 1 FROM memberships WHERE user_id = ?)").bind(id, id)),
   ] : [
+    db.prepare("DELETE FROM cloud_file_connections WHERE user_id=? AND organization_id=?").bind(job.user_id,job.organization_id),
+    db.prepare("DELETE FROM advisor_preferences WHERE user_id = ?").bind(job.user_id),
+    db.prepare("DELETE FROM advisor_requests WHERE user_id = ?").bind(job.user_id),
     db.prepare("DELETE FROM assistant_messages WHERE user_id = ?").bind(job.user_id),
     db.prepare("DELETE FROM assistant_conversations WHERE user_id = ?").bind(job.user_id),
     db.prepare("DELETE FROM legal_acceptances WHERE user_id = ?").bind(job.user_id),

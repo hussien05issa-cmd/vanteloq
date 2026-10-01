@@ -1,6 +1,7 @@
 "use client";
 import WorkspaceSkeleton from "./workspace-skeleton";
 import DocumentEmailInbox from "./document-email-inbox";
+import LinkedFilesPanel from "./linked-files-panel";
 import { documentPipelineLabel } from "../domain/document-pipeline-labels";
 import { useModalFocus } from "./use-modal-focus";
 
@@ -2300,6 +2301,7 @@ export function DocumentsWorkspace({ showNotice, canUpload, canDelete, emailAcce
           <p>You can review existing documents. A workspace owner can grant upload access when you need to add files.</p>
         </div>
       </section>}
+      <LinkedFilesPanel key={`linked-${emailAccessKey}`} onDocumentsChanged={load}/>
       <DocumentEmailInbox key={emailAccessKey} refreshDocuments={load}/>
       <details className="document-service-status">
         <summary>Document Services <span>Storage, file safety and reading</span></summary>

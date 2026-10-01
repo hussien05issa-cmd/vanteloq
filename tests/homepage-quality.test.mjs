@@ -54,6 +54,18 @@ test("homepage copy stays within the verified product boundary", async () => {
   assert.match(html, /review the imported totals/);
 });
 
+test("connector disclosure stays compact and names the selected provider company", async () => {
+  const [source, css] = await Promise.all([
+    readFile(new URL("../app/compatibility-check.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/journey-refinement.css", import.meta.url), "utf8"),
+  ]);
+  assert.match(source, /Third-party provider/);
+  assert.match(source, /provider\.providerCompany/);
+  assert.match(source, /Third-party names, logos, trademarks, and service marks are the property of their respective owners/);
+  assert.doesNotMatch(source, /QuickBooks is a registered trademark/);
+  assert.match(css, /\.provider-setup-details \.provider-company/);
+});
+
 test("homepage omits the former independent retail label", async () => {
   const html = await (await fetchRoute("/")).text();
   assert.doesNotMatch(html, /Operations and analytics for independent retail/);
@@ -63,7 +75,7 @@ test("homepage omits the former independent retail label", async () => {
 test("homepage keeps the three-step journey and explicit subscription context", async () => {
   const html = await (await fetchRoute("/")).text();
   assert.match(html, /From signup to the first insight/);
-  for (const label of ["Set up your account", "Bring in your records", "Work through a store question"]) assert.ok(html.includes(label));
+  for (const label of ["Set up your account", "Bring in your records", "Turn a finding into a next step"]) assert.ok(html.includes(label), label);
   assert.match(html, /BookLoQ/);
   assert.match(html, /CAD \/ month/);
 });

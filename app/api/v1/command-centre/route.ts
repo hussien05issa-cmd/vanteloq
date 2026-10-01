@@ -1,6 +1,9 @@
 import { hasAddon } from "../../../../server/entitlements/engine";
 import { loadExecutiveFinance } from "../../../../server/executive-finance";
 import { buildExecutiveReport } from "../../../../server/executive-report";
+import { revenueAttribution } from "../../../../server/revenue-attribution";
+import { commerceSourceAuthority } from "../../../../server/integrations/source-authority";
+import { authoritativeDailySalesScope } from "../../../../server/integrations/daily-sales-scope";
 import { executivePeriod } from "../../../../domain/executive-metrics";
 import { and, desc, eq, gte, inArray, lte } from "drizzle-orm";
 import { getD1, getDb } from "../../../../db";
@@ -114,6 +117,9 @@ export async function loadCommandCentre(request: Request) {
     );
     const selectedMetricRefs = new Set(locationAccess.locationRefs ?? []);
     const locationRestricted = locationAccess.locationRefs !== null;
+    const localLocationIds = locationAccess.locationIds ?? availableLocations.map(location => location.id);
+    const salesAuthority = await commerceSourceAuthority({ organizationId: context.organizationId, localLocationIds, factFamily: "sales" });
+    const salesSourceScope = authoritativeDailySalesScope({ authority: salesAuthority, localLocationIds, locationRestricted });
     const recentRows = await getDb()
       .select({
         businessDate: dailyBusinessMetrics.businessDate,
@@ -140,6 +146,8 @@ export async function loadCommandCentre(request: Request) {
         eq(dailyBusinessMetrics.organizationId, context.organizationId),
         ...(period ? [gte(dailyBusinessMetrics.businessDate, period.comparisonFrom < period.from ? period.comparisonFrom : period.from), lte(dailyBusinessMetrics.businessDate, period.to)] : []),
         approvedFactSource(dailyBusinessMetrics.organizationId, dailyBusinessMetrics.sourceProvider, dailyBusinessMetrics.sourceConnectionId),
+        salesSourceScope,
+        ...(locationRestricted ? [inArray(dailyBusinessMetrics.locationRef, [...selectedMetricRefs])] : []),
       ))
       .orderBy(desc(dailyBusinessMetrics.businessDate))
       .limit(period ? 20001 : 730);
@@ -201,7 +209,10 @@ export async function loadCommandCentre(request: Request) {
     if (period && sourceSyncing && new URL(request.url).searchParams.get("basis") !== "ledger") {
       throw new ApiError(503, "SOURCE_SYNCING", "Syncing source records. Verified totals will return when the refresh finishes. Try again shortly.");
     }
-    const sourceConnections = connectedSourceConnections.filter((row) => row.dataPromotionStatus === "approved"
+    if (period && salesAuthority.status === "conflict" && new URL(request.url).searchParams.get("basis") !== "ledger") {
+      throw new ApiError(409, "SALES_SOURCE_CONFLICT", "Choose the reporting source for overlapping locations in Sales. Totals are withheld to avoid counting the same sales twice.");
+    }
+    const sourceConnections = connectedSourceConnections.filter((row) => salesAuthority.status !== "conflict" && salesAuthority.authoritativeConnectionIds.includes(row.id) && row.dataPromotionStatus === "approved"
       && (!row.syncLeaseOwner || !row.syncLeaseExpiresAt || row.syncLeaseExpiresAt.getTime() <= now));
     const canViewVerifiedProfit = permissions.includes("metrics.revenue") && permissions.includes("metrics.profit") && !sourceConnections.some((row) =>
       row.provider === "square" && row.lastErrorCode === "SQUARE_PRODUCT_COST_UNAVAILABLE"
@@ -538,11 +549,17 @@ export async function loadCommandCentre(request: Request) {
       const fullFinance=["finance.statements","finance.bank_balances","finance.ap_ar","payroll.totals","finance.costs","metrics.profit","metrics.revenue","metrics.cash","inventory.value"].every(p=>permissions.includes(p as typeof permissions[number]));
       const financeReason=!hasBookloq?"BookLoQ access is required for ledger metrics.":!locationAccess.organizationWide||selectedLocation?"Select All locations to review company financial statements.":!fullFinance?"Your role does not include the full financial permissions required for these totals.":null;
       const finance=financeReason?null:await loadExecutiveFinance(context.organizationId,context.organization.currency,period,businessClock(new Date(),context.organization.timezone)!.date,permissions.includes("customers.identity"));
-      executiveReport=buildExecutiveReport(period,commandCentre,finance,financeReason,new URL(request.url).searchParams.get("basis")==="ledger"?"ledger":"commerce");
+      const attribution = revenueAttribution(trustedRows, {
+        from: period.from, to: period.to,
+        expectedCents: commandCentre.metrics.net_sales?.actuality === "actual" ? commandCentre.metrics.net_sales.value : null,
+        revealSources: permissions.includes("integrations.view"),
+      });
+      executiveReport=buildExecutiveReport(period,commandCentre,finance,financeReason,new URL(request.url).searchParams.get("basis")==="ledger"?"ledger":"commerce",attribution);
     }
     return {
       ...(executiveReport?{executiveReport}:{}),
       organization: {
+        id: context.organizationId,
         name: branding?.displayName ?? context.organization.businessName,
         industry: context.organization.industry,
         currency: context.organization.currency,

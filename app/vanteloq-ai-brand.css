@@ -251,3 +251,37 @@
   .ai-studio .ai-header-tools { flex-basis: 100%; margin-left: 0; justify-content: flex-end; }
   .ai-studio .ai-header-tools button { flex: 1; }
 }
+
+/* The transcript scrolls independently while the composer stays reachable. */
+@keyframes vai-colour-drift { from { transform: rotate(-8deg) translate(-3px, 2px); } to { transform: rotate(8deg) translate(3px, -2px); } }
+.vanteloq-ai-logo:not([data-motion-visible="true"]) *, html[data-motion-paused="true"] .vanteloq-ai-logo * { animation-play-state: paused; }
+.ai-studio.has-conversation { height: max(600px, calc(100dvh - 152px)); max-height: 1000px; }
+.ai-studio.has-conversation .ai-chat-column { min-height: 0; padding-top: 8px; padding-bottom: 12px; }
+.ai-studio.has-conversation .ai-conversation { flex: 1; min-height: 120px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; padding: 18px 8px 8px; scroll-padding-block: 20px; }
+.ai-conversation:focus-visible { outline: 2px solid #326bba; outline-offset: 2px; border-radius: 12px; }
+.ai-transcript-messages { display: flow-root; }
+.ai-studio .ai-compose-area { position: relative; flex: 0 0 auto; }
+.ai-studio.has-conversation .ai-compose-area { background: #f8fafd; border-top: 1px solid #e0e8f1; }
+.ai-studio .ai-jump-latest { position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%); padding: 9px 16px; min-height: 44px; border: 1px solid #bdcde0; border-radius: 24px; box-shadow: 0 4px 18px #17365916; background: #f7fafd; color: #173f6d; font-size: 14px; white-space: nowrap; z-index: 2; }
+.ai-studio .ai-response-footer { display: block; border-top: 0; padding-top: 6px; }
+.ai-response-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ai-studio .ai-response-actions button, .ai-studio .ai-response-error button { padding: 9px 13px; min-height: 44px; border: 1px solid #d2dfec; border-radius: 12px; color: #204a79; background: #f4f8fc; font-size: 14px; }
+.ai-copy-status { font-size: 13px; color: #355375; }
+.ai-response-sources { margin-top: 8px; color: #355375; font-size: 14px; }
+.ai-response-sources summary { width: fit-content; cursor: pointer; min-height: 44px; padding-block: 12px; font-weight: 550; }
+.ai-response-sources dl { display: grid; gap: 8px; margin: 12px 0; }
+.ai-response-sources dl > div { display: flex; justify-content: space-between; gap: 20px; border-bottom: 1px solid #e0e8f1; padding-block: 6px; }
+.ai-response-sources dd { margin: 0; color: #17304e; }
+.ai-studio .ai-response-sources :is(button,a) { font-size: 14px; min-height: 44px; }
+.ai-studio .ai-text-button, .ai-studio .ai-consent > span, .ai-studio .ai-submit-help { font-size: 13px !important; color: #425b77; }
+.ai-studio .ai-consent input[type="checkbox"] { min-width: 20px; min-height: 20px; }
+.ai-studio .ai-input-toolbar .ai-send { width: 44px; height: 44px; min-height: 44px; }
+.ai-studio .ai-thinking-label { color: #345879; }
+@media (prefers-reduced-motion: no-preference) {
+ .ai-user-message { animation: ai-message-arrive 240ms var(--interface-ease, ease-out); }
+ .ai-studio .advisor-thinking, .ai-jump-latest { animation: ai-status-arrive 240ms ease-out; }
+ @keyframes ai-message-arrive { from { opacity: .7; translate: 0 6px; } to { opacity: 1; translate: 0 0; } }
+ @keyframes ai-status-arrive { from { opacity: .4; } to { opacity: 1; } }
+}
+@media (max-width: 640px) { .ai-studio.has-conversation { height: max(520px, calc(100dvh - 120px)); }.ai-studio .ai-chat-column { padding-inline: 12px; }.ai-studio .ai-conversation { padding-inline: 2px; }.ai-studio.has-conversation .ai-suggestions { margin-top: 8px; } }
+@media (forced-colors: active) { .ai-thinking-label { background: none; -webkit-text-fill-color: CanvasText; }.ai-studio .ai-jump-latest { border: 1px solid ButtonText; } }

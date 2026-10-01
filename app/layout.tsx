@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import InterfaceMotion from "./interface-motion";
 import { GoogleAnalyticsConsent } from "./google-analytics-consent";
 import { DEFAULT_SOCIAL_IMAGE, organizationJsonLd, safeJsonLd, SITE_ORIGIN } from "./seo";
 import "./globals.css?public-surface";
@@ -35,6 +36,8 @@ import "./bookloq-discovery.css?public-surface";
 import "./bookloq-dashboard-visuals.css?public-surface";
 import "./marketing-consent.css?public-surface";
 import "./commerce-visuals.css?public-surface";
+import "./dashboard-explorer.css?public-surface";
+import "./interface-motion.css";
 const GOOGLE_ANALYTICS_CONSENT_DEFAULT = `
 window.dataLayer = window.dataLayer || [];
 window.gtag = window.gtag || function () { window.dataLayer.push(arguments); };
@@ -87,6 +90,7 @@ export default function RootLayout({
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(organizationJsonLd) }} />
         {children}
         <GoogleAnalyticsConsent />
+        <InterfaceMotion />
       </body>
     </html>
   );

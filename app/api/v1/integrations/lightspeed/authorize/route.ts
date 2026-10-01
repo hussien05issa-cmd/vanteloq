@@ -1,3 +1,5 @@
+import { requireProviderPrivacy } from "../../../../../../server/integrations/provider-privacy";
+import { requireIntegrationRollout } from "../../../../../../server/integrations/rollout-access";
 import { getDb } from "../../../../../../db";
 import { integrationConnections, integrationOAuthStates } from "../../../../../../db/schema";
 import { recordAudit } from "../../../../../../server/audit";
@@ -24,7 +26,9 @@ export async function POST(request: Request) {
     requireSameOrigin(request);
     const context = await requireAccess(request, ["owner", "admin"], "pos.reporting.core");
     await requirePermission(context, "integrations.manage");
+    await requireIntegrationRollout(context, LIGHTSPEED_PROVIDER);
     await enforceRateLimit("lightspeed:authorize", context.userId, 10, 3_600);
+    await requireProviderPrivacy(request, context, "lightspeed", requestId);
     const state = newOAuthState();
     const stateHash = await sha256Hex(state);
     const connectionId = crypto.randomUUID();

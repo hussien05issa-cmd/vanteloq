@@ -42,10 +42,10 @@ export async function authorizeEmailDelivery(database: D1Database, alias: EmailA
     const snapshot = await subscriptionSnapshot(alias.organization_id), entitlement = resolveSubscriptionEntitlements(snapshot);
     requireTenantServiceAccess(entitlement); requireFeatureEntitlement(entitlement,"invoice.basic"); requireAddonEntitlement(entitlement,"bookloq");
     billingSql=`EXISTS(SELECT 1 FROM tenant_subscriptions s
-      WHERE s.organization_id=? AND s.version=? AND s.status IN('active','trialing') AND s.base_plan IS NOT NULL
+      WHERE s.organization_id=? AND s.version=? AND s.status='active' AND s.base_plan IS NOT NULL
       AND (s.base_plan='bookloq' OR EXISTS(SELECT 1 FROM tenant_addons a
         WHERE a.organization_id=s.organization_id AND a.addon_key='bookloq'
-        AND a.status IN('active','trialing','scheduled_for_removal'))))`;
+        AND a.status IN('active','scheduled_for_removal'))))`;
     billingValues=[alias.organization_id,snapshot.version];
   }
   return {

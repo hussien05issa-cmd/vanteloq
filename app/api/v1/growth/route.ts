@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte } from "drizzle-orm";
+import { and, asc, desc, eq, gte, ne } from "drizzle-orm";
 import { getDb } from "../../../../db";
 import {
   bankAccounts,
@@ -149,6 +149,8 @@ export async function GET(request: Request) {
           eq(integrationConnections.dataPromotionStatus, "approved"),
         )).where(and(
           eq(marketingResourceSelections.organizationId, context.organizationId),
+          // Legacy Business Profile content must not enter durable growth summaries.
+          ne(marketingResourceSelections.dataset, "google_business_profile"),
           gte(marketingDailyMetrics.metricDate, since),
         )).orderBy(asc(marketingDailyMetrics.metricDate)).limit(25_000),
       getDb().select({ id: integrationConnections.id, provider: integrationConnections.provider, status: integrationConnections.status, dataPromotionStatus: integrationConnections.dataPromotionStatus, externalAccountName: integrationConnections.externalAccountName, lastSuccessfulSyncAt: integrationConnections.lastSuccessfulSyncAt }).from(integrationConnections).where(eq(integrationConnections.organizationId, context.organizationId)).orderBy(desc(integrationConnections.updatedAt)).limit(100),

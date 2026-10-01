@@ -4,6 +4,7 @@ import { createServer } from "node:http";
 import test from "node:test";
 import { Miniflare } from "miniflare";
 import { registerSupabaseTestServer } from "./helpers/supabase-loopback-transport.mjs";
+import { TERMS_OF_SERVICE_VERSION, PRIVACY_POLICY_VERSION, ACCOUNT_ACCEPTANCE_NOTICE_VERSION } from "../shared/legal-versions.ts";
 
 const origin = "https://vanteloq.example";
 const context = { waitUntil() {}, passThroughOnException() {} };
@@ -49,9 +50,9 @@ function onboardingPayload(ownerName, businessName, businessEmail) {
     sourceMode: "connect_later",
     selectedPos: "",
     legalAccepted: true,
-    termsVersion: "2026-09-05",
-    privacyPolicyVersion: "2026-09-10",
-    legalNoticeVersion: "account-creation-v2",
+    termsVersion: TERMS_OF_SERVICE_VERSION,
+    privacyPolicyVersion: PRIVACY_POLICY_VERSION,
+    legalNoticeVersion: ACCOUNT_ACCEPTANCE_NOTICE_VERSION,
     hours: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
       .map((day) => ({ day, open: "09:00", close: "17:00", closed: false })),
   };

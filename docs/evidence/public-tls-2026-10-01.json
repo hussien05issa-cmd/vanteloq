@@ -1,0 +1,117 @@
+{
+  "checkedAt": "2026-10-01T08:03:05.964Z",
+  "results": [
+    {
+      "host": "vanteloq.com",
+      "requested": "TLSv1",
+      "accepted": false,
+      "error": "ERR_SSL_TLSV1_ALERT_PROTOCOL_VERSION"
+    },
+    {
+      "host": "vanteloq.com",
+      "requested": "TLSv1.1",
+      "accepted": false,
+      "error": "ERR_SSL_TLSV1_ALERT_PROTOCOL_VERSION"
+    },
+    {
+      "host": "vanteloq.com",
+      "requested": "TLSv1.2",
+      "accepted": true,
+      "negotiated": "TLSv1.2",
+      "authorized": true,
+      "remoteAddress": "2606:4700:3035::ac43:df2f"
+    },
+    {
+      "host": "vanteloq.com",
+      "requested": "TLSv1.3",
+      "accepted": true,
+      "negotiated": "TLSv1.3",
+      "authorized": true,
+      "remoteAddress": "2606:4700:3035::ac43:df2f"
+    },
+    {
+      "host": "www.vanteloq.com",
+      "requested": "TLSv1",
+      "accepted": false,
+      "error": "ERR_SSL_TLSV1_ALERT_PROTOCOL_VERSION"
+    },
+    {
+      "host": "www.vanteloq.com",
+      "requested": "TLSv1.1",
+      "accepted": false,
+      "error": "ERR_SSL_TLSV1_ALERT_PROTOCOL_VERSION"
+    },
+    {
+      "host": "www.vanteloq.com",
+      "requested": "TLSv1.2",
+      "accepted": true,
+      "negotiated": "TLSv1.2",
+      "authorized": true,
+      "remoteAddress": "2606:4700:3035::ac43:df2f"
+    },
+    {
+      "host": "www.vanteloq.com",
+      "requested": "TLSv1.3",
+      "accepted": true,
+      "negotiated": "TLSv1.3",
+      "authorized": true,
+      "remoteAddress": "2606:4700:3035::ac43:df2f"
+    },
+    {
+      "host": "connectors.vanteloq.com",
+      "requested": "TLSv1",
+      "accepted": false,
+      "error": "ERR_SSL_TLSV1_ALERT_PROTOCOL_VERSION"
+    },
+    {
+      "host": "connectors.vanteloq.com",
+      "requested": "TLSv1.1",
+      "accepted": false,
+      "error": "ERR_SSL_TLSV1_ALERT_PROTOCOL_VERSION"
+    },
+    {
+      "host": "connectors.vanteloq.com",
+      "requested": "TLSv1.2",
+      "accepted": true,
+      "negotiated": "TLSv1.2",
+      "authorized": true,
+      "remoteAddress": "2606:4700:3035::ac43:df2f"
+    },
+    {
+      "host": "connectors.vanteloq.com",
+      "requested": "TLSv1.3",
+      "accepted": true,
+      "negotiated": "TLSv1.3",
+      "authorized": true,
+      "remoteAddress": "2606:4700:3035::ac43:df2f"
+    },
+    {
+      "host": "vanteloq.hussien05issa.chatgpt.site",
+      "requested": "TLSv1",
+      "accepted": false,
+      "error": "ERR_SSL_TLSV1_ALERT_PROTOCOL_VERSION"
+    },
+    {
+      "host": "vanteloq.hussien05issa.chatgpt.site",
+      "requested": "TLSv1.1",
+      "accepted": false,
+      "error": "ERR_SSL_TLSV1_ALERT_PROTOCOL_VERSION"
+    },
+    {
+      "host": "vanteloq.hussien05issa.chatgpt.site",
+      "requested": "TLSv1.2",
+      "accepted": true,
+      "negotiated": "TLSv1.2",
+      "authorized": true,
+      "remoteAddress": "2606:4700::6812:16ba"
+    },
+    {
+      "host": "vanteloq.hussien05issa.chatgpt.site",
+      "requested": "TLSv1.3",
+      "accepted": true,
+      "negotiated": "TLSv1.3",
+      "authorized": true,
+      "remoteAddress": "2606:4700::6812:16ba"
+    }
+  ]
+}

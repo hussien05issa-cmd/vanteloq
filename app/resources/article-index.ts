@@ -21,7 +21,7 @@ export const RESOURCE_ARTICLE_SUMMARIES = [
     "title": "What Should a Small Business Dashboard Show?",
     "description": "Learn which sales, margin, cash, inventory and operations measures belong on a useful small-business dashboard, plus the context each metric needs.",
     "category": "analytics",
-    "readingTime": 6
+    "readingTime": 7
   },
   {
     "slug": "how-to-analyze-business-data-for-growth",

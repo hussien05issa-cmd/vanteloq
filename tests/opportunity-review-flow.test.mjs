@@ -4,7 +4,9 @@ import { createServer } from "node:http";
 import test from "node:test";
 import { Miniflare } from "miniflare";
 import { registerSupabaseTestServer } from "./helpers/supabase-loopback-transport.mjs";
+import { TERMS_OF_SERVICE_VERSION, PRIVACY_POLICY_VERSION, ACCOUNT_ACCEPTANCE_NOTICE_VERSION } from "../shared/legal-versions.ts";
 import { activateTestSubscription } from "./helpers/subscription-fixture.mjs";
+import { scopeExternalRef } from "../domain/integration-source.ts";
 
 const origin = "https://vanteloq.example";
 const context = { waitUntil() {}, passThroughOnException() {} };
@@ -53,9 +55,9 @@ function onboardingBody(ownerName, businessName) {
     sourceMode: "csv",
     selectedPos: "",
     legalAccepted: true,
-    termsVersion: "2026-09-05",
-    privacyPolicyVersion: "2026-09-10",
-    legalNoticeVersion: "account-creation-v2",
+    termsVersion: TERMS_OF_SERVICE_VERSION,
+    privacyPolicyVersion: PRIVACY_POLICY_VERSION,
+    legalNoticeVersion: ACCOUNT_ACCEPTANCE_NOTICE_VERSION,
   };
 }
 
@@ -167,7 +169,7 @@ async function seedReportConnection(database, {
       .bind(`mapping-${connectionId}`, organizationId, connectionId, externalLocationRef,
         `Outlet ${externalLocationRef}`, locationId, timestamp, timestamp, timestamp),
   ]);
-  return `lightspeed-r:${namespace}:${externalLocationRef}`;
+  return `lightspeed-r:${scopeExternalRef(namespace, externalLocationRef)}`;
 }
 
 async function seedReportMetric(database, {

@@ -7,7 +7,7 @@ import {
 import { ApiError } from "../api";
 
 export const LIGHTSPEED_PROVIDER = "lightspeed";
-export const LIGHTSPEED_SCOPES = ["customers:read", "inventory:read", "outlets:read", "products:read", "retailer:read", "sales:read", "suppliers:read"] as const;
+export const LIGHTSPEED_SCOPES = ["customers:read", "inventory:read", "outlets:read", "payment_types:read", "products:read", "retailer:read", "sales:read", "suppliers:read"] as const;
 export const LIGHTSPEED_OAUTH_BINDING_COOKIE = "__Host-vanteloq_lightspeed_oauth";
 const DOMAIN_PREFIX = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 const API_VERSION = /^20\d{2}-(?:0[1-9]|1[0-2])$/;
@@ -402,18 +402,13 @@ export async function fetchLightspeedCollection(
     const inventoryQuery = resource === "inventory" ? { size: 100, sort_direction: "asc", include_deleted: true, ...(after ? { after: Number(after) } : {}) } : undefined;
     if (after && !Number.isSafeInteger(Number(after))) throw new ApiError(502, "LIGHTSPEED_CURSOR_INVALID", "The provider version exceeds the safe integer range.");
     const response = await providerFetch(url, authorization.accessToken, fetcher, inventoryQuery);
-    const body = await response.json() as { data?: unknown; version?: { max?: unknown } };
-    if (!Array.isArray(body.data)) {
-      throw new ApiError(502, "LIGHTSPEED_RESPONSE_INVALID", `Lightspeed returned an invalid ${resource} response.`);
-    }
+    const body: unknown = await response.json();
+    const parsed = parseLightspeedCollectionResponse(resource, body);
     pages += 1;
-    const page = body.data.filter(
-      (item): item is Record<string, unknown> => !!item && typeof item === "object" && !Array.isArray(item),
-    );
-    if (page.length !== body.data.length) throw new ApiError(502, "LIGHTSPEED_RESPONSE_INVALID", "The provider returned an invalid record. The cursor is preserved.");
+    const page = parsed.data;
     data.push(...page);
-    const cursor = body.version?.max;
     if (!page.length) { hasMore = false; break; }
+    const cursor = parsed.cursor;
     if ((typeof cursor !== "number" && typeof cursor !== "string") || !/^\d+$/.test(String(cursor)) || !Number.isSafeInteger(Number(cursor))) throw new ApiError(502, "LIGHTSPEED_CURSOR_INVALID", "Lightspeed returned records without a valid version cursor.");
     const next = String(cursor);
     if (after && BigInt(next) <= BigInt(after)) throw new ApiError(502, "LIGHTSPEED_CURSOR_STALLED", "The provider cursor did not advance. Retry without skipping records.");
@@ -421,6 +416,37 @@ export async function fetchLightspeedCollection(
     if (page.length < 100) { hasMore = false; break; }
   }
   return { data, cursor: after, pages, hasMore };
+}
+
+export function parseLightspeedCollectionResponse(
+  resource: "outlets" | "sales" | "products" | "customers" | "suppliers" | "inventory",
+  body: unknown,
+): { data: Record<string, unknown>[]; cursor: unknown } {
+  // From API 2026-04 onward, POST /inventory returns a flat array. The other
+  // collection endpoints retain the paginated { data, version } envelope.
+  const records = resource === "inventory"
+    ? body
+    : body && typeof body === "object" && !Array.isArray(body)
+      ? (body as { data?: unknown }).data
+      : undefined;
+  if (!Array.isArray(records)) {
+    throw new ApiError(502, "LIGHTSPEED_RESPONSE_INVALID", `Lightspeed returned an invalid ${resource} response.`);
+  }
+  const data = records.filter(
+    (item): item is Record<string, unknown> => !!item && typeof item === "object" && !Array.isArray(item),
+  );
+  if (data.length !== records.length) {
+    throw new ApiError(502, "LIGHTSPEED_RESPONSE_INVALID", "The provider returned an invalid record. The cursor is preserved.");
+  }
+  const cursor = resource === "inventory"
+    ? data.reduce<unknown>((maximum, row) => {
+        const version = row.version;
+        if ((typeof version !== "number" && typeof version !== "string") || !/^\d+$/.test(String(version))) return maximum;
+        if (maximum == null || BigInt(String(version)) > BigInt(String(maximum))) return version;
+        return maximum;
+      }, null)
+    : (body as { version?: { max?: unknown } }).version?.max;
+  return { data, cursor };
 }
 
 export async function fetchLightspeedRetailer(organizationId: string, connectionId: string) {
@@ -451,6 +477,12 @@ async function providerFetch(url: URL, accessToken: string, fetcher: typeof fetc
       throw new ApiError(409, "LIGHTSPEED_AUTHORIZATION_EXPIRED", "Lightspeed authorization is no longer valid. Reconnect the retailer account.");
     }
     if (![502, 503, 504].includes(response.status) || attempt === 1) {
+      console.error(JSON.stringify({
+        event: "lightspeed.provider_request_failed",
+        endpoint: url.pathname,
+        status: response.status,
+        attempt: attempt + 1,
+      }));
       throw new ApiError(502, "LIGHTSPEED_PROVIDER_ERROR", "Lightspeed could not complete the read-only request. No staged data was promoted.");
     }
   }

@@ -32,6 +32,8 @@ export type SubscriptionSnapshot = {
   readonly status: SubscriptionStatus | null;
   readonly addons: readonly AddonKey[];
   readonly trialEndsAt: Date | null;
+  readonly trialAccessEndsAt?: Date | null;
+  readonly trialConvertedAt?: Date | null;
   readonly currentPeriodEndsAt: Date | null;
   readonly cancelAtPeriodEnd: boolean;
   readonly scheduledBasePlan: PlanKey | null;
@@ -63,15 +65,16 @@ export type CapacityDecision = {
   readonly reason: "capacity_available" | "limit_reached" | "subscription_required";
 };
 
-const accessBearingStatuses = new Set<SubscriptionStatus>(["trialing", "active"]);
-const activeAddonStatuses = new Set(["trialing", "active", "scheduled_for_removal"]);
+const activeAddonStatuses = new Set(["active", "scheduled_for_removal"]);
 
 function uniqueFeatures(groups: readonly (readonly FeatureKey[])[]): readonly FeatureKey[] {
   return Object.freeze([...new Set(groups.flat())]);
 }
 
-export function subscriptionGrantsAccess(status: SubscriptionStatus | null): boolean {
-  return status !== null && accessBearingStatuses.has(status);
+export function subscriptionGrantsAccess(status: SubscriptionStatus | null, trial?: Pick<SubscriptionSnapshot, "trialEndsAt" | "trialAccessEndsAt" | "trialConvertedAt">, now = Date.now()): boolean {
+  if (status === "active") return !trial?.trialAccessEndsAt || Boolean(trial.trialConvertedAt);
+  if (status !== "trialing" || !trial?.trialAccessEndsAt || !trial.trialEndsAt) return false;
+  return Math.min(trial.trialAccessEndsAt.getTime(), trial.trialEndsAt.getTime()) > now;
 }
 
 export function requireTenantServiceAccess(entitlements: EffectiveEntitlements): void {
@@ -84,8 +87,10 @@ export function requireTenantServiceAccess(entitlements: EffectiveEntitlements):
   }
 }
 
-export function resolveSubscriptionEntitlements(snapshot: SubscriptionSnapshot): EffectiveEntitlements {
-  if (!snapshot.basePlan || !subscriptionGrantsAccess(snapshot.status)) {
+export function resolveSubscriptionEntitlements(snapshot: SubscriptionSnapshot, now = Date.now()): EffectiveEntitlements {
+  const trialEndsAt = snapshot.trialAccessEndsAt && snapshot.trialEndsAt
+    ? new Date(Math.min(snapshot.trialAccessEndsAt.getTime(), snapshot.trialEndsAt.getTime())) : snapshot.trialEndsAt;
+  if (!snapshot.basePlan || !subscriptionGrantsAccess(snapshot.status, snapshot, now)) {
     return Object.freeze({
       accessType: "none",
       internalAccessLevel: null,
@@ -94,7 +99,7 @@ export function resolveSubscriptionEntitlements(snapshot: SubscriptionSnapshot):
       addons: Object.freeze([]),
       features: Object.freeze([]),
       limits: null,
-      trialEndsAt: snapshot.trialEndsAt,
+      trialEndsAt,
       currentPeriodEndsAt: snapshot.currentPeriodEndsAt,
       cancelAtPeriodEnd: snapshot.cancelAtPeriodEnd,
       scheduledBasePlan: snapshot.scheduledBasePlan,
@@ -120,7 +125,7 @@ export function resolveSubscriptionEntitlements(snapshot: SubscriptionSnapshot):
     addons,
     features: uniqueFeatures([PLANS[snapshot.basePlan].features, ...addonFeatures]),
     limits: PLANS[snapshot.basePlan].limits,
-    trialEndsAt: snapshot.trialEndsAt,
+    trialEndsAt,
     currentPeriodEndsAt: snapshot.currentPeriodEndsAt,
     cancelAtPeriodEnd: snapshot.cancelAtPeriodEnd,
     // A scheduled plan never changes current access before its effective Stripe event.
@@ -176,8 +181,10 @@ export async function subscriptionSnapshot(organizationId: string): Promise<Subs
   return {
     basePlan: row?.basePlan ?? null,
     status: row?.status ?? null,
-    addons: addonRows.filter((addon) => activeAddonStatuses.has(addon.status)).map((addon) => addon.addonKey),
+    addons: addonRows.filter((addon) => activeAddonStatuses.has(addon.status) || (row?.status === "trialing" && addon.status === "trialing")).map((addon) => addon.addonKey),
     trialEndsAt: row?.trialEndsAt ?? null,
+    trialAccessEndsAt: row?.trialAccessEndsAt ?? null,
+    trialConvertedAt: row?.trialConvertedAt ?? null,
     currentPeriodEndsAt: row?.currentPeriodEndsAt ?? null,
     cancelAtPeriodEnd: row?.cancelAtPeriodEnd ?? false,
     scheduledBasePlan: row?.scheduledBasePlan ?? null,

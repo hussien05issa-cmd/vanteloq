@@ -1,3 +1,4 @@
+import { requireProviderPrivacy } from "./provider-privacy";
 import { requireIntegrationRollout } from "./rollout-access";
 import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import { getD1, getDb } from "../../db";
@@ -69,6 +70,7 @@ function returnUrl(request: Request, provider: MarketingProvider, status: "conne
 async function requireMarketingPermissions(context: AccessContext) {
   await requirePermission(context, "integrations.manage");
   await requirePermission(context, "marketing.manage");
+  await requireOrganizationWideLocationAccess(context);
 }
 
 export function marketingAuthorize(request: Request, provider: MarketingProvider) {
@@ -80,6 +82,7 @@ export function marketingAuthorize(request: Request, provider: MarketingProvider
     await requireMarketingPermissions(context);
     await requireIntegrationRollout(context, provider);
     await enforceRateLimit(`${provider}:marketing:authorize`, context.userId, 10, 3_600);
+    await requireProviderPrivacy(request, context, provider, requestId);
     const state = newMarketingOAuthState();
     const connectionId = crypto.randomUUID();
     const now = new Date();
@@ -635,13 +638,19 @@ async function persistSnapshot(
       WHERE resource_selection_id IN (
         SELECT id FROM marketing_resource_selections
         WHERE organization_id = ? AND connection_id = ? AND provider = ?
+          AND dataset <> 'google_business_profile'
       )
     `).bind(input.organizationId, input.connectionId, input.provider)] : []),
     ...snapshot.metrics.map((row) => database.prepare(`
     INSERT INTO marketing_daily_metrics (
       id, resource_selection_id, metric_date, metric_key, value_milli,
       source_event_id, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ) SELECT ?, ?, ?, ?, ?, ?, ?, ?
+    WHERE EXISTS (
+      SELECT 1 FROM marketing_resource_selections
+      WHERE id = ? AND organization_id = ? AND connection_id = ? AND provider = ?
+        AND dataset <> 'google_business_profile'
+    )
     ON CONFLICT(resource_selection_id, source_event_id) DO UPDATE SET
       metric_date = excluded.metric_date,
       metric_key = excluded.metric_key,
@@ -650,6 +659,7 @@ async function persistSnapshot(
     `).bind(
     crypto.randomUUID(), row.resourceSelectionId, row.metricDate, row.metricKey,
     row.valueMilli, row.sourceEventId, now, now,
+    row.resourceSelectionId, input.organizationId, input.connectionId, input.provider,
     )),
   ];
   await batchStatements(metricStatements);
@@ -693,7 +703,7 @@ export function marketingSync(request: Request, provider: MarketingProvider) {
         if (!datasetFeature) throw new ApiError(409, "MARKETING_DATASET_INVALID", "A saved marketing dataset is unavailable.");
         await requireFeature(context, datasetFeature);
       }
-      const selections: SelectedMarketingResource[] = selectionRows.map((selection) => ({
+      const selections: SelectedMarketingResource[] = selectionRows.filter((selection) => selection.dataset !== "google_business_profile").map((selection) => ({
         id: selection.id,
         provider: selection.provider,
         dataset: selection.dataset,
@@ -701,7 +711,7 @@ export function marketingSync(request: Request, provider: MarketingProvider) {
         scopeKind: selection.scopeKind,
         localLocationId: selection.localLocationId,
       }));
-      if (!selections.length) throw new ApiError(409, "MARKETING_RESOURCE_SELECTION_REQUIRED", `Choose the exact ${providerName(provider)} resources and scopes before synchronization.`);
+      if (!selections.length) throw new ApiError(409, "MARKETING_RESOURCE_SELECTION_REQUIRED", "Choose a source that supports stored measurements before synchronization. Selected Business Profile reports are available on demand.");
       await getDb().insert(integrationSyncRuns).values({
         id: runId,
         organizationId: context.organizationId,

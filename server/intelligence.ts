@@ -155,62 +155,10 @@ function windowComparison(rows: MetricRow[], latestBusinessDate: string, days: n
   };
 }
 
-function sevenDayForecast(rows: MetricRow[], latestBusinessDate: string, asOf: Date, rawRows: MetricRow[]) {
-  // An outlook must cover the present/future, not the week after an old import.
-  const latestAge = (asOf.getTime() - Date.parse(`${latestBusinessDate}T23:59:59Z`)) / 86_400_000;
-  if (!Number.isFinite(latestAge) || latestAge > 2 || latestAge < -2) {
-    return { available: false as const, requiredDays: 28, verifiedDays: rows.length, points: [], totalNetSalesCents: null, lowCents: null, highCents: null, confidence: "unavailable" as const, method: "Same-weekday weighted average", unavailableReason: `Refresh verified sales before using an outlook. The latest business date is ${latestBusinessDate}.` };
-  }
-  if (rows.length < 28) {
-    return { available: false as const, requiredDays: 28, verifiedDays: rows.length, points: [], totalNetSalesCents: null, lowCents: null, highCents: null, confidence: "unavailable" as const, method: "Same-weekday weighted average" };
-  }
-  const coverage = periodEvidence(rawRows, dateOffset(latestBusinessDate, -27), latestBusinessDate);
-  if (!coverage.complete) {
-    return { available: false as const, requiredDays: 28, verifiedDays: rows.length, points: [], totalNetSalesCents: null, lowCents: null, highCents: null, confidence: "unavailable" as const, method: "Same-weekday weighted average", unavailableReason: "The latest 28 days contain missing location records. Review coverage before using an outlook." };
-  }
-  // Older gaps must not enter the weekday model just because recent coverage passed.
-  let historyDays = 28;
-  for (let candidate = 35; candidate <= 84; candidate += 7) {
-    if (!periodEvidence(rawRows, dateOffset(latestBusinessDate, -(candidate - 1)), latestBusinessDate).complete) break;
-    historyDays = candidate;
-  }
-  rows = rows.filter(row => row.businessDate >= dateOffset(latestBusinessDate, -(historyDays - 1)));
-  const byWeekday = new Map<number, MetricRow[]>();
-  for (const row of rows.slice(-84)) {
-    const weekday = new Date(`${row.businessDate}T00:00:00Z`).getUTCDay();
-    byWeekday.set(weekday, [...(byWeekday.get(weekday) ?? []), row]);
-  }
-  const points = Array.from({ length: 7 }, (_, index) => {
-    const date = dateOffset(latestBusinessDate, index + 1);
-    const weekday = new Date(`${date}T00:00:00Z`).getUTCDay();
-    const history = (byWeekday.get(weekday) ?? []).slice(-8);
-    const weighted = (key: "netSalesCents" | "costOfGoodsCents") => {
-      const denominator = history.reduce((total, _row, itemIndex) => total + itemIndex + 1, 0);
-      return denominator ? Math.round(history.reduce((total, row, itemIndex) => total + row[key] * (itemIndex + 1), 0) / denominator) : 0;
-    };
-    const netSalesCents = weighted("netSalesCents");
-    const grossProfitCents = netSalesCents - weighted("costOfGoodsCents");
-    return { date, netSalesCents, grossProfitCents, observations: history.length };
-  });
-  const totalNetSalesCents = points.reduce((total, point) => total + point.netSalesCents, 0);
-  const historicalWeeks = Array.from({ length: Math.min(8, Math.floor(rows.length / 7)) }, (_, index) => {
-    const end = rows.length - index * 7;
-    return rows.slice(Math.max(0, end - 7), end).reduce((total, row) => total + row.netSalesCents, 0);
-  }).filter((value) => value > 0);
-  const mean = historicalWeeks.reduce((total, value) => total + value, 0) / Math.max(1, historicalWeeks.length);
-  const deviation = Math.sqrt(historicalWeeks.reduce((total, value) => total + (value - mean) ** 2, 0) / Math.max(1, historicalWeeks.length));
-  const uncertainty = Math.max(0.08, Math.min(0.3, mean ? deviation / mean : 0.2));
-  return {
-    available: true as const,
-    requiredDays: 28,
-    verifiedDays: rows.length,
-    points,
-    totalNetSalesCents,
-    lowCents: Math.round(totalNetSalesCents * (1 - uncertainty)),
-    highCents: Math.round(totalNetSalesCents * (1 + uncertainty)),
-    confidence: rows.length >= 56 ? "medium" as const : "low" as const,
-    method: "Same-weekday weighted average of up to eight prior observations; range reflects recent weekly variation.",
-  };
+function sevenDayForecast(rows: MetricRow[], latestBusinessDate: string, _asOf: Date, _rawRows: MetricRow[]) {
+  // The reviewed forecasting workspace owns predictions and calibrated ranges.
+  // Daily totals alone do not establish trading hours or import completeness.
+  return {available:false as boolean,requiredDays:28,verifiedDays:rows.length,points:[] as {date:string;netSalesCents:number;grossProfitCents:number;observations:number}[],totalNetSalesCents:null as number|null,lowCents:null as number|null,highCents:null as number|null,confidence:"unavailable" as const,method:"Reviewed comparable-day forecast",unavailableReason:`Refresh verified sales and review operating assumptions in Forecasting. Latest recorded date: ${latestBusinessDate}.`};
 }
 
 function money(cents: number, currency: string): string {

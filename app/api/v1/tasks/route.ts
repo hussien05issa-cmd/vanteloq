@@ -4,6 +4,7 @@ import { workspaceTasks } from "../../../../db/schema";
 import { recordAudit } from "../../../../server/audit";
 import { requireAccess } from "../../../../server/authorization";
 import {
+  ApiError,
   clientSource,
   enforceRateLimit,
   handleApi,
@@ -15,7 +16,6 @@ import { idempotencyKey, taskCreateInput, taskUpdateInput } from "../../../../se
 import { requirePermission } from "../../../../server/permissions";
 import { requireOrganizationWideLocationAccess } from "../../../../server/location-access";
 import { filterReadableOpportunityTasks, requireReadableReview } from "../../../../server/opportunity-reviews";
-import { ApiError } from "../../../../server/api";
 
 const taskReaders = ["owner", "admin", "manager", "employee", "read_only"] as const;
 const taskWriters = ["owner", "admin", "manager", "employee"] as const;
@@ -140,6 +140,9 @@ export async function PATCH(request: Request) {
     }
 
     if (before.sourceRef?.startsWith("opportunity:")) await requireReadableReview(context, before.sourceRef.slice(12));
+    if (before.sourceRef?.startsWith("shopify-privacy:")) {
+      throw new ApiError(409, "PRIVACY_FULFILMENT_REQUIRED", "Complete this request in Integrations > Shopify privacy requests after reviewing and securely delivering the customer response.");
+    }
 
     const [task] = await getDb()
       .update(workspaceTasks)

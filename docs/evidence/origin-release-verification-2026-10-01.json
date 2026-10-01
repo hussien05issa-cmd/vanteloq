@@ -1,0 +1,82 @@
+{
+  "recordedAt": "2026-10-01T09:40:45.844967+00:00",
+  "scope": "Focused release verification. Suites overlap; do not sum the counts. Original failing date fixtures and their corrected rerun are retained.",
+  "build": "passed",
+  "typecheck": "passed",
+  "lint": {
+    "errors": 0,
+    "warnings": 10
+  },
+  "regression": {
+    "initial": {
+      "tests": 175,
+      "passed": 167,
+      "failed": 8
+    },
+    "retryAffectedAndOnboarding": {
+      "tests": 19,
+      "passed": 19,
+      "failed": 0
+    },
+    "cause": "Eight stale legal-version/date fixture assertions, updated to the shared current policy constants. Deliberately obsolete versions remain rejected."
+  },
+  "logs": {
+    "origin-final-regression-2026-10-01.log": {
+      "sha256": "0dfbef2d44b780750374f268a36de5ade66b7abcbaaf33730b1822e06bdb373a",
+      "bytes": 98154,
+      "summary": [
+        "# tests 175\r",
+        "# pass 167\r",
+        "# fail 8\r",
+        "# cancelled 0\r",
+        "# skipped 0\r",
+        "# todo 0\r"
+      ]
+    },
+    "origin-final-regression-retry-2026-10-01.log": {
+      "sha256": "372d02a8ccc2017d393b38074f6ade648612cdf6a00c0e7796c8b852d9087a4d",
+      "bytes": 17787,
+      "summary": [
+        "# tests 19\r",
+        "# pass 19\r",
+        "# fail 0\r",
+        "# cancelled 0\r",
+        "# skipped 0\r",
+        "# todo 0\r"
+      ]
+    },
+    "origin-final-typecheck-2026-10-01.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "summary": []
+    },
+    "origin-final-lint-2026-10-01.log": {
+      "sha256": "16524527d837f925a5be011b2ae177e50816073b99f526c979377c68d2ffa0d2",
+      "bytes": 1831,
+      "summary": []
+    },
+    "origin-final-build-2026-10-01.log": {
+      "sha256": "241d269373d8e5b76ce82b8ffdcf6066e28ed7f594c105a2636d065b90abe592",
+      "bytes": 13678,
+      "summary": []
+    },
+    "vehicles-flow-2026-10-01.log": {
+      "sha256": "a2aeeb4d39bf81221dddcc5d0486599d09233d50066c32ad8f2fc94f1654550b",
+      "bytes": 3734,
+      "summary": []
+    }
+  },
+  "notEstablished": [
+    "Complete repository-wide test run",
+    "Production restore",
+    "Fresh production load capacity",
+    "Dependency advisory scan",
+    "Live end-to-end customer charge"
+  ],
+  "hydrationCorrection": {
+    "cause": "Implicit runtime timezone in source timestamp rendering",
+    "verification": "10 focused checks passed, including exact first-render markup equivalence in UTC, America/Denver and Asia/Tokyo; full typecheck and focused lint passed.",
+    "build": "passed",
+    "buildLogSha256": "bd0b9008d2ba5f024ba4995de363a98e0b8b7e477f7ab1aecfc4381fe8e3a0ad"
+  }
+}

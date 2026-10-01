@@ -15,7 +15,7 @@ test("saved AI chats retain historical context while enforcing current personal 
       if (key === "bind") return (...args) => wrapStatement(target.bind(...args), sql);
       if (key === "all") return async (...args) => {
         const result = await target.all(...args);
-        if (afterHistoryRead && sql.startsWith("SELECT role,content,evidence_json FROM assistant_messages")) {
+        if (afterHistoryRead && sql.startsWith("SELECT role,content,evidence_json,")) {
           const run = afterHistoryRead; afterHistoryRead = null; await run();
         }
         return result;
@@ -30,9 +30,9 @@ test("saved AI chats retain historical context while enforcing current personal 
     },
   });
   const activate = () => { globalThis.__vanteloqEnv = { ...environment, DB: wrappedDatabase }; };
-  const read = (identity, id) => {
+  const read = (identity, id, cursor) => {
     activate();
-    return history(new Request(`${origin}/api/v1/advisor/conversations${id === undefined ? "" : `?id=${encodeURIComponent(id)}`}`, { headers: identityHeaders(identity.owner.email, identity.owner.name) }));
+    return history(new Request(`${origin}/api/v1/advisor/conversations${id === undefined ? "" : `?id=${encodeURIComponent(id)}`}${cursor ? `${id === undefined ? "?" : "&"}before=${encodeURIComponent(cursor)}` : ""}`, { headers: identityHeaders(identity.owner.email, identity.owner.name) }));
   };
   const ask = (identity, question, body = {}) => {
     activate();
@@ -67,7 +67,7 @@ test("saved AI chats retain historical context while enforcing current personal 
       const text = Array.isArray(request.input) ? request.input[0].content[0].text : request.input;
       const question = JSON.parse(text.split("\n\nEvidence JSON:")[0].slice("Question: ".length));
       const evidence = JSON.parse(text.split("\n\nEvidence JSON: ")[1].split("\n\nConversation memory: ")[0]);
-      const memory = JSON.parse(text.split("\n\nConversation memory: ")[1]);
+      const memory = JSON.parse(text.split("\n\nConversation memory: ")[1].split("\n\nExplicit response preferences: ")[0]);
       prompts.push({ question, evidence, memory, request });
       return Response.json({ status: "completed", output: [{ type: "message", content: [{ type: "output_text", text: `Fictional saved answer: ${question}` }] }] });
     };
@@ -85,6 +85,31 @@ test("saved AI chats retain historical context while enforcing current personal 
     await payload(await read(b, id), 404);
     await payload(await read(staff, id), 404);
     await payload(await ask(b, "Foreign history reference", { conversationId: id }), 404);
+
+    // Pagination returns every permitted record without deleting newer chats.
+    const originalRows = (await database.prepare("SELECT role,evidence_json FROM assistant_messages WHERE conversation_id=?").bind(id).all()).results;
+    const pageTime = Date.now();
+    const seeded = [];
+    for (let index = 0; index < 42; index++) {
+      const messageId = `older-message-${index}`; seeded.push(messageId);
+      const role = index % 2 === 0 ? "user" : "assistant";
+      await database.prepare("INSERT INTO assistant_messages (id,conversation_id,organization_id,user_id,role,content,evidence_json,model,created_at) VALUES (?,?,?,?,?,?,?,?,?)").bind(messageId,id,a.organizationId,a.userId,role,`Older ${index}`,originalRows.find(row=>row.role===role).evidence_json,"fictional",pageTime-100000+Math.floor(index/2)).run();
+    }
+    const messagePage = await payload(await read(a,id));
+    assert.equal(messagePage.messages.length,40); assert.equal(messagePage.hasMore,true);
+    const messageOlder = await payload(await read(a,id,messagePage.nextCursor));
+    assert.equal(messageOlder.messages.length,4); assert.equal(messageOlder.hasMore,false);
+    assert.deepEqual([...messageOlder.messages,...messagePage.messages].map(row=>row.content), [...Array.from({length:42},(_,index)=>`Older ${index}`),...reopened.messages.map(row=>row.content)]);
+    await payload(await read(b,id,messagePage.nextCursor),404);
+    for (const messageId of seeded) await database.prepare("DELETE FROM assistant_messages WHERE id=?").bind(messageId).run();
+    const extraIds = Array.from({length:53},(_,index)=>`history-page-${String(index).padStart(3,"0")}`);
+    await database.batch(extraIds.map((chatId,index)=>database.prepare("INSERT INTO assistant_conversations(id,organization_id,user_id,title,created_at,updated_at) VALUES(?,?,?,'Fictional pagination',?,?)").bind(chatId,a.organizationId,a.userId,pageTime,pageTime+index)));
+    const listPage = await payload(await read(a));
+    assert.equal(listPage.conversations.length,50); assert.equal(listPage.hasMore,true);
+    const listOlder = await payload(await read(a,undefined,listPage.nextCursor));
+    assert.equal(listOlder.hasMore,false);
+    assert.equal(new Set([...listPage.conversations,...listOlder.conversations].map(chat=>chat.id)).size,54);
+    await database.batch(extraIds.map(chatId=>database.prepare("DELETE FROM assistant_conversations WHERE id=?").bind(chatId)));
 
     // Facts can change without invalidating authority. A follow-up receives new
     // evidence separately from the clearly historical conversation messages.

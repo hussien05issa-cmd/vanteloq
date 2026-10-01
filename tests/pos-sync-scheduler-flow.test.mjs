@@ -62,6 +62,8 @@ test("durable POS jobs enforce owner grants, tenant boundaries, signed ticks, re
       await database.prepare(`INSERT INTO integration_webhook_events(id,organization_id,provider,connection_id,payload_hash,signature_hash,event_type,status,received_at)
         VALUES (?,?,'stripe',?,?,'signed','charge.succeeded','queued',?)`).bind(eventId,a.organizationId,id,eventId,received).run();
     }
+    await database.prepare(`INSERT INTO integration_webhook_events(id,organization_id,provider,connection_id,payload_hash,signature_hash,event_type,status,received_at)
+      VALUES ('privacy-pending',?,'stripe',?,'privacy-pending','signed','customers/data_request','queued',?)`).bind(a.organizationId,id,now-400).run();
     const signed = tickRequest();
     const result = await tick(signed.clone());
     assert.equal(result.status,200,await result.clone().text());
@@ -71,7 +73,7 @@ test("durable POS jobs enforce owner grants, tenant boundaries, signed ticks, re
     assert.equal(duplicate.status,409);
     assert.equal(providerCalls,2);
     const events = await database.prepare("SELECT id,status FROM integration_webhook_events ORDER BY id").all();
-    assert.deepEqual(events.results,[{id:"before-cycle",status:"processed"},{id:"during-cycle",status:"queued"}]);
+    assert.deepEqual(events.results,[{id:"before-cycle",status:"processed"},{id:"during-cycle",status:"queued"},{id:"privacy-pending",status:"queued"}]);
     const safeConnection = await database.prepare("SELECT data_promotion_status status FROM integration_connections WHERE id=?").bind(id).first();
     assert.equal(safeConnection.status,"staging","Automatic sync must not approve a test or unreviewed source");
     await database.prepare("UPDATE integration_sync_schedules SET next_run_at=0 WHERE connection_id=?").bind(id).run();

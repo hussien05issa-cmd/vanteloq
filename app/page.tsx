@@ -3,6 +3,7 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import SessionTimeout from "./session-timeout";
+import { setPublicRoot } from "./analytics-public-surface";
 import ClientLoadBoundary from "./client-load-boundary";
 import WorkspaceSkeleton from "./workspace-skeleton";
 import Link from "next/link";
@@ -12,10 +13,13 @@ import VanteloqAiLogo from "./vanteloq-ai-logo";
 import CompatibilityCheck from "./compatibility-check";
 import PublicPlanCards from "./public-plan-cards";
 import CustomPlanCallout from "./custom-plan-callout";
+import HomeGoalPreview from "./home-goal-preview";
+import HomeDashboardPreview from "./home-dashboard-preview";
 import HomeDecisionPreview from "./home-decision-preview";
 import FeatureCarousel from "./feature-carousel";
 import ProductBrandLogo from "./product-brand-logo";
 import FinanceProof from "./finance-proof";
+import WorkspaceShowcase from "./workspace-showcase";
 import ResourceArticleBrowser from "./resource-article-browser";
 import { RESOURCE_ARTICLE_SUMMARIES } from "./resources/article-index";
 import SocialLinks from "./social-links";
@@ -47,6 +51,7 @@ export default function Home() {
   const canonicalDestination = typeof window === "undefined" ? null : canonicalLocation(window.location);
   const [entry, setEntry] = useState<"loading" | "load-error" | "landing" | "invite-review" | "signup" | "invitation" | "app">("landing");
   const [authOpen, setAuthOpen] = useState(false);
+  const [signedOut, setSignedOut] = useState(false);
   const [authMode, setAuthMode] = useState<AuthPanelMode>("signup");
   const [organizationName, setOrganizationName] = useState("");
   const [accountName, setAccountName] = useState("Account owner");
@@ -60,6 +65,12 @@ export default function Home() {
   const loadSequence = useRef(0);
   const loadingUser = useRef<string | null>(null);
   const loadedUser = useRef<string | null>(null);
+  const [workspaceUserId, setWorkspaceUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setPublicRoot(signedOut && entry === "landing" && !authOpen && !canonicalDestination);
+    return () => setPublicRoot(false);
+  }, [signedOut, entry, authOpen, canonicalDestination]);
 
   useEffect(() => {
     if (canonicalDestination) window.location.replace(canonicalDestination);
@@ -71,10 +82,13 @@ export default function Home() {
   }, []);
 
   const loadWorkspace = useCallback(async (session: Session | null) => {
+    setPublicRoot(false);
+    setSignedOut(!session);
     if (!session) {
       ++loadSequence.current;
       loadingUser.current = null;
       loadedUser.current = null;
+      setWorkspaceUserId(null);
       setLoadError("");
       setComplimentaryOffer(null);
       setEntry("landing");
@@ -104,7 +118,7 @@ export default function Home() {
         organization?: { setupComplete?: boolean; businessName?: string; ownerName?: string } | null;
         invitation?: TeamInvitationDetails | null;
         complimentary?: ComplimentaryWorkspaceOffer | null;
-        error?: { code?: string };
+        error?: { code?: string; message?: string };
       };
       if (sequence !== loadSequence.current) return;
       if (response.status === 401 && data.error?.code === "SESSION_EXPIRED") {
@@ -117,6 +131,7 @@ export default function Home() {
 
       if (response.ok && data.organization?.setupComplete && !data.invitation) {
         loadedUser.current = userId;
+        setWorkspaceUserId(userId);
         setAccountEmail(data.user?.email ?? "");
         setOrganizationName(data.organization.businessName ?? "");
         setAccountName(data.organization.ownerName || data.user?.displayName || "Account owner");
@@ -125,6 +140,7 @@ export default function Home() {
       }
       if (response.ok && data.invitation) {
         loadedUser.current = userId;
+        setWorkspaceUserId(userId);
         setAccountEmail(data.user?.email ?? "");
         setAccountName(data.user?.displayName || "Team member");
         setTeamInvitation(data.invitation);
@@ -134,13 +150,14 @@ export default function Home() {
       if (response.ok && data.authenticated) {
         setComplimentaryOffer(data.complimentary ?? null);
         loadedUser.current = userId;
+        setWorkspaceUserId(userId);
         setAccountEmail(data.user?.email ?? "");
         setAccountName(data.user?.displayName || "Account owner");
         setEntry("signup");
         return;
       }
 
-      setLoadError(response.status === 401
+      setLoadError(data.error?.code === "IDENTITY_CONFLICT" ? data.error.message ?? "Sign in with your original account or contact support@vanteloq.com for account recovery." : response.status === 401
         ? "Your sign-in could not be verified. Try again, or sign out and sign in once more."
         : "Your workspace could not be loaded. Your account is safe; try again in a moment.");
       setEntry("load-error");
@@ -193,6 +210,7 @@ export default function Home() {
             void loadWorkspace(session);
             return;
           }
+          setSignedOut(true);
           if (inviteRequested) {
             setEntry("landing");
             setAuthMode("signin");
@@ -215,6 +233,10 @@ export default function Home() {
     void getSupabase().then(client => {
       if (!active) return;
       const listener = client?.auth.onAuthStateChange((event, session) => {
+        if (session || event === "PASSWORD_RECOVERY") {
+          setPublicRoot(false);
+          setSignedOut(false);
+        }
         if (event === "PASSWORD_RECOVERY") {
           setEntry("landing");
           setAuthMode("reset-password");
@@ -225,8 +247,10 @@ export default function Home() {
           window.setTimeout(() => { if (active) void loadWorkspace(session); }, 0);
         }
         if (event === "SIGNED_OUT") {
+          setSignedOut(true);
           cancelPendingLoad();
           loadedUser.current = null;
+          setWorkspaceUserId(null);
           setOrganizationName("");
           setAccountEmail("");
           setTeamInvitation(null);
@@ -284,6 +308,7 @@ export default function Home() {
     {inviteCallback && <button disabled={inviteVerificationBusy} onClick={() => void verifyTeamInvite()}>{inviteVerificationBusy ? "Verifying securely…" : "Accept invitation and continue"}</button>}
   </main>;
   function openAuth(mode: "signin" | "signup") {
+    setPublicRoot(false);
     setAuthMode(mode);
     setAuthOpen(true);
   }
@@ -299,9 +324,9 @@ export default function Home() {
 
   if (entry === "landing") return <ClientLoadBoundary><LandingPage start={openAuth}/>{authOpen && <Suspense fallback={<AccountFormLoading close={closeAuth}/>}><AuthPanel initialMode={authMode} close={closeAuth} authenticated={session => void loadWorkspace(session)}/></Suspense>}</ClientLoadBoundary>;
   if (entry === "signup" && complimentaryOffer) return <ClientLoadBoundary><Suspense fallback={<AuthenticatedLoading/>}><AccountMfaGate><ComplimentaryWorkspaceFlow offer={complimentaryOffer} complete={(business, owner) => { setOrganizationName(business); setAccountName(owner); setComplimentaryOffer(null); setEntry("app"); }}/></AccountMfaGate></Suspense></ClientLoadBoundary>;
-  if (entry === "signup") return <ClientLoadBoundary><Suspense fallback={<AuthenticatedLoading/>}><AccountMfaGate><SecureOnboardingFlow accountName={accountName} accountEmail={accountEmail} signOut={() => void signOut()} complete={(business, owner) => { setOrganizationName(business); setAccountName(owner); setEntry("app"); }}/></AccountMfaGate></Suspense></ClientLoadBoundary>;
+  if (entry === "signup") return <ClientLoadBoundary><Suspense fallback={<AuthenticatedLoading/>}><AccountMfaGate><BillingOnboardingGate beforeSetup><SessionTimeout><SecureOnboardingFlow accountName={accountName} accountEmail={accountEmail} signOut={() => void signOut()} complete={(business, owner) => { setOrganizationName(business); setAccountName(owner); setEntry("app"); }}/></SessionTimeout></BillingOnboardingGate></AccountMfaGate></Suspense></ClientLoadBoundary>;
   if (entry === "invitation" && teamInvitation) return <ClientLoadBoundary><Suspense fallback={<AuthenticatedLoading/>}><AccountMfaGate><TeamInvitationFlow invitation={teamInvitation} initialName={accountName} complete={(business, member) => { setOrganizationName(business); setAccountName(member); setTeamInvitation(null); setEntry("app"); }}/></AccountMfaGate></Suspense></ClientLoadBoundary>;
-  return <ClientLoadBoundary><Suspense fallback={<AuthenticatedLoading/>}><AccountMfaGate><SessionTimeout><LegalAcceptanceGate><BillingOnboardingGate><VanteloqApp organizationName={organizationName} accountName={accountName}/></BillingOnboardingGate></LegalAcceptanceGate></SessionTimeout></AccountMfaGate></Suspense></ClientLoadBoundary>;
+  return <ClientLoadBoundary><Suspense fallback={<AuthenticatedLoading/>}><AccountMfaGate><SessionTimeout><LegalAcceptanceGate><BillingOnboardingGate><VanteloqApp key={workspaceUserId} organizationName={organizationName} accountName={accountName}/></BillingOnboardingGate></LegalAcceptanceGate></SessionTimeout></AccountMfaGate></Suspense></ClientLoadBoundary>;
 }
 
 function AccountFormLoading({ close }: { close: () => void }) {
@@ -448,35 +473,28 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
 
     <main id="main-content">
       <section className="home-hero" aria-labelledby="home-title">
-        <picture className="reference-scene">
-          <source media="(max-width:1000px)" srcSet="/brand/vanteloq-alpine-mobile-480.webp 480w, /brand/vanteloq-alpine-mobile-768.webp 768w, /brand/vanteloq-alpine-hero-mobile-v2.webp 924w" sizes="(max-width:640px) calc(100vw - 32px), 100vw" width={924} height={563}/>
-          <img src="/brand/vanteloq-alpine-hero-v2.webp" width={1832} height={859} alt="" fetchPriority="high" decoding="async"/>
-        </picture>
         <div className="home-hero-copy">
           <p className="home-eyebrow">Independent retail. Built by someone who ran a store.</p>
           <h1 id="home-title">A number without a source <em>is a rumour.</em></h1>
           <p>Follow last week’s sales back to the baskets, discounts and SKUs that caused it.</p>
-          <p className="home-hero-support">Vanteloq is retail analytics software for sales, stock and cash. Keep the POS you already pay for. Missing data stays visible.</p>
+          <p className="home-hero-support">Vanteloq brings your sales, stock and cash into focus. Understand the numbers, choose your goals and take control of what comes next. Keep the POS you already pay for.</p>
           <div className="public-actions"><a href="/demo" data-public-event="demo_view">Open the demo <span aria-hidden="true">→</span></a><button type="button" data-public-event="signup_start" onClick={() => start("signup")}>Create a workspace</button></div>
           <ul className="home-proof"><li>No signup for the demo</li><li>Totals open to source rows</li><li>AI memory starts off</li></ul>
           <p className="home-company-credit">A product built and operated by <a href="#company">LexEdge Consulting</a>.</p>
         </div>
-        <Link prefetch={false} className="hero-product-hotspot" href="/demo" aria-label="Open the interactive Vanteloq demo" data-public-event="demo_view"><span>Sample store <b>Open the demo <i aria-hidden="true">↗</i></b></span></Link>
+        <HomeDashboardPreview/>
       </section>
       <div className="reference-connections" aria-label="Explore data connections"><span>YOUR TOOLS, CONNECTED</span><div>{["Lightspeed","Square","Shopify","Stripe","Google"].map(name=><a key={name} href="#connections" aria-label={`Check ${name} availability`}><IntegrationBrandLogo name={name} compact/><strong>{name}</strong></a>)}</div><a href="#connections">View Availability <span aria-hidden="true">→</span></a></div>
       <section className="home-decision-proof" id="platform" aria-labelledby="decision-proof-title">
-        <span id="capabilities"/><div className="reference-section-heading"><div><p className="demo-eyebrow">THE QUESTIONS BEHIND THE COUNTER</p><h2 id="decision-proof-title">Before you reorder, discount or close the week.</h2></div><p>A sales total is a starting point. Look at what sold, what it earned and what your store needs next.</p></div>
+        <span id="capabilities"/><div className="reference-section-heading" data-motion-item="0"><div><p className="demo-eyebrow">YOUR BUSINESS. YOUR PRIORITIES.</p><h2 id="decision-proof-title">Know where you stand. Decide where to go.</h2></div><p>Track what matters, understand what changed and turn a finding into a next step. Your records provide the context. You set the direction.</p></div>
         <FeatureCarousel/>
       </section>
       <section className="home-operating-ring-story" aria-labelledby="home-operating-ring-title">
-        <div className="home-ring-visual" role="img" aria-label="Sales, margin and cash evidence bands with 9 of 9 checks complete">
-          <svg viewBox="0 0 150 150" aria-hidden="true"><g className="home-ring-sales"><circle cx="75" cy="75" r="61" pathLength="100"/></g><g className="home-ring-margin"><circle cx="75" cy="75" r="47" pathLength="100"/></g><g className="home-ring-cash"><circle cx="75" cy="75" r="33" pathLength="100"/></g></svg>
-          <span><strong>9 of 9</strong><small>Evidence checks</small></span>
-        </div>
-        <div><p className="demo-eyebrow">THE VANTELOQ OPERATING RING</p><h2 id="home-operating-ring-title">Complete the picture before you act.</h2><p>Sales, margin and cash form one source-aware progress view. A band fills only when the required KPI evidence is available for the period. It never treats missing information as a completed result.</p><div className="home-ring-steps"><span><i/>Connect and review sales records</span><span><i/>Confirm product costs and inventory</span><span><i/>Post and review cash records in BookLoQ</span></div><Link prefetch={false} href="/demo#retail">See how the evidence connects <span aria-hidden="true">↗</span></Link></div>
+        <HomeGoalPreview/>
+        <div data-motion-group><p data-motion-item="0" className="demo-eyebrow">YOUR BUSINESS. YOUR GOALS.</p><h2 data-motion-item="1" id="home-operating-ring-title">Set the goal. See the progress.</h2><p>Choose the numbers you want to improve, set a target and a date, and follow your progress. Your dashboard makes the next milestone visible while keeping missing information clear.</p><div className="home-ring-steps" data-motion-item="2"><span><i/>Choose your metrics</span><span><i/>Set your targets</span><span><i/>Follow your progress</span></div><Link prefetch={false} href="/demo#retail">Explore your dashboard <span aria-hidden="true">↗</span></Link></div>
       </section>
       <section className="home-proof-studio" id="demo" aria-labelledby="home-demo-entry-title"><div className="proof-studio-copy"><p className="demo-eyebrow">TRY IT WITH SAMPLE RECORDS</p><h2 id="home-demo-entry-title">Sales changed.<br/>Show me why.</h2><p>Choose a location. Watch the totals update. Follow the result into the baskets, products and discounts behind it.</p><p className="proof-studio-note">Fictional records. Working calculations. No signup required.</p><Link prefetch={false} href="/demo" data-public-event="demo_engaged">Open the full demo <span aria-hidden="true">→</span></Link></div><HomeDecisionPreview/>
-        <div className="journey-steps" aria-label="From signup to the first insight"><div><b>1</b><span><strong>Set up your account</strong>Verify your email, secure your account and choose a plan.</span></div><div><b>2</b><span><strong>Bring in your records</strong>Connect your source, map locations and review the imported totals.</span></div><div><b>3</b><span><strong>Work through a store question</strong>Inspect the evidence, ask AI for help and assign a next step.</span></div></div>
+        <div className="journey-steps" aria-label="From signup to the first insight"><div><b>1</b><span><strong>Set up your account</strong>Verify your email, secure your account and choose a plan.</span></div><div><b>2</b><span><strong>Bring in your records</strong>Connect your source, map locations and review the imported totals.</span></div><div><b>3</b><span><strong>Turn a finding into a next step</strong>Assign an action, set a due date and track its status with your team.</span></div></div>
       </section>
       <section className="home-connections" id="connections" aria-labelledby="connections-title">
         <div className="home-section-heading compact"><p>CHECK YOUR FIT FIRST</p><h2 id="connections-title">Keep your POS.<br/>Get more from its data.</h2><span>Choose your system to see what it can support, what you need to connect and what is still in development.</span></div>
@@ -485,12 +503,13 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
       </section>
       <section className="home-ai" id="vanteloq-ai" aria-labelledby="vanteloq-ai-title">
         <VanteloqAiShowcase/>
-        <div className="home-ai-copy"><p>VANTELOQ AI</p><h2 id="vanteloq-ai-title">Ask about your store.<br/>Choose what AI can see.</h2><span>Vanteloq AI is the assistant inside your retail software. Work through sales, margins, cash forecasts or app questions using only the information you permit it to use, within your role’s access.</span><div className="home-ai-grid"><article><strong>Business questions and app help</strong><span>Ask about sales, inventory, marketing or BookLoQ. Get help finding a report or understanding your next step.</span></article><article><strong>Your permission comes first</strong><span>Memory starts off. Choose whether to share permitted business summaries, turn memory on or off, and delete saved chats in AI Settings.</span></article></div><small className="home-ai-note">Review important conclusions. AI does not replace your accountant or approve decisions for you.</small></div>
+        <div className="home-ai-copy" data-motion-item="1"><p>VANTELOQ AI</p><h2 id="vanteloq-ai-title">Ask about your store.<br/>Choose what AI can see.</h2><span>Vanteloq AI is the assistant inside your retail software. Work through sales, margins, cash forecasts or app questions using only the information you permit it to use, within your role’s access.</span><div className="home-ai-grid"><article><strong>Business questions and app help</strong><span>Ask about sales, inventory, marketing or BookLoQ. Get help finding a report or understanding your next step.</span></article><article><strong>Your permission comes first</strong><span>Memory starts off. Choose whether to share permitted business summaries, turn memory on or off, and delete saved chats in AI Settings.</span></article></div><small className="home-ai-note">Review important conclusions. AI does not replace your accountant or approve decisions for you.</small></div>
       </section>
       <FinanceProof/>
+      <WorkspaceShowcase/>
       <section className="journey-evidence" id="security" aria-labelledby="evidence-title">
         <div><p className="demo-eyebrow">KNOW WHAT IS BEHIND THE NUMBER</p><h2 id="evidence-title">Missing records should not look like a quiet day.</h2><p>See what information is available, what needs review and who can access it.</p></div>
-        <div className="journey-trust"><article><strong>Access follows responsibility</strong><p>Workspace membership and role permissions control access to business and financial information.</p></article><article><strong>Missing data stays visible</strong><p>Missing costs do not become zero. An incomplete import does not prove the store was closed.</p></article><article><strong>You own the decision</strong><p>LexEdge Consulting provides business analysis, financial review, operations and marketing support. It builds and operates Vanteloq. You review consequential actions and own the decision.</p></article><div><Link prefetch={false} href="/privacy">Privacy and deletion</Link><Link prefetch={false} href="/subprocessors">Data processors</Link><Link prefetch={false} href="/contact">Contact us</Link></div></div>
+        <div className="journey-trust"><article><strong>The right people. The right access.</strong><p>Keep your team’s work together while roles and location permissions control access to business and financial information.</p></article><article><strong>Missing data stays visible</strong><p>Missing costs do not become zero. An incomplete import does not prove the store was closed.</p></article><article><strong>You own the decision</strong><p>LexEdge Consulting provides business analysis, financial review, operations and marketing support. It builds and operates Vanteloq. You review consequential actions and own the decision.</p></article><div><Link prefetch={false} href="/privacy">Privacy and deletion</Link><Link prefetch={false} href="/subprocessors">Data processors</Link><Link prefetch={false} href="/contact">Contact us</Link></div></div>
       </section>
       <section className="journey-pricing" id="plans" aria-labelledby="home-plans-title"><div className="home-section-heading compact"><p>CHOOSE YOUR CAPACITY</p><h2 id="home-plans-title">One store or several. Start with what you need.</h2><span>Choose the Vanteloq capacity that fits your operation, add BookLoQ, or use BookLoQ as its own finance workspace.</span></div><PublicPlanCards compact/><CustomPlanCallout className="journey-custom" headingLevel={3} title="Need more locations or a custom scope?"/></section>
       <section className="home-faq journey-faq" aria-labelledby="faq-title"><div className="home-section-heading compact"><p>BEFORE YOU CONNECT YOUR STORE</p><h2 id="faq-title">What happens next?</h2><Link prefetch={false} href="/help">Visit the help centre →</Link></div><div className="home-faq-list">
@@ -498,7 +517,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
         <details><summary>Will it work with my POS?</summary><p>Check the provider selector for current availability and supported data. Each business authorizes its own account, maps locations and reviews imported totals before relying on reports. CSV is an alternative where a supported template fits your records.</p><a href="#connections">Check your system →</a></details>
         <details><summary>What happens after signup?</summary><p>Verify your email, set up an authenticator, add your business and confirm a subscription. Then connect a source, map locations and review the import. Reports show which records are available so you can see what is ready and what is missing.</p></details>
         <details><summary>Can I use BookLoQ without a Vanteloq plan?</summary><p>Yes. BookLoQ is $59 CAD per month as a standalone finance workspace, or $39 CAD per month when added to a Vanteloq plan. It organizes financial records, journals, statements, transaction review, evidence matching and cash planning. It does not file tax returns or certify your books. Keep your accountant involved.</p></details>
-        <details><summary>Can I control what AI remembers?</summary><p>Yes. Memory starts off. Choose whether to share permitted workspace summaries, turn memory on or off, and delete saved chats in AI Settings. AI access remains limited by your role.</p><Link prefetch={false} href="/privacy">Read the privacy details →</Link></details>
+        <details><summary>Can I make the dashboard my own?</summary><p>Choose your metrics, reorder cards, adjust chart styles and save views for different priorities. Set goals with dates and a location scope. Your layout stays with your account in your workspace.</p></details><details><summary>Can I control when my data updates?</summary><p>Enable or pause automatic updates for supported connections. Review sync status and imported records before using the results.</p></details><details><summary>Can I control what AI remembers?</summary><p>Yes. Memory starts off. Choose whether to share permitted workspace summaries, turn memory on or off, and delete saved chats in AI Settings. AI access remains limited by your role.</p><Link prefetch={false} href="/privacy">Read the privacy details →</Link></details>
         <details><summary>Can I change or cancel my subscription?</summary><p>Open Stripe’s billing portal from workspace billing to review available changes or cancellation. Check the effective date and any prorated charges before confirming.</p></details>
         <div className="journey-final"><strong>Start with a question you would ask about your own store.</strong><a href="/demo">Open the demo →</a><button type="button" data-public-event="signup_start" onClick={() => start("signup")}>Create a workspace</button></div>
       </div></section>

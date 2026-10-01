@@ -1,5 +1,8 @@
+import AdvisorPersonalize from "../../app/advisor-personalize";
+import {advisorDefaults,advisorPreferences} from "../../domain/advisor-personalization";
 import { useRef, useState, type FormEvent } from "react";
 import { createRoot } from "react-dom/client";
+import InterfaceMotion from "../../app/interface-motion";
 import AdvisorPrivacy from "../../app/advisor-privacy";
 import AdvisorComposer from "../../app/advisor-composer";
 import AdvisorThinking from "../../app/advisor-thinking";
@@ -8,11 +11,15 @@ import type { AdvisorMode } from "../../domain/advisor-providers";
 import { useAdvisorConsent } from "../../app/advisor-consent";
 import { readAdvisorAnswer } from "../../app/advisor-client";
 
+let consentReads = 0;
+let fixturePreferences=advisorDefaults;
 let fixtureChats = [{ id: "fixture-chat-one", createdAt: Date.now(), updatedAt: Date.now() }];
 const example = '## Performance at a glance\nIllustrative figures for this local preview.\n| KPI | Example value |\n| --- | --- |\n| Net sales | CAD $24,800.00 |\n| Gross margin | Unavailable |\n| Transactions | 620 |\n## What deserves attention\n- **Verify product costs.** Revenue alone cannot establish profitability.\n- **Compare matched periods.** Check that both windows include the same locations and complete sales days.\n## Next step\nConfirm the source coverage, then ask which changes are supported by the verified records.';
 let fixtureConsent = JSON.parse(sessionStorage.getItem("fixture-advisor-consent") ?? '{"analysis":false,"help":false}');
 const fixtureFetch: typeof fetch = async (url, init) => {
+  if(url==="/api/v1/advisor/preferences") {if(init?.method==="PUT")fixturePreferences=advisorPreferences(JSON.parse(String(init.body)).preferences);if(init?.method==="DELETE")fixturePreferences=advisorDefaults;return Response.json({preferences:fixturePreferences});}
   if (url === "/api/v1/advisor/consent") {
+    if (!init?.method || init.method === "GET") consentReads++;
     if (init?.method === "POST") {
       const { purpose } = JSON.parse(String(init.body));
       fixtureConsent = { analysis: fixtureConsent.analysis || purpose === "analysis", help: true };
@@ -22,38 +29,43 @@ const fixtureFetch: typeof fetch = async (url, init) => {
   }
   if (url === "/api/v1/advisor/chat") {
     if (new URLSearchParams(location.search).get("state") === "timeout") return new Promise(() => {});
-    await new Promise(resolve => setTimeout(resolve, new URLSearchParams(location.search).get("state") === "slow" ? 20_000 : 2200));
-    return Response.json({ status: "answered", answer: example });
+    const encoder=new TextEncoder();return new Response(new ReadableStream({async start(c){
+      for(let i=0;i<example.length;i+=35){if(init?.signal?.aborted){c.close();return;}c.enqueue(encoder.encode(JSON.stringify({type:"delta",text:example.slice(i,i+35)})+"\n"));await new Promise(r=>setTimeout(r,60));}
+      c.enqueue(encoder.encode(JSON.stringify({type:"done",payload:{status:"answered",answer:example}})+"\n"));c.close();
+    }}),{headers:{"content-type":"application/x-ndjson"}});
   }
   if (init?.method === "DELETE") { fixtureChats = []; return Response.json({ deleted: true }); }
-  if (url === "/api/v1/advisor/conversations") return Response.json({ conversations: fixtureChats, hasMore: false });
+  if (String(url).startsWith("/api/v1/advisor/conversations")) return Response.json({ conversations: fixtureChats, hasMore: false });
   throw new Error("This fixture does not make network requests.");
 };
 function Preview() {
   const initial = new URLSearchParams(location.search).get("state") ?? "welcome";
   const [attachments, setAttachments] = useState<File[]>([]), [attachmentAccepted, setAttachmentAccepted] = useState(false);
+  const [preferences,setPreferences]=useState(advisorDefaults),[partial,setPartial]=useState("");
   const [state, setState] = useState(initial), [question, setQuestion] = useState("");
   const [sent, setSent] = useState((initial === "welcome" || initial === "pending") ? "" : "Which KPIs need attention, and why?");
   const provider: AdvisorMode = "openai";
-  const savedConsent = useAdvisorConsent(fixtureFetch, "fictional-workspace");
+  const [visible,setVisible] = useState(true);
+  const savedConsent = useAdvisorConsent(fixtureFetch, "fictional-workspace", visible);
   const activeRequest = useRef<AbortController | null>(null);
   const [error, setError] = useState("");
   const [memoryEnabled, setMemoryEnabled] = useState(false);
   const [purpose, setPurpose] = useState<"analysis" | "help">("analysis");
   async function ask(event: FormEvent) {
-    event.preventDefault(); setSent(question); setError(""); setState("thinking");
+    event.preventDefault();setPartial("");setSent(question); setError(""); setState("thinking");
     const controller = new AbortController(); activeRequest.current = controller;
     try {
-      await readAdvisorAnswer(fixtureFetch, { question, provider, conversationId: null, dataUseAccepted: true, memoryEnabled }, controller.signal, initial === "timeout" ? 1800 : 75_000);
+      await readAdvisorAnswer(fixtureFetch, { question, provider, conversationId: null, dataUseAccepted: true, memoryEnabled }, controller.signal, initial === "timeout" ? 1800 : 75_000,update=>{if(update.text)setPartial(update.text);});
       if (activeRequest.current === controller) { setQuestion(""); setState("answer"); }
     } catch (failure) { if (activeRequest.current === controller) { setError(failure instanceof Error ? failure.message : "Could not complete the reply."); setState("error"); } }
     finally { if (activeRequest.current === controller) activeRequest.current = null; }
   }
-  return <div className="operating-shell"><main className="content advisor-page"><AdvisorComposer attachments={attachments} onAttachments={setAttachments} attachmentAccepted={attachmentAccepted} onAttachmentConsent={setAttachmentAccepted} purpose={purpose} onPurpose={value => { setPurpose(value); setSent(""); setQuestion(""); setState("welcome"); }} privacyControls={<AdvisorPrivacy fetcher={fixtureFetch} disabled={state === "thinking"} onDeleted={() => { setState("welcome"); setSent(""); }}/>} memoryEnabled={memoryEnabled} onMemory={value => { setMemoryEnabled(value); setSent(""); setState("welcome"); }} question={question} onQuestion={setQuestion} dataUseAccepted={savedConsent.consent[purpose]} onConsent={accepted => void savedConsent.refresh(accepted, purpose)} consentLoading={savedConsent.busy} consentError={savedConsent.error} onConsentRetry={() => void savedConsent.refresh()} onStop={() => { activeRequest.current?.abort(); activeRequest.current = null; setError("Response stopped. You can edit or resend your question."); setState("error"); }} loading={state === "thinking"} onSubmit={ask} provider={provider} providers={{ openai: { ready: initial !== "pending", reason: "Secure setup is pending in this example." } }} hasConversation={Boolean(sent)} onNewChat={() => { setState("welcome"); setSent(""); setQuestion(""); setError(""); }}>
+  return <div className="operating-shell"><InterfaceMotion/><div style={{padding:12}}><button type="button" onClick={()=>setVisible(!visible)}>{visible?"Leave AI":"Return to AI"}</button> <span>Consent reads: {consentReads}</span></div>{visible&&<main className={`content advisor-page ai-text-${preferences.textSize} ai-spacing-${preferences.spacing}`}><AdvisorComposer personalization={<AdvisorPersonalize fetcher={fixtureFetch} disabled={state==="thinking"} preferences={preferences} onChange={setPreferences}/>} attachments={attachments} onAttachments={setAttachments} attachmentAccepted={attachmentAccepted} onAttachmentConsent={setAttachmentAccepted} purpose={purpose} onPurpose={value => { setPurpose(value); setSent(""); setQuestion(""); setState("welcome"); }} privacyControls={<AdvisorPrivacy fetcher={fixtureFetch} disabled={state === "thinking"} onDeleted={() => { setState("welcome"); setSent(""); }}/>} memoryEnabled={memoryEnabled} onMemory={value => { setMemoryEnabled(value); setSent(""); setState("welcome"); }} question={question} onQuestion={setQuestion} dataUseAccepted={savedConsent.consent[purpose]} onConsent={accepted => void savedConsent.refresh(accepted, purpose)} consentLoading={savedConsent.busy} consentError={savedConsent.error} onConsentRetry={() => void savedConsent.refresh()} onStop={() => { activeRequest.current?.abort(); activeRequest.current = null; setError("Response stopped. You can edit or resend your question."); setState("error"); }} loading={state === "thinking"} onSubmit={ask} provider={provider} providers={{ openai: { ready: initial !== "pending", reason: "Secure setup is pending in this example." } }} hasConversation={Boolean(sent)} onNewChat={() => { setState("welcome"); setSent(""); setQuestion(""); setError(""); }}>
     {sent && <div className="ai-user-message"><small>You</small>{sent}</div>}
-    {state === "thinking" && <AdvisorThinking/>}
+    {state === "thinking" && !partial && <AdvisorThinking/>}
+    {state === "thinking" && partial && <AdvisorResponse title="Vanteloq AI" body={partial} limitation="" streaming/>}
     {error && <div className="ai-response-error" role="status"><strong>Reply not completed</strong><p>{error}</p></div>}
-    {state === "answer" && <AdvisorResponse title="Vanteloq AI" body={example} animate limitation="Visual fixture only. No customer data, AI request or business action."/>}
-  </AdvisorComposer></main></div>;
+    {(state === "answer" || state === "long") && <AdvisorResponse title="Vanteloq AI" body={initial === "long" ? example.repeat(5) : example} coverage={{latestDate:"2026-09-29",sourceCount:2,days:30}} onReuse={() => setQuestion(sent)} animate limitation="Visual fixture only. No customer data, AI request or business action."/>}
+  </AdvisorComposer></main>}</div>;
 }
 createRoot(document.getElementById("root")!).render(<Preview/>);

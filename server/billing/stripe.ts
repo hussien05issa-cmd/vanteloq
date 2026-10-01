@@ -1,7 +1,8 @@
 import { getRuntimeEnv } from "../../db";
-import { ADDONS, PLANS, type AddonKey, type BillingInterval, type MoneyPrice, type PlanKey, type PurchaseBillingInterval } from "../entitlements/catalog";
+import { ADDONS, PLANS, PLAN_CATALOG_VERSION, type AddonKey, type BillingInterval, type MoneyPrice, type PlanKey, type PurchaseBillingInterval } from "../entitlements/catalog";
 import { SUBSCRIPTION_STATUSES, type SubscriptionStatus } from "../entitlements/engine";
 import { ApiError } from "../api";
+import { SUBSCRIPTION_TRIAL_DAYS, SUBSCRIPTION_TRIAL_POLICY } from "../../shared/subscription-trial";
 
 const STRIPE_API = "https://api.stripe.com";
 const CHECKOUT_INTEGRATION_IDENTIFIER = "vanteloq_checkout_hpxqzrma";
@@ -15,7 +16,10 @@ type StripePrice = {
   unit_amount?: unknown;
   currency?: unknown;
   active?: unknown;
-  recurring?: { interval?: unknown };
+  type?: unknown;
+  billing_scheme?: unknown;
+  transform_quantity?: unknown;
+  recurring?: { interval?: unknown; interval_count?: unknown; usage_type?: unknown };
 };
 
 export type NormalizedBillingSubscription = {
@@ -27,6 +31,10 @@ export type NormalizedBillingSubscription = {
   status: SubscriptionStatus;
   basePriceId: string;
   trialEndsAt: Date | null;
+  trialStartsAt?: Date | null;
+  trialPolicy?: string;
+  checkoutAttemptId?: string;
+  paidInvoicePeriodEndsAt?: Date | null;
   currentPeriodEndsAt: Date | null;
   cancelAtPeriodEnd: boolean;
   addon: null | {
@@ -60,6 +68,17 @@ function billingWebhookSecret() {
     throw new ApiError(503, "STRIPE_BILLING_CONFIGURATION_REQUIRED", "Stripe Billing webhook verification is not configured yet.");
   }
   return value;
+}
+
+function requireProductionStripeKey(origin: string) {
+  let hostname = "";
+  try { hostname = new URL(origin).hostname.toLowerCase(); }
+  catch { throw new ApiError(400, "BILLING_RETURN_ORIGIN_INVALID", "The secure checkout return address is invalid."); }
+  if (hostname !== "vanteloq.com" && !hostname.endsWith(".vanteloq.com")) return;
+  const value = getRuntimeEnv().STRIPE_SECRET_KEY ?? "";
+  if (!/^(sk|rk)_live_/.test(value)) {
+    throw new ApiError(503, "STRIPE_LIVE_BILLING_REQUIRED", "Live Stripe Billing must be connected before production checkout can begin.");
+  }
 }
 
 async function stripeFormRequest(path: string, fields?: URLSearchParams, method: "GET" | "POST" | "DELETE" = "POST", fetcher: typeof fetch = fetch, idempotencyKey?: string) {
@@ -97,14 +116,12 @@ async function resolveVerifiedPrice(plan: PlanKey | AddonKey, interval: BillingI
   if (data.length !== 1) throw new ApiError(503, "STRIPE_PRICE_CONFIGURATION_INVALID", `Stripe price ${expected.lookupKey} is missing or duplicated.`);
   const price = data[0];
   if (
-    typeof price.id !== "string" || !PRICE_ID.test(price.id) ||
     price.lookup_key !== expected.lookupKey || price.active !== true ||
-    price.currency !== "cad" || price.unit_amount !== expected.amountCents ||
-    price.recurring?.interval !== interval
+    !validPrice(price,expected.amountCents,interval)
   ) {
     throw new ApiError(503, "STRIPE_PRICE_CONFIGURATION_INVALID", `Stripe price ${expected.lookupKey} does not match Vanteloq's verified catalogue.`);
   }
-  return price.id;
+  return string(price.id);
 }
 
 export async function prepareStripeCheckout(input: {
@@ -116,6 +133,7 @@ export async function prepareStripeCheckout(input: {
   customerId: string | null;
   origin: string;
   fetcher?: typeof fetch;
+  trialEligible?: boolean;
 }) {
   if (input.interval !== "month") {
     throw new ApiError(400, "BILLING_INTERVAL_UNAVAILABLE", "Vanteloq and BookLoQ subscriptions are available month to month.");
@@ -124,6 +142,7 @@ export async function prepareStripeCheckout(input: {
     throw new ApiError(400, "BILLING_SELECTION_INVALID", "Standalone BookLoQ already includes BookLoQ access and cannot include the add-on again.");
   }
   if (!stripeBillingReadiness().configured) throw new ApiError(503, "STRIPE_BILLING_CONFIGURATION_REQUIRED", "Stripe Billing must be configured before checkout can begin.");
+  requireProductionStripeKey(input.origin);
   const fetcher = input.fetcher ?? fetch;
   const [basePriceId, addonPriceId] = await Promise.all([
     resolveVerifiedPrice(input.plan, input.interval, "plan", fetcher),
@@ -141,6 +160,8 @@ export async function prepareStripeCheckout(input: {
     billing_address_collection: "required",
     "metadata[vanteloq_organization_id]": input.organizationId,
     "metadata[vanteloq_plan]": input.plan,
+    "metadata[vanteloq_catalog_version]": PLAN_CATALOG_VERSION,
+    "subscription_data[metadata][vanteloq_catalog_version]": PLAN_CATALOG_VERSION,
     "metadata[vanteloq_interval]": input.interval,
     "subscription_data[metadata][vanteloq_organization_id]": input.organizationId,
   });
@@ -149,6 +170,12 @@ export async function prepareStripeCheckout(input: {
   if (addonPriceId) {
     fields.set("line_items[1][price]", addonPriceId);
     fields.set("line_items[1][quantity]", "1");
+  }
+  if (input.trialEligible === true) {
+    fields.set("subscription_data[trial_period_days]", String(SUBSCRIPTION_TRIAL_DAYS));
+    fields.set("subscription_data[trial_settings][end_behavior][missing_payment_method]", "cancel");
+    fields.set("subscription_data[metadata][vanteloq_trial_policy]", SUBSCRIPTION_TRIAL_POLICY);
+    fields.set("custom_text[submit][message]", "Your first subscription includes a 7-day free trial. A payment method is required. After the trial, the selected monthly price and applicable taxes renew automatically. Review the first billing date above. Cancel through Vanteloq Manage Billing before that date to avoid the first charge.");
   }
   return fields;
 }
@@ -180,6 +207,7 @@ export async function retrieveStripeSubscription(subscriptionId: string, fetcher
   if (!SUBSCRIPTION_ID.test(subscriptionId)) throw new ApiError(400, "STRIPE_SUBSCRIPTION_INVALID", "Stripe subscription reference is invalid.");
   const query = new URLSearchParams();
   query.append("expand[]", "items.data.price");
+  query.append("expand[]", "latest_invoice");
   return stripeFormRequest(`/v1/subscriptions/${encodeURIComponent(subscriptionId)}`, query, "GET", fetcher);
 }
 
@@ -232,7 +260,7 @@ export function normalizeStripeSubscription(object: Record<string, unknown>): No
   const itemsObject = isObject(object.items) ? object.items : {};
   if (itemsObject.has_more === true) throw new ApiError(400, "STRIPE_SUBSCRIPTION_PAYLOAD_INVALID", "A complete Stripe subscription item list is required.");
   const items = Array.isArray(itemsObject.data) ? itemsObject.data.filter(isObject) : [];
-  let base: { plan: PlanKey; interval: BillingInterval; priceId: string; period: Date | null } | null = null;
+  let base: { plan: PlanKey; interval: BillingInterval; priceId: string; period: Date | null; itemId: string } | null = null;
   let addon: NormalizedBillingSubscription["addon"] = null;
   for (const item of items) {
     const price = isObject(item.price) ? item.price as StripePrice : {};
@@ -242,7 +270,7 @@ export function normalizeStripeSubscription(object: Record<string, unknown>): No
     const period = unixDate(item.current_period_end);
     if (match.kind === "plan") {
       if (base) throw new ApiError(400, "STRIPE_SUBSCRIPTION_PAYLOAD_INVALID", "Stripe subscription contains more than one Vanteloq base plan.");
-      base = { plan: match.key, interval: match.interval, priceId: string(price.id), period };
+      base = { plan: match.key, interval: match.interval, priceId: string(price.id), period, itemId: string(item.id) };
     } else {
       if (addon || !/^si_[A-Za-z0-9]{8,128}$/.test(string(item.id))) throw new ApiError(400, "STRIPE_SUBSCRIPTION_PAYLOAD_INVALID", "Stripe subscription contains an invalid or duplicate BookLoQ add-on.");
       addon = { key: match.key, itemId: string(item.id), priceId: string(price.id), currentPeriodEndsAt: period };
@@ -261,10 +289,36 @@ export function normalizeStripeSubscription(object: Record<string, unknown>): No
     status,
     basePriceId: base.priceId,
     trialEndsAt: unixDate(object.trial_end),
+    trialStartsAt: unixDate(object.trial_start),
+    trialPolicy: string(metadata.vanteloq_trial_policy),
+    checkoutAttemptId: string(metadata.vanteloq_checkout_attempt),
+    paidInvoicePeriodEndsAt: paidSubscriptionInvoicePeriod(object.latest_invoice, customerId, subscriptionId, base.priceId, base.itemId),
     currentPeriodEndsAt: base.period ?? unixDate(object.current_period_end),
     cancelAtPeriodEnd: object.cancel_at_period_end === true,
     addon,
   };
+}
+
+/** A trial's zero-dollar opening invoice is not proof of the first paid period. */
+function paidSubscriptionInvoicePeriod(value: unknown, customerId: string, subscriptionId: string, priceId: string, itemId: string): Date | null {
+  if (!isObject(value) || value.status !== "paid" || value.currency !== "cad" || value.customer !== customerId) return null;
+  const parent = isObject(value.parent) ? value.parent : {};
+  const details = isObject(parent.subscription_details) ? parent.subscription_details : {};
+  if ((value.subscription ?? details.subscription) !== subscriptionId) return null;
+  const lines = isObject(value.lines) ? value.lines : {};
+  if (lines.has_more === true || !Array.isArray(lines.data)) return null;
+  const ends = lines.data.filter(isObject).flatMap(line => {
+    const pricing = isObject(line.pricing) ? line.pricing : {};
+    const priceDetails = isObject(pricing.price_details) ? pricing.price_details : {};
+    const price = isObject(line.price) ? line.price : {};
+    const lineParent = isObject(line.parent) ? line.parent : {};
+    const item = isObject(lineParent.subscription_item_details) ? lineParent.subscription_item_details : {};
+    const period = isObject(line.period) ? line.period : {};
+    if ((price.id ?? priceDetails.price) !== priceId || (line.subscription_item ?? item.subscription_item) !== itemId || item.proration === true || line.proration === true) return [];
+    const end = unixDate(period.end);
+    return end ? [end] : [];
+  });
+  return ends.sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
 }
 
 function matchCatalogPrice(price: StripePrice): null | { kind: "plan"; key: PlanKey; interval: BillingInterval } | { kind: "addon"; key: AddonKey; interval: BillingInterval } {
@@ -274,21 +328,27 @@ function matchCatalogPrice(price: StripePrice): null | { kind: "plan"; key: Plan
     for (const interval of ["month", "year"] as const) {
       const expected = prices[interval];
       if (!expected) continue;
-      if (lookup === expected.lookupKey && validPrice(price, expected.amountCents, interval)) return { kind: "plan", key: key as PlanKey, interval };
+      if (lookup === expected.lookupKey) {
+        if (!validPrice(price, expected.amountCents, interval)) throw new ApiError(400,"STRIPE_SUBSCRIPTION_PAYLOAD_INVALID","A recognized Stripe plan does not match the approved catalogue.");
+        return { kind: "plan", key: key as PlanKey, interval };
+      }
     }
   }
   for (const [key, definition] of Object.entries(ADDONS)) {
     for (const interval of ["month", "year"] as const) {
       const expected = definition.prices[interval];
       if (!expected) continue;
-      if (lookup === expected.lookupKey && validPrice(price, expected.amountCents, interval)) return { kind: "addon", key: key as AddonKey, interval };
+      if (lookup === expected.lookupKey) {
+        if (!validPrice(price, expected.amountCents, interval)) throw new ApiError(400,"STRIPE_SUBSCRIPTION_PAYLOAD_INVALID","A recognized Stripe add-on does not match the approved catalogue.");
+        return { kind: "addon", key: key as AddonKey, interval };
+      }
     }
   }
   return null;
 }
 
 function validPrice(price: StripePrice, amountCents: number, interval: BillingInterval) {
-  return typeof price.id === "string" && PRICE_ID.test(price.id) && price.currency === "cad" && price.unit_amount === amountCents && price.recurring?.interval === interval;
+  return typeof price.id === "string" && PRICE_ID.test(price.id) && price.currency === "cad" && price.unit_amount === amountCents && price.recurring?.interval === interval && price.recurring?.interval_count === 1 && price.recurring?.usage_type === "licensed" && price.type === "recurring" && price.billing_scheme === "per_unit" && price.transform_quantity == null;
 }
 
 export async function verifyStripeBillingSignature(body: Uint8Array, header: string | null, nowSeconds = Math.floor(Date.now() / 1000)) {

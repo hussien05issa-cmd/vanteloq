@@ -82,7 +82,8 @@ async function runDueSchedule(schedule: Schedule, request: Request, requestId: s
     // Webhooks are refresh hints. A successful complete pull covers only events
     // received before this pull began, never events that arrived during the pull.
     if (status === "completed") await getD1().prepare(`UPDATE integration_webhook_events SET status='processed', processed_at=?
-      WHERE organization_id=? AND provider=? AND connection_id=? AND status='queued' AND received_at<?`)
+      WHERE organization_id=? AND provider=? AND connection_id=? AND status='queued' AND received_at<?
+        AND event_type <> 'customers/data_request'`)
       .bind(seconds(), schedule.organizationId, schedule.provider, schedule.connectionId, cycleStart).run();
   } catch (error) {
     code = error instanceof ApiError ? error.code : "POS_SYNC_FAILED";

@@ -1,6 +1,8 @@
 import { getD1 } from "../../db";
 import { ApiError } from "../api";
 import { prepareStripeCheckout, submitStripeCheckout, retrieveStripeCheckout, expireStripeCheckout } from "./stripe";
+import { SUBSCRIPTION_TRIAL_POLICY } from "../../shared/subscription-trial";
+import { requireCurrentCheckoutAcceptance } from "../legal-acceptance";
 
 type Attempt = { organization_id: string; attempt_id: string; selection_key: string; request_body: string; session_id: string | null; created_at: number };
 type Selection = Parameters<typeof prepareStripeCheckout>[0];
@@ -34,16 +36,20 @@ async function resolveSession(database: D1Database, row: Attempt, fetcher: typeo
 
 export async function startStripeCheckout(input: Selection & { userId: string; database?: D1Database; now?: number }) {
   const database = input.database ?? getD1();
+  await requireCurrentCheckoutAcceptance(input.userId, database);
   const fetcher = input.fetcher ?? fetch;
   const now = input.now ?? Math.floor(Date.now() / 1000);
-  const selectionKey = `${input.plan}:${input.interval}:${input.includeBookloq ? "bookloq" : "base"}`;
   for (let retry = 0; retry < 3; retry++) {
     const subscription = await database.prepare("SELECT stripe_subscription_id,status FROM tenant_subscriptions WHERE organization_id=?").bind(input.organizationId).first<{stripe_subscription_id:string|null;status:string}>();
     if (subscription?.stripe_subscription_id && !["canceled", "incomplete_expired"].includes(subscription.status)) throw new ApiError(409, "BILLING_PORTAL_REQUIRED", "Use Manage Billing to update your existing subscription.");
+    const trialEligible = !subscription?.stripe_subscription_id;
+    const selectionKey = `${input.plan}:${input.interval}:${input.includeBookloq ? "bookloq" : "base"}:${trialEligible ? SUBSCRIPTION_TRIAL_POLICY : "paid"}`;
     let row = await readAttempt(database, input.organizationId);
     if (!row) {
       const attemptId = crypto.randomUUID();
-      const fields = await prepareStripeCheckout(input);
+      // Eligibility is read from durable billing history, never a browser flag.
+      // Canceled and expired subscriptions still count as a previous subscription.
+      const fields = await prepareStripeCheckout({ ...input, trialEligible });
       fields.set("expires_at", String(now + 3600));
       fields.set("metadata[vanteloq_checkout_attempt]", attemptId);
       fields.set("subscription_data[metadata][vanteloq_checkout_attempt]", attemptId);
@@ -51,8 +57,9 @@ export async function startStripeCheckout(input: Selection & { userId: string; d
         SELECT ?,?,?,?,? WHERE EXISTS(SELECT 1 FROM workspaces WHERE id=?)
         AND NOT EXISTS(SELECT 1 FROM account_deletion_jobs WHERE stage<>'completed' AND (user_id=? OR (scope='workspace' AND organization_id=?)))
         AND NOT EXISTS(SELECT 1 FROM tenant_subscriptions WHERE organization_id=? AND stripe_subscription_id IS NOT NULL AND status NOT IN('canceled','incomplete_expired'))
+        AND (?=0 OR NOT EXISTS(SELECT 1 FROM tenant_subscriptions WHERE organization_id=? AND stripe_subscription_id IS NOT NULL))
         ON CONFLICT(organization_id) DO NOTHING`)
-        .bind(input.organizationId, attemptId, selectionKey, fields.toString(), now, input.organizationId, input.userId, input.organizationId, input.organizationId).run();
+        .bind(input.organizationId, attemptId, selectionKey, fields.toString(), now, input.organizationId, input.userId, input.organizationId, input.organizationId, Number(trialEligible), input.organizationId).run();
       row = await readAttempt(database, input.organizationId);
       if (!row) throw pending();
     }

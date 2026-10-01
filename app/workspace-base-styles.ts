@@ -33,3 +33,4 @@ import "./bookloq-discovery.css";
 import "./bookloq-dashboard-visuals.css";
 import "./marketing-consent.css";
 import "./commerce-visuals.css";
+import "./dashboard-explorer.css";

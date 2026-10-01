@@ -78,6 +78,18 @@ test("the complete original cascade is ready before rendering the workspace", ()
   assert.ok(!runtimeGraph([resolve("app/page.tsx")], false).has(resolve("app/workspace-base-styles.ts")));
 });
 
+test("public chart reuse retains marker and explorer controls without workspace layout rules", () => {
+  const sheets = [...source(resolve("app/layout.tsx")).matchAll(/import "\.\/([^"\n]+\.css)\?public-surface";/g)].map(match => match[1]);
+  assert.ok(sheets.includes("dashboard-explorer.css"), "Shared chart controls must be styled before the workspace loads.");
+  const projected = sheets.map(sheet => publicSurfaceCss(source(resolve("app", sheet)))).join("\n");
+  const selectors = new Set<string>();
+  postcss.parse(projected).walkRules(rule => { rule.selectors.forEach(selector => selectors.add(selector)); });
+  for (const shared of [".active-profit-point", ".active-sales-point", ".chart-active-marker line", ".trend-axis-label", ".performance-range-toolbar", ".financial-series-switch", ".financial-explorer-toolbar"]) {
+    assert.ok(selectors.has(shared), `Public chart style was removed: ${shared}`);
+  }
+  assert.ok(![...selectors].some(selector => selector.startsWith(".operating-shell ")), "Workspace layout remains deferred.");
+});
+
 test("workspace CSS is excluded from public, demo and authentication import graphs", () => {
   const publicEntries = readdirSync("app", { recursive: true })
     .map(String)

@@ -38,6 +38,11 @@
 .finance-chart-data th { font-weight:550; color:#304c6a; }
 .finance-chart-data > button { min-height:44px; border:1px solid #b8cce2; padding:10px 16px; border-radius:12px; color:#264b76; background:linear-gradient(#fafdff,#e9f1fb); margin-top:14px; }
 .finance-chart-empty { padding:48px 4px; color:#526b86; font-size:14px; line-height:1.6; }.finance-chart-empty b { color:#294763; }.finance-chart-empty p { margin-bottom:0; }
+.finance-chart-empty-designed,.executive-empty-canvas { position:relative; min-height:250px; display:grid; align-content:center; padding:40px 28px; isolation:isolate; overflow:hidden; border-radius:12px; margin-top:20px; }
+.finance-empty-grid { position:absolute; inset:0; z-index:-1; display:grid; grid-template-rows:repeat(5,1fr); background:repeating-linear-gradient(90deg,transparent 0,transparent calc(20% - 1px),#dce5f080 20%); border-left:1px solid #c9d8e9; border-bottom:1px solid #c9d8e9; }
+.finance-empty-grid i { border-top:1px solid #dce5f0; }
+.finance-chart-empty-designed>div:last-child,.executive-empty-canvas>div:last-child { max-width:460px; padding:22px; background:#f5f8fbeF; border:1px solid #d7e2ed; border-radius:14px; box-shadow:0 8px 26px #294e7510; }
+.finance-empty-icon { display:block; width:36px; height:36px; line-height:36px; border-radius:10px; background:#e0edff; color:#286bd0; margin-bottom:13px; text-align:center; font-size:23px; }
 .bookloq-forecast-card > .finance-chart { border:0; box-shadow:none; background:transparent; }
 .bookloq-forecast-card > button { margin:0 24px 22px; }
 .bookloq-demo > .finance-chart { margin-top:28px; }

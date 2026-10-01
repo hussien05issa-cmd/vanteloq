@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { ADVISOR_ATTACHMENT_NOTICE_VERSION } from "../shared/advisor-attachments.ts";
 import { POST, DELETE, ADVISOR_CONSENT_VERSIONS } from "../app/api/v1/advisor/chat/route.ts";
+import { DELETE as deleteAll } from "../app/api/v1/advisor/conversations/route.ts";
 import { createEnvironment, createReportWorkspace, dispatch, identityHeaders, origin, seedReportMetric } from "./helpers/retail-worker-fixture.mjs";
 
 test("AI requests isolate overlapping tenants and reject access or consent changes before completion", { timeout: 600000 }, async () => {
@@ -157,5 +158,27 @@ test("AI requests isolate overlapping tenants and reject access or consent chang
     assert.equal(Boolean((await deleted.json()).answer), false);
     assert.equal(await totalMessages(a), 0);
     assert.equal((await database.prepare("SELECT id FROM assistant_conversations WHERE id=?").bind(ids[0]).first()), null);
+    const eraseAll = async () => {
+      const response = await deleteAll(new Request(`${origin}/api/v1/advisor/conversations`, { method: "DELETE", headers: identityHeaders(a.owner.email, a.owner.name, true), body: JSON.stringify({ confirmDeleteAll: true }) }));
+      assert.equal(response.status, 200, await response.clone().text());
+      assert.equal((await response.json()).count, 0);
+    };
+    for (const timing of ["provider", "persistence"]) {
+      beforeReply = timing === "provider" ? eraseAll : null;
+      beforeBatch = timing === "persistence" ? eraseAll : null;
+      const late = await ask(a, `First reply after delete-all at ${timing}`);
+      assert.equal(providerHookFailure, null);
+      assert.equal(late.status, 409, await late.clone().text());
+      assert.equal(Boolean((await late.json()).answer), false);
+      assert.equal(await totalMessages(a), 0);
+      assert.equal((await database.prepare("SELECT COUNT(*) count FROM assistant_conversations WHERE organization_id=? AND user_id=?").bind(a.organizationId, a.userId).first()).count, 0);
+    }
+    beforeReply = null;
+    const deletionEvents = await database.prepare("SELECT details_json FROM audit_events WHERE organization_id=? AND actor_user_id=? AND action='privacy.advisor_history_deleted'").bind(a.organizationId, a.userId).all();
+    assert.equal(deletionEvents.results.length, 2);
+    for (const row of deletionEvents.results) assert.deepEqual(JSON.parse(row.details_json), { contentDeleted: true, count: 0 });
+    const fresh = await ask(a, "New request after confirmed deletion");
+    assert.equal(fresh.status, 200, await fresh.clone().text());
+    assert.equal(await totalMessages(a), 2);
   } finally { globalThis.fetch = originalFetch; globalThis.__vanteloqEnv = originalEnv; await dispose(); }
 });

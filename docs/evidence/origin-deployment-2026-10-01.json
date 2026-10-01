@@ -1,0 +1,38 @@
+{
+  "release": "Vanteloq v1.0 Origin",
+  "recordedAt": "2026-10-01",
+  "project_id": "appgprj_6a6fac5e42a08191b37108223fc4b205",
+  "version_number": 322,
+  "version_id": "appgprj_6a6fac5e42a08191b37108223fc4b205~appgver_0baa186b91748191ae15e241e6b77684",
+  "source_commit": "0c092eea21ac3519e2c7bd447fc4fdbc47e1d7af",
+  "archive": {
+    "archive_format": "tar",
+    "sediment_file_id": "file_000000004804823081ec534e127f61ff",
+    "content_hash": "sha256:c1bec94273fe1f32e2bedb342f3ac204660b61d669d1033d7e6c5b248c39a8a9",
+    "size_bytes": 46581760,
+    "file_count": 708
+  },
+  "deployment_id": "appgdep_6abe2d10c3b481918f332411e71b2604",
+  "status": "succeeded",
+  "url": "https://vanteloq.hussien05issa.chatgpt.site",
+  "custom_url": "https://vanteloq.com",
+  "environment_revision": 64,
+  "deployedAt": "2026-10-01T09:51:23.376161+00:00",
+  "publicBrowserChecks": {
+    "dashboardExpanded": true,
+    "explicitUTCTimestamps": true,
+    "pricingLinkNavigation": true,
+    "trialDisclosure": true,
+    "starterTrialLinkOpensSelectedSignup": true,
+    "freshSessionConsoleErrors": 0,
+    "noAccountCreationOrCharge": true
+  },
+  "limits": [
+    "Signed-in owner session unavailable for final production acceptance",
+    "No new live charge or subscription created",
+    "Actual production backup and restore remain unverified",
+    "Dependency advisory scan awaits authorization",
+    "Trial reminder email settings prepared, not saved, awaiting authorization",
+    "Provider public availability varies; no status broadened by this release"
+  ]
+}

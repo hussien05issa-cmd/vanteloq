@@ -35,6 +35,12 @@ export function executivePeriod(params: URLSearchParams, today: string) {
   return { ...period, ...(comparison === "yoy" ? { comparisonFrom:priorYear(from), comparisonTo:priorYear(to), comparisonToExclusive:shiftCommerceDate(priorYear(to),1) } : {}), preset, comparison };
 }
 export function exactSum(values: readonly number[]) { const total=values.reduce((sum,value)=>{if(!Number.isSafeInteger(value))throw Error("Amounts must use exact integer cents.");return sum+BigInt(value);},BigInt(0)); if(total>BigInt(Number.MAX_SAFE_INTEGER)||total<BigInt(Number.MIN_SAFE_INTEGER))throw Error("Amount exceeds safe precision.");return Number(total); }
+/** A calendar day in UTC, without accepting rolled-over or partial dates. */
+export function strictCalendarDay(value: string | null): number | null {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const ms = Date.parse(value + "T00:00:00Z");
+  return Number.isFinite(ms) && new Date(ms).toISOString().slice(0, 10) === value ? ms / 86_400_000 : null;
+}
 export const changePercent = (current:number|null,previous:number|null) => current===null||previous===null||previous===0 ? null : (current-previous)/Math.abs(previous)*100;
 export const positiveRatio = (n:number,d:number) => d>0 ? n/d : null;
 export type ExecutiveLedgerRow = { id:string; name:string; accountType:string; accountSubtype:string; systemKey:string|null; debitCents:number; creditCents:number };
@@ -87,4 +93,17 @@ export function classifyCashMovements(rows:readonly CashClassificationRow[]) {
   }
   return {...totals,total:exactSum(Object.values(totals))};
 }
-export function agingBuckets(items:readonly {dueDate:string;totalCents:number;paidCents:number;status:string}[],asOf:string) { const buckets=[{label:"Not due",cents:0},{label:"1–30 days",cents:0},{label:"31–60 days",cents:0},{label:"61–90 days",cents:0},{label:"90+ days",cents:0}]; for(const row of items){if(["draft","void","cancelled","paid","written_off"].includes(row.status))continue;const amount=Math.max(0,exactSum([row.totalCents,-row.paidCents]));const days=Math.floor((Date.parse(asOf+"T00:00:00Z")-Date.parse(row.dueDate+"T00:00:00Z"))/86400000);if(!Number.isFinite(days))throw Error("Aging requires valid due dates.");const index=days<=0?0:days<=30?1:days<=60?2:days<=90?3:4;buckets[index].cents=exactSum([buckets[index].cents,amount]);}return buckets; }
+export function agingBuckets(items:readonly {dueDate:string|null;totalCents:number;paidCents:number;status:string}[],asOf:string) {
+  const now = strictCalendarDay(asOf);
+  if (now === null) throw Error("Aging requires a valid business date.");
+  const buckets=[{label:"Not overdue",cents:0},{label:"1–30 days",cents:0},{label:"31–60 days",cents:0},{label:"61–90 days",cents:0},{label:"91+ days",cents:0},{label:"No valid due date",cents:0}];
+  for(const row of items){
+    if(["draft","void","cancelled","paid","reconciled","written_off"].includes(row.status))continue;
+    const amount=Math.max(0,exactSum([row.totalCents,-row.paidCents]));
+    const due = strictCalendarDay(row.dueDate);
+    const days = due === null ? null : now - due;
+    const index=days===null?5:days<=0?0:days<=30?1:days<=60?2:days<=90?3:4;
+    buckets[index].cents=exactSum([buckets[index].cents,amount]);
+  }
+  return buckets;
+}

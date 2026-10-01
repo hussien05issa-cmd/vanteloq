@@ -1,3 +1,4 @@
+import { providerPrivacyAcceptance } from "../domain/provider-privacy.ts";
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import { readFile, readdir } from "node:fs/promises";
@@ -5,7 +6,9 @@ import { createServer } from "node:http";
 import test from "node:test";
 import { Miniflare } from "miniflare";
 import { registerSupabaseTestServer } from "./helpers/supabase-loopback-transport.mjs";
+import { TERMS_OF_SERVICE_VERSION, PRIVACY_POLICY_VERSION, ACCOUNT_ACCEPTANCE_NOTICE_VERSION } from "../shared/legal-versions.ts";
 import { activateTestSubscription } from "./helpers/subscription-fixture.mjs";
+import { grantIntegrationPreview } from "./helpers/integration-preview-fixture.mjs";
 
 const origin = "https://vanteloq.example";
 const context = { waitUntil() {}, passThroughOnException() {} };
@@ -90,14 +93,16 @@ test("X-Series isolates two retailer accounts and every account action", async (
         country: "CA", province: "AB", city: "Edmonton", address: "1 Test Avenue",
         postalCode: "T5A 1A1", emailNotifications: true, timezone: "America/Edmonton",
         currency: "CAD", fiscalYearStart: "January", taxNumber: "", sourceMode: "connect_later",
-        selectedPos: "", legalAccepted: true, termsVersion: "2026-09-05",
-        privacyPolicyVersion: "2026-09-10", legalNoticeVersion: "account-creation-v2",
+        selectedPos: "", legalAccepted: true, termsVersion: TERMS_OF_SERVICE_VERSION,
+        privacyPolicyVersion: PRIVACY_POLICY_VERSION, legalNoticeVersion: ACCOUNT_ACCEPTANCE_NOTICE_VERSION,
         hours: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
           .map((day) => ({ day, open: "09:00", close: "17:00", closed: false })),
       }),
     }), environment, context);
     assert.equal(onboarding.status, 201);
-    await activateTestSubscription(database, (await onboarding.json()).organization.id);
+    const previewOrganizationId = (await onboarding.json()).organization.id;
+    await activateTestSubscription(database, previewOrganizationId);
+    await grantIntegrationPreview(database, environment, previewOrganizationId, "owner@example.invalid");
 
     let failNorthOutletVerification = false;
     let saleVersion = 1, corruptSale = false, currency = "CAD";
@@ -110,7 +115,7 @@ test("X-Series isolates two retailer accounts and every account action", async (
           access_token: `access-${url.hostname}`,
           refresh_token: `refresh-${url.hostname}`,
           expires_in: 3600,
-          scope: "customers:read inventory:read outlets:read products:read retailer:read sales:read suppliers:read",
+          scope: "customers:read inventory:read outlets:read payment_types:read products:read retailer:read sales:read suppliers:read",
         });
       }
       if (url.pathname === "/api/2026-07/outlets") {
@@ -142,6 +147,9 @@ test("X-Series isolates two retailer accounts and every account action", async (
       const resource = url.pathname.split("/").at(-1);
       if (catalogs[resource]) {
         const after = resource === "inventory" ? (await request.json()).after : url.searchParams.get("after");
+        if (resource === "inventory") {
+          return Response.json(after ? [] : catalogs.inventory.map((record) => ({ ...record, version: 1 })));
+        }
         if (resource === "products" && url.hostname.startsWith("history-store.")) {
           const rows = !after ? [catalogs.products[0], ...Array.from({length:99},(_,i)=>({id:'history-'+i,sku:'H'+i,name:'Historical item '+i}))]
             : Number(after)===100 ? [{id:'history-last',sku:'LAST',name:'Final history item'}] : [];
@@ -154,7 +162,7 @@ test("X-Series isolates two retailer accounts and every account action", async (
 
     const startAuthorization = async () => {
       const authorization = await worker.fetch(new Request(`${origin}/api/v1/integrations/lightspeed/authorize`, {
-        method: "POST", headers: ownerHeaders(true), body: "{}",
+        method: "POST", headers: ownerHeaders(true), body: JSON.stringify(providerPrivacyAcceptance(true)),
       }), environment, context);
       assert.equal(authorization.status, 200);
       const body = await authorization.json();
@@ -210,6 +218,31 @@ test("X-Series isolates two retailer accounts and every account action", async (
       INNER JOIN integration_secrets s ON s.connection_id = c.id
       WHERE c.id = ?`).bind(firstConnectionId).first();
     assert.deepEqual(preservedNorth, originalNorth);
+
+    await database.prepare("UPDATE integration_connections SET scopes_json = ? WHERE id = ?")
+      .bind(JSON.stringify(["customers:read", "inventory:read", "outlets:read", "products:read", "retailer:read", "sales:read", "suppliers:read"]), firstConnectionId)
+      .run();
+    const refresh = await startAuthorization();
+    const refreshCallback = await worker.fetch(new Request(
+      `${origin}/api/v1/integrations/lightspeed/callback?code=refresh-code&state=${refresh.state}&domain_prefix=north-store`,
+      { headers: { accept: "text/html", cookie: refresh.cookie } },
+    ), environment, context);
+    assert.equal(refreshCallback.status, 303, await refreshCallback.clone().text());
+    assert.equal(refreshCallback.headers.get("location"), `${origin}/?integration=lightspeed&connection=connected`);
+    assert.equal((await database.prepare(
+      "SELECT COUNT(*) count FROM integration_connections WHERE id = ?",
+    ).bind(refresh.body.connectionId).first()).count, 0);
+    const refreshedNorth = await database.prepare(`SELECT status, scopes_json scopesJson, last_error_code lastErrorCode
+      FROM integration_connections WHERE id = ?`).bind(firstConnectionId).first();
+    assert.equal(refreshedNorth.status, "connected");
+    assert.equal(refreshedNorth.lastErrorCode, null);
+    assert.deepEqual(JSON.parse(refreshedNorth.scopesJson), [
+      "customers:read", "inventory:read", "outlets:read", "payment_types:read",
+      "products:read", "retailer:read", "sales:read", "suppliers:read",
+    ]);
+    assert.equal((await database.prepare(
+      "SELECT COUNT(*) count FROM integration_secrets WHERE connection_id = ?",
+    ).bind(firstConnectionId).first()).count, 1);
 
     const declined = await startAuthorization();
     const declinedCallbackUrl = `${origin}/api/v1/integrations/lightspeed/callback?error=access_denied&error_description=do-not-audit-me&state=${declined.state}`;

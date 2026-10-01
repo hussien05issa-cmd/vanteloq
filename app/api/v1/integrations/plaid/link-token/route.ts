@@ -1,3 +1,4 @@
+import { requireProviderPrivacy } from "../../../../../../server/integrations/provider-privacy";
 import { requireIntegrationRollout } from "../../../../../../server/integrations/rollout-access";
 import { requireAccess } from "../../../../../../server/authorization";
 import { ApiError, enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameOrigin } from "../../../../../../server/api";
@@ -17,6 +18,7 @@ export async function POST(request: Request) {
     await requireOrganizationWideLocationAccess(context);
     await requireIntegrationRollout(context, "plaid");
     await enforceRateLimit("plaid:link-token", context.userId, 10, 3_600);
+    await requireProviderPrivacy(request, context, "plaid", requestId);
     const input = await readJsonObject(request, 2_000);
     const mode = input.mode === "update" ? "update" : input.mode === "connect" ? "connect" : null;
     if (!mode) throw new ApiError(400, "PLAID_LINK_MODE_INVALID", "Choose a new connection or repair an existing one.");

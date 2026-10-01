@@ -5,7 +5,7 @@ import {
   TERMS_OF_SERVICE_VERSION,
 } from "../shared/legal-versions.ts";
 import { ApiError, clientSource, hashIdentifier, type TrustedIdentity } from "./api.ts";
-import { invitationIdentityAllowed, invitationSessionAllowed } from "./team-invitation-security.ts";
+import { deletedTeamIdentityRecoveryAllowed, invitationIdentityAllowed, invitationSessionAllowed } from "./team-invitation-security.ts";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const VANTELOQ_ROLES = new Set(["admin", "manager", "read_only"]);
@@ -38,6 +38,7 @@ export type PendingTeamInvitation = {
   businessName: string;
   vanteloqRole: "admin" | "manager" | "read_only";
   consoleAccess: boolean;
+  consoleSetupComplete: boolean;
   consoleRole: "admin" | "viewer";
   consoleScopes: string[];
   expiresAt: string;
@@ -119,6 +120,8 @@ export async function pendingTeamInvitation(request: Request, identity: TrustedI
     businessName: owner.business_name,
     vanteloqRole: row.vanteloq_role,
     consoleAccess: row.console_access,
+    consoleSetupComplete: row.console_access && row.status === "accepted" && Boolean(row.accepted_at)
+      && row.acceptance_notice_version === "private-console-access-v1",
     consoleRole: row.console_role,
     consoleScopes: row.console_scopes,
     expiresAt: row.expires_at,
@@ -228,8 +231,9 @@ export async function acceptTeamInvitation(
     const deletion = await getD1().prepare(`SELECT action FROM audit_events
       WHERE resource_id = ? AND organization_id = ? AND action IN ('team_access.deleted', 'team_access.revoked')
       ORDER BY created_at DESC LIMIT 1`).bind(emailUser.id, owner.organization_id).first<{ action: string }>();
-    replaceDeletedIdentity = row.status === "pending" && row.auth_user_id === identity.subject
-      && emailUser.status === "suspended" && deletion?.action === "team_access.deleted";
+    replaceDeletedIdentity = deletedTeamIdentityRecoveryAllowed(
+      row, identity.email, identity.subject, emailUser.status, deletion?.action,
+    );
     if (!replaceDeletedIdentity) throw new ApiError(409, "IDENTITY_CONFLICT", "This email is already attached to another identity.");
   }
   const userHash = (await hashIdentifier(`team-user:${identity.subject}`)).slice(0, 32);
@@ -345,7 +349,7 @@ export async function acceptTeamInvitation(
     businessName: owner.business_name,
     role: row.vanteloq_role,
     consoleActivationUrl: row.console_access
-      ? row.acceptance_notice_version === "private-console-access-v1" ? "https://lexedgeconsole.com/" : `${PRIVATE_CONSOLE_ACTIVATION_URL}?id=${encodeURIComponent(row.id)}`
+      ? row.acceptance_notice_version === "private-console-access-v1" ? null : `${PRIVATE_CONSOLE_ACTIVATION_URL}?id=${encodeURIComponent(row.id)}`
       : null,
   };
 }

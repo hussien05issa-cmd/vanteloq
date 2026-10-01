@@ -44,9 +44,13 @@ export async function POST(request: Request) {
     try {
       const data = event.data && typeof event.data === "object" && !Array.isArray(event.data) ? event.data as Record<string, unknown> : {};
       const object = data.object && typeof data.object === "object" && !Array.isArray(data.object) ? data.object as Record<string, unknown> : {};
+      const invoiceParent = object.parent && typeof object.parent === "object" ? object.parent as Record<string, unknown> : {};
+      const invoiceSubscription = invoiceParent.subscription_details && typeof invoiceParent.subscription_details === "object" ? invoiceParent.subscription_details as Record<string, unknown> : {};
       const subscriptionId = eventType.startsWith("customer.subscription.")
         ? (typeof object.id === "string" ? object.id : "")
-        : eventType === "checkout.session.completed" && typeof object.subscription === "string" ? object.subscription : "";
+        : (eventType === "checkout.session.completed" || eventType === "checkout.session.async_payment_succeeded" || eventType.startsWith("invoice."))
+          ? typeof object.subscription === "string" ? object.subscription : typeof invoiceSubscription.subscription === "string" ? invoiceSubscription.subscription : ""
+          : "";
       if (!subscriptionId) {
         await getDb().update(stripeBillingEvents).set({ status: "ignored", processedAt: new Date() }).where(eq(stripeBillingEvents.eventId, eventId));
         return jsonResponse({ received: true, ignored: true });

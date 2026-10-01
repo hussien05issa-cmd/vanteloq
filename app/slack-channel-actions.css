@@ -1,0 +1,15 @@
+.operating-shell .slack-share-confirmation {
+  flex: 1 0 100%;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--connection-line, #ccd9e7);
+  border-radius: 12px;
+  background: #f1f6fc;
+  color: var(--connection-ink, #19334f);
+  text-align: left;
+}
+.operating-shell .slack-share-confirmation p { margin: 0; color: var(--connection-muted, #49617a); font-size: 13px; line-height: 1.6; }
+.operating-shell .slack-share-confirmation > div { display: flex; gap: 8px; flex-wrap: wrap; }
+.operating-shell .slack-share-confirmation button { min-height: 44px; }

@@ -1,4 +1,13 @@
 "use client";
+import { advisorDefaults, type AdvisorPreferences, type AdvisorCurrentTurn } from "../domain/advisor-personalization";
+import AdvisorPersonalize from "./advisor-personalize";
+import LinkedFilesPanel from "./linked-files-panel";
+import InventoryVehicleWorkspace from "./vehicle-inventory-panel";
+
+import ProviderPrivacyNotice, { ProviderPolicyLinks } from "./provider-privacy-notice";
+import { PROVIDER_PRIVACY_NOTICE_VERSION } from "../domain/provider-privacy";
+import { buildIntegrationCapabilities, type IntegrationCapabilities } from "../domain/integration-capabilities";
+import { dataReadinessStateLabels, type ConnectionDataReadiness } from "../domain/integration-data-readiness";
 
 import "./workspace-base-styles";
 import "./workspace-styles";
@@ -12,22 +21,27 @@ import { documentEmailAccessKey } from "./document-email-client";
 import { isAwaitingSalesRecords } from "../domain/intraday-sales";
 
 import Image from "next/image";
-import { lazy, Suspense, FormEvent, Fragment, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, FormEvent, Fragment, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 const BookLoQWorkspace = lazy(() => import("./bookloq-workspace"));
 const CommunicationsWorkspace = lazy(() => import("./communications-workspace"));
 const CommerceIntelligenceWorkspace = lazy(() => import("./commerce-intelligence-workspace"));
 import type { RetailAdvisorSeed } from "./retail-intelligence-workspace";
 const GrowthWorkspace = lazy(() => import("./growth-workspace"));
+const ForecastingWorkspace = lazy(() => import("./forecasting-workspace"));
+const ForecastPin = lazy(() => import("./forecast-pin"));
 const ScenarioPlanner = lazy(() => import("./scenario-planner"));
-import { connectorNextStep, filterConnectors } from "../domain/connector-guidance";
+import { connectorHealth, connectorNextStep, filterConnectors } from "../domain/connector-guidance";
 import { customerIntegrationAvailability, hasConnectionAttention, type CustomerIntegrationAvailability } from "../domain/integration-availability";
+import ConnectorAvailabilityBadge from "./connector-availability-badge";
 import IntegrationBrandLogo from "./integration-brand-logo";
+import { SlackChannelActions } from "./slack-channel-actions";
 import AutomaticSyncControl, { type AutomaticSyncStatus } from "./automatic-sync-control";
+const ShopifyPrivacyRequests = lazy(() => import("./shopify-privacy-requests"));
 import AdvisorComposer, { canAskAdvisor } from "./advisor-composer";
 import AdvisorThinking from "./advisor-thinking";
 import AdvisorResponse from "./advisor-response";
-import { readAdvisorAnswer } from "./advisor-client";
-import { useAdvisorConsent } from "./advisor-consent";
+import { readAdvisorAnswer, type AdvisorPayload } from "./advisor-client";
+import { useAdvisorConsent, useAdvisorAvailability } from "./advisor-consent";
 import AdvisorPrivacy from "./advisor-privacy";
 import { advisorProviders, type AdvisorMode } from "../domain/advisor-providers";
 import {
@@ -77,6 +91,7 @@ import { FieldLabel } from "./form-primitives";
 
 type View =
   | "Dashboard"
+  | "Forecasting"
   | "Intelligence"
   | "Action Centre"
   | "Business Brief"
@@ -106,7 +121,7 @@ type View =
 const nav: [string, View[]][] = [
   [
     "Command centre",
-    ["Dashboard", "Intelligence", "Action Centre", "Business Brief", "Advisor"],
+    ["Dashboard", "Forecasting", "Intelligence", "Action Centre", "Business Brief", "Advisor"],
   ],
   [
     "Sales and customers",
@@ -134,6 +149,7 @@ const protectedNavigation = [...PROTECTED_NAVIGATION_VIEW_IDS] as View[];
 const allNavigationViews = [...NAVIGATION_VIEW_IDS] as View[];
 
 const navigationGuide: Record<View, { outcome: string; data: string }> = {
+  Forecasting: { outcome: "Plan busy days, stock, promotions and cash with explicit assumptions.", data: "Reviewed source history, operating hours and chronological evaluation." },
   Dashboard: { outcome: "Prioritizes the owner’s current operating picture and exceptions.", data: "Verified sales, margin, cash, inventory and task records." },
   Intelligence: { outcome: "Explains supported changes, confidence and missing evidence.", data: "Metric history, comparisons, provenance and quality checks." },
   "Action Centre": { outcome: "Turns decisions and exceptions into assigned, measurable work.", data: "Owner actions, due dates, assignees and linked evidence." },
@@ -172,7 +188,7 @@ const emptyCommerceCoverage: CanonicalCommerceCoverage = {
   locations: false,
 };
 const universalPosContract = buildProviderFeatureCoverage("normalized-pos", emptyCommerceCoverage);
-type DirectIntegrationProvider = "lightspeed" | "lightspeed-r" | "shopify" | "shopify-pos" | "square" | "clover" | "stripe" | "moneris" | "quickbooks" | "google" | "meta";
+type DirectIntegrationProvider = "lightspeed" | "lightspeed-r" | "shopify" | "shopify-pos" | "square" | "clover" | "stripe" | "moneris" | "quickbooks" | "google" | "meta" | "deel" | "slack";
 const providerSyncRoutes = {
   lightspeed: "/api/v1/integrations/lightspeed/sync",
   "lightspeed-r": "/api/v1/integrations/lightspeed-r/sync",
@@ -182,6 +198,7 @@ const providerSyncRoutes = {
   clover: "/api/v1/integrations/clover/sync",
   stripe: "/api/v1/integrations/stripe/sync",
   moneris: "/api/v1/integrations/moneris/sync",
+  deel: "/api/v1/integrations/deel/sync",
   google: "/api/v1/integrations/google/sync",
   meta: "/api/v1/integrations/meta/sync",
 } as const;
@@ -189,6 +206,7 @@ const providerSyncRoutes = {
 const viewPermission: Partial<Record<View, string>> = {
   Dashboard: "dashboard.view",
   Intelligence: "insights.view",
+  Forecasting: "sales.view",
   "Action Centre": "operations.tasks",
   "Business Brief": "dashboard.view",
   Advisor: "insights.view",
@@ -695,8 +713,11 @@ export default function VanteloqApp({
   const billingEntitlements = useBillingEntitlements();
   const subscriptionFeatures = billingEntitlements.features;
   const standaloneBookloq = billingEntitlements.plan === "bookloq";
-  const [view, setView] = useState<View>(() => billingEntitlements.plan === "bookloq" ? "BookLoQ" : "Dashboard");
+  const [view, setView] = useState<View>(() => typeof window !== "undefined" && new URLSearchParams(window.location.search).get("linkedFiles") === "connected" ? "Documents" : billingEntitlements.plan === "bookloq" ? "BookLoQ" : "Dashboard");
   const [workspaceName, setWorkspaceName] = useState(organizationName);
+  const [advisorScope,setAdvisorScope]=useState("");
+  const advisorConsent=useAdvisorConsent(apiFetch,advisorScope,view==="Advisor");
+  const advisorAvailability=useAdvisorAvailability(apiFetch,advisorScope,view==="Advisor");
   const [logoVersion, setLogoVersion] = useState<number | null>(null);
   const [data, setData] = useState<CommandCentre | null>(null);
   const [currency, setCurrency] = useState("CAD");
@@ -758,6 +779,7 @@ export default function VanteloqApp({
           body.error?.message ?? "Unable to load the command centre.",
         );
       setData({ ...body.commandCentre, operatingSystem: body.operatingSystem });
+      setAdvisorScope(body.organization.id);
       setCurrency(body.organization.currency);
       setBusinessIndustry(body.organization.industry || "Other");
       setAppRole(body.organization.role ?? "employee");
@@ -1203,11 +1225,13 @@ export default function VanteloqApp({
           <LoadingState />
         ) : error ? (
           <FailureState message={error} retry={refresh} />
-        ) : data?.source.syncing && ["Dashboard", "Intelligence", "Business Brief", "Scenario Planner", "Operations"].includes(view) ? (
+        ) : data?.source.syncing && ["Intelligence", "Business Brief", "Scenario Planner", "Operations"].includes(view) ? (
           <SourceSyncingState refresh={refreshWorkspace} />
         ) : (
           <Suspense fallback={<WorkspaceSkeleton label="Loading this workspace"/>}><Workspace
             view={view}
+            advisorConsent={advisorConsent}
+            advisorAvailability={advisorAvailability}
             data={data!}
             permissions={appPermissions}
             emailAccessKey={emailAccessKey}
@@ -1353,6 +1377,8 @@ function NavigationSettingsPanel({
 
 function Workspace({
   view,
+  advisorConsent,
+  advisorAvailability,
   data,
   permissions,
   emailAccessKey,
@@ -1373,6 +1399,8 @@ function Workspace({
   navigationSettings,
 }: {
   view: View;
+  advisorConsent: ReturnType<typeof useAdvisorConsent>;
+  advisorAvailability: ReturnType<typeof useAdvisorAvailability>;
   data: CommandCentre;
   permissions: string[];
   emailAccessKey: string;
@@ -1398,9 +1426,11 @@ function Workspace({
   const [retailAdvisorSeed, setRetailAdvisorSeed] = useState<RetailAdvisorSeed | null>(null);
   const askRetailAdvisor = (seed: RetailAdvisorSeed) => { setRetailAdvisorSeed(seed); navigate("Advisor"); };
   useEffect(() => { if (view === "Advisor" && retailAdvisorSeed) queueMicrotask(() => setRetailAdvisorSeed(null)); }, [view, retailAdvisorSeed]);
+  if (view === "Forecasting") return <ForecastingWorkspace activeLocationId={activeLocationId} currency={currency} navigate={navigate}/>;
   if (view === "Dashboard")
     return (
       <Overview
+        canForecast={permissions.includes("sales.view") && subscriptionFeatures.includes("forecasting.revenue")}
         onDrill={(view,period)=>{setExecutiveDrill(period);navigate(view);}}
         activeLocationId={activeLocationId}
         accountName={accountName}
@@ -1461,7 +1491,7 @@ function Workspace({
       />
     );
   if (view === "Advisor")
-    return <Advisor key={activeLocationId ?? "organization"} data={data} navigate={navigate} createTask={createTask} activeLocationId={activeLocationId} retailSeed={retailAdvisorSeed?.locationId === activeLocationId ? retailAdvisorSeed : null} />;
+    return <Advisor savedConsent={advisorConsent} availability={advisorAvailability} key={`${advisorConsent.scope}:${activeLocationId ?? "organization"}`} data={data} navigate={navigate} createTask={createTask} activeLocationId={activeLocationId} retailSeed={retailAdvisorSeed?.locationId === activeLocationId ? retailAdvisorSeed : null} />;
   if (view === "Reports")
     return (
       <ReportsWorkspace
@@ -1475,7 +1505,9 @@ function Workspace({
         onOpenRetail={() => { setIntelligenceTab("retail"); navigate("Intelligence"); }}
       />
     );
-  if (view === "Sales" || view === "Inventory" || view === "Customers" || view === "Suppliers")
+  if (view === "Inventory")
+    return <InventoryVehicleWorkspace key={activeLocationId ?? "all"} industry={businessIndustry} activeLocationId={activeLocationId}><CommerceIntelligenceWorkspace initialPeriod={executiveDrill} mode="Inventory" currency={currency} timeZone={data.today.timeZone} activeLocationId={activeLocationId} navigate={navigate} createTask={createTask} onAsk={askRetailAdvisor}/></InventoryVehicleWorkspace>;
+  if (view === "Sales" || view === "Customers" || view === "Suppliers")
     return <CommerceIntelligenceWorkspace initialPeriod={executiveDrill} key={view + activeLocationId + (executiveDrill?.from??"") + (executiveDrill?.to??"")} mode={view} currency={currency} timeZone={data.today.timeZone} activeLocationId={activeLocationId} navigate={navigate} createTask={createTask} onAsk={askRetailAdvisor} />;
   if (view === "Purchase Orders")
     return (
@@ -1622,7 +1654,7 @@ function CommerceIntelligenceRail({ data, currency, paymentRange, setPaymentRang
               {forecast.points.map((point) => <i key={point.date} style={{ height: `${Math.max(12, point.netSalesCents / Math.max(...forecast.points.map((item) => item.netSalesCents), 1) * 100)}%` }} title={`${formatBusinessDate(point.date)}: ${money(point.netSalesCents, currency)}`} />)}
             </div>
             <small>{forecast.method}</small>
-          </> : <div className="intel-empty"><b>{forecast.unavailableReason ? "Recent sales required" : `${Math.max(0, forecast.requiredDays - forecast.verifiedDays)} more verified days needed`}</b><span>{forecast.unavailableReason ?? `Vanteloq will not forecast until at least ${forecast.requiredDays} distinct sales days are available.`}</span></div>}
+          </> : <div className="intel-empty"><b>{forecast.unavailableReason ? "Review in Forecasting" : "Review planning inputs"}</b><span>{forecast.unavailableReason ?? `Vanteloq will not forecast until at least ${forecast.requiredDays} distinct sales days are available.`}</span></div>}
         </article>
       </section>
     </>
@@ -1681,17 +1713,18 @@ function LiveSalesPanel({ data, currency, paymentRange, setPaymentRange, compact
   );
 }
 
-export function Overview({ onDrill, activeLocationId, accountName = "", data, currency, industry, navigate, createTask, paymentRange, setPaymentRange }: { onDrill?: (view:"Sales"|"BookLoQ"|"Integrations"|"Intelligence",period?:{from:string;to:string})=>void; activeLocationId?: string | null; accountName?: string; data: CommandCentre; currency: string; industry?: string | null; navigate: (view: View) => void; createTask: (seed: TaskSeed) => void; paymentRange: PaymentRange; setPaymentRange: (range: PaymentRange) => void }) {
+export function Overview({ canForecast=false, onDrill, activeLocationId, accountName = "", data, currency, industry, navigate, createTask, paymentRange, setPaymentRange }: { canForecast?:boolean; onDrill?: (view:"Sales"|"BookLoQ"|"Integrations"|"Intelligence",period?:{from:string;to:string})=>void; activeLocationId?: string | null; accountName?: string; data: CommandCentre; currency: string; industry?: string | null; navigate: (view: View) => void; createTask: (seed: TaskSeed) => void; paymentRange: PaymentRange; setPaymentRange: (range: PaymentRange) => void }) {
 
   const sourceName = data.liveSource.accountName || (data.liveSource.provider ? providerLabel(data.liveSource.provider) : "the connected source");
   return (
     <div className="content command-page">
       
-      <DashboardGreeting accountName={accountName} sourceName={sourceName} latestBusinessDate={data.source.latestBusinessDate}
+      <DashboardGreeting syncing={Boolean(data.source.syncing)} accountName={accountName} sourceName={sourceName} latestBusinessDate={data.source.latestBusinessDate}
         lastSuccessfulSyncAt={data.liveSource.lastSuccessfulSyncAt} needsAttention={Boolean(data.liveSource.lastErrorCode)} onConnections={() => navigate("Integrations")}/>
-      <ExecutiveOverview currency={currency} industry={industry} activeLocationId={activeLocationId} navigate={onDrill??navigate} refreshKey={data.liveSource.lastSuccessfulSyncAt}/>
-      <details className="dashboard-current-day-details"><summary>Today’s Sales Details<span>Payment mix, transactions and hourly activity</span></summary><LiveSalesPanel data={data} currency={currency} paymentRange={paymentRange} setPaymentRange={setPaymentRange} compact/></details>
-      {data.insights[0] && (
+      {canForecast && <Suspense fallback={null}><ForecastPin currency={currency} locationId={activeLocationId??null} onOpen={()=>navigate("Forecasting")}/></Suspense>}
+      <ExecutiveOverview currency={currency} industry={industry} activeLocationId={activeLocationId} navigate={onDrill??navigate} refreshKey={`${data.liveSource.lastSuccessfulSyncAt??""}:${Boolean(data.source.syncing)}`}/>
+      {!data.source.syncing&&<details className="dashboard-current-day-details"><summary>Today’s Sales Details<span>Payment mix, transactions and hourly activity</span></summary><LiveSalesPanel data={data} currency={currency} paymentRange={paymentRange} setPaymentRange={setPaymentRange} compact/></details>}
+      {!data.source.syncing&&data.insights[0] && (
         <section className="owner-priority-strip">
           <div><p>TODAY&apos;S PRIORITY</p><h3>{data.insights[0].title}</h3><span>{data.insights[0].recommendedAction}</span></div>
           <button onClick={() => createTask({ ...data.insights[0].suggestedTask, sourceType: "insight", sourceRef: data.insights[0].id })}>Create an action →</button>
@@ -2086,7 +2119,7 @@ function TaskCentre({
               >
                 <button
                   className="check-task"
-                  disabled={updating !== null}
+                  disabled={updating !== null || task.sourceRef?.startsWith("shopify-privacy:")}
                   aria-label={`${task.status === "done" ? "Reopen" : "Complete"} ${task.title}`}
                   onClick={() =>
                     void update(task, task.status === "done" ? "open" : "done")
@@ -2105,6 +2138,7 @@ function TaskCentre({
                     <b>{task.title}</b>
                   </div>
                   {task.detail && <p>{task.detail}</p>}
+                  {task.sourceRef?.startsWith("shopify-privacy:") && <a className="task-source-link" href="/privacy-requests">Open privacy requests</a>}
                   <small>
                     {task.assignee}
                     {task.dueDate ? ` · Due ${task.dueDate}` : " · No due date"}
@@ -2114,7 +2148,7 @@ function TaskCentre({
                 </div>
                 <select
                   aria-label={`Status for ${task.title}`}
-                  disabled={updating !== null}
+                  disabled={updating !== null || task.sourceRef?.startsWith("shopify-privacy:")}
                   value={task.status}
                   onChange={(event) =>
                     void update(task, event.target.value as Task["status"])
@@ -2237,6 +2271,7 @@ function TaskComposer({
 }
 
 type IntegrationConnection = IntegrationCatalogEntry & {
+  capabilities?: IntegrationCapabilities;
   customerAvailability?: CustomerIntegrationAvailability;
   status: string;
   maskedAccountRef: string | null;
@@ -2259,7 +2294,7 @@ type IntegrationConnection = IntegrationCatalogEntry & {
     resourceSelectionVersion: number;
     resourceSelections: Array<{
       id: string;
-      dataset: "google_analytics" | "google_search_console" | "meta_ads";
+      dataset: "google_analytics" | "google_search_console" | "google_business_profile" | "google_ads" | "meta_ads";
       externalResourceRef: string;
       name: string;
       scopeKind: "organization" | "location";
@@ -2281,6 +2316,7 @@ type IntegrationConnection = IntegrationCatalogEntry & {
     syncActive: boolean;
     automaticSync?: AutomaticSyncStatus | null;
     canonicalCoverage: CanonicalCommerceCoverage;
+    dataReadiness?: ConnectionDataReadiness;
     featureCoverage: ProviderFeatureCoverage[];
     reportCatalog: {
       providerReports: Array<{ id: string; label: string; status: "ready" | "needs_data"; dataNeeded: string[] }>;
@@ -2375,8 +2411,13 @@ function DataHub({
   const [shopifyShop, setShopifyShop] = useState("");
   const [monerisFormOpen, setMonerisFormOpen] = useState(false);
   const [monerisDraft, setMonerisDraft] = useState({ accountName: "", environment: "sandbox", merchantId: "", clientId: "", clientSecret: "", scope: "payment.read", accepted: false });
+  const [privacyNoticeProvider, setPrivacyNoticeProvider] = useState<string | null>(null);
+  const privacyNoticeResolver = useRef<((accepted: boolean) => void) | null>(null);
+  useEffect(() => () => { privacyNoticeResolver.current?.(false); }, []);
   const [quickBooksConsentOpen, setQuickBooksConsentOpen] = useState(false);
   const [quickBooksConsentAccepted, setQuickBooksConsentAccepted] = useState(false);
+  const [deelConsentOpen, setDeelConsentOpen] = useState(false);
+  const [deelConsentAccepted, setDeelConsentAccepted] = useState(false);
   const [sampleResult, setSampleResult] = useState<null | {
     dataPromotionEnabled?: boolean;
     backfillComplete?: boolean;
@@ -2495,6 +2536,17 @@ function DataHub({
     connectionId?: string,
     extraBody?: Record<string, unknown>,
   ) => {
+    const needsPrivacy = action === "authorize" || action === "connect";
+    let providerPrivacyAccepted = false;
+    if (needsPrivacy) {
+      providerPrivacyAccepted = provider === "quickbooks" ? quickBooksConsentAccepted : provider === "deel" ? deelConsentAccepted : provider === "moneris" ? monerisDraft.accepted : false;
+      if (!providerPrivacyAccepted) providerPrivacyAccepted = await new Promise<boolean>(resolve => {
+        privacyNoticeResolver.current?.(false);
+        privacyNoticeResolver.current = resolve;
+        setPrivacyNoticeProvider(provider);
+      });
+      if (!providerPrivacyAccepted) return null;
+    }
     const actionKey = integrationActionKey(provider, connectionId);
     setProviderActions((current) => ({ ...current, [actionKey]: action }));
     try {
@@ -2505,6 +2557,7 @@ function DataHub({
           reason: (provider === "lightspeed" || provider === "lightspeed-r" || provider === "shopify" || provider === "shopify-pos" || provider === "square" || provider === "clover") && action === "sync" ? "manual" : undefined,
           connectionId,
           ...extraBody,
+          ...(needsPrivacy ? { providerPrivacyAccepted, providerPrivacyNoticeVersion: PROVIDER_PRIVACY_NOTICE_VERSION } : {}),
         }),
       });
       const body = await response.json();
@@ -2542,6 +2595,34 @@ function DataHub({
       },
     );
     if (body?.authorizationUrl) window.location.assign(body.authorizationUrl);
+  };
+  const connectDeel = async () => {
+    const body = await providerPost(
+      "deel",
+      "/api/v1/integrations/deel/authorize",
+      "authorize",
+      undefined,
+      { confirmedAggregatePayrollOnly: deelConsentAccepted },
+    );
+    if (body?.authorizationUrl) window.location.assign(body.authorizationUrl);
+  };
+  const syncDeelConnection = async (connectionId: string) => {
+    const body = await providerPost("deel", providerSyncRoutes.deel, "sync", connectionId);
+    if (!body) return;
+    showNotice(body.nextStep ?? "Finalized aggregate payroll evidence was staged for review.");
+    await loadConnections();
+  };
+  const testSlackConnection = async (connectionId: string) => {
+    const body = await providerPost("slack", "/api/v1/integrations/slack/test-notification", "test", connectionId);
+    if (!body) return;
+    showNotice("Slack accepted the fixed, data-free connection test.");
+    await loadConnections();
+  };
+  const shareSlackWorkspace = async (connectionId: string) => {
+    const body = await providerPost("slack", "/api/v1/integrations/slack/share-workspace", "share", connectionId, { confirmed: true });
+    if (!body) return false;
+    showNotice("Workspace link sent to the approved Slack channel. No business records were shared.");
+    return true;
   };
   const connectShopify = async (provider: "shopify" | "shopify-pos") => {
     const body = await providerPost(provider, `/api/v1/integrations/${provider}/authorize`, "authorize", undefined, { shop: shopifyShop });
@@ -2816,7 +2897,7 @@ function DataHub({
       setSampleResult(null);
       if (provider !== "stripe") setOutletData(null);
     }
-    showNotice(provider === "quickbooks" && typeof body.message === "string" ? body.message : `${providerLabel} disconnected`);
+    showNotice(typeof body.message === "string" ? body.message : `${providerLabel} disconnected`);
     await loadConnections();
   };
   const loadProviderLocations = async (provider: "lightspeed" | "lightspeed-r" | "shopify" | "shopify-pos" | "square" | "clover", connectionId?: string) => {
@@ -2884,6 +2965,7 @@ function DataHub({
   const filteredProviders = filterConnectors(providerRows, providerQuery, providerCategory);
   return (
     <div className="content data-hub">
+      {privacyNoticeProvider && <ProviderPrivacyNotice key={privacyNoticeProvider} provider={privacyNoticeProvider} onComplete={accepted => { privacyNoticeResolver.current?.(accepted); privacyNoticeResolver.current = null; setPrivacyNoticeProvider(null); }}/>}
       <section className="page-intro">
         <div>
           <p>CONNECTIONS AND DATA</p>
@@ -2913,6 +2995,7 @@ function DataHub({
           </button>
         </div>
       </section>
+      <Suspense fallback={null}><ShopifyPrivacyRequests quietUnauthorized /></Suspense>
       {tab === "import" ? (
         <DailyImport refresh={refresh} showNotice={showNotice} />
       ) : (
@@ -2963,8 +3046,11 @@ function DataHub({
               const isMoneris = provider.id === "moneris";
               const isQuickBooks = provider.id === "quickbooks";
               const isPlaid = provider.id === "plaid";
+              const isDeel = provider.id === "deel";
+              const isSlack = provider.id === "slack";
               const isMarketingProvider = provider.id === "google" || provider.id === "meta";
               const supportsMultipleAccounts = supportsMultipleProviderAccounts(provider.id);
+              const supportsConnectionControls = supportsMultipleAccounts || isDeel || isSlack;
               const customerAvailability = provider.customerAvailability ?? customerIntegrationAvailability(provider);
               const providerComingSoon = customerAvailability.comingSoon;
               const hasSavedConnection = Boolean(provider.connections?.length) || connected || provider.status === "error";
@@ -2979,6 +3065,8 @@ function DataHub({
               const anyProviderAction = Object.keys(providerActions).some((key) => key.startsWith(`${provider.id}:`));
               const configured = provider.providerReadiness?.credentialsConfigured === true;
               const nextStep = connectorNextStep(provider, providerEntitled, canManageProvider);
+              const health = connectorHealth(provider);
+              const capabilities = provider.capabilities ?? buildIntegrationCapabilities(provider);
               const disabledReason = !customerAvailability.canStartConnection
                 ? "Coming Soon"
                 : !providerEntitled ? `${providerPlanLabel} required for this connection.`
@@ -2986,26 +3074,26 @@ function DataHub({
                 : !configured ? "This connection is temporarily unavailable. Contact support for help." : "";
 
               return (
-              <article className={`integration-card${showPlanRequirement ? " subscription-locked" : ""}`} key={provider.id}>
+              <article className={`integration-card${showPlanRequirement ? " subscription-locked" : ""}`} data-provider={provider.id} key={provider.id}>
                 <div className="integration-card-head">
                   <IntegrationBrandLogo name={provider.name} />
                   <div className="integration-card-labels">
                     <span className="integration-type">{provider.category}</span>
-                    {providerComingSoon && !hasSavedConnection && <span className="integration-coming-soon">Coming Soon</span>}
+                    {!hasSavedConnection && <ConnectorAvailabilityBadge available={!providerComingSoon}/>}
                     {showPlanRequirement && <span className="integration-coming-soon">{providerPlanLabel} required</span>}
                   </div>
                 </div>
                 <h3>{provider.name}</h3>
                 <div className="connector-next-step"><small>NEXT STEP</small><b>{connectionsLoading ? "Checking status" : nextStep.stage}</b><p>{connectionsLoading ? "Your existing access and records are unchanged." : nextStep.detail}</p></div>
-                <p>{provider.activationRequirement}</p>
-                <details className="integration-enablement"><summary>What this connection enables</summary><p><b>Features</b><span>{integrationCategoryGuide[provider.category].enables}</span></p><p><b>Data required</b><span>{integrationCategoryGuide[provider.category].data}</span></p></details>
-                {(provider.category === "Point of sale" || provider.id === "shopify") && <details className="integration-feature-checklist"><summary>Feature and data checklist</summary>{provider.featureCoverage.map((feature) => <div key={feature.id}><span className={`feature-state ${feature.status === "ready" ? "available" : "needs-data"}`}>{feature.status === "ready" ? "Available" : "Needs data"}</span><p><b>{feature.label}</b><small>{feature.insight}</small><em>{feature.status === "ready" ? `Verified: ${feature.dataUsed.join(", ")}` : `Missing: ${feature.dataNeeded.join(", ")}`}</em></p></div>)}</details>}
+                <details className="integration-requirements"><summary>Setup Requirements</summary><p>{provider.activationRequirement}</p></details>
+                <details className="integration-enablement"><summary>What this connection enables</summary><p>{capabilities.summary}</p>{capabilities.records.length > 0 && <p><b>{capabilities.direction === "outbound" ? "Destination" : "Supported records"}</b><span>{capabilities.records.map(record => record.label).join(", ")}</span></p>}{capabilities.freshness.model !== "not_applicable" && <p><b>Updates</b><span>{capabilities.freshness.detail}</span></p>}{capabilities.limitations.map(limit => <p key={limit}>{limit}</p>)}</details>
+                {(provider.category === "Point of sale" || provider.id === "shopify") && <details className="integration-feature-checklist"><summary>Feature and data checklist</summary><p>Each account is checked separately. Present fields do not prove a complete reporting period. Open an account below to review field coverage.</p>{capabilities.dataReadiness.map((feature) => <div key={feature.id}><span className={`feature-state ${feature.ready ? "available" : "needs-data"}`}>{feature.ready ? "Scope verified" : dataReadinessStateLabels[feature.state]}</span><p><b>{feature.label}</b><small>{feature.reason}</small>{feature.requiredEvidence.length > 0 && <em>{feature.requiredEvidence.join(". ")}</em>}</p></div>)}</details>}
                 {(connected || repairRequired) && provider.maskedAccountRef && (
                   <div className="connected-source" role="status">
                     <span>{repairRequired ? "Connection needs attention" : "Connected source"}</span>
                     <b>{provider.externalAccountName || "Verified provider account"}</b>
                     <small>Protected reference {provider.maskedAccountRef}</small>
-                    {provider.lastSuccessfulSyncAt && <small>Last synchronized {new Date(provider.lastSuccessfulSyncAt).toLocaleString("en-CA")}</small>}
+                    {health.lastSuccessfulSyncAt && <small>Last synchronized {new Date(health.lastSuccessfulSyncAt).toLocaleString("en-CA")}</small>}
                   </div>
                 )}
                 {customerAvailability.previewAccess && <details className="integration-enablement"><summary>Preview Setup Details</summary>
@@ -3015,8 +3103,16 @@ function DataHub({
                 {isQuickBooks && quickBooksConsentOpen && <form className="moneris-connect-form" onSubmit={(event) => { event.preventDefault(); void connectQuickBooks(); }}>
                   <header><b>Connect a QuickBooks Online company</b><span>Verify your company and save its authorization securely. Accounting import is not available yet, so this connection does not update your reports.</span></header>
                   <label className="moneris-consent"><input type="checkbox" checked={quickBooksConsentAccepted} required onChange={(event) => setQuickBooksConsentAccepted(event.target.checked)} /><span>I authorize Vanteloq to receive the selected QuickBooks company identifier, company name, authorization status, and future read only accounting records for mapping, reconciliation, and reporting. Vanteloq will not create or change QuickBooks transactions during this stage.</span></label>
+                  <ProviderPolicyLinks provider="quickbooks"/>
                   <small>Intuit will show its own company selection and permission screen next. You can disconnect later to revoke the authorization and delete the stored token.</small>
                   <footer><button type="button" onClick={() => { setQuickBooksConsentOpen(false); setQuickBooksConsentAccepted(false); }}>Cancel</button><button type="submit" className="primary" disabled={!canManageProvider || providerAction === "authorize" || !quickBooksConsentAccepted}>{providerAction === "authorize" ? "Opening QuickBooks…" : "Continue to Intuit"}</button></footer>
+                </form>}
+                {isDeel && deelConsentOpen && <form className="moneris-connect-form" onSubmit={(event) => { event.preventDefault(); void connectDeel(); }}>
+                  <header><b>Connect aggregate Deel payroll</b><span>Vanteloq stages finalized payroll-cycle totals for BookLoQ review. It does not store employee-level payroll records.</span></header>
+                  <label className="moneris-consent"><input type="checkbox" checked={deelConsentAccepted} required onChange={(event) => setDeelConsentAccepted(event.target.checked)} /><span>I authorize Vanteloq to read legal entity names, finalized payroll-cycle dates, and currency-level payroll category totals. Employee names, bank details, payslips, contract identifiers, and individual compensation are excluded.</span></label>
+                  <ProviderPolicyLinks provider="deel"/>
+                  <small>Imported totals remain staged and do not update labour KPIs or accounting reports automatically. You can disconnect and delete the staged aggregates later.</small>
+                  <footer><button type="button" onClick={() => { setDeelConsentOpen(false); setDeelConsentAccepted(false); }}>Cancel</button><button type="submit" className="primary" disabled={!canManageProvider || providerAction === "authorize" || !deelConsentAccepted}>{providerAction === "authorize" ? "Opening Deel…" : "Continue to Deel"}</button></footer>
                 </form>}
                 {isMoneris && monerisFormOpen && <form className="moneris-connect-form" onSubmit={(event) => { event.preventDefault(); void connectMoneris(); }}>
                   <header><b>Connect a Moneris merchant</b><span>Read-only payment history for reconciliation and cash timing.</span></header>
@@ -3027,6 +3123,7 @@ function DataHub({
                   <label><span>Client secret</span><input type="password" value={monerisDraft.clientSecret} maxLength={512} autoComplete="new-password" required onChange={(event) => setMonerisDraft((current) => ({ ...current, clientSecret: event.target.value }))} /></label>
                   <label><span>Read scope</span><input value="payment.read" readOnly /><small>Vanteloq only requests permission to read payments.</small></label>
                   <label className="moneris-consent"><input type="checkbox" checked={monerisDraft.accepted} required onChange={(event) => setMonerisDraft((current) => ({ ...current, accepted: event.target.checked }))} /><span>I authorize Vanteloq to retrieve payment amounts, currency, status, timestamps and settlement references for reconciliation. No raw card data is requested or stored.</span></label>
+                  <ProviderPolicyLinks provider="moneris"/>
                   <footer><button type="button" onClick={() => setMonerisFormOpen(false)}>Cancel</button><button type="submit" className="primary" disabled={!canManageProvider || providerAction === "connect" || !monerisDraft.accepted}>{providerAction === "connect" ? "Validating…" : "Validate and connect"}</button></footer>
                 </form>}
                 {(provider.id === "shopify" || provider.id === "shopify-pos") && shopifyConnectProvider === provider.id && <form className="moneris-connect-form" onSubmit={(event) => { event.preventDefault(); void connectShopify(provider.id as "shopify" | "shopify-pos"); }}>
@@ -3034,8 +3131,8 @@ function DataHub({
                   <label><span>Store domain</span><input value={shopifyShop} inputMode="url" autoComplete="url" maxLength={255} placeholder="your-store.myshopify.com" pattern="[A-Za-z0-9][A-Za-z0-9-]*\.myshopify\.com" required onChange={(event) => setShopifyShop(event.target.value.trim().toLowerCase())} /><small>Vanteloq requests read-only access to {provider.id === "shopify" ? "online orders, refunds, products, inventory, locations, and authorized customers" : "POS orders, products, inventory, locations, and authorized customers"}.</small></label>
                   <footer><button type="button" onClick={() => setShopifyConnectProvider(null)}>Cancel</button><button type="submit" className="primary" disabled={!canManageProvider || providerAction === "authorize"}>{providerAction === "authorize" ? "Opening Shopify…" : "Continue to Shopify"}</button></footer>
                 </form>}
-                {supportsMultipleAccounts && Boolean(provider.connections?.length) && (
-                  <details className="integration-enablement" open={!customerAvailability.comingSoon || hasConnectionAttention(provider)}>
+                {supportsConnectionControls && Boolean(provider.connections?.length) && (
+                  <details className="integration-enablement" open={hasConnectionAttention(provider)}>
                     <summary>Connected Accounts ({provider.connections!.length})</summary>
                   <div className="provider-account-list" aria-label={`${provider.name} provider accounts`}>
                     {provider.connections!.map((connection, index) => {
@@ -3044,25 +3141,26 @@ function DataHub({
                       const resourceError = marketingResourceErrors[connectionKey];
                       const resourceErrorId = `marketing-resource-error-${connection.id}`;
                       const accountLabel = connection.externalAccountName || connection.maskedAccountRef || `Account ${index + 1}`;
+                      const accountHealth = connectorHealth({ ...provider, ...connection, id: provider.id, connections: undefined });
                       return <article key={connection.id}>
                         <div>
                           <span>Account {index + 1}</span>
                           <b>{connection.externalAccountName || `${provider.name} account`}</b>
                           <small>{connection.maskedAccountRef ? `Protected reference ${connection.maskedAccountRef}` : connection.status === "pending" ? "Authorization pending" : "Protected provider identity"}</small>
-                          {connection.lastSuccessfulSyncAt && <small>Last synced {formatRelativeSync(connection.lastSuccessfulSyncAt)}</small>}
+                          {accountHealth.lastSuccessfulSyncAt && <small>Last synced {formatRelativeSync(accountHealth.lastSuccessfulSyncAt)}</small>}
                           {connection.dataPromotionStatus !== "blocked" && <small>{connection.reportingEnvironment === "sandbox" ? "Sandbox · excluded from reports" : connection.reportingEnvironment === "unverified" ? "Environment verification required" : connection.dataPromotionStatus === "approved" ? "Included in reports" : "Review before reporting"}</small>}
                           {isMarketingProvider && <small>{connection.resourceSelections.length
                             ? `${connection.resourceSelections.length} exact resource${connection.resourceSelections.length === 1 ? "" : "s"} selected`
                             : "No provider resources selected"}</small>}
-                          {(provider.category === "Point of sale" || provider.id === "shopify") && <small>{connection.reportCatalog.providerReports.filter((report) => report.status === "ready").length} of {connection.reportCatalog.providerReports.length} source-specific reports ready</small>}
+                          {(provider.category === "Point of sale" || provider.id === "shopify") && connection.dataReadiness && <details className="integration-feature-checklist"><summary>Imported fields and report requirements</summary><p>{connection.dataReadiness.boundary}</p>{connection.dataReadiness.observedPeriod.from && <small>Observed sales dates: {connection.dataReadiness.observedPeriod.from} to {connection.dataReadiness.observedPeriod.to}. Gaps and omitted history may remain.</small>}{connection.dataReadiness.fields.map(field => <div key={field.id}><span className={`feature-state ${field.state === "supported" ? "available" : "needs-data"}`}>{dataReadinessStateLabels[field.state]}</span><p><b>{field.label}</b>{field.records !== null && field.populated !== null && <small>{field.populated} of {field.records} imported records contain this field</small>}</p></div>)}{connection.dataReadiness.metrics.map(metric => <p key={metric.id}><b>{metric.label}</b><small>{metric.reason}</small></p>)}</details>}
                           {connection.lastErrorCode && <small role="alert">Needs attention: {humanizeIdentifier(connection.lastErrorCode)}</small>}
                         </div>
-                        <span className={`provider-account-state ${resourceError?.reconnect ? "error" : connection.status}`}>{resourceError?.reconnect ? "Authorization needed" : humanizeIdentifier(connection.status)}</span>
+                        <span className="provider-account-state" data-health-tone={resourceError?.reconnect ? "warning" : accountHealth.tone}>{resourceError?.reconnect ? "Authorization needed" : accountHealth.label}</span>
                         {isMarketingProvider && connection.sampleSummary && <section className="marketing-sample-review" aria-label={`Warning-free ${provider.name} sample review`}>
                           <header><div><b>Warning-free exact-resource sample</b><small>Completed {connection.sampleSummary.completedAt ? new Date(connection.sampleSummary.completedAt).toLocaleString("en-CA") : "recently"} · version {connection.sampleSummary.selectionVersion}</small></div><strong>{connection.sampleSummary.recordsStaged} measurements</strong></header>
                           <div>{connection.resourceSelections.map((selection) => {
                             const result = connection.sampleSummary?.resourceResults.find((item) => item.resourceSelectionId === selection.id);
-                            return <span key={selection.id}><b>{selection.name}</b><small>{humanizeIdentifier(selection.dataset)} · {selection.scopeKind === "location" ? "Owned location scope" : "Organization-wide scope"}</small><em>{result?.recordsRead ?? 0} records · {result?.warningCodes.length ?? 0} warnings</em></span>;
+                            return <span key={selection.id}><b>{selection.name}</b><small>{humanizeIdentifier(selection.dataset)} · {selection.scopeKind === "location" ? "Owned location scope" : "Organization-wide scope"}</small><em>{selection.dataset === "google_business_profile" ? "On-demand reporting · Measurements are not stored" : `${result?.recordsRead ?? 0} records · ${result?.warningCodes.length ?? 0} warnings`}</em></span>;
                           })}</div>
                           <label><input type="checkbox" checked={reviewedMarketingSamples[connection.sampleSummary.runId] === true} onChange={(event) => setReviewedMarketingSamples((current) => ({ ...current, [connection.sampleSummary!.runId]: event.target.checked }))} />I reviewed every selected resource, scope, record count, and warning total above.</label>
                         </section>}
@@ -3100,7 +3198,7 @@ function DataHub({
                                 type="button"
                                 onClick={() => void syncMarketingProvider(provider.id as "google" | "meta", connection)}
                                 disabled={!canManageProvider || Boolean(connectionAction) || !connection.syncEligible}
-                                title={!connection.syncEligible ? "Choose at least one exact provider resource before synchronization." : undefined}
+                                title={!connection.syncEligible ? provider.id === "google" ? "Choose Analytics, Search Console or Ads for synchronization. Selected Business Profile reports are available on demand." : "Choose at least one exact provider resource before synchronization." : undefined}
                               >{connectionAction === "sync" ? "Syncing…" : connection.dataPromotionStatus === "approved" ? "Sync now" : "Run sample"}</button>
                               {connection.dataPromotionStatus === "staging" && connection.sampleSummary && <button
                                 type="button"
@@ -3111,7 +3209,17 @@ function DataHub({
                                 disabled={!canManageProvider || Boolean(connectionAction) || reviewedMarketingSamples[connection.sampleSummary.runId] !== true}
                                 title={reviewedMarketingSamples[connection.sampleSummary.runId] === true ? undefined : "Review the visible exact-resource sample and confirm it first."}
                               >{connectionAction === "approve" ? "Approving…" : "Approve reviewed sample"}</button>}
-                            </> : <button
+                            </> : isSlack ? <SlackChannelActions
+                              destination={connection.externalAccountName || "the approved channel"}
+                              action={connectionAction}
+                              disabled={!canManageProvider || Boolean(connectionAction)}
+                              onTest={() => void testSlackConnection(connection.id)}
+                              onShare={() => shareSlackWorkspace(connection.id)}
+                            /> : isDeel ? <button
+                              type="button"
+                              onClick={() => void syncDeelConnection(connection.id)}
+                              disabled={!canManageProvider || Boolean(connectionAction) || connection.syncActive}
+                            >{connectionAction === "sync" || connection.syncActive ? "Syncing…" : "Stage finalized totals"}</button> : <button
                               type="button"
                               onClick={() => void stageProviderSample(actionableProvider as "lightspeed" | "lightspeed-r" | "shopify" | "shopify-pos" | "square" | "clover" | "stripe" | "moneris", connection.id, connection.lastSuccessfulSyncAt)}
                               disabled={!canManageProvider || Boolean(connectionAction) || connection.syncActive}
@@ -3160,11 +3268,11 @@ function DataHub({
                 )}
                 <div className="integration-card-footer">
                   <div>
-                    <span className={`status ${connected ? "" : repairRequired ? "repair" : "planned"}`}>
+                    <span className={`status ${connected ? "" : repairRequired ? "repair" : "planned"}`} data-health-tone={repairRequired ? "warning" : health.tone}>
                       {repairRequired
                         ? "Repair required"
                         : connected
-                        ? "Connected"
+                        ? health.label
                         : provider.status === "error"
                           ? "Needs Attention"
                         : providerComingSoon
@@ -3179,7 +3287,8 @@ function DataHub({
                         : repairRequired
                         ? "Re-authentication required · sync paused"
                         : connected
-                        ? provider.dataPromotionStatus === "approved"
+                        ? isSlack ? "One approved channel · share a sign-in link after confirmation"
+                        : provider.dataPromotionStatus === "approved"
                           ? provider.id === "lightspeed" || provider.id === "lightspeed-r" || provider.id === "shopify" || provider.id === "shopify-pos" || provider.id === "square" || provider.id === "clover"
                             ? "Approved sales, catalog, customers and suppliers are available"
                             : provider.id === "plaid"
@@ -3192,6 +3301,10 @@ function DataHub({
                           : "Review required before reporting"
                           : provider.status === "error"
                             ? "Restore this connection to resume updates"
+                            : isSlack
+                              ? "One approved channel · no message, file, or conversation access"
+                            : isDeel
+                              ? "Finalized aggregate totals stay staged for BookLoQ review"
                             : providerComingSoon
                               ? "Try an available connection or import a file"
                           : configured
@@ -3216,14 +3329,14 @@ function DataHub({
                       onChanged={loadConnections}
                       showNotice={showNotice}
                     />
-                  </NewConnectionContainer> : supportsMultipleAccounts ? <NewConnectionContainer className="provider-actions">
+                  </NewConnectionContainer> : supportsConnectionControls ? <NewConnectionContainer className="provider-actions">
                     {customerAvailability.previewAccess && <summary>Preview Connection</summary>}
-                    <button
+                    {!connected && <button
                       type="button"
-                      onClick={() => isMoneris ? setMonerisFormOpen(true) : isQuickBooks ? setQuickBooksConsentOpen(true) : provider.id === "shopify" || provider.id === "shopify-pos" ? setShopifyConnectProvider(provider.id) : void connectProvider(actionableProvider)}
+                      onClick={() => isMoneris ? setMonerisFormOpen(true) : isQuickBooks ? setQuickBooksConsentOpen(true) : isDeel ? setDeelConsentOpen(true) : provider.id === "shopify" || provider.id === "shopify-pos" ? setShopifyConnectProvider(provider.id) : void connectProvider(actionableProvider)}
                       disabled={Boolean(disabledReason) || Boolean(providerAction)}
                       title={disabledReason || `Connect a ${provider.name} account securely.`}
-                    >{providerAction === "authorize" ? "Opening…" : !customerAvailability.canStartConnection ? "Coming Soon" : customerAvailability.previewAccess ? "Connect Test Account" : connected ? "Connect another account" : "Connect"}</button>
+                    >{providerAction === "authorize" ? "Opening…" : !customerAvailability.canStartConnection ? "Coming Soon" : customerAvailability.previewAccess ? "Connect Test Account" : "Connect"}</button>}
                   </NewConnectionContainer> : provider.externalApplicationUrl && providerEntitled ? <div className="provider-actions">
                     <a href={provider.externalApplicationUrl} target="_blank" rel="noreferrer">{provider.externalApplicationLabel ?? "Request provider access"}</a>
                   </div> : showPlanRequirement ? <div className="provider-actions"><button type="button" disabled title={disabledReason}>{providerPlanLabel} required</button></div> : null}
@@ -3601,6 +3714,7 @@ function DailyImport({
   };
   return (
     <div className="import-layout">
+      <LinkedFilesPanel onUseCsv={setFile}/>
       <article className="card csv-import">
         <div className="card-head">
           <div>
@@ -3972,6 +4086,8 @@ export function BusinessBrief({
 }
 
 function Advisor({
+  savedConsent,
+  availability,
   data,
   navigate,
   createTask,
@@ -3983,8 +4099,17 @@ function Advisor({
   createTask: (seed: TaskSeed) => void;
   activeLocationId: string | null;
   retailSeed?: RetailAdvisorSeed | null;
+  savedConsent:ReturnType<typeof useAdvisorConsent>;
+  availability:ReturnType<typeof useAdvisorAvailability>;
 }) {
   const [question, setQuestion] = useState(retailSeed?.question ?? "");
+  const [preferences,setPreferences]=useState<AdvisorPreferences>(advisorDefaults);
+  const currentChat=useRef<AdvisorCurrentTurn[]>([]);
+  const retryTurn=useRef<{key:string;id:string}|null>(null);
+  const [streamText,setStreamText]=useState("");
+  const [attachmentContext,setAttachmentContext]=useState(false);
+  const [progressLabel,setProgressLabel]=useState("Reading your question");
+
   const [attachments, setAttachments] = useState<File[]>([]);
   const [attachmentAccepted, setAttachmentAccepted] = useState(false);
   const [submittedFiles, setSubmittedFiles] = useState<string[]>([]);
@@ -3993,52 +4118,56 @@ function Advisor({
   const provider: AdvisorMode = "openai";
   const [purpose, setPurpose] = useState<"analysis" | "help">("analysis");
   const [thinking, setThinking] = useState(false);
-  const savedConsent = useAdvisorConsent(apiFetch, activeLocationId ?? "organization");
   const dataUseAccepted = savedConsent.consent[purpose];
   const activeRequest = useRef<AbortController | null>(null);
   const [responseError, setResponseError] = useState("");
   useEffect(() => () => { activeRequest.current?.abort(); activeRequest.current = null; }, []);
-  const [providers, setProviders] = useState({ openai: { ready: false, reason: "Checking OpenAI availability." as string | null } });
-  const [providersLoading, setProvidersLoading] = useState(true);
-  useEffect(() => {
-    let active = true;
-    void apiFetch("/api/v1/advisor/chat").then(async response => { if (!response.ok) throw new Error("unavailable"); return response.json(); }).then(payload => {
-      if (active && payload.providers) {
-        setProviders(payload.providers);
-      }
-    }).catch(() => { if (active) setProviders({ openai: { ready: false, reason: "Provider availability could not be checked. Reopen Vanteloq AI to retry." } }); }).finally(() => { if (active) setProvidersLoading(false); });
-    return () => { active = false; };
-  }, []);
+  const {providers,loading:providersLoading}=availability;
   const [loading, setLoading] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const [historyCursor, setHistoryCursor] = useState<string | null>(null);
   const [answer, setAnswer] = useState<{
     title: string;
     body: string;
     limitation: string;
     seed?: TaskSeed;
     animate?: boolean;
+    coverage?: AdvisorPayload["coverage"];
   } | null>(null);
   const [submittedQuestion, setSubmittedQuestion] = useState("");
   const [history, setHistory] = useState<Array<{ question: string; answer: NonNullable<typeof answer> }>>([]);
+  const historyScroll = useRef<{ element: HTMLElement; height: number; top: number } | null>(null);
+  useLayoutEffect(() => {
+    const saved = historyScroll.current;
+    if (!saved) return;
+    historyScroll.current = null;
+    if (saved.element.isConnected) saved.element.scrollTop = saved.top + saved.element.scrollHeight - saved.height;
+  }, [history]);
   const ask = async (event: FormEvent) => {
     event.preventDefault();
     if (activeRequest.current || savedConsent.busy || savedConsent.error || (attachments.length > 0 && !attachmentAccepted) || !advisorProviders(provider).every(item => providers[item].ready) || !canAskAdvisor(question, dataUseAccepted, loading)) return;
     const controller = new AbortController();
     activeRequest.current = controller;
-    if (answer) setHistory(previous => [...previous, { question: submittedQuestion, answer }].slice(-5));
+    if (answer) setHistory(previous => [...previous, { question: submittedQuestion, answer: { ...answer, animate: false } }]);
     setAnswer(null);
     setResponseError("");
     setSubmittedQuestion(question);
     setSubmittedFiles(attachments.map(file => file.name));
     setLoading(true);
     setThinking(true);
-    const normalized = question.toLowerCase();
+    setStreamText("");setProgressLabel(attachments.length ? "Reviewing the attachment" : purpose==="analysis" ? "Checking your selected records" : "Reading your question");
+    const retryKey=JSON.stringify({question,preferences,conversationId,purpose,analysisPeriod,files:attachments.map(f=>[f.name,f.size,f.lastModified]),context:currentChat.current.map(t=>t.proof)});
+    if(retryTurn.current?.key!==retryKey)retryTurn.current={key:retryKey,id:crypto.randomUUID()};
     try {
-      const { response, payload } = await readAdvisorAnswer(apiFetch, { question, provider, purpose, conversationId, dataUseAccepted, memoryEnabled, attachments, attachmentAccepted, locationId: activeLocationId, ...(purpose === "analysis" && analysisPeriod ? analysisPeriod : {}) }, controller.signal);
+      const { response, payload } = await readAdvisorAnswer(apiFetch, { stream:true,turnId:retryTurn.current.id,preferences,currentChat:currentChat.current,question, provider, purpose, conversationId, dataUseAccepted, memoryEnabled:memoryEnabled&&!attachmentContext, attachments, attachmentAccepted, locationId: activeLocationId, ...(purpose === "analysis" && analysisPeriod ? analysisPeriod : {}) }, controller.signal,75_000,update=>{
+        if(activeRequest.current!==controller)return;
+        if(update.text!==undefined)setStreamText(update.text);
+        if(update.status)setProgressLabel(update.status);
+      });
       if (activeRequest.current !== controller) return;
       if (!response.ok) {
-        if (payload.error?.code?.startsWith("ADVISOR_CONSENT")) void savedConsent.refresh();
-        throw new Error(payload.error?.message ?? "The advisor could not answer right now.");
+        if (payload.error?.code?.startsWith("ADVISOR_CONSENT")) void savedConsent.invalidate();
+        const failure=new Error(payload.error?.message ?? "The advisor could not answer right now.");Object.assign(failure,{code:payload.error?.code});throw failure;
       }
       setConversationId(payload.conversationId ?? null);
       if (payload.status === "configuration_required") {
@@ -4046,13 +4175,21 @@ function Advisor({
         return;
       }
       if (payload.answer) {
+        if(payload.contextProof) {
+          currentChat.current=[...currentChat.current,{question,answer:payload.answer,proof:payload.contextProof}].slice(-3);
+          while(new TextEncoder().encode(JSON.stringify(currentChat.current)).length>22_000) currentChat.current.shift();
+        } else currentChat.current=[];
+        retryTurn.current=null;setStreamText("");setAttachmentContext(previous=>previous||payload.contextIncludesAttachments===true);
         setQuestion("");
         setAttachments([]); setAttachmentAccepted(false);
-        setAnswer({ title: "Vanteloq AI", body: payload.answer, limitation: attachments.length ? "Attachment analysis is unverified. This exchange is not saved in chat history and does not update your records. Attach the files again for a follow-up." : purpose === "help" ? "Workspace data is off." : "Based on the permitted records available for this question.", animate: true });
+        setAnswer({ title: "Vanteloq AI", body: payload.answer, coverage: payload.coverage, limitation: attachments.length ? "This answer uses unverified attachment content. Its summary can inform this open chat. Reattach the original file for further details. This exchange and derived follow-ups are not saved in history or financial records." : purpose === "help" ? "Workspace data is off." : "Based on the permitted records available for this question.", animate: true });
         return;
       }
     } catch (error) {
       if (activeRequest.current !== controller) return;
+      setStreamText("");
+      if(error && typeof error==="object" && "code" in error && ["ADVISOR_REPLY_ALREADY_COMPLETED","ADVISOR_RETRY_CHANGED"].includes(String(error.code)))retryTurn.current=null;
+      if(error && typeof error==="object" && "code" in error && ["ADVISOR_CHAT_EXPIRED","ADVISOR_CONTEXT_CHANGED"].includes(String(error.code))) {currentChat.current=[];setHistory([]);setAnswer(null);retryTurn.current=null;}
       setResponseError(error instanceof Error ? error.message : "This reply could not be completed. Your question is ready to try again.");
       return;
     } finally {
@@ -4062,52 +4199,22 @@ function Advisor({
         setThinking(false);
       }
     }
-    /* Explicit local evidence is available when no external answer was returned. */
-    if (purpose === "help") { setAnswer({ title: "Help is available", body: "Open the help centre for verified product instructions.", limitation: "No AI response was returned." }); return; }
-    const insight =
-      normalized.includes("margin") ||
-      normalized.includes("profit") ||
-      normalized.includes("losing")
-        ? data.insights.find((item) => item.id === "margin-trend")
-        : normalized.includes("labour") || normalized.includes("staff")
-          ? data.insights.find((item) => item.id === "labour-pressure")
-          : normalized.includes("sales") || normalized.includes("why")
-            ? (data.insights.find((item) => item.id === "sales-trend") ??
-              data.insights[0])
-            : null;
-    if (insight)
-      setAnswer({
-        title: insight.title,
-        body: `${insight.whatHappened} ${insight.probableCause} Recommended: ${insight.recommendedAction}`,
-        limitation: `Local evidence summary; no AI response was returned. Confidence: ${insight.confidence}. Missing: ${insight.missingInformation.join(", ")}.`,
-        seed: {
-          ...insight.suggestedTask,
-          sourceType: "insight",
-          sourceRef: insight.id,
-        },
-      });
-    else
-      setAnswer({
-        title: "The current data cannot support that answer",
-        body: "The available daily summaries cover sales, cost, labour and aggregate balances.",
-        limitation:
-          "Product, customer, campaign, supplier or hourly questions need their corresponding feeds.",
-      });
+    setResponseError("No completed answer was returned. Your question is ready to try again.");
   };
   const stopResponse = () => {
     const request = activeRequest.current;
     activeRequest.current = null;
     request?.abort();
-    setLoading(false); setThinking(false);
+    setLoading(false); setThinking(false);setStreamText("");
     setResponseError("Response stopped. You can edit or resend your question.");
   };
-  const resetVisibleChat = () => { setConversationId(null); setAnswer(null); setResponseError(""); setSubmittedQuestion(""); setSubmittedFiles([]); setAttachments([]); setAttachmentAccepted(false); setHistory([]); setQuestion(""); };
+  const resetVisibleChat = () => { setAttachmentContext(false);currentChat.current=[];retryTurn.current=null;setStreamText("");activeRequest.current?.abort(); activeRequest.current = null; setLoading(false); setThinking(false); setConversationId(null); setHistoryCursor(null); setAnswer(null); setResponseError(""); setSubmittedQuestion(""); setSubmittedFiles([]); setAttachments([]); setAttachmentAccepted(false); setHistory([]); setQuestion(""); };
   const changeMemory = (enabled: boolean) => { setMemoryEnabled(enabled); resetVisibleChat(); };
-  const resumeChat = async (id: string) => {
+  const resumeChat = async (id: string, cursor?: string) => {
     if (activeRequest.current) return;
     const controller = new AbortController(); activeRequest.current = controller; setLoading(true);
     try {
-      const response = await apiFetch('/api/v1/advisor/conversations?id=' + encodeURIComponent(id), { signal:controller.signal });
+      const response = await apiFetch('/api/v1/advisor/conversations?id=' + encodeURIComponent(id) + (cursor ? '&before=' + encodeURIComponent(cursor) : ''), { signal:AbortSignal.any([controller.signal, AbortSignal.timeout(20_000)]) });
       const payload = await response.json();
       if (activeRequest.current !== controller) return;
       if (!response.ok) throw new Error(payload.error?.message ?? 'This chat could not be opened.');
@@ -4121,22 +4228,29 @@ function Advisor({
           priorQuestion = '';
         }
       }
-      resetVisibleChat(); setHistory(turns); setConversationId(payload.conversationId); setMemoryEnabled(true); setPurpose(payload.scope.purpose);
+      if (cursor) {
+        const element = document.querySelector<HTMLElement>(".ai-conversation");
+        if (element) historyScroll.current = { element, height: element.scrollHeight, top: element.scrollTop };
+        setHistory(previous => [...turns, ...previous]);
+      }
+      else { resetVisibleChat(); setHistory(turns); setConversationId(payload.conversationId); setMemoryEnabled(true); setPurpose(payload.scope.purpose); }
+      setHistoryCursor(payload.nextCursor ?? null);
       setAnalysisPeriod(payload.scope.from && payload.scope.to ? {from:payload.scope.from,to:payload.scope.to} : null);
     } finally { if (activeRequest.current === controller) { activeRequest.current=null; setLoading(false); } }
   };
-  const reply = (value: NonNullable<typeof answer>, latest = false) => <AdvisorResponse title={value.title} body={value.body} limitation={value.limitation} animate={latest && value.animate}>
+  const reply = (value: NonNullable<typeof answer>, originalQuestion: string, latest = false) => <AdvisorResponse title={value.title} body={value.body} limitation={value.limitation} coverage={value.coverage} animate={latest && value.animate} onReuse={loading ? undefined : () => { setQuestion(originalQuestion); document.getElementById("advisor-question")?.focus(); }}>
     {purpose === "help" ? <a href="/help" target="_blank" rel="noreferrer">Open help centre →</a> : value.seed ? <button onClick={() => createTask(value.seed!)}>Create action →</button> : <button onClick={() => navigate("Integrations")}>Review connected sources →</button>}
   </AdvisorResponse>;
   return (
-    <div className="content advisor-page">
-      {analysisPeriod && purpose === "analysis" && <div className="retail-ai-period"><span>Retail evidence: {analysisPeriod.from} to {analysisPeriod.to}</span><button onClick={() => { setAnalysisPeriod(null); resetVisibleChat(); }}>Use recent workspace evidence</button></div>}
-      <AdvisorComposer attachments={attachments} onAttachments={setAttachments} attachmentAccepted={attachmentAccepted} onAttachmentConsent={setAttachmentAccepted} purpose={purpose} onPurpose={value => { if (value !== purpose) { setPurpose(value); resetVisibleChat(); } }} memoryEnabled={memoryEnabled} onMemory={changeMemory} privacyControls={<AdvisorPrivacy fetcher={apiFetch} disabled={loading} onResume={resumeChat} onDeleted={id => { if (id === null || id === conversationId) resetVisibleChat(); }}/>} provider={provider} providers={providers} providersLoading={providersLoading} question={question} onQuestion={setQuestion} dataUseAccepted={dataUseAccepted} onConsent={accepted => { if (!accepted) resetVisibleChat(); void savedConsent.refresh(accepted, purpose); }} consentLoading={savedConsent.busy} consentError={savedConsent.error} onConsentRetry={() => void savedConsent.refresh()} onStop={stopResponse} loading={loading} thinking={thinking} onSubmit={ask} hasConversation={Boolean(submittedQuestion || answer || history.length)} onNewChat={() => { setAnalysisPeriod(null); resetVisibleChat(); }}>
-        {history.map((item, index) => <Fragment key={index}><div className="ai-user-message"><small>You</small>{item.question}</div>{reply(item.answer)}</Fragment>)}
+    <div className={`content advisor-page ai-text-${preferences.textSize} ai-spacing-${preferences.spacing}`}>
+      <AdvisorComposer historyPaused={attachmentContext} personalization={<AdvisorPersonalize fetcher={apiFetch} disabled={loading} preferences={preferences} onChange={setPreferences}/>} scopeControls={analysisPeriod&&purpose==="analysis"?<section><h3>Reporting Period</h3><p>{analysisPeriod.from} to {analysisPeriod.to}</p><button disabled={loading} onClick={()=>{setAnalysisPeriod(null);resetVisibleChat();}}>Use Recent Records</button></section>:undefined} attachments={attachments} onAttachments={setAttachments} attachmentAccepted={attachmentAccepted} onAttachmentConsent={setAttachmentAccepted} purpose={purpose} onPurpose={value => { if (value !== purpose) { setPurpose(value); resetVisibleChat(); } }} memoryEnabled={memoryEnabled} onMemory={changeMemory} privacyControls={<AdvisorPrivacy fetcher={apiFetch} disabled={loading} onResume={resumeChat} onDeleted={id => { if (id === null || id === conversationId) resetVisibleChat(); }}/>} provider={provider} providers={providers} providersLoading={providersLoading} question={question} onQuestion={setQuestion} dataUseAccepted={dataUseAccepted} onConsent={accepted => { if (!accepted) resetVisibleChat(); void savedConsent.refresh(accepted, purpose); }} consentLoading={savedConsent.busy} consentError={savedConsent.error} onConsentRetry={() => void savedConsent.refresh()} onStop={stopResponse} loading={loading} thinking={thinking} onSubmit={ask} hasConversation={Boolean(submittedQuestion || answer || history.length)} onNewChat={() => { setAnalysisPeriod(null); resetVisibleChat(); }}>
+        {historyCursor && conversationId && <button type="button" className="ai-load-earlier" disabled={loading} onClick={() => void resumeChat(conversationId, historyCursor).catch(error => setResponseError(error instanceof Error ? error.message : "Earlier messages could not load."))}>Load earlier messages</button>}
+        {history.map((item, index) => <Fragment key={index}><div className="ai-user-message"><small>You</small>{item.question}</div>{reply(item.answer, item.question)}</Fragment>)}
         {submittedQuestion && <div className="ai-user-message"><small>You</small>{submittedQuestion}{submittedFiles.length > 0 && <small className="ai-sent-files">Attached: {submittedFiles.join(", ")}</small>}</div>}
-        {thinking && <AdvisorThinking/>}
-        {responseError && <div className="ai-response-error" role="status"><strong>Reply not completed</strong><p>{responseError}</p><span>Your question remains in the message box.</span></div>}
-        {answer && reply(answer, true)}
+        {thinking && !streamText && <AdvisorThinking label={progressLabel}/>}
+        {thinking && streamText && <AdvisorResponse title="Vanteloq AI" body={streamText} limitation="" streaming/>}
+        {responseError && <div className="ai-response-error" role="status"><strong>Reply not completed</strong><p>{responseError}</p><span>Your question remains in the message box.</span><button type="submit" form="advisor-form" disabled={loading || !question.trim()}>Retry response</button></div>}
+        {answer && reply(answer, submittedQuestion, true)}
       </AdvisorComposer>
     </div>
   );

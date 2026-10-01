@@ -56,57 +56,41 @@ export async function saveSignupMarketingChoice(email: string, selected: boolean
   } catch { return false; }
 }
 
+/** Existing subscribers can always withdraw; the launch does not solicit newsletters. */
 export default function MarketingPreferences({ placement = "settings" }: { placement?: "onboarding" | "settings" }) {
   const [data, setData] = useState<MarketingPreference | null>(null);
-  const [selected, setSelected] = useState(false);
-  const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-  const [error, setError] = useState(false);
+  const [failed, setFailed] = useState(false);
   const load = useCallback(async () => {
-    const response = await apiFetch("/api/v1/communications/signup-intent", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "claim" }), signal: AbortSignal.timeout(8_000) });
+    const response = await apiFetch("/api/v1/communications/preferences", { signal: AbortSignal.timeout(8_000) });
     const next = await response.json() as MarketingPreference;
-    if (!response.ok) throw new Error(errorMessage(next, "Email preferences could not load. You can continue and try again in Settings."));
+    if (!response.ok) throw new Error(errorMessage(next, "Email preferences could not load."));
     return next;
-  }, []);
-  const showPreference = useCallback((next: MarketingPreference) => {
-    setMessage(""); setError(false);
-    setData(next); setSelected(next.subscribed); setEditing(!next.chosen || placement === "settings");
-  }, [placement]);
-  const showLoadError = useCallback((caught: unknown) => {
-    setError(true); setMessage(caught instanceof Error ? caught.message : "Email preferences could not load. You can continue without subscribing.");
   }, []);
   useEffect(() => {
     let active = true;
-    void load().then(next => { if (active) showPreference(next); }, caught => { if (active) showLoadError(caught); });
+    void load().then(next => { if (active) setData(next); }, () => { if (active) { setFailed(true); setMessage("Email preferences could not load. You can use an existing email’s unsubscribe link or retry."); } });
     return () => { active = false; };
-  }, [load, showPreference, showLoadError]);
-  async function save(nextSelected = selected) {
-    if (!data) return;
-    setBusy(true); setMessage(""); setError(false);
+  }, [load]);
+  async function unsubscribe() {
+    if (!data || busy) return;
+    setBusy(true); setFailed(false); setMessage("");
     try {
       const response = await apiFetch("/api/v1/communications/preferences", {
         method: "POST", headers: { "Content-Type": "application/json" }, signal: AbortSignal.timeout(8_000),
-        body: JSON.stringify({ selected: nextSelected, source: placement, noticeVersion: data.config.noticeVersion, noticeHash: data.config.noticeHash, revision: data.revision }),
+        body: JSON.stringify({ selected: false, source: placement, noticeVersion: data.config.noticeVersion, noticeHash: data.config.noticeHash, revision: data.revision }),
       });
       const next = await response.json() as MarketingPreference;
-      if (!response.ok) throw new Error(errorMessage(next, "Your email preference was not saved. Please try again."));
-      setData(next); setSelected(next.subscribed); setEditing(placement === "settings");
-      setMessage(next.subscribed ? "Email updates are on. You can unsubscribe at any time." : "Email updates are off. Your account and service messages are unchanged.");
-    } catch (caught) {
-      setError(true); setMessage(caught instanceof Error ? caught.message : "Your preference was not saved. Please try again.");
-    } finally { setBusy(false); }
+      if (!response.ok) throw new Error(errorMessage(next, "Your preference was not saved. Please try again."));
+      setData(next); setMessage("Email updates are off. Account and security messages are unchanged.");
+    } catch (error) { setFailed(true); setMessage(error instanceof Error ? error.message : "Please try again."); }
+    finally { setBusy(false); }
   }
-  if (!data && !message) return <div className="marketing-consent-loading" role="status"><span />Loading email preferences…</div>;
-  if (data && !data.config.available && !data.subscribed) return placement === "onboarding" ? null : <section className="marketing-preferences"><h3>News and Product Updates</h3><p>Email updates are not available yet. You are not subscribed.</p></section>;
-  return <section className="marketing-preferences" aria-label="Marketing Email Preferences">
-    {data && !editing ? <div className="marketing-consent-saved"><div><strong>News and Product Updates</strong><p>{data.subscribed ? "Your preference is saved. Email updates are on." : "Your preference is saved. Email updates are off."}</p></div><button type="button" onClick={() => setEditing(true)}>Change</button></div> : data && <>
-      {data.config.available ? <MarketingChoice config={data.config} selected={selected} change={value => { setSelected(value); if (placement === "onboarding") void save(value); }} disabled={busy || data.status === "suppressed"} /> : <label className="marketing-consent-check"><input type="checkbox" checked={selected} onChange={event => setSelected(event.target.checked)} disabled={busy} /><span><strong>Receive News and Product Updates</strong><span>You can turn off your existing subscription.</span></span></label>}
-      {data.status === "suppressed" ? <p>Email delivery is paused for this address. <a href="/contact">Contact support</a> to review it.</p> : (placement === "settings" || !data.config.available) && <button type="button" className="marketing-consent-save" onClick={() => void save()} disabled={busy || (selected && !data.config.available)}>{busy ? "Saving…" : "Save Email Preference"}</button>}
-      {busy && placement === "onboarding" && <p role="status">Saving your email preference…</p>}
-      {placement === "onboarding" && !data.chosen && <p className="marketing-consent-hint">Or continue setup without subscribing.</p>}
-    </>}
-    {message && <p role={error ? "alert" : "status"} className={error ? "marketing-consent-error" : "marketing-consent-status"}>{message}</p>}
-    {error && <button type="button" onClick={() => void load().then(showPreference, showLoadError)} disabled={busy}>Refresh Preferences</button>}
+  if (!message && !data?.subscribed) return null;
+  return <section className="marketing-preferences" aria-label="Email preferences">
+    {data?.subscribed && <><h3>Email preferences</h3><p>You can withdraw your previously saved email subscription.</p><button type="button" disabled={busy} onClick={() => void unsubscribe()}>{busy ? "Saving…" : "Unsubscribe"}</button></>}
+    {message && <p role={failed ? "alert" : "status"}>{message}</p>}
+    {failed && !data && <button type="button" onClick={() => void load().then(next => { setData(next); setMessage(""); setFailed(false); }, () => setMessage("Email preferences remain unavailable. Please try again later."))}>Retry</button>}
   </section>;
 }

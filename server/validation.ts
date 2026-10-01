@@ -25,6 +25,7 @@ const days = [
 ] as const;
 const industries = [
   "Retail",
+  "Dealership",
   "Food & beverage",
   "Health & wellness",
   "Professional services",
@@ -316,6 +317,7 @@ export function onboardingInput(value: Record<string, unknown>) {
     "hours",
     "sourceMode",
     "selectedPos",
+    "dashboardPreferences",
     "emailNotifications",
     "legalAccepted",
     "termsVersion",
@@ -422,6 +424,24 @@ export function onboardingInput(value: Record<string, unknown>) {
     legalAccepted: true as const,
     termsVersion: TERMS_OF_SERVICE_VERSION,
     privacyPolicyVersion: PRIVACY_POLICY_VERSION,
+    legalNoticeVersion: ACCOUNT_ACCEPTANCE_NOTICE_VERSION,
+  };
+}
+
+// A pending checkout record contains no invented business or address data.
+export function checkoutOnboardingInput(value: Record<string, unknown>, identity: { displayName: string; email: string }) {
+  rejectUnknown(value, ["stage", "legalAccepted", "termsVersion", "privacyPolicyVersion", "legalNoticeVersion"]);
+  if (value.stage !== "checkout" || value.legalAccepted !== true
+    || value.termsVersion !== TERMS_OF_SERVICE_VERSION || value.privacyPolicyVersion !== PRIVACY_POLICY_VERSION
+    || value.legalNoticeVersion !== ACCOUNT_ACCEPTANCE_NOTICE_VERSION) {
+    throw new ApiError(409, "LEGAL_ACCEPTANCE_REQUIRED", "Review and accept the current Terms of Service and Privacy Policy before checkout.");
+  }
+  return {
+    ownerName: identity.displayName || "Account owner", businessName: "", legalName: "", businessEmail: identity.email,
+    phone: "", website: "", industry: "Other", country: "", province: "", city: "", address: "", postalCode: "",
+    addressVerificationToken: "", timezone: "UTC", currency: "CAD", fiscalYearStart: "January", taxNumber: "",
+    hoursJson: "[]", sourceMode: "connect_later" as const, selectedPos: "", emailNotifications: false,
+    legalAccepted: true as const, termsVersion: TERMS_OF_SERVICE_VERSION, privacyPolicyVersion: PRIVACY_POLICY_VERSION,
     legalNoticeVersion: ACCOUNT_ACCEPTANCE_NOTICE_VERSION,
   };
 }
@@ -554,7 +574,7 @@ function dailyMetricRow(value: unknown) {
     "gross sales amount",
     0,
   );
-  const netSalesCents = integerValue(row.netSalesCents, "net sales amount", 0);
+  const netSalesCents = integerValue(row.netSalesCents, "net sales amount", -1_000_000_000_000);
   if (netSalesCents > grossSalesCents) {
     throw new ApiError(
       400,
@@ -571,7 +591,7 @@ function dailyMetricRow(value: unknown) {
     costOfGoodsCents: integerValue(
       row.costOfGoodsCents,
       "cost of goods amount",
-      0,
+      -1_000_000_000_000,
     ),
     transactionCount: integerValue(
       row.transactionCount,

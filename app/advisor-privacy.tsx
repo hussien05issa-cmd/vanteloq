@@ -2,21 +2,23 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-type SavedChat = { id: string; createdAt: number; updatedAt: number };
+type SavedChat = { title?: string; id: string; createdAt: number; updatedAt: number };
 type Props = { fetcher: typeof fetch; disabled: boolean; onDeleted: (id: string | null) => void; onResume?: (id:string) => Promise<void>; refreshKey?: number };
 
 export default function AdvisorPrivacy({ fetcher, disabled, onDeleted, onResume, refreshKey = 0 }: Props) {
+  const [search,setSearch]=useState(""),[renaming,setRenaming]=useState<string|null>(null),[title,setTitle]=useState("");
   const [chats, setChats] = useState<SavedChat[]>([]);
   const [open, setOpen] = useState(false), [busy, setBusy] = useState(false);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [notice, setNotice] = useState(""), [hasMore, setHasMore] = useState(false);
   const [confirm, setConfirm] = useState<string | null>(null);
-  const load = useCallback(async () => {
+  const load = useCallback(async (cursor?: string) => {
     setOpen(true); setBusy(true); setNotice("");
     try {
-      const response = await fetcher("/api/v1/advisor/conversations");
+      const response = await fetcher("/api/v1/advisor/conversations?titles=true" + (cursor ? "&before=" + encodeURIComponent(cursor) : ""), { signal: AbortSignal.timeout(20_000) });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error?.message ?? "Saved chats could not be loaded.");
-      setChats(payload.conversations); setHasMore(payload.hasMore);
+      setChats(previous => cursor ? [...previous, ...payload.conversations.filter((chat: SavedChat) => !previous.some(item => item.id === chat.id))] : payload.conversations); setHasMore(payload.hasMore); setNextCursor(payload.nextCursor ?? null);
     } catch (error) { setNotice(error instanceof Error ? error.message : "Try again shortly."); }
     finally { setBusy(false); }
   }, [fetcher]);
@@ -43,13 +45,19 @@ export default function AdvisorPrivacy({ fetcher, disabled, onDeleted, onResume,
     catch(error) { setNotice(error instanceof Error ? error.message : "This chat could not be opened."); }
     finally { setBusy(false); }
   }
+  async function rename(id:string) {
+    setBusy(true);setNotice("");
+    try {const r=await fetcher("/api/v1/advisor/conversations",{method:"PATCH",headers:{"content-type":"application/json"},body:JSON.stringify({id,title})});const p=await r.json();if(!r.ok)throw new Error(p.error?.message ?? "Chat could not be renamed.");setRenaming(null);await load();}
+    catch(e){setNotice(e instanceof Error?e.message:"Try again.");}finally{setBusy(false);}
+  }
   return <div className="ai-saved-chats">
     <button type="button" title={disabled || busy ? "Wait for the current request to finish." : undefined} disabled={disabled || busy} aria-expanded={open} onClick={() => open ? setOpen(false) : void load()}>{open ? "Hide saved chats" : "Manage saved chats"}</button>
     {open && <div><p>Only your chats in this workspace. Continue a chat to reopen it with memory on. Recent messages can inform your next answer when your access still matches.</p>
       {busy && <p role="status">Updating saved chats…</p>}
       {!busy && !chats.length && !notice && <p>No saved chats.</p>}
-      <ul>{chats.map(chat => <li key={chat.id}><time dateTime={new Date(chat.updatedAt).toISOString()}>{new Date(chat.updatedAt).toLocaleString()}</time>{onResume && <button type="button" title={disabled || busy ? "Wait for the current request to finish." : undefined} disabled={disabled || busy} onClick={() => void resume(chat.id)}>Continue chat</button>}<button type="button" title={disabled || busy ? "Wait for the current request to finish." : undefined} disabled={disabled || busy} onClick={() => setConfirm(chat.id)}>Delete</button></li>)}</ul>
-      {hasMore && <p>Showing the latest 50. Delete entries and refresh to see older chats.</p>}
+      <label className="ai-saved-search">Search loaded chats<input type="search" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Chat name or date"/></label>
+      <ul>{chats.filter(c=>[c.title??"Saved chat",new Date(c.updatedAt).toLocaleString()].join(" ").toLowerCase().includes(search.toLowerCase())).map(chat => <li key={chat.id}><div><strong>{chat.title ?? "Saved chat"}</strong><time dateTime={new Date(chat.updatedAt).toISOString()}>{new Date(chat.updatedAt).toLocaleString()}</time></div>{chat.title && <button type="button" disabled={disabled||busy} onClick={()=>{setRenaming(chat.id);setTitle(chat.title!);}}>Rename</button>}{renaming===chat.id && <div className="ai-chat-rename"><input aria-label="Chat name" maxLength={80} value={title} onChange={e=>setTitle(e.target.value)}/><button type="button" disabled={disabled||busy||!title.trim()} onClick={()=>void rename(chat.id)}>Save name</button><button type="button" disabled={busy} onClick={()=>setRenaming(null)}>Cancel</button></div>}{onResume && <button type="button" title={disabled || busy ? "Wait for the current request to finish." : undefined} disabled={disabled || busy} onClick={() => void resume(chat.id)}>Continue chat</button>}<button type="button" title={disabled || busy ? "Wait for the current request to finish." : undefined} disabled={disabled || busy} onClick={() => setConfirm(chat.id)}>Delete</button></li>)}</ul>
+      {hasMore && nextCursor && <button type="button" disabled={disabled || busy} onClick={() => void load(nextCursor)}>Load older chats</button>}
       <div className="ai-privacy-actions"><button type="button" title={disabled || busy ? "Wait for the current request to finish." : undefined} disabled={disabled || busy} onClick={() => void load()}>Refresh</button>{chats.length > 0 && <button type="button" title={disabled || busy ? "Wait for the current request to finish." : undefined} disabled={disabled || busy} onClick={() => setConfirm("all")}>Delete all saved chats</button>}</div>
       {confirm && <div className="ai-delete-confirm" role="group" aria-label="Confirm chat deletion"><p>{confirm === "all" ? "Permanently delete all your saved AI chats in this workspace?" : "Permanently delete this saved chat?"} This cannot be undone. Provider safety logs and managed backups follow their own retention periods.</p><button type="button" title={disabled || busy ? "Wait for the current request to finish." : undefined} disabled={disabled || busy} onClick={() => void remove(confirm)}>Confirm deletion</button><button type="button" title={busy ? "Wait for the current request to finish." : undefined} disabled={busy} onClick={() => setConfirm(null)}>Cancel</button></div>}
     </div>}

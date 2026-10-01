@@ -24,6 +24,7 @@ import { FieldLabel } from "./form-primitives";
 import { budgetControl, bookloqReportHeadings } from "../domain/bookloq-budget";
 import BookloqStatementImport from "./bookloq-statement-import";
 import BookloqDashboardVisuals from "./bookloq-dashboard-visuals";
+import BookloqCollections from "./bookloq-collections";
 import { startBookloqAutoRefresh, type BookloqRefreshState } from "./bookloq-auto-refresh";
 import { buildBookloqReviewQueue, type BookloqReviewItem } from "../domain/bookloq-review-queue";
 
@@ -313,10 +314,13 @@ function BookLoQSection(props: { section: Section; data: BookLoQData; setSection
 }
 
 function OverviewPanel({ data, setSection, createTask, refresh, showNotice, navigate }: { data: BookLoQData; setSection: (section: Section) => void; createTask: (seed: TaskSeed) => void; refresh: () => Promise<void>; showNotice: (message: string) => void; navigate: (view: "Integrations" | "Documents") => void }) {
+  const [showExtended,setShowExtended]=useState(false);
   const s = data.summary;
   const openAlerts = data.alerts.filter((alert) => alert.status === "open");
   const ledgerHasEntries = data.statements.accounts.some(account => account.debitCents !== 0 || account.creditCents !== 0);
   return <div className="bookloq-content">
+    <BookloqCollections navigate={setSection} refreshKey={`${data.invoices.length}:${data.bills.length}:${data.summary.accountsReceivableCents}:${data.summary.accountsPayableCents}`}/>
+    <details className="bookloq-overview-extended" onToggle={event=>setShowExtended(event.currentTarget.open)}><summary>Performance, Cash Flow & Accounting</summary>{showExtended&&<div className="bookloq-overview-existing">
     {data.settings?.dataMode !== "demonstration" && <ExecutiveOverview currency={data.organization.currency} activeLocationId={data.locationScope?.id} basis="ledger" navigate={view=>view==="Integrations"?navigate("Integrations"):view==="Intelligence"?setSection("Cash Flow"):setSection("Reports")}/>}
     {data.settings?.dataMode === "demonstration" && <section className="bookloq-kpis" aria-label="Demonstration financial overview"><FinancialKpi label="Current cash" value={money(s.currentCashCents,data.organization.currency)} note="Demonstration figures only" onClick={()=>setSection("Banking")}/><FinancialKpi label="Revenue" value={money(s.revenueCents,data.organization.currency)} note="Demonstration ledger" onClick={()=>setSection("Sales")}/><FinancialKpi label="Gross profit" value={money(s.grossProfitCents,data.organization.currency)} note="Revenue less product costs" onClick={()=>setSection("Reports")}/><FinancialKpi label="Operating profit" value={money(s.operatingProfitCents,data.organization.currency)} note="Before finance costs and income tax" onClick={()=>setSection("Reports")}/></section>}
     <details className="bookloq-financial-details"><summary>More Financial Details</summary><section className="bookloq-kpis">
@@ -342,6 +346,7 @@ function OverviewPanel({ data, setSection, createTask, refresh, showNotice, navi
     <BookloqFinancialExplainer profit={data.statements.profitAndLoss} available={data.ledgerAccess?.available === true && ledgerHasEntries} currency={data.organization.currency} currentCashCents={s.currentCashCents} canViewCash={data.permissions.includes("view_banking")} openReports={() => setSection("Reports")} openTransactions={() => setSection("Transactions")}/>
     <FinancialReviewCard statements={data.statements} available={data.ledgerAccess?.available === true} currency={data.organization.currency}/>
     <section className="bookloq-card bookloq-integrity"><Header kicker="CONTROL STATUS" title="What BookLoQ knows and what still needs review" action={<div className="bookloq-document-actions"><button onClick={() => navigate("Documents")}>Upload invoice or receipt</button><button onClick={() => setSection("Banking")}>Manage bank feed</button></div>}/><div><Integrity label="Double-entry ledger" status={!ledgerHasEntries ? "Awaiting entries" : data.statements.trialBalance.totalDebitCents === data.statements.trialBalance.totalCreditCents ? "Balanced" : "Issue"} detail={`${money(data.statements.trialBalance.totalDebitCents, data.organization.currency)} debits · ${money(data.statements.trialBalance.totalCreditCents, data.organization.currency)} credits`}/><Integrity label="Bank feed" status={data.integrations.banking.startsWith("connected") ? "Connected" : "Not connected"} detail={data.integrations.banking === "connected_and_synced" ? `${data.banks.length} owner-authorized accounts; ${bookloqMetricCount(data.summary.uncategorizedCount)} transactions require category review.` : "Upload a bank statement or check available bank connections in Banking. Imported transactions need category and reconciliation review."}/><Integrity label="Tax filing" status="Not connected" detail="Working-paper assistance only. No filing is represented as submitted."/><Integrity label="Document capture" status={data.documentSummary.total ? "Available" : "Ready"} detail={`${data.documentSummary.total} private documents stored; ${data.documentSummary.needsReview} require review. Open Documents for scan and extraction status. Review extracted figures before using them in your books.`}/></div></section>
+    </div>}</details>
   </div>;
 }
 

@@ -4,7 +4,9 @@ import { createServer } from "node:http";
 import test from "node:test";
 import { Miniflare } from "miniflare";
 import { registerSupabaseTestServer } from "./helpers/supabase-loopback-transport.mjs";
+import { TERMS_OF_SERVICE_VERSION, PRIVACY_POLICY_VERSION, ACCOUNT_ACCEPTANCE_NOTICE_VERSION } from "../shared/legal-versions.ts";
 import { activateTestSubscription } from "./helpers/subscription-fixture.mjs";
+import { providerPrivacyAcceptance } from "../domain/provider-privacy.ts";
 
 const origin = "https://vanteloq.example";
 const context = { waitUntil() {}, passThroughOnException() {} };
@@ -80,8 +82,8 @@ test("R-Series completes a browser callback using the initiating one-time state"
         country: "CA", province: "AB", city: "Edmonton", address: "1 Test Avenue",
         postalCode: "T5A 1A1", emailNotifications: true, timezone: "America/Edmonton",
         currency: "CAD", fiscalYearStart: "January", taxNumber: "", sourceMode: "connect_later",
-        selectedPos: "", legalAccepted: true, termsVersion: "2026-09-05",
-        privacyPolicyVersion: "2026-09-10", legalNoticeVersion: "account-creation-v2",
+        selectedPos: "", legalAccepted: true, termsVersion: TERMS_OF_SERVICE_VERSION,
+        privacyPolicyVersion: PRIVACY_POLICY_VERSION, legalNoticeVersion: ACCOUNT_ACCEPTANCE_NOTICE_VERSION,
         hours: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
           .map((day) => ({ day, open: "09:00", close: "17:00", closed: false })),
       }),
@@ -89,11 +91,17 @@ test("R-Series completes a browser callback using the initiating one-time state"
     assert.equal(onboarding.status, 201);
     await activateTestSubscription(database, (await onboarding.json()).organization.id);
 
+    const missingPrivacy = await worker.fetch(new Request(`${origin}/api/v1/integrations/lightspeed-r/authorize`, {
+      method: "POST", headers: ownerHeaders(true), body: "{}",
+    }), environment, context);
+    assert.equal(missingPrivacy.status, 400, await missingPrivacy.clone().text());
+    assert.equal((await missingPrivacy.json()).error.code, "PROVIDER_PRIVACY_REQUIRED");
+
     const misconfiguredEnvironment = { ...environment };
     delete misconfiguredEnvironment.LIGHTSPEED_R_CLIENT_SECRET;
     const misconfiguredAuthorization = await worker.fetch(new Request(
       `${origin}/api/v1/integrations/lightspeed-r/authorize`,
-      { method: "POST", headers: ownerHeaders(true), body: "{}" },
+      { method: "POST", headers: ownerHeaders(true), body: JSON.stringify(providerPrivacyAcceptance(true)) },
     ), misconfiguredEnvironment, context);
     assert.equal(misconfiguredAuthorization.status, 503, await misconfiguredAuthorization.clone().text());
     assert.deepEqual(await database.prepare(`SELECT
@@ -107,7 +115,7 @@ test("R-Series completes a browser callback using the initiating one-time state"
     });
 
     const authorization = await worker.fetch(new Request(`${origin}/api/v1/integrations/lightspeed-r/authorize`, {
-      method: "POST", headers: ownerHeaders(true), body: "{}",
+      method: "POST", headers: ownerHeaders(true), body: JSON.stringify(providerPrivacyAcceptance(true)),
     }), environment, context);
     assert.equal(authorization.status, 200);
     const authorizationBody = await authorization.json();
@@ -224,7 +232,7 @@ test("R-Series completes a browser callback using the initiating one-time state"
 
     const declinedAuthorization = await worker.fetch(new Request(
       `${origin}/api/v1/integrations/lightspeed-r/authorize`,
-      { method: "POST", headers: ownerHeaders(true), body: "{}" },
+      { method: "POST", headers: ownerHeaders(true), body: JSON.stringify(providerPrivacyAcceptance(true)) },
     ), environment, context);
     assert.equal(declinedAuthorization.status, 200);
     const declinedAuthorizationBody = await declinedAuthorization.json();
@@ -270,7 +278,7 @@ test("R-Series completes a browser callback using the initiating one-time state"
       WHERE c.id = ?`).bind(connection.id).first();
     const duplicateAuthorization = await worker.fetch(new Request(
       `${origin}/api/v1/integrations/lightspeed-r/authorize`,
-      { method: "POST", headers: ownerHeaders(true), body: "{}" },
+      { method: "POST", headers: ownerHeaders(true), body: JSON.stringify(providerPrivacyAcceptance(true)) },
     ), environment, context);
     assert.equal(duplicateAuthorization.status, 200);
     const duplicateAuthorizationBody = await duplicateAuthorization.json();
@@ -667,7 +675,7 @@ test("R-Series completes a browser callback using the initiating one-time state"
     assert.equal(inventoryBody.posBalances[0].sku, "CRE-A");
 
     const secondAuthorization = await worker.fetch(new Request(`${origin}/api/v1/integrations/lightspeed-r/authorize`, {
-      method: "POST", headers: ownerHeaders(true), body: "{}",
+      method: "POST", headers: ownerHeaders(true), body: JSON.stringify(providerPrivacyAcceptance(true)),
     }), environment, context);
     assert.equal(secondAuthorization.status, 200);
     const secondAuthorizationBody = await secondAuthorization.json();
@@ -784,7 +792,19 @@ test("R-Series completes a browser callback using the initiating one-time state"
 
     const commandAfterDisconnect = await worker.fetch(new Request(`${origin}/api/v1/command-centre`, { headers: ownerHeaders() }), environment, context);
     assert.equal(commandAfterDisconnect.status, 200);
-    const commandAfterDisconnectBody = await commandAfterDisconnect.json();
+    const unresolvedCommand = await commandAfterDisconnect.json();
+    assert.equal(unresolvedCommand.commandCentre.source.rowCount, 0, "retained facts from the disconnected source require explicit replacement selection");
+    assert.equal(unresolvedCommand.commandCentre.liveSource.accountName, null);
+    const selectRemainingSource = await worker.fetch(new Request(`${origin}/api/v1/reports`, {
+      method: "POST", headers: ownerHeaders(true), body: JSON.stringify({
+        action: "set_source_authority", locationId: shopsBody.localLocations[0].id,
+        connectionId: secondAuthorizationBody.connectionId, factFamily: "sales", expectedVersion: 0,
+      }),
+    }), environment, context);
+    assert.equal(selectRemainingSource.status, 200, await selectRemainingSource.clone().text());
+    const reviewedCommand = await worker.fetch(new Request(`${origin}/api/v1/command-centre`, { headers: ownerHeaders() }), environment, context);
+    assert.equal(reviewedCommand.status, 200, await reviewedCommand.clone().text());
+    const commandAfterDisconnectBody = await reviewedCommand.json();
     assert.equal(commandAfterDisconnectBody.commandCentre.source.rowCount, 1);
     assert.equal(commandAfterDisconnectBody.commandCentre.liveSource.accountName, "Second R-Series account");
   } finally {

@@ -1,3 +1,5 @@
+import { PRIVACY_POLICY_VERSION } from "../../../../../../domain/privacy-controls";
+import { requireProviderPrivacy } from "../../../../../../server/integrations/provider-privacy";
 import { requireIntegrationRollout } from "../../../../../../server/integrations/rollout-access";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../../../../../../db";
@@ -15,6 +17,7 @@ export async function POST(request: Request) {
     await requirePermission(context, "integrations.manage");
     await requireIntegrationRollout(context, "moneris");
     await enforceRateLimit("moneris:connect", context.userId, 6, 3_600);
+    await requireProviderPrivacy(request, context, "moneris", requestId);
     const body = await readJsonObject(request);
     if (body.accepted !== true) throw new ApiError(400, "MONERIS_CONSENT_REQUIRED", "Confirm the read-only payment-data notice before connecting Moneris.");
     const credentials = validateMonerisCredentialInput(body);
@@ -54,7 +57,7 @@ export async function POST(request: Request) {
     await getDb().insert(integrationConsents).values({
       id: crypto.randomUUID(), organizationId: context.organizationId, actorUserId: context.userId,
       provider: MONERIS_PROVIDER, status: "accepted", noticeVersion: "moneris-payments-v1",
-      privacyPolicyVersion: "2026-08-14", dataCategoriesJson: JSON.stringify(["payment amount", "currency", "status", "timestamps", "settlement references"]),
+      privacyPolicyVersion: PRIVACY_POLICY_VERSION, dataCategoriesJson: JSON.stringify(["payment amount", "currency", "status", "timestamps", "settlement references"]),
       purposesJson: JSON.stringify(["payment reconciliation", "cash-flow analysis", "BookLoQ reporting"]),
       consentSource: "in_app", acceptedAt: now, withdrawnAt: null, createdAt: now, updatedAt: now,
     });

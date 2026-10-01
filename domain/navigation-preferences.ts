@@ -1,6 +1,7 @@
 export const NAVIGATION_VIEW_IDS = [
   "Dashboard",
   "Intelligence",
+  "Forecasting",
   "Action Centre",
   "Business Brief",
   "Advisor",

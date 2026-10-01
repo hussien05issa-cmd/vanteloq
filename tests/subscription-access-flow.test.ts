@@ -7,6 +7,7 @@ import { registerSupabaseTestServer } from "./helpers/supabase-loopback-transpor
 import { createHmac } from "node:crypto";
 import { PLANS, ADDONS, type AddonDefinition, type PlanDefinition } from "../server/entitlements/catalog.ts";
 import { navigationEntitlement } from "../domain/navigation-entitlements.ts";
+import { TERMS_OF_SERVICE_VERSION, PRIVACY_POLICY_VERSION, ACCOUNT_ACCEPTANCE_NOTICE_VERSION } from "../shared/legal-versions.ts";
 
 const origin = "https://vanteloq.example";
 const executionContext = { waitUntil() {}, passThroughOnException() {} };
@@ -53,9 +54,9 @@ function onboardingBody(ownerName: string, businessName: string) {
     sourceMode: "csv",
     selectedPos: "",
     legalAccepted: true,
-    termsVersion: "2026-09-05",
-    privacyPolicyVersion: "2026-09-10",
-    legalNoticeVersion: "account-creation-v2",
+    termsVersion: TERMS_OF_SERVICE_VERSION,
+    privacyPolicyVersion: PRIVACY_POLICY_VERSION,
+    legalNoticeVersion: ACCOUNT_ACCEPTANCE_NOTICE_VERSION,
   };
 }
 
@@ -153,7 +154,7 @@ test("verified subscription events control interface, BookLoQ and server access 
       .bind(email).first<{ userId: string; organizationId: string }>();
     assert.ok(identity);
     const org = identity.organizationId;
-    const price = (definition: PlanDefinition | AddonDefinition) => ({ id: `price_${definition.key}12345678`, lookup_key: definition.prices.month.lookupKey, unit_amount: definition.prices.month.amountCents, currency: "cad", recurring: { interval: "month" } });
+    const price = (definition: PlanDefinition | AddonDefinition) => ({ id: `price_${definition.key}12345678`, lookup_key: definition.prices.month.lookupKey, unit_amount: definition.prices.month.amountCents, currency: "cad", recurring: { interval: "month", interval_count: 1, usage_type: "licensed" }, type: "recurring", billing_scheme: "per_unit", transform_quantity: null });
     let plan: keyof typeof PLANS = "starter";
     let bookloq = false;
     let status = "active";
@@ -214,7 +215,18 @@ test("verified subscription events control interface, BookLoQ and server access 
     assert.ok(concurrentEvents.results.every((row: {status: string}) => row.status === "processed"));
     await assertAccess("starter", false);
     assert.equal((await sync(initial)).duplicate, true);
+    status = "trialing"; await sync(); await assertAccess(null, false);
+    status = "active"; await sync(); await assertAccess("starter", false);
     bookloq = true; await sync(); await assertAccess("starter", true);
+    const beforeInvalidPrice = await database.prepare("SELECT base_plan, version FROM tenant_subscriptions WHERE organization_id=?").bind(org).first();
+    const beforeInvalidAddon = await database.prepare("SELECT status, stripe_price_id FROM tenant_addons WHERE organization_id=?").bind(org).first();
+    const malformed = snapshot(); malformed.items.data[1].price.unit_amount = 1;
+    delayedFetch = async () => Response.json(malformed);
+    const malformedEvent = event();
+    assert.equal((await deliver(malformedEvent)).status,400);
+    assert.deepEqual(await database.prepare("SELECT base_plan, version FROM tenant_subscriptions WHERE organization_id=?").bind(org).first(),beforeInvalidPrice);
+    assert.deepEqual(await database.prepare("SELECT status, stripe_price_id FROM tenant_addons WHERE organization_id=?").bind(org).first(),beforeInvalidAddon);
+    await sync(malformedEvent); await assertAccess("starter",true);
     const seeded = await dispatch(worker, environment, "/api/v1/bookloq/demo", { method: "POST", email, body: {} });
     assert.equal(seeded.status, 201, await seeded.clone().text());
     const records = await database.prepare("SELECT COUNT(*) total FROM journal_entries WHERE organization_id=?").bind(org).first<{total:number}>();
@@ -256,5 +268,12 @@ test("verified subscription events control interface, BookLoQ and server access 
     await database.prepare("UPDATE memberships SET role='employee' WHERE organization_id=? AND user_id=?").bind(org, identity.userId).run();
     const roleDenied = await dispatch(worker, environment, "/api/v1/bookloq", { email });
     assert.equal(roleDenied.status, 403, await roleDenied.clone().text());
+    await database.prepare("UPDATE memberships SET role='admin' WHERE organization_id=? AND user_id=?").bind(org,identity.userId).run();
+    await database.prepare("INSERT INTO access_roles(id,organization_id,name,permissions_json,created_by_user_id,created_at,updated_at) VALUES('billing-restricted',?,'Restricted admin','[]',?,1,1)").bind(org,identity.userId).run();
+    await database.prepare("INSERT INTO team_members(id,organization_id,user_id,role_id,first_name,last_name,email,employee_code,status,remote_login,created_by_user_id,created_at,updated_at) VALUES('billing-member',?,?,'billing-restricted','Test','Admin',?,'BILLING-ADMIN','active',1,?,1,1)").bind(org,identity.userId,email,identity.userId).run();
+    status="past_due";await sync();
+    assert.equal((await access()).canManageBilling,false);
+    assert.equal((await dispatch(worker,environment,"/api/v1/billing",{email})).status,403);
+
   } finally { globalThis.fetch = originalFetch; await dispose(); }
 });

@@ -87,7 +87,7 @@
 .reference-connections a { display:inline-flex; min-height:44px; align-items:center; gap:9px; text-decoration:none; color:#465d76; font-size:13px; }
 .reference-connections a:hover { color:#145cac; }
 .reference-connections strong { font-size:17px; font-weight:570; letter-spacing:-.025em; }
-.reference-connections .integration-logo { flex:0 0 25px; width:25px; height:25px; min-width:25px; filter:grayscale(1); opacity:.8; padding:0; border:0; background:transparent; box-shadow:none; }
+.reference-connections .integration-logo { flex:0 0 25px; width:25px; height:25px; min-width:25px; filter:none; opacity:1; padding:0; border:0; background:transparent; box-shadow:none; }
 .reference-connections .integration-logo :is(svg,img) { width:100%; height:100%; object-fit:contain; }
 .reference-connections > a:last-child { gap:24px; font-size:11px; letter-spacing:.02em; white-space:nowrap; }
 .reference-home .home-decision-proof { width:100%; margin:0; background:linear-gradient(160deg,#f9fbfe,#f2f6fb); padding-top:34px; padding-bottom:46px; }
@@ -345,4 +345,11 @@
 @media (forced-colors:active) {
   .reference-home .home-hero h1 em { background:none; -webkit-text-fill-color:CanvasText; }
   .reference-home .decision-proof-grid article { border:1px solid CanvasText; }
+}
+.reference-connections .integration-logo.brand-stripe.compact { flex:0 0 54px; width:54px; min-width:54px; height:25px; padding:0; filter:none; opacity:1; }
+.reference-connections .integration-logo.brand-stripe + strong { display:none; }
+/* Keep the top-row Google mark clear of the shared connector tile padding. */
+.reference-connections .integration-logo.brand-google.compact { flex:0 0 28px; width:28px; min-width:28px; height:28px; padding:0; border:0; background:transparent; margin:0; }
+@media (max-width: 640px) {
+  .reference-connections .integration-logo.brand-google.compact { flex-basis:24px; width:24px; min-width:24px; height:24px; }
 }

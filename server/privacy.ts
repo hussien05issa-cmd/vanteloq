@@ -4,6 +4,8 @@ import { getDb } from "../db";
 import { integrationConsents } from "../db/schema";
 import {
   ADVISOR_CONSENT_NOTICE_VERSION,
+  ADVISOR_PERSONALIZATION_DATA_CATEGORY,
+  ADVISOR_CONVERSATION_DATA_CATEGORY,
   ADVISOR_DATA_CATEGORIES,
   ADVISOR_PROCESSING_PURPOSES,
   PLAID_CONSENT_MAX_AGE_MS,
@@ -20,9 +22,9 @@ import { ApiError } from "./api";
 function advisorConsentScope(purpose: "analysis" | "help" = "analysis") {
   return {
     dataCategoriesJson: JSON.stringify(purpose === "help"
-      ? ["The question entered by the authorized user", "Vanteloq product guidance", "Optional recent conversation messages with matching evidence and access; no workspace records"]
+      ? ["The question entered by the authorized user", "Vanteloq product guidance; no workspace business records", ADVISOR_PERSONALIZATION_DATA_CATEGORY, ADVISOR_CONVERSATION_DATA_CATEGORY]
       : ADVISOR_DATA_CATEGORIES),
-    purposesJson: JSON.stringify(purpose === "help" ? ["Explain how to use Vanteloq and BookLoQ", "Explain financial and analytical concepts without workspace records"] : ADVISOR_PROCESSING_PURPOSES),
+    purposesJson: JSON.stringify(purpose === "help" ? ["Explain how to use Vanteloq and BookLoQ", "Explain financial and analytical concepts without workspace records", "Personalize replies using limited account information and selected preferences", "Continue the authorized user's open chat using bounded context; save eligible conversation messages only when memory is enabled"] : ADVISOR_PROCESSING_PURPOSES),
   };
 }
 

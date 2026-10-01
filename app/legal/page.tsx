@@ -4,7 +4,7 @@ import { LegalShell, PolicySection } from "../legal-shell";
 
 export const metadata: Metadata = {
   title: "Legal Centre | Vanteloq",
-  description: "Read Vanteloq's Privacy Policy, Terms of Service, Cookie Notice, connected-data boundaries, and professional review notice.",
+  description: "Read Vanteloq's Privacy Policy, Terms of Service, Cookie Notice, and connected-data boundaries.",
   alternates: { canonical: "/legal" },
 };
 
@@ -23,7 +23,7 @@ export default function LegalPage() {
         </div>
       </PolicySection>
       <PolicySection id="operator" title="Who operates Vanteloq">
-        <p>Vanteloq is operated by LexEdge Consulting in Alberta, Canada. References to “Vanteloq,” “we,” “us,” or “our” in these documents refer to LexEdge Consulting operating the Vanteloq service.</p>
+        <p>Vanteloq is operated by 2855706 ALBERTA INC, doing business as LexEdge Consulting, in Alberta, Canada. References to “Vanteloq,” “we,” “us,” or “our” in these documents refer to 2855706 ALBERTA INC operating the Vanteloq service.</p>
         <p>Questions about these documents can be sent through <Link href="/contact">our private contact form</Link>.</p>
       </PolicySection>
       <PolicySection id="boundaries" title="Connected data and product boundaries">
@@ -34,9 +34,6 @@ export default function LegalPage() {
           <li>A transaction or customer record is not automatically consent to send marketing. Customers remain responsible for establishing express or implied consent, or an applicable CASL exception, and for sender information, unsubscribe controls, consent evidence, and suppression records.</li>
           <li>An integration, recommendation, or workflow does not guarantee sales, profit, legal compliance, tax treatment, provider availability, or a particular business result.</li>
         </ul>
-      </PolicySection>
-      <PolicySection id="review" title="Professional review recommended">
-        <div className="legal-note"><strong>Important:</strong> These documents are written to reflect the current Vanteloq product and Canadian privacy principles, but no website notice can guarantee that every legal issue has been resolved. A qualified Alberta lawyer should review the service, provider agreements, customer contracts, privacy practices, cross-border processing, retention schedule, and commercial-message workflows before paid subscriptions or broad public onboarding begin. Accounting and tax controls should also be reviewed by the appropriate qualified professionals.</div>
       </PolicySection>
     </LegalShell>
   );

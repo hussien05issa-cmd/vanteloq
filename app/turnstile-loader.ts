@@ -1,5 +1,21 @@
 let scriptPromise: Promise<void> | null = null;
 
+export async function loadTurnstileConfiguration(action: string, signal: AbortSignal) {
+  // Opening a protected account form already requires both resources. Start the
+  // public script with the configuration request, then let the widget own any
+  // script failure and its retry button. It shares this in-flight download.
+  void loadTurnstile().catch(() => undefined);
+  const response = await fetch(`/api/v1/auth/signup?action=${encodeURIComponent(action)}`, {
+    headers: { accept: "application/json" }, signal,
+  });
+  const payload = await response.json() as { configured?: boolean; siteKey?: unknown; action?: unknown };
+  signal.throwIfAborted();
+  if (!response.ok || payload.configured !== true || typeof payload.siteKey !== "string" || !payload.siteKey.trim() || payload.action !== action) {
+    throw new Error("Account protection is unavailable.");
+  }
+  return { siteKey: payload.siteKey, action };
+}
+
 // A failed download must not poison every later attempt in this browser tab.
 export function loadTurnstile(): Promise<void> {
   if (window.turnstile) return Promise.resolve();

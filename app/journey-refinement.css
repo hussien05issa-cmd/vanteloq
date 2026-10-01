@@ -74,12 +74,16 @@
 .home-provider-tiles>button:focus-visible {outline:2px solid #2366c9;outline-offset:3px}
 .home-provider-tiles .integration-logo {flex:0 0 38px;width:38px;height:38px;min-width:38px;max-width:38px;margin:0;display:inline-flex;align-items:center;justify-content:center}
 .home-provider-tiles .integration-logo img,.home-provider-tiles .integration-logo svg {position:static;transform:none;width:26px;height:26px;object-fit:contain;object-position:center;margin:0}
+.home-provider-tiles .integration-logo.brand-moneris {flex-basis:64px;width:64px;min-width:64px;max-width:64px;padding:7px 6px}
+.home-provider-tiles .integration-logo.brand-moneris img {width:100%;height:100%}
 .provider-tile-label {display:flex;flex-direction:column;align-items:flex-start;gap:9px;min-width:0}
 .provider-tile-label>strong {font-size:13px;line-height:1.45;color:#183853;font-weight:650}
 .provider-setup-details {scroll-margin-top:160px;background:#f3f7fc;border:1px solid #d4e1ef;border-radius:12px;padding:24px;margin-top:14px}
 .provider-setup-details:focus-visible {outline:2px solid #2366c9;outline-offset:3px}
 .provider-setup-details>header {display:flex;align-items:center;justify-content:space-between;gap:16px}
 .provider-setup-details h4 {font-size:20px;margin:0}
+.provider-setup-details .provider-company {display:flex;align-items:center;gap:7px;margin:10px 0 2px;color:#5b6f83;font-size:11.5px;line-height:1.55;letter-spacing:.01em}
+.provider-setup-details .provider-company strong {color:#294862;font-weight:650}
 .provider-setup-details p,.provider-setup-details dd {font-size:13px;color:#526b82;line-height:1.7}
 .provider-setup-details dl {display:grid;grid-template-columns:1fr 1fr;gap:25px;margin:20px 0}
 .provider-setup-details dt {font-size:12px;font-weight:650;margin-bottom:7px}
@@ -241,3 +245,7 @@
  .billing-selected-total {flex-wrap:wrap}
 }
 @media(prefers-reduced-motion:reduce) {.home-proof-chart i {transition:none}}
+
+.home-provider-tiles .integration-logo.brand-stripe{flex-basis:64px;width:64px;min-width:64px;max-width:64px;padding:7px 8px}
+.home-provider-tiles .integration-logo.brand-uber-eats{flex-basis:56px;width:56px;min-width:56px;max-width:56px;height:48px;padding:0}
+.home-provider-tiles .integration-logo:is(.brand-clover,.brand-doordash,.brand-stripe,.brand-uber-eats) img{width:100%;height:100%;object-fit:contain}

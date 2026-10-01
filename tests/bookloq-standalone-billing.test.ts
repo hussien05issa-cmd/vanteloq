@@ -55,6 +55,7 @@ test("the standalone migration preserves subscribers and synchronization stores 
     ]);
 
     await applyMigration(database, "0059_bookloq_standalone_plan.sql");
+    await applyMigration(database, "0065_subscription_trial_access.sql");
     assert.deepEqual(
       await database.prepare("SELECT base_plan plan,status,version FROM tenant_subscriptions WHERE organization_id='existing'").first(),
       { plan: "starter", status: "active", version: 1 },

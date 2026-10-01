@@ -150,6 +150,9 @@ export const tenantSubscriptions = sqliteTable(
     stripeSubscriptionId: text("stripe_subscription_id"),
     stripeBasePriceId: text("stripe_base_price_id"),
     trialEndsAt: integer("trial_ends_at", { mode: "timestamp" }),
+    // Only the verified first checkout may establish this immutable trial ceiling.
+    trialAccessEndsAt: integer("trial_access_ends_at", { mode: "timestamp" }),
+    trialConvertedAt: integer("trial_converted_at", { mode: "timestamp" }),
     currentPeriodEndsAt: integer("current_period_ends_at", { mode: "timestamp" }),
     cancelAtPeriodEnd: integer("cancel_at_period_end", { mode: "boolean" }).notNull().default(false),
     scheduledBasePlan: text("scheduled_base_plan", { enum: ["starter", "growth", "pro", "bookloq"] }),
@@ -2298,3 +2301,116 @@ export const documentIngestIntents = sqliteTable("document_ingest_intents", {
   sha256Hex:text("sha256_hex").notNull(),state:text("state").notNull(),createdAt:integer("created_at").notNull(),
   leaseToken:text("lease_token"),leaseUntil:integer("lease_until").notNull().default(0),
 },table=>[uniqueIndex("document_ingest_org_hash").on(table.organizationId,table.sha256Hex),index("document_ingest_cleanup_due").on(table.state,table.leaseUntil,table.createdAt)]);
+
+export const cloudFileConnections = sqliteTable("cloud_file_connections", {
+  id: text("id").primaryKey().notNull(),
+  organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  authSubject: text("auth_subject").notNull(),
+  provider: text("provider").notNull(),
+  stateHash: text("state_hash").notNull().unique(),
+  stateExpiresAt: integer("state_expires_at").notNull(),
+  consumedAt: integer("consumed_at"),
+  verifierCiphertext: text("verifier_ciphertext").notNull(),
+  tokenCiphertext: text("token_ciphertext"),
+  status: text("status").notNull().default("pending"),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+}, table => [
+  check("cloud_file_connections_provider_check", sql`${table.provider} IN ('google-files','microsoft-files')`),
+  check("cloud_file_connections_status_check", sql`${table.status} IN ('pending','connected','revoked')`),
+  index("cloud_file_connections_owner").on(table.organizationId, table.userId, table.status),
+]);
+
+export const linkedFiles = sqliteTable("linked_files", {
+  id: text("id").primaryKey().notNull(),
+  organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  connectionId: text("connection_id").notNull().references(() => cloudFileConnections.id, { onDelete: "cascade" }),
+  remoteId: text("remote_id").notNull(),
+  sheetName: text("sheet_name").notNull().default(""),
+  name: text("name").notNull(),
+  kind: text("kind").notNull(),
+  enabled: integer("enabled").notNull().default(1),
+  revision: text("revision"),
+  snapshotCiphertext: text("snapshot_ciphertext"),
+  documentId: text("document_id").references(() => workspaceDocuments.id, { onDelete: "set null" }),
+  lastCheckedAt: integer("last_checked_at"),
+  lastChangedAt: integer("last_changed_at"),
+  errorCode: text("error_code"),
+  lease: text("lease"),
+  leaseExpiresAt: integer("lease_expires_at").notNull().default(0),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+}, table => [
+  check("linked_files_kind_check", sql`${table.kind} IN ('sheet','document')`),
+  check("linked_files_enabled_check", sql`${table.enabled} IN (0,1)`),
+  unique("linked_files_connection_remote_sheet_unique").on(table.connectionId, table.remoteId, table.sheetName),
+  index("linked_files_owner").on(table.organizationId, table.userId),
+]);
+
+// Forecast snapshots are immutable and remain scoped to their issuer and workspace.
+export const forecastingSettings=sqliteTable("forecasting_settings",{
+ organizationId:text("organization_id").notNull().references(()=>workspaces.id,{onDelete:"cascade"}),
+ locationId:text("location_id").notNull().references(()=>organizationLocations.id,{onDelete:"cascade"}),
+ settingsJson:text("settings_json").notNull(),updatedBy:text("updated_by").references(()=>users.id,{onDelete:"set null"}),updatedAt:integer("updated_at").notNull(),
+},t=>[primaryKey({columns:[t.organizationId,t.locationId]})]);
+export const forecastingRuns=sqliteTable("forecasting_runs",{
+ id:text("id").primaryKey(),organizationId:text("organization_id").notNull().references(()=>workspaces.id,{onDelete:"cascade"}),createdBy:text("created_by").notNull().references(()=>users.id,{onDelete:"cascade"}),issuedAt:text("issued_at").notNull(),horizon:integer("horizon").notNull(),modelVersion:text("model_version").notNull(),inputHash:text("input_hash").notNull(),snapshotJson:text("snapshot_json").notNull(),reportJson:text("report_json").notNull(),
+},t=>[index("forecasting_runs_owner_idx").on(t.organizationId,t.createdBy,t.issuedAt)]);
+export const forecastingViews=sqliteTable("forecasting_views",{
+ organizationId:text("organization_id").notNull().references(()=>workspaces.id,{onDelete:"cascade"}),userId:text("user_id").notNull().references(()=>users.id,{onDelete:"cascade"}),preferencesJson:text("preferences_json").notNull(),updatedAt:integer("updated_at").notNull(),
+},t=>[primaryKey({columns:[t.organizationId,t.userId]})]);
+
+export const inventoryVehicles = sqliteTable("inventory_vehicles", {
+  id: text("id").primaryKey().notNull(),
+  organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  locationId: text("location_id").notNull().references(() => organizationLocations.id, { onDelete: "cascade" }),
+  identifierKind: text("identifier_kind", { enum: ["vin", "legacy"] }).notNull(),
+  identifier: text("identifier").notNull(),
+  year: integer("model_year").notNull(),
+  make: text("make").notNull(), model: text("model").notNull(), stockNumber: text("stock_number").notNull(),
+  status: text("status", { enum: ["available", "reconditioning", "reserved", "sold", "archived"] }).notNull(),
+  acquiredDate: text("acquired_date").notNull(), currency: text("currency").notNull(),
+  acquisitionCents: integer("acquisition_cents"), reconditioningCents: integer("reconditioning_cents"),
+  source: text("source", { enum: ["manual", "csv"] }).notNull(), version: integer("version").notNull().default(1),
+  createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
+  updatedBy: text("updated_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: integer("created_at").notNull(), updatedAt: integer("updated_at").notNull(),
+}, table => [
+  unique("inventory_vehicles_identifier_unique").on(table.organizationId, table.identifier),
+  unique("inventory_vehicles_stock_unique").on(table.organizationId, table.stockNumber),
+  index("inventory_vehicles_scope_idx").on(table.organizationId, table.locationId, table.updatedAt, table.id),
+  check("inventory_vehicles_kind_check", sql`${table.identifierKind} IN ('vin','legacy')`),
+  check("inventory_vehicles_status_check", sql`${table.status} IN ('available','reconditioning','reserved','sold','archived')`),
+  check("inventory_vehicles_source_check", sql`${table.source} IN ('manual','csv')`),
+  check("inventory_vehicles_currency_check", sql`length(${table.currency})=3`),
+  check("inventory_vehicles_identifier_check", sql`(${table.identifierKind}='vin' AND length(${table.identifier})=17 AND ${table.identifier} NOT GLOB '*[^A-HJ-NPR-Z0-9]*') OR (${table.identifierKind}='legacy' AND ${table.year}<1981)`),
+  check("inventory_vehicles_year_check", sql`${table.year} BETWEEN 1886 AND 2200`),
+  check("inventory_vehicles_version_check", sql`${table.version} >= 1`),
+  check("inventory_vehicles_acquisition_check", sql`${table.acquisitionCents} IS NULL OR (typeof(${table.acquisitionCents})='integer' AND ${table.acquisitionCents} BETWEEN 0 AND 1000000000)`),
+  check("inventory_vehicles_reconditioning_check", sql`${table.reconditioningCents} IS NULL OR (typeof(${table.reconditioningCents})='integer' AND ${table.reconditioningCents} BETWEEN 0 AND 1000000000)`),
+]);
+
+export const shopifyPrivacyRequests = sqliteTable("shopify_privacy_requests", {
+  id: text("id").primaryKey().notNull(),
+  organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  connectionId: text("connection_id").notNull().references(() => integrationConnections.id, { onDelete: "cascade" }),
+  provider: text("provider").notNull(),
+  requestHash: text("request_hash").notNull(),
+  requestCiphertext: text("request_ciphertext").notNull(),
+  status: text("status", { enum: ["pending", "completed"] }).notNull().default("pending"),
+  receivedAt: integer("received_at").notNull(), dueAt: integer("due_at").notNull(),
+  lastExportedAt: integer("last_exported_at"), lastExportComplete: integer("last_export_complete").notNull().default(0),
+  lastExportCount: integer("last_export_count"), completedAt: integer("completed_at"),
+  completedByUserId: text("completed_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  completionMethod: text("completion_method", { enum: ["secure_delivery", "no_retained_data"] }),
+  completionReferenceHash: text("completion_reference_hash"),
+}, table => [
+  uniqueIndex("shopify_privacy_request_unique").on(table.organizationId, table.connectionId, table.requestHash),
+  index("shopify_privacy_pending_idx").on(table.organizationId, table.status, table.dueAt, table.id),
+  check("shopify_privacy_provider_check", sql`${table.provider} IN ('shopify','shopify-pos')`),
+  check("shopify_privacy_status_check", sql`${table.status} IN ('pending','completed')`),
+  check("shopify_privacy_export_check", sql`${table.lastExportComplete} IN (0,1)`),
+  check("shopify_privacy_completion_check", sql`${table.completionMethod} IN ('secure_delivery','no_retained_data')`),
+]);

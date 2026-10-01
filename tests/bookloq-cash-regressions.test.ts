@@ -6,6 +6,7 @@ import { Miniflare } from "miniflare";
 import { registerSupabaseTestServer } from "./helpers/supabase-loopback-transport.mjs";
 import { buildThirteenWeekCashFlow } from "../domain/thirteen-week-cash-flow.ts";
 import { businessClock } from "../domain/intraday-sales.ts";
+import { TERMS_OF_SERVICE_VERSION, PRIVACY_POLICY_VERSION, ACCOUNT_ACCEPTANCE_NOTICE_VERSION } from "../shared/legal-versions.ts";
 
 const origin = "https://vanteloq.example";
 const executionContext = { waitUntil() {}, passThroughOnException() {} };
@@ -52,9 +53,9 @@ function onboardingBody(ownerName: string, businessName: string) {
     sourceMode: "csv",
     selectedPos: "",
     legalAccepted: true,
-    termsVersion: "2026-09-05",
-    privacyPolicyVersion: "2026-09-10",
-    legalNoticeVersion: "account-creation-v2",
+    termsVersion: TERMS_OF_SERVICE_VERSION,
+    privacyPolicyVersion: PRIVACY_POLICY_VERSION,
+    legalNoticeVersion: ACCOUNT_ACCEPTANCE_NOTICE_VERSION,
   };
 }
 
@@ -879,7 +880,7 @@ test("executive report keeps period accounting behind add-on and organization sc
     assert.equal((await read()).finance,null,'demo ledger never flows into live overview');
     // Only the isolated, synthetic database is switched to exercise the live-code query path.
     await database.prepare("UPDATE bookloq_settings SET data_mode='live' WHERE organization_id=?").bind(org).run();
-    const report=await read();assert.equal(report.metrics.length,8);assert.ok(report.finance);assert.equal(report.finance.closing.balanceDifferenceCents,0);assert.ok(report.finance.cashClassification);
+    const report=await read();assert.equal(report.metrics.length,11);assert.ok(report.finance);assert.equal(report.finance.closing.balanceDifferenceCents,0);assert.ok(report.finance.cashClassification);
     assert.ok(report.finance.current);assert.equal(report.finance.current.operatingProfitCents,report.finance.current.operatingRevenueCents-report.finance.current.cogsCents-report.finance.current.operatingExpensesCents);
     const location=await database.prepare('SELECT id FROM organization_locations WHERE organization_id=? LIMIT 1').bind(org).first<{id:string}>();assert.ok(location);
     assert.equal((await read('&location='+location.id)).finance,null,'location view cannot silently show whole-company ledger totals');
@@ -887,4 +888,97 @@ test("executive report keeps period accounting behind add-on and organization sc
     const revoked=await read();assert.equal(revoked.finance,null);assert.equal(revoked.metrics.find((m:{key:string})=>m.key==='operating_profit').value,null);
     const invalid=await dispatch(worker,environment,'/api/v1/command-centre?executive=1&period=custom&from=2026-02-30&to=2026-03-01',{email});assert.equal(invalid.status,400);
   } finally {await dispose();}
+});
+
+
+test("collections totals cover all invoices, work before ledger setup and enforce financial access", async () => {
+  const {worker,environment,database,dispose}=await createEnvironment();
+  try {
+    const email=`collections-${crypto.randomUUID()}@example.invalid`;
+    const created=await dispatch(worker,environment,"/api/v1/onboarding",{method:"POST",email,body:onboardingBody("Collections Owner","Collections Fixture")});
+    assert.equal(created.status,201,await created.clone().text());
+    const identity=await database.prepare("SELECT u.id userId,m.organization_id organizationId FROM users u JOIN memberships m ON m.user_id=u.id WHERE u.email=?").bind(email).first<{userId:string;organizationId:string}>(); assert.ok(identity); const org=identity.organizationId;
+    await grantBookLoQ(database,org);
+    const seed=await dispatch(worker,environment,"/api/v1/bookloq/demo",{method:"POST",email,body:{}}); assert.equal(seed.status,201,await seed.clone().text());
+    const customer=await database.prepare("SELECT id FROM bookloq_contacts WHERE organization_id=? AND contact_type='customer' LIMIT 1").bind(org).first<{id:string}>(); assert.ok(customer);
+    const read=async(path="")=>{const response=await dispatch(worker,environment,"/api/v1/bookloq/collections"+path,{email}); assert.equal(response.status,200,await response.clone().text()); return response.json();};
+    const baseline=await read();
+    await database.batch(Array.from({length:205},(_,index)=>database.prepare(`INSERT INTO customer_invoices (id,organization_id,customer_id,invoice_number,invoice_date,due_date,status,subtotal_cents,total_cents,paid_cents,demo_record,created_at,updated_at) VALUES(?,?,?,?,?,?,'sent',10001,10001,1000,1,?,?)`).bind(`collection-${index}`,org,customer.id,`COL-${index}`,"2020-01-01","2020-01-02",Date.now(),Date.now())));
+    const report=await read("?filter=overdue"); assert.equal(report.report.receivables.totalCents,baseline.report.receivables.totalCents+205*9001); assert.equal(report.report.receivables.overdueCount,baseline.report.receivables.overdueCount+205); assert.equal(report.records.length,25); assert.ok(report.total>=205);
+    const found=await read("?q=COL-204"); assert.equal(found.total,1); assert.equal(found.records[0].outstandingCents,9001);
+    const preference=await dispatch(worker,environment,"/api/v1/preferences",{method:"POST",email,body:{collectionsPreferences:{horizon:7,density:"compact",widgets:[{id:"aging",visible:false}]}}}); assert.equal(preference.status,200,await preference.clone().text()); assert.equal((await preference.json()).dashboardPreferences.collections.horizon,7);
+
+    const supplier=await database.prepare("SELECT id FROM bookloq_contacts WHERE organization_id=? AND contact_type='supplier' LIMIT 1").bind(org).first<{id:string}>(); assert.ok(supplier);
+    await database.batch([
+      database.prepare(`INSERT INTO customer_invoices (id,organization_id,customer_id,invoice_number,invoice_date,due_date,status,subtotal_cents,total_cents,paid_cents,demo_record,created_at,updated_at) VALUES(?,?,?,?,?,?,'partially_paid',12500,12500,2500,0,?,?)`).bind("collection-live-invoice",org,customer.id,"LIVE-COL-1","2020-01-01","2020-01-02",Date.now(),Date.now()),
+      database.prepare(`INSERT INTO supplier_bills (id,organization_id,supplier_id,bill_number,invoice_date,due_date,status,subtotal_cents,total_cents,paid_cents,demo_record,created_at,updated_at) VALUES(?,?,?,?,?,?,'partially_paid',6000,6000,1000,0,?,?)`).bind("collection-live-bill",org,supplier.id,"LIVE-BILL-1","2020-01-01","2020-01-02",Date.now(),Date.now()),
+    ]);
+    const demo=await read(); assert.equal(demo.demonstration,true); assert.equal(demo.report.receivables.totalCents,report.report.receivables.totalCents); assert.equal(demo.report.payables.totalCents,baseline.report.payables.totalCents);
+    assert.equal((await read("?q=LIVE-COL-1")).total,0,"live invoices must not enter a demonstration view");
+
+    await database.prepare("DELETE FROM bookloq_settings WHERE organization_id=?").bind(org).run();
+    const missingSettings=await read();
+    assert.equal(missingSettings.demonstration,false); assert.equal(missingSettings.report.currency,"CAD");
+    assert.equal(missingSettings.report.receivables.totalCents,10000); assert.equal(missingSettings.report.payables.totalCents,5000);
+    assert.deepEqual(missingSettings.records.map((record:{id:string})=>record.id),["collection-live-invoice"]);
+    assert.equal((await read("?kind=payable")).records[0].id,"collection-live-bill");
+    const withoutLedger=await dispatch(worker,environment,"/api/v1/command-centre?executive=1&period=ytd&basis=ledger",{email});
+    assert.equal(withoutLedger.status,200,await withoutLedger.clone().text()); assert.equal((await withoutLedger.json()).executiveReport.finance,null,"document access must not imply an active ledger");
+
+    await database.prepare("INSERT INTO bookloq_settings (organization_id,base_currency,status,data_mode,updated_by_user_id,created_at,updated_at) VALUES(?,'CAD','not_configured','live',?,?,?)").bind(org,identity.userId,Date.now(),Date.now()).run();
+    const notConfigured=await read(); assert.equal(notConfigured.demonstration,false); assert.equal(notConfigured.report.receivables.totalCents,10000); assert.equal(notConfigured.report.payables.totalCents,5000);
+    await database.prepare("UPDATE bookloq_settings SET data_mode='demonstration' WHERE organization_id=?").bind(org).run();
+    const unconfiguredDemo=await read(); assert.equal(unconfiguredDemo.demonstration,true); assert.equal(unconfiguredDemo.report.receivables.totalCents,demo.report.receivables.totalCents); assert.equal(unconfiguredDemo.report.payables.totalCents,demo.report.payables.totalCents);
+    await database.prepare("UPDATE bookloq_settings SET status='suspended' WHERE organization_id=?").bind(org).run();
+    const suspended=await dispatch(worker,environment,"/api/v1/bookloq/collections",{email}); assert.equal(suspended.status,409); assert.equal((await suspended.json()).error.code,"BOOKLOQ_SUSPENDED");
+    await database.prepare("UPDATE tenant_addons SET status='inactive' WHERE organization_id=? AND addon_key='bookloq'").bind(org).run();
+    const denied=await dispatch(worker,environment,"/api/v1/bookloq/collections",{email}); assert.equal(denied.status,403);
+  } finally {await dispose();}
+});
+
+test("linked files require consent, keep snapshots private and reject cross-workspace cleanup",async()=>{
+  const {worker,environment,database,dispose}=await createEnvironment();
+  const originalFetch=globalThis.fetch;
+  let providerValues: unknown[][]=[["business_date","net_sales"],["2026-09-26",1200.01]];
+  let externalCalls=0;
+  try {
+    const owners=[] as {email:string;userId:string;organizationId:string}[];
+    for(const n of [1,2]) {
+      const email=`files-${n}-${crypto.randomUUID()}@example.invalid`;
+      const created=await dispatch(worker,environment,"/api/v1/onboarding",{method:"POST",email,body:onboardingBody("File Owner","Files Fixture "+n)}); assert.equal(created.status,201,await created.clone().text());
+      const identity=await database.prepare("SELECT u.id userId,m.organization_id organizationId FROM users u JOIN memberships m ON m.user_id=u.id WHERE u.email=?").bind(email).first<{userId:string;organizationId:string}>(); assert.ok(identity); await grantBookLoQ(database,identity.organizationId); owners.push({email,...identity});
+    }
+    const [owner,other]=owners;
+    const env={...environment,GOOGLE_FILES_ENABLED:"true",GOOGLE_FILES_CLIENT_ID:"fictional-client",GOOGLE_FILES_CLIENT_SECRET:"fictional-secret",INTEGRATION_ENCRYPTION_KEY:Buffer.alloc(32,9).toString("base64")};
+    globalThis.fetch=async(input,init)=>{
+      const url=typeof input==="string"?input:input instanceof URL?input.href:input.url;
+      if(url.startsWith("https://oauth2.googleapis.com/token")){externalCalls++;return Response.json({access_token:"fictional-access",refresh_token:"fictional-refresh",expires_in:3600});}
+      if(url.startsWith("https://www.googleapis.com/drive/v3/files/")){externalCalls++;return Response.json({id:"test-sheet",name:"Fictional Sheet",mimeType:"application/vnd.google-apps.spreadsheet",version:"1",trashed:false});}
+      if(url.startsWith("https://sheets.googleapis.com/v4/")){externalCalls++;return Response.json(url.includes("/values/")?{values:providerValues}:{sheets:[{properties:{title:"Sales"}}]});}
+      return originalFetch(input,init);
+    };
+    const post=async(body:unknown,email=owner.email)=>dispatch(worker,env,"/api/v1/linked-files",{method:"POST",email,body});
+    const noConsent=await post({action:"authorize",provider:"google-files"}); assert.equal(noConsent.status,400); assert.equal(externalCalls,0);
+    const auth=await post({action:"authorize",provider:"google-files",accepted:true,noticeVersion:"linked-files-2026-09-26"}); assert.equal(auth.status,200,await auth.clone().text());
+    const authorization=new URL((await auth.json()).authorizationUrl); assert.equal(authorization.searchParams.get("code_challenge_method"),"S256");
+    const callbackUrl=origin+"/api/v1/linked-files/google-files/callback?state="+authorization.searchParams.get("state")+"&code=fictional-code";
+    const callback=await worker.fetch(new Request(callbackUrl,{headers:{cookie:auth.headers.get("set-cookie")!.split(";")[0]}}),env,executionContext); assert.equal(callback.status,303,await callback.clone().text());
+    const replay=await worker.fetch(new Request(callbackUrl,{headers:{cookie:auth.headers.get("set-cookie")!.split(";")[0]}}),env,executionContext); assert.equal(replay.status,400);
+    const connection=await database.prepare("SELECT id,token_ciphertext FROM cloud_file_connections WHERE user_id=? AND status='connected'").bind(owner.userId).first<{id:string;token_ciphertext:string}>();assert.ok(connection);assert.ok(!connection.token_ciphertext.includes("fictional-access"));
+    const attach=await post({action:"attach",connectionId:connection.id,remoteId:"test-sheet",sheetName:"Sales"}); assert.equal(attach.status,200,await attach.clone().text());
+    const source=await database.prepare("SELECT id FROM linked_files WHERE connection_id=?").bind(connection.id).first<{id:string}>();assert.ok(source);
+    assert.equal((await post({action:"refresh",id:source.id},other.email)).status,404);
+    const refreshed=await post({action:"refresh",id:source.id}); assert.equal(refreshed.status,200,await refreshed.clone().text());
+    const snapshot=await dispatch(worker,env,"/api/v1/linked-files?id="+source.id,{email:owner.email}); assert.equal((await snapshot.json()).snapshot.rows[0][1],"1200.01");
+    assert.equal((await dispatch(worker,env,"/api/v1/linked-files?id="+source.id,{email:other.email})).status,404);
+    const persisted=await database.prepare("SELECT snapshot_ciphertext,revision FROM linked_files WHERE id=?").bind(source.id).first<{snapshot_ciphertext:string;revision:string}>(); assert.ok(persisted); assert.ok(!persisted.snapshot_ciphertext.includes("1200.01"));
+    providerValues=Array.from({length:1002},()=>[1]); await database.prepare("UPDATE linked_files SET last_checked_at=0 WHERE id=?").bind(source.id).run();
+    const oversizedLinkedFile=await post({action:"refresh",id:source.id}); assert.equal(oversizedLinkedFile.status,422); assert.equal((await oversizedLinkedFile.json()).error.code,"FILE_TABLE_INVALID");
+    const retained=await database.prepare("SELECT revision FROM linked_files WHERE id=?").bind(source.id).first<{revision:string}>(); assert.equal(retained?.revision,persisted.revision);
+    assert.equal((await post({action:"disconnect",connectionId:connection.id},other.email)).status,404);
+    const disconnected=await post({action:"disconnect",connectionId:connection.id}); assert.equal(disconnected.status,200,await disconnected.clone().text());
+    assert.equal(await database.prepare("SELECT id FROM linked_files WHERE id=?").bind(source.id).first(),null);
+    const revoked=await database.prepare("SELECT token_ciphertext,status FROM cloud_file_connections WHERE id=?").bind(connection.id).first<{token_ciphertext:null;status:string}>(); assert.equal(revoked?.token_ciphertext,null); assert.equal(revoked?.status,"revoked");
+    const ledger=await database.prepare("SELECT COUNT(*) count FROM journal_entries WHERE organization_id=?").bind(owner.organizationId).first<{count:number}>(); assert.equal(ledger?.count,0);
+  } finally {globalThis.fetch=originalFetch;await dispose();}
 });

@@ -31,7 +31,8 @@ test("Shopify POS readiness exposes the exact read-only adapter boundary", () =>
   assert.equal(readiness.apiVersion, SHOPIFY_API_VERSION);
   assert.equal(readiness.mode, "read_only_staged_sync");
   assert.equal(readiness.dataPromotionEnabled, false);
-  assert.deepEqual(new Set(readiness.permissions), new Set(["read_all_orders", "read_orders", "read_products", "read_inventory", "read_locations", "read_customers"]));
+  assert.deepEqual(new Set(readiness.permissions), new Set(["read_orders", "read_products", "read_inventory", "read_locations", "read_customers"]));
+  assert.equal(readiness.permissions.includes("read_all_orders" as never), false, "restricted full-history access must not block initial installation");
 });
 
 test("Shopify e-commerce has a distinct ready OAuth and webhook boundary", () => {
@@ -52,7 +53,8 @@ test("Shopify authorization is state-bound and limited to permanent store domain
   assert.equal(url.searchParams.get("client_id"), "shopify-test-client");
   assert.equal(url.searchParams.get("redirect_uri"), "https://vanteloq.com/api/v1/integrations/shopify-pos/callback");
   assert.equal(url.searchParams.get("state"), state);
-  assert.deepEqual(new Set(url.searchParams.get("scope")?.split(",")), new Set(["read_all_orders", "read_orders", "read_products", "read_inventory", "read_locations", "read_customers"]));
+  assert.deepEqual(new Set(url.searchParams.get("scope")?.split(",")), new Set(["read_orders", "read_products", "read_inventory", "read_locations", "read_customers"]));
+  assert.equal(url.searchParams.get("scope")?.includes("read_all_orders"), false);
   assert.doesNotMatch(url.toString(), /shopify-test-secret/);
   assert.equal(normalizeShopDomain("https://TEST-STORE.myshopify.com/"), "test-store.myshopify.com");
   assert.throws(() => normalizeShopDomain("shopify.example.com"), /permanent .myshopify.com domain/i);
@@ -88,7 +90,18 @@ test("Shopify e-commerce routes preserve online-order lineage separately from Sh
   const configuration = readFileSync(`${process.cwd()}/shopify.app.toml`, "utf8");
   assert.match(sync, /isCommerce \? "source_name:web" : "source_name:pos"/);
   assert.match(sync, /SHOPIFY_ONLINE_LOCATION_REF/);
-  assert.match(sync, /currentTotalRefundedSet/);
+  assert.match(sync, /totalRefundedSet/);
+  assert.doesNotMatch(sync, /currentTotalRefundedSet/);
+  assert.match(sync, /query VanteloqShopifyOrders/);
+  assert.match(sync, /query VanteloqShopifyProductVariants/);
+  assert.match(sync, /query VanteloqShopifyCustomers/);
+  assert.match(sync, /productVariants\(first: 100/);
+  assert.doesNotMatch(sync, /productVariants\(first: 100, after: \$after, sortKey: UPDATED_AT\)/);
+  assert.doesNotMatch(sync, /products\(first: 100[\s\S]*variants\(first: 100/);
+  assert.doesNotMatch(sync, /ordersEnabled|productsEnabled|customersEnabled/);
+  assert.doesNotMatch(sync, /customer \{ id displayName/);
+  assert.doesNotMatch(sync, /nodes \{ id displayName firstName lastName email phone updatedAt/);
+  assert.match(sync, /first_name=NULL, last_name=NULL, email=NULL, phone=NULL/);
   assert.match(wrapper, /shopify-pos\/sync\/route/);
   assert.match(configuration, /integrations\/shopify\/callback/);
   assert.match(configuration, /integrations\/shopify\/webhook/);

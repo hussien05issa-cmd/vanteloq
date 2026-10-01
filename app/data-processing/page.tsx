@@ -9,10 +9,10 @@ export const metadata: Metadata = {
 };
 
 export default function DataProcessingPage() {
-  return <LegalShell eyebrow="DATA PROCESSING ADDENDUM" title="Documented instructions for protected customer data." summary="This addendum describes how LexEdge Consulting processes personal information in Vanteloq for a business customer.">
+  return <LegalShell eyebrow="DATA PROCESSING ADDENDUM" title="Documented instructions for protected customer data." summary="This addendum describes how 2855706 ALBERTA INC, doing business as LexEdge Consulting, processes personal information in Vanteloq for a business customer.">
     <div className="legal-note"><strong>Contract status:</strong> This Data Processing Addendum forms part of the Vanteloq Terms of Service when a customer accepts those terms or an order that incorporates them. A signed version is available for an eligible business customer on request.</div>
     <PolicySection id="roles" title="1. Parties and roles">
-      <p>The customer is the organization that controls a Vanteloq workspace. LexEdge Consulting, operating as Vanteloq, processes Customer Data to provide the service. Depending on the applicable law and activity, the customer may be the organization responsible for the information and Vanteloq may act as its service provider or processor. Each party remains responsible for obligations that apply directly to it.</p>
+      <p>The customer is the organization that controls a Vanteloq workspace. 2855706 ALBERTA INC, doing business as LexEdge Consulting and operating Vanteloq, processes Customer Data to provide the service. Depending on the applicable law and activity, the customer may be the organization responsible for the information and Vanteloq may act as its service provider or processor. Each party remains responsible for obligations that apply directly to it.</p>
     </PolicySection>
     <PolicySection id="instructions" title="2. Documented instructions and purpose">
       <p>Vanteloq processes Customer Data only to provide, secure, support, maintain, and improve the contracted service; follow lawful workspace instructions; prevent misuse; and comply with law. The Terms of Service, product controls, connected service choices, support requests, and an applicable order are the customer&apos;s documented instructions.</p>

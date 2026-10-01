@@ -4,6 +4,8 @@ import { createServer } from "node:http";
 import test from "node:test";
 import { Miniflare } from "miniflare";
 import { registerSupabaseTestServer } from "./helpers/supabase-loopback-transport.mjs";
+import { TERMS_OF_SERVICE_VERSION, PRIVACY_POLICY_VERSION, ACCOUNT_ACCEPTANCE_NOTICE_VERSION } from "../shared/legal-versions.ts";
+import { providerPrivacyAcceptance } from "../domain/provider-privacy.ts";
 
 const origin = "https://vanteloq.example";
 const email = "quickbooks-owner@example.invalid";
@@ -49,8 +51,8 @@ test("QuickBooks callback retains verified initiation MFA and rechecks the actor
       ownerName: "Test owner", businessName: "Test store", legalName: "Test store Ltd.", businessEmail: email,
       phone: "", website: "", industry: "Retail", country: "CA", province: "AB", city: "Edmonton", address: "1 Test Avenue",
       postalCode: "T5A 1A1", emailNotifications: true, timezone: "America/Edmonton", currency: "CAD", fiscalYearStart: "January",
-      taxNumber: "", sourceMode: "connect_later", selectedPos: "", legalAccepted: true, termsVersion: "2026-09-05",
-      privacyPolicyVersion: "2026-09-10", legalNoticeVersion: "account-creation-v2",
+      taxNumber: "", sourceMode: "connect_later", selectedPos: "", legalAccepted: true, termsVersion: TERMS_OF_SERVICE_VERSION,
+      privacyPolicyVersion: PRIVACY_POLICY_VERSION, legalNoticeVersion: ACCOUNT_ACCEPTANCE_NOTICE_VERSION,
       hours: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map(day => ({ day, open: "09:00", close: "17:00", closed: false })),
     }) }), env, context);
     assert.equal(onboarding.status, 201, await onboarding.clone().text());
@@ -58,13 +60,16 @@ test("QuickBooks callback retains verified initiation MFA and rechecks the actor
     const actor = await db.prepare("SELECT id, auth_subject FROM users WHERE email = ?").bind(email).first();
     await db.prepare(`INSERT INTO internal_access (id,user_id,organization_id,access_level,reason,active,mfa_required,created_by_user_id,created_at,updated_at)
       VALUES ('test-founder',?,?,'founder','MFA callback regression',1,1,?,?,?)`).bind(actor.id, organizationId, actor.id, Date.now(), Date.now()).run();
-    const authorize = async (aal = "aal2") => worker.fetch(new Request(`${origin}/api/v1/integrations/quickbooks/authorize`, {
-      method: "POST", headers: headers(aal), body: JSON.stringify({ consentAcknowledged: true,
-        noticeVersion: "quickbooks-accounting-read-v1", privacyPolicyVersion: "2026-09-10", initiatorAssuranceLevel: "aal2" }),
+    const authorize = async (aal = "aal2", includeProviderPrivacy = true) => worker.fetch(new Request(`${origin}/api/v1/integrations/quickbooks/authorize`, {
+      method: "POST", headers: headers(aal), body: JSON.stringify({ ...(includeProviderPrivacy ? providerPrivacyAcceptance(true) : {}), consentAcknowledged: true,
+        noticeVersion: "quickbooks-accounting-read-v1", privacyPolicyVersion: "2026-10-01", initiatorAssuranceLevel: "aal2" }),
     }), env, context);
     const weak = await authorize("aal1");
     assert.equal(weak.status, 403);
     assert.equal((await weak.json()).error.code, "MFA_REQUIRED");
+    const missingPrivacy = await authorize("aal2", false);
+    assert.equal(missingPrivacy.status, 400, await missingPrivacy.clone().text());
+    assert.equal((await missingPrivacy.json()).error.code, "PROVIDER_PRIVACY_REQUIRED");
     let tokenExchanges = 0;
     let revocations = 0;
     let onTokenExchange = async () => {};

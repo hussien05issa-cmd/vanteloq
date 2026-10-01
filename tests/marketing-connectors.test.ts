@@ -132,7 +132,7 @@ test("marketing sync calls only exact selected resources and preserves selection
   }
 });
 
-test("Business Profile performance, review access, reply confirmation target, and Google Ads reporting preserve provider lineage", async () => {
+test("Business Profile stays out of stored snapshots while reviews and Ads preserve provider lineage", async () => {
   runtime.__vanteloqEnv = {
     GOOGLE_ADS_DEVELOPER_TOKEN: "developer-token",
     GOOGLE_ADS_LOGIN_CUSTOMER_ID: "123-456-7890",
@@ -179,7 +179,9 @@ test("Business Profile performance, review access, reply confirmation target, an
     const reviews = await fetchGoogleBusinessReviews("google-token", "accounts/123/locations/456");
     const reply = await publishGoogleBusinessReviewReply("google-token", reviews.reviews[0]!.name, "Thank you for visiting.");
 
-    assert.ok(snapshot.metrics.some((metric) => metric.resourceSelectionId === "profile-selection" && metric.metricKey === "gbp_call_clicks" && metric.valueMilli === 12_000));
+    assert.ok(snapshot.metrics.every((metric) => metric.resourceSelectionId !== "profile-selection"));
+    assert.ok(requests.every((request) => !request.url.includes("businessprofileperformance.googleapis.com")), "Durable sync must not fetch Business Profile performance");
+    assert.deepEqual(snapshot.resourceResults.map((resource) => resource.resourceSelectionId), ["ads-selection"]);
     assert.ok(snapshot.metrics.some((metric) => metric.resourceSelectionId === "ads-selection" && metric.metricKey === "google_ads_spend" && metric.valueMilli === 12_500));
     assert.equal(reviews.reviews[0]?.reviewerName, "Customer");
     assert.equal(reply.comment, "Thank you for visiting.");

@@ -18,6 +18,26 @@ test("Google and Meta use local brand assets with accessible names", () => {
   assert.doesNotMatch(svg, /<script|onload|href=|<foreignObject/i);
 });
 
+test("Deel and Slack use official local provider assets without runtime network requests", () => {
+  for (const [name, file] of [["Deel", "deel-wordmark-white.svg"], ["Slack", "slack-icon.svg"]]) {
+    const markup = renderToStaticMarkup(<IntegrationBrandLogo name={name} compact/>);
+    assert.ok(markup.includes(`/integrations/${file}`));
+    assert.ok(markup.includes(`aria-label="${name} logo"`));
+    assert.doesNotMatch(markup, /src="https?:/);
+    assert.ok(readFileSync(`public/integrations/${file}`).length > 1000);
+  }
+  const svg = readFileSync("public/integrations/slack-icon.svg", "utf8");
+  assert.doesNotMatch(svg, /<script|onload|href=|<foreignObject/i);
+});
+
+test("Moneris uses the official local wordmark instead of a redrawn mark", () => {
+  const markup = renderToStaticMarkup(<IntegrationBrandLogo name="Moneris" compact/>);
+  assert.ok(markup.includes("/integrations/moneris-official-black.png"));
+  assert.ok(markup.includes('aria-label="Moneris logo"'));
+  assert.doesNotMatch(markup, /<svg|src="https?:/);
+  assert.ok(readFileSync("public/integrations/moneris-official-black.png").length > 10_000);
+});
+
 test("advisor readiness requires consent, a bounded question and no active request", () => {
   for (const [question, consent, loading] of [["Sales?", false, false], ["", true, false], ["  ", true, false], ["Sales?", true, true], ["x".repeat(801), true, false]] as const) {
     assert.equal(canAskAdvisor(question, consent, loading), false);
@@ -36,7 +56,9 @@ test("advisor visibly explains its disabled state and labels its controls", () =
   assert.match(markup, /href="\/privacy#automation"/);
   assert.doesNotMatch(markup, /type="checkbox" checked/);
   const route = readFileSync("app/api/v1/advisor/chat/route.ts", "utf8");
-  assert.ok(route.indexOf('body.dataUseAccepted !== true') < route.indexOf('const result = await callAdvisor'));
+  const consentCheck = route.indexOf('body.dataUseAccepted !== true');
+  const providerCall = route.indexOf('result = await callAdvisor');
+  assert.ok(consentCheck >= 0 && providerCall > consentCheck);
   assert.match(route, /requireAccess\(request, readers, "ai.basic"\)/);
   assert.match(route, /requireSameOrigin\(request\)/);
 });

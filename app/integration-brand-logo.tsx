@@ -11,10 +11,6 @@ const simpleMarks: Record<string, SimpleIcon> = {
     hex: "3E4348",
     path: "M4.01 0A4.01 4.01 0 000 4.01v15.98c0 2.21 1.8 4 4.01 4.01h15.98C22.2 24 24 22.2 24 19.99V4A4.01 4.01 0 0019.99 0H4zm1.62 4.36h12.74c.7 0 1.26.57 1.26 1.27v12.74c0 .7-.56 1.27-1.26 1.27H5.63c-.7 0-1.26-.57-1.26-1.27V5.63a1.27 1.27 0 011.26-1.27zm3.83 4.35a.73.73 0 00-.73.73v5.09c0 .4.32.72.72.72h5.1a.73.73 0 00.73-.72V9.44a.73.73 0 00-.73-.73h-5.1Z",
   },
-  Stripe: {
-    hex: "635BFF",
-    path: "M13.976 9.15c-2.172-.806-3.356-1.426-3.356-2.409 0-.831.683-1.305 1.901-1.305 2.227 0 4.515.858 6.09 1.631l.89-5.494C18.252.975 15.697 0 12.165 0 9.667 0 7.589.654 6.104 1.872 4.56 3.147 3.757 4.992 3.757 7.218c0 4.039 2.467 5.76 6.476 7.219 2.585.92 3.445 1.574 3.445 2.583 0 .98-.84 1.545-2.354 1.545-1.875 0-4.965-.921-6.99-2.109l-.9 5.555C5.175 22.99 8.385 24 11.714 24c2.641 0 4.843-.624 6.328-1.813 1.664-1.305 2.525-3.236 2.525-5.732 0-4.128-2.524-5.851-6.594-7.305h.003z",
-  },
   QuickBooks: {
     hex: "2CA01C",
     path: "M12 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0zm.642 4.1335c.9554 0 1.7296.776 1.7296 1.7332v9.0667h1.6c1.614 0 2.9275-1.3156 2.9275-2.933 0-1.6173-1.3136-2.9333-2.9276-2.9333h-.6654V7.3334h.6654c2.5722 0 4.6577 2.0897 4.6577 4.667 0 2.5774-2.0855 4.6666-4.6577 4.6666H12.642zM7.9837 7.333h3.3291v12.533c-.9555 0-1.73-.7759-1.73-1.7332V9.0662H7.9837c-1.6146 0-2.9277 1.316-2.9277 2.9334 0 1.6175 1.3131 2.9333 2.9277 2.9333h.6654v1.7332h-.6654c-2.5725 0-4.6577-2.0892-4.6577-4.6665 0-2.5771 2.0852-4.6666 4.6577-4.6666Z",
@@ -23,16 +19,22 @@ const simpleMarks: Record<string, SimpleIcon> = {
     hex: "13B5EA",
     path: "M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm6.585 14.655c-1.485 0-2.69-1.206-2.69-2.689 0-1.485 1.207-2.691 2.69-2.691 1.485 0 2.69 1.207 2.69 2.691s-1.207 2.689-2.69 2.689zM7.53 14.644c-.099 0-.192-.041-.267-.116l-2.043-2.04-2.052 2.047c-.069.068-.16.108-.258.108-.202 0-.368-.166-.368-.368 0-.099.04-.191.111-.263l2.04-2.05-2.038-2.047c-.075-.069-.113-.162-.113-.261 0-.203.166-.366.368-.366.098 0 .188.037.258.105l2.055 2.048 2.048-2.045c.069-.071.162-.108.26-.108.211 0 .375.165.375.366 0 .098-.029.188-.104.258l-2.056 2.055 2.055 2.051c.068.069.104.16.104.258 0 .202-.165.368-.365.368h-.01zm8.017-4.591c-.796.101-.882.476-.882 1.404v2.787c0 .202-.165.366-.366.366-.203 0-.367-.165-.368-.366v-4.53c0-.204.16-.366.362-.366.166 0 .316.125.346.289.27-.209.6-.317.93-.317h.105c.195 0 .359.165.359.368 0 .201-.164.352-.375.359 0 0-.09 0-.164.008l.053-.002zm-3.091 2.205H8.625c0 .019.003.037.006.057.02.105.045.211.083.31.194.531.765 1.275 1.829 1.29.33-.003.631-.086.9-.229.21-.12.391-.271.525-.428.045-.058.09-.112.12-.168.18-.229.405-.186.54-.083.164.135.18.391.045.57l-.016.016c-.21.27-.435.495-.689.66-.255.164-.525.284-.811.345-.33.09-.645.104-.975.06-1.095-.135-2.01-.93-2.28-2.01-.06-.21-.09-.42-.09-.645 0-.855.421-1.695 1.125-2.205.885-.615 2.085-.66 3-.075.63.405 1.035 1.021 1.185 1.771.075.419-.21.794-.734.81l.068-.046zm6.129-2.223c-1.064 0-1.931.865-1.931 1.931 0 1.064.866 1.931 1.931 1.931s1.931-.867 1.931-1.931c0-1.065-.866-1.933-1.931-1.933v.002zm0 2.595c-.367 0-.666-.297-.666-.666 0-.367.3-.665.666-.665.367 0 .667.299.667.665 0 .369-.3.667-.667.666zm-8.04-2.603c-.91 0-1.672.623-1.886 1.466v.03h3.776c-.203-.855-.973-1.494-1.891-1.494v-.002z",
   },
-  DoorDash: {
-    hex: "FF3008",
-    path: "M23.071 8.409a6.09 6.09 0 00-5.396-3.228H.584A.589.589 0 00.17 6.184L3.894 9.93a1.752 1.752 0 001.242.516h12.049a1.554 1.554 0 11.031 3.108H8.91a.589.589 0 00-.415 1.003l3.725 3.747a1.75 1.75 0 001.242.516h3.757c4.887 0 8.584-5.225 5.852-10.413",
-  },
+};
+
+const officialProviderAssets: Record<string, string> = {
+  DoorDash: "/integrations/doordash-mark.svg",
+  Stripe: "/integrations/stripe-wordmark-blurple.svg",
+  Clover: "/integrations/clover-mark.svg",
+  "Uber Eats": "/integrations/uber-eats-stacked-black.svg",
 };
 
 export default function IntegrationBrandLogo({ name, compact = false }: { name: string; compact?: boolean }) {
-  if (name === "QuickBooks" || name === "Shopify" || name === "Shopify POS") {
-    return <span className={`integration-logo brand-provider-reference${compact ? " compact" : ""}`} role="img" aria-label={`${name} integration`}>
-      <svg viewBox="0 0 48 48" aria-hidden="true"><path fill="currentColor" d="M12 13h16a7 7 0 0 1 0 14h-3v5h3a12 12 0 0 0 0-24H12v5Zm24 22H20a7 7 0 0 1 0-14h3v-5h-3a12 12 0 0 0 0 24h16v-5Z"/></svg>
+  const officialAsset = officialProviderAssets[name];
+  if (officialAsset) {
+    return <span className={`integration-logo brand-${slug(name)}${compact ? " compact" : ""}`} role="img" aria-label={`${name} logo`}>
+      {/* Provider artwork is served locally. Source and usage notes are in docs/brand-asset-sources.md. */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={officialAsset} alt="" aria-hidden="true" />
     </span>;
   }
   if (name === "Google" || name === "Meta") {
@@ -58,6 +60,23 @@ export default function IntegrationBrandLogo({ name, compact = false }: { name: 
     </span>;
   }
 
+  if (name === "Deel" || name === "Slack") {
+    const asset = name === "Deel" ? "/integrations/deel-wordmark-white.svg" : "/integrations/slack-icon.svg";
+    return <span className={`integration-logo brand-${slug(name)}${compact ? " compact" : ""}`} role="img" aria-label={`${name} logo`}>
+      {/* Official, unmodified provider artwork. Provenance is recorded in docs/brand-asset-sources.md. */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={asset} alt="" aria-hidden="true" />
+    </span>;
+  }
+
+  if (name === "Moneris") {
+    return <span className={`integration-logo brand-moneris${compact ? " compact" : ""}`} role="img" aria-label="Moneris logo">
+      {/* Official Moneris bilingual wordmark, hosted locally without recolouring or redrawing. */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/integrations/moneris-official-black.png" alt="" aria-hidden="true" />
+    </span>;
+  }
+
   const icon = simpleMarks[name === "Shopify POS" ? "Shopify" : name];
 
   if (icon) {
@@ -75,19 +94,6 @@ function CustomMark({ name }: { name: string }) {
   if (name === "WooCommerce") return <svg viewBox="0 0 48 48" aria-hidden="true">
     <path fill="#96588A" d="M5 9h38v24H27l-7 7 1.7-7H5V9Z"/>
     <text x="9" y="26" fill="#fff" fontSize="12" fontWeight="800" fontFamily="Arial, sans-serif">WOO</text>
-  </svg>;
-
-  if (name === "Uber Eats") return <svg viewBox="0 0 48 48" aria-hidden="true">
-    <text x="5" y="22" fill="#111" fontSize="14" fontWeight="800" fontFamily="Arial, sans-serif">UBER</text>
-    <text x="7" y="37" fill="#06C167" fontSize="14" fontWeight="800" fontFamily="Arial, sans-serif">EATS</text>
-  </svg>;
-
-  if (name === "Clover") return <svg viewBox="0 0 48 48" aria-hidden="true">
-    <path fill="#29A36A" d="M21.8 7.5H16a8.5 8.5 0 0 0-8.5 8.5v5.8h14.3V7.5Zm4.4 0H32a8.5 8.5 0 0 1 8.5 8.5v5.8H26.2V7.5Zm14.3 18.7V32a8.5 8.5 0 0 1-8.5 8.5h-5.8V26.2h14.3Zm-18.7 0v14.3H16A8.5 8.5 0 0 1 7.5 32v-5.8h14.3Z"/>
-  </svg>;
-
-  if (name === "Moneris") return <svg viewBox="0 0 48 48" aria-hidden="true">
-    <path fill="#35B7B0" d="M6 34.8V17.6c0-2.5 1.9-4.5 4.3-4.5 1.6 0 3.1.9 3.8 2.4l1.4 2.9 3.4-6.8a5.8 5.8 0 0 1 10.4 0l3.3 6.8 1.5-2.9a4.2 4.2 0 0 1 8 2.1v17.2h-6.4V22.1l-5.4 10.8h-5.2L24 30.7l-1.1 2.2h-5.2l-5.3-10.8v12.7H6Z"/>
   </svg>;
 
   if (name === "Amazon") return <svg viewBox="0 0 48 48" aria-hidden="true">

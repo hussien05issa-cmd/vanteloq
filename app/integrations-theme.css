@@ -174,3 +174,25 @@ body:has(.operating-shell .marketing-resource-panel) .analytics-settings-button 
   font-size: 13px;
   font-weight: 600;
 }
+
+/* Status colour follows observed health, never OAuth authorization alone. */
+.operating-shell .data-hub [data-health-tone="neutral"] { background: #edf1f6; color: #485a70; }
+.operating-shell .data-hub [data-health-tone="info"] { background: #eaf2ff; color: #23549a; }
+.operating-shell .data-hub [data-health-tone="success"] { background: #e8f4ee; color: #216147; }
+.operating-shell .data-hub [data-health-tone="warning"] { background: #fff1df; color: #7d4b12; }
+
+/* Quiet catalogue hierarchy: identity, next action, then optional detail. */
+.operating-shell .data-hub .integration-grid{grid-template-columns:repeat(auto-fit,minmax(min(100%,28rem),1fr));gap:24px}
+.operating-shell .data-hub .integration-card{padding:26px;display:flex;flex-direction:column;gap:14px;background:linear-gradient(145deg,#fafdff,#f1f6fc);border-radius:20px}
+.operating-shell .data-hub .integration-card-head{align-items:center;gap:18px;margin-bottom:0}
+.operating-shell .data-hub .integration-card h3{margin:0;font-size:21px!important;letter-spacing:-.02em}
+.operating-shell .data-hub .connector-next-step{padding:15px 17px;background:#eaf2fb;border:1px solid #d2e1f0}
+.operating-shell .data-hub .connector-next-step p{font-size:14px!important;line-height:1.65;margin:6px 0 0}
+.operating-shell .data-hub .integration-requirements{border-bottom:1px solid #d6e2ee;padding-bottom:8px}
+.operating-shell .data-hub .integration-requirements summary{font-size:13px;color:#355c85;min-height:36px;align-content:center;cursor:pointer;font-weight:600}
+.operating-shell .data-hub .integration-requirements p{font-size:13px!important;margin:8px 0;line-height:1.6}
+.operating-shell .data-hub .integration-card-footer{margin-top:auto;padding-top:18px;border-top:1px solid #d1dfed;gap:14px;flex-wrap:wrap}
+.operating-shell .data-hub .integration-card-footer .provider-actions{flex-wrap:wrap;gap:8px}
+.operating-shell .data-hub .integration-category{margin-top:30px}
+.operating-shell .data-hub .integration-category>header{margin-bottom:18px;gap:14px}
+@media(max-width:600px){.operating-shell .data-hub .integration-card{padding:19px;gap:13px}.operating-shell .data-hub .integration-grid{gap:16px}.operating-shell .data-hub .integration-card-footer{align-items:stretch}.operating-shell .data-hub .integration-card-footer>button{width:100%}}

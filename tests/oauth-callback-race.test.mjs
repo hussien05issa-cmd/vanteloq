@@ -1,9 +1,12 @@
+import { grantIntegrationPreview } from "./helpers/integration-preview-fixture.mjs";
+import { providerPrivacyAcceptance } from "../domain/provider-privacy.ts";
 import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
 import { createServer } from "node:http";
 import test from "node:test";
 import { Miniflare } from "miniflare";
 import { registerSupabaseTestServer } from "./helpers/supabase-loopback-transport.mjs";
+import { TERMS_OF_SERVICE_VERSION, PRIVACY_POLICY_VERSION, ACCOUNT_ACCEPTANCE_NOTICE_VERSION } from "../shared/legal-versions.ts";
 import { activateTestSubscription } from "./helpers/subscription-fixture.mjs";
 
 const origin = "https://vanteloq.example";
@@ -104,14 +107,16 @@ async function createHarness(label) {
         country: "CA", province: "AB", city: "Edmonton", address: "1 Race Avenue",
         postalCode: "T5A 1A1", emailNotifications: true, timezone: "America/Edmonton",
         currency: "CAD", fiscalYearStart: "January", taxNumber: "", sourceMode: "connect_later",
-        selectedPos: "", legalAccepted: true, termsVersion: "2026-09-05",
-        privacyPolicyVersion: "2026-09-10", legalNoticeVersion: "account-creation-v2",
+        selectedPos: "", legalAccepted: true, termsVersion: TERMS_OF_SERVICE_VERSION,
+        privacyPolicyVersion: PRIVACY_POLICY_VERSION, legalNoticeVersion: ACCOUNT_ACCEPTANCE_NOTICE_VERSION,
         hours: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
           .map((day) => ({ day, open: "09:00", close: "17:00", closed: false })),
       }),
     }), environment, context);
     assert.equal(onboarding.status, 201, await onboarding.clone().text());
-    await activateTestSubscription(database, (await onboarding.json()).organization.id);
+    const organizationId = (await onboarding.json()).organization.id;
+    await activateTestSubscription(database, organizationId);
+    await grantIntegrationPreview(database, environment, organizationId, "oauth-race-owner@example.invalid");
     return { authOrigin, database, worker, environment, dispose };
   } catch (error) {
     await dispose();
@@ -125,7 +130,7 @@ test("R-Series callback cannot restore a connection disconnected during token ex
   const { authOrigin, database, worker, environment, dispose } = harness;
   try {
     const authorization = await worker.fetch(new Request(`${origin}/api/v1/integrations/lightspeed-r/authorize`, {
-      method: "POST", headers: ownerHeaders(true), body: "{}",
+      method: "POST", headers: ownerHeaders(true), body: JSON.stringify(providerPrivacyAcceptance(true)),
     }), environment, context);
     assert.equal(authorization.status, 200, await authorization.clone().text());
     const authorizationBody = await authorization.json();
@@ -187,7 +192,7 @@ test("X-Series callback removes artifacts when disconnected during outlet verifi
   const { authOrigin, database, worker, environment, dispose } = harness;
   try {
     const authorization = await worker.fetch(new Request(`${origin}/api/v1/integrations/lightspeed/authorize`, {
-      method: "POST", headers: ownerHeaders(true), body: "{}",
+      method: "POST", headers: ownerHeaders(true), body: JSON.stringify(providerPrivacyAcceptance(true)),
     }), environment, context);
     assert.equal(authorization.status, 200, await authorization.clone().text());
     const authorizationBody = await authorization.json();
@@ -203,7 +208,7 @@ test("X-Series callback removes artifacts when disconnected during outlet verifi
           access_token: "new-access",
           refresh_token: "new-refresh",
           expires_in: 3600,
-          scope: "customers:read inventory:read outlets:read products:read retailer:read sales:read suppliers:read",
+          scope: "customers:read inventory:read outlets:read payment_types:read products:read retailer:read sales:read suppliers:read",
         });
       }
       if (url.origin === "https://race-store.retail.lightspeed.app" && url.pathname === "/api/2026-07/outlets") {
@@ -254,7 +259,7 @@ test("Stripe callback preserves a connection disconnected during token exchange"
   const { authOrigin, database, worker, environment, dispose } = harness;
   try {
     const authorization = await worker.fetch(new Request(`${origin}/api/v1/integrations/stripe/authorize`, {
-      method: "POST", headers: ownerHeaders(true), body: "{}",
+      method: "POST", headers: ownerHeaders(true), body: JSON.stringify(providerPrivacyAcceptance(true)),
     }), environment, context);
     assert.equal(authorization.status, 200, await authorization.clone().text());
     const authorizationBody = await authorization.json();
@@ -342,7 +347,7 @@ test("Stripe callback never deauthorizes an account used by an existing connecti
     };
 
     const firstAuthorization = await worker.fetch(new Request(`${origin}/api/v1/integrations/stripe/authorize`, {
-      method: "POST", headers: ownerHeaders(true), body: "{}",
+      method: "POST", headers: ownerHeaders(true), body: JSON.stringify(providerPrivacyAcceptance(true)),
     }), environment, context);
     assert.equal(firstAuthorization.status, 200, await firstAuthorization.clone().text());
     const firstBody = await firstAuthorization.json();
@@ -354,7 +359,7 @@ test("Stripe callback never deauthorizes an account used by an existing connecti
     assert.equal(firstCallback.headers.get("location"), `${origin}/?integration=stripe&connection=connected`);
 
     const secondAuthorization = await worker.fetch(new Request(`${origin}/api/v1/integrations/stripe/authorize`, {
-      method: "POST", headers: ownerHeaders(true), body: "{}",
+      method: "POST", headers: ownerHeaders(true), body: JSON.stringify(providerPrivacyAcceptance(true)),
     }), environment, context);
     assert.equal(secondAuthorization.status, 200, await secondAuthorization.clone().text());
     const secondBody = await secondAuthorization.json();

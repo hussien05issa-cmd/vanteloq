@@ -43,6 +43,7 @@ class PdfSpec:
     status: str
     banner: str
     subject: str
+    footer: str
 
 
 SPECS = (
@@ -53,14 +54,16 @@ SPECS = (
         status="DRAFT FOR APPROVAL",
         banner="Owner signature is required before this policy is represented as adopted or uploaded to Plaid.",
         subject="Vanteloq information security governance and control policy",
+        footer="Version 1.0  |  Prepared August 13, 2026  |  Confidential compliance material",
     ),
     PdfSpec(
         source=ROOT / "docs" / "compliance" / "DATA_RETENTION_AND_DISPOSAL_POLICY.md",
         output=OUTPUT_DIR / "Vanteloq-Data-Retention-and-Disposal-Policy.pdf",
         short_title="DATA RETENTION & DISPOSAL POLICY",
-        status="DRAFT FOR APPROVAL",
-        banner="Owner signature is required before this policy is represented as adopted or uploaded to Plaid.",
+        status="ADOPTED POLICY",
+        banner="Approved by the Owner and Security Lead on September 23, 2026. First quarterly review due December 22, 2026.",
         subject="Vanteloq retention, deletion, and disposal policy",
+        footer="Version 1.3  |  Adopted September 23, 2026  |  Confidential compliance material",
     ),
     PdfSpec(
         source=ROOT / "docs" / "compliance" / "PLAID_SECURITY_QUESTIONNAIRE_ANSWER_GUIDE.md",
@@ -69,6 +72,7 @@ SPECS = (
         status="OWNER REVIEW",
         banner="Do not submit yet: the production edge still accepts TLS 1.1 and several answers require owner verification.",
         subject="Verified answer guide and evidence map for the Plaid security questionnaire",
+        footer="Version 1.0  |  Prepared August 13, 2026  |  Confidential compliance material",
     ),
     PdfSpec(
         source=ROOT / "docs" / "compliance" / "IDENTITY_AND_ACCESS_CONTROL_EVIDENCE.md",
@@ -77,6 +81,7 @@ SPECS = (
         status="OWNER VERIFICATION",
         banner="Upload for access-control evidence. Critical-system MFA remains conditional until every administrator is verified.",
         subject="Vanteloq identity, RBAC, MFA, session, and access-control evidence for Plaid",
+        footer="Version 1.0  |  Prepared August 13, 2026  |  Confidential compliance material",
     ),
 )
 
@@ -147,6 +152,10 @@ def build_story(markdown: str, width: float, spec: PdfSpec):
     while index < len(lines):
         raw = lines[index].rstrip()
         if not raw.strip():
+            index += 1
+            continue
+        if raw.strip() == "[[PAGEBREAK]]":
+            story.append(PageBreak())
             index += 1
             continue
         if raw.startswith("# "):
@@ -240,7 +249,7 @@ def page_chrome(spec: PdfSpec):
         canvas.line(0.55 * inch, 0.46 * inch, page_width - 0.55 * inch, 0.46 * inch)
         canvas.setFillColor(MUTED)
         canvas.setFont("Helvetica", 7)
-        canvas.drawString(0.55 * inch, 0.28 * inch, "Version 1.0  •  Prepared August 13, 2026  •  Confidential compliance material")
+        canvas.drawString(0.55 * inch, 0.28 * inch, spec.footer)
         canvas.drawRightString(page_width - 0.55 * inch, 0.28 * inch, f"Page {doc.page}")
         canvas.restoreState()
     return draw

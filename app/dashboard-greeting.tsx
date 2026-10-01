@@ -27,9 +27,9 @@ export function syncLabel(value: string | null, now: number | null) {
   return `Last sync ${new Intl.DateTimeFormat("en-CA", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(timestamp))}`;
 }
 
-export default function DashboardGreeting({ accountName = "", sourceName, latestBusinessDate, lastSuccessfulSyncAt, needsAttention, onConnections }: {
+export default function DashboardGreeting({ accountName = "", sourceName, latestBusinessDate, lastSuccessfulSyncAt, needsAttention, onConnections, syncing = false }: {
   accountName?: string; sourceName: string; latestBusinessDate: string | null; lastSuccessfulSyncAt: string | null;
-  needsAttention: boolean; onConnections: () => void;
+  needsAttention: boolean; syncing?: boolean; onConnections: () => void;
 }) {
   const [now, setNow] = useState<Date | null>(null);
   useEffect(() => {
@@ -54,11 +54,9 @@ export default function DashboardGreeting({ accountName = "", sourceName, latest
       <p>Here’s your business at a glance.</p>
       <span className="dashboard-record-coverage">{coverage}{latestBusinessDate ? ` · ${sourceName}` : ""}</span>
     </div>
-    <button className={`dashboard-sync-link${needsAttention ? " needs-attention" : ""}`} type="button" onClick={onConnections}
-      title="View connections and data coverage. A successful sync does not confirm complete sales coverage.">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M6.5 6.5A8 8 0 0 1 20 12M4 12a8 8 0 0 0 13.5 5.5"/></svg>
-      <span>{needsAttention ? "Sync needs attention" : syncLabel(lastSuccessfulSyncAt, now?.getTime() ?? null)}</span>
-      <span className="dashboard-sync-arrow" aria-hidden="true">↗</span>
-    </button>
+    <details className={`business-pulse${syncing?" is-syncing":""}`}>
+      <summary><svg key={lastSuccessfulSyncAt} width="34" height="28" viewBox="0 0 40 28" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M1 15h8l4-10 7 21 6-17 4 6h9"/></svg><span><b>Business Pulse</b><small>Your business, in focus.</small></span><i aria-hidden="true">⌄</i></summary>
+      <div><b>{syncing?"Updating your records…":needsAttention?"A connection needs attention":syncLabel(lastSuccessfulSyncAt,now?.getTime()??null)}</b><p>{coverage}{latestBusinessDate?` · ${sourceName}`:""}.</p><p>A successful sync does not confirm complete coverage. Inspect source records before acting.</p><button type="button" onClick={onConnections}>Review Connections</button></div>
+    </details>
   </section>;
 }

@@ -25,10 +25,9 @@ function snapshot(overrides: Partial<SubscriptionSnapshot> = {}): SubscriptionSn
   };
 }
 
-test("only active and trialing subscription states grant normal paid access", () => {
+test("a status alone cannot grant trial access", () => {
   assert.equal(subscriptionGrantsAccess("active"), true);
-  assert.equal(subscriptionGrantsAccess("trialing"), true);
-  for (const status of ["incomplete", "incomplete_expired", "past_due", "canceled", "unpaid", "paused", null] as const) {
+  for (const status of ["trialing", "incomplete", "incomplete_expired", "past_due", "canceled", "unpaid", "paused", null] as const) {
     assert.equal(subscriptionGrantsAccess(status), false);
   }
 });
@@ -67,6 +66,27 @@ test("BookLoq unlocks only from the independent add-on state", () => {
   assert.equal(withAddon.features.includes("inventory.expiry"), false);
 });
 
+test("verified trial access has the selected plan and expires locally at the earliest end", () => {
+  const start = Date.parse("2026-10-01T12:00:00Z"), end = start + 7 * 86_400_000;
+  for (const basePlan of ["starter", "growth", "pro", "bookloq"] as const) {
+    const trial = snapshot({ basePlan, status: "trialing", addons: basePlan === "bookloq" ? [] : ["bookloq"], trialEndsAt: new Date(end), trialAccessEndsAt: new Date(end) });
+    const granted = resolveSubscriptionEntitlements(trial, end - 1);
+    assert.equal(granted.plan, basePlan);
+    assert.equal(granted.features.includes("bookloq"), true);
+    assert.equal(granted.features.includes("analytics.sales.basic"), basePlan !== "bookloq");
+    assert.equal(resolveSubscriptionEntitlements(trial, end).accessType, "none");
+    assert.equal(resolveSubscriptionEntitlements({ ...trial, trialEndsAt: new Date(end + 30 * 86_400_000) }, end).accessType, "none", "Stripe extension cannot extend the local ceiling");
+    assert.equal(resolveSubscriptionEntitlements({ ...trial, trialEndsAt: new Date(start + 1000) }, start + 1000).accessType, "none");
+    assert.equal(resolveSubscriptionEntitlements({ ...trial, trialAccessEndsAt: null }, start).accessType, "none");
+    for (const status of ["canceled", "past_due", "paused", "unpaid", "incomplete", "incomplete_expired"] as const) {
+      assert.equal(resolveSubscriptionEntitlements({ ...trial, status }, start).accessType, "none");
+    }
+    assert.equal(resolveSubscriptionEntitlements({ ...trial, cancelAtPeriodEnd: true }, end - 1).accessType, "subscription");
+    assert.equal(resolveSubscriptionEntitlements({ ...trial, status: "active" }, end).accessType, "none", "active before first invoice payment is not a conversion");
+    assert.equal(resolveSubscriptionEntitlements({ ...trial, status: "active", trialConvertedAt: new Date(end) }, end).accessType, "subscription");
+  }
+});
+
 test("standalone BookLoQ synthesizes add-on access without retail feature leakage", () => {
   const effective = resolveSubscriptionEntitlements(snapshot({ basePlan: "bookloq", addons: [] }));
   assert.equal(effective.plan, "bookloq");
@@ -82,7 +102,7 @@ test("standalone BookLoQ synthesizes add-on access without retail feature leakag
 });
 
 test("non-entitled billing states fail closed and retain no add-on leakage", () => {
-  for (const status of ["incomplete", "past_due", "canceled", "unpaid", "paused"] as const) {
+  for (const status of ["trialing", "incomplete", "past_due", "canceled", "unpaid", "paused"] as const) {
     const effective = resolveSubscriptionEntitlements(snapshot({ basePlan: "pro", status, addons: ["bookloq"] }));
     assert.equal(effective.accessType, "none");
     assert.equal(effective.plan, null);
@@ -93,7 +113,7 @@ test("non-entitled billing states fail closed and retain no add-on leakage", () 
 });
 
 test("the shared server access boundary rejects every non-access-bearing billing state", () => {
-  for (const status of ["incomplete", "incomplete_expired", "past_due", "canceled", "unpaid", "paused", null] as const) {
+  for (const status of ["trialing", "incomplete", "incomplete_expired", "past_due", "canceled", "unpaid", "paused", null] as const) {
     const entitlements = resolveSubscriptionEntitlements(snapshot({
       basePlan: status === null ? null : "pro",
       status,
@@ -109,10 +129,8 @@ test("the shared server access boundary rejects every non-access-bearing billing
   }
 });
 
-test("the shared server access boundary allows active, trialing, and verified internal entitlements", () => {
-  for (const status of ["active", "trialing"] as const) {
-    assert.doesNotThrow(() => requireTenantServiceAccess(resolveSubscriptionEntitlements(snapshot({ status }))));
-  }
+test("the shared server access boundary allows an active paid subscription and verified internal access", () => {
+  assert.doesNotThrow(() => requireTenantServiceAccess(resolveSubscriptionEntitlements(snapshot({ status: "active" }))));
   assert.doesNotThrow(() => requireTenantServiceAccess(resolveInternalEntitlements({
     accessLevel: "founder",
     mfaRequired: true,

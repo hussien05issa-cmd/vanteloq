@@ -5,6 +5,8 @@ import test from "node:test";
 import { Miniflare } from "miniflare";
 import { registerSupabaseTestServer } from "./helpers/supabase-loopback-transport.mjs";
 import { activateTestSubscription } from "./helpers/subscription-fixture.mjs";
+import { ACCOUNT_ACCEPTANCE_NOTICE_VERSION, PRIVACY_POLICY_VERSION, TERMS_OF_SERVICE_VERSION } from "../shared/legal-versions.ts";
+import { providerPrivacyAcceptance } from "../domain/provider-privacy.ts";
 
 const origin = "https://vanteloq.example";
 const owner = { email: "hussienissa@lexedgeconsulting.com", name: "Marketing Flow Owner" };
@@ -45,9 +47,9 @@ function onboardingBody() {
     sourceMode: "connect_later",
     selectedPos: "",
     legalAccepted: true,
-    termsVersion: "2026-09-05",
-    privacyPolicyVersion: "2026-09-10",
-    legalNoticeVersion: "account-creation-v2",
+    termsVersion: TERMS_OF_SERVICE_VERSION,
+    privacyPolicyVersion: PRIVACY_POLICY_VERSION,
+    legalNoticeVersion: ACCOUNT_ACCEPTANCE_NOTICE_VERSION,
   };
 }
 
@@ -108,6 +110,8 @@ test("exact marketing resources remain versioned, approval-bound, separated, and
   let restoreFetch = globalThis.fetch;
   const providerCalls = [];
   const openaiPayloads = [];
+  // Keep synthetic measurements inside the current reporting window and its three-day lag.
+  const metricDate = new Date(Date.now() - 5 * 86_400_000).toISOString().slice(0, 10);
   let unavailableGoogleService = null;
   try {
     const onboarding = await dispatch(worker, environment, "/api/v1/onboarding", { method: "POST", body: onboardingBody() });
@@ -120,9 +124,9 @@ test("exact marketing resources remain versioned, approval-bound, separated, and
     `).first();
     assert.ok(legalAcceptance);
     assert.deepEqual(legalAcceptance, {
-      terms_version: "2026-09-05",
-      privacy_policy_version: "2026-09-10",
-      notice_version: "account-creation-v2",
+      terms_version: TERMS_OF_SERVICE_VERSION,
+      privacy_policy_version: PRIVACY_POLICY_VERSION,
+      notice_version: ACCOUNT_ACCEPTANCE_NOTICE_VERSION,
       acceptance_source: "onboarding_review",
       source_hash: null,
       user_agent_hash: null,
@@ -153,8 +157,8 @@ test("exact marketing resources remain versioned, approval-bound, separated, and
       if (url.startsWith("https://analyticsadmin.googleapis.com/v1beta/accountSummaries")) return Response.json({ accountSummaries: [{ propertySummaries: [{ property: "properties/123", displayName: "Main website" }, { property: "properties/999", displayName: "Unselected website" }] }] });
       if (url.startsWith("https://mybusinessaccountmanagement.googleapis.com/v1/accounts")) return unavailableGoogleService === "business" ? new Response("Unavailable", { status: 403 }) : Response.json({ accounts: [{ name: "accounts/123", accountName: "Main business" }] });
       if (url.startsWith("https://mybusinessbusinessinformation.googleapis.com/v1/accounts/123/locations")) return Response.json({ locations: [{ name: "locations/456", title: "Main store", storeCode: "EDM" }] });
-      if (url.includes("sites/sc-domain%3Aexample.ca/searchAnalytics/query")) return Response.json({ rows: [{ keys: ["2026-08-01"], clicks: 4, impressions: 40, ctr: 0.1, position: 3.5 }] });
-      if (url.includes("properties/123:runReport")) return Response.json({ rows: [{ dimensionValues: [{ value: "20260801" }], metricValues: [{ value: "10" }, { value: "8" }, { value: "2" }, { value: "20" }] }] });
+      if (url.includes("sites/sc-domain%3Aexample.ca/searchAnalytics/query")) return Response.json({ rows: [{ keys: [metricDate], clicks: 4, impressions: 40, ctr: 0.1, position: 3.5 }] });
+      if (url.includes("properties/123:runReport")) return Response.json({ rows: [{ dimensionValues: [{ value: metricDate.replaceAll("-", "") }], metricValues: [{ value: "10" }, { value: "8" }, { value: "2" }, { value: "20" }] }] });
       if (url.startsWith("https://oauth2.googleapis.com/revoke")) return new Response("revocation unavailable", { status: 503 });
       throw new Error(`Unexpected Google request: ${url}`);
     };
@@ -163,7 +167,11 @@ test("exact marketing resources remain versioned, approval-bound, separated, and
     assert.ok(identity?.organizationId && location?.id);
     await activateTestSubscription(database, identity.organizationId);
 
-    const authorize = await dispatch(worker, environment, "/api/v1/integrations/google/authorize", { method: "POST", body: {} });
+    const missingPrivacy = await dispatch(worker, environment, "/api/v1/integrations/google/authorize", { method: "POST", body: {} });
+    assert.equal(missingPrivacy.status, 400, await missingPrivacy.clone().text());
+    assert.equal((await missingPrivacy.json()).error.code, "PROVIDER_PRIVACY_REQUIRED");
+    assert.equal(providerCalls.length, 0);
+    const authorize = await dispatch(worker, environment, "/api/v1/integrations/google/authorize", { method: "POST", body: providerPrivacyAcceptance(true) });
     assert.equal(authorize.status, 200, await authorize.clone().text());
     const authorization = await authorize.json();
     const state = new URL(authorization.authorizationUrl).searchParams.get("state");
@@ -302,9 +310,9 @@ test("exact marketing resources remain versioned, approval-bound, separated, and
     const unauthorizedReport = await worker.fetch(new Request(`${origin}/api/v1/marketing/reports`), environment, executionContext);
     assert.equal(unauthorizedReport.status, 401);
     environment.OPENAI_API_KEY = "fixture-openai-key";
-    const savedConsent = await dispatch(worker, environment, "/api/v1/advisor/consent", { method: "POST", body: { accepted: true, purpose: "analysis", noticeVersion: "vanteloq-ai-v8-reviewed-cash", privacyPolicyVersion: "2026-09-10" } });
+    const savedConsent = await dispatch(worker, environment, "/api/v1/advisor/consent", { method: "POST", body: { accepted: true, purpose: "analysis", noticeVersion: "vanteloq-ai-v9-personalization-context", privacyPolicyVersion: "2026-10-01" } });
     assert.equal(savedConsent.status, 200, await savedConsent.clone().text());
-    const advisor = await dispatch(worker, environment, "/api/v1/advisor/chat", { method: "POST", body: { question: "What does our marketing evidence show?", dataUseAccepted: true, noticeVersion: "vanteloq-ai-v8-reviewed-cash", privacyPolicyVersion: "2026-09-10" } });
+    const advisor = await dispatch(worker, environment, "/api/v1/advisor/chat", { method: "POST", body: { question: "What does our marketing evidence show?", dataUseAccepted: true, noticeVersion: "vanteloq-ai-v9-personalization-context", privacyPolicyVersion: "2026-10-01" } });
     assert.equal(advisor.status, 200, await advisor.clone().text());
     const advisorBody = await advisor.json();
     assert.equal(advisorBody.status, "answered");
@@ -315,7 +323,7 @@ test("exact marketing resources remain versioned, approval-bound, separated, and
     assert.match(advisorText, /comparisonComplete/);
     assert.doesNotMatch(advisorText, /sc-domain:example.ca|properties\/123|google-access-token/);
 
-    const aiQuestion = { question: "Which KPIs need attention?", conversationId: advisorBody.conversationId, dataUseAccepted: true, noticeVersion: "vanteloq-ai-v8-reviewed-cash", privacyPolicyVersion: "2026-09-10" };
+    const aiQuestion = { question: "Which KPIs need attention?", conversationId: advisorBody.conversationId, dataUseAccepted: true, noticeVersion: "vanteloq-ai-v9-personalization-context", privacyPolicyVersion: "2026-10-01" };
     const noConsent = await dispatch(worker, environment, "/api/v1/advisor/chat", {method: "POST", body: {...aiQuestion, dataUseAccepted: false}});
     assert.equal(noConsent.status, 409);
     const staleConsent = await dispatch(worker, environment, "/api/v1/advisor/chat", {method: "POST", body: {...aiQuestion, noticeVersion: "gemini-evidence-advisor-v2-marketing"}});
@@ -336,7 +344,7 @@ test("exact marketing resources remain versioned, approval-bound, separated, and
     assert.equal(openaiPayloads.length, 1, "Rejected modes must not collect or forward evidence");
     assert.match(openaiPayloads[0].input, /Conversation memory: \[\]/);
     assert.doesNotMatch(openaiPayloads[0].input, /sc-domain:example.ca|properties\/123|fixture-openai-key|google-access-token/);
-    const aiConsents = await database.prepare("SELECT DISTINCT provider FROM integration_consents WHERE notice_version = ? ORDER BY provider").bind("vanteloq-ai-v8-reviewed-cash").all();
+    const aiConsents = await database.prepare("SELECT DISTINCT provider FROM integration_consents WHERE notice_version = ? ORDER BY provider").bind("vanteloq-ai-v9-personalization-context").all();
     assert.deepEqual(aiConsents.results.map(row => row.provider), ["openai"]);
 
     const originalDatabaseBinding = environment.DB;

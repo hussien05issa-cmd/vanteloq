@@ -76,3 +76,6 @@
 .bookloq-drawer .invoice-lines button{font-size:13px;min-height:38px}
 .bookloq-drawer .invoice-bottom aside span,.bookloq-drawer .invoice-bottom aside strong{font-size:14px}
 @media(max-width:760px){.bookloq-drawer{padding:10px}.bookloq-drawer .invoice-composer{border-radius:18px;max-height:calc(100dvh - 20px)}.bookloq-drawer .invoice-composer input,.bookloq-drawer .invoice-composer textarea{font-size:16px}.bookloq-drawer .invoice-composer>footer button{min-height:48px}}
+
+/* Quiet, consistent controls for the finance workspace header. */
+.bookloq-top>div>button:not(.bookloq-primary){display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:42px;padding:10px 13px;border:1px solid #d3dfed;border-radius:12px;background:linear-gradient(145deg,#f9fbfd,#edf3fa);color:#294763;font:inherit;font-size:12px;font-weight:550;box-shadow:0 2px 5px #28496b08;cursor:pointer}.bookloq-top>div>button:not(.bookloq-primary):hover{background:#e8f0fa;border-color:#afc5df}.bookloq-top>div>button:focus-visible{outline:2px solid #2b6ec5;outline-offset:3px}.bookloq-top>div>button:disabled{opacity:.55;cursor:wait}.bookloq-top .bookloq-mobile-nav select{border-color:#d3dfed;border-radius:12px;background:#f7faff;color:#294763;font-family:inherit}

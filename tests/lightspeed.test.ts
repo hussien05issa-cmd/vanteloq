@@ -9,6 +9,7 @@ import {
   lightspeedOAuthBindingCookie,
   lightspeedReadiness,
   normalizeLightspeedSale,
+  parseLightspeedCollectionResponse,
   requireLightspeedOAuthBrowserBinding,
   validateDomainPrefix,
   validateLightspeedGrantedScopes,
@@ -61,6 +62,7 @@ test("authorization is read-only and bound to an exact callback and state", () =
   assert.equal(url.searchParams.get("redirect_uri"), "https://vanteloq.example/api/v1/integrations/lightspeed/callback");
   assert.equal(url.searchParams.get("state"), state);
   assert.deepEqual(url.searchParams.get("scope")?.split(" "), [...LIGHTSPEED_SCOPES]);
+  assert.ok(LIGHTSPEED_SCOPES.includes("payment_types:read"));
   assert.doesNotMatch(url.toString(), /test-client-secret/);
 });
 
@@ -340,6 +342,28 @@ test("provider tokens encrypt with authenticated encryption and round-trip", asy
   assert.match(encrypted, /^v1\./);
   assert.doesNotMatch(encrypted, new RegExp(plaintext));
   assert.equal(await decryptIntegrationSecret(encrypted), plaintext);
+});
+
+test("X-Series inventory accepts the current flat-array response and advances from record versions", () => {
+  const response = parseLightspeedCollectionResponse("inventory", [
+    { id: "stock-1", product_id: "product-1", outlet_id: "outlet-1", version: 1639940 },
+    { id: "stock-2", product_id: "product-2", outlet_id: "outlet-1", version: 3630064802 },
+  ]);
+  assert.equal(response.data.length, 2);
+  assert.equal(response.cursor, 3630064802);
+});
+
+test("X-Series non-inventory collections retain the paginated response envelope", () => {
+  const response = parseLightspeedCollectionResponse("products", {
+    data: [{ id: "product-1" }],
+    version: { min: 10, max: 20 },
+  });
+  assert.equal(response.data.length, 1);
+  assert.equal(response.cursor, 20);
+  assert.throws(
+    () => parseLightspeedCollectionResponse("inventory", { data: [] }),
+    /invalid inventory response/i,
+  );
 });
 
 test("sale normalization stores accounting fields but drops customer PII", async () => {

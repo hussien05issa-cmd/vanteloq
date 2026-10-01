@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { TERMS_OF_SERVICE_VERSION, LEGAL_DOCUMENT_UPDATED_LABEL } from "../shared/legal-versions.ts";
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
 
@@ -39,20 +40,21 @@ test("terms keep bookkeeping, extraction, and commercial messages within reviewe
   ]) assert.match(terms, new RegExp(phrase));
 });
 
-test("legal and retention documents keep professional review and deletion limits visible", () => {
+test("legal and retention documents identify the operator and retain deletion limits", () => {
   const legal = read("../app/legal/page.tsx");
   const retention = read("../docs/DATA_RETENTION.md");
   const shell = read("../app/legal-shell.tsx");
   const versions = read("../shared/legal-versions.ts");
 
-  assert.match(legal, /no website notice can guarantee that every legal issue has been resolved/);
+  assert.match(legal, /2855706 ALBERTA INC/);
+  assert.match(legal, /does not guarantee sales, profit, legal compliance/);
   assert.match(retention, /Disconnection is not the same as deletion of lawfully retained accounting records/);
   assert.match(retention, /unsubscribe and suppression records/i);
   assert.match(retention, /six years from the end of the last tax year/);
   assert.match(retention, /DELETE PLAID DATA/);
   assert.match(retention, /quarterly operational review/);
   assert.match(shell, /LEGAL_DOCUMENT_UPDATED_LABEL/);
-  assert.match(versions, /September 5, 2026/);
+  assert.equal(LEGAL_DOCUMENT_UPDATED_LABEL, new Intl.DateTimeFormat("en-US", {month:"long", day:"numeric", year:"numeric", timeZone:"UTC"}).format(new Date(TERMS_OF_SERVICE_VERSION+"T00:00:00Z")));
 
   for (const document of [legal, retention, shell, versions]) assert.doesNotMatch(document, /\u2014/);
 });

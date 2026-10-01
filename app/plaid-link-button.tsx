@@ -1,5 +1,7 @@
 "use client";
 
+import { providerPrivacyAcceptance } from "../domain/provider-privacy";
+import { ProviderPolicyLinks } from "./provider-privacy-notice";
 import { useEffect, useRef, useState } from "react";
 import { usePlaidLink } from "react-plaid-link";
 import { apiFetch } from "./supabase-browser";
@@ -142,6 +144,7 @@ export default function PlaidLinkButton({ connected, repairRequired, configured,
           mode,
           consentAcknowledged: true,
           noticeVersion: PLAID_CONSENT_NOTICE_VERSION,
+          ...providerPrivacyAcceptance(consentChecked),
           privacyPolicyVersion: PRIVACY_POLICY_VERSION,
         }),
       });
@@ -226,6 +229,7 @@ export default function PlaidLinkButton({ connected, repairRequired, configured,
           <input type="checkbox" checked={consentChecked} onChange={(event) => setConsentChecked(event.target.checked)} />
           <span>I authorize Vanteloq to collect, process, store, and refresh the selected read-only financial data for the purposes above. I understand that I can withdraw access and delete eligible imported data.</span>
         </label>
+        <ProviderPolicyLinks provider="plaid"/>
         <p className="plaid-consent-links"><a href="/privacy#financial-connections" target="_blank" rel="noreferrer">Privacy Policy</a><a href="/privacy#retention" target="_blank" rel="noreferrer">Retention and deletion</a></p>
         <footer><button type="button" onClick={() => setConsentDialog(null)}>Cancel</button><button type="button" className="primary" disabled={!consentChecked} title={!consentChecked ? "Accept the financial data authorization to continue." : "Continue to Plaid Link."} onClick={authorizeAfterConsent}>Continue to Plaid</button></footer>
       </section>

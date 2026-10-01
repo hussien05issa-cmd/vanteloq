@@ -8,6 +8,7 @@ import { dataImports, dailyBusinessMetrics, auditEvents } from "../db/schema";
 import { ApiError } from "../server/api";
 import { dailyMetricImportInput } from "../server/validation";
 import { dailyImportIdentity, saveDailyMetricImport } from "../server/daily-metric-import";
+import { parseDailyCsv } from "../domain/daily-summary-csv";
 
 let runtime: Miniflare;
 let db: D1Database;
@@ -66,6 +67,21 @@ test("same key replays only the same normalized payload, including filename and 
   assert.equal((await records(ctx)).length, 2); assert.equal((await imports(ctx)).length, 1); assert.equal((await audits(ctx)).length, 1);
   const separate = await save(otherActor, request, key);
   assert.equal(separate.kind === "saved" && separate.replayed, false);
+});
+
+test("a refund-only CSV day preserves negative net sales, returned costs and overdrawn cash exactly", async () => {
+  const ctx = await workspace();
+  const header = "business_date,gross_sales,net_sales,cogs,transactions,units,refunds,cash_balance";
+  const parsed = parseDailyCsv(`${header}\n2026-09-01,0,-10.25,-4.01,0,0,10.25,-25.03`);
+  await save(ctx, input(parsed));
+  const [saved] = await records(ctx);
+  assert.equal(saved.net_sales_cents, -1025);
+  assert.equal(saved.cost_of_goods_cents, -401);
+  assert.equal(saved.cash_balance_cents, -2503);
+  assert.equal(saved.refunds_cents, 1025);
+  assert.throws(() => parseDailyCsv(`${header}\n2026-09-01,-10,0,0,0,0,0,0`), /nonnegative/);
+  assert.throws(() => parseDailyCsv(`${header}\n2026-09-01,0,-10,-4,0,0,-10,0`), /nonnegative/);
+  assert.throws(() => input([row({ refundsCents: -1 })]), /refund/i);
 });
 
 test("legacy completed requests and unfinished requests cannot be reset by a repeated key", async () => {

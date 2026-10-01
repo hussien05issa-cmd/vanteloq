@@ -5,6 +5,7 @@ import { startStripeCheckout, closeCheckoutBeforeDeletion } from "../server/bill
 import { PLANS, ADDONS } from "../server/entitlements/catalog.ts";
 import { cleanupExpiredRateLimits } from "../server/rate-limit-maintenance.ts";
 import { enforceRateLimit } from "../server/api.ts";
+import { PRIVACY_POLICY_VERSION, TERMS_OF_SERVICE_VERSION } from "../shared/legal-versions.ts";
 
 async function fixture() {
   const mf = new Miniflare({ modules: true, script: "export default {fetch(){return new Response('ok')}}", d1Databases: ["DB"] });
@@ -14,10 +15,12 @@ async function fixture() {
     "INSERT INTO workspaces VALUES ('org-a'),('org-b')",
     "CREATE TABLE tenant_subscriptions(organization_id TEXT PRIMARY KEY,stripe_subscription_id TEXT,status TEXT)",
     "CREATE TABLE account_deletion_jobs(user_id TEXT, organization_id TEXT, scope TEXT,stage TEXT)",
+    "CREATE TABLE legal_acceptances(id TEXT PRIMARY KEY,user_id TEXT,terms_version TEXT,privacy_policy_version TEXT)",
     "CREATE TABLE billing_checkout_attempts(organization_id TEXT PRIMARY KEY REFERENCES workspaces(id) ON DELETE CASCADE,attempt_id TEXT UNIQUE NOT NULL,selection_key TEXT NOT NULL,request_body TEXT NOT NULL,session_id TEXT,created_at INTEGER NOT NULL)",
     "CREATE TABLE rate_limit_buckets(bucket_key TEXT PRIMARY KEY, scope TEXT,actor_hash TEXT,window_start INTEGER,request_count INTEGER,expires_at INTEGER)",
     "CREATE INDEX rate_limit_expiry_idx ON rate_limit_buckets(expires_at)",
   ].map(sql => db.prepare(sql)));
+  for (const user of ["user-a", "user-b"]) await db.prepare("INSERT INTO legal_acceptances VALUES (?,?,?,?)").bind(user, user, TERMS_OF_SERVICE_VERSION, PRIVACY_POLICY_VERSION).run();
   (globalThis as typeof globalThis & {__vanteloqEnv: unknown}).__vanteloqEnv = {DB: db,STRIPE_SECRET_KEY:"sk_test_fixture_only",STRIPE_BILLING_WEBHOOK_SECRET:"whsec_fixture_only"};
   const sessions = new Map<string, Record<string, unknown>>();
   const cached = new Map<string, {body:string;id:string}>();
@@ -28,7 +31,7 @@ async function fixture() {
     if(url.pathname==="/v1/prices") {
       const lookup=url.searchParams.get("lookup_keys[]");
       const price=[...Object.values(PLANS),...Object.values(ADDONS)].flatMap(v=>Object.values(v.prices)).find(p=>p.lookupKey===lookup)!;
-      return Response.json({data:[{id:`price_${lookup!.replaceAll('_','')}`,lookup_key:lookup,unit_amount:price.amountCents,currency:"cad",active:true,recurring:{interval:"month"}}]});
+      return Response.json({data:[{id:`price_${lookup!.replaceAll('_','')}`,lookup_key:lookup,unit_amount:price.amountCents,currency:"cad",active:true,recurring:{interval:"month",interval_count:1,usage_type:"licensed"},type:"recurring",billing_scheme:"per_unit",transform_quantity:null}]});
     }
     if(url.pathname==="/v1/checkout/sessions") {
       const key=new Headers(init?.headers).get("Idempotency-Key")!;
@@ -62,7 +65,43 @@ test("20 concurrent checkout requests share one durable attempt and payable Stri
     const responses=await Promise.all(Array.from({length:20},()=>startStripeCheckout(f.selection)));
     assert.equal(new Set(responses.map(r=>r.url)).size,1);assert.equal(f.stats().creates,1);
     assert.equal((await f.db.prepare("SELECT COUNT(*) n FROM billing_checkout_attempts").first<{n:number}>())?.n,1);
+    const attempt = await f.db.prepare("SELECT request_body FROM billing_checkout_attempts").first<{request_body:string}>();
+    assert.equal(new URLSearchParams(attempt!.request_body).get("subscription_data[trial_period_days]"), "7");
   }finally{await f.mf.dispose();}
+});
+test("checkout rejects missing and old legal versions before provider calls, then accepts explicit current acceptance", async () => {
+  const f = await fixture(); try {
+    await f.db.prepare("DELETE FROM legal_acceptances WHERE user_id='user-a'").run();
+    await assert.rejects(startStripeCheckout(f.selection), { code: "LEGAL_ACCEPTANCE_REQUIRED" });
+    await f.db.prepare("INSERT INTO legal_acceptances VALUES ('old','user-a','2026-01-01',?)").bind(PRIVACY_POLICY_VERSION).run();
+    await assert.rejects(startStripeCheckout(f.selection), { code: "LEGAL_ACCEPTANCE_REQUIRED" });
+    assert.equal(f.stats().creates, 0);
+    assert.equal(await f.db.prepare("SELECT * FROM billing_checkout_attempts WHERE organization_id='org-a'").first(), null);
+    await f.db.prepare("INSERT INTO legal_acceptances VALUES ('current','user-a',?,?)").bind(TERMS_OF_SERVICE_VERSION, PRIVACY_POLICY_VERSION).run();
+    assert.match((await startStripeCheckout(f.selection)).url, /^https:\/\/checkout\.stripe\.com\//);
+    await f.db.prepare("DELETE FROM legal_acceptances WHERE user_id='user-a'").run();
+    await closeCheckoutBeforeDeletion("org-a", null, f.db, f.fetcher);
+    assert.equal([...f.sessions.values()].every(session => session.status === "expired"), true, "closing checkout remains available without current consent");
+  } finally { await f.mf.dispose(); }
+});
+test("returning canceled and expired subscribers cannot obtain another trial through checkout flags",async()=>{
+  for (const status of ["canceled", "incomplete_expired"]) {
+    const f=await fixture();try {
+      await f.db.prepare("INSERT INTO tenant_subscriptions VALUES ('org-a','sub_previous123',?)").bind(status).run();
+      await startStripeCheckout({...f.selection,trialEligible:true});
+      const row=await f.db.prepare("SELECT request_body FROM billing_checkout_attempts").first<{request_body:string}>();
+      assert.equal(new URLSearchParams(row!.request_body).has("subscription_data[trial_period_days]"),false);
+    }finally{await f.mf.dispose();}
+  }
+});
+test("an existing active or trialing subscriber cannot start a second subscription or add-on trial",async()=>{
+  for (const status of ["active", "trialing"]) {
+    const f=await fixture();try {
+      await f.db.prepare("INSERT INTO tenant_subscriptions VALUES ('org-a','sub_previous123',?)").bind(status).run();
+      await assert.rejects(startStripeCheckout({...f.selection,includeBookloq:true}),/Manage Billing/);
+      assert.equal(f.stats().creates,0);
+    }finally{await f.mf.dispose();}
+  }
 });
 test("changed plan expires the old session before creating another; racing selections leave one payable session",async()=>{
   const f=await fixture();try {

@@ -1,3 +1,4 @@
+import { requireProviderPrivacy } from "../../../../../../server/integrations/provider-privacy";
 import { requireIntegrationRollout } from "../../../../../../server/integrations/rollout-access";
 import { oauthBrowserCookie } from "../../../../../../server/integrations/oauth-browser";
 import { getDb } from "../../../../../../db";
@@ -26,6 +27,7 @@ export async function POST(request: Request) {
     await requirePermission(context, "integrations.manage");
     await requireIntegrationRollout(context, "quickbooks");
     await enforceRateLimit("quickbooks:authorize", context.userId, 10, 3_600);
+    await requireProviderPrivacy(request, context, "quickbooks", requestId);
     const body = await readJsonObject(request);
     if (body.consentAcknowledged !== true) {
       throw new ApiError(400, "QUICKBOOKS_CONSENT_REQUIRED", "Review and accept the QuickBooks read only data notice before connecting.");

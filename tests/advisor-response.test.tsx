@@ -28,18 +28,11 @@ test("table alignment and escaped separators preserve the financial values", () 
   assert.match(markup, /tabindex="0" role="region" aria-label="Analysis data table"/);
 });
 
-test("a long answer has a short bounded transition without removing any content", () => {
-  const body = Array.from({ length: 1000 }, (_, index) => `word${index}`).join(" ");
-  const animated = renderToStaticMarkup(<AdvisorAnswerContent text={body} animate/>);
-  const delays = [...animated.matchAll(/--ai-reveal-delay:(\d+)ms/g)].map(match => Number(match[1]));
-  assert.ok(delays.length > 1);
-  assert.equal(delays[0], 0);
-  assert.equal(Math.max(...delays), 1200);
-  assert.match(animated, /word999/);
-  assert.equal(animated.replace(/<[^>]+>/g, ""), body);
-  assert.doesNotMatch(animated, /aria-hidden|visibility:hidden|display:none/);
-  const immediate = renderToStaticMarkup(<AdvisorAnswerContent text={body}/>);
-  assert.doesNotMatch(immediate, /ai-reply-chunk|ai-reveal-delay/);
+test("completed answers are not artificially delayed", () => {
+  const body=Array.from({length:1000},(_,i)=>`word${i}`).join(" ");
+  const rendered=renderToStaticMarkup(<AdvisorAnswerContent text={body} animate/>);
+  assert.equal(rendered.replace(/<[^>]+>/g,""),body);
+  assert.doesNotMatch(rendered,/ai-reveal-delay|aria-hidden|display:none/);
 });
 
 test("the initial accessible answer includes its complete text and limitation", () => {
@@ -56,4 +49,17 @@ test("filenames and metric identifiers keep their literal underscores", () => {
   assert.match(markup, /TEST_ONLY_AI_receipt\.pdf, net_revenue_cents and sample__file\.csv/);
   assert.match(markup, /<em>Emphasis<\/em>/);
   assert.match(markup, /<strong>strong text<\/strong>/);
+});
+
+
+test("copy and source disclosure retain dated coverage without implying verified accounting", () => {
+  const markup = renderToStaticMarkup(<AdvisorResponse title="Vanteloq AI" body="Check costs." limitation="Review the source before acting." coverage={{latestDate:"2026-09-29",sourceCount:2,days:30}} onReuse={() => {}}/>);
+  assert.match(markup,/aria-label="Copy response"/);
+  assert.match(markup,/Edit question/);
+  assert.match(markup,/<dialog[^>]+aria-label="Response sources"/);
+  assert.doesNotMatch(markup,/<dialog[^>]+ open/);
+  assert.doesNotMatch(markup,/Sources and context/);
+  assert.match(markup,/2026-09-29/);
+  assert.match(markup,/Sources included/);
+  assert.doesNotMatch(markup,/Verified accounting|live data/i);
 });

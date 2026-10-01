@@ -1,0 +1,97 @@
+/* Light on chrome, solid surfaces beneath records. No animated blur or layout. */
+:root {
+  --interface-glass: linear-gradient(135deg, #f9fcfff2, #edf3fbdc 60%, #e6eef9e8);
+  --interface-edge: #cbd9e8;
+  --interface-ease: cubic-bezier(.16, 1, .3, 1);
+}
+.public-site.reference-home .public-nav,
+.unified-public-nav,
+.operating-shell .topbar,
+.bookloq-shell .bookloq-top,
+.ai-studio .ai-studio-header {
+  background: var(--interface-glass);
+  border-bottom: 1px solid var(--interface-edge);
+  box-shadow: inset 0 1px 0 #ffffffd9, 0 5px 20px #18365408;
+}
+@supports (backdrop-filter: blur(1px)) {
+  .public-site.reference-home .public-nav, .unified-public-nav,
+  .operating-shell .topbar, .bookloq-shell .bookloq-top, .ai-studio .ai-studio-header {
+    backdrop-filter: blur(16px) saturate(125%);
+    -webkit-backdrop-filter: blur(16px) saturate(125%);
+  }
+}
+.public-site.reference-home .home-proof,
+.public-site.reference-home .hero-product-hotspot > span,
+.operating-shell .executive-filters,
+.bookloq-shell .bookloq-tabs {
+  border: 1px solid var(--interface-edge);
+  box-shadow: inset 0 1px 0 #ffffffbd, 0 4px 14px #17375908;
+}
+.operating-shell .executive-filters {
+  background: var(--interface-glass);
+  border-radius: 16px;
+  padding: 12px;
+}
+.public-site.reference-home .home-product-preview .home-proof-chart {
+  background: #f7fafd;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  :where(button, a, input, select, textarea, summary) {
+    transition: background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease, color 160ms ease, opacity 160ms ease;
+  }
+  :is(.public-site.reference-home, .operating-shell, .bookloq-shell, .auth-panel, .setup-shell, .unified-public-nav)
+  :is(button:not(:disabled), a[class*="button"], .public-actions a, .public-social-link) {
+    transition: background-color 160ms ease, border-color 160ms ease, box-shadow 200ms ease, color 160ms ease, transform 200ms var(--interface-ease), scale 140ms ease;
+  }
+  :where(button:not(:disabled), a[class*="button"], .primary-cta, .secondary-cta):active { scale: .985; }
+  :where(.workspace-skeleton, .entry-loading, .loading-skeleton) { animation: interface-loading-in 220ms ease-out both; }
+  :is(.provider-setup-details, .home-faq-list details, .ai-settings-group)[open] > :not(summary) {
+    animation: interface-detail-in 240ms var(--interface-ease);
+  }
+  :is(.task-modal, .command-modal, .notification-panel, .ai-settings-panel, .ai-settings[open]) {
+    animation: interface-detail-in 240ms var(--interface-ease);
+  }
+  @keyframes interface-loading-in { from { opacity: .65; } to { opacity: 1; } }
+  @keyframes interface-detail-in { from { opacity: .85; translate: 0 5px; } to { opacity: 1; translate: 0 0; } }
+}
+.home-ring-visual circle { animation: none; }
+@media (prefers-reduced-motion: no-preference) {
+  .home-ring-visual[data-motion-entered="true"] circle { animation: home-ring-complete 1.2s var(--interface-ease) both; }
+  .home-ring-visual[data-motion-entered="true"] .home-ring-margin circle { animation-delay: 100ms; }
+  .home-ring-visual[data-motion-entered="true"] .home-ring-cash circle { animation-delay: 200ms; }
+}
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  :is(.public-site .home-provider-tiles > button, .operating-shell .executive-kpi, .operating-shell .integration-card) {
+    transition: translate 220ms var(--interface-ease), box-shadow 220ms ease, border-color 180ms ease;
+  }
+  :is(.public-site .home-provider-tiles > button, .operating-shell .executive-kpi, .operating-shell .integration-card):hover {
+    translate: 0 -2px;
+    border-color: #a8bfd9;
+    box-shadow: 0 9px 24px #1836540e, inset 0 1px 0 #ffffffd9;
+  }
+}
+@media (max-width: 640px), (prefers-reduced-transparency: reduce) {
+  .public-site.reference-home .public-nav, .unified-public-nav,
+  .operating-shell .topbar, .bookloq-shell .bookloq-top, .ai-studio .ai-studio-header,
+  .public-site.reference-home .home-product-preview {
+    background: linear-gradient(135deg, #f7fafd, #edf3fb);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  :where(button, a, input, select, textarea, summary) { transition-duration: 0ms; }
+}
+
+/* Connector cards respond without recolouring provider marks or moving text. */
+.public-site .home-provider-tiles>button{background:linear-gradient(135deg,#fafdff,#f0f6fd);box-shadow:inset 0 1px #ffffffdf,0 4px 14px #1e477207;border-color:#cadbec}
+.public-site .home-provider-tiles>button:is(:hover,:focus-visible,[aria-expanded=true]){background:linear-gradient(135deg,#f9fcff,#e6f1ff);border-color:#7facdf;box-shadow:0 0 0 1px #bcd7fa66,0 10px 28px #2b78cb19,inset 0 1px #ffffffed}
+@media(prefers-reduced-motion:no-preference){
+.public-site .home-provider-tiles>button .integration-logo{transition:transform 230ms var(--interface-ease),box-shadow 230ms ease}
+.public-site .home-provider-tiles>button:hover .integration-logo{transform:translateY(-2px) scale(1.04)}
+.public-site .home-provider-tiles>button[aria-expanded=true] .integration-logo{animation:connector-select 460ms var(--interface-ease)}
+.provider-setup-details>header{animation:interface-detail-in 300ms var(--interface-ease)}
+@keyframes connector-select{0%{transform:scale(.94)}55%{transform:translateY(-3px) scale(1.08)}100%{transform:translateY(0) scale(1)}}
+}
+html[data-motion-paused=true] .public-site .home-provider-tiles .integration-logo{animation-play-state:paused}

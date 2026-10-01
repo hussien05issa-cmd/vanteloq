@@ -25,9 +25,9 @@ export function financeChartDomain(values: number[]) {
 
 /** A presentation layer over already-authorized, deterministic minor-unit data.
  * Missing points break lines; zero is a real value; negative bars keep their sign. */
-export default function FinanceChart({ title, description, points: sourcePoints, series, currency, forecast = false, sample = false, allowExport = false, emptyMessage = "No records are available for this period." }: {
+export default function FinanceChart({ title, description, points: sourcePoints, series, currency, forecast = false, sample = false, allowExport = false, basisLabel, tableCaption, emptyMessage = "No records are available for this period." }: {
   title: string; description: string; points: FinanceChartPoint[]; series: FinanceChartSeries[];
-  currency: string; forecast?: boolean; sample?: boolean; allowExport?: boolean; emptyMessage?: string;
+  currency: string; basisLabel?: string; tableCaption?: string; forecast?: boolean; sample?: boolean; allowExport?: boolean; emptyMessage?: string;
 }) {
   const id = useId().replace(/:/g, "");
   const { ref: plotRef, width: chartWidth } = useChartWidth(780, sample ? 320 : 520);
@@ -67,7 +67,7 @@ export default function FinanceChart({ title, description, points: sourcePoints,
     const link = document.createElement("a"); link.href = url; link.download = `${forecast ? "cash-forecast" : "cash-activity"}.csv`; link.click(); URL.revokeObjectURL(url);
   };
   return <section className="finance-chart commerce-chart" aria-labelledby={`${id}-title`}>
-    <header><div><h3 id={`${id}-title`}>{title}</h3><p>{description}</p></div><span className="finance-chart-currency">{currency}{sample ? " · Sample" : forecast ? " · Forecast" : " · Recorded"}</span></header>
+    <header><div><h3 id={`${id}-title`}>{title}</h3><p>{description}</p></div><span className="finance-chart-currency">{currency}{basisLabel ? ` · ${basisLabel}` : sample ? " · Sample" : forecast ? " · Forecast" : " · Recorded"}</span></header>
     <ul className="finance-chart-legend" aria-label="Chart legend">{series.map(item => <li key={item.label}><i aria-hidden="true" className={`series-${item.color} ${item.kind}${item.dashed ? " dashed" : ""}`}/>{item.label}</li>)}</ul>
     {available ? <><div className="finance-chart-scroll" ref={plotRef} role="region" tabIndex={0} aria-label={`${title} interactive chart. Scroll horizontally on a small screen.`}>
       <div className="finance-chart-canvas" style={sample ? { minWidth: 320 } : undefined}>
@@ -108,6 +108,6 @@ export default function FinanceChart({ title, description, points: sourcePoints,
       <label htmlFor={`${id}-period`}>Inspect Period<select id={`${id}-period`} value={activeIndex} onChange={event => setSelected(Number(event.target.value))}>{points.map((point, index) => <option key={point.detail} value={index}>{point.detail}</option>)}</select></label>
       <dl aria-live="polite" aria-atomic="true">{series.map((item, index) => <div key={item.label}><dt><i className={`series-${item.color}`} aria-hidden="true"/>{item.label}</dt><dd data-negative={activePoint.values[index] != null && activePoint.values[index]! < 0 || undefined}>{money(activePoint.values[index])}</dd></div>)}</dl>
     </div>
-    <details className="finance-chart-data"><summary>View data table</summary><div role="region" tabIndex={0} aria-label={`${title} data table`}><table><caption>{title}. {currency}. {sample ? "Fictional store records. Comparison values use the corresponding week in the previous period." : forecast ? "Projected values, not recorded cash." : "Recorded bank activity in this reporting period."}</caption><thead><tr><th scope="col">Period</th>{series.map(item => <th scope="col" key={item.label}>{item.label}</th>)}</tr></thead><tbody>{points.map(point => <tr key={point.detail}><th scope="row">{point.detail}</th>{point.values.map((value, index) => <td key={index}>{money(value)}</td>)}</tr>)}</tbody></table></div>{allowExport && <button type="button" onClick={exportCsv}>Export chart CSV</button>}</details></> : <div className="finance-chart-empty"><b>{emptyMessage}</b><p>Missing evidence stays unavailable. No balance or trend has been assumed.</p></div>}
+    <details className="finance-chart-data"><summary>View data table</summary><div role="region" tabIndex={0} aria-label={`${title} data table`}><table><caption>{title}. {currency}. {tableCaption ? tableCaption : sample ? "Fictional store records. Comparison values use the corresponding week in the previous period." : forecast ? "Projected values, not recorded cash." : "Recorded bank activity in this reporting period."}</caption><thead><tr><th scope="col">Period</th>{series.map(item => <th scope="col" key={item.label}>{item.label}</th>)}</tr></thead><tbody>{points.map(point => <tr key={point.detail}><th scope="row">{point.detail}</th>{point.values.map((value, index) => <td key={index}>{money(value)}</td>)}</tr>)}</tbody></table></div>{allowExport && <button type="button" onClick={exportCsv}>Export chart CSV</button>}</details></> : <div className="finance-chart-empty finance-chart-empty-designed"><div className="finance-empty-grid" aria-hidden="true"><i/><i/><i/><i/><i/></div><div><span className="finance-empty-icon" aria-hidden="true">↗</span><b>{emptyMessage}</b><p>Your chart is ready. Values appear when eligible records are available.</p></div></div>}
   </section>;
 }

@@ -1,0 +1,18 @@
+/* Vector rings stay crisp at every size. No animation loop or extra dependency. */
+.interactive-goal-rings{position:relative;display:grid;place-items:center;width:100%;aspect-ratio:1;isolation:isolate}
+.interactive-goal-rings svg{display:block;width:100%;height:100%;overflow:visible;transform:rotate(-90deg)}
+.interactive-goal-ring{--ring-ink:#176be8;cursor:pointer;outline:none;touch-action:manipulation}
+.interactive-goal-ring.ring-tone-1{--ring-ink:#7460ce}.interactive-goal-ring.ring-tone-2{--ring-ink:#138e99}
+.interactive-goal-ring circle{fill:none;stroke-width:10;stroke-linecap:round;animation:none}
+.interactive-goal-ring .interactive-ring-track{stroke:#dce7f3;stroke-dasharray:none}
+.interactive-goal-ring .interactive-ring-value{stroke:var(--ring-ink);opacity:.65;transition:stroke-dasharray 380ms ease,opacity 160ms ease}
+.interactive-goal-ring[aria-pressed=true] .interactive-ring-value,.interactive-goal-ring:hover .interactive-ring-value{opacity:1}
+.interactive-goal-ring[aria-pressed=true] .interactive-ring-track{stroke:#bfd3ed}
+.interactive-goal-ring .interactive-ring-hit{stroke:transparent;stroke-width:15;stroke-dasharray:none;pointer-events:stroke}
+.interactive-goal-ring:focus-visible .interactive-ring-track{stroke:#0c2549;stroke-width:13;stroke-dasharray:2 4}
+.interactive-goal-rings .interactive-goal-ring:focus-visible{outline:none!important}
+.interactive-ring-readout{position:absolute;display:grid;place-items:center;text-align:center;width:43%;gap:5px;pointer-events:none;color:#102a4c}
+.interactive-ring-readout strong{font-size:clamp(22px,3vw,34px);line-height:1.1;font-weight:750;letter-spacing:-.04em;font-variant-numeric:tabular-nums}
+.interactive-ring-readout small{font-size:12px;line-height:1.25;font-weight:650;color:#183c68;max-width:100%;overflow-wrap:normal}
+@media(prefers-reduced-motion:reduce){.interactive-goal-ring .interactive-ring-value{transition:none}}
+html[data-motion-paused=true] .interactive-goal-ring .interactive-ring-value{transition:none}

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
 import test from "node:test";
+import ts from "typescript";
 
 async function applicationSource() {
   const directory = new URL("../app/", import.meta.url);
@@ -53,10 +54,17 @@ test("BookLoQ connects Plaid directly with versioned consent and guarded financi
 
 test("literal disabled buttons explain why they are unavailable", async () => {
   for (const { file, source } of await applicationSource()) {
-    const literalDisabledButtons = source.match(/<button\b(?=[^>]*\bdisabled(?:\s|>))[^>]*>/g) ?? [];
-    for (const button of literalDisabledButtons) {
-      assert.match(button, /\btitle=/, `${file}: ${button}`);
-    }
+    const parsed = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    const visit = (node) => {
+      if ((ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) && node.tagName.getText(parsed) === "button") {
+        const attributes = node.attributes.properties.filter(ts.isJsxAttribute);
+        if (attributes.some(attribute => attribute.name.getText(parsed) === "disabled" && !attribute.initializer)) {
+          assert.ok(attributes.some(attribute => attribute.name.getText(parsed) === "title"), `${file}: ${node.getText(parsed)}`);
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(parsed);
   }
 });
 
@@ -474,7 +482,8 @@ test("authentication and analytics dialogs manage keyboard focus", async () => {
   assert.match(authPanel, /aria-describedby="auth-description"/);
   assert.match(analyticsConsent, /useModalFocus/);
   assert.match(analyticsConsent, /aria-modal="true"/);
-  assert.match(analyticsConsent, /isPublicMeasurementPage\(pathname\)[\s\S]{0,300}setAnalyticsDisabled\(false\)/);
+  assert.match(analyticsConsent, /if \(!configured \|\| choice !== "analytics" \|\| !pathname \|\| !isPublicMeasurementPage\(pathname\)\) \{\s*stopAnalytics\([^;]+\);\s*return;\s*\}[\s\S]*?loadAnalytics\(\);/);
+  assert.match(analyticsConsent, /function loadAnalytics\(\) \{\s*analyticsAllowed = true;\s*setAnalyticsDisabled\(false\);/);
   assert.match(modalFocus, /event\.key === "Escape"/);
   assert.match(modalFocus, /event\.key !== "Tab"/);
   assert.match(modalFocus, /sibling\.inert = true/);
@@ -574,7 +583,8 @@ test("paid API access is server-enforced with narrow billing and privacy excepti
   const entitlements = await readFile(new URL("../server/entitlements/engine.ts", import.meta.url), "utf8");
   const marketingRoutes = await readFile(new URL("../server/integrations/marketing-routes.ts", import.meta.url), "utf8");
 
-  assert.match(authorization, /const entitlements = await getTenantEntitlements\(context\);[\s\S]{0,120}requireTenantServiceAccess\(entitlements\);[\s\S]{0,120}requireFeatureEntitlement\(entitlements, requiredFeature\)/);
+  const paidAccess = authorization.slice(authorization.indexOf("export async function requireAccess("), authorization.indexOf("export async function requireBillingAccess("));
+  assert.match(paidAccess, /const entitlements = await getTenantEntitlements\(context\);[\s\S]*?requireTenantServiceAccess\(entitlements\);[\s\S]*?requireFeatureEntitlement\(entitlements, requiredFeature\)/);
   assert.match(entitlements, /accessType === "none"[\s\S]{0,180}402,[\s\S]{0,80}"SUBSCRIPTION_REQUIRED"/);
   assert.match(marketingRoutes, /marketingDisconnect[\s\S]{0,300}requirePrivacyAccess\(request, \["owner", "admin"\]\)/);
 
@@ -613,7 +623,9 @@ test("paid API access is server-enforced with narrow billing and privacy excepti
     "advisor/chat/route.ts",
     "advisor/consent/route.ts",
     "advisor/conversations/route.ts",
+    "advisor/preferences/route.ts",
     "integrations/clover/disconnect/route.ts",
+    "integrations/deel/disconnect/route.ts",
     "integrations/lightspeed-r/disconnect/route.ts",
     "integrations/lightspeed/disconnect/route.ts",
     "integrations/moneris/disconnect/route.ts",
@@ -621,9 +633,11 @@ test("paid API access is server-enforced with narrow billing and privacy excepti
     "integrations/plaid/disconnect/route.ts",
     "integrations/quickbooks/disconnect/route.ts",
     "integrations/shopify-pos/disconnect/route.ts",
+    "integrations/slack/disconnect/route.ts",
     "integrations/square/disconnect/route.ts",
     "integrations/stripe/disconnect/route.ts",
     "legal/acceptance/route.ts",
+    "linked-files/route.ts",
   ]);
 
   for (const path of ["integrations/plaid/delete-data/route.ts", "integrations/plaid/disconnect/route.ts"]) {

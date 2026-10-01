@@ -4,11 +4,12 @@ import { createServer } from "node:http";
 import test from "node:test";
 import { Miniflare } from "miniflare";
 import { registerSupabaseTestServer } from "./helpers/supabase-loopback-transport.mjs";
+import { TERMS_OF_SERVICE_VERSION, PRIVACY_POLICY_VERSION, ACCOUNT_ACCEPTANCE_NOTICE_VERSION } from "../shared/legal-versions.ts";
 const origin = "https://vanteloq.example";
 const context = { waitUntil() {}, passThroughOnException() {} };
 const email = "invited-owner@example.invalid", subject = "invited-owner-subject";
 const offer = { id: "a385cc2c-566e-4d18-b939-94737813eb75", email, plan: "pro", bookloq: true, expiresAt: null };
-const payload = { complimentaryId: offer.id, legalAccepted: true, termsVersion: "2026-09-05", privacyPolicyVersion: "2026-09-10", legalNoticeVersion: "account-creation-v2", timezone: "America/Edmonton" };
+const payload = { complimentaryId: offer.id, legalAccepted: true, termsVersion: TERMS_OF_SERVICE_VERSION, privacyPolicyVersion: PRIVACY_POLICY_VERSION, legalNoticeVersion: ACCOUNT_ACCEPTANCE_NOTICE_VERSION, timezone: "America/Edmonton" };
 function headers(who = email, sub = subject, aal = "aal2") {
  const token = Buffer.from(JSON.stringify({ email: who, subject: sub, full_name: "Invited Owner", aal, session_id: "session:" + sub })).toString("base64url");
  return { authorization: "Bearer test." + token + ".signature", origin, "sec-fetch-site": "same-origin", "content-type": "application/json", accept: "application/json" };

@@ -428,6 +428,55 @@
       "when": 1790064000000,
       "tag": "0060_dashboard_preferences",
       "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "6",
+      "when": 1790380800000,
+      "tag": "0061_linked_files",
+      "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "6",
+      "when": 1790800000000,
+      "tag": "0062_dashboard_workspace_scope",
+      "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "6",
+      "when": 1790819000000,
+      "tag": "0063_forecasting",
+      "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "6",
+      "when": 1790820000000,
+      "tag": "0064_advisor_experience",
+      "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "6",
+      "when": 1790906400000,
+      "tag": "0065_subscription_trial_access",
+      "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "6",
+      "when": 1790906500000,
+      "tag": "0066_vehicle_inventory",
+      "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "6",
+      "when": 1790906600000,
+      "tag": "0067_shopify_privacy_requests",
+      "breakpoints": true
     }
   ]
 }

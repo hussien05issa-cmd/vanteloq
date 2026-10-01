@@ -1,0 +1,22 @@
+"use client";
+import { useEffect, useState } from "react";
+import { advisorDefaults, advisorPreferences, type AdvisorPreferences } from "../domain/advisor-personalization";
+export default function AdvisorPersonalize({fetcher,disabled,preferences,onChange}:{fetcher:typeof fetch;disabled:boolean;preferences:AdvisorPreferences;onChange:(p:AdvisorPreferences)=>void}) {
+  const [notice,setNotice]=useState(""),[busy,setBusy]=useState(false);
+  useEffect(()=>{const controller=new AbortController();void fetcher("/api/v1/advisor/preferences",{signal:controller.signal}).then(async r=>{if(!r.ok)throw new Error("Saved preferences could not load. Defaults are in use.");return r.json();}).then(p=>{if(!controller.signal.aborted)onChange(advisorPreferences(p.preferences));}).catch(e=>{if(!controller.signal.aborted)setNotice(e.message);});return()=>controller.abort();},[fetcher,onChange]);
+  async function save(remove=false) {
+    setBusy(true);setNotice("");
+    try {const r=await fetcher("/api/v1/advisor/preferences",{method:remove?"DELETE":"PUT",headers:{"content-type":"application/json"},body:remove?undefined:JSON.stringify({preferences})});const p=await r.json();if(!r.ok)throw new Error(p.error?.message ?? "Preferences could not be saved.");onChange(advisorPreferences(p.preferences));setNotice(remove?"Saved preferences deleted. Defaults restored.":"Saved for your account in this workspace.");}
+    catch(e){setNotice(e instanceof Error?e.message:"Try again.");}finally{setBusy(false);}
+  }
+  function choose<K extends keyof AdvisorPreferences>(key:K,value:AdvisorPreferences[K]) {onChange({...preferences,[key]:value});setNotice("Applied to this chat. Save to use these preferences next time.");}
+  return <section className="ai-personalize" aria-labelledby="ai-personalize-title"><h3 id="ai-personalize-title">Personalise AI</h3><p>Choose how replies read. These preferences never store financial facts or turn on conversation memory.</p>
+    <fieldset disabled={disabled||busy}><legend className="ai-visually-hidden">Response and reading preferences</legend><div className="ai-preference-grid">
+      <label>Response length<select value={preferences.length} onChange={e=>choose("length",e.target.value as AdvisorPreferences["length"])}><option value="brief">Brief</option><option value="balanced">Balanced</option><option value="detailed">Detailed</option></select></label>
+      <label>Explanation level<select value={preferences.explanation} onChange={e=>choose("explanation",e.target.value as AdvisorPreferences["explanation"])}><option value="plain">Plain language</option><option value="technical">More technical</option></select></label>
+      <label>Response format<select value={preferences.format} onChange={e=>choose("format",e.target.value as AdvisorPreferences["format"])}><option value="adaptive">Match my question</option><option value="paragraphs">Short paragraphs</option><option value="steps">Steps when useful</option></select></label>
+      <label>Text size<select value={preferences.textSize} onChange={e=>choose("textSize",e.target.value as AdvisorPreferences["textSize"])}><option value="standard">Standard</option><option value="large">Larger</option></select></label>
+      <label>Reading space<select value={preferences.spacing} onChange={e=>choose("spacing",e.target.value as AdvisorPreferences["spacing"])}><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></label>
+    </div><fieldset className="ai-priorities"><legend>Business priorities</legend>{(["sales","profitability","cash","inventory","operations"] as const).map(priority=><label key={priority}><input type="checkbox" checked={preferences.priorities.includes(priority)} onChange={e=>choose("priorities",e.target.checked?[...preferences.priorities,priority]:preferences.priorities.filter(p=>p!==priority))}/>{priority[0].toUpperCase()+priority.slice(1)}</label>)}</fieldset><p>Reduced motion follows your device setting. Your profile supplies your name; your selected workspace supplies its currency and time zone.</p><div className="ai-preference-actions"><button type="button" onClick={()=>void save()}>Save preferences</button><button type="button" onClick={()=>void save(true)}>Delete saved preferences</button><button type="button" onClick={()=>onChange(advisorDefaults)}>Use defaults for this chat</button></div></fieldset>{notice&&<p role="status">{notice}</p>}
+  </section>;
+}

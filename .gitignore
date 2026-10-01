@@ -44,3 +44,8 @@ next-env.d.ts
 /.sites-runtime/
 /outputs/
 /work/
+/tmp/
+/output/08-Vanteloq-MFA-Enforcement-Screenshot.png
+
+# Local verification logs remain outside source history
+/output/*.log

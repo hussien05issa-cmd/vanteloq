@@ -1,0 +1,72 @@
+{
+  "checkedAt": "2026-10-01T08:11:44.870Z",
+  "lockfileSha256": "d31c6deb1fb86c671c297541f40c30c391b8959190430bd2511888fa2e0b9d8a",
+  "lockfileVersion": 3,
+  "packageEntries": 670,
+  "prodEntries": 101,
+  "devEntries": 569,
+  "packageScripts": "No dedicated Lighthouse or JavaScript/CSS bundle-size budget command is defined.",
+  "assetBudgetSource": "tests/homepage-quality.test.mjs",
+  "assets": [
+    {
+      "name": "connect-import-visual.webp",
+      "bytes": 27878,
+      "limit": 160000,
+      "passed": true
+    },
+    {
+      "name": "verify-organize-visual.webp",
+      "bytes": 47662,
+      "limit": 160000,
+      "passed": true
+    },
+    {
+      "name": "inventory-decision-visual.webp",
+      "bytes": 22576,
+      "limit": 160000,
+      "passed": true
+    },
+    {
+      "name": "resource-method-visual.webp",
+      "bytes": 90758,
+      "limit": 160000,
+      "passed": true
+    },
+    {
+      "name": "inventory-tracking-editorial-v2.webp",
+      "bytes": 72722,
+      "limit": 160000,
+      "passed": true
+    },
+    {
+      "name": "gross-margin-editorial-v2.webp",
+      "bytes": 46676,
+      "limit": 160000,
+      "passed": true
+    },
+    {
+      "name": "dashboard-measures-editorial-v2.webp",
+      "bytes": 38064,
+      "limit": 160000,
+      "passed": true
+    },
+    {
+      "name": "scaling-decision-editorial-hero.webp",
+      "bytes": 74972,
+      "limit": 160000,
+      "passed": true
+    },
+    {
+      "name": "bookkeeping-month-end-editorial.webp",
+      "bytes": 105206,
+      "limit": 160000,
+      "passed": true
+    },
+    {
+      "name": "lexedge-consulting-logo-web.png",
+      "bytes": 51661,
+      "limit": 100000,
+      "passed": true
+    }
+  ]
+}

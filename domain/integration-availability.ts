@@ -2,6 +2,7 @@
 // Remove a provider only after its public access and reporting path are verified.
 export const PREVIEW_INTEGRATION_IDS: readonly string[] = [
   "clover",
+  "deel",
   "google",
   "lightspeed",
   "meta",
@@ -9,7 +10,6 @@ export const PREVIEW_INTEGRATION_IDS: readonly string[] = [
   "quickbooks",
   "shopify",
   "shopify-pos",
-  "square",
   "stripe",
 ];
 

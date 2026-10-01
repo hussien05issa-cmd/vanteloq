@@ -639,63 +639,10 @@ async function googleAnalyticsMetrics(accessToken: string, selection: SelectedMa
   }
 }
 
-const GBP_METRICS = [
-  "BUSINESS_IMPRESSIONS_DESKTOP_SEARCH",
-  "BUSINESS_IMPRESSIONS_MOBILE_SEARCH",
-  "BUSINESS_IMPRESSIONS_DESKTOP_MAPS",
-  "BUSINESS_IMPRESSIONS_MOBILE_MAPS",
-  "WEBSITE_CLICKS",
-  "CALL_CLICKS",
-  "BUSINESS_DIRECTION_REQUESTS",
-  "BUSINESS_BOOKINGS",
-  "BUSINESS_FOOD_ORDERS",
-  "BUSINESS_CONVERSATIONS",
-] as const;
-
-const gbpMetricKeys: Record<string, string> = {
-  BUSINESS_IMPRESSIONS_DESKTOP_SEARCH: "gbp_search_desktop_impressions",
-  BUSINESS_IMPRESSIONS_MOBILE_SEARCH: "gbp_search_mobile_impressions",
-  BUSINESS_IMPRESSIONS_DESKTOP_MAPS: "gbp_maps_desktop_impressions",
-  BUSINESS_IMPRESSIONS_MOBILE_MAPS: "gbp_maps_mobile_impressions",
-  WEBSITE_CLICKS: "gbp_website_clicks",
-  CALL_CLICKS: "gbp_call_clicks",
-  BUSINESS_DIRECTION_REQUESTS: "gbp_direction_requests",
-  BUSINESS_BOOKINGS: "gbp_bookings",
-  BUSINESS_FOOD_ORDERS: "gbp_food_orders",
-  BUSINESS_CONVERSATIONS: "gbp_conversations",
-};
-
 function businessProfileLocationId(parent: string) {
   const match = /^accounts\/[A-Za-z0-9_-]+\/locations\/([A-Za-z0-9_-]+)$/.exec(parent);
   if (!match) throw new ApiError(409, "GOOGLE_BUSINESS_SELECTION_INVALID", "The selected Business Profile location is invalid.");
   return `locations/${match[1]}`;
-}
-
-async function googleBusinessProfileMetrics(accessToken: string, selection: SelectedMarketingResource, add: Awaited<ReturnType<typeof metricCollector>>["add"]) {
-  const { start, end } = dateWindow();
-  const url = new URL(`https://businessprofileperformance.googleapis.com/v1/${businessProfileLocationId(selection.externalResourceRef)}:fetchMultiDailyMetricsTimeSeries`);
-  for (const metric of GBP_METRICS) url.searchParams.append("dailyMetrics", metric);
-  const [startYear, startMonth, startDay] = start.split("-");
-  const [endYear, endMonth, endDay] = end.split("-");
-  url.searchParams.set("dailyRange.startDate.year", startYear);
-  url.searchParams.set("dailyRange.startDate.month", String(Number(startMonth)));
-  url.searchParams.set("dailyRange.startDate.day", String(Number(startDay)));
-  url.searchParams.set("dailyRange.endDate.year", endYear);
-  url.searchParams.set("dailyRange.endDate.month", String(Number(endMonth)));
-  url.searchParams.set("dailyRange.endDate.day", String(Number(endDay)));
-  const report = await providerJson<{ multiDailyMetricTimeSeries?: Array<{ dailyMetricTimeSeries?: Array<{ dailyMetric?: string; timeSeries?: { datedValues?: Array<{ date?: unknown; value?: string }> } }> }> }>(
-    url.toString(),
-    { headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" } },
-    "GOOGLE_BUSINESS_PERFORMANCE_FAILED",
-    "Google Business Profile performance could not be loaded.",
-  );
-  for (const group of report.multiDailyMetricTimeSeries ?? []) {
-    for (const series of group.dailyMetricTimeSeries ?? []) {
-      const metricKey = series.dailyMetric ? gbpMetricKeys[series.dailyMetric] : null;
-      if (!metricKey) continue;
-      for (const point of series.timeSeries?.datedValues ?? []) add(selection.id, isoDate(point.date), metricKey, point.value);
-    }
-  }
 }
 
 async function googleAdsMetrics(accessToken: string, selection: SelectedMarketingResource, add: Awaited<ReturnType<typeof metricCollector>>["add"]) {
@@ -775,15 +722,16 @@ export async function syncGoogleMarketing(accessToken: string, selections: reado
   const warnings: string[] = [];
   let resourcesRead = 0;
   const resourceResults: MarketingSyncSnapshot["resourceResults"] = [];
-  const supported = selections.filter((selection) => selection.provider === "google" && ["google_search_console", "google_analytics", "google_business_profile", "google_ads"].includes(selection.dataset));
-  if (!supported.length) throw new ApiError(409, "MARKETING_RESOURCE_SELECTION_REQUIRED", "Choose at least one metrics-capable Google resource before synchronization.");
+  // Business Profile performance is available only through the on-demand report.
+  // Do not collect its content into the durable marketing snapshot.
+  const supported = selections.filter((selection) => selection.provider === "google" && ["google_search_console", "google_analytics", "google_ads"].includes(selection.dataset));
+  if (!supported.length) throw new ApiError(409, "MARKETING_RESOURCE_SELECTION_REQUIRED", "Choose Analytics, Search Console or Ads for synchronization. Selected Business Profile reports are available on demand.");
   for (const selection of supported) {
     const before = (await collector.finish()).length;
     const warningCodes: string[] = [];
     try {
       if (selection.dataset === "google_search_console") await googleSearchMetrics(accessToken, selection, collector.add);
       else if (selection.dataset === "google_analytics") await googleAnalyticsMetrics(accessToken, selection, collector.add);
-      else if (selection.dataset === "google_business_profile") await googleBusinessProfileMetrics(accessToken, selection, collector.add);
       else await googleAdsMetrics(accessToken, selection, collector.add);
       resourcesRead += 1;
     } catch (error) {

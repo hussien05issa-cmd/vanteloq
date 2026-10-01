@@ -1,0 +1,42 @@
+{
+  "recordedAt": "2026-10-01T09:29:35.233Z",
+  "environment": "Isolated local Miniflare/D1 fixtures against parent-completed dist; no live providers or production data.",
+  "runs": [
+    {
+      "command": "node --experimental-transform-types --import ./scripts/test-loader.mjs --test --test-concurrency=1 tests/shopify-privacy.test.ts tests/shopify-pos.test.ts",
+      "passed": 9,
+      "failed": 0
+    },
+    {
+      "command": "node scripts/test.mjs tests/shopify-privacy-flow.test.mjs tests/pos-sync-scheduler-flow.test.mjs tests/migrations-incremental.test.mjs",
+      "passed": 6,
+      "failed": 1,
+      "durationMs": 27490.927,
+      "failure": "Shopify fixture seed violated existing provider/external_account_ref uniqueness; migrations 5/5 and scheduler 1/1 passed."
+    },
+    {
+      "command": "node scripts/test.mjs tests/shopify-privacy-flow.test.mjs",
+      "passed": 0,
+      "failed": 1,
+      "durationMs": 7270.2004,
+      "failure": "Revised unverified fixture also violated existing provider/domain_prefix uniqueness."
+    },
+    {
+      "command": "node scripts/test.mjs tests/shopify-privacy-flow.test.mjs",
+      "passed": 1,
+      "failed": 0,
+      "durationMs": 11572.8162,
+      "fixtureCorrection": "Use a distinct Shopify POS unverified connection with null external_account_ref; preserve all production uniqueness and authorization guards."
+    },
+    {
+      "command": "node node_modules/eslint/bin/eslint.js app/privacy-requests/page.tsx app/shopify-privacy-requests.tsx",
+      "exitCode": 0,
+      "errors": 0
+    }
+  ],
+  "finalResult": {
+    "pureShopifyPassed": 9,
+    "workerAndMigrationPassed": 7,
+    "pending": "Parent rebuild for two UI lint fixes; final suite/deployment/hosted acceptance remain parent-owned."
+  }
+}

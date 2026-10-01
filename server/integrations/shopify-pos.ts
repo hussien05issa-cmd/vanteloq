@@ -8,7 +8,10 @@ export const SHOPIFY_PROVIDER = "shopify";
 export const SHOPIFY_ONLINE_LOCATION_REF = "online-store";
 export type ShopifyProvider = typeof SHOPIFY_PROVIDER | typeof SHOPIFY_POS_PROVIDER;
 export const SHOPIFY_API_VERSION = "2026-07";
-export const SHOPIFY_POS_READ_SCOPES = ["read_all_orders", "read_orders", "read_products", "read_inventory", "read_locations", "read_customers"] as const;
+// Shopify grants read_orders for the standard 60-day order window. The
+// restricted read_all_orders scope is added only after Shopify approves the
+// separate access request, so it cannot block a merchant's initial install.
+export const SHOPIFY_POS_READ_SCOPES = ["read_orders", "read_products", "read_inventory", "read_locations", "read_customers"] as const;
 export function shopifyProviderFromRequest(request: Request): ShopifyProvider {
   return new URL(request.url).pathname.includes("/integrations/shopify-pos/") ? SHOPIFY_POS_PROVIDER : SHOPIFY_PROVIDER;
 }
@@ -106,7 +109,11 @@ export async function shopifyGraphql<T>(organizationId: string, connectionId: st
   if (response.status === 429) throw new ApiError(503, "SHOPIFY_RATE_LIMITED", "Shopify is rate-limiting this store. The sync checkpoint is preserved; retry shortly.");
   if (response.status === 401 || response.status === 403) throw new ApiError(409, "SHOPIFY_AUTHORIZATION_EXPIRED", "Shopify authorization is no longer valid. Reconnect the store.");
   const payload = await response.json().catch(() => ({})) as { data?: T; errors?: Array<{ message?: string }> };
-  if (!response.ok || !payload.data || payload.errors?.length) throw new ApiError(502, "SHOPIFY_PROVIDER_ERROR", "Shopify could not complete the read-only request. No staged data was promoted.");
+  if (!response.ok || !payload.data || payload.errors?.length) {
+    const errors = (payload.errors ?? []).slice(0, 5).map((error) => typeof error.message === "string" ? error.message.replace(/\s+/gu, " ").slice(0, 240) : "Provider error");
+    console.error(JSON.stringify({ event: "shopify.provider_error", provider, status: response.status, errors }));
+    throw new ApiError(502, "SHOPIFY_PROVIDER_ERROR", "Shopify could not complete the read-only request. No staged data was promoted.");
+  }
   return payload.data;
 }
 

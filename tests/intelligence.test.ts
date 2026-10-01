@@ -50,8 +50,8 @@ test("the engine detects supported sales, margin and labour exceptions", () => {
   assert.ok(result.insights.some(insight => insight.id === "margin-trend" && insight.missingInformation.includes("SKU-level cost changes")));
   assert.ok(result.insights.every(insight => insight.evidence.length > 0 && insight.suggestedTask.title.length > 0));
   assert.equal(result.source.verifiedDays, 60);
-  assert.equal(result.forecast?.available, true);
-  assert.equal(result.forecast?.points.length, 7);
+  assert.equal(result.forecast?.available, false);
+  assert.equal(result.forecast?.points.length, 0);
   assert.equal(result.periodComparisons?.sevenDays.comparable, true);
 });
 
@@ -156,12 +156,12 @@ test("a newly observed store with no baseline does not create an artificial grow
   assert.equal(result.comparisons?.netSalesRate, null);
 });
 
-test("forecast gaps are withheld and modeled gross losses are preserved", () => {
+test("legacy forecast does not bypass reviewed assumptions", () => {
   const latest = "2026-08-03";
   const rows = Array.from({ length: 60 }, (_, i) => ({ ...row(dateOffset(latest, i - 59), "current"), netSalesCents: 10_000, costOfGoodsCents: 20_000 }));
   const result = buildCommandCentre(rows, "CAD", new Date("2026-08-04T12:00:00Z"));
-  assert.equal(result.forecast.available, true);
-  assert.ok(result.forecast.points.every(point => point.grossProfitCents === -10_000));
+  assert.equal(result.forecast.available, false);
+  assert.deepEqual(result.forecast.points, []);
   rows.splice(50, 1);
   assert.equal(buildCommandCentre(rows, "CAD", new Date("2026-08-04T12:00:00Z")).forecast.available, false);
 });

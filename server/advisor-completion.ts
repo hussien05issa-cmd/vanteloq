@@ -2,7 +2,7 @@ import { ApiError } from "./api";
 import { SESSION_IDLE_MS } from "../shared/session-policy";
 
 export type AdvisorAuthorityActor = { organizationId: string; userId: string; sessionId: string; role: string; subject: string };
-export type AdvisorSavedTurn = { conversationId: string; existing: boolean; question: string; answer: string; model: string; userEvidence: string; answerEvidence: string };
+export type AdvisorSavedTurn = { turnId?: string; conversationId: string; existing: boolean; question: string; answer: string; model: string; userEvidence: string; answerEvidence: string };
 
 // The fixed schema identifiers below are code, never user input. Ordered arrays
 // make this opaque authorization stamp deterministic without saving its content.
@@ -34,6 +34,7 @@ const authoritySql = `SELECT json_object(
   'connections', ${rows("integration_connections", `id,provider,status,source_namespace,${promotionAuthority},resource_selection_version`, organization)},
   'mappings', ${rows("integration_location_mappings", "id,connection_id,local_location_id,external_location_ref,status", organization)},
   'sourceAuthority', ${rows("integration_source_authorities", "id,connection_id,local_location_id,channel,fact_family,version", organization)},
+  'historyGeneration', COALESCE((SELECT id FROM audit_events WHERE organization_id=a.organization_id AND actor_user_id=a.user_id AND action IN ('privacy.advisor_history_deleted','privacy.advisor_conversation_deleted') AND outcome='success' ORDER BY rowid DESC LIMIT 1), ''),
   'deletion', ${rows("account_deletion_jobs", "id,scope,stage", "stage IN ('confirmed','local_deleted') AND (user_id=a.user_id OR (scope='workspace' AND organization_id=a.organization_id))")}
 ) stamp
 FROM (SELECT ? organization_id, ? user_id, ? session_id, ? role, ? subject) a
@@ -81,7 +82,7 @@ export async function completeAdvisorTurn(database: D1Database, actor: AdvisorAu
     ) INSERT INTO assistant_messages (id,conversation_id,organization_id,user_id,role,content,evidence_json,model,created_at)
     SELECT id,?,?,?,role,content,evidence_json,?,? FROM messages
     WHERE ${authorized} AND EXISTS (SELECT 1 FROM assistant_conversations WHERE id=? AND organization_id=? AND user_id=?)`)
-    .bind(...bindings(actor), crypto.randomUUID(), turn.question, turn.userEvidence, crypto.randomUUID(), turn.answer, turn.answerEvidence,
+    .bind(...bindings(actor), turn.turnId ? `${turn.turnId}-user` : crypto.randomUUID(), turn.question, turn.userEvidence, turn.turnId ? `${turn.turnId}-assistant` : crypto.randomUUID(), turn.answer, turn.answerEvidence,
       turn.conversationId, actor.organizationId, actor.userId, turn.model, now, stamp, turn.conversationId, actor.organizationId, actor.userId);
   const [savedConversation, savedMessages] = await database.batch([conversation, messages]);
   if (Number(savedConversation.meta.changes ?? 0) !== 1 || Number(savedMessages.meta.changes ?? 0) !== 2) changed();

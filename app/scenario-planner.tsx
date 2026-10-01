@@ -1,5 +1,6 @@
 "use client";
 
+import { PromotionPlanner } from "./forecast-planning-panels";
 import { useState } from "react";
 import { calculateScenario, type ScenarioInputs } from "../domain/scenario-model";
 
@@ -52,5 +53,6 @@ export default function ScenarioPlanner({ source, currency }: { source: Source |
         <p className="scenario-boundary">This is a sensitivity calculation, not a prediction or spend approval. It excludes tax, debt principal, working capital and payment timing unless you include them in your assumptions. Use BookLoQ Cash Flow for dated obligations.</p>
       </section>
     </div>
+    <details className="fc-workspace"><summary>Plan a scoped promotion</summary><PromotionPlanner currency={currency}/></details>
   </div>;
 }

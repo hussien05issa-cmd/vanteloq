@@ -21,6 +21,17 @@ const commerceNext = [
 ] as const;
 
 const guides: Record<string, IndustryKpiRecommendation> = {
+  dealership: recommendation("Dealership", "Keep vehicle records in Inventory, then use supported sales and ledger records for business performance. Vehicle status and entered costs do not create sales or accounting entries.", [
+    { key: "net_revenue", reason: "Shows recorded revenue from supported sales or accounting records." },
+    { key: "gross_profit", reason: "Shows supported revenue less matched recorded costs, when both are available." },
+    { key: "gross_margin", reason: "Compares supported gross profit with positive recorded revenue." },
+    { key: "cash_balance", reason: "Shows recorded cash, separate from vehicle asking prices or financing limits." },
+    { key: "cash_flow", reason: "Shows posted cash movement, not the value of vehicles marked sold." },
+  ], [
+    { name: "Vehicle Record Completeness", definition: "Review VIN or legacy identifier, year, make, model, stock number, status, location and acquisition date in Inventory → Vehicles.", requiredEvidence: "User-reviewed vehicle documents. VIN structure is checked; make, model, ownership and history are not automatically verified." },
+    { name: "Vehicle Holding Period", definition: "A dated acquisition-to-disposal interval for a defined vehicle, once both events have been recorded.", requiredEvidence: "Verified acquisition and disposal dates. Marking a vehicle sold alone does not provide a disposal date or a completed sale." },
+    { name: "Per-vehicle Gross Profit", definition: "Matched sale revenue less the recorded costs attributable to the same vehicle.", requiredEvidence: "Reviewed sale documents, acquisition cost and applicable reconditioning costs. Basic vehicle records do not yet calculate this measure." },
+  ]),
   retail: recommendation("Retail", "Start with sales quality, merchandise economics and the cash tied up in stock.", [
     { key: "net_revenue", reason: "Shows recorded sales after discounts and returns." },
     { key: "gross_profit", reason: "Shows the dollars retained after recorded product cost." },

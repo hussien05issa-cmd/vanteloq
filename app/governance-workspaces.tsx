@@ -1879,7 +1879,8 @@ export function AccountDeletionSettings() {
 type BillingData = {
   configured: boolean;
   accessType: "internal" | "complimentary" | "subscription" | "none";
-  current: { plan: "starter" | "growth" | "pro" | "bookloq" | null; status: string | null; addons: string[]; billingInterval: "month" | "year" | null; currentPeriodEndsAt: string | null; cancelAtPeriodEnd: boolean; hasCustomer: boolean };
+  current: { plan: "starter" | "growth" | "pro" | "bookloq" | null; status: string | null; addons: string[]; billingInterval: "month" | "year" | null; currentPeriodEndsAt: string | null; trialEndsAt: string | null; cancelAtPeriodEnd: boolean; hasCustomer: boolean };
+  trialEligible: boolean;
   plans: Array<{ key: "starter" | "growth" | "pro" | "bookloq"; name: string; description: string; mostPopular: boolean; price: number; included: string[] }>;
   addon: { key: "bookloq"; name: string; price: number };
   purchaseInterval: "month";
@@ -1929,7 +1930,9 @@ function BillingSettings() {
   return <section className="settings-form billing-settings"><header><p>STRIPE BILLING</p><h2>Billing & subscription</h2><span>Stripe hosts payment collection, invoices, renewals and cancellation. Vanteloq stores only synchronized subscription identifiers and entitlement status. It never stores card details.</span></header>
     {error && <p className="form-error">{error}</p>}
     {data?.accessType === "complimentary" ? <div className="billing-internal"><b>Complimentary access active</b><span>Your included plan does not require a payment method or a Stripe subscription.</span></div> : data?.accessType === "internal" ? <div className="billing-internal"><b>Internal access active</b><span>This workspace has verified internal access and does not require a Stripe subscription.</span></div> : <>
-      <p className="billing-monthly-note"><b>Monthly billing</b><span>Plans renew month to month. Cancel before renewal to stop the next charge.</span></p>
+      {data?.current.status === "trialing" && data.current.trialEndsAt && <p className="billing-monthly-note"><b>7-day free trial</b><span>{data.current.cancelAtPeriodEnd ? "Trial access ends" : "First billing date"}: {new Date(data.current.trialEndsAt).toLocaleString("en-CA")}. {data.current.cancelAtPeriodEnd ? "Cancellation is scheduled." : "The selected monthly subscription renews automatically. Cancel in Manage billing before the trial ends to avoid the first charge."}</span></p>}
+      {data?.trialEligible && <p className="billing-monthly-note"><b>7-day free trial included</b><span>Your first subscription requires a payment method. After the trial, your selected monthly total plus applicable taxes renews automatically. Review the exact first billing date in Stripe and cancel through Manage billing before the trial ends to avoid the first charge. BookLoQ selected now shares the same trial.</span></p>}
+      <p className="billing-monthly-note"><b>{managed && data?.current.billingInterval === "year" ? "Annual billing" : "Monthly billing"}</b><span>{managed ? `Your current subscription renews ${data?.current.billingInterval === "year" ? "annually" : "monthly"}.` : "New plans renew month to month."} {managed && data?.current.currentPeriodEndsAt ? `${data.current.cancelAtPeriodEnd ? "Access ends" : "Next renewal"}: ${new Date(data.current.currentPeriodEndsAt).toLocaleDateString("en-CA",{timeZone:"UTC"})}.` : "Cancel before renewal to stop the next charge."} Review any changes in Stripe before confirming.</span></p>
       <fieldset className="billing-product-choice">
         <legend>Vanteloq operating plans</legend>
         <p>Retail operations, sales and inventory intelligence.</p>
