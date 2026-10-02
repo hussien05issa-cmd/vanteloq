@@ -88,6 +88,64 @@ test("R-Series resumes more than 100 recent receipts independently of historical
   assert.equal((await database.prepare("SELECT COUNT(*) count FROM integration_staged_sales WHERE organization_id=? AND connection_id='r-recent-connection'").bind(organization.id).first<{count:number}>())?.count, 103);
   await invoke();
   assert.deepEqual(await database.prepare("SELECT SUM(net_sales_cents) sales, SUM(cost_of_goods_cents) costs, SUM(transaction_count) receipts FROM daily_business_metrics WHERE source_connection_id='r-recent-connection'").first(), metric, "overlapping recent reads must not double-count");
+  // A scheduled sync catches provider errors before the HTTP-level logger.
+  // Exercise the real adapter with a local D1 failure and synthetic secret-like
+  // detail: the operational category must survive, but the detail must not.
+  const safeConnectionBefore = await database.prepare("SELECT last_successful_sync_at, last_sync_cursor FROM integration_connections WHERE id='r-recent-connection'").first();
+  const publishFailure = new Error("D1_ERROR: Network connection lost. fictional-sensitive-query-detail");
+  let injected = false;
+  const faultDatabase = new Proxy(database, {
+    get(target, property) {
+      if (property === "prepare") return (query: string) => {
+        const statement = target.prepare(query);
+        if (!/^\s*INSERT INTO data_imports\b/.test(query)) return statement;
+        return new Proxy(statement, {
+          get(prepared, method) {
+            if (method === "bind") return (...values: unknown[]) => {
+              const bound = prepared.bind(...values);
+              return new Proxy(bound, {
+                get(result, operation) {
+                  if (operation === "run") return async () => {
+                    if (!injected) { injected = true; throw publishFailure; }
+                    return result.run();
+                  };
+                  const value = Reflect.get(result, operation);
+                  return typeof value === "function" ? value.bind(result) : value;
+                },
+              });
+            };
+            const value = Reflect.get(prepared, method);
+            return typeof value === "function" ? value.bind(prepared) : value;
+          },
+        });
+      };
+      const value = Reflect.get(target, property);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+  const errorLog = t.mock.method(console, "error", () => {});
+  try {
+    runtime.__vanteloqEnv = { ...runtime.__vanteloqEnv, DB: faultDatabase };
+    await assert.rejects(invoke(), error => error === publishFailure);
+    assert.equal(injected, true);
+    assert.deepEqual(await database.prepare("SELECT last_successful_sync_at, last_sync_cursor FROM integration_connections WHERE id='r-recent-connection'").first(), safeConnectionBefore, "failed publication must preserve the saved cursor and success timestamp");
+    assert.deepEqual(await database.prepare("SELECT data_promotion_status, sync_lease_owner, last_error_code FROM integration_connections WHERE id='r-recent-connection'").first(), { data_promotion_status: "staging", sync_lease_owner: null, last_error_code: "LIGHTSPEED_R_SYNC_FAILED" });
+    const diagnostics = errorLog.mock.calls.map(call => JSON.parse(String(call.arguments[0])));
+    assert.equal(diagnostics.length, 1);
+    assert.equal(diagnostics[0].event, "integration.sync_failed");
+    assert.equal(diagnostics[0].stage, "publish_records");
+    assert.equal(diagnostics[0].operation, "create_import");
+    assert.equal(diagnostics[0].failureKind, "database_transient");
+    assert.match(diagnostics[0].requestId, /^[a-f0-9-]{36}$/);
+    assert.equal(JSON.stringify(diagnostics).includes("fictional-sensitive-query-detail"), false);
+    assert.equal(JSON.stringify(diagnostics).includes(organization.id), false);
+  } finally {
+    runtime.__vanteloqEnv = { ...runtime.__vanteloqEnv, DB: database };
+    errorLog.mock.restore();
+  }
+  const recovered = await invoke();
+  assert.equal(recovered.dataPromotionEnabled, true);
+  assert.deepEqual(await database.prepare("SELECT SUM(net_sales_cents) sales, SUM(cost_of_goods_cents) costs, SUM(transaction_count) receipts FROM daily_business_metrics WHERE source_connection_id='r-recent-connection'").first(), metric, "retry after the failed publication must not double-count");
   const callsBeforeForeign = reads.length;
   await assert.rejects(runSync(new Request("https://vanteloq.example"), crypto.randomUUID(), { ...context, organizationId: "other-tenant" }, { connectionId: "r-recent-connection" }, "scheduled"), { status: 404 });
   assert.equal(reads.length, callsBeforeForeign);
