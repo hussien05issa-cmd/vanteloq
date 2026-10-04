@@ -30,6 +30,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: absoluteUrl("/custom-plan"), lastModified: "2026-09-13", changeFrequency: "monthly", priority: 0.6 },
     { url: absoluteUrl("/demo"), lastModified: "2026-09-11", changeFrequency: "monthly", priority: 0.8 },
     { url: absoluteUrl("/solutions/retail"), lastModified: "2026-10-03", changeFrequency: "monthly", priority: 0.8 },
+    { url: absoluteUrl("/how-it-works"), lastModified: "2026-10-03", changeFrequency: "monthly", priority: 0.8 },
     { url: absoluteUrl("/resources"), lastModified: latestResourceUpdate, changeFrequency: "weekly", priority: 0.9 },
     { url: absoluteUrl("/legal"), lastModified: "2026-08-24", changeFrequency: "monthly", priority: 0.4 },
     { url: absoluteUrl("/privacy"), lastModified: "2026-08-24", changeFrequency: "monthly", priority: 0.5 },

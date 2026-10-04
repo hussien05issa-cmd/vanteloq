@@ -3,15 +3,24 @@ import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import Home from "../app/page";
+import HowItWorks from "../app/how-it-works/page";
 
-const homepage = renderToStaticMarkup(createElement(Home));
-test("the focused homepage retains its buying journey and reachable deep links", () => {
+const homepage = renderToStaticMarkup(createElement(HowItWorks));
+test("the original homepage remains separate from its guided walkthrough", () => {
+  const original = renderToStaticMarkup(createElement(Home));
+  assert.match(original, /A number without a source/);
+  assert.match(original, /is a rumour/);
+  assert.match(original, /href="\/how-it-works"/);
+  assert.doesNotMatch(original, /See what is happening\. Know what to do next/);
+});
+test("the guided walkthrough retains its buying journey and reachable deep links", () => {
   for (const anchor of ["main-content","demo","platform","capabilities","connections","vanteloq-ai","security","plans","company"]) assert.ok(homepage.includes('id="'+anchor+'"'),anchor);
   for(const route of ["/pricing","/custom-plan","/contact","/help","/privacy","/features/retail-intelligence"]) assert.ok(homepage.includes('href="'+route+'"'),route);
   assert.match(homepage,/Fictional records/);
   assert.doesNotMatch(homepage,/Preview thinking|Pause logo animation/);
   assert.match(homepage,/Scripted product illustration/);
-  assert.match(homepage,/See what is happening/);
+  assert.match(homepage,/How Vanteloq works/);
+  assert.doesNotMatch(homepage,/>0[123]<\/span>/);
   assert.match(homepage,/start=signup&amp;plan=free/);
 });
 test("setup explains verification, security and billing before a source is connected", () => {

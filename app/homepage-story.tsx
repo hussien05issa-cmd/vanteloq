@@ -64,7 +64,7 @@ export default function HomepageStory() {
       </div>
       <div className="hp-finding"><span>ONE FINDING</span><p>Sales fell {Math.abs((demo.salesChange ?? 0) * 100).toFixed(1)}%. Fewer transactions explain the larger share.</p></div>
     </div>
-    <div className="hp-story-controls"><div role="group" aria-label="Product story steps">{STEPS.map((id, index) => <button type="button" key={id} aria-pressed={step === index} onClick={() => select(index)} data-public-event="story_step_selected" data-public-section="hero" data-public-step={id}>{index + 1}<span>{LABELS[index]}</span></button>)}</div><button type="button" className="hp-play-control" onClick={() => playing ? setPaused(true) : play(finished)} data-public-event={playing ? "hero_pause" : finished ? "hero_replay" : "hero_play"} data-public-section="hero">{playing ? "Pause" : finished ? "Replay" : started ? "Resume" : "Play story"}</button></div>
+    <div className="hp-story-controls"><div role="group" aria-label="Product story steps">{STEPS.map((id, index) => <button type="button" key={id} aria-pressed={step === index} onClick={() => select(index)} data-public-event="story_step_selected" data-public-section="hero" data-public-step={id}>{LABELS[index]}</button>)}</div><button type="button" className="hp-play-control" onClick={() => playing ? setPaused(true) : play(finished)} data-public-event={playing ? "hero_pause" : finished ? "hero_replay" : "hero_play"} data-public-section="hero">{playing ? "Pause" : finished ? "Replay" : started ? "Resume" : "Play story"}</button></div>
     <p className="hp-story-note">12-second illustration. Select any step. No live connection or account required.</p>
   </div>;
 }
