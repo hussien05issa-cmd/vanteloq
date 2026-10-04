@@ -57,6 +57,7 @@ try {
         response.writeHead(result.status, { "Content-Type": result.headers.get("content-type") || "application/json" }); response.end(Buffer.from(await result.arrayBuffer())); return;
       }
       if (url.pathname === "/preview.js") { response.writeHead(200, { "Content-Type": "application/javascript" }); response.end(javascript); return; }
+      if (url.pathname === "/brand/vanteloq-mark-ui.webp") { response.writeHead(200, { "Content-Type": "image/webp" }); response.end(await readFile("public/brand/vanteloq-mark-ui.webp")); return; }
       if (url.pathname !== "/") { response.writeHead(404).end(); return; }
       response.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; object-src 'none'" });
       response.end(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Vanteloq industry preview · fictional records</title><style>${css}</style><div id="root"></div><script type="module" src="/preview.js"></script></html>`);

@@ -459,7 +459,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
       <div className="public-brand-family">
       <button type="button" className="public-brand" aria-label="Vanteloq home" onClick={() => { window.scrollTo({ top: 0, behavior: motionEnabled ? "smooth" : "auto" }); }}>
         <ProductBrandLogo product="vanteloq" priority/>
-        <span>Vanteloq<small>Retail analytics by LexEdge Consulting</small></span>
+        <span>Vanteloq<small>Business analytics by LexEdge Consulting</small></span>
       </button>
       </div>
       <nav id="public-navigation" aria-label="Main navigation">
