@@ -33,6 +33,8 @@ test('sample attribution and insights reconcile to receipt totals for every loca
 
 test('illustrative sample goals use prior results, exact displayed dates and eligible current values',()=>{
   const report=dashboardDemoReport(), preferences=dashboardDemoPreferences(report);
+  assert.deepEqual(preferences.widgets.filter(widget=>widget.visible).map(widget=>widget.id),['net_revenue','gross_profit','gross_margin','transactions']);
+  assert.ok(preferences.widgets.every(widget=>widget.size==='standard'));
   assert.deepEqual(preferences.goalRings,['net_revenue','transactions','gross_margin']);
   assert.equal(Object.keys(preferences.targets).length,3);
   for (const key of preferences.goalRings) {

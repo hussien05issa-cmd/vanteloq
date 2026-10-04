@@ -1,37 +1,154 @@
-.reference-home .home-hero:has(.home-live-product){display:grid;grid-template-columns:minmax(320px,.8fr) minmax(0,1.2fr);gap:32px;align-items:center;padding:54px max(24px,4vw) 60px;min-height:700px;background:radial-gradient(ellipse at 85% 25%,#d9eaff96,transparent 65%),linear-gradient(150deg,#f8fbfe,#edf4fb)}
-.reference-home .home-hero:has(.home-live-product)::before{display:none}.reference-home .home-hero:has(.home-live-product) .home-hero-copy{width:100%;max-width:560px}.reference-home .home-hero:has(.home-live-product) h1{font-size:clamp(42px,4.5vw,72px);line-height:1.04}.home-live-product{min-width:0;color:#173451}.home-live-controls{display:flex;justify-content:flex-end;align-items:center;gap:7px;margin-bottom:12px;flex-wrap:wrap}.home-live-controls>span{margin-right:auto;font-size:9px;letter-spacing:.1em;font-weight:700;color:#37618e}.home-live-controls>button{min-height:36px;padding:7px 10px;border:1px solid #c3d6ec;border-radius:9px;background:#f5faff;color:#234e7f;font:inherit;font-size:11px;cursor:pointer}.home-monitor{padding:8px;border:1px solid #415875;border-radius:22px;background:linear-gradient(125deg,#263e59,#081524 60%,#344e68);box-shadow:0 24px 65px #24477326,inset 0 1px 0 #c6d6e785}.home-monitor-top{display:flex;align-items:center;gap:8px;height:36px;padding:0 12px 6px;color:#f4f8ff}.home-monitor-top .product-brand-logo{width:22px;height:22px}.home-monitor-top b{font-size:13px}.home-monitor-top>span{margin-left:auto;font-size:10px;color:#c4d6eb}.home-monitor-screen{border-radius:12px;background:linear-gradient(135deg,#f9fbfe,#ecf4fd);padding:17px;min-width:0;overflow:hidden}.home-monitor-screen .dashboard-greeting{margin:0 0 16px;padding:0;gap:10px;align-items:center}.home-monitor-screen .dashboard-greeting h2{font-size:20px!important;line-height:1.25}.home-monitor-screen .dashboard-greeting img{width:30px;height:30px}.home-monitor-screen .dashboard-greeting p{font-size:11px;margin:5px 0}.home-monitor-screen .dashboard-record-coverage{font-size:10px}.home-monitor-screen .business-pulse>summary{padding:8px;gap:8px}.home-monitor-screen .business-pulse summary small{display:none}.home-monitor-screen .business-pulse svg{width:24px}.home-monitor-screen .executive-heading h3{font-size:15px}.home-monitor-screen .executive-heading button{min-height:34px;padding:7px 10px;font-size:11px}.home-monitor-screen .dashboard-sample-banner{font-size:10px!important;padding:7px 10px}.home-monitor-screen .executive-period-label{font-size:10px}.home-monitor-screen .executive-period-label>span+span{display:none}.home-monitor-screen .executive-overview{gap:10px}.home-monitor-screen .executive-compact .executive-kpis{grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}.home-monitor-screen .executive-compact .executive-kpi{padding:12px;min-height:106px;border-radius:11px}.home-monitor-screen .executive-compact .executive-kpi strong{font-size:20px;margin:6px 0}.home-monitor-screen .executive-compact .executive-kpi-label{font-size:11px;min-height:0}.home-monitor-screen .executive-compact .executive-kpi-label i{display:none}.home-monitor-screen .executive-compact :is(.executive-prior,.executive-target,.executive-source){display:none}.home-monitor-screen .executive-compact .executive-change{font-size:10px}.home-monitor-screen .executive-compact .executive-mini-chart{height:20px;margin:4px 0 0}.home-monitor-screen .executive-compact .executive-visual-grid{grid-template-columns:1fr}.home-monitor-screen .executive-compact .executive-detail{padding:14px;border-radius:12px;min-width:0}.home-monitor-screen .executive-detail header{gap:8px}.home-monitor-screen .executive-detail header h3{font-size:16px}.home-monitor-screen .executive-detail header p{font-size:9px}.home-monitor-screen .executive-detail header>div>span{font-size:10px}.home-monitor-screen .executive-detail-actions button{font-size:10px;min-height:34px;padding:7px}.home-monitor-screen .executive-chart-readout{font-size:11px}.home-monitor-screen .executive-chart details,.home-monitor-screen .executive-source-details{font-size:11px}.home-monitor-screen .executive-trend-empty{min-height:210px}.home-monitor-screen .executive-empty-message p{font-size:12px}.home-monitor-foot{width:36%;height:17px;margin:0 auto;background:linear-gradient(90deg,#9fb0c2,#e0e8f0,#a4b5c7);clip-path:polygon(20% 0,80% 0,90% 100%,10% 100%)}.home-live-caption{font-size:11px!important;line-height:1.6;color:#496686;margin:9px 0 0!important;text-align:left}.home-live-caption a{color:#1e62b7;white-space:nowrap}.home-live-product.is-expanded{grid-column:1/-1}.home-live-product.is-expanded .home-monitor-screen{padding:26px}.home-live-product.is-expanded .home-monitor-top{height:42px}
-@media(max-width:1100px){.reference-home .home-hero:has(.home-live-product){grid-template-columns:1fr;padding:35px 24px;gap:30px}.reference-home .home-hero:has(.home-live-product) .home-hero-copy{max-width:720px}.home-live-product{width:100%;max-width:980px;justify-self:center}.home-live-product.is-expanded{grid-column:auto}.home-monitor-screen .executive-compact .executive-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}
-@media(max-width:600px){.reference-home .home-hero:has(.home-live-product){padding:28px 16px 35px}.home-monitor{padding:5px;border-radius:15px}.home-monitor-screen{padding:12px}.home-monitor-screen .dashboard-greeting{align-items:start}.home-monitor-screen .business-pulse{display:none}.home-monitor-screen .executive-compact .executive-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.home-monitor-screen .executive-kpi strong{font-size:19px}.home-monitor-screen .executive-heading-actions{display:flex!important;width:auto}.home-monitor-screen .executive-detail header{flex-wrap:wrap}.home-monitor-screen .executive-detail-actions{display:flex}.home-live-controls{justify-content:flex-start}.home-live-controls>span{width:100%}.home-live-product.is-expanded .home-monitor-screen{padding:12px}}
+/* The public preview uses the same working overview as the connected workspace. */
+.reference-home .home-hero:has(.home-live-product) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 30px;
+  min-height: 0;
+  padding: 44px clamp(16px, 3.2vw, 56px) 40px;
+  background: radial-gradient(ellipse at 90% 0, #eee8f880, transparent 42%), linear-gradient(145deg, #fbfcfe, #f1f6fc);
+}
+.reference-home .home-hero:has(.home-live-product)::before { display: none; }
+.reference-home .home-hero:has(.home-live-product) .home-hero-copy {
+  order: 0; width: 100%; max-width: 1440px; justify-self: center; padding: 0; margin: 0;
+}
+.reference-home .home-hero:has(.home-live-product) h1 {
+  font-size: clamp(38px, 4.2vw, 62px); line-height: 1.06; letter-spacing: -.045em; margin-bottom: 14px;
+}
+.reference-home .home-hero:has(.home-live-product) h1 em {
+  display: inline; margin: 0; background: none; color: #43246b; -webkit-text-fill-color: currentColor;
+}
+.reference-home .home-hero:has(.home-live-product) .home-eyebrow { margin-bottom: 13px; }
+.reference-home .home-hero:has(.home-live-product) .home-hero-copy > p:not(.home-eyebrow) { max-width: 850px; margin-bottom: 10px; }
+.reference-home .home-hero:has(.home-live-product) .home-hero-copy > .home-hero-support { max-width: 890px; }
+.reference-home .home-hero:has(.home-live-product) .public-actions { margin: 20px 0 14px; }
+.reference-home .home-hero:has(.home-live-product) .home-proof { margin-top: 0; background: transparent; border: 0; padding: 0; box-shadow: none; max-width: none; }
+.reference-home .home-hero:has(.home-live-product) .home-company-credit { margin-top: 12px; }
+.home-live-product {
+  --preview-ink: #10162f; --preview-muted: #52627c; --preview-line: #dfe6f1; --preview-purple: #43246b;
+  order: 1; width: 100%; max-width: 1440px; min-width: 0; justify-self: center; color: var(--preview-ink);
+}
+.home-live-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; margin-bottom: 12px; }
+.home-live-controls > span { margin-right: auto; font-size: 11px; letter-spacing: .12em; font-weight: 700; color: var(--preview-purple); }
+.home-live-controls > button {
+  min-height: 44px; padding: 9px 14px; border: 1px solid #cbd5e5; border-radius: 10px;
+  background: #fff; color: #263b5b; font: inherit; font-size: 13px; cursor: pointer;
+}
+.home-live-controls > button[aria-pressed=true], .home-live-controls > button[aria-expanded=true] { border-color: #9e8ab8; color: #43246b; background: #f2edfa; }
+.home-live-product :is(a, button):focus-visible { outline: 3px solid #77529f; outline-offset: 3px; }
+.home-monitor { border: 1px solid #d5deeb; border-radius: 18px; background: #f7f9fd; box-shadow: 0 20px 60px #1c365814, 0 2px 8px #43246b06; overflow: clip; }
+.home-monitor-body { display: grid; grid-template-columns: 196px minmax(0, 1fr); align-items: stretch; }
+.home-preview-sidebar { display: flex; flex-direction: column; min-width: 0; gap: 24px; padding: 24px 14px; border-right: 1px solid var(--preview-line); background: linear-gradient(165deg, #fbfcfe, #edf3fa); }
+.home-preview-brand { display: flex; align-items: center; gap: 8px; padding: 0 8px; }
+.home-preview-brand .product-brand-logo { width: 30px; height: 30px; margin: 0; }
+.home-preview-brand b { font-size: 23px; letter-spacing: -.045em; color: #10162f; }
+.home-preview-workspace { display: grid; gap: 5px; padding: 13px 12px; border: 1px solid #dce4ee; border-radius: 10px; background: #ffffffbd; }
+.home-preview-workspace strong { font-size: 13px; line-height: 1.4; }
+.home-preview-workspace span { color: var(--preview-muted); font-size: 12px; }
+.home-preview-sidebar nav { display: grid; gap: 7px; }
+.home-preview-sidebar a { display: flex; align-items: center; gap: 11px; min-height: 46px; padding: 10px 12px; border: 1px solid transparent; border-radius: 10px; text-decoration: none; color: #263b5b; font-size: 14px; }
+.home-preview-sidebar a span { display: block; }
+.home-preview-sidebar a:hover { background: #e9eff9; }
+.home-preview-sidebar a.is-current { color: #1351c4; background: #e0edff; border-color: #d3e4ff; font-weight: 650; }
+.home-preview-sidebar .workspace-icon { width: 21px; height: 21px; flex: 0 0 21px; }
+.home-preview-sidebar a.home-preview-ai-link { border-top: 1px solid var(--preview-line); border-radius: 0; margin-top: 9px; padding-top: 17px; color: var(--preview-purple); }
+.home-preview-sidebar > small { margin-top: auto; padding: 24px 8px 0; color: var(--preview-muted); font-size: 11px; line-height: 1.8; }
+.home-monitor-main { min-width: 0; }
+.home-monitor-top { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 18px; min-height: 60px; padding: 11px 24px; background: #ffffffc9; border-bottom: 1px solid var(--preview-line); font-size: 13px; color: var(--preview-muted); }
+.home-monitor-top > span:first-child { margin-right: auto; }
+.home-monitor-top i { font-style: normal; margin: 0 10px; color: #91a0b7; }
+.home-monitor-top b { color: #24334f; font-weight: 600; }
+.home-monitor-top .home-preview-data-badge { padding: 5px 9px; border-radius: 6px; background: #e9f1ff; color: #235aba; font-size: 11px; font-weight: 600; }
+.home-monitor-top > a { display: inline-flex; align-items: center; gap: 7px; min-height: 36px; color: #43246b; font-weight: 600; text-decoration: none; }
+.home-monitor-top > a:hover { text-decoration: underline; }
+.home-monitor-screen { min-width: 0; padding: 24px; background: linear-gradient(135deg, #f9fbfe, #f3f6fb); }
+.home-monitor-screen .dashboard-greeting { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; padding: 0; margin: 0 0 20px; }
+.home-monitor-screen .dashboard-greeting-copy { min-width: 0; }
+.home-monitor-screen .dashboard-greeting-title { display: flex; align-items: center; gap: 10px; }
+.home-monitor-screen .dashboard-greeting h2 { font-size: clamp(23px, 2.2vw, 32px); line-height: 1.2; letter-spacing: -.035em; }
+.home-monitor-screen .dashboard-greeting p { margin: 7px 0; font-size: 14px; line-height: 1.5; }
+.home-monitor-screen .dashboard-record-coverage { font-size: 12px; }
+.home-monitor-screen .dashboard-greeting img { width: 32px; height: 32px; }
+.home-monitor-screen .business-pulse { flex: 0 0 auto; }
+.home-monitor-screen .business-pulse > summary { padding: 9px 11px; gap: 8px; }
+.home-monitor-screen .business-pulse summary > b { font-size: 12px; }
+.home-monitor-screen .business-pulse summary small { font-size: 11px; }
+.home-monitor-screen .business-pulse svg { width: 24px; }
+.home-monitor-screen .executive-overview { gap: 16px; }
+.home-monitor-screen .executive-heading h3 { font-size: 19px; }
+.home-monitor-screen .executive-heading button { font-size: 13px; min-height: 44px; }
+.home-monitor-screen .dashboard-sample-banner { font-size: 12px; padding: 9px 12px; }
+.home-monitor-screen .executive-period-label { font-size: 12px; }
+.home-monitor-screen .executive-detail > header { margin: 0; padding: 0; }
+.home-monitor-screen .executive-chart svg { max-height: none; }
+.home-monitor-screen .executive-chart-readout { height: auto; min-height: 28px; }
+.home-monitor-screen .executive-detail p { margin: 0; }
+.home-live-product:not(.is-expanded) .home-monitor-screen > .executive-overview > :is(.invoice-overview, .executive-summary-panels, .executive-financial-details) { display: none; }
+.home-live-caption { margin: 13px 2px 0; font-size: 12px; line-height: 1.65; color: var(--preview-muted); }
+.home-live-caption a { color: #43246b; font-weight: 600; }
+.reference-home .dashboard-drawer > header h2 { font-size: 24px; line-height: 1.2; margin: 0; letter-spacing: -.6px; }
+.reference-home .dashboard-drawer > header > button { width: 44px; min-width: 44px; height: 44px; min-height: 44px; align-self: start; padding: 8px; }
+@media (max-width: 1100px) {
+  .home-monitor-body { grid-template-columns: 165px minmax(0, 1fr); }
+  .home-preview-sidebar { padding-inline: 10px; }
+  .home-preview-brand { padding-inline: 3px; gap: 5px; }
+  .home-preview-brand b { font-size: 21px; }
+  .home-preview-workspace { padding: 12px 10px; }
+  .home-preview-sidebar a { padding-inline: 9px; gap: 9px; }
+  .home-monitor-screen { padding: 20px; }
+  .home-monitor-screen .dashboard-greeting { flex-wrap: wrap; }
+}
+@media (max-width: 800px) {
+  .reference-home .home-hero:has(.home-live-product) { padding: 32px 20px; gap: 24px; }
+  .home-monitor-body { grid-template-columns: minmax(0, 1fr); }
+  .home-preview-sidebar { border-right: 0; border-bottom: 1px solid var(--preview-line); padding: 12px 14px; gap: 12px; }
+  .home-preview-brand { display: none; }
+  .home-preview-workspace, .home-preview-sidebar > small { display: none; }
+  .home-preview-sidebar nav { display: flex; gap: 5px; overflow-x: auto; overscroll-behavior-inline: contain; scrollbar-width: thin; }
+  .home-preview-sidebar a { flex: 0 0 auto; min-height: 44px; padding: 9px 11px; font-size: 12px; }
+  .home-preview-sidebar a.home-preview-ai-link { border: 1px solid transparent; border-radius: 10px; margin: 0; padding: 9px 11px; }
+  .home-preview-sidebar .workspace-icon { width: 18px; height: 18px; flex-basis: 18px; }
+  .home-monitor-top { padding-inline: 18px; }
+}
+@media (max-width: 600px) {
+  .reference-home .home-hero:has(.home-live-product) { padding: 28px 14px; }
+  .reference-home .home-hero:has(.home-live-product) h1 { font-size: clamp(34px, 8vw, 46px); }
+  .home-live-controls { justify-content: flex-start; }
+  .home-live-controls > span { width: 100%; margin: 0 0 4px; }
+  .home-live-controls > button { flex: 1; padding-inline: 9px; font-size: 12px; }
+  .home-monitor { border-radius: 13px; }
+  .home-monitor-top { gap: 8px 12px; padding: 10px 14px; font-size: 12px; }
+  .home-monitor-top > a { width: 100%; min-height: 36px; }
+  .home-monitor-screen { padding: 16px 12px; }
+  .home-monitor-screen .dashboard-greeting h2 { font-size: 24px; }
+  .home-monitor-screen .dashboard-greeting-title { gap: 8px; }
+  .home-monitor-screen .dashboard-greeting p { font-size: 13px; }
+  .home-monitor-screen .dashboard-record-coverage { font-size: 11px; }
+  .home-monitor-screen .business-pulse { width: 100%; }
+  .home-monitor-screen .business-pulse > summary { min-height: 44px; }
+  .home-monitor-screen .executive-heading-actions { width: auto; }
+  .home-monitor-screen .executive-period-label { flex-wrap: wrap; font-size: 11px; }
+  .home-live-caption { font-size: 12px; }
+}
+@media (forced-colors: active) {
+  .home-preview-sidebar a.is-current, .home-live-controls > button[aria-pressed=true] { border: 2px solid Highlight; }
+  .reference-home .home-hero:has(.home-live-product) h1 em { color: CanvasText; }
+}
 
-/* Public page typography must not reflow the actual workspace preview. */
-.reference-home .home-hero:has(.home-live-product){align-items:start}.home-live-product{align-self:center}.reference-home .home-hero:has(.home-live-product) .home-hero-copy{align-self:center;padding:0;margin:0}
-.home-monitor-screen .dashboard-greeting{display:flex;justify-content:space-between;align-items:center}.home-monitor-screen .dashboard-greeting-title{display:flex;gap:9px;align-items:center}.home-monitor-screen .dashboard-greeting-copy{min-width:0}.home-monitor-screen .business-pulse{flex:0 0 auto}.home-monitor-screen .business-pulse summary{display:flex}.home-monitor-screen .business-pulse summary>b{font-size:11px}.home-monitor-screen .executive-detail{min-height:0}.home-monitor-screen .executive-detail>header{display:flex;align-items:start;margin:0;padding:0}.home-monitor-screen .executive-detail p{margin:0}.home-monitor-screen .executive-chart-readout{height:24px}.home-monitor-screen .executive-chart svg{max-height:175px}.home-monitor-screen .executive-compact .executive-detail>header>div>span{display:none}.home-monitor-screen .executive-overview summary{min-height:32px;padding:5px 0}.home-monitor-top{justify-content:flex-start}.home-monitor-top .product-brand-logo{margin:0}.home-monitor-screen .executive-compact .executive-kpi{min-height:102px}.home-monitor-screen .executive-compact .executive-mini-chart{height:20px}.home-monitor-screen .executive-compact .executive-mini-chart .metric-sparkline{height:20px}
+/* Standalone goal preview below the dashboard. */
 .home-goal-preview{display:grid;justify-items:center;gap:12px;color:#173451}.home-goal-preview .home-ring-visual{width:230px;height:230px;max-width:100%;margin:auto}.home-goal-preview .home-ring-visual svg{width:100%;height:100%}.home-goal-preview .home-ring-visual .goal-track{stroke:#dbe7f5;stroke-dasharray:none;opacity:.7}.home-goal-preview .home-ring-visual .goal-progress{stroke-linecap:round;transition:stroke-dasharray .45s ease}.home-goal-preview .home-ring-visual span{display:grid;text-align:center;gap:6px}.home-goal-preview .home-ring-visual strong{font-size:36px}.home-goal-preview .home-ring-visual small{font-size:10px}.home-goal-switches{display:flex;flex-wrap:wrap;justify-content:center;gap:6px}.home-goal-switches button,.home-goal-preview select{min-height:42px;border:1px solid #bfd2e9;background:#f6faff;border-radius:10px;padding:8px;color:#224b7e;font:inherit;font-size:12px}.home-goal-switches button[aria-pressed=true]{border-color:#427ded;background:#e4efff}.home-goal-preview>p{font-size:14px;margin:0!important}.home-goal-preview>label{display:flex;gap:12px;align-items:center;font-size:12px}.home-goal-preview>small{font-size:10px;color:#4e6582;text-align:center}
 @media(prefers-reduced-motion:reduce){.home-goal-preview .goal-progress{transition:none!important}}
 .home-goal-ring-stage{width:250px;max-width:100%;padding:12px;border:1px solid #c7d9ee;border-radius:30px;background:linear-gradient(145deg,#fbfdff,#eaf2fc);box-shadow:inset 0 1px 0 #fff,0 14px 35px #163e6b13}
 .home-goal-preview .home-goal-switches button{min-height:44px;font-size:14px;font-weight:600;color:#193d6b;cursor:pointer}
 .home-goal-preview .home-goal-switches button:focus-visible,.home-goal-preview select:focus-visible{outline:3px solid #176be8;outline-offset:3px}
 .home-goal-preview>label{font-size:14px}.home-goal-preview select{min-height:44px;font-size:14px}.home-goal-preview>small{font-size:12px;line-height:1.6}
-.home-monitor-screen .executive-compact .executive-kpi-label{font-size:14px;font-weight:650;line-height:1.4;color:#183b63;min-height:20px}
-@media(max-width:600px){.home-monitor-screen .dashboard-greeting-title{gap:7px}.home-monitor-screen .business-pulse{display:none}.home-monitor-screen .dashboard-greeting h2{font-size:19px!important}.home-monitor-screen .executive-compact .executive-kpi strong{font-size:18px}.home-monitor-screen .executive-detail>header{flex-wrap:wrap}}
-
-/* Compact monitor keeps the same controls in a first-screen product composition. */
-.reference-home .home-hero:has(.home-live-product){padding-top:36px;padding-bottom:40px}
-.home-live-product:not(.is-expanded) .dashboard-record-coverage{display:none}
-.home-live-product:not(.is-expanded) .dashboard-sample-banner{display:none}
-.home-monitor-screen .executive-compact .executive-chart{margin-top:10px}
-.home-monitor-screen .executive-compact .executive-chart svg{min-height:160px;max-height:160px;height:160px}
-.home-monitor-screen .executive-compact .executive-source-details{margin-top:0;padding:0}
-.home-monitor-screen .executive-compact .executive-chart-readout{min-height:24px;height:24px}
-.home-monitor-screen .executive-compact .executive-kpi{padding:10px;min-height:96px}
-.home-monitor-screen .executive-compact .executive-kpi strong{line-height:1.2;margin:5px 0}
-.home-live-product:not(.is-expanded) .home-live-controls>span{font-size:10px}
-@media(max-width:600px){.reference-home .home-hero:has(.home-live-product){padding-top:28px}.home-monitor-screen .executive-compact .executive-chart svg{min-height:160px;height:160px;max-height:160px}}
-
-@media(max-width:1100px){.reference-home .home-hero:has(.home-live-product) .home-hero-copy{order:0}.reference-home .home-hero .home-live-product{order:1}}
-.reference-home .dashboard-drawer>header h2{font-size:24px;line-height:1.2;margin:0;letter-spacing:-.6px}
-.reference-home .dashboard-drawer>header>button{width:44px;min-width:44px;height:44px;min-height:44px;align-self:start;padding:8px}
-
-/* The monitor renders the same overview, with navigation into the working demo. */
-.home-monitor-body{display:grid;grid-template-columns:52px minmax(0,1fr);border-radius:12px;overflow:hidden}.home-preview-sidebar{display:flex;flex-direction:column;gap:8px;padding:14px 6px;background:linear-gradient(155deg,#173753,#0d233b);color:#eaf4ff}.home-preview-sidebar a{display:flex;align-items:center;gap:10px;min-height:42px;padding:9px;border-radius:8px;text-decoration:none;color:#deedff}.home-preview-sidebar a:is(:hover,:focus-visible),.home-preview-sidebar a.is-current{background:#315a8b;color:white}.home-preview-sidebar a:focus-visible{outline:2px solid #87baff;outline-offset:2px}.home-preview-sidebar a span,.home-preview-sidebar>small{display:none}.home-preview-sidebar .workspace-icon{width:20px;height:20px;flex-shrink:0}.home-monitor-body .home-monitor-screen{border-radius:0}.is-expanded .home-monitor-body{grid-template-columns:156px minmax(0,1fr)}.is-expanded .home-preview-sidebar{padding:24px 10px}.is-expanded .home-preview-sidebar a span{display:block;font-size:12px}.is-expanded .home-preview-sidebar>small{display:block;margin-top:auto;padding:18px 8px;font-size:11px;line-height:1.8;color:#bcd1eb}.home-live-product.is-expanded .executive-chart svg{max-height:none}.home-live-product.is-expanded .executive-detail{padding:22px}.home-monitor-screen .business-pulse{display:block}.home-monitor-screen .business-pulse summary{border-color:#bed7f7;box-shadow:0 0 18px #2b82ff1c}.home-monitor-screen .business-pulse summary>b{font-weight:650}
-@media(max-width:600px){.home-monitor-body,.is-expanded .home-monitor-body{grid-template-columns:1fr}.home-preview-sidebar{display:none}.home-monitor-screen .business-pulse{display:block}.home-monitor-screen .business-pulse>summary{padding:6px}.home-monitor-screen .business-pulse summary>b{font-size:10px}.home-monitor-screen .business-pulse svg{width:20px}.home-monitor-screen .dashboard-greeting{flex-wrap:wrap}.home-live-product.is-expanded .executive-detail{padding:16px}}
+/* The public preview already identifies its sample records in the toolbar. */
+.home-monitor-screen{position:relative}
+.home-monitor-screen .dashboard-greeting{padding-right:130px;margin-bottom:14px}
+.home-monitor-screen .dashboard-record-coverage,.home-monitor-screen .dashboard-sample-banner,.home-monitor-screen .executive-heading>div:first-child{display:none}
+.home-monitor-screen .executive-heading{position:absolute;right:24px;top:24px;min-height:44px}
+.home-monitor-screen .executive-period-label{margin:0}
+.home-monitor-screen .executive-period-label>span:last-child{font-size:11px}
+.home-monitor-screen .commerce-reference .executive-kpi{padding:16px;min-height:168px}
+.home-monitor-screen .commerce-reference .executive-source{margin-top:5px;padding-top:6px}
+@media(max-width:600px){.home-monitor-screen .dashboard-greeting{padding-right:0}.home-monitor-screen .executive-heading{position:static;justify-content:flex-end}.home-monitor-screen .executive-period-label>span:last-child{display:none}}

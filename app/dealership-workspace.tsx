@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { DEALERSHIP_APPOINTMENT_STATUSES, DEALERSHIP_COST_CATEGORIES, DEALERSHIP_CSV_TEMPLATE, DEALERSHIP_LEAD_STAGES, DEALERSHIP_PHYSICAL_STATUSES, DEALERSHIP_PREP_STATUSES, DEALERSHIP_TASK_STATUSES, dealershipInstant, validateDealershipCredits, type DealershipAcquire, type DealershipAppointment, type DealershipDashboard, type DealershipLead, type DealershipPermissions, type DealershipSale, type DealershipStock, type DealershipTask } from "../domain/dealership";
 import { vehicleAmount, vehicleAmountToCents } from "../domain/vehicles";
-import { isCalendarDate } from "../domain/calendar-date";
+import { dealerAppointmentOutcomes, dealerAverageGross, dealerStockAging, dealershipCalendarAge } from "../domain/dealer-analytics";
 import { apiFetch } from "./supabase-browser";
 import { FormInput } from "./form-primitives";
 import { useModalFocus } from "./use-modal-focus";
@@ -20,16 +20,7 @@ type OpenEditor = (action: DealershipAction, record?: DealershipStock | Dealersh
 const labels: Record<DealershipAction, string> = { acquire: "Add vehicle", adopt_legacy: "Bring existing vehicle records", update_stock: "Update stock", transfer: "Transfer vehicle", add_cost: "Record cost evidence", save_task: "Save preparation task", save_lead: "Save customer lead", save_appointment: "Save appointment", reserve: "Reserve vehicle", release_reservation: "Release reservation", deliver: "Record delivery", reverse_sale: "Reverse delivery" };
 const human = (value: string) => value.replaceAll("_", " ").replace(/^./, char => char.toUpperCase());
 export const dealershipMoney = (cents: number | null | undefined, currency: string) => cents == null ? "Not recorded" : new Intl.NumberFormat("en-CA", { style: "currency", currency, currencyDisplay: "code" }).format(cents / 100);
-export function dealershipCalendarAge(acquiredDate: string, generatedAt: string, timezone: string): number | null {
-  if (!isCalendarDate(acquiredDate) || !Number.isFinite(Date.parse(generatedAt))) return null;
-  try {
-    const parts = new Intl.DateTimeFormat("en-CA", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date(generatedAt));
-    const part = (type: string) => parts.find(row => row.type === type)?.value;
-    const asOf = `${part("year")}-${part("month")}-${part("day")}`;
-    const days = (Date.parse(`${asOf}T00:00:00Z`) - Date.parse(`${acquiredDate}T00:00:00Z`)) / 86_400_000;
-    return Number.isInteger(days) && days >= 0 ? days : null;
-  } catch { return null; }
-}
+export { dealershipCalendarAge } from "../domain/dealer-analytics";
 const vehicleName = (row: DealershipStock) => `${row.year} ${row.make} ${row.model}`;
 export function dealershipDeliveryBlockers(row: DealershipStock): string[] {
   const blockers: string[] = [];
@@ -223,7 +214,7 @@ function DealershipScope({ activeLocationId, initialTab = "overview", compactOve
   const currentView = tabs.find(tab => tab[0] === view && tab[2]) ? view : "overview";
   const blocked = busy || uncertain;
   return <section className={`dealership-workspace${compactOverview && currentView === "overview" ? " dl-compact-overview" : ""}`} aria-labelledby="dealership-title">
-    <header className="dl-header"><div><p className="dl-eyebrow">DEALERSHIP</p><h2 id="dealership-title" ref={savedHeading} tabIndex={-1}>Vehicle operations</h2><p>Keep vehicle readiness, customer follow-up and recorded deliveries in one place.</p></div><button type="button" disabled={busy || loading} onClick={() => void refreshRecords()}>Refresh records</button></header>
+    <header className="dl-header"><div><p className="dl-eyebrow">DEALERSHIP</p><h2 id="dealership-title" ref={savedHeading} tabIndex={-1}>Vehicle operations</h2><p>Keep vehicle readiness, customer follow-up and recorded deliveries in one place.</p><p>Bring together reviewed DMS exports using the stock CSV template and dealership records. Vanteloq complements your system of record.</p></div><button type="button" disabled={busy || loading} onClick={() => void refreshRecords()}>Refresh records</button></header>
     <p className="dl-scope">{activeLocationId ? data?.locations.find(row => row.id === activeLocationId)?.name || "Selected location" : "All authorized locations"}{data ? ` · ${dateLabel(data.summary.from)} to ${dateLabel(data.summary.to)}` : ""}</p>
     {error && !editorOpen && <p className="dl-error" role="alert">{error}</p>}
     {message && <p className="dl-success" role="status">{message}</p>}
@@ -239,7 +230,7 @@ function DealershipScope({ activeLocationId, initialTab = "overview", compactOve
       </form>
       <nav className="dl-tabs" aria-label="Dealership workspace">{tabs.filter(tab => tab[2]).map(([key, name]) => <button type="button" key={key} aria-pressed={currentView === key} onClick={() => setView(key)}>{name}</button>)}</nav>
       {data.permissions.export && <details className="dl-export"><summary>Export authorized records</summary><p className="dl-hint">Exports use the selected location, stock search or delivery period. Cost and profit columns follow your permissions.</p><div className="dl-actions"><button type="button" disabled={blocked} onClick={() => void exportRecords("stock")}>Export stock CSV</button>{data.permissions.sales && <><button type="button" disabled={blocked} onClick={() => void exportRecords("sales")}>Export deliveries CSV</button><button type="button" disabled={blocked} onClick={() => void exportRecords("summary")}>Export summary CSV</button></>}</div></details>}
-      {currentView === "overview" && <><DealershipSummary data={data} search={query.q} onView={setView}/><DealershipAttention data={data} blocked={blocked} onAction={open}/></>}
+      {currentView === "overview" && <><DealershipSummary data={data} search={query.q} onView={setView}/><DealershipAttention data={data} blocked={blocked} onAction={open}/><DealershipAnalytics data={data} search={query.q} agingReviewDays={agingReviewDays} onView={setView}/></>}
       {currentView === "inventory" && <>
         <div className="dl-section-heading"><div><h3>Vehicle inventory</h3><p>Each row is one stock episode. A returning vehicle keeps its identity and receives a new episode.</p></div><div className="dl-actions">{data.permissions.stockEdit && <button type="button" disabled={blocked} onClick={() => open("acquire")}>Add vehicle</button>}</div></div>
         {data.legacyAvailable > 0 && data.permissions.stockEdit && <div className="dl-notice"><p>{data.legacyAvailable} existing vehicle records can be brought into this workspace. Imported history and ownership remain marked incomplete until reviewed.</p><button type="button" disabled={blocked} onClick={() => open("adopt_legacy")}>Bring existing vehicle records</button></div>}
@@ -283,11 +274,31 @@ export function DealershipAttention({data,blocked=false,onAction}:{data:Dealersh
 
 export function DealershipSummary({ data, search = "", onView }: { data: DealershipDashboard; search?: string; onView?: (view: View) => void }) {
   const { summary, permissions } = data;
+  const averages = dealerAverageGross(data);
   return <div className="dl-overview"><div className="dl-section-heading"><div><h3>Your dealership overview</h3><p>Recorded activity for {dateLabel(summary.from)} to {dateLabel(summary.to)}.</p></div></div>
     <div className="dl-metrics"><article><span>Active stock{search ? " matching search" : ""}</span><strong>{summary.activeStock}</strong><small>Current stock episodes in scope</small></article><article><span>Ready and available{search ? " matching search" : ""}</span><strong>{summary.availableStock}</strong><small>On lot, preparation ready and available</small></article>{summary.legacyIncomplete > 0 && <article><span>History to review</span><strong>{summary.legacyIncomplete}</strong><small>Adopted records with incomplete history</small></article>}</div>
     {permissions.sales && (summary.currencies.length ? summary.currencies.map(row => <section className="dl-card" key={row.currency}><h4>Delivery activity · {row.currency}</h4><div className="dl-metrics"><article><span>Delivered vehicles</span><strong>{row.deliveredUnits}</strong><small>One recorded delivery per stock episode</small></article><article><span>Recorded vehicle sales</span><strong>{dealershipMoney(row.vehicleSalesCents, row.currency)}</strong><small>Vehicle amount recorded at delivery</small></article>{permissions.profit && <article><span>Known operational gross</span><strong>{dealershipMoney(row.grossCents, row.currency)}</strong><small>{row.grossEligibleUnits} deliveries with complete costs; {row.missingCostUnits} excluded for missing costs</small></article>}</div>{row.reversedUnits > 0 && <p>{row.reversedUnits} reversals · {dealershipMoney(row.reversedSalesCents, row.currency)} shown separately from delivered activity.</p>}</section>) : <Empty>No deliveries are recorded in this period. Stock and preparation records remain available.</Empty>)}
+    {averages.length > 0 && <div className="dl-metrics">{averages.map(row => <article key={row.currency}><span>Average recorded delivery gross · {row.currency}</span><strong>{dealershipMoney(row.averageCents, row.currency)}</strong><small>Known operational gross ÷ {row.eligibleUnits} cost-complete deliveries. {row.missingCostUnits} missing-cost deliveries excluded. Reversals remain separate from this delivery activity.</small></article>)}</div>}
     <div className="dl-actions">{onView && <button type="button" onClick={() => onView("inventory")}>Review inventory</button>}{onView && permissions.tasks && <button type="button" onClick={() => onView("preparation")}>Review preparation</button>}{onView && permissions.customers && <button type="button" onClick={() => onView("customers")}>Review follow-up</button>}</div>
   </div>;
+}
+
+export function DealershipAnalytics({ data, search = "", agingReviewDays = 60, onView }: { data: DealershipDashboard; search?: string; agingReviewDays?: number; onView?: (view: View) => void }) {
+  const aging = dealerStockAging(data, agingReviewDays), appointments = dealerAppointmentOutcomes(data);
+  const percentage = (value: number | null) => value === null ? "Not available" : new Intl.NumberFormat("en-CA", { style: "percent", maximumFractionDigits: 1 }).format(value);
+  return <>
+    <section className="dl-card" aria-labelledby="dealer-aging-heading"><div className="dl-section-heading"><div><p className="dl-eyebrow">Inventory intelligence</p><h3 id="dealer-aging-heading">Stock aging and recorded investment</h3><p>Current active stock from the loaded records{search ? " matching your search" : ""}. Calendar age follows each vehicle&apos;s location.</p></div>{onView && <button type="button" onClick={() => onView("inventory")}>Review stock</button>}</div>
+      {aging.partial && <p className="dl-notice">Partial stock view. Load more stock in Inventory to include the remaining records. These figures are not totals for all stock.</p>}
+      <div className="dl-metrics"><article><span>Loaded active vehicles</span><strong>{aging.activeUnits}</strong><small>Available, held and reserved episodes only</small></article><article><span>Aged {aging.threshold}+ calendar days</span><strong>{aging.agedUnits}</strong><small>{aging.ageKnownUnits} vehicles with known age; {aging.unknownAgeUnits} with unavailable age. The threshold is your review setting.</small></article></div>
+      {aging.currencies.map(group => <div className="dl-table-scroll" key={group.currency} tabIndex={0} role="region" aria-label={`Stock aging in ${group.currency}`}><table><caption>Loaded active stock · {group.currency}</caption><thead><tr><th scope="col">Calendar age</th><th scope="col">Vehicles</th><th scope="col">Ownership</th>{data.permissions.costs && <><th scope="col">Known posted owned cost</th><th scope="col">Owned cost coverage</th></>}</tr></thead><tbody>{group.buckets.map(bucket => <tr key={bucket.label}><th scope="row">{bucket.label}</th><td>{bucket.units}</td><td>{bucket.ownedUnits} owned<small>{bucket.consignmentUnits} consignment · {bucket.unknownOwnershipUnits} unreviewed</small></td>{data.permissions.costs && <><td>{dealershipMoney(bucket.postedOwnedCostCents, group.currency)}</td><td>{bucket.knownCostUnits} of {bucket.ownedUnits} with posted costs<small>{bucket.reviewedCostUnits} reviewed complete</small></td></>}</tr>)}</tbody></table></div>)}
+      <p className="dl-hint">Posted owned costs are recorded investment evidence. Incomplete costs remain labelled; consignment and unreviewed ownership are excluded from owned investment. Asking prices, holding costs, lender balances and unsold profit are not estimated. Delivery-period filters do not change current stock aging.</p>
+    </section>
+    {appointments && <section className="dl-card" aria-labelledby="dealer-appointments-heading"><div className="dl-section-heading"><div><p className="dl-eyebrow">Customer follow-through</p><h3 id="dealer-appointments-heading">Appointment outcomes</h3><p>Appointments dated {dateLabel(data.summary.from)} to {dateLabel(data.summary.to)} in each location&apos;s timezone.</p></div>{onView && <button type="button" onClick={() => onView("customers")}>Review appointments</button>}</div>
+      <div className="dl-metrics"><article><span>Recorded show rate</span><strong>{percentage(appointments.showRate)}</strong><small>Attended ÷ (attended + no-show). {appointments.decided} known outcomes.</small></article><article><span>Attended / no-show</span><strong>{appointments.attended} / {appointments.noShow}</strong><small>{appointments.scheduled} scheduled and {appointments.cancelled} cancelled appointments excluded from the rate.</small></article></div>
+      {appointments.reason && <p className="dl-hint">{appointments.reason} Counts describe matched loaded records.</p>}
+      <p className="dl-hint">This measures recorded appointment attendance. F&amp;I income and lead-to-sale conversion require linked source records that are not captured here.</p>
+    </section>}
+  </>;
 }
 
 export function DealershipStockTable({ data, blocked = false, onAction, agingReviewDays = 60 }: { data: DealershipDashboard; blocked?: boolean; onAction?: OpenEditor; agingReviewDays?: number }) {

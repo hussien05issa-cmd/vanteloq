@@ -10,9 +10,9 @@ import { buildExecutiveReport } from "../server/executive-report";
 
 const blank=()=>buildExecutiveReport(executivePeriod(new URLSearchParams("period=30d"),"2026-09-27"),{metrics:{},previous:null,trend:[],insights:[]},null,"No posted records for this period.","commerce");
 
-test("a disconnected executive dashboard retains six cards, its chart and records table without sample figures",()=>{
+test("a disconnected executive dashboard retains four cards, its chart and records table without sample figures",()=>{
   const html=renderToStaticMarkup(<ExecutiveOverview currency="CAD" initialReport={blank()} navigate={()=>{}}/>);
-  assert.equal((html.match(/class="executive-kpi size-/g)??[]).length,6);
+  assert.equal((html.match(/class="executive-kpi size-/g)??[]).length,4);
   assert.match(html,/Your .*net revenue.* trend/);
   assert.match(html,/Revenue by Source/);
   assert.match(html,/Recent Daily Results/);
@@ -24,7 +24,7 @@ test("a disconnected executive dashboard retains six cards, its chart and record
 test("sync and source-conflict states preserve the layout while withholding all values",()=>{
   for(const syncing of [true,false]){
     const html=renderToStaticMarkup(<ExecutiveStatusFrame syncing={syncing} message="Review required" preferences={dashboardPreferencePreset()} onSources={()=>{}} onRetry={()=>{}}/>);
-    assert.equal((html.match(/class="executive-kpi size-/g)??[]).length,6);
+    assert.equal((html.match(/class="executive-kpi size-/g)??[]).length,4);
     assert.match(html,/PERIOD TREND/);
     assert.match(html,/Totals are withheld/);
     assert.doesNotMatch(html,/\$\d|data-testid="actual-value"/);

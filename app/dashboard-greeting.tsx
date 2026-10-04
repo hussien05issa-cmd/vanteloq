@@ -28,10 +28,11 @@ export function syncLabel(value: string | null, now: number | null) {
   return `Last sync ${new Intl.DateTimeFormat("en-CA", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(timestamp))}`;
 }
 
-export default function DashboardGreeting({ accountName = "", sourceName, latestBusinessDate, lastSuccessfulSyncAt, needsAttention, onConnections, syncing = false, overview }: {
+export default function DashboardGreeting({ accountName = "", sourceName, latestBusinessDate, lastSuccessfulSyncAt, needsAttention, onConnections, syncing = false, overview, showSourceStatus = true }: {
   accountName?: string; sourceName: string; latestBusinessDate: string | null; lastSuccessfulSyncAt: string | null;
   needsAttention: boolean; syncing?: boolean; onConnections: () => void;
   overview?: PulseOverview;
+  showSourceStatus?: boolean;
 }) {
   const [now, setNow] = useState<Date | null>(null);
   useEffect(() => {
@@ -51,11 +52,11 @@ export default function DashboardGreeting({ accountName = "", sourceName, latest
         {/* Static brand artwork is served directly by the Sites asset cache. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/brand/vantatalk-greeting-smile.png" alt="" width={36} height={36}/>
-        <h2>{greetingForHour(now?.getHours() ?? null)}{firstName ? `, ${firstName}` : ""}.</h2>
+        <h2>Your business, at a glance.</h2>
       </div>
-      <p>Here’s your business at a glance.</p>
-      <span className="dashboard-record-coverage">{coverage}{latestBusinessDate ? ` · ${sourceName}` : ""}</span>
+      <p>{greetingForHour(now?.getHours() ?? null)}{firstName ? `, ${firstName}` : ""}. See performance and what needs your attention.</p>
+      <span className="dashboard-record-coverage">{coverage}{latestBusinessDate ? ` · ${sourceName}` : ""}{lastSuccessfulSyncAt ? ` · ${syncLabel(lastSuccessfulSyncAt,now?.getTime()??null)}` : ""}</span>
     </div>
-    <BusinessPulse sourceName={sourceName} coverage={coverage} syncText={syncLabel(lastSuccessfulSyncAt,now?.getTime()??null)} syncing={syncing} needsAttention={needsAttention} onConnections={onConnections} overview={overview}/>
+    {showSourceStatus&&<BusinessPulse sourceName={sourceName} coverage={coverage} syncText={syncLabel(lastSuccessfulSyncAt,now?.getTime()??null)} syncing={syncing} needsAttention={needsAttention} onConnections={onConnections} overview={overview}/>}
   </section>;
 }

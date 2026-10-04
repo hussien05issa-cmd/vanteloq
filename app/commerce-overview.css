@@ -1,0 +1,82 @@
+/* The same composition is used by a connected workspace and the public sample. */
+.executive-overview.commerce-reference{--exec-text:#10162f;--exec-muted:#52627c;gap:16px;container-type:inline-size;container-name:executive}
+.commerce-reference .executive-heading h3{font-size:19px;letter-spacing:-.45px}
+.commerce-reference .executive-filters{justify-content:flex-end;gap:12px}
+.commerce-reference .executive-filters label{font-size:12px;font-weight:550;color:var(--exec-muted)}
+.commerce-reference .executive-filters select{background:#fff;min-width:150px}
+.commerce-reference .executive-period-label{font-size:12px}
+.commerce-reference .executive-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;overflow:visible;padding:0}
+.executive-overview.commerce-reference .executive-kpi{position:relative;display:grid;grid-template-columns:minmax(0,1fr) 76px;align-content:start;gap:4px 8px;padding:20px;min-height:190px;min-width:0;border:1px solid #dfe6f1;border-radius:14px;background:linear-gradient(135deg,#fff,#fbfdff);box-shadow:0 3px 12px #23365306;color:#10162f;scroll-snap-align:none}
+.commerce-reference .executive-kpi-label{grid-column:1/-1;color:#10162f;font-size:14px;font-weight:600}
+.commerce-reference .executive-kpi strong{grid-column:1/-1;font-size:32px;letter-spacing:-1px;margin:3px 0;line-height:1.25;font-weight:650}
+.commerce-reference .executive-kpi strong.unavailable{font-size:30px;color:#52627c}
+.commerce-reference .executive-change{grid-column:1;display:block;line-height:1.6;font-size:13px;color:#52627c}
+.commerce-reference .executive-change.change-up{color:#087c59}.commerce-reference .executive-change.change-down{color:#a94c15}
+.commerce-reference .executive-change small{display:block;font-size:11px;color:#52627c}
+.commerce-reference .executive-mini-chart{grid-column:2;grid-row:3/5;align-self:center;margin:0;height:32px;width:76px}
+.commerce-reference .executive-mini-chart .metric-sparkline{height:32px;width:76px}
+.commerce-reference .executive-prior{grid-column:1;font-size:11px;margin:0;line-height:1.5}
+.commerce-reference .executive-target{grid-column:1/-1;font-size:11px}
+.commerce-reference .executive-source{grid-column:1/-1;display:flex;flex-direction:row;justify-content:space-between;flex-wrap:wrap;gap:3px 8px;margin-top:8px;padding-top:8px;border-color:#e6ecf4;font-size:10px;color:#52627c}
+.commerce-reference .executive-source small{font-size:10px}
+.executive-overview.commerce-reference .executive-kpi.selected{border-color:#bdd3f5;box-shadow:0 3px 12px #23365306}
+.executive-overview.commerce-reference .executive-kpi:hover{border-color:#7ba9ed;box-shadow:0 8px 22px #2252a017;transform:translateY(-2px)}
+.executive-overview.commerce-reference .executive-kpi:active{transform:scale(.985)}
+.commerce-reference .executive-workbench{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(340px,1fr);gap:16px;align-items:stretch}
+.commerce-reference .executive-workbench>.executive-detail,.commerce-reference .executive-workbench:not(:has(>.invoice-overview))>.executive-detail{grid-column:1;grid-row:1;min-height:0}
+.commerce-reference .executive-workbench>.executive-insights{grid-column:1;grid-row:2}
+.commerce-reference .executive-workbench>.executive-advisor{grid-column:2;grid-row:2}
+.commerce-reference .executive-workbench>:is(.executive-detail,.executive-insights,.executive-operating-ring,.executive-advisor){border:1px solid #dfe6f1;border-radius:14px;background:linear-gradient(135deg,#fff,#fafdff);box-shadow:0 4px 15px #23365306;min-width:0;padding:20px}
+.commerce-reference .executive-detail h3,.commerce-reference .executive-insights h3{font-size:20px;font-weight:650;letter-spacing:-.6px;color:#10162f}
+.commerce-reference .executive-detail header span{font-size:12px;line-height:1.5;max-width:360px;color:#52627c}
+.commerce-reference .executive-detail-actions button{font-size:11px;background:#fff;padding:8px 10px}
+.commerce-reference .executive-detail-actions button:first-child{display:none}
+.commerce-reference .executive-chart{margin-top:18px}
+.commerce-reference .executive-chart svg{min-height:210px;max-height:260px}
+.commerce-reference .executive-chart-readout{min-height:22px;font-size:11px}
+.commerce-reference .executive-source-details{margin-top:8px;border:0;border-top:1px solid #e3eaf4;border-radius:0;background:transparent;padding:0}
+.commerce-reference .executive-source-details>summary{font-size:12px;color:#37639c;font-weight:550}
+.commerce-reference .executive-workbench>.interactive-operating-goals{grid-column:2;grid-row:1;display:grid;grid-template-columns:minmax(130px,.9fr) minmax(130px,1fr);grid-template-rows:auto 1fr auto;gap:14px;align-items:center;align-content:start}
+.commerce-reference .operating-ring-copy{grid-column:1/-1;grid-row:1;display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.commerce-reference .operating-ring-copy h3{font-size:20px;color:#10162f;letter-spacing:-.6px}
+.commerce-reference .operating-ring-copy>span{font-size:12px;color:#52627c;margin:0}
+.commerce-reference .operating-ring-copy>.operating-selected-goal{display:none}
+.commerce-reference .operating-goal-ring-stage{grid-column:1;grid-row:2;width:100%;max-width:220px;justify-self:center}
+.commerce-reference .operating-goal-ring-stage .interactive-ring-readout strong{font-size:25px}
+.commerce-reference .operating-goal-ring-stage .interactive-ring-readout small{display:block;font-size:9px;max-width:65px;line-height:1.4;color:#52627c}
+.commerce-reference .operating-goal-list{grid-column:2;grid-row:2;gap:8px;width:100%;align-self:center}
+.executive-overview.commerce-reference .operating-goal-list>button{grid-template-columns:7px minmax(0,1fr);gap:3px 8px;padding:10px 8px;border-color:transparent;background:transparent;border-radius:9px;min-width:0}
+.executive-overview.commerce-reference .operating-goal-list>button[aria-pressed=true]{background:#f2edfa;border-color:#e1d5f0;box-shadow:none}
+.commerce-reference .operating-goal-list b{font-size:12px;color:#25213e}.commerce-reference .operating-goal-list small{font-size:10px;color:#52627c}
+.commerce-reference .operating-goal-list>button>small:last-child{font-size:9px;line-height:1.4}
+.commerce-reference .goal-progress-track{grid-column:2;display:block;width:100%;height:5px;background:#edf1f7;border-radius:5px;overflow:hidden;margin:4px 0}
+.commerce-reference .goal-progress-track>span{display:block;height:100%;border-radius:inherit;background:#176bff;transition:width 260ms ease}
+.commerce-reference .goal-progress-track.ring-tone-1>span{background:#7042bc}.commerce-reference .goal-progress-track.ring-tone-2>span{background:#078c8a}
+.commerce-reference .operating-ring-action{grid-row:3;grid-column:1/-1;padding-top:8px;justify-content:space-between;border-color:#e3eaf4}
+.commerce-reference .operating-ring-action>button{background:transparent;border-color:transparent;padding:0 4px;color:#176bff;font-size:12px}
+.commerce-reference .operating-ring-action details{max-width:100%}
+.commerce-reference .operating-ring-action details>span{display:block;font-size:12px;line-height:1.6}
+.commerce-reference .executive-insights>header{gap:8px;align-items:center}.commerce-reference .executive-insights>header>button{background:transparent;border:0;color:#176bff;font-size:11px;padding:0}
+.commerce-reference .executive-insights details{margin-top:10px;border:1px solid #e2e7f1;border-radius:10px;background:#fff;padding:0 12px;overflow:hidden}
+.commerce-reference .executive-insights details[open]{border-color:#cabbdf;background:#fcfaff;padding-bottom:10px}
+.commerce-reference .executive-insights details>summary{padding:12px 0;color:#192139;font-size:13px;line-height:1.5}
+.commerce-reference .executive-insights details>summary small{display:block;font-size:10px;margin:2px 0 0;color:#52627c}
+.commerce-reference .executive-workbench>.executive-advisor{background:linear-gradient(140deg,#f7faff,#f5f0fc);border-color:#cab9e6;display:flex;flex-direction:column;gap:14px}
+.executive-advisor>header{display:flex;align-items:center;gap:9px}.executive-advisor>header h3{font-size:18px;color:#352054;letter-spacing:-.5px}
+.executive-advisor>header img{object-fit:contain}.executive-advisor>header>span{font-size:10px;color:#634b83;margin-left:auto}
+.executive-advisor>h4{font-size:18px;letter-spacing:-.4px;line-height:1.4;color:#191a35}.executive-advisor>p{font-size:13px;color:#43516d;line-height:1.65}
+.executive-overview .executive-advisor>.advisor-question{display:flex;justify-content:space-between;gap:14px;text-align:left;background:#ffffffb8;color:#43246b;border:1px solid #dcd0ed;font-size:12px;line-height:1.55;border-radius:12px;padding:12px;margin-top:auto}
+.executive-advisor form{display:flex;align-items:center;gap:8px;border-top:1px solid #dfd9ed;padding-top:12px}
+.executive-advisor form input{flex:1;min-width:0;width:100%;background:#fff;font-size:13px;cursor:text;border-color:#d7ddeb;padding:12px}
+.executive-overview .executive-advisor form button{background:#43246b;color:#fff;border-color:#43246b;width:44px;border-radius:50%;font-size:23px;line-height:1;padding:8px;flex-shrink:0}
+.executive-advisor>small{font-size:10px;line-height:1.5;color:#635d77}
+.executive-advisor .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.commerce-reference>.invoice-overview{border-radius:14px;margin:0;min-width:0}
+.overview-daily-brief{border:1px solid #dfe6f1;border-radius:12px;background:#ffffffa8;margin:0 0 16px;padding:0 16px}
+.overview-daily-brief>summary{padding:12px 0;font-size:13px;font-weight:600;cursor:pointer;min-height:44px;color:#213856}
+.overview-daily-brief>summary span{font-size:12px;font-weight:400;color:#52627c;margin-left:12px}
+@container executive (max-width:1000px){.commerce-reference .executive-workbench{grid-template-columns:minmax(0,1.3fr) minmax(300px,1fr)}.executive-overview.commerce-reference .executive-kpi{padding:16px;grid-template-columns:1fr 52px}.commerce-reference .executive-mini-chart,.commerce-reference .executive-mini-chart .metric-sparkline{width:52px}.commerce-reference .executive-workbench>.interactive-operating-goals{grid-template-columns:1fr}.commerce-reference .operating-goal-ring-stage{grid-column:1;grid-row:2;width:160px}.commerce-reference .operating-goal-list{grid-column:1;grid-row:3;grid-template-columns:repeat(3,minmax(0,1fr));gap:3px}.commerce-reference .operating-goal-list>button{padding:8px 4px}.commerce-reference .operating-ring-action{grid-row:4}.commerce-reference .operating-ring-copy{display:block}}
+@container executive (max-width:740px){.commerce-reference .executive-kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.commerce-reference .executive-workbench{grid-template-columns:minmax(0,1fr)}.commerce-reference .executive-workbench>:is(.executive-detail,.executive-insights,.executive-advisor,.interactive-operating-goals),.commerce-reference .executive-workbench:not(:has(>.invoice-overview))>.executive-detail{grid-column:1;grid-row:auto}.commerce-reference .executive-workbench>.interactive-operating-goals{grid-template-columns:minmax(130px,.8fr) minmax(130px,1fr)}.commerce-reference .operating-goal-ring-stage{grid-column:1;grid-row:2;width:100%}.commerce-reference .operating-goal-list{grid-column:2;grid-row:2;grid-template-columns:1fr}.commerce-reference .operating-ring-action{grid-row:3}.commerce-reference .executive-kpi strong{font-size:27px}.commerce-reference .executive-heading-actions{display:flex!important;width:auto}.commerce-reference .executive-filters{justify-content:stretch;display:grid;grid-template-columns:1fr 1fr}.commerce-reference .executive-filters label{display:grid;grid-template-columns:1fr;gap:5px;margin:0}.commerce-reference .executive-filters select{min-width:0;width:100%}.commerce-reference .executive-detail>header{flex-direction:row}.commerce-reference .executive-detail-actions{width:auto}.commerce-reference .executive-detail-actions button{min-width:0}.commerce-reference .executive-kpi.size-wide{grid-column:span 2}}
+@container executive (max-width:380px){.executive-overview.commerce-reference .executive-kpi{grid-template-columns:1fr;padding:14px;min-height:180px}.commerce-reference .executive-mini-chart{display:none}.commerce-reference .executive-kpi strong{font-size:23px}.commerce-reference .executive-change,.commerce-reference .executive-prior{grid-column:1/-1}.commerce-reference .executive-heading{flex-wrap:wrap}.commerce-reference .executive-workbench>:is(.executive-detail,.executive-insights,.executive-operating-ring,.executive-advisor){padding:15px}.commerce-reference .executive-insights>header{flex-direction:row}.commerce-reference .executive-insights h3{font-size:17px}}
+@media(prefers-reduced-motion:reduce){.executive-overview.commerce-reference .executive-kpi,.commerce-reference .goal-progress-track>span{transition:none;transform:none!important}}
+html[data-motion-paused=true] .commerce-reference *{animation:none!important;transition:none!important}

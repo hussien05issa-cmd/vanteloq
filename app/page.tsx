@@ -476,9 +476,9 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
       <section className="home-hero" aria-labelledby="home-title">
         <div className="home-hero-copy">
           <p className="home-eyebrow">Retail. Dealerships. Cafés. Restaurants.</p>
-          <h1 id="home-title">A number without a source <em>is a rumour.</em></h1>
-          <p>Follow your sales, stock and cash back to the records behind them.</p>
-          <p className="home-hero-support">Vanteloq brings your sales, stock and cash into focus. Understand the numbers, choose your goals and take control of what comes next. Keep the POS you already pay for.</p>
+          <h1 id="home-title">Your business, <em>at a glance.</em></h1>
+          <p>A clear view of performance and what needs your attention.</p>
+          <p className="home-hero-support">Follow sales, stock and cash back to their source. Connect your supported tools, set your goals and choose your next step.</p>
           <div className="public-actions"><a href="/demo" data-public-event="demo_view">Open the demo <span aria-hidden="true">→</span></a><button type="button" data-public-event="signup_start" onClick={() => start("signup")}>Create a workspace</button></div>
           <ul className="home-proof"><li>No signup for the demo</li><li>Totals open to source rows</li><li>AI memory starts off</li></ul>
           <p className="home-company-credit">A product built and operated by <a href="#company">LexEdge Consulting</a>.</p>
