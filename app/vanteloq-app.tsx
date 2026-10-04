@@ -1258,13 +1258,13 @@ export default function VanteloqApp({
           <button className="secondary" onClick={() => void refresh(true)}>Retry refresh</button>
         </div>}
         {loading ? (
-          <LoadingState />
+          <LoadingState overview={view === "Dashboard"}/>
         ) : error ? (
           <FailureState message={error} retry={refresh} />
         ) : data?.source.syncing && ["Intelligence", "Business Brief", "Scenario Planner", "Operations"].includes(view) ? (
           <SourceSyncingState refresh={refreshWorkspace} />
         ) : (
-          <Suspense fallback={<WorkspaceSkeleton label="Loading this workspace"/>}><Workspace
+          <Suspense fallback={<WorkspaceSkeleton label={`Loading ${workspaceViewLabel(view)}`} variant={view === "Dashboard" ? "overview" : "records"}/>}><Workspace
             view={view}
             advisorConsent={advisorConsent}
             advisorAvailability={advisorAvailability}
@@ -4739,23 +4739,8 @@ function AlertDrawer({
     </aside>
   );
 }
-function LoadingState() {
-  return (
-    <div className="workspace-loading ledger-skeleton" role="status" aria-live="polite" aria-label="Loading workspace data">
-      <span className="sr-only">Verifying the operating picture…</span>
-      <div className="skeleton-heading" aria-hidden="true">
-        <i />
-        <i />
-      </div>
-      <div className="skeleton-summary" aria-hidden="true">
-        {[1, 2, 3, 4, 5].map((item) => <i key={item} />)}
-      </div>
-      <div className="skeleton-ledger" aria-hidden="true">
-        <b />
-        {[1, 2, 3, 4, 5, 6].map((item) => <span key={item}><i /><i /><i /><i /></span>)}
-      </div>
-    </div>
-  );
+function LoadingState({ overview = false }: { overview?: boolean }) {
+  return <WorkspaceSkeleton label="Loading workspace data" variant={overview ? "overview" : "records"}/>;
 }
 export function SourceSyncingState({ refresh }: { refresh: () => void | Promise<void> }) {
   return <section className="failure-state" role="status" aria-live="polite" aria-busy="true">

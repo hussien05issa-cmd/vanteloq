@@ -345,7 +345,7 @@ function AccountFormLoading({ close }: { close: () => void }) {
 }
 
 function AuthenticatedLoading() {
-  return <main className="workspace-entry-loading"><ProductBrandLogo product="vanteloq" priority/><WorkspaceSkeleton label="Preparing your workspace"/></main>;
+  return <main className="workspace-entry-loading"><ProductBrandLogo product="vanteloq" priority/><WorkspaceSkeleton label="Preparing your workspace" variant="overview"/></main>;
 }
 
 const featureReelScenes = [
@@ -476,6 +476,10 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
       <section className="home-hero" aria-labelledby="home-title">
         <div className="home-hero-copy">
           <p className="home-eyebrow">Retail. Dealerships. Cafés. Restaurants.</p>
+          <p className="home-source-principle" data-motion={motionEnabled ? "on" : "off"}>
+            <span className="sr-only">A number without a source is a rumour.</span>
+            <span aria-hidden="true">{"A number without a source is a rumour.".split(" ").map((word, index) => <span className="home-source-word" key={index} style={{ animationDelay: `${index * 65}ms` }}>{word}{index < 7 ? " " : ""}</span>)}</span>
+          </p>
           <h1 id="home-title">Your business, <em>at a glance.</em></h1>
           <p>A clear view of performance and what needs your attention.</p>
           <p className="home-hero-support">Follow sales, stock and cash back to their source. Connect your supported tools, set your goals and choose your next step.</p>

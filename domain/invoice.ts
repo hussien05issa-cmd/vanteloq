@@ -1,6 +1,6 @@
 import { ApiError } from "../server/api";
 import { isCalendarDate } from "./calendar-date";
-import { invoiceLineAmounts, invoiceTotals } from "./invoice-amounts";
+import { invoiceLineAmounts, invoiceTaxRateUnits, invoiceTotals } from "./invoice-amounts";
 
 const CURRENCY = /^[A-Z]{3}$/;
 const EMAIL = /^[^\s@]{1,64}@[^\s@]{1,190}$/;
@@ -105,7 +105,10 @@ export function parseCustomerInvoice(value: unknown): CustomerInvoiceInput {
     const quantityMilli = safeInteger(line.quantityMilli, `quantity for line ${index + 1}`, 1_000_000_000);
     if (quantityMilli <= 0) throw new ApiError(400, "INVALID_INVOICE", `Line ${index + 1} requires a quantity greater than zero.`);
     const unitPriceCents = safeInteger(line.unitPriceCents, `unit price for line ${index + 1}`, 100_000_000_000);
-    const taxRateBasisPoints = safeInteger(line.taxRateBasisPoints ?? 0, `tax rate for line ${index + 1}`, 10_000);
+    const rawTaxRate = line.taxRateBasisPoints ?? 0;
+    try { invoiceTaxRateUnits(rawTaxRate); }
+    catch { throw new ApiError(400, "INVALID_INVOICE", `Enter a tax rate from 0% to 100% with up to three decimal places for line ${index + 1}.`); }
+    const taxRateBasisPoints = rawTaxRate as number;
     let amounts;
     try { amounts = invoiceLineAmounts(quantityMilli, unitPriceCents, taxRateBasisPoints); }
     catch { throw new ApiError(400, "INVALID_INVOICE", `Line ${index + 1} exceeds the supported amount.`); }

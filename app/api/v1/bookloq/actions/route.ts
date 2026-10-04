@@ -2,7 +2,7 @@ import { getD1 } from "../../../../../db";
 import { recordAudit } from "../../../../../server/audit";
 import { requireAccess } from "../../../../../server/authorization";
 import { enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameOrigin } from "../../../../../server/api";
-import { requireBookLoQPermission } from "../../../../../server/bookloq";
+import { confirmSupportingMatch, lockBookloqPeriod, requireBookLoQPermission, saveBookloqBudget, updateCloseItem } from "../../../../../server/bookloq";
 import { requirePermission } from "../../../../../server/permissions";
 import { requireAddon, requireFeature } from "../../../../../server/entitlements/engine";
 import { requireOrganizationWideLocationAccess } from "../../../../../server/location-access";
@@ -152,6 +152,7 @@ export async function POST(request: Request) {
       const transaction = await database.prepare(`SELECT amount_cents amountCents, currency, source_state sourceState, demo_record demoRecord, reconciliation_status reconciliationStatus FROM financial_transactions WHERE organization_id = ? AND id = ? AND source_state <> 'removed'`).bind(context.organizationId, transactionId).first<{ amountCents: number; currency: string; sourceState: string; demoRecord: number; reconciliationStatus: string }>();
       if (!transaction) return jsonResponse({ error: { code: "TRANSACTION_NOT_FOUND", message: "Transaction not found." } }, { status: 404 });
       if (!["posted", "modified"].includes(transaction.sourceState)) return jsonResponse({ error: { code: "MATCH_POSTED_TRANSACTION_REQUIRED", message: "Wait for the transaction to post before confirming a match." } }, { status: 409 });
+      if (transaction.reconciliationStatus === "reconciled") return jsonResponse({ error: { code: "TRANSACTION_RECONCILED", message: "A reconciled transaction cannot be rematched. Reopen its reconciliation through an authorized correction workflow first." } }, { status: 409 });
       if (targetType === "supplier_bill" && transaction.amountCents >= 0) return jsonResponse({ error: { code: "MATCH_DIRECTION_INVALID", message: "A supplier bill must be matched to a cash outflow." } }, { status: 409 });
       if (targetType === "customer_invoice" && transaction.amountCents <= 0) return jsonResponse({ error: { code: "MATCH_DIRECTION_INVALID", message: "A customer invoice must be matched to a cash inflow." } }, { status: 409 });
       const targetQuery = targetType === "supplier_bill"
@@ -164,35 +165,9 @@ export async function POST(request: Request) {
       if (targetType !== "receipt" && (target.currency?.toUpperCase() !== transaction.currency.toUpperCase() || Boolean(target.demoRecord) !== Boolean(transaction.demoRecord))) {
         return jsonResponse({ error: { code: "MATCH_SOURCE_MISMATCH", message: "Match records in the same currency and data mode. Currency conversion requires a separately reviewed accounting entry." } }, { status: 409 });
       }
-      const targetColumn = targetType === "supplier_bill" ? "supplier_bill_id" : targetType === "customer_invoice" ? "customer_invoice_id" : "document_id";
-      const confirmedMatch = await database.prepare(`SELECT id, supplier_bill_id supplierBillId,
-        customer_invoice_id customerInvoiceId, document_id documentId
-        FROM bookloq_transaction_matches WHERE organization_id = ? AND transaction_id = ? AND status = 'confirmed'
-        ORDER BY updated_at DESC LIMIT 1`).bind(context.organizationId, transactionId).first<{ id: string; supplierBillId: string | null; customerInvoiceId: string | null; documentId: string | null }>();
-      const confirmedTargetId = confirmedMatch?.supplierBillId ?? confirmedMatch?.customerInvoiceId ?? confirmedMatch?.documentId ?? null;
-      if (confirmedMatch && confirmedTargetId !== targetId) return jsonResponse({ error: { code: "TRANSACTION_ALREADY_MATCHED", message: "Remove the existing confirmed match before linking this transaction to a different record." } }, { status: 409 });
-      const existing = await database.prepare(`SELECT id FROM bookloq_transaction_matches WHERE organization_id = ? AND transaction_id = ? AND ${targetColumn} = ?`)
-        .bind(context.organizationId, transactionId, targetId).first<{ id: string }>();
-      const matchId = existing?.id ?? crypto.randomUUID();
-      if (existing) {
-        await database.prepare(`UPDATE bookloq_transaction_matches SET status = 'confirmed', method = 'manual',
-          confidence_basis_points = 10000, matched_amount_cents = ?, reasons_json = '["Manual confirmation"]',
-          note = ?, matched_by_user_id = ?, updated_at = ? WHERE organization_id = ? AND id = ?`)
-          .bind(Math.abs(transaction.amountCents), note, context.userId, timestamp, context.organizationId, matchId).run();
-      } else {
-        await database.prepare(`INSERT INTO bookloq_transaction_matches
-          (id, organization_id, transaction_id, supplier_bill_id, customer_invoice_id, document_id,
-           status, method, confidence_basis_points, matched_amount_cents, reasons_json, note,
-           matched_by_user_id, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, 'confirmed', 'manual', 10000, ?, '["Manual confirmation"]', ?, ?, ?, ?)`)
-          .bind(matchId, context.organizationId, transactionId,
-            targetType === "supplier_bill" ? targetId : null,
-            targetType === "customer_invoice" ? targetId : null,
-            targetType === "receipt" ? targetId : null,
-            Math.abs(transaction.amountCents), note, context.userId, timestamp, timestamp).run();
-      }
-      await database.prepare(`UPDATE financial_transactions SET reconciliation_status = 'matched', updated_at = ? WHERE organization_id = ? AND id = ?`)
-        .bind(timestamp, context.organizationId, transactionId).run();
+      const matchId = await confirmSupportingMatch(database, { organizationId: context.organizationId, transactionId,
+        targetType, targetId, amountCents: transaction.amountCents, currency: transaction.currency,
+        demoRecord: transaction.demoRecord, note, actorUserId: context.userId, timestamp });
       await recordAudit({ request, requestId, organizationId: context.organizationId, actorUserId: context.userId,
         action: "financial_transaction.supporting_record_matched", resourceType: "financial_transaction", resourceId: transactionId,
         details: { targetType, targetId, amountCents: Math.abs(transaction.amountCents), previousStatus: transaction.reconciliationStatus } });
@@ -215,12 +190,8 @@ export async function POST(request: Request) {
       }
       const account = await database.prepare(`SELECT id, code, name FROM financial_accounts WHERE organization_id = ? AND id = ? AND active = 1 AND account_type IN ('revenue', 'expense')`).bind(context.organizationId, accountId).first<{ id: string; code: string; name: string }>();
       if (!account) return jsonResponse({ error: { code: "BUDGET_ACCOUNT_NOT_FOUND", message: "Choose an active revenue or expense account." } }, { status: 404 });
-      const budgetId = crypto.randomUUID();
-      await database.prepare(`INSERT INTO bookloq_budgets (id, organization_id, account_id, period_start, period_end, location_ref, department_ref, budget_cents, committed_cents, forecast_cents, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(organization_id, account_id, period_start, period_end, location_ref, department_ref)
-        DO UPDATE SET budget_cents = excluded.budget_cents, committed_cents = excluded.committed_cents, forecast_cents = excluded.forecast_cents, updated_at = excluded.updated_at`)
-        .bind(budgetId, context.organizationId, accountId, periodStart, periodEnd, locationRef, departmentRef, budgetCents, committedCents, forecastCents, timestamp, timestamp).run();
+      const budgetId = await saveBookloqBudget(database, { organizationId: context.organizationId, accountId,
+        periodStart, periodEnd, locationRef, departmentRef, budgetCents, committedCents, forecastCents, timestamp });
       await recordAudit({ request, requestId, organizationId: context.organizationId, actorUserId: context.userId,
         action: "bookloq_budget.saved", resourceType: "bookloq_budget", resourceId: budgetId,
         details: { accountId, accountCode: account.code, accountName: account.name, periodStart, periodEnd, budgetCents, committedCents, forecastCents, locationRef, departmentRef } });
@@ -235,8 +206,7 @@ export async function POST(request: Request) {
       if (!itemId || !status) return jsonResponse({ error: { code: "INVALID_CLOSE_ITEM", message: "Select a valid month-end item and status." } }, { status: 400 });
       const before = await database.prepare(`SELECT status FROM month_end_items WHERE organization_id = ? AND id = ?`).bind(context.organizationId, itemId).first<{ status: string }>();
       if (!before) return jsonResponse({ error: { code: "CLOSE_ITEM_NOT_FOUND", message: "Month-end item not found." } }, { status: 404 });
-      await database.prepare(`UPDATE month_end_items SET status = ?, completed_at = ?, updated_at = ? WHERE organization_id = ? AND id = ?`)
-        .bind(status, status === "complete" ? timestamp : null, timestamp, context.organizationId, itemId).run();
+      await updateCloseItem(database, { organizationId: context.organizationId, itemId, beforeStatus: before.status, status, timestamp });
       await recordAudit({ request, requestId, organizationId: context.organizationId, actorUserId: context.userId,
         action: "month_end.status_changed", resourceType: "bookloq_close_item", resourceId: itemId,
         details: { before: before.status, after: status } });
@@ -269,11 +239,7 @@ export async function POST(request: Request) {
       if (!periodId) return jsonResponse({ error: { code: "INVALID_PERIOD", message: "Select a valid accounting period." } }, { status: 400 });
       const period = await database.prepare(`SELECT status FROM accounting_periods WHERE organization_id = ? AND id = ?`).bind(context.organizationId, periodId).first<{ status: string }>();
       if (!period) return jsonResponse({ error: { code: "PERIOD_NOT_FOUND", message: "Accounting period not found." } }, { status: 404 });
-      const incomplete = await database.prepare(`SELECT COUNT(*) count FROM month_end_items WHERE organization_id = ? AND period_id = ? AND status != 'complete'`)
-        .bind(context.organizationId, periodId).first<{ count: number }>();
-      if ((incomplete?.count ?? 0) > 0) return jsonResponse({ error: { code: "CLOSE_INCOMPLETE", message: "Complete every month-end item before locking this period." } }, { status: 409 });
-      await database.prepare(`UPDATE accounting_periods SET status = 'locked', locked_at = ?, locked_by_user_id = ?, updated_at = ? WHERE organization_id = ? AND id = ?`)
-        .bind(timestamp, context.userId, timestamp, context.organizationId, periodId).run();
+      await lockBookloqPeriod(database, { organizationId: context.organizationId, periodId, actorUserId: context.userId, timestamp });
       await recordAudit({ request, requestId, organizationId: context.organizationId, actorUserId: context.userId,
         action: "accounting_period.locked", resourceType: "accounting_period", resourceId: periodId,
         details: { before: period.status, after: "locked" } });

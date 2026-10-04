@@ -8,6 +8,16 @@ This is the canonical Origin release document. It records what Vanteloq implemen
 
 Vanteloq brings a business’s sales, inventory, documents and financial records into one inspectable picture. BookLoQ provides its accounting and cash workspace. LexEdge Consulting operates the product. Customers retain their own workspaces, provider grants, permitted locations and decisions. A sample preview is always separate from customer records.
 
+## Latest customer-control and accounting review
+
+The 4 October BookLoQ increment adds reviewed ledger setup, safer journals and evidence matching, selected-period close controls and more precise invoice tax input. Its complete scope, verification and remaining master-brief work are recorded in [BookLoQ refinement](bookloq-refinement-2026-10-04.md). The 46-phase accounting brief is not fully implemented by this increment.
+
+Subscription cancellation is visible in **Settings → Billing & subscription**. Account and workspace deletion are separately reviewed in **Settings → Account & login**. Cancellation opens Stripe's confirmation screen and does not delete records. Permanent workspace deletion requires its own confirmation, current ownership, recent MFA and completion of required provider/document cleanup. See [customer controls](customer-controls-2026-10-04.md) and [deletion safeguards](account-deletion-review-2026-10-04.md) for the precise scope, tests and retention limits.
+
+The homepage retains “A number without a source is a rumour.” above “Your business, at a glance.” with motion-off support. Dashboard and BookLoQ loading placeholders follow their upcoming layouts. Recoverable errors offer plain-language guidance and manual retry, while technical HTTP statuses remain intact. Uncertain writes are not automatically retried or presented as completed.
+
+Publication evidence is recorded in the dated release receipt after deployment. Release 331 is the verified preceding baseline. Older dated publication notes below are historical, not the current release status. Production backup restoration, unapproved provider availability and the remaining accounting workflows still require their own evidence.
+
 ## 4 October reviewed workflow increment
 
 **Baseline status: published as release 330 on 4 October 2026.** The [release 330 receipt](../../../output/Vanteloq-v1.0-Origin-release-330.md) confirms successful Sites deployment, application of additive migration 0073 and GitHub source synchronization on `codex/industry-expansion`; draft PR #3 was not merged into main. Sites source `9a3f2f39b2fe5500afb3c54f0f78e8b6cf6b0ec4` and GitHub commit `c04ba98a9944e17cff5607b72fd70f765d6bc6d9` contain the same tree, `3b8b4782783f1453f3f9809493818c05e0d444e0`. The full scope and source boundaries are recorded in [Business workflow implementation](business-workflow-implementation-2026-10-04.md). The later dashboard, dealer and food refinements below have their own publication status.
@@ -61,7 +71,7 @@ Privacy policy version **2026-10-04** describes the new operational fields, hist
 
 ## 4 October dashboard, dealership and food refinement
 
-**Source verification complete for the targeted checks; publication pending at this writing.** This increment follows the published release 330 baseline and must not be described as live until a separate deployment receipt confirms it.
+**Published as release 331 on 4 October 2026.** Sites deployment `appgdep_6ac22143d4ec8191bacf62dc35c84cd1` succeeded at 09:50:11 UTC. Source commit `f5c9d1cf118211cf4f6014628dcd65e4f3a44871` and GitHub commit `d78f6fb32c4d97342fee4fe16c30cf6d6f42c0e5` share tree `7cc0569961407d65e75adc4a469fc8385e80c64a`. GitHub branch `codex/industry-expansion` and draft PR #3 are synchronized; main was not merged.
 
 The homepage now uses “Your business, at a glance,” a wider shared dashboard, light navigation and restrained dark purple accents. The source-backed overview presents four default commerce metrics, sales performance, goals, attention and AI context while preserving saved customization, source inspection and clearly labelled sample data. Connection actions use the existing authorized connection paths; the redesign does not activate a provider account.
 
@@ -69,7 +79,17 @@ Dealership refinements add loaded-stock aging and permitted posted-cost coverage
 
 The targeted regression set passed **101 tests**. TypeScript passed. Full lint reported **zero errors and 17 pre-existing warnings**. These results are recorded for this source increment and are not added to older overlapping test batches. They do not establish production connection success or completion of the full industry briefs.
 
-The [industry brief coverage review](industry-brief-coverage-2026-10-04.md) maps the café, restaurant and DMS requests to implemented, manual, partial and pending capabilities. Live kitchen queues, dining occupancy, automatic POS recipe depletion, DMS ingestion, F&I execution, service repair orders and automotive parts compatibility remain substantive separate work. Publication and final live acceptance of this refinement remain pending at this writing.
+The [industry brief coverage review](industry-brief-coverage-2026-10-04.md) maps the café, restaurant and DMS requests to implemented, manual, partial and pending capabilities. Live kitchen queues, dining occupancy, automatic POS recipe depletion, DMS ingestion, F&I execution, service repair orders and automotive parts compatibility remain substantive separate work. The live homepage, health endpoint and interactive sample goal selection were verified. Unsigned financial and sector endpoints returned 401. The signed-in customer workspace was not independently reverified in this publication check.
+
+## 4 October BookLoQ accounting refinement
+
+**Targeted implementation and verification are recorded in the [BookLoQ refinement report](bookloq-refinement-2026-10-04.md); publication is tracked in its release receipt.** The full 46-phase master brief was reviewed before changes. The [accounting audit](bookloq-audit/accounting-2026-10-04.md), [interface audit](bookloq-audit/ui-2026-10-04.md) and [official-product benchmark](bookloq-audit/benchmark-2026-10-04.md) preserve the original inventory and explain remaining gaps. This is not a claim that all 46 phases are complete.
+
+The current increment adds live chart/period setup with an explicit empty-balance boundary, keeps bank-import accounts, respects the business fiscal-start month, prevents overlapping periods, and creates a period-specific close checklist atomically. Manual journals retain balanced integer-cent calculations, tenant-checked contacts, payload-bound retries and an audit in the same transaction. Supporting-document matches are concurrency guarded; they do not settle an invoice or post a journal. Budget edits return the saved record identity. Archived accounts retain posted balances in financial reports.
+
+BookLoQ review gains original-document access through existing private-file gates, explicit match confirmation, source/reference search, selected-period progress and owner reopening with a reason. Invoice entry supports exact three-decimal tax rates; a combined GST/QST PDF remains blocked until separate statutory tax components can be shown. This is not a complete Canadian tax engine. Financial amounts and customer identities retain separate server permissions.
+
+Homepage copy highlights invoice PDFs and collection follow-up, bank-statement/evidence review, chart/period setup and posted cumulative statements, and 13-week cash commitments. It does not claim automatic document posting, completed statement reconciliation, native payroll, tax filing or payment execution.
 
 ## Release decision and unresolved items
 

@@ -6,6 +6,24 @@
   color: #223b55;
 }
 
+.billing-subscription-controls { margin: 20px 0; padding: 22px; border: 1px solid #bccfe2; border-radius: 14px; background: #f5f9fe; color: #183553; }
+.billing-subscription-controls h3 { margin: 6px 0 12px; font-size: 21px; }
+.billing-subscription-controls p { margin: 8px 0; font-size: 14px; line-height: 1.6; }
+.billing-subscription-controls .billing-plan-badge { font-size: 11px; }
+.billing-subscription-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+.billing-subscription-actions button { min-height: 44px; padding: 10px 16px; border: 1px solid #a5bbd0; border-radius: 9px; background: white; color: #24486d; font-size: 14px; font-weight: 700; cursor: pointer; }
+.billing-subscription-actions button.primary { background: #173d73; border-color: #173d73; color: white; }
+.billing-subscription-actions .billing-cancel-button { color: #87362f; border-color: #c49b97; }
+.billing-subscription-actions button:disabled { opacity: .55; cursor: default; }
+.billing-subscription-controls :is(button,a):focus-visible { outline: 3px solid #4c88ce; outline-offset: 3px; }
+.billing-subscription-controls .billing-subscription-help { margin-top: 14px; color: #4c637c; font-size: 13px; }
+.billing-status-recovery { margin: 16px 0; padding: 16px; border: 1px solid #d6aa6b; border-radius: 10px; color: #66491e; background: #fff8eb; }
+.billing-status-recovery p { font-size: 14px; line-height: 1.6; }
+.billing-status-recovery button { min-height: 44px; padding: 10px 16px; border: 1px solid #8c6a35; border-radius: 8px; background: white; color: #66491e; font-weight: 700; cursor: pointer; }
+.billing-status-recovery button:focus-visible { outline: 3px solid #4c88ce; outline-offset: 3px; }
+.billing-onboarding-gate .billing-subscription-controls { margin: 0 36px 24px; }
+@media (max-width: 680px) { .billing-subscription-controls { padding: 18px; } .billing-subscription-actions { flex-direction: column; } .billing-subscription-actions button { width: 100%; } .billing-onboarding-gate .billing-subscription-controls { margin: 0 20px 20px; } }
+
 .billing-monthly-note b { font-size: 12px; }
 .billing-monthly-note span {
   color: #65768a;

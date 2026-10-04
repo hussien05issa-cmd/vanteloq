@@ -1,7 +1,7 @@
 import { getD1 } from "../../../../../db";
 import { requirePrivacyAccess } from "../../../../../server/authorization";
 import { ApiError, enforceRateLimit, handleApi, hashIdentifier, jsonResponse, readJsonObject, requireSameOrigin, requireRecentMfa, requireIdentity, requireAal2 } from "../../../../../server/api";
-import { deletionReadiness, sealDeletionPlan, DELETION_JOB_TTL, type DeletionPlan } from "../../../../../server/account-deletion";
+import { deletionReadiness, sealDeletionPlan, assertWorkspaceDeletionReady, DELETION_JOB_TTL, type DeletionPlan } from "../../../../../server/account-deletion";
 
 const roles = ["owner", "admin", "manager", "employee", "read_only", "integration"] as const;
 const WORKSPACE_CONFIRMATION = "DELETE VANTELOQ WORKSPACE";
@@ -26,16 +26,18 @@ export async function GET(request: Request) {
   return handleApi(request, async () => {
     const context = await deletionContext(request);
     const scope = context.role === "owner" ? "workspace" : "account";
-    return jsonResponse({ available: deletionReadiness(), scope,
+    return jsonResponse({ available: deletionReadiness(), scope, organizationId: context.organizationId, organizationName: context.organization.businessName,
       confirmation: scope === "workspace" ? WORKSPACE_CONFIRMATION : ACCOUNT_CONFIRMATION,
       consequences: scope === "workspace" ? [
         "The Vanteloq subscription is canceled before workspace records and files are removed. Export any records your business must retain first.",
         "This removes workspace data, stored files, local integration credentials and workspace memberships. Other members' independent sign-in identities are not deleted.",
         "Your own sign-in identity is removed only when it is not needed by another workspace or the private console.",
-        "Independent providers may retain their own records. Disconnect providers first. Completion is confirmed only after the required cleanup finishes.",
+        "Disconnect integrations first. Local credential removal does not always revoke the provider's app grant; review connected apps in each provider account.",
+        "Provider records, managed backups and limited deletion receipts follow the retention policy. Completion is confirmed only after the required active-data cleanup finishes.",
       ] : [
         "Your Vanteloq membership, personal profile, preferences and private assistant history are removed.",
-        "Business records remain with anonymous authorship where needed. A shared sign-in used by another workspace or the private console is preserved.",
+        "Business records remain with your profile identity removed where needed for the workspace's records. A shared sign-in used by another workspace or the private console is preserved.",
+        "Provider records, managed backups and limited deletion receipts follow the retention policy. This does not delete the employer's workspace or cancel its subscription.",
       ],
     });
   });
@@ -48,6 +50,7 @@ export async function POST(request: Request) {
     requireRecentMfa(context.identity);
     if (!deletionReadiness()) throw new ApiError(503, "ACCOUNT_DELETION_CONFIGURATION_REQUIRED", "Secure deletion is temporarily unavailable. Contact the Privacy Officer.");
     const input = await readJsonObject(request, 2_000);
+    if (input.expectedOrganizationId !== undefined && input.expectedOrganizationId !== context.organizationId) throw new ApiError(409, "DELETION_WORKSPACE_CHANGED", "The selected workspace changed. Reopen the deletion controls and review the current workspace before confirming.");
     const scope = context.role === "owner" ? "workspace" : "account";
     if (input.confirmation !== (scope === "workspace" ? WORKSPACE_CONFIRMATION : ACCOUNT_CONFIRMATION) || input.acknowledgeNoRecovery !== true) {
       throw new ApiError(400, "ACCOUNT_DELETE_CONFIRMATION_REQUIRED", "Enter the exact deletion phrase and acknowledge that deletion cannot be reversed.");
@@ -81,6 +84,7 @@ export async function POST(request: Request) {
       .bind(context.organizationId).first<{subscriptionId: string | null; customerId: string | null}>();
     const connections = await db.prepare("SELECT COUNT(*) count FROM integration_connections WHERE organization_id = ? AND status NOT IN ('not_connected','revoked')").bind(context.organizationId).first<{count: number}>();
     if (scope === "workspace" && Number(connections?.count) > 0) throw new ApiError(409, "DELETION_DISCONNECT_REQUIRED", "Disconnect your providers in Integrations before deleting this workspace. This allows their authorization to be revoked safely.");
+    if (scope === "workspace") await assertWorkspaceDeletionReady(context.organizationId);
     const plan: DeletionPlan = {
       subject: context.authSubject, organizationName: context.organization.businessName,
       memberSubjects: scope === "workspace" ? (members.results ?? []).flatMap((m) => m.subject ? [m.subject] : []) : [context.authSubject],

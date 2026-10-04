@@ -212,6 +212,9 @@ test("a teammate deletes only their own membership and keeps the employer worksp
   const f = await fixture(false, teammate);
   try {
     await f.db.batch([
+      f.db.prepare("INSERT INTO account_notifications(id,user_id,organization_id,notification_type,title,message,created_at) VALUES('private-member-notice',?,'target','test','Private notice','Personal content',1),('other-member-notice',?,'target','test','Owner notice','Keep owner content',1)").bind(teammate,owner),
+      f.db.prepare("INSERT INTO onboarding_drafts(user_id,draft_json,revision,updated_at,expires_at) VALUES(?,'{\"personal\":\"private draft\"}',1,1,9999999999)").bind(teammate),
+      f.db.prepare("INSERT INTO forecasting_views(organization_id,user_id,preferences_json,updated_at) VALUES('target',?,'{\"private\":true}',1)").bind(teammate),
       f.db.prepare("INSERT INTO organization_locations(id,organization_id,name,country_code,address_line_1,locality,administrative_area,timezone,currency,created_at,updated_at) VALUES('delete-stock-location','target','TEST_ONLY Store','CA','TEST_ONLY','Edmonton','AB','America/Edmonton','CAD',1,1)"),
       f.db.prepare("INSERT INTO purchase_orders(id,organization_id,order_number,supplier_name,delivery_location_id,order_date,currency,status,subtotal_cents,total_cents,created_by_user_id,created_at,updated_at) VALUES('delete-stock-po','target','TEST-PO','Fictional Supplier','delete-stock-location','2026-08-01','CAD','sent',2000,2000,?,1,1)").bind(owner),
       f.db.prepare("INSERT INTO purchase_order_lines(id,organization_id,purchase_order_id,line_number,sku,description,quantity,received_quantity,unit_cost_cents,created_at,updated_at) VALUES('delete-stock-line','target','delete-stock-po',1,'SKU','TEST_ONLY Item',20,0,100,1,1)"),
@@ -222,6 +225,13 @@ test("a teammate deletes only their own membership and keeps the employer worksp
     await stock({action:"receive",purchaseOrderId:"delete-stock-po",source:"TEST_ONLY delivery",lines:[{lineId:"delete-stock-line",accepted:5,rejected:0}]});
     await stock({action:"save_record",kind:"invoice_review",record:{purchaseOrderId:"delete-stock-po",invoiceReference:"TEST-INV",source:"TEST_ONLY invoice",asOf:"2026-09-01",lines:[{lineId:"delete-stock-line",ordered:20,accepted:5,agreedUnitCostCents:100,billed:5,billedUnitCostCents:100}]}});
     const session = jobSession();
+    const preview = await (await controls(request("/api/v1/account/deletion"))).json();
+    assert.equal(preview.organizationId,"target");
+    assert.equal(preview.organizationName,"Fixture Store");
+    const changedWorkspace=await begin(request("/api/v1/account/deletion",{...input(session),expectedOrganizationId:"unrelated"}));
+    assert.equal(changedWorkspace.status,409);
+    assert.equal((await changedWorkspace.json()).error.code,"DELETION_WORKSPACE_CHANGED");
+    assert.equal((await f.db.prepare("SELECT COUNT(*) n FROM account_deletion_jobs").first())?.n,0);
     assert.equal((await begin(request("/api/v1/account/deletion",input(session,"account"),teammate))).status,202);
     const result = await resume(request("/api/v1/account/deletion/resume",session,teammate));
     assert.equal(result.status,200,await result.clone().text());
@@ -229,6 +239,8 @@ test("a teammate deletes only their own membership and keeps the employer worksp
     assert.ok(await f.db.prepare("SELECT id FROM workspaces WHERE id='target'").first());
     assert.ok(await f.db.prepare("SELECT id FROM memberships WHERE user_id=?").bind(owner).first());
     assert.equal(await f.db.prepare("SELECT id FROM memberships WHERE user_id=?").bind(teammate).first(),null);
+    for (const table of ["workspace_sessions","account_notifications","onboarding_drafts","forecasting_views"]) assert.equal((await f.db.prepare(`SELECT COUNT(*) n FROM ${table} WHERE user_id=?`).bind(teammate).first())?.n,0,`${table} private member records are removed`);
+    assert.ok(await f.db.prepare("SELECT id FROM account_notifications WHERE id='other-member-notice'").first());
     assert.equal(f.objects.size,3);
     assert.equal(f.state.remoteDeleted,false);
     assert.deepEqual(f.state.deletes.filter((path)=>path.includes("admin/users")),[`/auth/v1/admin/users/${teammate}`]);
@@ -238,6 +250,61 @@ test("a teammate deletes only their own membership and keeps the employer worksp
     }
     assert.equal((await f.db.prepare("SELECT quantity_milli n FROM workflow_inventory_positions WHERE organization_id='target' AND sku='SKU'").first())?.n,15000);
     assert.deepEqual((await f.db.prepare("PRAGMA foreign_key_check").all()).results,[]);
+  } finally { await f.close(); }
+});
+
+test("a saved workspace deletion cannot outlive the requesting owner's authority", async () => {
+  const f = await fixture();
+  try {
+    const session = jobSession();
+    assert.equal((await begin(request("/api/v1/account/deletion", input(session)))).status,202);
+    await f.db.prepare("UPDATE memberships SET role='admin' WHERE user_id=?").bind(owner).run();
+    const result = await resume(request("/api/v1/account/deletion/resume",session));
+    assert.equal(result.status,409,await result.clone().text());
+    assert.equal((await result.json()).error.code,"DELETION_SCOPE_CHANGED");
+    assert.ok(await f.db.prepare("SELECT id FROM workspaces WHERE id='target'").first());
+    assert.equal(f.objects.size,3);
+    assert.equal(f.state.deletes.length,0);
+    assert.equal((await f.db.prepare("SELECT stage FROM account_deletion_jobs WHERE id=?").bind(session.jobId).first())?.stage,"checking");
+  } finally { await f.close(); }
+});
+
+test("a saved personal deletion cannot erase data after membership moves to another workspace", async () => {
+  const f = await fixture(false,teammate);
+  try {
+    const session = jobSession();
+    assert.equal((await begin(request("/api/v1/account/deletion",input(session,"account"),teammate))).status,202);
+    await f.db.prepare("UPDATE memberships SET organization_id='unrelated' WHERE user_id=?").bind(teammate).run();
+    const result = await resume(request("/api/v1/account/deletion/resume",session,teammate));
+    assert.equal(result.status,409,await result.clone().text());
+    assert.equal((await f.db.prepare("SELECT organization_id FROM memberships WHERE user_id=?").bind(teammate).first())?.organization_id,"unrelated");
+    assert.equal(f.state.deletes.length,0);
+    assert.equal(f.objects.size,3);
+  } finally { await f.close(); }
+});
+
+test("local deletion rolls back when scope changes after its final preflight", async () => {
+  const f = await fixture(false,teammate);
+  try {
+    const session = jobSession();
+    assert.equal((await begin(request("/api/v1/account/deletion",input(session,"account"),teammate))).status,202);
+    const env=(globalThis as typeof globalThis & {__vanteloqEnv:VanteloqRuntimeEnv}).__vanteloqEnv;
+    let intercepted=false;
+    env.DB=new Proxy(f.db, { get(target,property) {
+      if(property === "batch") return async (statements: Parameters<typeof f.db.batch>[0]) => {
+        if(!intercepted) { intercepted=true; await f.db.prepare("UPDATE memberships SET role='owner' WHERE user_id=?").bind(teammate).run(); }
+        return target.batch(statements);
+      };
+      const value=Reflect.get(target,property); return typeof value === "function" ? value.bind(target) : value;
+    } }) as unknown as D1Database;
+    const result = await resume(request("/api/v1/account/deletion/resume",session,teammate));
+    assert.equal(intercepted,true);
+    assert.equal(result.status,409,await result.clone().text());
+    assert.equal((await f.db.prepare("SELECT stage FROM account_deletion_jobs WHERE id=?").bind(session.jobId).first())?.stage,"confirmed");
+    assert.equal(await f.db.prepare("SELECT id FROM account_deletion_receipts WHERE id=?").bind(session.jobId).first(),null);
+    assert.ok(await f.db.prepare("SELECT id FROM memberships WHERE user_id=?").bind(teammate).first());
+    assert.equal((await f.db.prepare("SELECT status FROM users WHERE id=?").bind(teammate).first())?.status,"active");
+    assert.equal(f.state.deletes.length,0);
   } finally { await f.close(); }
 });
 
@@ -264,6 +331,40 @@ test("active provider connections require disconnection before a deletion job is
     assert.equal(result.status,409);
     assert.equal((await result.json()).error.code,"DELETION_DISCONNECT_REQUIRED");
     assert.equal((await f.db.prepare("SELECT COUNT(*) count FROM account_deletion_jobs").first())?.count,0);
+  } finally { await f.close(); }
+});
+
+test("workspace deletion preserves pending document cleanup references and keeps Documents recoverable", async () => {
+  const f = await fixture(true);
+  try {
+    const pending=JSON.stringify({processing:{operation:"https://provider.example.invalid/fixture-result"}});
+    await f.db.prepare("INSERT INTO workspace_documents(id,organization_id,document_type,file_name,object_key,content_type,size_bytes,sha256_hex,extracted_json,uploaded_by_user_id,created_at,updated_at) VALUES('cleanup-document','target','other','Fixture.pdf','target/documents/quarantine/file.pdf','application/pdf',12,'fixture-hash',?,?,1,1)").bind(pending,owner).run();
+    const session=jobSession();
+    const blocked=await begin(request("/api/v1/account/deletion",input(session)));
+    assert.equal(blocked.status,409,await blocked.clone().text());
+    assert.equal((await blocked.json()).error.code,"DELETION_DOCUMENT_CLEANUP_REQUIRED");
+    assert.equal((await f.db.prepare("SELECT COUNT(*) n FROM account_deletion_jobs").first())?.n,0);
+    assert.equal(f.objects.size,3);
+    await f.db.prepare("UPDATE workspace_documents SET extracted_json='{}' WHERE id='cleanup-document'").run();
+    assert.equal((await begin(request("/api/v1/account/deletion",input(session)))).status,202);
+    // A processing request already in flight wins its claim while the identity
+    // bridge is being checked. The atomic confirmation must remain unconfirmed.
+    const previous=globalThis.fetch;
+    globalThis.fetch=async(url,init)=>{
+      const req=new Request(url,init), result=await previous(url,init);
+      if(new URL(req.url).pathname === "/functions/v1/vanteloq-account-deletion" && (await req.json()).action === "prepare") await f.db.prepare("UPDATE workspace_documents SET extracted_json=? WHERE id='cleanup-document'").bind(pending).run();
+      return result;
+    };
+    const raced=await resume(request("/api/v1/account/deletion/resume",session));
+    assert.equal(raced.status,409,await raced.clone().text());
+    assert.equal((await f.db.prepare("SELECT stage FROM account_deletion_jobs WHERE id=?").bind(session.jobId).first())?.stage,"checking");
+    assert.equal((await f.db.prepare("SELECT extracted_json FROM workspace_documents WHERE id='cleanup-document'").first())?.extracted_json,pending);
+    assert.equal(f.state.deletes.length,0);
+    assert.equal(f.objects.size,3);
+    assert.equal((await requireBillingAccess(request("/api/v1/documents"),["owner"])).organizationId,"target","The unconfirmed job leaves access available to resolve cleanup");
+    globalThis.fetch=previous;
+    await f.db.prepare("UPDATE workspace_documents SET extracted_json='{}' WHERE id='cleanup-document'").run();
+    assert.equal((await (await resume(request("/api/v1/account/deletion/resume",session))).json()).deleted,true);
   } finally { await f.close(); }
 });
 

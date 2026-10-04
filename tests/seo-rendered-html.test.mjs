@@ -21,10 +21,13 @@ async function fetchText(path) {
 test("homepage exposes the marketing page in initial HTML", async () => {
   const { response, text } = await fetchText("/");
   assert.equal(response.status, 200);
-  assert.match(text, /<h1 id="home-title">A number without a source <em>is a rumour\.<\/em><\/h1>/);
+  assert.match(text, /<h1 id="home-title">Your business, <em>at a glance\.<\/em><\/h1>/);
+  const principle = "A number without a source is a rumour.";
+  assert.ok(text.includes(principle));
+  assert.ok(text.indexOf(principle) < text.indexOf('<h1 id="home-title">'));
   assert.doesNotMatch(text, />Preparing Vanteloq…</);
   assert.equal((text.match(/<h1\b/g) ?? []).length, 1);
-  assert.match(text, /Business Analytics for Independent Retail/);
+  assert.match(text, /Retail\. Dealerships\. Cafés\. Restaurants\./);
   assert.match(text, /Lightspeed Retail R-Series/);
   for (const slug of [
     "how-to-track-inventory-small-business",

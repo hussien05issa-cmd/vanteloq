@@ -2017,6 +2017,9 @@ export const customerInvoiceLines = sqliteTable(
     description: text("description").notNull(),
     quantityMilli: integer("quantity_milli").notNull(),
     unitPriceCents: integer("unit_price_cents").notNull(),
+    // Legacy SQLite INTEGER affinity is non-STRICT: rates may use tenths of a
+    // basis point (997.5 = 9.975%). Money columns remain integer minor units.
+    // Invoice validation converts this numeric rate to integer units for math.
     taxRateBasisPoints: integer("tax_rate_basis_points").notNull().default(0),
     subtotalCents: integer("subtotal_cents").notNull(),
     taxCents: integer("tax_cents").notNull().default(0),

@@ -16,6 +16,7 @@
 .operating-shell:has(.bookloq-fullscreen) > .main-panel { grid-column:auto; width:100%; max-width:none; margin:0; }
 .operating-shell:has(.bookloq-fullscreen) > .main-panel > .topbar { display:none; }
 .bookloq-fullscreen .bookloq-shell { min-height:100vh; min-height:100dvh; }
+.bookloq-setup-card header{display:flex;align-items:start;justify-content:space-between;gap:18px}.bookloq-setup-card h3{font-size:18px;color:#14233d;margin:0 0 8px}.bookloq-setup-card p{font-size:14px;color:#52617a;line-height:1.55}.bookloq-setup-form{display:grid;gap:18px;max-width:560px;margin-top:20px}.bookloq-setup-form label{display:grid;gap:7px;font-weight:600;font-size:14px;color:#24354e}.bookloq-setup-form input:not([type=checkbox]){width:100%;box-sizing:border-box;min-height:44px;padding:10px 12px;border:1px solid #bac9dc;border-radius:10px;background:#fff;color:#14233d;font:inherit}.bookloq-setup-form .bookloq-setup-confirm{display:flex;align-items:flex-start;gap:10px;line-height:1.5;font-weight:450}.bookloq-setup-confirm input{width:19px;height:19px;flex:none;margin-top:2px}.bookloq-setup-form [role=alert]{color:#a02c30}.bookloq-setup-form summary{cursor:pointer;color:#165fb8}.bookloq-setup-form li{margin:7px 0;font-size:13px}.bookloq-setup-form button{min-height:44px}@media(max-width:620px){.bookloq-setup-card header{flex-direction:column}.bookloq-setup-card header>button{width:100%}}
 .bookloq-fullscreen .bookloq-side { top:0; min-height:100vh; min-height:100dvh; max-height:100vh; max-height:100dvh; }
 .bookloq-fullscreen .bookloq-top { position:sticky; top:0; z-index:4; }
 .bookloq-fullscreen .bookloq-pending-controls { position:sticky; top:0; z-index:4; }
@@ -27,3 +28,5 @@
   .bookloq-pending-controls { padding:12px; }
   .bookloq-fullscreen .bookloq-side { min-height:0; max-height:none; }
 }
+
+.operating-shell .bookloq-setup-card header>button{appearance:none;min-height:44px;padding:10px 16px;border:1px solid #bccde1;border-radius:12px;background:linear-gradient(150deg,#f9fcff,#eaf0fb);color:#193a65;font:inherit;font-size:14px;font-weight:600;cursor:pointer;transition:background .16s,transform .16s}.operating-shell .bookloq-setup-card header>button:hover:not(:disabled){background:#e5efff;border-color:#8cacd5}.bookloq-setup-card button:focus-visible{outline:3px solid #1b68da;outline-offset:3px}.bookloq-setup-card button:active:not(:disabled){transform:scale(.985)}@media(prefers-reduced-motion:reduce){.operating-shell .bookloq-setup-card header>button{transition:none}.bookloq-setup-card button:active:not(:disabled){transform:none}}

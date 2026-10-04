@@ -1,0 +1,48 @@
+.bq-section-skeleton { container-type: inline-size; container-name: bookloq-loading; display: grid; gap: 20px; min-width: 0; }
+.bq-load-bar { display: block; height: 12px; width: 100%; min-width: 0; border-radius: 5px; background: #e3eaf2; }
+.bq-load-status { display: block; color: #52627c; font-size: 13px; line-height: 1.5; }
+.bq-load-navigation { padding: 24px 16px; gap: 24px; }
+.bq-load-navigation > div { display: grid; gap: 20px; padding-top: 10px; }
+.bq-load-navigation .bq-load-logo { height: 38px; width: 85%; }
+.bq-load-navigation .bq-load-search { height: 38px; }
+.bq-loading-shell.bookloq-collapsed .bq-load-navigation { padding-inline: 16px; }
+.bq-loading-shell.bookloq-collapsed .bq-load-navigation .bq-load-bar { width: 100%; }
+.bq-load-intro { display: grid; gap: 12px; margin-bottom: 6px; }
+.bq-load-kicker { height: 9px; width: 32%; }
+.bq-load-title { height: 30px; width: min(510px, 85%); }
+.bq-load-copy { width: 70%; }
+.bq-load-panel { min-width: 0; padding: 22px; background: linear-gradient(140deg, #fff, #f7faff); border: 1px solid #dce5ef; border-radius: 16px; }
+.bq-load-subtitle { height: 21px; width: min(230px, 75%); margin-bottom: 20px; }
+.bq-load-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); gap: 14px; }
+.bq-load-metric { display: grid; gap: 18px; min-height: 144px; }
+.bq-load-amount { height: 32px; width: 74%; }
+.bq-load-pair { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 18px; }
+.bq-load-profile { min-height: 290px; }
+.bq-load-rows { display: grid; min-width: 0; }
+.bq-load-rows > div { display: grid; grid-template-columns: minmax(0, 1.6fr) repeat(2, minmax(0, 1fr)); gap: 20px; padding: 20px 0; border-bottom: 1px solid #e5ebf3; }
+.bq-load-rows > div:last-child { border-bottom: 0; }
+.bq-load-toolbar { display: flex; gap: 14px; margin: 8px 0 16px; }
+.bq-load-toolbar > i { height: 42px; max-width: 230px; border-radius: 9px; }
+.bq-load-plot { min-height: 250px; margin: 22px 0; border: solid #dfe7f1; border-width: 0 0 1px 1px; background: repeating-linear-gradient(to bottom, transparent 0, transparent 49px, #e8edf5 49px, #e8edf5 50px); }
+.bq-load-banner { display: grid; gap: 12px; }
+.bq-load-banner > .bq-load-subtitle { margin: 0; }
+.bq-load-close-progress { display: grid; gap: 20px; }
+.bq-load-close-progress > .bq-load-amount { width: 100px; }
+.bq-load-collections { display: grid; gap: 20px; }
+.bq-load-collections > .bq-load-metrics { grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); }
+.bq-load-collections .bq-load-metric { min-height: 215px; }
+.bq-load-collections-grid { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(290px, 1fr); gap: 18px; }
+.bq-load-ring { width: 180px; max-width: 100%; aspect-ratio: 1; border: 17px solid #e3eaf2; border-radius: 50%; margin: 25px auto; }
+.bq-load-focus { grid-column: 1 / -1; }
+.bq-load-focus-items { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
+.bq-load-focus-items .bq-load-panel { border: 0; padding: 8px; background: transparent; }
+@media (max-width: 1240px) { .bq-load-pair { grid-template-columns: minmax(0, 1fr); } }
+@container bookloq-loading (max-width: 1000px) { .bq-load-collections > .bq-load-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@container bookloq-loading (max-width: 820px) { .bq-load-collections-grid, .bq-load-focus-items { grid-template-columns: minmax(0, 1fr); }.bq-load-focus { grid-column: 1; } }
+@container bookloq-loading (max-width: 480px) { .bq-load-collections > .bq-load-metrics, .bq-load-metrics, .bq-load-pair { grid-template-columns: minmax(0, 1fr); }.bq-load-panel { padding: 16px; }.bq-load-rows > div { gap: 12px; }.bq-load-toolbar { flex-wrap: wrap; }.bq-load-toolbar > i { flex: 1 1 120px; max-width: none; }.bq-load-title { height: 26px; } }
+@media (prefers-reduced-motion: no-preference) { .bq-load-metric > .bq-load-amount, .bq-load-title { animation: bq-loading-breathe 1.8s ease-in-out infinite alternate; } }
+@keyframes bq-loading-breathe { to { opacity: .45; } }
+html[data-motion=off] :is(.bq-section-skeleton, .bq-loading-shell) .bq-load-bar { animation: none; }
+html[data-motion-paused=true] :is(.bq-section-skeleton, .bq-loading-shell) .bq-load-bar { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) { .bq-section-skeleton .bq-load-bar { animation: none; } }
+@media (forced-colors: active) { .bq-load-bar { background: GrayText; animation: none; }.bq-load-ring, .bq-load-plot { border-color: GrayText; } }

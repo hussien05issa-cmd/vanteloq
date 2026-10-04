@@ -7,12 +7,13 @@ import { registerSupabaseTestServer } from "./helpers/supabase-loopback-transpor
 import { TERMS_OF_SERVICE_VERSION, PRIVACY_POLICY_VERSION, ACCOUNT_ACCEPTANCE_NOTICE_VERSION } from "../shared/legal-versions.ts";
 import { activateTestSubscription } from "./helpers/subscription-fixture.mjs";
 import { scopeExternalRef } from "../domain/integration-source.ts";
+import { ADVISOR_CONSENT_NOTICE_VERSION } from "../domain/privacy-controls.ts";
 
 const origin = "https://vanteloq.example";
 const context = { waitUntil() {}, passThroughOnException() {} };
 
 async function acceptAdvisorConsent(worker, environment, user, purpose = "analysis") {
-  const response = await dispatch(worker, environment, "/api/v1/advisor/consent", { ...user, method: "POST", body: { accepted: true, purpose, noticeVersion: "vanteloq-ai-v9-personalization-context", privacyPolicyVersion: "2026-10-01" } });
+  const response = await dispatch(worker, environment, "/api/v1/advisor/consent", { ...user, method: "POST", body: { accepted: true, purpose, noticeVersion: ADVISOR_CONSENT_NOTICE_VERSION, privacyPolicyVersion: PRIVACY_POLICY_VERSION } });
   assert.equal(response.status, 200, await response.clone().text());
   return response.json();
 }
@@ -305,7 +306,7 @@ test("excluding a test POS preserves records and removes them from reporting wit
     };
     try {
       await acceptAdvisorConsent(worker, environment, identity.owner);
-      const analysis = await dispatch(worker, environment, "/api/v1/advisor/chat", { ...identity.owner, method:"POST", body:{question:"Review my sales",provider:"openai",dataUseAccepted:true,noticeVersion:"vanteloq-ai-v9-personalization-context",privacyPolicyVersion:"2026-10-01"} });
+      const analysis = await dispatch(worker, environment, "/api/v1/advisor/chat", { ...identity.owner, method:"POST", body:{question:"Review my sales",provider:"openai",dataUseAccepted:true,noticeVersion:ADVISOR_CONSENT_NOTICE_VERSION,privacyPolicyVersion:PRIVACY_POLICY_VERSION} });
       assert.equal(analysis.status,200,await analysis.clone().text());
       assert.equal(aiEvidence.kpis.current.netSalesCents,20000);
       assert.deepEqual(aiEvidence.sources.map(source => source.provider),["lightspeed-r"]);
@@ -443,7 +444,7 @@ test("intraday API compares matched hours and redacts all profit paths for reven
       return originalFetch(input, init);
     };
     try {
-      const ask = (user, body = {}) => dispatch(worker, environment, "/api/v1/advisor/chat", { method: "POST", ...user, body: { question: "Analyze available KPIs", dataUseAccepted: true, noticeVersion: "vanteloq-ai-v9-personalization-context", privacyPolicyVersion: "2026-10-01", ...body } });
+      const ask = (user, body = {}) => dispatch(worker, environment, "/api/v1/advisor/chat", { method: "POST", ...user, body: { question: "Analyze available KPIs", dataUseAccepted: true, noticeVersion: ADVISOR_CONSENT_NOTICE_VERSION, privacyPolicyVersion: PRIVACY_POLICY_VERSION, ...body } });
       const consentFor = async user => (await dispatch(worker, environment, "/api/v1/advisor/consent", user)).json();
       assert.deepEqual((await consentFor(reader)).consent, { analysis: false, help: false });
       assert.equal((await ask(reader)).status, 409, "a chat checkbox cannot create its own persistent consent");
@@ -583,7 +584,7 @@ test("AI reads permitted BookLoQ summaries through its real access path and excl
       return originalFetch(input, init);
     };
     const ask = async (extra = {}) => {
-      const response = await dispatch(worker, environment, "/api/v1/advisor/chat", { ...identity.owner, method: "POST", body: { question: "Explain my recorded BookLoQ totals", provider: "openai", dataUseAccepted: true, noticeVersion: "vanteloq-ai-v9-personalization-context", privacyPolicyVersion: "2026-10-01", ...extra } });
+      const response = await dispatch(worker, environment, "/api/v1/advisor/chat", { ...identity.owner, method: "POST", body: { question: "Explain my recorded BookLoQ totals", provider: "openai", dataUseAccepted: true, noticeVersion: ADVISOR_CONSENT_NOTICE_VERSION, privacyPolicyVersion: PRIVACY_POLICY_VERSION, ...extra } });
       assert.equal(response.status, 200, await response.clone().text());
       return JSON.parse(outbound.at(-1).split("Evidence JSON: ")[1].split("\n\nConversation memory:")[0]);
     };
@@ -952,12 +953,22 @@ test("migrations, tenant isolation and the complete intelligence-to-action flow 
     const journalReplay = await dispatch(worker, environment, "/api/v1/bookloq/journals", { method: "POST", ...owner, idempotencyKey: journalKey, body: {
       entryDate: journalDate, memo: "Verified manual journal", currency: "CAD",
       lines: [
-        { accountId: debitAccount.id, debitCents: 10_000, creditCents: 0 },
-        { accountId: creditAccount.id, debitCents: 0, creditCents: 10_000 },
+        { accountId: debitAccount.id, description: "Supplies", debitCents: 10_000, creditCents: 0, locationRef: "Main" },
+        { accountId: creditAccount.id, description: "Supplier payable", debitCents: 0, creditCents: 10_000, locationRef: "Main" },
       ],
     } });
     assert.equal(journalReplay.status, 200);
     assert.equal((await journalReplay.json()).replayed, true);
+
+    const changedJournalReplay = await dispatch(worker, environment, "/api/v1/bookloq/journals", { method: "POST", ...owner, idempotencyKey: journalKey, body: {
+      entryDate: journalDate, memo: "Verified manual journal", currency: "CAD",
+      lines: [
+        { accountId: debitAccount.id, debitCents: 10_000, creditCents: 0 },
+        { accountId: creditAccount.id, debitCents: 0, creditCents: 10_000 },
+      ],
+    } });
+    assert.equal(changedJournalReplay.status, 409);
+    assert.equal((await changedJournalReplay.json()).error.code, "JOURNAL_REQUEST_CONFLICT");
 
     const reversal = await dispatch(worker, environment, "/api/v1/bookloq/journals", { method: "PATCH", ...owner, idempotencyKey: crypto.randomUUID(), body: { entryId: manualJournalBody.journal.id, reason: "Correct the verified test entry", reversalDate: journalDate } });
     assert.equal(reversal.status, 201);
