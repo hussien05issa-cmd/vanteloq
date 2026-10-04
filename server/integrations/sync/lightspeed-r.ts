@@ -6,7 +6,7 @@ import {
   integrationSyncRuns,
 } from "../../../db/schema";
 import { recordAudit } from "../../audit";
-import { ApiError, enforceRateLimit, jsonResponse, } from "../../api";
+import { ApiError, enforceRateLimit, jsonResponse, operationalFailureKind, } from "../../api";
 import {
   buildLightspeedRDailyMetrics,
   fetchLightspeedRAccount,
@@ -203,6 +203,7 @@ export async function runSync(request: Request, requestId: string, context: Sync
     const previous = checkpoint(connection.lastSyncCursor);
     let publicationPointerDemoted = false;
     let syncStage = "initialize_run";
+    let syncOperation: string | null = null;
     const claimed = await getDb().update(integrationConnections).set({
       lastErrorCode: null,
       updatedAt: startedAt,
@@ -444,7 +445,9 @@ export async function runSync(request: Request, requestId: string, context: Sync
       const runWriteBatches = async (statements: D1PreparedStatement[]) => {
         let changes = 0;
         for (let index = 0; index < statements.length; index += 50) {
+          if (syncStage === "publish_records") syncOperation = "renew_daily_metrics_lease";
           await renewIntegrationSyncLease(syncLease);
+          if (syncStage === "publish_records") syncOperation = "write_daily_metrics";
           const results = await database.batch(statements.slice(index, index + 50));
           changes += results.reduce((sum, result) => sum + Number(result.meta.changes ?? 0), 0);
         }
@@ -563,7 +566,9 @@ export async function runSync(request: Request, requestId: string, context: Sync
       // These raw SQL columns use Drizzle's second-based timestamp mode.
       const now = Math.floor(Date.now() / 1_000);
       syncStage = "publish_records";
+      syncOperation = "renew_publication_lease";
       await renewIntegrationSyncLease(syncLease);
+      syncOperation = "create_import";
       await database.prepare(`
         INSERT INTO data_imports
           (id, organization_id, import_type, status, file_name, row_count, idempotency_key, imported_by_user_id, created_at)
@@ -571,7 +576,9 @@ export async function runSync(request: Request, requestId: string, context: Sync
       `).bind(importId, context.organizationId, IMPORT_LABEL, runId, context.userId, now).run();
 
       if (publishCanonical) {
+        syncOperation = "renew_clear_metrics_lease";
         await renewIntegrationSyncLease(syncLease);
+        syncOperation = "clear_daily_metrics";
         await database.prepare(`
           DELETE FROM daily_business_metrics
           WHERE organization_id = ? AND location_ref IN (
@@ -587,6 +594,7 @@ export async function runSync(request: Request, requestId: string, context: Sync
         // Rebuilding years of history must not make two remote D1 round trips
         // per business date. Keep the existing publication gate closed while
         // bounded write batches and lease renewals complete.
+        syncOperation = "prepare_daily_metrics";
         const dailyStatements = publishedDailyMetrics.map(row => database.prepare(`
           INSERT INTO daily_business_metrics (
             organization_id, business_date, location_ref, gross_sales_cents, net_sales_cents,
@@ -617,6 +625,7 @@ export async function runSync(request: Request, requestId: string, context: Sync
 
       let importedInventory = 0;
       syncStage = "inventory_balances";
+      syncOperation = null;
       {
         const inventoryStatements = inventoryBalances
           .filter((balance) => mappedRaw.has(balance.outletRef))
@@ -870,7 +879,8 @@ export async function runSync(request: Request, requestId: string, context: Sync
       });
     } catch (error) {
       const code = error instanceof ApiError ? error.code : "LIGHTSPEED_R_SYNC_FAILED";
-      console.error(JSON.stringify({ event: "integration.sync_failed", provider: LIGHTSPEED_R_PROVIDER, stage: syncStage, code }));
+      console.error(JSON.stringify({ event: "integration.sync_failed", provider: LIGHTSPEED_R_PROVIDER,
+        requestId, stage: syncStage, operation: syncOperation, code, failureKind: operationalFailureKind(error) }));
       await getD1().prepare(`UPDATE data_imports SET status = 'failed' WHERE id = ? AND organization_id = ?`)
         .bind(importId, context.organizationId).run().catch(() => undefined);
       await getDb().update(integrationSyncRuns).set({
