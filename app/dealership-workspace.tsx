@@ -123,6 +123,8 @@ function DealershipScope({ activeLocationId, initialTab = "overview", compactOve
   const pending = useRef<{ body: Record<string, unknown>; key: string; after: () => void } | null>(null);
   const modal = useRef<HTMLDivElement>(null);
   useModalFocus(modal, editorOpen && data !== null, () => { if (!busyRef.current) setEditorOpen(false); });
+  const savedHeading = useRef<HTMLHeadingElement>(null), focusAfterSave = useRef(false);
+  useEffect(() => { if (!busy && !editorOpen && focusAfterSave.current) { savedHeading.current?.focus(); focusAfterSave.current = false; } }, [busy, editorOpen]);
 
   const load = useCallback((after?: string) => {
     reads.current?.abort();
@@ -167,7 +169,7 @@ function DealershipScope({ activeLocationId, initialTab = "overview", compactOve
       if (!alive.current || controller.signal.aborted) return;
       pending.current = null; setUncertain(false);
       if (body.action === "preview") { setPreview(result); setMessage("Preview ready. Review every row below. Nothing has been saved."); }
-      else { mutation.after(); setMessage(result.replayed ? "This request was already saved. The latest records are shown below." : "Saved. The latest records are shown below."); await refreshRecords(); }
+      else { focusAfterSave.current = true; mutation.after(); setMessage(result.replayed ? "This request was already saved. The latest records are shown below." : "Saved. The latest records are shown below."); await refreshRecords(); }
     } catch (caught) {
       if (!alive.current || controller.signal.aborted) return;
       if (certainFailure || body.action === "preview") { pending.current = null; setUncertain(false); }
@@ -192,7 +194,7 @@ function DealershipScope({ activeLocationId, initialTab = "overview", compactOve
     if (!latest) return;
     const id = editor.context.id;
     const record = editor.context.episodeId ? latest.stock.find(row => row.id === editor.context.episodeId)
-      : editor.action === "save_task" ? latest.tasks.find(row => row.id === id)
+      : editor.action === "save_task" ? (latest.tasks.find(row => row.id === id) ?? latest.attention?.tasks.find(row => row.id === id))
       : editor.action === "save_lead" ? latest.leads.find(row => row.id === id)
       : editor.action === "save_appointment" ? latest.appointments.find(row => row.id === id)
       : editor.action === "reverse_sale" ? latest.sales.find(row => row.id === editor.context.saleId) : undefined;
@@ -221,7 +223,7 @@ function DealershipScope({ activeLocationId, initialTab = "overview", compactOve
   const currentView = tabs.find(tab => tab[0] === view && tab[2]) ? view : "overview";
   const blocked = busy || uncertain;
   return <section className={`dealership-workspace${compactOverview && currentView === "overview" ? " dl-compact-overview" : ""}`} aria-labelledby="dealership-title">
-    <header className="dl-header"><div><p className="dl-eyebrow">DEALERSHIP</p><h2 id="dealership-title">Vehicle operations</h2><p>Keep vehicle readiness, customer follow-up and recorded deliveries in one place.</p></div><button type="button" disabled={busy || loading} onClick={() => void refreshRecords()}>Refresh records</button></header>
+    <header className="dl-header"><div><p className="dl-eyebrow">DEALERSHIP</p><h2 id="dealership-title" ref={savedHeading} tabIndex={-1}>Vehicle operations</h2><p>Keep vehicle readiness, customer follow-up and recorded deliveries in one place.</p></div><button type="button" disabled={busy || loading} onClick={() => void refreshRecords()}>Refresh records</button></header>
     <p className="dl-scope">{activeLocationId ? data?.locations.find(row => row.id === activeLocationId)?.name || "Selected location" : "All authorized locations"}{data ? ` · ${dateLabel(data.summary.from)} to ${dateLabel(data.summary.to)}` : ""}</p>
     {error && !editorOpen && <p className="dl-error" role="alert">{error}</p>}
     {message && <p className="dl-success" role="status">{message}</p>}
@@ -237,7 +239,7 @@ function DealershipScope({ activeLocationId, initialTab = "overview", compactOve
       </form>
       <nav className="dl-tabs" aria-label="Dealership workspace">{tabs.filter(tab => tab[2]).map(([key, name]) => <button type="button" key={key} aria-pressed={currentView === key} onClick={() => setView(key)}>{name}</button>)}</nav>
       {data.permissions.export && <details className="dl-export"><summary>Export authorized records</summary><p className="dl-hint">Exports use the selected location, stock search or delivery period. Cost and profit columns follow your permissions.</p><div className="dl-actions"><button type="button" disabled={blocked} onClick={() => void exportRecords("stock")}>Export stock CSV</button>{data.permissions.sales && <><button type="button" disabled={blocked} onClick={() => void exportRecords("sales")}>Export deliveries CSV</button><button type="button" disabled={blocked} onClick={() => void exportRecords("summary")}>Export summary CSV</button></>}</div></details>}
-      {currentView === "overview" && <DealershipSummary data={data} search={query.q} onView={setView}/>}
+      {currentView === "overview" && <><DealershipSummary data={data} search={query.q} onView={setView}/><DealershipAttention data={data} blocked={blocked} onAction={open}/></>}
       {currentView === "inventory" && <>
         <div className="dl-section-heading"><div><h3>Vehicle inventory</h3><p>Each row is one stock episode. A returning vehicle keeps its identity and receives a new episode.</p></div><div className="dl-actions">{data.permissions.stockEdit && <button type="button" disabled={blocked} onClick={() => open("acquire")}>Add vehicle</button>}</div></div>
         {data.legacyAvailable > 0 && data.permissions.stockEdit && <div className="dl-notice"><p>{data.legacyAvailable} existing vehicle records can be brought into this workspace. Imported history and ownership remain marked incomplete until reviewed.</p><button type="button" disabled={blocked} onClick={() => open("adopt_legacy")}>Bring existing vehicle records</button></div>}
@@ -270,6 +272,14 @@ function DealershipScope({ activeLocationId, initialTab = "overview", compactOve
 
 function Empty({ children }: { children: ReactNode }) { return <p className="dl-empty">{children}</p>; }
 function Status({ value }: { value: string }) { return <span className={`dl-status dl-status-${value}`}>{human(value)}</span>; }
+
+export function DealershipAttention({data,blocked=false,onAction}:{data:DealershipDashboard;blocked?:boolean;onAction:OpenEditor}) {
+  if(!data.permissions.tasks || !data.attention)return null;
+  const {tasks,totalTasks,truncated}=data.attention;
+  return <section className="dl-card dl-attention" aria-labelledby="dl-attention-title"><div className="dl-section-heading"><div><p className="dl-eyebrow">Next actions</p><h3 id="dl-attention-title">What needs attention</h3><p>Blocked, unassigned or due tasks across the selected locations. Due dates use each location&apos;s calendar.</p></div><span className="dl-attention-count">{totalTasks} {totalTasks===1?"task":"tasks"}</span></div>
+    {tasks.length===0?<p className="dl-empty">No blocked, unassigned or due tasks are recorded in this location scope.</p>:<ul className="dl-attention-list">{tasks.map(task=><li key={task.id}><div><div className="dl-attention-label"><Status value={task.status}/><h4>{task.title}</h4></div><p>{task.linkedLabel} · {task.locationName}</p><small>{task.assigneeName|| (task.assigneeId?"Assigned member":"Needs an owner")} · {task.dueDate ? `${task.dueDate<task.localDate?"Overdue":task.dueDate===task.localDate?"Due today":"Due"}: ${dateLabel(task.dueDate)}` : "No due date recorded"}</small>{task.blockedReason&&<p className="dl-attention-reason">{task.blockedReason}</p>}</div>{data.permissions.tasksEdit&&<button type="button" disabled={blocked} onClick={()=>onAction("save_task",task)}>Review task<span className="dl-sr-only">: {task.title}</span></button>}</li>)}</ul>}
+    <p className="dl-hint">{truncated?"Showing the first 50 priority tasks. Narrow the location to review more. ":""}Stock search and delivery-period filters do not change this current task queue. A task status is recorded by your team and does not certify vehicle readiness.</p></section>;
+}
 
 export function DealershipSummary({ data, search = "", onView }: { data: DealershipDashboard; search?: string; onView?: (view: View) => void }) {
   const { summary, permissions } = data;

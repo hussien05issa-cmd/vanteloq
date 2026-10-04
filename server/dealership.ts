@@ -9,7 +9,7 @@ import {
   DEALERSHIP_PHYSICAL_STATUSES, DEALERSHIP_PREP_STATUSES, DEALERSHIP_TASK_STATUSES,
   allocateDealershipAmount, dealershipCents, dealershipDate, dealershipEnum, dealershipId, dealershipInstant,
   dealershipText, dealershipVersion, parseDealershipCsv, requireDealershipCurrency, validateDealershipAcquire, validateDealershipCredits,
-  type DealershipAcquire, type DealershipAppointment, type DealershipCost, type DealershipCredit, type DealershipDashboard,
+  type DealershipAcquire, type DealershipAttentionTask, type DealershipAppointment, type DealershipCost, type DealershipCredit, type DealershipDashboard,
   type DealershipLead, type DealershipPermissions, type DealershipSale, type DealershipStock, type DealershipSummaryCurrency, type DealershipTask,
 } from "../domain/dealership";
 
@@ -94,6 +94,25 @@ export async function readDealership(context: AccessContext, permissions: Dealer
       sum(CASE WHEN reversal_date BETWEEN ? AND ? THEN amount_cents ELSE 0 END) AS reversedSalesCents
       FROM dealership_sales WHERE organization_id=? AND location_id IN (SELECT value FROM json_each(?)) AND (delivered_date BETWEEN ? AND ? OR reversal_date BETWEEN ? AND ?) GROUP BY currency`, [...Array.from({ length: 7 }, () => [from, to]).flat(), org, scope, from, to, from, to]) : Promise.resolve([]),
   ]);
+  // Evaluate due dates in each authorized location, independently of recent-row pagination.
+  const localDates = JSON.stringify(access.locations.map(location => ({id:location.id,date:currentDate(location.timezone)})));
+  const attentionTasks = permissions.tasks ? await all<DealershipAttentionTask & {totalRows:number}>(`SELECT
+    t.id,t.episode_id AS episodeId,t.lead_id AS leadId,t.title,t.status,t.assignee_id AS assigneeId,
+    t.due_date AS dueDate,t.blocked_reason AS blockedReason,t.version,
+    coalesce(s.location_id,l.location_id) AS locationId,loc.name AS locationName,
+    CASE WHEN t.episode_id IS NOT NULL THEN 'Stock '||s.stock_number ELSE 'Lead: '||l.customer_name END AS linkedLabel,
+    json_extract(d.value,'$.date') AS localDate,u.display_name AS assigneeName,count(*) OVER() AS totalRows
+    FROM dealership_tasks t
+    LEFT JOIN dealership_stock_episodes s ON s.id=t.episode_id AND s.organization_id=t.organization_id
+    LEFT JOIN dealership_leads l ON l.id=t.lead_id AND l.organization_id=t.organization_id
+    JOIN organization_locations loc ON loc.id=coalesce(s.location_id,l.location_id) AND loc.organization_id=t.organization_id
+    JOIN json_each(?) d ON json_extract(d.value,'$.id')=loc.id
+    LEFT JOIN memberships m ON m.user_id=t.assignee_id AND m.organization_id=t.organization_id AND m.status='active'
+    LEFT JOIN users u ON u.id=m.user_id
+    WHERE t.organization_id=? AND loc.id IN (SELECT value FROM json_each(?))
+      AND (t.episode_id IS NOT NULL OR ?=1) AND t.status<>'done'
+      AND (t.status='blocked' OR t.assignee_id IS NULL OR t.due_date<=json_extract(d.value,'$.date'))
+    ORDER BY CASE WHEN t.status='blocked' THEN 0 ELSE 1 END,coalesce(t.due_date,'9999-12-31'),t.id LIMIT 50`, [localDates,org,scope,permissions.customers?1:0]) : [];
   const saleIds = JSON.stringify(saleRows.slice(0, 100).map(row => row.id));
   const credits = permissions.sales ? await all<DealershipCredit & { saleId: string }>("SELECT sale_id AS saleId,coalesce(person_id,'deleted:'||id) AS personId,person_name AS name,share_bps AS shareBps FROM dealership_sale_credits WHERE organization_id=? AND sale_id IN (SELECT value FROM json_each(?)) ORDER BY personId", [org, saleIds]) : [];
   const sales = saleRows.slice(0, 100).map(row => {
@@ -106,6 +125,7 @@ export async function readDealership(context: AccessContext, permissions: Dealer
     stock: stockRows.slice(0, 100).map(row => ({ ...row, postedCostCents: permissions.costs ? row.postedCostCents : null, costComplete: permissions.costs && !!row.costComplete, legacyIncomplete: !!row.legacyIncomplete })),
     costs: costs.slice(0, 100), tasks: tasks.slice(0, 100), leads: leads.slice(0, 100), appointments: appointments.slice(0, 100), sales,
     summary: { from, to, ...inventorySummary!, currencies: currencies.map(row => ({ ...row, grossCents: permissions.profit ? row.grossCents : null, grossEligibleUnits: permissions.profit ? row.grossEligibleUnits : 0, missingCostUnits: permissions.profit ? row.missingCostUnits : 0 })) },
+    attention: {tasks:attentionTasks.map(({totalRows,...task})=>{ void totalRows; return task; }),totalTasks:attentionTasks[0]?.totalRows??0,truncated:(attentionTasks[0]?.totalRows??0)>50},
     nextCursor: stockRows.length > 100 ? stockRows[99].id : null, legacyAvailable: legacy?.total ?? 0, boundary: `${DEALERSHIP_BOUNDARY} Sales summaries show deliveries and dated reversals separately, not net accounting revenue. Available stock means on-lot, preparation-ready stock recorded as available.`,
     limits: { relatedRows: 100, truncated: [costs, tasks, leads, appointments, saleRows].some(rows => rows.length > 100) }, generatedAt: new Date().toISOString() };
 }

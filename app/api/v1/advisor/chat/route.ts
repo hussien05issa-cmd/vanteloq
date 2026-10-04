@@ -1,3 +1,5 @@
+import { BUSINESS_CONTEXT_HEADER } from "../../../../../domain/business-context";
+import { getWorkspaceIndustry } from "../../../../../server/industry-configuration";
 import { advisorPreferences, advisorGreeting, isAdvisorGreeting } from "../../../../../domain/advisor-personalization";
 import { currentChatBinding, signAdvisorTurn, verifyAdvisorTurns } from "../../../../../server/advisor-current-chat";
 import { claimAdvisorRequest, settleAdvisorRequest } from "../../../../../server/advisor-requests";
@@ -41,7 +43,7 @@ const readers = ["owner", "admin", "manager", "employee", "read_only"] as const;
 
 type Evidence = {
   forecasting?: unknown;
-  businessContext?: { industry: string; recommendedKpis: Array<{ name: string; reason: string }> };
+  businessContext?: { templateId: string; subtype: string | null; capabilities: string[]; industry: string; recommendedKpis: Array<{ name: string; reason: string }> };
   retail?: ReturnType<typeof projectAdvisorRetail> | { status: "unavailable"; reason: string };
   requestedRetailPeriod?: { from: string; to: string };
   purpose?: "analysis" | "help";
@@ -206,8 +208,11 @@ export async function POST(request: Request) {
     evidence.purpose = purpose;
     if (!greeting && purpose === "analysis") {
       const guide = industryKpiRecommendation(context.organization.industry);
-      evidence.businessContext = { industry: guide.industry, recommendedKpis: guide.recommended.map(item => ({ name: item.key.replaceAll("_", " "), reason: item.reason })) };
+      const industry = await getWorkspaceIndustry(context);
+      evidence.businessContext = { templateId: industry.configuration.templateId, subtype: industry.configuration.subtype, capabilities: industry.configuration.capabilities, industry: guide.industry, recommendedKpis: guide.recommended.map(item => ({ name: item.key.replaceAll("_", " "), reason: item.reason })) };
     }
+    const evidenceHeaders = new Headers(request.headers);
+    evidenceHeaders.set(BUSINESS_CONTEXT_HEADER, context.organizationId);
     let retailCoverage: { sourceCount: number; days: number } | null = null;
     await Promise.all([
     (async()=>{
@@ -224,7 +229,7 @@ export async function POST(request: Request) {
       if (locationId) retailUrl.searchParams.set("location", locationId);
       if (requestedPeriod) { retailUrl.searchParams.set("from", requestedPeriod.from); retailUrl.searchParams.set("to", requestedPeriod.to); evidence.requestedRetailPeriod = { from: requestedPeriod.from, to: requestedPeriod.to }; }
       // Reuse all retail entitlement, source, location and redaction checks.
-      const retailResponse = await readRetail(new Request(retailUrl, { headers: request.headers }));
+      const retailResponse = await readRetail(new Request(retailUrl, { headers: evidenceHeaders }));
       if (retailResponse.ok) {
         const retailBody = await retailResponse.json();
         evidence.retail = projectAdvisorRetail(retailBody.report);
@@ -241,7 +246,7 @@ export async function POST(request: Request) {
       if (locationAccess.organizationWide && locationAccess.locationIds === null && permissions.includes("finance.statements")) {
         // Reuse BookLoQ's complete authorization, entitlement and redaction path.
         // The allowlist strips identifiers and raw records before provider use.
-        const bookloqResponse = await readBookloq(new Request(new URL("/api/v1/bookloq", request.url), { headers: request.headers }));
+        const bookloqResponse = await readBookloq(new Request(new URL("/api/v1/bookloq", request.url), { headers: evidenceHeaders }));
         if (bookloqResponse.ok) evidence.bookloq = projectAdvisorBookloq(await bookloqResponse.json());
         else evidence.bookloq = { status: "unavailable", reason: advisorUnavailableReason("bookloq", await bookloqResponse.json().catch(() => null)) };
       }

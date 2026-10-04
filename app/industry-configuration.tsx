@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { CAPABILITY_LABELS, INDUSTRY_TEMPLATES, defaultIndustryConfiguration, resolveIndustryTemplate, type IndustryConfiguration, type industryChangePreview } from "../domain/industry-templates";
+import { CAPABILITY_LABELS, INDUSTRY_TEMPLATES, availableIndustryCapabilities, defaultIndustryConfiguration, resolveIndustryTemplate, type IndustryConfiguration, type industryChangePreview } from "../domain/industry-templates";
 import { apiFetch } from "./supabase-browser";
 import "./industry-configuration.css";
 
@@ -10,7 +10,7 @@ export function IndustryConfigurationFields({value,onChange,disabled=false}: {va
     <label>What kind of business do you run?<select value={value.templateId} disabled={disabled} onChange={event=>onChange(defaultIndustryConfiguration(event.target.value))}>{INDUSTRY_TEMPLATES.map(item=><option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
     <label>Business format<select value={value.subtype} disabled={disabled} onChange={event=>onChange({...value,subtype:event.target.value})}>{template.subtypes.map(item=><option key={item}>{item}</option>)}</select></label>
     <div className="industry-preview" aria-live="polite"><strong>{template.description}</strong><p>{template.fieldLabels.join(" · ")}</p><small>Your permissions, subscription and available records still determine what you can use.</small></div>
-    <details className="industry-options"><summary>Workspace tools and data focus</summary><fieldset disabled={disabled}><legend>Tools and recommendations</legend>{[...new Set([...template.capabilities,...template.optionalCapabilities])].map(capability=>{
+    <details className="industry-options"><summary>What else do you sell or prepare?</summary><p>Add a supported activity to this business. Its records stay in this workspace; adding another separately owned business requires a separate workspace.</p><fieldset disabled={disabled}><legend>Tools and recommendations</legend>{availableIndustryCapabilities(template).map(capability=>{
       const recommendationOnly=capability==="variants"||capability==="lots"||(capability==="products"&&template.id!=="dealership"&&!template.capabilities.includes(capability));
       return recommendationOnly?<p key={capability}><strong>{CAPABILITY_LABELS[capability]}</strong><small>Suggested data for this business. This profile does not enable or hide these tools; availability follows your plan, permissions and recorded data.</small></p>:<label key={capability}><input type="checkbox" checked={value.capabilities.includes(capability)} disabled={template.capabilities.includes(capability)} onChange={event=>onChange({...value,capabilities:event.target.checked?[...value.capabilities,capability]:value.capabilities.filter(c=>c!==capability)})}/>{CAPABILITY_LABELS[capability]}{template.capabilities.includes(capability)&&<small>Included in this business profile</small>}</label>;
     })}{value.templateId==="dealership"&&<><label>Stock age to review (calendar days)<input type="number" min={1} max={730} value={value.agingReviewDays} onChange={event=>onChange({...value,agingReviewDays:Number(event.target.value)})}/></label><small>This is your review threshold, not an industry benchmark.</small></>}</fieldset></details>

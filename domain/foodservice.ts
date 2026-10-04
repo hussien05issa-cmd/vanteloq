@@ -1,5 +1,6 @@
 /** Reviewed operational calculations, not ledger postings or tax calculations.
  * Money is integer minor units. Decimal quantities never pass through Number. */
+import { validateFoodModifiers, type FoodModifier } from "./foodservice-modifiers";
 export type FoodMoney = { minor: number; currency: string };
 export type FoodUnit = "g" | "kg" | "oz_mass" | "lb" | "ml" | "l" | "each";
 export type FoodQuantity = { amount: string | null; unit: FoodUnit };
@@ -101,7 +102,7 @@ export type FoodIngredient = {
    * May exceed 1 for a documented gain such as hydration. Never inferred. */
   preparationYield: string | null;
 };
-export type FoodRecipe = { currency: string; portions: string | null; ingredients: readonly FoodIngredient[] | null };
+export type FoodRecipe = { currency: string; portions: string | null; ingredients: readonly FoodIngredient[] | null; modifiers?: FoodModifier[] };
 export type FoodRecipeCost = { currency: string; totalMinorExact: ExactFoodValue; perPortionMinorExact: ExactFoodValue; totalMinor: number; perPortionMinor: number };
 function recipeFraction(recipe: FoodRecipe): FoodResult<{ currency: string; total: Fraction; perPortion: Fraction }> {
   const currency = foodCurrency(recipe.currency), portions = decimal(recipe.portions, "portions", true);
@@ -199,6 +200,9 @@ export function foodservicePeriodMetrics(input: FoodservicePeriodInput) {
     theoreticalFoodCostBasisPoints: monetaryRatio(input.theoreticalCost, input.foodNetSales, c, ["theoreticalCost", "foodNetSales"]),
     labourCostBasisPoints: monetaryRatio(input.labourCost, input.totalNetSales, c, ["labourCost", "totalNetSales"]),
     costVariance: difference(c, [["actualCost", input.actualCost], ["theoreticalCost", input.theoreticalCost]]),
+    unexplainedCostVariance: waste !== null && input.actualCost !== null && waste > BigInt(input.actualCost.minor)
+      ? unavailable("inconsistent_waste", "recordedWasteCost", "actualCost")
+      : difference(c, [["actualCost", input.actualCost], ["theoreticalCost", input.theoreticalCost], ["recordedWasteCost", input.recordedWasteCost]]),
     foodContribution: difference(c, [["foodNetSales", input.foodNetSales], ["actualCost", input.actualCost]]),
     contributionAfterVariableCosts: difference(c, [["foodNetSales", input.foodNetSales], ["actualCost", input.actualCost], ["otherVariableCosts", input.otherVariableCosts]]),
     recordedWasteRateBasisPoints: wasteRate, averageCheck,
@@ -260,6 +264,10 @@ export function validateFoodserviceContent(input: unknown): FoodRecordContent {
       return { id: text(line.id, "ingredient name"), purchaseQuantity: readQuantity(line.purchaseQuantity, "purchaseQuantity"), recipeQuantity: readQuantity(line.recipeQuantity, "recipeQuantity"), purchaseCost: readMoney(line.purchaseCost, "purchaseCost"), preparationYield: line.preparationYield == null ? null : line.preparationYield as string };
     });
     const payload: FoodRecipe = { currency, portions: p.portions == null ? null : p.portions as string, ingredients };
+    if (p.modifiers !== undefined) {
+      try { payload.modifiers=validateFoodModifiers(p.modifiers,payload); }
+      catch(error) { fail("modifiers",error instanceof Error?error.message:"Review recipe modifiers."); }
+    }
     costRecipe(payload);
     return { kind: "recipe", name, source, asOfDate, from: "", to: "", payload };
   }

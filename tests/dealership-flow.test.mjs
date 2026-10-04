@@ -25,6 +25,16 @@ test("built dealership routes enforce reviewed industry, scoped roles, paid acce
     let state = await ok(await request()); const stock = state.stock[0];
     assert.equal(stock.postedCostCents, 1000000); assert.equal(state.permissions.profit, true);
     await ok(await write({ action: "update_stock", episodeId: stock.id, expectedVersion: stock.version, physicalStatus: "on_lot", prepStatus: "ready", availability: "available", askingCents: stock.askingCents, costComplete: true }));
+    const attentionTask=await ok(await write({action:"save_task",episodeId:acquired.id,title:"Review brake inspection",status:"blocked",assigneeId:null,dueDate:"2026-09-01",blockedReason:"Awaiting inspection evidence"}));
+    let attention=(await ok(await request())).attention;
+    assert.equal(attention.totalTasks,1);assert.equal(attention.tasks[0].id,attentionTask.id);
+    assert.equal(attention.tasks[0].linkedLabel,"Stock VISIBLE");assert.equal(attention.tasks[0].locationId,a.locationId);
+    // Recent unrelated completed work must not push an unresolved item out of the queue.
+    await database.batch(Array.from({length:105},(_,i)=>database.prepare("INSERT INTO dealership_tasks(id,organization_id,episode_id,title,status,created_at,updated_at) VALUES(?,?,?,?,'done',1,?)").bind(crypto.randomUUID(),a.organizationId,acquired.id,`Done ${i}`,Date.now()+1000+i)));
+    state=await ok(await request());assert.equal(state.tasks.some(t=>t.id===attentionTask.id),false);assert.equal(state.attention.tasks[0].id,attentionTask.id);
+    const priorTask=state.attention.tasks[0];
+    await ok(await write({action:"save_task",id:priorTask.id,expectedVersion:priorTask.version,episodeId:acquired.id,title:priorTask.title,status:"done",assigneeId:null,dueDate:priorTask.dueDate,blockedReason:"Inspection recorded"}));
+    assert.equal((await ok(await request())).attention.totalTasks,0);
     const secondLocation = crypto.randomUUID();
     await database.prepare("INSERT INTO organization_locations(id,organization_id,name,country_code,address_line_1,locality,administrative_area,timezone,currency,created_at,updated_at) VALUES(?,?,'Other dealership','CA','2 Test','Edmonton','AB','America/Edmonton','CAD',1,1)").bind(secondLocation, a.organizationId).run();
     await ok(await write({ action: "acquire", locationId: secondLocation, vehicle: { ...vehicle, identifier: "1HGCM82633A004353", stockNumber: "HIDDEN" }, ownership: "owned", physicalStatus: "on_lot", prepStatus: "ready" }));
@@ -36,7 +46,7 @@ test("built dealership routes enforce reviewed industry, scoped roles, paid acce
       database.prepare("INSERT INTO team_members(id,organization_id,user_id,role_id,first_name,last_name,email,employee_code,primary_location_id,permitted_locations_json,status,remote_login,created_by_user_id,created_at,updated_at) VALUES(?,?,?,?,'Stock','Reader',?,'DEALERSHIP-READER',?,?,'active',1,?,1,1)").bind(crypto.randomUUID(), a.organizationId, userId, roleId, reader.email, a.locationId, JSON.stringify([a.locationId]), a.userId),
     ]);
     const restricted = (path = "/api/v1/dealership", options = {}) => dispatch(worker, environment, path, { ...reader, ...options });
-    state = await ok(await restricted()); assert.equal(state.stock.length, 1); assert.equal(state.summary.activeStock, 1); assert.equal(state.stock[0].postedCostCents, null); assert.deepEqual(state.costs, []); assert.deepEqual(state.sales, []); assert.deepEqual(state.leads, []);
+    state = await ok(await restricted()); assert.equal(state.stock.length, 1); assert.equal(state.summary.activeStock, 1); assert.equal(state.stock[0].postedCostCents, null); assert.deepEqual(state.costs, []); assert.deepEqual(state.sales, []); assert.deepEqual(state.leads, []); assert.deepEqual(state.attention.tasks,[]);
     const csv = await restricted("/api/v1/dealership?format=csv&export=stock"); assert.equal(csv.status, 200); assert.match(csv.headers.get("cache-control"), /no-store/); const content = await csv.text(); assert.match(content, /VISIBLE/); assert.doesNotMatch(content, /HIDDEN|postedCostCents|costComplete|1000000/);
     assert.equal((await restricted("/api/v1/dealership?format=csv&export=sales")).status, 403);
     assert.equal((await restricted(`/api/v1/dealership?locationId=${secondLocation}`)).status, 403);

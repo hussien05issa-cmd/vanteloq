@@ -1,11 +1,13 @@
 import { ApiError, enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameOrigin } from "../../../../server/api";
-import { foodserviceAccess, readFoodservice, saveFoodservice } from "../../../../server/foodservice";
+import { foodserviceAccess, readFoodservice, readFoodserviceHistory, saveFoodservice } from "../../../../server/foodservice";
 import { recordAudit } from "../../../../server/audit";
 
 export async function GET(request: Request) {
   return handleApi(request, async () => {
     const access = await foodserviceAccess(request);
     await enforceRateLimit("foodservice:read", access.context.userId, 90, 60);
+    const historyId = new URL(request.url).searchParams.get("history");
+    if (historyId !== null) return jsonResponse(await readFoodserviceHistory(access.context, access.permissions.periodRead, historyId));
     const result = await readFoodservice(access.context, access.permissions.periodRead, new URL(request.url).searchParams.get("locationId"));
     return jsonResponse({ ...result, permissions: access.permissions, boundary: "Reviewed operational estimates. Saving does not post to BookLoQ or change inventory balances." });
   });

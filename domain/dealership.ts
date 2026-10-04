@@ -29,10 +29,12 @@ export type DealershipLead = { id: string; locationId: string; customerName: str
 export type DealershipAppointment = { id: string; leadId: string; scheduledAt: string; status: typeof DEALERSHIP_APPOINTMENT_STATUSES[number]; version: number };
 export type DealershipSale = { id: string; episodeId: string; stockNumber: string; deliveredDate: string; channel: "retail" | "wholesale"; amountCents: number; currency: string; costCents: number | null; grossCents: number | null; status: "delivered" | "reversed"; reversalDate: string | null; credits: DealershipCredit[]; unallocatedBps: number };
 export type DealershipSummaryCurrency = { currency: string; deliveredUnits: number; vehicleSalesCents: number; grossCents: number | null; grossEligibleUnits: number; missingCostUnits: number; reversedUnits: number; reversedSalesCents: number };
+export type DealershipAttentionTask = DealershipTask & { locationId: string; locationName: string; linkedLabel: string; localDate: string; assigneeName: string | null };
 export type DealershipDashboard = {
   locations: { id: string; name: string; currency: string; timezone: string }[]; people: { id: string; name: string }[]; permissions: DealershipPermissions;
   stock: DealershipStock[]; costs: DealershipCost[]; tasks: DealershipTask[]; leads: DealershipLead[]; appointments: DealershipAppointment[]; sales: DealershipSale[];
   summary: { from: string; to: string; currencies: DealershipSummaryCurrency[]; activeStock: number; availableStock: number; legacyIncomplete: number };
+  attention?: { tasks: DealershipAttentionTask[]; totalTasks: number; truncated: boolean };
   nextCursor: string | null; legacyAvailable: number; boundary: string; limits: { relatedRows: number; truncated: boolean }; generatedAt: string;
 };
 export type DealershipAcquire = { vehicle: VehicleInput; ownership: "owned" | "consignment"; physicalStatus: typeof DEALERSHIP_PHYSICAL_STATUSES[number]; prepStatus: typeof DEALERSHIP_PREP_STATUSES[number]; availability: "available" | "held"; askingCents: number | null };

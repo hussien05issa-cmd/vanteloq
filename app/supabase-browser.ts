@@ -2,6 +2,7 @@
 
 import { createClient, type Session, type SupabaseClient } from "@supabase/supabase-js";
 import { createSessionReader } from "./browser-session";
+import { businessContextHeaders } from "../domain/business-context";
 
 const SUPABASE_URL = "https://wqiwmpqnthshgyxpettl.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_756K45Ii9HTN4fk9ZtIUew_ap8XBaDp";
@@ -51,7 +52,8 @@ export function currentSession(): Promise<Session | null> { return sessionReader
 
 export async function apiFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
   init.signal?.throwIfAborted();
-  const headers = new Headers(init.headers);
+  // Capture the originating tab's business before awaiting session refresh.
+  const headers = typeof window === "undefined" ? new Headers(init.headers) : businessContextHeaders(init.headers, window.location.href);
   const session = await currentSession();
   init.signal?.throwIfAborted();
   if (session?.access_token) headers.set("Authorization", `Bearer ${session.access_token}`);

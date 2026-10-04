@@ -44,7 +44,7 @@
 .dealership-workspace button[type="submit"]:hover:not(:disabled), .dl-actions > button:first-child:hover:not(:disabled) { background: #123f96; }
 .dealership-workspace :is(button,input,select,textarea,summary,[tabindex]):focus-visible { outline: 3px solid #276cc1; outline-offset: 3px; }
 .dealership-workspace label { display: grid; gap: 6px; font-size: 13px; font-weight: 650; color: #24415f; }
-.dealership-workspace :is(input:not([type="checkbox"]),select,textarea) { font: inherit; font-size: 16px; line-height: 1.4; color: var(--dl-ink); background: #fff; border: 1px solid #afc1d8; border-radius: 9px; width: 100%; min-width: 0; min-height: 44px; padding: 9px 11px; }
+.dealership-workspace :is(input:not([type="checkbox"]),select,textarea) { font: inherit; font-size: 16px; line-height: 1.4; color: var(--dl-ink); background: #fff; border: 1px solid #afc1d8; border-radius: 12px; width: 100%; min-width: 0; min-height: 48px; padding: 11px 13px; }
 .dealership-workspace input[type="file"] { padding: 8px; }
 .dealership-workspace input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--dl-blue); flex: 0 0 20px; }
 .dealership-workspace input:disabled, .dealership-workspace select:disabled { background: #eef2f7; color: #596b7d; }
@@ -143,3 +143,6 @@
 }
 @media (prefers-reduced-motion: reduce) { .dealership-workspace *, .dealership-workspace *::before, .dealership-workspace *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
 @media (forced-colors: active) { .dealership-workspace, .dl-card, .dl-metrics article, .dl-status, .dl-modal { border: 1px solid CanvasText; } .dl-tabs button[aria-pressed="true"] { outline: 2px solid Highlight; } }
+
+.dl-attention-list{list-style:none;margin:0;padding:0;display:grid;gap:0}.dl-attention-list>li{display:flex;justify-content:space-between;align-items:center;gap:20px;padding:20px 0;border-top:1px solid var(--dl-line)}.dl-attention-list>li>div{min-width:0}.dl-attention-list button{flex-shrink:0}.dl-attention-label{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.dl-attention-label h4{font-size:16px;overflow-wrap:anywhere}.dl-attention-count{white-space:nowrap;background:#e9f1fd;border:1px solid #c6d8ef;border-radius:999px;color:#194e92;padding:6px 12px;font-weight:650}.dl-attention .dl-attention-reason{border-left:3px solid #2d6dc4;padding-left:12px;color:#293f58}.dealership-workspace :is(input,select,button,summary){scroll-margin-block:100px}
+@media(max-width:700px){.dl-attention-list>li{align-items:stretch;flex-direction:column;gap:12px}.dl-attention-list button{width:100%}.dl-attention .dl-section-heading{align-items:flex-start}.dl-attention-count{font-size:12px}}

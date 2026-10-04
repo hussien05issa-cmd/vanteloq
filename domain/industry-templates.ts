@@ -2,6 +2,20 @@ import type { DashboardWidgetId } from "./dashboard-preferences";
 
 export type IndustryId = "retail" | "health" | "grocery" | "clothing" | "furniture" | "dealership" | "cafe" | "restaurant" | "ecommerce" | "services" | "hospitality" | "other";
 export type IndustryCapability = "products" | "variants" | "lots" | "vehicles" | "dealership_operations" | "food_costing";
+export const INDUSTRY_CAPABILITY_REGISTRY: Record<IndustryCapability, { requires: readonly IndustryCapability[]; description: string }> = {
+  products: { requires: [], description: "Product stock, supplier and purchasing records." },
+  variants: { requires: ["products"], description: "Product variant guidance and source identifiers." },
+  lots: { requires: ["products"], description: "Lot, expiry and reviewed stock records." },
+  vehicles: { requires: [], description: "Individual vehicle identities and stock episodes." },
+  dealership_operations: { requires: ["vehicles"], description: "Preparation, opportunities, reservations and deliveries." },
+  food_costing: { requires: ["products"], description: "Reviewed recipe costs and food-cost periods alongside product inventory." },
+};
+export function availableIndustryCapabilities(template: IndustryTemplate): IndustryCapability[] {
+  // Vehicle workflows retain their own primary operating template. Food-cost review
+  // is composable with supported product businesses, without transforming stock.
+  const mixed: IndustryCapability[] = template.capabilities.includes("products") ? ["food_costing"] : [];
+  return [...new Set([...template.capabilities, ...template.optionalCapabilities, ...mixed])];
+}
 export type IndustryTemplate = {
   id: IndustryId; version: 1; label: string; description: string; inventoryLabel: string;
   subtypes: readonly string[]; capabilities: readonly IndustryCapability[]; optionalCapabilities: readonly IndustryCapability[];
@@ -52,7 +66,10 @@ export function validateIndustryConfiguration(value: unknown, industry?: string)
   if (industry && resolveIndustryTemplate(industry).id !== t.id) throw new Error("The business type and workspace configuration must match.");
   if (typeof p.subtype !== "string" || !t.subtypes.includes(p.subtype)) throw new Error("Choose a business subtype from this template.");
   const capabilities=p.capabilities;
-  if (!Array.isArray(capabilities) || capabilities.length > 10 || capabilities.some(c => ![...t.capabilities, ...t.optionalCapabilities].includes(c as IndustryCapability)) || t.capabilities.some(c => !capabilities.includes(c))) throw new Error("Choose only supported tools for this business type.");
+  if (!Array.isArray(capabilities) || capabilities.length > 10 || capabilities.some(c => !availableIndustryCapabilities(t).includes(c as IndustryCapability)) || t.capabilities.some(c => !capabilities.includes(c))) throw new Error("Choose only supported tools for this business type.");
+  for (const capability of capabilities as IndustryCapability[]) {
+    if (INDUSTRY_CAPABILITY_REGISTRY[capability].requires.some(required => !capabilities.includes(required))) throw new Error(`${CAPABILITY_LABELS[capability]} requires ${INDUSTRY_CAPABILITY_REGISTRY[capability].requires.map(key => CAPABILITY_LABELS[key]).join(", ")}.`);
+  }
   if (!Number.isInteger(p.agingReviewDays) || Number(p.agingReviewDays) < 1 || Number(p.agingReviewDays) > 730) throw new Error("Choose a stock review age between 1 and 730 days.");
   if (!Array.isArray(p.goals) || p.goals.length > 9 || p.goals.some(g => !INDUSTRY_GOALS.includes(g as typeof INDUSTRY_GOALS[number]))) throw new Error("Choose supported business priorities.");
   return { templateId: t.id, templateVersion: 1, subtype: p.subtype, capabilities: [...new Set(capabilities)] as IndustryCapability[], agingReviewDays: Number(p.agingReviewDays), goals: [...new Set(p.goals)] as string[] };

@@ -11,7 +11,7 @@ const roles = ["owner", "admin", "manager", "employee", "read_only"] as const;
 export async function foodserviceAccess(request: Request) {
   const context = await requireAccess(request, roles, "inventory.lots");
   const industry = await getWorkspaceIndustry(context);
-  if (!industry.configuration.capabilities.includes("food_costing")) throw new ApiError(403, "FOODSERVICE_INDUSTRY", "Select a café or restaurant workspace to use recipe and food-cost records.");
+  if (!industry.configuration.capabilities.includes("food_costing")) throw new ApiError(403, "FOODSERVICE_INDUSTRY", "Enable Recipe and food costs in Settings → Business type & tools before using this activity.");
   await requirePermission(context, "inventory.view"); await requirePermission(context, "inventory.value");
   const permissions = await effectivePermissions(context);
   const periodRead = ["metrics.revenue", "metrics.profit", "payroll.totals"].every(p => permissions.includes(p as typeof permissions[number]));
@@ -56,14 +56,32 @@ export async function saveFoodservice(context: AccessContext, permissions: { rec
   if (body.expectedVersion !== (prior?.version ?? null)) throw new ApiError(409, "FOODSERVICE_CONFLICT", "This record changed. Reload and review the latest version before saving.");
   const recordKey = content.kind === "recipe" ? content.name.toLowerCase() : `${content.from}:${content.to}`;
   try {
-    const result = prior ? await db.prepare(`UPDATE foodservice_records SET record_key=?,name=?,source_label=?,as_of_date=?,period_from=?,period_to=?,payload_json=?,version=version+1,updated_by=?,updated_at=? WHERE organization_id=? AND location_id=? AND id=? AND version=?`)
-      .bind(recordKey, content.name, content.source, content.asOfDate, content.from, content.to, JSON.stringify(content.payload), context.userId, now, context.organizationId, locationId, id, prior.version).run()
-      : await db.prepare(`INSERT INTO foodservice_records(id,organization_id,location_id,kind,record_key,name,currency,source_label,as_of_date,period_from,period_to,payload_json,created_by,updated_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-        .bind(id, context.organizationId, locationId, content.kind, recordKey, content.name, location.currency, content.source, content.asOfDate, content.from, content.to, JSON.stringify(content.payload), context.userId, context.userId, now, now).run();
-    if (result.meta.changes !== 1) throw new ApiError(409, "FOODSERVICE_CONFLICT", "The record changed. Reload before saving.");
+    const update = prior ? db.prepare(`UPDATE foodservice_records SET record_key=?,name=?,source_label=?,as_of_date=?,period_from=?,period_to=?,payload_json=?,version=version+1,updated_by=?,updated_at=? WHERE organization_id=? AND location_id=? AND id=? AND version=?`)
+      .bind(recordKey, content.name, content.source, content.asOfDate, content.from, content.to, JSON.stringify(content.payload), context.userId, now, context.organizationId, locationId, id, prior.version)
+      : db.prepare(`INSERT INTO foodservice_records(id,organization_id,location_id,kind,record_key,name,currency,source_label,as_of_date,period_from,period_to,payload_json,created_by,updated_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+        .bind(id, context.organizationId, locationId, content.kind, recordKey, content.name, location.currency, content.source, content.asOfDate, content.from, content.to, JSON.stringify(content.payload), context.userId, context.userId, now, now);
+    const retain = (version:number) => db.prepare(`INSERT OR IGNORE INTO foodservice_revisions(id,record_id,organization_id,version,content_json,recorded_by,recorded_at)
+      SELECT ?,id,organization_id,version,json_object('kind',kind,'name',name,'source',source_label,'asOfDate',as_of_date,'from',period_from,'to',period_to,'payload',json(payload_json)),updated_by,updated_at
+      FROM foodservice_records WHERE organization_id=? AND id=? AND version=?`).bind(`${id}:v${version}`,context.organizationId,id,version);
+    // Snapshot actual persisted rows in the same transaction as the guarded update.
+    // A losing writer cannot invent or replace an already retained revision.
+    const results = await db.batch([...(prior ? [retain(prior.version)] : []), update, retain((prior?.version ?? 0)+1)]);
+    if (results[prior ? 1 : 0].meta.changes !== 1) throw new ApiError(409, "FOODSERVICE_CONFLICT", "The record changed. Reload before saving.");
   } catch (error) {
     if (/unique constraint/i.test(String(error))) throw new ApiError(409, "FOODSERVICE_DUPLICATE", "A recipe with this name or this exact review period already exists here. Reload and edit that record.");
     throw error;
   }
   return { ...content, id, locationId, version: (prior?.version ?? 0) + 1, updatedAt: now, report: foodserviceRecordReport(content) };
+}
+
+export async function readFoodserviceHistory(context: AccessContext, periodRead: boolean, recordId: string) {
+  const row = await getD1().prepare(`SELECT ${columns} FROM foodservice_records WHERE organization_id=? AND id=?`).bind(context.organizationId, foodserviceId(recordId)).first<Row>();
+  if (!row) throw new ApiError(404, "FOODSERVICE_MISSING", "The saved record was not found.");
+  await requireAccessibleLocation(context, row.locationId);
+  if (row.kind === "period" && !periodRead) throw new ApiError(403, "FOODSERVICE_PERMISSION", "You do not have access to this period's financial records.");
+  const history = await getD1().prepare("SELECT version,content_json content,recorded_at recordedAt FROM foodservice_revisions WHERE organization_id=? AND record_id=? ORDER BY version DESC LIMIT 101")
+    .bind(context.organizationId, row.id).all<{version:number;content:string;recordedAt:number}>();
+  return { recordId: row.id, currentVersion: row.version, truncated: (history.results ?? []).length > 100,
+    revisions: (history.results ?? []).slice(0,100).map(item => { const record=validateFoodserviceContent(JSON.parse(item.content)); return {version:item.version, recordedAt:item.recordedAt, record, report:foodserviceRecordReport(record)}; }),
+    note: "Retained reviewed snapshots. Older overwritten versions cannot be reconstructed. Source as-of dates are evidence dates, not proof of historical sales consumption." };
 }
