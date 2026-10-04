@@ -3,8 +3,8 @@
 import { createContext, useContext, type ReactNode } from "react";
 
 export type BillingEntitlements = {
-  accessType: "internal" | "complimentary" | "subscription";
-  plan: "starter" | "growth" | "pro" | "bookloq" | null;
+  accessType: "internal" | "complimentary" | "subscription" | "free";
+  plan: "free" | "starter" | "growth" | "pro" | "bookloq" | null;
   status: string | null;
   addons: readonly string[];
   features: readonly string[];
@@ -13,8 +13,8 @@ export type BillingEntitlements = {
     users: number;
     ai: {
       capability: "basic" | "advanced" | "pro";
-      requestsPerMonth: null;
-      meteringStatus: "not_launched";
+      requestsPerMonth: number | null;
+      meteringStatus: "not_launched" | "monthly";
     };
   };
 };

@@ -39,7 +39,10 @@ else {
   if (!commands[mode]) throw new Error(`Unknown command: ${mode}`);
   const [entry, ...args] = commands[mode];
   const child = spawn(process.execPath, [resolve(root, "node_modules", entry), ...args], { cwd: root, env, stdio: "inherit" });
-  const timeout = mode === "build" ? setTimeout(() => child.kill("SIGTERM"), 180_000) : null;
+  const timeout = mode === "build" ? setTimeout(() => {
+    console.error("Build exceeded its 10-minute limit. No new artifact is verified.");
+    child.kill("SIGTERM");
+  }, 600_000) : null;
   process.on("SIGINT", () => child.kill("SIGINT"));
   const code = await new Promise((done, reject) => { child.on("error", reject); child.on("exit", (code) => done(code ?? 1)); });
   if (timeout) clearTimeout(timeout);

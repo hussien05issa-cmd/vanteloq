@@ -21,6 +21,9 @@ import "./origin-overview.css";
 import DashboardCustomizer from "./dashboard-customizer";
 import { goalResult, validDashboardDates } from "../domain/dashboard-personalization";
 import InvoiceOverview from "./invoice-overview";
+import { dashboardDraftScope, dashboardDraftKey, dashboardDraftFingerprint, dashboardLayoutDraft, serializeDashboardDraft, recoverDashboardDraft, type DashboardDraftScope } from "../domain/dashboard-draft";
+import ExpandingSurface from "./expanding-surface";
+import { useMotionPreference } from "./use-motion-preference";
 
 const periods=[["today","Today","Today"],["yesterday","Yesterday","Yesterday"],["7d","7D","Last 7 days"],["30d","30D","Last 30 days"],["90d","90D","Last 90 days"],["mtd","MTD","Month to date"],["qtd","QTD","Quarter to date"],["ytd","YTD","Year to date"],["1y","1Y","Last 365 days"],["custom","Custom","Custom date range"]];
 const cash=(v:number|null,currency:string)=>v===null?"Not available":new Intl.NumberFormat("en-CA",{style:"currency",currency,maximumFractionDigits:2}).format(v===0?0:v/100);
@@ -35,10 +38,17 @@ export default function ExecutiveOverview({currency,industry,activeLocationId,ba
   const [pending,setPending]=useState(!initialReport),[showDates,setShowDates]=useState(false);
   const defaults=normalizeDashboardPreferences(initialReport&&initialPreferences?initialPreferences:{...dashboardPreferencePreset(initialReport?"sales":"owner"),...(initialReport?{widgets:dashboardPreferencePreset("sales").widgets.map(w=>({...w,size:"standard"}))}:{})}),[preferences,setPreferences]=useState<DashboardPreferences>(defaults),[draft,setDraft]=useState<DashboardPreferences>(defaults);
   const [showCustomize,setShowCustomize]=useState(false),[preferenceStatus,setPreferenceStatus]=useState(""),[savingPreferences,setSavingPreferences]=useState(false);
+  const [preferenceError,setPreferenceError]=useState(""),[preferencesReady,setPreferencesReady]=useState(Boolean(initialReport)),[preferenceRetry,setPreferenceRetry]=useState(0);
+  const [draftScope,setDraftScope]=useState<DashboardDraftScope|null>(null),[draftBaseline,setDraftBaseline]=useState(""),[recovery,setRecovery]=useState<DashboardPreferences|null>(null);
+  const [draftStorageStatus,setDraftStorageStatus]=useState(""),[changedSaved,setChangedSaved]=useState<DashboardPreferences|null>(null);
+  const savingRef=useRef(false);
+  const dirty=JSON.stringify(draft)!==JSON.stringify(changedSaved??preferences);
   const overviewId=useId().replaceAll(":","");
+  const [metricOpen,setMetricOpen]=useState(false),metricOrigin=useRef<HTMLElement|null>(null);
+  const motion=useMotionPreference();
   const metricGrid=useRef<HTMLDivElement>(null),detailPanel=useRef<HTMLElement>(null),preferencesLoaded=useRef(false);
-  const reveal=(element:HTMLElement|null)=>{if(!element)return;element.focus({preventScroll:true});element.scrollIntoView({block:"start",behavior:window.matchMedia("(prefers-reduced-motion: reduce)").matches?"auto":"smooth"});};
-  const selectMetric=(key:ExecutiveKey)=>{setSelected(key);window.requestAnimationFrame(()=>reveal(detailPanel.current));};
+  const reveal=(element:HTMLElement|null)=>{if(!element)return;element.focus({preventScroll:true});element.scrollIntoView({block:"start",behavior:motion?"smooth":"auto"});};
+  const selectMetric=(key:ExecutiveKey,origin:HTMLElement)=>{metricOrigin.current=origin;setSelected(key);setMetricOpen(true);};
   const scope=JSON.stringify([preset,compare,appliedRange,activeLocationId,basis,reload,refreshKey]);
   const [responseScope,setResponseScope]=useState(scope);
   const report=initialReport??(responseScope===scope?storedReport:null);
@@ -52,11 +62,34 @@ export default function ExecutiveOverview({currency,industry,activeLocationId,ba
       const body=await response.json();
       if(!active)return;
       const next=normalizeDashboardPreferences(body.dashboardPreferences);
-      setPreferences(next);setDraft(next);
+      const verifiedScope=dashboardDraftScope(body.preferenceScope);
+      let baseline="",recovered:DashboardPreferences|null=null,storageStatus=verifiedScope?"":"Browser recovery is unavailable. Unsaved changes stay in this open page.";
+      if(verifiedScope)try{
+        baseline=await dashboardDraftFingerprint(next);
+        const key=dashboardDraftKey(verifiedScope),result=recoverDashboardDraft(window.sessionStorage.getItem(key),baseline,next);
+        recovered=result.draft;
+        if(result.status!=="none"&&result.status!=="available"){
+          window.sessionStorage.removeItem(key);
+          storageStatus=result.status==="changed"?"An older draft was removed because your saved dashboard changed.":"An expired or unreadable layout draft was removed.";
+        }
+      }catch{storageStatus="Browser recovery is unavailable. Unsaved changes stay in this open page.";}
+      if(!active)return;
+      // Editing remains disabled until this authoritative baseline is loaded.
+      setPreferences(next);setDraft(next);setDraftScope(verifiedScope);setDraftBaseline(baseline);setRecovery(recovered);setDraftStorageStatus(storageStatus);setPreferencesReady(true);setPreferenceError("");
       if(!preferencesLoaded.current){setPreset(next.defaultPeriod);setCompare(next.comparison);setRange(next.customDates);setAppliedRange(next.customDates);preferencesLoaded.current=true;}
-    }).catch(()=>{if(active)setPreferenceStatus("Using the default dashboard on this device.");});
+    }).catch(()=>{if(active)setPreferenceError("Your saved dashboard could not load. Retry before changing its layout.");});
     return()=>{active=false;};
-  },[initialReport]);
+  },[initialReport,preferenceRetry]);
+  useEffect(()=>{
+    if(initialReport||!preferencesReady||!draftScope||!draftBaseline||recovery||changedSaved||savingPreferences)return;
+    let active=true;
+    try{
+      const key=dashboardDraftKey(draftScope);
+      if(JSON.stringify(dashboardLayoutDraft(draft))===JSON.stringify(dashboardLayoutDraft(preferences)))window.sessionStorage.removeItem(key);
+      else window.sessionStorage.setItem(key,serializeDashboardDraft(draft,draftBaseline));
+    }catch{queueMicrotask(()=>{if(active)setDraftStorageStatus("Browser recovery is unavailable. Unsaved changes stay in this open page.");});}
+    return()=>{active=false;};
+  },[draft,preferences,draftScope,draftBaseline,initialReport,preferencesReady,recovery,changedSaved,savingPreferences]);
   useEffect(()=>{
     if(initialReport)return;
     const controller=new AbortController();
@@ -76,23 +109,45 @@ export default function ExecutiveOverview({currency,industry,activeLocationId,ba
   const orderedWidgets=new Map(preferences.widgets.map((widget,index)=>[widget.id,{...widget,index}]));
   const visibleMetrics=report?.metrics.filter(metric=>orderedWidgets.get(metric.key)?.visible!==false).sort((a,b)=>(orderedWidgets.get(a.key)?.index??99)-(orderedWidgets.get(b.key)?.index??99))??[];
   const metric=report?.metrics.find(m=>m.key===selected&&orderedWidgets.get(m.key)?.visible!==false)??visibleMetrics[0];
+  const clearDraftCache=()=>{if(!initialReport&&draftScope)try{window.sessionStorage.removeItem(dashboardDraftKey(draftScope));}catch{/* Keep the explicit form action available. */}};
+  const closeCustomizer=()=>{setShowCustomize(false);if(dirty)setPreferenceStatus("Unsaved changes kept. Reopen Customize to continue or discard them.");};
+  const openCustomizer=()=>{if(!preferencesReady||recovery)return;if(!changedSaved)setPreferenceError("");setShowCustomize(true);};
+  const discardDraft=()=>{
+    const next=changedSaved??preferences;
+    clearDraftCache();setRecovery(null);setDraft(next);setPreferences(next);setChangedSaved(null);setPreferenceError("");setPreferenceStatus("Unsaved changes discarded. Your saved layout is unchanged.");
+    if(changedSaved){setPreset(next.defaultPeriod);setCompare(next.comparison);setRange(next.customDates);setAppliedRange(next.customDates);void dashboardDraftFingerprint(next).then(setDraftBaseline).catch(()=>setDraftBaseline(""));}
+  };
   const savePreferences=async()=>{
-    if(draft.defaultPeriod==="custom"&&(!validDashboardDates(draft.customDates.from,draft.customDates.to)||draft.customDates.to>new Date().toISOString().slice(0,10))){setPreferenceStatus("Choose valid custom dates, no longer than 366 days and not in the future.");return;}
-    for(const key of draft.goalRings) if(draft.targets[key]!==undefined && (draft.targets[key]!<=0 || !validDashboardDates(draft.goalRules[key]?.from,draft.goalRules[key]?.to))){setPreferenceStatus("Each target needs a positive amount and valid start and target dates.");return;}
+    if(savingRef.current||!preferencesReady)return;
+    setPreferenceError("");
+    if(draft.defaultPeriod==="custom"&&(!validDashboardDates(draft.customDates.from,draft.customDates.to)||draft.customDates.to>new Date().toISOString().slice(0,10))){setPreferenceError("Choose valid custom dates, no longer than 366 days and not in the future.");return;}
+    for(const key of draft.goalRings) if(draft.targets[key]!==undefined && (draft.targets[key]!<=0 || !validDashboardDates(draft.goalRules[key]?.from,draft.goalRules[key]?.to))){setPreferenceError("Each target needs a positive amount and valid start and target dates.");return;}
     if(initialReport){setPreferences(draft);setShowCustomize(false);setPreferenceStatus("Sample layout updated for this preview only.");return;}
-    setSavingPreferences(true);setPreferenceStatus("");
+    savingRef.current=true;setSavingPreferences(true);setPreferenceStatus("");
     try{
+      const verification=await apiFetch("/api/v1/preferences",{headers:{Accept:"application/json"}});
+      const latest=await verification.json();if(!verification.ok)throw Error("The current saved layout could not be checked. Your changes are kept; retry saving.");
+      const currentScope=dashboardDraftScope(latest.preferenceScope);
+      if(!draftScope||!currentScope||dashboardDraftKey(currentScope)!==dashboardDraftKey(draftScope))throw Error("Your account or workspace changed. Reload before saving this layout.");
+      const current=normalizeDashboardPreferences(latest.dashboardPreferences);
+      // Check again before an explicit save; a recovered draft must not replace a newer layout.
+      const {collections:_currentCollections,...currentOverview}=current,{collections:_savedCollections,...savedOverview}=preferences;
+      void _currentCollections;void _savedCollections;
+      if(JSON.stringify(currentOverview)!==JSON.stringify(savedOverview)){setChangedSaved(current);throw Error("Your saved dashboard changed elsewhere. Your draft is kept. Discard changes to load the current layout before editing again.");}
       const response=await apiFetch("/api/v1/preferences",{method:"POST",headers:{"Content-Type":"application/json",Accept:"application/json"},body:JSON.stringify({dashboardPreferences:draft})});
       const body=await response.json();if(!response.ok)throw Error(body.error?.message??"Dashboard settings could not be saved.");
-      const saved=normalizeDashboardPreferences(body.dashboardPreferences);setPreferences(saved);setDraft(saved);setPreset(saved.defaultPeriod);setCompare(saved.comparison);setRange(saved.customDates);setAppliedRange(saved.customDates);setShowCustomize(false);setPreferenceStatus("Dashboard saved.");
-    }catch(cause){setPreferenceStatus(cause instanceof Error?cause.message:"Dashboard settings could not be saved.");}finally{setSavingPreferences(false);}
+      const saved=normalizeDashboardPreferences(body.dashboardPreferences);clearDraftCache();setRecovery(null);setChangedSaved(null);setPreferences(saved);setDraft(saved);setPreset(saved.defaultPeriod);setCompare(saved.comparison);setRange(saved.customDates);setAppliedRange(saved.customDates);setShowCustomize(false);setPreferenceStatus("Dashboard saved.");
+      try{setDraftBaseline(await dashboardDraftFingerprint(saved));}catch{setDraftBaseline("");}
+    }catch(cause){setPreferenceError(cause instanceof Error?cause.message:"Dashboard settings could not be saved. Your changes are kept.");}finally{savingRef.current=false;setSavingPreferences(false);}
   };
   return <section className={`executive-overview executive-commerce-layout${compact?" executive-compact":""}`} aria-label="Executive overview" aria-busy={visiblePending}>
-    <header className="executive-heading"><div><h3>Performance Overview</h3></div><div className="executive-heading-actions"><button type="button" onClick={()=>{setDraft(preferences);setPreferenceStatus("");setShowCustomize(!showCustomize);}} aria-expanded={showCustomize} aria-controls={`${overviewId}-customize`}>Customize</button>{!initialReport&&<button type="button" onClick={()=>setReload(reload+1)} disabled={visiblePending}>{visiblePending?"Refreshing…":"Refresh"}</button>}</div></header>
+    <header className="executive-heading"><div><h3>Performance Overview</h3></div><div className="executive-heading-actions"><button type="button" disabled={!preferencesReady||Boolean(recovery)} onClick={openCustomizer} aria-expanded={showCustomize} aria-controls={`${overviewId}-customize`}>{dirty?"Continue Customizing":"Customize"}</button>{!initialReport&&<button type="button" onClick={()=>setReload(reload+1)} disabled={visiblePending}>{visiblePending?"Refreshing…":"Refresh"}</button>}</div></header>
     {initialReport&&<p className="dashboard-sample-banner">Sample Preview · Fictional Data · Changes stay in this preview</p>}
-    {showCustomize&&<DashboardCustomizer draft={draft} onChange={setDraft} onClose={()=>{setShowCustomize(false);setDraft(preferences);}} onSave={()=>void savePreferences()} saving={savingPreferences} error={preferenceStatus} currency={currency} industry={industry} period={report?.period} locationId={activeLocationId}/>}
+    {recovery&&<div className="executive-preference-status" role="status"><p>An unsaved layout is available from this tab. Restore it to review before saving. Financial targets and named views were not stored.</p><button type="button" onClick={()=>{setDraft(recovery);setRecovery(null);setPreferenceStatus("Layout draft restored for review. Nothing has been saved.");setShowCustomize(true);}}>Restore Layout Draft</button><button type="button" onClick={discardDraft}>Discard Draft</button></div>}
+    {showCustomize&&<DashboardCustomizer draft={draft} onChange={next=>{setDraft(next);if(!changedSaved)setPreferenceError("");}} onClose={closeCustomizer} onDiscard={discardDraft} dirty={dirty} draftStatus={initialReport?"Changes stay in this preview until you save the sample layout.":draftStorageStatus||"Layout choices can be recovered in this tab for 24 hours. Target values, goal details and named views stay only in this open form until saved."} onSave={()=>void savePreferences()} saving={savingPreferences} error={preferenceError} currency={currency} industry={industry} period={report?.period} locationId={activeLocationId}/>}
 
     {preferenceStatus&&<p className="executive-preference-status" role="status">{preferenceStatus}</p>}
+    {!showCustomize&&preferenceError&&<p className="executive-preference-status" role="alert">{preferenceError} {!preferencesReady&&<button type="button" onClick={()=>{setPreferenceError("");setPreferenceRetry(value=>value+1);}}>Retry Saved Layout</button>}</p>}
     {!initialReport&&<div className="executive-filters"><div role="group" aria-label="Reporting period">{periods.map(([key,label,description])=><button key={key} type="button" aria-label={description} title={description} aria-pressed={preset===key} aria-expanded={key==="custom"?showDates:undefined} aria-controls={key==="custom"?`${overviewId}-dates`:undefined} onClick={()=>{if(key==="custom"){if(report)setRange({from:report.period.from,to:report.period.to});setShowDates(true);}else{setPreset(key);setShowDates(false);}}}>{label}</button>)}</div><label>Compare <select value={compare} onChange={e=>setCompare(e.target.value)}><option value="previous">Previous period</option><option value="yoy">Previous year</option><option value="budget">Budget</option><option value="target">Target</option></select></label></div>}
     {showDates&&<form id={`${overviewId}-dates`} className="executive-dates" aria-label="Custom reporting dates" onSubmit={e=>{e.preventDefault();setAppliedRange(range);setPreset("custom");setShowDates(false);}}><label>From <input type="date" required value={range.from} onChange={e=>setRange({...range,from:e.target.value})}/></label><label>To <input type="date" required min={range.from} value={range.to} onChange={e=>setRange({...range,to:e.target.value})}/></label><button type="submit">Apply Dates</button><button type="button" onClick={()=>setShowDates(false)}>Cancel</button></form>}
     {visiblePending?<div className="executive-loading" role="status" aria-label="Loading executive overview">{Array.from({length:preferences.widgets.filter(w=>w.visible).length||6},(_,i)=><div key={i}><i/><b/><i/></div>)}</div>:visibleError&&sourceGate?<ExecutiveStatusFrame message={visibleError} syncing={sourceGate==="SOURCE_SYNCING"} preferences={preferences} onSources={()=>navigate("Integrations")} onRetry={()=>setReload(reload+1)}/>:visibleError?<div className="executive-error" role="alert"><p>{visibleError}</p><button onClick={()=>setReload(reload+1)}>Try Again</button></div>:report&&<>
@@ -108,7 +163,7 @@ export default function ExecutiveOverview({currency,industry,activeLocationId,ba
         const size=orderedWidgets.get(m.key)?.size??"standard";
         const hasTrend=m.trend.some(point=>point.value!==null);
         const updated=formatRecordedTimestamp(m.sourceTimestamp);
-        return <button type="button" key={m.key} id={`${overviewId}-${m.key}`} className={`executive-kpi size-${size} ${metric?.key===m.key?"selected":""}`} aria-pressed={metric?.key===m.key} aria-controls={`${overviewId}-detail`} onClick={()=>selectMetric(m.key)}>
+        return <button type="button" key={m.key} id={`${overviewId}-${m.key}`} className={`executive-kpi size-${size} ${metric?.key===m.key?"selected":""}`} aria-pressed={metric?.key===m.key} aria-haspopup="dialog" aria-expanded={metricOpen&&metric?.key===m.key} onClick={event=>selectMetric(m.key,event.currentTarget)}>
           <span className="executive-kpi-label">{m.label}<i aria-hidden="true">↗</i></span>
           <strong className={m.value===null?"unavailable":""}>{m.value===null?"—":display(m.value,m.unit,currency)}</strong>
           <span className="executive-change">{percent===null?(m.value===null?"Ready for your records":"Comparison not yet available"):`${percent>0?"+":""}${number(percent)}${m.unit==="percent"?" pp":"%"}`}{percent!==null&&<small>{compare==="previous"?"vs previous period":compare==="yoy"?"vs previous year":compare==="target"?"vs your target":"vs ledger budget"}</small>}</span>
@@ -119,15 +174,25 @@ export default function ExecutiveOverview({currency,industry,activeLocationId,ba
         </button>;
       })}{!visibleMetrics.length&&<div className="executive-no-widgets"><b>No metrics are visible.</b><span>Open Customize and choose the metrics you want to monitor.</span></div>}</div>
       <div className="executive-visual-grid executive-workbench">
-      {metric&&<article className="executive-detail" id={`${overviewId}-detail`} ref={detailPanel} tabIndex={-1} aria-labelledby={`${overviewId}-metric-title`}><header><div><p>PERIOD TREND</p><h3 id={`${overviewId}-metric-title`}>{metric.label}</h3><span>{metric.formula}</span></div><div className="executive-detail-actions"><button type="button" onClick={()=>{const selectedButton=metricGrid.current?.querySelector<HTMLButtonElement>('[aria-pressed="true"]');reveal(selectedButton??null);}}>All Metrics</button><button type="button" onClick={()=>navigate(metric.drill,{from:report.period.from,to:report.period.to})}>View Records ↗</button></div></header>{compare==="target"&&<button type="button" className="executive-target-input" onClick={()=>{setDraft(preferences);setShowCustomize(true);}}>Edit Comparison Targets</button>}<ExecutiveTrend key={metric.key+report.period.from+report.period.to} metric={metric} currency={currency} chart={preferences.chart} compact={compact} period={report.period} onSetup={()=>navigate(metric.drill==="BookLoQ"?"BookLoQ":"Integrations")}/><details className="executive-source-details" key={metric.key}><summary>Source, Coverage and Calculation</summary>{metric.key==="net_revenue"&&<RevenueSourceDetail attribution={report.revenueSources} currency={currency} onOpenRecords={()=>navigate("Sales",{from:report.period.from,to:report.period.to})}/>}<dl><div><dt>Source</dt><dd>{metric.source.replaceAll("_"," ")}</dd></div><div><dt>Last Updated</dt><dd>{formatRecordedTimestamp(metric.sourceTimestamp)??(metric.value===null?"Awaiting source":"Update time unavailable")}</dd></div><div><dt>Confidence</dt><dd>{metric.confidence}</dd></div></dl>{metric.reason&&<p>{metric.reason}</p>}<p>Current: {report.period.from} to {report.period.to}. Comparison: {report.period.comparisonFrom} to {report.period.comparisonTo}.</p>{metric.limitations.map((line,i)=><p key={i}>{line}</p>)}<p>Budget variance requires a complete ledger budget covering these exact dates. POS and ledger totals are not interchangeable.</p></details></article>}
+      {metric&&<article className="executive-detail" id={`${overviewId}-detail`} ref={detailPanel} tabIndex={-1} aria-labelledby={`${overviewId}-metric-title`}><header><div><p>PERIOD TREND</p><h3 id={`${overviewId}-metric-title`}>{metric.label}</h3><span>{metric.formula}</span></div><div className="executive-detail-actions"><button type="button" onClick={()=>{const selectedButton=metricGrid.current?.querySelector<HTMLButtonElement>('[aria-pressed="true"]');reveal(selectedButton??null);}}>All Metrics</button><button type="button" onClick={()=>navigate(metric.drill,{from:report.period.from,to:report.period.to})}>View Records ↗</button></div></header>{compare==="target"&&<button type="button" className="executive-target-input" onClick={openCustomizer}>Edit Comparison Targets</button>}<ExecutiveTrend key={metric.key+report.period.from+report.period.to} metric={metric} currency={currency} chart={preferences.chart} compact={compact} period={report.period} onSetup={()=>navigate(metric.drill==="BookLoQ"?"BookLoQ":"Integrations")}/><details className="executive-source-details" key={metric.key}><summary>Source, Coverage and Calculation</summary>{metric.key==="net_revenue"&&<RevenueSourceDetail attribution={report.revenueSources} currency={currency} onOpenRecords={()=>navigate("Sales",{from:report.period.from,to:report.period.to})}/>}<dl><div><dt>Source</dt><dd>{metric.source.replaceAll("_"," ")}</dd></div><div><dt>Last Updated</dt><dd>{formatRecordedTimestamp(metric.sourceTimestamp)??(metric.value===null?"Awaiting source":"Update time unavailable")}</dd></div><div><dt>Confidence</dt><dd>{metric.confidence}</dd></div></dl>{metric.reason&&<p>{metric.reason}</p>}<p>Current: {report.period.from} to {report.period.to}. Comparison: {report.period.comparisonFrom} to {report.period.comparisonTo}.</p>{metric.limitations.map((line,i)=><p key={i}>{line}</p>)}<p>Budget variance requires a complete ledger budget covering these exact dates. POS and ledger totals are not interchangeable.</p></details></article>}
       {!compact&&preferences.sections.collections&&<InvoiceOverview currency={currency} sample={Boolean(initialReport)} sampleEmpty={!report.sourceCoverage} sampleAsOf={report.period.to} onOpen={()=>navigate("BookLoQ")}/>}
       {!compact&&<>
-      <OperatingRing locationId={activeLocationId} report={report} preferences={preferences} currency={currency} onCustomize={()=>{setDraft(preferences);setShowCustomize(true);window.requestAnimationFrame(()=>document.getElementById(`${overviewId}-customize`)?.scrollIntoView({behavior:window.matchMedia("(prefers-reduced-motion: reduce)").matches?"auto":"smooth",block:"start"}));}}/>
+      <OperatingRing locationId={activeLocationId} report={report} preferences={preferences} currency={currency} onCustomize={openCustomizer}/>
       {preferences.sections.needsAttention&&<div className="executive-insights"><header><h3>What Needs Attention</h3><button onClick={()=>navigate("Intelligence")}>Explore Drivers ↗</button></header>{report.insights.length?report.insights.slice(0,3).map(item=><details key={item.id}><summary>{item.title}<small>{item.confidence} confidence</small></summary><p><b>What changed:</b> {item.whatHappened}</p><p><b>Possible driver:</b> {item.probableCause}</p><p><b>Financial impact:</b> {item.financialImpact}</p><p><b>Next step:</b> {item.recommendedAction}</p><p>These are patterns in recorded data, not proof of a cause.</p></details>):<div className="executive-insight-empty"><span aria-hidden="true">↗</span><b>Your next decision starts here.</b><p>Review a sales import or connect a source. Patterns and changes appear when there is enough history to compare.</p><button type="button" onClick={()=>navigate("Integrations")}>Review Connections</button></div>}</div>}
       </>}</div>
       {!compact&&basis==="commerce"&&<ExecutiveSummaryPanels report={report} currency={currency} onRecords={()=>navigate("Sales",{from:report.period.from,to:report.period.to})} onConnect={()=>navigate("Integrations")}/>}
       {!compact&&preferences.sections.financialDetail&&(report.finance?<FinanceDetails data={report.finance} currency={currency}/>:<details className="executive-financial-details"><summary>Financial Detail</summary><p>{report.financeReason??"Activate BookLoQ and post your reviewed records to see period-specific statements, aging and ratios."}</p><button onClick={()=>navigate("BookLoQ")}>Open BookLoQ</button></details>)}
     </>}
+    <ExpandingSurface open={metricOpen} onClose={()=>setMetricOpen(false)} originRef={metricOrigin} title={metric?.label??"Metric details"}>
+      {visiblePending?<div role="status" className="metric-detail-state"><b>Updating this view</b><p>The selected reporting period is being checked. Values will appear when it finishes.</p></div>:visibleError?<div role="alert" className="metric-detail-state"><p>{visibleError}</p><button type="button" onClick={()=>setReload(value=>value+1)}>Try again</button></div>:metric&&report?<div className="executive-overview metric-expanded-content">
+        <p className="metric-detail-context">{date(report.period.from)} to {date(report.period.to)}, {report.period.to.slice(0,4)} · {currency}{initialReport?" · Fictional sample":""}</p>
+        <div className="metric-detail-values"><article><span>Recorded {metric.label.toLowerCase()}</span><strong>{display(metric.value,metric.unit,currency)}</strong></article><article><span>{compare==="yoy"?"Previous year":"Previous comparable period"}</span><strong>{display(metric.previous,metric.unit,currency)}</strong></article></div>
+        <p className="metric-detail-formula">{metric.formula}</p>
+        <ExecutiveTrend metric={metric} currency={currency} chart={preferences.chart} period={report.period} onSetup={()=>{setMetricOpen(false);navigate(metric.drill==="BookLoQ"?"BookLoQ":"Integrations");}}/>
+        <details className="executive-source-details"><summary>Source, coverage and calculation</summary>{metric.key==="net_revenue"&&<RevenueSourceDetail attribution={report.revenueSources} currency={currency} onOpenRecords={()=>{setMetricOpen(false);navigate("Sales",{from:report.period.from,to:report.period.to});}}/>}<dl><div><dt>Source</dt><dd>{metric.source.replaceAll("_"," ")}</dd></div><div><dt>Updated</dt><dd>{formatRecordedTimestamp(metric.sourceTimestamp)??"Update time unavailable"}</dd></div><div><dt>Confidence</dt><dd>{metric.confidence}</dd></div></dl>{metric.reason&&<p>{metric.reason}</p>}<p>Comparison: {report.period.comparisonFrom} to {report.period.comparisonTo}.</p>{metric.limitations.map((line,index)=><p key={index}>{line}</p>)}</details>
+        <button type="button" className="metric-record-action" onClick={()=>{setMetricOpen(false);navigate(metric.drill,{from:report.period.from,to:report.period.to});}}>Open source records ↗</button>
+      </div>:<div className="metric-detail-state"><p>This metric is no longer available in the selected view.</p></div>}
+    </ExpandingSurface>
   </section>;
 }
 
@@ -162,6 +227,18 @@ function OperatingRing({report,preferences,currency,onCustomize,locationId}:{rep
 
 function ExecutiveTrend({metric,currency,period,onSetup,chart,compact=false}:{metric:ExecutiveReport["metrics"][number];currency:string;period:ExecutiveReport["period"];onSetup:()=>void;chart:"line"|"bar";compact?:boolean}) {
   const {ref,width}=useChartWidth(780,320),id=useId().replaceAll(":",""),[hover,setHover]=useState<number|null>(null);
+  const plotRef=useRef<SVGGElement>(null),motion=useMotionPreference();
+  const dataKey=metric.trend.map(point=>`${point.date}:${point.value}`).join("|");
+  useEffect(()=>{
+    const plot=plotRef.current;if(!plot||!motion||typeof plot.animate!=="function")return;
+    let animation:Animation|null=null;
+    const stop=()=>{animation?.cancel();animation=null;};
+    const reveal=()=>{if(document.hidden)return;animation=plot.animate([{opacity:.65,transform:"translateY(3px)"},{opacity:1,transform:"translateY(0)"}],{duration:240,easing:"cubic-bezier(.2,.8,.2,1)"});};
+    const observer=typeof IntersectionObserver==="undefined"?null:new IntersectionObserver(entries=>{if(entries.some(entry=>entry.isIntersecting)){reveal();observer?.disconnect();}});
+    if(observer)observer.observe(plot);else reveal();
+    document.addEventListener("visibilitychange",stop);plot.ownerSVGElement?.addEventListener("pointerdown",stop);
+    return()=>{observer?.disconnect();stop();document.removeEventListener("visibilitychange",stop);plot.ownerSVGElement?.removeEventListener("pointerdown",stop);};
+  },[dataKey,chart,motion]);
   const values=metric.trend.filter(p=>p.value!==null);
   if(!values.length)return <div className="executive-trend-empty" ref={ref}>
     <div className="executive-empty-axis" aria-hidden="true"><span>{metric.unit==="money"?currency:metric.unit==="percent"?"%":"Count"}</span><span>—</span><span>—</span><span>—</span></div>
@@ -179,7 +256,7 @@ function ExecutiveTrend({metric,currency,period,onSetup,chart,compact=false}:{me
   metric.trend.forEach((p,i)=>{if(p.value===null){closeSegment();return;}if(segment.length&&Date.parse(p.date)-Date.parse(metric.trend[segment.at(-1)!].date)>86400000)closeSegment();segment.push(i);});closeSegment();
   const ticks=[...new Set(Array.from({length:Math.min(5,metric.trend.length)},(_,i)=>Math.round(i*(metric.trend.length-1)/Math.max(1,Math.min(5,metric.trend.length)-1))))];
   const point=hover===null?null:metric.trend[hover];
-  return <div className="executive-chart" ref={ref}><div className="executive-chart-readout" aria-live="polite">{point?<><b>{date(point.date)}</b><span>{display(point.value,metric.unit,currency)}</span></>:<span>{metric.unit==="money"?currency:metric.unit==="percent"?"Percent":"Count"} · Recorded daily values. Gaps remain visible.</span>}</div><svg viewBox={`0 0 ${width} ${height}`} width={width} height={height} role="group" aria-label={`${metric.label} by recorded date`}><defs><linearGradient id={id} x1="0" x2="1"><stop stopColor="#1777ec"/><stop offset="1" stopColor="#514cc6"/></linearGradient><linearGradient id={`${id}-area`} x1="0" y1="0" x2="0" y2="1"><stop stopColor="#1b73ee" stopOpacity=".18"/><stop offset="1" stopColor="#1b73ee" stopOpacity=".015"/></linearGradient></defs>{axisTicks.map(val=>{return <g key={val}><line x1="58" x2={width-24} y1={y(val)} y2={y(val)} stroke="#dfe6ef"/><text x="50" y={y(val)+4} textAnchor="end" fill="#50627a" fontSize="11">{formatExecutiveAxisValue(val,metric.unit)}</text></g>;})}{chart==="line"&&areas.map((area,i)=><path key={i} d={area} fill={`url(#${id}-area)`}/>)}{chart==="line"?<path d={path} fill="none" stroke={`url(#${id})`} strokeWidth="2.5"/>:metric.trend.map((p,i)=>p.value===null?null:<rect key={p.date} x={x(i)-Math.min(16,plot/metric.trend.length*.32)} y={Math.min(y(0),y(p.value))} width={Math.min(32,plot/metric.trend.length*.64)} height={Math.max(1,Math.abs(y(0)-y(p.value)))} rx="3" fill="#397ce0"/>)}{point?.value!=null&&<line x1={x(hover!)} x2={x(hover!)} y1="22" y2={height-37} stroke="#95b6e8" strokeDasharray="3 4"/>}{metric.trend.map((p,i)=>p.value===null?null:<circle key={p.date} cx={x(i)} cy={y(p.value)} r="12" fill={hover===i?"#2975e233":"transparent"} stroke="transparent" strokeWidth="1.5" tabIndex={hover===i||(hover===null&&p.date===values[0].date)?0:-1} role="button" aria-label={`${p.date}: ${display(p.value,metric.unit,currency)}`} onClick={()=>setHover(i)} onFocus={()=>setHover(i)} onMouseEnter={()=>setHover(i)} onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();setHover(i);}if(e.key==="ArrowRight"||e.key==="ArrowLeft"){e.preventDefault();const points=Array.from(e.currentTarget.parentElement?.querySelectorAll('circle')??[]);const index=points.indexOf(e.currentTarget);const next=Math.max(0,Math.min(points.length-1,index+(e.key==="ArrowRight"?1:-1)));(points[next] as SVGElement|undefined)?.focus();}}}/>)}{ticks.map((i,j)=><text key={i} x={x(i)} y={height-9} textAnchor={j===0?"start":j===ticks.length-1?"end":"middle"} fontSize="11" fill="#50627a">{date(metric.trend[i].date)}</text>)}</svg><details><summary>View Data Table</summary><table><caption>{metric.label} by recorded date</caption><thead><tr><th scope="col">Date</th><th scope="col">{metric.label}</th></tr></thead><tbody>{metric.trend.map(p=><tr key={p.date}><td>{p.date}</td><td>{display(p.value,metric.unit,currency)}</td></tr>)}</tbody></table></details></div>;
+  return <div className="executive-chart" ref={ref}><div className="executive-chart-readout" aria-live="polite">{point?<><b>{date(point.date)}</b><span>{display(point.value,metric.unit,currency)}</span></>:<span>{metric.unit==="money"?currency:metric.unit==="percent"?"Percent":"Count"} · Recorded daily values. Gaps remain visible.</span>}</div><svg viewBox={`0 0 ${width} ${height}`} width={width} height={height} role="group" aria-label={`${metric.label} by recorded date`}><defs><linearGradient id={id} x1="0" x2="1"><stop stopColor="#1777ec"/><stop offset="1" stopColor="#514cc6"/></linearGradient><linearGradient id={`${id}-area`} x1="0" y1="0" x2="0" y2="1"><stop stopColor="#1b73ee" stopOpacity=".18"/><stop offset="1" stopColor="#1b73ee" stopOpacity=".015"/></linearGradient></defs>{axisTicks.map(val=>{return <g key={val}><line x1="58" x2={width-24} y1={y(val)} y2={y(val)} stroke="#dfe6ef"/><text x="50" y={y(val)+4} textAnchor="end" fill="#50627a" fontSize="11">{formatExecutiveAxisValue(val,metric.unit)}</text></g>;})}<g ref={plotRef} className="executive-chart-data">{chart==="line"&&areas.map((area,i)=><path key={i} d={area} fill={`url(#${id}-area)`}/>)}{chart==="line"?<path d={path} fill="none" stroke={`url(#${id})`} strokeWidth="2.5"/>:metric.trend.map((p,i)=>p.value===null?null:<rect key={p.date} x={x(i)-Math.min(16,plot/metric.trend.length*.32)} y={Math.min(y(0),y(p.value))} width={Math.min(32,plot/metric.trend.length*.64)} height={Math.max(1,Math.abs(y(0)-y(p.value)))} rx="3" fill="#397ce0"/>)}</g>{point?.value!=null&&<line x1={x(hover!)} x2={x(hover!)} y1="22" y2={height-37} stroke="#95b6e8" strokeDasharray="3 4"/>}{metric.trend.map((p,i)=>p.value===null?null:<circle key={p.date} cx={x(i)} cy={y(p.value)} r="12" fill={hover===i?"#2975e233":"transparent"} stroke="transparent" strokeWidth="1.5" tabIndex={hover===i||(hover===null&&p.date===values[0].date)?0:-1} role="button" aria-label={`${p.date}: ${display(p.value,metric.unit,currency)}`} onClick={()=>setHover(i)} onFocus={()=>setHover(i)} onMouseEnter={()=>setHover(i)} onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();setHover(i);}if(e.key==="ArrowRight"||e.key==="ArrowLeft"){e.preventDefault();const points=Array.from(e.currentTarget.parentElement?.querySelectorAll('circle')??[]);const index=points.indexOf(e.currentTarget);const next=Math.max(0,Math.min(points.length-1,index+(e.key==="ArrowRight"?1:-1)));(points[next] as SVGElement|undefined)?.focus();}}}/>)}{ticks.map((i,j)=><text key={i} x={x(i)} y={height-9} textAnchor={j===0?"start":j===ticks.length-1?"end":"middle"} fontSize="11" fill="#50627a">{date(metric.trend[i].date)}</text>)}</svg><details><summary>View Data Table</summary><table><caption>{metric.label} by recorded date</caption><thead><tr><th scope="col">Date</th><th scope="col">{metric.label}</th></tr></thead><tbody>{metric.trend.map(p=><tr key={p.date}><td>{p.date}</td><td>{display(p.value,metric.unit,currency)}</td></tr>)}</tbody></table></details></div>;
 }
 
 function FinanceDetails({data,currency}:{data:NonNullable<ExecutiveReport["finance"]>;currency:string}) {

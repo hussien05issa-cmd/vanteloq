@@ -11,11 +11,14 @@ import { dataReadinessStateLabels, type ConnectionDataReadiness } from "../domai
 
 import "./workspace-base-styles";
 import "./workspace-styles";
+import "./readability-refinement.css";
 import { parseDailyCsv } from "../domain/daily-summary-csv";
 import DailyImportReviewPanel from "./daily-import-review";
 import type { DailyImportReview } from "../server/daily-metric-import";
 import WorkspaceSkeleton from "./workspace-skeleton";
 import DashboardGreeting from "./dashboard-greeting";
+import OwnerBriefingPanel from "./owner-briefing";
+import type { OwnerBriefing, OwnerBriefingPriority } from "../domain/owner-briefing";
 import { PRODUCT_RELEASE_NAME } from "../domain/product-release";
 import { documentEmailAccessKey } from "./document-email-client";
 import { isAwaitingSalesRecords } from "../domain/intraday-sales";
@@ -536,6 +539,7 @@ type MetricProvenance = {
   generatedAt: string;
 };
 type CommandCentre = {
+  ownerBriefing?: OwnerBriefing & { scopeLabel: string; hoursBasis: string; reportingPeriod: { from: string; to: string } | null; pulseMetrics?: {label:string;value:string;detail:string}[] };
   ready: boolean;
   source: {
     syncing?: boolean;
@@ -713,7 +717,7 @@ export default function VanteloqApp({
   const billingEntitlements = useBillingEntitlements();
   const subscriptionFeatures = billingEntitlements.features;
   const standaloneBookloq = billingEntitlements.plan === "bookloq";
-  const [view, setView] = useState<View>(() => typeof window !== "undefined" && new URLSearchParams(window.location.search).get("linkedFiles") === "connected" ? "Documents" : billingEntitlements.plan === "bookloq" ? "BookLoQ" : "Dashboard");
+  const [view, setView] = useState<View>(() => typeof window !== "undefined" && window.location.hash === "#billing" ? "Settings" : typeof window !== "undefined" && new URLSearchParams(window.location.search).get("linkedFiles") === "connected" ? "Documents" : billingEntitlements.plan === "bookloq" ? "BookLoQ" : "Dashboard");
   const [workspaceName, setWorkspaceName] = useState(organizationName);
   const [advisorScope,setAdvisorScope]=useState("");
   const advisorConsent=useAdvisorConsent(apiFetch,advisorScope,view==="Advisor");
@@ -736,7 +740,8 @@ export default function VanteloqApp({
   const [paymentRange, setPaymentRange] = useState<PaymentRange>(1);
   const [hiddenNavigation, setHiddenNavigation] = useState<View[]>([]);
   const [locations, setLocations] = useState<Array<{ id: string; name: string }>>([]);
-  const [activeLocationId, setActiveLocationId] = useState<string | null>(null);
+  const [storedLocationId, setActiveLocationId] = useState<string | null>(null);
+  const activeLocationId = billingEntitlements.accessType === "free" ? null : storedLocationId;
   const preferenceStateRef = useRef<{ hiddenNavigation: View[]; activeLocationId: string | null }>({
     hiddenNavigation: [],
     activeLocationId: null,
@@ -778,7 +783,7 @@ export default function VanteloqApp({
         throw new Error(
           body.error?.message ?? "Unable to load the command centre.",
         );
-      setData({ ...body.commandCentre, operatingSystem: body.operatingSystem });
+      setData({ ...body.commandCentre, operatingSystem: body.operatingSystem, ownerBriefing: body.ownerBriefing });
       setAdvisorScope(body.organization.id);
       setCurrency(body.organization.currency);
       setBusinessIndustry(body.organization.industry || "Other");
@@ -818,7 +823,7 @@ export default function VanteloqApp({
         if (!response.ok) throw new Error(body.error?.message ?? "Workspace preferences could not be loaded.");
         if (cancelled) return;
         const nextHidden = normalizeHiddenNavigation(body.hiddenNavigation ?? [], allNavigationViews, protectedNavigation);
-        const nextLocationId = body.preferredLocationId ?? null;
+        const nextLocationId = billingEntitlements.accessType === "free" ? null : body.preferredLocationId ?? null;
         if (Array.isArray(body.locations)) setLocations(body.locations);
         if (preferenceWriteRef.current > 0) return;
         const next = { hiddenNavigation: nextHidden, activeLocationId: nextLocationId };
@@ -952,6 +957,10 @@ export default function VanteloqApp({
       showNotice(subscriptionAccess.upgradeLabel === "BookLoQ access"
         ? "Choose BookLoQ in Billing to open this finance workspace."
         : `${subscriptionAccess.upgradeLabel ?? "A different plan"} is required to open this workspace.`);
+      if (billingEntitlements.accessType === "free" && appPermissions.includes("organization.billing")) {
+        window.location.hash = "billing";
+        setView("Settings"); setMobileNavOpen(false);
+      }
       return;
     }
     const requiredPermission = viewPermission[next];
@@ -965,15 +974,28 @@ export default function VanteloqApp({
     setView(next);
     setMobileNavOpen(false);
     window.scrollTo({ top: 0, behavior: "instant" });
+    window.requestAnimationFrame(()=>document.querySelector<HTMLElement>(".main-panel")?.focus({preventScroll:true}));
+  };
+  const createTask = (seed: TaskSeed) => {
+    if (!subscriptionFeatures.includes("operations.basic")) {
+      navigate("Action Centre");
+      return;
+    }
+    if (!appPermissions.includes(seed.sourceType === "manual" ? "operations.manage" : "insights.create_task")) {
+      showNotice("Your role does not have access to create this action.");
+      return;
+    }
+    setTaskSeed(seed);
   };
   useEffect(() => {
+    if (loading) return;
     if (viewIsAvailable(view, appPermissions, subscriptionFeatures, standaloneBookloq)) return;
     const timer = window.setTimeout(() => {
       setView(standaloneBookloq ? "BookLoQ" : "Dashboard");
       setMobileNavOpen(false);
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [appPermissions, standaloneBookloq, subscriptionFeatures, view]);
+  }, [appPermissions, loading, standaloneBookloq, subscriptionFeatures, view]);
   const savePreferences = (patch: Partial<{ hiddenNavigation: View[]; activeLocationId: string | null }>) => {
     const current = preferenceStateRef.current;
     const next = {
@@ -1061,6 +1083,7 @@ export default function VanteloqApp({
             <span className="sr-only">Dashboard location</span>
             <select
               value={activeLocationId ?? ""}
+              disabled={billingEntitlements.accessType === "free"}
               onChange={(event) => {
                 const next = event.target.value || null;
                 void savePreferences({ activeLocationId: next }).catch((caught) => showNotice(caught instanceof Error ? caught.message : "Location preference could not be saved."));
@@ -1074,6 +1097,7 @@ export default function VanteloqApp({
         <div className="subscription-summary" aria-label="Current subscription">
           <span>{billingEntitlements.accessType === "internal" ? "Internal access" : billingEntitlements.accessType === "complimentary" ? "Complimentary access" : billingEntitlements.plan === "bookloq" ? "BookLoQ standalone" : `${billingEntitlements.plan ? humanizeIdentifier(billingEntitlements.plan) : "Paid"} plan`}</span>
           {billingEntitlements.addons.includes("bookloq") && <small>{billingEntitlements.plan === "bookloq" ? "Finance workspace active" : "BookLoQ active"}</small>}
+          {billingEntitlements.accessType === "free" && <button type="button" className="free-plan-upgrade" onClick={() => { window.location.hash = "billing"; navigate("Settings"); }}>Upgrade plan</button>}
         </div>
         <nav aria-label="Primary navigation">
           {nav
@@ -1166,7 +1190,7 @@ export default function VanteloqApp({
           onClick={() => setMobileNavOpen(false)}
         />
       )}
-      <section className="main-panel">
+      <section className="main-panel" tabIndex={-1} aria-label={`${workspaceViewLabel(view)} workspace`}>
         <header className="topbar">
           <button
             className="mobile-menu"
@@ -1197,15 +1221,16 @@ export default function VanteloqApp({
             </span>
             <button
               className="icon-button notification"
-              aria-label="Open alerts"
+              aria-label={data?.ownerBriefing?.criticalCount ? `Open alerts, ${data.ownerBriefing.criticalCount} critical` : "Open alerts"}
               onClick={() => setNotificationsOpen((value) => !value)}
             >
               <WorkspaceIcon name="Alerts"/><span aria-hidden="true">Alerts</span>
+              {!!data?.ownerBriefing?.criticalCount && <span className="owner-alert-count" aria-hidden="true">{data.ownerBriefing.criticalCount}</span>}
             </button>
-            <button
+            {subscriptionFeatures.includes("operations.basic") && appPermissions.includes("operations.manage") && <button
               className="primary"
               onClick={() =>
-                setTaskSeed({
+                createTask({
                   title: "",
                   detail: "",
                   priority: "medium",
@@ -1214,7 +1239,7 @@ export default function VanteloqApp({
               }
             >
               + Quick action
-            </button>
+            </button>}
           </div>
         </header>
         {refreshError && <div className="form-error" role="alert">
@@ -1241,7 +1266,7 @@ export default function VanteloqApp({
             navigate={navigate}
             refresh={refreshWorkspace}
             showNotice={showNotice}
-            createTask={(seed) => setTaskSeed(seed)}
+            createTask={createTask}
             organizationName={workspaceName}
             accountName={accountName}
             onBrandChange={(name, version) => {
@@ -1274,7 +1299,7 @@ export default function VanteloqApp({
           /></Suspense>
         )}
       </section>
-      {taskSeed && (
+      {taskSeed && subscriptionFeatures.includes("operations.basic") && (
         <TaskComposer
           seed={taskSeed}
           close={() => setTaskSeed(null)}
@@ -1289,10 +1314,7 @@ export default function VanteloqApp({
         <AlertDrawer
           data={data}
           close={() => setNotificationsOpen(false)}
-          open={(seed) => {
-            setNotificationsOpen(false);
-            setTaskSeed(seed);
-          }}
+          navigate={next => { setNotificationsOpen(false); navigate(next); }}
         />
       )}
       {notice && (
@@ -1420,9 +1442,12 @@ function Workspace({
   selectLocation: (locationId: string | null) => void;
   navigationSettings: React.ReactNode;
 }) {
+  const workspacePlan = useBillingEntitlements();
   const [reportSeed, setReportSeed] = useState<{ from: string; to: string; locationId: string | null } | null>(null);
   const [executiveDrill,setExecutiveDrill]=useState<{from:string;to:string}|undefined>();
   const [intelligenceTab, setIntelligenceTab] = useState<"opportunities" | "retail">("opportunities");
+  const [reviewSelection, setReviewSelection] = useState<{ id: string; followup: boolean } | undefined>();
+  const openReview = (id?: string, followup = false) => { setReviewSelection(id ? { id, followup } : undefined); setIntelligenceTab("opportunities"); navigate("Intelligence"); };
   const [retailAdvisorSeed, setRetailAdvisorSeed] = useState<RetailAdvisorSeed | null>(null);
   const askRetailAdvisor = (seed: RetailAdvisorSeed) => { setRetailAdvisorSeed(seed); navigate("Advisor"); };
   useEffect(() => { if (view === "Advisor" && retailAdvisorSeed) queueMicrotask(() => setRetailAdvisorSeed(null)); }, [view, retailAdvisorSeed]);
@@ -1430,6 +1455,9 @@ function Workspace({
   if (view === "Dashboard")
     return (
       <Overview
+        onAsk={subscriptionFeatures.includes("ai.basic") && permissions.includes("insights.view") ? askRetailAdvisor : undefined}
+        onReview={subscriptionFeatures.includes("analytics.sales.advanced") && permissions.includes("insights.view") ? openReview : undefined}
+        canCreate={subscriptionFeatures.includes("operations.basic") && permissions.includes("insights.create_task")}
         canForecast={permissions.includes("sales.view") && subscriptionFeatures.includes("forecasting.revenue")}
         onDrill={(view,period)=>{setExecutiveDrill(period);navigate(view);}}
         activeLocationId={activeLocationId}
@@ -1447,6 +1475,7 @@ function Workspace({
     return (
       <><nav className="intelligence-switch" aria-label="Intelligence views"><button type="button" aria-pressed={intelligenceTab === "opportunities"} onClick={() => setIntelligenceTab("opportunities")}>Opportunities</button><button type="button" aria-pressed={intelligenceTab === "retail"} onClick={() => setIntelligenceTab("retail")}>Retail analysis</button></nav>
         {intelligenceTab === "retail" ? <CommerceIntelligenceWorkspace key={activeLocationId ?? "all"} mode="Sales" currency={currency} timeZone={data.today.timeZone} activeLocationId={activeLocationId} navigate={navigate} createTask={createTask} onAsk={askRetailAdvisor}/> : <Intelligence
+          initialSelection={reviewSelection}
           data={data} navigate={navigate} createTask={createTask} activeLocationId={activeLocationId} onAsk={askRetailAdvisor}
           key={activeLocationId ?? "all"}
           onEvidence={savedPeriod => { const period = data.periodComparisons?.thirtyDays; setReportSeed(savedPeriod ? { ...savedPeriod, locationId: activeLocationId } : period ? { from: period.periodStart, to: period.periodEnd, locationId: activeLocationId } : null); navigate("Reports"); }}
@@ -1456,6 +1485,7 @@ function Workspace({
   if (view === "Action Centre")
     return (
       <TaskCentre
+        onReviewOutcome={id => openReview(id, true)}
         showNotice={showNotice}
         navigate={navigate}
         openComposer={() =>
@@ -1484,6 +1514,10 @@ function Workspace({
   if (view === "Business Brief")
     return (
       <BusinessBrief
+        canCreate={subscriptionFeatures.includes("operations.basic") && permissions.includes("insights.create_task")}
+        activeLocationId={activeLocationId}
+        onAsk={subscriptionFeatures.includes("ai.basic") && permissions.includes("insights.view") ? askRetailAdvisor : undefined}
+        onReview={subscriptionFeatures.includes("analytics.sales.advanced") && permissions.includes("insights.view") ? openReview : undefined}
         data={data}
         currency={currency}
         navigate={navigate}
@@ -1491,7 +1525,7 @@ function Workspace({
       />
     );
   if (view === "Advisor")
-    return <Advisor savedConsent={advisorConsent} availability={advisorAvailability} key={`${advisorConsent.scope}:${activeLocationId ?? "organization"}`} data={data} navigate={navigate} createTask={createTask} activeLocationId={activeLocationId} retailSeed={retailAdvisorSeed?.locationId === activeLocationId ? retailAdvisorSeed : null} />;
+    return <Advisor canAttach={workspacePlan.accessType !== "free"} savedConsent={advisorConsent} availability={advisorAvailability} key={`${advisorConsent.scope}:${activeLocationId ?? "organization"}`} data={data} navigate={navigate} createTask={createTask} activeLocationId={activeLocationId} retailSeed={retailAdvisorSeed?.locationId === activeLocationId ? retailAdvisorSeed : null} />;
   if (view === "Reports")
     return (
       <ReportsWorkspace
@@ -1518,6 +1552,8 @@ function Workspace({
         activeLocationId={activeLocationId}
       />
     );
+  if (view === "Locations" && workspacePlan.accessType === "free")
+    return <section className="content"><header className="workspace-section-heading"><p>YOUR LOCATION</p><h2>One location. One overview.</h2><p>Your Free plan combines daily records in the main dashboard. Upgrade in Billing & plans to compare and manage multiple locations.</p></header><button className="primary" onClick={() => navigate("Dashboard")}>Open your dashboard</button><button className="secondary" onClick={() => { window.location.hash = "billing"; navigate("Settings"); }}>View plans</button></section>;
   if (view === "Locations")
     return <LocationsWorkspace currency={currency} activeLocationId={activeLocationId} selectLocation={selectLocation} navigate={navigate} />;
   if (view === "Documents")
@@ -1713,23 +1749,36 @@ function LiveSalesPanel({ data, currency, paymentRange, setPaymentRange, compact
   );
 }
 
-export function Overview({ canForecast=false, onDrill, activeLocationId, accountName = "", data, currency, industry, navigate, createTask, paymentRange, setPaymentRange }: { canForecast?:boolean; onDrill?: (view:"Sales"|"BookLoQ"|"Integrations"|"Intelligence",period?:{from:string;to:string})=>void; activeLocationId?: string | null; accountName?: string; data: CommandCentre; currency: string; industry?: string | null; navigate: (view: View) => void; createTask: (seed: TaskSeed) => void; paymentRange: PaymentRange; setPaymentRange: (range: PaymentRange) => void }) {
+type BriefActions = { onAsk?: (seed: RetailAdvisorSeed) => void; onReview?: (id?: string, followup?: boolean) => void };
+function briefingDestination(item: OwnerBriefingPriority): View {
+  return NAVIGATION_VIEW_IDS.some(view => view === item.destination) ? item.destination as View : "Dashboard";
+}
+function DailyBrief({ data, navigate, createTask, canCreate = false, activeLocationId, onAsk, onReview, expanded = false }: BriefActions & { data: CommandCentre; navigate: (view: View) => void; createTask: (seed: TaskSeed) => void; canCreate?: boolean; activeLocationId?: string | null; expanded?: boolean }) {
+  const brief = data.ownerBriefing;
+  if (!brief) return null;
+  return <OwnerBriefingPanel briefing={brief} scopeLabel={brief.scopeLabel} sourcePeriod={brief.reportingPeriod} hoursBasis={brief.hoursBasis} expanded={expanded}
+    onEvidence={item => { if (onReview && data.operatingSystem?.decisions.some(decision => decision.id === item.id)) onReview(item.id); else navigate(briefingDestination(item)); }}
+    onAction={canCreate ? item => {
+      if (onReview && data.operatingSystem?.decisions.some(decision => decision.id === item.id)) { onReview(item.id); return; }
+      createTask({ title: item.title, detail: `Scope: ${brief.scopeLabel}. Prepared: ${brief.generatedAt}.\nFinding: ${item.detail}\nNext step: ${item.nextStep}\nEvidence: ${item.evidence.map(record => `${record.label}: ${record.value} (${record.source}${record.asOf ? `; ${record.asOf}` : ""})`).join("; ")}`.slice(0, 2000), priority: item.severity === "critical" ? "high" : item.severity, sourceType: "alert", sourceRef: `briefing:${item.id}`, expectedImpact: "Review the evidence and record what happened. No financial recovery is assumed." });
+    } : undefined}
+    onAsk={onAsk && brief.reportingPeriod ? item => onAsk({ ...brief.reportingPeriod!, locationId: activeLocationId ?? null, question: `Help me act on this daily briefing item: ${item.title}. Scope: ${brief.scopeLabel}. Evidence window: ${brief.reportingPeriod!.from} to ${brief.reportingPeriod!.to}. Recorded finding: ${item.detail}. Suggested next step: ${item.nextStep}. Explain what is supported, what needs checking, and the next practical action. Do not infer causes or treat suggested actions as approved transactions.` }) : undefined}
+    onReview={onReview ? () => onReview() : undefined} onSettings={() => navigate("Settings")}/>
+}
+
+export function Overview({ canCreate=false, canForecast=false, onDrill, onAsk, onReview, activeLocationId, accountName = "", data, currency, industry, navigate, createTask, paymentRange, setPaymentRange }: BriefActions & { canCreate?:boolean; canForecast?:boolean; onDrill?: (view:"Sales"|"BookLoQ"|"Integrations"|"Intelligence",period?:{from:string;to:string})=>void; activeLocationId?: string | null; accountName?: string; data: CommandCentre; currency: string; industry?: string | null; navigate: (view: View) => void; createTask: (seed: TaskSeed) => void; paymentRange: PaymentRange; setPaymentRange: (range: PaymentRange) => void }) {
 
   const sourceName = data.liveSource.accountName || (data.liveSource.provider ? providerLabel(data.liveSource.provider) : "the connected source");
   return (
     <div className="content command-page">
       
       <DashboardGreeting syncing={Boolean(data.source.syncing)} accountName={accountName} sourceName={sourceName} latestBusinessDate={data.source.latestBusinessDate}
-        lastSuccessfulSyncAt={data.liveSource.lastSuccessfulSyncAt} needsAttention={Boolean(data.liveSource.lastErrorCode)} onConnections={() => navigate("Integrations")}/>
+        lastSuccessfulSyncAt={data.liveSource.lastSuccessfulSyncAt} needsAttention={Boolean(data.liveSource.lastErrorCode)||data.source.freshness!=="current"} onConnections={() => navigate("Integrations")}
+        overview={{scope:data.ownerBriefing?.scopeLabel??sourceName,period:"Latest verified source periods, independent of report filters",metrics:data.ownerBriefing?.pulseMetrics??[],priorities:data.ownerBriefing?.priorities??[],criticalCount:data.ownerBriefing?.criticalCount??0,onFinding:item=>{if(onReview&&data.operatingSystem?.decisions.some(decision=>decision.id===item.id))onReview(item.id);else navigate(briefingDestination(item));}}}/>
+      <DailyBrief data={data} navigate={navigate} createTask={createTask} canCreate={canCreate} activeLocationId={activeLocationId} onAsk={onAsk} onReview={onReview}/>
       {canForecast && <Suspense fallback={null}><ForecastPin currency={currency} locationId={activeLocationId??null} onOpen={()=>navigate("Forecasting")}/></Suspense>}
       <ExecutiveOverview currency={currency} industry={industry} activeLocationId={activeLocationId} navigate={onDrill??navigate} refreshKey={`${data.liveSource.lastSuccessfulSyncAt??""}:${Boolean(data.source.syncing)}`}/>
       {!data.source.syncing&&<details className="dashboard-current-day-details"><summary>Today’s Sales Details<span>Payment mix, transactions and hourly activity</span></summary><LiveSalesPanel data={data} currency={currency} paymentRange={paymentRange} setPaymentRange={setPaymentRange} compact/></details>}
-      {!data.source.syncing&&data.insights[0] && (
-        <section className="owner-priority-strip">
-          <div><p>TODAY&apos;S PRIORITY</p><h3>{data.insights[0].title}</h3><span>{data.insights[0].recommendedAction}</span></div>
-          <button onClick={() => createTask({ ...data.insights[0].suggestedTask, sourceType: "insight", sourceRef: data.insights[0].id })}>Create an action →</button>
-        </section>
-      )}
     </div>
   );
 }
@@ -1899,14 +1948,16 @@ function EmptyCommandCentre({ navigate }: { navigate: (view: View) => void }) {
   );
 }
 
-function Intelligence({ data, navigate, createTask, activeLocationId, onAsk, onEvidence, canCreate, canAsk }: {
+function Intelligence({ data, navigate, createTask, activeLocationId, onAsk, onEvidence, canCreate, canAsk, initialSelection }: {
   data: CommandCentre; navigate: (view: View) => void; createTask: (seed: TaskSeed) => void;
   activeLocationId: string | null; onAsk: (seed: RetailAdvisorSeed) => void; onEvidence: (period?: { from: string; to: string }) => void; canCreate: boolean; canAsk: boolean;
+  initialSelection?: { id: string; followup: boolean };
 }) {
   const comparison = data.periodComparisons?.thirtyDays;
   const period = comparison ? { from: comparison.periodStart, to: comparison.periodEnd } : null;
   const lifecycle = useOpportunityReviews(activeLocationId, period);
   return <div className="content intelligence-page"><DecisionWorkspace
+    initialSelection={initialSelection}
     decisions={data.operatingSystem.decisions} period={period} freshness={data.source.freshness} verifiedDays={data.source.verifiedDays}
     reviews={lifecycle.reviews} canReview={lifecycle.canReview} reviewLoading={lifecycle.loading} reviewBusy={lifecycle.busy} reviewError={lifecycle.error}
     onRefresh={() => { void lifecycle.refresh(); }} onCapture={decision => { void lifecycle.capture(decision).catch(() => {}); }} onReview={lifecycle.update}
@@ -2007,12 +2058,15 @@ function TaskCentre({
   showNotice,
   openComposer,
   navigate,
+  onReviewOutcome,
 }: {
+  onReviewOutcome: (id: string) => void;
   navigate: (view: View) => void;
   showNotice: (message: string) => void;
   openComposer: () => void;
 }) {
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [completedReview, setCompletedReview] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("active");
   const [updating, setUpdating] = useState<number | null>(null);
@@ -2047,6 +2101,7 @@ function TaskCentre({
       const body = await response.json();
       if (!response.ok) throw new Error(body.error?.message ?? "The action could not be updated. Please retry.");
       setTasks(current => current.map(item => item.id === task.id ? body.task : item));
+      if (status === "done" && task.sourceRef?.startsWith("opportunity:")) setCompletedReview(task.sourceRef.slice("opportunity:".length));
       showNotice(status === "done" ? "Action completed" : "Action status updated");
     } catch { setUpdateError("The update was not confirmed. Refresh actions to check their status, then retry if needed."); }
     finally { setUpdating(null); }
@@ -2057,6 +2112,7 @@ function TaskCentre({
   const active = tasks.filter((task) => task.status !== "done");
   return (
     <div className="content tasks-page">
+      {completedReview && <div className="owner-outcome-prompt" role="status"><div><strong>Action complete. What changed?</strong><p>Record the result against its saved evidence. Completing a task does not prove a financial improvement.</p></div><button type="button" onClick={() => onReviewOutcome(completedReview)}>Record outcome</button><button type="button" aria-label="Dismiss outcome reminder" onClick={() => setCompletedReview(null)}>×</button></div>}
       <section className="page-intro">
         <div>
           <p>EXECUTION LAYER</p>
@@ -2144,7 +2200,7 @@ function TaskCentre({
                     {task.dueDate ? ` · Due ${task.dueDate}` : " · No due date"}
                     {task.expectedImpact ? ` · ${task.expectedImpact}` : ""}
                   </small>
-                  {(task.sourceType === "insight" || task.sourceType === "decision") && <button className="task-source-link" type="button" onClick={() => navigate("Intelligence")}>Review current opportunities →</button>}
+                  {(task.sourceType === "insight" || task.sourceType === "decision") && <button className="task-source-link" type="button" onClick={() => task.sourceRef?.startsWith("opportunity:") ? onReviewOutcome(task.sourceRef.slice("opportunity:".length)) : navigate("Intelligence")}>{task.sourceRef?.startsWith("opportunity:") ? "Evidence & outcome" : "Review current opportunities"} →</button>}
                 </div>
                 <select
                   aria-label={`Status for ${task.title}`}
@@ -2380,7 +2436,7 @@ function DataHub({
   navigate: (view: View) => void;
   subscriptionFeatures: readonly string[];
 }) {
-  const [tab, setTab] = useState<"import" | "connections">("connections");
+  const [tab, setTab] = useState<"import" | "connections">(() => subscriptionFeatures.includes("pos.reporting.core") ? "connections" : "import");
   const [providerQuery, setProviderQuery] = useState("");
   const [providerCategory, setProviderCategory] = useState("All categories");
   const [connections, setConnections] = useState<IntegrationConnection[]>([]);
@@ -4012,19 +4068,22 @@ export function BusinessBrief({
   currency,
   navigate,
   createTask,
-}: {
+  canCreate = false, activeLocationId, onAsk, onReview,
+}: BriefActions & {
+  canCreate?: boolean; activeLocationId?: string | null;
   data: CommandCentre;
   currency: string;
   navigate: (view: View) => void;
   createTask: (seed: TaskSeed) => void;
 }) {
   if (!data.ready || !data.current)
-    return <><EmptyCommandCentre navigate={navigate} /></>;
+    return <div className="content brief-page"><DailyBrief data={data} navigate={navigate} createTask={createTask} canCreate={canCreate} activeLocationId={activeLocationId} onAsk={onAsk} onReview={onReview} expanded/><EmptyCommandCentre navigate={navigate} /></div>;
   const current = data.current;
   const verified = (metricId: string) => data.metrics[metricId]?.actuality === "actual";
   const contributionAvailable = verified("contribution_after_labour");
   return (
     <div className="content brief-page">
+      <DailyBrief data={data} navigate={navigate} createTask={createTask} canCreate={canCreate} activeLocationId={activeLocationId} onAsk={onAsk} onReview={onReview} expanded/>
       <section className="brief-document">
         <div className="brief-mast">
           <div>
@@ -4059,15 +4118,15 @@ export function BusinessBrief({
             detail={contributionAvailable ? "After recorded labour costs" : "Verified sales, cost and labour records required"}
           />
         </div>
-        <h3>Prioritized actions</h3>
-        {data.insights.map((insight, index) => (
+        {!data.ownerBriefing && <h3>Suggested actions</h3>}
+        {!data.ownerBriefing && data.insights.map((insight, index) => (
           <div className="brief-action" key={insight.id}>
             <b>{index + 1}</b>
             <span>
               <strong>{insight.recommendedAction}</strong>
               <small>{insight.financialImpact}</small>
             </span>
-            <button
+            {canCreate && <button
               onClick={() =>
                 createTask({
                   ...insight.suggestedTask,
@@ -4077,7 +4136,7 @@ export function BusinessBrief({
               }
             >
               Assign
-            </button>
+            </button>}
           </div>
         ))}
       </section>
@@ -4086,6 +4145,7 @@ export function BusinessBrief({
 }
 
 function Advisor({
+  canAttach = true,
   savedConsent,
   availability,
   data,
@@ -4099,6 +4159,7 @@ function Advisor({
   createTask: (seed: TaskSeed) => void;
   activeLocationId: string | null;
   retailSeed?: RetailAdvisorSeed | null;
+  canAttach?: boolean;
   savedConsent:ReturnType<typeof useAdvisorConsent>;
   availability:ReturnType<typeof useAdvisorAvailability>;
 }) {
@@ -4243,7 +4304,7 @@ function Advisor({
   </AdvisorResponse>;
   return (
     <div className={`content advisor-page ai-text-${preferences.textSize} ai-spacing-${preferences.spacing}`}>
-      <AdvisorComposer historyPaused={attachmentContext} personalization={<AdvisorPersonalize fetcher={apiFetch} disabled={loading} preferences={preferences} onChange={setPreferences}/>} scopeControls={analysisPeriod&&purpose==="analysis"?<section><h3>Reporting Period</h3><p>{analysisPeriod.from} to {analysisPeriod.to}</p><button disabled={loading} onClick={()=>{setAnalysisPeriod(null);resetVisibleChat();}}>Use Recent Records</button></section>:undefined} attachments={attachments} onAttachments={setAttachments} attachmentAccepted={attachmentAccepted} onAttachmentConsent={setAttachmentAccepted} purpose={purpose} onPurpose={value => { if (value !== purpose) { setPurpose(value); resetVisibleChat(); } }} memoryEnabled={memoryEnabled} onMemory={changeMemory} privacyControls={<AdvisorPrivacy fetcher={apiFetch} disabled={loading} onResume={resumeChat} onDeleted={id => { if (id === null || id === conversationId) resetVisibleChat(); }}/>} provider={provider} providers={providers} providersLoading={providersLoading} question={question} onQuestion={setQuestion} dataUseAccepted={dataUseAccepted} onConsent={accepted => { if (!accepted) resetVisibleChat(); void savedConsent.refresh(accepted, purpose); }} consentLoading={savedConsent.busy} consentError={savedConsent.error} onConsentRetry={() => void savedConsent.refresh()} onStop={stopResponse} loading={loading} thinking={thinking} onSubmit={ask} hasConversation={Boolean(submittedQuestion || answer || history.length)} onNewChat={() => { setAnalysisPeriod(null); resetVisibleChat(); }}>
+      <AdvisorComposer historyPaused={attachmentContext} personalization={<AdvisorPersonalize fetcher={apiFetch} disabled={loading} preferences={preferences} onChange={setPreferences}/>} scopeControls={analysisPeriod&&purpose==="analysis"?<section><h3>Reporting Period</h3><p>{analysisPeriod.from} to {analysisPeriod.to}</p><button disabled={loading} onClick={()=>{setAnalysisPeriod(null);resetVisibleChat();}}>Use Recent Records</button></section>:undefined} attachments={attachments} onAttachments={canAttach ? setAttachments : undefined} attachmentAccepted={attachmentAccepted} onAttachmentConsent={setAttachmentAccepted} purpose={purpose} onPurpose={value => { if (value !== purpose) { setPurpose(value); resetVisibleChat(); } }} memoryEnabled={memoryEnabled} onMemory={changeMemory} privacyControls={<AdvisorPrivacy fetcher={apiFetch} disabled={loading} onResume={resumeChat} onDeleted={id => { if (id === null || id === conversationId) resetVisibleChat(); }}/>} provider={provider} providers={providers} providersLoading={providersLoading} question={question} onQuestion={setQuestion} dataUseAccepted={dataUseAccepted} onConsent={accepted => { if (!accepted) resetVisibleChat(); void savedConsent.refresh(accepted, purpose); }} consentLoading={savedConsent.busy} consentError={savedConsent.error} onConsentRetry={() => void savedConsent.refresh()} onStop={stopResponse} loading={loading} thinking={thinking} onSubmit={ask} hasConversation={Boolean(submittedQuestion || answer || history.length)} onNewChat={() => { setAnalysisPeriod(null); resetVisibleChat(); }}>
         {historyCursor && conversationId && <button type="button" className="ai-load-earlier" disabled={loading} onClick={() => void resumeChat(conversationId, historyCursor).catch(error => setResponseError(error instanceof Error ? error.message : "Earlier messages could not load."))}>Load earlier messages</button>}
         {history.map((item, index) => <Fragment key={index}><div className="ai-user-message"><small>You</small>{item.question}</div>{reply(item.answer, item.question)}</Fragment>)}
         {submittedQuestion && <div className="ai-user-message"><small>You</small>{submittedQuestion}{submittedFiles.length > 0 && <small className="ai-sent-files">Attached: {submittedFiles.join(", ")}</small>}</div>}
@@ -4606,19 +4667,18 @@ function ModuleWorkspace({
 function AlertDrawer({
   data,
   close,
-  open,
+  navigate,
 }: {
   data: CommandCentre | null;
   close: () => void;
-  open: (seed: TaskSeed) => void;
+  navigate: (view: View) => void;
 }) {
-  const actionable =
-    data?.insights.filter((item) => item.severity !== "informational") ?? [];
+  const actionable = data?.ownerBriefing?.priorities ?? [];
   return (
     <aside className="alert-drawer">
       <div>
-        <span>OWNER STRESS LIST</span>
-        <button onClick={close}>×</button>
+        <span>YOUR ATTENTION QUEUE</span>
+        <button aria-label="Close alerts" onClick={close}>×</button>
       </div>
       <h2>Needs attention</h2>
       {data?.source.syncing ? (
@@ -4633,17 +4693,11 @@ function AlertDrawer({
           <button
             className={`drawer-alert ${item.severity}`}
             key={item.id}
-            onClick={() =>
-              open({
-                ...item.suggestedTask,
-                sourceType: "alert",
-                sourceRef: item.id,
-              })
-            }
+            onClick={() => navigate(briefingDestination(item))}
           >
             <span>{item.severity}</span>
             <b>{item.title}</b>
-            <small>{item.financialImpact}</small>
+            <small>{item.nextStep}</small>
           </button>
         ))
       )}

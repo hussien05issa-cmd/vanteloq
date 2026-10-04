@@ -11,6 +11,19 @@ import {
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 
+export const freePlanEnrollments = sqliteTable("free_plan_enrollments", {
+  organizationId: text("organization_id").primaryKey().references(() => workspaces.id, { onDelete: "cascade" }),
+  policyVersion: text("policy_version").notNull(),
+  createdAt: integer("created_at").notNull(),
+});
+export const freePlanUsage = sqliteTable("free_plan_usage", {
+  organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  month: text("month").notNull(),
+  metric: text("metric", { enum: ["ai_replies", "import_rows"] }).notNull(),
+  used: integer("used").notNull().default(0),
+}, table => [primaryKey({columns: [table.organizationId, table.month, table.metric]}),
+  check("free_plan_usage_nonnegative", sql`${table.used} >= 0`)]);
+
 export const workspaceSessions = sqliteTable("workspace_sessions", {
   id: text("id").primaryKey(),
   userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),

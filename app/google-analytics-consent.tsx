@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createCookieNoticeNavigation, shouldShowConsentPanel } from "./analytics-consent-navigation";
-import ProductBrandLogo from "./product-brand-logo";
+import { publicMarketingEvent } from "../shared/public-marketing-events";
 import { useModalFocus } from "./use-modal-focus";
 import { getPublicRoot, getServerPublicRoot, subscribePublicRoot } from "./analytics-public-surface";
 
@@ -28,8 +28,7 @@ const CONSENT_STORAGE_KEY = "vanteloq:cookie-consent:v1";
 const SCRIPT_ID = "vanteloq-google-analytics";
 const READY_EVENT = "vanteloq:analytics-ready";
 let analyticsAllowed = false;
-const PUBLIC_MEASUREMENT_PATHS = new Set(["/", "/demo", "/help", "/pricing", "/contact", "/custom-plan", "/cookies", "/data-processing", "/legal", "/privacy", "/subprocessors", "/terms"]);
-const PUBLIC_EVENTS = new Set(["demo_view", "demo_engaged", "signup_start", "plan_selected", "pricing_view", "compatibility_checked", "inquiry_sent"]);
+const PUBLIC_MEASUREMENT_PATHS = new Set(["/", "/demo", "/help", "/pricing", "/contact", "/custom-plan", "/cookies", "/data-processing", "/legal", "/privacy", "/subprocessors", "/terms", "/solutions/retail"]);
 
 function runGtag(...args: GtagCommand) {
   window.dataLayer = window.dataLayer ?? [];
@@ -203,11 +202,12 @@ export function GoogleAnalyticsConsent() {
       if (!analyticsAllowed || !isPublicMeasurementPage(pathname) || !window.__vanteloqAnalyticsReady || !(event.target instanceof Element)) return;
       const control = event.target.closest<HTMLElement>("[data-public-event]");
       if (!control?.closest(".public-site")) return;
-      const name = control.dataset.publicEvent;
-      if (!name || !PUBLIC_EVENTS.has(name)) return;
       if (event.type === "click" && control.matches("select,input")) return;
+      if (event.type === "change" && !control.matches("select,input")) return;
+      const interaction = publicMarketingEvent(control.dataset);
+      if (!interaction) return;
       // Fixed event vocabulary only. No input values, account data or URL queries.
-      runGtag("event", name, { page_location: `${window.location.origin}${pathname}`, page_path: pathname });
+      runGtag("event", interaction.name, { ...interaction.properties, page_location: `${window.location.origin}${pathname}`, page_path: pathname });
     };
     const confirmed = (event: Event) => {
       if (!analyticsAllowed || !isPublicMeasurementPage(pathname) || !window.__vanteloqAnalyticsReady || !(event instanceof CustomEvent) || event.detail !== "inquiry_sent") return;
@@ -226,13 +226,11 @@ export function GoogleAnalyticsConsent() {
   return (
     <>
       {panelOpen && (
-        <section ref={panelRef} className="analytics-consent" role="dialog" aria-modal="true" aria-labelledby="analytics-consent-title" aria-describedby="analytics-consent-copy" tabIndex={-1}>
-          <ProductBrandLogo product="vanteloq" priority className="analytics-consent-brand" />
+        <section ref={panelRef} className="analytics-consent analytics-consent-compact" role="dialog" aria-modal="true" aria-labelledby="analytics-consent-title" aria-describedby="analytics-consent-copy" tabIndex={-1}>
           <div className="analytics-consent-copy">
-            <span>PRIVACY CONTROLS</span>
-            <h2 id="analytics-consent-title">Your privacy choices</h2>
-            <p id="analytics-consent-copy">Optional Google Analytics helps us improve public pages. Account details, form entries, workspace records and URL query text are excluded. Advertising features stay off. Essential only gives you the same access.</p>
-            <Link {...cookieNoticeNavigation}>Read the Cookie Notice</Link>
+            <h2 id="analytics-consent-title">Privacy choices</h2>
+            <p id="analytics-consent-copy">Optional Google Analytics measures public-page use. Account data, form entries and workspace records stay excluded. No advertising tracking. Essential only gives you the same access.</p>
+            <Link {...cookieNoticeNavigation}>Cookie Notice</Link>
           </div>
           <div className="analytics-consent-actions">
             <button type="button" onClick={() => applyChoice("essential")}>Essential only</button>

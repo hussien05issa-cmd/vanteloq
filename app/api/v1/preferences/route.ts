@@ -45,6 +45,7 @@ async function preferencePayload(context: Awaited<ReturnType<typeof requireAcces
     ? preferences.preferredLocationId
     : null;
   return {
+    preferenceScope: { userId: context.userId, workspaceId: context.organizationId },
     hiddenNavigation: normalizeHiddenNavigation(
       jsonStrings(preferences?.hiddenNavigationJson),
       NAVIGATION_VIEW_IDS,

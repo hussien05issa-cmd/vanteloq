@@ -263,3 +263,24 @@
 }
 
 .legal-acceptance-gate{min-height:100vh;display:grid;place-items:center;padding:24px;background:radial-gradient(circle at top right,#e8f2ff 0,transparent 38%),#f4f7fb;color:#102943}.legal-acceptance-gate>section{width:min(720px,100%);box-sizing:border-box;border:1px solid #d9e3ee;border-radius:18px;background:#fff;padding:30px;box-shadow:0 24px 70px rgba(15,42,70,.14)}.legal-acceptance-gate>section>header{display:flex;align-items:center;gap:12px;padding-bottom:20px;border-bottom:1px solid #e4eaf0}.legal-acceptance-gate>section>header img{width:38px;height:38px}.legal-acceptance-gate>section>header span{display:flex;flex-direction:column}.legal-acceptance-gate>section>header small,.legal-acceptance-gate>section>p{color:#1767b6;font-size:11px;font-weight:800;letter-spacing:1px}.legal-acceptance-gate>section>p{margin:25px 0 7px}.legal-acceptance-gate h1{margin:0 0 10px;font-size:31px}.legal-acceptance-gate h1+span{display:block;color:#607388;font-size:14px;line-height:1.65}.legal-acceptance-links{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin:22px 0}.legal-acceptance-links a{border:1px solid #d9e4ef;border-radius:9px;padding:11px 13px;color:#185e9f;font-size:13px;font-weight:700;text-decoration:none}.legal-acceptance-gate>section>label{display:flex;align-items:flex-start;gap:10px;border:1px solid #cbddec;border-radius:10px;background:#f5f9fd;padding:15px;color:#38546e;font-size:13px;line-height:1.5}.legal-acceptance-gate>section>label input{margin-top:2px}.legal-acceptance-gate>section>button{width:100%;margin-top:16px;border:0;border-radius:9px;background:#1767b6;color:#fff;padding:13px;font-size:14px;font-weight:800}.legal-acceptance-gate>section>button:disabled{opacity:.5}.legal-acceptance-gate>section>footer{display:flex;justify-content:flex-end;margin-top:16px}.legal-acceptance-gate>section>footer button{border:0;background:transparent;color:#5b7187;font-weight:700}.legal-acceptance-gate .billing-onboarding-message{margin-top:13px}@media(max-width:600px){.legal-acceptance-gate{padding:12px}.legal-acceptance-gate>section{padding:21px}.legal-acceptance-links{grid-template-columns:1fr}.legal-acceptance-gate h1{font-size:25px}}
+.free-plan-card { display:flex; justify-content:space-between; align-items:center; gap:28px; padding:28px; margin:20px 0; background:var(--surface, #f6f9fc); color:var(--text, #172a43); border:1px solid var(--border, #dce5ef); border-radius:18px; }
+.free-plan-card h2, .free-plan-card h3 { margin:8px 0; font-size:26px; }
+.free-plan-card p, .free-plan-card li { font-size:16px; line-height:1.6; }
+.free-plan-card ul { padding-left:20px; }
+.free-plan-card > div:last-child, .public-free-plan aside { display:grid; gap:16px; min-width:190px; }
+.free-plan-card strong { font-size:36px; white-space:nowrap; }
+.free-plan-card strong small { font-size:16px; font-weight:400; }
+.free-plan-card button, .public-free-plan a, .free-settings-shortcut button { padding:12px 18px; background:#173d73; color:#fff; border:0; border-radius:10px; font-size:16px; font-weight:600; text-decoration:none; text-align:center; cursor:pointer; }
+.free-plan-card button:disabled { opacity:.5; cursor:default; }
+.free-plan-card :is(button,a):focus-visible, .free-plan-upgrade:focus-visible { outline:3px solid #6ea8fe; outline-offset:3px; }
+.free-plan-card small { font-size:14px; line-height:1.5; }
+.free-usage-meters { width:min(100%,320px); }
+.free-usage-meters label { display:grid; gap:8px; font-size:16px; }
+.free-usage-meters label span { display:flex; justify-content:space-between; gap:16px; }
+.free-usage-meters label b { font-size:16px; }
+.free-usage-meters progress { width:100%; height:10px; accent-color:#397bd4; }
+.free-settings-shortcut { display:flex; align-items:center; justify-content:space-between; gap:20px; padding:20px 24px; margin:16px 0; border:1px solid var(--border, #dce5ef); border-radius:16px; }
+.free-settings-shortcut div { display:grid; gap:6px; }
+.free-settings-shortcut :is(b,span) { font-size:16px; }
+.free-plan-upgrade { display:block; width:100%; margin-top:8px; padding:10px 14px; border:1px solid #698cb7; color:#fff; background:#173d73; border-radius:10px; font-size:14px; cursor:pointer; }
+@media (max-width:640px) { .free-plan-card, .free-settings-shortcut { flex-direction:column; align-items:stretch; gap:16px; padding:20px; } .free-usage-meters { width:100%; } .free-plan-card strong { font-size:30px; } }

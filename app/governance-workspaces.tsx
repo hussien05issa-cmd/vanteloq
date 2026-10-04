@@ -2,6 +2,8 @@
 import MarketingPreferences from "./marketing-consent";
 import WorkspaceSkeleton from "./workspace-skeleton";
 import CustomPlanCallout from "./custom-plan-callout";
+import { useBillingEntitlements } from "./billing-entitlements-context";
+import { readPlanSelection, clearPlanSelection } from "../shared/plan-selection";
 
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -1032,7 +1034,13 @@ function AccessSafeguards({ security }: { security: Governance["security"] }) {
 
 export function SettingsWorkspace({ showNotice, onBrandChange, navigationSettings }: Props) {
   const { data, setData, loading, error, load } = useGovernance();
-  const [section, setSection] = useState("profile");
+  const access = useBillingEntitlements();
+  const [section, setSection] = useState(() => typeof window !== "undefined" && window.location.hash === "#billing" ? "billing" : "profile");
+  useEffect(() => {
+    const openBilling = () => { if (window.location.hash === "#billing") setSection("billing"); };
+    window.addEventListener("hashchange", openBilling);
+    return () => window.removeEventListener("hashchange", openBilling);
+  }, []);
   const [saving, setSaving] = useState(false);
   if (loading || !data)
     return <Loading error={error} retry={() => void load()} />;
@@ -1047,7 +1055,7 @@ export function SettingsWorkspace({ showNotice, onBrandChange, navigationSetting
     ["locations", "Locations"],
     ["integrations", "Integrations"],
     ["privacy", "Data & privacy"],
-    ["billing", "Billing & subscription"],
+    ["billing", "Billing & plans"],
   ];
   return (
     <div className="content governance-page settings-governance">
@@ -1061,6 +1069,7 @@ export function SettingsWorkspace({ showNotice, onBrandChange, navigationSetting
           </span>
         </div>
       </section>
+      {access.accessType === "free" && section !== "billing" && <div className="free-settings-shortcut"><div><b>You're on Free</b><span>1 owner · 1 location · Upgrade whenever you need more.</span></div><button type="button" className="primary" onClick={() => { window.location.hash = "billing"; setSection("billing"); }}>View plans & upgrade</button></div>}
       <div className="settings-layout">
         <aside className="settings-nav">
           <label>
@@ -1071,7 +1080,15 @@ export function SettingsWorkspace({ showNotice, onBrandChange, navigationSetting
             <button
               className={section === id ? "active" : ""}
               key={id}
-              onClick={() => setSection(id)}
+              onClick={() => {
+                setSection(id);
+                if (id === "billing") window.location.hash = "billing";
+                else if (window.location.hash === "#billing") {
+                  const url = new URL(window.location.href);
+                  url.hash = "";
+                  window.history.replaceState(window.history.state, "", url);
+                }
+              }}
             >
               {label}
               <span>›</span>
@@ -1878,8 +1895,9 @@ export function AccountDeletionSettings() {
 
 type BillingData = {
   configured: boolean;
-  accessType: "internal" | "complimentary" | "subscription" | "none";
-  current: { plan: "starter" | "growth" | "pro" | "bookloq" | null; status: string | null; addons: string[]; billingInterval: "month" | "year" | null; currentPeriodEndsAt: string | null; trialEndsAt: string | null; cancelAtPeriodEnd: boolean; hasCustomer: boolean };
+  accessType: "internal" | "complimentary" | "subscription" | "free" | "none";
+  current: { plan: "free" | "starter" | "growth" | "pro" | "bookloq" | null; status: string | null; addons: string[]; billingInterval: "month" | "year" | null; currentPeriodEndsAt: string | null; trialEndsAt: string | null; cancelAtPeriodEnd: boolean; hasCustomer: boolean; hasSubscription: boolean };
+  freeUsage?: { resetsAt: string; aiReplies: { used: number; limit: number }; importRows: { used: number; limit: number } } | null;
   trialEligible: boolean;
   plans: Array<{ key: "starter" | "growth" | "pro" | "bookloq"; name: string; description: string; mostPopular: boolean; price: number; included: string[] }>;
   addon: { key: "bookloq"; name: string; price: number };
@@ -1897,7 +1915,17 @@ function BillingSettings() {
     void apiFetch("/api/v1/billing", { headers: { Accept: "application/json" } }).then(async (response) => {
       const body = await response.json();
       if (!response.ok) throw new Error(message(body, "Billing status could not be loaded."));
-      if (active) { setData(body); if (body.current?.plan) setPlan(body.current.plan); setBookloq(body.current?.plan === "bookloq" ? false : body.current?.addons?.includes("bookloq") === true); }
+      if (active) {
+        setData(body);
+        const requested = readPlanSelection();
+        if (body.accessType === "free" && requested && requested.plan !== "free") {
+          setPlan(requested.plan); setBookloq(requested.bookloq);
+        } else {
+          setPlan(body.current?.plan && body.current.plan !== "free" ? body.current.plan : "starter");
+          setBookloq(body.current?.plan === "bookloq" ? false : body.current?.addons?.includes("bookloq") === true);
+        }
+        clearPlanSelection();
+      }
     }).catch((reason) => { if (active) setError(reason instanceof Error ? reason.message : "Billing status could not be loaded."); });
     return () => { active = false; };
   }, []);
@@ -1907,11 +1935,13 @@ function BillingSettings() {
       const response = await apiFetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body ?? {}) });
       const result = await response.json();
       if (!response.ok) throw new Error(message(result, "Stripe could not open billing."));
-      if (typeof result.url === "string") window.location.assign(result.url);
+      const allowedOrigin = path.endsWith("/portal") ? "https://billing.stripe.com" : "https://checkout.stripe.com";
+      if (typeof result.url !== "string" || new URL(result.url).origin !== allowedOrigin) throw new Error("A secure billing page could not be opened. Try again.");
+      window.location.assign(result.url);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Stripe could not open billing."); setBusy(false); }
   };
   if (!data && !error) return <section className="settings-form"><header><p>STRIPE BILLING</p><h2>Loading verified subscription status…</h2></header></section>;
-  const managed = data?.current.hasCustomer === true;
+  const managed = data?.current.hasSubscription === true;
   const vanteloqPlans = data?.plans.filter((item) => item.key !== "bookloq") ?? [];
   const standaloneBookloq = data?.plans.find((item) => item.key === "bookloq");
   const choosePlan = (item: BillingData["plans"][number]) => {
@@ -1927,15 +1957,16 @@ function BillingSettings() {
     <p>{item.description}</p>
     <ul>{item.included.map(feature => <li key={feature}>{feature}</li>)}</ul>
   </label>;
-  return <section className="settings-form billing-settings"><header><p>STRIPE BILLING</p><h2>Billing & subscription</h2><span>Stripe hosts payment collection, invoices, renewals and cancellation. Vanteloq stores only synchronized subscription identifiers and entitlement status. It never stores card details.</span></header>
+  return <section className="settings-form billing-settings"><header><p>BILLING & PLANS</p><h2>Manage your plan</h2><span>Free requires no payment method. Choose a paid upgrade below and review its price in secure checkout.</span></header>
     {error && <p className="form-error">{error}</p>}
     {data?.accessType === "complimentary" ? <div className="billing-internal"><b>Complimentary access active</b><span>Your included plan does not require a payment method or a Stripe subscription.</span></div> : data?.accessType === "internal" ? <div className="billing-internal"><b>Internal access active</b><span>This workspace has verified internal access and does not require a Stripe subscription.</span></div> : <>
+      {data?.accessType === "free" && <article className="free-plan-card free-usage-card"><div><span className="billing-plan-badge">CURRENT PLAN</span><h3>Free</h3><p>$0 · No expiry · No card required</p><p>1 owner and 1 location. Your saved records stay available when you reach a limit.</p><p>Upgrade for live POS connections, more users and advanced tools.</p></div>{data.freeUsage && <div className="free-usage-meters">{[["AI replies", data.freeUsage.aiReplies], ["Daily sales records", data.freeUsage.importRows]].map(([label, allowance]) => { const usage = allowance as {used: number; limit: number}; return <label key={label as string}><span>{label as string}<b>{usage.used} / {usage.limit}</b></span><progress value={usage.used} max={usage.limit}/><small>{Math.max(0, usage.limit - usage.used)} remaining this month</small></label>; })}<small>Resets {new Date(data.freeUsage.resetsAt).toLocaleDateString("en-CA", {timeZone: "UTC"})} at 00:00 UTC.</small></div>}</article>}
       {data?.current.status === "trialing" && data.current.trialEndsAt && <p className="billing-monthly-note"><b>7-day free trial</b><span>{data.current.cancelAtPeriodEnd ? "Trial access ends" : "First billing date"}: {new Date(data.current.trialEndsAt).toLocaleString("en-CA")}. {data.current.cancelAtPeriodEnd ? "Cancellation is scheduled." : "The selected monthly subscription renews automatically. Cancel in Manage billing before the trial ends to avoid the first charge."}</span></p>}
-      {data?.trialEligible && <p className="billing-monthly-note"><b>7-day free trial included</b><span>Your first subscription requires a payment method. After the trial, your selected monthly total plus applicable taxes renews automatically. Review the exact first billing date in Stripe and cancel through Manage billing before the trial ends to avoid the first charge. BookLoQ selected now shares the same trial.</span></p>}
-      <p className="billing-monthly-note"><b>{managed && data?.current.billingInterval === "year" ? "Annual billing" : "Monthly billing"}</b><span>{managed ? `Your current subscription renews ${data?.current.billingInterval === "year" ? "annually" : "monthly"}.` : "New plans renew month to month."} {managed && data?.current.currentPeriodEndsAt ? `${data.current.cancelAtPeriodEnd ? "Access ends" : "Next renewal"}: ${new Date(data.current.currentPeriodEndsAt).toLocaleDateString("en-CA",{timeZone:"UTC"})}.` : "Cancel before renewal to stop the next charge."} Review any changes in Stripe before confirming.</span></p>
+      {data?.trialEligible && <p className="billing-monthly-note"><b>{data.accessType === "free" ? "Optional paid upgrade: 7-day trial" : "7-day free trial included"}</b><span>Your first paid subscription requires a payment method. After the trial, your selected monthly total plus applicable taxes renews automatically. Review the exact first billing date in Stripe and cancel through Manage billing before the trial ends to avoid the first charge. BookLoQ selected now shares the same trial.</span></p>}
+      <p className="billing-monthly-note"><b>{managed && data?.current.billingInterval === "year" ? "Annual billing" : "Paid plans bill monthly"}</b><span>{managed ? `Your current subscription renews ${data?.current.billingInterval === "year" ? "annually" : "monthly"}.` : "Paid upgrades renew month to month."} {managed && data?.current.currentPeriodEndsAt ? `${data.current.cancelAtPeriodEnd ? "Access ends" : "Next renewal"}: ${new Date(data.current.currentPeriodEndsAt).toLocaleDateString("en-CA",{timeZone:"UTC"})}.` : "Cancel a paid subscription before renewal to stop the next charge."} Review any changes in Stripe before confirming.</span></p>
       <fieldset className="billing-product-choice">
-        <legend>Vanteloq operating plans</legend>
-        <p>Retail operations, sales and inventory intelligence.</p>
+        <legend>{data?.accessType === "free" ? "Choose your upgrade" : "Vanteloq operating plans"}</legend>
+        <p>Retail operations, sales and inventory intelligence. Your workspace and records carry over.</p>
         <div className="billing-plans billing-vanteloq-plans">{vanteloqPlans.map(planOption)}</div>
       </fieldset>
       {standaloneBookloq && <fieldset className="billing-product-choice standalone-product">
@@ -1945,8 +1976,9 @@ function BillingSettings() {
       </fieldset>}
       {plan === "bookloq" ? <div className="billing-addon standalone"><span><b>BookLoQ is complete on its own</b><small>No Vanteloq plan or separate BookLoQ add-on is required.</small></span></div> : <label className="billing-addon"><input type="checkbox" checked={bookloq} onChange={(event) => setBookloq(event.target.checked)} disabled={managed}/><span><b>Add BookLoQ</b><small>${((data?.addon.price ?? 0) / 100).toLocaleString("en-CA")} CAD / month</small></span></label>}
       {managed && <p className="billing-monthly-note"><span>Use Stripe to manage payment details and cancellation. To add or remove BookLoQ, <a href="/custom-plan">request a subscription change</a>. Changes take effect after billing confirmation.</span></p>}
-      <div className="provider-settings"><article><div><b>Current access</b><p>{data?.current.plan ? `${humanizeIdentifier(data.current.plan)} · ${data.current.status}` : "No synchronized paid subscription."}</p></div><span>{data?.current.cancelAtPeriodEnd ? "Cancels at renewal" : data?.current.status ?? "Not subscribed"}</span></article></div>
-      <footer>{managed ? <button className="primary" disabled={busy || !data?.configured} onClick={() => void open("/api/v1/billing/portal")}>{busy ? "Opening…" : "Manage billing in Stripe"}</button> : <button className="primary" disabled={busy || !data?.configured} title={!data?.configured ? "Stripe products, prices and webhook secret must be configured first." : "Open secure Stripe Checkout"} onClick={() => void open("/api/v1/billing/checkout", { plan, interval: "month", includeBookloq: plan === "bookloq" ? false : bookloq })}>{busy ? "Opening…" : data?.configured ? "Continue to secure checkout" : "Stripe setup required"}</button>}</footer>
+      <div className="provider-settings"><article><div><b>Current access</b><p>{data?.current.plan ? data.accessType === "free" ? "Free · No expiry" : `${humanizeIdentifier(data.current.plan)} · ${data.current.status}` : "No synchronized paid subscription."}</p></div><span>{data?.current.cancelAtPeriodEnd ? "Cancels at renewal" : data?.accessType === "free" ? "Active" : data?.current.status ?? "Not subscribed"}</span></article></div>
+      <div className="billing-selected-total"><span><b>{data?.plans.find(item => item.key === plan)?.name}{plan !== "bookloq" && bookloq ? " + BookLoQ" : ""}</b><small>Paid subscription, before applicable tax.</small></span><strong>${((data?.plans.find(item => item.key === plan)?.price ?? 0) + (plan !== "bookloq" && bookloq ? data?.addon.price ?? 0 : 0)) / 100} CAD / month</strong></div>
+      <footer>{managed ? <button className="primary" disabled={busy || !data?.configured} onClick={() => void open("/api/v1/billing/portal")}>{busy ? "Opening…" : "Manage billing in Stripe"}</button> : <button className="primary" disabled={busy || !data?.configured} title={!data?.configured ? "Stripe products, prices and webhook secret must be configured first." : "Open secure Stripe Checkout"} onClick={() => void open("/api/v1/billing/checkout", { plan, interval: "month", includeBookloq: plan === "bookloq" ? false : bookloq })}>{busy ? "Opening…" : data?.configured ? data.accessType === "free" ? `Upgrade to ${data.plans.find(item => item.key === plan)?.name ?? "paid"}` : "Continue to secure checkout" : "Paid upgrades temporarily unavailable"}</button>}</footer>
     </>}
     <CustomPlanCallout/>
   </section>;

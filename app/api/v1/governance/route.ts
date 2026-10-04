@@ -268,7 +268,7 @@ async function responseBody(context: Awaited<ReturnType<typeof requireAccess>>, 
 
 export async function GET(request: Request) {
   return handleApi(request, async () => {
-    const context = await requireAccess(request, governanceUsers, "permissions.standard");
+    const context = await requireAccess(request, governanceUsers, "business.settings");
     const permissions = await governancePermissions(context);
     await enforceRateLimit("governance:read", context.userId, 90, 60);
     return jsonResponse({ governance: await responseBody(context, permissions) });
@@ -278,10 +278,13 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
-    const context = await requireAccess(request, governanceUsers, "permissions.standard");
+    const context = await requireAccess(request, governanceUsers, "business.settings");
     await enforceRateLimit("governance:write", context.userId, 40, 3_600);
     const input = await readJsonObject(request, 128_000);
     const action = string(input.action, "action", 60);
+    if (["create_employee", "update_employee", "reset_pin", "save_role"].includes(action)) {
+      await requireFeature(context, "permissions.standard");
+    }
     if (action === "save_role") await requireFeature(context, "permissions.advanced");
     const permission = governanceActionPermissions[action as keyof typeof governanceActionPermissions];
     if (!permission) throw new ApiError(400, "UNKNOWN_ACTION", "Select a supported governance action.");

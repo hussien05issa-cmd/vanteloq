@@ -1,0 +1,58 @@
+/* Readability on the workspace's existing light blue and white surfaces.
+   Keep state colours, disabled controls, layout and public pages unchanged. */
+.operating-shell .sidebar {
+  --sidebar-text: #17395b;
+  --sidebar-muted: #294b6d;
+  --sidebar-heading: #0d1b38;
+}
+
+.operating-shell .sidebar .nav-item:not(:disabled):not([aria-disabled="true"]) {
+  color: var(--sidebar-text);
+}
+.operating-shell .sidebar .nav-item:not(:disabled):not([aria-disabled="true"]) > .workspace-icon {
+  color: currentColor;
+}
+.operating-shell .sidebar .nav-item:not(:disabled):not([aria-disabled="true"]):is(:hover, [aria-current="page"]) {
+  color: #102e51;
+}
+.operating-shell .sidebar :is(.brand-name small, .subscription-summary span, .subscription-summary small, .nav-group > p, .profile small, .workspace-release-name),
+.operating-shell .sidebar .workspace-switcher > span:nth-child(2) small {
+  color: var(--sidebar-muted);
+}
+.operating-shell .sidebar :is(.brand-name, .profile b),
+.operating-shell .sidebar .workspace-switcher > span:nth-child(2) b {
+  color: var(--sidebar-heading);
+}
+
+.operating-shell .ai-studio,
+.operating-shell .ai-settings {
+  color: #0d1b38;
+}
+.operating-shell .ai-studio :is(.ai-user-message, .ai-welcome h2, .advisor-response-heading strong, .advisor-answer > h3),
+.operating-shell .ai-studio .advisor-answer > .ai-response-body,
+.operating-shell .ai-studio .ai-answer-content,
+.operating-shell .ai-studio .ai-answer-content :is(p, li, h4, strong, th, td),
+.operating-shell .ai-studio .ai-compose-area textarea:not(:disabled) {
+  color: #0d1b38;
+}
+
+.operating-shell .ai-studio :is(.ai-welcome > p, .ai-consent, .ai-consent > span, .ai-consent strong, .ai-submit-help, .ai-character-count, .ai-input-toolbar > span, .advisor-thinking p, .ai-response-footer p, .ai-response-error > span, .ai-copy-status, .ai-code-language, .ai-answer-table caption),
+.operating-shell .ai-settings :is(p:not(.ai-provider-pending):not([role="alert"]), .ai-settings-header span, dt, .ai-saved-chats time) {
+  color: #34516f;
+}
+.operating-shell .ai-studio .ai-compose-area textarea::placeholder {
+  color: #48627d;
+  opacity: 1;
+}
+.operating-shell .ai-studio :is(.ai-header-tools button, .ai-prompt-grid button, .ai-text-button, .ai-response-footer button, .ai-response-footer a):not(:disabled):not([aria-disabled="true"]),
+.operating-shell .ai-settings :is(.ai-settings-header > button, .ai-saved-chats button):not(:disabled):not([aria-disabled="true"]) {
+  color: #21476f;
+}
+
+@media (forced-colors: active) {
+  .operating-shell .sidebar {
+    --sidebar-text: CanvasText;
+    --sidebar-muted: CanvasText;
+    --sidebar-heading: CanvasText;
+  }
+}

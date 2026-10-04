@@ -1,4 +1,4 @@
-import { hasAddon } from "../../../../server/entitlements/engine";
+import { getTenantEntitlements, hasAddon } from "../../../../server/entitlements/engine";
 import { loadExecutiveFinance } from "../../../../server/executive-finance";
 import { buildExecutiveReport } from "../../../../server/executive-report";
 import { revenueAttribution } from "../../../../server/revenue-attribution";
@@ -14,6 +14,7 @@ import { ambiguousRSeriesCostDates } from "../../../../server/integrations/cost-
 import { buildCommandCentre } from "../../../../server/intelligence";
 import { normalizedSourceTimestamp } from "../../../../server/data-trust";
 import { buildOperatingSystem } from "../../../../server/operating-system";
+import { buildServerOwnerBriefing } from "../../../../server/owner-briefing";
 import { effectivePermissions, requirePermission } from "../../../../server/permissions";
 import { buildLightspeedRLiveSalesSnapshot, LIGHTSPEED_R_PROVIDER, type LightspeedRLiveSale } from "../../../../server/integrations/lightspeed-r";
 import { authorizedLocationDataScope } from "../../../../server/location-access";
@@ -172,6 +173,7 @@ export async function loadCommandCentre(request: Request) {
       .from(integrationConnections)
       .where(eq(integrationConnections.organizationId, context.organizationId));
     const plaidAccountRows = await getDb().select({
+      externalItemRef: bankAccounts.externalItemRef,
       accountType: bankAccounts.accountType,
       currency: bankAccounts.currency,
       connectionStatus: bankAccounts.connectionStatus,
@@ -556,8 +558,34 @@ export async function loadCommandCentre(request: Request) {
       });
       executiveReport=buildExecutiveReport(period,commandCentre,finance,financeReason,new URL(request.url).searchParams.get("basis")==="ledger"?"ledger":"commerce",attribution);
     }
+    const ownerBriefing = !executive ? buildServerOwnerBriefing({
+      now: new Date(now),
+      timezone: selectedLocation?.timezone ?? context.organization.timezone,
+      hours: context.organization.hoursJson,
+      scopeLabel: selectedLocation?.name ?? (locationRestricted ? "Accessible locations" : "All locations"),
+      selectedLocation: Boolean(selectedLocation),
+      currency: context.organization.currency,
+      permissions,
+      features: (await getTenantEntitlements(context)).features,
+      sourceConflict: salesAuthority.status === "conflict",
+      bankSourceIncomplete: connectionRows.some(connection => connection.provider === "plaid"
+        && (connection.dataPromotionStatus === "approved" || connection.promotionAuthorizedAt !== null)
+        && (connection.status !== "connected" || connection.dataPromotionStatus !== "approved"
+          || Boolean(connection.syncLeaseOwner && connection.syncLeaseExpiresAt && connection.syncLeaseExpiresAt.getTime() > now)
+          || !connection.externalAccountRef || !plaidAccountRows.some(account => account.externalItemRef === connection.externalAccountRef))),
+      expectedReportingScopes: localLocationIds.flatMap(id => {
+        const references = salesAuthority.selections.filter(selection => selection.localLocationId === id)
+          .flatMap(selection => selection.metricLocationRef ? [selection.metricLocationRef] : []);
+        return references.length ? references.map(ref => [ref])
+          : [[id, ...(!locationRestricted && localLocationIds.length === 1 ? ["all"] : [])]];
+      }),
+      dailyRows: trustedRows,
+      commandCentre,
+      operatingSystem,
+    }) : undefined;
     return {
       ...(executiveReport?{executiveReport}:{}),
+      ...(ownerBriefing ? { ownerBriefing } : {}),
       organization: {
         id: context.organizationId,
         name: branding?.displayName ?? context.organization.businessName,

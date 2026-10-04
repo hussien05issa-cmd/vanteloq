@@ -10,7 +10,9 @@ test("the focused homepage retains its buying journey and reachable deep links",
   for(const route of ["/pricing","/custom-plan","/contact","/help","/privacy","/features/retail-intelligence"]) assert.ok(homepage.includes('href="'+route+'"'),route);
   assert.match(homepage,/Fictional records/);
   assert.doesNotMatch(homepage,/Preview thinking|Pause logo animation/);
-  assert.match(homepage,/ai-orbit-showcase/);
+  assert.match(homepage,/Scripted product illustration/);
+  assert.match(homepage,/See what is happening/);
+  assert.match(homepage,/start=signup&amp;plan=free/);
 });
 test("setup explains verification, security and billing before a source is connected", () => {
   for(const text of ["Verify your email","authenticator","add your business","subscription","review the import"]) assert.ok(homepage.includes(text),text);

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { useMotionPreference } from "./use-motion-preference";
 
 const surfaces = [
   ".public-site main > section:not(.home-hero) > :not(script):not(style):not([id]:empty)",
@@ -14,13 +15,14 @@ const surfaces = [
 
 // Content is visible by default. Motion never gates rendering or data access.
 export default function InterfaceMotion() {
+  const motion = useMotionPreference();
   useEffect(() => {
     const preference = window.matchMedia("(prefers-reduced-motion: reduce)");
     if (!("IntersectionObserver" in window) || !("animate" in Element.prototype)) return;
     let stop = () => {};
     const start = () => {
       stop();
-      if (preference.matches) return;
+      if (!motion || preference.matches) return;
       const seen = new WeakSet<Element>();
       const active = new Map<Element, Animation>();
       const queued = new Set<Element>();
@@ -123,6 +125,6 @@ export default function InterfaceMotion() {
     start();
     preference.addEventListener("change", start);
     return () => { stop(); preference.removeEventListener("change", start); };
-  }, []);
+  }, [motion]);
   return null;
 }

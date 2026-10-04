@@ -5,10 +5,13 @@ import { ApiError } from "../api.ts";
 import type { AccessContext } from "../authorization.ts";
 import { getComplimentaryGrant, type ComplimentaryOffer } from "../complimentary-access.ts";
 import { getInternalAccessGrant, type InternalAccessGrant, type InternalAccessLevel } from "../internal-access.ts";
+import { hasFreeEnrollment } from "./free.ts";
 import {
   ADDONS,
   ALL_NORMAL_PAID_FEATURES,
   PLANS,
+  FREE_PLAN,
+  type WorkspacePlanKey,
   type AddonKey,
   type FeatureKey,
   type PlanKey,
@@ -42,9 +45,9 @@ export type SubscriptionSnapshot = {
 };
 
 export type EffectiveEntitlements = {
-  readonly accessType: "internal" | "complimentary" | "subscription" | "none";
+  readonly accessType: "internal" | "complimentary" | "subscription" | "free" | "none";
   readonly internalAccessLevel: InternalAccessLevel | null;
-  readonly plan: PlanKey | null;
+  readonly plan: WorkspacePlanKey | null;
   readonly subscriptionStatus: SubscriptionStatus | null;
   readonly addons: readonly AddonKey[];
   readonly features: readonly FeatureKey[];
@@ -153,6 +156,12 @@ export function resolveInternalEntitlements(grant: InternalAccessGrant): Effecti
   });
 }
 
+export function resolveFreeEntitlements(): EffectiveEntitlements {
+  return Object.freeze({ accessType: "free", internalAccessLevel: null, plan: "free", subscriptionStatus: null,
+    addons: Object.freeze([]), features: FREE_PLAN.features, limits: FREE_PLAN.limits, trialEndsAt: null,
+    currentPeriodEndsAt: null, cancelAtPeriodEnd: false, scheduledBasePlan: null, scheduledEffectiveAt: null, version: 1 });
+}
+
 export function resolveComplimentaryEntitlements(offer: ComplimentaryOffer): EffectiveEntitlements {
   const base = resolveSubscriptionEntitlements({
     basePlan: offer.plan, status: "active", addons: offer.bookloq ? ["bookloq"] : [],
@@ -201,10 +210,15 @@ export async function getTenantEntitlements(context: AccessContext): Promise<Eff
   }
   const complimentary = await getComplimentaryGrant(context);
   if (complimentary) return resolveComplimentaryEntitlements(complimentary);
-  return resolveSubscriptionEntitlements(await subscriptionSnapshot(context.organizationId));
+  const snapshot = await subscriptionSnapshot(context.organizationId);
+  const paid = resolveSubscriptionEntitlements(snapshot);
+  // Billing problems keep the existing recovery flow. Free access never masks an unpaid invoice.
+  if (paid.accessType === "none" && (!snapshot.status || ["canceled", "incomplete_expired"].includes(snapshot.status))
+    && context.role === "owner" && await hasFreeEnrollment(context.organizationId)) return resolveFreeEntitlements();
+  return paid;
 }
 
-export async function getTenantPlan(context: AccessContext): Promise<PlanKey | null> {
+export async function getTenantPlan(context: AccessContext): Promise<WorkspacePlanKey | null> {
   return (await getTenantEntitlements(context)).plan;
 }
 
@@ -259,6 +273,7 @@ function capacity(current: number, limit: number | null): CapacityDecision {
 
 export async function canAddUser(context: AccessContext): Promise<CapacityDecision> {
   const entitlements = await getTenantEntitlements(context);
+  if (entitlements.accessType === "free") return capacity(1, 1);
   const [row] = await getDb().select({ value: count() }).from(teamMembers).where(and(
     eq(teamMembers.organizationId, context.organizationId),
     eq(teamMembers.remoteLogin, true),

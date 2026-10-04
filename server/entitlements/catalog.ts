@@ -3,6 +3,8 @@ export const PLAN_CATALOG_VERSION = "origin-1";
 
 export const PLAN_KEYS = ["starter", "growth", "pro", "bookloq"] as const;
 export type PlanKey = (typeof PLAN_KEYS)[number];
+/** Free access is app-owned and never part of the Stripe price catalogue. */
+export type WorkspacePlanKey = "free" | PlanKey;
 
 /** Vanteloq operating plans, excluding the separately purchasable BookLoQ product. */
 export const VANTELOQ_PLAN_KEYS = ["starter", "growth", "pro"] as const;
@@ -139,9 +141,9 @@ export type PlanLimits = {
   readonly users: number;
   readonly ai: {
     readonly capability: "basic" | "advanced" | "pro";
-    /** No numerical quota is advertised or enforced until usage metering exists. */
-    readonly requestsPerMonth: null;
-    readonly meteringStatus: "not_launched";
+    /** The separate Free plan is metered; existing paid allowances are unchanged. */
+    readonly requestsPerMonth: number | null;
+    readonly meteringStatus: "not_launched" | "monthly";
   };
 };
 
@@ -161,6 +163,23 @@ export type AddonDefinition = {
   readonly prices: Readonly<Record<BillingInterval, MoneyPrice>>;
   readonly features: readonly FeatureKey[];
 };
+
+export const FREE_PLAN = Object.freeze({
+  key: "free" as const,
+  displayName: "Free",
+  description: "Try your real sales records in a workspace that stays free.",
+  policyVersion: "free-origin-1",
+  limits: Object.freeze({ activeLocations: 1, users: 1,
+    ai: Object.freeze({ capability: "basic" as const, requestsPerMonth: 10, meteringStatus: "monthly" as const }),
+  }),
+  importRowsPerMonth: 100,
+  features: Object.freeze([
+    "dashboard.core", "business.profile", "business.settings", "analytics.sales.basic",
+    "products.basic", "products.margin", "ai.basic", "reporting.basic", "multi_location.basic",
+  ] as const satisfies readonly FeatureKey[]),
+  highlights: Object.freeze(["1 owner and 1 location", "100 daily sales records per month via CSV or manual entry",
+    "10 Vanteloq AI replies per month", "Core dashboard, sales summaries and reports", "No card required. No expiry."]),
+});
 
 const starterFeatures = [
   "dashboard.core",

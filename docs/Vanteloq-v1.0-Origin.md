@@ -1,6 +1,6 @@
 # Vanteloq v1.0 Origin
 
-**Product and production handover · 1 October 2026**  
+**Product and production handover · Updated 3 October 2026**
 **Operator:** 2855706 ALBERTA INC, doing business as LexEdge Consulting and operating Vanteloq.  
 **Audience:** the product owner, engineers, support operators and authorized accounting reviewers.
 
@@ -21,6 +21,18 @@ The following must remain visible in the owner’s operational register:
 5. **Performance measurements have bounded scope.** Local builds and focused provider timings are recorded below. No universal concurrency guarantee, fresh production load result or permanent Lighthouse score is claimed.
 
 ## Product surfaces and everyday workflows
+
+### 2 October Free-plan and access review
+
+Free is now a permanent, app-owned $0 CAD plan, separate from Stripe. It requires no payment method and includes one owner, one location, 100 daily sales records per UTC calendar month through CSV/manual entry, and 10 AI replies per month. Its core dashboard, sales summaries and reports remain available when a monthly allowance is exhausted. Monthly reservations are atomic and isolated by workspace. Failed AI requests before any output restore their allowance; a reply already delivered in a stream remains counted even if stopped.
+
+The interface follows server-confirmed entitlements, not a query-string preference. Free onboarding offers CSV or an empty workspace; live POS connections, task creation, AI attachments, exports, advanced forecasting and BookLoQ require their applicable paid access. The single-location Free overview uses its aggregate import scope, with a simple location information view instead of empty comparisons. Billing displays usage and optional paid upgrades. Existing Free owners retain their requested upgrade and BookLoQ selection when opening Billing. Public plan links open the account form without requiring a manual refresh.
+
+Starter, Growth and Pro remain CAD $49, $99 and $179 monthly. BookLoQ remains $39 with a paid Vanteloq subscription or $59 standalone. The first eligible paid subscription still includes the seven-day Stripe trial. No existing subscriber's plan or records were changed by this review.
+
+Downgrade boundary: automatic Free fallback requires a prior Free enrolment and capacity within one owner and one active location. An oversized workspace does not silently remove people or locations to fit Free; its owner must arrange capacity reduction before paid access ends or contact support. This is not an automatic downgrade/remediation workflow.
+
+Focused verification covers monthly concurrency limits, plan selection, paid feature boundaries, navigation, financial presentation, AI streamed cancellation, Free activation without Stripe, imports/replay, same-workspace upgrades and cancellation fallback. Public browser checks are separate from signed-in customer acceptance. Production backup/restoration and provider approval limitations above remain unchanged.
 
 ### 1 October interaction and billing verification update
 
@@ -1290,3 +1302,47 @@ Generated: 2026-10-01T09:49:29.354Z. Source extraction records HEAD `d27c54b1bd4
 This source snapshot includes the deterministic timestamp correction in `app/executive-overview.tsx`, `app/invoice-overview.tsx`, `app/revenue-source-detail.tsx`, `domain/executive-presentation.ts` and the new candidate test `tests/dashboard-hydration.test.tsx`. The manual verification record reports execution and deployment separately.
 
 <!-- GENERATED_INVENTORY_END -->
+
+## 3 October 2026 customization recovery evidence and boundaries
+
+Closing the executive dashboard customizer now keeps its unsaved form for reopening. Discard Changes explicitly restores the saved layout; failed saves retain the entered choices and show an error. Customization waits for the account's saved preferences to load, so a late preferences response cannot replace an active draft. Inputs are locked while a save is pending.
+
+Authenticated workspaces can recover presentation choices from the same browser tab for up to 24 hours. Recovery is scoped to the server-confirmed user and workspace, versioned, and checked against a SHA-256 fingerprint of the saved preferences. Restore requires an explicit choice and does not save automatically. Financial targets, goal details, named views, collections settings and source records are excluded from the browser draft. They remain only in the open form until saved. The sample preview uses no persistent draft storage.
+
+A fresh preferences request checks account, workspace and saved overview before an explicit save. A detected change keeps the draft and asks the user to discard it to load the current layout. This is a client preflight check, not an atomic server compare-and-swap. Existing saved preference schemas and server-side collections/overview write isolation are unchanged. Browser storage restrictions can prevent reload recovery; the open form still retains its input.
+
+Verification: 24 focused draft, customizer rendering, preference, personalization, sample-preview and hydration tests passed. The eight new recovery and customizer tests passed again after the final conflict feedback adjustment. Focused ESLint and whitespace checks passed. Browser interaction, build and publication are recorded separately; these tests do not establish production backup or financial-record recovery.
+
+## 3 October 2026: daily operating brief and connected follow-up
+
+The dashboard and Business Brief now share an evidence-led, permission-filtered owner briefing. It follows the saved business time zone and regular opening hours, with opening, trading, closing, closed-day and general-planning phases. Opening and closing checklists suggest next steps; they do not mark work complete. Overnight sessions retain their opening business date. Missing or invalid hours produce an explicit general briefing rather than an invented schedule. Location-specific hours and holiday overrides are not currently recorded.
+
+Priorities are ranked by urgency, financial area and recorded due date. A current, verified negative cash balance can raise a critical in-app warning. Stale balances, incomplete location coverage, partial bank-source coverage, refreshes and source conflicts do not become critical cash assertions. Payables exceeding cash prompt a due-date and receipts review, not a claim of insolvency or that all bills are due today. Each finding shows its source and evidence window. This command-centre briefing is independent of the customizable chart period.
+
+Review records opens the relevant module or the matching opportunity. Opportunity actions retain a saved evidence snapshot; marking a linked action complete offers a return to its outcome review. AI follow-up carries the selected issue, evidence window and permitted location context. It remains user initiated, respects existing consent and access controls, and does not approve or post financial changes.
+
+Delivery boundary: briefings are calculated when the workspace loads or refreshes, including its existing visible-tab refresh. They are in-app information, not a background email, SMS, push or Slack notification service. No new customer communication, provider access or production financial records were created by this release.
+
+Acceptance measures for the three refinement rounds:
+
+| Round | Implemented behaviour | Verification and remaining measurement |
+| --- | --- | --- |
+| Clarity and reliability | Explicit scope, source time, evidence window, permission gates and recoverable dashboard drafts | Automated boundary and recovery cases plus desktop/mobile inspection. Real-user task-time improvements are not yet measured. |
+| Connected daily work | Ranked daily priorities, records, contextual AI entry and saved opportunity/action/outcome links | Isolated route and UI checks. A completed action does not count as a measured financial outcome without user review. |
+| Adaptation and learning | Existing business-type recommendations and chosen metrics retained; safer customization, compact progressive disclosure and outcome review | No claim that the system learns causal effects automatically. Review adoption, repeat setup and time-to-resolution with actual users after release. |
+
+Accessibility approach: persistent critical findings, explicit controls, keyboard-visible focus, restrained motion, and expandable evidence. References: W3C ARIA Alert Pattern (https://www.w3.org/WAI/ARIA/apg/patterns/alert/) and WCAG Status Messages guidance (https://www.w3.org/WAI/WCAG22/Understanding/status-messages.html).
+
+## 3 October 2026: motion, readability and public product review
+
+Business Pulse and executive KPI cards use an expanding detail surface with a damped spring transition from the selected control. Closing returns to the control; Escape, focus containment and focus restoration are supported. Interrupted transitions start from the current rectangle, and resizing or hiding the page settles the animation. Essential amounts render immediately. Charts reveal their plotted marks without animating accounting values through invented intermediate numbers. Keyboard chart selection and the data table remain available.
+
+Motion is a presentation preference in the browser, with a visible footer control and a dashboard customization switch. The operating system's reduced-motion preference takes priority. Public and workspace surface reveals are observed once, skip already visible initial content and stop on focus or page hiding. There is no continuously running animation engine or added animation package. Business Pulse synchronization animation reflects an actual refresh state; its financial cards are prepared by the server using plan, role, freshness and source-coverage checks.
+
+Sidebar navigation and captions retain the existing light blue background with darker navy type. AI answer content, supporting text, controls and placeholders have explicit darker colours. Calculated contrast against inspected surface colours: sidebar labels 9.52:1, sidebar captions 7.27:1, AI body 17.06:1, secondary text 7.87:1 and placeholder text 5.72:1. These calculations do not certify every possible composite or third-party widget.
+
+The homepage uses three visible sample metrics and a controllable twelve-second source-to-review story. Accurate text, branding, calculations and controls are rendered as HTML/SVG, separate from decorative generated media. Mobile begins with a static poster and Play; motion-off and reduced-motion settings retain all information. The connected examples use one retail fixture and an explicitly separate BookLoQ cash scenario. The source bridge reconciles net sales from CAD33,872.00 to CAD24,593.61. Adding a sample CAD5,000 commitment reduces the BookLoQ capacity from CAD8,000 to CAD3,000 without treating expected receipts as cash.
+
+The new /solutions/retail page reuses the public components. Public Free links preserve plan selection, pricing comes from the entitlement catalog, and connection availability comes from the provider registry. Upcoming systems are not promoted as available. Analytics remains optional, with fixed event/property allowlists; form values, financial values, chat text and account data are not marketing-event properties. Cookie refusal and reopening settings remain available.
+
+Verification evidence: the final focused set passed 68 tests covering sample math, public presentation, analytics boundaries, spring interruption, dashboard drafts, owner briefing, server permissions and plan selection. The earlier isolated workflow suite passed 26 cases across Free activation, subscription gating, checkout concurrency, migration, capacity, standalone BookLoQ, command-centre sync and opportunity review. Desktop and narrow-width browser checks covered detail opening/updating/closing, focus, keyboard charts, empty states, mobile menu controls, cash/AI examples, provider disclosure and motion preference. Build, publication and exact source identifiers are recorded in the release output ledger. Fresh production load tests, field Core Web Vitals and production recovery are not inferred from these checks.

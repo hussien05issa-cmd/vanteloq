@@ -1,11 +1,12 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import type { OperatingDecision } from "../server/operating-system";
 import { reviewDisplayStatus, reviewIsActive, type OpportunityReview } from "../domain/opportunity-review";
 import OpportunityReviewPanel, { type ReviewChange } from "./opportunity-review-panel";
 
 type Props = {
+  initialSelection?: { id: string; followup: boolean };
   decisions: OperatingDecision[];
   period: { from: string; to: string } | null;
   freshness: string;
@@ -31,13 +32,14 @@ const categories: Record<OperatingDecision["pillar"], string> = {
 };
 
 /** Live findings and permission-filtered saved reviews share the decision engine. */
-export default function DecisionWorkspace({ decisions, period, freshness, verifiedDays, comparisonNote, onAction, onAsk, onEvidence, onConnections, onActions, reviews = [], canReview = false, reviewLoading = false, reviewBusy = false, reviewError, onRefresh, onCapture, onReview }: Props) {
+export default function DecisionWorkspace({ initialSelection, decisions, period, freshness, verifiedDays, comparisonNote, onAction, onAsk, onEvidence, onConnections, onActions, reviews = [], canReview = false, reviewLoading = false, reviewBusy = false, reviewError, onRefresh, onCapture, onReview }: Props) {
   const id = useId();
   const [category, setCategory] = useState("all");
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [view, setView] = useState("active");
   const [detailTab, setDetailTab] = useState("evidence");
+  useEffect(() => { if (initialSelection) { setSelectedId(initialSelection.id); setView("all"); setCategory("all"); setQuery(""); setDetailTab(initialSelection.followup ? "followup" : "evidence"); } }, [initialSelection]);
   const entries = decisions.map(decision => {
     const review = reviews.find(review => review.ruleId === decision.id && review.period.from === period?.from && review.period.to === period?.to);
     return { key: review?.id ?? decision.id, decision: review?.snapshot ?? decision, review };
@@ -46,7 +48,7 @@ export default function DecisionWorkspace({ decisions, period, freshness, verifi
   const visible = entries.filter(({ decision, review }) => (category === "all" || decision.pillar === category)
     && `${decision.title} ${decision.decision} ${review?.task?.assignee ?? ""}`.toLowerCase().includes(query.trim().toLowerCase())
     && (view === "all" || view === "history" ? view === "all" || Boolean(review) : !review || reviewIsActive(review)));
-  const selectedEntry = visible.find(item => item.key === selectedId) ?? visible[0];
+  const selectedEntry = visible.find(item => item.key === selectedId || item.decision.id === selectedId) ?? visible[0];
   const selected = selectedEntry?.decision;
   const selectedReview = selectedEntry?.review;
   const coverage = !verifiedDays ? "Insufficient data" : freshness === "stale" ? "Delayed" : comparisonNote ? "Partial" : "Records available";

@@ -6,7 +6,7 @@ import Link from "next/link";
 import { FieldLabel, FormInput, FormLegend, PasswordInput, RequiredMark } from "./form-primitives";
 import ProductBrandLogo from "./product-brand-logo";
 import { readPlanSelection, type PlanSelection } from "../shared/plan-selection";
-import { PLANS, ADDONS } from "../server/entitlements/catalog";
+import { PLANS, ADDONS, FREE_PLAN } from "../server/entitlements/catalog";
 import { getSupabase } from "./supabase-browser";
 import TurnstileField from "./turnstile-field";
 import { loadTurnstileConfiguration } from "./turnstile-loader";
@@ -502,7 +502,7 @@ export default function AuthPanel({
       <small>SECURE VANTELOQ ACCOUNT</small>
       <h2 id="auth-title">{title}</h2>
       <p id="auth-description">{description}</p>
-      {mode === "signup" && planSelection && <div className="auth-plan-selection"><span><strong>{PLANS[planSelection.plan].displayName}{planSelection.bookloq ? " + BookLoQ" : ""}</strong><small>{"$"}{(PLANS[planSelection.plan].prices.month.amountCents + (planSelection.bookloq ? ADDONS.bookloq.prices.month.amountCents : 0)) / 100} CAD / month before tax. Review before payment.</small></span><Link href="/pricing">Change</Link></div>}
+      {mode === "signup" && planSelection && <div className="auth-plan-selection"><span><strong>{planSelection.plan === "free" ? FREE_PLAN.displayName : PLANS[planSelection.plan].displayName}{planSelection.bookloq ? " + BookLoQ" : ""}</strong><small>{planSelection.plan === "free" ? "$0 · No card required · No expiry" : `$${(PLANS[planSelection.plan].prices.month.amountCents + (planSelection.bookloq ? ADDONS.bookloq.prices.month.amountCents : 0)) / 100} CAD / month before tax. Review before payment.`}</small></span><Link href="/pricing">Change</Link></div>}
       {configured === false && <div className="auth-message error">Account service is temporarily unavailable.</div>}
       <form key={mode} onSubmit={submit}>
         <FormLegend/>

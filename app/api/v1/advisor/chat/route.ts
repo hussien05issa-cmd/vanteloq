@@ -3,6 +3,7 @@ import { currentChatBinding, signAdvisorTurn, verifyAdvisorTurns } from "../../.
 import { claimAdvisorRequest, settleAdvisorRequest } from "../../../../../server/advisor-requests";
 import {loadForecast} from "../../../../../server/forecasting";
 import {getTenantEntitlements} from "../../../../../server/entitlements/engine";
+import { reserveFreeUsage } from "../../../../../server/entitlements/free";
 import { recordedLabourCost } from "../../../../../domain/labour-evidence";
 import { advisorProviderStatus, callAdvisor } from "../../../../../server/advisor-providers";
 import { prepareAdvisorAttachments, readAdvisorRequest } from "../../../../../server/advisor-attachments";
@@ -160,6 +161,8 @@ export async function POST(request: Request) {
     await requirePermission(context, "insights.view");
     await enforceRateLimit("advisor:chat", `${context.userId}:${clientSource(request)}`, 20, 60);
     const { body, files } = await readAdvisorRequest(request);
+    const planAccess = await getTenantEntitlements(context);
+    if (planAccess.accessType === "free" && files.length) throw new ApiError(403, "FEATURE_NOT_INCLUDED", "File questions are available on paid plans. Upgrade in Settings > Billing & plans.");
     const question = cleanQuestion(body.question);
     const greeting = !files.length && isAdvisorGreeting(question);
     const preferences = advisorPreferences(body.preferences);
@@ -279,7 +282,9 @@ export async function POST(request: Request) {
     if(claim) conversationId=claim.conversationId;
     const savedTurnId=claim ? await hashIdentifier(JSON.stringify([context.organizationId,context.userId,claim.id])) : undefined;
     const checkAuthority = async () => { request.signal.throwIfAborted(); await assertAdvisorAuthority(getD1(),authorityActor,authorityStamp); };
+    let deliveredText = false;
     const finish = async (delta?: (text:string)=>Promise<void>, signal = request.signal) => {
+      let reservation: Awaited<ReturnType<typeof reserveFreeUsage>> | null = null;
       try {
         let result;
         if(claim) {
@@ -293,6 +298,7 @@ export async function POST(request: Request) {
         }
         if(greeting) result={configured:true as const,text:advisorGreeting(question,context.identity.displayName),model:"greeting",providers:[],partial:false};
         else {
+          if (planAccess.accessType === "free") reservation = await reserveFreeUsage(getD1(),context.organizationId,"ai_replies",1);
           const firstName=context.identity.displayName.trim().split(/\s+/)[0];
           const personal = {preferences,role:context.role,currency:context.organization.currency,timezone:context.organization.timezone,preferredFirstName:/^[\p{L}][\p{L}'’-]{0,29}$/u.test(firstName) ? firstName : null};
           result = await callAdvisor(mode, prompt(question,evidence,memory)+`\n\nExplicit response preferences: ${JSON.stringify(personal)}`,getRuntimeEnv(),undefined,purpose,signal,attachments,delta);
@@ -307,11 +313,11 @@ export async function POST(request: Request) {
           userEvidence:JSON.stringify({accessFingerprint,authorityFingerprint,historyScope}),answerEvidence:JSON.stringify({accessFingerprint,authorityFingerprint,historyScope,...evidenceSummary}),
         }:null);
         await settleAdvisorRequest(getD1(),context.organizationId,context.userId,claim?.id ?? null,result.configured ? "completed" : "failed");
-        if(!result.configured) return {status:"configuration_required",conversationId:suppliedId,memoryEnabled,answer:null,message:result.message};
+        if(!result.configured) { await reservation?.release(); return {status:"configuration_required",conversationId:suppliedId,memoryEnabled,answer:null,message:result.message}; }
         return {status:"answered",conversationId:memoryEnabled ? conversationId : null,memoryEnabled,model:result.model,answer:result.text,coverage:greeting ? undefined : evidenceSummary,evidence:evidenceSummary,
           contextProof:await signAdvisorTurn(getRuntimeEnv(),binding,question,result.text,files.length>0 || currentChat.files,memoryEnabled ? conversationId : null),
           contextIncludesAttachments:files.length>0 || currentChat.files};
-      } catch(error) { await settleAdvisorRequest(getD1(),context.organizationId,context.userId,claim?.id ?? null,"failed"); throw error; }
+      } catch(error) { if (!deliveredText) await reservation?.release(); await settleAdvisorRequest(getD1(),context.organizationId,context.userId,claim?.id ?? null,"failed"); throw error; }
     };
     if(body.stream!==true) return jsonResponse(await finish());
     const streamController=new AbortController(), signal=AbortSignal.any([request.signal,streamController.signal]);
@@ -320,7 +326,7 @@ export async function POST(request: Request) {
       async start(controller) {
         const send=(event:unknown)=> {signal.throwIfAborted();controller.enqueue(encoder.encode(JSON.stringify(event)+"\n"));};
         let pending="",total=0;
-        const flush=async()=> {if(!pending)return;await checkAuthority();signal.throwIfAborted();send({type:"delta",text:pending});total+=pending.length;pending="";};
+        const flush=async()=> {if(!pending)return;await checkAuthority();signal.throwIfAborted();send({type:"delta",text:pending});deliveredText=true;total+=pending.length;pending="";};
         try {
           send({type:"status",label:"Preparing your answer"});
           const payload=await finish(async text=>{pending+=text;if(pending.length>=(total?256:48)) await flush();},signal);

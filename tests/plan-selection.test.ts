@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parsePlanSelection, planSelectionUrl, readPlanSelection, savePlanSelection, clearPlanSelection } from "../shared/plan-selection";
+import { parsePlanSelection, planSelectionUrl, readPlanSelection, savePlanSelection, clearPlanSelection, reconcilePlanSelection } from "../shared/plan-selection";
 
 test("purchase preferences accept only real plan keys and an explicit add-on", () => {
   assert.equal(parsePlanSelection("enterprise", true), null);
@@ -10,6 +10,27 @@ test("purchase preferences accept only real plan keys and an explicit add-on", (
   assert.deepEqual(parsePlanSelection("bookloq","1"),{plan:"bookloq",bookloq:false});
   assert.equal(planSelectionUrl({plan:"growth",bookloq:true}),"/?start=signup&plan=growth&bookloq=1");
   assert.equal(planSelectionUrl({plan:"bookloq",bookloq:true}),"/?start=signup&plan=bookloq");
+});
+
+test("verified Free activation replaces stale paid intent and existing Free upgrades retain their choice", () => {
+  const original = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const records = new Map<string,string>();
+  let location = new URL("https://vanteloq.example/?start=signup&plan=growth&bookloq=1");
+  const browser = { get location() { return location; }, sessionStorage: {
+    getItem:(key:string)=>records.get(key)??null, setItem:(key:string,value:string)=>records.set(key,value), removeItem:(key:string)=>records.delete(key),
+  }, history: { replaceState(_state:unknown,_title:string,url:string) { location = new URL(url, location); } } };
+  Object.defineProperty(globalThis, "window", { configurable:true, value:browser });
+  try {
+    reconcilePlanSelection({plan:"free",addons:[],accessType:"free"},true);
+    assert.equal(location.search, "");
+    assert.deepEqual(readPlanSelection(),{plan:"free",bookloq:false});
+    location = new URL("https://vanteloq.example/?start=signup&plan=pro&bookloq=1");
+    assert.deepEqual(reconcilePlanSelection({plan:"free",addons:[],accessType:"free"},false),{plan:"pro",bookloq:true});
+    assert.equal(location.hash,"#billing");
+    assert.deepEqual(readPlanSelection(),{plan:"pro",bookloq:true});
+    reconcilePlanSelection({plan:"pro",addons:["bookloq"],accessType:"subscription"},false);
+    assert.equal(readPlanSelection(),null);
+  } finally { if(original) Object.defineProperty(globalThis,"window",original); else Reflect.deleteProperty(globalThis,"window"); }
 });
 test("plan choice survives a same-browser verification journey and expires safely", () => {
   const original = Object.getOwnPropertyDescriptor(globalThis,"window");

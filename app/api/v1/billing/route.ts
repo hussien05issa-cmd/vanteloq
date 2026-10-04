@@ -5,7 +5,8 @@ import { tenantAddons, tenantSubscriptions } from "../../../../db/schema";
 import { findAccessContext, requireBillingAccess } from "../../../../server/authorization";
 import { handleApi, jsonResponse, requireIdentity, requireAal2 } from "../../../../server/api";
 import { stripeBillingReadiness } from "../../../../server/billing/stripe";
-import { ADDONS, PLANS } from "../../../../server/entitlements/catalog";
+import { ADDONS, PLANS, FREE_PLAN } from "../../../../server/entitlements/catalog";
+import { freeUsage } from "../../../../server/entitlements/free";
 import { getTenantEntitlements } from "../../../../server/entitlements/engine";
 import { requirePermission } from "../../../../server/permissions";
 import { SUBSCRIPTION_TRIAL_DAYS } from "../../../../shared/subscription-trial";
@@ -34,7 +35,8 @@ export async function GET(request: Request) {
       accessType: entitlements.accessType,
       canManageBilling: true,
       legalAcceptanceCurrent,
-      trialEligible: !subscription?.stripeSubscriptionId && entitlements.accessType === "none",
+      trialEligible: !subscription?.stripeSubscriptionId && ["none", "free"].includes(entitlements.accessType),
+      freeUsage: entitlements.accessType === "free" ? await freeUsage(context.organizationId) : null,
       current: {
         plan: entitlements.plan,
         status: entitlements.subscriptionStatus,
@@ -44,6 +46,7 @@ export async function GET(request: Request) {
         trialEndsAt: entitlements.trialEndsAt,
         cancelAtPeriodEnd: entitlements.cancelAtPeriodEnd,
         hasCustomer: Boolean(subscription?.stripeCustomerId),
+        hasSubscription: Boolean(subscription?.stripeSubscriptionId && !["canceled", "incomplete_expired"].includes(subscription.status)),
         features: entitlements.features,
         limits: entitlements.limits,
       },
@@ -56,6 +59,8 @@ export async function GET(request: Request) {
 function billingOptions() {
   return {
       configured: stripeBillingReadiness().configured,
+      freePlan: { key: "free", name: FREE_PLAN.displayName, description: FREE_PLAN.description,
+        included: FREE_PLAN.highlights, limits: FREE_PLAN.limits, importRowsPerMonth: FREE_PLAN.importRowsPerMonth },
       plans: Object.values(PLANS).map((plan) => ({
         key: plan.key,
         name: plan.displayName,

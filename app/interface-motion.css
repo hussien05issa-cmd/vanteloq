@@ -95,3 +95,15 @@
 @keyframes connector-select{0%{transform:scale(.94)}55%{transform:translateY(-3px) scale(1.08)}100%{transform:translateY(0) scale(1)}}
 }
 html[data-motion-paused=true] .public-site .home-provider-tiles .integration-logo{animation-play-state:paused}
+/* One user setting covers workspace, public previews and secondary controls. */
+html[data-motion=off] *,html[data-motion=off] *::before,html[data-motion=off] *::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}
+html[data-motion=off] :is(button,a,summary):active{scale:1!important}
+html[data-motion-paused=true] *,html[data-motion-paused=true] *::before,html[data-motion-paused=true] *::after{animation-play-state:paused!important}
+@media(prefers-reduced-motion:no-preference){
+.operating-shell .nav-item{transition:background-color 180ms ease,color 180ms ease,border-color 180ms ease,box-shadow 220ms ease,scale 140ms ease}
+.operating-shell .nav-item svg{transition:scale 160ms ease,translate 220ms var(--interface-ease)}
+.operating-shell .nav-item[aria-current=page] svg{translate:1px 0}
+.operating-shell .nav-item:active svg{scale:.92}
+.executive-overview :is(.executive-source-details,.executive-financial-details,.executive-insights details)[open]>:not(summary){animation:interface-detail-in 180ms var(--interface-ease)}
+.dashboard-drawer[open]{animation:interface-detail-in 200ms var(--interface-ease)}
+}

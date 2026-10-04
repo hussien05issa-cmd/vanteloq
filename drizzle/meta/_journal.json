@@ -477,6 +477,13 @@
       "when": 1790906600000,
       "tag": "0067_shopify_privacy_requests",
       "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "6",
+      "when": 1790989241229,
+      "tag": "0068_old_sentinel",
+      "breakpoints": true
     }
   ]
 }

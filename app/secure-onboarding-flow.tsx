@@ -16,7 +16,7 @@ import {
   PRIVACY_POLICY_VERSION,
   TERMS_OF_SERVICE_VERSION,
 } from "../shared/legal-versions";
-import { readPlanSelection, type PlanSelection } from "../shared/plan-selection";
+import { useBillingEntitlements } from "./billing-entitlements-context";
 import { industryKpiRecommendation } from "../domain/industry-kpis";
 
 import BuildYourOverview from "./build-your-overview";
@@ -124,7 +124,7 @@ export default function SecureOnboardingFlow({
   signOut: () => void;
 }) {
   const [step, setStep] = useState(1);
-  const [planSelection, setPlanSelection] = useState<PlanSelection | null>(null);
+  const planAccess = useBillingEntitlements();
   const panelRef = useRef<HTMLElement>(null);
   const previousStep = useRef(1);
   useEffect(() => { if (step !== previousStep.current) { panelRef.current?.querySelector<HTMLElement>(".setup-step h2")?.focus(); previousStep.current = step; } }, [step]);
@@ -137,13 +137,10 @@ export default function SecureOnboardingFlow({
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [legalAccepted, setLegalAccepted] = useState(false);
-  const standaloneBookloq = planSelection?.plan === "bookloq";
+  const standaloneBookloq = planAccess.plan === "bookloq";
+  const freePlan = planAccess.accessType === "free";
   const set = <K extends keyof Setup>(key: K, value: Setup[K]) =>
     setForm((current) => ({ ...current, [key]: value }));
-
-  useEffect(() => {
-    queueMicrotask(() => setPlanSelection(readPlanSelection()));
-  }, []);
 
   const setAddressField = (key: "country" | "province" | "city" | "address" | "postalCode", value: string) => {
     setForm((current) => ({ ...current, [key]: value }));
@@ -689,12 +686,13 @@ export default function SecureOnboardingFlow({
                   type="button"
                   className={form.sourceMode === id ? "selected" : ""}
                   onClick={() => set("sourceMode", id)}
+                  disabled={freePlan && id === "live"}
                   key={id}
                 >
                   <i>{icon}</i>
                   <span>
                     <b>{title}</b>
-                    <small>{copy}</small>
+                    <small>{freePlan && id === "live" ? "Live POS connections are available after a paid upgrade. Start with daily-summary CSV or manual entry." : copy}</small>
                   </span>
                   <em>{form.sourceMode === id ? "●" : "○"}</em>
                 </button>
