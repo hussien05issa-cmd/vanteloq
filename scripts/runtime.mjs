@@ -3,6 +3,8 @@ import { spawn } from "node:child_process";
 import { mkdir, readFile, readdir } from "node:fs/promises";
 import { resolve, extname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { assertRscAssetFiles } from "../build/rsc-asset-integrity.mjs";
+import { canonicalMigrationSql, canonicalizeMigrationArtifacts } from "../build/migration-artifacts.mjs";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const [mode, ...extra] = process.argv.slice(2);
@@ -23,6 +25,17 @@ async function validate() {
   if (manifest.project_id !== source.project_id) throw new Error("Built Sites project does not match the source manifest.");
   const worker = await import(pathToFileURL(resolve(root, "dist/server/index.js")).href);
   if (typeof worker.default?.fetch !== "function") throw new Error("Worker entry must export fetch.");
+  for (const file of ["dist/server/__vite_rsc_assets_manifest.js", "dist/server/ssr/__vite_rsc_assets_manifest.js"]) {
+    const { default: assets } = await import(pathToFileURL(resolve(root, file)).href);
+    await assertRscAssetFiles(assets, resolve(root, "dist/client"));
+  }
+  for (const file of (await readdir(resolve(root, "drizzle"))).filter(name => /^\d{4}.*\.sql$/.test(name))) {
+    const originalSql = await readFile(resolve(root, "drizzle", file), "utf8");
+    const sourceSql = canonicalMigrationSql(originalSql);
+    if (originalSql !== sourceSql) throw new Error(`Migration checkout is not LF; rebuild before packaging: ${file}`);
+    const packagedSql = await readFile(resolve(root, "dist/.openai/drizzle", file), "utf8");
+    if (packagedSql !== sourceSql) throw new Error(`Packaged migration differs from canonical source: ${file}`);
+  }
   async function inspect(directory) {
     for (const entry of await readdir(directory, { withFileTypes: true })) {
       const path = resolve(directory, entry.name);
@@ -31,12 +44,15 @@ async function validate() {
     }
   }
   await inspect(resolve(root, "dist"));
-  console.log("Validated Sites artifact: Worker entry, project manifest and production asset paths.");
+  console.log("Validated Sites artifact: Worker, project, canonical SQL and complete RSC asset references.");
 }
 
 if (mode === "validate") await validate();
 else {
   if (!commands[mode]) throw new Error(`Unknown command: ${mode}`);
+  // Sites' packager copies source migrations over staged build metadata.
+  // Enforce the Git LF contract before either copy can run.
+  if (mode === "build") await canonicalizeMigrationArtifacts(resolve(root, "drizzle"));
   const [entry, ...args] = commands[mode];
   const child = spawn(process.execPath, [resolve(root, "node_modules", entry), ...args], { cwd: root, env, stdio: "inherit" });
   const timeout = mode === "build" ? setTimeout(() => {
