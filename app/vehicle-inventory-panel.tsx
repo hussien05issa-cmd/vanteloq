@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { apiFetch } from "./supabase-browser";
+import { defaultIndustryConfiguration, type IndustryConfiguration } from "../domain/industry-templates";
 import { VEHICLE_CSV_TEMPLATE, VEHICLE_STATUSES, validateVehicle, vehicleAmount, vehicleAmountToCents, type VehicleInput, type VehicleRecord } from "../domain/vehicles";
 import "./vehicle-inventory.css";
 
@@ -23,8 +24,10 @@ async function responseBody(response: Response) {
   return payload;
 }
 
-export default function InventoryVehicleWorkspace({ industry, activeLocationId, children }: { industry: string; activeLocationId: string | null; children: ReactNode }) {
-  const [view, setView] = useState<"products" | "vehicles">(industry.toLowerCase() === "dealership" ? "vehicles" : "products");
+export default function InventoryVehicleWorkspace({ industry, configuration, activeLocationId, children }: { industry: string; configuration?:IndustryConfiguration; activeLocationId: string | null; children: ReactNode }) {
+  const config=configuration??defaultIndustryConfiguration(industry);
+  const [view, setView] = useState<"products" | "vehicles">(config.capabilities.includes("vehicles") ? "vehicles" : "products");
+  if(!config.capabilities.includes("vehicles"))return <>{children}</>;
   return <div className="vehicle-inventory-workspace">
     <div className="vehicle-inventory-switch" role="group" aria-label="Inventory records">
       <button type="button" aria-pressed={view === "products"} onClick={() => setView("products")}>Products</button>

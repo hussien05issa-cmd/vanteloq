@@ -12,6 +12,8 @@ test("vehicle records enforce tenant boundaries, explicit imports, atomic duplic
   try {
     const a = await createReportWorkspace(worker, environment, database, "vehicles-a");
     const b = await createReportWorkspace(worker, environment, database, "vehicles-b");
+    await database.prepare("UPDATE workspaces SET industry='Car dealership' WHERE id IN (?,?)").bind(a.organizationId,b.organizationId).run();
+    await database.prepare("DELETE FROM workspace_industry_config WHERE organization_id IN (?,?)").bind(a.organizationId,b.organizationId).run();
     const request = (path, options = {}) => dispatch(worker, environment, path, { ...a.owner, ...options });
     const created = await ok(await request("/api/v1/vehicles", { method: "POST", body: { action: "create", locationId: a.locationId, vehicle } }), 201);
     const id = created.ids[0];
@@ -51,6 +53,8 @@ test("vehicle reads redact costs and respect location, role, import, MFA and sub
   const { worker, environment, database, dispose } = await createEnvironment();
   try {
     const a = await createReportWorkspace(worker, environment, database, "vehicle-permissions");
+    await database.prepare("UPDATE workspaces SET industry='Car dealership' WHERE id=?").bind(a.organizationId).run();
+    await database.prepare("DELETE FROM workspace_industry_config WHERE organization_id=?").bind(a.organizationId).run();
     const ownerRequest = (options = {}) => dispatch(worker, environment, "/api/v1/vehicles", { ...a.owner, ...options });
     const first = await ok(await ownerRequest({ method: "POST", body: { action: "create", locationId: a.locationId, vehicle } }), 201);
     const secondLocation = crypto.randomUUID();

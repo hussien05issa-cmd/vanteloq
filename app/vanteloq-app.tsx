@@ -3,6 +3,7 @@ import { advisorDefaults, type AdvisorPreferences, type AdvisorCurrentTurn } fro
 import AdvisorPersonalize from "./advisor-personalize";
 import LinkedFilesPanel from "./linked-files-panel";
 import InventoryVehicleWorkspace from "./vehicle-inventory-panel";
+import { defaultIndustryConfiguration, resolveIndustryTemplate, type IndustryConfiguration } from "../domain/industry-templates";
 
 import ProviderPrivacyNotice, { ProviderPolicyLinks } from "./provider-privacy-notice";
 import { PROVIDER_PRIVACY_NOTICE_VERSION } from "../domain/provider-privacy";
@@ -26,6 +27,8 @@ import { isAwaitingSalesRecords } from "../domain/intraday-sales";
 import Image from "next/image";
 import { lazy, Suspense, FormEvent, Fragment, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 const BookLoQWorkspace = lazy(() => import("./bookloq-workspace"));
+const DealershipWorkspace = lazy(() => import("./dealership-workspace"));
+const FoodserviceWorkspace = lazy(() => import("./foodservice-workspace"));
 const CommunicationsWorkspace = lazy(() => import("./communications-workspace"));
 const CommerceIntelligenceWorkspace = lazy(() => import("./commerce-intelligence-workspace"));
 import type { RetailAdvisorSeed } from "./retail-intelligence-workspace";
@@ -726,6 +729,7 @@ export default function VanteloqApp({
   const [data, setData] = useState<CommandCentre | null>(null);
   const [currency, setCurrency] = useState("CAD");
   const [businessIndustry, setBusinessIndustry] = useState("Other");
+  const [industryConfiguration,setIndustryConfiguration]=useState<IndustryConfiguration>(()=>defaultIndustryConfiguration("Other"));
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [refreshError, setRefreshError] = useState("");
@@ -787,6 +791,7 @@ export default function VanteloqApp({
       setAdvisorScope(body.organization.id);
       setCurrency(body.organization.currency);
       setBusinessIndustry(body.organization.industry || "Other");
+      setIndustryConfiguration(body.organization.industryConfiguration??defaultIndustryConfiguration(body.organization.industry));
       setAppRole(body.organization.role ?? "employee");
       setEmailAccessKey(documentEmailAccessKey(body.organization));
       setAppPermissions(body.organization.permissions ?? []);
@@ -815,6 +820,7 @@ export default function VanteloqApp({
   // A same-workspace mutation refresh must preserve the active form or sync
   // reconciliation panel. Scope changes still use the full loading boundary.
   const refreshWorkspace = useCallback(() => refresh(true), [refresh]);
+  useEffect(()=>{const changed=()=>void refresh(true);window.addEventListener("vanteloq:industry-changed",changed);return()=>window.removeEventListener("vanteloq:industry-changed",changed);},[refresh]);
   useEffect(() => {
     let cancelled = false;
     void apiFetch("/api/v1/preferences", { headers: { Accept: "application/json" } })
@@ -1131,7 +1137,7 @@ export default function VanteloqApp({
                         variant="full"
                         className="bookloq-nav-lockup"
                       />
-                    ) : <><WorkspaceIcon name={item}/><span className="nav-label">{workspaceViewLabel(item)}</span></>}
+                    ) : <><WorkspaceIcon name={item}/><span className="nav-label">{item==="Inventory"?resolveIndustryTemplate(businessIndustry).inventoryLabel:item==="Sales"&&industryConfiguration.templateId==="dealership"?"Vehicle sales":workspaceViewLabel(item)}</span></>}
                     {!subscriptionAccess.allowed && <small className="nav-plan-lock">{subscriptionAccess.upgradeLabel}</small>}
                   </button>
                 })}
@@ -1263,6 +1269,7 @@ export default function VanteloqApp({
             subscriptionFeatures={subscriptionFeatures}
             currency={currency}
             businessIndustry={businessIndustry}
+            industryConfiguration={industryConfiguration}
             navigate={navigate}
             refresh={refreshWorkspace}
             showNotice={showNotice}
@@ -1407,6 +1414,7 @@ function Workspace({
   subscriptionFeatures,
   currency,
   businessIndustry,
+  industryConfiguration,
   navigate,
   refresh,
   showNotice,
@@ -1429,6 +1437,7 @@ function Workspace({
   subscriptionFeatures: readonly string[];
   currency: string;
   businessIndustry: string;
+  industryConfiguration: IndustryConfiguration;
   navigate: (view: View) => void;
   refresh: () => Promise<void>;
   showNotice: (message: string) => void;
@@ -1446,14 +1455,28 @@ function Workspace({
   const [reportSeed, setReportSeed] = useState<{ from: string; to: string; locationId: string | null } | null>(null);
   const [executiveDrill,setExecutiveDrill]=useState<{from:string;to:string}|undefined>();
   const [intelligenceTab, setIntelligenceTab] = useState<"opportunities" | "retail">("opportunities");
+  const [inventoryTab,setInventoryTab]=useState<"specialised"|"products">("specialised");
+  const [dealerOverviewTab,setDealerOverviewTab]=useState<"vehicles"|"business">("vehicles");
+  const dealer=industryConfiguration.capabilities.includes("dealership_operations");
+  const food=industryConfiguration.capabilities.includes("food_costing");
+  const specialisedAccess=subscriptionFeatures.includes("inventory.lots")&&permissions.includes("inventory.view");
+  const foodAccess=specialisedAccess&&permissions.includes("inventory.value");
   const [reviewSelection, setReviewSelection] = useState<{ id: string; followup: boolean } | undefined>();
   const openReview = (id?: string, followup = false) => { setReviewSelection(id ? { id, followup } : undefined); setIntelligenceTab("opportunities"); navigate("Intelligence"); };
   const [retailAdvisorSeed, setRetailAdvisorSeed] = useState<RetailAdvisorSeed | null>(null);
   const askRetailAdvisor = (seed: RetailAdvisorSeed) => { setRetailAdvisorSeed(seed); navigate("Advisor"); };
   useEffect(() => { if (view === "Advisor" && retailAdvisorSeed) queueMicrotask(() => setRetailAdvisorSeed(null)); }, [view, retailAdvisorSeed]);
   if (view === "Forecasting") return <ForecastingWorkspace activeLocationId={activeLocationId} currency={currency} navigate={navigate}/>;
+  const dealerOverviewSwitch=dealer&&specialisedAccess&&view==="Dashboard"?<nav className="intelligence-switch" aria-label="Dealership overview views"><button type="button" aria-pressed={dealerOverviewTab==="vehicles"} onClick={()=>setDealerOverviewTab("vehicles")}>Dealership operations</button><button type="button" aria-pressed={dealerOverviewTab==="business"} onClick={()=>setDealerOverviewTab("business")}>Business overview & goals</button></nav>:null;
+  if (dealer && specialisedAccess && ["Dashboard","Inventory","Sales","Customers"].includes(view) && (view!=="Dashboard"||dealerOverviewTab==="vehicles")) {
+    const initialTab=view==="Inventory"?"inventory":view==="Sales"?"sales":view==="Customers"?"customers":"overview";
+    return <>{dealerOverviewSwitch}{view==="Inventory"&&industryConfiguration.capabilities.includes("products")&&<nav className="intelligence-switch" aria-label="Dealership inventory views"><button type="button" aria-pressed={inventoryTab==="specialised"} onClick={()=>setInventoryTab("specialised")}>Vehicles</button><button type="button" aria-pressed={inventoryTab==="products"} onClick={()=>setInventoryTab("products")}>Products & parts</button></nav>}{view==="Inventory"&&industryConfiguration.capabilities.includes("products")&&inventoryTab==="products"?<CommerceIntelligenceWorkspace mode="Inventory" currency={currency} timeZone={data.today.timeZone} activeLocationId={activeLocationId} navigate={navigate} createTask={createTask} onAsk={askRetailAdvisor}/>:<DealershipWorkspace key={`${activeLocationId??"all"}:${initialTab}`} activeLocationId={activeLocationId} initialTab={initialTab} agingReviewDays={industryConfiguration.agingReviewDays}/>}</>;
+  }
   if (view === "Dashboard")
     return (
+      <>
+      {dealerOverviewSwitch}
+      {food&&foodAccess&&<FoodserviceWorkspace key={`food:${activeLocationId??"all"}`} activeLocationId={activeLocationId} compactOverview onOpen={()=>{setInventoryTab("specialised");navigate("Inventory");}}/>}
       <Overview
         onAsk={subscriptionFeatures.includes("ai.basic") && permissions.includes("insights.view") ? askRetailAdvisor : undefined}
         onReview={subscriptionFeatures.includes("analytics.sales.advanced") && permissions.includes("insights.view") ? openReview : undefined}
@@ -1470,10 +1493,11 @@ function Workspace({
         paymentRange={paymentRange}
         setPaymentRange={setPaymentRange}
       />
+      </>
     );
   if (view === "Intelligence")
     return (
-      <><nav className="intelligence-switch" aria-label="Intelligence views"><button type="button" aria-pressed={intelligenceTab === "opportunities"} onClick={() => setIntelligenceTab("opportunities")}>Opportunities</button><button type="button" aria-pressed={intelligenceTab === "retail"} onClick={() => setIntelligenceTab("retail")}>Retail analysis</button></nav>
+      <><nav className="intelligence-switch" aria-label="Intelligence views"><button type="button" aria-pressed={intelligenceTab === "opportunities"} onClick={() => setIntelligenceTab("opportunities")}>Opportunities</button><button type="button" aria-pressed={intelligenceTab === "retail"} onClick={() => setIntelligenceTab("retail")}>Commerce analysis</button></nav>
         {intelligenceTab === "retail" ? <CommerceIntelligenceWorkspace key={activeLocationId ?? "all"} mode="Sales" currency={currency} timeZone={data.today.timeZone} activeLocationId={activeLocationId} navigate={navigate} createTask={createTask} onAsk={askRetailAdvisor}/> : <Intelligence
           initialSelection={reviewSelection}
           data={data} navigate={navigate} createTask={createTask} activeLocationId={activeLocationId} onAsk={askRetailAdvisor}
@@ -1539,8 +1563,9 @@ function Workspace({
         onOpenRetail={() => { setIntelligenceTab("retail"); navigate("Intelligence"); }}
       />
     );
+  if (view === "Inventory" && food && foodAccess) return <><nav className="intelligence-switch" aria-label="Menu and ingredient views"><button type="button" aria-pressed={inventoryTab==="specialised"} onClick={()=>setInventoryTab("specialised")}>Recipe & food costs</button><button type="button" aria-pressed={inventoryTab==="products"} onClick={()=>setInventoryTab("products")}>Product inventory</button></nav>{inventoryTab==="specialised"?<FoodserviceWorkspace key={activeLocationId??"all"} activeLocationId={activeLocationId}/>:<CommerceIntelligenceWorkspace mode="Inventory" currency={currency} timeZone={data.today.timeZone} activeLocationId={activeLocationId} navigate={navigate} createTask={createTask} onAsk={askRetailAdvisor}/>}</>;
   if (view === "Inventory")
-    return <InventoryVehicleWorkspace key={activeLocationId ?? "all"} industry={businessIndustry} activeLocationId={activeLocationId}><CommerceIntelligenceWorkspace initialPeriod={executiveDrill} mode="Inventory" currency={currency} timeZone={data.today.timeZone} activeLocationId={activeLocationId} navigate={navigate} createTask={createTask} onAsk={askRetailAdvisor}/></InventoryVehicleWorkspace>;
+    return <InventoryVehicleWorkspace key={`${activeLocationId??"all"}:${industryConfiguration.templateId}`} industry={businessIndustry} configuration={industryConfiguration} activeLocationId={activeLocationId}><CommerceIntelligenceWorkspace initialPeriod={executiveDrill} mode="Inventory" currency={currency} timeZone={data.today.timeZone} activeLocationId={activeLocationId} navigate={navigate} createTask={createTask} onAsk={askRetailAdvisor}/></InventoryVehicleWorkspace>;
   if (view === "Sales" || view === "Customers" || view === "Suppliers")
     return <CommerceIntelligenceWorkspace initialPeriod={executiveDrill} key={view + activeLocationId + (executiveDrill?.from??"") + (executiveDrill?.to??"")} mode={view} currency={currency} timeZone={data.today.timeZone} activeLocationId={activeLocationId} navigate={navigate} createTask={createTask} onAsk={askRetailAdvisor} />;
   if (view === "Purchase Orders")

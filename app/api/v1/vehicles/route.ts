@@ -7,6 +7,7 @@ import { effectivePermissions, requirePermission } from "../../../../server/perm
 import { authorizedLocationScope, requireAccessibleLocation } from "../../../../server/location-access";
 import { getTenantEntitlements } from "../../../../server/entitlements/engine";
 import { recordAudit } from "../../../../server/audit";
+import { getWorkspaceIndustry } from "../../../../server/industry-configuration";
 
 const roles = ["owner", "admin", "manager", "employee", "read_only"] as const;
 const fields = `v.id, v.location_id AS locationId, l.name AS locationName, v.identifier_kind AS identifierKind,
@@ -26,6 +27,7 @@ function publicRecord(row: VehicleRecord, costs: boolean) {
 }
 async function permissionContext(request: Request, write = false) {
   const context = await requireAccess(request, roles, "inventory.lots");
+  if (!(await getWorkspaceIndustry(context)).configuration.capabilities.includes("vehicles")) throw new ApiError(403,"VEHICLE_INDUSTRY_REQUIRED","Vehicle records are available in a dealership workspace. An administrator can review the business type in Settings.");
   await requirePermission(context, "inventory.view");
   if (write) await requirePermission(context, "inventory.adjust");
   const permissions = await effectivePermissions(context);

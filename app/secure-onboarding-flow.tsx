@@ -21,6 +21,9 @@ import { industryKpiRecommendation } from "../domain/industry-kpis";
 
 import BuildYourOverview from "./build-your-overview";
 import { recommendedOverview } from "../domain/dashboard-personalization";
+import { IndustryConfigurationFields } from "./industry-configuration";
+import { defaultIndustryConfiguration, resolveIndustryTemplate } from "../domain/industry-templates";
+import type { validateOnboardingDraft } from "../domain/onboarding-draft";
 
 type Hour = { day: string; open: string; close: string; closed: boolean };
 type SourceMode = "connect_later" | "csv" | "live";
@@ -129,6 +132,7 @@ export default function SecureOnboardingFlow({
   const previousStep = useRef(1);
   useEffect(() => { if (step !== previousStep.current) { panelRef.current?.querySelector<HTMLElement>(".setup-step h2")?.focus(); previousStep.current = step; } }, [step]);
   const [form, setForm] = useState<Setup>(() => initialSetup(accountName));
+  const [industryConfiguration,setIndustryConfiguration] = useState(()=>defaultIndustryConfiguration("Retail"));
   const [overview,setOverview] = useState(()=>recommendedOverview("Retail"));
   const [overviewTouched,setOverviewTouched] = useState(false);
   const overviewLayout=overviewTouched?overview:recommendedOverview(form.industry);
@@ -137,6 +141,11 @@ export default function SecureOnboardingFlow({
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [legalAccepted, setLegalAccepted] = useState(false);
+  const [savedDraft,setSavedDraft]=useState<ReturnType<typeof validateOnboardingDraft>|null>(null);
+  const [draftRevision,setDraftRevision]=useState(0),[draftNotice,setDraftNotice]=useState(""),[draftBusy,setDraftBusy]=useState(false),[draftLoading,setDraftLoading]=useState(true);
+  useEffect(()=>{const controller=new AbortController();apiFetch("/api/v1/onboarding/draft",{signal:AbortSignal.any([controller.signal,AbortSignal.timeout(15000)])}).then(async response=>{if(!response.ok)throw new Error("Saved progress could not be checked. Saving will still protect any newer draft.");const body=await response.json();if(!controller.signal.aborted){setSavedDraft(body.draft);setDraftRevision(body.revision);}}).catch(e=>{if(!controller.signal.aborted)setDraftNotice(e instanceof Error?e.message:"Saved progress could not be checked.");}).finally(()=>{if(!controller.signal.aborted)setDraftLoading(false);});return()=>controller.abort();},[]);
+  async function saveDraft(){if(draftBusy||draftLoading||saving)return;setDraftBusy(true);setError("");try{const response=await apiFetch("/api/v1/onboarding/draft",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({expectedRevision:draftRevision,draft:{form,step,hours,industryConfiguration,overview:overviewLayout}}),signal:AbortSignal.timeout(15000)});const body=await response.json();if(!response.ok)throw new Error(messageFrom(body,"Unable to save your progress."));setDraftRevision(body.revision);setDraftNotice("Progress saved to your account for 48 hours. Tax identifiers and legal acceptance are not saved in the draft.");}catch(e){setError(e instanceof Error?e.message:"Unable to save progress.");}finally{setDraftBusy(false);}}
+  async function discardDraft(){setDraftBusy(true);try{const response=await apiFetch("/api/v1/onboarding/draft",{method:"DELETE",headers:{"Content-Type":"application/json"},body:JSON.stringify({expectedRevision:draftRevision}),signal:AbortSignal.timeout(15000)});if(!response.ok){const body=await response.json();throw new Error(messageFrom(body,"Unable to discard the saved draft."));}setSavedDraft(null);setDraftRevision(0);}catch(e){setError(e instanceof Error?e.message:"Unable to discard the saved draft.");}finally{setDraftBusy(false);}}
   const standaloneBookloq = planAccess.plan === "bookloq";
   const freePlan = planAccess.accessType === "free";
   const set = <K extends keyof Setup>(key: K, value: Setup[K]) =>
@@ -194,6 +203,7 @@ export default function SecureOnboardingFlow({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...form,
+          industryConfiguration: {...industryConfiguration,goals:overviewLayout.priorities??[]},
           hours,
           dashboardPreferences: overviewLayout,
           legalAccepted: true,
@@ -282,6 +292,9 @@ export default function SecureOnboardingFlow({
           </i>
           <em>{Math.round((step / 7) * 100)}%</em>
         </div>
+        {savedDraft&&<section className="industry-resume" aria-label="Saved business setup"><strong>Your saved setup is ready.</strong><p>Resume where you left off, or start again. Acceptance of legal terms must be reviewed again.</p><button type="button" disabled={draftBusy||saving} onClick={()=>{setForm({...initialSetup(accountName),...savedDraft.form} as Setup);setHours(savedDraft.hours);setIndustryConfiguration(savedDraft.industryConfiguration);setOverview(savedDraft.overview);setOverviewTouched(true);setStep(savedDraft.step);setLegalAccepted(false);setSavedDraft(null);}}>Resume saved setup</button><button type="button" disabled={draftBusy||saving} onClick={()=>void discardDraft()}>Discard saved draft</button></section>}
+        {draftNotice&&<p role="status" className="industry-draft-note">{draftNotice}</p>}
+        <button type="button" className="overview-skip" disabled={draftBusy||draftLoading||saving||Boolean(savedDraft)} onClick={()=>void saveDraft()}>{draftLoading?"Checking saved progress…":draftBusy?"Saving progress…":"Save progress"}</button>
         {step === 1 && (
           <Step
             eyebrow="VERIFIED IDENTITY"
@@ -335,6 +348,7 @@ export default function SecureOnboardingFlow({
             title="Business Details"
             copy="Keep the customer-facing name separate from the registered legal entity."
           >
+            <IndustryConfigurationFields value={industryConfiguration} disabled={saving} onChange={next=>{setIndustryConfiguration(next);set("industry",resolveIndustryTemplate(next.templateId).label);}}/>
             <div className="form-grid">
               <Field
                 label="Business Name"
@@ -366,21 +380,6 @@ export default function SecureOnboardingFlow({
                 value={form.website}
                 onChange={(value) => set("website", value)}
                 placeholder="https://example.com"
-              />
-              <Select
-                label="Industry"
-                value={form.industry}
-                onChange={(value) => set("industry", value)}
-                options={[
-                  "Retail",
-                  "Dealership",
-                  "Food & beverage",
-                  "Health & wellness",
-                  "Professional services",
-                  "Hospitality",
-                  "E-commerce",
-                  "Other",
-                ]}
               />
             </div>
             <section className="onboarding-kpi-guide" aria-live="polite" aria-label={`${kpiGuide.industry} KPI recommendations`}>

@@ -1351,3 +1351,90 @@ Verification evidence: the final focused set passed 68 tests covering sample mat
 
 The original Origin homepage presentation was restored at the owner's request after release325. Its rumour headline, dashboard preview, original section order, goal rings, connectors and social links remain the main homepage. The newer guided presentation is available separately at /how-it-works from the How it works navigation tab. Dashboard improvements, Business Pulse, readable sidebar and AI text, Free-plan behaviour, and motion preferences remain in place. This note supersedes any earlier reference to the guided layout replacing the homepage.
 The separate walkthrough uses plain labelled controls and section names, without numbered step badges. Its product guide title distinguishes teaching from the main homepage.
+
+## 3 October 2026: industry configuration and reviewed operations
+
+This source increment adds versioned business configuration, a dealership operating workspace, and reviewed recipe and food-cost records. It preserves the earlier Origin workflows and does not change prices, subscriptions, accounting entries or existing customer records merely because a business type is selected. Completed automated and browser checks, remaining presentation rechecks, final build confirmation and pending publication are distinguished in the [industry expansion acceptance record](industry-expansion-acceptance-2026-10-03.md). Earlier production and browser evidence in this document does not establish publication of these additions.
+
+### Twelve business starting points
+
+The registry in `domain/industry-templates.ts` contains the following twelve templates. Templates determine labels, starting tools, data needs and suggested measures. They are not twelve independently integrated industry systems, and they never grant a paid feature or role permission.
+
+| Template | Starting emphasis |
+| --- | --- |
+| General retail | Products, sales, stock and purchasing |
+| Supplement & health retail | Products, replenishment, lots and expiry |
+| Grocery & specialty food | Perishable products, costs, lots and expiry |
+| Clothing & accessories | Variants, returns and seasonal stock |
+| Furniture & appliances | Products, purchasing and reviewed outstanding balances |
+| Car dealership | Individual vehicles, preparation, customers and delivered sales |
+| Café & coffee shop | Recipe costs, reviewed food-cost periods and ordinary commerce |
+| Restaurant | Menu economics, food costs, labour and ordinary commerce |
+| E-commerce | Orders, products and settlement timing |
+| Professional services | Reviewed invoices, expenses and cash |
+| Hospitality | Recorded revenue, operating costs and cash |
+| Other / custom | Supported general commerce tools |
+
+Onboarding collects a business type and format, shows relevant field and workflow guidance, and permits supported optional tools. The dealership stock-age threshold is a user-selected review threshold, not an industry benchmark. Existing labels resolve to compatible defaults until an authorized administrator reviews a change.
+
+Settings provides a preview and explicit confirmation of the exact configuration. A revision check and fingerprint protect the reviewed change; database triggers preserve configuration history and update the business label together. Changing the configuration can hide tools from the working view, but it does not convert, delete or fabricate their records. Personal dashboard choices, financial targets, invoices and posted accounting history remain separate. Dealership navigation includes its operating dashboard while retaining the original Business overview and goals as a separate dashboard tab.
+
+An unfinished authenticated owner's onboarding can be explicitly saved for 48 hours and resumed after review. Drafts are scoped to the user and unfinished workspace, use revision checks, and exclude passwords, tax identifiers, payment details and legal acceptance. Legal acceptance must be reviewed again. Expired drafts are removed on draft endpoint activity; this is not evidence of a continuously running retention job. Completing setup clears the draft. This is distinct from the existing browser-tab dashboard customization recovery.
+
+### Dealership core and financial boundaries
+
+The additive dealership model separates vehicle identity from successive stock episodes. Ownership, physical position, preparation and availability are independent states. One vehicle and one stock number can have only one active episode within an organization. Transfers preserve acquisition date and require access to both locations. Same-currency transfers are supported; new dealership records require a currency with two decimal minor units, such as CAD or USD. Zero- and three-decimal currencies are explicitly unavailable in this increment.
+
+The workspace supports manual stock entry, a bounded CSV preview and confirm workflow, idempotent saves, preparation and follow-up tasks with owners and due dates, customer leads, appointments, exclusive reservations, recorded deliveries, approved sales-credit shares and delivery reversals. Available stock means recorded available, on-lot and preparation-ready stock with known ownership classification. It is not a legal compliance determination. Reservations and versioned writes use atomic database guards; a conflicting edit requires a refreshed review.
+
+Costs preserve their source reference and evidence state. Estimated, approved and legacy-recorded amounts do not silently become posted costs. Operational gross requires explicitly reviewed posted cost coverage and is frozen at delivery for owned stock. Missing or consignment cost coverage remains unknown. Cost evidence does not post a journal, pay a supplier or reconcile a lender. Posted cost entries are append-only in this increment; correction/void and late-cost adjustment workflows remain deferred, so posted entries require careful review.
+
+Each stock episode has at most one recorded delivery. Splitting sales credit never increases the vehicle count or vehicle sale amount. Shares cannot exceed 100%; the remainder stays unassigned. Integer-cent allocation preserves the complete amount. Reversals preserve the original delivery and use a separate dated reversal; they do not silently restore physical stock. Reacquisition requires a new stock episode.
+
+Legacy vehicle adoption is an explicit, location-scoped action for at most 100 remaining records per request. It does not run as a production-wide migration backfill. Legacy sold status does not establish a delivered date or sale amount. Unknown ownership, physical condition and cost posting remain labelled incomplete, and live legacy stock begins held for review. The original vehicle register remains separate.
+
+Stock totals cover the full permitted location and search scope, while the table loads pages of 100. Delivery summaries cover the full selected period and location scope, with currencies separated. Delivery activity and dated reversals are shown separately, not described as net accounting revenue. Related detail lists disclose their row limit. Stock, delivery-source and summary CSV exports cover their complete selected scope up to 5,000 records; larger scopes fail explicitly rather than returning an undisclosed partial export. Export fields follow the user's financial permissions.
+
+Deleting a team user unassigns linked work and clears user references in credit approvals and events. Shared sales and credit shares remain; the deleted person's credit name becomes “Former member,” with a distinct record key for each allocation. Location changes and industry changes do not erase dealership history. Customer records have a separate business-record lifecycle.
+
+### Café and restaurant records
+
+The foodservice workspace supports reviewed recipe ingredients and food-cost periods for one selected, permitted location. Saved records carry a source reference, source date, currency and optimistic version. Recipe costing separates purchase quantity, prepared quantity, preparation yield and yielded portions. Exact rational arithmetic retains fractional cents until the reporting boundary. Compatible mass, volume and count units are explicit; no assumed density converts grams into millilitres.
+
+Period food depletion is opening inventory plus purchases, minus supplier credits, plus transfers in, minus transfers out, minus closing inventory at the reviewed valuation basis. Recorded waste is already within depletion and is not added again. Actual and theoretical food-cost ratios use matching food net sales; labour uses matching total net sales. Average check uses the supplied eligible closed-check count. Variance is a numerical difference, not proof of waste or theft, and food contribution is not net profit. Missing inputs and invalid denominators produce an unavailable result, not an invented zero.
+
+The initial saved workflow accepts a separately reviewed theoretical-cost total. It does not automatically match POS menu quantities to dated recipe versions, expand nested recipes, infer guest counts or measure table-turn time. Saving a recipe or period does not post BookLoQ entries or alter inventory balances. Record versions prevent silent overwrites; they do not establish a complete immutable history of every prior recipe version.
+
+### Permissions and source contracts
+
+Both specialized workspaces require the existing `inventory.lots` entitlement and their configured industry capability. Dealer reads require `inventory.view`; costs require `inventory.value`; delivered sales require transaction/revenue permissions and basic sales analytics access; profit adds `metrics.profit` and product-margin access. Stock, imports, tasks, customer identity, cost approval, delivery and exports retain separate server checks. Inventory-only access does not receive cost, customer or delivered-sales records simply because the dealership screen is selected.
+
+Foodservice reads require inventory view and value permissions. Recipe writes require inventory adjustment permission. Period records additionally require revenue, profit and payroll-total permissions, and period writes require inventory adjustment and payroll-edit permission. The API omits period records when those sensitive permissions are absent. Tenant, permitted locations, current membership, MFA, same-origin writes and subscription access continue to apply independently of visible navigation.
+
+No new DMS, VIN decoding, vehicle-history, appraisal, floorplan lender, F&I, tax-filing, payroll, payment or notification integration is established by this increment. Neither a vehicle preparation state nor a recipe calculation certifies legal or food-safety compliance. Official-source research and future boundaries are retained in [automotive research](research/industry-expansion-automotive-2026-10-03.md) and [foodservice research](research/industry-expansion-foodservice-2026-10-03.md).
+
+### Additions to the source inventory
+
+This register supplements the dated generated inventory above; it does not alter that older snapshot's provenance. The following schema-only migrations are registered in `drizzle/meta/_journal.json` with generated snapshots 0069, 0070 and 0071 matching the Drizzle definitions.
+
+| Migration | Added tables and controls |
+| --- | --- |
+| `0069_industry_configuration.sql` | `onboarding_drafts`, `workspace_industry_config`, `workspace_industry_history`; expiry/revision indexes and configuration-history triggers |
+| `0070_dealership_operations.sql` | `dealership_vehicle_identities`, `dealership_stock_episodes`, `dealership_cost_lines`, `dealership_leads`, `dealership_tasks`, `dealership_appointments`, `dealership_reservations`, `dealership_sales`, `dealership_sale_credits`, `dealership_events`, `dealership_mutations`, `dealership_write_guards`; scoped uniqueness, foreign keys and atomic location/reservation/delivery/credit guards |
+| `0071_foodservice.sql` | `foodservice_records`; scoped record uniqueness, version checks and location/currency ownership triggers |
+
+| Route | Contract |
+| --- | --- |
+| `GET/POST /api/v1/industry-configuration` | Read current configuration; preview and confirm an authorized revision |
+| `GET/POST/DELETE /api/v1/onboarding/draft` | Read, explicitly save or discard the current unfinished setup draft |
+| `POST /api/v1/onboarding` | Existing setup flow now persists validated initial industry configuration |
+| `GET/POST /api/v1/dealership` | Scoped operating records and CSV exports; validated stock, cost, task, customer, reservation and delivery actions |
+| `GET/POST /api/v1/foodservice` | Scoped recipe/period review and explicitly reviewed save/edit |
+
+Principal implementation files are `domain/industry-templates.ts`, `domain/onboarding-draft.ts`, `server/industry-configuration.ts`, `app/industry-configuration.tsx`, `domain/dealership.ts`, `server/dealership.ts`, `db/dealership-schema.ts`, `app/dealership-workspace.tsx`, `domain/foodservice.ts`, `server/foodservice.ts`, `db/foodservice-schema.ts` and `app/foodservice-workspace.tsx`. The existing application shell, onboarding, settings and vehicle panel consume these contracts.
+
+Latest verified evidence: the integrated focused set passed 62 tests, including the seven dealership domain/SQLite, sixteen dealership UI and twenty-three foodservice domain/UI cases. The final affected Worker run passed four cases covering dealership and industry configuration/draft protections, including stale deletion and organization scope; typecheck passed. Earlier isolated Worker runs are recorded separately in the acceptance record. Browser evidence includes foodservice validation/correction/save/reload, persisted dealership preparation, details focus restoration, mobile business-label switching, Retail setup fields and reviewed industry changes. Final targeted lint, UI lifecycle review, mobile table-overflow recheck, final build confirmation after presentation fixes and publication remain pending. This evidence does not certify every feature or production workload.
+
+Final industry acceptance update: production build and typecheck passed after the last UI corrections; targeted lint has zero errors and three existing main-app warnings. The 62 focused tests and four final affected Worker tests passed. Mobile overflow, details focus return, Escape dismissal and unsaved-form recovery were verified with fictional records. See the industry acceptance record for precise scope and deferred work. Publication identifiers are captured in the deployment evidence after release.
+
+Industry publication correction, 3 October 2026 (America/Denver): the saved release 328 failed during migration with `incomplete input: SQLITE_ERROR`; release 327 remains live. The new industry expansion is therefore implemented and locally verified, but not released. Hosting must identify the exact failed statement and last applied migration before production migration history can safely be repaired. No applied migration was changed and the failed archive was not retried. Exact source, archive, version and deployment identifiers are recorded in [industry acceptance](industry-expansion-acceptance-2026-10-03.md#deployment-evidence-and-safe-recovery-boundary).

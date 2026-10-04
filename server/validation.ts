@@ -1,4 +1,5 @@
 import { isCalendarDate } from "../domain/calendar-date";
+import { INDUSTRY_LABELS } from "../domain/industry-templates";
 import { ApiError } from "./api";
 import { ISO_COUNTRY_CODES } from "../app/address-data";
 import {
@@ -23,16 +24,7 @@ const days = [
   "Saturday",
   "Sunday",
 ] as const;
-const industries = [
-  "Retail",
-  "Dealership",
-  "Food & beverage",
-  "Health & wellness",
-  "Professional services",
-  "Hospitality",
-  "E-commerce",
-  "Other",
-] as const;
+const industries = INDUSTRY_LABELS;
 const canadianRegions = [
   "AB",
   "BC",
@@ -304,6 +296,7 @@ export function onboardingInput(value: Record<string, unknown>) {
     "phone",
     "website",
     "industry",
+    "industryConfiguration",
     "country",
     "province",
     "city",

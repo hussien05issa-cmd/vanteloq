@@ -1,3 +1,5 @@
+export * from "./foodservice-schema";
+export * from "./dealership-schema";
 import { sql } from "drizzle-orm";
 // Reviewed statement records retain their original document and separate cash activity from ledger posting.
 import {
@@ -2427,3 +2429,18 @@ export const shopifyPrivacyRequests = sqliteTable("shopify_privacy_requests", {
   check("shopify_privacy_export_check", sql`${table.lastExportComplete} IN (0,1)`),
   check("shopify_privacy_completion_check", sql`${table.completionMethod} IN ('secure_delivery','no_retained_data')`),
 ]);
+
+export const workspaceIndustryConfig=sqliteTable("workspace_industry_config",{
+ organizationId:text("organization_id").primaryKey().notNull().references(()=>workspaces.id,{onDelete:"cascade"}),
+ industryLabel:text("industry_label").notNull(),configJson:text("config_json").notNull(),revision:integer("revision").notNull(),
+ updatedBy:text("updated_by").references(()=>users.id,{onDelete:"set null"}),updatedAt:integer("updated_at").notNull(),
+},t=>[check("workspace_industry_config_json",sql`json_valid(${t.configJson})`),check("workspace_industry_revision",sql`${t.revision}>=1`)]);
+export const workspaceIndustryHistory=sqliteTable("workspace_industry_history",{
+ id:integer("id").primaryKey({autoIncrement:true}),organizationId:text("organization_id").notNull().references(()=>workspaces.id,{onDelete:"cascade"}),
+ industryLabel:text("industry_label").notNull(),configJson:text("config_json").notNull(),revision:integer("revision").notNull(),
+ changedBy:text("changed_by").references(()=>users.id,{onDelete:"set null"}),changedAt:integer("changed_at").notNull(),
+},t=>[unique("workspace_industry_history_revision").on(t.organizationId,t.revision),check("workspace_industry_history_json",sql`json_valid(${t.configJson})`)]);
+export const onboardingDrafts=sqliteTable("onboarding_drafts",{
+ userId:text("user_id").primaryKey().notNull().references(()=>users.id,{onDelete:"cascade"}),draftJson:text("draft_json").notNull(),
+ revision:integer("revision").notNull(),updatedAt:integer("updated_at").notNull(),expiresAt:integer("expires_at").notNull(),
+},t=>[check("onboarding_draft_json",sql`json_valid(${t.draftJson})`),check("onboarding_draft_revision",sql`${t.revision}>=1`),index("onboarding_drafts_expiry_idx").on(t.expiresAt)]);

@@ -1,5 +1,6 @@
 "use client";
 import MarketingPreferences from "./marketing-consent";
+import IndustryConfigurationSettings from "./industry-configuration";
 import WorkspaceSkeleton from "./workspace-skeleton";
 import CustomPlanCallout from "./custom-plan-callout";
 import { useBillingEntitlements } from "./billing-entitlements-context";
@@ -1122,7 +1123,7 @@ export function SettingsWorkspace({ showNotice, onBrandChange, navigationSetting
             />
           )}
           {section === "organization" && (
-            <OrganizationSettings
+            <><OrganizationSettings
               data={data}
               saving={saving}
               save={async (body) => {
@@ -1148,7 +1149,7 @@ export function SettingsWorkspace({ showNotice, onBrandChange, navigationSetting
                   setSaving(false);
                 }
               }}
-            />
+            /><IndustryConfigurationSettings/></>
           )}
           {section === "branding" && (
             <BrandingSettings

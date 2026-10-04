@@ -1,4 +1,5 @@
 import { getTenantEntitlements, hasAddon } from "../../../../server/entitlements/engine";
+import { getWorkspaceIndustry } from "../../../../server/industry-configuration";
 import { loadExecutiveFinance } from "../../../../server/executive-finance";
 import { buildExecutiveReport } from "../../../../server/executive-report";
 import { revenueAttribution } from "../../../../server/revenue-attribution";
@@ -590,6 +591,7 @@ export async function loadCommandCentre(request: Request) {
         id: context.organizationId,
         name: branding?.displayName ?? context.organization.businessName,
         industry: context.organization.industry,
+        industryConfiguration: (await getWorkspaceIndustry(context)).configuration,
         currency: context.organization.currency,
         role: context.role,
         logoAvailable: Boolean(branding?.logoObjectKey),
