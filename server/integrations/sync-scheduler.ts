@@ -5,6 +5,7 @@ import { ApiError, readRequestBytes } from "../api";
 import { recordAudit } from "../audit";
 import { runDocumentCleanupTick } from "../document-cleanup-scheduler";
 import { cleanupExpiredRateLimits } from "../rate-limit-maintenance";
+import { runWorkflowFollowupTick } from "../workflow-followup";
 import { complimentaryGrantForOwner } from "../complimentary-access";
 import { internalAccessEnabled } from "../internal-access";
 import { resolveComplimentaryEntitlements, resolveInternalEntitlements, resolveSubscriptionEntitlements, subscriptionSnapshot, requireFeatureEntitlement, requireTenantServiceAccess } from "../entitlements/engine";
@@ -126,9 +127,12 @@ export async function runScheduledSyncTick(request: Request, requestId: string) 
         nextAttemptAt: event.nextAttemptAt, authorization: "existing_document_request", newProcessingStarted: false } }),
   }).catch(() => ({ processed: 0, counts: { scheduler_error: 1 } }));
   const posPromise = runDuePosBatch(request, requestId, now).catch(() => ({ processed: 0, counts: { scheduler_error: 1 } }));
-  const [pos, documentCleanup, rateLimitCleanup] = await Promise.all([posPromise, cleanupPromise,
-    cleanupExpiredRateLimits(getD1(), now).catch(() => ({ schedulerError: true }))]);
-  return { accepted: true, ...pos, documentCleanup, rateLimitCleanup };
+  // Opt-in follow-through is independently bounded and cannot cancel POS work.
+  // It runs only after the existing signature and replay checks above succeed.
+  const [pos, documentCleanup, rateLimitCleanup, workflowFollowup] = await Promise.all([posPromise, cleanupPromise,
+    cleanupExpiredRateLimits(getD1(), now).catch(() => ({ schedulerError: true })),
+    runWorkflowFollowupTick().catch(() => ({ schedulerError: true }))]);
+  return { accepted: true, ...pos, documentCleanup, rateLimitCleanup, workflowFollowup };
 }
 
 async function runDuePosBatch(request: Request, requestId: string, now: number) {

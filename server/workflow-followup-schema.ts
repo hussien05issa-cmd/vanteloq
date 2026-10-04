@@ -1,0 +1,23 @@
+import { sql } from "drizzle-orm";
+import { check, index, integer, sqliteTable, text, unique } from "drizzle-orm/sqlite-core";
+import { customerInvoices, users, workspaces } from "../db/schema";
+
+export const collectionFollowups = sqliteTable("collection_followups", {
+  id: text("id").primaryKey().notNull(), organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  invoiceId: text("invoice_id").notNull().references(() => customerInvoices.id, { onDelete: "cascade" }),
+  payloadJson: text("payload_json").notNull(), approvedRecipient: text("approved_recipient").notNull().default(""), approvedTotalCents: integer("approved_total_cents").notNull().default(0), approvedCurrency: text("approved_currency").notNull().default(""),
+  version: integer("version").notNull().default(1), mutationKey: text("mutation_key").notNull(), lastCheckedAt: integer("last_checked_at").notNull().default(0), updatedBy: text("updated_by").references(() => users.id, { onDelete: "set null" }), updatedAt: integer("updated_at").notNull(),
+}, t => [unique("collection_followup_invoice").on(t.organizationId, t.invoiceId), check("collection_followup_json", sql`json_valid(${t.payloadJson})`), check("collection_followup_version", sql`${t.version}>0`)]);
+export const collectionFollowupEvents = sqliteTable("collection_followup_events", {
+  id: text("id").primaryKey().notNull(), organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }), followupId: text("followup_id").notNull().references(() => collectionFollowups.id, { onDelete: "cascade" }), version: integer("version").notNull(), payloadJson: text("payload_json").notNull(), actorUserId: text("actor_user_id").references(() => users.id, { onDelete: "set null" }), createdAt: integer("created_at").notNull(),
+}, t => [unique("collection_followup_event_version").on(t.followupId, t.version), check("collection_followup_event_json", sql`json_valid(${t.payloadJson})`)]);
+export const workflowDeliveryPreferences = sqliteTable("workflow_delivery_preferences", {
+  id: text("id").primaryKey().notNull(), organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }), userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  payloadJson: text("payload_json").notNull(), enabled: integer("enabled").notNull().default(0), authorizedSubject: text("authorized_subject").notNull(), approvedEmail: text("approved_email").notNull(), authorizationVersion: text("authorization_version").notNull(),
+  version: integer("version").notNull().default(1), mutationKey: text("mutation_key").notNull(), lastCheckedAt: integer("last_checked_at").notNull().default(0), updatedAt: integer("updated_at").notNull(),
+}, t => [unique("workflow_delivery_owner").on(t.organizationId, t.userId), index("workflow_delivery_due").on(t.enabled, t.lastCheckedAt), check("workflow_delivery_preferences_json", sql`json_valid(${t.payloadJson})`), check("workflow_delivery_preferences_version", sql`${t.version}>0`)]);
+export const workflowDeliveries = sqliteTable("workflow_deliveries", {
+  id: text("id").primaryKey().notNull(), organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }), userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  kind: text("kind", { enum: ["opening", "closing", "reminder"] }).notNull(), scopeKey: text("scope_key").notNull(), businessDate: text("business_date").notNull(), invoiceId: text("invoice_id").references(() => customerInvoices.id, { onDelete: "cascade" }), preferenceVersion: integer("preference_version").notNull(), followupVersion: integer("followup_version"),
+  status: text("status", { enum: ["pending", "sending", "accepted", "ready", "suppressed", "failed"] }).notNull().default("pending"), payloadJson: text("payload_json").notNull().default("{}"), attempts: integer("attempts").notNull().default(0), nextAttemptAt: integer("next_attempt_at").notNull(), leaseOwner: text("lease_owner"), leaseExpiresAt: integer("lease_expires_at"), providerId: text("provider_id"), errorCode: text("error_code"), acknowledgedAt: integer("acknowledged_at"), acceptedAt: integer("accepted_at"), createdAt: integer("created_at").notNull(), updatedAt: integer("updated_at").notNull(),
+}, t => [unique("workflow_delivery_once").on(t.organizationId, t.kind, t.scopeKey), index("workflow_delivery_retry").on(t.status, t.nextAttemptAt, t.leaseExpiresAt), check("workflow_delivery_payload_json", sql`json_valid(${t.payloadJson})`), check("workflow_delivery_attempts", sql`${t.attempts}>=0`)]);

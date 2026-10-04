@@ -1,4 +1,8 @@
 export * from "./foodservice-schema";
+export * from "./business-workflow-schema";
+export * from "../server/workflow-followup-schema";
+export * from "../server/sector-operations-schema";
+export * from "../server/workflow-inventory-schema";
 export * from "./dealership-schema";
 import { sql } from "drizzle-orm";
 // Reviewed statement records retain their original document and separate cash activity from ledger posting.

@@ -29,6 +29,11 @@ import { lazy, Suspense, FormEvent, Fragment, useCallback, useEffect, useId, use
 const BookLoQWorkspace = lazy(() => import("./bookloq-workspace"));
 const DealershipWorkspace = lazy(() => import("./dealership-workspace"));
 const FoodserviceWorkspace = lazy(() => import("./foodservice-workspace"));
+const OperatingWorkflows = lazy(() => import("./operating-workflows"));
+const BusinessWorkflows = lazy(() => import("./business-workflows"));
+const WorkflowFollowup = lazy(() => import("./workflow-followup"));
+const InventoryWorkflows = lazy(() => import("./inventory-workflows"));
+import { WorkflowDisclosure } from "./operating-workflows";
 const CommunicationsWorkspace = lazy(() => import("./communications-workspace"));
 const CommerceIntelligenceWorkspace = lazy(() => import("./commerce-intelligence-workspace"));
 import type { RetailAdvisorSeed } from "./retail-intelligence-workspace";
@@ -1266,6 +1271,7 @@ export default function VanteloqApp({
             data={data!}
             permissions={appPermissions}
             emailAccessKey={emailAccessKey}
+            appRole={appRole}
             subscriptionFeatures={subscriptionFeatures}
             currency={currency}
             businessIndustry={businessIndustry}
@@ -1406,6 +1412,7 @@ function NavigationSettingsPanel({
 
 function Workspace({
   view,
+  appRole,
   advisorConsent,
   advisorAvailability,
   data,
@@ -1429,6 +1436,7 @@ function Workspace({
   navigationSettings,
 }: {
   view: View;
+  appRole: string;
   advisorConsent: ReturnType<typeof useAdvisorConsent>;
   advisorAvailability: ReturnType<typeof useAdvisorAvailability>;
   data: CommandCentre;
@@ -1461,6 +1469,7 @@ function Workspace({
   const food=industryConfiguration.capabilities.includes("food_costing");
   const specialisedAccess=subscriptionFeatures.includes("inventory.lots")&&permissions.includes("inventory.view");
   const foodAccess=specialisedAccess&&permissions.includes("inventory.value");
+  const canScheduleBriefings=appRole==="owner"&&subscriptionFeatures.includes("business.brief.basic")&&permissions.includes("insights.view");
   const [reviewSelection, setReviewSelection] = useState<{ id: string; followup: boolean } | undefined>();
   const openReview = (id?: string, followup = false) => { setReviewSelection(id ? { id, followup } : undefined); setIntelligenceTab("opportunities"); navigate("Intelligence"); };
   const [retailAdvisorSeed, setRetailAdvisorSeed] = useState<RetailAdvisorSeed | null>(null);
@@ -1532,12 +1541,12 @@ function Workspace({
   if (view === "Integrations")
     return <DataHub refresh={refresh} showNotice={showNotice} navigate={navigate} subscriptionFeatures={subscriptionFeatures} />;
   if (view === "Decision Journal")
-    return <DecisionJournal currency={currency} showNotice={showNotice} />;
+    return <><DecisionJournal currency={currency} showNotice={showNotice} /><WorkflowDisclosure title="Measure the outcome of an action"><BusinessWorkflows activeLocationId={activeLocationId} initialKind="outcome"/></WorkflowDisclosure></>;
   if (view === "Scenario Planner")
     return <ScenarioPlanner source={data.current} currency={currency} />;
   if (view === "Business Brief")
     return (
-      <BusinessBrief
+      <><BusinessBrief
         canCreate={subscriptionFeatures.includes("operations.basic") && permissions.includes("insights.create_task")}
         activeLocationId={activeLocationId}
         onAsk={subscriptionFeatures.includes("ai.basic") && permissions.includes("insights.view") ? askRetailAdvisor : undefined}
@@ -1546,7 +1555,7 @@ function Workspace({
         currency={currency}
         navigate={navigate}
         createTask={createTask}
-      />
+      />{canScheduleBriefings&&<WorkflowDisclosure title="Opening and closing briefings"><WorkflowFollowup mode="briefings"/></WorkflowDisclosure>}</>
     );
   if (view === "Advisor")
     return <Advisor canAttach={workspacePlan.accessType !== "free"} savedConsent={advisorConsent} availability={advisorAvailability} key={`${advisorConsent.scope}:${activeLocationId ?? "organization"}`} data={data} navigate={navigate} createTask={createTask} activeLocationId={activeLocationId} retailSeed={retailAdvisorSeed?.locationId === activeLocationId ? retailAdvisorSeed : null} />;
@@ -1570,12 +1579,12 @@ function Workspace({
     return <CommerceIntelligenceWorkspace initialPeriod={executiveDrill} key={view + activeLocationId + (executiveDrill?.from??"") + (executiveDrill?.to??"")} mode={view} currency={currency} timeZone={data.today.timeZone} activeLocationId={activeLocationId} navigate={navigate} createTask={createTask} onAsk={askRetailAdvisor} />;
   if (view === "Purchase Orders")
     return (
-      <PurchaseOrdersWorkspace
+      <><PurchaseOrdersWorkspace
         currency={currency}
         showNotice={showNotice}
         createTask={createTask}
         activeLocationId={activeLocationId}
-      />
+      />{specialisedAccess&&permissions.includes("inventory.value")&&<WorkflowDisclosure title="Receiving, stock movements and supplier follow-up"><InventoryWorkflows activeLocationId={activeLocationId}/></WorkflowDisclosure>}</>
     );
   if (view === "Locations" && workspacePlan.accessType === "free")
     return <section className="content"><header className="workspace-section-heading"><p>YOUR LOCATION</p><h2>One location. One overview.</h2><p>Your Free plan combines daily records in the main dashboard. Upgrade in Billing & plans to compare and manage multiple locations.</p></header><button className="primary" onClick={() => navigate("Dashboard")}>Open your dashboard</button><button className="secondary" onClick={() => { window.location.hash = "billing"; navigate("Settings"); }}>View plans</button></section>;
@@ -1620,6 +1629,7 @@ function Workspace({
         navigationSettings={navigationSettings}
       />
     );
+  if (view === "Operations") return <OperatingWorkflows activeLocationId={activeLocationId} configuration={industryConfiguration} permissions={permissions} subscriptionFeatures={subscriptionFeatures} canScheduleBriefings={canScheduleBriefings}><ModuleWorkspace name={view} definition={moduleDefinitions[view]} data={data} currency={currency} navigate={navigate} createTask={createTask}/></OperatingWorkflows>;
   return (
     <ModuleWorkspace
       name={view}

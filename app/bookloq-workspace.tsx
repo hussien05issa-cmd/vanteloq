@@ -5,7 +5,9 @@ import FinanceChart from "./finance-chart";
 import CashForecastChart from "./cash-forecast-chart";
 import type { buildBusinessCashSummary } from "../domain/bookloq-cash-management";
 
-import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, ReactNode, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { WorkflowDisclosure } from "./operating-workflows";
+const WorkflowFollowup = lazy(() => import("./workflow-followup"));
 import { useModalFocus } from "./use-modal-focus";
 import { csvCell } from "../domain/csv";
 import { decimalUnits, invoiceLineAmounts, invoiceTotals } from "../domain/invoice-amounts";
@@ -293,7 +295,7 @@ function BookLoQSection(props: { section: Section; data: BookLoQData; setSection
   if (section === "Overview") return <OverviewPanel {...props}/>;
   if (section === "Transactions") return <TransactionCentre data={props.data} refresh={props.refresh} showNotice={props.showNotice} setSection={props.setSection} createTask={props.createTask} navigate={props.navigate}/>;
   if (section === "Banking" || section === "Reconciliation") return <><BankingPanel data={props.data} reconciliation={section === "Reconciliation"} setSection={props.setSection}/>{props.data.permissions.includes("reconcile_accounts") && <BookloqStatementImport currency={props.data.settings?.baseCurrency ?? props.data.organization.currency} onUploaded={() => props.navigate("Documents")} onComplete={props.refresh}/>}</>;
-  if (section === "Sales" || section === "Invoicing") return <ReceivablesPanel data={props.data} refresh={props.refresh} showNotice={props.showNotice}/>;
+  if (section === "Sales" || section === "Invoicing") return <><ReceivablesPanel data={props.data} refresh={props.refresh} showNotice={props.showNotice}/><WorkflowDisclosure title="Collections, payment promises and reminders"><WorkflowFollowup mode="collections"/></WorkflowDisclosure></>;
   if (section === "Expenses") return <ExpensesPanel data={props.data} navigate={props.navigate} refresh={props.refresh} showNotice={props.showNotice}/>;
   if (section === "Bills") return <BillsPanel data={props.data}/>;
   if (section === "Customers" || section === "Suppliers") return <ContactsPanel data={props.data} type={section === "Customers" ? "customer" : "supplier"}/>;

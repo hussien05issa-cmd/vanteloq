@@ -1070,7 +1070,7 @@ export function SettingsWorkspace({ showNotice, onBrandChange, navigationSetting
           </span>
         </div>
       </section>
-      {access.accessType === "free" && section !== "billing" && <div className="free-settings-shortcut"><div><b>You're on Free</b><span>1 owner · 1 location · Upgrade whenever you need more.</span></div><button type="button" className="primary" onClick={() => { window.location.hash = "billing"; setSection("billing"); }}>View plans & upgrade</button></div>}
+      {access.accessType === "free" && section !== "billing" && <div className="free-settings-shortcut"><div><b>You&apos;re on Free</b><span>1 owner · 1 location · Upgrade whenever you need more.</span></div><button type="button" className="primary" onClick={() => { window.location.hash = "billing"; setSection("billing"); }}>View plans & upgrade</button></div>}
       <div className="settings-layout">
         <aside className="settings-nav">
           <label>

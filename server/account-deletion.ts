@@ -96,6 +96,11 @@ async function eraseLocal(job: DeletionJob, plan: DeletionPlan) {
     db.prepare("DELETE FROM workspaces WHERE id = ?").bind(job.organization_id),
     ...plan.exclusiveUserIds.map((id) => db.prepare("DELETE FROM users WHERE id = ? AND NOT EXISTS (SELECT 1 FROM memberships WHERE user_id = ?)").bind(id, id)),
   ] : [
+    db.prepare("DELETE FROM workflow_deliveries WHERE user_id=? AND organization_id=?").bind(job.user_id,job.organization_id),
+    db.prepare("DELETE FROM workflow_delivery_preferences WHERE user_id=? AND organization_id=?").bind(job.user_id,job.organization_id),
+    ...["business_workflow_records","sector_operation_records","collection_followups"].map(table=>db.prepare(`UPDATE ${table} SET updated_by=NULL WHERE updated_by=? AND organization_id=?`).bind(job.user_id,job.organization_id)),
+    ...["business_workflow_revisions","sector_operation_revisions","workflow_inventory_history","workflow_inventory_movements","workflow_inventory_receipts","workflow_inventory_records"].map(table=>db.prepare(`UPDATE ${table} SET actor_id=NULL WHERE actor_id=? AND organization_id=?`).bind(job.user_id,job.organization_id)),
+    db.prepare("UPDATE collection_followup_events SET actor_user_id=NULL WHERE actor_user_id=? AND organization_id=?").bind(job.user_id,job.organization_id),
     db.prepare("DELETE FROM cloud_file_connections WHERE user_id=? AND organization_id=?").bind(job.user_id,job.organization_id),
     db.prepare("DELETE FROM advisor_preferences WHERE user_id = ?").bind(job.user_id),
     db.prepare("DELETE FROM advisor_requests WHERE user_id = ?").bind(job.user_id),

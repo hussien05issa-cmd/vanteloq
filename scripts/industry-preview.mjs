@@ -11,7 +11,7 @@ import { defaultIndustryConfiguration } from "../domain/industry-templates.ts";
 const port = Number(process.env.INDUSTRY_PREVIEW_PORT || 5192);
 if (!Number.isInteger(port) || port < 1024 || port > 65535) throw Error("Use a valid nonprivileged preview port.");
 const localOrigin = `http://127.0.0.1:${port}`;
-const allowedPaths = new Set(["/api/v1/foodservice", "/api/v1/dealership", "/api/v1/industry-configuration"]);
+const allowedPaths = new Set(["/api/v1/foodservice", "/api/v1/dealership", "/api/v1/industry-configuration", "/api/v1/inventory-workflows", "/api/v1/sector-operations", "/api/v1/business-workflows", "/api/v1/workflow-followup"]);
   const bundle = await build({ absWorkingDir: process.cwd(), entryPoints: [resolve("tests/fixtures/industry-preview.tsx")], outdir: resolve("output/industry-preview-bundle"), tsconfigRaw: { compilerOptions: { jsx: "react-jsx", target: "es2022" } }, bundle: true, write: false, format: "esm", platform: "browser", jsx: "automatic", logLevel: "error", plugins: [{ name: "local-api-only", setup(build) { build.onResolve({ filter: /\/supabase-browser$/ }, () => ({ path: resolve("tests/fixtures/industry-preview-api.ts") })); } }] });
   const javascript = bundle.outputFiles.find(file => file.path.endsWith(".js")).text;
   const componentCss = bundle.outputFiles.find(file => file.path.endsWith(".css"))?.text || "";
@@ -32,7 +32,7 @@ async function createBusiness(template) {
 }
 let server;
 try {
-  const accounts = { cafe: await createBusiness("cafe"), dealership: await createBusiness("dealership") };
+  const accounts = { cafe: await createBusiness("cafe"), dealership: await createBusiness("dealership"), retail: await createBusiness("retail"), services: await createBusiness("services"), hospitality: await createBusiness("hospitality") };
   const money = minor => ({ currency: "CAD", minor });
   const recipe = { kind: "recipe", name: "Fictional soup batch", source: "Synthetic supplier invoice and yield sheet", asOfDate: "2026-09-30", payload: { currency: "CAD", portions: "10", ingredients: [{ id: "Vegetables", purchaseQuantity: { amount: "2", unit: "kg" }, purchaseCost: money(800), recipeQuantity: { amount: "1", unit: "kg" }, preparationYield: "0.8" }, { id: "Stock", purchaseQuantity: { amount: "1", unit: "l" }, purchaseCost: money(200), recipeQuantity: { amount: "500", unit: "ml" }, preparationYield: "1" }] } };
   const period = { kind: "period", name: "Fictional September food review", source: "Synthetic counts, sales and payroll summary", asOfDate: "2026-09-30", from: "2026-09-01", to: "2026-09-30", payload: { currency: "CAD", opening: money(100000), purchases: money(400000), supplierCredits: money(10000), transfersIn: money(20000), transfersOut: money(30000), closing: money(180000), foodNetSales: money(1000000), totalNetSales: money(1200000), theoreticalCost: money(275000), recordedWasteCost: money(10000), labourCost: money(400000), otherVariableCosts: money(50000), closedChecks: 600 } };
@@ -47,6 +47,7 @@ try {
       if (request.headers.host !== `127.0.0.1:${port}`) { response.writeHead(403).end(); return; }
       const url = new URL(request.url, localOrigin);
       response.setHeader("Cache-Control", "no-store"); response.setHeader("X-Content-Type-Options", "nosniff");
+      if (url.pathname === "/responsive") { const width=Math.max(320,Math.min(1440,Number(url.searchParams.get("width"))||390)); response.writeHead(200,{"Content-Type":"text/html"});response.end(`<html><meta name="viewport" content="width=device-width"><title>Workflow responsive preview</title><body style="margin:0"><iframe title="Mobile workflow preview" src="/" style="width:${width}px;height:900px;border:0"></iframe></body></html>`);return; }
       if (url.pathname.startsWith("/api/")) {
         if (!allowedPaths.has(url.pathname) || !["GET", "POST"].includes(request.method)) { response.writeHead(404).end(); return; }
         if (request.method === "POST" && request.headers.origin !== localOrigin) { response.writeHead(403).end(); return; }

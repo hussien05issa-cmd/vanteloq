@@ -512,6 +512,13 @@
       "when": 1791090032740,
       "tag": "0072_mean_hobgoblin",
       "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "6",
+      "when": 1791096391778,
+      "tag": "0073_careless_daimon_hellstrom",
+      "breakpoints": true
     }
   ]
 }

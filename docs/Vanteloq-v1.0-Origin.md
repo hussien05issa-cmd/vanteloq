@@ -1,12 +1,63 @@
 # Vanteloq v1.0 Origin
 
-**Product and production handover · Updated 3 October 2026**
+**Product and production handover · Updated 4 October 2026**
 **Operator:** 2855706 ALBERTA INC, doing business as LexEdge Consulting and operating Vanteloq.  
 **Audience:** the product owner, engineers, support operators and authorized accounting reviewers.
 
 This is the canonical Origin release document. It records what Vanteloq implements, how customer information moves through the system, how access and payment work, what was tested, and what still needs independent production evidence. The appendices list the complete source inventory, feature entitlements, database tables and HTTP endpoints. They describe source contracts, not a claim that every listed capability is publicly available, populated or independently certified.
 
 Vanteloq brings a business’s sales, inventory, documents and financial records into one inspectable picture. BookLoQ provides its accounting and cash workspace. LexEdge Consulting operates the product. Customers retain their own workspaces, provider grants, permitted locations and decisions. A sample preview is always separate from customer records.
+
+## 4 October reviewed workflow increment
+
+**Status at this update: implemented in the working source; integrated build, artifact validation and typecheck passed. Remaining presentation checks, publication and GitHub/source synchronization remain pending.** Earlier dated deployment receipts below do not establish publication of these additions. The full scope, source boundaries, table inventory and verification register are recorded in [Business workflow implementation](business-workflow-implementation-2026-10-04.md).
+
+The Operations screen keeps its existing tasks and adds lazily loaded, business-relevant panels: Stock & purchasing, Prep & service, Orders & delivery, Funding & handover, Rooms & stays, Work & results and owner Daily briefings, subject to the current industry, plan and permissions. BookLoQ adds invoice collection follow-up. New record types retain reviewed source references, location/currency, revision history and explicit lifecycle actions.
+
+| Working area | Added capability |
+| --- | --- |
+| Retail stock and purchasing | Reviewed opening counts and corrections; accepted/rejected partial PO receipts; atomic stock movements and receipt reversals; invoice line quantity/price exceptions; constrained supplier proposals |
+| Supplement, grocery and clothing | Best-before quality review distinct from expiration; lot action and resolution evidence; matched variant return cohorts, reasons and return-window maturity |
+| Café and restaurant | Preparation plans, recipe-linked ingredient/output batches, supplier credit review, service-period labour/demand comparisons and delivery-order settlement/contribution |
+| Furniture | Special-order specification, linked supplier PO, deposit/balance, delivery progress and acceptance |
+| Dealership | Stock-linked lender funding, customer contribution, trade/floorplan payoff, reviewed daily holding-cost estimates and release checks |
+| Services and e-commerce | Scope/time/direct-cost client jobs linked to BookLoQ invoices; payout component reconciliation; order contribution with separate refunds and recovered stock cost |
+| Hospitality | Room inspection/block/occupancy review, unique room-night booking claims, check-in, reviewed folio updates, departure balance and housekeeping handoff |
+| Cross-business work | Controlled checklists; comparable baseline/follow-up and trade-off outcome reviews; invoice contact notes, promises, disputes and next actions |
+
+Managed stock is explicitly separate from imported POS balances. It requires a reviewed opening count. Accepted receipts and approved preparation batches update that ledger atomically; reversible corrections retain their original evidence. Reversing already-consumed output cannot create a negative balance. Counts and receipts use versions, source uniqueness and retry keys; unchanged physical counts still invalidate stale pending movements. Current purchase-order quantities and costs are checked when receiving and reviewing invoices.
+
+Supplier recommendations use the customer's observed demand and entered lead time, safety stock, case pack, minimum quantity, usable shelf life, storage and cash constraints. They do not transmit a purchase. A past best-before date alone does not certify unsafe food; an actual expired date retains its separate handling. A lot action resolution does not automatically release quarantine, move supplier-return stock or post a supplier credit. Variant return rates use matched sales cohorts and show whether their return window is complete.
+
+Preparation approvals consume and produce reviewed base-unit stock quantities in the same database transaction as the batch approval and retained history. They do not replace recipe safety procedures, infer shelf life, change a connected POS or post accounting entries. Dealer funding adds a reviewed daily holding-cost estimate using exact minor units times whole calendar days. The start is included and end excluded; missing rate/period stays unknown, and partial inputs block approval. The estimate is separate from actual posted expenses and must not double-count existing deal costs. This does not establish lender connectivity or post an accrual. Room/stay data is manually reviewed, not a PMS feed. Service/order contribution is not company net profit, and settlement does not create additional revenue. Before-and-after outcomes do not prove causation.
+
+Opening/closing briefings, briefing email and customer invoice reminders begin **off**. Only a verified owner can authorize the recurring service grant. Schedules use the workspace time zone, operating hours, closure exceptions and quiet hours. The signed scheduler rechecks current identity, access, preference versions and deletion state. Reminders also require owner approval for the real invoice's saved recipient and recheck its balance, dispute, promise/contact interval and changed details before sending. Provider acceptance, in-app readiness and owner acknowledgement are separate states. No real customer reminder or owner schedule was enabled by isolated tests; source wiring does not prove production delivery.
+
+The owner briefing summarizes supported saved overdue invoices/bills and tasks. Its optional notification email contains a sign-in link without customer or financial figures. It is not an all-clear for missing imports, cash or sales completeness. Resend delivery retains stable idempotency keys, bounded retries, expiry and failure/suppression states.
+
+### New persistence and privacy contract
+
+Generated migration `0073_careless_daimon_hellstrom.sql` adds 17 tables, without resetting customer records or rewriting an applied migration:
+
+| Group | Tables |
+| --- | --- |
+| General workflows | `business_workflow_records`, `business_workflow_revisions` |
+| Collection and scheduled delivery | `collection_followups`, `collection_followup_events`, `workflow_delivery_preferences`, `workflow_deliveries` |
+| Sector workflows | `sector_operation_records`, `sector_operation_requests`, `sector_operation_revisions`, `sector_room_nights` |
+| Managed stock and purchasing evidence | `workflow_inventory_positions`, `workflow_inventory_movements`, `workflow_inventory_receipts`, `workflow_inventory_records`, `workflow_inventory_history`, `workflow_inventory_mutations`, `workflow_inventory_guards` |
+
+The new scoped routes are `GET/POST /api/v1/business-workflows`, `/api/v1/inventory-workflows`, `/api/v1/sector-operations` and `/api/v1/workflow-followup`. They preserve authentication, same-origin writes, rate limiting, applicable entitlements/permissions and audit records. Scheduler work uses the existing signed private scheduler entry point.
+
+Privacy policy version **2026-10-04** describes the new operational fields, history, separate stock ledger, invoice promises and owner-authorized delivery. Terms of Service remains **2026-10-01**. Workspace deletion removes these operating records and revisions. Account-only deletion retains employer evidence while removing actor references and the departing account's delivery preferences/records. No automatic age-based purge of the operating history or universal workflow export is claimed. Free-text and exported evidence still require the operator's retention and data-minimization process.
+
+### Current verification evidence
+
+- The final inventory/deletion batch passed **35/35**: 24 inventory/domain/SQLite/Miniflare D1 cases and 11 account-deletion flows. It covers atomic receipts/reversal, replay, concurrent changes, scope rejection, future/backdated evidence, workspace cascade and account-only actor removal without erasing employer stock.
+- General workflows passed **6 domain tests and 1 isolated flow**. Follow-up passed **6 domain tests and 8 isolated flows**. Sector operations passed **10 domain tests and 4 final D1 workflow tests**, including persisted/reloaded/reviewed/reopened holding-cost evidence, five days × CAD $12.34 = CAD $61.70, and partial-input rejection.
+- The combined general-work/follow-up/homepage/migration/sign-in/onboarding batch passed **41/41**, recorded in the outer workspace at `output/business-workflow-regression-2026-10-04.log`. Nine existing rendering/motion/presentation tests and the final **22-test domain/UI batch** also passed. These batches overlap component tests and are not added into a single total.
+- The full lint pass has zero errors and 17 pre-existing warnings; targeted inventory lint passed separately. Integrated production build, artifact validation and full typecheck passed with the holding-cost addition. The release owner will rebuild the final presentation-only workflow heading/select-caption change before publication.
+- A local fictional stock form was saved and cancelled at **390px**. Homepage checks confirmed Enter-key progression, café/hospitality switching, 375px content width in a 390px viewport without horizontal overflow, and motion-off disabling playback while preserving manual steps. These checks do not cover every device, form or production account.
+- **Publication, application of 0073 in production and GitHub/source synchronization remain pending.** The release owner will record deployment, migration readback and source/remote identity in the outer workspace's final release report under `output/`, alongside the [implementation register](business-workflow-implementation-2026-10-04.md#final-release-evidence-to-complete). Existing production backup, provider approval and operational evidence gates below remain applicable.
 
 ## Release decision and unresolved items
 

@@ -10,6 +10,7 @@ import { requireBillingAccess } from "../server/authorization";
 import { advanceDeletion, authorizeDeletionJob } from "../server/account-deletion";
 import { type VanteloqRuntimeEnv } from "../db";
 import { activateTestSubscription } from "./helpers/subscription-fixture.mjs";
+import { mutateInventoryWorkflow, type InventoryWorkflowActor } from "../server/workflow-inventory";
 
 const owner = "aaaaaaaa-1111-4444-8888-111111111111";
 const teammate = "bbbbbbbb-2222-4444-8888-222222222222";
@@ -210,6 +211,16 @@ test("ambiguous or changed membership fails before any remote or local deletion"
 test("a teammate deletes only their own membership and keeps the employer workspace", async () => {
   const f = await fixture(false, teammate);
   try {
+    await f.db.batch([
+      f.db.prepare("INSERT INTO organization_locations(id,organization_id,name,country_code,address_line_1,locality,administrative_area,timezone,currency,created_at,updated_at) VALUES('delete-stock-location','target','TEST_ONLY Store','CA','TEST_ONLY','Edmonton','AB','America/Edmonton','CAD',1,1)"),
+      f.db.prepare("INSERT INTO purchase_orders(id,organization_id,order_number,supplier_name,delivery_location_id,order_date,currency,status,subtotal_cents,total_cents,created_by_user_id,created_at,updated_at) VALUES('delete-stock-po','target','TEST-PO','Fictional Supplier','delete-stock-location','2026-08-01','CAD','sent',2000,2000,?,1,1)").bind(owner),
+      f.db.prepare("INSERT INTO purchase_order_lines(id,organization_id,purchase_order_id,line_number,sku,description,quantity,received_quantity,unit_cost_cents,created_at,updated_at) VALUES('delete-stock-line','target','delete-stock-po',1,'SKU','TEST_ONLY Item',20,0,100,1,1)"),
+    ]);
+    const actor:InventoryWorkflowActor={organizationId:"target",userId:teammate,locationIds:["delete-stock-location"],permissions:["inventory.view","inventory.value","inventory.adjust","purchasing.view","purchasing.receive","purchasing.match"],features:["inventory.lots","invoice.matching"],capabilities:["products"]};
+    const stock=(body:Record<string,unknown>)=>mutateInventoryWorkflow(actor,{locationId:"delete-stock-location",mutationKey:crypto.randomUUID(),reviewed:true,date:"2026-09-01",...body},f.db as unknown as D1Database);
+    await stock({action:"open_stock",sku:"SKU",productName:"TEST_ONLY Item",unit:"each",quantityMilli:10000,source:"TEST_ONLY count"});
+    await stock({action:"receive",purchaseOrderId:"delete-stock-po",source:"TEST_ONLY delivery",lines:[{lineId:"delete-stock-line",accepted:5,rejected:0}]});
+    await stock({action:"save_record",kind:"invoice_review",record:{purchaseOrderId:"delete-stock-po",invoiceReference:"TEST-INV",source:"TEST_ONLY invoice",asOf:"2026-09-01",lines:[{lineId:"delete-stock-line",ordered:20,accepted:5,agreedUnitCostCents:100,billed:5,billedUnitCostCents:100}]}});
     const session = jobSession();
     assert.equal((await begin(request("/api/v1/account/deletion",input(session,"account"),teammate))).status,202);
     const result = await resume(request("/api/v1/account/deletion/resume",session,teammate));
@@ -221,6 +232,12 @@ test("a teammate deletes only their own membership and keeps the employer worksp
     assert.equal(f.objects.size,3);
     assert.equal(f.state.remoteDeleted,false);
     assert.deepEqual(f.state.deletes.filter((path)=>path.includes("admin/users")),[`/auth/v1/admin/users/${teammate}`]);
+    for(const table of ["workflow_inventory_history","workflow_inventory_movements","workflow_inventory_receipts","workflow_inventory_records"]){
+      assert.ok(Number((await f.db.prepare(`SELECT count(*) n FROM ${table} WHERE organization_id='target'`).first())?.n)>0,"Employer evidence is retained");
+      assert.equal((await f.db.prepare(`SELECT count(*) n FROM ${table} WHERE organization_id='target' AND actor_id IS NOT NULL`).first())?.n,0,"Departed teammate is no longer linked as actor");
+    }
+    assert.equal((await f.db.prepare("SELECT quantity_milli n FROM workflow_inventory_positions WHERE organization_id='target' AND sku='SKU'").first())?.n,15000);
+    assert.deepEqual((await f.db.prepare("PRAGMA foreign_key_check").all()).results,[]);
   } finally { await f.close(); }
 });
 
