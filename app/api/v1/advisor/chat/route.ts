@@ -145,6 +145,7 @@ function prompt(question: string, evidence: Evidence, memory: Array<{ role: stri
     `Question: ${JSON.stringify(question)}`,
     `Evidence JSON: ${JSON.stringify(evidence.purpose === "help" ? { purpose: "help", workspaceDataAttached: false } : evidence)}`,
     `Conversation memory: ${JSON.stringify(memory.slice(-6))}`,
+    "Personal dashboard layouts can be changed only by the user's Review dashboard changes and Apply dashboard changes controls. These controls support explicit show/hide KPI cards, line/bar charts, default reporting periods, and focus on cash, inventory or sales. You have not applied any change. For example: Show cash balance on my dashboard. For other layout requests, direct the user to Customize on their overview. Never claim to have posted, paid, edited financial records or changed another person's dashboard.",
   ].join("\n\n");
 }
 

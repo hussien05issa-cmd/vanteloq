@@ -5,8 +5,7 @@ import test from "node:test";
 import { Miniflare } from "miniflare";
 import { registerSupabaseTestServer } from "./helpers/supabase-loopback-transport.mjs";
 import { activateTestSubscription } from "./helpers/subscription-fixture.mjs";
-import { PLANS, ADDONS, type AddonDefinition, type PlanDefinition } from "../server/entitlements/catalog.ts";
-import { navigationEntitlement } from "../domain/navigation-entitlements.ts";
+import { providerPrivacyAcceptance } from "../domain/provider-privacy.ts";
 import { TERMS_OF_SERVICE_VERSION, PRIVACY_POLICY_VERSION, ACCOUNT_ACCEPTANCE_NOTICE_VERSION } from "../shared/legal-versions.ts";
 
 const origin = "https://vanteloq.example";
@@ -162,7 +161,48 @@ test("regular Free enrolment, setup, caps and upgrade stay in the same workspace
     await expect(await call("/api/v1/governance","POST",{action:"create_location"}),409);
     await expect(await call("/api/v1/bookloq"),403);
     await expect(await call("/api/v1/forecasting"),403);
-    await expect(await call("/api/v1/integrations/square/authorize","POST",{}),403);
+    const privacy = providerPrivacyAcceptance(true);
+    const selectedProviders = async () => (await database.prepare("SELECT provider FROM free_integration_selections WHERE organization_id=? ORDER BY provider")
+      .bind(org).all<{provider:string}>()).results.map(selection => selection.provider);
+    const missingPrivacy = await expect(await call("/api/v1/integrations/square/authorize","POST",{}),400);
+    assert.equal(missingPrivacy.error.code,"PROVIDER_PRIVACY_REQUIRED");
+    const unavailable = await expect(await call("/api/v1/integrations/square/authorize","POST",privacy),503);
+    assert.equal(unavailable.error.code,"INTEGRATION_PROVIDER_UNAVAILABLE");
+    const invalidProvider = await expect(await call("/api/v1/integrations","POST",{action:"select_provider",provider:"unknown"}),400);
+    assert.equal(invalidProvider.error.code,"INTEGRATION_PROVIDER_UNAVAILABLE");
+    const previewProvider = await expect(await call("/api/v1/integrations","POST",{action:"select_provider",provider:"shopify"}),403);
+    assert.equal(previewProvider.error.code,"INTEGRATION_COMING_SOON");
+    assert.deepEqual(await selectedProviders(),[],"Privacy, readiness and rollout failures must not consume a choice");
+    Object.assign(environment, {
+      SQUARE_APPLICATION_ID:"square-test-app", SQUARE_APPLICATION_SECRET:"square-test-secret", SQUARE_ENV:"sandbox",
+      SQUARE_REDIRECT_URI:`${origin}/api/v1/integrations/square/callback`,
+      SLACK_CLIENT_ID:"1234567890.1234567890", SLACK_CLIENT_SECRET:"slack-test-secret",
+      SLACK_REDIRECT_URI:`${origin}/api/v1/integrations/slack/callback`,
+      LIGHTSPEED_R_CLIENT_ID:"r-test-app", LIGHTSPEED_R_CLIENT_SECRET:"r-test-secret",
+      LIGHTSPEED_R_REDIRECT_URI:`${origin}/api/v1/integrations/lightspeed-r/callback`,
+      INTEGRATION_ENCRYPTION_KEY:Buffer.alloc(32,1).toString("base64"),
+    });
+    const square = await expect(await call("/api/v1/integrations/square/authorize","POST",privacy),200);
+    assert.equal(new URL(square.authorizationUrl).hostname,"connect.squareupsandbox.com");
+    await expect(await call("/api/v1/integrations/slack/authorize","POST",privacy),200);
+    // Pending authorizations occupy slots, while another account at the same provider does not.
+    const anotherSquare = await expect(await call("/api/v1/integrations/square/authorize","POST",privacy),200);
+    assert.deepEqual(await selectedProviders(),["slack","square"]);
+    const grants = (await database.prepare("SELECT free_grant_id FROM integration_connections WHERE organization_id=? AND provider='square'")
+      .bind(org).all<{free_grant_id:string|null}>()).results;
+    assert.equal(grants.length,2);
+    assert.ok(grants[0].free_grant_id);
+    assert.equal(grants[0].free_grant_id,grants[1].free_grant_id);
+    const full = await expect(await call("/api/v1/integrations/lightspeed-r/authorize","POST",privacy),402);
+    assert.equal(full.error.code,"FREE_INTEGRATION_LIMIT");
+    assert.equal((await database.prepare("SELECT COUNT(*) total FROM integration_connections WHERE organization_id=? AND provider='lightspeed-r'")
+      .bind(org).first<{total:number}>())?.total,0);
+    await expect(await call("/api/v1/integrations/square/disconnect","POST",{connectionId:square.connectionId}),200);
+    assert.deepEqual(await selectedProviders(),["slack","square"],"Another pending account retains the provider choice");
+    await expect(await call("/api/v1/integrations/square/disconnect","POST",{connectionId:anotherSquare.connectionId}),200);
+    assert.deepEqual(await selectedProviders(),["slack"]);
+    await expect(await call("/api/v1/integrations/lightspeed-r/authorize","POST",privacy),200);
+    assert.deepEqual(await selectedProviders(),["lightspeed-r","slack"]);
     await expect(await call("/api/v1/reports?format=csv"),403);
     const row = (index: number) => ({ businessDate:new Date(Date.UTC(2026,0,index+1)).toISOString().slice(0,10),locationRef:"all",grossSalesCents:1000,netSalesCents:900,costOfGoodsCents:300,transactionCount:2,unitsSold:2 });
     const bad = await expect(await call("/api/v1/daily-metrics","POST",{importType:"manual_entry",rows:[{...row(0),locationRef:"other-location"}]},crypto.randomUUID()),403);
@@ -191,12 +231,23 @@ test("regular Free enrolment, setup, caps and upgrade stay in the same workspace
     assert.equal(access.accessType,"subscription");
     assert.equal(access.current.plan,"growth");
     assert.equal(access.current.features.includes("pos.reporting.core"),true);
+    await expect(await call("/api/v1/integrations/square/authorize","POST",privacy),200);
+    assert.deepEqual(await selectedProviders(),["lightspeed-r","slack"],"Paid connections retain their existing access without consuming a Free choice");
     await expect(await call("/api/v1/daily-metrics","POST",{importType:"manual_entry",rows:[row(101)]},crypto.randomUUID()),201);
     assert.equal((await database.prepare("SELECT COUNT(*) total FROM daily_business_metrics WHERE organization_id=?").bind(org).first<{total:number}>())?.total,101);
+    // Unpaid subscriptions must enter billing recovery, rather than bypassing it through Free.
+    for (const status of ["past_due","unpaid","paused","incomplete"]) {
+      await database.prepare("UPDATE tenant_subscriptions SET status=? WHERE organization_id=?").bind(status,org).run();
+      const recovery = await expect(await call("/api/v1/integrations/square/authorize","POST",privacy),402);
+      assert.equal(recovery.error.code,"SUBSCRIPTION_REQUIRED",status);
+      assert.deepEqual(await selectedProviders(),["lightspeed-r","slack"]);
+    }
     // Ending paid access restores the separately enrolled Free plan, without resetting its usage.
     await database.prepare("UPDATE tenant_subscriptions SET status='canceled' WHERE organization_id=?").bind(org).run();
     access = await expect(await call("/api/v1/entitlements"),200);
     assert.equal(access.accessType,"free");
+    const restoredCap = await expect(await call("/api/v1/integrations/square/authorize","POST",privacy),402);
+    assert.equal(restoredCap.error.code,"FREE_INTEGRATION_LIMIT");
     const resumed = await expect(await call("/api/v1/billing"),200);
     assert.equal(resumed.freeUsage.importRows.used,100);
     const pricing = await worker.fetch(new Request(`${origin}/pricing`),environment,executionContext);

@@ -234,7 +234,12 @@ test("reported medium-risk routes keep location, permission, and data-integrity 
   assert.match(commerce, /costCents: canReadProductCosts \? cost : null/);
   assert.match(bookloq, /const canViewDocuments = permissions\.includes\("documents\.view"\)/);
   assert.match(bookloq, /documents: canViewDocuments \?/);
-  assert.match(bookloq, /documentId: null, targetLabel: "Financial document"/);
+  assert.match(bookloq, /visibleBookLoQMatch\(match, \{[\s\S]*documents: canViewDocuments/);
+  const { visibleBookLoQMatch } = await import("../server/bookloq-visibility.ts");
+  assert.deepEqual(visibleBookLoQMatch({ supplierBillId: null, customerInvoiceId: null, documentId: "restricted-document",
+    targetLabel: "Private document title", note: "Private note", reasonsJson: '["Private detail"]' },
+  { contactIdentity: true, accountsPayableReceivable: true, documents: false }),
+  { supplierBillId: null, customerInvoiceId: null, documentId: null, targetLabel: "Restricted supporting record", note: "", reasonsJson: "[]" });
   const integrationGet = integrations.slice(integrations.indexOf("export async function GET"), integrations.indexOf("export async function POST"));
   assert.doesNotMatch(integrationGet, /\.update\(integrationConnections\)/);
   assert.doesNotMatch(integrationGet, /staleLeaseCutoff/);
@@ -485,8 +490,9 @@ test("Plaid lifecycle routes keep delegated finance access and repair failures f
       `${process.cwd()}/app/api/v1/integrations/plaid/${action}/route.ts`,
       "utf8",
     );
-    assert.match(source, /requireAccess\(request, \["owner", "admin", "manager"\], "bookloq\.reconciliation"\)/, action);
+    assert.match(source, new RegExp(`requireIntegrationAccess\\(request, \\["owner", "admin", "manager"\\], "plaid", ${action === "link-token"}\\)`), action);
     assert.match(source, /requirePermission\(context, "finance\.connections"\)/, action);
+    assert.match(source, /requireOrganizationWideLocationAccess\(context\)/, action);
   }
   const disconnect = await readFile(
     `${process.cwd()}/app/api/v1/integrations/plaid/disconnect/route.ts`,
@@ -498,7 +504,15 @@ test("Plaid lifecycle routes keep delegated finance access and repair failures f
     `${process.cwd()}/app/api/v1/integrations/plaid/exchange/route.ts`,
     "utf8",
   );
-  assert.match(exchange, /dataPromotionStatus: plaidRequiresUserRepair\(errorCode\) \? "blocked" : "staging"/);
+  assert.match(exchange, /await syncPlaidTransactions\(context\.organizationId\)/);
+  assert.doesNotMatch(exchange, /\.update\(integrationConnections\)/, "The route must not overwrite the sync service's guarded failure result");
+  const plaid = await readFile(`${process.cwd()}/server/integrations/plaid.ts`, "utf8");
+  const failure = plaid.slice(plaid.indexOf('const failureCode = error instanceof ApiError ? error.code : "PLAID_SYNC_FAILED"'), plaid.indexOf("export async function disconnectPlaid"));
+  assert.match(failure, /const repairRequired = plaidRequiresUserRepair\(failureCode\)/);
+  assert.match(failure, /dataPromotionStatus: repairRequired \? "blocked" : "staging"/);
+  assert.match(failure, /eq\(integrationConnections\.organizationId, organizationId\)/);
+  assert.match(failure, /eq\(integrationConnections\.syncLeaseOwner, syncLease\.owner\)/);
+  assert.match(failure, /eq\(integrationConnections\.syncVersion, syncLease\.version\)/);
 });
 
 test("provider approval uses the permission for the selected connection type", async () => {
@@ -508,7 +522,20 @@ test("provider approval uses the permission for the selected connection type", a
   );
   const post = source.slice(source.indexOf("export async function POST"));
   assert.match(post, /requireAccess\(request, \["owner", "admin", "manager"\], "business\.settings"\)/);
-  assert.match(post, /integrationProviderFeature\(connection\.provider\)[\s\S]*requireFeature\(context, requiredFeature\)/);
+  assert.match(post, /eq\(integrationConnections\.id, body\.connectionId\)[\s\S]*eq\(integrationConnections\.organizationId, context\.organizationId\)/);
+  assert.match(post, /integrationProviderFeature\(connection\.provider\)[\s\S]*requireIntegrationProviderAccess\(context, connection\.provider, connection\.id\)/);
+  const selection = await readFile(`${process.cwd()}/server/integrations/free-selection.ts`, "utf8");
+  const providerAccess = selection.slice(selection.indexOf("export async function requireIntegrationProviderAccess"), selection.indexOf("export async function requireIntegrationCallbackAccess"));
+  assert.match(providerAccess, /const feature = supportedProvider\(provider\)/);
+  assert.match(providerAccess, /await getTenantEntitlements\(context\)/);
+  assert.match(providerAccess, /access\.accessType !== "free"[\s\S]*requireFeatureEntitlement\(access, feature\)/);
+  assert.match(providerAccess, /requireFreeIntegrationSelection\(context\.organizationId, provider, connectionId\)/);
+  assert.match(selection, /integrationProviderFeature\(provider\)[\s\S]*INTEGRATION_PROVIDER_UNAVAILABLE/);
+  const selectedConnection = selection.slice(selection.indexOf("export async function requireFreeIntegrationSelection"), selection.indexOf("export async function requireIntegrationProviderAccess"));
+  assert.match(selectedConnection, /WHERE id=\? AND organization_id=\? AND provider=\?/);
+  assert.match(selectedConnection, /connection\.free_grant_id !== null && connection\.free_grant_id !== grant\.grant_id/);
+  assert.match(selectedConnection, /FREE_INTEGRATION_SELECTION_REQUIRED/);
+  assert.match(selectedConnection, /FREE_INTEGRATION_SELECTION_CHANGED/);
   assert.match(post, /connection\.provider === "plaid"[\s\S]*requirePermission\(context, "finance\.connections"\)/);
   assert.match(post, /\}\s*else\s*\{[\s\S]*requirePermission\(context, "integrations\.manage"\)/);
   assert.match(post, /isMarketingProvider[\s\S]*requirePermission\(context, "marketing\.manage"\)/);

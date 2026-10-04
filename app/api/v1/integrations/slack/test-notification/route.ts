@@ -2,7 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { getDb } from "../../../../../../db";
 import { integrationSecrets } from "../../../../../../db/schema";
 import { recordAudit } from "../../../../../../server/audit";
-import { requireAccess } from "../../../../../../server/authorization";
+import { requireIntegrationAccess } from "../../../../../../server/integrations/free-selection";
 import { ApiError, enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameOrigin } from "../../../../../../server/api";
 import { requireOwnedIntegrationConnection } from "../../../../../../server/integrations/connection";
 import { decryptSlackCredentials, sendSlackTestNotification, SLACK_PROVIDER } from "../../../../../../server/integrations/slack";
@@ -11,7 +11,7 @@ import { requirePermission } from "../../../../../../server/permissions";
 export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
-    const context = await requireAccess(request, ["owner", "admin"], "communications.basic");
+    const context = await requireIntegrationAccess(request, ["owner", "admin"], "slack", false);
     await requirePermission(context, "integrations.manage");
     await enforceRateLimit("slack:test-notification", context.userId, 5, 3_600);
     const input = await readJsonObject(request);

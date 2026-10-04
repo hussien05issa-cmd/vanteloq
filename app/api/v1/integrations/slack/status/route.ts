@@ -1,14 +1,14 @@
 import { and, desc, eq } from "drizzle-orm";
 import { getDb } from "../../../../../../db";
 import { integrationConnections } from "../../../../../../db/schema";
-import { requireAccess } from "../../../../../../server/authorization";
+import { requireIntegrationAccess } from "../../../../../../server/integrations/free-selection";
 import { handleApi, jsonResponse } from "../../../../../../server/api";
 import { SLACK_PROVIDER, SLACK_SCOPES, slackReadiness } from "../../../../../../server/integrations/slack";
 import { requirePermission } from "../../../../../../server/permissions";
 
 export async function GET(request: Request) {
   return handleApi(request, async () => {
-    const context = await requireAccess(request, ["owner", "admin", "manager", "employee", "read_only"], "communications.basic");
+    const context = await requireIntegrationAccess(request, ["owner", "admin", "manager", "employee", "read_only"], "slack", false);
     await requirePermission(context, "integrations.view");
     const [connection] = await getDb().select({
       id: integrationConnections.id,

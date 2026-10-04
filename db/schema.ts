@@ -727,6 +727,7 @@ export const integrationConnections = sqliteTable(
     organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
     provider: text("provider").notNull(),
     sourceNamespace: text("source_namespace").notNull().default("legacy"),
+    freeGrantId: text("free_grant_id"),
     status: text("status", { enum: ["not_connected", "pending", "connected", "error", "revoked"] }).notNull().default("not_connected"),
     externalAccountRef: text("external_account_ref"),
     externalAccountName: text("external_account_name"),
@@ -757,6 +758,14 @@ export const integrationConnections = sqliteTable(
     check("integration_connections_promotion_check", sql`${table.dataPromotionStatus} in ('blocked', 'staging', 'approved')`),
   ],
 );
+
+export const freeIntegrationSelections = sqliteTable("free_integration_selections", {
+  organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete:"cascade" }),
+  provider: text("provider").notNull(),
+  grantId: text("grant_id").notNull(),
+  createdAt: integer("created_at").notNull(),
+  expiresAt: integer("expires_at").notNull(),
+}, table => [primaryKey({columns:[table.organizationId,table.provider]}), uniqueIndex("free_integration_grant_unique").on(table.grantId)]);
 
 export const integrationSyncSchedules = sqliteTable("integration_sync_schedules", {
   connectionId: text("connection_id").primaryKey().references(() => integrationConnections.id, { onDelete: "cascade" }),

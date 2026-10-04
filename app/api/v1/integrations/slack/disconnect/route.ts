@@ -1,3 +1,4 @@
+import { releaseIntegrationSelectionIfUnused } from "../../../../../../server/integrations/free-selection";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../../../../../../db";
 import { integrationConnections, integrationOAuthStates, integrationSecrets } from "../../../../../../db/schema";
@@ -72,7 +73,8 @@ export async function POST(request: Request) {
       resourceId: connection.id,
       details: { provider: SLACK_PROVIDER, providerAuthorizationRevoked: Boolean(secret), localCredentialsDeleted: true },
     });
-    return jsonResponse({
+    await releaseIntegrationSelectionIfUnused(context.organizationId, "slack");
+      return jsonResponse({
       disconnected: true,
       connectionId: connection.id,
       providerAuthorizationRevoked: Boolean(secret),

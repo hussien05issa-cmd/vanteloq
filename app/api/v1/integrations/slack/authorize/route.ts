@@ -3,7 +3,7 @@ import { and, eq, or } from "drizzle-orm";
 import { getDb } from "../../../../../../db";
 import { integrationConnections, integrationOAuthStates } from "../../../../../../db/schema";
 import { recordAudit } from "../../../../../../server/audit";
-import { requireAccess } from "../../../../../../server/authorization";
+import { requireIntegrationAccess, integrationGrantId } from "../../../../../../server/integrations/free-selection";
 import { ApiError, enforceRateLimit, handleApi, jsonResponse, requireSameOrigin } from "../../../../../../server/api";
 import { oauthBrowserCookie } from "../../../../../../server/integrations/oauth-browser";
 import { requireIntegrationRollout } from "../../../../../../server/integrations/rollout-access";
@@ -20,7 +20,7 @@ import { requirePermission } from "../../../../../../server/permissions";
 export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
-    const context = await requireAccess(request, ["owner", "admin"], "communications.basic");
+    const context = await requireIntegrationAccess(request, ["owner", "admin"], "slack", true);
     await requirePermission(context, "integrations.manage");
     await requireIntegrationRollout(context, SLACK_PROVIDER);
     await enforceRateLimit("slack:authorize", context.userId, 10, 3_600);
@@ -40,6 +40,7 @@ export async function POST(request: Request) {
     const now = new Date();
     const expiresAt = new Date(now.getTime() + 10 * 60_000);
     await getDb().insert(integrationConnections).values({
+      freeGrantId: await integrationGrantId(context, "slack"),
       id: connectionId,
       organizationId: context.organizationId,
       provider: SLACK_PROVIDER,

@@ -17,6 +17,7 @@ export const PLAID_LINK_MODE_STORAGE_KEY = "vanteloq:plaid-link-mode";
 export const PLAID_LINK_EXPIRATION_STORAGE_KEY = "vanteloq:plaid-link-expiration";
 export const PLAID_REDIRECT_STORAGE_KEY = "vanteloq:plaid-redirect-uri";
 export const PLAID_CONSENT_STORAGE_KEY = "vanteloq:plaid-consent-record";
+export const PLAID_FREE_GRANT_STORAGE_KEY = "vanteloq:plaid-free-grant";
 export const PLAID_RETURN_VIEW_STORAGE_KEY = "vanteloq:plaid-return-view";
 
 type LinkMode = "connect" | "update";
@@ -35,6 +36,7 @@ function clearPlaidLinkState() {
   sessionStorage.removeItem(PLAID_LINK_EXPIRATION_STORAGE_KEY);
   sessionStorage.removeItem(PLAID_REDIRECT_STORAGE_KEY);
   sessionStorage.removeItem(PLAID_CONSENT_STORAGE_KEY);
+  sessionStorage.removeItem(PLAID_FREE_GRANT_STORAGE_KEY);
   sessionStorage.removeItem(PLAID_RETURN_VIEW_STORAGE_KEY);
   const url = new URL(window.location.href);
   url.searchParams.delete("oauth_state_id");
@@ -43,7 +45,7 @@ function clearPlaidLinkState() {
   window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
 }
 
-function readPlaidResumeState(): { token: string; mode: LinkMode; redirect: string; consentRecordId: string } | { expired: true } | null {
+function readPlaidResumeState(): { token: string; mode: LinkMode; redirect: string; consentRecordId: string; freeGrantId: string | null } | { expired: true } | null {
   if (typeof window === "undefined") return null;
   const redirect = sessionStorage.getItem(PLAID_REDIRECT_STORAGE_KEY)
     || (new URL(window.location.href).searchParams.has("oauth_state_id") ? window.location.href : "");
@@ -55,16 +57,18 @@ function readPlaidResumeState(): { token: string; mode: LinkMode; redirect: stri
   if (!token || !consentRecordId || (mode !== "connect" && mode !== "update") || !Number.isFinite(expiration) || expiration <= Date.now()) {
     return { expired: true };
   }
-  return { token, mode, redirect, consentRecordId };
+  return { token, mode, redirect, consentRecordId, freeGrantId: sessionStorage.getItem(PLAID_FREE_GRANT_STORAGE_KEY) || null };
 }
 
-export default function PlaidLinkButton({ connected, repairRequired, configured, canManage, canStartConnection = true, deletionAvailable, onChanged, showNotice, returnView = "Integrations" }: {
+export default function PlaidLinkButton({ connected, repairRequired, configured, canManage, canStartConnection = true, deletionAvailable, cleanupRequired = false, canCleanup = canManage, onChanged, showNotice, returnView = "Integrations" }: {
   connected: boolean;
   repairRequired: boolean;
   configured: boolean;
   canManage: boolean;
   canStartConnection?: boolean;
   deletionAvailable: boolean;
+  cleanupRequired?: boolean;
+  canCleanup?: boolean;
   onChanged: () => Promise<void>;
   showNotice: (message: string) => void;
   returnView?: "BookLoQ" | "Integrations";
@@ -74,6 +78,7 @@ export default function PlaidLinkButton({ connected, repairRequired, configured,
   const [linkToken, setLinkToken] = useState<string | null>(validResume?.token ?? null);
   const [linkMode, setLinkMode] = useState<LinkMode>(validResume?.mode ?? "connect");
   const [consentRecordId, setConsentRecordId] = useState<string | null>(validResume?.consentRecordId ?? null);
+  const [freeGrantId, setFreeGrantId] = useState<string | null>(validResume?.freeGrantId ?? null);
   const [receivedRedirectUri, setReceivedRedirectUri] = useState<string | null>(validResume?.redirect ?? null);
   const openWhenReady = useRef(Boolean(validResume));
   const resumeErrorReported = useRef(false);
@@ -86,6 +91,7 @@ export default function PlaidLinkButton({ connected, repairRequired, configured,
     openWhenReady.current = false;
     setReceivedRedirectUri(null);
     setConsentRecordId(null);
+    setFreeGrantId(null);
     setLinkToken(null);
   };
 
@@ -99,7 +105,7 @@ export default function PlaidLinkButton({ connected, repairRequired, configured,
         : apiFetch("/api/v1/integrations/plaid/exchange", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ publicToken, consentRecordId }),
+            body: JSON.stringify({ publicToken, consentRecordId, freeGrantId }),
           });
       void request.then(async (response) => {
         const body = await response.json();
@@ -154,9 +160,11 @@ export default function PlaidLinkButton({ connected, repairRequired, configured,
       sessionStorage.setItem(PLAID_LINK_MODE_STORAGE_KEY, mode);
       sessionStorage.setItem(PLAID_LINK_EXPIRATION_STORAGE_KEY, body.expiration);
       sessionStorage.setItem(PLAID_CONSENT_STORAGE_KEY, body.consentRecordId);
+      sessionStorage.setItem(PLAID_FREE_GRANT_STORAGE_KEY, body.freeGrantId ?? "");
       sessionStorage.setItem(PLAID_RETURN_VIEW_STORAGE_KEY, returnView);
       setLinkMode(mode);
       setConsentRecordId(body.consentRecordId);
+      setFreeGrantId(body.freeGrantId ?? null);
       setReceivedRedirectUri(null);
       openWhenReady.current = true;
       setLinkToken(body.linkToken);
@@ -239,6 +247,7 @@ export default function PlaidLinkButton({ connected, repairRequired, configured,
   if (!connected) return (
     <>
       <div className="plaid-connect-actions">
+        {cleanupRequired && <button type="button" onClick={() => void action("disconnect")} disabled={!canCleanup || Boolean(busy)}>{busy === "disconnect" ? "Finishing disconnection…" : "Finish bank disconnection"}</button>}
         <button onClick={() => setConsentDialog(repairRequired ? "update" : "connect")} disabled={!configured || !canManage || (!repairRequired && !canStartConnection) || Boolean(busy)} title={!canManage ? "Your role cannot manage financial connections." : !canStartConnection && !repairRequired ? "Coming Soon" : !configured ? "This connection is temporarily unavailable." : repairRequired ? "Review the notice, then re-authenticate this institution through Plaid Link." : "Review the notice, then open Plaid Link to authorize read-only Transactions and Balance access."}>
           {busy === "prepare" ? "Preparing secure Link…" : repairRequired ? "Repair bank connection" : !canStartConnection ? "Coming Soon" : "Connect Bank"}
         </button>
@@ -249,6 +258,7 @@ export default function PlaidLinkButton({ connected, repairRequired, configured,
     </>
   );
   return <div className="provider-actions plaid-provider-actions">
+    {cleanupRequired && <small>Disconnect to finish removing an earlier bank authorization.</small>}
     <button onClick={() => void action("sync")} disabled={!canManage || Boolean(busy)}>{busy === "sync" ? "Syncing…" : "Sync bank feed"}</button>
     <button className="danger-text" onClick={() => void action("disconnect")} disabled={!canManage || Boolean(busy)}>{busy === "disconnect" ? "Disconnecting…" : "Disconnect"}</button>
   </div>;

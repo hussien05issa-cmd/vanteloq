@@ -1,3 +1,4 @@
+import { requireIntegrationProviderAccess } from "../../../../../server/integrations/free-selection";
 import { and, eq } from "drizzle-orm";
 import { getD1, getDb, getRuntimeEnv } from "../../../../../db";
 import { integrationConsents, integrationSyncSchedules } from "../../../../../db/schema";
@@ -15,7 +16,7 @@ import { requirePermission } from "../../../../../server/permissions";
 export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
-    const context = await requireAccess(request, ["owner"], "pos.reporting.core");
+    const context = await requireAccess(request, ["owner"], "business.settings");
     await requirePermission(context, "integrations.manage");
     await requireOrganizationWideLocationAccess(context);
     const input = await readJsonObject(request, 2048);
@@ -24,6 +25,7 @@ export async function POST(request: Request) {
     const connection = await requireOwnedIntegrationConnection(context.organizationId, input.provider, input.connectionId);
     const now = new Date();
     if (input.enabled) {
+      await requireIntegrationProviderAccess(context, input.provider, connection.id);
       if ((getRuntimeEnv().POS_SYNC_SECRET?.length ?? 0) < 32) throw new ApiError(503, "SYNC_SCHEDULER_UNAVAILABLE", "Background synchronization has not been activated.");
       if (input.authorizationVersion !== SYNC_AUTHORIZATION_VERSION || context.identity.provider !== "supabase" || !context.authSubject)
         throw new ApiError(400, "SYNC_AUTHORIZATION_REQUIRED", "Sign in as the owner and authorize automatic syncing.");

@@ -3,7 +3,7 @@ import { and, eq, or } from "drizzle-orm";
 import { getDb } from "../../../../../../db";
 import { integrationConnections, integrationConsents, integrationOAuthStates } from "../../../../../../db/schema";
 import { recordAudit } from "../../../../../../server/audit";
-import { requireAccess } from "../../../../../../server/authorization";
+import { requireIntegrationAccess, integrationGrantId } from "../../../../../../server/integrations/free-selection";
 import { ApiError, enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameOrigin } from "../../../../../../server/api";
 import {
   buildDeelAuthorizationUrl, DEEL_API_VERSION, DEEL_DATA_CATEGORIES, DEEL_NOTICE_VERSION,
@@ -17,7 +17,7 @@ import { PRIVACY_POLICY_VERSION } from "../../../../../../shared/legal-versions"
 export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
-    const context = await requireAccess(request, ["owner", "admin"], "bookloq.reconciliation");
+    const context = await requireIntegrationAccess(request, ["owner", "admin"], "deel", true);
     await requirePermission(context, "integrations.manage");
     await requirePermission(context, "payroll.totals");
     await requireIntegrationRollout(context, DEEL_PROVIDER);
@@ -42,6 +42,7 @@ export async function POST(request: Request) {
     const now = new Date();
     const expiresAt = new Date(now.getTime() + 10 * 60_000);
     await getDb().insert(integrationConnections).values({
+      freeGrantId: await integrationGrantId(context, "deel"),
       id: connectionId, organizationId: context.organizationId, provider: DEEL_PROVIDER,
       sourceNamespace: connectionId, status: "pending", externalAccountRef: null,
       externalAccountName: "New Deel organization", domainPrefix: null,

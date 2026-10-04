@@ -1,3 +1,4 @@
+import { requireIntegrationCallbackAccess, releaseIntegrationSelectionIfUnused } from "../../../../../../server/integrations/free-selection";
 import { and, eq, gt, isNull } from "drizzle-orm";
 import { getDb } from "../../../../../../db";
 import {
@@ -7,9 +8,8 @@ import {
 import { recordAudit } from "../../../../../../server/audit";
 import type { AccessContext } from "../../../../../../server/authorization";
 import { ApiError, handleApi } from "../../../../../../server/api";
-import { requireFeature } from "../../../../../../server/entitlements/engine";
 import {
-  DEEL_API_VERSION, DEEL_PROVIDER, DEEL_READ_SCOPES, deelStateHash, exchangeDeelCode,
+  DEEL_API_VERSION, DEEL_PROVIDER, deelStateHash, exchangeDeelCode,
   fetchDeelLegalEntities, fetchDeelOrganization, saveDeelTokens,
 } from "../../../../../../server/integrations/deel";
 import { requireOAuthBrowser } from "../../../../../../server/integrations/oauth-browser";
@@ -49,7 +49,6 @@ async function callbackActor(initiation: typeof integrationOAuthStates.$inferSel
     userId: actor.userId, organizationId: actor.organizationId, role: actor.role,
     authSubject: actor.authSubject, authProvider: actor.authProvider, organization: actor.organization,
   };
-  await requireFeature(context, "bookloq.reconciliation");
   await requirePermission(context, "integrations.manage");
   await requirePermission(context, "payroll.totals");
   return context;
@@ -73,6 +72,7 @@ export async function GET(request: Request) {
     )).limit(1);
     if (!stored) throw new ApiError(400, "DEEL_STATE_INVALID", "The Deel connection attempt expired or was already used.");
     const context = await callbackActor(stored);
+    await requireIntegrationCallbackAccess(context, "deel", stored.connectionId);
     const [consumed] = await getDb().update(integrationOAuthStates).set({ consumedAt: now }).where(and(
       eq(integrationOAuthStates.stateHash, stateHash), eq(integrationOAuthStates.provider, DEEL_PROVIDER),
       isNull(integrationOAuthStates.consumedAt), gt(integrationOAuthStates.expiresAt, now),
@@ -90,6 +90,7 @@ export async function GET(request: Request) {
         action: "integration.authorization_declined", resourceType: "integration_connection", resourceId: connectionId,
         details: { provider: DEEL_PROVIDER },
       });
+      await releaseIntegrationSelectionIfUnused(context.organizationId, "deel");
       return returnToVanteloq(request, "declined");
     }
 

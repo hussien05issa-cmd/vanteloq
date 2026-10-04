@@ -49,6 +49,7 @@ import { SlackChannelActions } from "./slack-channel-actions";
 import AutomaticSyncControl, { type AutomaticSyncStatus } from "./automatic-sync-control";
 const ShopifyPrivacyRequests = lazy(() => import("./shopify-privacy-requests"));
 import AdvisorComposer, { canAskAdvisor } from "./advisor-composer";
+import AdvisorDashboardActions from "./advisor-dashboard-actions";
 import AdvisorThinking from "./advisor-thinking";
 import AdvisorResponse from "./advisor-response";
 import { readAdvisorAnswer, type AdvisorPayload } from "./advisor-client";
@@ -2364,6 +2365,9 @@ function TaskComposer({
 type IntegrationConnection = IntegrationCatalogEntry & {
   capabilities?: IntegrationCapabilities;
   customerAvailability?: CustomerIntegrationAvailability;
+  freeSelected?: boolean;
+  freeEligible?: boolean;
+  cleanupRequired?: boolean;
   status: string;
   maskedAccountRef: string | null;
   externalAccountName: string | null;
@@ -2480,6 +2484,7 @@ function DataHub({
   const [connectionsLoaded, setConnectionsLoaded] = useState(false);
   const [canManage, setCanManage] = useState(false);
   const [canManageBankConnections, setCanManageBankConnections] = useState(false);
+  const [freeAllowance,setFreeAllowance]=useState<{used:number;limit:number;selectedProviders:string[]}|null>(null);
   const [providerActions, setProviderActions] = useState<Record<string, string>>({});
   const [marketingResourcePanel, setMarketingResourcePanel] = useState<MarketingResourcePanel | null>(null);
   const [marketingResourceErrors, setMarketingResourceErrors] = useState<Record<string, { message: string; reconnect: boolean }>>({});
@@ -2570,6 +2575,7 @@ function DataHub({
         throw new Error(body.error?.message ?? "Connection status could not be loaded.");
       }
       setConnections(body.integrations ?? []);
+      setFreeAllowance(body.freeAllowance ?? null);
       setCanManage(body.canManage === true);
       setCanManageBankConnections(body.canManageBankConnections === true);
     } catch (error) {
@@ -2599,6 +2605,7 @@ function DataHub({
       if (!connection) throw new Error("The connected R-Series account is no longer available.");
       if (!connection.syncActive) {
         setConnections(body.integrations ?? []);
+      setFreeAllowance(body.freeAllowance ?? null);
         setCanManage(body.canManage === true);
         setCanManageBankConnections(body.canManageBankConnections === true);
         if (connection.lastSuccessfulSyncAt && connection.lastSuccessfulSyncAt !== startedFrom) {
@@ -3056,13 +3063,14 @@ function DataHub({
   const filteredProviders = filterConnectors(providerRows, providerQuery, providerCategory);
   return (
     <div className="content data-hub">
+      {freeAllowance&&<p className="free-integration-allowance" role="status">Your Free integrations: {freeAllowance.used} of {freeAllowance.limit} selected. Choose any available provider. Disconnect a provider to change your choices.</p>}
       {privacyNoticeProvider && <ProviderPrivacyNotice key={privacyNoticeProvider} provider={privacyNoticeProvider} onComplete={accepted => { privacyNoticeResolver.current?.(accepted); privacyNoticeResolver.current = null; setPrivacyNoticeProvider(null); }}/>}
       <section className="page-intro">
         <div>
           <p>CONNECTIONS AND DATA</p>
           <h2>Connect sources, review the data, then use the results.</h2>
           <span>
-            Each connection keeps its own authorization, location mappings,
+            Free includes two available integrations of your choice. Each connection keeps its own authorization, location mappings,
             sync history, and review status before data reaches the command centre.
           </span>
         </div>
@@ -3126,8 +3134,8 @@ function DataHub({
               <div className="integration-grid">
             {filteredProviders.filter((provider) => provider.category === category).map((provider) => {
               const providerFeature = integrationProviderFeature(provider.id);
-              const providerEntitled = providerFeature !== null && subscriptionFeatures.includes(providerFeature);
-              const providerPlanLabel = providerFeature?.startsWith("bookloq")
+              const providerEntitled = provider.freeEligible === true || (providerFeature !== null && subscriptionFeatures.includes(providerFeature));
+              const providerPlanLabel = freeAllowance ? "Two Free choices are in use" : providerFeature?.startsWith("bookloq")
                 ? "BookLoQ access"
                 : providerFeature?.startsWith("marketing.")
                   ? "Growth plan"
@@ -3160,12 +3168,14 @@ function DataHub({
               const capabilities = provider.capabilities ?? buildIntegrationCapabilities(provider);
               const disabledReason = !customerAvailability.canStartConnection
                 ? "Coming Soon"
-                : !providerEntitled ? `${providerPlanLabel} required for this connection.`
+                : !providerEntitled ? freeAllowance ? "Disconnect a selected provider to change your two Free choices, or upgrade." : `${providerPlanLabel} required for this connection.`
                 : !canManageProvider ? "Your role can view connections. Ask a workspace owner to make changes."
                 : !configured ? "This connection is temporarily unavailable. Contact support for help." : "";
 
               return (
               <article className={`integration-card${showPlanRequirement ? " subscription-locked" : ""}`} data-provider={provider.id} key={provider.id}>
+                {freeAllowance&&hasSavedConnection&&!provider.freeSelected&&!providerComingSoon&&provider.freeEligible&&<button type="button" disabled={!canManage} onClick={()=>void apiFetch("/api/v1/integrations",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"select_provider",provider:provider.id})}).then(async response=>{const body=await response.json();if(!response.ok)throw Error(body.error?.message??"Selection could not be saved.");await loadConnections();}).catch(error=>showNotice(error.message))}>Use this provider in Free</button>}
+                {provider.freeSelected&&<small className="free-provider-selected">Selected in your Free plan</small>}
                 <div className="integration-card-head">
                   <IntegrationBrandLogo name={provider.name} />
                   <div className="integration-card-labels">
@@ -3412,6 +3422,8 @@ function DataHub({
                     >Approve reviewed data</button>}
                     <PlaidLinkButton
                       connected={connected}
+                      cleanupRequired={provider.cleanupRequired}
+                      canCleanup={canManageBankConnections}
                       repairRequired={repairRequired}
                       configured={configured}
                       canStartConnection={customerAvailability.canStartConnection}
@@ -4347,6 +4359,7 @@ function Advisor({
         {thinking && streamText && <AdvisorResponse title="Vanteloq AI" body={streamText} limitation="" streaming/>}
         {responseError && <div className="ai-response-error" role="status"><strong>Reply not completed</strong><p>{responseError}</p><span>Your question remains in the message box.</span><button type="submit" form="advisor-form" disabled={loading || !question.trim()}>Retry response</button></div>}
         {answer && reply(answer, submittedQuestion, true)}
+        {answer && <AdvisorDashboardActions key={submittedQuestion} question={submittedQuestion} disabled={loading} onOpenOverview={() => navigate("Dashboard")}/>}
       </AdvisorComposer>
     </div>
   );

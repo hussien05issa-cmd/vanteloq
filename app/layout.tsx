@@ -39,6 +39,7 @@ import "./commerce-visuals.css?public-surface";
 import "./dashboard-explorer.css?public-surface";
 import "./interface-motion.css";
 import "./readability-refinement.css";
+import "./advisor-appearance.css";
 const GOOGLE_ANALYTICS_CONSENT_DEFAULT = `
 window.dataLayer = window.dataLayer || [];
 window.gtag = window.gtag || function () { window.dataLayer.push(arguments); };

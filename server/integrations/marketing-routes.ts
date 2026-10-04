@@ -1,3 +1,4 @@
+import { requireIntegrationAccess, requireIntegrationCallbackAccess, integrationGrantId, releaseIntegrationSelectionIfUnused } from "./free-selection";
 import { requireProviderPrivacy } from "./provider-privacy";
 import { requireIntegrationRollout } from "./rollout-access";
 import { and, eq, gt, isNull, sql } from "drizzle-orm";
@@ -78,7 +79,7 @@ export function marketingAuthorize(request: Request, provider: MarketingProvider
     requireSameOrigin(request);
     const requiredFeature = marketingProviderFeature(provider);
     if (!requiredFeature) throw new ApiError(400, "MARKETING_PROVIDER_INVALID", "Choose Google or Meta.");
-    const context = await requireAccess(request, ["owner", "admin"], requiredFeature);
+    const context = await requireIntegrationAccess(request, ["owner", "admin"], provider, true);
     await requireMarketingPermissions(context);
     await requireIntegrationRollout(context, provider);
     await enforceRateLimit(`${provider}:marketing:authorize`, context.userId, 10, 3_600);
@@ -88,6 +89,7 @@ export function marketingAuthorize(request: Request, provider: MarketingProvider
     const now = new Date();
     const expiresAt = new Date(now.getTime() + 10 * 60_000);
     await getDb().insert(integrationConnections).values({
+      freeGrantId: await integrationGrantId(context, provider),
       id: connectionId,
       organizationId: context.organizationId,
       provider,
@@ -222,6 +224,7 @@ export function marketingCallback(request: Request, provider: MarketingProvider)
     )).limit(1);
     if (!storedState) throw new ApiError(400, "MARKETING_STATE_INVALID", "The marketing authorization attempt expired or was already used. Start again.");
     const context = await callbackActor(storedState.organizationId, storedState.actorUserId);
+    await requireIntegrationCallbackAccess(context, provider, storedState.connectionId);
     const [consumed] = await getDb().update(integrationOAuthStates).set({ consumedAt: now }).where(and(
       eq(integrationOAuthStates.stateHash, stateHash),
       eq(integrationOAuthStates.provider, provider),
@@ -248,6 +251,7 @@ export function marketingCallback(request: Request, provider: MarketingProvider)
         resourceId: pending.id,
         details: { provider, connectionId: pending.id },
       });
+      await releaseIntegrationSelectionIfUnused(context.organizationId, provider);
       return Response.redirect(returnUrl(request, provider, "declined"), 303);
     }
 
@@ -926,6 +930,7 @@ export function marketingDisconnect(request: Request, provider: MarketingProvide
       `).bind(deletedAtSeconds, deletedAtSeconds, connection.id, context.organizationId, provider),
     ]);
     const providerRevoked = accessToken ? await revokeMarketingAccess(provider, accessToken).catch(() => false) : false;
+    await releaseIntegrationSelectionIfUnused(context.organizationId, provider);
     await recordAudit({
       request,
       requestId,

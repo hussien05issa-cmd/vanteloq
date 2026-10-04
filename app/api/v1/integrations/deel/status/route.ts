@@ -1,7 +1,7 @@
 import { and, desc, eq } from "drizzle-orm";
 import { getDb } from "../../../../../../db";
 import { integrationConnections, integrationLocationMappings, integrationSyncRuns } from "../../../../../../db/schema";
-import { requireAccess } from "../../../../../../server/authorization";
+import { requireIntegrationAccess } from "../../../../../../server/integrations/free-selection";
 import { handleApi, jsonResponse } from "../../../../../../server/api";
 import { DEEL_PROVIDER, deelReadiness } from "../../../../../../server/integrations/deel";
 import { requireIntegrationRollout } from "../../../../../../server/integrations/rollout-access";
@@ -9,7 +9,7 @@ import { requirePermission } from "../../../../../../server/permissions";
 
 export async function GET(request: Request) {
   return handleApi(request, async () => {
-    const context = await requireAccess(request, ["owner", "admin", "manager"], "bookloq.reconciliation");
+    const context = await requireIntegrationAccess(request, ["owner", "admin", "manager"], "deel", false);
     await requirePermission(context, "payroll.totals");
     await requireIntegrationRollout(context, DEEL_PROVIDER);
     const connections = await getDb().select({

@@ -8,6 +8,20 @@ This is the canonical Origin release document. It records what Vanteloq implemen
 
 Vanteloq brings a business’s sales, inventory, documents and financial records into one inspectable picture. BookLoQ provides its accounting and cash workspace. LexEdge Consulting operates the product. Customers retain their own workspaces, provider grants, permitted locations and decisions. A sample preview is always separate from customer records.
 
+## 4 October Free integrations and AI controls increment
+
+**Current source increment; publication pending.** Free includes two available integration providers of the owner's choice, with tenant-scoped server reservations, quota and selection-generation checks. Provider configuration, rollout, consent and permissions still apply. Multiple accounts from one provider use one choice; Stripe subscription billing does not consume one. This does not unlock paid BookLoQ or imply production provider approval.
+
+The executive overview and BookLoQ share eligibility rules for the latest approved, organization-wide Plaid cash snapshot. Missing or stale relevant balances remain unavailable, zero and overdrafts remain signed, and timestamps identify the oldest included balance. The snapshot is separate from selected-period ledger cash, bank movements, profit and purchasing capacity.
+
+AI Settings adds device-local System/Light/Dark appearance with restrained purple focus and readable light/dark surfaces. The existing smile artwork receives a single motion-aware glint. Supported personal dashboard layout requests produce reviewed proposals with explicit Apply/Undo and user/workspace-bound atomic preference comparisons. Optional browser dictation produces editable text after consent and microphone permission, never sends automatically, and discloses that the browser's speech provider may process audio.
+
+Recorded passing batches are **68 targeted tests**, **20 client/dictation tests** and **7 real preferences-handler tests** with isolated D1/authentication fixtures. They do not establish microphone operation or production provider round trips. See [Free integrations and AI controls](free-integrations-ai-controls-2026-10-04.md) for source contracts and limits. The prior BookLoQ master-brief gaps and **unverified production backup restoration** remain open; publication evidence belongs in the subsequent release receipt.
+
+### Latest database addition
+
+Migration `0074_blue_lucky_pierre.sql` adds `free_integration_selections` (workspace/provider key, unique grant ID, reservation timestamps and workspace foreign key) and nullable `integration_connections.free_grant_id`. It binds Free connection attempts to a current provider choice without rewriting financial records. The existing database inventory below is dated; this entry supplements it.
+
 ## Latest customer-control and accounting review
 
 The 4 October BookLoQ increment adds reviewed ledger setup, safer journals and evidence matching, selected-period close controls and more precise invoice tax input. Its complete scope, verification and remaining master-brief work are recorded in [BookLoQ refinement](bookloq-refinement-2026-10-04.md). The 46-phase accounting brief is not fully implemented by this increment.
@@ -16,7 +30,7 @@ Subscription cancellation is visible in **Settings → Billing & subscription**.
 
 The homepage retains “A number without a source is a rumour.” above “Your business, at a glance.” with motion-off support. Dashboard and BookLoQ loading placeholders follow their upcoming layouts. Recoverable errors offer plain-language guidance and manual retry, while technical HTTP statuses remain intact. Uncertain writes are not automatically retried or presented as completed.
 
-Publication evidence is recorded in the dated release receipt after deployment. Release 331 is the verified preceding baseline. Older dated publication notes below are historical, not the current release status. Production backup restoration, unapproved provider availability and the remaining accounting workflows still require their own evidence.
+Publication evidence is recorded in the dated release receipt after deployment. Release 332 is the verified preceding baseline. Older dated publication notes below are historical, not the current release status. Production backup restoration, unapproved provider availability and the remaining accounting workflows still require their own evidence.
 
 ## 4 October reviewed workflow increment
 

@@ -1,3 +1,4 @@
+import { requireIntegrationCallbackAccess, releaseIntegrationSelectionIfUnused } from "../../../../../../server/integrations/free-selection";
 import { requireOAuthBrowser } from "../../../../../../server/integrations/oauth-browser";
 import { and, eq, gt, isNull } from "drizzle-orm";
 import { getDb } from "../../../../../../db";
@@ -89,6 +90,7 @@ export async function GET(request: Request) {
       authProvider: actor.authProvider,
       organization: actor.organization,
     };
+    await requireIntegrationCallbackAccess(context, "lightspeed-r", stored.connectionId);
     await requirePermission(context, "integrations.manage");
 
     const [consumedState] = await getDb().update(integrationOAuthStates).set({ consumedAt: now }).where(and(
@@ -142,6 +144,7 @@ export async function GET(request: Request) {
           dataPromotionEnabled: false,
         },
       });
+      await releaseIntegrationSelectionIfUnused(context.organizationId, "lightspeed-r");
       return Response.redirect(returnUrl(request, "declined"), 303);
     }
 

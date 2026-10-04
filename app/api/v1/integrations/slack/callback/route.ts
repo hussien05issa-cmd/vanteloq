@@ -1,3 +1,4 @@
+import { requireIntegrationCallbackAccess, releaseIntegrationSelectionIfUnused } from "../../../../../../server/integrations/free-selection";
 import { and, eq, gt, isNull } from "drizzle-orm";
 import { getDb } from "../../../../../../db";
 import {
@@ -11,7 +12,6 @@ import {
 import { recordAudit } from "../../../../../../server/audit";
 import type { AccessContext } from "../../../../../../server/authorization";
 import { ApiError, handleApi } from "../../../../../../server/api";
-import { requireFeature } from "../../../../../../server/entitlements/engine";
 import { requireOAuthBrowser } from "../../../../../../server/integrations/oauth-browser";
 import {
   encryptSlackCredentials,
@@ -96,7 +96,6 @@ async function callbackActor(initiation: typeof integrationOAuthStates.$inferSel
     authProvider: actor.authProvider,
     organization: actor.organization,
   };
-  await requireFeature(context, "communications.basic");
   await requirePermission(context, "integrations.manage");
   return context;
 }
@@ -122,6 +121,7 @@ export async function GET(request: Request) {
     )).limit(1));
     if (!storedState) throw new ApiError(400, "SLACK_STATE_INVALID", "The Slack authorization attempt expired or was already used. Start again.");
     const context = await callbackStage("actor_validation", () => callbackActor(storedState));
+    await requireIntegrationCallbackAccess(context, "slack", storedState.connectionId);
     const [consumed] = await callbackStage("state_consume", () => getDb().update(integrationOAuthStates).set({ consumedAt: now }).where(and(
       eq(integrationOAuthStates.stateHash, stateHash),
       eq(integrationOAuthStates.provider, SLACK_PROVIDER),
@@ -155,6 +155,7 @@ export async function GET(request: Request) {
         resourceId: pending.id,
         details: { provider: SLACK_PROVIDER, connectionId: pending.id },
       });
+      await releaseIntegrationSelectionIfUnused(context.organizationId, SLACK_PROVIDER);
       return returnToVanteloq(request, "declined");
     }
 

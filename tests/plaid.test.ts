@@ -150,8 +150,8 @@ test("successful Plaid balance syncs remain staged until reviewed without postin
 });
 
 test("repair-required initial Plaid sync remains blocked", async () => {
-  const source = await readFile(new URL("../app/api/v1/integrations/plaid/exchange/route.ts", import.meta.url), "utf8");
-  assert.match(source, /dataPromotionStatus:\s*plaidRequiresUserRepair\(errorCode\)\s*\?\s*"blocked"\s*:\s*"staging"/);
+  const source = await readFile(new URL("../server/integrations/plaid.ts", import.meta.url), "utf8");
+  assert.match(source, /dataPromotionStatus:\s*repairRequired\s*\?\s*"blocked"\s*:\s*"staging"/);
 });
 
 test("Plaid Item webhooks cannot mutate a replacement Item", async () => {

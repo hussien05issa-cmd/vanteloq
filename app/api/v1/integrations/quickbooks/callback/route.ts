@@ -1,3 +1,4 @@
+import { requireIntegrationCallbackAccess, releaseIntegrationSelectionIfUnused } from "../../../../../../server/integrations/free-selection";
 import { requireOAuthBrowser } from "../../../../../../server/integrations/oauth-browser";
 import { and, eq, gt, isNull, or } from "drizzle-orm";
 import { getDb } from "../../../../../../db";
@@ -5,7 +6,6 @@ import { integrationConnections, integrationOAuthStates, memberships, users, wor
 import { recordAudit } from "../../../../../../server/audit";
 import type { AccessContext } from "../../../../../../server/authorization";
 import { ApiError, handleApi } from "../../../../../../server/api";
-import { requireFeature } from "../../../../../../server/entitlements/engine";
 import {
   exchangeQuickBooksAuthorizationCode,
   acquireQuickBooksGrantLease,
@@ -70,7 +70,6 @@ async function callbackActor(initiation: typeof integrationOAuthStates.$inferSel
     authProvider: actor.authProvider,
     organization: actor.organization,
   };
-  await requireFeature(context, "bookloq.reconciliation");
   await requirePermission(context, "integrations.manage");
   return context;
 }
@@ -96,6 +95,7 @@ export async function GET(request: Request) {
     )).limit(1);
     if (!storedState) throw new ApiError(400, "QUICKBOOKS_STATE_INVALID", "The QuickBooks authorization attempt expired or was already used. Start again.");
     const context = await callbackActor(storedState);
+    await requireIntegrationCallbackAccess(context, "quickbooks", storedState.connectionId);
     const [consumed] = await getDb().update(integrationOAuthStates).set({ consumedAt: now }).where(and(
       eq(integrationOAuthStates.stateHash, stateHash),
       eq(integrationOAuthStates.provider, QUICKBOOKS_PROVIDER),
@@ -120,6 +120,7 @@ export async function GET(request: Request) {
         action: "integration.authorization_declined", resourceType: "integration", resourceId: pending.id,
         details: { provider: QUICKBOOKS_PROVIDER, connectionId: pending.id },
       });
+      await releaseIntegrationSelectionIfUnused(context.organizationId, "quickbooks");
       return Response.redirect(returnUrl(request, "declined"), 303);
     }
 

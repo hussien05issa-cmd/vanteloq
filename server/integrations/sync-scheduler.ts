@@ -1,3 +1,5 @@
+import { hasFreeEnrollment } from "../entitlements/free";
+import { requireFreeIntegrationSelection, subscriptionAllowsFreeFallback } from "./free-selection";
 import { and, eq } from "drizzle-orm";
 import { getD1, getDb, getRuntimeEnv } from "../../db";
 import { integrationSyncSchedules, internalAccess, memberships, users, workspaces } from "../../db/schema";
@@ -8,7 +10,7 @@ import { cleanupExpiredRateLimits } from "../rate-limit-maintenance";
 import { runWorkflowFollowupTick } from "../workflow-followup";
 import { complimentaryGrantForOwner } from "../complimentary-access";
 import { internalAccessEnabled } from "../internal-access";
-import { resolveComplimentaryEntitlements, resolveInternalEntitlements, resolveSubscriptionEntitlements, subscriptionSnapshot, requireFeatureEntitlement, requireTenantServiceAccess } from "../entitlements/engine";
+import { resolveFreeEntitlements, resolveComplimentaryEntitlements, resolveInternalEntitlements, resolveSubscriptionEntitlements, subscriptionSnapshot, requireFeatureEntitlement, requireTenantServiceAccess } from "../entitlements/engine";
 import { dispatchScheduledSync } from "./sync-dispatch";
 import { isScheduledPosProvider, nextSyncAt, shouldPauseSync, syncHasMore, syncRetryDelay } from "./sync-policy";
 import { verifySyncSignature } from "./sync-signature";
@@ -46,11 +48,21 @@ export async function scheduledSyncContext(schedule: Schedule): Promise<SyncCont
     eq(internalAccess.active, true), eq(internalAccess.accessLevel, "founder"),
   )).limit(1) : [];
   const complimentary = await complimentaryGrantForOwner({ userId: actor.user.id, organizationId: schedule.organizationId, authSubject: actor.user.authSubject, email: actor.user.email });
-  const entitlements = internal
+  const snapshot = await subscriptionSnapshot(schedule.organizationId);
+  let entitlements = internal
     ? resolveInternalEntitlements({ accessLevel: internal.accessLevel, mfaRequired: internal.mfaRequired })
-    : complimentary ? resolveComplimentaryEntitlements(complimentary) : resolveSubscriptionEntitlements(await subscriptionSnapshot(schedule.organizationId));
+    : complimentary ? resolveComplimentaryEntitlements(complimentary) : resolveSubscriptionEntitlements(snapshot);
+  if (entitlements.accessType === "none" && subscriptionAllowsFreeFallback(snapshot.status)
+    && await hasFreeEnrollment(schedule.organizationId)) entitlements = resolveFreeEntitlements();
   requireTenantServiceAccess(entitlements);
-  requireFeatureEntitlement(entitlements, "pos.reporting.core");
+  if(entitlements.accessType === "free") {
+    try {
+      await requireFreeIntegrationSelection(schedule.organizationId, schedule.provider, schedule.connectionId);
+    } catch (error) {
+      if (!(error instanceof ApiError) || !error.code.startsWith("FREE_INTEGRATION_")) throw error;
+      throw new ApiError(403, "SYNC_AUTHORIZATION_WITHDRAWN", "Select this provider in your two Free integrations before syncing.");
+    }
+  } else requireFeatureEntitlement(entitlements, "pos.reporting.core");
   return { userId: actor.user.id, organizationId: schedule.organizationId, organization: actor.organization };
 }
 

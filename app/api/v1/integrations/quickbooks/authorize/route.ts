@@ -5,7 +5,7 @@ import { getDb } from "../../../../../../db";
 import { integrationConnections, integrationOAuthStates } from "../../../../../../db/schema";
 import { PRIVACY_POLICY_VERSION, QUICKBOOKS_CONSENT_NOTICE_VERSION } from "../../../../../../domain/privacy-controls";
 import { recordAudit } from "../../../../../../server/audit";
-import { requireAccess } from "../../../../../../server/authorization";
+import { requireIntegrationAccess, integrationGrantId } from "../../../../../../server/integrations/free-selection";
 import { ApiError, enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameOrigin } from "../../../../../../server/api";
 import { requireFeature } from "../../../../../../server/entitlements/engine";
 import {
@@ -22,7 +22,7 @@ import { recordQuickBooksConsent } from "../../../../../../server/privacy";
 export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
-    const context = await requireAccess(request, ["owner", "admin"], "bookloq.reconciliation");
+    const context = await requireIntegrationAccess(request, ["owner", "admin"], "quickbooks", true);
     await requireFeature(context, "bookloq.reconciliation");
     await requirePermission(context, "integrations.manage");
     await requireIntegrationRollout(context, "quickbooks");
@@ -44,6 +44,7 @@ export async function POST(request: Request) {
     const expiresAt = new Date(now.getTime() + 10 * 60_000);
     const readiness = quickBooksReadiness();
     await getDb().insert(integrationConnections).values({
+      freeGrantId: await integrationGrantId(context, "quickbooks"),
       id: connectionId,
       organizationId: context.organizationId,
       provider: QUICKBOOKS_PROVIDER,

@@ -1,3 +1,4 @@
+import { requireIntegrationCallbackAccess, releaseIntegrationSelectionIfUnused } from "../../../../../../server/integrations/free-selection";
 import { requireOAuthBrowser } from "../../../../../../server/integrations/oauth-browser";
 import { and, eq, gt, isNull, ne, notExists } from "drizzle-orm";
 import { getDb } from "../../../../../../db";
@@ -77,6 +78,7 @@ export async function GET(request: Request) {
       authProvider: actor.authProvider,
       organization: actor.organization,
     };
+    await requireIntegrationCallbackAccess(context, "stripe", storedState.connectionId);
     await requirePermission(context, "integrations.manage");
     const [consumedState] = await getDb().update(integrationOAuthStates).set({ consumedAt: now }).where(and(
       eq(integrationOAuthStates.stateHash, stateHash),
@@ -113,6 +115,7 @@ export async function GET(request: Request) {
         resourceId: storedState.connectionId,
         details: { provider: STRIPE_PROVIDER, connectionId: storedState.connectionId },
       });
+      await releaseIntegrationSelectionIfUnused(context.organizationId, "stripe");
       return Response.redirect(returnUrl(request, "declined"), 303);
     }
 

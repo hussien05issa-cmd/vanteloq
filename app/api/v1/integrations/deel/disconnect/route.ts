@@ -1,3 +1,4 @@
+import { releaseIntegrationSelectionIfUnused } from "../../../../../../server/integrations/free-selection";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../../../../../../db";
 import {
@@ -50,7 +51,8 @@ export async function POST(request: Request) {
       details: { provider: DEEL_PROVIDER, localCredentialsDeleted: true, stagedAggregatesDeleted: deletedMeasurements.length,
         providerRevocationSupported: false, employeeRecordsStored: false },
     });
-    return jsonResponse({
+    await releaseIntegrationSelectionIfUnused(context.organizationId, "deel");
+      return jsonResponse({
       disconnected: true, connectionId: connection.id, localCredentialsDeleted: true,
       stagedAggregatesDeleted: deletedMeasurements.length, providerRevocationSupported: false,
       message: "Deel was removed from Vanteloq. Remove Vanteloq in Deel as well because Deel does not document an OAuth revocation endpoint.",

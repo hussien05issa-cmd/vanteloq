@@ -1,3 +1,4 @@
+import { bankCashSnapshot } from "../../../../domain/bank-cash-snapshot";
 import { getD1 } from "../../../../db";
 import { requireAccess } from "../../../../server/authorization";
 import { ApiError, clientSource, enforceRateLimit, handleApi, jsonResponse } from "../../../../server/api";
@@ -16,7 +17,6 @@ import { effectivePermissions, requirePermission } from "../../../../server/perm
 import { calculateCashFlowIntelligence, type CashFlowItem } from "../../../../domain/cash-flow-intelligence";
 import { authorizedLocationDataScope } from "../../../../server/location-access";
 import { requireAddon } from "../../../../server/entitlements/engine";
-import { calculateVerifiedPurchasingCapacity } from "../../../../domain/purchasing-intelligence";
 import {
   buildThirteenWeekCashFlow,
   type CashFlowDecisionBlock,
@@ -393,24 +393,11 @@ export async function GET(request: Request) {
       && bank.currency.toUpperCase() === baseCurrency.toUpperCase(),
     );
     const plaidBanks = visibleBanks.filter((bank) => bank.provider === "plaid" && !Boolean(bank.demoRecord));
-    const verifiedBankCash = calculateVerifiedPurchasingCapacity({
-      connectionVerified: access.bankBalances
-        && dataMode === "live"
-        && integrationRows.some((item) => item.provider === "plaid" && item.status === "connected" && item.dataPromotionStatus === "approved"),
-      nowMs,
-      maximumAgeMs: 48 * 60 * 60 * 1_000,
-      baseCurrency,
-      cashSafetyReserveCents: 0,
-      outstandingBillsCents: 0,
-      openPurchaseCommitmentsCents: 0,
-      accounts: plaidBanks.map((bank) => ({
-        accountType: bank.accountType,
-        currency: bank.currency,
-        connectionStatus: bank.connectionStatus,
-        availableBalanceCents: bank.availableBalanceCents,
-        liveBalanceCents: bank.liveBalanceCents,
-        lastSyncAtMs: bank.lastSyncAt,
-      })),
+    const verifiedBankCash = bankCashSnapshot({
+      allowed: access.bankBalances && dataMode === "live",
+      connected: integrationRows.some(item=>item.provider==="plaid"&&item.status==="connected"&&item.dataPromotionStatus==="approved"),
+      nowMs, currency: baseCurrency,
+      accounts: plaidBanks.map(bank=>({accountType:bank.accountType,currency:bank.currency,connectionStatus:bank.connectionStatus,availableBalanceCents:bank.availableBalanceCents,liveBalanceCents:bank.liveBalanceCents,lastSyncAtMs:bank.lastSyncAt,demoRecord:bank.demoRecord})),
     });
     const verifiedBankCashCents = verifiedBankCash.status === "available" ? verifiedBankCash.verifiedCashCents : null;
     const bankBalanceCents = dataMode === "demonstration"
@@ -424,10 +411,7 @@ export async function GET(request: Request) {
       : verifiedBankCashCents !== null
       ? "plaid_available_balance" as const
       : "unavailable" as const;
-    const cashLastSyncMs = plaidBanks
-      .map((bank) => bank.lastSyncAt)
-      .filter((value): value is number => value !== null)
-      .sort((left, right) => right - left)[0] ?? null;
+    const cashLastSyncMs = verifiedBankCash.oldestSyncAt === null ? null : Date.parse(verifiedBankCash.oldestSyncAt);
     const cashLastSyncAt = cashLastSyncMs === null ? null : Math.floor(cashLastSyncMs / 1_000);
     const visibleBillsForCash = visibleBills;
     const visibleInvoicesForCash = visibleInvoices;
@@ -734,6 +718,7 @@ export async function GET(request: Request) {
           availableCashCents: decisionCashAllowed && cashOpeningBalanceCents !== null
             ? cashOpeningBalanceCents - dueNext30Cents
             : null,
+          bankCashSnapshot: dataMode === "live" && access.bankBalances ? verifiedBankCash : null,
           bankBalanceCents,
           bookBalanceCents: ledgerReadable ? statements.cashCents : null,
           cashSource,

@@ -519,6 +519,13 @@
       "when": 1791096391778,
       "tag": "0073_careless_daimon_hellstrom",
       "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "6",
+      "when": 1791115345520,
+      "tag": "0074_blue_lucky_pierre",
+      "breakpoints": true
     }
   ]
 }
