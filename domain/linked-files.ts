@@ -1,4 +1,4 @@
-export const LINKED_FILE_NOTICE_VERSION = "linked-files-2026-09-26";
+export const LINKED_FILE_NOTICE_VERSION = "linked-files-2026-10-04";
 export type FileProvider = "google-files" | "microsoft-files";
 export const fileProviderName = (provider: FileProvider) => provider === "google-files" ? "Google Drive & Sheets" : "Microsoft OneDrive";
 export function fileProvider(value: unknown): FileProvider {

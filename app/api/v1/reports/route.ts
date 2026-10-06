@@ -1,7 +1,7 @@
 import { hasAmbiguousRSeriesCosts } from "../../../../server/integrations/cost-evidence";
 import { recordedLabourCost } from "../../../../domain/labour-evidence";
 import { businessTimestampRange, businessTimestampExtrema, businessDatesFromExtrema, type TimestampExtrema } from "../../../../domain/business-period";
-import { and, asc, eq, gt, gte, inArray, lte, sql, type SQL } from "drizzle-orm";
+import { and, asc, eq, gt, gte, inArray, lte, type SQL } from "drizzle-orm";
 import { getD1, getDb } from "../../../../db";
 import { dailyBusinessMetrics, dataImports, integrationConnections, integrationLocationMappings } from "../../../../db/schema";
 import { requireAccess } from "../../../../server/authorization";
@@ -17,7 +17,7 @@ import {
   effectivePermissions,
   requirePermission,
 } from "../../../../server/permissions";
-import { authorizedLocationDataScope } from "../../../../server/location-access";
+import { authorizedLocationDataScope, requireAccessibleLocation } from "../../../../server/location-access";
 import { approvedFactSource, noActiveIntegrationLease } from "../../../../server/integrations/trusted-data";
 import { authoritativeDailySalesScope } from "../../../../server/integrations/daily-sales-scope";
 import { commerceSourceAuthority, defaultCommerceChannel } from "../../../../server/integrations/source-authority";
@@ -664,6 +664,7 @@ export async function POST(request: Request) {
     if (body.action !== "set_source_authority" || typeof body.locationId !== "string" || typeof body.connectionId !== "string" || typeof body.factFamily !== "string" || !families.includes(body.factFamily as typeof families[number]) || !Number.isSafeInteger(body.expectedVersion) || Number(body.expectedVersion) < 0) {
       throw new ApiError(400, "INVALID_SOURCE_AUTHORITY", "Choose a location and an approved reporting connection.");
     }
+    await requireAccessibleLocation(context, body.locationId);
     const mappings = await getDb().select({
       provider: integrationLocationMappings.provider,
       connectionId: integrationLocationMappings.connectionId,

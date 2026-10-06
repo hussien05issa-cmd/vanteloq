@@ -3,6 +3,7 @@
 import { providerPrivacyAcceptance } from "../domain/provider-privacy";
 import { ProviderPolicyLinks } from "./provider-privacy-notice";
 import { useEffect, useRef, useState } from "react";
+import { useModalFocus } from "./use-modal-focus";
 import { usePlaidLink } from "react-plaid-link";
 import { apiFetch } from "./supabase-browser";
 import {
@@ -85,6 +86,8 @@ export default function PlaidLinkButton({ connected, repairRequired, configured,
   const [busy, setBusy] = useState<"prepare" | "exchange" | "sync" | "disconnect" | "delete-data" | "">("");
   const [consentDialog, setConsentDialog] = useState<LinkMode | null>(null);
   const [consentChecked, setConsentChecked] = useState(false);
+  const consentDialogRef = useRef<HTMLElement>(null);
+  useModalFocus(consentDialogRef, Boolean(consentDialog), () => { setConsentDialog(null); setConsentChecked(false); });
 
   const finish = () => {
     clearPlaidLinkState();
@@ -221,11 +224,11 @@ export default function PlaidLinkButton({ connected, repairRequired, configured,
   };
 
   const consentModal = consentDialog ? (
-    <div className="plaid-consent-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) setConsentDialog(null); }}>
-      <section className="plaid-consent-dialog" role="dialog" aria-modal="true" aria-labelledby="plaid-consent-title" aria-describedby="plaid-consent-summary">
+    <div className="plaid-consent-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) { setConsentDialog(null); setConsentChecked(false); } }}>
+      <section className="plaid-consent-dialog" ref={consentDialogRef} role="dialog" aria-modal="true" aria-labelledby="plaid-consent-title" aria-describedby="plaid-consent-summary" tabIndex={-1}>
         <header>
           <div><span>FINANCIAL DATA AUTHORIZATION</span><h3 id="plaid-consent-title">Choose what Vanteloq may use.</h3></div>
-          <button type="button" aria-label="Close financial data notice" onClick={() => setConsentDialog(null)}>×</button>
+          <button type="button" aria-label="Close financial data notice" onClick={() => { setConsentDialog(null); setConsentChecked(false); }}>×</button>
         </header>
         <p id="plaid-consent-summary">Plaid will ask you to choose a financial institution, eligible business accounts, and the information you agree to share. Vanteloq receives read-only records only after you authorize them in Plaid Link. Vanteloq cannot move money or make payments.</p>
         <div className="plaid-consent-grid">
@@ -239,7 +242,7 @@ export default function PlaidLinkButton({ connected, repairRequired, configured,
         </label>
         <ProviderPolicyLinks provider="plaid"/>
         <p className="plaid-consent-links"><a href="/privacy#financial-connections" target="_blank" rel="noreferrer">Privacy Policy</a><a href="/privacy#retention" target="_blank" rel="noreferrer">Retention and deletion</a></p>
-        <footer><button type="button" onClick={() => setConsentDialog(null)}>Cancel</button><button type="button" className="primary" disabled={!consentChecked} title={!consentChecked ? "Accept the financial data authorization to continue." : "Continue to Plaid Link."} onClick={authorizeAfterConsent}>Continue to Plaid</button></footer>
+        <footer><button type="button" onClick={() => { setConsentDialog(null); setConsentChecked(false); }}>Cancel</button><button type="button" className="primary" disabled={!consentChecked} title={!consentChecked ? "Accept the financial data authorization to continue." : "Continue to Plaid Link."} onClick={authorizeAfterConsent}>Continue to Plaid</button></footer>
       </section>
     </div>
   ) : null;
@@ -248,7 +251,7 @@ export default function PlaidLinkButton({ connected, repairRequired, configured,
     <>
       <div className="plaid-connect-actions">
         {cleanupRequired && <button type="button" onClick={() => void action("disconnect")} disabled={!canCleanup || Boolean(busy)}>{busy === "disconnect" ? "Finishing disconnection…" : "Finish bank disconnection"}</button>}
-        <button onClick={() => setConsentDialog(repairRequired ? "update" : "connect")} disabled={!configured || !canManage || (!repairRequired && !canStartConnection) || Boolean(busy)} title={!canManage ? "Your role cannot manage financial connections." : !canStartConnection && !repairRequired ? "Coming Soon" : !configured ? "This connection is temporarily unavailable." : repairRequired ? "Review the notice, then re-authenticate this institution through Plaid Link." : "Review the notice, then open Plaid Link to authorize read-only Transactions and Balance access."}>
+        <button onClick={() => { setConsentChecked(false); setConsentDialog(repairRequired ? "update" : "connect"); }} disabled={!configured || !canManage || (!repairRequired && !canStartConnection) || Boolean(busy)} title={!canManage ? "Your role cannot manage financial connections." : !canStartConnection && !repairRequired ? "Coming Soon" : !configured ? "This connection is temporarily unavailable." : repairRequired ? "Review the notice, then re-authenticate this institution through Plaid Link." : "Review the notice, then open Plaid Link to authorize read-only Transactions and Balance access."}>
           {busy === "prepare" ? "Preparing secure Link…" : repairRequired ? "Repair bank connection" : !canStartConnection ? "Coming Soon" : "Connect Bank"}
         </button>
         {deletionAvailable && <button className="danger-text" onClick={() => void deleteRetainedData()} disabled={!canManage || Boolean(busy)} title="Delete unreviewed Plaid imports and de-identify accounting records that must remain.">{busy === "delete-data" ? "Deleting…" : "Delete retained Plaid data"}</button>}

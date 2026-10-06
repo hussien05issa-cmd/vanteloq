@@ -12,6 +12,21 @@ export const SETTINGS_SECTIONS = [
   { id: "billing", label: "Billing & subscription", keywords: "cancel cancellation unsubscribe plan plans upgrade payment invoice stripe renewal trial bookloq" },
 ] as const;
 
+export type SettingsSectionId = typeof SETTINGS_SECTIONS[number]["id"];
+
+/** Billing links already sent to owners remain valid. Other sections have
+ * explicit destinations so a location setup action cannot open My profile. */
+export function settingsSectionFromHash(hash: string): SettingsSectionId | null {
+  if (hash === "#billing") return "billing";
+  if (!hash.startsWith("#settings/")) return null;
+  const id = hash.slice("#settings/".length);
+  return SETTINGS_SECTIONS.find(section => section.id === id)?.id ?? null;
+}
+
+export function settingsSectionHash(id: SettingsSectionId): string {
+  return id === "billing" ? "#billing" : `#settings/${id}`;
+}
+
 export function filterSettingsSections(query: string) {
   const terms = query.trim().toLocaleLowerCase("en-CA").split(/\s+/u).filter(Boolean);
   return SETTINGS_SECTIONS.filter(section => {

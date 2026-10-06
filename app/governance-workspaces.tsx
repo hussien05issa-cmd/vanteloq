@@ -5,7 +5,8 @@ import WorkspaceSkeleton from "./workspace-skeleton";
 import CustomPlanCallout from "./custom-plan-callout";
 import BillingSubscriptionControls, { BillingStatusRecovery } from "./billing-subscription-controls";
 import { billingRequestMessage } from "../domain/billing-feedback";
-import { filterSettingsSections } from "../domain/settings-navigation";
+import { filterSettingsSections, SETTINGS_SECTIONS, settingsSectionFromHash, settingsSectionHash, type SettingsSectionId } from "../domain/settings-navigation";
+import LocationSetupDialog from "./location-setup-dialog";
 import { useBillingEntitlements } from "./billing-entitlements-context";
 import { readPlanSelection, clearPlanSelection } from "../shared/plan-selection";
 
@@ -1041,34 +1042,32 @@ export function SettingsWorkspace({ showNotice, onBrandChange, navigationSetting
   const access = useBillingEntitlements();
   const [settingsQuery, setSettingsQuery] = useState("");
   const settingsNav = useRef<HTMLElement>(null);
-  const [section, setSection] = useState(() => typeof window !== "undefined" && window.location.hash === "#billing" ? "billing" : "profile");
+  const settingsContent = useRef<HTMLElement>(null);
+  const [section, setSection] = useState<SettingsSectionId>(() => typeof window !== "undefined" ? settingsSectionFromHash(window.location.hash) ?? "profile" : "profile");
   useEffect(() => {
-    const openBilling = () => { if (window.location.hash === "#billing") setSection("billing"); };
-    window.addEventListener("hashchange", openBilling);
-    return () => window.removeEventListener("hashchange", openBilling);
+    const openSection = () => { const requested = settingsSectionFromHash(window.location.hash); if (requested) setSection(requested); };
+    window.addEventListener("hashchange", openSection);
+    return () => window.removeEventListener("hashchange", openSection);
   }, []);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
   if (loading || !data)
     return <Loading error={error} retry={() => void load()} />;
   const sections = filterSettingsSections(settingsQuery);
-  const selectSection = (id: string) => {
+  const selectSection = (id: SettingsSectionId) => {
     setSection(id);
-    if (id === "billing") window.location.hash = "billing";
-    else if (window.location.hash === "#billing") {
-      const url = new URL(window.location.href);
-      url.hash = "";
-      window.history.replaceState(window.history.state, "", url);
-    }
+    setSaveError("");
+    window.location.hash = settingsSectionHash(id);
+    window.requestAnimationFrame(() => settingsContent.current?.focus({ preventScroll: true }));
   };
   return (
     <div className="content governance-page settings-governance">
       <section className="page-intro">
         <div>
           <p>SETTINGS</p>
-          <h2>Control the account, organization and security boundary.</h2>
+          <h2>Manage your account and business.</h2>
           <span>
-            Signup information stays editable here, while accounting history and
-            audit events remain immutable.
+            Review your profile, business details, locations, access and subscription.
           </span>
         </div>
       </section>
@@ -1103,13 +1102,15 @@ export function SettingsWorkspace({ showNotice, onBrandChange, navigationSetting
             </button>
           ))}
         </aside>
-        <section className="settings-content card">
+        <section ref={settingsContent} tabIndex={-1} className="settings-content card" aria-label={`${SETTINGS_SECTIONS.find(item => item.id === section)?.label ?? "Business"} settings`}>
+          {saveError && <p className="form-error" role="alert">{saveError} Your entries are still here. Review the message and try again.</p>}
           {section === "profile" && (
             <ProfileSettings
               data={data}
               saving={saving}
               save={async (body) => {
                 setSaving(true);
+                setSaveError("");
                 try {
                   const next = await governanceAction({
                     action: "update_profile",
@@ -1118,6 +1119,7 @@ export function SettingsWorkspace({ showNotice, onBrandChange, navigationSetting
                   setData(next);
                   showNotice("Profile and preferences updated");
                 } catch (caught) {
+                  setSaveError(caught instanceof Error ? caught.message : "Unable to save profile.");
                   showNotice(
                     caught instanceof Error
                       ? caught.message
@@ -1135,6 +1137,7 @@ export function SettingsWorkspace({ showNotice, onBrandChange, navigationSetting
               saving={saving}
               save={async (body) => {
                 setSaving(true);
+                setSaveError("");
                 try {
                   const next = await governanceAction({
                     action: "update_organization",
@@ -1147,6 +1150,7 @@ export function SettingsWorkspace({ showNotice, onBrandChange, navigationSetting
                   );
                   showNotice("Organization settings updated and audited");
                 } catch (caught) {
+                  setSaveError(caught instanceof Error ? caught.message : "Unable to save business details.");
                   showNotice(
                     caught instanceof Error
                       ? caught.message
@@ -1174,7 +1178,8 @@ export function SettingsWorkspace({ showNotice, onBrandChange, navigationSetting
               data={data}
               created={(next) => {
                 setData(next);
-                showNotice("Location created with entered-address status");
+                window.dispatchEvent(new CustomEvent("vanteloq:locations-changed"));
+                showNotice("Location created. Map its source records in Integrations to include them in location reports.");
               }}
             />
           )}
@@ -1186,6 +1191,7 @@ export function SettingsWorkspace({ showNotice, onBrandChange, navigationSetting
               notificationsOnly
               save={async (body) => {
                 setSaving(true);
+                setSaveError("");
                 try {
                   setData(
                     await governanceAction({
@@ -1195,6 +1201,7 @@ export function SettingsWorkspace({ showNotice, onBrandChange, navigationSetting
                   );
                   showNotice("Notification preferences updated");
                 } catch (caught) {
+                  setSaveError(caught instanceof Error ? caught.message : "Unable to save preferences.");
                   showNotice(
                     caught instanceof Error
                       ? caught.message
@@ -1445,38 +1452,41 @@ function OrganizationSettings({
     >
       <header>
         <p>ORGANIZATION</p>
-        <h2>Business identity and reporting context</h2>
+        <h2>Business identity and reporting preferences</h2>
         <span>
-          Changing legal, tax, country, currency or fiscal settings never
-          rewrites posted history.
+          Update your operating details. Review the reporting settings recorded during setup below.
         </span>
       </header>
       <div className="settings-grid">
         <label>
-          Operating name
+          <FieldLabel>Operating Name</FieldLabel>
           <input
+            required maxLength={160}
             value={form.displayName}
             onChange={(event) => set("displayName", event.target.value)}
           />
         </label>
         <label>
-          Legal business name
+          <FieldLabel>Legal Business Name</FieldLabel>
           <input
+            required maxLength={160}
             value={form.legalName}
             onChange={(event) => set("legalName", event.target.value)}
           />
         </label>
         <label>
-          Business email
+          <FieldLabel>Business Email</FieldLabel>
           <input
             type="email"
+            required maxLength={254} autoComplete="email"
             value={form.businessEmail}
             onChange={(event) => set("businessEmail", event.target.value)}
           />
         </label>
         <label>
-          Business phone
+          <FieldLabel required={false}>Business Phone</FieldLabel>
           <input
+            type="tel" maxLength={40} autoComplete="tel"
             value={form.phone}
             onChange={(event) => set("phone", event.target.value)}
           />
@@ -1504,6 +1514,11 @@ function OrganizationSettings({
           />
         </label>
       </div>
+      <section className="settings-reporting-context" aria-label="Saved reporting preferences">
+        <h3>Current reporting preferences</h3>
+        <dl><div><dt>Business type</dt><dd>{data.organization.industry || "Not recorded"}</dd></div><div><dt>Reporting currency</dt><dd>{data.organization.currency || "Not recorded"}</dd></div><div><dt>Reporting timezone</dt><dd>{data.organization.timezone || "Not recorded"}</dd></div><div><dt>Fiscal year starts</dt><dd>{data.organization.fiscalYearStart || "Not recorded"}</dd></div></dl>
+        <p>Business type and tools can be reviewed below. Currency, timezone and fiscal year changes are not available in this form. <a href="/contact">Contact support to review a reporting change</a> before entering records under different settings.</p>
+      </section>
       <div className="integrity-warning">
         <b>Historical integrity</b>
         <span>
@@ -1641,17 +1656,19 @@ function LocationsSettings({
   created: (data: Governance) => void;
 }) {
   const [adding, setAdding] = useState(false);
+  const access = useBillingEntitlements();
+  const freeLocationLimit = access.accessType === "free" && data.locations.length >= 1;
   return (
     <section className="settings-form">
       <header>
         <p>LOCATIONS</p>
-        <h2>Global, organization-scoped addresses</h2>
+        <h2>Your business locations</h2>
         <span>
-          Addresses retain entered, suggested or validated status. A
-          postal-pattern match alone never becomes a deliverability claim.
+          Add a location, then map its source records in Integrations. Location reports use its reporting timezone and currency.
         </span>
       </header>
       <div className="location-list">
+        {!data.locations.length && <p className="location-empty-state">No locations are saved yet. Add your first business location to prepare location reports.</p>}
         {data.locations.map((location) => (
           <article key={location.id}>
             <div>
@@ -1671,12 +1688,11 @@ function LocationsSettings({
         ))}
       </div>
       <footer>
-        <button className="primary" onClick={() => setAdding(true)}>
-          + Add location
-        </button>
+        {freeLocationLimit ? <><p>Your Free plan includes one location. Review a paid plan before adding another.</p><button type="button" className="primary" onClick={() => { window.location.hash = settingsSectionHash("billing"); }}>View plans for more locations</button></> : <button type="button" className="primary" onClick={() => setAdding(true)}>+ Add location</button>}
       </footer>
       {adding && (
         <LocationModal
+          organization={data.organization}
           close={() => setAdding(false)}
           created={(next) => {
             setAdding(false);
@@ -1691,97 +1707,13 @@ function LocationsSettings({
 function LocationModal({
   close,
   created,
+  organization,
 }: {
   close: () => void;
   created: (data: Governance) => void;
+  organization: Governance["organization"];
 }) {
-  const [error, setError] = useState("");
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    try {
-      created(
-        await governanceAction({
-          action: "create_location",
-          name: form.get("name"),
-          countryCode: form.get("countryCode"),
-          addressLine1: form.get("addressLine1"),
-          addressLine2: form.get("addressLine2"),
-          addressLine3: form.get("addressLine3"),
-          locality: form.get("locality"),
-          district: form.get("district"),
-          administrativeArea: form.get("administrativeArea"),
-          postalCode: form.get("postalCode"),
-          timezone: form.get("timezone"),
-          currency: form.get("currency"),
-          locale: form.get("locale"),
-          taxJurisdiction: form.get("taxJurisdiction"),
-        }),
-      );
-    } catch (caught) {
-      setError(
-        caught instanceof Error ? caught.message : "Unable to create location.",
-      );
-    }
-  };
-  return (
-    <div className="modal-backdrop">
-      <form className="employee-wizard" onSubmit={submit}>
-        <header>
-          <div>
-            <p>NEW LOCATION</p>
-            <h2>Add a global business address</h2>
-          </div>
-          <button type="button" onClick={close}>
-            ×
-          </button>
-        </header>
-        <div className="wizard-grid">
-          <label><FieldLabel>Name</FieldLabel><input name="name" required />
-          </label>
-          <label><FieldLabel>ISO Country Code</FieldLabel><input name="countryCode" maxLength={2} placeholder="CA" required />
-          </label>
-          <label className="full"><FieldLabel>Address Line 1</FieldLabel><input name="addressLine1" required />
-          </label>
-          <label>
-            Address line 2<input name="addressLine2" />
-          </label>
-          <label>
-            Address line 3<input name="addressLine3" />
-          </label>
-          <label><FieldLabel>City / Locality</FieldLabel><input name="locality" required />
-          </label>
-          <label>
-            District / county
-            <input name="district" />
-          </label>
-          <label><FieldLabel>Province / State / Region</FieldLabel><input name="administrativeArea" required />
-          </label>
-          <label>
-            Postal / ZIP code
-            <input name="postalCode" />
-          </label>
-          <label><FieldLabel>Timezone</FieldLabel><input name="timezone" defaultValue="America/Edmonton" required />
-          </label>
-          <label><FieldLabel>Currency</FieldLabel><input name="currency" defaultValue="CAD" maxLength={3} required />
-          </label>
-          <label><FieldLabel>Locale</FieldLabel><input name="locale" defaultValue="en-CA" required />
-          </label>
-          <label>
-            Tax jurisdiction
-            <input name="taxJurisdiction" />
-          </label>
-        </div>
-        {error && <p className="form-error">{error}</p>}
-        <footer>
-          <button type="button" onClick={close}>
-            Cancel
-          </button>
-          <button className="primary">Create location</button>
-        </footer>
-      </form>
-    </div>
-  );
+  return <LocationSetupDialog close={close} country={organization.country || "CA"} timezone={organization.timezone || "UTC"} currency={organization.currency || "CAD"} locale={organization.locale || "en-CA"} create={async body => { created(await governanceAction({ ...body, action: "create_location" })); }}/>
 }
 
 function ProviderSettings({

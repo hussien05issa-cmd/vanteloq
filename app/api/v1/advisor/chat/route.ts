@@ -20,6 +20,9 @@ import { ApiError, hashIdentifier, clientSource, enforceRateLimit, handleApi, js
 import { effectivePermissions, requirePermission } from "../../../../../server/permissions";
 import { authorizedLocationDataScope } from "../../../../../server/location-access";
 import { approvedBankSource, approvedFactSource } from "../../../../../server/integrations/trusted-data";
+import { commerceSourceAuthority } from "../../../../../server/integrations/source-authority";
+import { authoritativeDailySalesScope } from "../../../../../server/integrations/daily-sales-scope";
+import { exactSum } from "../../../../../domain/executive-metrics";
 import { recordAudit } from "../../../../../server/audit";
 import { requireAdvisorConsent } from "../../../../../server/privacy";
 import { assertAdvisorAuthority, captureAdvisorAuthority, completeAdvisorTurn } from "../../../../../server/advisor-completion";
@@ -78,6 +81,7 @@ function cleanConversationId(value: unknown) {
 async function evidenceFor(
   organizationId: string,
   locationRefs: string[] | null,
+  localLocationIds: readonly string[],
   includeRevenue: boolean,
   includeProfit: boolean,
   includeCash: boolean,
@@ -85,10 +89,13 @@ async function evidenceFor(
   currency: string,
 ): Promise<Evidence> {
   const db = getDb();
+  const salesAuthority = await commerceSourceAuthority({ organizationId, localLocationIds, factFamily: "sales" });
+  if (salesAuthority.status === "conflict") throw new ApiError(409, "ADVISOR_SOURCE_CONFLICT", "Choose the authoritative sales source for each location before requesting AI analysis.");
   const metricScope = and(
     eq(dailyBusinessMetrics.organizationId, organizationId),
     locationRefs === null ? undefined : locationRefs.length ? inArray(dailyBusinessMetrics.locationRef, locationRefs) : sql`0 = 1`,
     approvedFactSource(dailyBusinessMetrics.organizationId, dailyBusinessMetrics.sourceProvider, dailyBusinessMetrics.sourceConnectionId),
+    authoritativeDailySalesScope({ authority: salesAuthority, localLocationIds, locationRestricted: locationRefs !== null }),
   );
   const [latest] = await db.select({ date: dailyBusinessMetrics.businessDate }).from(dailyBusinessMetrics).where(metricScope).orderBy(desc(dailyBusinessMetrics.businessDate)).limit(1);
   const startDate = latest ? new Date(Date.parse(`${latest.date}T00:00:00Z`) - 55 * 86400000).toISOString().slice(0, 10) : "9999-12-31";
@@ -118,7 +125,7 @@ async function evidenceFor(
   let cashAvailableCents: number | null = null;
   if (includeCash) {
     const accounts = await db.select({ available: bankAccounts.availableBalanceCents, live: bankAccounts.liveBalanceCents, lastSyncAt: bankAccounts.lastSyncAt, status: bankAccounts.connectionStatus }).from(bankAccounts).where(and(eq(bankAccounts.organizationId, organizationId), eq(bankAccounts.provider, "plaid"), eq(bankAccounts.currency, currency), inArray(bankAccounts.accountType, ["chequing", "savings"]), approvedBankSource(bankAccounts.organizationId, bankAccounts.provider, bankAccounts.externalItemRef)));
-    if (accounts.length && accounts.every((row) => row.status === "healthy" && row.lastSyncAt && Date.now() - row.lastSyncAt.getTime() < 36 * 60 * 60 * 1000 && (row.available ?? row.live) !== null)) cashAvailableCents = accounts.reduce((sum, row) => sum + (row.available ?? row.live)!, 0);
+    if (accounts.length && accounts.every((row) => row.status === "healthy" && row.lastSyncAt && Date.now() - row.lastSyncAt.getTime() < 36 * 60 * 60 * 1000 && (row.available ?? row.live) !== null)) cashAvailableCents = exactSum(accounts.map(row => (row.available ?? row.live)!));
   }
   const permittedRefs = locationRefs === null ? null : new Set(locationRefs);
   const days = [...rows].reverse()
@@ -199,6 +206,7 @@ export async function POST(request: Request) {
     const evidence: Evidence = greeting || purpose === "help" || requestedPeriod ? { currency: context.organization.currency, latestDate: null, days: [], sources: [], cashAvailableCents: null, kpis: advisorKpis([]) } : await evidenceFor(
       context.organizationId,
       locationAccess.locationRefs,
+      locationAccess.locationIds ?? locationAccess.locations.map(location => location.id),
       permissions.includes("metrics.revenue"),
       permissions.includes("metrics.revenue") && permissions.includes("metrics.profit"),
       locationAccess.locationIds === null && locationAccess.organizationWide && permissions.includes("finance.bank_balances"),

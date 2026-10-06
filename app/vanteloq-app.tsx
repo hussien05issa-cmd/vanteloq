@@ -5,7 +5,7 @@ import LinkedFilesPanel from "./linked-files-panel";
 import InventoryVehicleWorkspace from "./vehicle-inventory-panel";
 import { defaultIndustryConfiguration, resolveIndustryTemplate, type IndustryConfiguration } from "../domain/industry-templates";
 
-import ProviderPrivacyNotice, { ProviderPolicyLinks } from "./provider-privacy-notice";
+import ProviderPrivacyNotice, { ProviderPolicyLinks, ProviderPermissionSummary } from "./provider-privacy-notice";
 import { PROVIDER_PRIVACY_NOTICE_VERSION } from "../domain/provider-privacy";
 import { buildIntegrationCapabilities, type IntegrationCapabilities } from "../domain/integration-capabilities";
 import { dataReadinessStateLabels, type ConnectionDataReadiness } from "../domain/integration-data-readiness";
@@ -13,6 +13,11 @@ import { dataReadinessStateLabels, type ConnectionDataReadiness } from "../domai
 import "./workspace-base-styles";
 import "./workspace-styles";
 import "./readability-refinement.css";
+import "./owner-pathways.css";
+import BusinessWorkspaceSelector, { OwnerWorkspaceContext } from "./business-workspace-selector";
+import { workspaceViewFromHash, workspaceViewHash } from "../domain/owner-navigation";
+import { integrationReturnPath } from "../domain/integration-return";
+import { settingsSectionFromHash, settingsSectionHash } from "../domain/settings-navigation";
 import { parseDailyCsv } from "../domain/daily-summary-csv";
 import DailyImportReviewPanel from "./daily-import-review";
 import type { DailyImportReview } from "../server/daily-metric-import";
@@ -726,7 +731,7 @@ export default function VanteloqApp({
   const billingEntitlements = useBillingEntitlements();
   const subscriptionFeatures = billingEntitlements.features;
   const standaloneBookloq = billingEntitlements.plan === "bookloq";
-  const [view, setView] = useState<View>(() => typeof window !== "undefined" && window.location.hash === "#billing" ? "Settings" : typeof window !== "undefined" && new URLSearchParams(window.location.search).get("linkedFiles") === "connected" ? "Documents" : billingEntitlements.plan === "bookloq" ? "BookLoQ" : "Dashboard");
+  const [view, setView] = useState<View>(() => typeof window !== "undefined" && workspaceViewFromHash(window.location.hash) ? workspaceViewFromHash(window.location.hash)! : typeof window !== "undefined" && new URLSearchParams(window.location.search).get("linkedFiles") === "connected" ? "Documents" : billingEntitlements.plan === "bookloq" ? "BookLoQ" : "Dashboard");
   const [workspaceName, setWorkspaceName] = useState(organizationName);
   const [advisorScope,setAdvisorScope]=useState("");
   const advisorConsent=useAdvisorConsent(apiFetch,advisorScope,view==="Advisor");
@@ -763,6 +768,7 @@ export default function VanteloqApp({
   const preferenceQueueRef = useRef<Promise<void>>(Promise.resolve());
   const preferenceWriteRef = useRef(0);
   const dashboardRequestRef = useRef<AbortController | null>(null);
+  const noticeTimerRef = useRef<number | null>(null);
 
   const refresh = useCallback(async (silent = false) => {
     if (silent && dashboardRequestRef.current) return;
@@ -826,7 +832,7 @@ export default function VanteloqApp({
   // A same-workspace mutation refresh must preserve the active form or sync
   // reconciliation panel. Scope changes still use the full loading boundary.
   const refreshWorkspace = useCallback(() => refresh(true), [refresh]);
-  useEffect(()=>{const changed=()=>void refresh(true);window.addEventListener("vanteloq:industry-changed",changed);return()=>window.removeEventListener("vanteloq:industry-changed",changed);},[refresh]);
+  useEffect(()=>{const changed=()=>void refresh(true);window.addEventListener("vanteloq:industry-changed",changed);window.addEventListener("vanteloq:locations-changed",changed);return()=>{window.removeEventListener("vanteloq:industry-changed",changed);window.removeEventListener("vanteloq:locations-changed",changed);};},[refresh]);
   useEffect(() => {
     let cancelled = false;
     void apiFetch("/api/v1/preferences", { headers: { Accept: "application/json" } })
@@ -887,7 +893,7 @@ export default function VanteloqApp({
       const state = parameters.get("connection");
       if (integration === "clover" && !state && parameters.get("action") === "connect") {
         setNotice("Open the Clover card and select Connect to authorize your merchant account.");
-        window.history.replaceState({}, "", window.location.pathname);
+        window.history.replaceState({}, "", integrationReturnPath(window.location.href));
         return;
       }
       if (integration === "quickbooks") {
@@ -900,7 +906,7 @@ export default function VanteloqApp({
               : state
                 ? "QuickBooks authorization needs to be restarted. Open its connection card to continue."
                 : "Open the QuickBooks card to connect or reconnect your company.");
-        window.history.replaceState({}, "", window.location.pathname);
+        window.history.replaceState({}, "", integrationReturnPath(window.location.href));
         return;
       }
       if (integration === "plaid") {
@@ -915,7 +921,7 @@ export default function VanteloqApp({
       if (integration === "google" || integration === "meta") {
         const name = integration === "google" ? "Google" : "Meta";
         setNotice(state === "connected" ? `${name} is connected. Sync it to update Marketing.` : state === "declined" ? `${name} authorization was declined.` : `${name} authorization needs to be restarted.`);
-        window.history.replaceState({}, "", window.location.pathname);
+        window.history.replaceState({}, "", integrationReturnPath(window.location.href));
         return;
       }
       setNotice(
@@ -937,7 +943,7 @@ export default function VanteloqApp({
           ? `${integration === "stripe" ? "Stripe" : integration === "lightspeed-r" ? "R-Series" : integration === "shopify" ? "Shopify e-commerce" : integration === "shopify-pos" ? "Shopify POS" : integration === "clover" ? "Clover" : integration === "square" ? "Square" : "X-Series"} authorization was declined`
           : `${integration === "stripe" ? "Stripe" : integration === "lightspeed-r" ? "R-Series" : integration === "shopify" ? "Shopify e-commerce" : integration === "shopify-pos" ? "Shopify POS" : integration === "clover" ? "Clover" : integration === "square" ? "Square" : "X-Series"} authorization needs to be restarted`,
       );
-      window.history.replaceState({}, "", window.location.pathname);
+      window.history.replaceState({}, "", integrationReturnPath(window.location.href));
     }, 0);
     return () => window.clearTimeout(timer);
   }, [subscriptionFeatures]);
@@ -956,9 +962,22 @@ export default function VanteloqApp({
     return () => window.removeEventListener("keydown", shortcut);
   }, []);
   const showNotice = (message: string) => {
+    if (noticeTimerRef.current !== null) window.clearTimeout(noticeTimerRef.current);
     setNotice(message);
-    window.setTimeout(() => setNotice(""), 3000);
+    noticeTimerRef.current = window.setTimeout(() => { setNotice(""); noticeTimerRef.current = null; }, 6000);
   };
+  useEffect(() => () => { if (noticeTimerRef.current !== null) window.clearTimeout(noticeTimerRef.current); }, []);
+  useEffect(() => {
+    if (loading) return;
+    const restoreDestination = () => {
+      const next = workspaceViewFromHash(window.location.hash) ?? (standaloneBookloq ? "BookLoQ" : "Dashboard");
+      if (!viewIsAvailable(next, appPermissions, subscriptionFeatures, standaloneBookloq)) return;
+      setView(next);
+      setMobileNavOpen(false);
+    };
+    window.addEventListener("hashchange", restoreDestination);
+    return () => window.removeEventListener("hashchange", restoreDestination);
+  }, [appPermissions, loading, standaloneBookloq, subscriptionFeatures]);
   const navigate = (next: View) => {
     const subscriptionAccess = navigationEntitlement(next, subscriptionFeatures);
     if (standaloneBookloq && !standaloneBookloqViews.has(next)) {
@@ -985,6 +1004,7 @@ export default function VanteloqApp({
     }
     setView(next);
     setMobileNavOpen(false);
+    if (next !== "Settings" || !settingsSectionFromHash(window.location.hash)) window.location.hash = workspaceViewHash(next);
     window.scrollTo({ top: 0, behavior: "instant" });
     window.requestAnimationFrame(()=>document.querySelector<HTMLElement>(".main-panel")?.focus({preventScroll:true}));
   };
@@ -1022,6 +1042,7 @@ export default function VanteloqApp({
     };
     const revision = ++preferenceWriteRef.current;
     preferenceStateRef.current = next;
+    if (next.activeLocationId !== current.activeLocationId) { setLoading(true); setData(null); setError(""); }
     setHiddenNavigation(next.hiddenNavigation);
     setActiveLocationId(next.activeLocationId);
     const operation = preferenceQueueRef.current.then(async () => {
@@ -1041,6 +1062,7 @@ export default function VanteloqApp({
     }).catch((caught) => {
       if (preferenceWriteRef.current === revision) {
         const confirmed = confirmedPreferenceRef.current;
+        if (confirmed.activeLocationId !== preferenceStateRef.current.activeLocationId) { setLoading(true); setData(null); setError(""); }
         preferenceStateRef.current = confirmed;
         setHiddenNavigation(confirmed.hiddenNavigation);
         setActiveLocationId(confirmed.activeLocationId);
@@ -1092,10 +1114,10 @@ export default function VanteloqApp({
             </small>
           </span>
           <label className="location-switcher">
-            <span className="sr-only">Dashboard location</span>
+            <span className="sr-only">Workspace location</span>
             <select
               value={activeLocationId ?? ""}
-              disabled={billingEntitlements.accessType === "free"}
+              disabled={loading || billingEntitlements.accessType === "free"}
               onChange={(event) => {
                 const next = event.target.value || null;
                 void savePreferences({ activeLocationId: next }).catch((caught) => showNotice(caught instanceof Error ? caught.message : "Location preference could not be saved."));
@@ -1106,6 +1128,7 @@ export default function VanteloqApp({
             </select>
           </label>
         </div>
+        <BusinessWorkspaceSelector selectedWorkspaceId={advisorScope || null}/>
         <div className="subscription-summary" aria-label="Current subscription">
           <span>{billingEntitlements.accessType === "internal" ? "Internal access" : billingEntitlements.accessType === "complimentary" ? "Complimentary access" : billingEntitlements.plan === "bookloq" ? "BookLoQ standalone" : `${billingEntitlements.plan ? humanizeIdentifier(billingEntitlements.plan) : "Paid"} plan`}</span>
           {billingEntitlements.addons.includes("bookloq") && <small>{billingEntitlements.plan === "bookloq" ? "Finance workspace active" : "BookLoQ active"}</small>}
@@ -1218,6 +1241,7 @@ export default function VanteloqApp({
               {view === "Dashboard" ? "OWNER COMMAND CENTRE" : view === "BookLoQ" || view === "Profit" || view === "Cash" || view === "Bookkeeping" ? "BOOKLOQ FINANCE" : "VANTELOQ WORKSPACE"}
             </p>
             <h1>{view === "Dashboard" ? "Dashboard" : view === "Profit" ? "BookLoQ · Reports" : view === "Cash" ? "BookLoQ · Cash Flow" : view === "Bookkeeping" ? "BookLoQ · Transactions" : workspaceViewLabel(view)}</h1>
+            <OwnerWorkspaceContext businessName={workspaceName} industry={businessIndustry} locationName={activeLocationId ? locations.find(location => location.id === activeLocationId)?.name ?? "Selected location" : null} limitedScope={appRole !== "owner" && appRole !== "admin"}/>
           </div>
           <div className="top-actions">
             <button className="command-trigger" onClick={() => setCommandOpen(true)} aria-label="Open workspace search"><WorkspaceIcon name="Search"/><span>Search workspace</span><kbd>⌘K</kbd></button>
@@ -1343,11 +1367,13 @@ export default function VanteloqApp({
 
 function GlobalCommand({ permissions, subscriptionFeatures, standaloneBookloq, navigate, close }: { permissions: string[]; subscriptionFeatures: readonly string[]; standaloneBookloq: boolean; navigate: (view: View) => void; close: () => void }) {
   const [query, setQuery] = useState("");
+  const dialogRef = useRef<HTMLElement>(null);
+  useModalFocus(dialogRef, true, close);
   const options = useMemo(() => ([...nav.flatMap(([, items]) => items), "Integrations", "Settings"] as View[])
     .filter((item, index, list) => list.indexOf(item) === index)
     .filter((item) => viewIsAvailable(item, permissions, subscriptionFeatures, standaloneBookloq))
     .filter((item) => !query || `${item} ${workspaceViewLabel(item)}`.toLowerCase().includes(query.toLowerCase())), [permissions, query, standaloneBookloq, subscriptionFeatures]);
-  return <div className="modal-backdrop command-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}><section className="command-modal" role="dialog" aria-modal="true" aria-label="Workspace search"><div className="command-input"><span>⌕</span><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Go to a workspace…"/><button onClick={close}>ESC</button></div><div className="command-results"><small>WORKSPACES</small>{options.map((option) => <button key={option} onClick={() => navigate(option)}><span>↳</span><span>{workspaceViewLabel(option)}</span><b>→</b></button>)}{!options.length && <p>No matching workspace.</p>}</div></section></div>;
+  return <div className="modal-backdrop command-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}><section ref={dialogRef} tabIndex={-1} className="command-modal" role="dialog" aria-modal="true" aria-label="Workspace search"><div className="command-input"><span aria-hidden="true">⌕</span><input aria-label="Search available workspaces" autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Go to a workspace…"/><button type="button" aria-label="Close workspace search" onClick={close}>ESC</button></div><div className="command-results"><small>WORKSPACES</small>{options.map((option) => <button type="button" key={option} onClick={() => navigate(option)}><span aria-hidden="true">↳</span><span>{workspaceViewLabel(option)}</span><b aria-hidden="true">→</b></button>)}{!options.length && <p role="status">No matching workspace.</p>}</div></section></div>;
 }
 
 function NavigationSettingsPanel({
@@ -3064,7 +3090,7 @@ function DataHub({
   return (
     <div className="content data-hub">
       {freeAllowance&&<p className="free-integration-allowance" role="status">Your Free integrations: {freeAllowance.used} of {freeAllowance.limit} selected. Choose any available provider. Disconnect a provider to change your choices.</p>}
-      {privacyNoticeProvider && <ProviderPrivacyNotice key={privacyNoticeProvider} provider={privacyNoticeProvider} onComplete={accepted => { privacyNoticeResolver.current?.(accepted); privacyNoticeResolver.current = null; setPrivacyNoticeProvider(null); }}/>}
+      {privacyNoticeProvider && <ProviderPrivacyNotice key={privacyNoticeProvider} provider={privacyNoticeProvider} scopes={connections.find(item => item.id === privacyNoticeProvider)?.providerReadiness?.scopes} preview={connections.find(item => item.id === privacyNoticeProvider)?.customerAvailability?.previewAccess === true} onComplete={accepted => { privacyNoticeResolver.current?.(accepted); privacyNoticeResolver.current = null; setPrivacyNoticeProvider(null); }}/>}
       <section className="page-intro">
         <div>
           <p>CONNECTIONS AND DATA</p>
@@ -3203,14 +3229,16 @@ function DataHub({
                 </details>}
                 {isQuickBooks && quickBooksConsentOpen && <form className="moneris-connect-form" onSubmit={(event) => { event.preventDefault(); void connectQuickBooks(); }}>
                   <header><b>Connect a QuickBooks Online company</b><span>Verify your company and save its authorization securely. Accounting import is not available yet, so this connection does not update your reports.</span></header>
-                  <label className="moneris-consent"><input type="checkbox" checked={quickBooksConsentAccepted} required onChange={(event) => setQuickBooksConsentAccepted(event.target.checked)} /><span>I authorize Vanteloq to receive the selected QuickBooks company identifier, company name, authorization status, and future read only accounting records for mapping, reconciliation, and reporting. Vanteloq will not create or change QuickBooks transactions during this stage.</span></label>
+                  <ProviderPermissionSummary provider="quickbooks"/>
+                  <label className="moneris-consent"><input type="checkbox" checked={quickBooksConsentAccepted} required onChange={(event) => setQuickBooksConsentAccepted(event.target.checked)} /><span>I authorise Vanteloq to verify the selected QuickBooks company identifier, company name and connection status, and securely store continuing-access credentials. Ledger, invoice, bill and tax imports are not enabled during this stage. Any future import requires its own identified records and review controls.</span></label>
                   <ProviderPolicyLinks provider="quickbooks"/>
                   <small>Intuit will show its own company selection and permission screen next. You can disconnect later to revoke the authorization and delete the stored token.</small>
                   <footer><button type="button" onClick={() => { setQuickBooksConsentOpen(false); setQuickBooksConsentAccepted(false); }}>Cancel</button><button type="submit" className="primary" disabled={!canManageProvider || providerAction === "authorize" || !quickBooksConsentAccepted}>{providerAction === "authorize" ? "Opening QuickBooks…" : "Continue to Intuit"}</button></footer>
                 </form>}
                 {isDeel && deelConsentOpen && <form className="moneris-connect-form" onSubmit={(event) => { event.preventDefault(); void connectDeel(); }}>
                   <header><b>Connect aggregate Deel payroll</b><span>Vanteloq stages finalized payroll-cycle totals for BookLoQ review. It does not store employee-level payroll records.</span></header>
-                  <label className="moneris-consent"><input type="checkbox" checked={deelConsentAccepted} required onChange={(event) => setDeelConsentAccepted(event.target.checked)} /><span>I authorize Vanteloq to read legal entity names, finalized payroll-cycle dates, and currency-level payroll category totals. Employee names, bank details, payslips, contract identifiers, and individual compensation are excluded.</span></label>
+                  <ProviderPermissionSummary provider="deel"/>
+                  <label className="moneris-consent"><input type="checkbox" checked={deelConsentAccepted} required onChange={(event) => setDeelConsentAccepted(event.target.checked)} /><span>I authorise Vanteloq to retain legal entity names, finalised payroll-cycle dates and currency-level payroll category totals from supported responses. Worker identifiers, bank details and individual payroll information are discarded; payslip files are not imported. Aggregate evidence remains staged for review.</span></label>
                   <ProviderPolicyLinks provider="deel"/>
                   <small>Imported totals remain staged and do not update labour KPIs or accounting reports automatically. You can disconnect and delete the staged aggregates later.</small>
                   <footer><button type="button" onClick={() => { setDeelConsentOpen(false); setDeelConsentAccepted(false); }}>Cancel</button><button type="submit" className="primary" disabled={!canManageProvider || providerAction === "authorize" || !deelConsentAccepted}>{providerAction === "authorize" ? "Opening Deel…" : "Continue to Deel"}</button></footer>
@@ -3223,6 +3251,7 @@ function DataHub({
                   <label><span>Application ID</span><input value={monerisDraft.clientId} maxLength={256} autoComplete="off" required onChange={(event) => setMonerisDraft((current) => ({ ...current, clientId: event.target.value }))} /></label>
                   <label><span>Client secret</span><input type="password" value={monerisDraft.clientSecret} maxLength={512} autoComplete="new-password" required onChange={(event) => setMonerisDraft((current) => ({ ...current, clientSecret: event.target.value }))} /></label>
                   <label><span>Read scope</span><input value="payment.read" readOnly /><small>Vanteloq only requests permission to read payments.</small></label>
+                  <ProviderPermissionSummary provider="moneris"/>
                   <label className="moneris-consent"><input type="checkbox" checked={monerisDraft.accepted} required onChange={(event) => setMonerisDraft((current) => ({ ...current, accepted: event.target.checked }))} /><span>I authorize Vanteloq to retrieve payment amounts, currency, status, timestamps and settlement references for reconciliation. No raw card data is requested or stored.</span></label>
                   <ProviderPolicyLinks provider="moneris"/>
                   <footer><button type="button" onClick={() => setMonerisFormOpen(false)}>Cancel</button><button type="submit" className="primary" disabled={!canManageProvider || providerAction === "connect" || !monerisDraft.accepted}>{providerAction === "connect" ? "Validating…" : "Validate and connect"}</button></footer>
@@ -4506,7 +4535,7 @@ function LocationsWorkspace({
         <section className="card location-empty-state">
           <h3>Add the first organization location.</h3>
           <p>A location name and address are required before a POS shop can be mapped or a store dashboard can be selected.</p>
-          <button className="primary" onClick={() => navigate("Settings")}>Open location settings</button>
+          <button className="primary" onClick={() => { window.location.hash = settingsSectionHash("locations"); navigate("Settings"); }}>Open location settings</button>
         </section>
       ) : (
         <section className="location-intelligence-grid">

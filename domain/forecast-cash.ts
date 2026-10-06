@@ -1,5 +1,6 @@
 import {buildThirteenWeekCashFlow,type ThirteenWeekCashFlow,type ThirteenWeekCashFlowItem} from "./thirteen-week-cash-flow";
 import {forecastDate,shiftForecastDate} from "./forecasting";
+import {exactSum} from "./executive-metrics";
 export type CashAssumptions={additionalSalesConfirmed:boolean;cashSharePercent:number;feePercent:number;taxPercent:number;settlementDays:number;collectionDelayDays:number;volumeChangePercent:number;bufferCents:number;additional:{id:string;dueDate:string;amountCents:number;label:string}[]};
 export function forecastCashPreview(flow:ThirteenWeekCashFlow,schedule:ThirteenWeekCashFlowItem[],sales:{date:string;netSalesCents:number}[],a:CashAssumptions){
  if(flow.status!=="available"||flow.openingCashCents===null)throw new Error("Resolve the existing BookLoQ cash coverage checks before modelling cash scenarios.");
@@ -13,6 +14,6 @@ export function forecastCashPreview(flow:ThirteenWeekCashFlow,schedule:ThirteenW
  for(const i of a.additional)items.push({id:`plan:${i.id}`,dueDate:i.dueDate,amountCents:Math.abs(i.amountCents),direction:i.amountCents<0?"out":"in",certainty:"expected",label:i.label});
  const result=buildThirteenWeekCashFlow({asOf:flow.asOf,openingCashCents:flow.openingCashCents,safetyThresholdCents:a.bufferCents,actualTransactions:[],forecastItems:items,confirmedPurchasingObligationsCents:flow.confirmedPurchasingObligationsCents});
  let balance=flow.openingCashCents,lowest=balance,lowestDate=flow.asOf;const below:string[]=[],daily:{date:string;balanceCents:number}[]=[];
- for(let date=flow.asOf;date<=result.weeks.at(-1)!.weekEnd;date=shiftForecastDate(date,1)){balance+=items.filter(i=>(i.dueDate<flow.asOf?flow.asOf:i.dueDate)===date).reduce((sum,i)=>sum+(i.direction==="in"?i.amountCents:-i.amountCents),0);if(balance<lowest){lowest=balance;lowestDate=date;}if(balance<a.bufferCents)below.push(date);daily.push({date,balanceCents:balance});}
+ for(let date=flow.asOf;date<=result.weeks.at(-1)!.weekEnd;date=shiftForecastDate(date,1)){balance=exactSum([balance,...items.filter(i=>(i.dueDate<flow.asOf?flow.asOf:i.dueDate)===date).map(i=>i.direction==="in"?i.amountCents:-i.amountCents)]);if(balance<lowest){lowest=balance;lowestDate=date;}if(balance<a.bufferCents)below.push(date);daily.push({date,balanceCents:balance});}
  return {flow:result,lowestCents:lowest,lowestDate,belowBufferDates:below,daily,salesThrough:sales.at(-1)?.date??null,excludedBeyondHorizon:items.filter(i=>i.dueDate>result.weeks.at(-1)!.weekEnd).length,boundary:"Owner scenarios, not statistical intervals. Future sales are included only through the sales forecast horizon. Tax collected is not spendable profit; add its dated remittance. Purchases, payroll and fixed processor charges require explicit plans if not already recorded. Daily closing balances can still hide intraday shortfalls. Purchasing authority is unchanged."};
 }

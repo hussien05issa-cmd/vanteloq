@@ -163,7 +163,7 @@ test("regular Free enrolment, setup, caps and upgrade stay in the same workspace
     await expect(await call("/api/v1/forecasting"),403);
     const privacy = providerPrivacyAcceptance(true);
     const selectedProviders = async () => (await database.prepare("SELECT provider FROM free_integration_selections WHERE organization_id=? ORDER BY provider")
-      .bind(org).all<{provider:string}>()).results.map(selection => selection.provider);
+      .bind(org).all<{provider:string}>()).results.map((selection: { provider: string }) => selection.provider);
     const missingPrivacy = await expect(await call("/api/v1/integrations/square/authorize","POST",{}),400);
     assert.equal(missingPrivacy.error.code,"PROVIDER_PRIVACY_REQUIRED");
     const unavailable = await expect(await call("/api/v1/integrations/square/authorize","POST",privacy),503);

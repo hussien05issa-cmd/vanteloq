@@ -24,6 +24,8 @@ import { recommendedOverview } from "../domain/dashboard-personalization";
 import { IndustryConfigurationFields } from "./industry-configuration";
 import { defaultIndustryConfiguration, resolveIndustryTemplate } from "../domain/industry-templates";
 import type { validateOnboardingDraft } from "../domain/onboarding-draft";
+import { changeOnboardingCountry, validReportingTimezone } from "../domain/onboarding-reporting";
+import "./owner-pathways.css";
 
 type Hour = { day: string; open: string; close: string; closed: boolean };
 type SourceMode = "connect_later" | "csv" | "live";
@@ -86,21 +88,6 @@ const initialSetup = (accountName: string): Setup => ({
   emailNotifications: true,
 });
 
-function countryDefaults(country: string) {
-  const known: Record<string, { currency: string; timezone: string }> = {
-    CA: { currency: "CAD", timezone: "America/Edmonton" },
-    US: { currency: "USD", timezone: "America/New_York" },
-    GB: { currency: "GBP", timezone: "Europe/London" },
-    AU: { currency: "AUD", timezone: "Australia/Sydney" },
-    NZ: { currency: "NZD", timezone: "Pacific/Auckland" },
-    JP: { currency: "JPY", timezone: "Asia/Tokyo" },
-    IN: { currency: "INR", timezone: "Asia/Kolkata" },
-    MX: { currency: "MXN", timezone: "America/Mexico_City" },
-    BR: { currency: "BRL", timezone: "America/Sao_Paulo" },
-  };
-  return known[country] || { currency: "USD", timezone: "UTC" };
-}
-
 function messageFrom(data: unknown, fallback: string): string {
   if (!data || typeof data !== "object") return fallback;
   const error = (data as { error?: unknown }).error;
@@ -140,6 +127,7 @@ export default function SecureOnboardingFlow({
   const [hours, setHours] = useState<Hour[]>(initialHours);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const submitPending = useRef(false);
   const [legalAccepted, setLegalAccepted] = useState(false);
   const [savedDraft,setSavedDraft]=useState<ReturnType<typeof validateOnboardingDraft>|null>(null);
   const [draftRevision,setDraftRevision]=useState(0),[draftNotice,setDraftNotice]=useState(""),[draftBusy,setDraftBusy]=useState(false),[draftLoading,setDraftLoading]=useState(true);
@@ -191,10 +179,12 @@ export default function SecureOnboardingFlow({
   };
 
   const submit = async () => {
+    if (submitPending.current) return;
     if (!legalAccepted) {
       setError("Review and accept the Terms of Service and Privacy Policy before creating the workspace.");
       return;
     }
+    submitPending.current = true;
     setSaving(true);
     setError("");
     try {
@@ -211,17 +201,21 @@ export default function SecureOnboardingFlow({
           privacyPolicyVersion: PRIVACY_POLICY_VERSION,
           legalNoticeVersion: ACCOUNT_ACCEPTANCE_NOTICE_VERSION,
         }),
+        signal: AbortSignal.timeout(20_000),
       });
       const data: unknown = await response.json();
       if (!response.ok)
         return setError(messageFrom(data, "Unable to create the workspace."));
       const saved = (data as { organization?: { businessName?: string; ownerName?: string } }).organization;
       complete(saved?.businessName ?? form.businessName, saved?.ownerName ?? form.ownerName);
-    } catch {
+    } catch (caught) {
       setError(
-        "Unable to create the workspace. Check your connection and try again.",
+        caught instanceof DOMException && ["TimeoutError", "AbortError"].includes(caught.name)
+          ? "Setup could not be confirmed in time. Reload this page to check whether your workspace was created before trying again."
+          : "Unable to create the workspace. Your entries are still here. Check your connection and try again.",
       );
     } finally {
+      submitPending.current = false;
       setSaving(false);
     }
   };
@@ -259,6 +253,7 @@ export default function SecureOnboardingFlow({
                 step === index + 1 ? "active" : step > index + 1 ? "done" : ""
               }
               key={label}
+              aria-current={step === index + 1 ? "step" : undefined}
             >
               <b>{step > index + 1 ? "Done" : index + 1}</b>
               <span>
@@ -271,6 +266,7 @@ export default function SecureOnboardingFlow({
                       "Operating context",
                       "Account preferences",
                       standaloneBookloq ? "Statements, files or POS" : "POS or CSV",
+                      "Choose your priorities",
                       "Confirm your details",
                     ][index]
                   }
@@ -285,7 +281,7 @@ export default function SecureOnboardingFlow({
       </aside>
       <section ref={panelRef} className="setup-panel">
         <FormLegend/>
-        <div className="setup-progress" role="progressbar" aria-label="Workspace setup" aria-valuemin={0} aria-valuemax={7} aria-valuenow={step} aria-valuetext={`Step ${step} of 7`}>
+        <div className="setup-progress" role="progressbar" aria-label="Workspace setup" aria-valuemin={1} aria-valuemax={7} aria-valuenow={step} aria-valuetext={`Step ${step} of 7`}>
           <span>STEP {step} OF 7</span>
           <i>
             <b style={{ width: `${Math.round((step / 7) * 100)}%` }} />
@@ -295,6 +291,7 @@ export default function SecureOnboardingFlow({
         {savedDraft&&<section className="industry-resume" aria-label="Saved business setup"><strong>Your saved setup is ready.</strong><p>Resume where you left off, or start again. Acceptance of legal terms must be reviewed again.</p><button type="button" disabled={draftBusy||saving} onClick={()=>{setForm({...initialSetup(accountName),...savedDraft.form} as Setup);setHours(savedDraft.hours);setIndustryConfiguration(savedDraft.industryConfiguration);setOverview(savedDraft.overview);setOverviewTouched(true);setStep(savedDraft.step);setLegalAccepted(false);setSavedDraft(null);}}>Resume saved setup</button><button type="button" disabled={draftBusy||saving} onClick={()=>void discardDraft()}>Discard saved draft</button></section>}
         {draftNotice&&<p role="status" className="industry-draft-note">{draftNotice}</p>}
         <button type="button" className="overview-skip" disabled={draftBusy||draftLoading||saving||Boolean(savedDraft)} onClick={()=>void saveDraft()}>{draftLoading?"Checking saved progress…":draftBusy?"Saving progress…":"Save progress"}</button>
+        <fieldset className="setup-submit-fields" disabled={saving}>
         {step === 1 && (
           <Step
             eyebrow="VERIFIED IDENTITY"
@@ -402,16 +399,7 @@ export default function SecureOnboardingFlow({
                 autoComplete="country"
                 value={form.country}
                 onChange={(country) => {
-                  const defaults = countryDefaults(country);
-                  setForm((current) => ({
-                    ...current,
-                    country,
-                    province: "",
-                    city: "",
-                    address: "",
-                    postalCode: "",
-                    ...defaults,
-                  }));
+                  setForm((current) => changeOnboardingCountry(current, country));
                 }}
                 options={COUNTRIES.map((item) => ({
                   value: item.code,
@@ -488,7 +476,7 @@ export default function SecureOnboardingFlow({
                 autoComplete="postal-code"
               />
               <Field
-                label="Reporting Timezone" hint="For example, America/Edmonton. Reports follow this timezone."
+                label="Reporting Timezone" hint="For example, America/Edmonton. Reports follow this timezone." validate={value => validReportingTimezone(value) ? "" : "Enter a valid timezone, such as America/Edmonton."}
                 value={form.timezone}
                 onChange={(value) => set("timezone", value)}
                 placeholder="Europe/London"
@@ -532,6 +520,7 @@ export default function SecureOnboardingFlow({
                 placeholder="Optional"
               />
             </div>
+            <p className="setup-country-note">Country defaults are suggestions. Confirm your actual reporting currency and timezone. Changing the country preserves the address you entered and any reporting preferences you customized.</p>
             <p className="address-note">Check your address for accuracy before continuing.</p>
             <details className="hours-editor">
               <summary><b>Business Hours</b><span>Review the default schedule.</span></summary>
@@ -686,6 +675,7 @@ export default function SecureOnboardingFlow({
                   className={form.sourceMode === id ? "selected" : ""}
                   onClick={() => set("sourceMode", id)}
                   disabled={freePlan && id === "live"}
+                  aria-pressed={form.sourceMode === id}
                   key={id}
                 >
                   <i>{icon}</i>
@@ -716,6 +706,7 @@ export default function SecureOnboardingFlow({
                       }
                       onClick={() => set("selectedPos", provider)}
                       key={provider}
+                      aria-pressed={form.selectedPos === provider}
                     >
                       {provider}
                       <span>Setup required</span>
@@ -795,6 +786,7 @@ export default function SecureOnboardingFlow({
             </label>
           </Step>
         )}
+        </fieldset>
         {error && (
           <p className="setup-error" role="alert">
             {error}
@@ -802,6 +794,7 @@ export default function SecureOnboardingFlow({
         )}
         <div className="setup-actions">
           <button
+            disabled={saving}
             onClick={() =>
               step === 1 ? signOut() : setStep((current) => current - 1)
             }

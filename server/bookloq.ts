@@ -1,4 +1,4 @@
-import { ledgerIntelligence } from "../domain/executive-metrics.ts";
+import { exactSum, ledgerIntelligence } from "../domain/executive-metrics.ts";
 import type { Role } from "./authorization";
 import { ApiError } from "./api.ts";
 import { isCalendarDate } from "../domain/calendar-date.ts";
@@ -447,9 +447,8 @@ export function forecastCash(openingCashCents: number, items: readonly { dueDate
     const end = new Date(asOfMs + days * 86_400_000).toISOString().slice(0, 10);
     // The caller supplies outstanding balances, including unpaid overdue items.
     const included = items.filter((item) => item.dueDate <= end);
-    const confirmedNetCents = included.filter((item) => item.certainty === "confirmed").reduce((sum, item) => sum + (item.direction === "in" ? item.amountCents : -item.amountCents), 0);
-    const probableNetCents = included.filter((item) => item.certainty === "probable").reduce((sum, item) => sum + (item.direction === "in" ? item.amountCents : -item.amountCents), 0);
-    const estimatedNetCents = included.filter((item) => item.certainty === "estimated").reduce((sum, item) => sum + (item.direction === "in" ? item.amountCents : -item.amountCents), 0);
-    return { days, endDate: end, confirmedNetCents, probableNetCents, estimatedNetCents, closingCashCents: openingCashCents + confirmedNetCents + probableNetCents + estimatedNetCents };
+    const net = (certainty: "confirmed" | "probable" | "estimated") => exactSum(included.filter(item => item.certainty === certainty).map(item => item.direction === "in" ? item.amountCents : -item.amountCents));
+    const confirmedNetCents = net("confirmed"), probableNetCents = net("probable"), estimatedNetCents = net("estimated");
+    return { days, endDate: end, confirmedNetCents, probableNetCents, estimatedNetCents, closingCashCents: exactSum([openingCashCents, confirmedNetCents, probableNetCents, estimatedNetCents]) };
   });
 }
