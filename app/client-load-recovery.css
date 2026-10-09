@@ -6,7 +6,7 @@
   padding: 36px 20px;
   background: radial-gradient(ellipse at 15% 5%, #dfeaf6, transparent 55%), linear-gradient(145deg, #f2f6fa, #e9eff6);
   color: #142c45;
-  font-family: Geist, "Segoe UI", sans-serif;
+  font-family: var(--font-product, "Segoe UI", Arial, sans-serif);
   text-align: left;
 }
 .client-load-recovery .client-load-card {

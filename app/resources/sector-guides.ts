@@ -68,7 +68,7 @@ export const SECTOR_GUIDES: readonly ResourceArticle[] = [
         "heading": "5. Keep the decision tied to its source",
         "paragraphs": [
           "Retain the source stock export, cost records and assumptions used in the review. Recheck them before acting. Faster turnover can support liquidity, but an immediate sale at any price is not automatically the best outcome. BDC distinguishes inventory from more liquid current assets when discussing working capital.",
-          "In Vanteloq, dealership review starts with reviewed DMS stock CSV exports and dealership records. Aging and recorded investment depend on those inputs and the loaded stock view's coverage. Use a documented external calculation for any financing scenario that is not represented by recorded costs."
+          "In Vanteloq, dealership review starts with reviewed DMS stock CSV exports and dealership records. Aging and recorded investment depend on those inputs and the loaded stock view's coverage. Eligible stock with complete posted costs includes an offer-versus-waiting comparison. Enter the current offer, assumed future price, additional daily holding cost and waiting time. The scenario keeps estimates separate from posted costs and does not record a sale or change the books."
         ]
       }
     ],
