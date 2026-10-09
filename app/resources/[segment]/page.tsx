@@ -1,3 +1,4 @@
+import ProfessorGuide from "../../professor-guide";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -150,6 +151,7 @@ function ArticlePage({ article }: { article: ResourceArticle }) {
                 <p>{article.quickAnswer}</p>
               </section>
 
+              <ProfessorGuide summary={article.quickAnswer}/>
               {article.sections.map((section) => (
                 <section id={section.id} key={section.id}>
                   <h2>{section.heading}</h2>

@@ -68,6 +68,7 @@ function buildDailySourceSnapshot(
     return {
       ...buildLightspeedRLiveSalesSnapshot([], timeZone),
       sourceGranularity: "daily" as const,
+      hasVerifiedDailyRecords: false,
     };
   }
   const latestRows = rows.filter((row) => row.businessDate === latestDate);
@@ -76,6 +77,7 @@ function buildDailySourceSnapshot(
   const transactionCount = latestRows.reduce((sum, row) => sum + row.transactionCount, 0);
   return {
     businessDate: latestDate,
+    hasVerifiedDailyRecords: true,
     netSalesCents,
     grossProfitCents: netSalesCents - costOfGoodsCents,
     averageTransactionCents: transactionCount ? Math.round(netSalesCents / transactionCount) : null,

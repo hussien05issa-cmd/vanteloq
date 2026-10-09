@@ -17,6 +17,7 @@ import "./readability-refinement.css";
 import "./owner-pathways.css";
 import "./sidebar-polish.css";
 import "./workspace-appearance.css";
+import "./workspace-contrast.css";
 import { useWorkspaceAppearance } from "./workspace-appearance";
 import BusinessWorkspaceSelector, { OwnerWorkspaceContext } from "./business-workspace-selector";
 import { workspaceViewFromHash, workspaceViewHash } from "../domain/owner-navigation";
@@ -620,6 +621,7 @@ type CommandCentre = {
     discountsCents: number;
     lastSaleAt: string | null;
     sourceGranularity: "intraday" | "daily";
+    hasVerifiedDailyRecords?: boolean;
     asOf?: string | null;
     timeZone?: string;
     hourlyUnavailableReason?: string | null;
@@ -1338,6 +1340,7 @@ export default function VanteloqApp({
                 permissions={appPermissions}
                 subscriptionFeatures={subscriptionFeatures}
                 standaloneBookloq={standaloneBookloq}
+                onDashboard={() => { navigate(standaloneBookloq ? "BookLoQ" : "Dashboard"); if(!standaloneBookloq)window.history.replaceState(null, "", "#dashboard/customize"); }}
                 update={(item, visible) => {
                   const next = setNavigationVisibility(preferenceStateRef.current.hiddenNavigation, item, visible, allNavigationViews, protectedNavigation);
                   void savePreferences({ hiddenNavigation: next })
@@ -1399,7 +1402,9 @@ function NavigationSettingsPanel({
   standaloneBookloq,
   update,
   restoreAll,
+  onDashboard,
 }: {
+  onDashboard: () => void;
   hidden: View[];
   permissions: string[];
   subscriptionFeatures: readonly string[];
@@ -1413,6 +1418,7 @@ function NavigationSettingsPanel({
   ];
   return (
     <section className="navigation-settings-panel" aria-labelledby="navigation-settings-title">
+      <section className="workspace-appearance-control"><h3>Your dashboard</h3><p>Choose metrics, reorder and resize panels, set goals, and save layouts for your business.</p><button type="button" onClick={onDashboard}>{standaloneBookloq ? "Open BookLoQ Overview" : "Customize Dashboard"}</button></section>
       <header>
         <div>
           <p>SIDEBAR</p>
@@ -1788,20 +1794,20 @@ function LiveSalesPanel({ data, currency, paymentRange, setPaymentRange, compact
   return (
     <>
       <section className="today-metric-grid">
-        <Metric label={intraday ? "Net sales today" : "Latest daily net sales"} value={awaitingRecords ? "Awaiting records" : money(today.netSalesCents, currency)} delta={awaitingRecords ? "No current-day records received" : comparisonCopy(data.todayComparison?.changes.netSalesRate, baselineLabel)} detail={`${formatBusinessDate(today.businessDate)} · excludes sales tax`} tone="indigo" />
+        <Metric label={intraday ? "Net sales today" : "Latest daily net sales"} value={awaitingRecords ? "Awaiting records" : money(today.netSalesCents, currency)} delta={awaitingRecords ? "Verified sales records required" : comparisonCopy(data.todayComparison?.changes.netSalesRate, baselineLabel)} detail={`${formatBusinessDate(today.businessDate)} · excludes sales tax`} tone="indigo" />
         <Metric label={intraday ? "Gross profit today" : "Latest daily gross profit"} value={awaitingRecords ? "Not available" : today.grossProfitCents == null ? "Not available" : money(today.grossProfitCents, currency)} delta={awaitingRecords ? "Sales records required" : comparisonCopy(data.todayComparison?.changes.grossProfitRate, baselineLabel)} detail={today.grossProfitCents == null ? "Verified product costs required" : "Net sales less product cost"} tone="emerald" />
-        <Metric label="Gross margin" value={today.netSalesCents > 0 && today.grossProfitCents != null ? `${(today.grossProfitCents / today.netSalesCents * 100).toFixed(1)}%` : "Not available"} delta="Product economics" detail="Gross profit ÷ positive net sales" tone="emerald" />
+        <Metric label="Gross margin" value={!awaitingRecords && today.netSalesCents > 0 && today.grossProfitCents != null ? `${(today.grossProfitCents / today.netSalesCents * 100).toFixed(1)}%` : "Not available"} delta="Product economics" detail="Gross profit ÷ positive net sales" tone="emerald" />
         <Metric label="Discounts" value={awaitingRecords ? "Not available" : money(today.discountsCents, currency)} delta={awaitingRecords ? "Sales records required" : today.netSalesCents + today.discountsCents ? `${(today.discountsCents / (today.netSalesCents + today.discountsCents) * 100).toFixed(1)}% of pre-discount value` : "No discount activity"} detail="Verified line and sale discounts" tone="amber" />
-        <Metric label="Average transaction" value={today.averageTransactionCents == null ? "Not available" : money(today.averageTransactionCents, currency, 2)} delta={intraday ? "Today's basket value" : "Latest daily basket value"} detail="Net sales ÷ completed transactions" tone="amber" />
-        <Metric label="Number of sales" value={awaitingRecords ? "Awaiting records" : today.transactionCount == null ? "Not available" : today.transactionCount.toLocaleString()} delta={awaitingRecords ? "No completed sales received" : comparisonCopy(data.todayComparison?.changes.transactionRate, baselineLabel)} detail={today.unitsSold == null ? "Revenue permission required" : `${quantityLabel(today.unitsSold, "line item")} recorded`} tone="cyan" />
+        <Metric label="Average transaction" value={awaitingRecords || today.averageTransactionCents == null ? "Not available" : money(today.averageTransactionCents, currency, 2)} delta={intraday ? "Today's basket value" : "Latest daily basket value"} detail="Net sales ÷ completed transactions" tone="amber" />
+        <Metric label="Number of sales" value={awaitingRecords ? "Awaiting records" : today.transactionCount == null ? "Not available" : today.transactionCount.toLocaleString()} delta={awaitingRecords ? "No completed sales received" : comparisonCopy(data.todayComparison?.changes.transactionRate, baselineLabel)} detail={awaitingRecords ? "Verified sales records required" : today.unitsSold == null ? "Revenue permission required" : `${quantityLabel(today.unitsSold, "line item")} recorded`} tone="cyan" />
       </section>
       <section className={compact ? "live-sales-grid compact" : "live-sales-grid"}>
         <article className="card live-sales-chart-card">
           <div className="card-head">
             <div><p className="card-kicker">{intraday ? "TODAY'S SALES PULSE" : "LATEST VERIFIED DAY"}</p><h3>Sales by hour</h3></div>
-            <span className="verified-tag">{sourceName} · approved records</span>
+            <span className="verified-tag">{sourceName} · {awaitingRecords ? "awaiting verified records" : "approved records"}</span>
           </div>
-          {awaitingRecords ? <div className="intel-empty"><b>Waiting for today’s records</b><span>No approved transactions have been received for this business day. This does not confirm that the business made no sales.</span></div> : today.sourceGranularity === "intraday"
+          {awaitingRecords ? <div className="intel-empty"><b>Waiting for verified sales records</b><span>The selected source has not supplied verified sales records for this reporting day. This does not confirm that the business made no sales.</span></div> : today.sourceGranularity === "intraday"
             ? <IntradaySalesChart data={today.hourly} currency={currency} comparison={matched ? data.todayComparison?.baseline.hourly : undefined} comparisonDate={matched ? data.todayComparison?.baselineDate : undefined} asOf={today.asOf} timeZone={today.timeZone} />
             : <div className="intel-empty"><b>Hourly detail is not available</b><span>{today.hourlyUnavailableReason || "The totals above come from the latest verified daily summary. Connect a provider with transaction timestamps to unlock the intraday chart."}</span></div>}
           {!awaitingRecords && <div className="chart-foot">

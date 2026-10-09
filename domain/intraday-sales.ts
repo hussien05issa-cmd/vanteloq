@@ -23,9 +23,10 @@ export function isAwaitingSalesRecords(day: {
   lastSaleAt: string | null;
   transactionCount: number | null;
   refundsCents: number | null;
+  hasVerifiedDailyRecords?: boolean;
 }) {
-  return day.sourceGranularity === "intraday" && !day.lastSaleAt
-    && day.transactionCount === 0 && day.refundsCents === 0;
+  return day.sourceGranularity === "daily" ? day.hasVerifiedDailyRecords === false
+    : !day.lastSaleAt && day.transactionCount === 0 && day.refundsCents === 0;
 }
 const hourFormatter = new Intl.DateTimeFormat("en-CA", { timeZone: "UTC", hour: "numeric", hour12: true });
 

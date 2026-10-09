@@ -1,11 +1,11 @@
 export const SETTINGS_SECTIONS = [
-  { id: "profile", label: "My profile", keywords: "name personal preferences" },
+  { id: "profile", label: "My profile", keywords: "name personal preferences appearance dark light system theme" },
   { id: "account", label: "Account & login", keywords: "sign in sign out email password delete deletion remove account workspace" },
   { id: "security", label: "Security", keywords: "mfa authentication two factor sessions devices passkeys" },
   { id: "notifications", label: "Notifications", keywords: "alerts email marketing preferences" },
   { id: "organization", label: "Organization", keywords: "business company industry fiscal tax address" },
   { id: "branding", label: "Branding", keywords: "logo colour color identity" },
-  { id: "navigation", label: "Sidebar & workspaces", keywords: "menu navigation hidden modules" },
+  { id: "navigation", label: "Sidebar & workspaces", keywords: "menu navigation hidden modules dashboard customize customise layout metrics kpi goals" },
   { id: "locations", label: "Locations", keywords: "stores branches address timezone" },
   { id: "integrations", label: "Integrations", keywords: "connections providers pos bank import" },
   { id: "privacy", label: "Data & privacy", keywords: "export retention consent ai data" },

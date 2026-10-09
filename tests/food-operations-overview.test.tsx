@@ -26,7 +26,7 @@ test("unconfirmed service coverage does not render unsupported rates", () => {
   const row: SectorRecord = { id: "service", locationId: "one", version: 1, state: "reviewed", updatedAt: 1, kind: "service_period", title: "Lunch", source: "Test source", sourceDate: "2026-10-04", dueDate: "", currency: "CAD", notes: "", batch: null, values: { serviceDate: "2026-10-04", daypart: "Lunch", projectedSales: 0, netSales: 10000, plannedMinutes: 0, paidMinutes: 60, labourCost: 2000, orders: 10, lateOrders: 1, coverageComplete: false } };
   const html = renderToStaticMarkup(<FoodOperationsOverview {...base} records={[row]} kinds={["service_period"]}/>);
   assert.match(html, /Coverage not confirmed/);
-  assert.equal((html.match(/Not available/g) ?? []).length, 3);
+  assert.equal((html.match(/Not available/g) ?? []).length, 4);
   assert.doesNotMatch(html, /20\.0%|10\.0%/);
 });
 test("malformed dates render an accessible error instead of throwing during review rendering", () => {
@@ -40,4 +40,14 @@ test("malformed dates render an accessible error instead of throwing during revi
     assert.equal((html.match(/max="9999-12-31"/g) ?? []).length, 2);
     assert.doesNotMatch(html, /reviewed records in this date range|No reviewed production batches/);
   }
+});
+
+test("service plan variances render signed actual-minus-plan amounts without combining windows", () => {
+  const row: SectorRecord = { id: "service", locationId: "one", version: 1, state: "reviewed", updatedAt: 1, kind: "service_period", title: "Lunch", source: "Test source", sourceDate: "2026-10-04", dueDate: "", currency: "CAD", notes: "", batch: null, values: { serviceDate: "2026-10-04", daypart: "Lunch", projectedSales: 200000, netSales: 180000, plannedMinutes: 600, paidMinutes: 720, labourCost: 40000, orders: 60, lateOrders: 6, coverageComplete: true } };
+  const html = renderToStaticMarkup(<FoodOperationsOverview {...base} records={[row]} kinds={["service_period"]}/>);
+  assert.match(html, /Sales versus plan/);
+  assert.match(html, /Paid minutes versus plan/);
+  assert.match(html, /<td>-CAD(?:&nbsp;|\s)200\.00<\/td><td>120<\/td>/);
+  const missing = renderToStaticMarkup(<FoodOperationsOverview {...base} records={[{ ...row, values: { ...row.values, projectedSales: null, plannedMinutes: null } }]} kinds={["service_period"]}/>);
+  assert.match(missing, /<td>Not available<\/td><td>Not available<\/td>/);
 });

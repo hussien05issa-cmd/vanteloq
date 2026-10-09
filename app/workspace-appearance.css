@@ -1,4 +1,4 @@
-/* Import after sidebar-polish.css. Public pages have no workspace theme attribute. */
+/* Shared workspace palette. Public pages have no workspace theme attribute. */
 :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme="dark"] {
   color-scheme: dark;
   --ws-canvas: #0B1222; --ws-panel: #111D32; --ws-raised: #19283F;

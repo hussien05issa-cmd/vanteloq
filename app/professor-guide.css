@@ -1,0 +1,17 @@
+.professor-guide { --guide-ink:#14243b; --guide-muted:#52637a; --guide-panel:#f2f6fd; --guide-line:#c7d3e2; --guide-blue:#215abb; color:var(--guide-ink); background:var(--guide-panel); border:1px solid var(--guide-line); border-radius:16px; padding:14px 18px; margin:22px 0; }
+.professor-guide summary { display:flex; align-items:center; gap:12px; cursor:pointer; list-style:none; }
+.professor-guide summary::after { content:"+"; color:var(--guide-blue); margin-left:auto; font-size:22px; }
+.professor-guide[open] summary::after { content:"−"; }
+.professor-guide-portrait { display:flex; align-items:center; justify-content:center; width:52px; height:58px; flex:0 0 52px; }
+.professor-guide img { width:52px; height:58px; object-fit:contain; }
+.professor-guide strong { color:var(--guide-ink); display:block; font-size:14px; }
+.professor-guide small { display:block; color:var(--guide-muted); font-size:12px; line-height:1.6; }
+.professor-guide>div { border-top:1px solid var(--guide-line); padding-top:12px; margin-top:12px; }
+.professor-guide p { color:var(--guide-ink); font-size:14px; line-height:1.75; margin:0 0 12px; }
+.professor-guide button { font:inherit; font-size:13px; min-height:42px; border:1px solid var(--guide-line); border-radius:9px; color:var(--guide-blue); background:transparent; padding:10px 12px; margin-bottom:10px; cursor:pointer; }
+.professor-guide summary:focus-visible,.professor-guide button:focus-visible { outline:3px solid var(--guide-blue); outline-offset:4px; }
+.professor-guide.is-compact { padding:8px 12px; margin:8px 0; }
+.professor-guide.is-compact .professor-guide-portrait,.professor-guide.is-compact img { width:34px; height:38px; flex-basis:34px; }
+.professor-guide.is-compact strong { font-size:12px; }
+.professor-guide.is-compact small { font-size:11px; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .professor-guide { --guide-ink:var(--ws-ink); --guide-muted:var(--ws-muted); --guide-panel:var(--ws-panel); --guide-line:var(--ws-line); --guide-blue:var(--ws-purple); }

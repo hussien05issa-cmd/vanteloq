@@ -8,7 +8,7 @@ export type FoodReviewScope = { locationId: string; from?: string; to?: string }
 export type FoodBatchReview = {
   recipeId: string; currency: string; records: SectorRecord[]; completeBatches: number;
   preparedMilli: number | null; unusableMilli: number | null; usableMilli: number | null;
-  wasteBasisPoints: number | null; ingredientCost: number | null;
+  wasteBasisPoints: number | null; ingredientCost: number | null; ingredientCostPerUsablePortion: number | null;
 };
 export type FoodDeliveryReview = {
   provider: string; currency: string; records: SectorRecord[]; costCompleteOrders: number;
@@ -82,10 +82,16 @@ export function foodOperationalReview(input: readonly SectorRecord[], scope: Foo
     const fullyCovered = complete.length === rows.length;
     const preparedMilli = fullyCovered ? sum(rows.map(row => numeric(row, "portions"))) : null;
     const unusableMilli = fullyCovered ? sum(rows.map(row => numeric(row, "wastePortions"))) : null;
+    const usableMilli = preparedMilli !== null && unusableMilli !== null ? preparedMilli - unusableMilli : null;
+    const ingredientCost = sum(rows.map(row => numeric(row, "actualCost")));
+    // Portion quantities use thousandths; divide aggregate cost by aggregate usable
+    // output before rounding once to the currency's minor unit. Never average rates.
+    const ingredientCostPerUsablePortion = ingredientCost !== null && usableMilli !== null && usableMilli > 0
+      ? safe((BigInt(ingredientCost) * BigInt(1000) + BigInt(usableMilli) / BigInt(2)) / BigInt(usableMilli)) : null;
     return { recipeId: String(rows[0].values.recipeId ?? ""), currency: rows[0].currency, records: rows,
       completeBatches: complete.length, preparedMilli, unusableMilli,
-      usableMilli: preparedMilli !== null && unusableMilli !== null ? preparedMilli - unusableMilli : null,
-      wasteBasisPoints: basisPoints(unusableMilli, preparedMilli), ingredientCost: sum(rows.map(row => numeric(row, "actualCost"))) };
+      usableMilli, ingredientCost, ingredientCostPerUsablePortion,
+      wasteBasisPoints: basisPoints(unusableMilli, preparedMilli) };
   });
   const deliveries: FoodDeliveryReview[] = [...deliveryGroups.values()].map(rows => {
     const reports = rows.map(row => sectorReport(row));

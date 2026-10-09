@@ -2,7 +2,8 @@
 
 import { forwardRef, useCallback, useEffect, useId, useImperativeHandle, useRef, useState } from "react";
 
-export const DICTATION_CHARACTER_LIMIT = 800;
+import { ADVISOR_QUESTION_LIMIT } from "../shared/advisor-limits";
+export const DICTATION_CHARACTER_LIMIT = ADVISOR_QUESTION_LIMIT;
 export const DICTATION_DURATION_MS = 30_000;
 type RecognitionResults = { length: number; [index: number]: { [index: number]: { transcript: string } } };
 type Recognition = {

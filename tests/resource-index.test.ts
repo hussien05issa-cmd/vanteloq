@@ -3,11 +3,11 @@ import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import ResourceArticleBrowser from "../app/resource-article-browser";
-import { RESOURCE_ARTICLES, getArticle, getReadingTime } from "../app/resources/content";
+import { getArticle, getReadingTime } from "../app/resources/content";
 import { RESOURCE_ARTICLE_SUMMARIES } from "../app/resources/article-index";
 
 test("lightweight homepage listings stay aligned with the published articles", () => {
-  assert.deepEqual(RESOURCE_ARTICLE_SUMMARIES, RESOURCE_ARTICLES.map(article => ({
+  assert.deepEqual(RESOURCE_ARTICLE_SUMMARIES, RESOURCE_ARTICLE_SUMMARIES.map(summary => getArticle(summary.slug)!).map(article => ({
     slug: article.slug,
     title: article.title,
     description: article.description,
@@ -17,7 +17,7 @@ test("lightweight homepage listings stay aligned with the published articles", (
 });
 
 test("lightweight listings preserve every resource card and reading time", () => {
-  const original = renderToStaticMarkup(createElement(ResourceArticleBrowser, { articles: RESOURCE_ARTICLES }));
+  const original = renderToStaticMarkup(createElement(ResourceArticleBrowser, { articles: RESOURCE_ARTICLE_SUMMARIES.map(summary => getArticle(summary.slug)!) }));
   const summary = renderToStaticMarkup(createElement(ResourceArticleBrowser, { articles: RESOURCE_ARTICLE_SUMMARIES }));
   assert.equal(summary, original);
 });

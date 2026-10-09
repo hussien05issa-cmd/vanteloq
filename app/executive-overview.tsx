@@ -28,6 +28,7 @@ import { dashboardDraftScope, dashboardDraftKey, dashboardDraftFingerprint, dash
 import ExpandingSurface from "./expanding-surface";
 import { useMotionPreference } from "./use-motion-preference";
 import WorkspaceSkeleton from "./workspace-skeleton";
+import { ADVISOR_QUESTION_LIMIT } from "../shared/advisor-limits";
 
 const periods=[["today","Today","Today"],["yesterday","Yesterday","Yesterday"],["7d","7D","Last 7 days"],["30d","30D","Last 30 days"],["90d","90D","Last 90 days"],["mtd","MTD","Month to date"],["qtd","QTD","Quarter to date"],["ytd","YTD","Year to date"],["1y","1Y","Last 365 days"],["custom","Custom","Custom date range"]];
 const cash=(v:number|null,currency:string)=>v===null?"Not available":new Intl.NumberFormat("en-CA",{style:"currency",currency,maximumFractionDigits:2}).format(v===0?0:v/100);
@@ -126,6 +127,7 @@ export default function ExecutiveOverview({currency,industry,activeLocationId,ba
   const clearDraftCache=()=>{if(!initialReport&&draftScope)try{window.sessionStorage.removeItem(dashboardDraftKey(draftScope));}catch{/* Keep the explicit form action available. */}};
   const closeCustomizer=()=>{setShowCustomize(false);if(dirty)setPreferenceStatus("Unsaved changes kept. Reopen Customize to continue or discard them.");};
   const openCustomizer=()=>{if(!preferencesReady||recovery)return;if(!changedSaved)setPreferenceError("");setShowCustomize(true);};
+  useEffect(()=>{if(!preferencesReady||recovery||window.location.hash!=="#dashboard/customize")return;queueMicrotask(()=>setShowCustomize(true));window.history.replaceState(null,"",window.location.pathname+window.location.search);},[preferencesReady,recovery]);
   const discardDraft=()=>{
     const next=changedSaved??preferences;
     clearDraftCache();setRecovery(null);setDraft(next);setPreferences(next);setChangedSaved(null);setPreferenceError("");setPreferenceStatus("Unsaved changes discarded. Your saved layout is unchanged.");
@@ -148,7 +150,7 @@ export default function ExecutiveOverview({currency,industry,activeLocationId,ba
       const {collections:_currentCollections,...currentOverview}=current,{collections:_savedCollections,...savedOverview}=preferences;
       void _currentCollections;void _savedCollections;
       if(JSON.stringify(currentOverview)!==JSON.stringify(savedOverview)){setChangedSaved(current);throw Error("Your saved dashboard changed elsewhere. Your draft is kept. Discard changes to load the current layout before editing again.");}
-      const response=await apiFetch("/api/v1/preferences",{method:"POST",headers:{"Content-Type":"application/json",Accept:"application/json"},body:JSON.stringify({dashboardPreferences:draft})});
+      const response=await apiFetch("/api/v1/preferences",{method:"POST",headers:{"Content-Type":"application/json",Accept:"application/json"},body:JSON.stringify({dashboardPreferences:{...draft,collections:current.collections},expectedDashboardPreferences:latest.dashboardPreferences,expectedPreferenceScope:latest.preferenceScope})});
       const body=await response.json();if(!response.ok)throw Error(body.error?.message??"Dashboard settings could not be saved.");
       const saved=normalizeDashboardPreferences(body.dashboardPreferences);clearDraftCache();setRecovery(null);setChangedSaved(null);setPreferences(saved);setDraft(saved);setPreset(saved.defaultPeriod);setCompare(saved.comparison);setRange(saved.customDates);setAppliedRange(saved.customDates);setShowCustomize(false);setPreferenceStatus("Dashboard saved.");
       try{setDraftBaseline(await dashboardDraftFingerprint(saved));}catch{setDraftBaseline("");}
@@ -222,7 +224,7 @@ function OverviewAdvisor({report,sample,onAsk,onExplore}:{report:ExecutiveReport
     <header><VanteloqAiLogo size={28} decorative/><h3>Vanteloq AI</h3><span>{sample?"Preview":"Ask your business"}</span></header>
     <h4>{hasRecords?"Turn a change into a next step.":"Start with a clearer picture."}</h4>
     <p>{hasRecords?"Explore your sales, margins and next steps using the records you choose to share.":"Find out which sales, costs and cash records will make your overview useful."}</p>
-    {onAsk?<><button type="button" className="advisor-question" onClick={()=>onAsk(suggestion)}>{suggestion}<span aria-hidden="true">↗</span></button><form onSubmit={event=>{event.preventDefault();const value=question.trim();if(value)onAsk(value);}}><label className="sr-only" htmlFor={questionId}>Ask about your business</label><input id={questionId} value={question} maxLength={2000} onChange={event=>setQuestion(event.target.value)} placeholder="Ask about your business…"/><button type="submit" aria-label="Open question in Vanteloq AI" disabled={!question.trim()}>↑</button></form></>:<button type="button" className="advisor-question" onClick={onExplore}>{sample?"Explore the interactive demo":"Explore your insights"}<span aria-hidden="true">↗</span></button>}
+    {onAsk?<><button type="button" className="advisor-question" onClick={()=>onAsk(suggestion)}>{suggestion}<span aria-hidden="true">↗</span></button><form onSubmit={event=>{event.preventDefault();const value=question.trim();if(value && value.length<=ADVISOR_QUESTION_LIMIT)onAsk(value);}}><label className="sr-only" htmlFor={questionId}>Ask about your business</label><input id={questionId} value={question} maxLength={ADVISOR_QUESTION_LIMIT} onChange={event=>setQuestion(event.target.value)} placeholder="Ask about your business…"/><button type="submit" aria-label="Open question in Vanteloq AI" disabled={!question.trim()||question.trim().length>ADVISOR_QUESTION_LIMIT}>↑</button></form></>:<button type="button" className="advisor-question" onClick={onExplore}>{sample?"Explore the interactive demo":"Explore your insights"}<span aria-hidden="true">↗</span></button>}
     <small>{sample?"Preview only. No AI answer has been generated.":"You control which workspace data AI can use."}</small>
   </aside>;
 }

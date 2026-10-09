@@ -2,6 +2,8 @@
 
 import { cloneElement, isValidElement, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import VanteloqAiLogo from "./vanteloq-ai-logo";
+import { ADVISOR_QUESTION_LIMIT } from "../shared/advisor-limits";
+import ProfessorGuide from "./professor-guide";
 import WorkspaceIcon from "./workspace-icon";
 import AdvisorDictation, { type AdvisorDictationHandle } from "./advisor-dictation";
 import { useWorkspaceAppearance, type WorkspaceAppearance } from "./workspace-appearance";
@@ -9,7 +11,7 @@ import { ADVISOR_ATTACHMENT_ACCEPT, advisorAttachmentSelectionError } from "../s
 import { ADVISOR_PROVIDER_LABELS, advisorProviders, type AdvisorMode } from "../domain/advisor-providers";
 
 export function canAskAdvisor(question: string, consent: boolean, loading: boolean) {
-  return consent && !loading && question.trim().length > 0 && question.trim().length <= 800;
+  return consent && !loading && question.trim().length > 0 && question.trim().length <= ADVISOR_QUESTION_LIMIT;
 }
 
 function AttachmentPreview({file}:{file:File}) {
@@ -158,7 +160,7 @@ export default function AdvisorComposer({ question, onQuestion, dataUseAccepted,
               event.preventDefault();
               if (ready) event.currentTarget.form?.requestSubmit();
             }
-          }} maxLength={800} required aria-describedby="advisor-submit-help" placeholder="Ask Vanteloq AI…"/>
+          }} maxLength={ADVISOR_QUESTION_LIMIT} required aria-describedby="advisor-submit-help" placeholder="Ask Vanteloq AI…"/>
           <div className="ai-input-toolbar">
             <div className="ai-attach-tools">{onAttachments && <><input ref={fileInput} type="file" hidden multiple accept={ADVISOR_ATTACHMENT_ACCEPT} aria-label="Choose files for Vanteloq AI" onChange={event => {
               const next = [...attachments, ...Array.from(event.target.files ?? [])];
@@ -181,6 +183,7 @@ export default function AdvisorComposer({ question, onQuestion, dataUseAccepted,
           <button className="ai-text-button ai-memory-status" type="button" onClick={() => openSettings()} aria-label={`Memory ${attachments.length || historyPaused ? "paused for attachments" : memoryEnabled ? "on" : "off"}. Open settings.`}>Memory {attachments.length || historyPaused ? "paused" : memoryEnabled ? "on" : "off"}</button>
         </div>
 
+        <ProfessorGuide compact onExplain={() => { dictation.current?.stop(); onQuestion(hasConversation ? "Explain the sales and financial figures in this conversation in plain language. Use only the records I permitted. Tell me what changed, what it means, and one practical next step. Separate unknown facts from assumptions." : "Help me understand which sales, costs and cash metrics matter for my business type. Explain each simply, tell me what records it needs, and suggest one practical next step."); input.current?.focus(); }}/>
         <div className="ai-suggestions">
           <button className="ai-text-button ai-suggestions-toggle" type="button" aria-expanded={suggestionsOpen} aria-controls="advisor-suggestions" onClick={() => setSuggestionsOpen(open => !open)}>{suggestionsOpen ? "Hide suggestions" : "Show suggestions"}</button>
           <div id="advisor-suggestions" className="ai-prompt-grid" role="group" aria-label="Suggested questions" hidden={!suggestionsOpen}>

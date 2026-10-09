@@ -7,6 +7,7 @@ import { dealerAppointmentOutcomes, dealerAverageGross, dealerStockAging, dealer
 import { apiFetch } from "./supabase-browser";
 import { FormInput } from "./form-primitives";
 import { useModalFocus } from "./use-modal-focus";
+import DealerHoldingScenario from "./dealer-holding-scenario";
 import "./dealership-workspace.css";
 
 export type DealershipTab = "overview" | "inventory" | "preparation" | "sales" | "customers" | "team";
@@ -324,6 +325,7 @@ export function DealershipStockTable({ data, blocked = false, onAction, agingRev
       {data.permissions.stockEdit && row.availability === "reserved" && <p className="dl-hint">An authorized sales editor must release the reservation before this stock can be transferred.</p>}
       {data.permissions.salesEdit && row.availability === "held" && <p className="dl-hint">Review and clear the hold in Update stock before creating a customer reservation.</p>}
       {data.permissions.costs && <details><summary>Cost evidence</summary><p>Estimated and approved amounts remain separate from posted costs. Only reviewed complete posted costs qualify for operational gross.</p>{data.costs.filter(cost => cost.episodeId === row.id).length ? <ul className="dl-record-list">{data.costs.filter(cost => cost.episodeId === row.id).map(cost => <li key={cost.id}><strong>{human(cost.category)} · {dealershipMoney(cost.amountCents, cost.currency)}</strong><Status value={cost.status}/><p>{cost.description || "No description recorded"}</p><small>Source reference: {cost.sourceReference || "Not recorded"}</small></li>)}</ul> : <p>No cost evidence recorded.</p>}</details>}
+      {data.permissions.costs && data.permissions.profit && active(row) && <DealerHoldingScenario key={`${row.id}:${row.version}`} stock={row} permissions={data.permissions} disabled={blocked}/>}
       {data.permissions.tasks && <details><summary>Preparation tasks for this stock</summary>{data.tasks.filter(task => task.episodeId === row.id).length ? <ul className="dl-record-list">{data.tasks.filter(task => task.episodeId === row.id).map(task => <li key={task.id}><strong>{task.title}</strong><Status value={task.status}/><small>{personName(data, task.assigneeId)} · {task.dueDate ? dateLabel(task.dueDate) : "No due date"}</small>{onAction && data.permissions.tasksEdit && <button type="button" disabled={blocked} onClick={() => onAction("save_task", task)}>Update task</button>}</li>)}</ul> : <p>No tasks recorded for this stock.</p>}</details>}
     </section>}
   </>;

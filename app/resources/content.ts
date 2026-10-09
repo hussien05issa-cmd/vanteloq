@@ -1,3 +1,4 @@
+import { SECTOR_GUIDES } from "./sector-guides";
 import type { ResourceCategory } from "./metadata";
 export { RESOURCE_CATEGORIES, getCategory, getReadingTime } from "./metadata";
 export type { ResourceCategory } from "./metadata";
@@ -1316,7 +1317,7 @@ const articles: readonly ResourceArticle[] = [
   },
 ];
 
-export const RESOURCE_ARTICLES = articles;
+export const RESOURCE_ARTICLES: readonly ResourceArticle[] = [...articles, ...SECTOR_GUIDES];
 
 export function getArticle(slug: string) {
   return RESOURCE_ARTICLES.find((article) => article.slug === slug);
