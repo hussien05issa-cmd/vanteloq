@@ -2793,7 +2793,7 @@ function DataHub({
   const syncDeelConnection = async (connectionId: string) => {
     const body = await providerPost("deel", providerSyncRoutes.deel, "sync", connectionId);
     if (!body) return;
-    showNotice(body.nextStep ?? "Finalized aggregate payroll evidence was staged for review.");
+    showNotice(body.nextStep ?? "Available payroll-report aggregates were staged for review.");
     await loadConnections();
   };
   const testSlackConnection = async (connectionId: string) => {
@@ -3303,9 +3303,9 @@ function DataHub({
                   <footer><button type="button" onClick={() => { setQuickBooksConsentOpen(false); setQuickBooksConsentAccepted(false); }}>Cancel</button><button type="submit" className="primary" disabled={!canManageProvider || providerAction === "authorize" || !quickBooksConsentAccepted}>{providerAction === "authorize" ? "Opening QuickBooks…" : "Continue to Intuit"}</button></footer>
                 </form>}
                 {isDeel && deelConsentOpen && <form className="moneris-connect-form" onSubmit={(event) => { event.preventDefault(); void connectDeel(); }}>
-                  <header><b>Connect aggregate Deel payroll</b><span>Vanteloq stages finalized payroll-cycle totals for BookLoQ review. It does not store employee-level payroll records.</span></header>
+                  <header><b>Connect aggregate Deel payroll</b><span>Vanteloq stages available payroll-report category totals for review. Report availability does not establish finalised or paid payroll.</span></header>
                   <ProviderPermissionSummary provider="deel"/>
-                  <label className="moneris-consent"><input type="checkbox" checked={deelConsentAccepted} required onChange={(event) => setDeelConsentAccepted(event.target.checked)} /><span>I authorise Vanteloq to retain legal entity names, finalised payroll-cycle dates and currency-level payroll category totals from supported responses. Worker identifiers, bank details and individual payroll information are discarded; payslip files are not imported. Aggregate evidence remains staged for review.</span></label>
+                  <label className="moneris-consent"><input type="checkbox" checked={deelConsentAccepted} required onChange={(event) => setDeelConsentAccepted(event.target.checked)} /><span>I authorise Vanteloq to process supported payroll-report responses and retain legal entity names, cycle dates and currency-level category totals. Worker identifiers, payment details and individual payroll information are discarded during aggregation; payslip files are not imported. Reports remain staged for review and do not certify finalised, approved or paid payroll.</span></label>
                   <ProviderPolicyLinks provider="deel"/>
                   <small>Imported totals remain staged and do not update labour KPIs or accounting reports automatically. You can disconnect and delete the staged aggregates later.</small>
                   <footer><button type="button" onClick={() => { setDeelConsentOpen(false); setDeelConsentAccepted(false); }}>Cancel</button><button type="submit" className="primary" disabled={!canManageProvider || providerAction === "authorize" || !deelConsentAccepted}>{providerAction === "authorize" ? "Opening Deel…" : "Continue to Deel"}</button></footer>

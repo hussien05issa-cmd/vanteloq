@@ -171,7 +171,7 @@ test("Worker-compatible manual redirect mode rejects token and data redirects wi
   assert.equal(calls, 2);
 });
 
-test("actual sync preserves finalized aggregate staging and rejects a disconnect during provider read", async () => {
+test("available payroll reports do not certify finality and remain staged across grant checks", async () => {
   for (const removeDuringRead of [false, true]) {
     const ctx=await fixture(), userId=crypto.randomUUID(), legalEntityId=crypto.randomUUID(), cycleId=crypto.randomUUID();
     await db.batch([
@@ -199,7 +199,25 @@ test("actual sync preserves finalized aggregate staging and rejects a disconnect
       if(removeDuringRead)await removeDeelLocalGrant(ctx.organizationId,ctx.connectionId,ctx.namespace);
       release();
       if(rejected)await rejected;
-      else {assert.equal((await pending).status,200);assert.equal((await measureCount(ctx))?.count,1);assert.ok((await connection(ctx))?.last_successful_sync_at);}
+      else {
+        const response = await pending;
+        assert.equal(response.status,200);
+        const body = await response.json() as {dataPromotionEnabled:boolean;payrollCyclesRead:number};
+        assert.equal(body.dataPromotionEnabled,false);
+        assert.equal(body.payrollCyclesRead,1);
+        assert.equal((await measureCount(ctx))?.count,1);
+        const staged = await db.prepare("SELECT values_json FROM retail_measurements WHERE organization_id = ? AND connection_id = ?").bind(ctx.organizationId,ctx.connectionId).first<{values_json:string}>();
+        assert.ok(staged);
+        const values = JSON.parse(staged.values_json)[0].values;
+        assert.equal(values.reportAvailable,true);
+        assert.equal(values.finalized,null);
+        assert.equal(values.payrollStatusVerified,false);
+        assert.equal(values.reportingEligible,false);
+        assert.equal(values.complete,false);
+        assert.equal(values.wagesCents,null);
+        assert.equal(values.paidMinutes,null);
+        assert.ok((await connection(ctx))?.last_successful_sync_at);
+      }
       const row=await connection(ctx);
       assert.equal(row?.status,removeDuringRead?"revoked":"connected");
       assert.equal(row?.data_promotion_status,removeDuringRead?"blocked":"staging");

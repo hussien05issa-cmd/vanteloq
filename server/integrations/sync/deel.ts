@@ -35,7 +35,7 @@ function validateRange(start: string, end: string) {
   const endMs = Date.parse(`${end}T23:59:59Z`);
   if (startMs > endMs) throw new ApiError(400, "DEEL_DATE_RANGE_INVALID", "The payroll start date must not be after the end date.");
   if (endMs > Date.now() + 24 * 60 * 60 * 1000) throw new ApiError(400, "DEEL_DATE_RANGE_INVALID", "The payroll date range cannot extend into the future.");
-  if (endMs - startMs > 366 * 24 * 60 * 60 * 1000) throw new ApiError(400, "DEEL_DATE_RANGE_TOO_LARGE", "Import at most 366 days of finalized payroll evidence at a time.");
+  if (endMs - startMs > 366 * 24 * 60 * 60 * 1000) throw new ApiError(400, "DEEL_DATE_RANGE_TOO_LARGE", "Import at most 366 days of payroll-report evidence at a time.");
 }
 
 export async function runDeelSync(
@@ -96,7 +96,9 @@ export async function runDeelSync(
         for (const summary of summaries) {
           const outletRef = scopeExternalRef(connection.sourceNamespace, mapping.legalEntityId)!;
           const valuesJson = JSON.stringify([{ reference: "location", values: {
-            finalized: true,
+            reportAvailable: true,
+            finalized: null,
+            payrollStatusVerified: false,
             reportingEligible: false,
             complete: false,
             currency: summary.currency,
@@ -110,7 +112,7 @@ export async function runDeelSync(
             wagesCents: null,
             cycleType: cycle.type,
             sourceUpdatedAt: summary.sourceUpdatedAt,
-            evidenceBoundary: "Finalized Deel category-group aggregate. Not promoted as wages, paid hours, or an accounting classification.",
+            evidenceBoundary: "Available Deel report category-group aggregate. Finality, approval and payment are unverified. Not promoted as wages, paid hours or an accounting classification.",
           } }]);
           await stageDeelMeasurement(lease, connection.sourceNamespace, {
             outletRef, reference: `deel-payroll-cycle:${cycle.id}:${summary.currency}`,
@@ -139,13 +141,13 @@ export async function runDeelSync(
     await recordAudit({ request, requestId, organizationId: context.organizationId, actorUserId: context.userId,
       action: "integration.sync_completed", resourceType: "integration_connection", resourceId: connection.id,
       details: { provider: DEEL_PROVIDER, recordsRead, aggregateRecordsStaged: recordsStaged, warnings,
-        finalizedCyclesOnly: true, employeeRecordsStored: false, dataPromotionEnabled: false },
+        reportsAvailableOnly: true, payrollStatusVerified: false, employeeRecordsStored: false, dataPromotionEnabled: false },
     });
     return jsonResponse({
       provider: DEEL_PROVIDER, connectionId: connection.id, dateStart, dateEnd,
-      finalizedCyclesRead: recordsRead, aggregateRecordsStaged: recordsStaged, warnings,
+      payrollCyclesRead: recordsRead, aggregateRecordsStaged: recordsStaged, warnings,
       employeeRecordsStored: false, dataPromotionEnabled: false, requiresReview: true,
-      nextStep: "Finalized payroll category totals are staged for owner review. Vanteloq will not treat them as wages or paid hours without a verified mapping.",
+      nextStep: "Available payroll-report category totals are staged for owner review. Payroll finality, approval and payment are unverified. These totals do not update approved wages, paid hours or accounting reports.",
     });
   } catch (error) {
     const errorCode = error instanceof ApiError ? error.code : "DEEL_SYNC_FAILED";

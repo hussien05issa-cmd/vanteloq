@@ -25,7 +25,7 @@ export async function POST(request: Request) {
     await requireProviderPrivacy(request, context, "deel", requestId);
     const input = await readJsonObject(request);
     if (input.confirmedAggregatePayrollOnly !== true) {
-      throw new ApiError(409, "DEEL_CONSENT_REQUIRED", "Confirm the finalized aggregate payroll notice before connecting Deel.");
+      throw new ApiError(409, "DEEL_CONSENT_REQUIRED", "Confirm the payroll-report data-use notice before connecting Deel.");
     }
     const [active] = await getDb().select({ id: integrationConnections.id }).from(integrationConnections).where(and(
       eq(integrationConnections.organizationId, context.organizationId),
@@ -68,12 +68,12 @@ export async function POST(request: Request) {
     await recordAudit({
       request, requestId, organizationId: context.organizationId, actorUserId: context.userId,
       action: "integration.authorization_started", resourceType: "integration_connection", resourceId: connectionId,
-      details: { provider: DEEL_PROVIDER, mode: "aggregate_finalized_payroll_staging", employeeRecordsStored: false, expiresInSeconds: 600 },
+      details: { provider: DEEL_PROVIDER, mode: "aggregate_payroll_report_staging", employeeRecordsStored: false, expiresInSeconds: 600 },
     });
     return jsonResponse({
       authorizationUrl, connectionId,
       expiresAt: expiresAt.toISOString(), scopes: [...DEEL_READ_SCOPES],
-      mode: "aggregate_finalized_payroll_staging", dataPromotionEnabled: false,
+      mode: "aggregate_payroll_report_staging", dataPromotionEnabled: false,
     }, { headers: { "Set-Cookie": oauthBrowserCookie(DEEL_PROVIDER, state) } });
   });
 }

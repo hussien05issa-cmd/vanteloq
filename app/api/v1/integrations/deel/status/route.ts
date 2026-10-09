@@ -43,9 +43,9 @@ export async function GET(request: Request) {
       provider: DEEL_PROVIDER, availability: "coming_soon", readiness: deelReadiness(),
       connections, legalEntityMappings: mappings, latestRun: latestRun ?? null,
       dataBoundary: {
-        includes: ["finalized payroll cycle dates", "legal entity name and country", "currency-level category totals"],
+        includes: ["payroll cycle dates for available reports", "legal entity name and country", "currency-level category totals"],
         excludes: ["employee names", "bank details", "payslips", "contract identifiers", "individual compensation"],
-        employeeRecordsStored: false, dataPromotionEnabled: false,
+        employeeRecordsStored: false, dataPromotionEnabled: false, payrollStatusVerified: false,
       },
     });
   });

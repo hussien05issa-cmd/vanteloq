@@ -7,14 +7,14 @@ import { ApiError } from "../api";
 export const DEEL_PROVIDER = "deel";
 export const DEEL_API_VERSION = "2026-01-01";
 export const DEEL_READ_SCOPES = ["organizations:read", "accounting:read", "legal-entity:read", "payslips:read"] as const;
-export const DEEL_NOTICE_VERSION = "deel-aggregate-finalized-payroll-v1";
+export const DEEL_NOTICE_VERSION = "deel-available-payroll-reports-v2";
 export const DEEL_DATA_CATEGORIES = [
   "legal entity name and country",
-  "finalized payroll cycle dates and type",
+  "payroll cycle dates and type for available reports",
   "currency-level payroll category totals",
 ] as const;
 export const DEEL_PROCESSING_PURPOSES = [
-  "stage finalized payroll evidence for owner review",
+  "stage available payroll-report category totals for owner review",
   "support BookLoQ reconciliation without worker-level records",
 ] as const;
 
@@ -97,7 +97,7 @@ export function deelReadiness() {
     environment,
     apiVersion: DEEL_API_VERSION,
     scopes: [...DEEL_READ_SCOPES],
-    mode: "aggregate_finalized_payroll_staging" as const,
+    mode: "aggregate_payroll_report_staging" as const,
     productionApproved,
     publicAvailability: "coming_soon" as const,
     dataPromotionEnabled: false,
@@ -287,7 +287,7 @@ async function connectedDeelSecret(organizationId: string, connectionId: string,
     eq(integrationConnections.provider, integrationSecrets.provider),
   )).where(and(eq(integrationSecrets.organizationId, organizationId), eq(integrationSecrets.provider, DEEL_PROVIDER),
     eq(integrationSecrets.connectionId, connectionId), eq(integrationConnections.status, "connected"))).limit(1);
-  if (!row) throw new ApiError(409, "DEEL_NOT_CONNECTED", "Authorize Deel before accessing finalized payroll evidence.");
+  if (!row) throw new ApiError(409, "DEEL_NOT_CONNECTED", "Authorize Deel before accessing payroll-report evidence.");
   if (lease && (row.leaseOwner !== lease.owner || row.version !== lease.version || !row.leaseExpires || row.leaseExpires.getTime() <= Date.now())) {
     throw new ApiError(409, "DEEL_GRANT_CHANGED", "The Deel connection changed. Start again from Integrations.");
   }
@@ -413,7 +413,7 @@ export async function stageDeelMeasurement(lease: IntegrationSyncLease, sourceNa
   const guard = deelLeaseGuard(lease, sourceNamespace);
   const result = await getD1().prepare(`INSERT INTO retail_measurements
     (id, organization_id, connection_id, provider, outlet_ref, kind, reference, period_from, period_to, source_label, values_json, updated_by_user_id, version, updated_at)
-    SELECT ?, organization_id, id, provider, ?, 'labour', ?, ?, ?, 'Deel finalized payroll-cycle aggregate', ?, ?, 1, ?
+    SELECT ?, organization_id, id, provider, ?, 'labour', ?, ?, ?, 'Deel available payroll-report aggregate', ?, ?, 1, ?
     FROM integration_connections WHERE ${guard.sql}
     ON CONFLICT(organization_id, connection_id, outlet_ref, kind, reference, period_from, period_to) DO UPDATE SET
       values_json = excluded.values_json, source_label = excluded.source_label, updated_by_user_id = excluded.updated_by_user_id,
@@ -440,7 +440,7 @@ async function providerGet(url: URL, accessToken: string, fetcher: typeof fetch)
   if (response.status >= 300 && response.status < 400) throw new ApiError(502, "DEEL_REDIRECT_REJECTED", "Deel redirected a payroll request. No redirected resource was accessed.");
   if (response.status === 429) throw new ApiError(503, "DEEL_RATE_LIMITED", "Deel reached its organization rate limit. Retry the synchronization after waiting.");
   if (response.status === 401 || response.status === 403) throw new ApiError(409, "DEEL_AUTHORIZATION_EXPIRED", "Deel authorization is no longer valid or lacks an approved scope. Reconnect after access is approved.");
-  if (!response.ok) throw new ApiError(502, "DEEL_PROVIDER_ERROR", "Deel could not complete the read-only payroll request. No partial payroll evidence was staged.");
+  if (!response.ok) throw new ApiError(502, "DEEL_PROVIDER_ERROR", "Deel could not finish the synchronization. Payroll aggregates from earlier cycles may already be staged. Review them or retry the synchronization.");
   return response;
 }
 

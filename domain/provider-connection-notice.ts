@@ -17,7 +17,7 @@ const summaries: Record<Exclude<PrivacyProvider, "google">, readonly PermissionS
   slack: [{ title: "One chosen channel", description: "Allow Vanteloq to send messages to the Slack channel you authorise. This connection does not grant access to conversations or files. Sending a message is a separate action." }],
   plaid: [{ title: "Bank records", description: "Read selected account balances and transactions for review and reconciliation. This connection cannot move money or make payments." }],
   quickbooks: [{ title: "Accounting permission", description: "Intuit grants accounting access that can include reading and changing company records. This stage of Vanteloq uses company identification and connection verification; it does not create or change QuickBooks transactions." }],
-  deel: [{ title: "Payroll permission", description: "Deel grants read access to organisations, accounting, legal entities and payslips. Vanteloq uses finalised payroll category totals and excludes employee identities, bank details, individual pay and payslip content from its stored payroll reports." }],
+  deel: [{ title: "Payroll permission", description: "Deel grants read access to organisations, accounting, legal entities and payslips. Provider responses can contain worker-level details; Vanteloq discards those details and excludes worker identities, payment details and individual pay from its stored payroll reports. It retains category totals by currency from available reports. Report availability does not prove payroll is finalised, approved or paid." }],
   moneris: [{ title: "Merchant reporting", description: "Read payment amounts, currency, status, timestamps and references using payment.read. This adapter does not initiate charges or refunds." }],
 };
 
