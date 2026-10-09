@@ -1,3 +1,4 @@
+import { withPosPublicationProof } from "../pos-publication";
 import { and, eq } from "drizzle-orm";
 import { getD1, getDb } from "../../../db";
 import {
@@ -37,7 +38,7 @@ import { applyOwnerInventoryCosts } from "../../inventory-costs";
 const IMPORT_LABEL = "Lightspeed R-Series live sync";
 
 type SyncCheckpoint = {
-  version: 5;
+  version: 6;
   catalogVersion: number;
   watermark: string | null;
   salesCursor: string | null;
@@ -55,14 +56,14 @@ type SyncCheckpoint = {
 
 type StagedSaleRow = Pick<NormalizedLightspeedRSale,
   "externalSaleId" | "outletRef" | "soldAt" | "state" | "totalCents" |
-  "taxCents" | "costCents" | "discountCents" | "lineCount"
+  "taxCents" | "costCents" | "discountCents" | "lineCount" | "unitsMilli"
 >;
 
 type LightspeedRCollectionPage = Awaited<ReturnType<typeof fetchLightspeedRCollection>> & { failed?: boolean };
 
 function checkpoint(value: string | null): SyncCheckpoint {
   const empty: SyncCheckpoint = {
-    version: 5,
+    version: 6,
     catalogVersion: 0,
     watermark: null,
     salesCursor: null,
@@ -80,11 +81,11 @@ function checkpoint(value: string | null): SyncCheckpoint {
   if (!value) return empty;
   try {
     const parsed = JSON.parse(value) as Record<string, unknown>;
-    // Version 5 repairs historical pre-discount line totals and catalogue coverage.
+    // Version 6 also repairs quantity evidence without reinterpreting line_count.
     // Older checkpoints restart the bounded, resumable import without deleting records.
-    if (parsed.version !== 5) return empty;
+    if (parsed.version !== 6) return empty;
     return {
-      version: 5,
+      version: 6,
       catalogVersion: parsed.catalogVersion === 1 ? 1 : 0,
       watermark: typeof parsed.watermark === "string" ? parsed.watermark : null,
       salesCursor: typeof parsed.salesCursor === "string" ? parsed.salesCursor : null,
@@ -122,7 +123,7 @@ function nextCheckpoint(
 ) {
   if (salesComplete && saleLinesComplete && itemsComplete && customersComplete && suppliersComplete && recentSalesCursor === null) {
     return JSON.stringify({
-      version: 5,
+      version: 6,
       catalogVersion,
       watermark: completedAt.toISOString(),
       salesCursor: null,
@@ -139,7 +140,7 @@ function nextCheckpoint(
     } satisfies SyncCheckpoint);
   }
   return JSON.stringify({
-    version: 5,
+    version: 6,
     catalogVersion,
     watermark: previous.watermark,
     salesCursor,
@@ -464,16 +465,17 @@ export async function runSync(request: Request, requestId: string, context: Sync
       const unmappedLocations = locationMappings.filter((row) => row.status === "unmapped").length;
       const publicationAuthorized = connection.dataPromotionStatus === "approved" || connection.promotionAuthorizedAt !== null;
       const publicationWarnings = normalizationWarnings.sales + unmappedLocations;
-      const publishCanonical = publicationAuthorized && publicationWarnings === 0;
+      let publishCanonical = publicationAuthorized && publicationWarnings === 0;
       const stagedSaleStatements = uniqueSales.map((sale) => database.prepare(`
-          INSERT OR IGNORE INTO integration_staged_sales
+          INSERT INTO integration_staged_sales
             (id, organization_id, provider, connection_id, external_sale_id, external_version, outlet_ref, sold_at, state,
-             total_cents, tax_cents, cost_cents, discount_cents, line_count, source_payload_hash, sync_run_id, staged_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             total_cents, tax_cents, cost_cents, discount_cents, line_count, units_milli, source_payload_hash, sync_run_id, staged_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(organization_id,provider,connection_id,external_sale_id,external_version) DO UPDATE SET units_milli=excluded.units_milli
         `).bind(
           crypto.randomUUID(), context.organizationId, LIGHTSPEED_R_PROVIDER, connection.id,
           scopedRef(sale.externalSaleId), sale.externalVersion, scopedRef(sale.outletRef), sale.soldAt, sale.state,
-          sale.totalCents, sale.taxCents, sale.costCents, sale.discountCents, sale.lineCount,
+          sale.totalCents, sale.taxCents, sale.costCents, sale.discountCents, sale.lineCount, sale.unitsMilli,
           sale.sourcePayloadHash, runId, Date.now(),
         ));
       syncStage = "stage_sales";
@@ -541,7 +543,7 @@ export async function runSync(request: Request, requestId: string, context: Sync
       const latest = await database.prepare(`
         SELECT external_sale_id AS externalSaleId, outlet_ref AS outletRef, sold_at AS soldAt, state,
                total_cents AS totalCents, tax_cents AS taxCents, cost_cents AS costCents,
-               discount_cents AS discountCents, line_count AS lineCount
+               discount_cents AS discountCents, line_count AS lineCount, units_milli AS unitsMilli
         FROM (
           SELECT *, row_number() OVER (
             PARTITION BY external_sale_id ORDER BY staged_at DESC, id DESC
@@ -551,7 +553,9 @@ export async function runSync(request: Request, requestId: string, context: Sync
         )
         WHERE version_rank = 1
       `).bind(context.organizationId, LIGHTSPEED_R_PROVIDER, connection.id).all<StagedSaleRow>();
-      const dailyMetrics = normalizationWarnings.sales === 0
+      const quantitiesPending = (latest.results ?? []).some(sale => sale.state === "completed" && sale.totalCents - sale.taxCents >= 0 && sale.unitsMilli === null);
+      if (quantitiesPending) publishCanonical = false;
+      const dailyMetrics = normalizationWarnings.sales === 0 && !quantitiesPending
         ? buildLightspeedRDailyMetrics(
             (latest.results ?? []).filter((sale) => !sale.outletRef || mapped.has(sale.outletRef)),
             context.organization.timezone,
@@ -573,16 +577,8 @@ export async function runSync(request: Request, requestId: string, context: Sync
       if (publishCanonical) {
         await renewIntegrationSyncLease(syncLease);
         await database.prepare(`
-          DELETE FROM daily_business_metrics
-          WHERE organization_id = ? AND location_ref IN (
-            SELECT ? || ':' || CASE WHEN ? = 'legacy' THEN external_location_ref ELSE ? || ':' || external_location_ref END
-            FROM integration_location_mappings
-            WHERE organization_id = ? AND provider = ? AND connection_id = ?
-          )
-        `).bind(
-          context.organizationId, LIGHTSPEED_R_PROVIDER, connection.sourceNamespace,
-          connection.sourceNamespace, context.organizationId, LIGHTSPEED_R_PROVIDER, connection.id,
-        ).run();
+          DELETE FROM daily_business_metrics WHERE organization_id = ? AND source_connection_id = ?
+        `).bind(context.organizationId, connection.id).run();
 
         // Rebuilding years of history must not make two remote D1 round trips
         // per business date. Keep the existing publication gate closed while
@@ -731,21 +727,28 @@ export async function runSync(request: Request, requestId: string, context: Sync
         itemsPage.failed ? previous.catalogVersion : 1,
         recentSalesPage.cursor,
       );
-      const safeCheckpoint = computedCheckpoint;
+      let safeCheckpoint = quantitiesPending && backfillComplete ? JSON.stringify(checkpoint(null)) : computedCheckpoint;
+      if (publishCanonical) safeCheckpoint = withPosPublicationProof(safeCheckpoint, importId, publishedDailyMetrics.length, syncLease.version);
+      else if (connection.lastSyncCursor) {
+        // A nonpublishing refresh may preserve the previous intact cohort.
+        try { const publication = JSON.parse(connection.lastSyncCursor).publication;
+          if (publication) safeCheckpoint = JSON.stringify({...JSON.parse(safeCheckpoint),publication});
+        } catch { /* Legacy or invalid cursors cannot supply publication proof. */ }
+      }
       const recordsRead = recentSalesPage.data.length + salesPage.data.length + saleLinesPage.data.length + itemsPage.data.length + customersPage.data.length + suppliersPage.data.length + paymentTypesPage.data.length;
       const recordsImported = publishedDailyMetrics.length + importedInventory + importedProducts + importedCustomers + importedSuppliers + importedSaleLines + importedPayments;
-      const duplicatesSkipped = uniqueSales.length - stagedSales;
-      const promotionStatus = publishCanonical || connection.dataPromotionStatus === "approved" ? "approved" : "staging";
+      const duplicatesSkipped = Math.max(0, uniqueSales.length - stagedSales);
+      const promotionStatus = !quantitiesPending && (publishCanonical || connection.dataPromotionStatus === "approved") ? "approved" : "staging";
       await renewIntegrationSyncLease(syncLease);
       await getDb().update(integrationSyncRuns).set({
         status: "completed",
         cursorAfter: safeCheckpoint,
         recordsRead,
         recordsStaged: stagedSales + importedInventory + importedProducts + importedCustomers + importedSuppliers + importedSaleLines + importedPayments,
-        duplicatesSkipped,
+        duplicatesSkipped: Math.max(0, duplicatesSkipped),
         // Missing optional catalog datasets remain visible as coverage warnings,
         // but they must not invalidate an otherwise reconciled sales run.
-        warningCount: warnings + unmappedLocations,
+        warningCount: warnings + unmappedLocations + Number(quantitiesPending),
         completedAt,
       }).where(eq(integrationSyncRuns.id, runId));
       const promoted = await getDb().update(integrationConnections).set({
@@ -753,11 +756,11 @@ export async function runSync(request: Request, requestId: string, context: Sync
         // A reconciliation warning may still contribute valid independent
         // catalog records, but it must not replace the last approved sales
         // pointer or advance the canonical sales cursor.
-        lastSuccessfulSyncAt: publicationWarnings > 0 ? connection.lastSuccessfulSyncAt : completedAt,
+        lastSuccessfulSyncAt: publicationWarnings > 0 || quantitiesPending ? connection.lastSuccessfulSyncAt : completedAt,
         lastSyncCursor: publicationWarnings > 0 ? connection.lastSyncCursor : safeCheckpoint,
         dataPromotionStatus: promotionStatus,
-        promotionAuthorizedAt: promotionStatus === "approved" ? null : connection.promotionAuthorizedAt,
-        lastErrorCode: publicationWarnings > 0
+        promotionAuthorizedAt: promotionStatus === "approved" ? null : connection.promotionAuthorizedAt ?? (publicationAuthorized ? startedAt : null),
+        lastErrorCode: quantitiesPending ? "LIGHTSPEED_R_QUANTITY_REVIEW_REQUIRED" : publicationWarnings > 0
           ? "LIGHTSPEED_R_RECONCILIATION_WARNINGS"
           : warnings > 0
             ? "LIGHTSPEED_R_PARTIAL_COVERAGE"
@@ -815,7 +818,7 @@ export async function runSync(request: Request, requestId: string, context: Sync
           recordsRead,
           recordsStaged: stagedSales + importedInventory + importedProducts + importedCustomers + importedSuppliers + importedSaleLines + importedPayments,
           duplicatesSkipped,
-          warningCount: warnings,
+          warningCount: warnings + Number(quantitiesPending),
           pages: recentSalesPage.pages + salesPage.pages + saleLinesPage.pages + itemsPage.pages + customersPage.pages + suppliersPage.pages + paymentTypesPage.pages,
           cursorPreserved: safeCheckpoint,
         },
@@ -848,9 +851,11 @@ export async function runSync(request: Request, requestId: string, context: Sync
         dataPromotionEnabled: promotionStatus === "approved",
         publishedCanonical: publishCanonical,
         usingLastApprovedData: promotionStatus === "approved" && !publishCanonical,
-        backfillComplete,
+        backfillComplete: backfillComplete && !quantitiesPending,
         readyForReview: warnings === 0 && verifiedSalesReady && promotionStatus !== "approved",
-        nextStep: unmappedLocations > 0
+        nextStep: quantitiesPending
+          ? "R-Series quantity history is incomplete. Continue syncing to re-read source line quantities, then review the connection. Missing quantities are never replaced with receipt line counts."
+          : unmappedLocations > 0
           ? `Map or ignore ${unmappedLocations} R-Series shop${unmappedLocations === 1 ? "" : "s"}, then re-sync. Dashboard data remains locked until every discovered shop has an explicit destination.`
           : warnings > 0
           ? `Imported ${recordsImported} verified records. ${warnings} source record${warnings === 1 ? " needs" : "s need"} attention before the sync cursor can advance.`

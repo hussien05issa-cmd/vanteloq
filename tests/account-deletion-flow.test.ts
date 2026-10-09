@@ -224,6 +224,20 @@ test("a teammate deletes only their own membership and keeps the employer worksp
     await stock({action:"open_stock",sku:"SKU",productName:"TEST_ONLY Item",unit:"each",quantityMilli:10000,source:"TEST_ONLY count"});
     await stock({action:"receive",purchaseOrderId:"delete-stock-po",source:"TEST_ONLY delivery",lines:[{lineId:"delete-stock-line",accepted:5,rejected:0}]});
     await stock({action:"save_record",kind:"invoice_review",record:{purchaseOrderId:"delete-stock-po",invoiceReference:"TEST-INV",source:"TEST_ONLY invoice",asOf:"2026-09-01",lines:[{lineId:"delete-stock-line",ordered:20,accepted:5,agreedUnitCostCents:100,billed:5,billedUnitCostCents:100}]}});
+    const sharedTask = await f.db.prepare(`INSERT INTO workspace_tasks(organization_id,title,assignee,assignee_user_id,location_id,version,created_by_user_id,idempotency_key,created_at,updated_at)
+      VALUES('target','TEST_ONLY shared collaboration task','Fictional teammate',?,'delete-stock-location',7,?,'deletion-fixture-task',1,1) RETURNING id`)
+      .bind(teammate,owner).first<{id:number}>();
+    assert.ok(sharedTask);
+    await f.db.batch([
+      f.db.prepare(`INSERT INTO collaboration_messages(organization_id,location_id,task_id,author_user_id,author_name,body,idempotency_key,created_at)
+        VALUES('target','delete-stock-location',?,?,'Fictional teammate','TEST_ONLY own collaboration message','deletion-fixture-own-message',1)`)
+        .bind(sharedTask.id,teammate),
+      f.db.prepare(`INSERT INTO collaboration_messages(organization_id,location_id,task_id,author_user_id,author_name,body,idempotency_key,created_at)
+        VALUES('target','delete-stock-location',?,?,'Fictional owner','TEST_ONLY preserve other member message','deletion-fixture-other-message',1)`)
+        .bind(sharedTask.id,owner),
+    ]);
+    const otherMessage = await f.db.prepare("SELECT * FROM collaboration_messages WHERE organization_id='target' AND idempotency_key='deletion-fixture-other-message'").first();
+    assert.ok(otherMessage);
     const session = jobSession();
     const preview = await (await controls(request("/api/v1/account/deletion"))).json();
     assert.equal(preview.organizationId,"target");
@@ -241,6 +255,11 @@ test("a teammate deletes only their own membership and keeps the employer worksp
     assert.equal(await f.db.prepare("SELECT id FROM memberships WHERE user_id=?").bind(teammate).first(),null);
     for (const table of ["workspace_sessions","account_notifications","onboarding_drafts","forecasting_views"]) assert.equal((await f.db.prepare(`SELECT COUNT(*) n FROM ${table} WHERE user_id=?`).bind(teammate).first())?.n,0,`${table} private member records are removed`);
     assert.ok(await f.db.prepare("SELECT id FROM account_notifications WHERE id='other-member-notice'").first());
+    assert.equal((await f.db.prepare("SELECT COUNT(*) n FROM collaboration_messages WHERE author_user_id=? AND organization_id='target'").bind(teammate).first())?.n,0,"Departed teammate's collaboration messages are removed");
+    assert.deepEqual(await f.db.prepare("SELECT * FROM collaboration_messages WHERE organization_id='target' AND idempotency_key='deletion-fixture-other-message'").first(),otherMessage,"Another member's message remains unchanged");
+    assert.deepEqual(await f.db.prepare("SELECT title,status,location_id,assignee_user_id,assignee,version FROM workspace_tasks WHERE id=? AND organization_id='target'").bind(sharedTask.id).first(),{
+      title:"TEST_ONLY shared collaboration task",status:"open",location_id:"delete-stock-location",assignee_user_id:null,assignee:"Unassigned",version:8,
+    },"Shared work is retained, unassigned and advanced to a new version");
     assert.equal(f.objects.size,3);
     assert.equal(f.state.remoteDeleted,false);
     assert.deepEqual(f.state.deletes.filter((path)=>path.includes("admin/users")),[`/auth/v1/admin/users/${teammate}`]);

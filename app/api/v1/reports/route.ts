@@ -1,7 +1,8 @@
+import { verifiedPosPublicationSql } from "../../../../server/integrations/pos-publication";
 import { hasAmbiguousRSeriesCosts } from "../../../../server/integrations/cost-evidence";
 import { recordedLabourCost } from "../../../../domain/labour-evidence";
 import { businessTimestampRange, businessTimestampExtrema, businessDatesFromExtrema, type TimestampExtrema } from "../../../../domain/business-period";
-import { and, asc, eq, gt, gte, inArray, lte, type SQL } from "drizzle-orm";
+import { and, asc, eq, gt, gte, inArray, lte, sql, type SQL } from "drizzle-orm";
 import { getD1, getDb } from "../../../../db";
 import { dailyBusinessMetrics, dataImports, integrationConnections, integrationLocationMappings } from "../../../../db/schema";
 import { requireAccess } from "../../../../server/authorization";
@@ -155,6 +156,7 @@ export async function GET(request: Request) {
       sourceNamespace: integrationConnections.sourceNamespace,
       status: integrationConnections.status,
       dataPromotionStatus: integrationConnections.dataPromotionStatus,
+      publicationVerified: sql<boolean>`(${sql.raw(verifiedPosPublicationSql("integration_connections"))})`.mapWith(Boolean),
       lastErrorCode: integrationConnections.lastErrorCode,
       syncLeaseOwner: integrationConnections.syncLeaseOwner,
       syncLeaseExpiresAt: integrationConnections.syncLeaseExpiresAt,
@@ -164,7 +166,7 @@ export async function GET(request: Request) {
     const posRows = connectedRows.filter((row) => posProviders.has(row.provider));
     const connectedPosRows = posRows.filter((row) => row.status === "connected");
     const now = Date.now();
-    const approvedPosRows = connectedPosRows.filter((row) => row.dataPromotionStatus === "approved"
+    const approvedPosRows = connectedPosRows.filter((row) => row.publicationVerified && row.dataPromotionStatus === "approved"
       && (!row.syncLeaseOwner || !row.syncLeaseExpiresAt || row.syncLeaseExpiresAt.getTime() <= now));
     const hasProfitAccess = canViewProfit && !approvedPosRows.some((row) =>
       row.provider === "square" && row.lastErrorCode === "SQUARE_PRODUCT_COST_UNAVAILABLE"
@@ -230,6 +232,7 @@ export async function GET(request: Request) {
                 AND approved_source.provider = p.provider
                 AND approved_source.status = 'connected'
                 AND approved_source.data_promotion_status = 'approved'
+                AND ${verifiedPosPublicationSql('approved_source')}
                 AND (approved_source.sync_lease_owner IS NULL OR approved_source.sync_lease_expires_at IS NULL
                   OR approved_source.sync_lease_expires_at <= CAST(strftime('%s', 'now') AS INTEGER)))
         `).bind(
@@ -447,6 +450,7 @@ export async function GET(request: Request) {
                 AND approved_source.provider = p.provider
                 AND approved_source.status = 'connected'
                 AND approved_source.data_promotion_status = 'approved'
+                AND ${verifiedPosPublicationSql('approved_source')}
                 AND (approved_source.sync_lease_owner IS NULL OR approved_source.sync_lease_expires_at IS NULL
                   OR approved_source.sync_lease_expires_at <= CAST(strftime('%s', 'now') AS INTEGER)))
           GROUP BY p.provider, p.connection_id, p.category, p.payment_type_name
@@ -675,6 +679,7 @@ export async function POST(request: Request) {
       eq(integrationConnections.organizationId, integrationLocationMappings.organizationId),
       eq(integrationConnections.status, "connected"),
       eq(integrationConnections.dataPromotionStatus, "approved"),
+      sql.raw(verifiedPosPublicationSql("integration_connections")),
       noActiveIntegrationLease(integrationConnections.syncLeaseOwner, integrationConnections.syncLeaseExpiresAt),
     )).where(and(
       eq(integrationLocationMappings.organizationId, context.organizationId),

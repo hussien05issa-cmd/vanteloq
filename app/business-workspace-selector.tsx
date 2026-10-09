@@ -23,7 +23,7 @@ export function OwnerWorkspaceContext({ businessName, industry, locationName, li
   return <p className="owner-workspace-context" aria-label="Current business and reporting scope"><strong>{businessName}</strong><span>{industry || "Business"}</span><span>{locationName ?? (limitedScope ? "All accessible locations" : "All locations")}</span></p>;
 }
 
-export default function BusinessWorkspaceSelector({ selectedWorkspaceId }: { selectedWorkspaceId: string | null }) {
+export default function BusinessWorkspaceSelector({ selectedWorkspaceId, compact = false }: { selectedWorkspaceId: string | null; compact?: boolean }) {
   const [listing, setListing] = useState<BusinessWorkspaceListing | null>(null);
   const [error, setError] = useState("");
   const [reload, setReload] = useState(0);
@@ -40,9 +40,10 @@ export default function BusinessWorkspaceSelector({ selectedWorkspaceId }: { sel
   if (loading) return <p className="business-workspace-status" role="status">Loading business access…</p>;
   if (error) return <div className="business-workspace-status" role="alert"><p>{error}</p><button type="button" onClick={() => { setLoading(true); setReload(value => value + 1); }}>Retry business list</button></div>;
   if (!listing?.workspaces.length) return <p className="business-workspace-status" role="status">No active business access is available.</p>;
+  if (compact && listing.workspaces.length === 1) return null;
   const selected = listing.workspaces.find(workspace => workspace.id === (selectedWorkspaceId ?? listing.currentWorkspaceId));
   return <section className="business-workspace-selector" aria-label="Business access">
     <BusinessWorkspaceChoices listing={listing} selectedWorkspaceId={selectedWorkspaceId} busy={switching} onSwitch={id => { setSwitching(true); window.location.assign(businessSwitchUrl(window.location.href, id)); }}/>
-    {selected && <small className="business-role">{humanizeIdentifier(selected.role)} access</small>}
+    {!compact && selected && <small className="business-role">{humanizeIdentifier(selected.role)} access</small>}
   </section>;
 }

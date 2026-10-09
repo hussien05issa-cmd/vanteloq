@@ -308,6 +308,9 @@ export const workspaceTasks = sqliteTable(
     priority: text("priority", { enum: ["high", "medium", "low"] }).notNull().default("medium"),
     status: text("status", { enum: ["open", "in_progress", "done"] }).notNull().default("open"),
     assignee: text("assignee").notNull().default("Owner"),
+    assigneeUserId: text("assignee_user_id").references(() => users.id, { onDelete: "set null" }),
+    locationId: text("location_id").references(() => organizationLocations.id),
+    version: integer("version").notNull().default(1),
     dueDate: text("due_date"),
     sourceType: text("source_type", { enum: ["manual", "insight", "alert", "decision"] }).notNull().default("manual"),
     sourceRef: text("source_ref"),
@@ -327,6 +330,23 @@ export const workspaceTasks = sqliteTable(
     check("workspace_tasks_source_type_check", sql`${table.sourceType} in ('manual', 'insight', 'alert', 'decision')`),
   ],
 );
+
+export const collaborationMessages = sqliteTable("collaboration_messages", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  locationId: text("location_id").references(() => organizationLocations.id),
+  taskId: integer("task_id").references(() => workspaceTasks.id, { onDelete: "cascade" }),
+  authorUserId: text("author_user_id").references(() => users.id, { onDelete: "set null" }),
+  authorName: text("author_name").notNull(),
+  body: text("body").notNull(),
+  idempotencyKey: text("idempotency_key").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+}, table => [
+  uniqueIndex("collaboration_message_request_unique").on(table.organizationId, table.idempotencyKey),
+  index("collaboration_message_channel_idx").on(table.organizationId, table.locationId, table.id),
+  index("collaboration_message_task_idx").on(table.organizationId, table.taskId, table.id),
+  check("collaboration_message_length", sql`length(${table.body}) BETWEEN 1 AND 4000`),
+]);
 
 export const opportunityReviews = sqliteTable("opportunity_reviews", {
   id: text("id").primaryKey(),
@@ -1074,6 +1094,7 @@ export const integrationStagedSales = sqliteTable(
     costCents: integer("cost_cents").notNull().default(0),
     discountCents: integer("discount_cents").notNull().default(0),
     lineCount: integer("line_count").notNull().default(0),
+    unitsMilli: integer("units_milli"),
     sourcePayloadHash: text("source_payload_hash").notNull(),
     syncRunId: text("sync_run_id").notNull().references(() => integrationSyncRuns.id, { onDelete: "cascade" }),
     stagedAt: integer("staged_at", { mode: "timestamp" }).notNull(),

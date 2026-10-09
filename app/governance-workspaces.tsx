@@ -1,5 +1,6 @@
 "use client";
 import MarketingPreferences from "./marketing-consent";
+import { WorkspaceAppearanceControl } from "./workspace-appearance";
 import IndustryConfigurationSettings from "./industry-configuration";
 import WorkspaceSkeleton from "./workspace-skeleton";
 import CustomPlanCallout from "./custom-plan-callout";
@@ -1358,6 +1359,7 @@ function ProfileSettings({
             : "Your verified email is supplied by secure sign-in and cannot be overwritten by a profile form."}
         </span>
       </header>
+      {!notificationsOnly && <WorkspaceAppearanceControl/>}
       {!notificationsOnly && (
         <div className="settings-grid">
           <label>

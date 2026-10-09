@@ -28,6 +28,7 @@ export type NormalizedLightspeedRSale = {
   costCents: number;
   discountCents: number;
   lineCount: number;
+  unitsMilli: number | null;
   sourcePayloadHash: string;
 };
 
@@ -182,7 +183,7 @@ export function lightspeedRCheckpointReadyForApproval(value: string | null) {
   if (!value) return false;
   try {
     const parsed = JSON.parse(value) as Record<string, unknown>;
-    if (parsed.version !== 5 || typeof parsed.watermark !== "string" || Number.isNaN(Date.parse(parsed.watermark))) {
+    if (parsed.version !== 6 || typeof parsed.watermark !== "string" || Number.isNaN(Date.parse(parsed.watermark))) {
       return false;
     }
     const cursorKeys = ["salesCursor", "saleLinesCursor", "itemsCursor", "customersCursor", "suppliersCursor"];
@@ -414,6 +415,24 @@ export async function fetchLightspeedRCollection(
   return { data, pages, cursor };
 }
 
+/** Quantity evidence is independent of legacy receipt line counts. */
+export function rSeriesSaleUnitsMilli(sale: Record<string, unknown>): number | null {
+  if (!Object.prototype.hasOwnProperty.call(sale, "SaleLines") || sale.SaleLines === null) return null;
+  const lines = records(objectValue(sale.SaleLines).SaleLine);
+  if (!lines.length && money(sale.total ?? sale.calcTotal) !== 0) return null;
+  let total = BigInt(0);
+  for (const line of lines) {
+    const value = line.unitQuantity ?? line.quantity;
+    const text = typeof value === "number" && Number.isFinite(value) ? String(value) : typeof value === "string" ? value : "";
+    if (!/^-?\d+(?:\.\d{1,3})?$/.test(text)) return null;
+    const negative = text.startsWith("-"), [whole, fraction = ""] = (negative ? text.slice(1) : text).split(".");
+    const units = BigInt(whole) * BigInt(1000) + BigInt(fraction.padEnd(3,"0"));
+    total += negative ? -units : units;
+  }
+  if (total > BigInt(Number.MAX_SAFE_INTEGER) || total < -BigInt(Number.MAX_SAFE_INTEGER)) return null;
+  return Number(total < BigInt(0) ? -total : total);
+}
+
 export async function normalizeLightspeedRSale(sale: Record<string, unknown>): Promise<NormalizedLightspeedRSale> {
   const externalSaleId = stringValue(sale.saleID);
   if (!externalSaleId) throw new Error("Sale ID is missing.");
@@ -431,6 +450,7 @@ export async function normalizeLightspeedRSale(sale: Record<string, unknown>): P
     costCents: money(sale.calcFIFOCost ?? sale.calcAvgCost),
     discountCents: money(sale.calcDiscount),
     lineCount: lines.length,
+    unitsMilli: rSeriesSaleUnitsMilli(sale),
   };
   return { ...normalized, sourcePayloadHash: await lightspeedRSha256(JSON.stringify(normalized)) };
 }
@@ -649,7 +669,7 @@ export async function normalizeLightspeedRPayments(
 }
 
 export function buildLightspeedRDailyMetrics(
-  sales: Array<Pick<NormalizedLightspeedRSale, "externalSaleId" | "outletRef" | "soldAt" | "state" | "totalCents" | "taxCents" | "costCents" | "discountCents" | "lineCount">>,
+  sales: Array<Pick<NormalizedLightspeedRSale, "externalSaleId" | "outletRef" | "soldAt" | "state" | "totalCents" | "taxCents" | "costCents" | "discountCents" | "lineCount" | "unitsMilli">>,
   timeZone = "UTC",
 ): LightspeedRDailyMetric[] {
   const totals = new Map<string, LightspeedRDailyMetric & { positiveNetCents: number; returnedCostCents: number }>();
@@ -683,7 +703,10 @@ export function buildLightspeedRDailyMetrics(
       row.costOfGoodsCents += Math.max(0, sale.costCents);
       row.discountsCents += discountCents;
       row.transactionCount += 1;
-      row.unitsSold += Math.max(0, sale.lineCount);
+      if (sale.unitsMilli === null || !Number.isSafeInteger(sale.unitsMilli) || sale.unitsMilli < 0) {
+        throw new ApiError(409, "LIGHTSPEED_R_QUANTITY_REVIEW_REQUIRED", "R-Series quantity history needs complete source line quantities before publication.");
+      }
+      row.unitsSold += sale.unitsMilli / 1000;
     }
     totals.set(key, row);
   }

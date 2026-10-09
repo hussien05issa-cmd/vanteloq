@@ -76,6 +76,8 @@ test("vehicle storage enforces tenant locations, duplicates, versioning and dele
 
 test("dealership guidance keeps vehicle status separate from revenue and ledger calculations", () => {
   const guide = industryKpiRecommendation("Dealership");
-  assert.equal(guide.industry, "Dealership"); assert.match(guide.summary, /do not create sales or accounting entries/);
-  assert.ok(guide.nextMeasures.some(measure => /do not yet calculate/.test(measure.requiredEvidence)));
+  assert.equal(guide.industry, "Car dealership");
+  const gross = guide.nextMeasures.find(measure => measure.name === "Per-vehicle Gross Profit");
+  assert.ok(gross); assert.match(gross.requiredEvidence, /delivered sale/); assert.match(gross.requiredEvidence, /complete posted-cost snapshot/);
+  assert.match(gross.requiredEvidence, /separate from BookLoQ journal/);
 });

@@ -142,11 +142,18 @@ async function plaidRequest<T>(path: string, payload: Record<string, unknown>, f
     method: "POST",
     headers: { "Content-Type": "application/json", "Plaid-Version": "2020-09-14" },
     body: JSON.stringify({ client_id: config.clientId, secret: config.secret, ...payload }),
+    redirect: "manual",
     signal: AbortSignal.timeout(20_000),
   });
-  const body = await response.json() as T & { error_code?: string; error_message?: string };
+  if (response.status >= 300 && response.status < 400) throw new ApiError(502, "PLAID_REDIRECT_REJECTED", "The bank service redirected this request. Please try again from Integrations.");
+  if (response.status === 429) throw new ApiError(503, "PLAID_RATE_LIMITED", "The bank service is busy. Wait before trying again.");
+  let body: T & { error_code?: string; error_message?: string };
+  try { body = await response.json(); }
+  catch { throw new ApiError(502, "PLAID_RESPONSE_INVALID", "The bank service returned an unreadable response. Please try again."); }
+  if (!body || typeof body !== "object" || Array.isArray(body)) throw new ApiError(502, "PLAID_RESPONSE_INVALID", "The bank service returned an unreadable response. Please try again.");
   if (!response.ok || body.error_code) {
-    throw new ApiError(response.status >= 500 ? 502 : 409, body.error_code || "PLAID_REQUEST_FAILED", body.error_message || "Plaid could not complete the request.");
+    const code = typeof body.error_code === "string" && /^[A-Z][A-Z0-9_]{1,79}$/.test(body.error_code) ? body.error_code : "PLAID_REQUEST_FAILED";
+    throw new ApiError(response.status >= 500 ? 502 : 409, code, plaidRequiresUserRepair(code) ? "Your bank connection needs attention. Reconnect it from Integrations." : "The bank service could not complete the request. Please try again.");
   }
   return body;
 }

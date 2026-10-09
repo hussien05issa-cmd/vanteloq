@@ -55,6 +55,16 @@ export default function ExecutiveOverview({currency,industry,activeLocationId,ba
   const selectMetric=(key:ExecutiveKey,origin:HTMLElement)=>{metricOrigin.current=origin;setSelected(key);setMetricOpen(true);};
   const scope=JSON.stringify([preset,compare,appliedRange,activeLocationId,basis,reload,refreshKey]);
   const [responseScope,setResponseScope]=useState(scope);
+  // POS timestamps alone cannot detect midnight, reviewed journal edits or a
+  // corrected historical import. Re-query the authoritative report periodically.
+  useEffect(()=>{
+    if(initialReport)return;
+    let lastRefresh=Date.now();
+    const refresh=()=>{if(document.visibilityState==="visible"&&Date.now()-lastRefresh>=15000){lastRefresh=Date.now();setReload(value=>value+1);}};
+    const timer=window.setInterval(refresh,60000);
+    window.addEventListener("focus",refresh);document.addEventListener("visibilitychange",refresh);
+    return()=>{window.clearInterval(timer);window.removeEventListener("focus",refresh);document.removeEventListener("visibilitychange",refresh);};
+  },[initialReport]);
   const report=initialReport??(responseScope===scope?storedReport:null);
   const visiblePending=!initialReport&&(pending||responseScope!==scope);
   const visibleError=responseScope===scope?error:"";

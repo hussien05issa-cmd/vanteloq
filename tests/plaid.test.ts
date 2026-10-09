@@ -52,6 +52,22 @@ test("Plaid Link uses a pseudonymous user reference and only the required Canadi
   assert.doesNotMatch(JSON.stringify(payload), /user-sensitive|org-sensitive/);
 });
 
+test("Plaid refuses credential redirects and hides provider error details", async () => {
+  for (const status of [301, 302, 303, 307, 308]) {
+    let calls = 0;
+    await assert.rejects(createPlaidLinkToken("user", "workspace", async (_url, options) => {
+      calls++; assert.equal(options?.redirect, "manual");
+      return new Response(null, { status, headers: { Location: "https://untrusted.example/collect" } });
+    }), (error: unknown) => (error as {code?:string}).code === "PLAID_REDIRECT_REJECTED");
+    assert.equal(calls, 1, "Credentials must never be forwarded to the redirected destination");
+  }
+  await assert.rejects(createPlaidLinkToken("user", "workspace", async () => new Response(JSON.stringify({error_code:"ITEM_LOGIN_REQUIRED",error_message:"private account secret-test"}), {status:400})), (error: unknown) => {
+    assert.equal((error as {code?:string}).code, "ITEM_LOGIN_REQUIRED"); assert.doesNotMatch(String(error), /private account|secret-test/); return true;
+  });
+  await assert.rejects(createPlaidLinkToken("user", "workspace", async () => new Response("busy", {status:429})), (error: unknown) => (error as {status?:number}).status === 503);
+  await assert.rejects(createPlaidLinkToken("user", "workspace", async () => new Response("<html>temporary failure</html>", {status:502})), (error: unknown) => (error as {code?:string}).code === "PLAID_RESPONSE_INVALID");
+});
+
 test("Plaid transaction normalization preserves bank-feed uncertainty", () => {
   const pending = normalizePlaidTransaction({
     transaction_id: "tx-1",

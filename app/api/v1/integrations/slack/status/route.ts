@@ -4,6 +4,7 @@ import { integrationConnections } from "../../../../../../db/schema";
 import { requireIntegrationAccess } from "../../../../../../server/integrations/free-selection";
 import { handleApi, jsonResponse } from "../../../../../../server/api";
 import { SLACK_PROVIDER, SLACK_SCOPES, slackReadiness } from "../../../../../../server/integrations/slack";
+import { pendingSlackCleanupConnectionIds } from "../../../../../../server/integrations/slack-grant";
 import { requirePermission } from "../../../../../../server/permissions";
 
 export async function GET(request: Request) {
@@ -35,6 +36,7 @@ export async function GET(request: Request) {
     })();
     return jsonResponse({
       connected: Boolean(connection),
+      pendingRemovalConnectionIds: await pendingSlackCleanupConnectionIds(context.organizationId),
       connection: connection ? {
         id: connection.id,
         status: connection.status,

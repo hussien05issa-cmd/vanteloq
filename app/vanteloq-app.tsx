@@ -3,6 +3,7 @@ import { advisorDefaults, type AdvisorPreferences, type AdvisorCurrentTurn } fro
 import AdvisorPersonalize from "./advisor-personalize";
 import LinkedFilesPanel from "./linked-files-panel";
 import InventoryVehicleWorkspace from "./vehicle-inventory-panel";
+import CollaborationMessages from "./collaboration-messages";
 import { defaultIndustryConfiguration, resolveIndustryTemplate, type IndustryConfiguration } from "../domain/industry-templates";
 
 import ProviderPrivacyNotice, { ProviderPolicyLinks, ProviderPermissionSummary } from "./provider-privacy-notice";
@@ -14,6 +15,9 @@ import "./workspace-base-styles";
 import "./workspace-styles";
 import "./readability-refinement.css";
 import "./owner-pathways.css";
+import "./sidebar-polish.css";
+import "./workspace-appearance.css";
+import { useWorkspaceAppearance } from "./workspace-appearance";
 import BusinessWorkspaceSelector, { OwnerWorkspaceContext } from "./business-workspace-selector";
 import { workspaceViewFromHash, workspaceViewHash } from "../domain/owner-navigation";
 import { integrationReturnPath } from "../domain/integration-return";
@@ -111,6 +115,7 @@ type View =
   | "Forecasting"
   | "Intelligence"
   | "Action Centre"
+  | "Messages"
   | "Business Brief"
   | "Advisor"
   | "BookLoQ"
@@ -138,7 +143,7 @@ type View =
 const nav: [string, View[]][] = [
   [
     "Command centre",
-    ["Dashboard", "Forecasting", "Intelligence", "Action Centre", "Business Brief", "Advisor"],
+    ["Dashboard", "Forecasting", "Intelligence", "Action Centre", "Messages", "Business Brief", "Advisor"],
   ],
   [
     "Sales and customers",
@@ -170,6 +175,7 @@ const navigationGuide: Record<View, { outcome: string; data: string }> = {
   Dashboard: { outcome: "Prioritizes the owner’s current operating picture and exceptions.", data: "Verified sales, margin, cash, inventory and task records." },
   Intelligence: { outcome: "Explains supported changes, confidence and missing evidence.", data: "Metric history, comparisons, provenance and quality checks." },
   "Action Centre": { outcome: "Turns decisions and exceptions into assigned, measurable work.", data: "Owner actions, due dates, assignees and linked evidence." },
+  Messages: { outcome: "Keeps team discussions beside shared tasks and location channels.", data: "Authorised team messages, member display names and task context." },
   "Business Brief": { outcome: "Creates a compact review of performance and next actions.", data: "Verified command-centre metrics and ranked insights." },
   Advisor: { outcome: "Answers supported operating questions and states its limits.", data: "The same verified metrics and source contracts used by the dashboard." },
   Sales: { outcome: "Shows revenue, transactions, average order value and payment mix.", data: "Completed sales, refunds, discounts, payments, dates and locations." },
@@ -225,6 +231,7 @@ const viewPermission: Partial<Record<View, string>> = {
   Intelligence: "insights.view",
   Forecasting: "sales.view",
   "Action Centre": "operations.tasks",
+  Messages: "operations.tasks",
   "Business Brief": "dashboard.view",
   Advisor: "insights.view",
   BookLoQ: "finance.statements",
@@ -728,6 +735,7 @@ export default function VanteloqApp({
   organizationName: string;
   accountName: string;
 }) {
+  const appearance = useWorkspaceAppearance();
   const billingEntitlements = useBillingEntitlements();
   const subscriptionFeatures = billingEntitlements.features;
   const standaloneBookloq = billingEntitlements.plan === "bookloq";
@@ -745,6 +753,13 @@ export default function VanteloqApp({
   const [error, setError] = useState("");
   const [refreshError, setRefreshError] = useState("");
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  useEffect(() => {
+    const sidebarNav = document.querySelector<HTMLElement>("#primary-sidebar > nav");
+    const selected = sidebarNav?.querySelector<HTMLElement>('[aria-current="page"]');
+    if (!sidebarNav || !selected) return;
+    const area = sidebarNav.getBoundingClientRect(), item = selected.getBoundingClientRect();
+    if (item.top < area.top || item.bottom > area.bottom) sidebarNav.scrollTop += item.top - area.top - 10;
+  }, [view, mobileNavOpen, loading]);
   const [taskSeed, setTaskSeed] = useState<TaskSeed | null>(null);
   const [notice, setNotice] = useState("");
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -854,7 +869,7 @@ export default function VanteloqApp({
         if (!cancelled && preferenceWriteRef.current === 0) setHiddenNavigation([]);
       });
     return () => { cancelled = true; };
-  }, []);
+  }, [billingEntitlements.accessType]);
   useEffect(() => {
     const timer = window.setTimeout(() => void refresh(), 0);
     return () => {
@@ -1073,7 +1088,7 @@ export default function VanteloqApp({
     return operation;
   };
   return (
-    <main className="app-shell operating-shell">
+    <main className="app-shell operating-shell" data-workspace-theme={appearance.theme} data-workspace-appearance={appearance.appearance}>
       <aside
         id="primary-sidebar"
         className={mobileNavOpen ? "sidebar mobile-open" : "sidebar"}
@@ -1128,7 +1143,7 @@ export default function VanteloqApp({
             </select>
           </label>
         </div>
-        <BusinessWorkspaceSelector selectedWorkspaceId={advisorScope || null}/>
+        <BusinessWorkspaceSelector selectedWorkspaceId={advisorScope || null} compact/>
         <div className="subscription-summary" aria-label="Current subscription">
           <span>{billingEntitlements.accessType === "internal" ? "Internal access" : billingEntitlements.accessType === "complimentary" ? "Complimentary access" : billingEntitlements.plan === "bookloq" ? "BookLoQ standalone" : `${billingEntitlements.plan ? humanizeIdentifier(billingEntitlements.plan) : "Paid"} plan`}</span>
           {billingEntitlements.addons.includes("bookloq") && <small>{billingEntitlements.plan === "bookloq" ? "Finance workspace active" : "BookLoQ active"}</small>}
@@ -1340,6 +1355,7 @@ export default function VanteloqApp({
       {taskSeed && subscriptionFeatures.includes("operations.basic") && (
         <TaskComposer
           seed={taskSeed}
+          activeLocationId={activeLocationId}
           close={() => setTaskSeed(null)}
           saved={() => {
             setTaskSeed(null);
@@ -1545,6 +1561,8 @@ function Workspace({
   if (view === "Action Centre")
     return (
       <TaskCentre
+        key={activeLocationId ?? "all"}
+        activeLocationId={activeLocationId}
         onReviewOutcome={id => openReview(id, true)}
         showNotice={showNotice}
         navigate={navigate}
@@ -1558,6 +1576,7 @@ function Workspace({
         }
       />
     );
+  if (view === "Messages") return <CollaborationMessages key={activeLocationId ?? "all"} activeLocationId={activeLocationId}/>;
   if (view === "BookLoQ" || view === "Profit" || view === "Cash" || view === "Bookkeeping") {
     const initialSection = view === "Profit" ? "Reports" : view === "Cash" ? "Cash Flow" : view === "Bookkeeping" ? "Transactions" : "Overview";
     return <BookLoQWorkspace key={initialSection} initialSection={initialSection} createTask={createTask} showNotice={showNotice} navigate={navigate} activeLocationId={activeLocationId} />;
@@ -2111,23 +2130,31 @@ type Task = {
   priority: "high" | "medium" | "low";
   status: "open" | "in_progress" | "done";
   assignee: string;
+  assigneeUserId: string | null;
+  locationId: string | null;
+  version: number;
   dueDate: string | null;
   sourceType: string;
   sourceRef: string | null;
   expectedImpact: string;
 };
 function TaskCentre({
+  activeLocationId,
   showNotice,
   openComposer,
   navigate,
   onReviewOutcome,
 }: {
+  activeLocationId: string | null;
   onReviewOutcome: (id: string) => void;
   navigate: (view: View) => void;
   showNotice: (message: string) => void;
   openComposer: () => void;
 }) {
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [capabilities, setCapabilities] = useState({canManage:false,canPost:false,userId:""});
+  const [discussion, setDiscussion] = useState<Task | null>(null);
+  const [mine, setMine] = useState(false);
   const [completedReview, setCompletedReview] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("active");
@@ -2135,31 +2162,40 @@ function TaskCentre({
   const [updateError, setUpdateError] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const taskRead = useRef<AbortController | null>(null);
   const load = useCallback(async () => {
+    taskRead.current?.abort();
+    const request = new AbortController(); taskRead.current = request;
     try {
-      const response = await apiFetch("/api/v1/tasks");
+      const response = await apiFetch(`/api/v1/tasks${activeLocationId ? `?location=${encodeURIComponent(activeLocationId)}` : ""}`, { signal: request.signal });
       const body = await response.json();
+      if (request.signal.aborted) return;
       if (!response.ok)
         throw new Error(body.error?.message ?? "Unable to load actions.");
-      setTasks(body.tasks);
+      setTasks(current => body.tasks.map((task:Task) => {const existing=current.find(item=>item.id===task.id);return existing&&existing.version>task.version?existing:task;}));
+      setCapabilities({canManage:body.canManage,canPost:body.canPost,userId:body.userId});
       setError("");
     } catch (caught) {
+      if (request.signal.aborted) return;
       setError(
         caught instanceof Error ? caught.message : "Unable to load actions.",
       );
     } finally {
-      setLoading(false);
+      if (!request.signal.aborted) setLoading(false);
     }
-  }, []);
+  }, [activeLocationId]);
   useEffect(() => {
     const timer = window.setTimeout(() => void load(), 0);
-    return () => window.clearTimeout(timer);
+    const refresh = () => { if(document.visibilityState === "visible") void load(); };
+    const poll = window.setInterval(refresh, 30000);
+    window.addEventListener("focus", refresh); document.addEventListener("visibilitychange", refresh);
+    return () => { taskRead.current?.abort(); window.clearTimeout(timer); window.clearInterval(poll); window.removeEventListener("focus", refresh); document.removeEventListener("visibilitychange", refresh); };
   }, [load]);
   const update = async (task: Task, status: Task["status"]) => {
     if (updating !== null) return;
     setUpdating(task.id); setUpdateError("");
     try {
-      const response = await apiFetch("/api/v1/tasks", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: task.id, status }) });
+      const response = await apiFetch("/api/v1/tasks", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: task.id, status, expectedVersion:task.version }) });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error?.message ?? "The action could not be updated. Please retry.");
       setTasks(current => current.map(item => item.id === task.id ? body.task : item));
@@ -2169,23 +2205,24 @@ function TaskCentre({
     finally { setUpdating(null); }
   };
   const filteredTasks = tasks.filter(task => (statusFilter === "all" || statusFilter === "active" && task.status !== "done" || task.status === statusFilter)
-    && `${task.title} ${task.detail} ${task.assignee}`.toLowerCase().includes(query.toLowerCase().trim()))
+    && (!mine || task.assigneeUserId === capabilities.userId) && `${task.title} ${task.detail} ${task.assignee}`.toLowerCase().includes(query.toLowerCase().trim()))
     .sort((a, b) => ({high:0,medium:1,low:2}[a.priority] - {high:0,medium:1,low:2}[b.priority]) || (a.dueDate ?? "9999").localeCompare(b.dueDate ?? "9999"));
   const active = tasks.filter((task) => task.status !== "done");
+  if (discussion) return <CollaborationMessages key={discussion.id} taskId={discussion.id} activeLocationId={discussion.locationId} onBack={() => setDiscussion(null)}/>;
   return (
     <div className="content tasks-page">
       {completedReview && <div className="owner-outcome-prompt" role="status"><div><strong>Action complete. What changed?</strong><p>Record the result against its saved evidence. Completing a task does not prove a financial improvement.</p></div><button type="button" onClick={() => onReviewOutcome(completedReview)}>Record outcome</button><button type="button" aria-label="Dismiss outcome reminder" onClick={() => setCompletedReview(null)}>×</button></div>}
       <section className="page-intro">
         <div>
-          <p>EXECUTION LAYER</p>
-          <h2>Every insight ends in accountable work.</h2>
+          <p>YOUR TEAM’S WORK</p>
+          <h2>Tasks and follow-through.</h2>
           <span>
             Assign an owner, deadline and expected impact. Source links preserve
             why the action exists.
           </span>
         </div>
-        <button className="primary" onClick={openComposer}>
-          + Create action
+        <button className="primary" disabled={!capabilities.canManage} onClick={openComposer}>
+          + Create task
         </button>
       </section>
       <section className="task-stats">
@@ -2214,6 +2251,7 @@ function TaskCentre({
       </section>
       <div className="action-tools"><label>Find an action<input type="search" value={query} placeholder="Search title, owner or evidence" onChange={event => setQuery(event.target.value)}/></label><label>Status<select value={statusFilter} onChange={event => setStatusFilter(event.target.value)}><option value="active">Active</option><option value="all">All actions</option><option value="open">To do</option><option value="in_progress">In progress</option><option value="done">Done</option></select></label><button className="secondary" type="button" disabled={updating !== null} onClick={() => void load()}>Refresh actions</button></div>
       {updateError && <p className="action-update-error" role="alert">{updateError}</p>}
+      <label className="task-member-field"><span><input type="checkbox" checked={mine} onChange={event => setMine(event.target.checked)}/> Assigned to me</span><small>Visible tasks follow your workspace, location and evidence permissions.</small></label>
       <article className="card task-board">
         {loading ? (
           <WorkspaceSkeleton compact label="Loading your actions"/>
@@ -2225,7 +2263,7 @@ function TaskCentre({
             <span>
               Create one manually or convert a Vanteloq insight into work.
             </span>
-            <button onClick={openComposer}>Create the first action</button>
+            {capabilities.canManage && <button onClick={openComposer}>Create the first task</button>}
           </div>
         ) : (
           <div className="task-list">
@@ -2237,7 +2275,7 @@ function TaskCentre({
               >
                 <button
                   className="check-task"
-                  disabled={updating !== null || task.sourceRef?.startsWith("shopify-privacy:")}
+                  disabled={!capabilities.canPost || updating !== null || task.sourceRef?.startsWith("shopify-privacy:")}
                   aria-label={`${task.status === "done" ? "Reopen" : "Complete"} ${task.title}`}
                   onClick={() =>
                     void update(task, task.status === "done" ? "open" : "done")
@@ -2263,10 +2301,11 @@ function TaskCentre({
                     {task.expectedImpact ? ` · ${task.expectedImpact}` : ""}
                   </small>
                   {(task.sourceType === "insight" || task.sourceType === "decision") && <button className="task-source-link" type="button" onClick={() => task.sourceRef?.startsWith("opportunity:") ? onReviewOutcome(task.sourceRef.slice("opportunity:".length)) : navigate("Intelligence")}>{task.sourceRef?.startsWith("opportunity:") ? "Evidence & outcome" : "Review current opportunities"} →</button>}
+                  <button className="task-discussion-button" type="button" onClick={() => setDiscussion(task)}>Discuss with team</button>
                 </div>
                 <select
                   aria-label={`Status for ${task.title}`}
-                  disabled={updating !== null || task.sourceRef?.startsWith("shopify-privacy:")}
+                  disabled={!capabilities.canPost || updating !== null || task.sourceRef?.startsWith("shopify-privacy:")}
                   value={task.status}
                   onChange={(event) =>
                     void update(task, event.target.value as Task["status"])
@@ -2287,14 +2326,25 @@ function TaskCentre({
 
 function TaskComposer({
   seed,
+  activeLocationId,
   close,
   saved,
 }: {
   seed: TaskSeed;
+  activeLocationId: string | null;
   close: () => void;
   saved: () => void;
 }) {
   const [saving, setSaving] = useState(false);
+  const [location, setLocation] = useState(seed.sourceType && seed.sourceType !== "manual" ? "" : activeLocationId ?? "");
+  const [directory, setDirectory] = useState<{members:{id:string;name:string}[];locations:{id:string;name:string}[];organizationWide:boolean}|null>(null);
+  const [directoryError, setDirectoryError] = useState("");
+  const [assignee, setAssignee] = useState("");
+  useEffect(() => {
+    let active = true; const abort = new AbortController();
+    void apiFetch(`/api/v1/collaboration/members${location ? `?location=${encodeURIComponent(location)}` : ""}`, {signal:abort.signal}).then(async response => {const body=await response.json();if(!response.ok)throw Error(body.error?.message || "Team members could not load. Please retry.");if(active){setDirectory(body);setDirectoryError("");if(!body.organizationWide&&!location&&body.locations?.[0])setLocation(body.locations[0].id);}}).catch(cause => {if(active&&cause.name!=="AbortError")setDirectoryError(cause.message);});
+    return () => {active=false;abort.abort();};
+  }, [location]);
   const dialogId = useId();
   const formRef = useRef<HTMLFormElement>(null);
   useModalFocus(formRef, true, () => { if (!saving) close(); });
@@ -2306,7 +2356,7 @@ function TaskComposer({
     setSaving(true);
     setError("");
     const form = new FormData(event.currentTarget);
-    const payload = JSON.stringify({ title: form.get("title"), detail: form.get("detail"), priority: form.get("priority"), assignee: form.get("assignee"), dueDate: form.get("dueDate") || null, sourceType: seed.sourceType ?? "manual", sourceRef: seed.sourceRef ?? null, expectedImpact: form.get("expectedImpact") });
+    const payload = JSON.stringify({ title: form.get("title"), detail: form.get("detail"), priority: form.get("priority"), assignee: "Unassigned", assigneeUserId:assignee || null,locationId:location || null, dueDate: form.get("dueDate") || null, sourceType: seed.sourceType ?? "manual", sourceRef: seed.sourceRef ?? null, expectedImpact: form.get("expectedImpact") });
     if (!attempt.current || attempt.current.payload !== payload) attempt.current = { payload, key: crypto.randomUUID() };
     try {
       const response = await apiFetch("/api/v1/tasks", { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": attempt.current.key }, body: payload });
@@ -2325,7 +2375,7 @@ function TaskComposer({
         <div className="modal-title">
           <div>
             <p>QUICK ACTION</p>
-            <h2 id={dialogId}>Assign the next move</h2>
+            <h2 id={dialogId}>Create a team task</h2>
           </div>
           <button type="button" disabled={saving} aria-label="Close action form" onClick={close}>
             ×
@@ -2353,14 +2403,16 @@ function TaskComposer({
             </select>
           </label>
           <label>
-            Owner
-            <input name="assignee" defaultValue="Owner" maxLength={80} />
+            Assigned to
+            <select value={assignee} onChange={event => setAssignee(event.target.value)} disabled={!directory}><option value="">Unassigned</option>{directory?.members.map(member => <option key={member.id} value={member.id}>{member.name}</option>)}</select>
           </label>
           <label>
             <FieldLabel required={false}>Due Date</FieldLabel>
             <input type="date" name="dueDate" />
           </label>
         </div>
+        <label className="task-member-field">Location<select value={location} disabled={saving || !directory || (seed.sourceType !== undefined && seed.sourceType !== "manual")} onChange={event => {setLocation(event.target.value);setAssignee("");}}>{directory?.organizationWide && <option value="">Whole workspace</option>}{directory?.locations.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select><small>Only authorised team members can view or discuss this task.</small></label>
+        {directoryError && <p role="alert">{directoryError}</p>}
         <label>
           <FieldLabel required={false}>Expected Impact</FieldLabel>
           <input
@@ -2379,8 +2431,8 @@ function TaskComposer({
           <button type="button" disabled={saving} onClick={close}>
             Cancel
           </button>
-          <button className="primary" disabled={saving}>
-            {saving ? "Saving…" : "Assign action"}
+          <button className="primary" disabled={saving || !directory || Boolean(directoryError)}>
+            {saving ? "Saving…" : "Save task"}
           </button>
         </div>
       </form>
@@ -2436,7 +2488,8 @@ type IntegrationConnection = IntegrationCatalogEntry & {
     };
     syncActive: boolean;
     automaticSync?: AutomaticSyncStatus | null;
-    canonicalCoverage: CanonicalCommerceCoverage;
+    pendingRemovalConnectionIds?: string[];
+  canonicalCoverage: CanonicalCommerceCoverage;
     dataReadiness?: ConnectionDataReadiness;
     featureCoverage: ProviderFeatureCoverage[];
     reportCatalog: {
@@ -2458,6 +2511,7 @@ type IntegrationConnection = IntegrationCatalogEntry & {
     resourceSelectionRequired?: boolean;
     syncEligible?: boolean;
   };
+  pendingRemovalConnectionIds?: string[];
   canonicalCoverage: CanonicalCommerceCoverage;
   featureCoverage: ProviderFeatureCoverage[];
 };
@@ -3024,6 +3078,13 @@ function DataHub({
     showNotice(typeof body.message === "string" ? body.message : `${providerLabel} disconnected`);
     await loadConnections();
   };
+  const finishSlackRemoval = async (connectionId: string, confirmedProviderRemoval = false) => {
+    if (confirmedProviderRemoval && !window.confirm("Confirm that you already removed Vanteloq in Slack? This clears the encrypted removal-only material. It does not verify removal with Slack.")) return;
+    const body = await providerPost("slack", "/api/v1/integrations/slack/disconnect", "disconnect", connectionId, { confirmedProviderRemoval });
+    if (!body) return;
+    showNotice(body.message ?? "Slack removal status updated.");
+    await loadConnections();
+  };
   const loadProviderLocations = async (provider: "lightspeed" | "lightspeed-r" | "shopify" | "shopify-pos" | "square" | "clover", connectionId?: string) => {
     const actionKey = integrationActionKey(provider, connectionId);
     setProviderActions((current) => ({ ...current, [actionKey]: "locations" }));
@@ -3390,6 +3451,14 @@ function DataHub({
                   </div>
                   </details>
                 )}
+                {isSlack && Boolean(provider.pendingRemovalConnectionIds?.length) && <section className="provider-setup-needed slack-removal-pending" aria-label="Slack removal follow-up">
+                  <b>Slack access is off. Complete provider removal.</b>
+                  <p>Vanteloq cannot send messages. Encrypted removal-only material may remain until cleanup succeeds or you confirm that you removed the app in Slack. Complete this before reconnecting.</p>
+                  {provider.pendingRemovalConnectionIds?.map(connectionId => <div key={connectionId} className="integration-actions">
+                    <button type="button" disabled={!canManage || Boolean(providerActions[integrationActionKey("slack",connectionId)])} onClick={() => void finishSlackRemoval(connectionId)}>Retry removal</button>
+                    <button type="button" disabled={!canManage || Boolean(providerActions[integrationActionKey("slack",connectionId)])} onClick={() => void finishSlackRemoval(connectionId,true)}>I removed Vanteloq in Slack</button>
+                  </div>)}
+                </section>}
                 {isMoneris && hasSavedConnection && provider.providerReadiness?.dataPromotionEnabled !== true && (
                   <div className="provider-setup-needed" role="note"><b>Payment import only</b><span>Imported payments stay separate from business reports while currency, refunds and settlement reconciliation are completed.</span></div>
                 )}

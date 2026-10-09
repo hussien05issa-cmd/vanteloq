@@ -1,6 +1,5 @@
-import { and, eq } from "drizzle-orm";
 import { businessDateForTimestamp } from "../../domain/intraday-sales";
-import { getDb, getRuntimeEnv } from "../../db";
+import { getD1, getDb, getRuntimeEnv } from "../../db";
 import { integrationSecrets } from "../../db/schema";
 import { ApiError } from "../api";
 import { cloverLineDiscountCents, cloverLineNetSalesCents, cloverLineQuantityMilli, cloverOrderReportingState, cloverPaymentDisposition } from "./clover-reporting";
@@ -9,6 +8,8 @@ export const CLOVER_PROVIDER = "clover";
 export const CLOVER_READ_PERMISSIONS = ["merchant", "orders", "payments", "inventory", "customers"] as const;
 const USER_AGENT = "Vanteloq-Clover-Connector/1.0";
 const SECRET_AAD = "vanteloq:clover:v1";
+const REFRESH_CLAIM_PREFIX = "clover-refresh:";
+const accessTokenFlights = new WeakMap<D1Database, Map<string, Promise<string>>>();
 
 type CloverEnvironment = "sandbox" | "production";
 type CloverConfig = {
@@ -213,6 +214,7 @@ async function tokenRequest(path: "/oauth/v2/token" | "/oauth/v2/refresh", field
     method: "POST",
     headers: { Accept: "application/json", "Content-Type": "application/json", "User-Agent": USER_AGENT },
     body: JSON.stringify(fields),
+    redirect: "manual",
     signal: AbortSignal.timeout(12_000),
   });
   if (response.status === 429) throw new ApiError(503, "CLOVER_RATE_LIMITED", "Clover is rate-limiting authorization. Wait, then retry.");
@@ -287,29 +289,95 @@ export async function saveCloverTokens(organizationId: string, connectionId: str
   });
 }
 
-async function loadAccessToken(organizationId: string, connectionId: string, fetcher: typeof fetch) {
-  const [row] = await getDb().select({
-    access: integrationSecrets.accessTokenCiphertext,
-    refresh: integrationSecrets.refreshTokenCiphertext,
-    expires: integrationSecrets.tokenExpiresAt,
-  }).from(integrationSecrets).where(and(
-    eq(integrationSecrets.organizationId, organizationId),
-    eq(integrationSecrets.provider, CLOVER_PROVIDER),
-    eq(integrationSecrets.connectionId, connectionId),
-  )).limit(1);
+type CloverGrant = {
+  access: string; refresh: string; expires: number; status: string;
+  sourceNamespace: string | null; accountRef: string | null; generation: number;
+  leaseOwner: string | null; leaseExpires: number | null;
+};
+
+function grantChanged() {
+  return new ApiError(409, "CLOVER_GRANT_CHANGED", "Clover was disconnected or its authorization changed during this request. Review the connection before trying again.");
+}
+
+async function resolveAccessToken(organizationId: string, connectionId: string, fetcher: typeof fetch) {
+  const db = getD1();
+  const row = await db.prepare(`
+    SELECT s.access_token_ciphertext AS access, s.refresh_token_ciphertext AS refresh,
+      s.token_expires_at AS expires, c.status, c.source_namespace AS sourceNamespace,
+      c.external_account_ref AS accountRef, c.sync_version AS generation,
+      c.sync_lease_owner AS leaseOwner, c.sync_lease_expires_at AS leaseExpires
+    FROM integration_secrets s INNER JOIN integration_connections c
+      ON c.id = s.connection_id AND c.organization_id = s.organization_id AND c.provider = s.provider
+    WHERE s.organization_id = ? AND s.provider = ? AND s.connection_id = ?
+      AND c.status IN ('pending', 'connected')
+  `).bind(organizationId, CLOVER_PROVIDER, connectionId).first<CloverGrant>();
   if (!row) throw new ApiError(409, "CLOVER_NOT_CONNECTED", "Authorize a Clover merchant before accessing its data.");
-  if (row.expires.getTime() > Date.now() + 60_000) return decryptCloverSecret(row.access);
-  const token = await refreshCloverToken(await decryptCloverSecret(row.refresh), fetcher);
-  await saveCloverTokens(organizationId, connectionId, token);
+  if (row.refresh.startsWith(REFRESH_CLAIM_PREFIX)) {
+    throw new ApiError(409, "CLOVER_REFRESH_RECOVERY_REQUIRED", "Clover authorization is being refreshed or an earlier refresh was interrupted. Try again shortly; reconnect if it remains unavailable.");
+  }
+  // The pending callback needs its freshly issued token to verify the merchant.
+  if (row.expires * 1_000 > Date.now() + 60_000) return decryptCloverSecret(row.access);
+  if (row.status !== "connected") throw grantChanged();
+  const refreshToken = await decryptCloverSecret(row.refresh);
+  const claim = `${REFRESH_CLAIM_PREFIX}${crypto.randomUUID()}`;
+  const now = Math.floor(Date.now() / 1_000);
+  const guard = `EXISTS (SELECT 1 FROM integration_connections c WHERE c.id = integration_secrets.connection_id
+    AND c.organization_id = integration_secrets.organization_id AND c.provider = integration_secrets.provider
+    AND c.status = 'connected' AND c.source_namespace IS ? AND c.external_account_ref IS ?
+    AND c.sync_version = ? AND c.sync_lease_owner IS ?
+    AND (c.sync_lease_owner IS NULL OR c.sync_lease_expires_at > ?))`;
+  const grantBindings = [row.sourceNamespace, row.accountRef, row.generation, row.leaseOwner];
+  // Claim before the provider call. Another isolate must never exchange the same
+  // single-use grant. An interrupted/ambiguous exchange stays claimed until a
+  // new authorization replaces it; retrying the old token would be unsafe.
+  const claimed = await db.prepare(`
+    UPDATE integration_secrets SET refresh_token_ciphertext = ?, updated_at = ?
+    WHERE organization_id = ? AND provider = ? AND connection_id = ?
+      AND access_token_ciphertext = ? AND refresh_token_ciphertext = ? AND ${guard}
+  `).bind(claim, now, organizationId, CLOVER_PROVIDER, connectionId,
+    row.access, row.refresh, ...grantBindings, now).run();
+  if (Number(claimed.meta.changes ?? 0) !== 1) throw grantChanged();
+  const token = await refreshCloverToken(refreshToken, fetcher);
+  const access = await encryptCloverSecret(token.accessToken);
+  const refresh = await encryptCloverSecret(token.refreshToken);
+  const savedAt = Math.floor(Date.now() / 1_000);
+  // UPDATE only: disconnect deletes the secret, and neither a late exchange nor
+  // an older connection generation may recreate or overwrite a replacement.
+  const saved = await db.prepare(`
+    UPDATE integration_secrets SET access_token_ciphertext = ?, refresh_token_ciphertext = ?,
+      token_expires_at = ?, updated_at = ?
+    WHERE organization_id = ? AND provider = ? AND connection_id = ?
+      AND access_token_ciphertext = ? AND refresh_token_ciphertext = ? AND ${guard}
+  `).bind(access, refresh, Math.floor(token.accessTokenExpiresAt.getTime() / 1_000), savedAt,
+    organizationId, CLOVER_PROVIDER, connectionId, row.access, claim, ...grantBindings, savedAt).run();
+  if (Number(saved.meta.changes ?? 0) !== 1) throw grantChanged();
   return token.accessToken;
+}
+
+async function loadAccessToken(organizationId: string, connectionId: string, fetcher: typeof fetch) {
+  const db = getD1();
+  let flights = accessTokenFlights.get(db);
+  if (!flights) { flights = new Map(); accessTokenFlights.set(db, flights); }
+  const key = JSON.stringify([organizationId, connectionId]);
+  const current = flights.get(key);
+  if (current) return current;
+  const pending = resolveAccessToken(organizationId, connectionId, fetcher);
+  flights.set(key, pending);
+  try { return await pending; }
+  finally { if (flights.get(key) === pending) flights.delete(key); }
 }
 
 async function providerGet(url: URL, accessToken: string, fetcher: typeof fetch) {
   if (url.origin !== config().apiOrigin) throw new ApiError(502, "CLOVER_PAGINATION_INVALID", "Clover returned an unsafe pagination URL.");
   const response = await fetcher(url, {
     headers: { Accept: "application/json", Authorization: `Bearer ${accessToken}`, "User-Agent": USER_AGENT },
+    redirect: "manual",
     signal: AbortSignal.timeout(15_000),
   });
+  if (response.status >= 300 && response.status < 400) {
+    await response.body?.cancel();
+    throw new ApiError(502, "CLOVER_PROVIDER_REDIRECT", "Clover returned an unexpected redirect. No credentials were forwarded.");
+  }
   if (response.status === 429) throw new ApiError(503, "CLOVER_RATE_LIMITED", "Clover reached its merchant rate limit. The staging cursor is preserved; retry later.");
   if (response.status === 401 || response.status === 403) throw new ApiError(409, "CLOVER_AUTHORIZATION_EXPIRED", "Clover authorization is no longer valid. Reconnect the merchant.");
   if (!response.ok) throw new ApiError(502, "CLOVER_PROVIDER_ERROR", "Clover could not complete the read-only request. No staged data was promoted.");

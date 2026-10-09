@@ -18,6 +18,7 @@ export default function WorkspaceIcon({ name, className = "" }: { name: string; 
     Reports: <path d="M4 3v18h17M8 17v-5M13 17V8M18 17V4"/>,
     Marketing: <path d="m3 10 16-6v16L3 14v-4ZM7 15l2 6h4l-2-5M19 8l3-1M19 16l3 1"/>,
     Communications: <><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></>,
+    Messages: <><path d="M3 4h18v13H9l-6 4V4Z"/><path d="M7 8h10M7 12h7"/></>,
     Operations: <path d="M14 6a5 5 0 0 0-6 6l-5 5a2 2 0 0 0 4 4l5-5a5 5 0 0 0 6-6l-3 3-4-4 3-3Z"/>,
     Documents: <path d="M3 6h7l2 3h9v12H3V6ZM3 6V3h7l2 3h9v3"/>,
     "Data Quality": <path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6l8-3ZM8 12l3 3 5-6"/>,

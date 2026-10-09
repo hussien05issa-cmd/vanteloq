@@ -2,16 +2,17 @@ import { requireIntegrationCallbackAccess, releaseIntegrationSelectionIfUnused }
 import { and, eq, gt, isNull } from "drizzle-orm";
 import { getDb } from "../../../../../../db";
 import {
-  integrationConnections, integrationLocationMappings, integrationOAuthStates, integrationSecrets,
+  integrationConnections, integrationOAuthStates,
   memberships, organizationLocations, users, workspaces,
 } from "../../../../../../db/schema";
 import { recordAudit } from "../../../../../../server/audit";
 import type { AccessContext } from "../../../../../../server/authorization";
 import { ApiError, handleApi } from "../../../../../../server/api";
 import {
-  DEEL_API_VERSION, DEEL_PROVIDER, deelStateHash, exchangeDeelCode,
-  fetchDeelLegalEntities, fetchDeelOrganization, saveDeelTokens,
+  DEEL_PROVIDER, deelStateHash, exchangeDeelCode, acquireDeelGrantLease, activateDeelGrant, failDeelAuthorization,
+  fetchDeelLegalEntitiesWithToken, fetchDeelOrganizationWithToken,
 } from "../../../../../../server/integrations/deel";
+import { releaseIntegrationSyncLease } from "../../../../../../server/integrations/connection";
 import { requireOAuthBrowser } from "../../../../../../server/integrations/oauth-browser";
 import { requirePermission } from "../../../../../../server/permissions";
 
@@ -79,7 +80,7 @@ export async function GET(request: Request) {
     )).returning({ stateHash: integrationOAuthStates.stateHash });
     if (!consumed) throw new ApiError(400, "DEEL_STATE_INVALID", "The Deel connection attempt expired or was already used.");
     const connectionId = stored.connectionId;
-    const [pending] = await getDb().select({ id: integrationConnections.id }).from(integrationConnections).where(and(
+    const [pending] = await getDb().select({ id: integrationConnections.id, sourceNamespace: integrationConnections.sourceNamespace }).from(integrationConnections).where(and(
       eq(integrationConnections.id, connectionId), eq(integrationConnections.organizationId, context.organizationId),
       eq(integrationConnections.provider, DEEL_PROVIDER), eq(integrationConnections.status, "pending"),
     )).limit(1);
@@ -94,45 +95,25 @@ export async function GET(request: Request) {
       return returnToVanteloq(request, "declined");
     }
 
+    const lease = await acquireDeelGrantLease(context.organizationId, connectionId, 10 * 60_000);
     let connected = false;
     try {
       const token = await exchangeDeelCode(code);
-      await saveDeelTokens(context.organizationId, connectionId, token);
-      const organization = await fetchDeelOrganization(context.organizationId, connectionId);
+      const organization = await fetchDeelOrganizationWithToken(token.accessToken);
       const [assigned] = await getDb().select({ id: integrationConnections.id, organizationId: integrationConnections.organizationId }).from(integrationConnections).where(and(
         eq(integrationConnections.provider, DEEL_PROVIDER), eq(integrationConnections.externalAccountRef, organization.id),
         eq(integrationConnections.status, "connected"),
       )).limit(1);
       if (assigned && assigned.id !== connectionId) throw new ApiError(409, "DEEL_ORGANIZATION_UNAVAILABLE", "This Deel organization is already connected to a Vanteloq workspace.");
-      const entities = await fetchDeelLegalEntities(context.organizationId, connectionId);
+      const entities = await fetchDeelLegalEntitiesWithToken(token.accessToken);
       const localLocations = await getDb().select({ id: organizationLocations.id }).from(organizationLocations).where(and(
         eq(organizationLocations.organizationId, context.organizationId), eq(organizationLocations.status, "active"),
       ));
       const autoLocationId = localLocations.length === 1 ? localLocations[0].id : null;
-      for (const entity of entities) {
-        await getDb().insert(integrationLocationMappings).values({
-          id: crypto.randomUUID(), organizationId: context.organizationId, provider: DEEL_PROVIDER,
-          connectionId, externalLocationRef: entity.id,
-          externalName: entity.country ? `${entity.name} (${entity.country})` : entity.name,
-          localLocationId: autoLocationId, status: autoLocationId ? "mapped" : "unmapped",
-          lastSeenAt: now, createdAt: now, updatedAt: now,
-        }).onConflictDoUpdate({
-          target: [integrationLocationMappings.organizationId, integrationLocationMappings.provider, integrationLocationMappings.connectionId, integrationLocationMappings.externalLocationRef],
-          set: {
-            externalName: entity.country ? `${entity.name} (${entity.country})` : entity.name,
-            localLocationId: autoLocationId, status: autoLocationId ? "mapped" : "unmapped", lastSeenAt: now, updatedAt: now,
-          },
-        });
-      }
-      const [updated] = await getDb().update(integrationConnections).set({
-        status: "connected", externalAccountRef: organization.id, externalAccountName: organization.name,
-        apiVersion: DEEL_API_VERSION, scopesJson: JSON.stringify(token.scopes), dataPromotionStatus: "staging",
-        connectedAt: now, lastErrorCode: null, updatedAt: now,
-      }).where(and(
-        eq(integrationConnections.id, connectionId), eq(integrationConnections.organizationId, context.organizationId),
-        eq(integrationConnections.provider, DEEL_PROVIDER), eq(integrationConnections.status, "pending"),
-      )).returning({ id: integrationConnections.id });
-      if (!updated) throw new ApiError(409, "DEEL_CONNECTION_MISSING", "The Deel connection attempt changed before it could complete.");
+      // The actor may have lost authority while the provider was responding.
+      const freshContext = await callbackActor(stored);
+      await requireIntegrationCallbackAccess(freshContext, "deel", connectionId);
+      await activateDeelGrant(lease, pending.sourceNamespace, token, organization, entities, autoLocationId);
       connected = true;
       await recordAudit({ request, requestId, organizationId: context.organizationId, actorUserId: context.userId,
         action: "integration.connected", resourceType: "integration_connection", resourceId: connectionId,
@@ -143,16 +124,14 @@ export async function GET(request: Request) {
     } catch (error) {
       if (connected) throw error;
       const errorCode = error instanceof ApiError ? error.code : "DEEL_CONNECTION_FAILED";
-      await getDb().delete(integrationSecrets).where(and(eq(integrationSecrets.organizationId, context.organizationId), eq(integrationSecrets.provider, DEEL_PROVIDER), eq(integrationSecrets.connectionId, connectionId)));
-      await getDb().delete(integrationLocationMappings).where(and(eq(integrationLocationMappings.organizationId, context.organizationId), eq(integrationLocationMappings.provider, DEEL_PROVIDER), eq(integrationLocationMappings.connectionId, connectionId)));
-      await getDb().update(integrationConnections).set({ status: "error", dataPromotionStatus: "blocked", connectedAt: null, lastErrorCode: errorCode, updatedAt: new Date() }).where(and(
-        eq(integrationConnections.id, connectionId), eq(integrationConnections.organizationId, context.organizationId), eq(integrationConnections.provider, DEEL_PROVIDER),
-      ));
+      await failDeelAuthorization(lease, pending.sourceNamespace, errorCode);
       await recordAudit({ request, requestId, organizationId: context.organizationId, actorUserId: context.userId,
         action: "integration.connection_failed", resourceType: "integration_connection", resourceId: connectionId,
         details: { provider: DEEL_PROVIDER, errorCode },
       });
       return returnToVanteloq(request, "failed");
+    } finally {
+      await releaseIntegrationSyncLease(lease);
     }
   });
 }

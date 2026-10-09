@@ -1,6 +1,7 @@
 "use client";
 import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { WorkspaceAppearanceBoundary } from "./workspace-appearance";
 import { providerPrivacy, privacyProvider } from "../domain/provider-privacy";
 import { connectionDataUse, connectionPermissionSummary } from "../domain/provider-connection-notice";
 import { useModalFocus } from "./use-modal-focus";
@@ -28,7 +29,7 @@ export default function ProviderPrivacyNotice({ provider, scopes, preview = fals
   const policy = providerPrivacy[key];
   const marketing = key === "google" || key === "meta";
   return createPortal(
-    <div className="provider-privacy-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onComplete(false); }}>
+    <WorkspaceAppearanceBoundary><div className="provider-privacy-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onComplete(false); }}>
       <section className="provider-privacy-dialog" ref={ref} role="dialog" aria-modal="true" aria-labelledby="provider-privacy-heading" aria-describedby="provider-privacy-summary" tabIndex={-1}>
         <header><div><small>YOUR CONNECTION, YOUR CHOICE{preview ? " · PREVIEW" : ""}</small><h2 id="provider-privacy-heading">Connect {policy.name}</h2></div><button type="button" aria-label="Close privacy notice" onClick={() => onComplete(false)}>×</button></header>
         <div className="provider-privacy-content">
@@ -38,12 +39,12 @@ export default function ProviderPrivacyNotice({ provider, scopes, preview = fals
             {marketing && <p>Selected identifiers, connection status and derived daily measurements are stored in your workspace. Detailed report responses are fetched on demand.{key === "google" && " Google Business Profile reports and reviews are excluded from stored marketing summaries and AI evidence."}</p>}
             <p>Connection credentials are encrypted. Only authorised workspace members can use the connected data within their access permissions. AI analysis requires its own data-use agreement.</p>
           </section>
-          <p className="provider-privacy-footnote">Disconnect in Integrations to stop future access and remove local connection credentials. Imported documents, reviewed accounting records and audit evidence may remain under the <a href="/privacy#retention" target="_blank" rel="noopener noreferrer">retention policy</a>. This acknowledgement does not enable optional background sync or send messages.</p>
+          <p className="provider-privacy-footnote">Disconnect in Integrations to stop future access. {key === "slack" ? "Active Slack access is removed immediately. Encrypted material used only to finish provider removal may remain until cleanup succeeds or you confirm manual removal in Slack. It cannot send messages." : "Local connection credentials are removed."} Imported documents, reviewed accounting records and audit evidence may remain under the <a href="/privacy#retention" target="_blank" rel="noopener noreferrer">retention policy</a>. This acknowledgement does not enable optional background sync or send messages.</p>
           {scopes && scopes.length > 0 && <details className="provider-requested-permissions"><summary>Requested permissions</summary><ul>{scopes.map(scope => <li key={scope}>{scope}</li>)}</ul></details>}
           <label className="provider-privacy-check"><input type="checkbox" checked={accepted} onChange={event => setAccepted(event.target.checked)}/><ProviderPolicyLinks provider={key}/></label>
         </div>
         <footer><button type="button" onClick={() => onComplete(false)}>Cancel</button><button type="button" className="primary" disabled={!accepted} onClick={() => { if (accepted) onComplete(true); }}>Agree & Continue</button></footer>
       </section>
-    </div>, document.body,
+    </div></WorkspaceAppearanceBoundary>, document.body,
   );
 }

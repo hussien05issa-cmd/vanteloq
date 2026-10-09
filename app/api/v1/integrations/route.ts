@@ -208,6 +208,7 @@ export async function GET(request: Request) {
               : null;
         const result = {
         ...provider,
+        pendingRemovalConnectionIds: provider.id === "slack" ? allProviderConnections.filter(connection => connection.status === "revoked" && connection.lastErrorCode === "SLACK_PROVIDER_REMOVAL_REQUIRED").map(connection => connection.id) : [],
         cleanupRequired: provider.id === "plaid" && allProviderConnections.some(connection => connection.sourceNamespace?.startsWith("cleanup:") && connection.lastErrorCode === "PLAID_PROVISIONING_CLEANUP_REQUIRED"),
         canManage: canManageProvider,
         status: providerConnections.length

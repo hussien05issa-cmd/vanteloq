@@ -14,6 +14,7 @@ import {
 } from "../../../../server/api";
 import { idempotencyKey, taskCreateInput, taskUpdateInput } from "../../../../server/validation";
 import { requirePermission } from "../../../../server/permissions";
+import { collaborationCapabilities, collaborationMember, collaborationScope, requireCollaborationChannel, requireCollaborationTask, taskScopeWhere } from "../../../../server/collaboration";
 import { requireOrganizationWideLocationAccess } from "../../../../server/location-access";
 import { filterReadableOpportunityTasks, requireReadableReview } from "../../../../server/opportunity-reviews";
 
@@ -28,6 +29,9 @@ function taskDto(task: typeof workspaceTasks.$inferSelect) {
     priority: task.priority,
     status: task.status,
     assignee: task.assignee,
+    assigneeUserId: task.assigneeUserId,
+    locationId: task.locationId,
+    version: task.version,
     dueDate: task.dueDate,
     sourceType: task.sourceType,
     sourceRef: task.sourceRef,
@@ -41,15 +45,15 @@ export async function GET(request: Request) {
   return handleApi(request, async () => {
     const context = await requireAccess(request, taskReaders, "operations.basic");
     await requirePermission(context, "operations.tasks");
-    await requireOrganizationWideLocationAccess(context);
+    const scope = await collaborationScope(context, new URL(request.url).searchParams.get("location"));
     await enforceRateLimit("tasks:read", `${context.userId}:${clientSource(request)}`, 120, 60);
     const rows = await getDb()
       .select()
       .from(workspaceTasks)
-      .where(eq(workspaceTasks.organizationId, context.organizationId))
+      .where(and(eq(workspaceTasks.organizationId, context.organizationId), taskScopeWhere(scope)))
       .orderBy(desc(workspaceTasks.createdAt))
       .limit(200);
-    return jsonResponse({ tasks: (await filterReadableOpportunityTasks(context, rows)).map(taskDto) });
+    return jsonResponse({ tasks: (await filterReadableOpportunityTasks(context, rows)).map(taskDto), ...await collaborationCapabilities(context) });
   });
 }
 
@@ -61,14 +65,16 @@ export async function POST(request: Request) {
     const key = idempotencyKey(request);
     const input = taskCreateInput(await readJsonObject(request));
     await requirePermission(context, input.sourceType === "manual" ? "operations.manage" : "insights.create_task");
-    await requireOrganizationWideLocationAccess(context);
+    if (input.sourceType !== "manual") await requireOrganizationWideLocationAccess(context);
+    await requireCollaborationChannel(context, input.locationId, null);
+    const assignee = input.assigneeUserId ? await collaborationMember(context, input.assigneeUserId, input.locationId, input.sourceRef) : null;
 
     const reviewId = input.sourceRef?.startsWith("opportunity:") ? input.sourceRef.slice(12) : null;
     if (reviewId) {
       if (input.sourceType !== "decision") throw new ApiError(400, "INVALID_TASK_SOURCE", "Use a decision action for a saved opportunity.");
       await requireReadableReview(context, reviewId);
       const [linked] = await getDb().select().from(workspaceTasks).where(and(eq(workspaceTasks.organizationId, context.organizationId), eq(workspaceTasks.sourceType, "decision"), eq(workspaceTasks.sourceRef, input.sourceRef!))).limit(1);
-      if (linked) return jsonResponse({ task: taskDto(linked), replayed: true });
+      if (linked) { await requireCollaborationTask(context, linked.id); return jsonResponse({ task: taskDto(linked), replayed: true }); }
     }
     const [existing] = await getDb()
       .select()
@@ -79,6 +85,8 @@ export async function POST(request: Request) {
       ))
       .limit(1);
     if (existing) {
+      await requireCollaborationTask(context, existing.id);
+      if (existing.createdByUserId !== context.userId || existing.title !== input.title || existing.detail !== input.detail || existing.priority !== input.priority || existing.locationId !== input.locationId || existing.assigneeUserId !== input.assigneeUserId || existing.dueDate !== input.dueDate || existing.sourceType !== input.sourceType || existing.sourceRef !== input.sourceRef || existing.expectedImpact !== input.expectedImpact) throw new ApiError(409, "IDEMPOTENCY_CONFLICT", "This save attempt belongs to a different task. Refresh and try again.");
       if (existing.sourceRef?.startsWith("opportunity:")) await requireReadableReview(context, existing.sourceRef.slice(12));
       return jsonResponse({ task: taskDto(existing), replayed: true });
     }
@@ -90,7 +98,9 @@ export async function POST(request: Request) {
       detail: input.detail,
       priority: input.priority,
       status: "open",
-      assignee: input.assignee,
+      assignee: assignee?.name ?? input.assignee,
+      assigneeUserId: assignee?.id ?? null,
+      locationId: input.locationId,
       dueDate: input.dueDate,
       sourceType: input.sourceType,
       sourceRef: input.sourceRef,
@@ -104,6 +114,8 @@ export async function POST(request: Request) {
     if (!task) {
       const [existing] = await getDb().select().from(workspaceTasks).where(and(eq(workspaceTasks.organizationId, context.organizationId), reviewId ? and(eq(workspaceTasks.sourceType, "decision"), eq(workspaceTasks.sourceRef, input.sourceRef!)) : eq(workspaceTasks.idempotencyKey, key))).limit(1);
       if (!existing) throw new ApiError(409, "TASK_CONFLICT", "Refresh the action list and retry.");
+      await requireCollaborationTask(context, existing.id);
+      if (!reviewId && (existing.createdByUserId !== context.userId || existing.title !== input.title || existing.detail !== input.detail || existing.priority !== input.priority || existing.locationId !== input.locationId || existing.assigneeUserId !== input.assigneeUserId || existing.dueDate !== input.dueDate || existing.sourceType !== input.sourceType || existing.sourceRef !== input.sourceRef || existing.expectedImpact !== input.expectedImpact)) throw new ApiError(409, "IDEMPOTENCY_CONFLICT", "This save attempt belongs to a different task. Refresh and try again.");
       return jsonResponse({ task: taskDto(existing), replayed: true });
     }
 
@@ -126,19 +138,17 @@ export async function PATCH(request: Request) {
     requireSameOrigin(request);
     const context = await requireAccess(request, taskWriters, "operations.basic");
     await requirePermission(context, "operations.tasks");
-    await requireOrganizationWideLocationAccess(context);
     await enforceRateLimit("tasks:update", context.userId, 120, 60);
     const input = taskUpdateInput(await readJsonObject(request));
 
-    const [before] = await getDb()
-      .select()
-      .from(workspaceTasks)
-      .where(and(eq(workspaceTasks.id, input.id), eq(workspaceTasks.organizationId, context.organizationId)))
-      .limit(1);
+    const before = await requireCollaborationTask(context, input.id);
     if (!before) {
       return jsonResponse({ error: { code: "TASK_NOT_FOUND", message: "Task not found." }, requestId }, { status: 404 });
     }
 
+    if (input.expectedVersion !== null && input.expectedVersion !== before.version) {
+      throw new ApiError(409, "TASK_CHANGED", "A teammate updated this task. Refresh to see the current status before trying again.");
+    }
     if (before.sourceRef?.startsWith("opportunity:")) await requireReadableReview(context, before.sourceRef.slice(12));
     if (before.sourceRef?.startsWith("shopify-privacy:")) {
       throw new ApiError(409, "PRIVACY_FULFILMENT_REQUIRED", "Complete this request in Integrations > Shopify privacy requests after reviewing and securely delivering the customer response.");
@@ -146,9 +156,11 @@ export async function PATCH(request: Request) {
 
     const [task] = await getDb()
       .update(workspaceTasks)
-      .set({ status: input.status, updatedAt: new Date() })
-      .where(and(eq(workspaceTasks.id, input.id), eq(workspaceTasks.organizationId, context.organizationId)))
+      .set({ status: input.status, version: before.version + 1, updatedAt: new Date() })
+      .where(and(eq(workspaceTasks.id, input.id), eq(workspaceTasks.organizationId, context.organizationId), eq(workspaceTasks.version, before.version)))
       .returning();
+
+    if (!task) throw new ApiError(409, "TASK_CHANGED", "A teammate updated this task. Refresh to see the current status before trying again.");
 
     await recordAudit({
       request,

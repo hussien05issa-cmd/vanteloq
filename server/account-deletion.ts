@@ -138,6 +138,8 @@ async function eraseLocal(job: DeletionJob, plan: DeletionPlan, leaseUntil: numb
     db.prepare("DELETE FROM advisor_preferences WHERE user_id = ?").bind(job.user_id),
     db.prepare("DELETE FROM advisor_requests WHERE user_id = ?").bind(job.user_id),
     db.prepare("DELETE FROM assistant_messages WHERE user_id = ?").bind(job.user_id),
+    db.prepare("DELETE FROM collaboration_messages WHERE author_user_id=? AND organization_id=?").bind(job.user_id, job.organization_id),
+    db.prepare("UPDATE workspace_tasks SET assignee_user_id=NULL, assignee='Unassigned', version=version+1 WHERE assignee_user_id=? AND organization_id=?").bind(job.user_id, job.organization_id),
     db.prepare("DELETE FROM assistant_conversations WHERE user_id = ?").bind(job.user_id),
     db.prepare("DELETE FROM legal_acceptances WHERE user_id = ?").bind(job.user_id),
     db.prepare("DELETE FROM account_preferences WHERE user_id = ?").bind(job.user_id),

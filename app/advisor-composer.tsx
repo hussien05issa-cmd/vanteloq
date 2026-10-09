@@ -4,7 +4,7 @@ import { cloneElement, isValidElement, useEffect, useRef, useState, type FormEve
 import VanteloqAiLogo from "./vanteloq-ai-logo";
 import WorkspaceIcon from "./workspace-icon";
 import AdvisorDictation, { type AdvisorDictationHandle } from "./advisor-dictation";
-import { useAdvisorAppearance, type AdvisorAppearance } from "./advisor-appearance";
+import { useWorkspaceAppearance, type WorkspaceAppearance } from "./workspace-appearance";
 import { ADVISOR_ATTACHMENT_ACCEPT, advisorAttachmentSelectionError } from "../shared/advisor-attachments";
 import { ADVISOR_PROVIDER_LABELS, advisorProviders, type AdvisorMode } from "../domain/advisor-providers";
 
@@ -57,7 +57,7 @@ type Props = {
 /** Shared by the authenticated advisor and isolated presentation tests. */
 export default function AdvisorComposer({ question, onQuestion, dataUseAccepted, onConsent, loading, thinking = loading, onStop, consentLoading = false, consentError = "", onConsentRetry, purpose = "analysis", onPurpose, onSubmit, onNewChat, children, hasConversation = false, memoryEnabled = false, onMemory, privacyControls, scopeControls, personalization, historyPaused=false, provider = "openai", providersLoading = false, providers = { openai: { ready: false } }, attachments = [], onAttachments, attachmentAccepted = false, onAttachmentConsent }: Props) {
   const selectedReady = advisorProviders(provider).every(item => providers[item].ready);
-  const appearance = useAdvisorAppearance();
+  const appearance = useWorkspaceAppearance();
   const ready = !providersLoading && !consentLoading && !consentError && selectedReady && (!attachments.length || attachmentAccepted) && canAskAdvisor(question, dataUseAccepted, loading);
   const fileInput = useRef<HTMLInputElement>(null);
   const [attachmentError, setAttachmentError] = useState("");
@@ -199,7 +199,7 @@ export default function AdvisorComposer({ question, onQuestion, dataUseAccepted,
     }}>
       <header className="ai-settings-header"><div><span>Vanteloq AI</span><h2 id="advisor-settings-title">Settings</h2></div><button type="button" onClick={() => setSettingsOpen(false)}>Done</button></header>
       <div className="ai-settings-body">
-        <section className="ai-appearance" aria-labelledby="advisor-appearance-title"><h3 id="advisor-appearance-title">Appearance</h3><label>Colour mode<select value={appearance.appearance} onChange={event => appearance.choose(event.target.value as AdvisorAppearance)}><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label><p>Saved on this device. System follows your device’s colour setting.</p>{appearance.storageNotice && <p role="status">{appearance.storageNotice}</p>}</section>
+        <section className="ai-appearance" aria-labelledby="advisor-appearance-title"><h3 id="advisor-appearance-title">Appearance</h3><label>Colour mode<select value={appearance.appearance} onChange={event => appearance.choose(event.target.value as WorkspaceAppearance)}><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label><p>Saved on this device. System follows your device’s colour setting.</p>{appearance.storageNotice && <p role="status">{appearance.storageNotice}</p>}{appearance.systemNotice && <p role="status">{appearance.systemNotice}</p>}</section>
         <section aria-labelledby="advisor-agreement-title"><h3 id="advisor-agreement-title">Data Use Agreement</h3><p>{consentLoading ? "Checking your saved agreement…" : dataUseAccepted ? "Accepted for this workspace. New chats keep this choice. We ask again if the notice or permitted data changes." : "Accept the notice below the message box before your first question."}</p>{dataUseAccepted && <button className="ai-text-button ai-withdraw-consent" type="button" disabled={loading || consentLoading} onClick={() => onConsent(false)}>Withdraw agreement</button>}{consentError && <p role="alert">{consentError} <button className="ai-text-button" type="button" onClick={onConsentRetry} disabled={consentLoading}>Retry</button></p>}</section>
         {onPurpose && <section aria-labelledby="advisor-context-title">
           <div className="ai-setting-row"><h3 id="advisor-context-title">Workspace Data</h3><label className="ai-memory-switch"><input type="checkbox" role="switch" aria-label="Include workspace data" checked={purpose === "analysis"} disabled={loading || consentLoading} onChange={event => { onPurpose(event.target.checked ? "analysis" : "help"); }}/><span aria-hidden="true"/></label></div>

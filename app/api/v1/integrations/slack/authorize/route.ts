@@ -15,6 +15,7 @@ import {
   SLACK_SCOPES,
   slackStateHash,
 } from "../../../../../../server/integrations/slack";
+import { requireNoPendingSlackCleanup } from "../../../../../../server/integrations/slack-grant";
 import { requirePermission } from "../../../../../../server/permissions";
 
 export async function POST(request: Request) {
@@ -35,6 +36,7 @@ export async function POST(request: Request) {
       throw new ApiError(409, "SLACK_ALREADY_CONNECTED", "Disconnect the current Slack workspace before choosing another workspace or channel.");
     }
 
+    await requireNoPendingSlackCleanup(context.organizationId);
     const state = newSlackOAuthState();
     const connectionId = crypto.randomUUID();
     const now = new Date();

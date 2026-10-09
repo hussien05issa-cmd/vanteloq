@@ -449,9 +449,11 @@ export function taskCreateInput(value: Record<string, unknown>) {
     "sourceType",
     "sourceRef",
     "expectedImpact",
+    "assigneeUserId",
+    "locationId",
   ]);
   const dueDate = optionalString(value.dueDate, "due date", 10);
-  if (dueDate && !DATE.test(dueDate))
+  if (dueDate && (!DATE.test(dueDate) || !Number.isFinite(new Date(dueDate + "T00:00:00Z").getTime()) || new Date(dueDate + "T00:00:00Z").toISOString().slice(0, 10) !== dueDate))
     throw new ApiError(400, "INVALID_FIELD", "Enter a valid due date.");
   return {
     title: requiredString(value.title, "task title", 120),
@@ -462,6 +464,8 @@ export function taskCreateInput(value: Record<string, unknown>) {
       "priority",
     ),
     assignee: optionalString(value.assignee, "assignee", 80) || "Owner",
+    assigneeUserId: optionalString(value.assigneeUserId, "team member", 200) || null,
+    locationId: optionalString(value.locationId, "location", 200) || null,
     dueDate: dueDate || null,
     sourceType: selected(
       value.sourceType ?? "manual",
@@ -479,12 +483,13 @@ export function taskCreateInput(value: Record<string, unknown>) {
 }
 
 export function taskUpdateInput(value: Record<string, unknown>) {
-  rejectUnknown(value, ["id", "status"]);
+  rejectUnknown(value, ["id", "status", "expectedVersion"]);
   if (!Number.isSafeInteger(value.id) || Number(value.id) <= 0) {
     throw new ApiError(400, "INVALID_FIELD", "Select a valid task.");
   }
   return {
     id: Number(value.id),
+    expectedVersion: value.expectedVersion === undefined ? null : integerValue(value.expectedVersion, "task version", 1),
     status: selected(
       value.status,
       ["open", "in_progress", "done"] as const,

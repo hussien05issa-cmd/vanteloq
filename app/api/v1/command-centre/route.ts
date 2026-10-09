@@ -1,3 +1,4 @@
+import { verifiedPosPublicationSql } from "../../../../server/integrations/pos-publication";
 import { bankCashSnapshot } from "../../../../domain/bank-cash-snapshot";
 import { freeIntegrationSelection } from "../../../../server/integrations/free-selection";
 import { getTenantEntitlements, hasAddon } from "../../../../server/entitlements/engine";
@@ -8,7 +9,7 @@ import { revenueAttribution } from "../../../../server/revenue-attribution";
 import { commerceSourceAuthority } from "../../../../server/integrations/source-authority";
 import { authoritativeDailySalesScope } from "../../../../server/integrations/daily-sales-scope";
 import { executivePeriod } from "../../../../domain/executive-metrics";
-import { and, desc, eq, gte, inArray, lte } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { getD1, getDb } from "../../../../db";
 import { bankAccounts, dailyBusinessMetrics, integrationConnections, integrationLocationMappings, organizationProfiles } from "../../../../db/schema";
 import { requireAccess } from "../../../../server/authorization";
@@ -164,6 +165,7 @@ export async function loadCommandCentre(request: Request) {
       sourceNamespace: integrationConnections.sourceNamespace,
       status: integrationConnections.status,
       dataPromotionStatus: integrationConnections.dataPromotionStatus,
+      publicationVerified: sql<boolean>`(${sql.raw(verifiedPosPublicationSql("integration_connections"))})`.mapWith(Boolean),
       promotionAuthorizedAt: integrationConnections.promotionAuthorizedAt,
       lastSuccessfulSyncAt: integrationConnections.lastSuccessfulSyncAt,
       externalAccountRef: integrationConnections.externalAccountRef,
@@ -217,7 +219,7 @@ export async function loadCommandCentre(request: Request) {
     if (period && salesAuthority.status === "conflict" && new URL(request.url).searchParams.get("basis") !== "ledger") {
       throw new ApiError(409, "SALES_SOURCE_CONFLICT", "Choose the reporting source for overlapping locations in Sales. Totals are withheld to avoid counting the same sales twice.");
     }
-    const sourceConnections = connectedSourceConnections.filter((row) => salesAuthority.status !== "conflict" && salesAuthority.authoritativeConnectionIds.includes(row.id) && row.dataPromotionStatus === "approved"
+    const sourceConnections = connectedSourceConnections.filter((row) => row.publicationVerified && salesAuthority.status !== "conflict" && salesAuthority.authoritativeConnectionIds.includes(row.id) && row.dataPromotionStatus === "approved"
       && (!row.syncLeaseOwner || !row.syncLeaseExpiresAt || row.syncLeaseExpiresAt.getTime() <= now));
     const canViewVerifiedProfit = permissions.includes("metrics.revenue") && permissions.includes("metrics.profit") && !sourceConnections.some((row) =>
       row.provider === "square" && row.lastErrorCode === "SQUARE_PRODUCT_COST_UNAVAILABLE"

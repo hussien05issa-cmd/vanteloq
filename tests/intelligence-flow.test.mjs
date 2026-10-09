@@ -1,3 +1,4 @@
+import { seedReportMetric, seedReportPublication } from "./helpers/retail-worker-fixture.mjs";
 import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
 import { createServer } from "node:http";
@@ -190,26 +191,6 @@ async function seedReportConnection(database, {
   return `lightspeed-r:${scopeExternalRef(namespace, externalLocationRef)}`;
 }
 
-async function seedReportMetric(database, {
-  organizationId,
-  userId,
-  businessDate,
-  locationRef,
-  netSalesCents,
-  sourceConnectionId = null,
-  sourceImportId = null,
-}) {
-  const timestamp = Math.floor(Date.now() / 1_000);
-  await database.prepare(`INSERT INTO daily_business_metrics
-    (organization_id, business_date, location_ref, gross_sales_cents, net_sales_cents,
-     cost_of_goods_cents, transaction_count, units_sold, refunds_cents, discounts_cents,
-     labour_cost_cents, source_provider, source_connection_id, source_import_id,
-     created_by_user_id, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, 0, 1, 1, 0, 0, 0, ?, ?, ?, ?, ?, ?)`)
-    .bind(organizationId, businessDate, locationRef, netSalesCents, netSalesCents,
-      sourceConnectionId ? "lightspeed-r" : null, sourceConnectionId, sourceImportId,
-      userId, timestamp, timestamp).run();
-}
 
 async function seedSalesAuthority(database, { organizationId, locationId, connectionId, userId }) {
   const timestamp = Math.floor(Date.now() / 1_000);
@@ -336,12 +317,14 @@ test("commerce and payment reports use local midnight for evening provider sales
   try {
     const identity = await createReportWorkspace(worker, environment, database, "business-day");
     const connectionId = "timezone-pos", now = Math.floor(Date.now()/1000), runId = crypto.randomUUID();
-    await seedReportConnection(database, { ...identity, connectionId, namespace: "legacy", externalLocationRef: "shop" });
+    const metricLocationRef = await seedReportConnection(database, { ...identity, connectionId, namespace: "legacy", externalLocationRef: "shop" });
+    // A promoted daily cohort establishes the real publication/source boundary.
+    await seedReportMetric(database, { ...identity, businessDate: "2026-08-14", locationRef: metricLocationRef, netSalesCents: 600, sourceConnectionId: connectionId });
     await database.prepare(`INSERT INTO integration_sync_runs (id, organization_id, provider, connection_id, mode, status, started_at, completed_at) VALUES (?,?,'lightspeed-r',?,'incremental','completed',?,?)`).bind(runId, identity.organizationId, connectionId, now, now).run();
     const samples = [["evening", "2026-08-15T01:55:00Z", 100], ["offset", "2026-08-14T19:55:00-06:00", 200], ["local", "2026-08-14T19:55:00", 300], ["prior", "2026-08-14T05:59:59Z", 400], ["next", "2026-08-15T06:00:00Z", 500]];
     for (const [id, timestamp, cents] of samples) {
       await database.batch([
-        database.prepare(`INSERT INTO integration_staged_sales (id,organization_id,provider,connection_id,external_sale_id,external_version,outlet_ref,sold_at,state,total_cents,line_count,source_payload_hash,sync_run_id,staged_at) VALUES (?,?,'lightspeed-r',?,?,'1','shop',?,'completed',?,1,'test',?,?)`).bind('parent-'+id,identity.organizationId,connectionId,id,timestamp,cents,runId,now),
+        database.prepare(`INSERT INTO integration_staged_sales (id,organization_id,provider,connection_id,external_sale_id,external_version,outlet_ref,sold_at,state,total_cents,line_count,units_milli,source_payload_hash,sync_run_id,staged_at) VALUES (?,?,'lightspeed-r',?,?,'1','shop',?,'completed',?,1,1000,'test',?,?)`).bind('parent-'+id,identity.organizationId,connectionId,id,timestamp,cents,runId,now),
         database.prepare(`INSERT INTO commerce_sale_lines (id,organization_id,provider,connection_id,external_sale_id,external_line_id,outlet_ref,sold_at,quantity_milli,net_sales_cents,cost_cents,source_payload_hash,sync_run_id,updated_at) VALUES (?,?,'lightspeed-r',?,?,?,'shop',?,1000,?,?,'test',?,?)`).bind(id,identity.organizationId,connectionId,id,id,timestamp,cents,cents/2,runId,now),
         database.prepare(`INSERT INTO commerce_payments (id,organization_id,provider,connection_id,external_sale_id,external_payment_id,outlet_ref,paid_at,amount_cents,category,source_payload_hash,sync_run_id,updated_at) VALUES (?,?,'lightspeed-r',?,?,?,'shop',?,?,'cash','test',?,?)`).bind(id,identity.organizationId,connectionId,id,id,timestamp,cents,runId,now),
       ]);
@@ -360,7 +343,7 @@ test("commerce and payment reports use local midnight for evening provider sales
     await database.prepare("UPDATE integration_connections SET source_namespace='account-a' WHERE id=?").bind(connectionId).run();
     await database.prepare("UPDATE commerce_sale_lines SET outlet_ref='account-a:shop', product_ref='account-a:item' WHERE connection_id=?").bind(connectionId).run();
     await database.prepare(`INSERT INTO commerce_products (id,organization_id,provider,connection_id,external_product_id,sku,name,source_payload_hash,sync_run_id,updated_at) VALUES ('cost-item',?,'lightspeed-r',?,'account-a:item','TEST','Test item','test',?,?)`).bind(identity.organizationId,connectionId,runId,now).run();
-    await seedReportMetric(database, { ...identity, businessDate: "2026-08-14", locationRef: "lightspeed-r:account-a:shop", netSalesCents: 600, sourceConnectionId: connectionId });
+    await database.prepare("UPDATE daily_business_metrics SET location_ref='lightspeed-r:account-a:shop' WHERE organization_id=? AND source_connection_id=?").bind(identity.organizationId,connectionId).run();
     const costs = await dispatch(worker, environment, "/api/v1/inventory-costs", { ...identity.owner, method: "POST", body: { source: "manual", entries: [{ provider: "lightspeed-r", connectionId, externalProductId: "account-a:item", unitCostCents: 25 }] } });
     assert.equal(costs.status, 200, await costs.text());
     assert.equal((await database.prepare("SELECT cost_of_goods_cents cents FROM daily_business_metrics WHERE organization_id=? AND business_date='2026-08-14'").bind(identity.organizationId).first()).cents, 75);
@@ -384,8 +367,8 @@ test("intraday API compares matched hours and redacts all profit paths for reven
     const insert = database.prepare(`INSERT INTO integration_staged_sales
       (id, organization_id, provider, connection_id, external_sale_id, external_version,
        outlet_ref, sold_at, state, total_cents, tax_cents, cost_cents, discount_cents,
-       line_count, source_payload_hash, sync_run_id, staged_at)
-      VALUES (?, ?, 'lightspeed-r', ?, ?, ?, 'shop', ?, 'completed', ?, 0, ?, 0, 1, 'test-only', ?, ?)`);
+       line_count, units_milli, source_payload_hash, sync_run_id, staged_at)
+      VALUES (?, ?, 'lightspeed-r', ?, ?, ?, 'shop', ?, 'completed', ?, 0, ?, 0, 1, 1000, 'test-only', ?, ?)`);
     await database.batch([
       insert.bind("current-old", identity.organizationId, connectionId, "current", "1", `${currentDate}T00:00:00Z`, 999999, 100, runId, now - 2),
       insert.bind("current-latest", identity.organizationId, connectionId, "current", "2", `${currentDate}T00:00:00Z`, 10000, 6000, runId, now - 1),
@@ -1145,6 +1128,7 @@ test("report authority requires scoped fact evidence before a mapped source can 
       netSalesCents: 12_345,
       sourceConnectionId: factualConnectionId,
     });
+    await seedReportPublication(database, { ...fixture, sourceConnectionId: emptyConnectionId });
 
     const response = await dispatch(
       worker,
@@ -1426,8 +1410,45 @@ test("location-limited purchasing cannot list or approve another location's orde
       "integrations.view must not expose document or purchasing evidence",
     );
 
+    // Tasks now support location-scoped access. Verify real records cannot leak
+    // across that boundary instead of expecting the former blanket denial.
+    const seededTasks = [];
+    for (const [title, locationId] of [["North task", north.id], ["South private task", southId], ["Organization private task", null]]) {
+      const created = await dispatch(worker, environment, "/api/v1/tasks", {
+        ...owner, method: "POST", idempotencyKey: crypto.randomUUID(),
+        body: { title, locationId, sourceType: "manual" },
+      });
+      assert.equal(created.status, 201, await created.clone().text());
+      seededTasks.push((await created.json()).task);
+    }
+    const taskResponse = await dispatch(worker, environment, "/api/v1/tasks", manager);
+    assert.equal(taskResponse.status, 200);
+    const scopedTasks = await taskResponse.json();
+    assert.deepEqual(scopedTasks.tasks.map(task => task.id), [seededTasks[0].id]);
+    assert.ok(scopedTasks.tasks.every(task => task.locationId === north.id));
+    assert.doesNotMatch(JSON.stringify(scopedTasks), /South private task|Organization private task/);
+    for (const task of seededTasks.slice(1)) {
+      const forbidden = await dispatch(worker, environment, "/api/v1/tasks", {
+        ...manager, method: "PATCH", body: { id: task.id, status: "done", expectedVersion: task.version },
+      });
+      assert.equal(forbidden.status, 404);
+      assert.equal((await forbidden.json()).error.code, "TASK_NOT_AVAILABLE");
+      assert.equal((await database.prepare("SELECT status FROM workspace_tasks WHERE id=?").bind(task.id).first()).status, "open");
+    }
+    const taskCreateDenied = await dispatch(worker, environment, "/api/v1/tasks", {
+      ...manager, method: "POST", idempotencyKey: crypto.randomUUID(),
+      body: { title: "Cross-location task", locationId: southId, sourceType: "manual" },
+    });
+    assert.equal(taskCreateDenied.status, 403);
+    assert.equal((await taskCreateDenied.json()).error.code, "LOCATION_ACCESS_DENIED");
+    const globalTaskDenied = await dispatch(worker, environment, "/api/v1/tasks", {
+      ...manager, method: "POST", idempotencyKey: crypto.randomUUID(),
+      body: { title: "Organization-wide task", sourceType: "manual" },
+    });
+    assert.equal(globalTaskDenied.status, 403);
+    assert.equal((await globalTaskDenied.json()).error.code, "CHANNEL_SCOPE_REQUIRED");
+
     for (const path of [
-      "/api/v1/tasks",
       "/api/v1/documents",
       "/api/v1/integrations",
       "/api/v1/integrations/lightspeed/outlets",
@@ -1439,18 +1460,46 @@ test("location-limited purchasing cannot list or approve another location's orde
       assert.equal((await response.json()).error.code, "ORGANIZATION_SCOPE_REQUIRED", path);
     }
     for (const request of [
-      { path: "/api/v1/tasks", method: "POST", idempotencyKey: crypto.randomUUID(), body: { title: "Cross-location task", detail: "", priority: "medium", assignee: "Manager", dueDate: null, sourceType: "manual", sourceRef: null, expectedImpact: "" } },
-      { path: "/api/v1/tasks", method: "PATCH", body: { id: "task-from-another-location", status: "done" } },
       { path: "/api/v1/documents", method: "POST", body: {} },
       { path: "/api/v1/documents?id=document-from-another-location", method: "DELETE", body: {} },
-      { path: "/api/v1/integrations/plaid/link-token", method: "POST", body: {} },
-      { path: "/api/v1/integrations/plaid/exchange", method: "POST", body: { publicToken: "public-sandbox-token", consentAcknowledged: true } },
-      { path: "/api/v1/integrations/plaid/sync", method: "POST", body: {} },
-      { path: "/api/v1/integrations/plaid/disconnect", method: "POST", body: {} },
     ]) {
       const response = await dispatch(worker, environment, request.path, { ...request, ...manager });
       assert.equal(response.status, 403, request.path);
       assert.equal((await response.json()).error.code, "ORGANIZATION_SCOPE_REQUIRED", request.path);
+    }
+
+    // Reach the account-scope guard instead of stopping at provider rollout.
+    // These are fictional readiness values, and Plaid transport is denied below.
+    const plaidFixture = {
+      PLAID_CLIENT_ID: "fixture-not-a-client", PLAID_SECRET: "fixture-not-a-secret", PLAID_ENV: "production",
+      PLAID_WEBHOOK_URL: `${origin}/api/webhooks/plaid`, PLAID_REDIRECT_URI: `${origin}/integrations/plaid`,
+      INTEGRATION_ENCRYPTION_KEY: "fixture-not-an-encryption-key",
+    };
+    const previousPlaidEnvironment = Object.fromEntries(Object.keys(plaidFixture).map(key => [key, environment[key]]));
+    const originalFetch = globalThis.fetch;
+    let plaidRequests = 0;
+    Object.assign(environment, plaidFixture);
+    globalThis.fetch = async (input, init) => {
+      const url = new URL(typeof input === "string" || input instanceof URL ? String(input) : input.url);
+      if (url.hostname === "plaid.com" || url.hostname.endsWith(".plaid.com")) {
+        plaidRequests++;
+        throw new Error("Scope tests must never contact Plaid.");
+      }
+      return originalFetch(input, init);
+    };
+    try {
+      for (const endpoint of ["link-token", "exchange", "sync", "disconnect"]) {
+        const path = `/api/v1/integrations/plaid/${endpoint}`;
+        const response = await dispatch(worker, environment, path, { ...manager, method: "POST", body: {} });
+        assert.equal(response.status, 403, path);
+        assert.equal((await response.json()).error.code, "ORGANIZATION_SCOPE_REQUIRED", path);
+      }
+      assert.equal(plaidRequests, 0, "Account scope must be checked before any provider request.");
+    } finally {
+      globalThis.fetch = originalFetch;
+      for (const [key, value] of Object.entries(previousPlaidEnvironment)) {
+        if (value === undefined) delete environment[key]; else environment[key] = value;
+      }
     }
 
     const managerResponse = await dispatch(worker, environment, "/api/v1/purchasing", manager);
