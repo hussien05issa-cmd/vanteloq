@@ -13,8 +13,8 @@ import InteractiveGoalRings from "./interactive-goal-rings";
 import RevenueSourceDetail from "./revenue-source-detail";
 import ExecutiveSummaryPanels from "./executive-summary-panels";
 import ExecutiveStatusFrame from "./executive-status-frame";
-import { executiveAxis, formatExecutiveAxisValue, formatRecordedTimestamp } from "../domain/executive-presentation";
-import { useChartWidth } from "./use-chart-width";
+import { formatRecordedTimestamp } from "../domain/executive-presentation";
+import ExecutiveTrend from "./executive-trend";
 import "./executive-overview.css";
 import "./dashboard-personalization.css";
 import "./origin-overview.css";
@@ -244,40 +244,6 @@ function OperatingRing({report,preferences,currency,onCustomize,locationId}:{rep
     </button>)}</div>
     <div className="operating-ring-action"><button type="button" onClick={onCustomize}>Edit Goals</button><details><summary>How Progress Works</summary><span>Targets use their saved dates and location. Progress through {report.period.to} follows eligible recorded data. Missing or incomplete inputs do not count as progress. The ring stops at 100%; the label preserves results above target. Ledger progress describes posted records, not an audit. Lower targets without a starting value show attainment only.</span></details></div>
   </section>;
-}
-
-function ExecutiveTrend({metric,currency,period,onSetup,chart,compact=false,showTable=true}:{metric:ExecutiveReport["metrics"][number];currency:string;period:ExecutiveReport["period"];onSetup:()=>void;chart:"line"|"bar";compact?:boolean;showTable?:boolean}) {
-  const {ref,width}=useChartWidth(780,320),id=useId().replaceAll(":",""),[hover,setHover]=useState<number|null>(null);
-  const plotRef=useRef<SVGGElement>(null),motion=useMotionPreference();
-  const dataKey=metric.trend.map(point=>`${point.date}:${point.value}`).join("|");
-  useEffect(()=>{
-    const plot=plotRef.current;if(!plot||!motion||typeof plot.animate!=="function")return;
-    let animation:Animation|null=null;
-    const stop=()=>{animation?.cancel();animation=null;};
-    const reveal=()=>{if(document.hidden)return;animation=plot.animate([{opacity:.65,transform:"translateY(3px)"},{opacity:1,transform:"translateY(0)"}],{duration:240,easing:"cubic-bezier(.2,.8,.2,1)"});};
-    const observer=typeof IntersectionObserver==="undefined"?null:new IntersectionObserver(entries=>{if(entries.some(entry=>entry.isIntersecting)){reveal();observer?.disconnect();}});
-    if(observer)observer.observe(plot);else reveal();
-    document.addEventListener("visibilitychange",stop);plot.ownerSVGElement?.addEventListener("pointerdown",stop);
-    return()=>{observer?.disconnect();stop();document.removeEventListener("visibilitychange",stop);plot.ownerSVGElement?.removeEventListener("pointerdown",stop);};
-  },[dataKey,chart,motion]);
-  const values=metric.trend.filter(p=>p.value!==null);
-  if(!values.length)return <div className="executive-trend-empty" ref={ref}>
-    <div className="executive-empty-axis" aria-hidden="true"><span>{metric.unit==="money"?currency:metric.unit==="percent"?"%":"Count"}</span><span>—</span><span>—</span><span>—</span></div>
-    <div className="executive-empty-plot"><div className="executive-empty-grid" aria-hidden="true"/><div className="executive-empty-message"><span className="executive-chart-symbol" aria-hidden="true">↗</span><b>Your {metric.label.toLowerCase()} trend</b><p>{metric.reason??"Add dated records to see this measure over time. A balance alone does not create a trend."}</p><button type="button" onClick={onSetup}>{metric.drill==="BookLoQ"?"Open BookLoQ":"Review Sources"}</button></div></div>
-    <div className="executive-empty-dates"><span>{date(period.from)}</span><span>{date(period.to)}</span></div>
-  </div>;
-  const {min,max,ticks:axisTicks}=executiveAxis(values.map(p=>p.value!));
-  const height=compact?190:240;
-  const first=Date.parse(metric.trend[0].date),last=Date.parse(metric.trend.at(-1)!.date),plot=width-82;
-  const x=(i:number)=>58+(last===first?plot/2:(Date.parse(metric.trend[i].date)-first)/(last-first)*plot),y=(v:number)=>22+(max-v)/(max-min)*(height-59);
-  const path=metric.trend.map((p,i)=>{if(p.value===null)return "";const previous=metric.trend[i-1];const contiguous=previous?.value!=null&&Date.parse(p.date)-Date.parse(previous.date)<=86400000;return `${contiguous?"L":"M"}${x(i)},${y(p.value)}`;}).join(" ");
-  const areas: string[]=[];
-  let segment:number[]=[];
-  const closeSegment=()=>{if(segment.length>1)areas.push(`M${x(segment[0])},${y(0)} ${segment.map(i=>`L${x(i)},${y(metric.trend[i].value!)}`).join(" ")} L${x(segment.at(-1)!)},${y(0)} Z`);segment=[];};
-  metric.trend.forEach((p,i)=>{if(p.value===null){closeSegment();return;}if(segment.length&&Date.parse(p.date)-Date.parse(metric.trend[segment.at(-1)!].date)>86400000)closeSegment();segment.push(i);});closeSegment();
-  const ticks=[...new Set(Array.from({length:Math.min(5,metric.trend.length)},(_,i)=>Math.round(i*(metric.trend.length-1)/Math.max(1,Math.min(5,metric.trend.length)-1))))];
-  const point=hover===null?null:metric.trend[hover];
-  return <div className="executive-chart" ref={ref}><div className="executive-chart-readout" aria-live="polite">{point?<><b>{date(point.date)}</b><span>{display(point.value,metric.unit,currency)}</span></>:<span>{metric.unit==="money"?currency:metric.unit==="percent"?"Percent":"Count"} · Recorded daily values. Gaps remain visible.</span>}</div><svg viewBox={`0 0 ${width} ${height}`} width={width} height={height} role="group" aria-label={`${metric.label} by recorded date`}><defs><linearGradient id={id} x1="0" x2="1"><stop stopColor="#1777ec"/><stop offset="1" stopColor="#514cc6"/></linearGradient><linearGradient id={`${id}-area`} x1="0" y1="0" x2="0" y2="1"><stop stopColor="#1b73ee" stopOpacity=".18"/><stop offset="1" stopColor="#1b73ee" stopOpacity=".015"/></linearGradient></defs>{axisTicks.map(val=>{return <g key={val}><line x1="58" x2={width-24} y1={y(val)} y2={y(val)} stroke="#dfe6ef"/><text x="50" y={y(val)+4} textAnchor="end" fill="#50627a" fontSize="11">{formatExecutiveAxisValue(val,metric.unit)}</text></g>;})}<g ref={plotRef} className="executive-chart-data">{chart==="line"&&areas.map((area,i)=><path key={i} d={area} fill={`url(#${id}-area)`}/>)}{chart==="line"?<path d={path} fill="none" stroke={`url(#${id})`} strokeWidth="2.5"/>:metric.trend.map((p,i)=>p.value===null?null:<rect key={p.date} x={x(i)-Math.min(16,plot/metric.trend.length*.32)} y={Math.min(y(0),y(p.value))} width={Math.min(32,plot/metric.trend.length*.64)} height={Math.max(1,Math.abs(y(0)-y(p.value)))} rx="3" fill="#397ce0"/>)}</g>{point?.value!=null&&<line x1={x(hover!)} x2={x(hover!)} y1="22" y2={height-37} stroke="#95b6e8" strokeDasharray="3 4"/>}{metric.trend.map((p,i)=>p.value===null?null:<circle key={p.date} cx={x(i)} cy={y(p.value)} r="12" fill={hover===i?"#2975e233":"transparent"} stroke="transparent" strokeWidth="1.5" tabIndex={hover===i||(hover===null&&p.date===values[0].date)?0:-1} role="button" aria-label={`${p.date}: ${display(p.value,metric.unit,currency)}`} onClick={()=>setHover(i)} onFocus={()=>setHover(i)} onMouseEnter={()=>setHover(i)} onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();setHover(i);}if(e.key==="ArrowRight"||e.key==="ArrowLeft"){e.preventDefault();const points=Array.from(e.currentTarget.parentElement?.querySelectorAll('circle')??[]);const index=points.indexOf(e.currentTarget);const next=Math.max(0,Math.min(points.length-1,index+(e.key==="ArrowRight"?1:-1)));(points[next] as SVGElement|undefined)?.focus();}}}/>)}{ticks.map((i,j)=><text key={i} x={x(i)} y={height-9} textAnchor={j===0?"start":j===ticks.length-1?"end":"middle"} fontSize="11" fill="#50627a">{date(metric.trend[i].date)}</text>)}</svg>{showTable&&<details><summary>View Data Table</summary><table><caption>{metric.label} by recorded date</caption><thead><tr><th scope="col">Date</th><th scope="col">{metric.label}</th></tr></thead><tbody>{metric.trend.map(p=><tr key={p.date}><td>{p.date}</td><td>{display(p.value,metric.unit,currency)}</td></tr>)}</tbody></table></details>}</div>;
 }
 
 function FinanceDetails({data,currency}:{data:NonNullable<ExecutiveReport["finance"]>;currency:string}) {

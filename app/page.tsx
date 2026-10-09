@@ -16,6 +16,7 @@ import PublicPlanCards from "./public-plan-cards";
 import CustomPlanCallout from "./custom-plan-callout";
 import HomeGoalPreview from "./home-goal-preview";
 import HomeDashboardPreview from "./home-dashboard-preview";
+import HomeProductFilm from "./home-product-film";
 import HomeDecisionPreview from "./home-decision-preview";
 import FeatureCarousel from "./feature-carousel";
 import IndustryFitPreview from "./industry-fit-preview";
@@ -490,6 +491,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
         <HomeDashboardPreview/>
       </section>
       <div className="reference-connections" aria-label="Explore data connections"><span>YOUR TOOLS, CONNECTED</span><div>{["Lightspeed","Square","Shopify","Stripe","Google"].map(name=><a key={name} href="#connections" aria-label={`Check ${name} availability`}><IntegrationBrandLogo name={name} compact/><strong>{name}</strong></a>)}</div><a href="#connections">View Availability <span aria-hidden="true">→</span></a></div>
+      <HomeProductFilm/>
       <section className="home-decision-proof" id="platform" aria-labelledby="decision-proof-title">
         <span id="capabilities"/><div className="reference-section-heading" data-motion-item="0"><div><p className="demo-eyebrow">YOUR BUSINESS. YOUR PRIORITIES.</p><h2 id="decision-proof-title">Know where you stand. Decide where to go.</h2></div><p>Track what matters, understand what changed and turn a finding into a next step. Your records provide the context. You set the direction.</p></div>
         <FeatureCarousel/>
