@@ -1853,7 +1853,7 @@ function DailyBrief({ data, navigate, createTask, canCreate = false, activeLocat
     onReview={onReview ? () => onReview() : undefined} onSettings={() => navigate("Settings")}/>
 }
 
-export function Overview({ canCreate=false, canForecast=false, onDrill, onAsk, onReview, activeLocationId, accountName = "", data, currency, industry, navigate, createTask, paymentRange, setPaymentRange }: BriefActions & { canCreate?:boolean; canForecast?:boolean; onDrill?: (view:"Sales"|"BookLoQ"|"Integrations"|"Intelligence",period?:{from:string;to:string})=>void; activeLocationId?: string | null; accountName?: string; data: CommandCentre; currency: string; industry?: string | null; navigate: (view: View) => void; createTask: (seed: TaskSeed) => void; paymentRange: PaymentRange; setPaymentRange: (range: PaymentRange) => void }) {
+export function Overview({ canCreate=false, canForecast=false, onDrill, onAsk, onReview, activeLocationId, accountName = "", data, currency, industry, navigate, createTask, paymentRange, setPaymentRange }: BriefActions & { canCreate?:boolean; canForecast?:boolean; onDrill?: (view:"Sales"|"BookLoQ"|"Integrations"|"Intelligence"|"Reports",period?:{from:string;to:string})=>void; activeLocationId?: string | null; accountName?: string; data: CommandCentre; currency: string; industry?: string | null; navigate: (view: View) => void; createTask: (seed: TaskSeed) => void; paymentRange: PaymentRange; setPaymentRange: (range: PaymentRange) => void }) {
 
   const sourceName = data.liveSource.accountName || (data.liveSource.provider ? providerLabel(data.liveSource.provider) : "the connected source");
   return (

@@ -104,3 +104,13 @@
 :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .skeleton-rings { background:radial-gradient(circle,transparent 0 32%,var(--ws-line) 32% 39%,transparent 39% 43%,var(--ws-line) 43% 50%,transparent 50% 54%,var(--ws-line) 54% 61%,transparent 61%)!important; }
 :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .wiring-principles span { color:var(--ws-muted)!important; }
 :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .control-surface-heading span { color:var(--ws-blue)!important; }
+/* Report source notices and catalogues retain contrast in either workspace theme. */
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .report-source-conflict { background:var(--ws-warning-bg)!important; color:var(--ws-ink)!important; border-color:var(--ws-warning)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .report-source-conflict>div:first-child>span { color:var(--ws-muted)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.report-source-conflict button,.provider-report-list section>button) { background:var(--ws-raised)!important; color:var(--ws-ink)!important; border-color:var(--ws-control)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.report-source-conflict button>span,.provider-report-list>summary,.provider-report-list section>button>em) { color:var(--ws-blue)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.provider-report-list,.provider-report-list>section) { border-color:var(--ws-line)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .provider-report-list>section>div { background:var(--ws-raised)!important; color:var(--ws-ink)!important; border-color:var(--ws-line)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .gated-report>span { color:var(--ws-muted)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.report-source-conflict button:disabled,.provider-report-list section>button:disabled) { color:var(--ws-muted)!important; opacity:1!important; cursor:not-allowed; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.report-source-conflict button:disabled,.provider-report-list section>button:disabled) :is(b,small,span,em) { color:var(--ws-muted)!important; }

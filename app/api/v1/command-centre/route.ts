@@ -219,7 +219,7 @@ export async function loadCommandCentre(request: Request) {
       throw new ApiError(503, "SOURCE_SYNCING", "Syncing source records. Verified totals will return when the refresh finishes. Try again shortly.");
     }
     if (period && salesAuthority.status === "conflict" && new URL(request.url).searchParams.get("basis") !== "ledger") {
-      throw new ApiError(409, "SALES_SOURCE_CONFLICT", "Choose the reporting source for overlapping locations in Sales. Totals are withheld to avoid counting the same sales twice.");
+      throw new ApiError(409, "SALES_SOURCE_CONFLICT", "Choose the reporting source for overlapping locations in Reports. Totals are withheld to avoid counting the same sales twice.");
     }
     const sourceConnections = connectedSourceConnections.filter((row) => row.publicationVerified && salesAuthority.status !== "conflict" && salesAuthority.authoritativeConnectionIds.includes(row.id) && row.dataPromotionStatus === "approved"
       && (!row.syncLeaseOwner || !row.syncLeaseExpiresAt || row.syncLeaseExpiresAt.getTime() <= now));
