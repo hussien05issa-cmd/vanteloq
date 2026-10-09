@@ -15,7 +15,8 @@ type IntradayPoint = { hour: number; label: string; netSalesCents: number; gross
 type Tone = "indigo" | "emerald" | "cyan" | "amber" | "rose";
 type PlotPoint = { key: string; label: string; shortLabel: string; netSalesCents: number; grossProfitCents: number | null; transactionCount?: number; comparisonCents?: number | null };
 const toneColour: Record<Tone, string> = {
-  indigo: "#245fce", emerald: "#087f78", cyan: "#087da5", amber: "#a96813", rose: "#b43c55",
+  indigo: "var(--ws-blue, #245fce)", emerald: "var(--ws-positive, #087f78)",
+  cyan: "var(--ws-blue, #087da5)", amber: "var(--ws-warning, #a96813)", rose: "var(--ws-negative, #b43c55)",
 };
 function fullMoney(cents: number, currency: string) {
   return new Intl.NumberFormat("en-CA", { style: "currency", currency, minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(cents / 100);

@@ -871,6 +871,11 @@ export const marketingDailyMetrics = sqliteTable(
     metricDate: text("metric_date").notNull(),
     metricKey: text("metric_key").notNull(),
     valueMilli: integer("value_milli").notNull(),
+    // Typed source money is separate from generic measurement scaling. Legacy
+    // metrics remain unverified for financial comparison until synchronized.
+    moneyAmountMinor: integer("money_amount_minor"),
+    moneyCurrency: text("money_currency"),
+    reportingTimezone: text("reporting_timezone"),
     sourceEventId: text("source_event_id").notNull(),
     createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
     updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),

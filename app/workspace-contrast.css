@@ -114,3 +114,69 @@
 :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .gated-report>span { color:var(--ws-muted)!important; }
 :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.report-source-conflict button:disabled,.provider-report-list section>button:disabled) { color:var(--ws-muted)!important; opacity:1!important; cursor:not-allowed; }
 :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.report-source-conflict button:disabled,.provider-report-list section>button:disabled) :is(b,small,span,em) { color:var(--ws-muted)!important; }
+
+/* Accounting values, disclosures and chart captions share the active palette. */
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .cashflow-grid>div>span:where(:not(.positive):not(.negative):not([data-negative="true"])) { color:var(--ws-ink)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .cashflow-grid>.cashflow-head>span { color:var(--ws-muted)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.finance-chart-data>summary,.workspace-chart-data>summary,.bookloq-financial-details>summary,.bq-outflow-categories summary) { color:var(--ws-blue)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.finance-chart-data caption,.workspace-chart-data caption,.bq-cash-observation-label) { color:var(--ws-muted)!important; }
+/* Zero is meaningful financial context, so it is stronger than decorative grids. */
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.chart-zero-line,.finance-chart-zero) { stroke:var(--ws-control)!important; }
+
+/* Supporting navigation text stays legible beside the existing primary labels. */
+.operating-shell[data-workspace-theme] .sidebar :is(.brand-name small,.workspace-switcher small,.business-workspace-choices small,.subscription-summary span,.subscription-summary small,.profile small,.profile-signout,.release-name,.workspace-release-name) { font-size:12px!important; line-height:1.5; }
+.operating-shell[data-workspace-theme] .sidebar .nav-group>p { font-size:12px!important; line-height:1.5; }
+.operating-shell[data-workspace-theme] .topbar-title>.eyebrow { font-size:12px!important; line-height:1.5; }
+.operating-shell[data-workspace-theme] .topbar .source-pill { font-size:12px!important; line-height:1.5; }
+
+/* Secondary operational labels and service badges keep their semantic surfaces. */
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.purchasing-health-overview em,.employee-person em,.location-metric-grid em) { color:var(--ws-muted)!important; font-size:12px!important; line-height:1.5; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.report-catalogue em,.document-pipeline>article>span,.document-table em.gated) { background:var(--ws-raised)!important; color:var(--ws-muted)!important; font-size:12px!important; line-height:1.5; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.report-catalogue em.live,.document-pipeline>article>span.configured,.document-pipeline>article>span.live,.document-pipeline>article>span.browser_supported) { background:var(--ws-positive-bg)!important; color:var(--ws-positive)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.document-pipeline>article>span.not_configured,.document-table em:not(.gated)) { background:var(--ws-warning-bg)!important; color:var(--ws-warning)!important; font-size:12px!important; line-height:1.5; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.page-intro p,.card-kicker) { font-size:12px!important; line-height:1.5; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.journal-page,.tasks-page,.collaboration-page) .empty-state>b { font-size:14px!important; line-height:1.5; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .failure-state[aria-busy="true"]>span { color:var(--ws-muted)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.bookloq-page-intro p,.bookloq-bank-use-list small) { font-size:12px!important; line-height:1.5; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .bookloq-review-list em { color:var(--ws-muted)!important; font-size:12px!important; line-height:1.5; }
+
+/* The detailed performance chart has more specific legacy presentation rules. */
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .financial-explorer .chart-legend>span { color:var(--ws-muted)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .financial-explorer .trend-axis-label { fill:var(--ws-muted)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .financial-explorer .trend-gridline { stroke:var(--ws-line)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .financial-explorer :is(.trend-sales-line,.active-sales-point) { stroke:var(--ws-blue)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .financial-explorer :is(.trend-profit-line,.active-profit-point) { stroke:var(--ws-positive)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .financial-explorer :is(.trend-comparison-line,.comparison-observation-point) { stroke:var(--ws-purple)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .financial-explorer :is(.active-sales-point,.active-profit-point,.comparison-observation-point) { fill:var(--ws-panel)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .financial-explorer .chart-active-marker line { stroke:var(--ws-muted)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .workspace-series-chart.commerce-chart.financial-explorer .workspace-chart-readout :is(label,dt) { color:var(--ws-muted)!important; font-size:12px!important; line-height:1.5; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .workspace-series-chart.commerce-chart.financial-explorer .workspace-chart-readout dd[data-negative="true"] { color:var(--ws-negative)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .performance-summary :is(dt,small) { font-size:12px!important; line-height:1.5; }
+
+/* BookLoQ navigation and source notices inherit the same readable theme. */
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.bookloq-side nav p,.bookloq-top>div:first-child>p) { font-size:12px!important; line-height:1.5; color:var(--ws-muted)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .bookloq-side-foot { background:var(--ws-raised)!important; color:var(--ws-ink)!important; border-color:var(--ws-line)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .bookloq-side-foot b { color:var(--ws-ink)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.bookloq-side-foot small,.bookloq-demo-banner span) { color:var(--ws-muted)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .bookloq-ad-spend-state.review { background:var(--ws-warning-bg)!important; color:var(--ws-warning)!important; }
+
+/* Settings previews and status labels pair theme text with theme surfaces. */
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .settings-governance .page-intro p { font-size:12px!important; line-height:1.5; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .settings-governance :is(.provider-settings article>span,.location-list em.entered) { background:var(--ws-raised)!important; color:var(--ws-muted)!important; font-size:12px!important; line-height:1.5; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.settings-reporting-context,.branding-preview) { background:var(--ws-raised)!important; color:var(--ws-ink)!important; border-color:var(--ws-line)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.settings-reporting-context h3,.branding-preview h3,.branding-preview .logo-preview>b) { color:var(--ws-ink)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .branding-preview .logo-preview:has(>b) { background:var(--ws-selected)!important; border-color:var(--ws-line)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.branding-preview span,.logo-drop>span,.settings-governance .location-list span,.navigation-settings-panel>header span,.settings-reporting-context dt) { color:var(--ws-muted)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .settings-reporting-context a { color:var(--ws-blue)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .source-pill.missing { background:var(--ws-raised)!important; color:var(--ws-muted)!important; border-color:var(--ws-line)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .source-pill.missing i { background:var(--ws-control)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .source-pill.pending { background:var(--ws-selected)!important; color:var(--ws-blue)!important; border-color:var(--ws-blue)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .source-pill.pending i { background:var(--ws-blue)!important; box-shadow:0 0 0 3px var(--ws-selected)!important; }
+
+/* Populated accounting records retain readable labels beside their values. */
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .bookloq-mobile-nav>span { color:var(--ws-muted)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .bank-grid article>span>b { font-size:14px!important; line-height:1.5; color:var(--ws-ink)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .bank-grid article>em { color:var(--ws-warning)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.budget-bars footer>span,.bookloq-period-toolbar>span) { color:var(--ws-muted)!important; font-size:12px!important; line-height:1.5; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .budget-bars footer>b { color:var(--ws-ink)!important; font-size:12px!important; line-height:1.5; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.close-state.not_started,.close-state.in_progress) { background:var(--ws-raised)!important; color:var(--ws-muted)!important; }

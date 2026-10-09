@@ -25,6 +25,10 @@ import {
 import { rankTransactionMatches } from "../../../../domain/bookloq-cash-management";
 import { loadBookloqCashActivity } from "../../../../server/bookloq-cash-activity";
 import { businessClock } from "../../../../domain/intraday-sales";
+import { loadBookloqAdvertisingSpend } from "../../../../server/bookloq-advertising-spend";
+import type { AdvertisingBudget } from "../../../../domain/bookloq-advertising-spend";
+import { loadBookloqPayrollSource } from "../../../../server/bookloq-payroll-source";
+import { bookloqPayrollSourceAllowed } from "../../../../domain/bookloq-payroll-source";
 
 const readers = ["owner", "admin", "manager", "employee", "read_only"] as const;
 
@@ -242,7 +246,7 @@ export async function GET(request: Request) {
       database.prepare(`SELECT b.id, b.account_id accountId, b.period_start periodStart, b.period_end periodEnd,
         b.location_ref locationRef, b.department_ref departmentRef, b.budget_cents budgetCents,
         b.committed_cents committedCents, b.forecast_cents forecastCents,
-        a.code accountCode, a.name accountName, a.account_type accountType,
+        a.code accountCode, a.name accountName, a.account_type accountType, a.system_key accountSystemKey,
         (SELECT COALESCE(SUM(CASE WHEN a.account_type = 'revenue'
           THEN jl.credit_cents - jl.debit_cents ELSE jl.debit_cents - jl.credit_cents END), 0)
           FROM journal_lines jl
@@ -682,6 +686,15 @@ export async function GET(request: Request) {
       accountsPayableCents: null,
       netSalesTaxCents: null,
     };
+    const advertisingSpend = await loadBookloqAdvertisingSpend(context, {
+      baseCurrency, locationId: locationAccess.selectedLocation?.id ?? null,
+      budgets: fullLedgerPermission ? rows(budgetsResult) as AdvertisingBudget[] : [],
+      allowed: fullLedgerPermission && permissions.includes("marketing.view"), dataMode, nowMs,
+    });
+    const payrollSource = await loadBookloqPayrollSource(context, {
+      allowed: bookloqPayrollSourceAllowed(permissions, context.role),
+      dataMode, locationId: locationAccess.selectedLocation?.id ?? null,
+    });
     return jsonResponse({
       bookloq: {
         configured: Boolean(settings) || ledgerAvailable || visibleBanks.length > 0 || documentRows.length > 0 || invoices.length > 0,
@@ -767,6 +780,8 @@ export async function GET(request: Request) {
           evidence: [],
         },
         cashActivity,
+        advertisingSpend,
+        payrollSource,
         transactions: transactionReadable ? transactions.map(transaction => visibleBookLoQTransaction(transaction, access.contactIdentity)) : [],
         transactionMatches: transactionReadable ? transactionMatches : [],
         matchCandidates: transactionReadable && access.accountsPayableReceivable ? matchCandidates : [],
