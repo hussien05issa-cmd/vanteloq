@@ -23,6 +23,11 @@ const summaries: Record<Exclude<PrivacyProvider, "google">, readonly PermissionS
 
 /** Explain configured grants, rather than treating a broad provider grant as read-only. */
 export function connectionPermissionSummary(provider: PrivacyProvider, scopes?: readonly string[]): readonly PermissionSummary[] {
+  if (provider === "slack" && scopes?.includes("channels:history")) return [
+    { title: "Recent public-channel conversations", description: "Slack grants permission to read public-channel information and history where the app is a member. Vanteloq restricts reads to the one public channel chosen during installation. Private channels, direct messages, shared channels and files are excluded." },
+    { title: "Owner review only", description: "Only the workspace owner can load up to 15 recent parent messages. Reads are manual, at most once per minute. Conversations are not copied to team messages, saved in Vanteloq or sent to AI. Open Slack to read threads or reply." },
+    { title: "Channel notifications", description: "The incoming webhook still permits separately requested messages to the selected channel. Connecting does not send a message." },
+  ];
   if (provider !== "google") return summaries[provider];
   const requested = scopes ? new Set(scopes) : null;
   const includes = (scope: string) => !requested || requested.has(`https://www.googleapis.com/auth/${scope}`);

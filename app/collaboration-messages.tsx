@@ -1,12 +1,22 @@
 "use client";
-import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { apiFetch } from "./supabase-browser";
 import WorkspaceSkeleton from "./workspace-skeleton";
+import SlackMessages from "./slack-messages";
 import "./collaboration.css";
 
 type Message = { id: number; body: string; authorName: string; authorUserId: string | null; createdAt: string };
 type Directory = { members: { id: string; name: string }[]; locations: { id: string; name: string }[]; organizationWide: boolean; canManage: boolean; canPost: boolean; userId: string };
-export default function CollaborationMessages({ activeLocationId = null, taskId = null, onBack }: { activeLocationId?: string | null; taskId?: number | null; onBack?: () => void }) {
+export default function CollaborationMessages({ activeLocationId = null, taskId = null, onBack, onManageIntegrations }: { activeLocationId?: string | null; taskId?: number | null; onBack?: () => void; onManageIntegrations?: () => void }) {
+  const [messageSource, setMessageSource] = useState<"team" | "slack">("team");
+  const sourceTabs = useRef<HTMLDivElement>(null);
+  const moveSource = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const next = event.key === "Home" ? "team" : event.key === "End" ? "slack" : messageSource === "team" ? "slack" : "team";
+    setMessageSource(next);
+    sourceTabs.current?.querySelector<HTMLButtonElement>(`#${next}-message-tab`)?.focus();
+  };
   const [location, setLocation] = useState(activeLocationId ?? "");
   const [directory, setDirectory] = useState<Directory | null>(null);
   const [messages, setMessages] = useState<Message[]>([]), [draft, setDraft] = useState("");
@@ -75,7 +85,9 @@ export default function CollaborationMessages({ activeLocationId = null, taskId 
   };
   return <div className="content collaboration-page">
     <section className="page-intro"><div><p>YOUR TEAM</p><h2>{title}</h2><span>Keep conversations beside the work they belong to.</span></div>{onBack && <button type="button" className="secondary" onClick={onBack}>Back to tasks</button>}</section>
-    <article className="card collaboration-thread">
+    {!taskId && <div ref={sourceTabs} className="messages-source-tabs" role="tablist" aria-label="Message source" onKeyDown={moveSource}><button type="button" role="tab" id="team-message-tab" aria-controls="team-message-panel" aria-selected={messageSource === "team"} tabIndex={messageSource === "team" ? 0 : -1} onClick={() => setMessageSource("team")}>Team messages</button><button type="button" role="tab" id="slack-message-tab" aria-controls="slack-message-panel" aria-selected={messageSource === "slack"} tabIndex={messageSource === "slack" ? 0 : -1} onClick={() => setMessageSource("slack")}>Slack channel</button></div>}
+    {messageSource === "slack" && <div id="slack-message-panel" role="tabpanel" aria-labelledby="slack-message-tab"><SlackMessages key={scope} onManage={onManageIntegrations}/></div>}
+    <article id="team-message-panel" role="tabpanel" aria-labelledby={!taskId ? "team-message-tab" : undefined} hidden={messageSource !== "team"} className="card collaboration-thread">
       <div className="collaboration-toolbar">{!taskId && <label>Channel<select value={location} disabled={sending} onChange={event => { setLocation(event.target.value); setNotice(""); }}>{directory?.organizationWide && <option value="">Whole workspace</option>}{directory?.locations.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}<button type="button" className="secondary" onClick={() => void load()} disabled={loading}>Refresh</button><small>Shared with authorised members of this {taskId ? "task" : "channel"}.</small></div>
       {error && <div role="alert" className="collaboration-error"><p>{error}</p><button type="button" onClick={() => void load()}>Try again</button></div>}
       {loading ? <WorkspaceSkeleton compact label="Loading team messages"/> : <><div className="collaboration-history" aria-label="Team conversation">

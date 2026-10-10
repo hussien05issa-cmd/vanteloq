@@ -1,7 +1,10 @@
 import {getD1} from "../../db";
-import {ApiError} from "../api";
+import {ApiError,hashIdentifier} from "../api";
 import {acquireIntegrationSyncLease,releaseIntegrationSyncLease,sqliteTimestampSeconds,type IntegrationSyncLease} from "./connection";
 import {decryptSlackCredentials,encryptSlackCredentials,encryptedSlackNoRefreshToken,revokeSlackInstallation,slackCredentialEnvelope,SLACK_API_VERSION,SLACK_PROVIDER,type SlackCredentialEnvelope,type SlackGrant} from "./slack";
+import {slackModeForStoredScopes} from "./slack";
+import type {AccessContext} from "../authorization";
+import {SlackConversationCooldownError,SlackConversationRateLimitError} from "./slack-conversation";
 
 // Internal cleanup material is never returned by status routes or selected by
 // the active Slack send path. It is encrypted with the existing Slack envelope.
@@ -15,7 +18,7 @@ function guard(lease:IntegrationSyncLease,namespace:string,status:"pending"|"con
   if(lease.provider!==SLACK_PROVIDER)throw grantChanged();
   return {sql:`${prefix}id=? AND ${prefix}organization_id=? AND ${prefix}provider=? AND ${prefix}source_namespace=? AND ${prefix}status=?
     AND ${prefix}sync_lease_owner=? AND ${prefix}sync_version=? AND ${prefix}sync_lease_expires_at>?`,
-    bindings:[lease.connectionId,lease.organizationId,SLACK_PROVIDER,namespace,status,lease.owner,lease.version,sqliteTimestampSeconds()]};
+    bindings:[lease.connectionId,lease.organizationId,SLACK_PROVIDER,namespace,status,lease.owner,lease.version,sqliteTimestampSeconds()] as (string|number|null)[]};
 }
 export async function acquireSlackGrantLease(organizationId:string,connectionId:string,ttlMs=60_000) {
   const lease=await acquireIntegrationSyncLease(organizationId,SLACK_PROVIDER,connectionId,ttlMs);
@@ -34,9 +37,19 @@ export async function requireNoPendingSlackCleanup(organizationId:string) {
   if((await pendingSlackCleanupConnectionIds(organizationId)).length)throw new ApiError(409,"SLACK_CLEANUP_PENDING","Slack access is removed locally. Retry Disconnect or confirm removal in Slack before reconnecting.");
 }
 
-export async function activateSlackGrant(lease:IntegrationSyncLease,namespace:string,grant:SlackGrant) {
-  const access=await encryptSlackCredentials(slackCredentialEnvelope(grant)), refresh=await encryptedSlackNoRefreshToken();
+export async function activateSlackGrant(lease:IntegrationSyncLease,namespace:string,grant:SlackGrant,conversationActor?:SlackConversationActor) {
+  const access=await encryptSlackCredentials(slackCredentialEnvelope(grant,conversationActor?.userId)), refresh=await encryptedSlackNoRefreshToken();
   const selected=guard(lease,namespace,"pending"), now=sqliteTimestampSeconds(), database=getD1();
+  selected.sql+=" AND scopes_json=?";selected.bindings.push(JSON.stringify(grant.scopes));
+  // The callback's earlier lookup is informative; this transactional condition
+  // also prevents two pending callbacks from activating the same installation.
+  selected.sql+=` AND NOT EXISTS(SELECT 1 FROM integration_connections replacement
+    WHERE replacement.provider=? AND replacement.external_account_ref=? AND replacement.id<>integration_connections.id)`;
+  selected.bindings.push(SLACK_PROVIDER,grant.teamId);
+  if(conversationActor){
+    const actorFence=conversationOwnerGuard(lease.organizationId,conversationActor);
+    selected.sql+=` AND EXISTS(${actorFence.sql})`;selected.bindings.push(...actorFence.bindings);
+  }
   selected.sql+=` AND NOT EXISTS(SELECT 1 FROM integration_secrets cleanup JOIN integration_connections old
     ON old.id=cleanup.connection_id AND old.organization_id=cleanup.organization_id
     WHERE cleanup.organization_id=integration_connections.organization_id AND cleanup.provider='slack-revocation'
@@ -75,6 +88,94 @@ export async function withSlackGrant<T>(organizationId:string,connectionId:strin
       .bind(row.ciphertext,SLACK_PROVIDER,...guard(lease,namespace,"connected","c.").bindings).first();
     if(!valid)throw grantChanged();
     return await operation(credentials);
+  }finally{await releaseIntegrationSyncLease(lease);}
+}
+
+type SlackConversationActor=Pick<AccessContext,"userId"|"authSubject"|"authProvider">;
+function conversationOwnerGuard(organizationId:string,actor:SlackConversationActor) {
+  return {sql:`SELECT 1 FROM users u JOIN memberships m ON m.user_id=u.id
+    WHERE u.id=? AND u.status='active' AND u.auth_subject IS ? AND u.auth_provider IS ?
+      AND m.organization_id=? AND m.status='active' AND m.role='owner'
+      AND NOT EXISTS(SELECT 1 FROM account_deletion_jobs deletion WHERE deletion.stage IN('confirmed','local_deleted')
+        AND (deletion.user_id=u.id OR (deletion.scope='workspace' AND deletion.organization_id=m.organization_id)))`,
+    bindings:[actor.userId,actor.authSubject,actor.authProvider,organizationId]};
+}
+async function requireActiveConversationOwner(organizationId:string,actor:SlackConversationActor) {
+  const current=conversationOwnerGuard(organizationId,actor);
+  const active=await getD1().prepare(current.sql).bind(...current.bindings).first();
+  if(!active)throw new ApiError(403,"SLACK_CONVERSATION_OWNER_REQUIRED","Only an active workspace owner can read this Slack conversation.");
+}
+
+/** Reserve the read window durably; never store message bodies or publish a stale response. */
+export async function withSlackConversationGrant<T>(organizationId:string,connectionId:string,namespace:string,
+  actor:SlackConversationActor,operation:(credentials:SlackCredentialEnvelope,checkCurrent:()=>Promise<void>)=>Promise<T>) {
+  const lease=await acquireSlackGrantLease(organizationId,connectionId),database=getD1();
+  try{
+    const current=guard(lease,namespace,"connected","c.");
+    const row=await database.prepare(`SELECT s.access_token_ciphertext AS ciphertext,c.external_account_ref AS team,
+      c.domain_prefix AS channel,c.scopes_json AS scopes FROM integration_secrets s JOIN integration_connections c
+      ON c.id=s.connection_id AND c.organization_id=s.organization_id AND c.provider=s.provider
+      WHERE s.organization_id=? AND s.connection_id=? AND s.provider=? AND ${current.sql}`)
+      .bind(organizationId,connectionId,SLACK_PROVIDER,...current.bindings).first<{ciphertext:string;team:string;channel:string;scopes:string}>();
+    if(!row)throw new ApiError(409,"SLACK_NOT_CONNECTED","Reconnect Slack before reading a conversation.");
+    const credentials=await decryptSlackCredentials(row.ciphertext);
+    if(credentials.teamId!==row.team||credentials.channelId!==row.channel)throw grantChanged();
+    if(slackModeForStoredScopes(row.scopes)!=="single_channel_conversations"||!credentials.conversationRead?.enabled)
+      throw new ApiError(409,"SLACK_CONVERSATION_CONSENT_REQUIRED","Disconnect Slack and reconnect after approving conversation access.");
+    await requireActiveConversationOwner(organizationId,actor);
+    const now=sqliteTimestampSeconds();
+    if(credentials.conversationRead.nextReadAt>now)throw new SlackConversationCooldownError(credentials.conversationRead.nextReadAt);
+    let ciphertext=row.ciphertext;
+    const updateCooldown=async(nextReadAt:number)=>{
+      const replacement={...credentials,conversationRead:{...credentials.conversationRead!,nextReadAt}};
+      const encrypted=await encryptSlackCredentials(replacement);
+      await requireActiveConversationOwner(organizationId,actor);
+      const fence=guard(lease,namespace,"connected","c.");
+      const actorFence=conversationOwnerGuard(organizationId,actor);
+      const changed=await database.prepare(`UPDATE integration_secrets SET access_token_ciphertext=?,updated_at=?
+        WHERE organization_id=? AND connection_id=? AND provider=? AND access_token_ciphertext=?
+          AND EXISTS(SELECT 1 FROM integration_connections c WHERE ${fence.sql} AND c.scopes_json=?) AND EXISTS(${actorFence.sql})`)
+        .bind(encrypted,sqliteTimestampSeconds(),organizationId,connectionId,SLACK_PROVIDER,ciphertext,...fence.bindings,row.scopes,...actorFence.bindings).run();
+      if(Number(changed.meta.changes??0)!==1)throw grantChanged();
+      ciphertext=encrypted;credentials.conversationRead=replacement.conversationRead;
+    };
+    await updateCooldown(now+60);
+    // A stable hashed team/method bucket survives replacement connections and
+    // protects historical duplicate rows as well as simultaneous callers.
+    const teamHash=await hashIdentifier(credentials.teamId),bucket=`slack:conversation-history:rolling:${teamHash}`;
+    const reserved=await database.prepare(`INSERT INTO rate_limit_buckets(bucket_key,scope,actor_hash,window_start,request_count,expires_at)
+      VALUES (?,'slack:conversation-history',?,?,1,?) ON CONFLICT(bucket_key) DO UPDATE
+      SET window_start=excluded.window_start,request_count=1,expires_at=excluded.expires_at
+      WHERE rate_limit_buckets.window_start<=excluded.window_start-60 RETURNING window_start`)
+      .bind(bucket,teamHash,now,now+120).first<{window_start:number}>();
+    if(!reserved){
+      const existing=await database.prepare("SELECT window_start FROM rate_limit_buckets WHERE bucket_key=?").bind(bucket).first<{window_start:number}>();
+      const nextReadAt=Math.max(now+60,(existing?.window_start??now)+60);
+      await updateCooldown(nextReadAt);throw new SlackConversationCooldownError(nextReadAt);
+    }
+    const checkCurrent=async()=>{
+      await requireActiveConversationOwner(organizationId,actor);
+      const currentFence=guard(lease,namespace,"connected","c."),actorFence=conversationOwnerGuard(organizationId,actor);
+      const valid=await database.prepare(`SELECT 1 FROM integration_secrets s JOIN integration_connections c
+        ON c.id=s.connection_id AND c.organization_id=s.organization_id AND c.provider=s.provider
+        WHERE s.organization_id=? AND s.connection_id=? AND s.provider=? AND s.access_token_ciphertext=?
+          AND ${currentFence.sql} AND c.scopes_json=? AND c.external_account_ref=? AND c.domain_prefix=? AND EXISTS(${actorFence.sql})`)
+        .bind(organizationId,connectionId,SLACK_PROVIDER,ciphertext,...currentFence.bindings,row.scopes,credentials.teamId,credentials.channelId,...actorFence.bindings).first();
+      if(!valid)throw grantChanged();
+    };
+    let result:T;
+    try{await checkCurrent();result=await operation(credentials,checkCurrent);}
+    catch(error){
+      if(error instanceof SlackConversationRateLimitError){
+        await updateCooldown(Math.max(credentials.conversationRead.nextReadAt,sqliteTimestampSeconds()+error.retryAfterSeconds));
+        error.nextReadAt=credentials.conversationRead.nextReadAt;
+        await database.prepare(`UPDATE rate_limit_buckets SET window_start=MAX(window_start,?),expires_at=MAX(expires_at,?) WHERE bucket_key=?`)
+          .bind(error.nextReadAt-60,error.nextReadAt+60,bucket).run();
+      }
+      throw error;
+    }
+    await checkCurrent();
+    return result;
   }finally{await releaseIntegrationSyncLease(lease);}
 }
 

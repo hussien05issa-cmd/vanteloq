@@ -305,3 +305,18 @@ Future names are Vanteloq 2.0 Nexus, Vanteloq 3.0 Cognition and Vanteloq 4.0 Aut
 The generated appendix lists actual tables, route methods, feature keys and background entry points. Static inventory is not proof of complete customer lifecycles. Secrets, environment values and customer rows are excluded. The versioned source inventory is in docs/origin-source-inventory.md and docs/origin-source-inventory.json.
 
 Evidence is retained in the final receipt, Worker log, three audit reports, TLS report and rendered component checks. The final source/deployment receipt and Google Docs link follow successful publication.
+
+## October 10, 2026 refinement record
+
+This dated record supplements the earlier launch audit. It does not turn pending provider approvals or unverified production recovery into completed work.
+
+- Business Pulse opens the specific daily-briefing priority and its explanation after the originating panel closes. Repeated selection, scope changes, interrupted transitions, reduced motion and focus return are covered by component checks.
+- Inventory value opens the relevant inventory view while retaining the reporting period. Ledger inventory continues to open BookLoQ.
+- Google and Meta reporting uses an explicitly selected property, profile or ad account. Sources, requested dates, currencies, retrieval times and unavailable measures remain visible. Accounts are not silently combined.
+- Google Analytics lead reporting counts exact `generate_lead` event occurrences when configured on the property. These are not unique people, qualified leads or Google Ads attribution. Meta reporting currently presents ad activity and spend; Meta lead counts are not included. Profile actions, clicks and conversions are not relabelled as leads.
+- Communications retains a clearly labelled successful snapshot during transient read failures. Changed location access replaces the event cache, including when access narrows without a location selection change. Failed authentication clears protected records.
+- Reconnection uses the existing consent flow for the affected account. A completed sync run is labelled as completion, rather than proof that every source is current.
+- Slack Messages supports an optional, owner-only recent public-channel view. It requires separate permission for `channels:read` and `channels:history`, explicit consent and a new authorised connection. Existing incoming-webhook connections retain notification-only access. The reader is limited to the authorised public channel, up to 15 parent messages per manual read, with a rolling cooldown. Files, private conversations and thread contents are excluded. Open-panel messages are not persisted, copied into team messages or sent to Vanteloq AI. Provider configuration and actual customer authorisation must be verified before calling conversation access active.
+- The privacy notice now describes this optional Slack use and its broader provider grant versus the selected-channel restriction. The updated notice must be accepted where the application requires it.
+
+Validation evidence for this pass is retained in the October 10 refinement receipt. Fictional component previews do not establish production provider delivery or reconciliation. Production restoration, representative capacity and the outstanding provider approval gates remain subject to their earlier acceptance requirements.

@@ -28,7 +28,7 @@ import DailyImportReviewPanel from "./daily-import-review";
 import type { DailyImportReview } from "../server/daily-metric-import";
 import WorkspaceSkeleton from "./workspace-skeleton";
 import DashboardGreeting from "./dashboard-greeting";
-import OwnerBriefingPanel from "./owner-briefing";
+import OwnerBriefingPanel, { useBriefingSelection } from "./owner-briefing";
 import type { OwnerBriefing, OwnerBriefingPriority } from "../domain/owner-briefing";
 import { PRODUCT_RELEASE_NAME } from "../domain/product-release";
 import { documentEmailAccessKey } from "./document-email-client";
@@ -1540,7 +1540,7 @@ function Workspace({
         onReview={subscriptionFeatures.includes("analytics.sales.advanced") && permissions.includes("insights.view") ? openReview : undefined}
         canCreate={subscriptionFeatures.includes("operations.basic") && permissions.includes("insights.create_task")}
         canForecast={permissions.includes("sales.view") && subscriptionFeatures.includes("forecasting.revenue")}
-        onDrill={(view,period)=>{setExecutiveDrill(period);navigate(view);}}
+        onDrill={(view,period)=>{setExecutiveDrill(period);if(view==="Inventory")setInventoryTab("products");navigate(view);}}
         activeLocationId={activeLocationId}
         accountName={accountName}
         data={data}
@@ -1582,7 +1582,7 @@ function Workspace({
         }
       />
     );
-  if (view === "Messages") return <CollaborationMessages key={activeLocationId ?? "all"} activeLocationId={activeLocationId}/>;
+  if (view === "Messages") return <CollaborationMessages key={activeLocationId ?? "all"} activeLocationId={activeLocationId} onManageIntegrations={() => navigate("Integrations")}/>;
   if (view === "BookLoQ" || view === "Profit" || view === "Cash" || view === "Bookkeeping") {
     const initialSection = view === "Profit" ? "Reports" : view === "Cash" ? "Cash Flow" : view === "Bookkeeping" ? "Transactions" : "Overview";
     return <BookLoQWorkspace key={initialSection} initialSection={initialSection} createTask={createTask} showNotice={showNotice} navigate={navigate} activeLocationId={activeLocationId} />;
@@ -1624,7 +1624,7 @@ function Workspace({
         onOpenRetail={() => { setIntelligenceTab("retail"); navigate("Intelligence"); }}
       />
     );
-  if (view === "Inventory" && food && foodAccess) return <><nav className="intelligence-switch" aria-label="Menu and ingredient views"><button type="button" aria-pressed={inventoryTab==="specialised"} onClick={()=>setInventoryTab("specialised")}>Recipe & food costs</button><button type="button" aria-pressed={inventoryTab==="products"} onClick={()=>setInventoryTab("products")}>Product inventory</button></nav>{inventoryTab==="specialised"?<FoodserviceWorkspace key={activeLocationId??"all"} activeLocationId={activeLocationId}/>:<CommerceIntelligenceWorkspace mode="Inventory" currency={currency} timeZone={data.today.timeZone} activeLocationId={activeLocationId} navigate={navigate} createTask={createTask} onAsk={askRetailAdvisor}/>}</>;
+  if (view === "Inventory" && food && foodAccess) return <><nav className="intelligence-switch" aria-label="Menu and ingredient views"><button type="button" aria-pressed={inventoryTab==="specialised"} onClick={()=>setInventoryTab("specialised")}>Recipe & food costs</button><button type="button" aria-pressed={inventoryTab==="products"} onClick={()=>setInventoryTab("products")}>Product inventory</button></nav>{inventoryTab==="specialised"?<FoodserviceWorkspace key={activeLocationId??"all"} activeLocationId={activeLocationId}/>:<CommerceIntelligenceWorkspace initialPeriod={executiveDrill} mode="Inventory" currency={currency} timeZone={data.today.timeZone} activeLocationId={activeLocationId} navigate={navigate} createTask={createTask} onAsk={askRetailAdvisor}/>}</>;
   if (view === "Inventory")
     return <InventoryVehicleWorkspace key={`${activeLocationId??"all"}:${industryConfiguration.templateId}`} industry={businessIndustry} configuration={industryConfiguration} activeLocationId={activeLocationId}><CommerceIntelligenceWorkspace initialPeriod={executiveDrill} mode="Inventory" currency={currency} timeZone={data.today.timeZone} activeLocationId={activeLocationId} navigate={navigate} createTask={createTask} onAsk={askRetailAdvisor}/></InventoryVehicleWorkspace>;
   if (view === "Sales" || view === "Customers" || view === "Suppliers")
@@ -1840,10 +1840,10 @@ type BriefActions = { onAsk?: (seed: RetailAdvisorSeed) => void; onReview?: (id?
 function briefingDestination(item: OwnerBriefingPriority): View {
   return NAVIGATION_VIEW_IDS.some(view => view === item.destination) ? item.destination as View : "Dashboard";
 }
-function DailyBrief({ data, navigate, createTask, canCreate = false, activeLocationId, onAsk, onReview, expanded = false }: BriefActions & { data: CommandCentre; navigate: (view: View) => void; createTask: (seed: TaskSeed) => void; canCreate?: boolean; activeLocationId?: string | null; expanded?: boolean }) {
+function DailyBrief({ data, navigate, createTask, canCreate = false, activeLocationId, onAsk, onReview, expanded = false, selectedPriority }: BriefActions & { data: CommandCentre; navigate: (view: View) => void; createTask: (seed: TaskSeed) => void; canCreate?: boolean; activeLocationId?: string | null; expanded?: boolean; selectedPriority?: { id: string; request: number } }) {
   const brief = data.ownerBriefing;
   if (!brief) return null;
-  return <OwnerBriefingPanel briefing={brief} scopeLabel={brief.scopeLabel} sourcePeriod={brief.reportingPeriod} hoursBasis={brief.hoursBasis} expanded={expanded}
+  return <OwnerBriefingPanel briefing={brief} scopeLabel={brief.scopeLabel} sourcePeriod={brief.reportingPeriod} hoursBasis={brief.hoursBasis} expanded={expanded} selectedPriority={selectedPriority}
     onEvidence={item => { if (onReview && data.operatingSystem?.decisions.some(decision => decision.id === item.id)) onReview(item.id); else navigate(briefingDestination(item)); }}
     onAction={canCreate ? item => {
       if (onReview && data.operatingSystem?.decisions.some(decision => decision.id === item.id)) { onReview(item.id); return; }
@@ -1853,16 +1853,17 @@ function DailyBrief({ data, navigate, createTask, canCreate = false, activeLocat
     onReview={onReview ? () => onReview() : undefined} onSettings={() => navigate("Settings")}/>
 }
 
-export function Overview({ canCreate=false, canForecast=false, onDrill, onAsk, onReview, activeLocationId, accountName = "", data, currency, industry, navigate, createTask, paymentRange, setPaymentRange }: BriefActions & { canCreate?:boolean; canForecast?:boolean; onDrill?: (view:"Sales"|"BookLoQ"|"Integrations"|"Intelligence"|"Reports",period?:{from:string;to:string})=>void; activeLocationId?: string | null; accountName?: string; data: CommandCentre; currency: string; industry?: string | null; navigate: (view: View) => void; createTask: (seed: TaskSeed) => void; paymentRange: PaymentRange; setPaymentRange: (range: PaymentRange) => void }) {
-
+export function Overview({ canCreate=false, canForecast=false, onDrill, onAsk, onReview, activeLocationId, accountName = "", data, currency, industry, navigate, createTask, paymentRange, setPaymentRange }: BriefActions & { canCreate?:boolean; canForecast?:boolean; onDrill?: (view:"Sales"|"BookLoQ"|"Integrations"|"Intelligence"|"Reports"|"Inventory",period?:{from:string;to:string})=>void; activeLocationId?: string | null; accountName?: string; data: CommandCentre; currency: string; industry?: string | null; navigate: (view: View) => void; createTask: (seed: TaskSeed) => void; paymentRange: PaymentRange; setPaymentRange: (range: PaymentRange) => void }) {
+  const scopeKey = JSON.stringify([activeLocationId ?? null, data.ownerBriefing?.scopeLabel ?? null]);
+  const { detailsRef: briefRef, selectedPriority, onFinding: openBriefingFinding } = useBriefingSelection(scopeKey, data.ownerBriefing?.priorities ?? []);
   const sourceName = data.liveSource.accountName || (data.liveSource.provider ? providerLabel(data.liveSource.provider) : "the connected source");
   return (
     <div className="content command-page">
       
-      <DashboardGreeting syncing={Boolean(data.source.syncing)} accountName={accountName} sourceName={sourceName} latestBusinessDate={data.source.latestBusinessDate}
+      <DashboardGreeting key={`greeting:${scopeKey}`} syncing={Boolean(data.source.syncing)} accountName={accountName} sourceName={sourceName} latestBusinessDate={data.source.latestBusinessDate}
         lastSuccessfulSyncAt={data.liveSource.lastSuccessfulSyncAt} needsAttention={Boolean(data.liveSource.lastErrorCode)||data.source.freshness!=="current"} onConnections={() => navigate("Integrations")}
-        overview={{scope:data.ownerBriefing?.scopeLabel??sourceName,period:"Latest verified source periods, independent of report filters",metrics:data.ownerBriefing?.pulseMetrics??[],priorities:data.ownerBriefing?.priorities??[],criticalCount:data.ownerBriefing?.criticalCount??0,onFinding:item=>{if(onReview&&data.operatingSystem?.decisions.some(decision=>decision.id===item.id))onReview(item.id);else navigate(briefingDestination(item));}}}/>
-      <details className="overview-daily-brief"><summary>Your daily briefing <span>Priorities, opening checks and follow-ups</span></summary><DailyBrief data={data} navigate={navigate} createTask={createTask} canCreate={canCreate} activeLocationId={activeLocationId} onAsk={onAsk} onReview={onReview}/></details>
+        overview={{scope:data.ownerBriefing?.scopeLabel??sourceName,period:"Latest verified source periods, independent of report filters",metrics:data.ownerBriefing?.pulseMetrics??[],priorities:data.ownerBriefing?.priorities??[],criticalCount:data.ownerBriefing?.criticalCount??0,onFinding:openBriefingFinding}}/>
+      <details className="overview-daily-brief" key={`briefing:${scopeKey}`} ref={briefRef}><summary>Your daily briefing <span>Priorities, opening checks and follow-ups</span></summary><DailyBrief data={data} navigate={navigate} createTask={createTask} canCreate={canCreate} activeLocationId={activeLocationId} onAsk={onAsk} onReview={onReview} selectedPriority={selectedPriority}/></details>
       {canForecast && <Suspense fallback={null}><ForecastPin currency={currency} locationId={activeLocationId??null} onOpen={()=>navigate("Forecasting")}/></Suspense>}
       <ExecutiveOverview currency={currency} industry={industry} activeLocationId={activeLocationId} navigate={onDrill??navigate} onAsk={onAsk} refreshKey={`${data.liveSource.lastSuccessfulSyncAt??""}:${Boolean(data.source.syncing)}:${data.source.rowCount}:${Object.values(data.metrics).map(metric=>metric.sourceTimestamp??"").join("|")}`}/>
       {!data.source.syncing&&<details className="dashboard-current-day-details"><summary>Today’s Sales Details<span>Payment mix, transactions and hourly activity</span></summary><LiveSalesPanel data={data} currency={currency} paymentRange={paymentRange} setPaymentRange={setPaymentRange} compact/></details>}
@@ -3351,6 +3352,7 @@ function DataHub({
                             : "No provider resources selected"}</small>}
                           {(provider.category === "Point of sale" || provider.id === "shopify") && connection.dataReadiness && <details className="integration-feature-checklist"><summary>Imported fields and report requirements</summary><p>{connection.dataReadiness.boundary}</p>{connection.dataReadiness.observedPeriod.from && <small>Observed sales dates: {connection.dataReadiness.observedPeriod.from} to {connection.dataReadiness.observedPeriod.to}. Gaps and omitted history may remain.</small>}{connection.dataReadiness.fields.map(field => <div key={field.id}><span className={`feature-state ${field.state === "supported" ? "available" : "needs-data"}`}>{dataReadinessStateLabels[field.state]}</span><p><b>{field.label}</b>{field.records !== null && field.populated !== null && <small>{field.populated} of {field.records} imported records contain this field</small>}</p></div>)}{connection.dataReadiness.metrics.map(metric => <p key={metric.id}><b>{metric.label}</b><small>{metric.reason}</small></p>)}</details>}
                           {connection.lastErrorCode && <small role="alert">Needs attention: {humanizeIdentifier(connection.lastErrorCode)}</small>}
+                          {accountHealth.state === "reauthorize" && <small id={`connection-recovery-${connection.id}`} role="status">{accountHealth.detail} Sign in again and choose this same business account.</small>}
                         </div>
                         <span className="provider-account-state" data-health-tone={resourceError?.reconnect ? "warning" : accountHealth.tone}>{resourceError?.reconnect ? "Authorization needed" : accountHealth.label}</span>
                         {isMarketingProvider && connection.sampleSummary && <section className="marketing-sample-review" aria-label={`Warning-free ${provider.name} sample review`}>
@@ -3363,7 +3365,7 @@ function DataHub({
                         </section>}
                         {connection.automaticSync && connection.status === "connected" && <AutomaticSyncControl
                           provider={provider.id} connectionId={connection.id} accountName={accountLabel}
-                          status={connection.automaticSync} refresh={loadConnections} />}
+                          status={connection.automaticSync} health={accountHealth} refresh={loadConnections} />}
                         {isMarketingProvider && resourceError && <section
                           id={resourceErrorId}
                           className="marketing-resource-error"
@@ -3372,17 +3374,25 @@ function DataHub({
                         >
                           <b>{resourceError.reconnect ? `${provider.name} needs authorization` : "Resources could not be loaded"}</b>
                           <p>{resourceError.message}</p>
-                          {resourceError.reconnect && <>
+                          {resourceError.reconnect && accountHealth.state !== "reauthorize" && <>
                             <p>Sign in with this account again, then choose the resources for this business.</p>
                             <button
                               type="button"
                               onClick={() => void connectProvider(provider.id as "google" | "meta")}
-                              disabled={!canManageProvider || Boolean(connectionAction) || Boolean(providerAction)}
+                              disabled={Boolean(disabledReason) || Boolean(connectionAction) || Boolean(providerAction)}
                             >{providerAction === "authorize" ? `Opening ${provider.name}…` : `Reconnect ${provider.name}`}</button>
                           </>}
                         </section>}
                         <div className="provider-account-actions">
-                          {connection.status === "connected" && <>
+                          {accountHealth.state === "reauthorize" && <button
+                            type="button"
+                            aria-label={`Reconnect ${provider.name} account ${accountLabel}`}
+                            aria-describedby={`connection-recovery-${connection.id}`}
+                            onClick={() => isMoneris ? setMonerisFormOpen(true) : isQuickBooks ? setQuickBooksConsentOpen(true) : isDeel ? setDeelConsentOpen(true) : provider.id === "shopify" || provider.id === "shopify-pos" ? setShopifyConnectProvider(provider.id) : void connectProvider(actionableProvider)}
+                            disabled={Boolean(disabledReason) || Boolean(connectionAction) || Boolean(providerAction) || connection.syncActive}
+                            title={disabledReason || `Sign in again and choose ${accountLabel}, the same business account.`}
+                          >{providerAction === "authorize" ? `Opening ${provider.name}…` : "Reconnect account"}</button>}
+                          {connection.status === "connected" && accountHealth.state !== "reauthorize" && <>
                             {isQuickBooks ? <small>Company verified. Accounting import is not available yet. This connection does not update your reports.</small> : isMarketingProvider ? <>
                               <button
                                 type="button"
@@ -3538,7 +3548,7 @@ function DataHub({
                     />
                   </NewConnectionContainer> : supportsConnectionControls ? <NewConnectionContainer className="provider-actions">
                     {customerAvailability.previewAccess && <summary>Preview Connection</summary>}
-                    {!connected && <button
+                    {!connected && health.state !== "reauthorize" && <button
                       type="button"
                       onClick={() => isMoneris ? setMonerisFormOpen(true) : isQuickBooks ? setQuickBooksConsentOpen(true) : isDeel ? setDeelConsentOpen(true) : provider.id === "shopify" || provider.id === "shopify-pos" ? setShopifyConnectProvider(provider.id) : void connectProvider(actionableProvider)}
                       disabled={Boolean(disabledReason) || Boolean(providerAction)}

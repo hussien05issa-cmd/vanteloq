@@ -2,19 +2,28 @@
 import { useState } from "react";
 import { apiFetch } from "./supabase-browser";
 import { POS_SYNC_CONSENT_VERSION, posSyncDataCategories } from "../domain/pos-sync-consent";
+import type { ConnectorHealth } from "../domain/connector-guidance";
 
 export type AutomaticSyncStatus = {
   configured: boolean; healthy: boolean; canManage: boolean; enabled: boolean;
   status: string; lastErrorCode: string | null; nextRunAt: string | null;
   lastFinishedAt: string | null; intervalMinutes: number;
 };
-export default function AutomaticSyncControl({ provider, connectionId, accountName, status, refresh }: {
-  provider: string; connectionId: string; accountName: string; status: AutomaticSyncStatus; refresh: () => Promise<void>;
+export default function AutomaticSyncControl({ provider, connectionId, accountName, status, health, refresh }: {
+  provider: string; connectionId: string; accountName: string; status: AutomaticSyncStatus; health?: ConnectorHealth; refresh: () => Promise<void>;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const labels: Record<string, string> = { off: "Off", paused: "Paused", queued: "Queued", running: "Syncing",
-    backfilling: "Importing history", completed: "Up to date", waiting: "Import in progress", retrying: "Retry scheduled", attention: "Needs attention" };
+    backfilling: "Importing history", completed: "Last run completed", waiting: "Import in progress", retrying: "Retry scheduled", attention: "Needs attention" };
+  const now = Date.now();
+  const validDate = (value: string | null, allowFuture: boolean) => {
+    const timestamp = value ? Date.parse(value) : NaN;
+    return Number.isFinite(timestamp) && (allowFuture || timestamp <= now) ? new Date(timestamp) : null;
+  };
+  const lastFinished = validDate(status.lastFinishedAt, false);
+  const nextRun = validDate(status.nextRunAt, true);
+  const dateLabel = (date: Date) => `${new Intl.DateTimeFormat("en-CA", { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" }).format(date)} UTC`;
   async function change() {
     setBusy(true); setError("");
     try {
@@ -26,18 +35,25 @@ export default function AutomaticSyncControl({ provider, connectionId, accountNa
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Please try again."); }
     finally { setBusy(false); }
   }
-  const detail = !status.configured ? "Background service is being activated."
-    : status.enabled && !status.healthy ? "The background service is delayed. Manual sync remains available."
+  const detail = health?.state === "reauthorize" ? "Reconnect this account before automatic or manual imports can resume."
+    : !status.configured ? "Automatic updates are unavailable. Your saved records are unchanged."
+    : status.enabled && !status.healthy ? "The background service is delayed. Review this account's status before requesting a manual sync."
     : status.status === "backfilling" ? "Continuing saved history in small batches. Reports stay provisional until the import finishes."
-    : status.enabled ? `Refreshes about every ${status.intervalMinutes} minutes, including when this tab is closed.`
+    : status.status === "retrying" ? "Automatic updates will retry at the scheduled time. Review the last completed import before relying on current results."
+    : status.enabled ? `Checks are scheduled about every ${status.intervalMinutes} minutes, including when this tab is closed.`
     : "Automatically import new records and continue saved history. Reviewed sources update reports; test and unapproved sources stay excluded.";
   return <section className="automatic-sync-control" aria-label={`Automatic sync for ${accountName}`}>
-    <div className="automatic-sync-heading"><strong>Automatic sync</strong><span data-active={status.enabled}>{labels[status.status] ?? "Needs attention"}</span></div>
+    <div className="automatic-sync-heading"><strong>Automatic sync</strong><span data-active={status.enabled} data-health-tone={status.status === "completed" ? "neutral" : undefined}>{labels[status.status] ?? "Needs attention"}</span></div>
     <p>{detail}</p>
+    {health && <p role="status">{health.detail}</p>}
+    {lastFinished ? <small>Last run finished: <time dateTime={lastFinished.toISOString()}>{dateLabel(lastFinished)}</time></small>
+      : status.status !== "off" && <small>Last run time is unavailable.</small>}
     {!status.enabled && status.canManage && <details><summary>Data access and consent</summary><p>Enabling automatic sync authorizes Vanteloq to continue reading this connected account while you are signed out. It uses {posSyncDataCategories(provider).map(value => value.toLowerCase()).join("; ")}. Pause here or disconnect the account to stop future imports. This does not approve staged data for reports.</p></details>}
-    {status.enabled && status.nextRunAt && <small>Next check: {new Date(status.nextRunAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</small>}
+    {status.enabled && (nextRun ? <small>{nextRun.getTime() < now ? "Scheduled check overdue: " : "Next scheduled check: "}<time dateTime={nextRun.toISOString()}>{dateLabel(nextRun)}</time></small>
+      : <small>Next check time is unavailable.</small>)}
     {status.lastErrorCode && <small role="status">Sync needs attention: {status.lastErrorCode.toLowerCase().replaceAll("_", " ")}.</small>}
-    {status.canManage && <button type="button" disabled={busy || !status.configured} onClick={() => void change()}
+    {status.canManage && <button type="button" disabled={busy || !status.configured || (!status.enabled && health?.state === "reauthorize")} onClick={() => void change()}
+      title={!status.enabled && health?.state === "reauthorize" ? "Reconnect this account before enabling automatic imports." : undefined}
       aria-label={`${status.enabled ? "Pause" : "Enable"} automatic sync for ${accountName}`}>
       {busy ? "Saving…" : status.enabled ? "Pause automatic sync" : "Enable automatic sync"}
     </button>}

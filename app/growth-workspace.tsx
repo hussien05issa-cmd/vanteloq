@@ -5,6 +5,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import IntegrationBrandLogo from "./integration-brand-logo";
 import MarketingReporting from "./marketing-reporting";
+import MarketingSourceOverview, { type MarketingReportTarget } from "./marketing-source-overview";
 import MarketingWorkbench, { JourneyCoverageCard, type JourneyCoverage } from "./marketing-workbench";
 import { comparableSearchSeries } from "../domain/growth-intelligence";
 import type { MarketingPlanDraft } from "../domain/marketing-workbench";
@@ -263,7 +264,7 @@ export function MeasurementTrend({ rows, metric, labelText }: { rows: GrowthData
   </div>;
 }
 
-function ProviderMeasurementCard({ provider, rows }: { provider: "google" | "meta"; rows: GrowthData["measurementSeries"] }) {
+function ProviderMeasurementCard({ provider, rows, onReport }: { provider: "google" | "meta"; rows: GrowthData["measurementSeries"]; onReport: (target: MarketingReportTarget) => void }) {
   const providerRows = rows.filter((row) => row.provider === provider);
   const google = provider === "google";
   if (!providerRows.length) return <article className={`card marketing-measurement-card ${provider}`}>
@@ -295,7 +296,7 @@ function ProviderMeasurementCard({ provider, rows }: { provider: "google" | "met
         return <span key={metric}><small>{measurementLabels[metric]}{resource.dataset === "google_business_profile" ? " · latest reported day" : ""}</small><b>{!present ? "Not available" : metric === "meta_spend" || metric === "google_ads_spend" ? "See currency in Reports" : value.toLocaleString("en-CA", { maximumFractionDigits: 2 })}</b></span>;
       })}</div>
       <MeasurementTrend rows={resourceRows} metric={primaryMetric} labelText={measurementLabels[primaryMetric]} />
-      <footer>{resource.dataset === "google_search_console" ? <><span>Search CTR <b>{metricRatio(resourceRows.some((row) => row.metrics.search_clicks !== undefined) ? metricTotal(resourceRows, "search_clicks") : null, metricTotal(resourceRows, "search_impressions"), 100)?.toFixed(1) ?? "Not available"}{metricTotal(resourceRows, "search_impressions") > 0 ? "%" : ""}</b></span><span>Impression-weighted position <b>{weightedMetricAverage(resourceRows, "search_position", "search_impressions")?.toFixed(1) ?? "Not available"}</b></span></> : <span>Open Reports for matching periods, source details and correctly scoped comparisons.</span>}</footer>
+      <footer>{resource.dataset === "google_search_console" ? <><span>Search CTR <b>{metricRatio(resourceRows.some((row) => row.metrics.search_clicks !== undefined) ? metricTotal(resourceRows, "search_clicks") : null, metricTotal(resourceRows, "search_impressions"), 100)?.toFixed(1) ?? "Not available"}{metricTotal(resourceRows, "search_impressions") > 0 ? "%" : ""}</b></span><span>Impression-weighted position <b>{weightedMetricAverage(resourceRows, "search_position", "search_impressions")?.toFixed(1) ?? "Not available"}</b></span></> : <span>Saved imported measurements. Check the exact source and reporting period before comparing.</span>}<button type="button" onClick={() => onReport({ selectionId, days: 28 })}>Open source report →</button></footer>
     </article>;
   })}</>;
 }
@@ -334,9 +335,8 @@ type GoogleReview = { name: string; reviewerName: string; starRating: string; co
 type MetaCampaign = { id: string; name: string; status: "ACTIVE" | "PAUSED" | "ARCHIVED" | "DELETED" | "UNKNOWN"; effectiveStatus: string; objective: string | null; dailyBudgetMinor: number | null; lifetimeBudgetMinor: number | null; budgetRemainingMinor: number | null; updatedTime: string | null };
 type MetaCampaignDirectory = { selectionId: string; accountRef: string; accountName: string; currency: string; currencyExponent: number; timezoneName: string; campaigns: MetaCampaign[]; fetchedAt: string };
 
-function GoogleVisibilityCommandCentre({ data, navigate }: { data: GrowthData; navigate: (view: "Integrations") => void }) {
+function GoogleVisibilityCommandCentre({ data, navigate, onReport }: { data: GrowthData; navigate: (view: "Integrations") => void; onReport: (target: MarketingReportTarget) => void }) {
   const profile = data.googleBusinessProfiles[0];
-  const profileRows = data.measurementSeries.filter((row) => row.dataset === "google_business_profile" && row.selectionId === profile?.selectionId);
   const adsRows = data.measurementSeries.filter((row) => row.dataset === "google_ads");
   const [reviews, setReviews] = useState<GoogleReview[]>([]);
   const [reviewBusy, setReviewBusy] = useState(false);
@@ -367,21 +367,12 @@ function GoogleVisibilityCommandCentre({ data, navigate }: { data: GrowthData; n
       await fetchReviews();
     } catch (error) { setReviewError(error instanceof Error ? error.message : "The reply could not be published."); setReviewBusy(false); }
   };
-  const latestProfile = profileRows.at(-1);
-  const visibility = [
-    ["Mobile Search views", latestProfile?.metrics.gbp_search_mobile_impressions],
-    ["Mobile Maps views", latestProfile?.metrics.gbp_maps_mobile_impressions],
-    ["Call clicks", latestProfile?.metrics.gbp_call_clicks],
-    ["Direction requests", latestProfile?.metrics.gbp_direction_requests],
-    ["Website clicks", latestProfile?.metrics.gbp_website_clicks],
-  ] as const;
   return <section className="google-command-centre" aria-label="Google visibility command centre">
     <article className="card google-visibility-card">
       <header><div><p className="card-kicker">GOOGLE VISIBILITY</p><h3>{profile?.name ?? "Business Profile connection required"}</h3></div><a href="https://business.google.com/" target="_blank" rel="noreferrer">Open Business Profile ↗</a></header>
-      <div className="google-visibility-kpis">{visibility.map(([name, value]) => <span key={name}><small>{name}</small><b>{value !== undefined && Number.isFinite(value) ? value.toLocaleString("en-CA") : "Not available"}</b></span>)}</div>
-      <p>{latestProfile ? `Original daily measures for ${latestProfile.metricDate}. No device or date totals are combined here.` : "Open Reports after approval to retrieve the original Business Profile measures."}</p>
-      <div className="visibility-checklist"><b>Visibility checklist</b><ul><li className={profile ? "done" : ""}>Authorized and mapped Business Profile location</li><li className={profileRows.length ? "done" : ""}>Provider measurements received; check their reporting date</li><li className={data.profileChecklist.actionRequiredCount === 0 ? "done" : ""}>Website, phone and business-hours records reviewed</li><li className={adsRows.length ? "done" : ""}>Google Ads performance connected for spend and conversion review</li></ul></div>
-      <footer><button onClick={() => navigate("Integrations")}>{profile ? "Manage Google sources" : "Connect Google"}</button><a href="https://search.google.com/search-console/" target="_blank" rel="noreferrer">Search Console</a><a href="https://ads.google.com/" target="_blank" rel="noreferrer">Google Ads</a></footer>
+      <p>Business Profile interactions are requested on demand. Choose a profile in Google and Meta performance above, or open this profile&apos;s full report.</p>
+      <div className="visibility-checklist"><b>Visibility checklist</b><ul><li className={profile ? "done" : ""}>Authorized and mapped Business Profile location</li><li className={data.profileChecklist.actionRequiredCount === 0 ? "done" : ""}>Website, phone and business-hours records reviewed</li><li className={adsRows.length ? "done" : ""}>Google Ads performance connected for spend and conversion review</li></ul></div>
+      <footer>{profile && <button type="button" onClick={() => onReport({ selectionId: profile.selectionId, days: 28 })}>View profile interactions →</button>}<button onClick={() => navigate("Integrations")}>{profile ? "Manage Google sources" : "Connect Google"}</button><a href="https://search.google.com/search-console/" target="_blank" rel="noreferrer">Search Console</a><a href="https://ads.google.com/" target="_blank" rel="noreferrer">Google Ads</a></footer>
     </article>
     <article className="card google-review-centre">
       <header><div><p className="card-kicker">REVIEW RESPONSE CENTRE</p><h3>Reply with a human check</h3></div><button disabled={!profile || reviewBusy} onClick={() => void fetchReviews()}>{reviewBusy ? "Loading…" : reviews.length ? "Refresh" : "Load reviews"}</button></header>
@@ -396,7 +387,7 @@ function GoogleVisibilityCommandCentre({ data, navigate }: { data: GrowthData; n
   </section>;
 }
 
-function MetaAdsCommandCentre({ data, navigate, canOptimize }: { data: GrowthData; navigate: (view: "Integrations") => void; canOptimize: boolean }) {
+function MetaAdsCommandCentre({ data, navigate, canOptimize, onReport }: { data: GrowthData; navigate: (view: "Integrations") => void; canOptimize: boolean; onReport: (target: MarketingReportTarget) => void }) {
   const selection = data.metaAdAccounts[0];
   const metricRows = data.measurementSeries.filter((row) => row.dataset === "meta_ads" && row.selectionId === selection?.selectionId);
   const [directory, setDirectory] = useState<MetaCampaignDirectory | null>(null);
@@ -451,7 +442,7 @@ function MetaAdsCommandCentre({ data, navigate, canOptimize }: { data: GrowthDat
 
   return <section className="meta-command-centre card" aria-label="Meta advertising command centre">
     <header><div><p className="card-kicker">META ADS CONTROL</p><h3>{directory?.accountName ?? selection?.name ?? "Meta advertising connection required"}</h3><span>{directory ? `${directory.currency} · ${directory.timezoneName}` : "Spend intelligence and owner-confirmed campaign controls"}</span></div><div><button onClick={() => navigate("Integrations")}>{selection ? "Manage connection" : "Connect Meta"}</button><button disabled={!selection || Boolean(busyCampaignId)} onClick={() => void loadCampaigns()}>{busyCampaignId === "loading" ? "Loading…" : directory ? "Refresh campaigns" : "Load campaigns"}</button></div></header>
-    <div className="meta-ad-kpis"><span><small>Spend and cost per click</small><b>See Reports</b><small>Verified account currency required</small></span><span><small>Impressions</small><b>{metricRows.some((row) => row.metrics.meta_impressions !== undefined) ? impressions.toLocaleString("en-CA") : "Not available"}</b></span><span><small>All ad clicks</small><b>{metricRows.some((row) => row.metrics.meta_clicks !== undefined) ? clicks.toLocaleString("en-CA") : "Not available"}</b></span><span><small>Reporting dates</small><b>{metricRows.length ? `${metricRows[0].metricDate} to ${metricRows.at(-1)?.metricDate}` : "Not available"}</b></span></div>
+    <div className="meta-ad-kpis"><span><small>Spend and cost per click</small>{selection ? <button type="button" onClick={() => onReport({ selectionId: selection.selectionId, days: 28 })}>Open account report →</button> : <b>Account required</b>}<small>Uses the selected account&apos;s reported currency</small></span><span><small>Impressions</small><b>{metricRows.some((row) => row.metrics.meta_impressions !== undefined) ? impressions.toLocaleString("en-CA") : "Not available"}</b></span><span><small>All ad clicks</small><b>{metricRows.some((row) => row.metrics.meta_clicks !== undefined) ? clicks.toLocaleString("en-CA") : "Not available"}</b></span><span><small>Reporting dates</small><b>{metricRows.length ? `${metricRows[0].metricDate} to ${metricRows.at(-1)?.metricDate}` : "Not available"}</b></span></div>
     {error && <div className="growth-message error" role="alert">{error}</div>}
     {notice && <div className="growth-message success" role="status">{notice}</div>}
     {!selection ? <div className="marketing-metric-empty"><b>Select a Meta ad account</b><span>Authorize Meta, choose the exact account and approve its sample before Vanteloq displays or changes campaign data.</span></div> : !directory ? <div className="marketing-metric-empty"><b>Campaigns load only when requested</b><span>Use Load campaigns to retrieve the current account state directly from Meta. Vanteloq does not invent or cache campaign controls.</span></div> : !directory.campaigns.length ? <div className="marketing-metric-empty"><b>No campaigns returned</b><span>The selected advertising account did not return any campaigns.</span></div> : <div className="meta-campaign-list">{directory.campaigns.map((campaign) => <article key={campaign.id}>
@@ -479,6 +470,11 @@ export default function GrowthWorkspace({ currency, navigate, activeLocationId, 
   const [data, setData] = useState<GrowthData | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [tab, setTab] = useState<Tab>("overview");
+  const [reportTarget, setReportTarget] = useState<MarketingReportTarget | null>(null);
+  const openSourceReport = (target: MarketingReportTarget) => {
+    setReportTarget(target); setTab("reports");
+    window.requestAnimationFrame(() => document.getElementById("growth-panel-reports")?.focus());
+  };
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
@@ -633,14 +629,14 @@ export default function GrowthWorkspace({ currency, navigate, activeLocationId, 
     <div id={`growth-panel-${tab}`} role="tabpanel" aria-labelledby={`growth-tab-${tab}`} tabIndex={0}>
     {error && <div className="growth-message error" role="alert">{error}</div>}
     {notice && <div className="growth-message success" role="status">{notice}</div>}
-    {tab === "reports" && <MarketingReporting key={activeLocationId ?? "all"} locationId={activeLocationId ?? null} navigate={navigate} onPlan={data?.canManage ? prepareCalendarDraft : undefined}/>}
+    {tab === "reports" && <MarketingReporting key={activeLocationId ?? "all"} locationId={activeLocationId ?? null} initialSourceId={reportTarget?.selectionId} initialDays={reportTarget?.days} navigate={navigate} onPlan={data?.canManage ? prepareCalendarDraft : undefined}/>}
     {tab === "plan" && data && <MarketingWorkbench key={activeLocationId ?? "all"} canManage={data.canManage} website={data.profile.websiteUrl} onPlan={prepareCalendarDraft} onReports={() => setTab("reports")}/>}
 
     {tab === "overview" && <>
       {data && <section className="mw-next-action" aria-label="Next marketing step"><div><small>YOUR NEXT USEFUL STEP</small><h3>{!data.profile.saved ? "Start with the customer and the outcome." : !data.measurementSeries.length ? "Establish a baseline before changing spend." : "Turn an observed result into a measured action."}</h3><p>{!data.profile.saved ? "Describe your audience, offer and goal. Recommendations will use that saved context." : !data.measurementSeries.length ? "No saved provider measurements are available in this scope. Review your sources, then approve a sample. You can still prepare a campaign plan." : "Review the report for the right source and date range. Carry the evidence into your calendar and decide how you will judge the result."}</p></div><button type="button" onClick={() => !data.profile.saved ? setTab("context") : !data.measurementSeries.length ? navigate("Integrations") : setTab("reports")}>{!data.profile.saved ? "Set business context" : !data.measurementSeries.length ? "Review connections" : "Review reports"} →</button></section>}
       <section className="growth-summary-grid">
         <article><small>MATCHED REVENUE</small><b>{data?.growth.status === "available" && data.journeyCoverage?.revenueAvailable && data.journeyCoverage.matchedTransactions > 0 ? money(totals.revenue, currency) : "Not available"}</b><span>Recorded first touch, not incremental sales</span></article>
-        <article><small>RECORDED LEADS</small><b>{data?.growth.status === "available" ? totals.leads.toLocaleString("en-CA") : "Not available"}</b><span>{data?.growth.status === "available" ? `${totals.customers.toLocaleString("en-CA")} journeys include a customer event` : "Awaiting recorded journey evidence"}</span></article>
+        <article><small>RECORDED JOURNEY LEADS</small><b>{data?.growth.status === "available" ? totals.leads.toLocaleString("en-CA") : "Not available"}</b><span>{data?.growth.status === "available" ? `Journeys with a lead or phone-call event · ${totals.customers.toLocaleString("en-CA")} include a customer event` : "Awaiting recorded journey evidence"}</span></article>
         <article><small>SEARCH OBSERVATIONS</small><b>{data?.searchSeries.length ?? 0}</b><span>Owner or verified source records</span></article>
         <article><small>PLANNED WORK</small><b>{data?.calendar.filter((item) => item.status !== "completed" && item.status !== "cancelled").length ?? 0}</b><span>Open calendar entries</span></article>
       </section>
@@ -651,13 +647,14 @@ export default function GrowthWorkspace({ currency, navigate, activeLocationId, 
         {data?.connections.map((connection) => <article className={`card growth-connection ${connection.status}`} key={`${connection.providerId}:${connection.connectionId ?? "setup"}`}><div><IntegrationBrandLogo name={connection.providerId === "google" ? "Google" : "Meta"} compact /><div><b>{connection.provider}</b><small>{connection.availableNow}</small></div></div><footer><em>{connection.label}</em><button onClick={() => navigate("Integrations")}>{connection.status === "connected" ? "Manage" : "Set up"} →</button></footer></article>)}
       </section>
 
-      <section className="marketing-provider-metrics" aria-label="Connected marketing measurements">
-        <ProviderMeasurementCard provider="google" rows={data?.measurementSeries ?? []} />
-        <ProviderMeasurementCard provider="meta" rows={data?.measurementSeries ?? []} />
-      </section>
+      <MarketingSourceOverview locationId={activeLocationId} onReport={openSourceReport} onConnections={() => navigate("Integrations")} onJourneys={() => setTab("data")}/>
+      <details className="growth-saved-measurements"><summary>Saved imported measurements</summary><section className="marketing-provider-metrics" aria-label="Saved marketing measurements">
+        <ProviderMeasurementCard provider="google" rows={data?.measurementSeries ?? []} onReport={openSourceReport}/>
+        <ProviderMeasurementCard provider="meta" rows={data?.measurementSeries ?? []} onReport={openSourceReport}/>
+      </section></details>
       {data && <LocalReadinessPanels data={data} />}
-      {data && <GoogleVisibilityCommandCentre data={data} navigate={navigate} />}
-      {data && <MetaAdsCommandCentre data={data} navigate={navigate} canOptimize={canOptimize} />}
+      {data && <GoogleVisibilityCommandCentre data={data} navigate={navigate} onReport={openSourceReport}/>}
+      {data && <MetaAdsCommandCentre data={data} navigate={navigate} canOptimize={canOptimize} onReport={openSourceReport}/>}
 
       <section className="growth-overview-grid">
         <article className="card growth-recommendations">

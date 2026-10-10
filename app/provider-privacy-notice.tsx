@@ -28,6 +28,7 @@ export default function ProviderPrivacyNotice({ provider, scopes, preview = fals
   if (!key) return null;
   const policy = providerPrivacy[key];
   const marketing = key === "google" || key === "meta";
+  const slackRead = key === "slack" && scopes?.includes("channels:history");
   return createPortal(
     <WorkspaceAppearanceBoundary><div className="provider-privacy-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onComplete(false); }}>
       <section className="provider-privacy-dialog" ref={ref} role="dialog" aria-modal="true" aria-labelledby="provider-privacy-heading" aria-describedby="provider-privacy-summary" tabIndex={-1}>
@@ -35,7 +36,8 @@ export default function ProviderPrivacyNotice({ provider, scopes, preview = fals
         <div className="provider-privacy-content">
           <p id="provider-privacy-summary">Review what this connection permits. Choose an account you are authorised to manage, then review {policy.name}’s own permission screen before granting access.</p>
           <ProviderPermissionSummary provider={key} scopes={scopes}/>
-          <section className="provider-data-use"><h3>How your workspace uses it</h3><p>{connectionDataUse(key)}</p>
+          <section className="provider-data-use"><h3>How your workspace uses it</h3><p>{slackRead ? "The workspace owner may manually load a recent page from the selected public channel. Slack grants broader public-channel scope where the app is a member, but Vanteloq restricts its reader to the installation’s selected channel. Make sure you have authority and have provided any required notices to channel members." : connectionDataUse(key)}</p>
+            {slackRead && <p>Message text, Slack author identifiers and timestamps are held only in the open panel. They are not stored in team messages or sent to AI. No private channels, direct messages, shared channels, files or thread contents are read. Invite the app to the selected channel in Slack before loading messages.</p>}
             {marketing && <p>Selected identifiers, connection status and derived daily measurements are stored in your workspace. Detailed report responses are fetched on demand.{key === "google" && " Google Business Profile reports and reviews are excluded from stored marketing summaries and AI evidence."}</p>}
             <p>Connection credentials are encrypted. Only authorised workspace members can use the connected data within their access permissions. AI analysis requires its own data-use agreement.</p>
           </section>

@@ -1,5 +1,5 @@
 "use client";
-import { type ReactNode, type RefObject, useId, useLayoutEffect, useRef, useState } from "react";
+import { type ReactNode, type RefObject, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { WorkspaceAppearanceBoundary } from "./workspace-appearance";
 import { surfaceFrames } from "../domain/surface-motion";
@@ -8,12 +8,19 @@ import { useMotionPreference } from "./use-motion-preference";
 import "./control-surfaces.css";
 
 /** One shared, interruptible origin-to-panel transition, with a static fallback. */
-export default function ExpandingSurface({ open, onClose, originRef, title, children }: { open: boolean; onClose: () => void; originRef: RefObject<HTMLElement | null>; title: string; children: ReactNode }) {
+export default function ExpandingSurface({ open, onClose, onAfterClose, originRef, title, children }: { open: boolean; onClose: () => void; onAfterClose?: () => void; originRef: RefObject<HTMLElement | null>; title: string; children: ReactNode }) {
   const [present, setPresent] = useState(false);
   const [inWorkspace, setInWorkspace] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null), animationRef = useRef<Animation | null>(null), generation = useRef(0);
   const titleId = useId(), motion = useMotionPreference();
+  const wasPresent = useRef(false);
   useModalFocus(panelRef, present, onClose);
+  // Run after useModalFocus restores the opener, including the static fallback.
+  // An interrupted close or an unmount must never activate a pending action.
+  useEffect(() => {
+    if (present) { wasPresent.current = true; return; }
+    if (!open && wasPresent.current) { wasPresent.current = false; onAfterClose?.(); }
+  }, [open, present, onAfterClose]);
   // Defer mounting until after hydration, preserving an interruptible opening.
   useLayoutEffect(() => { let cancelled = false; if (open) queueMicrotask(() => { if (!cancelled) { setInWorkspace(Boolean(originRef.current?.closest(".operating-shell[data-workspace-theme]"))); setPresent(true); } }); return () => { cancelled = true; }; }, [open, originRef]);
   useLayoutEffect(() => {

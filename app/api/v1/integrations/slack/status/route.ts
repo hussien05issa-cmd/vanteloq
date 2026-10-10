@@ -3,7 +3,8 @@ import { getDb } from "../../../../../../db";
 import { integrationConnections } from "../../../../../../db/schema";
 import { requireIntegrationAccess } from "../../../../../../server/integrations/free-selection";
 import { handleApi, jsonResponse } from "../../../../../../server/api";
-import { SLACK_PROVIDER, SLACK_SCOPES, slackReadiness } from "../../../../../../server/integrations/slack";
+import { SLACK_PROVIDER, slackModeForScopes, slackScopesForMode, slackReadiness } from "../../../../../../server/integrations/slack";
+import type { SlackMode } from "../../../../../../domain/slack-conversations";
 import { pendingSlackCleanupConnectionIds } from "../../../../../../server/integrations/slack-grant";
 import { requirePermission } from "../../../../../../server/permissions";
 
@@ -34,8 +35,11 @@ export async function GET(request: Request) {
         return [];
       }
     })();
+    let mode: SlackMode = "single_channel_notifications";
+    try { mode = slackModeForScopes(scopes); } catch { /* Unsupported grants never enable conversation reads. */ }
     return jsonResponse({
       connected: Boolean(connection),
+      mode,
       pendingRemovalConnectionIds: await pendingSlackCleanupConnectionIds(context.organizationId),
       connection: connection ? {
         id: connection.id,
@@ -49,9 +53,10 @@ export async function GET(request: Request) {
         updatedAt: connection.updatedAt.toISOString(),
       } : null,
       leastPrivilege: {
-        requestedScopes: [...SLACK_SCOPES],
+        requestedScopes: [...slackScopesForMode(mode)],
         approvedChannelOnly: true,
-        readsMessages: false,
+        readsMessages: Boolean(connection) && mode === "single_channel_conversations",
+        ownerOnlyConversationReads: true,
         accessesFiles: false,
       },
       readiness: slackReadiness(),

@@ -219,3 +219,10 @@
 :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .billing-settings .custom-plan-cta.custom-plan-callout :is(h2,h3) { color:var(--ws-ink)!important; }
 :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .billing-settings .custom-plan-cta.custom-plan-callout>a.custom-plan-callout-action { background:var(--ws-primary)!important; color:var(--ws-on-primary)!important; border-color:var(--ws-primary)!important; }
 :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .billing-settings .custom-plan-cta.custom-plan-callout>a.custom-plan-callout-action:hover { background:var(--ws-primary-hover)!important; }
+/* Feed recovery uses the same readable, touch-sized controls as the workspace. */
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .communications-page .sync-health { align-items:flex-start; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .communications-page .sync-health>span { min-width:0; gap:3px; overflow-wrap:anywhere; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .communications-page .sync-health :is(b,small) { font-size:12px; line-height:1.5; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .communications-page .sync-health button { align-self:flex-start; min-height:40px; margin-top:5px; padding:8px 12px; border:1px solid var(--ws-control); border-radius:9px; background:var(--ws-panel); color:var(--ws-blue); font:inherit; font-size:13px; font-weight:650; cursor:pointer; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .communications-page .sync-health button:focus-visible { outline:3px solid var(--ws-blue); outline-offset:3px; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .communications-page .sync-health button:disabled { opacity:.7; cursor:wait; }

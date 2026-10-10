@@ -16,10 +16,13 @@ import {
   exchangeSlackAuthorizationCode,
   SLACK_PROVIDER,
   slackStateHash,
+  slackModeForStoredScopes,
+  slackCredentialEnvelope,
 } from "../../../../../../server/integrations/slack";
 import { acquireSlackGrantLease, activateSlackGrant, requireNoPendingSlackCleanup } from "../../../../../../server/integrations/slack-grant";
 import { releaseIntegrationSyncLease } from "../../../../../../server/integrations/connection";
 import { requirePermission } from "../../../../../../server/permissions";
+import { validateSlackPublicChannel } from "../../../../../../server/integrations/slack-conversation";
 
 function returnUrl(request: Request, status: "connected" | "declined" | "failed") {
   return new URL(`/?integration=slack&connection=${status}`, new URL(request.url).origin).toString();
@@ -127,13 +130,15 @@ export async function GET(request: Request) {
     )).returning({ stateHash: integrationOAuthStates.stateHash }));
     if (!consumed) throw new ApiError(400, "SLACK_STATE_INVALID", "The Slack authorization attempt expired or was already used. Start again.");
 
-    const [pending] = await callbackStage("pending_lookup", () => getDb().select({ id: integrationConnections.id, sourceNamespace: integrationConnections.sourceNamespace }).from(integrationConnections).where(and(
+    const [pending] = await callbackStage("pending_lookup", () => getDb().select({ id: integrationConnections.id, sourceNamespace: integrationConnections.sourceNamespace, scopesJson: integrationConnections.scopesJson }).from(integrationConnections).where(and(
       eq(integrationConnections.id, storedState.connectionId),
       eq(integrationConnections.organizationId, context.organizationId),
       eq(integrationConnections.provider, SLACK_PROVIDER),
       eq(integrationConnections.status, "pending"),
     )).limit(1));
     if (!pending) throw new ApiError(409, "SLACK_CONNECTION_MISSING", "The Slack connection attempt is no longer available. Start again.");
+    const mode = slackModeForStoredScopes(pending.scopesJson);
+    if (mode === "single_channel_conversations" && context.role !== "owner") throw new ApiError(403, "SLACK_CONVERSATION_OWNER_REQUIRED", "The account that approved Slack conversation access must still be the workspace owner.");
 
     if (providerError) {
       await getDb().delete(integrationConnections).where(and(
@@ -159,7 +164,8 @@ export async function GET(request: Request) {
     const lease = await acquireSlackGrantLease(context.organizationId, pending.id, 10 * 60_000);
     try {
     await requireNoPendingSlackCleanup(context.organizationId);
-    const grant = await callbackStage("token_exchange", () => exchangeSlackAuthorizationCode(code));
+    const grant = await callbackStage("token_exchange", () => exchangeSlackAuthorizationCode(code, fetch, mode));
+    if (mode === "single_channel_conversations") await callbackStage("public_channel_validation", () => validateSlackPublicChannel(slackCredentialEnvelope(grant, context.userId)));
     const [alreadyAssigned] = await callbackStage("assignment_lookup", () => getDb().select({
       id: integrationConnections.id,
       organizationId: integrationConnections.organizationId,
@@ -179,8 +185,9 @@ export async function GET(request: Request) {
     }
 
     const freshContext = await callbackActor(storedState);
+    if (mode === "single_channel_conversations" && freshContext.role !== "owner") throw new ApiError(403, "SLACK_CONVERSATION_OWNER_REQUIRED", "The account that approved Slack conversation access must still be the workspace owner.");
     await requireIntegrationCallbackAccess(freshContext, "slack", pending.id);
-    await callbackStage("grant_activation", () => activateSlackGrant(lease, pending.sourceNamespace, grant));
+    await callbackStage("grant_activation", () => activateSlackGrant(lease, pending.sourceNamespace, grant, mode === "single_channel_conversations" ? freshContext : undefined));
 
     await callbackStage("audit", () => recordAudit({
       request,
@@ -196,8 +203,8 @@ export async function GET(request: Request) {
         teamId: grant.teamId,
         channelId: grant.channelId,
         scopes: grant.scopes.join(","),
-        mode: "single_channel_notifications",
-        readsSlackMessages: false,
+        mode,
+        readsSlackMessages: mode === "single_channel_conversations",
         accessesSlackFiles: false,
       },
     }));
