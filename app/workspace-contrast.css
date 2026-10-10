@@ -180,3 +180,5 @@
 :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.budget-bars footer>span,.bookloq-period-toolbar>span) { color:var(--ws-muted)!important; font-size:12px!important; line-height:1.5; }
 :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .budget-bars footer>b { color:var(--ws-ink)!important; font-size:12px!important; line-height:1.5; }
 :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.close-state.not_started,.close-state.in_progress) { background:var(--ws-raised)!important; color:var(--ws-muted)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .growth-visual-hero>div>p { font-size:12px!important; line-height:1.5; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .fc-day.unavailable>span { color:var(--ws-muted)!important; }
