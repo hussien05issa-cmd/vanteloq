@@ -827,6 +827,8 @@ function DatedReportControls({ organizationId, canExport }: { organizationId: st
   const [applied, setApplied] = useState({ from: "", to: "" });
   const [refresh, setRefresh] = useState(0);
   const [accountId, setAccountId] = useState<string | null>(null), [after, setAfter] = useState<string | null>(null);
+  const [focusAccountId, setFocusAccountId] = useState<string | null>(null);
+  const accountFocusComplete = useCallback(() => setFocusAccountId(null), []);
   const defaultLoaded = useRef(false);
   const defaults = useCallback((metadata: BookloqDatedReport["metadata"]) => {
     if (!defaultLoaded.current) { defaultLoaded.current = true; setFrom(metadata.from); setTo(metadata.to); }
@@ -837,8 +839,8 @@ function DatedReportControls({ organizationId, canExport }: { organizationId: st
   if (accountId) params.set("accountId", accountId);
   if (after) params.set("after", after);
   const path = "/api/v1/bookloq/reports?" + params;
-  function selectReport(next: BookloqReportKind) { setReport(next); setAccountId(null); setAfter(null); }
-  function apply(event: FormEvent) { event.preventDefault(); setApplied({ from, to }); setAccountId(null); setAfter(null); setRefresh(value => value + 1); }
+  function selectReport(next: BookloqReportKind) { setFocusAccountId(null); setReport(next); setAccountId(null); setAfter(null); }
+  function apply(event: FormEvent) { event.preventDefault(); setFocusAccountId(null); setApplied({ from, to }); setAccountId(null); setAfter(null); setRefresh(value => value + 1); }
   return <>
     <div className="bookloq-report-switch" aria-label="Financial report">{(["pnl", "balance", "trial"] as const).map(kind => <button key={kind} type="button" aria-pressed={report === kind} className={report === kind ? "active" : ""} onClick={() => selectReport(kind)}>{kind === "pnl" ? "Profit and loss" : kind === "balance" ? "Balance sheet" : "Trial balance"}</button>)}</div>
     <form className="bookloq-card bookloq-report-dates" onSubmit={apply} aria-label="Report dates" style={{ display: "flex", flexWrap: "wrap", alignItems: "end", gap: 16 }}>
@@ -847,12 +849,12 @@ function DatedReportControls({ organizationId, canExport }: { organizationId: st
       <button type="submit" className="bookloq-primary">Apply dates</button>
       <p style={{ flexBasis: "100%", margin: 0 }}>Dates follow your business time zone. The first view uses the current month through today. Editing dates takes effect when you select Apply dates.</p>
     </form>
-    <DatedReportRead key={path + ":" + refresh} path={path} organizationId={organizationId} report={report} canExport={canExport} defaults={defaults} retry={() => setRefresh(value => value + 1)} selectAccount={id => { setAccountId(id); setAfter(null); }} nextPage={setAfter} firstPage={() => setAfter(null)} hasPrevious={Boolean(after)}/>
+    <DatedReportRead key={path + ":" + refresh} path={path} organizationId={organizationId} report={report} canExport={canExport} defaults={defaults} retry={() => setRefresh(value => value + 1)} selectAccount={id => { setFocusAccountId(id === null ? accountId : null); setAccountId(id); setAfter(null); }} focusAccountId={focusAccountId} accountFocusComplete={accountFocusComplete} nextPage={setAfter} firstPage={() => setAfter(null)} hasPrevious={Boolean(after)}/>
   </>;
 }
 
 /** The keyed reader cancels on any account, period, report or business change. */
-function DatedReportRead({ path, organizationId, report, canExport, defaults, retry, selectAccount, nextPage, firstPage, hasPrevious }: { path: string; organizationId: string; report: BookloqReportKind; canExport: boolean; defaults: (metadata: BookloqDatedReport["metadata"]) => void; retry: () => void; selectAccount: (id: string | null) => void; nextPage: (cursor: string) => void; firstPage: () => void; hasPrevious: boolean }) {
+function DatedReportRead({ path, organizationId, report, canExport, defaults, retry, selectAccount, focusAccountId, accountFocusComplete, nextPage, firstPage, hasPrevious }: { path: string; organizationId: string; report: BookloqReportKind; canExport: boolean; defaults: (metadata: BookloqDatedReport["metadata"]) => void; retry: () => void; selectAccount: (id: string | null) => void; focusAccountId: string | null; accountFocusComplete: () => void; nextPage: (cursor: string) => void; firstPage: () => void; hasPrevious: boolean }) {
   const [result, setResult] = useState<BookloqDatedReport | null>(null), [error, setError] = useState("");
   const [delayed, setDelayed] = useState(false), [exporting, setExporting] = useState(false), [exportError, setExportError] = useState("");
   const exportController = useRef<AbortController | null>(null);
@@ -895,7 +897,7 @@ function DatedReportRead({ path, organizationId, report, canExport, defaults, re
       <div className="bookloq-actions"><button type="button" onClick={retry}>Refresh report</button>{canExport && <button type="button" disabled={exporting} onClick={() => void exportCsv(false)}>{exporting ? "Preparing CSV…" : "Export report CSV"}</button>}</div>
       {exportError && <p role="alert">{exportError}</p>}
     </article>
-    <DatedReportResults data={result} report={report} selectAccount={selectAccount}/>
+    <DatedReportResults data={result} report={report} selectAccount={selectAccount} focusAccountId={focusAccountId} accountFocusComplete={accountFocusComplete}/>
     {result.detail && <section className="bookloq-card"><h3>Account entries: {result.accounts.find(account => account.id === result.detail!.accountId)?.name}</h3><p>{result.detail.from ? shortDate(result.detail.from) + " through " : "All recorded history through "}{shortDate(result.detail.to)}. Up to 200 lines per page, newest entry date first. Reversals retain their own dates. A refreshed read may include newly posted or backdated entries.</p>
       <div className="bookloq-actions"><button type="button" onClick={() => selectAccount(null)}>Close account entries</button>{hasPrevious && <button type="button" onClick={firstPage}>First page</button>}{result.detail.nextCursor && <button type="button" onClick={() => nextPage(result.detail!.nextCursor!)}>Older entries</button>}{canExport && <button type="button" disabled={exporting} onClick={() => void exportCsv(true)}>Export account CSV</button>}</div>
       <DataTable headings={["Entry date", "Journal", "Source", "Debit", "Credit", "Recorded explanation"]} rows={result.detail.lines.map(line => [shortDate(line.entryDate), line.entryNumber, <span key="source">{label(line.sourceType)}{line.reversalOfEntryId ? " · Reverses " + line.reversalOfEntryId : ""}</span>, money(line.debitCents, result.metadata.currency), money(line.creditCents, result.metadata.currency), line.description || line.memo])}/>
@@ -903,7 +905,16 @@ function DatedReportRead({ path, organizationId, report, canExport, defaults, re
   </>;
 }
 
-export function DatedReportResults({ data, report, selectAccount }: { data: BookloqDatedReport; report: BookloqReportKind; selectAccount: (id: string) => void }) {
+export function DatedReportResults({ data, report, selectAccount, focusAccountId, accountFocusComplete }: { data: BookloqDatedReport; report: BookloqReportKind; selectAccount: (id: string) => void; focusAccountId?: string | null; accountFocusComplete?: () => void }) {
+  const accountButtons = useRef(new Map<string, HTMLButtonElement>());
+  useEffect(() => {
+    if (!focusAccountId) return;
+    const button = accountButtons.current.get(focusAccountId);
+    // The keyed reader recreates the table after closing. Restore only after
+    // that table commits, and never move focus the user placed elsewhere.
+    accountFocusComplete?.();
+    if (button?.isConnected && !button.disabled && (!document.activeElement || document.activeElement === document.body)) button.focus();
+  }, [focusAccountId, accountFocusComplete]);
   const currency = data.metadata.currency;
   const accounts = data.accounts.filter(account => report === "pnl" ? ["revenue", "expense"].includes(account.accountType) : report === "balance" ? ["asset", "liability", "equity"].includes(account.accountType) : true);
   const items: [string, number][] = report === "pnl" ? [["Operating revenue", data.profitAndLoss.operatingRevenueCents], ["Cost of goods sold", data.profitAndLoss.cogsCents], ["Gross profit", data.profitAndLoss.grossProfitCents], ["Operating expenses", data.profitAndLoss.operatingExpensesCents], ["Operating profit", data.profitAndLoss.operatingProfitCents], ["Other income", data.profitAndLoss.otherIncomeCents], ["Finance costs and income tax", data.profitAndLoss.financeAndTaxCents], ["Recorded net earnings", data.profitAndLoss.netProfitCents]]
@@ -916,7 +927,7 @@ export function DatedReportResults({ data, report, selectAccount }: { data: Book
     {difference !== 0 && <article className="bookloq-card" role="alert"><h3>Ledger difference requires review</h3><p>The recorded balance difference is {money(difference, currency)}. Review supporting journals before relying on these statements.</p></article>}
     <ReportSummary currency={currency} items={items}/>
     <p>{data.metadata.detailAvailable ? "Select an account to review the posted journal lines supporting its amount." : "Journal line details require individual payroll and banking transaction permissions."} Archived accounts retain their history.</p>
-    <DataTable headings={report === "trial" ? ["Code", "Account", "Debit balance", "Credit balance"] : ["Code", "Account", "Type", "Recorded balance"]} rows={accounts.map(account => [account.code, <button type="button" className="table-action" key={account.id} disabled={!data.metadata.detailAvailable} onClick={() => selectAccount(account.id)}>{account.name}{account.active ? "" : " (archived)"}</button>, ...(report === "trial" ? [money(Math.max(0, account.closingDebitCents - account.closingCreditCents), currency), money(Math.max(0, account.closingCreditCents - account.closingDebitCents), currency)] : [label(account.accountType), money(report === "pnl" ? account.periodBalanceCents : account.closingBalanceCents, currency)])])}/>
+    <DataTable headings={report === "trial" ? ["Code", "Account", "Debit balance", "Credit balance"] : ["Code", "Account", "Type", "Recorded balance"]} rows={accounts.map(account => [account.code, <button type="button" className="table-action" key={account.id} ref={button => { if (button) accountButtons.current.set(account.id, button); else accountButtons.current.delete(account.id); }} disabled={!data.metadata.detailAvailable} onClick={() => selectAccount(account.id)}>{account.name}{account.active ? "" : " (archived)"}</button>, ...(report === "trial" ? [money(Math.max(0, account.closingDebitCents - account.closingCreditCents), currency), money(Math.max(0, account.closingCreditCents - account.closingDebitCents), currency)] : [label(account.accountType), money(report === "pnl" ? account.periodBalanceCents : account.closingBalanceCents, currency)])])}/>
     {report === "balance" && <article className="bookloq-card"><LineText name="Recorded earnings through the as-of date, included in equity above" value={money(data.balanceSheet.recordedEarningsCents, currency)}/><p>This derived amount supplements the equity account rows. Closing journals already posted to equity are retained in those account balances.</p></article>}
   </>;
 }
