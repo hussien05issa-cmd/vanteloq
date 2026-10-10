@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
 import { createServer } from "node:http";
 import test, { describe } from "node:test";
+import { importPrivacyAcknowledgement } from "../domain/report-import-privacy.ts";
 import { Miniflare } from "miniflare";
 import { registerSupabaseTestServer } from "./helpers/supabase-loopback-transport.mjs";
 import { TERMS_OF_SERVICE_VERSION, PRIVACY_POLICY_VERSION, ACCOUNT_ACCEPTANCE_NOTICE_VERSION } from "../shared/legal-versions.ts";
@@ -672,11 +673,11 @@ test("migrations, tenant isolation and the complete intelligence-to-action flow 
       });
     }
     const importKey = crypto.randomUUID();
-    const imported = await dispatch(worker, environment, "/api/v1/daily-metrics", { method: "POST", ...owner, idempotencyKey: importKey, body: { importType: "daily_summary_csv", fileName: "verified.csv", rows } });
+    const imported = await dispatch(worker, environment, "/api/v1/daily-metrics", { method: "POST", ...owner, idempotencyKey: importKey, body: { importPrivacyAcknowledgement: importPrivacyAcknowledgement(), importType: "daily_summary_csv", fileName: "verified.csv", rows } });
     assert.equal(imported.status, 201);
     assert.equal((await imported.json()).import.rowCount, 60);
 
-    const replay = await dispatch(worker, environment, "/api/v1/daily-metrics", { method: "POST", ...owner, idempotencyKey: importKey, body: { importType: "daily_summary_csv", fileName: "verified.csv", rows } });
+    const replay = await dispatch(worker, environment, "/api/v1/daily-metrics", { method: "POST", ...owner, idempotencyKey: importKey, body: { importPrivacyAcknowledgement: importPrivacyAcknowledgement(), importType: "daily_summary_csv", fileName: "verified.csv", rows } });
     assert.equal(replay.status, 200);
     const replayBody = await replay.json();
     assert.equal(replayBody.replayed, true);
@@ -1579,7 +1580,7 @@ test("manual and CSV imports preserve connector ownership and remain distinguish
     };
     const protectedResponse = await dispatch(worker, environment, "/api/v1/daily-metrics", {
       method: "POST", ...workspace.owner, idempotencyKey: crypto.randomUUID(),
-      body: { importType: "manual_entry", rows: [{ ...baseRow, businessDate: "2026-08-09" }] },
+      body: { importPrivacyAcknowledgement: importPrivacyAcknowledgement(), importType: "manual_entry", rows: [{ ...baseRow, businessDate: "2026-08-09" }] },
     });
     assert.equal(protectedResponse.status, 409);
     assert.equal((await protectedResponse.json()).error.code, "IMPORT_PROVIDER_SOURCE_PROTECTED");
@@ -1590,7 +1591,7 @@ test("manual and CSV imports preserve connector ownership and remain distinguish
       method: "POST",
       ...workspace.owner,
       idempotencyKey: crypto.randomUUID(),
-      body: { importType: "manual_entry", fileName: "", rows: [{ ...baseRow, businessDate: "2026-08-10" }] },
+      body: { importPrivacyAcknowledgement: importPrivacyAcknowledgement(), importType: "manual_entry", fileName: "", rows: [{ ...baseRow, businessDate: "2026-08-10" }] },
     });
     assert.equal(manualResponse.status, 201);
     const manualImportId = (await manualResponse.json()).import.id;
@@ -1598,7 +1599,7 @@ test("manual and CSV imports preserve connector ownership and remain distinguish
       method: "POST",
       ...workspace.owner,
       idempotencyKey: crypto.randomUUID(),
-      body: { importType: "daily_summary_csv", fileName: "august.csv", rows: [{ ...baseRow, businessDate: "2026-08-11" }] },
+      body: { importPrivacyAcknowledgement: importPrivacyAcknowledgement(), importType: "daily_summary_csv", fileName: "august.csv", rows: [{ ...baseRow, businessDate: "2026-08-11" }] },
     });
     assert.equal(csvResponse.status, 201);
     const csvImportId = (await csvResponse.json()).import.id;
@@ -1633,7 +1634,7 @@ test("manual and CSV imports preserve connector ownership and remain distinguish
     ];
     const labourImport = await dispatch(worker, environment, "/api/v1/daily-metrics", {
       method: "POST", ...workspace.owner, idempotencyKey: crypto.randomUUID(),
-      body: { importType: "daily_summary_csv", fileName: "labour-evidence.csv", rows: labourRows },
+      body: { importPrivacyAcknowledgement: importPrivacyAcknowledgement(), importType: "daily_summary_csv", fileName: "labour-evidence.csv", rows: labourRows },
     });
     assert.equal(labourImport.status, 201, await labourImport.clone().text());
     for (const [date, expected] of [["2026-08-12", null], ["2026-08-13", 0]]) {

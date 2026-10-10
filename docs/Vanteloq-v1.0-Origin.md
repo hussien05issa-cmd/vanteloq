@@ -320,3 +320,15 @@ This dated record supplements the earlier launch audit. It does not turn pending
 - The privacy notice now describes this optional Slack use and its broader provider grant versus the selected-channel restriction. The updated notice must be accepted where the application requires it.
 
 Validation evidence for this pass is retained in the October 10 refinement receipt. Fictional component previews do not establish production provider delivery or reconciliation. Production restoration, representative capacity and the outstanding provider approval gates remain subject to their earlier acceptance requirements.
+
+### Report upload and import refinement
+
+The workspace header now offers **Import reports** wherever the member has an available import path. The chooser opens the existing authorised destination directly, including the daily sales importer, product-cost inputs, dealership stock records, private Documents, and BookLoQ statement review. BookLoQ Overview and Reports also expose document and statement actions within their permission boundaries.
+
+- Daily CSVs contain up to 366 day/location rows and use the supplied template. Normalised measurements update the daily dashboard; missing optional balances remain missing. These aggregate imports do not establish SKU, hourly or customer detail and do not post journals.
+- Product-cost CSVs match existing product records. Vehicle and dealership stock CSVs use their exact templates, retain local previews, and require server validation and final confirmation. Supplemental inventory reports retain their source, period and version review.
+- Documents accepts PDF, JPEG, PNG and WEBP up to 10 MB. Financial statements and sales reports can be stored as supporting documents. They do not replace calculated BookLoQ financial statements or automatically create transactions. Bank statement imports require clean documents, balance validation and authorised reconciliation review.
+- A current, unchecked upload/data-use acknowledgement is required before supported import requests reach storage or write records. Successful imports record the notice version, member, workspace and time using existing audit records; raw report contents are excluded from consent receipts. Missing or stale acknowledgement fails closed. Document scanning and Vanteloq AI retain separate permissions.
+- The notice describes access by authorised workspace members, service-provider processing, controlled support access, retention and deletion. It does not promise that the platform operator can never access hosted information. These controls support informed consent and do not establish blanket legal compliance for a customer's records.
+
+Current-source consent/API tests, transactional daily-import regressions, upload closures, inventory CSV gates, full TypeScript checking and focused lint passed. Browser controls timed out during this pass, so live authenticated desktop/mobile visual verification is not claimed. The production archive and deployment receipt establish the published source separately.

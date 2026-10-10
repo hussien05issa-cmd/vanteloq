@@ -621,7 +621,7 @@ function dailyMetricRow(value: unknown) {
 }
 
 export function dailyMetricImportInput(value: Record<string, unknown>) {
-  rejectUnknown(value, ["importType", "fileName", "rows", "replacement"]);
+  rejectUnknown(value, ["importType", "fileName", "rows", "replacement", "importPrivacyAcknowledgement"]);
   const importType = selected(
     value.importType ?? "daily_summary_csv",
     ["daily_summary_csv", "manual_entry"] as const,

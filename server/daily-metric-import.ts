@@ -57,7 +57,7 @@ function replay(existing: ExistingImport | null, expectedId: string, actorUserId
 }
 
 export async function saveDailyMetricImport(database: D1Database, context: {
-  organizationId: string; actorUserId: string; requestId: string; sourceHash: string;
+  organizationId: string; actorUserId: string; requestId: string; sourceHash: string; importPrivacyVersion?: string;
 }, idempotencyKey: string, input: ImportInput) {
   const { id, payloadHash, rows } = await dailyImportIdentity(context.organizationId, idempotencyKey, input);
   const findImport = () => database.prepare(`SELECT id, status, row_count rowCount, imported_by_user_id importedByUserId
@@ -151,7 +151,8 @@ export async function saveDailyMetricImport(database: D1Database, context: {
   }
   statements.push(database.prepare("UPDATE data_imports SET status='completed', row_count=? WHERE id=? AND organization_id=?")
     .bind(rows.length, id, context.organizationId));
-  statements.push(audit("daily_metrics.imported", { importType: input.importType, rowCount: rows.length, replacementCount: reviewedRows.length, payloadHash }));
+  statements.push(audit("daily_metrics.imported", { importType: input.importType, rowCount: rows.length, replacementCount: reviewedRows.length, payloadHash,
+    ...(context.importPrivacyVersion ? { importPrivacyVersion: context.importPrivacyVersion, importPrivacyAccepted: true } : {}) }));
   try {
     await database.batch(statements);
   } catch (error) {

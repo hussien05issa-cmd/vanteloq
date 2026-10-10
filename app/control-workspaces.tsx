@@ -2,6 +2,8 @@
 import WorkspaceSkeleton from "./workspace-skeleton";
 import DocumentEmailInbox from "./document-email-inbox";
 import LinkedFilesPanel from "./linked-files-panel";
+import { ReportImportPrivacyNotice } from "./report-import-privacy";
+import { appendImportPrivacyAcknowledgement } from "../domain/report-import-privacy";
 import { documentPipelineLabel } from "../domain/document-pipeline-labels";
 import { useModalFocus } from "./use-modal-focus";
 
@@ -2130,8 +2132,22 @@ type DocumentData = {
   }[];
   pipeline: Record<string, string>;
 };
-export function DocumentsWorkspace({ showNotice, canUpload, canDelete, emailAccessKey }: SharedProps & { canUpload: boolean; canDelete: boolean; emailAccessKey: string }) {
+const documentUploadCategories = [
+  { id: "invoice", label: "Invoice", type: "invoice" },
+  { id: "receipt", label: "Receipt", type: "receipt" },
+  { id: "bank_statement", label: "Bank statement", type: "bank_statement" },
+  { id: "financial_statement", label: "Financial statement", type: "other" },
+  { id: "sales_report", label: "Sales report", type: "other" },
+  { id: "supplier_statement", label: "Supplier statement", type: "supplier_statement" },
+  { id: "packing_slip", label: "Packing slip", type: "packing_slip" },
+] as const;
+export type DocumentUploadCategory = typeof documentUploadCategories[number]["id"];
+
+export function DocumentsWorkspace({ showNotice, canUpload, canDelete, emailAccessKey, initialCategory = "invoice" }: SharedProps & { canUpload: boolean; canDelete: boolean; emailAccessKey: string; initialCategory?: DocumentUploadCategory }) {
   const [data, setData] = useState<DocumentData | null>(null);
+  const [uploadCategory, setUploadCategory] = useState<DocumentUploadCategory>(initialCategory);
+  const [uploadAccepted, setUploadAccepted] = useState(false);
+  const uploadHeading = useRef<HTMLHeadingElement>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
   const [loadError, setLoadError] = useState("");
@@ -2217,18 +2233,20 @@ export function DocumentsWorkspace({ showNotice, canUpload, canDelete, emailAcce
       await load();
     } finally { setDeleting(""); setDeleteCandidate(null); }
   };
-  const upload = async (file: File | null, documentType: string) => {
-    if (!canUpload || !file) return;
+  const upload = async (file: File | null) => {
+    if (!canUpload || !uploadAccepted || uploading || !file) return;
     setUploadError("");
     setUploading(true);
     try {
       const form = new FormData();
       form.set("file", file);
-      form.set("documentType", documentType);
+      form.set("documentType", documentUploadCategories.find(category => category.id === uploadCategory)!.type);
+      appendImportPrivacyAcknowledgement(form);
       const response = await apiFetch("/api/v1/documents", { method: "POST", body: form, signal: AbortSignal.timeout(60_000) });
       const body: unknown = await response.json();
       if (!response.ok) throw new Error(apiMessage(body, "Upload failed. Please try again."));
       setData(body as DocumentData);
+      setUploadAccepted(false);
       showNotice("Document added to the secure review queue");
     } catch (error) {
       setUploadError(error instanceof Error && error.name !== "TimeoutError" ? error.message : "The upload did not finish. Check your connection and retry. Duplicate files are detected automatically.");
@@ -2260,40 +2278,31 @@ export function DocumentsWorkspace({ showNotice, canUpload, canDelete, emailAcce
             Keep invoices, receipts and statements together. Scan files, review extracted figures and approve them before using them in your accounts.
           </span>
         </div>
+        {canUpload && <button type="button" className="primary" onClick={() => { uploadHeading.current?.focus(); uploadHeading.current?.scrollIntoView({ block: "nearest" }); }}>Upload documents</button>}
       </section>
       {canUpload ? <section className="document-upload card">
         <div>
           <i>↑</i>
-          <h3>
+          <h3 ref={uploadHeading} tabIndex={-1}>
             {uploading
               ? "Uploading securely…"
               : "Add a document for review"}
           </h3>
-          <p>
-            PDF, JPEG, PNG or WEBP · up to 10 MB · text extraction up to 50 pages
-          </p>
+          <p>PDF, JPEG, PNG or WEBP · up to 10 MB · text extraction up to 50 pages</p>
+          <p>Keep the original in your private document workspace and review its security and extraction status. Uploading a report does not update sales totals, post a journal or replace your financial statements.</p>
           <p className="document-processing-notice">{DOCUMENT_PROCESSING_NOTICE} <a href="/subprocessors" target="_blank" rel="noreferrer">Service provider details</a></p>
           {uploadError && <p className="document-upload-error" role="alert">{uploadError}</p>}
         </div>
-        <div>
-          {[{ type: "invoice", label: "Invoice" }, { type: "receipt", label: "Receipt" }, { type: "supplier_statement", label: "Supplier Statement" }, { type: "bank_statement", label: "Bank Statement" }, { type: "other", label: "Sales Report" }, { type: "packing_slip", label: "Packing Slip" }].map(
-            ({ type, label }) => (
-              <label key={label}>
-                <input
-                  type="file"
-                  accept="application/pdf,image/jpeg,image/png,image/webp"
-                  capture={type === "receipt" ? "environment" : undefined}
-                  disabled={uploading}
-                  onChange={(event) => {
-                    const file = event.target.files?.[0] || null;
-                    event.target.value = "";
-                    void upload(file, type);
-                  }}
-                />
-                {label}
-              </label>
-            ),
-          )}
+        <div className="document-upload-fields">
+          <label>Document category<select value={uploadCategory} disabled={uploading} onChange={event => { setUploadCategory(event.target.value as DocumentUploadCategory); setUploadAccepted(false); }}>{documentUploadCategories.map(category => <option key={category.id} value={category.id}>{category.label}</option>)}</select></label>
+          <ReportImportPrivacyNotice accepted={uploadAccepted} onChange={setUploadAccepted} disabled={uploading}/>
+          <label className="document-upload-file">
+            <input type="file" accept="application/pdf,image/jpeg,image/png,image/webp" capture={uploadCategory === "receipt" ? "environment" : undefined}
+              aria-label={`Choose ${documentUploadCategories.find(category => category.id === uploadCategory)!.label.toLowerCase()}`}
+              disabled={uploading || !uploadAccepted} onChange={event => { const file = event.currentTarget.files?.[0] ?? null; event.currentTarget.value = ""; void upload(file); }}/>
+            {uploading ? "Uploading securely…" : "Choose a document"}
+          </label>
+          {!uploadAccepted && <small>Review and accept the upload notice to choose your file.</small>}
         </div>
       </section> : <section className="document-upload card" aria-label="Document upload access required">
         <div>

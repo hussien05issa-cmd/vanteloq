@@ -25,6 +25,9 @@ import { integrationReturnPath } from "../domain/integration-return";
 import { settingsSectionFromHash, settingsSectionHash } from "../domain/settings-navigation";
 import { parseDailyCsv } from "../domain/daily-summary-csv";
 import DailyImportReviewPanel from "./daily-import-review";
+import ReportImportHub, { ReportImportChoices, type ReportImportChoice, type ReportImportTarget } from "./report-import-hub";
+import { ReportImportPrivacyNotice } from "./report-import-privacy";
+import { importPrivacyAcknowledgement } from "../domain/report-import-privacy";
 import type { DailyImportReview } from "../server/daily-metric-import";
 import WorkspaceSkeleton from "./workspace-skeleton";
 import DashboardGreeting from "./dashboard-greeting";
@@ -766,6 +769,8 @@ export default function VanteloqApp({
   const [notice, setNotice] = useState("");
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
+  const [reportImportsOpen, setReportImportsOpen] = useState(false);
+  const [reportImportDestination, setReportImportDestination] = useState<{ target: ReportImportTarget; key: number } | null>(null);
   const [appRole, setAppRole] = useState("employee");
   const [emailAccessKey, setEmailAccessKey] = useState("");
   const [appPermissions, setAppPermissions] = useState<string[]>([]);
@@ -1019,11 +1024,27 @@ export default function VanteloqApp({
       showNotice("Your role does not have access to this workspace.");
       return;
     }
+    setReportImportDestination(null);
     setView(next);
     setMobileNavOpen(false);
     if (next !== "Settings" || !settingsSectionFromHash(window.location.hash)) window.location.hash = workspaceViewHash(next);
     window.scrollTo({ top: 0, behavior: "instant" });
     window.requestAnimationFrame(()=>document.querySelector<HTMLElement>(".main-panel")?.focus({preventScroll:true}));
+  };
+  const importChoices: ReportImportChoice[] = [];
+  if (!standaloneBookloq && viewIsAvailable("Integrations", appPermissions, subscriptionFeatures, standaloneBookloq) && subscriptionFeatures.includes("analytics.sales.basic") && appPermissions.includes("data.import")) importChoices.push({target:"sales",title:"Sales & daily balances",formats:"CSV template · up to 366 daily records",description:"Update sales trends, margin and recorded cash or inventory balances.",icon:"Sales"});
+  if (viewIsAvailable("Inventory", appPermissions, subscriptionFeatures, standaloneBookloq) && subscriptionFeatures.includes("products.margin") && appPermissions.includes("dashboard.view") && appPermissions.includes("metrics.revenue") && appPermissions.includes("data.import") && appPermissions.includes("inventory.adjust")) importChoices.push({target:"costs",title:"Product costs",formats:"CSV template · existing products",description:"Match product references and update unit costs used in margin analysis.",icon:"Inventory"});
+  if (viewIsAvailable("Inventory", appPermissions, subscriptionFeatures, standaloneBookloq) && industryConfiguration.capabilities.includes("dealership_operations") && subscriptionFeatures.includes("inventory.lots") && appPermissions.includes("data.import") && appPermissions.includes("inventory.adjust")) importChoices.push({target:"vehicles",title:"Vehicle stock",formats:"Dealership CSV template",description:"Review vehicle details and import stock records into your dealership inventory.",icon:"Inventory"});
+  if (viewIsAvailable("Documents", appPermissions, subscriptionFeatures, standaloneBookloq) && subscriptionFeatures.includes("invoice.basic") && appPermissions.includes("documents.upload")) {
+    importChoices.push({target:"documents",title:"Invoices, receipts & reports",formats:"PDF, JPG, PNG or WEBP · up to 10 MB",description:"Upload private supporting documents for review. Files do not post journals automatically.",icon:"Documents"});
+    if (viewIsAvailable("BookLoQ", appPermissions, subscriptionFeatures, standaloneBookloq) && subscriptionFeatures.includes("bookloq.transactions") && ["documents.view", "documents.review", "finance.bank_transactions", "finance.bank_balances", "payroll.totals", "finance.reconcile"].every(permission => appPermissions.includes(permission))) importChoices.push({target:"statement",title:"Bank statements",formats:"Upload a PDF, then review in BookLoQ",description:"Check statement balances and historical cash movements before confirming an import.",icon:"Banking"});
+  }
+  const openImportTarget = (target: ReportImportTarget) => {
+    if (!importChoices.some(choice => choice.target === target)) { showNotice("Your access to this import changed. Refresh the workspace before continuing."); return; }
+    const destination: View = target === "sales" ? "Integrations" : target === "documents" ? "Documents" : target === "statement" ? "BookLoQ" : "Inventory";
+    navigate(destination);
+    setReportImportDestination({ target, key: Date.now() });
+    setReportImportsOpen(false);
   };
   const createTask = (seed: TaskSeed) => {
     if (!subscriptionFeatures.includes("operations.basic")) {
@@ -1261,6 +1282,7 @@ export default function VanteloqApp({
             <OwnerWorkspaceContext businessName={workspaceName} industry={businessIndustry} locationName={activeLocationId ? locations.find(location => location.id === activeLocationId)?.name ?? "Selected location" : null} limitedScope={appRole !== "owner" && appRole !== "admin"}/>
           </div>
           <div className="top-actions">
+            {!!importChoices.length && <button type="button" className="report-import-trigger" disabled={loading || Boolean(error)} onClick={() => setReportImportsOpen(true)}><WorkspaceIcon name="Documents"/><span>Import reports</span></button>}
             <button className="command-trigger" onClick={() => setCommandOpen(true)} aria-label="Open workspace search"><WorkspaceIcon name="Search"/><span>Search workspace</span><kbd>⌘K</kbd></button>
             <span
               className={`source-pill ${loading || error || data?.source.syncing ? "pending" : data?.liveSource.lastSuccessfulSyncAt ? "current" : data?.source.freshness ?? "missing"}`}
@@ -1307,6 +1329,10 @@ export default function VanteloqApp({
           <SourceSyncingState refresh={refreshWorkspace} />
         ) : (
           <Suspense fallback={<WorkspaceSkeleton label={`Loading ${workspaceViewLabel(view)}`} variant={view === "Dashboard" ? "overview" : "records"}/>}><Workspace
+            key={reportImportDestination?.key ?? "workspace"}
+            reportImportTarget={reportImportDestination?.target}
+            reportImportChoices={importChoices}
+            onImportTarget={openImportTarget}
             view={view}
             advisorConsent={advisorConsent}
             advisorAvailability={advisorAvailability}
@@ -1374,6 +1400,7 @@ export default function VanteloqApp({
           navigate={next => { setNotificationsOpen(false); navigate(next); }}
         />
       )}
+      {reportImportsOpen && <ReportImportHub choices={importChoices} onSelect={openImportTarget} onClose={() => setReportImportsOpen(false)}/>}
       {notice && (
         <div className="toast" role="status">
           {notice}
@@ -1460,6 +1487,9 @@ function NavigationSettingsPanel({
 }
 
 function Workspace({
+  reportImportTarget,
+  reportImportChoices,
+  onImportTarget,
   view,
   appRole,
   advisorConsent,
@@ -1484,6 +1514,9 @@ function Workspace({
   selectLocation,
   navigationSettings,
 }: {
+  reportImportTarget?: ReportImportTarget;
+  reportImportChoices: ReportImportChoice[];
+  onImportTarget: (target: ReportImportTarget) => void;
   view: View;
   appRole: string;
   advisorConsent: ReturnType<typeof useAdvisorConsent>;
@@ -1512,7 +1545,7 @@ function Workspace({
   const [reportSeed, setReportSeed] = useState<{ from: string; to: string; locationId: string | null } | null>(null);
   const [executiveDrill,setExecutiveDrill]=useState<{from:string;to:string}|undefined>();
   const [intelligenceTab, setIntelligenceTab] = useState<"opportunities" | "retail">("opportunities");
-  const [inventoryTab,setInventoryTab]=useState<"specialised"|"products">("specialised");
+  const [inventoryTab,setInventoryTab]=useState<"specialised"|"products">(reportImportTarget === "costs" ? "products" : "specialised");
   const [dealerOverviewTab,setDealerOverviewTab]=useState<"vehicles"|"business">("vehicles");
   const dealer=industryConfiguration.capabilities.includes("dealership_operations");
   const food=industryConfiguration.capabilities.includes("food_costing");
@@ -1528,7 +1561,7 @@ function Workspace({
   const dealerOverviewSwitch=dealer&&specialisedAccess&&view==="Dashboard"?<nav className="intelligence-switch" aria-label="Dealership overview views"><button type="button" aria-pressed={dealerOverviewTab==="vehicles"} onClick={()=>setDealerOverviewTab("vehicles")}>Dealership operations</button><button type="button" aria-pressed={dealerOverviewTab==="business"} onClick={()=>setDealerOverviewTab("business")}>Business overview & goals</button></nav>:null;
   if (dealer && specialisedAccess && ["Dashboard","Inventory","Sales","Customers"].includes(view) && (view!=="Dashboard"||dealerOverviewTab==="vehicles")) {
     const initialTab=view==="Inventory"?"inventory":view==="Sales"?"sales":view==="Customers"?"customers":"overview";
-    return <>{dealerOverviewSwitch}{view==="Inventory"&&industryConfiguration.capabilities.includes("products")&&<nav className="intelligence-switch" aria-label="Dealership inventory views"><button type="button" aria-pressed={inventoryTab==="specialised"} onClick={()=>setInventoryTab("specialised")}>Vehicles</button><button type="button" aria-pressed={inventoryTab==="products"} onClick={()=>setInventoryTab("products")}>Products & parts</button></nav>}{view==="Inventory"&&industryConfiguration.capabilities.includes("products")&&inventoryTab==="products"?<CommerceIntelligenceWorkspace mode="Inventory" currency={currency} timeZone={data.today.timeZone} activeLocationId={activeLocationId} navigate={navigate} createTask={createTask} onAsk={askRetailAdvisor}/>:<DealershipWorkspace key={`${activeLocationId??"all"}:${initialTab}`} activeLocationId={activeLocationId} initialTab={initialTab} agingReviewDays={industryConfiguration.agingReviewDays}/>}</>;
+    return <>{dealerOverviewSwitch}{view==="Inventory"&&industryConfiguration.capabilities.includes("products")&&<nav className="intelligence-switch" aria-label="Dealership inventory views"><button type="button" aria-pressed={inventoryTab==="specialised"} onClick={()=>setInventoryTab("specialised")}>Vehicles</button><button type="button" aria-pressed={inventoryTab==="products"} onClick={()=>setInventoryTab("products")}>Products & parts</button></nav>}{view==="Inventory"&&industryConfiguration.capabilities.includes("products")&&inventoryTab==="products"?<CommerceIntelligenceWorkspace mode="Inventory" initialCostImportOpen={reportImportTarget === "costs"} currency={currency} timeZone={data.today.timeZone} activeLocationId={activeLocationId} navigate={navigate} createTask={createTask} onAsk={askRetailAdvisor}/>:<DealershipWorkspace key={`${activeLocationId??"all"}:${initialTab}`} activeLocationId={activeLocationId} initialTab={initialTab} agingReviewDays={industryConfiguration.agingReviewDays}/>}</>;
   }
   if (view === "Dashboard")
     return (
@@ -1584,14 +1617,14 @@ function Workspace({
     );
   if (view === "Messages") return <CollaborationMessages key={activeLocationId ?? "all"} activeLocationId={activeLocationId} onManageIntegrations={() => navigate("Integrations")}/>;
   if (view === "BookLoQ" || view === "Profit" || view === "Cash" || view === "Bookkeeping") {
-    const initialSection = view === "Profit" ? "Reports" : view === "Cash" ? "Cash Flow" : view === "Bookkeeping" ? "Transactions" : "Overview";
-    return <BookLoQWorkspace key={initialSection} initialSection={initialSection} createTask={createTask} showNotice={showNotice} navigate={navigate} activeLocationId={activeLocationId} />;
+    const initialSection = reportImportTarget === "statement" ? "Banking" : view === "Profit" ? "Reports" : view === "Cash" ? "Cash Flow" : view === "Bookkeeping" ? "Transactions" : "Overview";
+    return <BookLoQWorkspace key={initialSection} initialSection={initialSection} initialImportOpen={reportImportTarget === "statement"} canUploadDocuments={permissions.includes("documents.upload") && subscriptionFeatures.includes("invoice.basic")} canViewDocuments={permissions.includes("documents.view") && subscriptionFeatures.includes("invoice.basic")} createTask={createTask} showNotice={showNotice} navigate={navigate} activeLocationId={activeLocationId} />;
   }
   if (view === "Communications") return <CommunicationsWorkspace activeLocationId={activeLocationId} />;
   if (view === "Marketing")
     return <GrowthWorkspace key={activeLocationId ?? "organization"} currency={currency} navigate={navigate} activeLocationId={activeLocationId} canOptimize={subscriptionFeatures.includes("marketing.optimization")} />;
   if (view === "Integrations")
-    return <DataHub refresh={refresh} showNotice={showNotice} navigate={navigate} subscriptionFeatures={subscriptionFeatures} />;
+    return <DataHub refresh={refresh} showNotice={showNotice} navigate={navigate} subscriptionFeatures={subscriptionFeatures} initialTab={reportImportTarget === "sales" ? "import" : undefined} importChoices={reportImportChoices} onImportTarget={onImportTarget} canImport={permissions.includes("data.import") && subscriptionFeatures.includes("analytics.sales.basic")} />;
   if (view === "Decision Journal")
     return <><DecisionJournal currency={currency} showNotice={showNotice} /><WorkflowDisclosure title="Measure the outcome of an action"><BusinessWorkflows activeLocationId={activeLocationId} initialKind="outcome"/></WorkflowDisclosure></>;
   if (view === "Scenario Planner")
@@ -1624,9 +1657,9 @@ function Workspace({
         onOpenRetail={() => { setIntelligenceTab("retail"); navigate("Intelligence"); }}
       />
     );
-  if (view === "Inventory" && food && foodAccess) return <><nav className="intelligence-switch" aria-label="Menu and ingredient views"><button type="button" aria-pressed={inventoryTab==="specialised"} onClick={()=>setInventoryTab("specialised")}>Recipe & food costs</button><button type="button" aria-pressed={inventoryTab==="products"} onClick={()=>setInventoryTab("products")}>Product inventory</button></nav>{inventoryTab==="specialised"?<FoodserviceWorkspace key={activeLocationId??"all"} activeLocationId={activeLocationId}/>:<CommerceIntelligenceWorkspace initialPeriod={executiveDrill} mode="Inventory" currency={currency} timeZone={data.today.timeZone} activeLocationId={activeLocationId} navigate={navigate} createTask={createTask} onAsk={askRetailAdvisor}/>}</>;
+  if (view === "Inventory" && food && foodAccess) return <><nav className="intelligence-switch" aria-label="Menu and ingredient views"><button type="button" aria-pressed={inventoryTab==="specialised"} onClick={()=>setInventoryTab("specialised")}>Recipe & food costs</button><button type="button" aria-pressed={inventoryTab==="products"} onClick={()=>setInventoryTab("products")}>Product inventory</button></nav>{inventoryTab==="specialised"?<FoodserviceWorkspace key={activeLocationId??"all"} activeLocationId={activeLocationId}/>:<CommerceIntelligenceWorkspace initialPeriod={executiveDrill} mode="Inventory" initialCostImportOpen={reportImportTarget === "costs"} currency={currency} timeZone={data.today.timeZone} activeLocationId={activeLocationId} navigate={navigate} createTask={createTask} onAsk={askRetailAdvisor}/>}</>;
   if (view === "Inventory")
-    return <InventoryVehicleWorkspace key={`${activeLocationId??"all"}:${industryConfiguration.templateId}`} industry={businessIndustry} configuration={industryConfiguration} activeLocationId={activeLocationId}><CommerceIntelligenceWorkspace initialPeriod={executiveDrill} mode="Inventory" currency={currency} timeZone={data.today.timeZone} activeLocationId={activeLocationId} navigate={navigate} createTask={createTask} onAsk={askRetailAdvisor}/></InventoryVehicleWorkspace>;
+    return <InventoryVehicleWorkspace key={`${activeLocationId??"all"}:${industryConfiguration.templateId}`} initialView={reportImportTarget === "costs" ? "products" : reportImportTarget === "vehicles" ? "vehicles" : undefined} industry={businessIndustry} configuration={industryConfiguration} activeLocationId={activeLocationId}><CommerceIntelligenceWorkspace initialPeriod={executiveDrill} mode="Inventory" initialCostImportOpen={reportImportTarget === "costs"} currency={currency} timeZone={data.today.timeZone} activeLocationId={activeLocationId} navigate={navigate} createTask={createTask} onAsk={askRetailAdvisor}/></InventoryVehicleWorkspace>;
   if (view === "Sales" || view === "Customers" || view === "Suppliers")
     return <CommerceIntelligenceWorkspace initialPeriod={executiveDrill} key={view + activeLocationId + (executiveDrill?.from??"") + (executiveDrill?.to??"")} mode={view} currency={currency} timeZone={data.today.timeZone} activeLocationId={activeLocationId} navigate={navigate} createTask={createTask} onAsk={askRetailAdvisor} />;
   if (view === "Purchase Orders")
@@ -2552,17 +2585,25 @@ type PendingDataApproval = {
 };
 
 function DataHub({
+  initialTab,
+  importChoices,
+  onImportTarget,
+  canImport,
   refresh,
   showNotice,
   navigate,
   subscriptionFeatures,
 }: {
+  initialTab?: "import" | "connections";
+  importChoices: ReportImportChoice[];
+  onImportTarget: (target: ReportImportTarget) => void;
+  canImport: boolean;
   refresh: () => Promise<void>;
   showNotice: (message: string) => void;
   navigate: (view: View) => void;
   subscriptionFeatures: readonly string[];
 }) {
-  const [tab, setTab] = useState<"import" | "connections">(() => subscriptionFeatures.includes("pos.reporting.core") ? "connections" : "import");
+  const [tab, setTab] = useState<"import" | "connections">(() => initialTab ?? (subscriptionFeatures.includes("pos.reporting.core") ? "connections" : "import"));
   const [providerQuery, setProviderQuery] = useState("");
   const [providerCategory, setProviderCategory] = useState("All categories");
   const [connections, setConnections] = useState<IntegrationConnection[]>([]);
@@ -3184,13 +3225,13 @@ function DataHub({
             className={tab === "import" ? "active" : ""}
             onClick={() => setTab("import")}
           >
-            Import data
+            Import reports
           </button>
         </div>
       </section>
       <Suspense fallback={null}><ShopifyPrivacyRequests quietUnauthorized /></Suspense>
       {tab === "import" ? (
-        <DailyImport refresh={refresh} showNotice={showNotice} />
+        <><section className="report-import-intro" aria-label="Report import destinations"><p>Sales CSVs update your dashboard. Product costs update margin analysis. Invoices, receipts and statements go through a separate review in BookLoQ.</p><ReportImportChoices choices={importChoices.filter(choice => choice.target !== "sales")} onSelect={onImportTarget}/></section>{canImport ? <DailyImport refresh={refresh} showNotice={showNotice} /> : <p role="status">Your role cannot import daily records. Ask your workspace owner for import access.</p>}</>
       ) : (
         <>
           {connectionError && (
@@ -3796,7 +3837,7 @@ const toCents = (
     throw new Error(`Invalid money value: ${String(value)}`);
   return Math.round(number * 100);
 };
-function DailyImport({
+export function DailyImport({
   refresh,
   showNotice,
 }: {
@@ -3807,6 +3848,7 @@ function DailyImport({
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [privacyAccepted, setPrivacyAccepted] = useState(false);
   const [pending, setPending] = useState<{
     rows: unknown[]; importType: string; fileName: string; key: string; review: DailyImportReview;
   } | null>(null);
@@ -3818,13 +3860,14 @@ function DailyImport({
     key = crypto.randomUUID(),
     replacement?: { snapshot: string; reason: string },
   ) => {
+    if (!privacyAccepted) throw new Error("Review the Privacy Policy and authorise this import before continuing.");
     const response = await apiFetch("/api/v1/daily-metrics", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "Idempotency-Key": key,
       },
-      body: JSON.stringify({ importType, fileName, rows, replacement }),
+      body: JSON.stringify({ importType, fileName, rows, replacement, importPrivacyAcknowledgement: importPrivacyAcknowledgement() }),
     });
     const body = await response.json();
     if (response.status === 409 && body.review) {
@@ -3841,15 +3884,16 @@ function DailyImport({
     setReason("");
     await refresh();
     showNotice(
-      `${body.import.rowCount} verified daily record${body.import.rowCount === 1 ? "" : "s"} saved`,
+      `${body.import.rowCount} daily record${body.import.rowCount === 1 ? "" : "s"} saved. Dashboard measurements updated.`,
     );
     return true;
   };
   const importCsv = async () => {
-    if (!file || pending) return;
+    if (!file || pending || !privacyAccepted) return;
     setBusy(true);
     setError("");
     try {
+      if (file.size > 512000) throw new Error("Choose a sales CSV smaller than 500 KB. Use the template and keep up to 366 daily records.");
       const saved = await submitRows(
         parseDailyCsv(await file.text()),
         "daily_summary_csv",
@@ -3866,7 +3910,7 @@ function DailyImport({
   };
   const submitManual = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (pending) return;
+    if (pending || !privacyAccepted) return;
     const formElement = event.currentTarget;
     setBusy(true);
     setError("");
@@ -3904,7 +3948,7 @@ function DailyImport({
     }
   };
   const confirmReplacement = async () => {
-    if (!pending || reason.trim().length < 3) return;
+    if (!pending || reason.trim().length < 3 || !privacyAccepted) return;
     setBusy(true);
     setError("");
     try {
@@ -3931,12 +3975,12 @@ function DailyImport({
   };
   return (
     <div className="import-layout">
-      <LinkedFilesPanel onUseCsv={setFile}/>
+      <LinkedFilesPanel onUseCsv={busy || pending ? undefined : file => { setFile(file); setPrivacyAccepted(false); }}/>
       <article className="card csv-import">
         <div className="card-head">
           <div>
-            <p className="card-kicker">FASTEST START</p>
-            <h3>Daily summary CSV</h3>
+            <p className="card-kicker">SALES AND DAILY BALANCES</p>
+            <h3>Upload a sales CSV</h3>
           </div>
           <button onClick={downloadTemplate}>Download template</button>
         </div>
@@ -3950,14 +3994,15 @@ function DailyImport({
             type="file"
             accept=".csv,text/csv"
             disabled={busy || Boolean(pending)}
-            onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+            onChange={(event) => { setFile(event.target.files?.[0] ?? null); setPrivacyAccepted(false); setError(""); }}
           />
           <b>{file ? file.name : "Choose a CSV file"}</b>
-          <span>Maximum 366 daily rows · no customer or payment-card data</span>
+          <span>Maximum 366 daily rows · 500 KB · no customer or payment-card data</span>
         </label>
+        <ReportImportPrivacyNotice accepted={privacyAccepted} onChange={setPrivacyAccepted} disabled={busy || Boolean(pending)}/>
         <button
           className="primary wide"
-          disabled={!file || busy || Boolean(pending)}
+          disabled={!file || !privacyAccepted || busy || Boolean(pending)}
           onClick={() => void importCsv()}
         >
           {busy ? "Validating…" : "Validate and import"}
@@ -3967,7 +4012,7 @@ function DailyImport({
         <div className="card-head">
           <div>
             <p className="card-kicker">MANUAL ENTRY</p>
-            <h3>Add one verified day</h3>
+            <h3>Add one recorded day</h3>
           </div>
           <span>All amounts in dollars</span>
         </div>
@@ -4019,8 +4064,9 @@ function DailyImport({
             <input name="payable" inputMode="decimal" />
           </label>
         </fieldset>
-        <button className="primary wide" disabled={busy || Boolean(pending)}>
-          {busy ? "Saving…" : "Save verified day"}
+        <ReportImportPrivacyNotice accepted={privacyAccepted} onChange={setPrivacyAccepted} disabled={busy || Boolean(pending)}/>
+        <button className="primary wide" disabled={!privacyAccepted || busy || Boolean(pending)}>
+          {busy ? "Saving…" : "Save recorded day"}
         </button>
       </form>
       {error && <p className="import-error" role="alert">{error}</p>}

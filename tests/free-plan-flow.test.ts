@@ -5,6 +5,7 @@ import test from "node:test";
 import { Miniflare } from "miniflare";
 import { registerSupabaseTestServer } from "./helpers/supabase-loopback-transport.mjs";
 import { activateTestSubscription } from "./helpers/subscription-fixture.mjs";
+import { importPrivacyAcknowledgement } from "../domain/report-import-privacy";
 import { providerPrivacyAcceptance } from "../domain/provider-privacy.ts";
 import { TERMS_OF_SERVICE_VERSION, PRIVACY_POLICY_VERSION, ACCOUNT_ACCEPTANCE_NOTICE_VERSION } from "../shared/legal-versions.ts";
 
@@ -138,7 +139,7 @@ test("regular Free enrolment, setup, caps and upgrade stay in the same workspace
     return originalFetch(input, init);
   };
   const email = `free-${crypto.randomUUID()}@example.invalid`;
-  const call = (path: string, method = "GET", body?: unknown, key?: string) => dispatch(worker,environment,path,{email,method,body,idempotencyKey:key});
+  const call = (path: string, method = "GET", body?: unknown, key?: string) => dispatch(worker,environment,path,{email,method,body:path === "/api/v1/daily-metrics" && body && typeof body === "object" ? { importPrivacyAcknowledgement: importPrivacyAcknowledgement(), ...body } : body,idempotencyKey:key});
   const expect = async (response: Response, status: number) => { assert.equal(response.status,status,await response.clone().text()); return response.json(); };
   try {
     const prepared = await expect(await call("/api/v1/onboarding","POST",{stage:"checkout",legalAccepted:true,termsVersion:TERMS_OF_SERVICE_VERSION,privacyPolicyVersion:PRIVACY_POLICY_VERSION,legalNoticeVersion:ACCOUNT_ACCEPTANCE_NOTICE_VERSION}),201);

@@ -3,6 +3,8 @@ import { requireAccess } from "../../../../server/authorization";
 import { ApiError, enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameOrigin } from "../../../../server/api";
 import { effectivePermissions, requirePermission } from "../../../../server/permissions";
 import { dealershipPermissions, exportDealership, mutateDealership, readDealership } from "../../../../server/dealership";
+import { recordAudit } from "../../../../server/audit";
+import { requireReportImportPrivacyAcknowledgement, reportImportPrivacyAuditDetails } from "../../../../server/report-import-privacy";
 
 async function access(request: Request) {
   const context = await requireAccess(request, ["owner", "admin", "manager", "employee", "read_only"], "inventory.lots");
@@ -31,11 +33,18 @@ export async function GET(request: Request) {
   });
 }
 export async function POST(request: Request) {
-  return handleApi(request, async () => {
+  return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
     const { context, permissions } = await access(request);
     await enforceRateLimit("dealership:write", context.userId, 120, 3600);
     const body = await readJsonObject(request, 120_000);
-    try { return jsonResponse(await mutateDealership(context, permissions, body)); } catch (error) { inputError(error); }
+    const csv = body.action === "preview" || body.action === "confirm";
+    if (csv && !permissions.import) throw new ApiError(403, "DEALERSHIP_PERMISSION_REQUIRED", "Your permissions do not allow this dealership action.");
+    const acknowledgement = csv ? requireReportImportPrivacyAcknowledgement(body.importPrivacyAcknowledgement) : null;
+    try {
+      const result = await mutateDealership(context, permissions, body);
+      if (acknowledgement) await recordAudit({ request, requestId, organizationId: context.organizationId, actorUserId: context.userId, action: "dealership.import_privacy_acknowledged", resourceType: "dealership_import", details: { stage: String(body.action), ...reportImportPrivacyAuditDetails(acknowledgement) } });
+      return jsonResponse(result);
+    } catch (error) { inputError(error); }
   });
 }

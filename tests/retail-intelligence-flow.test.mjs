@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { importPrivacyAcknowledgement } from "../domain/report-import-privacy.ts";
 import { createEnvironment, createReportWorkspace, seedReportConnection, seedReportLocation, seedSalesAuthority, dispatch } from "./helpers/retail-worker-fixture.mjs";
 
 test("retail Worker enforces tenant/location/privacy boundaries, source approval, evidence CRUD and AI consent", async () => {
@@ -82,7 +83,7 @@ test("retail Worker enforces tenant/location/privacy boundaries, source approval
     assert.equal((await dispatch(worker, environment, query, other.owner)).status, 403);
     const route = "/api/v1/retail-measurements";
     const input = { action: "save", kind: "stock", from: "2026-09-11", to: "2026-09-11", locationId: owner.locationId, provider: "lightspeed-r", connectionId: "real-retail", outletRef: "shop", source: "Reviewed stock ledger", reviewed: true, expectedVersion: null, csv: "reference,openingUnits,receivedUnits,openingValueCents,closingValueCents\nSKU,10,5,1000,600" };
-    const write = (changes = {}, identity = owner.owner) => dispatch(worker, environment, route, { ...identity, method: "POST", body: { ...input, ...changes } });
+    const write = (changes = {}, identity = owner.owner) => dispatch(worker, environment, route, { ...identity, method: "POST", body: { importPrivacyAcknowledgement: importPrivacyAcknowledgement(), ...input, ...changes } });
     assert.equal((await write({ connectionId: "other-retail" })).status, 403);
     assert.equal((await write({ connectionId: "test-retail" })).status, 403);
     assert.equal((await write({ reviewed: false })).status, 400);

@@ -3,13 +3,26 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { apiFetch } from "./supabase-browser";
 import { defaultIndustryConfiguration, type IndustryConfiguration } from "../domain/industry-templates";
-import { VEHICLE_CSV_TEMPLATE, VEHICLE_STATUSES, validateVehicle, vehicleAmount, vehicleAmountToCents, type VehicleInput, type VehicleRecord } from "../domain/vehicles";
+import { VEHICLE_CSV_TEMPLATE, VEHICLE_STATUSES, parseVehicleCsv, validateVehicle, vehicleAmount, vehicleAmountToCents, type VehicleInput, type VehicleRecord } from "../domain/vehicles";
+import { ReportImportPrivacyNotice } from "./report-import-privacy";
+import { importPrivacyAcknowledgement } from "../domain/report-import-privacy";
 import "./vehicle-inventory.css";
 
 type Location = { id: string; name: string; currency: string };
 type InventoryData = { vehicles: VehicleRecord[]; nextCursor: string | null; locations: Location[]; source: string;
   permissions: { edit: boolean; import: boolean; costs: boolean; export: boolean } };
-type Preview = { entries: VehicleInput[]; fingerprint: string; count: number; location: { id: string; name: string } };
+type Preview = { entries: VehicleInput[]; fingerprint: string | null; count: number; location: { id: string; name: string } };
+export function previewVehicleImport(csv: string, location: Location, costs: boolean): Preview {
+  const entries = parseVehicleCsv(csv);
+  if (entries.some(entry => entry.currency !== location.currency)) throw new Error("Every vehicle currency must match the selected location. No automatic conversion is performed.");
+  if (!costs && entries.some(entry => entry.acquisitionCents !== null || entry.reconditioningCents !== null)) throw new Error("Inventory value permission is required to import vehicle costs. Leave those CSV columns blank.");
+  return { entries, count: entries.length, fingerprint: null, location: { id: location.id, name: location.name } };
+}
+export function vehicleCsvImportRequest(action: "preview" | "confirm", csv: string, locationId: string, privacyAccepted: boolean, fingerprint?: string | null) {
+  if (!privacyAccepted) throw new Error("Acknowledge the import privacy notice before sending the vehicle CSV to Vanteloq.");
+  if (action === "confirm" && !fingerprint) throw new Error("Check this vehicle CSV with Vanteloq before importing it.");
+  return { action, csv, locationId, importPrivacyAcknowledgement: importPrivacyAcknowledgement(), ...(action === "confirm" ? { fingerprint } : {}) };
+}
 type Draft = { identifierKind: "vin" | "legacy"; identifier: string; year: string; make: string; model: string; stockNumber: string; status: VehicleInput["status"]; acquiredDate: string; acquisition: string; reconditioning: string };
 const emptyDraft = (): Draft => ({ identifierKind: "vin", identifier: "", year: "", make: "", model: "", stockNumber: "", status: "available", acquiredDate: "", acquisition: "", reconditioning: "" });
 const displayStatus = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
@@ -24,9 +37,9 @@ async function responseBody(response: Response) {
   return payload;
 }
 
-export default function InventoryVehicleWorkspace({ industry, configuration, activeLocationId, children }: { industry: string; configuration?:IndustryConfiguration; activeLocationId: string | null; children: ReactNode }) {
+export default function InventoryVehicleWorkspace({ industry, configuration, activeLocationId, initialView, children }: { industry: string; configuration?:IndustryConfiguration; activeLocationId: string | null; initialView?: "products" | "vehicles"; children: ReactNode }) {
   const config=configuration??defaultIndustryConfiguration(industry);
-  const [view, setView] = useState<"products" | "vehicles">(config.capabilities.includes("vehicles") ? "vehicles" : "products");
+  const [view, setView] = useState<"products" | "vehicles">(initialView ?? (config.capabilities.includes("vehicles") ? "vehicles" : "products"));
   if(!config.capabilities.includes("vehicles"))return <>{children}</>;
   return <div className="vehicle-inventory-workspace">
     <div className="vehicle-inventory-switch" role="group" aria-label="Inventory records">
@@ -42,6 +55,7 @@ export function VehicleInventoryPanel({ activeLocationId }: { activeLocationId: 
   const [loading, setLoading] = useState(true), [busy, setBusy] = useState(false), [reload, setReload] = useState(0);
   const [locationId, setLocationId] = useState(activeLocationId ?? ""), [editing, setEditing] = useState<VehicleRecord | null>(null), [showForm, setShowForm] = useState(false);
   const [draft, setDraft] = useState<Draft>(emptyDraft), [csv, setCsv] = useState(""), [preview, setPreview] = useState<Preview | null>(null);
+  const [acceptedImport, setAcceptedImport] = useState<string | null>(null);
   const readController = useRef<AbortController | null>(null), writeController = useRef<AbortController | null>(null), fileRevision = useRef(0);
   const formHeading = useRef<HTMLHeadingElement>(null);
 
@@ -66,6 +80,15 @@ export function VehicleInventoryPanel({ activeLocationId }: { activeLocationId: 
   }, [load, reload]);
   useEffect(() => { if (showForm) formHeading.current?.focus(); }, [showForm]);
   const selectedLocation = data?.locations.find(location => location.id === locationId);
+  const importContext = JSON.stringify([activeLocationId, locationId, selectedLocation?.currency, csv]);
+  const privacyAccepted = acceptedImport === importContext;
+
+  function previewLocally() {
+    if (busy || !selectedLocation) return;
+    setError(""); setMessage("");
+    try { setPreview(previewVehicleImport(csv, selectedLocation, data?.permissions.costs ?? false)); }
+    catch (caught) { setPreview(null); setError(caught instanceof Error ? caught.message : "Review this vehicle CSV."); }
+  }
 
   function edit(row?: VehicleRecord) {
     setError(""); setMessage(""); setEditing(row ?? null); setShowForm(true);
@@ -85,12 +108,12 @@ export function VehicleInventoryPanel({ activeLocationId }: { activeLocationId: 
           acquisitionCents: data?.permissions.costs ? vehicleAmountToCents(draft.acquisition) : null,
           reconditioningCents: data?.permissions.costs ? vehicleAmountToCents(draft.reconditioning) : null });
         body = { action: "create", vehicle, locationId, ...(editing ? { id: editing.id, expectedVersion: editing.version } : {}) };
-      } else body = { action, csv, locationId, ...(action === "confirm" ? { fingerprint: preview?.fingerprint } : {}) };
+      } else body = vehicleCsvImportRequest(action, csv, locationId, privacyAccepted, preview?.fingerprint);
       const result = await responseBody(await apiFetch("/api/v1/vehicles", { method: action === "save" && editing ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.any([controller.signal, AbortSignal.timeout(20_000)]) }));
       if (controller.signal.aborted) return;
-      if (action === "preview") { setPreview(result); setMessage("Review every row below before confirming. Nothing has been saved."); }
+      if (action === "preview") { setPreview(result); setMessage("Vanteloq checked the file and selected location. Review every row below before importing. Nothing has been saved."); }
       else {
-        setPreview(null); setCsv(""); setEditing(null); setShowForm(false); setDraft(emptyDraft());
+        setPreview(null); setCsv(""); setAcceptedImport(null); setEditing(null); setShowForm(false); setDraft(emptyDraft());
         setMessage(action === "confirm" ? `${result.saved} vehicle records saved.` : "Vehicle record saved.");
         await load();
       }
@@ -137,17 +160,17 @@ export function VehicleInventoryPanel({ activeLocationId }: { activeLocationId: 
         {data.permissions.costs && <><label>Acquisition cost in {selectedLocation?.currency ?? "location currency"} (optional)<input inputMode="decimal" value={draft.acquisition} disabled={busy} onChange={event => set("acquisition", event.target.value)} placeholder="Leave blank if unknown"/></label><label>Reconditioning cost in {selectedLocation?.currency ?? "location currency"} (optional)<input inputMode="decimal" value={draft.reconditioning} disabled={busy} onChange={event => set("reconditioning", event.target.value)} placeholder="Leave blank if unknown"/></label></>}
         <div className="vehicle-actions"><button type="submit" disabled={busy || !selectedLocation}>{busy ? "Saving…" : "Save vehicle"}</button><button type="button" disabled={busy} onClick={() => { setShowForm(false); setEditing(null); }}>Cancel</button></div>
       </form>}
-      {data.permissions.import && <details className="vehicle-import"><summary>Import reviewed vehicle records</summary><p>Use the exact template, one vehicle per row, up to 100 rows and 100 KB. Costs use decimal amounts in the selected location&apos;s currency. Imports create records; edit existing stock individually. CSV files stay in this browser until you request a preview.</p>
+      {data.permissions.import && <details className="vehicle-import"><summary>Import vehicle CSV</summary><p>Use the exact template, one vehicle per row, up to 100 rows and 100 KB. Costs use decimal amounts in the selected location&apos;s currency. Imports create records; edit existing stock individually. Local previews stay in this browser. Checking the file with Vanteloq sends its contents after your acknowledgement.</p>
         <button type="button" onClick={() => download(new Blob([VEHICLE_CSV_TEMPLATE], { type: "text/csv" }), "vehicle-inventory-template.csv")}>Download CSV template</button>
         <label>Vehicle CSV<input type="file" accept=".csv,text/csv" disabled={busy} onChange={async event => {
-          const file = event.target.files?.[0], revision = ++fileRevision.current; setCsv(""); setPreview(null); setError("");
+          const file = event.target.files?.[0], revision = ++fileRevision.current; setCsv(""); setPreview(null); setAcceptedImport(null); setError("");
           if (!file) return;
           if (file.size > 100_000) { setError("Use a CSV smaller than 100 KB."); return; }
           try { const value = await file.text(); if (fileRevision.current === revision) setCsv(value); }
           catch { if (fileRevision.current === revision) setError("This file could not be read."); }
         }}/></label>
-        <button type="button" disabled={busy || !csv || !selectedLocation} onClick={() => void write("preview")}>{busy ? "Checking…" : "Preview CSV"}</button>
-        {preview && <div className="vehicle-preview"><h3>Review {preview.count} records for {preview.location.name}</h3><VehicleTable rows={preview.entries} costs={data.permissions.costs}/><button type="button" disabled={busy} onClick={() => void write("confirm")}>Confirm and save {preview.count} records</button><button type="button" disabled={busy} onClick={() => setPreview(null)}>Cancel import</button></div>}
+        <button type="button" disabled={busy || !csv || !selectedLocation} onClick={previewLocally}>Preview CSV locally</button>
+        {preview && <div className="vehicle-preview"><h3>Review {preview.count} records for {preview.location.name}</h3><p>{preview.fingerprint ? "Vanteloq validation complete. Review these records before importing." : "Local preview only. Vanteloq will check permissions and existing records before import."}</p><VehicleTable rows={preview.entries} costs={data.permissions.costs}/><ReportImportPrivacyNotice accepted={privacyAccepted} onChange={accepted => setAcceptedImport(accepted ? importContext : null)} disabled={busy}/><button type="button" disabled={busy || !privacyAccepted} onClick={() => void write(preview.fingerprint ? "confirm" : "preview")}>{busy ? "Checking…" : preview.fingerprint ? `Import vehicle CSV (${preview.count} records)` : "Check vehicle CSV with Vanteloq"}</button><button type="button" disabled={busy} onClick={() => { setPreview(null); setAcceptedImport(null); }}>Cancel import</button></div>}
       </details>}
       {data.vehicles.length ? <><p>{data.vehicles.length} records shown{data.nextCursor ? ", more available" : ""}. Archived and sold records remain visible for review.</p><VehicleTable rows={data.vehicles} costs={data.permissions.costs} onEdit={data.permissions.edit && !busy ? edit : undefined}/>{data.nextCursor && <button type="button" disabled={busy || loading} onClick={() => { setLoading(true); setError(""); void load(data.nextCursor!); }}>Load more vehicles</button>}</> : !loading && <p className="vehicle-empty">No vehicle records are available in this location scope. {data.permissions.edit ? "Add a vehicle or preview a CSV to start." : "An authorized inventory editor can add reviewed records."}</p>}
     </>}

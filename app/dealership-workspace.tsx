@@ -1,13 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { DEALERSHIP_APPOINTMENT_STATUSES, DEALERSHIP_COST_CATEGORIES, DEALERSHIP_CSV_TEMPLATE, DEALERSHIP_LEAD_STAGES, DEALERSHIP_PHYSICAL_STATUSES, DEALERSHIP_PREP_STATUSES, DEALERSHIP_TASK_STATUSES, dealershipInstant, validateDealershipCredits, type DealershipAcquire, type DealershipAppointment, type DealershipDashboard, type DealershipLead, type DealershipPermissions, type DealershipSale, type DealershipStock, type DealershipTask } from "../domain/dealership";
+import { DEALERSHIP_APPOINTMENT_STATUSES, DEALERSHIP_COST_CATEGORIES, DEALERSHIP_CSV_TEMPLATE, DEALERSHIP_LEAD_STAGES, DEALERSHIP_PHYSICAL_STATUSES, DEALERSHIP_PREP_STATUSES, DEALERSHIP_TASK_STATUSES, dealershipInstant, parseDealershipCsv, validateDealershipCredits, type DealershipAcquire, type DealershipAppointment, type DealershipDashboard, type DealershipLead, type DealershipPermissions, type DealershipSale, type DealershipStock, type DealershipTask } from "../domain/dealership";
 import { vehicleAmount, vehicleAmountToCents } from "../domain/vehicles";
 import { dealerAppointmentOutcomes, dealerAverageGross, dealerStockAging, dealershipCalendarAge } from "../domain/dealer-analytics";
 import { apiFetch } from "./supabase-browser";
 import { FormInput } from "./form-primitives";
 import { useModalFocus } from "./use-modal-focus";
 import DealerHoldingScenario from "./dealer-holding-scenario";
+import { ReportImportPrivacyNotice } from "./report-import-privacy";
+import { importPrivacyAcknowledgement } from "../domain/report-import-privacy";
 import "./dealership-workspace.css";
 
 export type DealershipTab = "overview" | "inventory" | "preparation" | "sales" | "customers" | "team";
@@ -16,7 +18,17 @@ export type DealershipAction = "acquire" | "adopt_legacy" | "update_stock" | "tr
 type Draft = Record<string, string>;
 type CreditDraft = { personId: string; share: string };
 type Editor = { action: DealershipAction; draft: Draft; context: Record<string, unknown>; credits: CreditDraft[] };
-type Preview = { entries: DealershipAcquire[]; count: number; fingerprint: string };
+type Preview = { entries: DealershipAcquire[]; count: number; fingerprint: string | null };
+export function previewDealershipImport(csv: string, currency: string): Preview {
+  const entries = parseDealershipCsv(csv, currency);
+  return { entries, count: entries.length, fingerprint: null };
+}
+export function dealershipImportRequest(body: Record<string, unknown>, privacyAccepted = false): Record<string, unknown> {
+  if (body.action !== "preview" && body.action !== "confirm") return body;
+  if (!privacyAccepted) throw new Error("Acknowledge the import privacy notice before sending the stock CSV to Vanteloq.");
+  if (body.action === "confirm" && !body.fingerprint) throw new Error("Check this stock CSV with Vanteloq before importing it.");
+  return { ...body, importPrivacyAcknowledgement: importPrivacyAcknowledgement() };
+}
 type OpenEditor = (action: DealershipAction, record?: DealershipStock | DealershipTask | DealershipLead | DealershipAppointment | DealershipSale) => void;
 const labels: Record<DealershipAction, string> = { acquire: "Add vehicle", adopt_legacy: "Bring existing vehicle records", update_stock: "Update stock", transfer: "Transfer vehicle", add_cost: "Record cost evidence", save_task: "Save preparation task", save_lead: "Save customer lead", save_appointment: "Save appointment", reserve: "Reserve vehicle", release_reservation: "Release reservation", deliver: "Record delivery", reverse_sale: "Reverse delivery" };
 const human = (value: string) => value.replaceAll("_", " ").replace(/^./, char => char.toUpperCase());
@@ -111,6 +123,10 @@ function DealershipScope({ activeLocationId, initialTab = "overview", compactOve
   const [filters, setFilters] = useState({ from: "", to: "", q: "" }), [query, setQuery] = useState({ from: "", to: "", q: "" });
   const [editor, setEditor] = useState<Editor | null>(null), [editorOpen, setEditorOpen] = useState(false), [uncertain, setUncertain] = useState(false), [conflict, setConflict] = useState(false);
   const [csv, setCsv] = useState(""), [preview, setPreview] = useState<Preview | null>(null), [importLocation, setImportLocation] = useState(activeLocationId || "");
+  const [acceptedImport, setAcceptedImport] = useState<string | null>(null);
+  const importCurrency = data?.locations.find(location => location.id === importLocation)?.currency;
+  const importContext = JSON.stringify([activeLocationId, importLocation, importCurrency, csv]);
+  const privacyAccepted = acceptedImport === importContext;
   const reads = useRef<AbortController | null>(null), writes = useRef<AbortController | null>(null), alive = useRef(true), busyRef = useRef(false), fileRevision = useRef(0);
   const pending = useRef<{ body: Record<string, unknown>; key: string; after: () => void } | null>(null);
   const modal = useRef<HTMLDivElement>(null);
@@ -144,9 +160,17 @@ function DealershipScope({ activeLocationId, initialTab = "overview", compactOve
   useEffect(() => { const pendingFileReads = fileRevision; alive.current = true; return () => { alive.current = false; reads.current?.abort(); writes.current?.abort(); pendingFileReads.current++; }; }, []);
   useEffect(() => { void load(); return () => reads.current?.abort(); }, [load]);
   function refreshRecords(after?: string) { setLoading(true); setError(""); return load(after); }
+  function previewLocally() {
+    if (busyRef.current || uncertain || !importCurrency) return;
+    try { setPreview(previewDealershipImport(csv, importCurrency)); setError(""); setMessage("Local preview ready. Nothing has been sent or saved."); }
+    catch (caught) { setPreview(null); setError(caught instanceof Error ? caught.message : "Check the stock CSV."); }
+  }
 
   async function write(body: Record<string, unknown>, after: () => void) {
     if (busyRef.current) return;
+    let requestBody: Record<string, unknown>;
+    try { requestBody = dealershipImportRequest(body, privacyAccepted); }
+    catch (caught) { setError(caught instanceof Error ? caught.message : "Review the import privacy notice."); return; }
     if (pending.current && JSON.stringify(pending.current.body) !== JSON.stringify(body)) { setError("Confirm the result of your pending save before starting another change."); return; }
     const mutation = pending.current || { body, key: crypto.randomUUID(), after };
     if (body.action !== "preview") pending.current = mutation;
@@ -154,13 +178,13 @@ function DealershipScope({ activeLocationId, initialTab = "overview", compactOve
     busyRef.current = true; setBusy(true); setError(""); setMessage(""); setConflict(false);
     let certainFailure = false;
     try {
-      const response = await apiFetch("/api/v1/dealership", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...body, ...(body.action !== "preview" ? { mutationKey: mutation.key } : {}) }), signal: AbortSignal.any([controller.signal, AbortSignal.timeout(25_000)]) });
+      const response = await apiFetch("/api/v1/dealership", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...requestBody, ...(body.action !== "preview" ? { mutationKey: mutation.key } : {}) }), signal: AbortSignal.any([controller.signal, AbortSignal.timeout(25_000)]) });
       certainFailure = !response.ok && response.status >= 400 && response.status < 500;
       const result = await response.json();
       if (!response.ok) { if (response.status === 409) setConflict(true); throw new Error(result.error?.message || "This change could not be saved."); }
       if (!alive.current || controller.signal.aborted) return;
       pending.current = null; setUncertain(false);
-      if (body.action === "preview") { setPreview(result); setMessage("Preview ready. Review every row below. Nothing has been saved."); }
+      if (body.action === "preview") { setPreview(result); setMessage("Vanteloq checked this file and location. Review every row below before importing. Nothing has been saved."); }
       else { focusAfterSave.current = true; mutation.after(); setMessage(result.replayed ? "This request was already saved. The latest records are shown below." : "Saved. The latest records are shown below."); await refreshRecords(); }
     } catch (caught) {
       if (!alive.current || controller.signal.aborted) return;
@@ -235,18 +259,18 @@ function DealershipScope({ activeLocationId, initialTab = "overview", compactOve
       {currentView === "inventory" && <>
         <div className="dl-section-heading"><div><h3>Vehicle inventory</h3><p>Each row is one stock episode. A returning vehicle keeps its identity and receives a new episode.</p></div><div className="dl-actions">{data.permissions.stockEdit && <button type="button" disabled={blocked} onClick={() => open("acquire")}>Add vehicle</button>}</div></div>
         {data.legacyAvailable > 0 && data.permissions.stockEdit && <div className="dl-notice"><p>{data.legacyAvailable} existing vehicle records can be brought into this workspace. Imported history and ownership remain marked incomplete until reviewed.</p><button type="button" disabled={blocked} onClick={() => open("adopt_legacy")}>Bring existing vehicle records</button></div>}
-        {data.permissions.import && <details className="dl-card dl-import"><summary>Import stock from a CSV</summary><p>Use the exact template headings, up to 100 rows and 100 KB. Every row is checked before confirmation. Imports add stock episodes; they do not delete records missing from the file.</p><div className="dl-actions"><button type="button" onClick={() => {
+        {data.permissions.import && <details className="dl-card dl-import"><summary>Import stock CSV</summary><p>Preview up to 100 rows and 100 KB locally using the exact template headings. After acknowledging the privacy notice, send the CSV to Vanteloq for checking, then confirm the import. Imports add stock episodes; they do not delete records missing from the file.</p><div className="dl-actions"><button type="button" onClick={() => {
           const url = URL.createObjectURL(new Blob([DEALERSHIP_CSV_TEMPLATE], { type: "text/csv;charset=utf-8" })); const anchor = document.createElement("a"); anchor.href = url; anchor.download = "dealership-stock-template.csv"; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
         }}>Download CSV template</button></div>
           <label>Import location<select value={importLocation} disabled={blocked} onChange={event => { setImportLocation(event.target.value); setPreview(null); }}><option value="">Choose a location</option>{locations.map(location => <option key={location.id} value={location.id}>{location.name} · {location.currency}</option>)}</select></label>
           <p className="dl-hint">Use owned or consignment for ownership; on_lot, offsite or in_transit for physical status; not_started, in_progress, ready or blocked for preparation. Asking amounts use decimal values in the chosen location&apos;s currency. Leave an unknown asking amount blank.</p>
           <label>Stock CSV<input type="file" accept=".csv,text/csv" disabled={blocked} onChange={async event => {
-            const revision = ++fileRevision.current, file = event.target.files?.[0]; setCsv(""); setPreview(null); setError("");
+            const revision = ++fileRevision.current, file = event.target.files?.[0]; setCsv(""); setPreview(null); setAcceptedImport(null); setError("");
             if (!file) return; if (file.size > 100_000) { setError("Use a CSV no larger than 100 KB."); return; }
             try { const text = await file.text(); if (alive.current && revision === fileRevision.current) setCsv(text); } catch { if (alive.current && revision === fileRevision.current) setError("The file could not be read. Select it again."); }
           }}/></label>
-          <button type="button" disabled={blocked || !csv || !importLocation} onClick={() => void write({ action: "preview", locationId: importLocation, csv }, () => {})}>Preview CSV</button>
-          {preview && <div className="dl-preview"><h4>Review {preview.count} stock records for {locations.find(location => location.id === importLocation)?.name}</h4><div className="dl-table-scroll" tabIndex={0} role="region" aria-label="CSV preview"><table><thead><tr><th>Vehicle</th><th>Identifier</th><th>Stock / acquired</th><th>Ownership</th><th>Physical / preparation</th><th>Asking amount</th></tr></thead><tbody>{preview.entries.map((entry, index) => <tr key={index}><td>{entry.vehicle.year} {entry.vehicle.make} {entry.vehicle.model}</td><td>{entry.vehicle.identifier}</td><td>{entry.vehicle.stockNumber}<small>{dateLabel(entry.vehicle.acquiredDate)}</small></td><td>{human(entry.ownership)}</td><td>{human(entry.physicalStatus)}<small>{human(entry.prepStatus)}</small></td><td>{dealershipMoney(entry.askingCents, locations.find(location => location.id === importLocation)?.currency || "CAD")}</td></tr>)}</tbody></table></div><div className="dl-actions"><button type="button" disabled={blocked} onClick={() => void write({ action: "confirm", locationId: importLocation, csv, fingerprint: preview.fingerprint }, () => { setPreview(null); setCsv(""); })}>Confirm and save {preview.count} records</button><button type="button" disabled={blocked} onClick={() => setPreview(null)}>Discard preview</button></div></div>}
+          <button type="button" disabled={blocked || !csv || !importLocation} onClick={previewLocally}>Preview CSV locally</button>
+          {preview && <div className="dl-preview"><h4>Review {preview.count} stock records for {locations.find(location => location.id === importLocation)?.name}</h4><p>{preview.fingerprint ? "Vanteloq checked this file and location. Confirm below to import these records." : "This preview stays in your browser. Acknowledge the notice before sending this CSV to Vanteloq for checking."}</p><div className="dl-table-scroll" tabIndex={0} role="region" aria-label="CSV preview"><table><thead><tr><th>Vehicle</th><th>Identifier</th><th>Stock / acquired</th><th>Ownership</th><th>Physical / preparation</th><th>Asking amount</th></tr></thead><tbody>{preview.entries.map((entry, index) => <tr key={index}><td>{entry.vehicle.year} {entry.vehicle.make} {entry.vehicle.model}</td><td>{entry.vehicle.identifier}</td><td>{entry.vehicle.stockNumber}<small>{dateLabel(entry.vehicle.acquiredDate)}</small></td><td>{human(entry.ownership)}</td><td>{human(entry.physicalStatus)}<small>{human(entry.prepStatus)}</small></td><td>{dealershipMoney(entry.askingCents, locations.find(location => location.id === importLocation)?.currency || "CAD")}</td></tr>)}</tbody></table></div><ReportImportPrivacyNotice accepted={privacyAccepted} onChange={accepted => setAcceptedImport(accepted ? importContext : null)} disabled={blocked}/><div className="dl-actions"><button type="button" disabled={blocked || !privacyAccepted} onClick={() => preview.fingerprint ? void write({ action: "confirm", locationId: importLocation, csv, fingerprint: preview.fingerprint }, () => { setPreview(null); setCsv(""); setAcceptedImport(null); }) : void write({ action: "preview", locationId: importLocation, csv }, () => {})}>{busy ? "Checking…" : preview.fingerprint ? `Import stock CSV (${preview.count} records)` : "Check stock CSV with Vanteloq"}</button><button type="button" disabled={blocked} onClick={() => { setPreview(null); setAcceptedImport(null); }}>Discard preview</button></div></div>}
         </details>}
         <DealershipStockTable data={data} blocked={blocked} onAction={open} agingReviewDays={agingReviewDays}/>
         {data.nextCursor && <button type="button" disabled={loading || busy} onClick={() => void refreshRecords(data.nextCursor || undefined)}>Load more stock</button>}
