@@ -182,3 +182,40 @@
 :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.close-state.not_started,.close-state.in_progress) { background:var(--ws-raised)!important; color:var(--ws-muted)!important; }
 :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .growth-visual-hero>div>p { font-size:12px!important; line-height:1.5; }
 :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .fc-day.unavailable>span { color:var(--ws-muted)!important; }
+
+/* Loaded billing cards use workspace surfaces without changing public pricing. */
+/* A search input fits its field instead of inheriting full form-control sizing. */
+.operating-shell[data-workspace-theme] .settings-nav>label { height:44px; min-height:44px; padding:0 12px; border-color:var(--ws-control)!important; }
+.operating-shell[data-workspace-theme] .settings-nav>label>input { flex:1; min-width:0; width:100%; height:100%!important; min-height:0!important; padding:0!important; border:0!important; border-radius:0; background:transparent!important; box-shadow:none!important; outline:0; font-size:14px!important; line-height:1.5; }
+.operating-shell[data-workspace-theme] .settings-nav>label>input::placeholder { color:var(--ws-muted); opacity:1; }
+.operating-shell[data-workspace-theme] .settings-nav>label:focus-within { outline:2px solid var(--ws-purple); outline-offset:2px; }
+@media(max-width:680px) { .operating-shell[data-workspace-theme] .settings-nav>label>input { font-size:16px!important; } }
+
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .billing-settings :is(.billing-product-choice,.billing-product-choice.standalone-product,.billing-addon,.billing-addon.standalone,.billing-subscription-controls,.billing-selected-total,.free-plan-card,.custom-plan-cta.custom-plan-callout) { background:var(--ws-raised)!important; color:var(--ws-ink)!important; border-color:var(--ws-line)!important; box-shadow:none!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .billing-settings .billing-plan-option { background:var(--ws-panel)!important; color:var(--ws-ink)!important; border-color:var(--ws-control)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .billing-settings .billing-plan-option.selected { background:var(--ws-selected)!important; border-color:var(--ws-blue)!important; box-shadow:inset 0 0 0 1px var(--ws-blue)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .billing-settings .billing-plan-option:has(input:disabled) { opacity:1!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .billing-settings .billing-plan-option:has(input:focus-visible) { outline:3px solid var(--ws-purple)!important; outline-offset:3px; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .billing-settings .billing-plan-option:has(input:not(:disabled)):hover { border-color:var(--ws-blue)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .billing-settings .billing-plan-option>input { accent-color:var(--ws-blue); }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .billing-settings :is(.billing-plan-badge,.custom-plan-callout-label) { color:var(--ws-blue)!important; font-size:12px!important; line-height:1.5; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .billing-settings :is(.billing-product-choice legend,.billing-selected-total strong,.billing-selected-total b,.billing-plans ul) { color:var(--ws-ink)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .billing-settings .billing-plans ul { border-color:var(--ws-line)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .billing-settings .billing-plans li { font-size:12px!important; line-height:1.5; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .billing-settings .billing-plans strong { font-size:26px!important; line-height:1.2; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .billing-settings .billing-addon>span { display:flex; flex-direction:column; gap:4px; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .billing-settings :is(.billing-monthly-note>span,.billing-internal>span) { color:var(--ws-muted)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .billing-settings .billing-internal { background:var(--ws-positive-bg)!important; color:var(--ws-positive)!important; border-color:var(--ws-positive)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .billing-settings .billing-internal>b { color:var(--ws-positive)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .billing-settings .provider-settings article>span { background:var(--ws-selected)!important; color:var(--ws-blue)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .settings-form .billing-status-recovery { background:var(--ws-warning-bg)!important; color:var(--ws-ink)!important; border-color:var(--ws-warning)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .billing-settings :is(.billing-monthly-note a,.billing-subscription-help a) { color:var(--ws-blue)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .billing-settings .billing-subscription-actions button:not(.primary) { background:var(--ws-panel)!important; color:var(--ws-ink)!important; border-color:var(--ws-control)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .billing-settings .billing-subscription-actions button:not(.primary):hover:not(:disabled) { background:var(--ws-selected)!important; border-color:var(--ws-blue)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .billing-settings .billing-subscription-actions button.billing-cancel-button:not(.primary) { color:var(--ws-negative)!important; border-color:var(--ws-negative)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .billing-settings .billing-subscription-actions button.billing-cancel-button:not(.primary):hover:not(:disabled) { background:var(--ws-negative-bg)!important; border-color:var(--ws-negative)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .billing-settings :is(.billing-subscription-actions button:disabled,.billing-status-recovery button:disabled,footer>button:disabled) { background:var(--ws-raised)!important; color:var(--ws-muted)!important; border-color:var(--ws-control)!important; opacity:1!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .billing-settings .billing-subscription-actions button.billing-cancel-button:not(.primary):disabled { color:var(--ws-muted)!important; border-color:var(--ws-control)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .billing-settings .custom-plan-cta.custom-plan-callout :is(h2,h3) { color:var(--ws-ink)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .billing-settings .custom-plan-cta.custom-plan-callout>a.custom-plan-callout-action { background:var(--ws-primary)!important; color:var(--ws-on-primary)!important; border-color:var(--ws-primary)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .billing-settings .custom-plan-cta.custom-plan-callout>a.custom-plan-callout-action:hover { background:var(--ws-primary-hover)!important; }
