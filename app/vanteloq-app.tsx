@@ -36,6 +36,7 @@ import type { OwnerBriefing, OwnerBriefingPriority } from "../domain/owner-brief
 import { PRODUCT_RELEASE_NAME } from "../domain/product-release";
 import { documentEmailAccessKey } from "./document-email-client";
 import { isAwaitingSalesRecords } from "../domain/intraday-sales";
+import { formatRecordedTimestamp } from "../domain/executive-presentation";
 
 import Image from "next/image";
 import { lazy, Suspense, FormEvent, Fragment, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -1329,7 +1330,7 @@ export default function VanteloqApp({
           <SourceSyncingState refresh={refreshWorkspace} />
         ) : (
           <Suspense fallback={<WorkspaceSkeleton label={`Loading ${workspaceViewLabel(view)}`} variant={view === "Dashboard" ? "overview" : "records"}/>}><Workspace
-            key={reportImportDestination?.key ?? "workspace"}
+            key={`${advisorScope}:${reportImportDestination?.key ?? "workspace"}`}
             reportImportTarget={reportImportDestination?.target}
             reportImportChoices={importChoices}
             onImportTarget={openImportTarget}
@@ -2178,7 +2179,7 @@ type Task = {
   sourceRef: string | null;
   expectedImpact: string;
 };
-function TaskCentre({
+export function TaskCentre({
   activeLocationId,
   showNotice,
   openComposer,
@@ -2203,30 +2204,43 @@ function TaskCentre({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const taskRead = useRef<AbortController | null>(null);
-  const load = useCallback(async () => {
+  const archiveExpanded = useRef(false);
+  const [nextCursor, setNextCursor] = useState<number | null>(null), [olderPending, setOlderPending] = useState(false), [archiveError, setArchiveError] = useState("");
+  const load = useCallback(async (before?: number) => {
     taskRead.current?.abort();
     const request = new AbortController(); taskRead.current = request;
+    if (before) setOlderPending(true);
     try {
-      const response = await apiFetch(`/api/v1/tasks${activeLocationId ? `?location=${encodeURIComponent(activeLocationId)}` : ""}`, { signal: request.signal });
+      const parameters = new URLSearchParams();
+      if (activeLocationId) parameters.set("location", activeLocationId);
+      if (before) parameters.set("before", String(before));
+      const response = await apiFetch(`/api/v1/tasks?${parameters}`, { signal: request.signal });
       const body = await response.json();
       if (request.signal.aborted) return;
-      if (!response.ok)
+      if (!response.ok) {
+        if (response.status === 401 || response.status === 403) { setTasks([]); setNextCursor(null); setCapabilities({canManage:false,canPost:false,userId:""}); }
         throw new Error(body.error?.message ?? "Unable to load actions.");
-      setTasks(current => body.tasks.map((task:Task) => {const existing=current.find(item=>item.id===task.id);return existing&&existing.version>task.version?existing:task;}));
+      }
+      setTasks(current => {
+        const page = body.tasks.map((task:Task) => {const existing=current.find(item=>item.id===task.id);return existing&&existing.version>task.version?existing:task;});
+        return before ? [...current, ...page.filter((task:Task) => !current.some(item => item.id === task.id))] : page;
+      });
+      archiveExpanded.current = Boolean(before);
+      setNextCursor(body.hasEarlier ? body.nextCursor : null); setArchiveError("");
       setCapabilities({canManage:body.canManage,canPost:body.canPost,userId:body.userId});
       setError("");
     } catch (caught) {
       if (request.signal.aborted) return;
-      setError(
+      (before ? setArchiveError : setError)(
         caught instanceof Error ? caught.message : "Unable to load actions.",
       );
     } finally {
-      if (!request.signal.aborted) setLoading(false);
+      if (taskRead.current === request) { if (!request.signal.aborted) setLoading(false); setOlderPending(false); taskRead.current = null; }
     }
   }, [activeLocationId]);
   useEffect(() => {
     const timer = window.setTimeout(() => void load(), 0);
-    const refresh = () => { if(document.visibilityState === "visible") void load(); };
+    const refresh = () => { if(document.visibilityState === "visible" && !taskRead.current && !archiveExpanded.current) void load(); };
     const poll = window.setInterval(refresh, 30000);
     window.addEventListener("focus", refresh); document.addEventListener("visibilitychange", refresh);
     return () => { taskRead.current?.abort(); window.clearTimeout(timer); window.clearInterval(poll); window.removeEventListener("focus", refresh); document.removeEventListener("visibilitychange", refresh); };
@@ -2265,6 +2279,7 @@ function TaskCentre({
           + Create task
         </button>
       </section>
+      <p className="task-archive-summary" role="status">{loading ? "Loading tasks…" : `${tasks.length} loaded tasks. ${nextCursor ? "Earlier tasks are available below. Counts and filters describe loaded tasks." : "End of the accessible archive."}`} The latest page refreshes every 30 seconds while visible. Reading earlier tasks pauses automatic refresh. Refresh actions starts from the latest page.</p>
       <section className="task-stats">
         <div>
           <strong>{active.length}</strong>
@@ -2289,7 +2304,7 @@ function TaskCentre({
           <span>Completed</span>
         </div>
       </section>
-      <div className="action-tools"><label>Find an action<input type="search" value={query} placeholder="Search title, owner or evidence" onChange={event => setQuery(event.target.value)}/></label><label>Status<select value={statusFilter} onChange={event => setStatusFilter(event.target.value)}><option value="active">Active</option><option value="all">All actions</option><option value="open">To do</option><option value="in_progress">In progress</option><option value="done">Done</option></select></label><button className="secondary" type="button" disabled={updating !== null} onClick={() => void load()}>Refresh actions</button></div>
+      <div className="action-tools"><label>Find an action<input type="search" value={query} placeholder="Search loaded tasks" onChange={event => setQuery(event.target.value)}/></label><label>Status<select value={statusFilter} onChange={event => setStatusFilter(event.target.value)}><option value="active">Active</option><option value="all">All actions</option><option value="open">To do</option><option value="in_progress">In progress</option><option value="done">Done</option></select></label><button className="secondary" type="button" disabled={updating !== null || olderPending} onClick={() => void load()}>Refresh actions</button></div>
       {updateError && <p className="action-update-error" role="alert">{updateError}</p>}
       <label className="task-member-field"><span><input type="checkbox" checked={mine} onChange={event => setMine(event.target.checked)}/> Assigned to me</span><small>Visible tasks follow your workspace, location and evidence permissions.</small></label>
       <article className="card task-board">
@@ -2360,6 +2375,8 @@ function TaskCentre({
           </div>
         )}
       </article>
+      {archiveError && <p className="action-update-error" role="alert">{archiveError} Loaded tasks are preserved.</p>}
+      {nextCursor !== null && <button className="secondary" type="button" disabled={olderPending || updating !== null} onClick={() => void load(nextCursor)}>{olderPending ? "Loading earlier tasks…" : "Load earlier tasks"}</button>}
     </div>
   );
 }
@@ -4596,11 +4613,13 @@ type LocationIntelligence = {
   scopeLabel: string;
   latestBusinessDate: string | null;
   unmappedSourceLocations: number;
+  comparisonLimitations: string[];
   locations: Array<{
     id: string;
     name: string;
     address: string;
     timezone: string;
+    currency: string;
     validationStatus: string;
     sourceMappings: Array<{ provider: string; name: string }>;
     metrics: {
@@ -4611,11 +4630,19 @@ type LocationIntelligence = {
       transactionCount: number | null;
       inventoryValueCents: number | null;
       lastUpdatedAt: string | null;
+      currency: string;
+      timeZone: string;
+      from: string | null;
+      to: string | null;
+      status: string;
+      profitAvailability: string;
+      coverage: { complete: boolean; observedRecords: number | null; expectedRecords: number | null; expectedDays: number; sourceScopes: number; queryComplete: boolean };
+      limitations: string[];
     };
   }>;
 };
 
-function LocationsWorkspace({
+export function LocationsWorkspace({
   currency,
   activeLocationId,
   selectLocation,
@@ -4662,6 +4689,7 @@ function LocationsWorkspace({
           <button onClick={() => navigate("Integrations")}>Map provider locations</button>
         </section>
       )}
+      {data.comparisonLimitations?.length > 0 && <section className="card location-data-contract"><h3>Review coverage before comparing stores.</h3>{data.comparisonLimitations.map(line => <p key={line}>{line}</p>)}</section>}
       {!data.locations.length ? (
         <section className="card location-empty-state">
           <h3>Add the first organization location.</h3>
@@ -4677,11 +4705,12 @@ function LocationsWorkspace({
                 {activeLocationId === location.id && <strong>Current scope</strong>}
               </header>
               <div className="location-metric-grid">
-                <span><small>NET SALES</small><b>{money(location.metrics.netSalesCents, currency)}</b><em>{location.metrics.period ?? "No verified period"}</em></span>
-                <span><small>GROSS PROFIT</small><b>{money(location.metrics.grossProfitCents, currency)}</b><em>Permission and cost data required</em></span>
-                <span><small>TRANSACTIONS</small><b>{location.metrics.transactionCount?.toLocaleString() ?? "Not available"}</b><em>{location.metrics.days} verified days</em></span>
-                <span><small>INVENTORY VALUE</small><b>{money(location.metrics.inventoryValueCents, currency)}</b><em>Latest verified balance</em></span>
+                <span><small>NET SALES</small><b>{money(location.metrics.netSalesCents, location.metrics.currency || currency)}</b><em>{location.metrics.period ?? "Awaiting dated records"}</em></span>
+                <span><small>GROSS PROFIT</small><b>{money(location.metrics.grossProfitCents, location.metrics.currency || currency)}</b><em>{location.metrics.profitAvailability === "owner_reviewed" ? "Owner-reviewed daily costs" : "Complete cost evidence required"}</em></span>
+                <span><small>TRANSACTIONS</small><b>{location.metrics.transactionCount?.toLocaleString() ?? "Not available"}</b><em>{location.metrics.days} recorded days</em></span>
+                <span><small>INVENTORY VALUE</small><b>{money(location.metrics.inventoryValueCents, location.metrics.currency || currency)}</b><em>{location.metrics.inventoryValueCents === null ? "Closing valuation required" : "Recorded closing balance"}</em></span>
               </div>
+              <details className="location-source-list"><summary>Source coverage and reporting scope</summary><p>{location.metrics.from && location.metrics.to ? `${location.metrics.from} to ${location.metrics.to}` : "No reporting period available"} · {location.metrics.timeZone || location.timezone} · {location.metrics.currency || currency}</p>{location.metrics.coverage?.observedRecords !== null && <p>{location.metrics.coverage?.observedRecords ?? 0} of {location.metrics.coverage?.expectedRecords ?? 0} expected date and source records. Missing dates remain unknown.</p>}{location.metrics.lastUpdatedAt && <p>Last recorded update: {formatRecordedTimestamp(location.metrics.lastUpdatedAt)}</p>}{location.metrics.limitations?.map(line => <p key={line}>{line}</p>)}</details>
               <div className="location-source-list">
                 <b>Mapped data sources</b>
                 {location.sourceMappings.length

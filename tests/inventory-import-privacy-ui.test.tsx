@@ -70,7 +70,7 @@ test("manual changes and reviewed deletion retain their controls without sending
 });
 
 test("supplemental import starts with privacy and evidence review unchecked", () => {
-  const html = renderToStaticMarkup(<RetailEvidenceSettings from="2026-09-01" to="2026-09-30" locationId={null} access={{ inventory: true, labour: false, customers: false }} onSaved={() => {}} onClose={() => {}}/>);
+  const html = renderToStaticMarkup(<RetailEvidenceSettings from="2026-09-01" to="2026-09-30" locationId={null} access={{ inventory: true, labour: false, customers: false, profit: false, costs: false, expiry: false, edit: true }} onSaved={() => {}} onClose={() => {}}/>);
   assert.match(html, /Import supplemental CSV/);
   assert.equal((html.match(/type="checkbox"/g) || []).length, 2);
   assert.doesNotMatch(html, /checked=""/);

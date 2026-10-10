@@ -62,5 +62,18 @@ test("team tasks and messages enforce workspace, location, permissions, retries 
     const headers={...identityHeaders(a.owner.email,a.owner.name,true),origin:"https://unrelated.example","idempotency-key":crypto.randomUUID()};
     assert.equal((await env.worker.fetch(new Request(origin+"/api/v1/collaboration/messages",{method:"POST",headers,body:JSON.stringify(message)}),env.environment,context)).status,403);
     assert.equal((await env.database.prepare("SELECT COUNT(*) total FROM collaboration_messages WHERE organization_id=?").bind(a.organizationId).first()).total,1);
+    // A busy workspace must retain its full permitted archive beyond the first 200 rows.
+    const archiveRows = Array.from({length:205}, (_, index) => env.database.prepare("INSERT INTO workspace_tasks(organization_id,title,detail,priority,status,assignee,location_id,idempotency_key,source_type,created_by_user_id,created_at,updated_at) VALUES(?,?,'','medium','open','Unassigned',?,?,'manual',?,1,1)").bind(a.organizationId, `Fictional archived task ${index}`, a.locationId, crypto.randomUUID(), a.userId));
+    for (let offset=0;offset<archiveRows.length;offset+=80) await env.database.batch(archiveRows.slice(offset,offset+80));
+    const firstPage=await ok(await get("/api/v1/tasks"));
+    assert.equal(firstPage.tasks.length,200); assert.equal(firstPage.hasEarlier,true); assert.ok(firstPage.nextCursor);
+    const earlierPage=await ok(await get(`/api/v1/tasks?before=${firstPage.nextCursor}`));
+    assert.equal(earlierPage.tasks.length,7); assert.equal(earlierPage.hasEarlier,false); assert.equal(earlierPage.nextCursor,null);
+    assert.equal(new Set([...firstPage.tasks,...earlierPage.tasks].map(item=>item.id)).size,207);
+    const limitedFirst=await ok(await get("/api/v1/tasks",teammate));
+    const limitedEarlier=await ok(await get(`/api/v1/tasks?before=${limitedFirst.nextCursor}`,teammate));
+    assert.equal([...limitedFirst.tasks,...limitedEarlier.tasks].some(item=>item.id===globalTask.id),false);
+    assert.equal((await ok(await get(`/api/v1/tasks?before=${firstPage.nextCursor}`,b.owner))).tasks.length,0);
+    for (const before of ["0","-1","1.5","9007199254740992"]) assert.equal((await get(`/api/v1/tasks?before=${before}`)).status,400);
   } finally {await env.dispose();}
 });

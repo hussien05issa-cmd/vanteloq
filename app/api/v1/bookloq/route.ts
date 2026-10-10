@@ -714,6 +714,7 @@ export async function GET(request: Request) {
             : !ledgerAvailable ? "Post verified journals before reviewing ledger totals." : null,
         },
         organization: {
+          id: context.organizationId,
           name: context.organization.businessName,
           legalName: context.organization.legalName,
           email: context.organization.businessEmail,

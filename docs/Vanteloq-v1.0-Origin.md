@@ -173,7 +173,7 @@ Third-party names/logos/marks belong to their owners. Interoperability reference
 | Google | Reporting paths, separate API/scope gates. OAuth data-access review not successfully submitted. |
 | Google files | Appropriate file scopes/verification required. Upload is not live link. |
 | Meta | Ads reporting/configuration; business/app/public permissions still separate from operator test. |
-| Slack | Authorised-channel notification/test; no messages/files read; no implicit automatic alerts. |
+| Slack | Existing webhook connections provide authorised-channel notifications only. Optional bounded public-channel reading requires separate owner consent, broader provider permissions and a new authorised connection. Files and private conversations are excluded; no implicit automatic alerts. |
 | Microsoft files | Prepared app/credential; runtime disabled; publisher/consent/refresh checks pending. |
 | Deel | Aggregate payroll review, not execution; partner approval false/restricted. |
 | QuickBooks | Identity only; ledger import disabled; environment gates explicit. |
@@ -332,3 +332,16 @@ The workspace header now offers **Import reports** wherever the member has an av
 - The notice describes access by authorised workspace members, service-provider processing, controlled support access, retention and deletion. It does not promise that the platform operator can never access hosted information. These controls support informed consent and do not establish blanket legal compliance for a customer's records.
 
 Current-source consent/API tests, transactional daily-import regressions, upload closures, inventory CSV gates, full TypeScript checking and focused lint passed. Browser controls timed out during this pass, so live authenticated desktop/mobile visual verification is not claimed. The production archive and deployment receipt establish the published source separately.
+
+### October 10 production gap and recovery increment
+
+This increment preserves existing report import and consent paths. It introduces no schema migration, financial posting, real payment, customer message or expanded provider grant.
+
+- The executive overview has a hard 30-second read deadline. A stalled request cannot leave the skeleton indefinitely, automatic refreshes share a pending read, and a retry retains source-review controls. Source conflicts and active staging still withhold totals.
+- Tasks expose the accessible archive through bounded cursor pages. Counts and filters describe loaded tasks. Earlier history pauses automatic refresh; a failed page read retains current work. Messages discard deleted records on a complete refresh and preserve reachable history after bursts of new messages. Authentication and revoked-channel failures clear protected caches.
+- Location cards use selected source authority, full stored pagination, source/date coverage and currency checks. They disclose unknown dates, missing costs and unproven inventory valuation. Recorded data and comparisons are separate, and a partial or mixed-currency store is not ranked as complete.
+- BookLoQ Reports reads posted accrual-ledger activity over chosen dates, plus balance sheet and trial balance through an as-of date. Archived accounts and dated reversals retain history. All locations and verified ledger-summary permissions are required. Individual journal drilldown additionally requires bank-transaction and individual-payroll visibility. Unsupported cash-basis conversions remain unavailable.
+- Report CSV exports retain scope, currency, dates, timezone, accounting/calculation basis, source authority, freshness, coverage and limitations. Trial-balance CSV uses the same net debit/credit balances as the screen. Export limits remain explicit. Recorded provider facts do not establish complete product costs, reconciliation or decision-ready comparisons.
+- Background POS sync requires the current, exact purpose and privacy acknowledgement for the same owner, workspace and provider. An inspection-only signed canary checks admission and records a receipt without launching provider work, cleanup or messages. External recurrence remains unverified and has not been enabled by this increment.
+
+Fictional previews and migrated local database tests verify bounded calculations and permission paths. They do not prove independent provider acceptance, complete customer history or production restoration. Production migration evidence and a supported, revocable unattended authentication path remain prerequisites for new stateful workflows, automatic delivery, multiple self-created businesses and agent access. The supporting engineering matrix is docs/Origin-production-gap-program-2026-10-10.md. Exact publication and GitHub receipts remain separate from this source record.

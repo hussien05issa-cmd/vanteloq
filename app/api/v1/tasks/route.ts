@@ -1,4 +1,5 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, lt } from "drizzle-orm";
+import { taskArchiveCursor } from "../../../../domain/collaboration";
 import { getDb } from "../../../../db";
 import { workspaceTasks } from "../../../../db/schema";
 import { recordAudit } from "../../../../server/audit";
@@ -45,15 +46,20 @@ export async function GET(request: Request) {
   return handleApi(request, async () => {
     const context = await requireAccess(request, taskReaders, "operations.basic");
     await requirePermission(context, "operations.tasks");
-    const scope = await collaborationScope(context, new URL(request.url).searchParams.get("location"));
+    const params = new URL(request.url).searchParams;
+    const scope = await collaborationScope(context, params.get("location"));
+    let before: number | null;
+    try { before = taskArchiveCursor(params.get("before")); }
+    catch { throw new ApiError(400, "INVALID_TASK_PAGE", "Choose a valid task archive page."); }
     await enforceRateLimit("tasks:read", `${context.userId}:${clientSource(request)}`, 120, 60);
     const rows = await getDb()
       .select()
       .from(workspaceTasks)
-      .where(and(eq(workspaceTasks.organizationId, context.organizationId), taskScopeWhere(scope)))
-      .orderBy(desc(workspaceTasks.createdAt))
-      .limit(200);
-    return jsonResponse({ tasks: (await filterReadableOpportunityTasks(context, rows)).map(taskDto), ...await collaborationCapabilities(context) });
+      .where(and(eq(workspaceTasks.organizationId, context.organizationId), taskScopeWhere(scope), before === null ? undefined : lt(workspaceTasks.id, before)))
+      .orderBy(desc(workspaceTasks.id))
+      .limit(201);
+    const page = rows.slice(0, 200), hasEarlier = rows.length > 200;
+    return jsonResponse({ tasks: (await filterReadableOpportunityTasks(context, page)).map(taskDto), hasEarlier, nextCursor: hasEarlier ? page.at(-1)?.id ?? null : null, ...await collaborationCapabilities(context) });
   });
 }
 

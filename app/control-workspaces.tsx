@@ -9,6 +9,7 @@ import { useModalFocus } from "./use-modal-focus";
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "./supabase-browser";
+import { reportCsvRequest } from "./report-csv-request";
 import { InventoryLifecycleWorkspace } from "./inventory-lifecycle-workspace";
 import { BusinessTrendChart } from "./dashboard-charts";
 import {
@@ -230,7 +231,21 @@ type ReportCatalogItem = {
   implementationStatus: "available" | "planned";
   queryReportId: "sales_totals" | null;
   presentation: "sales" | "payment_mix" | null;
+  recordedDataAvailable?: boolean;
+  readinessReason?: string;
 };
+
+export function recordedReportTrend(rows: Array<{ businessDate: string; netSalesCents: number; costOfGoodsCents: number | null; transactionCount: number }>) {
+  const daily = new Map<string, { date: string; netSalesCents: number; grossProfitCents: number | null; transactionCount: number }>();
+  for (const row of rows) {
+    const current = daily.get(row.businessDate) ?? { date: row.businessDate, netSalesCents: 0, grossProfitCents: 0, transactionCount: 0 };
+    current.netSalesCents += row.netSalesCents;
+    current.grossProfitCents = current.grossProfitCents === null || row.costOfGoodsCents === null ? null : current.grossProfitCents + row.netSalesCents - row.costOfGoodsCents;
+    current.transactionCount += row.transactionCount;
+    daily.set(row.businessDate, current);
+  }
+  return [...daily.values()].sort((left, right) => left.date.localeCompare(right.date));
+}
 
 type ProviderReportCatalog = {
   provider: string;
@@ -280,7 +295,7 @@ export function ReportsWorkspace({
   const [query, setQuery] = useState("");
   const [group, setGroup] = useState("All reports");
   const [selected, setSelected] = useState("Sales totals");
-  const [report, setReport] = useState<Record<string, unknown> | null>(null);
+  const [loadedReport, setReport] = useState<{ contextKey: string; body: Record<string, unknown> } | null>(null);
   const [loading, setLoading] = useState(false);
   const [start, setStart] = useState(initialPeriod?.from ?? "");
   const [end, setEnd] = useState(initialPeriod?.to ?? "");
@@ -288,7 +303,12 @@ export function ReportsWorkspace({
   const [sourceConnectionId, setSourceConnectionId] = useState("");
   const [sourceReportLabel, setSourceReportLabel] = useState("");
   const [savingAuthority, setSavingAuthority] = useState("");
+  const [exporting, setExporting] = useState(false);
+  const contextKey = `${selected}:${start}:${end}:${activeLocationId ?? ""}:${sourceConnectionId}`;
+  const report = loadedReport?.contextKey === contextKey ? loadedReport.body : null;
   const reportRequestSequence = useRef(0);
+  const exportController = useRef<AbortController | null>(null);
+  useEffect(() => () => { reportRequestSequence.current++; exportController.current?.abort(); }, []);
   const visible = Object.entries(reportGroups)
     .flatMap(([category, reports]) =>
       reports.map((name) => ({ category, name })),
@@ -302,7 +322,7 @@ export function ReportsWorkspace({
     const requestSequence = ++reportRequestSequence.current;
     setReport(null);
     const id = liveReports[name];
-    if (!id) return;
+    if (!id) { setLoading(false); return; }
     setLoading(true);
     const params = new URLSearchParams({ report: id });
     if (start) params.set("start", start);
@@ -314,7 +334,7 @@ export function ReportsWorkspace({
       const response = await apiFetch(`/api/v1/reports?${params.toString()}`);
       const body: unknown = await response.json();
       if (requestSequence !== reportRequestSequence.current) return;
-      if (response.ok) setReport(body as Record<string, unknown>);
+      if (response.ok) setReport({ contextKey: `${name}:${start}:${end}:${activeLocationId ?? ""}:${sourceConnectionId}`, body: body as Record<string, unknown> });
       else {
         if (response.status === 403 && sourceConnectionId) {
           setSourceConnectionId("");
@@ -329,8 +349,9 @@ export function ReportsWorkspace({
     }
   }, [activeLocationId, end, showNotice, sourceConnectionId, start]);
   useEffect(() => {
+    const requests = reportRequestSequence;
     const timer = window.setTimeout(() => void load(selected), 0);
-    return () => window.clearTimeout(timer);
+    return () => { window.clearTimeout(timer); requests.current++; exportController.current?.abort(); };
   }, [load, selected]);
   const applyPreset = (days: number) => {
     const next = reportRange(days);
@@ -340,6 +361,8 @@ export function ReportsWorkspace({
   };
   const totals = report?.totals as Record<string, number | null> | undefined;
   const comparison = report?.comparison as {
+    comparable?: boolean;
+    limitations?: string[];
     periodStart: string;
     periodEnd: string;
     verifiedDays: number;
@@ -349,6 +372,7 @@ export function ReportsWorkspace({
   const paymentMix = (report?.paymentMix as Array<{ category: string; paymentTypeName: string | null; amountCents: number; transactionCount: number }> | undefined) ?? [];
   const explain = report?.explainAndAct as Record<string, unknown> | undefined;
   const source = report?.source as Record<string, unknown> | undefined;
+  const readiness = source?.readiness as { state: string; scope: { currency: string; timeZone: string }; coverage: { dateScopes: { observedRecords: number; expectedRecords: number; rate: number } | null }; freshness: { state: string; oldestSourceSyncAt: string | null }; limitations: string[] } | undefined;
   const sourceLineage = source?.lineage as {
     sales?: Array<{ locationId: string; locationName: string; channel: string; provider: string; accountName: string | null; connectionId: string; mode: string }>;
     payments?: Array<{ locationId: string; locationName: string; channel: string; provider: string; accountName: string | null; connectionId: string; mode: string }>;
@@ -365,6 +389,7 @@ export function ReportsWorkspace({
   const sourceSelectionRequired = authorityEntries.some(({ authority }) => authority.status === "conflict");
   const canResolveAuthority = report?.canResolveSourceAuthority === true;
   const chooseAuthority = async (locationId: string, connectionId: string, factFamily: "sales" | "payments", expectedVersion: number) => {
+    const sequence = reportRequestSequence.current;
     setSavingAuthority(connectionId);
     try {
       const response = await apiFetch("/api/v1/reports", {
@@ -375,7 +400,7 @@ export function ReportsWorkspace({
       const body: unknown = await response.json();
       if (response.ok) {
         showNotice("Reporting source saved. Consolidated totals now exclude overlapping feeds.");
-        await load(selected);
+        if (sequence === reportRequestSequence.current) await load(selected);
       } else showNotice(apiMessage(body, "Unable to save the reporting source."));
     } catch {
       showNotice("Unable to save the reporting source. Check the connection and try again.");
@@ -384,21 +409,32 @@ export function ReportsWorkspace({
     }
   };
   const rows = useMemo(
-    () => (report?.rows as Array<{ businessDate: string; netSalesCents: number; costOfGoodsCents: number; transactionCount: number }> | undefined) ?? [],
+    () => (report?.rows as Array<{ businessDate: string; netSalesCents: number; costOfGoodsCents: number | null; transactionCount: number }> | undefined) ?? [],
     [report],
   );
-  const trendRows = useMemo(() => {
-    const daily = new Map<string, { date: string; netSalesCents: number; grossProfitCents: number; transactionCount: number }>();
-    for (const row of rows) {
-      const current = daily.get(row.businessDate) ?? { date: row.businessDate, netSalesCents: 0, grossProfitCents: 0, transactionCount: 0 };
-      current.netSalesCents += row.netSalesCents;
-      current.grossProfitCents += row.netSalesCents - row.costOfGoodsCents;
-      current.transactionCount += row.transactionCount;
-      daily.set(row.businessDate, current);
-    }
-    return [...daily.values()].sort((left, right) => left.date.localeCompare(right.date));
-  }, [rows]);
+  const trendRows = useMemo(() => recordedReportTrend(rows), [rows]);
   const canExport = canExportFeature && report?.canExport === true;
+  const reportCurrency = readiness?.scope.currency ?? currency;
+  const exportCsv = async () => {
+    if (!canExport || exporting) return;
+    const sequence = reportRequestSequence.current;
+    const controller = new AbortController();
+    exportController.current?.abort(); exportController.current = controller; setExporting(true);
+    const params = new URLSearchParams({ report: liveReports[selected], format: "csv" });
+    if (start) params.set("start", start);
+    if (end) params.set("end", end);
+    if (activeLocationId) params.set("location", activeLocationId);
+    if (sourceConnectionId) params.set("connection", sourceConnectionId);
+    if (selected === "Payment-method performance") params.set("view", "payment_mix");
+    try {
+      const blob = await reportCsvRequest(apiFetch, `/api/v1/reports?${params}`, { signal: controller.signal });
+      if (controller.signal.aborted || sequence !== reportRequestSequence.current) return;
+      const url = URL.createObjectURL(blob), link = document.createElement("a");
+      link.href = url; link.download = `vanteloq-${liveReports[selected]}-${start || "all"}-${end || "data"}.csv`;
+      document.body.append(link); link.click(); link.remove(); window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) { if (!controller.signal.aborted && sequence === reportRequestSequence.current) showNotice(error instanceof Error ? error.message : "This report could not be exported. Please try again."); }
+    finally { if (exportController.current === controller) setExporting(false); }
+  };
   return (
     <div className="content control-page reports-centre">
       <section className="page-intro">
@@ -432,6 +468,7 @@ export function ReportsWorkspace({
           {[...(sourceLineage.sales ?? []).map((item) => ({ ...item, family: "Sales" })), ...(selected === "Payment-method performance" ? (sourceLineage.payments ?? []).map((item) => ({ ...item, family: "Payments" })) : [])].map((item) => <span key={`${item.family}:${item.locationId}:${item.connectionId}`}><small>{item.family} · {item.locationName}</small><b>{item.accountName || providerDisplayName(item.provider)}</b><em>{humanizeIdentifier(item.channel)} · {humanizeIdentifier(item.mode)} · {String(source?.periodStart ?? source?.earliestBusinessDate ?? "no date")} to {String(source?.periodEnd ?? source?.latestBusinessDate ?? "no date")}</em></span>)}
           {Number(sourceLineage.manual?.rowCount ?? 0) > 0 && <span><small>Owner-reviewed summaries</small><b>{Number(sourceLineage.manual?.rowCount)} manual rows</b><em>{(sourceLineage.manual?.locationRefs ?? []).length} location scope{(sourceLineage.manual?.locationRefs ?? []).length === 1 ? "" : "s"} · {String(source?.periodStart ?? source?.earliestBusinessDate ?? "no date")} to {String(source?.periodEnd ?? source?.latestBusinessDate ?? "no date")}</em></span>}
         </div>}
+        {readiness && <details className="provider-report-list"><summary>Recorded evidence and limitations · {humanizeIdentifier(readiness.state)}</summary><section><div><b>Period reconciliation has not been certified.</b><small>{readiness.scope.currency} · {readiness.scope.timeZone} · Provider freshness: {humanizeIdentifier(readiness.freshness.state)}</small></div>{readiness.limitations.map((line, index) => <p key={index}>{line}</p>)}</section></details>}
         {authorityEntries.flatMap(({ factFamily, authority }) => authority.conflicts.map((conflict) => <article className="report-source-conflict" key={`${factFamily}:${conflict.localLocationId}:${conflict.channel}`}>
           <div><b>Choose the authoritative {conflict.channel} {factFamily} source for {conflict.locationName || conflict.localLocationId}</b><span>Overlapping feeds are excluded from consolidated totals until an owner or admin chooses one.</span></div>
           {canResolveAuthority ? <div>{conflict.candidates.map((candidate) => {
@@ -439,8 +476,8 @@ export function ReportsWorkspace({
             return <button key={candidate.connectionId} disabled={Boolean(savingAuthority) || !ready} onClick={() => void chooseAuthority(conflict.localLocationId, candidate.connectionId, factFamily, conflict.expectedVersion)}><b>{candidate.accountName || providerDisplayName(candidate.provider)}</b><small>{providerDisplayName(candidate.provider)} · {ready && candidate.lastSuccessfulSyncAt ? `Synced ${new Date(candidate.lastSuccessfulSyncAt).toLocaleDateString("en-CA")}` : reportSourceAvailability(candidate.availability)}</small><span>{savingAuthority === candidate.connectionId ? "Saving…" : ready ? `Use for ${factFamily}` : reportSourceAvailability(candidate.availability)}</span></button>;
           })}</div> : <p>An owner or admin must choose this source.</p>}
         </article>))}
-        {canonicalReports.length > 0 && <details className="provider-report-list" open><summary>Vanteloq report definitions</summary><section><div><b>Canonical intelligence</b><small>Consistent definitions across approved provider accounts. A report remains unavailable until its exact query and required facts exist.</small></div>{canonicalReports.map((item) => <button key={item.id} disabled={item.status !== "ready" || item.queryReportId === null} onClick={() => { setSourceConnectionId(""); setSourceReportLabel(""); setSelected(item.presentation === "payment_mix" ? "Payment-method performance" : "Sales totals"); }}><span><b>{item.label}</b><small>{item.description}</small></span><em>{item.implementationStatus === "planned" ? "Not available" : item.status === "ready" ? "Open canonical report" : `Needs ${item.dataNeeded.join(", ")}`}</em></button>)}</section></details>}
-        {providerCatalogs.length > 0 && <details className="provider-report-list"><summary>Provider-specific report catalogue</summary>{providerCatalogs.map((catalog) => <section key={catalog.connectionId}><div><b>{catalog.accountName || providerDisplayName(catalog.provider)}</b><small>{catalog.boundary}</small></div>{catalog.providerReports.map((item) => <button key={item.id} disabled={item.status !== "ready" || item.queryReportId === null} onClick={() => { setSourceConnectionId(catalog.connectionId); setSourceReportLabel(item.label); setSelected(item.presentation === "payment_mix" ? "Payment-method performance" : "Sales totals"); }}><span><b>{item.label}</b><small>{item.description}</small></span><em>{item.status === "ready" ? "Open source view" : item.implementationStatus === "planned" ? "Not available" : `Needs ${item.dataNeeded.join(", ")}`}</em></button>)}</section>)}</details>}
+        {canonicalReports.length > 0 && <details className="provider-report-list" open><summary>Vanteloq report definitions</summary><section><div><b>Canonical intelligence</b><small>Consistent definitions across approved provider accounts. A report remains unavailable until its exact query and required facts exist.</small></div>{canonicalReports.map((item) => <button key={item.id} disabled={item.implementationStatus !== "available" || item.queryReportId === null || !(item.recordedDataAvailable || item.status === "ready")} onClick={() => { setSourceConnectionId(""); setSourceReportLabel(""); setSelected(item.presentation === "payment_mix" ? "Payment-method performance" : "Sales totals"); }}><span><b>{item.label}</b><small>{item.description}</small>{item.readinessReason && <small>{item.readinessReason}</small>}</span><em>{item.implementationStatus === "planned" ? "Not available" : item.recordedDataAvailable ? "Open recorded view" : item.status === "ready" ? "Open canonical report" : `Needs ${item.dataNeeded.join(", ")}`}</em></button>)}</section></details>}
+        {providerCatalogs.length > 0 && <details className="provider-report-list"><summary>Provider-specific report catalogue</summary>{providerCatalogs.map((catalog) => <section key={catalog.connectionId}><div><b>{catalog.accountName || providerDisplayName(catalog.provider)}</b><small>{catalog.boundary}</small></div>{catalog.providerReports.map((item) => <button key={item.id} disabled={item.implementationStatus !== "available" || item.queryReportId === null || !(item.recordedDataAvailable || item.status === "ready")} onClick={() => { setSourceConnectionId(catalog.connectionId); setSourceReportLabel(item.label); setSelected(item.presentation === "payment_mix" ? "Payment-method performance" : "Sales totals"); }}><span><b>{item.label}</b><small>{item.description}</small>{item.readinessReason && <small>{item.readinessReason}</small>}</span><em>{item.recordedDataAvailable ? "Open recorded view" : item.status === "ready" ? "Open source view" : item.implementationStatus === "planned" ? "Not available" : `Needs ${item.dataNeeded.join(", ")}`}</em></button>)}</section>)}</details>}
       </section>
       <section className="report-period-control" aria-label="Report time frame">
         <div className="report-period-presets" aria-label="Time frame presets">
@@ -561,27 +598,27 @@ export function ReportsWorkspace({
             </span>
           </header>
           {loading ? (
-            <div className="control-empty">Calculating verified records…</div>
+            <div className="control-empty">Calculating recorded evidence…</div>
           ) : report?.reportStatus === "source_conflict" ? (
             <div className="gated-report"><i>!</i><h3>Consolidated totals are withheld.</h3><p>Two or more approved feeds cover the same location. Choose each sales or payment authority shown above so Vanteloq cannot double count facts.</p><span>Provider-specific views remain available while the owner or admin resolves the overlap.</span></div>
           ) : report?.reportStatus === "needs_data" ? (
-            <div className="gated-report"><i>!</i><h3>Verified report evidence is incomplete.</h3><p>At least one authoritative location has no approved facts for this report and selected period, so Vanteloq is withholding partial totals.</p><span>Sync the mapped source, add an owner-reviewed summary, or adjust the report period.</span></div>
+            <div className="gated-report"><i>!</i><h3>Report evidence is incomplete.</h3><p>At least one authoritative location has no approved facts for this report and selected period, so Vanteloq is withholding partial totals.</p><span>Sync the mapped source, add an owner-reviewed summary, or adjust the report period.</span></div>
           ) : liveReports[selected] && report ? (
             <>
               <div className="report-metrics">
                 <article>
                   <small>NET SALES</small>
-                  <b>{money(totals?.netSalesCents, currency)}</b>
+                  <b>{money(totals?.netSalesCents, reportCurrency)}</b>
                   <span>{reportChange(comparison?.changes.netSalesRate)} vs matched period</span>
                 </article>
                 <article>
                   <small>GROSS PROFIT</small>
-                  <b>{money(totals?.grossProfitCents, currency)}</b>
+                  <b>{money(totals?.grossProfitCents, reportCurrency)}</b>
                   <span>{reportChange(comparison?.changes.grossProfitRate)} vs matched period</span>
                 </article>
                 <article>
                   <small>AVERAGE TRANSACTION</small>
-                  <b>{money(totals?.averageTransactionCents, currency)}</b>
+                  <b>{money(totals?.averageTransactionCents, reportCurrency)}</b>
                   <span>{reportChange(comparison?.changes.averageTransactionRate)} vs matched period</span>
                 </article>
                 <article>
@@ -591,36 +628,37 @@ export function ReportsWorkspace({
                 </article>
               </div>
               <section className="report-comparison-strip" aria-label="Matched period comparison">
-                <div><small>SELECTED PERIOD</small><b>{readableReportDate(source?.periodStart || source?.earliestBusinessDate)} to {readableReportDate(source?.periodEnd || source?.latestBusinessDate)}</b><span>{String(source?.verifiedDays ?? 0)} verified days · {Math.round(Number(source?.completenessRate ?? 0) * 100)}% date × location coverage</span></div>
-                <div><small>PREVIOUS MATCHED PERIOD</small><b>{comparison ? `${readableReportDate(comparison.periodStart)} to ${readableReportDate(comparison.periodEnd)}` : "Not available"}</b><span>{comparison ? `${comparison.verifiedDays} verified days` : "A complete baseline has not been imported"}</span></div>
+                <div><small>SELECTED PERIOD</small><b>{readableReportDate(source?.periodStart || source?.earliestBusinessDate)} to {readableReportDate(source?.periodEnd || source?.latestBusinessDate)}</b><span>{readiness?.coverage.dateScopes ? `${readiness.coverage.dateScopes.observedRecords} of ${readiness.coverage.dateScopes.expectedRecords} expected date and source records · ${Math.round(readiness.coverage.dateScopes.rate * 100)}% observed` : "Complete daily coverage is not established for this view."}</span></div>
+                <div><small>PREVIOUS MATCHED PERIOD</small><b>{comparison ? `${readableReportDate(comparison.periodStart)} to ${readableReportDate(comparison.periodEnd)}` : "Not available"}</b><span>{comparison ? `${comparison.verifiedDays} recorded days` : "A complete baseline has not been imported"}</span></div>
               </section>
+              {comparison?.comparable === false && <div className="report-source-conflict" role="status"><div><b>Period changes are withheld.</b>{comparison.limitations?.map((line, index) => <span key={index}>{line}</span>)}</div></div>}
               <section className="report-period-chart" aria-label="Sales over the selected time frame">
                 <header>
                   <div>
                     <p>SELECTED TIME FRAME</p>
                     <h3>Net sales and gross profit</h3>
                   </div>
-                  <span>{String(source?.verifiedDays ?? trendRows.length)} verified days · {rows.length} source records</span>
+                  <span>{String(source?.verifiedDays ?? trendRows.length)} recorded days · {rows.length} source records</span>
                 </header>
                 {trendRows.length ? (
                   <BusinessTrendChart
-                    currency={currency}
+                    currency={reportCurrency}
                     data={trendRows}
                   />
                 ) : (
-                  <div className="report-chart-empty">No verified sales records match this time frame.</div>
+                  <div className="report-chart-empty">No recorded sales records match this time frame.</div>
                 )}
               </section>
               {selected === "Payment-method performance" && (
                 <section className="report-payment-mix" aria-label="Payment method performance">
-                  <header><div><p>VERIFIED TENDERS</p><h3>Payment method mix</h3></div><span>{paymentMix.length ? `${paymentMix.length} payment types` : "Backfill required"}</span></header>
-                  {paymentMix.length ? paymentMix.map((row) => <div key={`${row.category}:${row.paymentTypeName ?? "unknown"}`}><span><i className={`payment-${row.category}`} /><b>{row.paymentTypeName || humanizeIdentifier(row.category)}</b><small>{Number(row.transactionCount).toLocaleString()} recorded payments</small></span><strong>{money(Number(row.amountCents), currency)}</strong></div>) : <p>No verified payment records match this period. Vanteloq will not infer cash or card mix from sales totals.</p>}
+                  <header><div><p>RECORDED TENDERS</p><h3>Payment method mix</h3></div><span>{paymentMix.length ? `${paymentMix.length} payment types` : "Backfill required"}</span></header>
+                  {paymentMix.length ? paymentMix.map((row) => <div key={`${row.category}:${row.paymentTypeName ?? "unknown"}`}><span><i className={`payment-${row.category}`} /><b>{row.paymentTypeName || humanizeIdentifier(row.category)}</b><small>{Number(row.transactionCount).toLocaleString()} recorded payments</small></span><strong>{money(Number(row.amountCents), currency)}</strong></div>) : <p>No recorded payment records match this period. Vanteloq will not infer cash or card mix from sales totals.</p>}
                 </section>
               )}
               <section className="explain-act">
                 <p>EXPLAIN & ACT</p>
                 <h3>
-                  {String(explain?.executiveSummary || "Verified report ready")}
+                  {String(explain?.executiveSummary || "Recorded report available")}
                 </h3>
                 <dl>
                   <div>
@@ -633,7 +671,7 @@ export function ReportsWorkspace({
                   </div>
                   <div>
                     <dt>Confidence</dt>
-                    <dd>{String(explain?.confidence || "low")}</dd>
+                    <dd>{humanizeIdentifier(String(explain?.confidence || "low"))}</dd>
                   </div>
                   <div>
                     <dt>Source & freshness</dt>
@@ -665,12 +703,14 @@ export function ReportsWorkspace({
               </section>
               <footer>
                 {canExport ? (
-                  <a
+                  <button
+                    type="button"
                     className="report-export"
-                    href={`/api/v1/reports?report=${liveReports[selected]}${start ? `&start=${start}` : ""}${end ? `&end=${end}` : ""}${activeLocationId ? `&location=${encodeURIComponent(activeLocationId)}` : ""}${sourceConnectionId ? `&connection=${encodeURIComponent(sourceConnectionId)}` : ""}${selected === "Payment-method performance" ? "&view=payment_mix" : ""}&format=csv`}
+                    disabled={exporting}
+                    onClick={() => void exportCsv()}
                   >
-                    Export CSV
-                  </a>
+                    {exporting ? "Preparing CSV…" : "Export CSV"}
+                  </button>
                 ) : (
                   <button disabled title={canExportFeature ? "This role cannot export reports" : "CSV export requires the Pro plan"}>
                     {canExportFeature ? "CSV · restricted" : "CSV · Pro required"}

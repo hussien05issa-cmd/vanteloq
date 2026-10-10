@@ -5,6 +5,7 @@ import BookLoQSkeleton from "./bookloq-skeleton";
 import FinanceChart from "./finance-chart";
 import BookloqAdvertisingSpendPanel from "./bookloq-advertising-spend";
 import BookloqPayrollSourcePanel from "./bookloq-payroll-source";
+import type { BookloqDatedReport, BookloqReportKind } from "../server/bookloq-reports";
 import type { BookloqPayrollSource } from "../domain/bookloq-payroll-source";
 import type { BookloqAdvertisingSpend } from "../domain/bookloq-advertising-spend";
 import CashForecastChart from "./cash-forecast-chart";
@@ -24,11 +25,12 @@ import PlaidLinkButton from "./plaid-link-button";
 import ExecutiveOverview from "./executive-overview";
 import { apiFetch } from "./supabase-browser";
 import { bookloqRequest, bookloqAccessDenied, BookloqRequestError } from "./bookloq-request";
+import { reportCsvRequest } from "./report-csv-request";
 import { createDocumentEmailRequests } from "./document-email-client";
 import { bookloqHealthPresentation, bookloqMetricCount, formatBookloqMoney } from "../domain/bookloq-presentation";
 import type { ThirteenWeekCashFlow } from "../domain/thirteen-week-cash-flow";
 import { FieldLabel } from "./form-primitives";
-import { budgetControl, bookloqReportHeadings } from "../domain/bookloq-budget";
+import { budgetControl } from "../domain/bookloq-budget";
 import BookloqStatementImport from "./bookloq-statement-import";
 import BookloqDashboardVisuals from "./bookloq-dashboard-visuals";
 import BookloqCollections from "./bookloq-collections";
@@ -93,7 +95,7 @@ type CashPeriod = ReturnType<typeof buildBusinessCashSummary>;
 type TransactionMatch = { id: string; transactionId: string; status: string; method: string; confidenceBasisPoints: number; matchedAmountCents: number; reasonsJson: string; note: string; supplierBillId: string | null; customerInvoiceId: string | null; documentId: string | null; targetLabel: string };
 type MatchCandidate = { transactionId: string; candidateId: string; kind: "supplier_bill" | "customer_invoice" | "receipt"; label: string; confidenceBasisPoints: number; reasons: string[]; requiresConfirmation: true };
 type BookDocument = { id: string; documentType: string; fileName: string; status: string; securityState: string; extractionStatus: string; createdAt: number };
-export type BookLoQData = { advertisingSpend?: BookloqAdvertisingSpend; payrollSource?: BookloqPayrollSource; configured: boolean; accountCatalog?: Pick<Account, "id" | "code" | "name" | "accountType" | "accountSubtype" | "normalBalance" | "systemKey">[]; transactionAccess?: { available: boolean; reason: string | null }; ledgerAccess?: { available: boolean; reason: string | null }; settings: null | { baseCurrency: string; countryCode: string; provinceCode: string; accountingBasis: string; cashSafetyThresholdCents: number; status: string; dataMode: "live" | "demonstration" }; role: string; permissions: Permission[]; organization: { name: string; currency: string }; summary: Summary; statements: { accounts: Account[]; trialBalance: { totalDebitCents: number; totalCreditCents: number }; profitAndLoss: { revenueCents: number; expenseCents: number; cogsCents: number; grossProfitCents: number; operatingProfitCents: number; netProfitCents?: number; operatingRevenueCents?:number; operatingExpensesCents?:number; otherIncomeCents?:number; financeAndTaxCents?:number }; balanceSheet: { assetCents: number; liabilityCents: number; equityCents: number }; cashCents: number; accountsReceivableCents: number; accountsPayableCents: number; netSalesTaxCents: number }; locationScope: null | { id: string; name: string; filteredRecords: string[]; organizationWideRecords: string[]; boundary: string }; forecasts: { days: number; endDate: string; confirmedNetCents: number; probableNetCents: number; estimatedNetCents: number; closingCashCents: number }[]; thirteenWeekCashFlow: ThirteenWeekCashFlow; cashIntelligence: { status: "available" | "unavailable"; liquidity30Cents: number | null; liquidity60Cents: number | null; purchasingCapacityCents: number | null; risk: "low" | "moderate" | "high" | "unavailable"; minimumCashCents: number | null; minimumCashDate: string | null; warning: string | null; evidence: string[] }; cashActivity: { sourceBoundary?: string; days30: CashPeriod; days90: CashPeriod; months12: CashPeriod }; transactions: Transaction[]; transactionMatches: TransactionMatch[]; matchCandidates: MatchCandidate[]; categoryRules: { id: string; name: string; matchText: string; direction: string; accountId: string; accountCode: string; accountName: string }[]; documents: BookDocument[]; banks: Bank[]; reconciliations: Reconciliation[]; bills: Bill[]; invoices: Invoice[]; contacts: Contact[]; alerts: Alert[]; journals: Journal[]; periods: Period[]; closeItems: CloseItem[]; budgets: Budget[]; audit: Audit[]; documentSummary: { total: number; invoices: number; receipts: number; needsReview: number; extractionConfigured: boolean }; integrations: Record<string, string>; disclaimer: string };
+export type BookLoQData = { advertisingSpend?: BookloqAdvertisingSpend; payrollSource?: BookloqPayrollSource; configured: boolean; accountCatalog?: Pick<Account, "id" | "code" | "name" | "accountType" | "accountSubtype" | "normalBalance" | "systemKey">[]; transactionAccess?: { available: boolean; reason: string | null }; ledgerAccess?: { available: boolean; reason: string | null }; settings: null | { baseCurrency: string; countryCode: string; provinceCode: string; accountingBasis: string; cashSafetyThresholdCents: number; status: string; dataMode: "live" | "demonstration" }; role: string; permissions: Permission[]; organization: { id?: string; name: string; currency: string }; summary: Summary; statements: { accounts: Account[]; trialBalance: { totalDebitCents: number; totalCreditCents: number }; profitAndLoss: { revenueCents: number; expenseCents: number; cogsCents: number; grossProfitCents: number; operatingProfitCents: number; netProfitCents?: number; operatingRevenueCents?:number; operatingExpensesCents?:number; otherIncomeCents?:number; financeAndTaxCents?:number }; balanceSheet: { assetCents: number; liabilityCents: number; equityCents: number }; cashCents: number; accountsReceivableCents: number; accountsPayableCents: number; netSalesTaxCents: number }; locationScope: null | { id: string; name: string; filteredRecords: string[]; organizationWideRecords: string[]; boundary: string }; forecasts: { days: number; endDate: string; confirmedNetCents: number; probableNetCents: number; estimatedNetCents: number; closingCashCents: number }[]; thirteenWeekCashFlow: ThirteenWeekCashFlow; cashIntelligence: { status: "available" | "unavailable"; liquidity30Cents: number | null; liquidity60Cents: number | null; purchasingCapacityCents: number | null; risk: "low" | "moderate" | "high" | "unavailable"; minimumCashCents: number | null; minimumCashDate: string | null; warning: string | null; evidence: string[] }; cashActivity: { sourceBoundary?: string; days30: CashPeriod; days90: CashPeriod; months12: CashPeriod }; transactions: Transaction[]; transactionMatches: TransactionMatch[]; matchCandidates: MatchCandidate[]; categoryRules: { id: string; name: string; matchText: string; direction: string; accountId: string; accountCode: string; accountName: string }[]; documents: BookDocument[]; banks: Bank[]; reconciliations: Reconciliation[]; bills: Bill[]; invoices: Invoice[]; contacts: Contact[]; alerts: Alert[]; journals: Journal[]; periods: Period[]; closeItems: CloseItem[]; budgets: Budget[]; audit: Audit[]; documentSummary: { total: number; invoices: number; receipts: number; needsReview: number; extractionConfigured: boolean }; integrations: Record<string, string>; disclaimer: string };
 type PlaidAccess = {
   status: string;
   maskedAccountRef: string | null;
@@ -804,7 +806,121 @@ export function BusinessCashReport({ data }: { data: BookLoQData }) {
   </section>;
 }
 
-function ReportsPanel({ data, navigate, canUploadDocuments, canViewDocuments, openStatementImport }: { data: BookLoQData; navigate: (view: "Documents") => void; canUploadDocuments: boolean; canViewDocuments: boolean; openStatementImport: () => void }) { const [report, setReport] = useState<"pnl" | "balance" | "trial">("pnl"); const accounts = data.statements.accounts; const rows = report === "pnl" ? accounts.filter((account) => ["revenue", "expense"].includes(account.accountType)).map((account) => [account.code, account.name, label(account.accountType), money(account.balanceCents, data.organization.currency)]) : report === "balance" ? accounts.filter((account) => ["asset", "liability", "equity"].includes(account.accountType)).map((account) => [account.code, account.name, label(account.accountType), money(account.balanceCents, data.organization.currency)]) : accounts.map((account) => [account.code, account.name, money(Math.max(0, account.debitCents - account.creditCents), data.organization.currency), money(Math.max(0, account.creditCents - account.debitCents), data.organization.currency)]); return <div className="bookloq-content"><PageIntro eyebrow="FINANCIAL REPORTS" title="Accountant detail with owner-readable explanations" copy="Cumulative posted account balances are shown below. These are not period-specific statutory statements. Local exports use the displayed rows and demonstration data remains labelled." action={data.permissions.includes("export_data") ? <button onClick={() => downloadReport(report, rows)}>Export CSV</button> : undefined}/><BookloqImportActions canUploadDocuments={canUploadDocuments} canViewDocuments={canViewDocuments} canImportStatement={data.permissions.includes("reconcile_accounts")} navigate={navigate} openStatementImport={openStatementImport}/><BookloqAdvertisingSpendPanel spend={data.advertisingSpend} context="reports"/><div className="report-switch"><button className={report === "pnl" ? "active" : ""} onClick={() => setReport("pnl")}>Profit and loss</button><button className={report === "balance" ? "active" : ""} onClick={() => setReport("balance")}>Balance sheet</button><button className={report === "trial" ? "active" : ""} onClick={() => setReport("trial")}>Trial balance</button></div>{report === "pnl" && <ReportSummary currency={data.organization.currency} items={[["Revenue", data.statements.profitAndLoss.revenueCents], ["Cost of goods sold", data.statements.profitAndLoss.cogsCents], ["Gross profit", data.statements.profitAndLoss.grossProfitCents], ["Total expenses", data.statements.profitAndLoss.expenseCents], ["Operating profit", data.statements.profitAndLoss.operatingProfitCents], ["Recorded net earnings", data.statements.profitAndLoss.netProfitCents ?? data.statements.profitAndLoss.operatingProfitCents]]}/>} {report === "balance" && <ReportSummary currency={data.organization.currency} items={[["Assets", data.statements.balanceSheet.assetCents], ["Liabilities", data.statements.balanceSheet.liabilityCents], ["Equity including earnings", data.statements.balanceSheet.equityCents]]}/>} {report === "trial" && <ReportSummary currency={data.organization.currency} items={[["Total debits", data.statements.trialBalance.totalDebitCents], ["Total credits", data.statements.trialBalance.totalCreditCents], ["Difference", data.statements.trialBalance.totalDebitCents - data.statements.trialBalance.totalCreditCents]]}/>}<DataTable headings={bookloqReportHeadings(report)} rows={rows}/><div className="export-gates"><button disabled title="A verified server-side PDF renderer is not configured.">PDF export unavailable</button><button disabled title="A verified XLSX renderer is not configured.">XLSX export unavailable</button><span>Generated {new Intl.DateTimeFormat("en-CA", { dateStyle: "medium", timeStyle: "short" }).format(new Date())}</span></div></div>; }
+export function ReportsPanel({ data, navigate, canUploadDocuments, canViewDocuments, openStatementImport }: { data: BookLoQData; navigate: (view: "Documents") => void; canUploadDocuments: boolean; canViewDocuments: boolean; openStatementImport: () => void }) {
+  const unavailable = data.locationScope ? "Select All locations to read a complete financial report. Location subsets of journal lines may not balance."
+    : !data.settings || data.settings.status !== "active" ? "Set up an active accounting profile before reading dated reports."
+    : data.settings.accountingBasis !== "accrual" ? "This profile uses cash-basis accounting. Cash-basis conversion is not implemented, so dated financial reports are unavailable. No accounting setting has been changed."
+    : data.ledgerAccess?.available === false && data.ledgerAccess.reason?.includes("permissions") ? data.ledgerAccess.reason
+    : !data.organization.id ? "Refresh BookLoQ to verify the current business before reading dated reports." : null;
+  const scope = [data.organization.id, data.organization.currency, data.settings?.baseCurrency, data.settings?.accountingBasis, data.settings?.dataMode, data.permissions.join(",")].join(":");
+  return <div className="bookloq-content">
+    <PageIntro eyebrow="FINANCIAL REPORTS" title="Financial reports for the dates you choose" copy="Read posted ledger activity for a period and balances through an as-of date. Account details and CSV exports retain the report source, currency, dates and accounting basis."/>
+    <BookloqImportActions canUploadDocuments={canUploadDocuments} canViewDocuments={canViewDocuments} canImportStatement={data.permissions.includes("reconcile_accounts")} navigate={navigate} openStatementImport={openStatementImport}/>
+    <BookloqAdvertisingSpendPanel spend={data.advertisingSpend} context="reports"/>
+    {unavailable ? <ProviderGate title="Dated reports unavailable" detail={unavailable} status="Review required"/> : <DatedReportControls key={scope} organizationId={data.organization.id!} canExport={data.permissions.includes("export_data")}/>}
+  </div>;
+}
+
+function DatedReportControls({ organizationId, canExport }: { organizationId: string; canExport: boolean }) {
+  const [report, setReport] = useState<BookloqReportKind>("pnl");
+  const [from, setFrom] = useState(""), [to, setTo] = useState("");
+  const [applied, setApplied] = useState({ from: "", to: "" });
+  const [refresh, setRefresh] = useState(0);
+  const [accountId, setAccountId] = useState<string | null>(null), [after, setAfter] = useState<string | null>(null);
+  const defaultLoaded = useRef(false);
+  const defaults = useCallback((metadata: BookloqDatedReport["metadata"]) => {
+    if (!defaultLoaded.current) { defaultLoaded.current = true; setFrom(metadata.from); setTo(metadata.to); }
+  }, []);
+  const params = new URLSearchParams({ report });
+  if (applied.from && report === "pnl") params.set("from", applied.from);
+  if (applied.to) params.set("to", applied.to);
+  if (accountId) params.set("accountId", accountId);
+  if (after) params.set("after", after);
+  const path = "/api/v1/bookloq/reports?" + params;
+  function selectReport(next: BookloqReportKind) { setReport(next); setAccountId(null); setAfter(null); }
+  function apply(event: FormEvent) { event.preventDefault(); setApplied({ from, to }); setAccountId(null); setAfter(null); setRefresh(value => value + 1); }
+  return <>
+    <div className="bookloq-report-switch" aria-label="Financial report">{(["pnl", "balance", "trial"] as const).map(kind => <button key={kind} type="button" aria-pressed={report === kind} className={report === kind ? "active" : ""} onClick={() => selectReport(kind)}>{kind === "pnl" ? "Profit and loss" : kind === "balance" ? "Balance sheet" : "Trial balance"}</button>)}</div>
+    <form className="bookloq-card bookloq-report-dates" onSubmit={apply} aria-label="Report dates" style={{ display: "flex", flexWrap: "wrap", alignItems: "end", gap: 16 }}>
+      {report === "pnl" && <label style={{ display: "grid", gap: 8, flex: "1 1 180px" }}>Period start<input type="date" required value={from} onChange={event => setFrom(event.target.value)}/></label>}
+      <label style={{ display: "grid", gap: 8, flex: "1 1 180px" }}>{report === "pnl" ? "Period end" : "As of"}<input type="date" required value={to} onChange={event => setTo(event.target.value)}/></label>
+      <button type="submit" className="bookloq-primary">Apply dates</button>
+      <p style={{ flexBasis: "100%", margin: 0 }}>Dates follow your business time zone. The first view uses the current month through today. Editing dates takes effect when you select Apply dates.</p>
+    </form>
+    <DatedReportRead key={path + ":" + refresh} path={path} organizationId={organizationId} report={report} canExport={canExport} defaults={defaults} retry={() => setRefresh(value => value + 1)} selectAccount={id => { setAccountId(id); setAfter(null); }} nextPage={setAfter} firstPage={() => setAfter(null)} hasPrevious={Boolean(after)}/>
+  </>;
+}
+
+/** The keyed reader cancels on any account, period, report or business change. */
+function DatedReportRead({ path, organizationId, report, canExport, defaults, retry, selectAccount, nextPage, firstPage, hasPrevious }: { path: string; organizationId: string; report: BookloqReportKind; canExport: boolean; defaults: (metadata: BookloqDatedReport["metadata"]) => void; retry: () => void; selectAccount: (id: string | null) => void; nextPage: (cursor: string) => void; firstPage: () => void; hasPrevious: boolean }) {
+  const [result, setResult] = useState<BookloqDatedReport | null>(null), [error, setError] = useState("");
+  const [delayed, setDelayed] = useState(false), [exporting, setExporting] = useState(false), [exportError, setExportError] = useState("");
+  const exportController = useRef<AbortController | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => setDelayed(true), 8_000);
+    void bookloqRequest(apiFetch, path, { signal: controller.signal }).then((value: BookloqDatedReport) => {
+      if (controller.signal.aborted) return;
+      if (value.metadata.organizationId !== organizationId) throw Error("The active business changed. Refresh BookLoQ before reading this report.");
+      setResult(value); defaults(value.metadata);
+    }).catch(reason => { if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : "The report could not be read."); }).finally(() => clearTimeout(timer));
+    return () => { controller.abort(); clearTimeout(timer); exportController.current?.abort(); };
+  }, [path, organizationId, defaults]);
+  async function exportCsv(account: boolean) {
+    if (!result || exportController.current) return;
+    const controller = new AbortController(); exportController.current = controller; setExporting(true); setExportError("");
+    const params = new URLSearchParams({ report, from: result.metadata.from, to: result.metadata.to, format: "csv" });
+    if (account && result.detail) params.set("accountId", result.detail.accountId);
+    try {
+      const blob = await reportCsvRequest(apiFetch, "/api/v1/bookloq/reports?" + params, { signal: controller.signal });
+      controller.signal.throwIfAborted();
+      const url = URL.createObjectURL(blob), link = document.createElement("a");
+      link.href = url; link.download = "bookloq-" + report + "-" + result.metadata.to + (account ? "-account" : "") + ".csv";
+      document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(url);
+    } catch (reason) {
+      if (!controller.signal.aborted || controller.signal.reason?.name === "TimeoutError") setExportError(reason instanceof Error ? reason.message : "The export could not be read.");
+    } finally {
+      exportController.current = null;
+      if (!controller.signal.aborted || controller.signal.reason?.name === "TimeoutError") setExporting(false);
+    }
+  }
+  if (error) return <article className="bookloq-card" role="alert"><h3>Report unavailable</h3><p>{error}</p><button type="button" className="bookloq-primary" onClick={retry}>Retry report</button></article>;
+  if (!result) return <article className="bookloq-card" role="status" aria-live="polite"><h3>{delayed ? "The report is taking longer than expected" : "Reading posted ledger entries"}</h3><p>{delayed ? "The request will stop after 30 seconds. No earlier report is shown while this read is pending." : "Loading the selected business, account and dates."}</p></article>;
+  return <>
+    <article className="bookloq-card"><h3>{report === "pnl" ? shortDate(result.metadata.from) + " to " + shortDate(result.metadata.to) : "As of " + shortDate(result.metadata.asOf)}</h3>
+      <p>{result.metadata.currency} · Accrual profile · All locations · Posted ledger{result.metadata.dataMode === "demonstration" ? " · Demonstration data" : ""}</p>
+      <p>Last successful read: {result.metadata.generatedAt.replace("T", " ").replace("Z", " UTC")}. {result.metadata.lastPostedAt ? "Latest posting in this report: " + result.metadata.lastPostedAt.replace("T", " ").replace("Z", " UTC") + "." : result.coverage.closingLineCount ? "Posting timestamp unavailable for these recorded entries." : "No posted entries through the as-of date."}</p>
+      <details className="bookloq-report-boundary"><summary>Source and calculation boundaries</summary><p>{result.metadata.boundary}</p></details>
+      {result.metadata.foreignEntryCount > 0 && <p role="status">{result.metadata.foreignEntryCount} foreign-currency posted entries are excluded. Review these entries before relying on the report.</p>}
+      <div className="bookloq-actions"><button type="button" onClick={retry}>Refresh report</button>{canExport && <button type="button" disabled={exporting} onClick={() => void exportCsv(false)}>{exporting ? "Preparing CSV…" : "Export report CSV"}</button>}</div>
+      {exportError && <p role="alert">{exportError}</p>}
+    </article>
+    <DatedReportResults data={result} report={report} selectAccount={selectAccount}/>
+    {result.detail && <section className="bookloq-card"><h3>Account entries: {result.accounts.find(account => account.id === result.detail!.accountId)?.name}</h3><p>{result.detail.from ? shortDate(result.detail.from) + " through " : "All recorded history through "}{shortDate(result.detail.to)}. Up to 200 lines per page, newest entry date first. Reversals retain their own dates. A refreshed read may include newly posted or backdated entries.</p>
+      <div className="bookloq-actions"><button type="button" onClick={() => selectAccount(null)}>Close account entries</button>{hasPrevious && <button type="button" onClick={firstPage}>First page</button>}{result.detail.nextCursor && <button type="button" onClick={() => nextPage(result.detail!.nextCursor!)}>Older entries</button>}{canExport && <button type="button" disabled={exporting} onClick={() => void exportCsv(true)}>Export account CSV</button>}</div>
+      <DataTable headings={["Entry date", "Journal", "Source", "Debit", "Credit", "Recorded explanation"]} rows={result.detail.lines.map(line => [shortDate(line.entryDate), line.entryNumber, <span key="source">{label(line.sourceType)}{line.reversalOfEntryId ? " · Reverses " + line.reversalOfEntryId : ""}</span>, money(line.debitCents, result.metadata.currency), money(line.creditCents, result.metadata.currency), line.description || line.memo])}/>
+    </section>}
+  </>;
+}
+
+export function DatedReportResults({ data, report, selectAccount }: { data: BookloqDatedReport; report: BookloqReportKind; selectAccount: (id: string) => void }) {
+  const currency = data.metadata.currency;
+  const accounts = data.accounts.filter(account => report === "pnl" ? ["revenue", "expense"].includes(account.accountType) : report === "balance" ? ["asset", "liability", "equity"].includes(account.accountType) : true);
+  const items: [string, number][] = report === "pnl" ? [["Operating revenue", data.profitAndLoss.operatingRevenueCents], ["Cost of goods sold", data.profitAndLoss.cogsCents], ["Gross profit", data.profitAndLoss.grossProfitCents], ["Operating expenses", data.profitAndLoss.operatingExpensesCents], ["Operating profit", data.profitAndLoss.operatingProfitCents], ["Other income", data.profitAndLoss.otherIncomeCents], ["Finance costs and income tax", data.profitAndLoss.financeAndTaxCents], ["Recorded net earnings", data.profitAndLoss.netProfitCents]]
+    : report === "balance" ? [["Assets", data.balanceSheet.assetCents], ["Liabilities", data.balanceSheet.liabilityCents], ["Equity including earnings", data.balanceSheet.equityCents], ["Balance difference", data.balanceSheet.differenceCents]]
+    : [["Net debit balances", data.trialBalance.debitCents], ["Net credit balances", data.trialBalance.creditCents], ["Difference", data.trialBalance.differenceCents]];
+  const lineCount = report === "pnl" ? data.coverage.periodLineCount : data.coverage.closingLineCount;
+  const difference = report === "trial" ? data.trialBalance.differenceCents : data.balanceSheet.differenceCents;
+  return <>
+    {!lineCount && <article className="bookloq-card" role="status"><h3>No posted ledger activity for these dates</h3><p>Zero recorded balances do not establish complete books. Imported source records appear here only after separate posting and review.</p></article>}
+    {difference !== 0 && <article className="bookloq-card" role="alert"><h3>Ledger difference requires review</h3><p>The recorded balance difference is {money(difference, currency)}. Review supporting journals before relying on these statements.</p></article>}
+    <ReportSummary currency={currency} items={items}/>
+    <p>{data.metadata.detailAvailable ? "Select an account to review the posted journal lines supporting its amount." : "Journal line details require individual payroll and banking transaction permissions."} Archived accounts retain their history.</p>
+    <DataTable headings={report === "trial" ? ["Code", "Account", "Debit balance", "Credit balance"] : ["Code", "Account", "Type", "Recorded balance"]} rows={accounts.map(account => [account.code, <button type="button" className="table-action" key={account.id} disabled={!data.metadata.detailAvailable} onClick={() => selectAccount(account.id)}>{account.name}{account.active ? "" : " (archived)"}</button>, ...(report === "trial" ? [money(Math.max(0, account.closingDebitCents - account.closingCreditCents), currency), money(Math.max(0, account.closingCreditCents - account.closingDebitCents), currency)] : [label(account.accountType), money(report === "pnl" ? account.periodBalanceCents : account.closingBalanceCents, currency)])])}/>
+    {report === "balance" && <article className="bookloq-card"><LineText name="Recorded earnings through the as-of date, included in equity above" value={money(data.balanceSheet.recordedEarningsCents, currency)}/><p>This derived amount supplements the equity account rows. Closing journals already posted to equity are retained in those account balances.</p></article>}
+  </>;
+}
+
 function ReportSummary({ items, currency }: { items: [string, number][]; currency: string }) { return <section className="report-summary">{items.map(([name, value]) => <div key={name}><span>{name}</span><b className={value < 0 ? "negative" : ""}>{money(value, currency)}</b></div>)}</section>; }
 
 function MonthEndPanel(props: { data: BookLoQData; refresh: () => Promise<void>; showNotice: (message: string) => void }) { return <BookLoQPeriodClose {...props}/>; }
@@ -910,7 +1026,6 @@ function parseMoney(value: string): number | null { const normalized = value.tri
 function summarizeAudit(value: string): string { try { const parsed = JSON.parse(value) as Record<string, unknown>; return Object.entries(parsed).slice(0, 3).map(([key, item]) => `${label(key)}: ${String(item)}`).join(" · ") || "No additional detail"; } catch { return "Recorded event"; } }
 function downloadCsv(file: string, headings: string[], rows: (string | number)[][]) { const escape = csvCell; const csv = [headings.map(escape).join(","), ...rows.map((row) => row.map(escape).join(","))].join("\n"); const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })); const anchor = document.createElement("a"); anchor.href = url; anchor.download = file; anchor.click(); URL.revokeObjectURL(url); }
 function downloadTransactions(rows: Transaction[]) { downloadCsv("bookloq-transactions.csv", ["Posting date", "Description", "Original description", "Amount cents", "Currency", "Account", "Source", "External ID", "Categorization", "Reconciliation", "Confidence basis points"], rows.map((item) => [item.postingDate, item.description, item.originalDescription, item.amountCents, item.currency, item.accountName ?? "", item.sourceSystem, item.externalSourceId, item.categorizationStatus, item.reconciliationStatus, item.confidenceBasisPoints])); }
-function downloadReport(report: string, rows: ReactNode[][]) { downloadCsv(`bookloq-${report}-${new Date().toISOString().slice(0, 10)}.csv`, bookloqReportHeadings(report), rows.map((row) => row.map((value) => typeof value === "string" || typeof value === "number" ? value : "Rendered value"))); }
 
 export function bookloqGuidedAnswer(question: string, data: BookLoQData) {
   const q = question.toLowerCase();

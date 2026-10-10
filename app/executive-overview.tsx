@@ -54,20 +54,24 @@ export default function ExecutiveOverview({currency,industry,activeLocationId,ba
   const metricGrid=useRef<HTMLDivElement>(null),detailPanel=useRef<HTMLElement>(null),preferencesLoaded=useRef(false);
   const reveal=(element:HTMLElement|null)=>{if(!element)return;element.focus({preventScroll:true});element.scrollIntoView({block:"start",behavior:motion?"smooth":"auto"});};
   const selectMetric=(key:ExecutiveKey,origin:HTMLElement)=>{metricOrigin.current=origin;setSelected(key);setMetricOpen(true);};
-  const scope=JSON.stringify([preset,compare,appliedRange,activeLocationId,basis,reload,refreshKey]);
+  // A retry checks the same financial scope. Keep its source-recovery actions
+  // available instead of replacing a known conflict with another loading screen.
+  const scope=JSON.stringify([preset,compare,appliedRange.from,appliedRange.to,activeLocationId,basis,refreshKey]);
   const [responseScope,setResponseScope]=useState(scope);
+  const requestScope=useRef<string|null>(null);
+  const loadInFlight=useRef(false);
   // POS timestamps alone cannot detect midnight, reviewed journal edits or a
   // corrected historical import. Re-query the authoritative report periodically.
   useEffect(()=>{
     if(initialReport)return;
     let lastRefresh=Date.now();
-    const refresh=()=>{if(document.visibilityState==="visible"&&Date.now()-lastRefresh>=15000){lastRefresh=Date.now();setReload(value=>value+1);}};
+    const refresh=()=>{if(!loadInFlight.current&&document.visibilityState==="visible"&&Date.now()-lastRefresh>=15000){lastRefresh=Date.now();setReload(value=>value+1);}};
     const timer=window.setInterval(refresh,60000);
     window.addEventListener("focus",refresh);document.addEventListener("visibilitychange",refresh);
     return()=>{window.clearInterval(timer);window.removeEventListener("focus",refresh);document.removeEventListener("visibilitychange",refresh);};
   },[initialReport]);
   const report=initialReport??(responseScope===scope?storedReport:null);
-  const visiblePending=!initialReport&&(pending||responseScope!==scope);
+  const visiblePending=!initialReport&&(responseScope!==scope||(pending&&!error));
   const visibleError=responseScope===scope?error:"";
   useEffect(()=>{
     if(initialReport)return;
@@ -108,19 +112,25 @@ export default function ExecutiveOverview({currency,industry,activeLocationId,ba
   useEffect(()=>{
     if(initialReport)return;
     const controller=new AbortController();
-    const timeout=setTimeout(()=>controller.abort(),30000);
     let active=true;
+    let settled=false;
+    loadInFlight.current=true;
+    const timeout=setTimeout(()=>{
+      if(!active||settled)return;
+      settled=true;loadInFlight.current=false;controller.abort();setResponseScope(scope);setReport(null);
+      setError("The overview check timed out. Check again, or review your reporting sources and connections.");setPending(false);
+    },30000);
     const params=new URLSearchParams({executive:"1",period:preset,compare,basis});
     if(activeLocationId)params.set("location",activeLocationId);
     if(preset==="custom"){params.set("from",appliedRange.from);params.set("to",appliedRange.to);}
-    queueMicrotask(()=>{if(active){setPending(true);setResponseScope(scope);setReport(null);setError("");setSourceGate("");}});
+    queueMicrotask(()=>{if(active){setPending(true);setResponseScope(scope);setReport(null);if(requestScope.current!==scope){setError("");setSourceGate("");}requestScope.current=scope;}});
     void apiFetch(`/api/v1/command-centre?${params}`,{signal:controller.signal,headers:{Accept:"application/json"}}).then(async response=>{
-      const payload=await response.json();if(!response.ok&&["SOURCE_SYNCING","SALES_SOURCE_CONFLICT"].includes(payload.error?.code)&&active)setSourceGate(payload.error.code);if(!response.ok)throw Error(payload.error?.message??"This overview could not load. Try again.");
+      const payload=await response.json();if(!active||settled)return;if(!response.ok)setSourceGate(["SOURCE_SYNCING","SALES_SOURCE_CONFLICT"].includes(payload.error?.code)?payload.error.code:"");if(!response.ok)throw Error(payload.error?.message??"This overview could not load. Try again.");
       if(!payload.executiveReport)throw Error("The overview is unavailable. Refresh and try again.");
-      if(active)setReport(payload.executiveReport);
-    }).catch(cause=>{if(active)setError(cause instanceof Error&&cause.name!=="AbortError"?cause.message:"The request timed out. Try again.");}).finally(()=>{clearTimeout(timeout);if(active)setPending(false);});
-    return()=>{active=false;controller.abort();clearTimeout(timeout);};
-  },[preset,compare,appliedRange,activeLocationId,basis,reload,refreshKey,initialReport,scope]);
+      setReport(payload.executiveReport);setError("");setSourceGate("");
+    }).catch(cause=>{if(active&&!settled)setError(cause instanceof Error&&cause.name!=="AbortError"?cause.message:"The request timed out. Try again.");}).finally(()=>{clearTimeout(timeout);if(active&&!settled){settled=true;loadInFlight.current=false;setPending(false);}});
+    return()=>{active=false;loadInFlight.current=false;controller.abort();clearTimeout(timeout);};
+  },[preset,compare,appliedRange.from,appliedRange.to,activeLocationId,basis,reload,refreshKey,initialReport,scope]);
   const orderedWidgets=new Map(preferences.widgets.map((widget,index)=>[widget.id,{...widget,index}]));
   const visibleMetrics=report?.metrics.filter(metric=>orderedWidgets.get(metric.key)?.visible!==false).sort((a,b)=>(orderedWidgets.get(a.key)?.index??99)-(orderedWidgets.get(b.key)?.index??99))??[];
   const metric=report?.metrics.find(m=>m.key===selected&&orderedWidgets.get(m.key)?.visible!==false)??visibleMetrics[0];
@@ -157,7 +167,7 @@ export default function ExecutiveOverview({currency,industry,activeLocationId,ba
     }catch(cause){setPreferenceError(cause instanceof Error?cause.message:"Dashboard settings could not be saved. Your changes are kept.");}finally{savingRef.current=false;setSavingPreferences(false);}
   };
   return <section className={`executive-overview executive-commerce-layout commerce-reference${compact?" executive-compact":""}`} aria-label="Executive overview" aria-busy={visiblePending}>
-    <header className="executive-heading"><div><h3>Performance overview</h3></div><div className="executive-heading-actions"><button type="button" disabled={!preferencesReady||Boolean(recovery)} onClick={openCustomizer} aria-expanded={showCustomize} aria-controls={`${overviewId}-customize`}>{dirty?"Continue Customizing":"Customize"}</button>{!initialReport&&<button type="button" onClick={()=>setReload(reload+1)} disabled={visiblePending}>{visiblePending?"Refreshing…":"Refresh"}</button>}</div></header>
+    <header className="executive-heading"><div><h3>Performance overview</h3></div><div className="executive-heading-actions"><button type="button" disabled={!preferencesReady||Boolean(recovery)} onClick={openCustomizer} aria-expanded={showCustomize} aria-controls={`${overviewId}-customize`}>{dirty?"Continue Customizing":"Customize"}</button>{!initialReport&&<button type="button" onClick={()=>setReload(value=>value+1)} disabled={pending||responseScope!==scope}>{pending||responseScope!==scope?"Refreshing…":"Refresh"}</button>}</div></header>
     {initialReport&&<p className="dashboard-sample-banner">Sample Preview · Fictional Data · Changes stay in this preview</p>}
     {recovery&&<div className="executive-preference-status" role="status"><p>An unsaved layout is available from this tab. Restore it to review before saving. Financial targets and named views were not stored.</p><button type="button" onClick={()=>{setDraft(recovery);setRecovery(null);setPreferenceStatus("Layout draft restored for review. Nothing has been saved.");setShowCustomize(true);}}>Restore Layout Draft</button><button type="button" onClick={discardDraft}>Discard Draft</button></div>}
     {showCustomize&&<DashboardCustomizer draft={draft} onChange={next=>{setDraft(next);if(!changedSaved)setPreferenceError("");}} onClose={closeCustomizer} onDiscard={discardDraft} dirty={dirty} draftStatus={initialReport?"Changes stay in this preview until you save the sample layout.":draftStorageStatus||"Layout choices can be recovered in this tab for 24 hours. Target values, goal details and named views stay only in this open form until saved."} onSave={()=>void savePreferences()} saving={savingPreferences} error={preferenceError} currency={currency} industry={industry} period={report?.period} locationId={activeLocationId}/>}
@@ -166,7 +176,7 @@ export default function ExecutiveOverview({currency,industry,activeLocationId,ba
     {!showCustomize&&preferenceError&&<p className="executive-preference-status" role="alert">{preferenceError} {!preferencesReady&&<button type="button" onClick={()=>{setPreferenceError("");setPreferenceRetry(value=>value+1);}}>Retry Saved Layout</button>}</p>}
     {!initialReport&&<div className="executive-filters"><label>Period <select aria-label="Reporting period" value={showDates?"custom":preset} onChange={event=>{const key=event.target.value;if(key==="custom"){if(report)setRange({from:report.period.from,to:report.period.to});setShowDates(true);}else{setPreset(key);setShowDates(false);}}}>{periods.map(([key,,description])=><option key={key} value={key}>{description}</option>)}</select></label><label>Compare <select value={compare} onChange={e=>setCompare(e.target.value)}><option value="previous">Previous period</option><option value="yoy">Previous year</option><option value="budget">Budget</option><option value="target">Target</option></select></label></div>}
     {showDates&&<form id={`${overviewId}-dates`} className="executive-dates" aria-label="Custom reporting dates" onSubmit={e=>{e.preventDefault();setAppliedRange(range);setPreset("custom");setShowDates(false);}}><label>From <input type="date" required value={range.from} onChange={e=>setRange({...range,from:e.target.value})}/></label><label>To <input type="date" required min={range.from} value={range.to} onChange={e=>setRange({...range,to:e.target.value})}/></label><button type="submit">Apply Dates</button><button type="button" onClick={()=>setShowDates(false)}>Cancel</button></form>}
-    {visiblePending?<WorkspaceSkeleton label="Loading executive overview" variant="overview" heading={false} compact={compact} overview={preferences} summary={basis==="commerce"}/>:visibleError&&sourceGate?<ExecutiveStatusFrame message={visibleError} syncing={sourceGate==="SOURCE_SYNCING"} preferences={preferences} onSources={()=>navigate("Reports")} onConnections={()=>navigate("Integrations")} onRetry={()=>setReload(reload+1)}/>:visibleError?<div className="executive-error" role="alert"><p>{visibleError}</p><button onClick={()=>setReload(reload+1)}>Try Again</button></div>:report&&<>
+    {visiblePending?<WorkspaceSkeleton label="Loading executive overview" variant="overview" heading={false} compact={compact} overview={preferences} summary={basis==="commerce"}/>:visibleError&&sourceGate?<ExecutiveStatusFrame message={visibleError} syncing={sourceGate==="SOURCE_SYNCING"} checking={pending} preferences={preferences} onSources={()=>navigate("Reports")} onConnections={()=>navigate("Integrations")} onRetry={()=>setReload(value=>value+1)}/>:visibleError?<div className="executive-error" role="alert"><p>{visibleError}</p><button disabled={pending} onClick={()=>setReload(value=>value+1)}>{pending?"Checking…":"Try Again"}</button></div>:report&&<>
       {!initialReport&&report.bankCash&&<section className="executive-bank-cash" aria-label="Latest connected bank cash"><div><span>{report.bankCash.label}</span><strong>{display(report.bankCash.balanceCents,"money",currency)}</strong></div><div><p>{report.bankCash.reason??"Reviewed bank-feed balances, shown separately from the selected reporting period."}</p><small>{report.bankCash.oldestSyncAt?("Oldest included balance updated "+formatRecordedTimestamp(report.bankCash.oldestSyncAt)):"Balance update unavailable"} · {report.bankCash.accountsUsed} eligible accounts</small><details><summary>How this differs from ledger cash</summary><p>{report.bankCash.boundary}</p></details></div><button type="button" onClick={()=>navigate("Integrations")}>{report.bankCash.balanceCents===null?"Review bank source":"Manage bank source"}</button></section>}
       <div className="executive-period-label"><span>{date(report.period.from)} to {date(report.period.to)}, {report.period.to.slice(0,4)} · {currency}</span><span>{basis==="commerce"&&!report.sourceCoverage?"Add or review records to complete this period.":"Select a card to explore its trend and source."}</span></div>
       <div className="executive-kpis" ref={metricGrid} role="group" aria-label="Select a metric to inspect its trend and sources">{visibleMetrics.map(m=>{
@@ -203,7 +213,7 @@ export default function ExecutiveOverview({currency,industry,activeLocationId,ba
       {!compact&&preferences.sections.financialDetail&&(report.finance?<FinanceDetails data={report.finance} currency={currency}/>:<details className="executive-financial-details"><summary>Financial Detail</summary><p>{report.financeReason??"Activate BookLoQ and post your reviewed records to see period-specific statements, aging and ratios."}</p><button onClick={()=>navigate("BookLoQ")}>Open BookLoQ</button></details>)}
     </>}
     <ExpandingSurface open={metricOpen} onClose={()=>setMetricOpen(false)} originRef={metricOrigin} title={metric?.label??"Metric details"}>
-      {visiblePending?<div role="status" className="metric-detail-state"><b>Updating this view</b><p>The selected reporting period is being checked. Values will appear when it finishes.</p></div>:visibleError?<div role="alert" className="metric-detail-state"><p>{visibleError}</p><button type="button" onClick={()=>setReload(value=>value+1)}>Try again</button></div>:metric&&report?<div className="executive-overview metric-expanded-content">
+      {visiblePending?<div role="status" className="metric-detail-state"><b>Updating this view</b><p>The selected reporting period is being checked. Values will appear when it finishes.</p></div>:visibleError?<div role="alert" className="metric-detail-state"><p>{visibleError}</p><button type="button" disabled={pending} onClick={()=>setReload(value=>value+1)}>{pending?"Checking…":"Try again"}</button></div>:metric&&report?<div className="executive-overview metric-expanded-content">
         <p className="metric-detail-context">{date(report.period.from)} to {date(report.period.to)}, {report.period.to.slice(0,4)} · {currency}{initialReport?" · Fictional sample":""}</p>
         <div className="metric-detail-values"><article><span>Recorded {metric.label.toLowerCase()}</span><strong>{display(metric.value,metric.unit,currency)}</strong></article><article><span>{compare==="yoy"?"Previous year":"Previous comparable period"}</span><strong>{display(metric.previous,metric.unit,currency)}</strong></article></div>
         <p className="metric-detail-formula">{metric.formula}</p>

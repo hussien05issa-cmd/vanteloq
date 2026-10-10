@@ -69,6 +69,13 @@ test("existing source-gate callers retain their connection-review fallback",()=>
   assert.equal(reviewed, 1);
 });
 
+test("an in-flight source retry keeps recovery actions visible and prevents duplicate checks",()=>{
+  const html=renderToStaticMarkup(<ExecutiveStatusFrame syncing checking message="Review required" preferences={dashboardPreferencePreset()} onSources={()=>{}} onConnections={()=>{}} onRetry={()=>{}}/>);
+  assert.match(html,/<button type="button" disabled="">Checking…<\/button>/);
+  assert.match(html,/>Review Sources<\/button>/);assert.match(html,/>Review Connections<\/button>/);
+  assert.doesNotMatch(html,/Loading executive overview|\$\d/);
+});
+
 test("source composition keeps signed amounts exact and does not turn negative shares into a pie",()=>{
   const report=blank();
   report.revenueSources={totalCents:15000,recordCount:2,sources:[{key:"a",label:"Sales",cents:20000,recordCount:1,updatedAt:null},{key:"b",label:"Returns",cents:-5000,recordCount:1,updatedAt:null}]};

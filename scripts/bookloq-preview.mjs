@@ -10,7 +10,7 @@ const bundle = await build({ stdin: { contents: `
   import ExecutiveOverview from './app/executive-overview'; import WorkspaceShowcase from './app/workspace-showcase'; import LinkedFilesPanel from './app/linked-files-panel'; import BookLoQWorkspace from './app/bookloq-workspace'; import ProductBrandLogo from './app/product-brand-logo'; import WorkspaceIcon from './app/workspace-icon';
   const params=new URLSearchParams(location.search);
   const qa=params.get('scenario')||'sample';
-  const sections={cash:'Cash Flow',settings:'Settings','month-end':'Month-End',transactions:'Transactions',overview:'Overview',invoices:'Invoicing'};
+  const sections={cash:'Cash Flow',settings:'Settings','month-end':'Month-End',transactions:'Transactions',overview:'Overview',invoices:'Invoicing',reports:'Reports'};
   const initialSection=sections[params.get('section')]||({periods:'Month-End',receipts:'Transactions','setup-empty':'Settings','setup-bank-only':'Settings'}[qa])||'Overview';
   function Preview(){
     const [notice,setNotice]=useState('');
@@ -43,6 +43,28 @@ const preferences={};
 const fixtureRows=Array.from({length:32},(_,i)=>({id:`fixture-${i}`,kind:i%3===0?"payable":"receivable",reference:(i%3===0?"BILL-":"INV-")+(1040+i),contactId:`c-${i%8}`,contactName:["Northside Retail","Blue River Goods","West Market","Atlas Supplies","Mason Studio","Parkside Co.","Cedar Wholesale","City Provisions"][i%8],invoiceDate:"2026-09-01",dueDate:["2026-09-01","2026-09-28","2026-10-02","2026-10-10","2026-10-18"][i%5],status:i===5?"disputed":"sent",approvalStatus:i%4===0?"pending":"not_required",totalCents:Math.round(43000+i*3754),paidCents:i%2?10000:0,currency:"CAD",updatedAt:1790409600000}));
 const execModule = await build({stdin:{contents:'export {buildExecutiveReport} from "./server/executive-report"; export {executivePeriod} from "./domain/executive-metrics";',resolveDir:process.cwd(),loader:"ts"},bundle:true,write:false,format:"esm",platform:"node"});
 const {buildExecutiveReport,executivePeriod}=await import(`data:text/javascript;base64,${Buffer.from(execModule.outputFiles[0].text).toString("base64")}`);
+const datedReportModule = await build({stdin:{contents:'export {bookloqReportQuery,bookloqReportCsv,BOOKLOQ_REPORT_BOUNDARY} from "./server/bookloq-reports";export {ledgerIntelligence,exactSum} from "./domain/executive-metrics";',resolveDir:process.cwd(),loader:"ts"},bundle:true,write:false,format:"esm",platform:"node"});
+const {bookloqReportQuery,bookloqReportCsv,BOOKLOQ_REPORT_BOUNDARY,ledgerIntelligence,exactSum}=await import(`data:text/javascript;base64,${Buffer.from(datedReportModule.outputFiles[0].text).toString("base64")}`);
+// Deliberately fictional dated journals, kept only in memory. Production parsers,
+// integer arithmetic and export formatting are shared with the real report.
+function datedReportFixture(params, scenario) {
+  const filters=new URLSearchParams(params);filters.delete("empty");filters.delete("scenario");
+  const query=bookloqReportQuery(filters,new Date().toISOString().slice(0,10));
+  const detailAvailable=scenario!=="reports-summary";
+  if(query.accountId&&!detailAvailable) throw Object.assign(new Error("Journal line details require individual payroll and banking transaction permissions."),{status:403});
+  const definitions=[["qa-cash","1000","Fictional operating cash","asset","cash"],["qa-capital","3000","Fictional owner capital","equity","capital"],["qa-sales","4000","Fictional sales revenue","revenue","sales"],["qa-cost","5000","Fictional cost of goods sold","expense","cost_of_goods_sold"]];
+  const entries=[["QA-OPEN","2026-09-01","qa-cash","qa-capital",500000,null],["QA-SEP","2026-09-30","qa-cash","qa-sales",120000,null],["QA-REV","2026-10-03","qa-sales","qa-cash",120000,"QA-SEP"],["QA-OCT","2026-10-05","qa-cash","qa-sales",210123,null],["QA-COST","2026-10-08","qa-cost","qa-cash",65001,null]];
+  const allLines=entries.flatMap(([entryId,entryDate,debit,credit,amount,reversalOfEntryId])=>[debit,credit].map((accountId,index)=>({accountId,entryId,entryNumber:entryId,entryDate,postingDate:entryDate,lineNumber:index+1,debitCents:index?0:amount,creditCents:index?amount:0,memo:"Fictional local QA journal",description:"Fictional supporting line",sourceType:reversalOfEntryId?"reversal":"manual",sourceRef:"QA ONLY",reversalOfEntryId,locationRef:"all"})));
+  const accounts=definitions.map(([id,code,name,accountType,accountSubtype])=>{
+    const closing=allLines.filter(row=>row.accountId===id&&row.entryDate<=query.to),period=closing.filter(row=>row.entryDate>=query.from);
+    const debitCents=exactSum(period.map(row=>row.debitCents)),creditCents=exactSum(period.map(row=>row.creditCents)),closingDebitCents=exactSum(closing.map(row=>row.debitCents)),closingCreditCents=exactSum(closing.map(row=>row.creditCents)),sign=["asset","expense"].includes(accountType)?1:-1;
+    return {id,code,name,accountType,accountSubtype,systemKey:accountSubtype,normalBalance:sign===1?"debit":"credit",active:1,debitCents,creditCents,closingDebitCents,closingCreditCents,periodBalanceCents:sign*(debitCents-creditCents),closingBalanceCents:sign*(closingDebitCents-closingCreditCents),lineCount:period.length,closingLineCount:closing.length};
+  });
+  const profitAndLoss=ledgerIntelligence(accounts),closing=ledgerIntelligence(accounts.map(row=>({...row,debitCents:row.closingDebitCents,creditCents:row.closingCreditCents})));
+  const debitCents=exactSum(accounts.map(row=>Math.max(0,row.closingDebitCents-row.closingCreditCents))),creditCents=exactSum(accounts.map(row=>Math.max(0,row.closingCreditCents-row.closingDebitCents)));
+  const lines=allLines.filter(row=>row.accountId===query.accountId&&row.entryDate<=query.to&&(query.report!=="pnl"||row.entryDate>=query.from)).sort((a,b)=>b.entryDate.localeCompare(a.entryDate)||b.entryId.localeCompare(a.entryId)||b.lineNumber-a.lineNumber);
+  return {query,data:{metadata:{organizationId:"fictional-bookloq-qa",currency:"CAD",timeZone:"America/Edmonton",from:query.from,to:query.to,asOf:query.to,accountingBasis:"accrual",source:"posted_ledger",scope:"all_locations",dataMode:"demonstration",generatedAt:new Date().toISOString(),lastPostedAt:null,calculationVersion:"bookloq-dated-ledger-v1",foreignEntryCount:0,detailAvailable,boundary:"Fictional QA records. "+BOOKLOQ_REPORT_BOUNDARY},accounts,profitAndLoss,balanceSheet:{assetCents:closing.assetsCents,liabilityCents:closing.liabilitiesCents,equityCents:closing.equityCents,recordedEarningsCents:closing.netProfitCents,differenceCents:closing.balanceDifferenceCents},trialBalance:{debitCents,creditCents,differenceCents:debitCents-creditCents},coverage:{periodLineCount:exactSum(accounts.map(row=>row.lineCount)),closingLineCount:exactSum(accounts.map(row=>row.closingLineCount))},detail:query.accountId?{accountId:query.accountId,from:query.report==="pnl"?query.from:null,to:query.to,lines,nextCursor:null}:null}};
+}
 // Fixtures are generated in memory. No database, credentials or production provider is used.
 const fixtureHelpers = await build({stdin:{contents:'export {buildThirteenWeekCashFlow} from "./domain/thirteen-week-cash-flow";export {buildBusinessCashSummary} from "./domain/bookloq-cash-management";',resolveDir:process.cwd(),loader:"ts"},bundle:true,write:false,format:"esm",platform:"node"});
 const {buildThirteenWeekCashFlow,buildBusinessCashSummary}=await import(`data:text/javascript;base64,${Buffer.from(fixtureHelpers.outputFiles[0].text).toString("base64")}`);
@@ -56,6 +78,8 @@ function readOnly(response) { response.statusCode=405;response.end(JSON.stringif
 function fixtureFor(name, empty = false) {
   const payload=structuredClone(sample),data=payload.bookloq;
   data.organization.name="Fictional BookLoQ QA";
+  data.organization.id="fictional-bookloq-qa";
+  if(name==="reports-cash") data.settings.accountingBasis="cash";
   if (name.startsWith("setup-") || empty) {
     data.configured=name==="setup-bank-only";
     data.settings=null; data.advertisingSpend=undefined; data.payrollSource=undefined;
@@ -139,6 +163,14 @@ createServer(async (request, response) => {
         response.setHeader("Content-Type","application/pdf");response.setHeader("Content-Disposition",'inline; filename="fictional-office-supplies-receipt.pdf"');response.end(receiptPdf);return;
       }
       if (path === "/api/v1/bookloq") {response.end(JSON.stringify(fixtureFor(params.get("scenario") || "sample", empty)));return;}
+      if (path === "/api/v1/bookloq/reports") {
+        try {
+          const {query,data}=datedReportFixture(params,params.get("scenario"));
+          if(query.format==="csv"){response.setHeader("Content-Type","text/csv;charset=utf-8");response.setHeader("Content-Disposition",'attachment; filename="fictional-bookloq-report.csv"');response.end(bookloqReportCsv(data,query.report));}
+          else response.end(JSON.stringify(data));
+        } catch(error){response.statusCode=error.status||400;response.end(JSON.stringify({error:{message:error.message}}));}
+        return;
+      }
       if (path === "/api/v1/integrations") {response.end(JSON.stringify({integrations:[],canManageBankConnections:false}));return;}
       response.statusCode=404;response.end(JSON.stringify({error:{code:"LOCAL_QA_UNAVAILABLE",message:"This endpoint is outside the fictional local QA fixture."}}));return;
     }

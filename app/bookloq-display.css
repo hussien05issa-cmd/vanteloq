@@ -30,3 +30,12 @@
 }
 
 .operating-shell .bookloq-setup-card header>button{appearance:none;min-height:44px;padding:10px 16px;border:1px solid #bccde1;border-radius:12px;background:linear-gradient(150deg,#f9fcff,#eaf0fb);color:#193a65;font:inherit;font-size:14px;font-weight:600;cursor:pointer;transition:background .16s,transform .16s}.operating-shell .bookloq-setup-card header>button:hover:not(:disabled){background:#e5efff;border-color:#8cacd5}.bookloq-setup-card button:focus-visible{outline:3px solid #1b68da;outline-offset:3px}.bookloq-setup-card button:active:not(:disabled){transform:scale(.985)}@media(prefers-reduced-motion:reduce){.operating-shell .bookloq-setup-card header>button{transition:none}.bookloq-setup-card button:active:not(:disabled){transform:none}}
+.operating-shell .bookloq-report-switch{display:flex;flex-wrap:wrap;gap:4px;padding:5px;margin:16px 0;border:1px solid var(--ws-border,#c5d2e2);border-radius:14px;background:var(--ws-raised,#f1f5fb);width:fit-content}
+.operating-shell .bookloq-report-switch button{min-height:44px;padding:10px 15px;border:1px solid transparent;border-radius:10px;background:transparent;color:var(--ws-muted,#425471);font:inherit;font-size:14px;font-weight:600;cursor:pointer;box-shadow:none;transition:background .18s,color .18s,transform .18s}
+.operating-shell .bookloq-report-switch button[aria-pressed=true]{background:var(--ws-accent-soft,#e0ecff);color:var(--ws-ink,#10213b);border-color:var(--ws-border,#c5d2e2)}
+.operating-shell .bookloq-report-switch button:focus-visible{outline:3px solid var(--ws-accent,#2474ff);outline-offset:3px}
+.operating-shell .bookloq-report-dates{padding:18px;margin-bottom:18px}
+.operating-shell .bookloq-report-boundary{margin:14px 0;line-height:1.6;color:var(--ws-muted,#425471)}
+.operating-shell .bookloq-report-boundary summary{cursor:pointer;min-height:36px;color:var(--ws-ink,#10213b);font-weight:600}
+@media(max-width:620px){.operating-shell .bookloq-report-switch{width:100%;box-sizing:border-box}.operating-shell .bookloq-report-switch button{flex:1;padding:10px 8px}.operating-shell .bookloq-report-dates label,.operating-shell .bookloq-report-dates>button{flex-basis:100%!important}}
+@media(prefers-reduced-motion:reduce){.operating-shell .bookloq-report-switch button{transition:none}}

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent, type Keyboard
 import { apiFetch } from "./supabase-browser";
 import WorkspaceSkeleton from "./workspace-skeleton";
 import SlackMessages from "./slack-messages";
+import { messageLatestPageNeedsReset, reconcileMessagePage } from "../domain/collaboration";
 import "./collaboration.css";
 
 type Message = { id: number; body: string; authorName: string; authorUserId: string | null; createdAt: string };
@@ -25,6 +26,7 @@ export default function CollaborationMessages({ activeLocationId = null, taskId 
   const [notice, setNotice] = useState("");
   const attempt = useRef<{ body: string; key: string } | null>(null);
   const inFlight = useRef<symbol | null>(null), sendingRef = useRef(false), loaded = useRef(false), oldestKnown = useRef<number | null>(null);
+  const newestRead = useRef<number | null>(null);
   const scope = `${location}:${taskId ?? ""}`;
   const scopeRef = useRef(scope);
   useEffect(() => { scopeRef.current = scope; }, [scope]);
@@ -44,17 +46,24 @@ export default function CollaborationMessages({ activeLocationId = null, taskId 
     }).catch(cause => { if (active && cause.name !== "AbortError") setError(cause.message); });
     return () => { active = false; abort.abort(); };
   }, [location, taskId]);
-  const load = useCallback(async (before?: number, signal?: AbortSignal) => {
+  const load = useCallback(async (before?: number, signal?: AbortSignal, reset = false) => {
     if (inFlight.current) return;
     const requestedScope = scope, request = Symbol("message-read"); inFlight.current = request;
     if (before) setOlderPending(true);
     try {
       const response = await apiFetch(`/api/v1/collaboration/messages?${params(before)}`, { signal });
-      const body = await response.json(); if (!response.ok) throw Error(body.error?.message || "Messages could not load. Please try again.");
+      const body = await response.json();
       if (signal?.aborted || scopeRef.current !== requestedScope) return;
-      setMessages(current => before ? [...body.messages, ...current].filter((item, index, all) => all.findIndex(other => other.id === item.id) === index) : loaded.current ? [...current.filter(item => item.id < (body.messages[0]?.id ?? Infinity)), ...body.messages] : body.messages);
-      if (before || !loaded.current || oldestKnown.current === null) setHasEarlier(body.hasEarlier);
+      if (!response.ok) {
+        if ([401, 403, 404].includes(response.status)) { setMessages([]); setHasEarlier(false); setDirectory(null); }
+        throw Error(body.error?.message || "Messages could not load. Please try again.");
+      }
+      const resetHistory = reset || (!before && messageLatestPageNeedsReset(newestRead.current, body.messages, Boolean(body.hasEarlier)));
+      setMessages(current => reconcileMessagePage(current, body.messages, Boolean(before), Boolean(body.hasEarlier), resetHistory));
+      if (before || resetHistory || !body.hasEarlier || !loaded.current || oldestKnown.current === null) setHasEarlier(body.hasEarlier);
+      if (!body.messages.length || resetHistory || !body.hasEarlier && !before) oldestKnown.current = null;
       if (body.messages[0]) oldestKnown.current = Math.min(oldestKnown.current ?? Infinity, body.messages[0].id);
+      if (!before) newestRead.current = body.messages.at(-1)?.id ?? null;
       setTitle(body.channel.taskTitle ? `Discussion: ${body.channel.taskTitle}` : location ? directory?.locations.find(item => item.id === location)?.name || "Location messages" : "Team messages");
       loaded.current = true; setError("");
     } catch (cause) { if (!signal?.aborted && scopeRef.current === requestedScope) setError(cause instanceof Error ? cause.message : "Messages could not load. Please try again."); }
@@ -63,7 +72,7 @@ export default function CollaborationMessages({ activeLocationId = null, taskId 
   useEffect(() => {
     if (!directory || (!directory.organizationWide && !location && !taskId)) return;
     const abort = new AbortController();
-    loaded.current = false; oldestKnown.current = null; inFlight.current = null;
+    loaded.current = false; oldestKnown.current = null; newestRead.current = null; inFlight.current = null;
     queueMicrotask(() => { setLoading(true); setMessages([]); setError(""); void load(undefined, abort.signal); });
     const refresh = () => { if (document.visibilityState === "visible") void load(undefined, abort.signal); };
     const timer = window.setInterval(refresh, 20000);
@@ -88,7 +97,7 @@ export default function CollaborationMessages({ activeLocationId = null, taskId 
     {!taskId && <div ref={sourceTabs} className="messages-source-tabs" role="tablist" aria-label="Message source" onKeyDown={moveSource}><button type="button" role="tab" id="team-message-tab" aria-controls="team-message-panel" aria-selected={messageSource === "team"} tabIndex={messageSource === "team" ? 0 : -1} onClick={() => setMessageSource("team")}>Team messages</button><button type="button" role="tab" id="slack-message-tab" aria-controls="slack-message-panel" aria-selected={messageSource === "slack"} tabIndex={messageSource === "slack" ? 0 : -1} onClick={() => setMessageSource("slack")}>Slack channel</button></div>}
     {messageSource === "slack" && <div id="slack-message-panel" role="tabpanel" aria-labelledby="slack-message-tab"><SlackMessages key={scope} onManage={onManageIntegrations}/></div>}
     <article id="team-message-panel" role="tabpanel" aria-labelledby={!taskId ? "team-message-tab" : undefined} hidden={messageSource !== "team"} className="card collaboration-thread">
-      <div className="collaboration-toolbar">{!taskId && <label>Channel<select value={location} disabled={sending} onChange={event => { setLocation(event.target.value); setNotice(""); }}>{directory?.organizationWide && <option value="">Whole workspace</option>}{directory?.locations.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}<button type="button" className="secondary" onClick={() => void load()} disabled={loading}>Refresh</button><small>Shared with authorised members of this {taskId ? "task" : "channel"}.</small></div>
+      <div className="collaboration-toolbar">{!taskId && <label>Channel<select value={location} disabled={sending} onChange={event => { setLocation(event.target.value); setNotice(""); }}>{directory?.organizationWide && <option value="">Whole workspace</option>}{directory?.locations.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}<button type="button" className="secondary" onClick={() => void load(undefined, undefined, true)} disabled={loading}>Refresh</button><small>Shared with authorised members of this {taskId ? "task" : "channel"}. New messages refresh every 20 seconds while visible. Refresh reloads the latest history.</small></div>
       {error && <div role="alert" className="collaboration-error"><p>{error}</p><button type="button" onClick={() => void load()}>Try again</button></div>}
       {loading ? <WorkspaceSkeleton compact label="Loading team messages"/> : <><div className="collaboration-history" aria-label="Team conversation">
         {hasEarlier && <button className="secondary" type="button" disabled={olderPending} onClick={() => void load(messages[0]?.id)}>{olderPending ? "Loading…" : "Earlier messages"}</button>}
