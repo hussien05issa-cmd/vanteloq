@@ -1,0 +1,105 @@
+/*
+ * Midnight Commerce Glass — phase 1, reviewed visual foundation.
+ * Scoped to the authenticated operating shell. Public pages, financial tables,
+ * AI conversations, and embedded light-status components are intentionally not
+ * recoloured without their own contrast audit.
+ * Sources: Apple HIG Dark Mode/Materials, WCAG 2.2 SC 1.4.3, 1.4.11, 2.4.7.
+ */
+.operating-shell {
+  --midnight-canvas: #050608;
+  --midnight-sidebar: #080b11;
+  --midnight-surface: #0e1118;
+  --midnight-elevated: #151b25;
+  --midnight-stroke: #293344;
+  --midnight-foreground: #f5f7fb;
+  --midnight-secondary: #b4becd;
+  --midnight-muted: #909aaa;
+  --midnight-blue: #126bff;
+  --midnight-link: #78b2ff;
+  --midnight-button: #1557d2;
+  --midnight-focus: #9ac7ff;
+  --sidebar-bg: var(--midnight-sidebar);
+  --sidebar-panel: var(--midnight-surface);
+  --sidebar-hover: #18243a;
+  --sidebar-line: var(--midnight-stroke);
+  --sidebar-text: var(--midnight-secondary);
+  --sidebar-muted: var(--midnight-muted);
+  --sidebar-heading: var(--midnight-foreground);
+  --sidebar-current-bg: #12376f;
+  --sidebar-current-line: #447cce;
+  --sidebar-current-text: #fff;
+  color-scheme: dark;
+  background: var(--midnight-canvas);
+}
+.operating-shell .sidebar {
+  color-scheme: dark;
+  background: var(--midnight-sidebar);
+  color: var(--midnight-foreground);
+  border-right-color: var(--midnight-stroke);
+}
+.operating-shell .sidebar .workspace-switcher {
+  background: var(--midnight-surface);
+  border-color: var(--midnight-stroke);
+}
+.operating-shell .sidebar :is(.brand-name, .profile b),
+.operating-shell .sidebar .workspace-switcher > span:nth-child(2) b {
+  color: var(--midnight-foreground);
+}
+.operating-shell .sidebar :is(.brand-name small, .subscription-summary span, .subscription-summary small, .nav-group > p, .profile small, .workspace-release-name),
+.operating-shell .sidebar .workspace-switcher > span:nth-child(2) small {
+  color: var(--midnight-secondary);
+}
+.operating-shell .sidebar .nav-item:not(:disabled):not([aria-disabled="true"]) {
+  color: var(--midnight-secondary);
+}
+.operating-shell .sidebar .nav-item:not(:disabled):not([aria-disabled="true"]):hover {
+  color: var(--midnight-foreground);
+  background: var(--sidebar-hover);
+}
+.operating-shell .sidebar .nav-item.active,
+.operating-shell .sidebar .nav-item[aria-current="page"] {
+  color: #fff !important;
+  background: var(--sidebar-current-bg);
+  border-color: var(--sidebar-current-line);
+}
+.operating-shell .sidebar .nav-item.active .workspace-icon,
+.operating-shell .sidebar .nav-item[aria-current="page"] .workspace-icon {
+  color: currentColor;
+}
+.operating-shell .sidebar .side-bottom,
+.operating-shell .sidebar .profile {
+  border-color: var(--midnight-stroke);
+}
+/* Isolated chrome. Interior app surfaces remain unchanged until per-view QA. */
+.operating-shell .topbar {
+  background: rgba(12, 16, 24, .96);
+  border-bottom-color: var(--midnight-stroke);
+  color: var(--midnight-foreground);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+}
+.operating-shell .topbar h1 { color: var(--midnight-foreground); }
+.operating-shell .topbar :is(.eyebrow, .card-kicker) { color: var(--midnight-secondary); }
+.operating-shell .topbar :is(.command-trigger, .icon-button, .source-pill) {
+  color: var(--midnight-foreground);
+  background: var(--midnight-elevated);
+  border-color: #465268;
+}
+.operating-shell .sidebar :is(a, button, input, select, summary):focus-visible,
+.operating-shell .topbar :is(a, button, input, select, summary):focus-visible {
+  outline: 3px solid var(--midnight-focus) !important;
+  outline-offset: 3px !important;
+}
+.operating-shell .sidebar :is(button, a)[aria-disabled="true"],
+.operating-shell .sidebar :is(button, a):disabled {
+  cursor: not-allowed;
+}
+@media (prefers-reduced-transparency: reduce) {
+  .operating-shell .topbar { background: #0c1018; -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+@media (forced-colors: active) {
+  .operating-shell .sidebar { color: CanvasText; background: Canvas; border-color: CanvasText; }
+  .operating-shell .sidebar .nav-item,
+  .operating-shell .sidebar .nav-item.active { color: CanvasText !important; background: Canvas; border-color: Highlight; }
+  .operating-shell .topbar { color: CanvasText; background: Canvas; border-color: CanvasText; }
+}
