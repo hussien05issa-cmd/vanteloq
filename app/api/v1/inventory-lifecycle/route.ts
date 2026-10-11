@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { getD1, getDb } from "../../../../db";
 import { inventoryBalances, inventoryLots } from "../../../../db/schema";
 import { assessInventoryLot, fefoSort } from "../../../../domain/inventory-lifecycle";
@@ -11,6 +11,7 @@ import { approvedFactSource } from "../../../../server/integrations/trusted-data
 
 const roles = ["owner", "admin", "manager", "employee", "read_only"] as const;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+const INVENTORY_READ_LIMIT = 1_000;
 
 function cleanText(value: unknown, label: string, maximum: number, required = true): string {
   if (value === undefined || value === null || value === "") {
@@ -93,7 +94,9 @@ async function requestScope(request: Request, context: Awaited<ReturnType<typeof
 async function lifecycleDto(organizationId: string, scope: LifecycleScope, canViewValue: boolean) {
   const [lots, posBalances] = await Promise.all([
     getDb().select().from(inventoryLots)
-      .where(eq(inventoryLots.organizationId, organizationId)).limit(1_000),
+      .where(and(eq(inventoryLots.organizationId, organizationId),
+        ...(scope ? [inArray(inventoryLots.locationRef, [...scope.refs])] : [])))
+      .orderBy(desc(inventoryLots.updatedAt), asc(inventoryLots.id)).limit(INVENTORY_READ_LIMIT + 1),
     getDb().select({
       locationRef: inventoryBalances.locationRef,
       sku: inventoryBalances.sku,
@@ -105,8 +108,22 @@ async function lifecycleDto(organizationId: string, scope: LifecycleScope, canVi
       .where(and(
         eq(inventoryBalances.organizationId, organizationId),
         approvedFactSource(inventoryBalances.organizationId, inventoryBalances.sourceProvider, inventoryBalances.sourceConnectionId),
-      )).limit(1_000),
+        ...(scope ? [inArray(inventoryBalances.locationRef, [...scope.refs])] : []),
+      )).orderBy(asc(inventoryBalances.id)).limit(INVENTORY_READ_LIMIT + 1),
   ]);
+  // Read one sentinel beyond the display cap. A truncated sample must never
+  // become a tenant/location total or an authoritative pick recommendation.
+  const lotsComplete = lots.length <= INVENTORY_READ_LIMIT;
+  const balancesComplete = posBalances.length <= INVENTORY_READ_LIMIT;
+  const coverageReason = lotsComplete && balancesComplete ? null
+    : `This scope exceeds the ${INVENTORY_READ_LIMIT.toLocaleString("en-CA")} record limit for ${[!lotsComplete ? "inventory lots" : null, !balancesComplete ? "POS stock balances" : null].filter(Boolean).join(" and ")}. Only the first ${INVENTORY_READ_LIMIT.toLocaleString("en-CA")} records in each dataset are displayed. Affected totals${!lotsComplete ? ", depletion forecasts and FEFO guidance" : ""} are withheld. Select a smaller mapped location and review its complete evidence.`;
+  const coverage = {
+    status: lotsComplete && balancesComplete ? "complete" as const : "partial" as const,
+    limit: INVENTORY_READ_LIMIT,
+    reason: coverageReason,
+    lots: { status: lotsComplete ? "complete" as const : "partial" as const, loadedCount: Math.min(lots.length, INVENTORY_READ_LIMIT), matchingCountAtLeast: lots.length },
+    posBalances: { status: balancesComplete ? "complete" as const : "partial" as const, loadedCount: Math.min(posBalances.length, INVENTORY_READ_LIMIT), matchingCountAtLeast: posBalances.length },
+  };
   const velocityResult = await getD1().prepare(`SELECT sku, location_ref AS locationRef,
       SUM(CASE WHEN occurred_at >= ? AND quantity_delta < 0 THEN -quantity_delta ELSE 0 END) AS unitsSold30Days,
       MIN(occurred_at) AS firstMovementAt
@@ -114,8 +131,8 @@ async function lifecycleDto(organizationId: string, scope: LifecycleScope, canVi
     WHERE organization_id = ? AND reason = 'sale'
     GROUP BY sku, location_ref`).bind(Date.now() - 30 * 86_400_000, organizationId)
     .all<{ sku: string; locationRef: string; unitsSold30Days: number; firstMovementAt: number | null }>();
-  const visibleLots = scope ? lots.filter((lot) => scope.refs.has(lot.locationRef)) : lots;
-  const visibleBalances = scope ? posBalances.filter((balance) => scope.refs.has(balance.locationRef)) : posBalances;
+  const visibleLots = lots.slice(0, INVENTORY_READ_LIMIT);
+  const visibleBalances = posBalances.slice(0, INVENTORY_READ_LIMIT);
   const velocity = new Map((velocityResult.results ?? [])
     .filter((row) => !scope || scope.refs.has(row.locationRef))
     .map(row => [`${row.locationRef}\u0000${row.sku}`, row]));
@@ -138,9 +155,15 @@ async function lifecycleDto(organizationId: string, scope: LifecycleScope, canVi
       quantityRemaining: lot.quantityRemaining,
       unitCostCents: lot.unitCostCents,
       unitRetailCents: lot.unitRetailCents,
-      unitsSold30Days: movement ? Number(movement.unitsSold30Days) : null,
-      demandHistoryDays: historyDays,
+      unitsSold30Days: lotsComplete && movement ? Number(movement.unitsSold30Days) : null,
+      demandHistoryDays: lotsComplete ? historyDays : 0,
     }, now);
+    if (!lotsComplete) {
+      assessment.recommendation = assessment.risk === "expired"
+        ? `${assessment.recommendation} Complete lot coverage is required for depletion forecasts and FEFO ranking.`
+        : "Review this recorded lot and select a smaller mapped location. Depletion forecasts and FEFO recommendations are withheld until lot coverage is complete.";
+      assessment.evidence.push("The inventory-lot read is incomplete; no cross-lot depletion forecast or FEFO rank is established.");
+    }
     return {
       ...lot,
       unitsSold30Days: movement ? Number(movement.unitsSold30Days) : null,
@@ -148,7 +171,7 @@ async function lifecycleDto(organizationId: string, scope: LifecycleScope, canVi
       assessment,
     };
   });
-  const ordered = fefoSort(assessed);
+  const ordered = lotsComplete ? fefoSort(assessed) : [];
   const riskCounts = { healthy: 0, monitor: 0, at_risk: 0, urgent: 0, expired: 0, untracked: 0 };
   for (const lot of assessed) riskCounts[lot.assessment.risk] += 1;
   return {
@@ -176,26 +199,27 @@ async function lifecycleDto(organizationId: string, scope: LifecycleScope, canVi
       fefoRank: index + 1,
     })),
     summary: {
-      totalLots: assessed.length,
-      trackedLots: assessed.filter(lot => lot.assessment.trackedDate !== null).length,
-      totalUnits: assessed.reduce((sum, lot) => sum + lot.quantityRemaining, 0),
-      costAtRiskCents: canViewValue
+      totalLots: lotsComplete ? assessed.length : null,
+      trackedLots: lotsComplete ? assessed.filter(lot => lot.assessment.trackedDate !== null).length : null,
+      totalUnits: lotsComplete ? assessed.reduce((sum, lot) => sum + lot.quantityRemaining, 0) : null,
+      costAtRiskCents: lotsComplete && canViewValue
         ? assessed.reduce((sum, lot) => sum + (lot.assessment.inventoryCostAtRiskCents ?? 0), 0)
         : null,
-      costRiskKnownLots: canViewValue
+      costRiskKnownLots: lotsComplete ? canViewValue
         ? assessed.filter(lot => lot.assessment.inventoryCostAtRiskCents !== null).length
-        : 0,
-      riskCounts,
-      posSkus: visibleBalances.length,
-      posUnits: visibleBalances.reduce((sum, balance) => sum + balance.onHandQuantity, 0),
-      lowStockSkus: visibleBalances.filter((balance) => balance.onHandQuantity <= balance.reorderPoint).length,
+        : 0 : null,
+      riskCounts: lotsComplete ? riskCounts : null,
+      posSkus: balancesComplete ? visibleBalances.length : null,
+      posUnits: balancesComplete ? visibleBalances.reduce((sum, balance) => sum + balance.onHandQuantity, 0) : null,
+      lowStockSkus: balancesComplete ? visibleBalances.filter((balance) => balance.onHandQuantity <= balance.reorderPoint).length : null,
     },
     locationScope: scope ? { id: scope.id, name: scope.name } : null,
     source: {
-      calculation: scope
+      calculation: (scope
         ? `Recorded lot quantities and POS balances mapped to ${scope.name}, joined to location-tagged SKU sale movements. Missing demand, cost, margin, and dates are never imputed.`
-        : "Recorded lot quantities joined to tenant-scoped SKU sale movements; no missing demand, cost, margin, or dates are imputed.",
+        : "Recorded lot quantities joined to tenant-scoped SKU sale movements; no missing demand, cost, margin, or dates are imputed.") + (coverageReason ? ` ${coverageReason}` : ""),
       generatedAt: now.toISOString(),
+      coverage,
     },
   };
 }

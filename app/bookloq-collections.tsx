@@ -7,8 +7,10 @@ import { formatBookloqMoney } from "../domain/bookloq-presentation";
 import { normalizeCollectionsPreferences, type CollectionsDashboard, type CollectionsPreferences, type CollectionKind, type CollectionBucket, type CollectionsFilter, type OpenCollectionRecord } from "../domain/collections-dashboard";
 import "./bookloq-collections.css";
 import { BookLoQCollectionsSkeleton } from "./bookloq-skeleton";
+import DecisionCardsPanel from "./decision-cards-panel";
+import type { DecisionCard } from "../domain/decision-cards";
 
-export type CollectionsPayload = { report: CollectionsDashboard; records: OpenCollectionRecord[]; total: number; page: number; pageSize: number; demonstration: boolean };
+export type CollectionsPayload = { report: CollectionsDashboard; records: OpenCollectionRecord[]; total: number; page: number; pageSize: number; demonstration: boolean; decisionCards?: DecisionCard[] };
 const labels: Record<CollectionBucket, string> = { current: "Not overdue", "1-30": "1–30 days", "31-60": "31–60 days", "61-90": "61–90 days", "91+": "91+ days", undated: "No due date" };
 const colours = ["#286ad6", "#568fc9", "#7368bc", "#a06594", "#bd5668", "#77869b"];
 const widgetNames = { schedule: "Due-Date Timeline", aging: "Balance Ageing", actions: "Actions & Opportunities" };
@@ -62,6 +64,13 @@ export default function BookloqCollections({ refreshKey, navigate, initialPayloa
   let offset = 0;
   const widget = (key: CollectionsPreferences["widgets"][number]["id"]) => {
     if (!report) return null;
+    if (key === "actions" && data?.decisionCards) {
+      const open = (card: DecisionCard) => {
+        if (card.kind === "bills_due") { setPreferences(p => ({ ...p, horizon: 7 })); inspect("payable", card.status === "unavailable" ? "all" : "due"); }
+        else inspect("receivable", card.status === "unavailable" ? "all" : "overdue");
+      };
+      return <DecisionCardsPanel key={key} title="What needs attention in your books?" cards={data.decisionCards} onEvidence={open} onAction={open}/>;
+    }
     if (key === "schedule") return <article key={key} className="bq-collection-panel bq-collection-schedule">
       <div className="bq-panel-heading"><div><span className="bq-collection-kicker">Plan the Next {report.horizon} Days</span><h3>Money Due In & Out</h3></div><button onClick={() => navigate("Cash Flow")}>Open Cash Plan ↗</button></div>
       <FinanceChart title="Due-Date Timeline" description="Bars show outstanding amounts due. The line tracks their cumulative difference, starting at zero." currency={report.currency} basisLabel="Due Dates" tableCaption="Outstanding document amounts grouped by due date. Cumulative difference starts at zero, not a bank balance or cash forecast." points={report.receivables.count + report.payables.count ? report.schedule.map(p => ({ label: date(p.from), detail: `${p.from} to ${p.to}`, values: [p.incomingCents, -p.outgoingCents, p.cumulativeCents] })) : []} series={[{ label: "Invoices Due", kind: "bar", color: "blue" }, { label: "Bills Due", kind: "bar", color: "coral" }, { label: "Cumulative Difference", kind: "line", color: "violet" }]} emptyMessage="Create an invoice or record a bill to see upcoming due dates."/>

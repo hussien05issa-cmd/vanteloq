@@ -91,10 +91,24 @@ export function validateBusinessWorkflow(raw: unknown): BusinessWorkflow {
 }
 export function invoiceReferences(record: BusinessWorkflow) { const refs=(record.values.invoiceRefs??"").split(",").map(s=>s.trim()).filter(Boolean);if(refs.some(s=>!/^[A-Za-z0-9_.:-]{1,200}$/.test(s)))throw Error("Choose valid invoice references.");if(new Set(refs).size!==refs.length)throw Error("Link each invoice only once.");return refs; }
 function minor(value: string|undefined,currency:string){return value ? foodAmountToMinor(value,currency) : null;}
-function sum(values:(number|null)[]) {if(values.some(x=>x===null))return null;const total=values.reduce<number>((a,b)=>a+b!,0);if(!Number.isSafeInteger(total))throw Error("The total exceeds the supported calculation range.");return total;}
+function sum(values:(number|null)[]) {if(values.some(x=>x===null))return null;const total=values.reduce<bigint>((a,b)=>a+BigInt(b!),BigInt(0));if(total>BigInt(Number.MAX_SAFE_INTEGER)||total< -BigInt(Number.MAX_SAFE_INTEGER))throw Error("The total exceeds the supported calculation range.");return Number(total);}
 function money(value:number|null,currency:string){return value===null?"Needs cost evidence":`${currency} ${foodAmountText(value,currency)}`;}
 function multiplyMinutes(rate:number|null,minutes:string) { if(rate===null)return null;const numerator=BigInt(rate)*BigInt(Number(minutes));const rounded=(numerator+BigInt(30))/BigInt(60);const result=Number(rounded);if(!Number.isSafeInteger(result))throw Error("Time cost exceeds the supported calculation range.");return result; }
 function number(value:string){return value===""?null:Number(value);}
+/** Typed settlement facts shared by the reviewed workflow and decision adapters.
+ * Explicit mapping is required; a raw financial transaction page is insufficient. */
+export function settlementFacts(record: BusinessWorkflow) {
+  if (record.kind !== "settlement") throw Error("Choose a payout reconciliation workflow.");
+  const entries = record.groups.entries ?? [], expectedCents = sum(entries.map(entry => minor(entry.amount, record.currency)));
+  const bankCents = minor(record.values.bankAmount, record.currency);
+  const differenceCents = bankCents === null || expectedCents === null ? null : sum([bankCents, -expectedCents]);
+  const missingFields: string[] = [];
+  if (!record.values.provider || !record.values.account || !record.values.payoutId || !["provider-mapped", "manual-reviewed"].includes(record.values.batchType)) missingFields.push("explicit_payout_mapping");
+  if (!entries.length || expectedCents === null || entries.some(entry => !entry.reference) || new Set(entries.map(entry => entry.reference)).size !== entries.length) missingFields.push("mapped_signed_component_references");
+  if (entries.some(entry => ["sale", "refund"].includes(entry.type) && !entry.orderReference)) missingFields.push("original_order_and_refund_references");
+  if (bankCents === null || !record.values.bankReference) missingFields.push("bank_deposit_amount_and_reference");
+  return { expectedCents, bankCents, differenceCents, missingFields, references: entries.map(entry => entry.reference) };
+}
 export function businessWorkflowReport(record: BusinessWorkflow, invoices: LinkedInvoice[] = [], today = new Date().toISOString().slice(0,10)): WorkflowReport {
   const {kind,values:v,groups:g,currency:c}=record, metrics:WorkflowMetric[]=[],attention:string[]=[];
   let canComplete=true;
@@ -115,7 +129,7 @@ export function businessWorkflowReport(record: BusinessWorkflow, invoices: Linke
     if(direct===null||recognized===null)attention.push("Confirm direct costs and recognised revenue before closing the job.");
     requiredCosts();canComplete=canComplete&&direct!==null&&recognized!==null&&unbilled.length===0&&!g.work.some(x=>x.status==="planned")&&!g.milestones.some(x=>x.status==="planned")&&(!refs.length||outstanding===0);
   }else if(kind==="settlement"){
-    const expected=sum(g.entries.map(x=>minor(x.amount,c))),bank=minor(v.bankAmount,c),difference=bank===null||expected===null?null:bank-expected;
+    const {expectedCents:expected,bankCents:bank,differenceCents:difference}=settlementFacts(record);
     m("Components",String(g.entries.length));m("Expected settlement",money(expected,c));m("Bank received",bank===null?"Not recorded":money(bank,c));m("Unmatched difference",difference===null?"Awaiting bank evidence":money(difference,c),difference!==null&&difference!==0);
     if(!g.entries.length)attention.push("Add the provider's mapped settlement components.");
     if(bank===null||!v.bankReference)attention.push("Record the actual bank amount and transaction reference.");

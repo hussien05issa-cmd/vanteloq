@@ -8,6 +8,7 @@ import { getWorkspaceIndustry } from "./industry-configuration";
 import { businessClock } from "../domain/intraday-sales";
 import { businessWorkflowKinds, businessWorkflowReport, invoiceReferences, validateBusinessWorkflow, workflowTransition, type BusinessWorkflow, type BusinessWorkflowKind, type LinkedInvoice, type SavedBusinessWorkflow, type WorkflowState } from "../domain/business-workflows";
 import { captureOutcomeSales, outcomeLinkChoices, readableOutcomeLinks, requireOutcomeLinks } from "./workflow-outcomes";
+import { settlementDecisionCards } from "./decision-evidence";
 
 export async function businessWorkflowAccess(request:Request){
   const context=await requireAccess(request,["owner","admin","manager","employee","read_only"],"operations.basic");
@@ -45,7 +46,7 @@ export async function readBusinessWorkflows(access:Access,locationId:string|null
   const rows=location?await getD1().prepare(`SELECT ${columns} FROM business_workflow_records WHERE organization_id=? AND location_id=? ORDER BY updated_at DESC,id DESC LIMIT 501`).bind(access.context.organizationId,location.id).all<Row>():{results:[]};
   const scoped=(rows.results??[]).filter(r=>access.kinds.includes(r.kind)).slice(0,200);
   const items=scoped.map(content),links=location?await readableOutcomeLinks(access.context,location.id,items):[];
-  const records=[];for(const [index,item]of items.entries()){if(links[index]===null)continue;try{const invoices=await linkedInvoices(access.context,invoiceReferences(item));records.push({...item,report:businessWorkflowReport(item,invoices,businessClock(new Date(),location!.timezone)?.date),invoices,outcomeLinks:links[index]});}catch(error){if(error instanceof ApiError&&[400,403].includes(error.status))continue;throw error;}}
+  const records=[];for(const [index,item]of items.entries()){if(links[index]===null)continue;try{const invoices=await linkedInvoices(access.context,invoiceReferences(item));records.push({...item,report:businessWorkflowReport(item,invoices,businessClock(new Date(),location!.timezone)?.date),invoices,decisionCards:settlementDecisionCards(item),outcomeLinks:links[index]});}catch(error){if(error instanceof ApiError&&[400,403].includes(error.status))continue;throw error;}}
   let invoices:LinkedInvoice[]=[];
   if(location&&access.kinds.includes("job")){try{await requireFeatureEntitlement(access.context,"bookloq.ar");await requireAddon(access.context,"bookloq");await requirePermission(access.context,"finance.ap_ar");await requireOrganizationWideLocationAccess(access.context);
     const list=await getD1().prepare("SELECT id,invoice_number number,currency,total_cents totalMinor,MAX(0,total_cents-paid_cents) outstandingMinor,status FROM customer_invoices WHERE organization_id=? AND currency=? AND demo_record=0 AND status NOT IN ('draft','void','cancelled') ORDER BY updated_at DESC LIMIT 100").bind(access.context.organizationId,location.currency).all<LinkedInvoice>();invoices=list.results??[];

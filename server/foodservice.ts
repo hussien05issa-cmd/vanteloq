@@ -1,5 +1,6 @@
 import { getD1 } from "../db";
 import { foodserviceRecordReport, validateFoodserviceContent, FoodserviceInputError, type FoodSavedRecord } from "../domain/foodservice";
+import { foodPeriodDecisionCards } from "./decision-evidence";
 import { businessClock } from "../domain/intraday-sales";
 import { ApiError } from "./api";
 import { requireAccess, type AccessContext } from "./authorization";
@@ -33,7 +34,7 @@ export async function readFoodservice(context: AccessContext, periodRead: boolea
   // Require one explicit location. No cross-currency or cross-location aggregate is returned.
   const rows = location ? await getD1().prepare(`SELECT ${columns} FROM foodservice_records WHERE organization_id=? AND location_id=? ${periodRead ? "" : "AND kind='recipe'"} ORDER BY updated_at DESC,id DESC LIMIT 201`).bind(context.organizationId, location.id).all<Row>() : { results: [] };
   const records = (rows.results ?? []).slice(0, 200).map(dto);
-  return { locations: all.map(l => ({ id: l.id, name: l.name, currency: l.currency, timezone: l.timezone })), locationId: location?.id ?? null, records: records.map(record => ({ ...record, report: foodserviceRecordReport(record) })), truncated: (rows.results ?? []).length > 200 };
+  return { locations: all.map(l => ({ id: l.id, name: l.name, currency: l.currency, timezone: l.timezone })), locationId: location?.id ?? null, records: records.map(record => ({ ...record, report: foodserviceRecordReport(record), decisionCards: foodPeriodDecisionCards(record) })), truncated: (rows.results ?? []).length > 200 };
 }
 export async function saveFoodservice(context: AccessContext, permissions: { recipeWrite: boolean; periodWrite: boolean }, body: Record<string, unknown>) {
   if (body.reviewed !== true) throw new ApiError(400, "FOODSERVICE_REVIEW", "Review the quantities, costs, source and dates before saving.");

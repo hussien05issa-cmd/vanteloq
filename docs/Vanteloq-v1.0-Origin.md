@@ -346,3 +346,11 @@ This increment preserves existing report import and consent paths. It introduces
 - Background POS sync requires the current, exact purpose and privacy acknowledgement for the same owner, workspace and provider. An inspection-only signed canary checks admission and records a receipt without launching provider work, cleanup or messages. External recurrence remains unverified and has not been enabled by this increment.
 
 Fictional previews and migrated local database tests verify bounded calculations and permission paths. They do not prove independent provider acceptance, complete customer history or production restoration. Production migration evidence and a supported, revocable unattended authentication path remain prerequisites for new stateful workflows, automatic delivery, multiple self-created businesses and agent access. The supporting engineering matrix is docs/Origin-production-gap-program-2026-10-10.md. Exact publication and GitHub receipts remain separate from this source record.
+
+### October 11 connected workflow and decision refinement
+
+Release 356 added historical cost protection, dated reconciled-statement cash scenarios, supplier-bill review/AP/payment linkage, shared purchase obligations, report-engine entries, source-linked task outcomes and bounded SQL queries. Its evidence and remaining acceptance criteria are retained in `docs/Origin-connected-workflow-fixes-2026-10-11.md`.
+
+The following increment improves owner briefings, optional local onboarding CSV insights and sourced decision cards in Collections, reviewed Food Operations periods and settlement workflows. Exact arithmetic, source dates, permissions, incomplete-data gates and recoverable controls remain explicit. The implementation record, research and scope are in `docs/Origin-decision-workflow-refinement-2026-10-11.md`. Calculation adapters without customer-screen bindings are not advertised as new available features.
+
+The competitive direction is a source-to-decision-to-action-to-outcome workflow, supported by historical costs, inventory constraints, dated cash obligations and sector-specific evidence. This is a credible product strength, not measured proof of market superiority. Production recovery, unattended delivery, provider acceptance and signed-in customer accounting verification remain separate from deployment and isolated tests.

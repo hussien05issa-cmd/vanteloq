@@ -134,13 +134,22 @@ test("critical and total counts remain uncapped and duplicate issues use their s
   const signals = Array.from({ length: 7 }, (_, index) => signal(`bill-${index}`, { severity: "critical" }));
   signals.push(signal("bill-0", { severity: "low" }));
   const result = buildOwnerBriefing(input("2026-10-05T16:00:00Z", { signals }));
-  assert.equal(result.priorities.length, 5);
+  assert.equal(result.priorities.length, 7);
   assert.equal(result.criticalCount, 7);
   assert.equal(result.totalCount, 7);
-  assert.equal(result.omittedCount, 2);
+  assert.equal(result.omittedCount, 0);
   assert.equal(result.excludedCount, 1);
-  assert.deepEqual(result.priorities.map(item => item.rank), [1, 2, 3, 4, 5]);
+  assert.deepEqual(result.priorities.map(item => item.rank), [1, 2, 3, 4, 5, 6, 7]);
   assert.equal(result.priorities[0].severity, "critical");
+});
+
+test("critical issues remain available alongside a bounded ordinary review queue", () => {
+  const signals = [signal("critical", { severity: "critical" }), ...Array.from({ length: 8 }, (_, i) => signal(`ordinary-${i}`))];
+  const result = buildOwnerBriefing(input("2026-10-05T16:00:00Z", { signals }));
+  assert.equal(result.priorities.length, 6);
+  assert.equal(result.priorities[0].id, "critical");
+  assert.equal(result.omittedCount, 3);
+  assert.equal(result.totalCount, 9);
 });
 
 test("invalid source dates are not invented, inputs stay unchanged and output is deterministic", () => {

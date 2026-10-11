@@ -25,6 +25,8 @@ import { IndustryConfigurationFields } from "./industry-configuration";
 import { defaultIndustryConfiguration, resolveIndustryTemplate } from "../domain/industry-templates";
 import type { validateOnboardingDraft } from "../domain/onboarding-draft";
 import { changeOnboardingCountry, validReportingTimezone } from "../domain/onboarding-reporting";
+import OnboardingFirstInsight from "./onboarding-first-insight";
+import { onboardingPreviewCurrencyIssue, type OnboardingInsightSession } from "../domain/onboarding-first-insight";
 import "./owner-pathways.css";
 
 type Hour = { day: string; open: string; close: string; closed: boolean };
@@ -119,6 +121,9 @@ export default function SecureOnboardingFlow({
   const previousStep = useRef(1);
   useEffect(() => { if (step !== previousStep.current) { panelRef.current?.querySelector<HTMLElement>(".setup-step h2")?.focus(); previousStep.current = step; } }, [step]);
   const [form, setForm] = useState<Setup>(() => initialSetup(accountName));
+  // Financial source previews remain in browser memory across setup steps.
+  // They are deliberately omitted from both onboarding API payloads and saved drafts.
+  const [sourcePreview, setSourcePreview] = useState<OnboardingInsightSession | null>(null);
   const [industryConfiguration,setIndustryConfiguration] = useState(()=>defaultIndustryConfiguration("Retail"));
   const [overview,setOverview] = useState(()=>recommendedOverview("Retail"));
   const [overviewTouched,setOverviewTouched] = useState(false);
@@ -136,6 +141,7 @@ export default function SecureOnboardingFlow({
   async function discardDraft(){setDraftBusy(true);try{const response=await apiFetch("/api/v1/onboarding/draft",{method:"DELETE",headers:{"Content-Type":"application/json"},body:JSON.stringify({expectedRevision:draftRevision}),signal:AbortSignal.timeout(15000)});if(!response.ok){const body=await response.json();throw new Error(messageFrom(body,"Unable to discard the saved draft."));}setSavedDraft(null);setDraftRevision(0);}catch(e){setError(e instanceof Error?e.message:"Unable to discard the saved draft.");}finally{setDraftBusy(false);}}
   const standaloneBookloq = planAccess.plan === "bookloq";
   const freePlan = planAccess.accessType === "free";
+  const sourcePreviewReviewed = Boolean(!onboardingPreviewCurrencyIssue(form.currency) && sourcePreview?.reportingConfirmed && sourcePreview.source.currency === form.currency && sourcePreview.source.timeZone === form.timezone && sourcePreview.source.records.length <= (freePlan ? 100 : 366));
   const set = <K extends keyof Setup>(key: K, value: Setup[K]) =>
     setForm((current) => ({ ...current, [key]: value }));
 
@@ -288,7 +294,7 @@ export default function SecureOnboardingFlow({
           </i>
           <em>{Math.round((step / 7) * 100)}%</em>
         </div>
-        {savedDraft&&<section className="industry-resume" aria-label="Saved business setup"><strong>Your saved setup is ready.</strong><p>Resume where you left off, or start again. Acceptance of legal terms must be reviewed again.</p><button type="button" disabled={draftBusy||saving} onClick={()=>{setForm({...initialSetup(accountName),...savedDraft.form} as Setup);setHours(savedDraft.hours);setIndustryConfiguration(savedDraft.industryConfiguration);setOverview(savedDraft.overview);setOverviewTouched(true);setStep(savedDraft.step);setLegalAccepted(false);setSavedDraft(null);}}>Resume saved setup</button><button type="button" disabled={draftBusy||saving} onClick={()=>void discardDraft()}>Discard saved draft</button></section>}
+        {savedDraft&&<section className="industry-resume" aria-label="Saved business setup"><strong>Your saved setup is ready.</strong><p>Resume where you left off, or start again. Acceptance of legal terms must be reviewed again. Reselect your CSV for a fresh local preview; financial records are not stored in setup drafts.</p><button type="button" disabled={draftBusy||saving} onClick={()=>{setForm({...initialSetup(accountName),...savedDraft.form} as Setup);setHours(savedDraft.hours);setIndustryConfiguration(savedDraft.industryConfiguration);setOverview(savedDraft.overview);setOverviewTouched(true);setStep(savedDraft.step);setLegalAccepted(false);setSourcePreview(null);setSavedDraft(null);}}>Resume saved setup</button><button type="button" disabled={draftBusy||saving} onClick={()=>void discardDraft()}>Discard saved draft</button></section>}
         {draftNotice&&<p role="status" className="industry-draft-note">{draftNotice}</p>}
         <button type="button" className="overview-skip" disabled={draftBusy||draftLoading||saving||Boolean(savedDraft)} onClick={()=>void saveDraft()}>{draftLoading?"Checking saved progress…":draftBusy?"Saving progress…":"Save progress"}</button>
         <fieldset className="setup-submit-fields" disabled={saving}>
@@ -660,7 +666,7 @@ export default function SecureOnboardingFlow({
                     "csv",
                     "↑",
                     "Start with CSV",
-                    "Upload a CSV, match its columns and review the results before importing.",
+                    "Preview your daily-summary CSV now, then review and import it after setup.",
                   ],
                   [
                     "connect_later",
@@ -687,6 +693,7 @@ export default function SecureOnboardingFlow({
                 </button>
               ))}
             </div>
+            {form.sourceMode === "csv" && <OnboardingFirstInsight currency={form.currency} timeZone={form.timezone} maxRows={freePlan ? 100 : 366} value={sourcePreview} onChange={setSourcePreview} disabled={saving}/>}
             {form.sourceMode === "live" && (
               <div className="pos-picker">
                 <b>Preferred POS provider</b>
@@ -754,12 +761,13 @@ export default function SecureOnboardingFlow({
                   {form.sourceMode === "live"
                     ? form.selectedPos
                     : form.sourceMode === "csv"
-                      ? "CSV planned"
+                      ? sourcePreview ? sourcePreviewReviewed ? "CSV preview reviewed" : "CSV preview needs review" : "CSV planned"
                       : "Connect later"}
                 </b>
                 <span>
                   No demo data
                   <br />
+                  {form.sourceMode === "csv" && sourcePreview && <>{sourcePreview.source.fileName} · {sourcePreview.source.records.length} daily record{sourcePreview.source.records.length === 1 ? "" : "s"} checked locally<br/>Preview amounts are not imported<br/></>}
                   Review imports before they update reports
                 </span>
               </article>

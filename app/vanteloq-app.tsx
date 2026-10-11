@@ -1588,7 +1588,7 @@ function Workspace({
         onReview={subscriptionFeatures.includes("analytics.sales.advanced") && permissions.includes("insights.view") ? openReview : undefined}
         canCreate={subscriptionFeatures.includes("operations.basic") && permissions.includes("insights.create_task")}
         canForecast={permissions.includes("sales.view") && subscriptionFeatures.includes("forecasting.revenue")}
-        onDrill={(view,period)=>{setExecutiveDrill(period);if(view==="Inventory")setInventoryTab("products");navigate(view);}}
+        onDrill={(view,period)=>{setExecutiveDrill(period);if(view==="Reports"&&period?.from&&period.to)setReportSeed({from:period.from,to:period.to,locationId:activeLocationId});if(view==="Inventory")setInventoryTab("products");navigate(view);}}
         activeLocationId={activeLocationId}
         accountName={accountName}
         data={data}
@@ -1886,18 +1886,24 @@ function LiveSalesPanel({ data, currency, paymentRange, setPaymentRange, compact
   );
 }
 
-type BriefActions = { onAsk?: (seed: RetailAdvisorSeed) => void; onReview?: (id?: string, followup?: boolean) => void };
+type BriefActions = { onAsk?: (seed: RetailAdvisorSeed) => void; onReview?: (id?: string, followup?: boolean) => void; onDrill?: (view:"Sales"|"BookLoQ"|"Integrations"|"Intelligence"|"Reports"|"Inventory",period?:{from:string;to:string})=>void };
 function briefingDestination(item: OwnerBriefingPriority): View {
   return NAVIGATION_VIEW_IDS.some(view => view === item.destination) ? item.destination as View : "Dashboard";
 }
-function DailyBrief({ data, navigate, createTask, canCreate = false, activeLocationId, onAsk, onReview, expanded = false, selectedPriority }: BriefActions & { data: CommandCentre; navigate: (view: View) => void; createTask: (seed: TaskSeed) => void; canCreate?: boolean; activeLocationId?: string | null; expanded?: boolean; selectedPriority?: { id: string; request: number } }) {
+function DailyBrief({ data, navigate, createTask, canCreate = false, activeLocationId, onAsk, onReview, onDrill, expanded = false, selectedPriority }: BriefActions & { data: CommandCentre; navigate: (view: View) => void; createTask: (seed: TaskSeed) => void; canCreate?: boolean; activeLocationId?: string | null; expanded?: boolean; selectedPriority?: { id: string; request: number } }) {
   const brief = data.ownerBriefing;
   if (!brief) return null;
   return <OwnerBriefingPanel briefing={brief} scopeLabel={brief.scopeLabel} sourcePeriod={brief.reportingPeriod} hoursBasis={brief.hoursBasis} expanded={expanded} selectedPriority={selectedPriority}
-    onEvidence={item => { if (onReview && data.operatingSystem?.decisions.some(decision => decision.id === item.id)) onReview(item.id); else navigate(briefingDestination(item)); }}
+    sourceStatus={data.source.syncing ? { state: "loading", message: "Sources are updating. Financial checks wait for a completed refresh." } : data.liveSource.lastErrorCode ? { state: "error", message: "A connected source needs attention. Review its status before relying on the briefing." } : data.source.freshness === "stale" || data.source.freshness === "aging" ? { state: "stale", message: "Some source records are dated. Check their timestamps before acting." } : !data.ready ? { state: "partial", message: "The briefing needs more reviewed records. Missing information is kept visible." } : undefined}
+    onEvidence={item => {
+      if (onReview && data.operatingSystem?.decisions.some(decision => decision.id === item.id)) { onReview(item.id); return; }
+      const destination = briefingDestination(item);
+      if (onDrill && ["Sales", "BookLoQ", "Integrations", "Intelligence", "Reports", "Inventory"].includes(destination)) onDrill(destination as Parameters<NonNullable<BriefActions["onDrill"]>>[0], brief.reportingPeriod ?? undefined);
+      else navigate(destination);
+    }}
     onAction={canCreate ? item => {
       if (onReview && data.operatingSystem?.decisions.some(decision => decision.id === item.id)) { onReview(item.id); return; }
-      createTask({ title: item.title, detail: `Scope: ${brief.scopeLabel}. Prepared: ${brief.generatedAt}.\nFinding: ${item.detail}\nNext step: ${item.nextStep}\nEvidence: ${item.evidence.map(record => `${record.label}: ${record.value} (${record.source}${record.asOf ? `; ${record.asOf}` : ""})`).join("; ")}`.slice(0, 2000), priority: item.severity === "critical" ? "high" : item.severity, sourceType: "alert", sourceRef: `briefing:${item.id}`, expectedImpact: "Review the evidence and record what happened. No financial recovery is assumed." });
+      createTask({ title: item.title, detail: `Scope: ${brief.scopeLabel}. Prepared: ${brief.generatedAt}.\nReporting period: ${brief.reportingPeriod ? `${brief.reportingPeriod.from} to ${brief.reportingPeriod.to}` : "Not supplied"}.\nFinding: ${item.detail}\nNext step: ${item.nextStep}\nEvidence: ${item.evidence.map(record => `${record.label}: ${record.value} (${record.source}${record.asOf ? `; ${record.asOf}` : ""})`).join("; ")}`.slice(0, 2000), priority: item.severity === "critical" ? "high" : item.severity, sourceType: "alert", sourceRef: `briefing:${item.id}`, expectedImpact: "Review the evidence and record what happened. No financial recovery is assumed." });
     } : undefined}
     onAsk={onAsk && brief.reportingPeriod ? item => onAsk({ ...brief.reportingPeriod!, locationId: activeLocationId ?? null, question: `Help me act on this daily briefing item: ${item.title}. Scope: ${brief.scopeLabel}. Evidence window: ${brief.reportingPeriod!.from} to ${brief.reportingPeriod!.to}. Recorded finding: ${item.detail}. Suggested next step: ${item.nextStep}. Explain what is supported, what needs checking, and the next practical action. Do not infer causes or treat suggested actions as approved transactions.` }) : undefined}
     onReview={onReview ? () => onReview() : undefined} onSettings={() => navigate("Settings")}/>
@@ -1913,7 +1919,7 @@ export function Overview({ canCreate=false, canForecast=false, onDrill, onAsk, o
       <DashboardGreeting key={`greeting:${scopeKey}`} syncing={Boolean(data.source.syncing)} accountName={accountName} sourceName={sourceName} latestBusinessDate={data.source.latestBusinessDate}
         lastSuccessfulSyncAt={data.liveSource.lastSuccessfulSyncAt} needsAttention={Boolean(data.liveSource.lastErrorCode)||data.source.freshness!=="current"} onConnections={() => navigate("Integrations")}
         overview={{scope:data.ownerBriefing?.scopeLabel??sourceName,period:"Latest verified source periods, independent of report filters",metrics:data.ownerBriefing?.pulseMetrics??[],priorities:data.ownerBriefing?.priorities??[],criticalCount:data.ownerBriefing?.criticalCount??0,onFinding:openBriefingFinding}}/>
-      <details className="overview-daily-brief" key={`briefing:${scopeKey}`} ref={briefRef}><summary>Your daily briefing <span>Priorities, opening checks and follow-ups</span></summary><DailyBrief data={data} navigate={navigate} createTask={createTask} canCreate={canCreate} activeLocationId={activeLocationId} onAsk={onAsk} onReview={onReview} selectedPriority={selectedPriority}/></details>
+      <details className="overview-daily-brief" key={`briefing:${scopeKey}`} ref={briefRef} open={Boolean(data.ownerBriefing?.criticalCount)}><summary>Your daily briefing <span>{data.ownerBriefing?.criticalCount ? `${data.ownerBriefing.criticalCount} critical items need review` : "Priorities, opening checks and follow-ups"}</span></summary><DailyBrief data={data} navigate={navigate} createTask={createTask} canCreate={canCreate} activeLocationId={activeLocationId} onAsk={onAsk} onReview={onReview} onDrill={onDrill} selectedPriority={selectedPriority}/></details>
       {canForecast && <Suspense fallback={null}><ForecastPin currency={currency} locationId={activeLocationId??null} onOpen={()=>navigate("Forecasting")}/></Suspense>}
       <ExecutiveOverview currency={currency} industry={industry} activeLocationId={activeLocationId} navigate={onDrill??navigate} onAsk={onAsk} refreshKey={`${data.liveSource.lastSuccessfulSyncAt??""}:${Boolean(data.source.syncing)}:${data.source.rowCount}:${Object.values(data.metrics).map(metric=>metric.sourceTimestamp??"").join("|")}`}/>
       {!data.source.syncing&&<details className="dashboard-current-day-details"><summary>Today’s Sales Details<span>Payment mix, transactions and hourly activity</span></summary><LiveSalesPanel data={data} currency={currency} paymentRange={paymentRange} setPaymentRange={setPaymentRange} compact/></details>}

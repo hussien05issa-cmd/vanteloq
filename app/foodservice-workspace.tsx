@@ -1,13 +1,19 @@
 "use client";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { apiFetch } from "./supabase-browser";
+import type { DecisionCard } from "../domain/decision-cards";
+import DecisionCardsPanel from "./decision-cards-panel";
 import { FOOD_PERIOD_AMOUNTS, foodAmountText, foodAmountToMinor, foodserviceRecordReport, validateFoodserviceContent, type FoodRecordContent, type FoodSavedRecord, type FoodResult, type FoodUnit } from "../domain/foodservice";
 import "./foodservice-workspace.css";
 import { FoodRecordHistory, FoodRecipeModifiers } from "./foodservice-record-tools";
 import type { FoodModifier } from "../domain/foodservice-modifiers";
 
 type Report = ReturnType<typeof foodserviceRecordReport>;
-type Saved = FoodSavedRecord & { report: Report };
+type Saved = FoodSavedRecord & { report: Report; decisionCards?: DecisionCard[] };
+export function FoodPeriodDecision({ record, onReview }: { record: Saved; onReview?: () => void }) {
+  if (record.kind !== "period" || !record.decisionCards) return null;
+  return <DecisionCardsPanel title="Review the food-cost gap" cards={record.decisionCards} onAction={onReview}/>;
+}
 type Data = { locationId: string | null; locations: { id: string; name: string; currency: string; timezone: string }[]; records: Saved[]; truncated: boolean; permissions: { recipeWrite: boolean; periodRead: boolean; periodWrite: boolean } };
 type IngredientDraft = { id: string; purchaseAmount: string; purchaseUnit: FoodUnit; cost: string; recipeAmount: string; recipeUnit: FoodUnit; yield: string };
 type Draft = { kind: "recipe" | "period"; name: string; source: string; asOfDate: string; from: string; to: string; portions: string; ingredients: IngredientDraft[]; modifiers?: FoodModifier[]; amounts: Record<string, string>; checks: string };
@@ -112,7 +118,7 @@ function FoodservicePanel({ activeLocationId = null, compactOverview = false, on
         </fieldset></form>}
         {!data.records.length && <p>No reviewed records are saved for this location. Start with a recipe or a period review.</p>}
         {data.truncated && <p>Showing the 200 most recently updated records for this location. Older records remain saved.</p>}
-        <div className="foodservice-records">{data.records.map(row => <article key={`${row.id}:${row.version}`}><header><div><p className="foodservice-eyebrow">{row.kind === "recipe" ? "Recipe" : "Period review"} · Version {row.version}</p><h3 tabIndex={-1} ref={node => { if (node) recordHeadings.current.set(row.id,node); else recordHeadings.current.delete(row.id); }}>{row.name}</h3><p>{row.kind === "period" && `${row.from} to ${row.to} · `}Source: {row.source} · As of {row.asOfDate}</p></div><button type="button" disabled={busy || !data.permissions[row.kind === "recipe" ? "recipeWrite" : "periodWrite"]} onClick={() => edit(row)}>Edit {row.name}</button></header><ReportView report={row.report} currency={row.payload.currency}/>{row.kind === "recipe" && <FoodRecipeModifiers record={row} canEdit={data.permissions.recipeWrite && !busy && !draft} onSaved={() => { setError(""); setMessage("Recipe mappings saved as a reviewed version."); void load(row.id); }}/>}<FoodRecordHistory record={row}/></article>)}</div>
+        <div className="foodservice-records">{data.records.map(row => <article key={`${row.id}:${row.version}`}><header><div><p className="foodservice-eyebrow">{row.kind === "recipe" ? "Recipe" : "Period review"} · Version {row.version}</p><h3 tabIndex={-1} ref={node => { if (node) recordHeadings.current.set(row.id,node); else recordHeadings.current.delete(row.id); }}>{row.name}</h3><p>{row.kind === "period" && `${row.from} to ${row.to} · `}Source: {row.source} · As of {row.asOfDate}</p></div><button type="button" disabled={busy || !data.permissions[row.kind === "recipe" ? "recipeWrite" : "periodWrite"]} onClick={() => edit(row)}>Edit {row.name}</button></header><FoodPeriodDecision record={row} onReview={data.permissions.periodWrite && !busy && row.kind === "period" ? () => edit(row) : undefined}/><ReportView report={row.report} currency={row.payload.currency}/>{row.kind === "recipe" && <FoodRecipeModifiers record={row} canEdit={data.permissions.recipeWrite && !busy && !draft} onSaved={() => { setError(""); setMessage("Recipe mappings saved as a reviewed version."); void load(row.id); }}/>}<FoodRecordHistory record={row}/></article>)}</div>
       </>}
     </>}
   </section>;

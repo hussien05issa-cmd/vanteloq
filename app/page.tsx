@@ -483,8 +483,8 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
             <span aria-hidden="true">{"A number without a source is a rumour.".split(" ").map((word, index) => <span className="home-source-word" key={index} style={{ animationDelay: `${index * 65}ms` }}>{word}{index < 7 ? " " : ""}</span>)}</span>
           </p>
           <h1 id="home-title">Your business, <em>at a glance.</em></h1>
-          <p>A clear view of performance and what needs your attention.</p>
-          <p className="home-hero-support">Follow sales, stock and cash back to their source. Connect your supported tools, set your goals and choose your next step.</p>
+          <p>Sales, stock and cash. With the records behind the numbers.</p>
+          <p className="home-hero-support">See what changed, inspect the source and decide what needs attention. Keep the systems you use and a dashboard built around your business.</p>
           <div className="public-actions"><a href="/demo" data-public-event="demo_view">Open the demo <span aria-hidden="true">→</span></a><button type="button" data-public-event="signup_start" onClick={() => start("signup")}>Create a workspace</button></div>
           <ul className="home-proof"><li>No signup for the demo</li><li>Totals open to source rows</li><li>AI memory starts off</li></ul>
           <p className="home-company-credit">A product built and operated by <a href="#company">LexEdge Consulting</a>.</p>
@@ -494,7 +494,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
       <div className="reference-connections" aria-label="Explore data connections"><span>YOUR TOOLS, CONNECTED</span><div>{["Lightspeed","Square","Shopify","Stripe","Google"].map(name=><a key={name} href="#connections" aria-label={`Check ${name} availability`}><IntegrationBrandLogo name={name} compact/><strong>{name}</strong></a>)}</div><a href="#connections">View Availability <span aria-hidden="true">→</span></a></div>
       <HomeProductFilm/>
       <section className="home-decision-proof" id="platform" aria-labelledby="decision-proof-title">
-        <span id="capabilities"/><div className="reference-section-heading" data-motion-item="0"><div><p className="demo-eyebrow">YOUR BUSINESS. YOUR PRIORITIES.</p><h2 id="decision-proof-title">Know where you stand. Decide where to go.</h2></div><p>Track what matters, understand what changed and turn a finding into a next step. Your records provide the context. You set the direction.</p></div>
+        <span id="capabilities"/><div className="reference-section-heading" data-motion-item="0"><div><p className="demo-eyebrow">YOUR BUSINESS. YOUR PRIORITIES.</p><h2 id="decision-proof-title">What changed? What needs your attention?</h2></div><p>Open the records behind a finding. Review the next step, assign the work and follow the outcome. Missing costs and incomplete sources stay visible.</p></div>
         <FeatureCarousel/>
       </section>
       <IndustryFitPreview/>
