@@ -231,6 +231,16 @@ test("R-Series sale lines remove both discount levels, exclude tax and preserve 
   assert.equal(noDiscount.netSalesCents, 10000); assert.equal(noDiscount.discountCents, 0);
 });
 
+test("R-Series line costs distinguish explicit zero, missing values and invalid provider amounts", async () => {
+  const source={saleID:"fictional",saleLineID:"line",unitQuantity:"1",calcSubtotal:"10"};
+  const zero=await normalizeLightspeedRSaleLine({...source,calcFIFOCost:"0"});
+  const missing=await normalizeLightspeedRSaleLine(source);
+  const blank=await normalizeLightspeedRSaleLine({...source,calcFIFOCost:" "});
+  assert.equal(zero.costKnown,true); assert.equal(zero.costCents,0);
+  assert.equal(missing.costKnown,false); assert.equal(blank.costKnown,false);
+  await assert.rejects(()=>normalizeLightspeedRSaleLine({...source,calcFIFOCost:"not a cost"}),/source review/);
+});
+
 test("R-Series payment normalization records tender totals without card or customer details", async () => {
   const types = lightspeedRPaymentTypeMap([
     { paymentTypeID: "1", name: "Cash" },

@@ -79,3 +79,7 @@
 
 /* Quiet, consistent controls for the finance workspace header. */
 .bookloq-top>div>button:not(.bookloq-primary){display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:42px;padding:10px 13px;border:1px solid #d3dfed;border-radius:12px;background:linear-gradient(145deg,#f9fbfd,#edf3fa);color:#294763;font:inherit;font-size:12px;font-weight:550;box-shadow:0 2px 5px #28496b08;cursor:pointer}.bookloq-top>div>button:not(.bookloq-primary):hover{background:#e8f0fa;border-color:#afc5df}.bookloq-top>div>button:focus-visible{outline:2px solid #2b6ec5;outline-offset:3px}.bookloq-top>div>button:disabled{opacity:.55;cursor:wait}.bookloq-top .bookloq-mobile-nav select{border-color:#d3dfed;border-radius:12px;background:#f7faff;color:#294763;font-family:inherit}
+
+/* Keep the workspace wordmark compact even when public full-logo rules load later. */
+.bookloq-brand .product-brand-logo.full.bookloq-brand-lockup{width:156px;height:48px;max-width:calc(100% - 32px);border-radius:6px;box-shadow:none;flex-shrink:1}.bookloq-brand .bookloq-brand-lockup img{width:100%;height:100%;object-fit:contain}
+@media(max-width:620px){.bookloq-brand .product-brand-logo.full.bookloq-brand-lockup{width:150px;height:44px;max-width:100%}}

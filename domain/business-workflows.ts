@@ -1,5 +1,6 @@
 import type { IndustryConfiguration } from "./industry-templates";
 import { foodAmountText, foodAmountToMinor } from "./foodservice";
+import { outcomeSalesValues, validateOutcomeSalesSnapshot, type OutcomeSalesSnapshot } from "./workflow-outcomes";
 
 export const BUSINESS_WORKFLOW_KINDS = ["job", "settlement", "order_margin", "outcome", "custom"] as const;
 export type BusinessWorkflowKind = typeof BUSINESS_WORKFLOW_KINDS[number];
@@ -32,7 +33,7 @@ export const BUSINESS_WORKFLOW_DEFINITIONS: Record<BusinessWorkflowKind, Workflo
   },
   outcome: {
     title: "Action outcomes", description: "Compare the result with the decision you made.",
-    fields: [field("actionReference", "Task / decision reference", "text", {required: true}), field("metric", "Metric being measured", "text", {required: true}), field("unit", "Unit", "text", {required: true, hint: "For example CAD, units, minutes or percentage points."}), field("baselineFrom", "Baseline start", "date", {required: true}), field("baselineTo", "Baseline end", "date", {required: true}), field("followupFrom", "Follow-up start", "date", {required: true}), field("followupTo", "Follow-up end", "date", {required: true}), field("baseline", "Baseline value", "number", {signed: true}), field("followup", "Follow-up value", "number", {signed: true}), field("target", "Expected result", "number", {signed: true}), field("actualCost", "Cost of the intervention", "money"), field("coverage", "Periods comparable and complete", "select", {required: true, options: ["not-yet", "confirmed"]}), field("guardrail", "Trade-off to watch", "text", {required: true}), field("guardrailBefore", "Trade-off baseline", "number", {signed: true}), field("guardrailAfter", "Trade-off follow-up", "number", {signed: true}), field("decision", "Next decision", "select", {required: true, options: ["review", "keep", "adjust", "reverse"]})],
+    fields: [field("actionReference", "Additional evidence reference", "text"), field("taskId", "Linked task"), field("opportunityId", "Linked saved finding"), field("measurementMode", "Measurement evidence", "select", {options: ["manual", "recorded-net-sales"]}), field("metric", "Metric being measured", "text", {required: true}), field("unit", "Unit", "text", {required: true, hint: "For example CAD, units, minutes or percentage points."}), field("baselineFrom", "Baseline start", "date", {required: true}), field("baselineTo", "Baseline end", "date", {required: true}), field("followupFrom", "Follow-up start", "date", {required: true}), field("followupTo", "Follow-up end", "date", {required: true}), field("baseline", "Baseline value", "number", {signed: true}), field("followup", "Follow-up value", "number", {signed: true}), field("target", "Expected result", "number", {signed: true}), field("actualCost", "Cost of the intervention", "money"), field("coverage", "Periods comparable and complete", "select", {required: true, options: ["not-yet", "confirmed"]}), field("guardrail", "Trade-off to watch", "text", {required: true}), field("guardrailBefore", "Trade-off baseline", "number", {signed: true}), field("guardrailAfter", "Trade-off follow-up", "number", {signed: true}), field("decision", "Next decision", "select", {required: true, options: ["review", "keep", "adjust", "reverse"]})],
     groups: [], boundary: "A before-and-after change is an observation, not proof the action caused it. Confirm comparable periods and preserve seasonal or missing-data qualifications.",
   },
   custom: {
@@ -42,7 +43,7 @@ export const BUSINESS_WORKFLOW_DEFINITIONS: Record<BusinessWorkflowKind, Workflo
     boundary: "This is a reviewed work checklist. Conditions do not execute payments, messages or arbitrary code.",
   },
 };
-export type BusinessWorkflow = { kind: BusinessWorkflowKind; name: string; source: string; asOfDate: string; currency: string; values: Record<string, string>; groups: Record<string, Record<string,string>[]>; costCoverage: boolean; note: string };
+export type BusinessWorkflow = { kind: BusinessWorkflowKind; name: string; source: string; asOfDate: string; currency: string; values: Record<string, string>; groups: Record<string, Record<string,string>[]>; costCoverage: boolean; note: string; outcomeSnapshot?: OutcomeSalesSnapshot | null };
 export type SavedBusinessWorkflow = BusinessWorkflow & { id: string; locationId: string; version: number; state: WorkflowState; updatedAt: number };
 export type WorkflowMetric = { label: string; value: string; attention?: boolean };
 export type WorkflowReport = { metrics: WorkflowMetric[]; attention: string[]; canComplete: boolean; boundary: string };
@@ -67,7 +68,7 @@ function validateFields(raw: unknown, fields: WorkflowField[], currency: string)
 }
 export function validateBusinessWorkflow(raw: unknown): BusinessWorkflow {
   const p=object(raw); if(!BUSINESS_WORKFLOW_KINDS.includes(p.kind as BusinessWorkflowKind)) throw Error("Choose a supported workflow.");
-  if (Object.keys(p).some(k=>!["kind","name","source","asOfDate","currency","values","groups","costCoverage","note"].includes(k))) throw Error("Remove unsupported workflow properties.");
+  if (Object.keys(p).some(k=>!["kind","name","source","asOfDate","currency","values","groups","costCoverage","note","outcomeSnapshot"].includes(k))) throw Error("Remove unsupported workflow properties.");
   const kind=p.kind as BusinessWorkflowKind, d=BUSINESS_WORKFLOW_DEFINITIONS[kind], currency=text(p.currency,"Currency",3,true);
   if(!/^[A-Z]{3}$/.test(currency)) throw Error("Choose a supported currency.");
   // Use the same currency scale as existing reviewed financial records.
@@ -75,12 +76,17 @@ export function validateBusinessWorkflow(raw: unknown): BusinessWorkflow {
   const values=validateFields(p.values,d.fields,currency), rawGroups=object(p.groups??{});
   if(Object.keys(rawGroups).some(k=>!d.groups.some(g=>g.key===k))) throw Error("Remove unsupported workflow sections.");
   const groups=Object.fromEntries(d.groups.map(g=>{const rows=rawGroups[g.key]??[]; if(!Array.isArray(rows)||rows.length>100)throw Error("Use at most 100 entries per section.");const clean=rows.map(r=>validateFields(r,g.fields,currency));if(new Set(clean.map(r=>r.reference)).size!==clean.length)throw Error(`${g.label} contains a duplicate reference.`);return[g.key,clean];}));
-  const record={kind,name:text(p.name,"Name",120,true),source:text(p.source,"Source reference",300,true),asOfDate:workflowDate(text(p.asOfDate,"Source date",10,true)),currency,values,groups,costCoverage:p.costCoverage===true,note:text(p.note,"Review notes",2000)};
+  const record={kind,name:text(p.name,"Name",120,true),source:text(p.source,"Source reference",300,true),asOfDate:workflowDate(text(p.asOfDate,"Source date",10,true)),currency,values,groups,costCoverage:p.costCoverage===true,note:text(p.note,"Review notes",2000), ...(p.outcomeSnapshot == null ? {} : {outcomeSnapshot:validateOutcomeSalesSnapshot(p.outcomeSnapshot)})};
   if(p.costCoverage!==true && p.costCoverage!==false)throw Error("Confirm the cost coverage explicitly.");
   if(kind==="job") { if(invoiceReferences(record).length>20)throw Error("Link at most 20 invoices.");for(const r of groups.work)if(!Number.isInteger(Number(r.minutes)))throw Error("Record work in whole minutes."); }
   if(kind==="settlement")for(const r of groups.entries){const v=minor(r.amount,currency);if((r.type==="sale" && v!==null && v<0)||(["fee","refund","dispute"].includes(r.type)&&v!==null&&v>0))throw Error("Sales credit the payout. Fees, refunds and disputes reduce it.");}
   if(kind==="order_margin") { const recovered=minor(values.recoveredCost,currency); if(recovered!==null&&recovered>0&&values.returnDisposition!=="resaleable")throw Error("Recovered cost requires confirmed resaleable goods."); const cogs=minor(values.cogs,currency);if(cogs!==null&&recovered!==null&&recovered>cogs)throw Error("Recovered stock cost cannot exceed the recorded cost of goods sold."); }
   if(kind==="outcome" && (values.baselineFrom>values.baselineTo||values.followupFrom>values.followupTo||values.followupFrom<=values.baselineTo))throw Error("Use ordered, non-overlapping baseline and follow-up periods.");
+  if(kind!=="outcome" && record.outcomeSnapshot)throw Error("Source outcome snapshots belong to action outcomes only.");
+  if(kind==="outcome"){
+    if(values.taskId&&!/^[1-9]\d*$/.test(values.taskId)||values.taskId&&!Number.isSafeInteger(Number(values.taskId))||values.opportunityId&&!/^[A-Za-z0-9_.:-]{1,200}$/.test(values.opportunityId))throw Error("Choose valid task and finding references.");
+    if(record.outcomeSnapshot){const snapshot=record.outcomeSnapshot, amounts=outcomeSalesValues(snapshot);if(values.measurementMode!=="recorded-net-sales"||values.metric!=="Net sales"||values.unit!==currency||snapshot.currency!==currency||values.baseline!==amounts.baseline||values.followup!==amounts.followup||["baselineFrom","baselineTo","followupFrom","followupTo"].some(k=>values[k]!==snapshot[k as keyof OutcomeSalesSnapshot]))throw Error("Recorded outcome values must match their retained source snapshot.");}
+  }
   return record;
 }
 export function invoiceReferences(record: BusinessWorkflow) { const refs=(record.values.invoiceRefs??"").split(",").map(s=>s.trim()).filter(Boolean);if(refs.some(s=>!/^[A-Za-z0-9_.:-]{1,200}$/.test(s)))throw Error("Choose valid invoice references.");if(new Set(refs).size!==refs.length)throw Error("Link each invoice only once.");return refs; }
@@ -127,13 +133,15 @@ export function businessWorkflowReport(record: BusinessWorkflow, invoices: Linke
   }else if(kind==="outcome"){
     const before=number(v.baseline),after=number(v.followup),target=number(v.target),gb=number(v.guardrailBefore),ga=number(v.guardrailAfter);
     const days=(from:string,to:string)=>(Date.parse(to)-Date.parse(from))/86400000+1;
-    const comparable=v.coverage==="confirmed"&&days(v.baselineFrom,v.baselineTo)===days(v.followupFrom,v.followupTo)&&v.followupTo<=today;
+    const recorded=v.measurementMode==="recorded-net-sales",comparable=v.coverage==="confirmed"&&days(v.baselineFrom,v.baselineTo)===days(v.followupFrom,v.followupTo)&&v.followupTo<=today&&(!recorded||Boolean(record.outcomeSnapshot));
+    m("Measurement evidence",recorded?record.outcomeSnapshot?`Recorded net sales, captured ${record.outcomeSnapshot.capturedAt}`:"Awaiting source coverage":"Manually entered, owner-reviewed evidence");
     m("Observed change",comparable&&before!==null&&after!==null?`${Number((after-before).toFixed(4))} ${v.unit}`:"Cannot assess yet");
     m("Versus expected result",comparable&&after!==null&&target!==null?`${Number((after-target).toFixed(4))} ${v.unit}`:"Not available");
     m("Trade-off change",comparable&&gb!==null&&ga!==null?String(Number((ga-gb).toFixed(4))):"Not assessed");m("Intervention cost",money(minor(v.actualCost,c),c));
     if(!comparable)attention.push("Use complete, comparable periods of equal length, ending no later than today.");
     if(gb===null||ga===null)attention.push("Record the trade-off before deciding whether to keep the change.");
-    canComplete=comparable&&before!==null&&after!==null&&gb!==null&&ga!==null&&v.decision!=="review"&&Boolean(record.note);
+    if(!v.taskId&&!v.opportunityId)attention.push("Link a saved task or finding to keep the action and result together. External references remain manually reviewed evidence.");
+    canComplete=comparable&&before!==null&&after!==null&&gb!==null&&ga!==null&&v.decision!=="review"&&Boolean(record.note)&&(!recorded||Boolean(v.taskId||v.opportunityId));
   }else{
     const checks=g.checks,complete=checks.filter(x=>x.status!=="pending"),missing=checks.filter(x=>x.status==="complete"&&!x.evidence);
     m("Evidence checks",`${complete.length} of ${checks.length}`);m("Responsible",v.owner);m("Next action date",v.dueDate);m("Next action",v.nextAction);

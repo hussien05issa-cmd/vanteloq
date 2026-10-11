@@ -5,6 +5,7 @@ import { Miniflare } from "miniflare";
 import { bankMoneyCents,parseBankCsv,bankCsvRows,type CsvMapping } from "../domain/bank-csv.ts";
 import { archiveUnpostedBankCsv,bankAccounting,bankReconciliationPreview,bankSources,commitBankCsv,previewBankCsv,completeBankReconciliation,reopenBankReconciliation } from "../server/bank-workflows.ts";
 import { confirmSupportingMatch } from "../server/bookloq.ts";
+import { loadReconciledCashScenario } from "../server/cash-planning.ts";
 const mapping:CsvMapping={delimiter:",",dateColumn:0,descriptionColumn:1,amountColumn:2,moneyInColumn:null,moneyOutColumn:null,dateFormat:"ymd",decimalFormat:"dot",positiveMeans:"in"};
 test("CSV parsing preserves quoted data and requires exact dates, amounts and explicit directions",async()=>{
   assert.deepEqual(parseBankCsv('\uFEFFDate,Description,Amount\r\n2026-10-04,"Customer, \"\"A\"\"\nreceipt",100.01\r\n',','),[['Date','Description','Amount'],['2026-10-04','Customer, "A"\nreceipt','100.01']]);
@@ -142,6 +143,13 @@ test("CSV → reviewed cash journals → independently reconciled statement reta
       assert.equal((await db.prepare("SELECT COUNT(*) n FROM financial_transactions WHERE reconciliation_status='reconciled'").first())?.n,0);
       await db.prepare('DROP TRIGGER reject_reconciliation_audit').run();
       const results=await Promise.all([completeBankReconciliation(db,completion,ctx()),completeBankReconciliation(db,completion,ctx())]);runId=results[0].id!;assert.equal(results[1].id,runId);
+      const cashInput={organizationId:'org',currency:'CAD',asOf:'2026-10-11',nowMs:Date.parse('2026-10-11T12:00:00Z'),allowed:true,dataMode:'live',bookloqActive:true};
+      const datedCash=await loadReconciledCashScenario(db,cashInput);
+      assert.equal(datedCash.status,'available');assert.equal(datedCash.scenarioOpeningCashCents,125000);
+      assert.equal(datedCash.purchasingOpeningCashCents,125000);assert.equal(datedCash.outstandingReceiptsCents,7000);
+      assert.equal(datedCash.outstandingWithdrawalsCents,0,'Cancelled uncleared journal reversal pairs do not manufacture an outstanding payment');
+      assert.equal((await loadReconciledCashScenario(db,{...cashInput,organizationId:'other'})).scenarioOpeningCashCents,null);
+      assert.equal((await loadReconciledCashScenario(db,{...cashInput,allowed:false})).sourceIds.length,0);
       assert.equal((await db.prepare('SELECT COUNT(*) n FROM bank_reconciliation_lines WHERE run_id=? AND active=1').bind(runId).first())?.n,3);
       assert.equal((await db.prepare("SELECT COUNT(*) n FROM financial_transactions WHERE reconciliation_status='reconciled'").first())?.n,3);
       await assert.rejects(()=>bankAccounting(db,{action:'reverse',transactionId:`${sourceId}:3`,date:'2026-10-11',reason:'Correction',reviewed:true},ctx()),code('BANK_RECONCILED'));
@@ -153,6 +161,7 @@ test("CSV → reviewed cash journals → independently reconciled statement reta
       await assert.rejects(()=>reopenBankReconciliation(db,{runId,reason:'Review correction'},ctx()),code('BANK_RECONCILIATION_REOPEN'));
       await db.prepare("UPDATE accounting_periods SET status='open' WHERE id='period'").run();
       await reopenBankReconciliation(db,{runId,reason:'Review correction'},ctx());
+      assert.equal((await loadReconciledCashScenario(db,cashInput)).scenarioOpeningCashCents,null,'The latest reopened run cannot fall back to an earlier cash balance');
       assert.equal((await db.prepare('SELECT COUNT(*) n FROM bank_reconciliation_lines WHERE run_id=? AND active=0').bind(runId).first())?.n,3);
       await bankAccounting(db,{action:'reverse',transactionId:`${sourceId}:3`,date:'2026-10-05',reason:'Wrong expense account',reviewed:true},ctx());
       assert.equal((await db.prepare('SELECT journal_entry_id FROM financial_transactions WHERE id=?').bind(`${sourceId}:3`).first())?.journal_entry_id,null);
@@ -173,6 +182,9 @@ test("CSV → reviewed cash journals → independently reconciled statement reta
       await bankAccounting(db,{action:'match',transactionId:`${replacement.id}:2`,cashLineId:outstandingCashLine,reason:'Confirmed deposit on next statement',reviewed:true},ctx());
       const preview=await bankReconciliationPreview(db,'org','csv',replacement.id);assert.equal(preview.ready,true);assert.equal(preview.unclearedCents,0);assert.equal(preview.clearedClosingCents,132000);assert.ok(preview.previousRunId);
       const final=await completeBankReconciliation(db,{sourceType:'csv',sourceId:replacement.id,reviewed:true,openingBasisConfirmed:true,previewFingerprint:preview.previewFingerprint},ctx());assert.ok(final.id);
+      const continuedCash=await loadReconciledCashScenario(db,{organizationId:'org',currency:'CAD',asOf:'2026-10-14',nowMs:Date.parse('2026-10-14T12:00:00Z'),allowed:true,dataMode:'live',bookloqActive:true});
+      assert.equal(continuedCash.status,'available');assert.equal(continuedCash.sourceAsOf,'2026-10-13');
+      assert.equal(continuedCash.purchasingOpeningCashCents,132000);assert.equal(continuedCash.outstandingReceiptsCents,0);
       const earlierRun=(await bankSources(db,'org')).find(s=>s.id===sourceId)!.runId;
       await assert.rejects(()=>reopenBankReconciliation(db,{runId:earlierRun,reason:'Earlier statement'},ctx()),code('BANK_RECONCILIATION_REOPEN'));
       await assert.rejects(()=>db.prepare("UPDATE journal_entries SET entry_date='2026-10-10' WHERE id='outstanding'").run(),/BANK_JOURNAL_RETAINED/);

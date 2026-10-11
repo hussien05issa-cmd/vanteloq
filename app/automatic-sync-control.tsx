@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { apiFetch } from "./supabase-browser";
 import { POS_SYNC_CONSENT_VERSION, posSyncDataCategories } from "../domain/pos-sync-consent";
 import type { ConnectorHealth } from "../domain/connector-guidance";
@@ -9,17 +9,24 @@ export type AutomaticSyncStatus = {
   status: string; lastErrorCode: string | null; nextRunAt: string | null;
   lastFinishedAt: string | null; intervalMinutes: number;
 };
-export default function AutomaticSyncControl({ provider, connectionId, accountName, status, health, refresh }: {
-  provider: string; connectionId: string; accountName: string; status: AutomaticSyncStatus; health?: ConnectorHealth; refresh: () => Promise<void>;
+export default function AutomaticSyncControl({ provider, connectionId, accountName, status, health, refresh, observedAt }: {
+  provider: string; connectionId: string; accountName: string; status: AutomaticSyncStatus; health?: ConnectorHealth; refresh: () => Promise<void>; observedAt?: number;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [now, setNow] = useState<number | null>(typeof observedAt === "number" && Number.isFinite(observedAt) ? observedAt : null);
+  useEffect(() => {
+    let active = true;
+    const update = () => { if (active) setNow(Date.now()); };
+    queueMicrotask(update);
+    const timer = window.setInterval(update, 60_000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, []);
   const labels: Record<string, string> = { off: "Off", paused: "Paused", queued: "Queued", running: "Syncing",
     backfilling: "Importing history", completed: "Last run completed", waiting: "Import in progress", retrying: "Retry scheduled", attention: "Needs attention" };
-  const now = Date.now();
   const validDate = (value: string | null, allowFuture: boolean) => {
     const timestamp = value ? Date.parse(value) : NaN;
-    return Number.isFinite(timestamp) && (allowFuture || timestamp <= now) ? new Date(timestamp) : null;
+    return Number.isFinite(timestamp) && (allowFuture || now !== null && timestamp <= now) ? new Date(timestamp) : null;
   };
   const lastFinished = validDate(status.lastFinishedAt, false);
   const nextRun = validDate(status.nextRunAt, true);
@@ -47,9 +54,9 @@ export default function AutomaticSyncControl({ provider, connectionId, accountNa
     <p>{detail}</p>
     {health && <p role="status">{health.detail}</p>}
     {lastFinished ? <small>Last run finished: <time dateTime={lastFinished.toISOString()}>{dateLabel(lastFinished)}</time></small>
-      : status.status !== "off" && <small>Last run time is unavailable.</small>}
+      : status.status !== "off" && <small>{now === null ? "Checking last run time…" : "Last run time is unavailable."}</small>}
     {!status.enabled && status.canManage && <details><summary>Data access and consent</summary><p>Enabling automatic sync authorizes Vanteloq to continue reading this connected account while you are signed out. It uses {posSyncDataCategories(provider).map(value => value.toLowerCase()).join("; ")}. Pause here or disconnect the account to stop future imports. This does not approve staged data for reports.</p></details>}
-    {status.enabled && (nextRun ? <small>{nextRun.getTime() < now ? "Scheduled check overdue: " : "Next scheduled check: "}<time dateTime={nextRun.toISOString()}>{dateLabel(nextRun)}</time></small>
+    {status.enabled && (nextRun ? <small>{now === null ? "Scheduled check: " : nextRun.getTime() < now ? "Scheduled check overdue: " : "Next scheduled check: "}<time dateTime={nextRun.toISOString()}>{dateLabel(nextRun)}</time></small>
       : <small>Next check time is unavailable.</small>)}
     {status.lastErrorCode && <small role="status">Sync needs attention: {status.lastErrorCode.toLowerCase().replaceAll("_", " ")}.</small>}
     {status.canManage && <button type="button" disabled={busy || !status.configured || (!status.enabled && health?.state === "reauthorize")} onClick={() => void change()}

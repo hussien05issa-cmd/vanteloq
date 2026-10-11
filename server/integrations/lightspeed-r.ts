@@ -91,6 +91,7 @@ export type NormalizedLightspeedRSaleLine = {
   quantityMilli: number;
   netSalesCents: number;
   costCents: number;
+  costKnown?: boolean;
   discountCents: number;
   sourcePayloadHash: string;
 };
@@ -557,6 +558,14 @@ export async function normalizeLightspeedRSupplier(vendor: Record<string, unknow
 // includes tax. Keep both ingestion paths on the same pre-tax net definition.
 // Reference: https://developers.lightspeedhq.com/retail/endpoints/SaleLine/
 function saleLineEconomics(line: Record<string, unknown>, quantity: number) {
+  const totalCost = line.calcFIFOCost ?? line.calcAvgCost;
+  const unitCost = line.fifoCost ?? line.avgCost;
+  const sourceCost = totalCost ?? unitCost;
+  const costKnown = (typeof sourceCost === "number" || typeof sourceCost === "string")
+    && String(sourceCost).trim() !== "" && finiteNumber(sourceCost) !== null;
+  if (sourceCost !== undefined && sourceCost !== null && String(sourceCost).trim() !== "" && !costKnown) {
+    throw new Error("Sale line cost needs source review");
+  }
   const discount = line.calcLineDiscount != null || line.calcTransactionDiscount != null
     ? (finiteNumber(line.calcLineDiscount) ?? 0) + (finiteNumber(line.calcTransactionDiscount) ?? 0)
     : finiteNumber(line.calcDiscount) ?? 0;
@@ -567,7 +576,8 @@ function saleLineEconomics(line: Record<string, unknown>, quantity: number) {
     : (finiteNumber(line.unitPrice) ?? 0) * quantity - discount;
   return {
     netSalesCents: money(net),
-    costCents: money(line.calcFIFOCost ?? line.calcAvgCost ?? Number(line.fifoCost ?? line.avgCost ?? 0) * quantity),
+    costCents: costKnown ? money(totalCost ?? Number(unitCost) * quantity) : 0,
+    costKnown,
     discountCents: Math.abs(money(discount)),
   };
 }

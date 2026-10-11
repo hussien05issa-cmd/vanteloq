@@ -1,3 +1,5 @@
+import { loadReconciledCashScenario } from "../../../../server/cash-planning";
+import { buildDatedCashObligations, datedPurchasingCapacity } from "../../../../domain/dated-cash-obligations";
 import { bankCashSnapshot } from "../../../../domain/bank-cash-snapshot";
 import { getD1 } from "../../../../db";
 import { requireAccess } from "../../../../server/authorization";
@@ -81,12 +83,6 @@ type BankRow = {
 
 function rows<T>(result: D1Result<T>): T[] {
   return result.results ?? [];
-}
-
-function validIsoDate(value: string | null) {
-  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const parsed = new Date(`${value}T00:00:00.000Z`);
-  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
 }
 
 export async function GET(request: Request) {
@@ -412,7 +408,14 @@ export async function GET(request: Request) {
         ? demonstrationCashBanks.reduce((sum, bank) => sum + Number(bank.availableBalanceCents ?? bank.liveBalanceCents ?? 0), 0)
         : null
       : verifiedBankCashCents;
-    const cashOpeningBalanceCents = dataMode === "demonstration" ? bankBalanceCents : verifiedBankCashCents;
+    const reconciledCash = await loadReconciledCashScenario(database, { organizationId, currency: baseCurrency, asOf,
+      nowMs, allowed: access.bankBalances && access.accountsPayableReceivable && transactionReadable,
+      dataMode, bookloqActive: settings?.status === "active" });
+    const cashOpeningBalanceCents = dataMode === "demonstration" ? bankBalanceCents
+      : verifiedBankCashCents ?? reconciledCash.scenarioOpeningCashCents;
+    const purchasingOpeningCashCents = dataMode === "live"
+      ? verifiedBankCashCents ?? reconciledCash.purchasingOpeningCashCents : null;
+    const cashPlanningSource = verifiedBankCashCents !== null ? "connected_bank" : reconciledCash.scenarioOpeningCashCents !== null ? "reconciled_statement" : "unavailable";
     const cashSource = dataMode === "demonstration" && bankBalanceCents !== null
       ? "demonstration" as const
       : verifiedBankCashCents !== null
@@ -514,160 +517,46 @@ export async function GET(request: Request) {
     const calculationBills: CalculationBill[] = calculationResults ? rows(calculationResults[0]).map(bill => visibleBookLoQSupplier(bill, access.contactIdentity)) : [];
     const calculationInvoices: CalculationInvoice[] = calculationResults ? rows(calculationResults[1]).map(invoice => visibleBookLoQInvoice(invoice, access.contactIdentity)) : [];
     const calculationPurchaseOrders: CalculationPurchaseOrder[] = calculationResults ? rows(calculationResults[2]).map(order => visibleBookLoQSupplier(order, access.contactIdentity)) : [];
-    const openBillStatuses = new Set(["draft", "received", "extracted", "under_review", "matched", "awaiting_approval", "approved", "scheduled", "partially_paid", "disputed"]);
-    const isConfirmedBill = (bill: CalculationBill) =>
-      ["approved", "scheduled", "partially_paid"].includes(bill.status)
-      && ["approved", "not_required"].includes(bill.approvalStatus);
-    const outstandingBillCents = (bill: CalculationBill) => Math.max(0, bill.totalCents - bill.paidCents);
-    const linkedToOrder = (bill: CalculationBill, order: CalculationPurchaseOrder) =>
-      bill.purchaseOrderRef === order.id || bill.purchaseOrderRef === order.orderNumber;
-    const forecastBills = calculationBills.filter((bill) =>
-      matchesDataMode(bill.demoRecord)
-      && bill.currency.toUpperCase() === baseCurrency
-      && openBillStatuses.has(bill.status)
-      && outstandingBillCents(bill) > 0,
-    );
-    const forecastInvoices = calculationInvoices.filter((invoice) => matchesDataMode(invoice.demoRecord) && invoice.currency.toUpperCase() === baseCurrency && ["approved", "sent", "viewed", "due", "partially_paid", "overdue"].includes(invoice.status) && invoice.totalCents > invoice.paidCents);
-    const orderGroups = calculationPurchaseOrders.map((order) => {
-      const currency = order.currency.toUpperCase();
-      const linkedBills = calculationBills.filter((bill) =>
-        matchesDataMode(bill.demoRecord)
-        && bill.currency.toUpperCase() === currency
-        && linkedToOrder(bill, order),
-      );
-      const openLinkedBills = linkedBills.filter((bill) => openBillStatuses.has(bill.status) && outstandingBillCents(bill) > 0);
-      const poRemainingCents = Math.max(0, order.totalCents - linkedBills.reduce((sum, bill) => sum + Math.max(0, bill.paidCents), 0));
-      const openOutstandingCents = openLinkedBills.reduce((sum, bill) => sum + outstandingBillCents(bill), 0);
-      const groupRemainingCents = Math.max(poRemainingCents, openOutstandingCents);
-      const confirmedBillOutstandingCents = openLinkedBills.filter(isConfirmedBill).reduce((sum, bill) => sum + outstandingBillCents(bill), 0);
-      const committedDateValid = validIsoDate(order.committedCashDate);
-      const confirmedAmountCents = Math.min(
-        groupRemainingCents,
-        committedDateValid
-          ? Math.max(poRemainingCents, confirmedBillOutstandingCents)
-          : confirmedBillOutstandingCents,
-      );
-      return {
-        order,
-        currency,
-        linkedBills,
-        openLinkedBills,
-        openOutstandingCents,
-        groupRemainingCents,
-        confirmedAmountCents,
-        confirmedBillOutstandingCents,
-        expectedAmountCents: Math.max(0, groupRemainingCents - confirmedAmountCents),
-        committedDateValid,
-      };
-    });
-    const baseOrderGroups = orderGroups.filter((group) => group.currency === baseCurrency);
-    const baseLinkedBillIds = new Set(baseOrderGroups.flatMap((group) => group.linkedBills.map((bill) => bill.id)));
-    const unlinkedForecastBills = forecastBills.filter((bill) => !baseLinkedBillIds.has(bill.id));
-    const purchaseCommitmentItems: ThirteenWeekCashFlowItem[] = baseOrderGroups.flatMap((group) => {
-      const confirmedBillItems = group.openLinkedBills.filter(isConfirmedBill).map((bill) => ({
-        id: bill.id,
-        label: `${bill.supplierName} bill ${bill.billNumber}`,
-        dueDate: bill.dueDate,
-        amountCents: outstandingBillCents(bill),
-        direction: "out" as const,
-        certainty: "confirmed" as const,
-      }));
-      let expectedBillCentsRemaining = group.expectedAmountCents;
-      const expectedBillItems = group.openLinkedBills
-        .filter((bill) => !isConfirmedBill(bill))
-        .sort((left, right) => left.dueDate.localeCompare(right.dueDate) || left.id.localeCompare(right.id))
-        .flatMap((bill) => {
-          const amountCents = Math.min(outstandingBillCents(bill), expectedBillCentsRemaining);
-          expectedBillCentsRemaining -= amountCents;
-          return amountCents > 0 ? [{
-            id: bill.id,
-            label: `${bill.supplierName} bill ${bill.billNumber}`,
-            dueDate: bill.dueDate,
-            amountCents,
-            direction: "out" as const,
-            certainty: "expected" as const,
-          }] : [];
-        });
-      const confirmedOrderRemainderCents = Math.max(0, group.confirmedAmountCents - group.confirmedBillOutstandingCents);
-      const orderItems: ThirteenWeekCashFlowItem[] = [];
-      if (confirmedOrderRemainderCents > 0) {
-        orderItems.push({
-          id: `purchase-order:${group.order.id}:confirmed`,
-          label: `${group.order.supplierName} purchase order ${group.order.orderNumber}`,
-          dueDate: group.order.committedCashDate!,
-          amountCents: confirmedOrderRemainderCents,
-          direction: "out",
-          certainty: "confirmed",
-        });
-      }
-      if (expectedBillCentsRemaining > 0) {
-        orderItems.push({
-          id: `purchase-order:${group.order.id}:expected`,
-          label: `${group.order.supplierName} purchase order ${group.order.orderNumber}`,
-          dueDate: validIsoDate(group.order.expectedDeliveryDate) ? group.order.expectedDeliveryDate! : asOf,
-          amountCents: expectedBillCentsRemaining,
-          direction: "out",
-          certainty: "expected",
-        });
-      }
-      return [...confirmedBillItems, ...expectedBillItems, ...orderItems];
-    });
-    const undatedCommittedItemCount = baseOrderGroups.filter((group) => group.groupRemainingCents > 0 && !group.committedDateValid).length;
-    const confirmedPurchasingObligationsCents = baseOrderGroups.reduce((sum, group) => sum + group.confirmedAmountCents, 0)
-      + unlinkedForecastBills.filter(isConfirmedBill).reduce((sum, bill) => sum + outstandingBillCents(bill), 0);
-    const foreignOrderGroups = orderGroups.filter((group) => group.currency !== baseCurrency && group.groupRemainingCents > 0);
-    const foreignLinkedBillIds = new Set(foreignOrderGroups.flatMap((group) => group.linkedBills.map((bill) => bill.id)));
-    const foreignUnlinkedOpenBills = calculationBills.filter((bill) =>
-      matchesDataMode(bill.demoRecord)
-      && bill.currency.toUpperCase() !== baseCurrency
-      && openBillStatuses.has(bill.status)
-      && outstandingBillCents(bill) > 0
-      && !foreignLinkedBillIds.has(bill.id),
-    );
-    const excludedCurrencyItemCount = foreignOrderGroups.length + foreignUnlinkedOpenBills.length;
+    const datedObligations = buildDatedCashObligations({baseCurrency,asOf,
+      bills: calculationBills.filter(b=>matchesDataMode(b.demoRecord)).map(b=>({...b,demoRecord:0})),
+      invoices: calculationInvoices.filter(i=>matchesDataMode(i.demoRecord)).map(i=>({...i,demoRecord:0})),
+      orders: calculationPurchaseOrders });
+    const {undatedCommittedItemCount,excludedCurrencyItemCount,confirmedPurchasingObligationsCents}=datedObligations;
     const decisionBlocks: CashFlowDecisionBlock[] = [];
     if (dataMode === "demonstration") decisionBlocks.push("demonstration_data");
     if (settings?.status !== "active") decisionBlocks.push("bookloq_inactive");
     if (!access.bankBalances || !access.accountsPayableReceivable || !transactionReadable) {
       decisionBlocks.push("finance_permissions_required");
     }
-    if (dataMode === "live" && verifiedBankCashCents === null) decisionBlocks.push("bank_data_unavailable");
+    if (dataMode === "live" && purchasingOpeningCashCents === null) decisionBlocks.push(cashOpeningBalanceCents !== null ? "dated_statement_cash" : "bank_data_unavailable");
     if (excludedCurrencyItemCount > 0) decisionBlocks.push("foreign_currency_obligations");
     if (undatedCommittedItemCount > 0) decisionBlocks.push("undated_purchase_commitments");
-    const cashFactsAllowed = !decisionBlocks.some((block) => [
+    const cashFactsAllowed = cashOpeningBalanceCents !== null && !decisionBlocks.some((block) => [
       "demonstration_data",
       "bookloq_inactive",
       "finance_permissions_required",
-      "bank_data_unavailable",
     ].includes(block));
-    const decisionCashAllowed = decisionBlocks.length === 0;
-    const cashFlowItems: CashFlowRecord[] = [
-      ...unlinkedForecastBills.map((bill) => ({ dueDate: bill.dueDate, amountCents: bill.totalCents - bill.paidCents, direction: "out" as const, certainty: isConfirmedBill(bill) ? "confirmed" as const : "estimated" as const })),
-      ...forecastInvoices.map((invoice) => ({ dueDate: invoice.dueDate, amountCents: invoice.totalCents - invoice.paidCents, direction: "in" as const, certainty: "probable" as const })),
-      ...purchaseCommitmentItems.map((item) => ({ dueDate: item.dueDate, amountCents: item.amountCents, direction: "out" as const, certainty: item.certainty === "confirmed" ? "confirmed" as const : "estimated" as const })),
-    ];
+    const decisionCashAllowed = decisionBlocks.length === 0 && datedObligations.blocks.length === 0;
+    const cashFlowItems: CashFlowRecord[] = datedObligations.schedule.map(item=>({dueDate:item.dueDate,amountCents:item.amountCents,
+      direction:item.direction,certainty:item.certainty==="confirmed"?"confirmed":item.direction==="in"?"probable":"estimated"}));
     const forecasts = forecastCash(cashOpeningBalanceCents ?? 0, cashFlowItems, asOf);
-    const intelligenceItems: CashFlowItem[] = [
-      ...unlinkedForecastBills.map((bill) => ({ id: bill.id, label: `${bill.supplierName} bill ${bill.billNumber}`, dueDate: bill.dueDate, amountCents: bill.totalCents - bill.paidCents, direction: "out" as const, certainty: isConfirmedBill(bill) ? "confirmed" as const : "estimated" as const, category: "supplier" as const })),
-      ...forecastInvoices.map((invoice) => ({ id: invoice.id, label: `${invoice.customerName} invoice ${invoice.invoiceNumber}`, dueDate: invoice.dueDate, amountCents: invoice.totalCents - invoice.paidCents, direction: "in" as const, certainty: "probable" as const, category: "other" as const })),
-      ...purchaseCommitmentItems.map((item) => ({ ...item, certainty: item.certainty === "confirmed" ? "confirmed" as const : "estimated" as const, category: "supplier" as const })),
-    ];
+    const intelligenceItems: CashFlowItem[] = datedObligations.schedule.map(item=>({...item,
+      certainty:item.certainty==="confirmed"?"confirmed":item.direction==="in"?"probable":"estimated",category:item.direction==="out"?"supplier":"other"}));
     const calculatedCashIntelligence = calculateCashFlowIntelligence({ openingCashCents: cashFactsAllowed ? cashOpeningBalanceCents : null, safetyThresholdCents: settings?.cashSafetyThresholdCents ?? 0, items: intelligenceItems, asOf });
-    const cashIntelligence = cashFactsAllowed && !decisionCashAllowed
+    const cashIntelligenceBase = cashFactsAllowed && !decisionCashAllowed
       ? {
           ...calculatedCashIntelligence,
           purchasingCapacityCents: null,
-          warning: "Foreign-currency or undated vendor commitments require review before purchasing capacity can be used.",
+          warning: decisionBlocks.includes("dated_statement_cash") ? "This cash scenario uses a dated reconciliation. Refresh cash evidence before using purchasing capacity." : "Foreign-currency, conflicting or undated commitments require review before purchasing capacity can be used.",
           evidence: [...calculatedCashIntelligence.evidence, "Purchasing capacity is withheld until commitment review is complete."],
         }
       : calculatedCashIntelligence;
-    const dueNext30Cents = cashFlowItems.filter((item) => item.direction === "out" && item.certainty === "confirmed" && item.dueDate <= forecasts[1].endDate).reduce((sum, item) => sum + item.amountCents, 0);
+    const sharedPurchasingCapacity=decisionCashAllowed ? datedPurchasingCapacity({openingCashCents:purchasingOpeningCashCents,
+      safetyReserveCents:settings?.cashSafetyThresholdCents??0,obligations:datedObligations}) : null;
+    const cashIntelligence={...cashIntelligenceBase,purchasingCapacityCents:sharedPurchasingCapacity,
+      evidence:[...cashIntelligenceBase.evidence,datedObligations.boundary]};
     const actualTransactions = actualTransactionResult ? rows(actualTransactionResult).map((transaction) => ({ postingDate: transaction.postingDate, amountCents: Number(transaction.amountCents) })) : [];
-    const thirteenWeekItems: ThirteenWeekCashFlowItem[] = [
-      ...unlinkedForecastBills.map((bill) => ({ id: bill.id, label: `${bill.supplierName} bill ${bill.billNumber}`, dueDate: bill.dueDate, amountCents: bill.totalCents - bill.paidCents, direction: "out" as const, certainty: isConfirmedBill(bill) ? "confirmed" as const : "expected" as const })),
-      ...forecastInvoices.map((invoice) => ({ id: invoice.id, label: `${invoice.customerName} invoice ${invoice.invoiceNumber}`, dueDate: invoice.dueDate, amountCents: invoice.totalCents - invoice.paidCents, direction: "in" as const, certainty: "expected" as const })),
-      ...purchaseCommitmentItems,
-    ];
+    const thirteenWeekItems: ThirteenWeekCashFlowItem[] = datedObligations.schedule;
     const thirteenWeekCashFlow = buildThirteenWeekCashFlow({
       asOf,
       openingCashCents: thirteenWeekAllowed ? cashOpeningBalanceCents : null,
@@ -678,6 +567,7 @@ export async function GET(request: Request) {
       undatedCommittedItemCount: thirteenWeekAllowed ? undatedCommittedItemCount : 0,
       confirmedPurchasingObligationsCents: thirteenWeekAllowed ? confirmedPurchasingObligationsCents : null,
       decisionBlocks,
+      obligationReviewBlocks: thirteenWeekAllowed ? datedObligations.blocks : [],
     });
     const availableStatements = ledgerReadable ? statements : {
       accounts: [],
@@ -732,10 +622,8 @@ export async function GET(request: Request) {
           timezone: context.organization.timezone,
         },
         summary: {
-          currentCashCents: cashFactsAllowed ? cashOpeningBalanceCents : null,
-          availableCashCents: decisionCashAllowed && cashOpeningBalanceCents !== null
-            ? cashOpeningBalanceCents - dueNext30Cents
-            : null,
+          currentCashCents: cashFactsAllowed ? (dataMode === "demonstration" ? bankBalanceCents : verifiedBankCashCents) : null,
+          availableCashCents: sharedPurchasingCapacity,
           bankCashSnapshot: dataMode === "live" && access.bankBalances ? verifiedBankCash : null,
           bankBalanceCents,
           bookBalanceCents: ledgerReadable ? statements.cashCents : null,
@@ -771,6 +659,7 @@ export async function GET(request: Request) {
           boundary: "Transactions and budgets are filtered to records tagged to the selected location. Shared bank balances, statements, bills, invoices, tax and reconciliations remain organization-wide until an approved allocation exists.",
         } : null,
         forecasts: cashFactsAllowed ? forecasts : [],
+        cashPlanning: {source:cashPlanningSource,sourceAsOf:cashPlanningSource==="reconciled_statement"?reconciledCash.sourceAsOf:asOf,reason:cashPlanningSource==="reconciled_statement"?reconciledCash.reason:null,boundary:reconciledCash.boundary,obligationsBoundary:datedObligations.boundary},
         thirteenWeekCashFlow,
         planningSchedule: thirteenWeekAllowed ? thirteenWeekItems : [],
         cashIntelligence: cashFactsAllowed ? cashIntelligence : {

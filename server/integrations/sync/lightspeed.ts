@@ -73,7 +73,11 @@ export async function runSync(request: Request, requestId: string, context: Sync
     const prepare = (table: string, unique: string[], values: Record<string, string | number | null>) => {
       // Identifiers below are fixed application schema, never user/provider input.
       const columns = Object.keys(values), updates = columns.filter(column => !["id", ...unique].includes(column));
-      return database.prepare("INSERT INTO " + table + " (" + columns.join(",") + ") VALUES (" + columns.map(() => "?").join(",") + ") ON CONFLICT(" + unique.join(",") + ") DO UPDATE SET " + updates.map(column => column + "=excluded." + column).join(",")).bind(...Object.values(values));
+      const retainCost = `excluded.cost_known=0 AND commerce_sale_lines.product_ref IS excluded.product_ref
+        AND commerce_sale_lines.quantity_milli=excluded.quantity_milli`;
+      return database.prepare("INSERT INTO " + table + " (" + columns.join(",") + ") VALUES (" + columns.map(() => "?").join(",") + ") ON CONFLICT(" + unique.join(",") + ") DO UPDATE SET " + updates.map(column => table === "commerce_sale_lines" && ["cost_cents", "cost_known"].includes(column)
+        ? `${column}=CASE WHEN ${retainCost} THEN commerce_sale_lines.${column} ELSE excluded.${column} END`
+        : column + "=excluded." + column).join(",")).bind(...Object.values(values));
     };
     const batch = async (statements: D1PreparedStatement[]) => {
       for (let index = 0; index < statements.length; index += 50) {
@@ -91,7 +95,7 @@ export async function runSync(request: Request, requestId: string, context: Sync
       const latest = await database.prepare("SELECT MAX(CAST(external_version AS INTEGER)) version FROM integration_staged_sales WHERE organization_id=? AND provider=? AND connection_id=? AND external_sale_id=?").bind(context.organizationId, PROVIDER, connection.id, saleRef).first<{version:number|null}>();
       if (latest?.version !== null && latest?.version !== undefined && BigInt(latest.version) > BigInt(sale.externalVersion)) continue;
       await batch([
-        database.prepare("DELETE FROM commerce_sale_lines WHERE organization_id=? AND provider=? AND connection_id=? AND external_sale_id=?").bind(context.organizationId, PROVIDER, connection.id, saleRef),
+        database.prepare("DELETE FROM commerce_sale_lines WHERE organization_id=? AND provider=? AND connection_id=? AND external_sale_id=? AND external_line_id NOT IN (SELECT value FROM json_each(?))").bind(context.organizationId, PROVIDER, connection.id, saleRef, JSON.stringify(bundle.lines.map(row => scoped(row.externalLineId)))),
         database.prepare("DELETE FROM commerce_payments WHERE organization_id=? AND provider=? AND connection_id=? AND external_sale_id=?").bind(context.organizationId, PROVIDER, connection.id, saleRef),
         ...bundle.lines.map(row => prepare("commerce_sale_lines", [...key, "external_sale_id", "external_line_id"], { ...common(), external_sale_id: saleRef, external_line_id: scoped(row.externalLineId), product_ref: scoped(row.productRef), customer_ref: scoped(row.customerRef), outlet_ref: scoped(row.outletRef), sold_at: row.soldAt, sku: row.sku, product_name: row.productName, quantity_milli: row.quantityMilli, net_sales_cents: row.netSalesCents, cost_cents: row.costCents ?? 0, cost_known: row.costCents === null ? 0 : 1, discount_cents: row.discountCents, source_payload_hash: row.sourcePayloadHash })),
         ...bundle.payments.map(row => prepare("commerce_payments", [...key, "external_payment_id"], { ...common(), external_payment_id: scoped(row.externalPaymentId), external_sale_id: saleRef, payment_type_ref: scoped(row.paymentTypeRef), payment_type_name: row.paymentTypeName, category: row.category, amount_cents: row.amountCents, paid_at: row.paidAt, outlet_ref: scoped(row.outletRef), source_payload_hash: row.sourcePayloadHash })),
@@ -110,10 +114,9 @@ export async function runSync(request: Request, requestId: string, context: Sync
       if (!product) throw new ApiError(502, "LIGHTSPEED_PRODUCT_REQUIRED", "Inventory references a product outside the imported catalog. The cursor is preserved.");
       return prepare("inventory_balances", ["organization_id", "location_ref", "sku"], { id: crypto.randomUUID(), organization_id: context.organizationId, location_ref: "lightspeed:" + scoped(row.outletRef), sku: product.sku, name: product.name, on_hand_quantity: row.onHandQuantity, reorder_point: row.reorderPoint, version: now, source_provider: PROVIDER, source_connection_id: connection.id, updated_at: now });
     }));
-    await applyOwnerInventoryCosts(context.organizationId, connection.id, now, { publishDailyMetrics: false });
-    await database.prepare(`UPDATE commerce_sale_lines AS l SET cost_cents=COALESCE((SELECT ROUND(COALESCE(p.owner_cost_cents,p.default_cost_cents)*l.quantity_milli/1000.0) FROM commerce_products p WHERE p.organization_id=l.organization_id AND p.provider=l.provider AND p.connection_id=l.connection_id AND p.external_product_id=l.product_ref),0) WHERE l.organization_id=? AND l.provider=? AND l.connection_id=? AND l.cost_known=0`).bind(context.organizationId, PROVIDER, connection.id).run();
-    const costs = await database.prepare(`SELECT COUNT(*) count FROM commerce_sale_lines l LEFT JOIN commerce_products p ON p.organization_id=l.organization_id AND p.provider=l.provider AND p.connection_id=l.connection_id AND p.external_product_id=l.product_ref WHERE l.organization_id=? AND l.provider=? AND l.connection_id=? AND l.quantity_milli<>0 AND l.cost_known=0 AND l.cost_cents=0 AND COALESCE(p.owner_cost_cents,p.default_cost_cents) IS NULL`).bind(context.organizationId, PROVIDER, connection.id).first<{count:number}>();
-    const missingCosts = Number(costs?.count ?? 0), backfillComplete = resources.every(resource => next.resources[resource].complete);
+    await database.prepare(`UPDATE commerce_sale_lines AS l SET cost_cents=COALESCE((SELECT ROUND(p.default_cost_cents*l.quantity_milli/1000.0) FROM commerce_products p WHERE p.organization_id=l.organization_id AND p.provider=l.provider AND p.connection_id=l.connection_id AND p.external_product_id=l.product_ref),0),cost_known=1 WHERE l.organization_id=? AND l.provider=? AND l.connection_id=? AND l.cost_known=0 AND l.cost_cents=0 AND EXISTS (SELECT 1 FROM commerce_products p WHERE p.organization_id=l.organization_id AND p.provider=l.provider AND p.connection_id=l.connection_id AND p.external_product_id=l.product_ref AND p.default_cost_cents IS NOT NULL)`).bind(context.organizationId, PROVIDER, connection.id).run();
+    const costCoverage = await applyOwnerInventoryCosts(context.organizationId, connection.id, now, { publishDailyMetrics: false });
+    const missingCosts = costCoverage.missingCostLines, backfillComplete = resources.every(resource => next.resources[resource].complete);
     const publish = authorized && backfillComplete && unmapped === 0 && mapped.size > 0 && missingCosts === 0;
     let publishedMetrics = 0;
     if (publish) {

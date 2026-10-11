@@ -3,11 +3,12 @@ import { recordAudit } from "../../../../../server/audit";
 import { requireAccess } from "../../../../../server/authorization";
 import { ApiError, enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameOrigin } from "../../../../../server/api";
 import { confirmSupportingMatch, lockBookloqPeriod, requireBookLoQPermission, saveBookloqBudget, updateCloseItem } from "../../../../../server/bookloq";
-import { requirePermission } from "../../../../../server/permissions";
+import { effectivePermissions, requirePermission } from "../../../../../server/permissions";
 import { requireAddon, requireFeature } from "../../../../../server/entitlements/engine";
 import { requireOrganizationWideLocationAccess } from "../../../../../server/location-access";
 import { normalizeCategoryRuleText } from "../../../../../domain/bookloq-cash-management";
 import { bookloqActionFeature } from "../../../../../domain/paid-feature-routing";
+import { removeSupportingMatch } from "../../../../../server/supporting-match-correction";
 
 const writers = ["owner", "admin", "manager", "employee", "read_only"] as const;
 
@@ -143,14 +144,33 @@ export async function POST(request: Request) {
       return jsonResponse({ created: true, type: body.type, category: inserted }, { status: 201 });
     }
 
+    if (body.type === "unmatch_transaction") {
+      const matchPermissions = await effectivePermissions(context);
+      if (!["finance.reconcile", "finance.bank_transactions", "payroll.totals"].every(permission => matchPermissions.includes(permission as typeof matchPermissions[number]))) throw new ApiError(403,"INSUFFICIENT_PERMISSION","You do not have permission to perform this action.");
+      requireBookLoQPermission(context.role, "reconcile_accounts");
+      const transactionId=identifier(body.transactionId),matchId=identifier(body.targetId);
+      if(!transactionId || !matchId || typeof body.reason!=="string") throw new ApiError(400,"MATCH_CORRECTION_INPUT","Select the supporting match and explain this correction.");
+      const match = await database.prepare(`SELECT CASE WHEN document_id IS NOT NULL THEN 'receipt'
+        WHEN supplier_bill_id IS NOT NULL THEN 'supplier_bill' WHEN customer_invoice_id IS NOT NULL THEN 'customer_invoice' END targetType FROM bookloq_transaction_matches
+        WHERE organization_id=? AND transaction_id=? AND id=?`).bind(context.organizationId,transactionId,matchId).first<{targetType:string}>();
+      if (!match) throw new ApiError(404,"MATCH_UNAVAILABLE","The supporting match is unavailable. Refresh this transaction.");
+      if (!["receipt","supplier_bill","customer_invoice"].includes(match.targetType)) throw new ApiError(409,"MATCH_CHANGED","Select a supported invoice, bill or receipt match.");
+      if (!matchPermissions.includes(match.targetType === "receipt" ? "documents.view" : "finance.ap_ar")) throw new ApiError(403,"INSUFFICIENT_PERMISSION","You do not have permission to perform this action.");
+      const result=await removeSupportingMatch(database,{organizationId:context.organizationId,transactionId,matchId,
+        reason:body.reason,actorUserId:context.userId,timestamp,request,requestId});
+      return jsonResponse({updated:true,type:body.type,id:transactionId,...result});
+    }
+
     if (body.type === "match_transaction") {
-      await requirePermission(context, "finance.reconcile");
+      const matchPermissions = await effectivePermissions(context);
+      if (!["finance.reconcile", "finance.bank_transactions", "payroll.totals"].every(permission => matchPermissions.includes(permission as typeof matchPermissions[number]))) throw new ApiError(403,"INSUFFICIENT_PERMISSION","You do not have permission to perform this action.");
       requireBookLoQPermission(context.role, "reconcile_accounts");
       const transactionId = identifier(body.transactionId);
       const targetId = identifier(body.targetId);
       const targetType = body.targetType === "supplier_bill" || body.targetType === "customer_invoice" || body.targetType === "receipt" ? body.targetType : null;
       const note = typeof body.note === "string" ? body.note.trim().normalize("NFC") : "";
       if (!transactionId || !targetId || !targetType || note.length > 1_000) return jsonResponse({ error: { code: "INVALID_MATCH", message: "Choose a transaction and supported invoice, bill, or receipt." } }, { status: 400 });
+      if (!matchPermissions.includes(targetType === "receipt" ? "documents.view" : "finance.ap_ar")) throw new ApiError(403,"INSUFFICIENT_PERMISSION","You do not have permission to perform this action.");
       const transaction = await database.prepare(`SELECT amount_cents amountCents, currency, source_state sourceState, demo_record demoRecord, reconciliation_status reconciliationStatus FROM financial_transactions WHERE organization_id = ? AND id = ? AND source_state <> 'removed'`).bind(context.organizationId, transactionId).first<{ amountCents: number; currency: string; sourceState: string; demoRecord: number; reconciliationStatus: string }>();
       if (!transaction) return jsonResponse({ error: { code: "TRANSACTION_NOT_FOUND", message: "Transaction not found." } }, { status: 404 });
       if (!["posted", "modified"].includes(transaction.sourceState)) return jsonResponse({ error: { code: "MATCH_POSTED_TRANSACTION_REQUIRED", message: "Wait for the transaction to post before confirming a match." } }, { status: 409 });

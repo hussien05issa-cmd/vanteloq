@@ -15,8 +15,10 @@ export type CashFlowDecisionBlock =
   | "bookloq_inactive"
   | "finance_permissions_required"
   | "bank_data_unavailable"
+  | "dated_statement_cash"
   | "foreign_currency_obligations"
-  | "undated_purchase_commitments";
+  | "undated_purchase_commitments"
+  | "obligation_review_required";
 
 const DAY = 86_400_000;
 
@@ -44,6 +46,7 @@ export function buildThirteenWeekCashFlow(input: {
   undatedCommittedItemCount?: number;
   confirmedPurchasingObligationsCents?: number | null;
   decisionBlocks?: readonly CashFlowDecisionBlock[];
+  obligationReviewBlocks?: readonly string[];
 }) {
   if (!isCalendarDate(input.asOf) || input.actualTransactions.some(item => !isCalendarDate(item.postingDate))
     || input.forecastItems.some(item => !isCalendarDate(item.dueDate))) throw new Error("Cash forecasts require valid calendar dates.");
@@ -54,7 +57,11 @@ export function buildThirteenWeekCashFlow(input: {
     if (!Number.isSafeInteger(amount)) throw new Error("Cash forecasts require exact integer amounts within safe precision.");
   }
   if (input.forecastItems.some(item => item.amountCents < 0)) throw new Error("Cash forecast item amounts must be nonnegative; use the direction for outflows.");
-  const decisionBlocks = [...new Set(input.decisionBlocks ?? [])];
+  const obligationReviewBlocks = [...new Set(input.obligationReviewBlocks ?? [])];
+  const decisionBlocks = [...new Set<CashFlowDecisionBlock>([
+    ...(input.decisionBlocks ?? []),
+    ...(obligationReviewBlocks.length ? ["obligation_review_required" as const] : []),
+  ])];
   const forecastUnavailable = decisionBlocks.some((block) =>
     block === "demonstration_data"
     || block === "bookloq_inactive"
@@ -106,23 +113,31 @@ export function buildThirteenWeekCashFlow(input: {
   const undatedCommittedItemCount = Math.max(0, input.undatedCommittedItemCount ?? 0);
   const currencyReviewRequired = decisionBlocks.includes("foreign_currency_obligations") || excludedCurrencyItemCount > 0;
   const commitmentDateRequired = decisionBlocks.includes("undated_purchase_commitments") || undatedCommittedItemCount > 0;
+  const cashSourceRefreshRequired = decisionBlocks.includes("dated_statement_cash");
+  const obligationReviewRequired = decisionBlocks.includes("obligation_review_required");
   const capacityStatus = decisionOpeningCashCents === null
     ? "unavailable" as const
+    : cashSourceRefreshRequired
+      ? "source_refresh_required" as const
     : currencyReviewRequired
       ? "currency_review_required" as const
       : commitmentDateRequired
         ? "commitment_date_required" as const
-        : "available" as const;
+        : obligationReviewRequired
+          ? "obligation_review_required" as const
+          : "available" as const;
   const confirmedPurchasingObligationsCents = input.confirmedPurchasingObligationsCents === undefined
     ? confirmedOutflows
     : input.confirmedPurchasingObligationsCents;
-  const purchasingCapacityCents = capacityStatus !== "available" || confirmedPurchasingObligationsCents === null
+  const unreservedCashCents = capacityStatus !== "available" || confirmedPurchasingObligationsCents === null
     ? null
-    : Math.max(0, exactSum([decisionOpeningCashCents!, -Math.max(0, input.safetyThresholdCents), -Math.max(0, confirmedPurchasingObligationsCents)]));
+    : exactSum([decisionOpeningCashCents!, -Math.max(0, input.safetyThresholdCents), -Math.max(0, confirmedPurchasingObligationsCents)]);
+  const purchasingCapacityCents = unreservedCashCents === null ? null : Math.max(0, unreservedCashCents);
+  const fundingShortfallCents = unreservedCashCents === null ? null : Math.max(0, -unreservedCashCents);
   return {
     status: decisionOpeningCashCents === null
       ? "unavailable" as const
-      : currencyReviewRequired || commitmentDateRequired
+      : currencyReviewRequired || commitmentDateRequired || obligationReviewRequired
         ? "needs_review" as const
         : "available" as const,
     asOf: input.asOf,
@@ -135,13 +150,20 @@ export function buildThirteenWeekCashFlow(input: {
     actualNetChangeCents,
     safetyThresholdCents: Math.max(0, input.safetyThresholdCents),
     purchasingCapacityCents,
+    unreservedCashCents,
+    fundingShortfallCents,
     capacityStatus,
     confirmedPurchasingObligationsCents,
+    reservedPurchasingObligationsCents: confirmedPurchasingObligationsCents,
     decisionBlocks,
+    obligationReviewBlocks,
     excludedCurrencyItemCount,
     undatedCommittedItemCount,
+    cashSourceRefreshRequired,
     weeks,
-    boundary: "Opening cash is the verified balance as of the report date. Actual movements are shown for context and are not added to that balance again. Expected receipts never increase purchasing capacity. Foreign-currency or undated vendor commitments block purchasing capacity until reviewed.",
+    boundary: cashSourceRefreshRequired
+      ? "This scenario starts from the separately labelled reconciled statement cutoff, not current available bank cash. Unobserved subsequent cash movements are not estimated. Current purchasing capacity is withheld until bank coverage is refreshed. Expected receipts never increase purchasing authority."
+      : "Opening cash is the separately labelled source balance. Actual movements are shown for context and are not added to that balance again. Recorded bills, purchase orders and the safety reserve reduce purchasing capacity; expected receipts never increase it. Conflicting, foreign-currency or undated obligations block purchasing capacity until reviewed. A zero purchasing capacity can represent a funding shortfall or cash fully reserved, not proof that obligations are covered.",
   };
 }
 

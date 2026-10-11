@@ -1669,6 +1669,8 @@ function Workspace({
         createTask={createTask}
         activeLocationId={activeLocationId}
         canExportFeature={subscriptionFeatures.includes("reporting.exports")}
+        timeZone={data.today.timeZone}
+        onOpenConnections={() => navigate("Integrations")}
         onOpenRetail={() => { setIntelligenceTab("retail"); navigate("Intelligence"); }}
       />
     );

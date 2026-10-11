@@ -135,10 +135,11 @@ export async function PATCH(request: Request) {
     const replayRequest = { kind: "reversal" as const, entryId: body.entryId, reason, reversalDate: body.reversalDate };
     const replay = await findJournalReplay(database, context.organizationId, key, replayRequest);
     if (replay) return jsonResponse({ journal: replay, replayed: true });
-    const original = await database.prepare(`SELECT id, entry_number entryNumber, status, currency,
+    const original = await database.prepare(`SELECT id, entry_number entryNumber, status, currency, source_type sourceType,
       total_debit_cents totalDebitCents, total_credit_cents totalCreditCents
-      FROM journal_entries WHERE organization_id = ? AND id = ?`).bind(context.organizationId, body.entryId).first<{ id: string; entryNumber: string; status: string; currency: string; totalDebitCents: number; totalCreditCents: number }>();
+      FROM journal_entries WHERE organization_id = ? AND id = ?`).bind(context.organizationId, body.entryId).first<{ id: string; entryNumber: string; status: string; sourceType: string; currency: string; totalDebitCents: number; totalCreditCents: number }>();
     if (!original || original.status !== "posted") return jsonResponse({ error: { code: "JOURNAL_NOT_REVERSIBLE", message: "Only a posted, unreversed journal can be reversed." } }, { status: 409 });
+    if (["supplier_bill","supplier_bill_payment"].includes(original.sourceType)) throw new ApiError(409,"BILL_CORRECTION_REQUIRED","Correct this entry from the supplier bill history so its payable and payment balances remain consistent.");
     if (await database.prepare("SELECT id FROM invoice_accounting_events WHERE organization_id=? AND journal_entry_id=?").bind(context.organizationId, original.id).first()) {
       throw new ApiError(409, "INVOICE_CORRECTION_REQUIRED", "Correct this entry from its invoice accounting history so the invoice and payment balances remain consistent.");
     }

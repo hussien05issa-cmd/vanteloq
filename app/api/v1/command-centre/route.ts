@@ -14,7 +14,7 @@ import { getD1, getDb } from "../../../../db";
 import { bankAccounts, dailyBusinessMetrics, integrationConnections, integrationLocationMappings, organizationProfiles } from "../../../../db/schema";
 import { requireAccess } from "../../../../server/authorization";
 import { ApiError, clientSource, enforceRateLimit, handleApi, jsonResponse } from "../../../../server/api";
-import { ambiguousRSeriesCostDates } from "../../../../server/integrations/cost-evidence";
+import { ambiguousRSeriesCostDates, stagedSaleCostVerifiedSql } from "../../../../server/integrations/cost-evidence";
 import { buildCommandCentre } from "../../../../server/intelligence";
 import { normalizedSourceTimestamp } from "../../../../server/data-trust";
 import { buildOperatingSystem } from "../../../../server/operating-system";
@@ -29,7 +29,7 @@ import { businessTimestampRange } from "../../../../domain/business-period";
 
 const readers = ["owner", "admin", "manager", "employee", "read_only"] as const;
 
-type LiveSaleRow = LightspeedRLiveSale & { connectionId: string };
+type LiveSaleRow = LightspeedRLiveSale & { connectionId: string; costEvidenceComplete: number };
 
 type PaymentMixRow = {
   connectionId: string;
@@ -258,14 +258,15 @@ export async function loadCommandCentre(request: Request) {
     const staged = rSeriesCurrent ? await getD1().prepare(`
       SELECT connection_id AS connectionId, external_sale_id AS externalSaleId, outlet_ref AS outletRef, sold_at AS soldAt, state,
              total_cents AS totalCents, tax_cents AS taxCents, cost_cents AS costCents,
-             discount_cents AS discountCents, line_count AS lineCount
+             discount_cents AS discountCents, line_count AS lineCount,
+             ${stagedSaleCostVerifiedSql("latest")} AS costEvidenceComplete
       FROM (
         SELECT *, row_number() OVER (
           PARTITION BY connection_id, external_sale_id ORDER BY staged_at DESC, id DESC
         ) AS version_rank
         FROM integration_staged_sales
         WHERE organization_id = ? AND provider = ? AND connection_id IN (${rSeriesPlaceholders})
-      )
+      ) latest
       WHERE version_rank = 1 AND sold_at >= ?
       ORDER BY sold_at ASC
       LIMIT 20001
@@ -281,7 +282,7 @@ export async function loadCommandCentre(request: Request) {
     ).map((sale) => ({ ...sale,
       // Legacy staging defaults missing costs to zero. Without explicit zero-cost
       // provenance, withhold profit for a nonzero sale or refund with zero cost.
-      costVerified: sale.costCents !== 0 || sale.totalCents === sale.taxCents,
+      costVerified: sale.costEvidenceComplete === 1,
     }));
     const today = rSeriesIntraday
       ? {

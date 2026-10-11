@@ -34,10 +34,15 @@ export default function BookloqInvoiceAccounting({ data, invoice, close, saved }
   const canPayment = canPost && data.permissions.includes("view_banking") && data.transactionAccess?.available!==false;
   const load = async (signal?: AbortSignal) => {
     const result = await bookloqRequest(apiFetch,`/api/v1/bookloq/invoices/accounting?invoiceId=${encodeURIComponent(invoice.id)}`,{ signal }) as History;
-    setHistory(result); setDate(current=>current || result.today);
     return result;
   };
-  useEffect(()=> { const controller=new AbortController(); void load(controller.signal).catch(e=>{if(!controller.signal.aborted)setError(e instanceof Error ? e.message : "The invoice history could not be loaded.");}); return ()=>controller.abort(); },[invoice.id,data.organization.id]);
+  useEffect(()=> {
+    const controller=new AbortController();
+    void bookloqRequest(apiFetch,`/api/v1/bookloq/invoices/accounting?invoiceId=${encodeURIComponent(invoice.id)}`,{signal:controller.signal})
+      .then(value=>{if(controller.signal.aborted)return;const result=value as History;setHistory(result);setDate(current=>current||result.today);})
+      .catch(e=>{if(!controller.signal.aborted)setError(e instanceof Error ? e.message : "The invoice history could not be loaded.");});
+    return ()=>controller.abort();
+  },[invoice.id,data.organization.id]);
   useModalFocus(ref,true,()=>{if(!busy&&!uncertain)close();});
   let cents=0; try { cents=decimalUnits(amount,2); } catch { /* Validation appears on submit. */ }
   const current=history?.invoice ?? invoice;
@@ -65,11 +70,11 @@ export default function BookloqInvoiceAccounting({ data, invoice, close, saved }
     try {
       await bookloqRequest(apiFetch,"/api/v1/bookloq/invoices/accounting",{method:"POST",headers:{"Content-Type":"application/json","Idempotency-Key":pending.current!.key},body:JSON.stringify(body)});
       pending.current=null;setUncertain(false);setReviewed(false);setReference("");setSource("");setReason("");
-      const updated=await load();setAmount(((updated.invoice.totalCents-updated.invoice.paidCents)/100).toFixed(2));
+      const updated=await load();setHistory(updated);setDate(current=>current||updated.today);setAmount(((updated.invoice.totalCents-updated.invoice.paidCents)/100).toFixed(2));
       setAction(updated.invoice.journalEntryId ? "payment" : "issue");await saved();
     } catch(e) {
       const definite=e instanceof BookloqRequestError && e.status!==null && e.status>=400 && e.status<500;
-      if(definite){pending.current=null;setUncertain(false);void load().catch(()=>{});}else setUncertain(!!pending.current);
+      if(definite){pending.current=null;setUncertain(false);void load().then(updated=>setHistory(updated)).catch(()=>{});}else setUncertain(!!pending.current);
       setError(e instanceof Error ? e.message : "The posting could not be confirmed.");
     } finally {submitting.current=false;setBusy(false);}
   };

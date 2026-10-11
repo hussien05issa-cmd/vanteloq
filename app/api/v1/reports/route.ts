@@ -1,3 +1,4 @@
+import { loadProviderCoverage } from "../../../../server/provider-report-coverage";
 import { verifiedPosPublicationSql } from "../../../../server/integrations/pos-publication";
 import { recordedLabourCost } from "../../../../domain/labour-evidence";
 import { businessTimestampRange, businessTimestampExtrema, businessDatesFromExtrema, type TimestampExtrema } from "../../../../domain/business-period";
@@ -568,37 +569,11 @@ export async function GET(request: Request) {
       const metricRefs = [...new Set(connectionScopes.map((candidate) => candidate.metricLocationRef).filter((value): value is string => Boolean(value)))];
       const outletRefs = [...new Set(connectionScopes.map((candidate) => candidate.externalOutletRef).filter((value): value is string => Boolean(value)))];
       const scopedLocationIds = [...new Set(connectionScopes.map((candidate) => candidate.localLocationId))];
-      const metricPlaceholders = metricRefs.map(() => "?").join(", ") || "NULL";
-      const outletPlaceholders = outletRefs.map(() => "?").join(", ") || "NULL";
-      const locationPlaceholders = scopedLocationIds.map(() => "?").join(", ") || "NULL";
-      const salesDateClause = `${start ? " AND business_date >= ?" : ""}${end ? " AND business_date <= ?" : ""}`;
-      const coverageWindow = businessTimestampRange("paid_at", start, end, context.organization.timezone);
-      const paymentDateClause = ` AND ${coverageWindow.sql}`;
-      const salesDates = [start, end].filter((value): value is string => Boolean(value));
-      const [salesFact, paymentFact, productFact, inventoryFact, customerFact, supplierFact, locationFact] = await Promise.all([
-        getD1().prepare(`SELECT COUNT(*) count FROM daily_business_metrics WHERE organization_id = ? AND source_connection_id = ? AND location_ref IN (${metricPlaceholders})${salesDateClause}`).bind(context.organizationId, connection.id, ...metricRefs, ...salesDates).first<{ count: number }>(),
-        getD1().prepare(`SELECT COUNT(*) count FROM commerce_payments WHERE organization_id = ? AND connection_id = ? AND outlet_ref IN (${outletPlaceholders}) AND paid_at IS NOT NULL AND amount_cents > 0${paymentDateClause}`).bind(context.organizationId, connection.id, ...outletRefs, ...coverageWindow.bindings).first<{ count: number }>(),
-        catalogDimensionsAllowed
-          ? getD1().prepare("SELECT COUNT(*) count FROM commerce_products WHERE organization_id = ? AND connection_id = ? AND archived = 0").bind(context.organizationId, connection.id).first<{ count: number }>()
-          : Promise.resolve(null),
-        getD1().prepare(`SELECT COUNT(*) count FROM inventory_balances WHERE organization_id = ? AND source_connection_id = ? AND location_ref IN (${metricPlaceholders})`).bind(context.organizationId, connection.id, ...metricRefs).first<{ count: number }>(),
-        catalogDimensionsAllowed
-          ? getD1().prepare("SELECT COUNT(*) count FROM commerce_customers WHERE organization_id = ? AND connection_id = ? AND archived = 0").bind(context.organizationId, connection.id).first<{ count: number }>()
-          : Promise.resolve(null),
-        catalogDimensionsAllowed
-          ? getD1().prepare("SELECT COUNT(*) count FROM commerce_suppliers WHERE organization_id = ? AND connection_id = ? AND archived = 0").bind(context.organizationId, connection.id).first<{ count: number }>()
-          : Promise.resolve(null),
-        getD1().prepare(`SELECT COUNT(*) count FROM integration_location_mappings WHERE organization_id = ? AND connection_id = ? AND status = 'mapped' AND local_location_id IN (${locationPlaceholders})`).bind(context.organizationId, connection.id, ...scopedLocationIds).first<{ count: number }>(),
-      ]);
-      const coverage: CanonicalCommerceCoverage = {
-        sales: Number(salesFact?.count ?? 0) > 0,
-        payments: Number(paymentFact?.count ?? 0) > 0,
-        products: Number(productFact?.count ?? 0) > 0,
-        inventory: Number(inventoryFact?.count ?? 0) > 0,
-        customers: Number(customerFact?.count ?? 0) > 0,
-        suppliers: Number(supplierFact?.count ?? 0) > 0,
-        locations: Number(locationFact?.count ?? 0) > 0,
-      };
+      const coverage = await loadProviderCoverage(getD1(),{
+        organizationId:context.organizationId,connectionId:connection.id,
+        metricRefs,outletRefs,locationIds:scopedLocationIds,catalogDimensionsAllowed,
+        start:resolvedStart,end:resolvedEnd,timeZone:context.organization.timezone,
+      });
       const catalog = buildProviderReportCatalog({ provider: connection.provider, connectionId: connection.id, coverage });
       return {
         coverage,

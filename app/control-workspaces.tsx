@@ -1,5 +1,7 @@
 "use client";
 import WorkspaceSkeleton from "./workspace-skeleton";
+import CommerceIntelligenceWorkspace from "./commerce-intelligence-workspace";
+import { commerceDrilldownPeriod } from "../domain/report-drilldown-period";
 import DocumentEmailInbox from "./document-email-inbox";
 import LinkedFilesPanel from "./linked-files-panel";
 import { ReportImportPrivacyNotice } from "./report-import-privacy";
@@ -229,8 +231,8 @@ type ReportCatalogItem = {
   status: "ready" | "needs_data";
   dataNeeded: string[];
   implementationStatus: "available" | "planned";
-  queryReportId: "sales_totals" | null;
-  presentation: "sales" | "payment_mix" | null;
+  queryReportId: "sales_totals" | "commerce_intelligence" | null;
+  presentation: "sales" | "payment_mix" | "products" | "inventory" | "customers" | "suppliers" | null;
   recordedDataAvailable?: boolean;
   readinessReason?: string;
 };
@@ -291,7 +293,9 @@ export function ReportsWorkspace({
   canExportFeature,
   onOpenRetail,
   initialPeriod,
-}: SharedProps & { activeLocationId: string | null; canExportFeature: boolean; onOpenRetail?: () => void; initialPeriod?: { from: string; to: string } }) {
+  timeZone = "UTC",
+  onOpenConnections,
+}: SharedProps & { activeLocationId: string | null; canExportFeature: boolean; onOpenRetail?: () => void; onOpenConnections?: () => void; timeZone?: string; initialPeriod?: { from: string; to: string } }) {
   const [query, setQuery] = useState("");
   const [group, setGroup] = useState("All reports");
   const [selected, setSelected] = useState("Sales totals");
@@ -302,6 +306,7 @@ export function ReportsWorkspace({
   const [preset, setPreset] = useState(initialPeriod ? "custom" : "all");
   const [sourceConnectionId, setSourceConnectionId] = useState("");
   const [sourceReportLabel, setSourceReportLabel] = useState("");
+  const [sourceDetail, setSourceDetail] = useState<{ mode: "Sales" | "Inventory" | "Customers" | "Suppliers"; title: string; connectionId: string; period?: {from:string;to:string} } | null>(null);
   const [savingAuthority, setSavingAuthority] = useState("");
   const [exporting, setExporting] = useState(false);
   const contextKey = `${selected}:${start}:${end}:${activeLocationId ?? ""}:${sourceConnectionId}`;
@@ -372,7 +377,7 @@ export function ReportsWorkspace({
   const paymentMix = (report?.paymentMix as Array<{ category: string; paymentTypeName: string | null; amountCents: number; transactionCount: number }> | undefined) ?? [];
   const explain = report?.explainAndAct as Record<string, unknown> | undefined;
   const source = report?.source as Record<string, unknown> | undefined;
-  const readiness = source?.readiness as { state: string; scope: { currency: string; timeZone: string }; coverage: { dateScopes: { observedRecords: number; expectedRecords: number; rate: number } | null }; freshness: { state: string; oldestSourceSyncAt: string | null }; limitations: string[] } | undefined;
+  const readiness = source?.readiness as { state: string; scope: { currency: string; timeZone: string; from: string | null; to: string | null }; coverage: { dateScopes: { observedRecords: number; expectedRecords: number; rate: number } | null }; freshness: { state: string; oldestSourceSyncAt: string | null }; limitations: string[] } | undefined;
   const sourceLineage = source?.lineage as {
     sales?: Array<{ locationId: string; locationName: string; channel: string; provider: string; accountName: string | null; connectionId: string; mode: string }>;
     payments?: Array<{ locationId: string; locationName: string; channel: string; provider: string; accountName: string | null; connectionId: string; mode: string }>;
@@ -435,6 +440,24 @@ export function ReportsWorkspace({
     } catch (error) { if (!controller.signal.aborted && sequence === reportRequestSequence.current) showNotice(error instanceof Error ? error.message : "This report could not be exported. Please try again."); }
     finally { if (exportController.current === controller) setExporting(false); }
   };
+  const openCatalogueReport = (item: ReportCatalogItem, connectionId: string) => {
+    if (item.queryReportId === "commerce_intelligence") {
+      const mode = item.presentation === "inventory" ? "Inventory" : item.presentation === "customers" ? "Customers" : item.presentation === "suppliers" ? "Suppliers" : "Sales";
+      const period = commerceDrilldownPeriod(readiness?.scope, {from:start,to:end});
+      if (!period) {
+        showNotice("Choose both From and To dates before opening this recorded report. Your current filter has been kept.");
+        return;
+      }
+      setSourceDetail({mode,title:item.label,connectionId,period});
+      return;
+    }
+    setSourceConnectionId(connectionId); setSourceReportLabel(connectionId ? item.label : "");
+    setSelected(item.presentation === "payment_mix" ? "Payment-method performance" : "Sales totals");
+  };
+  if (sourceDetail) return <div className="reports-centre">
+    <section className="content page-intro"><div><button type="button" onClick={()=>setSourceDetail(null)}>Back to reports</button><h2>{sourceDetail.title}</h2><span>Recorded view for the selected period and location. Source presence does not certify complete reporting.</span></div></section>
+    <CommerceIntelligenceWorkspace key={`${sourceDetail.connectionId}:${sourceDetail.mode}:${activeLocationId}`} mode={sourceDetail.mode} sourceConnectionId={sourceDetail.connectionId || undefined} initialPeriod={sourceDetail.period} currency={currency} timeZone={timeZone} activeLocationId={activeLocationId} navigate={()=>onOpenConnections?.()} createTask={createTask}/>
+  </div>;
   return (
     <div className="content control-page reports-centre">
       <section className="page-intro">
@@ -476,8 +499,8 @@ export function ReportsWorkspace({
             return <button key={candidate.connectionId} disabled={Boolean(savingAuthority) || !ready} onClick={() => void chooseAuthority(conflict.localLocationId, candidate.connectionId, factFamily, conflict.expectedVersion)}><b>{candidate.accountName || providerDisplayName(candidate.provider)}</b><small>{providerDisplayName(candidate.provider)} · {ready && candidate.lastSuccessfulSyncAt ? `Synced ${new Date(candidate.lastSuccessfulSyncAt).toLocaleDateString("en-CA")}` : reportSourceAvailability(candidate.availability)}</small><span>{savingAuthority === candidate.connectionId ? "Saving…" : ready ? `Use for ${factFamily}` : reportSourceAvailability(candidate.availability)}</span></button>;
           })}</div> : <p>An owner or admin must choose this source.</p>}
         </article>))}
-        {canonicalReports.length > 0 && <details className="provider-report-list" open><summary>Vanteloq report definitions</summary><section><div><b>Canonical intelligence</b><small>Consistent definitions across approved provider accounts. A report remains unavailable until its exact query and required facts exist.</small></div>{canonicalReports.map((item) => <button key={item.id} disabled={item.implementationStatus !== "available" || item.queryReportId === null || !(item.recordedDataAvailable || item.status === "ready")} onClick={() => { setSourceConnectionId(""); setSourceReportLabel(""); setSelected(item.presentation === "payment_mix" ? "Payment-method performance" : "Sales totals"); }}><span><b>{item.label}</b><small>{item.description}</small>{item.readinessReason && <small>{item.readinessReason}</small>}</span><em>{item.implementationStatus === "planned" ? "Not available" : item.recordedDataAvailable ? "Open recorded view" : item.status === "ready" ? "Open canonical report" : `Needs ${item.dataNeeded.join(", ")}`}</em></button>)}</section></details>}
-        {providerCatalogs.length > 0 && <details className="provider-report-list"><summary>Provider-specific report catalogue</summary>{providerCatalogs.map((catalog) => <section key={catalog.connectionId}><div><b>{catalog.accountName || providerDisplayName(catalog.provider)}</b><small>{catalog.boundary}</small></div>{catalog.providerReports.map((item) => <button key={item.id} disabled={item.implementationStatus !== "available" || item.queryReportId === null || !(item.recordedDataAvailable || item.status === "ready")} onClick={() => { setSourceConnectionId(catalog.connectionId); setSourceReportLabel(item.label); setSelected(item.presentation === "payment_mix" ? "Payment-method performance" : "Sales totals"); }}><span><b>{item.label}</b><small>{item.description}</small>{item.readinessReason && <small>{item.readinessReason}</small>}</span><em>{item.recordedDataAvailable ? "Open recorded view" : item.status === "ready" ? "Open source view" : item.implementationStatus === "planned" ? "Not available" : `Needs ${item.dataNeeded.join(", ")}`}</em></button>)}</section>)}</details>}
+        {canonicalReports.length > 0 && <details className="provider-report-list" open><summary>Vanteloq report definitions</summary><section><div><b>Canonical intelligence</b><small>Consistent definitions across approved provider accounts. A report remains unavailable until its exact query and required facts exist.</small></div>{canonicalReports.map((item) => <button key={item.id} disabled={item.implementationStatus !== "available" || item.queryReportId === null || !(item.recordedDataAvailable || item.status === "ready")} onClick={() => openCatalogueReport(item, "")}><span><b>{item.label}</b><small>{item.description}</small>{item.readinessReason && <small>{item.readinessReason}</small>}</span><em>{item.implementationStatus === "planned" ? "Not available" : item.recordedDataAvailable ? "Open recorded view" : item.status === "ready" ? "Open canonical report" : `Needs ${item.dataNeeded.join(", ")}`}</em></button>)}</section></details>}
+        {providerCatalogs.length > 0 && <details className="provider-report-list"><summary>Provider-specific report catalogue</summary>{providerCatalogs.map((catalog) => <section key={catalog.connectionId}><div><b>{catalog.accountName || providerDisplayName(catalog.provider)}</b><small>{catalog.boundary}</small></div>{catalog.providerReports.map((item) => <button key={item.id} disabled={item.implementationStatus !== "available" || item.queryReportId === null || !(item.recordedDataAvailable || item.status === "ready")} onClick={() => openCatalogueReport(item, catalog.connectionId)}><span><b>{item.label}</b><small>{item.description}</small>{item.readinessReason && <small>{item.readinessReason}</small>}</span><em>{item.recordedDataAvailable ? "Open recorded view" : item.status === "ready" ? "Open source view" : item.implementationStatus === "planned" ? "Not available" : `Needs ${item.dataNeeded.join(", ")}`}</em></button>)}</section>)}</details>}
       </section>
       <section className="report-period-control" aria-label="Report time frame">
         <div className="report-period-presets" aria-label="Time frame presets">
@@ -845,7 +868,9 @@ type ProcurementCatalog = {
   suppliers: ProcurementSupplier[];
   products: ProcurementProduct[];
   cashContext: {
-    status: "available" | "needs_bank_connection" | "stale_bank_data" | "needs_healthy_cash_account" | "needs_currency_review";
+    status: "available" | "needs_bank_connection" | "stale_bank_data" | "needs_healthy_cash_account" | "needs_currency_review" | "needs_obligation_review";
+    sourceType?: "connected_bank" | "reconciled_statement" | "unavailable";
+    sourceAsOf?: string | null;
     verifiedPurchasingCapacityCents: number | null;
     verifiedCashCents: number | null;
     cashSafetyReserveCents: number;
@@ -1275,19 +1300,18 @@ function CatalogRecommendations({
           <div>
             <p>CASH GUARDRAIL</p>
             <h3>
-              {catalog.cashContext.status === "needs_currency_review"
-                ? "Currency review is required before cash can constrain reorders"
+              {catalog.cashContext.status === "needs_currency_review" || catalog.cashContext.status === "needs_obligation_review"
+                ? "Review recorded commitments before cash can constrain reorders"
                 : catalog.cashContext.verifiedPurchasingCapacityCents === null
-                ? "Cash-aware quantities need verified banking data"
+                ? "Cash-aware quantities need a current cash source"
                 : `${money(catalog.cashContext.verifiedPurchasingCapacityCents, catalog.cashContext.baseCurrency)} available for reviewed reorders`}
             </h3>
             <span>{catalog.cashContext.explanation}</span>
           </div>
           <dl>
-            <div><dt>Fresh cash</dt><dd>{money(catalog.cashContext.verifiedCashCents, catalog.cashContext.baseCurrency)}</dd></div>
+            <div><dt>{catalog.cashContext.sourceType === "reconciled_statement" ? `Statement cash (${catalog.cashContext.sourceAsOf})` : "Connected bank cash"}</dt><dd>{money(catalog.cashContext.verifiedCashCents, catalog.cashContext.baseCurrency)}</dd></div>
             <div><dt>Safety reserve</dt><dd>{money(catalog.cashContext.cashSafetyReserveCents, catalog.cashContext.baseCurrency)}</dd></div>
-            <div><dt>Open bills</dt><dd>{money(catalog.cashContext.outstandingBillsCents, catalog.cashContext.baseCurrency)}</dd></div>
-            <div><dt>Open purchase commitments</dt><dd>{money(catalog.cashContext.openPurchaseCommitmentsCents, catalog.cashContext.baseCurrency)}</dd></div>
+            <div><dt>Recorded purchase obligations</dt><dd>{money(catalog.cashContext.outstandingBillsCents + catalog.cashContext.openPurchaseCommitmentsCents, catalog.cashContext.baseCurrency)}</dd></div>
           </dl>
         </aside>
       ) : (

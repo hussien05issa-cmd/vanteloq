@@ -18,7 +18,10 @@ test("inventory costs are durable, tenant scoped, permission checked and audited
   assert.match(route, /WHERE p\.organization_id = \?/);
   assert.match(route, /inventory\.costs_imported/);
   assert.match(route, /INVENTORY_COST_REVIEW_REQUIRED/);
-  assert.match(helper, /product\.owner_cost_cents \* commerce_sale_lines\.quantity_milli/);
+  assert.match(helper, /inventory\.cost_effective/);
+  assert.match(helper, /effectiveAtMs/);
+  assert.match(route, /prepareOwnerCostChange/);
+  assert.match(route, /historicalCostsPreserved: true/);
   assert.match(helper, /UPDATE daily_business_metrics AS metric/);
 });
 

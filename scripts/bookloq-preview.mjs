@@ -7,18 +7,18 @@ import { build } from "esbuild";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 const bundle = await build({ stdin: { contents: `
   import React,{useState} from 'react'; import {createRoot} from 'react-dom/client'; import './app/bookloq-display.css';
-  import ExecutiveOverview from './app/executive-overview'; import WorkspaceShowcase from './app/workspace-showcase'; import LinkedFilesPanel from './app/linked-files-panel'; import BookLoQWorkspace from './app/bookloq-workspace'; import ProductBrandLogo from './app/product-brand-logo'; import WorkspaceIcon from './app/workspace-icon';
+  import {WorkspaceAppearanceControl,useWorkspaceAppearance} from './app/workspace-appearance'; import ExecutiveOverview from './app/executive-overview'; import WorkspaceShowcase from './app/workspace-showcase'; import LinkedFilesPanel from './app/linked-files-panel'; import BookLoQWorkspace from './app/bookloq-workspace'; import ProductBrandLogo from './app/product-brand-logo'; import WorkspaceIcon from './app/workspace-icon';
   const params=new URLSearchParams(location.search);
   const qa=params.get('scenario')||'sample';
-  const sections={cash:'Cash Flow',settings:'Settings','month-end':'Month-End',transactions:'Transactions',overview:'Overview',invoices:'Invoicing',reports:'Reports'};
+  const sections={cash:'Cash Flow',settings:'Settings','month-end':'Month-End',transactions:'Transactions',overview:'Overview',invoices:'Invoicing',bills:'Bills',reports:'Reports'};
   const initialSection=sections[params.get('section')]||({periods:'Month-End',receipts:'Transactions','setup-empty':'Settings','setup-bank-only':'Settings'}[qa])||'Overview';
   function Preview(){
-    const [notice,setNotice]=useState('');
+    const [notice,setNotice]=useState(''); const appearance=useWorkspaceAppearance();
     const announce=()=>setNotice('This local preview is read only. No records, tasks, messages or external connections were changed.');
     const surface=params.get('surface');
     if(surface==='marketing') return <WorkspaceShowcase/>;
     if(surface==='files') return <main style={{padding:'32px',maxWidth:1000,margin:'auto'}}><LinkedFilesPanel/></main>;
-    return <div className="app-shell operating-shell" data-workspace-theme={params.get("theme") === "light" ? "light" : "dark"}><aside className="sidebar"><button className="brand" onClick={announce}><ProductBrandLogo product="vanteloq"/><span className="brand-name">Vanteloq</span></button><div className="nav-group"><p>Fictional QA Workspace</p>{['Dashboard','Sales','Inventory','BookLoQ','Integrations','Advisor'].map(name=><button key={name} className="nav-item" aria-current={name==='BookLoQ'?'page':undefined} onClick={announce}><WorkspaceIcon name={name}/><span className="nav-label">{name}</span></button>)}</div></aside><div className="main-panel"><div className="fixture-label"><strong>Local QA · Fictional records · Read only</strong><span>Scenario: {qa}</span><nav aria-label="Local QA scenarios">{[['setup-empty','Empty setup'],['setup-bank-only','Bank-only setup'],['periods','Period controls'],['receipts','Receipt evidence']].map(([key,name])=><a key={key} href={'?scenario='+key}>{name}</a>)}</nav></div>{notice&&<div className="fixture-notice" role="alert">{notice}<button type="button" aria-label="Dismiss local notice" onClick={()=>setNotice('')}>Close</button></div>}{surface==='dashboard'?<main className="content command-page"><header style={{marginBottom:24}}><h1 style={{fontSize:27,color:'var(--ws-ink)'}}>Fictional business overview</h1><p style={{color:'var(--ws-muted)'}}>Local calculation and interface verification.</p></header><ExecutiveOverview currency="CAD" navigate={announce}/></main>:<BookLoQWorkspace initialSection={initialSection} activeLocationId={null} createTask={announce} navigate={announce} showNotice={message=>setNotice(message)}/>}</div></div>;
+    return <div className="app-shell operating-shell" data-workspace-theme={appearance.theme}><aside className="sidebar"><button className="brand" onClick={announce}><ProductBrandLogo product="vanteloq"/><span className="brand-name">Vanteloq</span></button><div className="nav-group"><p>Fictional QA Workspace</p>{['Dashboard','Sales','Inventory','BookLoQ','Integrations','Advisor'].map(name=><button key={name} className="nav-item" aria-current={name==='BookLoQ'?'page':undefined} onClick={announce}><WorkspaceIcon name={name}/><span className="nav-label">{name}</span></button>)}</div></aside><div className="main-panel"><div className="fixture-label"><strong>Local QA · Fictional records · Read only</strong><span>Scenario: {qa}</span><WorkspaceAppearanceControl/><nav aria-label="Local QA scenarios">{[['setup-empty','Empty setup'],['setup-bank-only','Bank-only setup'],['periods','Period controls'],['receipts','Receipt evidence']].map(([key,name])=><a key={key} href={'?scenario='+key}>{name}</a>)}</nav></div>{notice&&<div className="fixture-notice" role="alert">{notice}<button type="button" aria-label="Dismiss local notice" onClick={()=>setNotice('')}>Close</button></div>}{surface==='dashboard'?<main className="content command-page"><header style={{marginBottom:24}}><h1 style={{fontSize:27,color:'var(--ws-ink)'}}>Fictional business overview</h1><p style={{color:'var(--ws-muted)'}}>Local calculation and interface verification.</p></header><ExecutiveOverview currency="CAD" navigate={announce}/></main>:<BookLoQWorkspace initialSection={initialSection} activeLocationId={null} createTask={announce} navigate={announce} showNotice={message=>setNotice(message)}/>}</div></div>;
   }
   createRoot(document.getElementById('root')).render(<Preview/>);
 `, resolveDir: process.cwd(), loader: "tsx" }, plugins: [{ name: "local-data", setup(builder) {
@@ -161,6 +161,12 @@ createServer(async (request, response) => {
         if (id === "qa-receipt-quarantined") { response.statusCode=423; response.end(JSON.stringify({error:{code:"DOCUMENT_QUARANTINED",message:"Fictional scan check: this receipt is quarantined. No match was saved."}})); return; }
         if (id !== "qa-receipt-pdf") {response.statusCode=404;response.end(JSON.stringify({error:{message:"Fictional receipt not found."}}));return;}
         response.setHeader("Content-Type","application/pdf");response.setHeader("Content-Disposition",'inline; filename="fictional-office-supplies-receipt.pdf"');response.end(receiptPdf);return;
+      }
+      if (path === "/api/v1/bookloq/bills") {
+        const data=fixtureFor(params.get("scenario")||"sample",empty),id=params.get("billId");
+        const bill=id?data.bills.find(row=>row.id===id):null;
+        if(id&&!bill){response.statusCode=404;response.end(JSON.stringify({error:{message:"Fictional supplier bill is unavailable."}}));return;}
+        response.end(JSON.stringify({today:"2026-10-11",latestDate:"2026-10-11",orders:[],bill:bill?{...bill,journalEntryId:null,memo:"Fictional UI review only",reference:"Fictional supplier document"}:null,events:[]}));return;
       }
       if (path === "/api/v1/bookloq") {response.end(JSON.stringify(fixtureFor(params.get("scenario") || "sample", empty)));return;}
       if (path === "/api/v1/bookloq/reports") {

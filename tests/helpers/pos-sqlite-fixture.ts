@@ -19,7 +19,7 @@ export async function posSqliteFixture() {
   const database = { prepare: (sql: string) => new Prepared(sql), batch: async(items: Prepared[]) => {
     beforeBatch?.(items);
     sqlite.exec("BEGIN IMMEDIATE");
-    try { const results = []; for (const item of items) results.push(await item.run()); sqlite.exec("COMMIT"); return results; }
+    try { const results = []; for (const item of items) results.push(/^\s*(SELECT|WITH|EXPLAIN)\b/i.test(item.sql) ? await item.all() : await item.run()); sqlite.exec("COMMIT"); return results; }
     catch (error) { sqlite.exec("ROLLBACK"); throw error; }
   } } as unknown as D1Database;
   const migrationDir = resolve(process.env.POS_PATCH_SOURCE_REPO ?? process.cwd(), "drizzle");

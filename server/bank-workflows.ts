@@ -5,6 +5,7 @@ import { prepareAudit } from "./audit.ts";
 import { journalInput, type JournalInputLine } from "./bookloq.ts";
 import { BOOKLOQ_TRANSACTION_SOURCE_SQL } from "./bookloq-source.ts";
 import { statementAccounts } from "./bank-statement.ts";
+import { bankSourceQuery } from "./bank-source-query.ts";
 
 export type BankWorkflowContext={organizationId:string;actorUserId:string;today:string;request:Request;requestId:string;key:string};
 const safe=(n:number)=>{if(!Number.isSafeInteger(n))throw new ApiError(409,"ACCOUNTING_AMOUNT_RANGE","The financial total exceeds the supported exact amount range.");return n;};
@@ -49,19 +50,18 @@ export async function commitBankCsv(db:D1Database,bucket:R2Bucket,body:Record<st
 
 export type BankSource={id:string;sourceType:"csv"|"statement";bankAccountId:string;accountId:string;accountName:string;startDate:string;endDate:string;currency:string;openingBalanceCents:number;closingBalanceCents:number;rowCount:number;fileName:string;runId:string|null;status:string|null};
 export async function bankSources(db:D1Database,org:string):Promise<BankSource[]> {
-  const result=await db.prepare(`SELECT s.id,'csv' sourceType,s.bank_account_id bankAccountId,s.financial_account_id accountId,b.name accountName,s.start_date startDate,s.end_date endDate,s.currency,s.opening_balance_cents openingBalanceCents,s.closing_balance_cents closingBalanceCents,s.row_count rowCount,s.file_name fileName,
-    (SELECT r.id FROM bank_reconciliation_runs r WHERE r.organization_id=s.organization_id AND r.source_type='csv' AND r.source_id=s.id AND r.status='completed') runId,
-    (SELECT r.status FROM bank_reconciliation_runs r WHERE r.organization_id=s.organization_id AND r.source_type='csv' AND r.source_id=s.id AND r.status='completed') status
-    FROM bank_csv_imports s JOIN bank_accounts b ON b.id=s.bank_account_id AND b.organization_id=s.organization_id WHERE s.organization_id=? AND s.status='approved' AND NOT EXISTS(SELECT 1 FROM bank_csv_void_events v WHERE v.organization_id=s.organization_id AND v.import_id=s.id)
-    UNION ALL SELECT s.id,'statement',s.bank_account_id,s.financial_account_id,b.name,s.start_date,s.end_date,s.currency,s.opening_balance_cents,s.closing_balance_cents,s.row_count,d.file_name,
-    (SELECT r.id FROM bank_reconciliation_runs r WHERE r.organization_id=s.organization_id AND r.source_type='statement' AND r.source_id=s.id AND r.status='completed'),
-    (SELECT r.status FROM bank_reconciliation_runs r WHERE r.organization_id=s.organization_id AND r.source_type='statement' AND r.source_id=s.id AND r.status='completed')
-    FROM bank_statement_imports s JOIN bank_accounts b ON b.id=s.bank_account_id AND b.organization_id=s.organization_id JOIN workspace_documents d ON d.id=s.document_id AND d.organization_id=s.organization_id
-    WHERE s.organization_id=? AND s.status='approved' AND s.demo_record=0 ORDER BY endDate DESC LIMIT 200`).bind(org,org).all<BankSource>();return result.results??[];
+  const query=bankSourceQuery(org);
+  const result=await db.prepare(query.sql).bind(...query.bindings).all<BankSource>();
+  return result.results??[];
 }
 export async function loadBankSource(db:D1Database,org:string,type:unknown,id:unknown) {
   if(!["csv","statement"].includes(String(type)))throw new ApiError(400,"BANK_SOURCE","Select an imported CSV or reviewed statement.");
-  const source=(await bankSources(db,org)).find(s=>s.id===id&&s.sourceType===type);
+  if(typeof id!=="string" || id.length<1 || id.length>180)throw new ApiError(400,"BANK_SOURCE","Select a retained bank import.");
+  // A retained import remains reviewable after it leaves the recent-list page.
+  const query=bankSourceQuery(org,{type:type as "csv"|"statement",id});
+  const sources=await db.prepare(query.sql).bind(...query.bindings).all<BankSource>();
+  if((sources.results?.length??0)>1)throw new ApiError(409,"BANK_SOURCE_CONFLICT","Review the duplicate reconciliation history before using this statement.");
+  const source=sources.results?.[0];
   if(!source)throw new ApiError(404,"BANK_SOURCE","The reviewed bank import is unavailable.");
   const table=type==="csv"?"bank_csv_rows":"bank_statement_rows",number=type==="csv"?"source_row_number":"row_number";
   const result=await db.prepare(`SELECT t.id,t.account_id accountId,t.posting_date postingDate,t.description,t.amount_cents amountCents,t.currency,t.journal_entry_id journalEntryId,t.reconciliation_status reconciliationStatus,t.category_account_id categoryAccountId,r.${number} sourceRowNumber,

@@ -501,20 +501,24 @@ export async function runSync(request: Request, requestId: string, context: Sync
       const saleLineStatements = uniqueSaleLines.filter((row) => !row.outletRef || mappedRaw.has(row.outletRef)).map((line) => database.prepare(`
           INSERT INTO commerce_sale_lines
             (id, organization_id, provider, connection_id, external_sale_id, external_line_id, product_ref, customer_ref,
-             outlet_ref, sold_at, sku, product_name, quantity_milli, net_sales_cents, cost_cents,
+             outlet_ref, sold_at, sku, product_name, quantity_milli, net_sales_cents, cost_cents, cost_known,
              discount_cents, source_payload_hash, sync_run_id, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(organization_id, provider, connection_id, external_sale_id, external_line_id) DO UPDATE SET
             product_ref = excluded.product_ref, customer_ref = excluded.customer_ref,
             outlet_ref = excluded.outlet_ref, sold_at = excluded.sold_at, sku = excluded.sku,
             product_name = excluded.product_name, quantity_milli = excluded.quantity_milli,
-            net_sales_cents = excluded.net_sales_cents, cost_cents = excluded.cost_cents,
+            net_sales_cents = excluded.net_sales_cents,
+            cost_cents = CASE WHEN excluded.cost_known=0 AND commerce_sale_lines.product_ref IS excluded.product_ref
+              AND commerce_sale_lines.quantity_milli=excluded.quantity_milli THEN commerce_sale_lines.cost_cents ELSE excluded.cost_cents END,
+            cost_known = CASE WHEN excluded.cost_known=0 AND commerce_sale_lines.product_ref IS excluded.product_ref
+              AND commerce_sale_lines.quantity_milli=excluded.quantity_milli THEN commerce_sale_lines.cost_known ELSE excluded.cost_known END,
             discount_cents = excluded.discount_cents, source_payload_hash = excluded.source_payload_hash,
             sync_run_id = excluded.sync_run_id, updated_at = excluded.updated_at
         `).bind(
           crypto.randomUUID(), context.organizationId, LIGHTSPEED_R_PROVIDER, connection.id, scopedRef(line.externalSaleId),
           scopedRef(line.externalLineId), scopedRef(line.productRef), scopedRef(line.customerRef), scopedRef(line.outletRef), line.soldAt,
-          line.sku, line.productName, line.quantityMilli, line.netSalesCents, line.costCents,
+          line.sku, line.productName, line.quantityMilli, line.netSalesCents, line.costCents, line.costKnown ? 1 : 0,
           line.discountCents, line.sourcePayloadHash, runId, Date.now(),
         ));
       syncStage = "sale_lines";
@@ -691,7 +695,7 @@ export async function runSync(request: Request, requestId: string, context: Sync
       syncStage = "supplier_catalog";
       const importedSuppliers = await runWriteBatches(supplierStatements);
       syncStage = "owner_inventory_costs";
-      await applyOwnerInventoryCosts(context.organizationId, connection.id, now, { publishDailyMetrics: publishCanonical });
+      const costCoverage = await applyOwnerInventoryCosts(context.organizationId, connection.id, now, { publishDailyMetrics: publishCanonical });
       syncStage = "complete_import";
       await renewIntegrationSyncLease(syncLease);
       await database.prepare(`
@@ -748,7 +752,7 @@ export async function runSync(request: Request, requestId: string, context: Sync
         duplicatesSkipped: Math.max(0, duplicatesSkipped),
         // Missing optional catalog datasets remain visible as coverage warnings,
         // but they must not invalidate an otherwise reconciled sales run.
-        warningCount: warnings + unmappedLocations + Number(quantitiesPending),
+        warningCount: warnings + unmappedLocations + Number(quantitiesPending) + costCoverage.missingCostLines,
         completedAt,
       }).where(eq(integrationSyncRuns.id, runId));
       const promoted = await getDb().update(integrationConnections).set({
@@ -762,7 +766,7 @@ export async function runSync(request: Request, requestId: string, context: Sync
         promotionAuthorizedAt: promotionStatus === "approved" ? null : connection.promotionAuthorizedAt ?? (publicationAuthorized ? startedAt : null),
         lastErrorCode: quantitiesPending ? "LIGHTSPEED_R_QUANTITY_REVIEW_REQUIRED" : publicationWarnings > 0
           ? "LIGHTSPEED_R_RECONCILIATION_WARNINGS"
-          : warnings > 0
+          : costCoverage.missingCostLines > 0 ? "LIGHTSPEED_R_PRODUCT_COST_REQUIRED" : warnings > 0
             ? "LIGHTSPEED_R_PARTIAL_COVERAGE"
             : null,
         syncLeaseOwner: null,
@@ -798,6 +802,7 @@ export async function runSync(request: Request, requestId: string, context: Sync
           suppliers: importedSuppliers,
           saleLines: importedSaleLines,
           payments: importedPayments,
+          missingCostLines: costCoverage.missingCostLines,
           unmappedLocations,
           duplicatesSkipped,
           warningCount: warnings,
@@ -818,7 +823,7 @@ export async function runSync(request: Request, requestId: string, context: Sync
           recordsRead,
           recordsStaged: stagedSales + importedInventory + importedProducts + importedCustomers + importedSuppliers + importedSaleLines + importedPayments,
           duplicatesSkipped,
-          warningCount: warnings + Number(quantitiesPending),
+          warningCount: warnings + Number(quantitiesPending) + costCoverage.missingCostLines,
           pages: recentSalesPage.pages + salesPage.pages + saleLinesPage.pages + itemsPage.pages + customersPage.pages + suppliersPage.pages + paymentTypesPage.pages,
           cursorPreserved: safeCheckpoint,
         },
@@ -828,6 +833,7 @@ export async function runSync(request: Request, requestId: string, context: Sync
           stagedRecords: stagedSales,
           duplicateRecords: duplicatesSkipped,
           completedSales: uniqueSales.filter((sale) => sale.state === "completed").length,
+          missingCostLines: costCoverage.missingCostLines,
           openSales: uniqueSales.filter((sale) => sale.state === "open").length,
           voidedSales: uniqueSales.filter((sale) => sale.state === "voided").length,
           dailyMetrics: publishedDailyMetrics.length,

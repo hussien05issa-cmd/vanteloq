@@ -11,6 +11,7 @@ export const commerceFieldLabels: Record<CommerceFieldKey, string> = {
 };
 const dependencies: readonly { id: string; label: string; fields: readonly CommerceFieldKey[]; requiredEvidence: readonly string[] }[] = [
   { id: "sales_performance", label: "Sales performance", fields: ["sales.net", "sales.date", "locations.mapping"], requiredEvidence: [] },
+  { id: "product_performance", label: "Product activity", fields: ["lines.net", "lines.quantity", "lines.product", "lines.date", "products.identity", "locations.mapping"], requiredEvidence: ["Complete sale lines and stable product identities for the selected period"] },
   { id: "payment_mix", label: "Payment mix", fields: ["sales.net", "payments.amount", "payments.date", "payments.sale", "payments.type", "locations.mapping"], requiredEvidence: ["Sale-to-payment reconciliation for the selected period"] },
   { id: "gross_profit", label: "Gross profit", fields: ["lines.net", "lines.quantity", "lines.cost", "lines.date", "locations.mapping"], requiredEvidence: ["Attributable costs for every included sale and return"] },
   { id: "inventory_health", label: "Inventory health", fields: ["products.identity", "inventory.quantity", "inventory.updated", "lines.quantity", "lines.date", "lines.product", "locations.mapping"], requiredEvidence: ["Dated stock and complete demand history for the selected location"] },

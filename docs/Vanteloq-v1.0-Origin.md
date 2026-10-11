@@ -4,7 +4,7 @@ Product, production and operating record
 
 Canonical Google Docs handover: https://docs.google.com/document/d/19gsY0oAZfxoGqt999T6FGcbobIrFOz7c51u6UlxzcQo/edit
 
-Review date: October 6, 2026
+Review date: October 11, 2026
 
 Operator: 2855706 ALBERTA INC, doing business as LexEdge Consulting.
 
@@ -14,9 +14,9 @@ This is the canonical Origin handover. It supersedes earlier Origin release summ
 
 Vanteloq provides source-aware operations and analytics. BookLoQ is its accounting and cash workspace, purchased separately or as an add-on. LexEdge Consulting operates the product. Owners can inspect performance, follow a total to permitted records, review work requiring attention and maintain a dashboard suited to their business.
 
-The site is live at https://vanteloq.com/. The baseline entering this audit was release 334. This record supports a controlled release of implemented workflows, not completion of every requested accounting, restaurant or dealership system. Credentials, a saved connection, provider approval and reconciled production data are separate milestones.
+The site is live at https://vanteloq.com/. The baseline entering the October 11 connected-workflow audit was release 355. Earlier audit increments remain recorded below. This record supports a controlled release of implemented workflows, not completion of every requested accounting, restaurant or dealership system. Credentials, a saved connection, provider approval and reconciled production data are separate milestones.
 
-**Open gates:** actual production database and private-file restoration remains unverified; provider approvals and live reconciliation remain outstanding; a fresh authenticated owner walkthrough was not completed. Advanced BookLoQ posting/reconciliation, live DMS ingestion and active restaurant/KDS workflows remain development work. They are not approval-only blockers.
+**Open gates:** actual production database and private-file restoration remains unverified; provider approvals and live reconciliation remain outstanding; a fresh authenticated owner walkthrough is still required. BookLoQ's implemented invoice, whole-order supplier-bill, payment-recording and statement-reconciliation paths have focused local evidence. Partial supplier billing, supplier credits, foreign-currency conversion, live DMS ingestion and active restaurant/KDS workflows remain separate development work. They are not approval-only blockers.
 
 ## Final audit changes
 
@@ -117,7 +117,7 @@ Setup is explicit and does not invent opening balances. Journals balance in inte
 
 Invoice PDFs and collection follow-up exist. Tax input preserves three decimal places. Combined GST/QST PDFs stay blocked until statutory components can be displayed separately. This is not a complete tax engine or filing service.
 
-The cash model uses reviewed opening cash, commitments, strict dates, currency, duplicate protection and assumptions. Current approved Plaid balances are separate from ledger-period cash, forecast cash and purchasing capacity. Uncertainty and missing coverage remain visible.
+The cash model uses reviewed opening cash, commitments, strict dates, currency, duplicate protection and assumptions. Current approved Plaid balances are separate from ledger-period cash, forecast cash and purchasing capacity. Reconciled statement evidence can supply a clearly dated scenario when every required account has compatible completed evidence; stale statements do not become current cash. BookLoQ and Purchasing share dated supplier obligations and decision-blocking checks. Uncertainty and missing coverage remain visible.
 
 Further development includes full invoice/bill posting, partial settlement, credits/refunds, reversals, completed statement reconciliation, as-of reports and GL drill-down/export, opening balances/accounting basis, tax components, native payroll/assets and migration handover. Identity-only QuickBooks is not ledger import.
 

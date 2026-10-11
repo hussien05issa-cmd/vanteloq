@@ -21,8 +21,16 @@ function render(changes: Partial<AutomaticSyncStatus> = {}, sourceChanges: Parti
   };
   const health = connectorHealth(source, { now });
   return renderToStaticMarkup(<AutomaticSyncControl provider="square" connectionId="fictional-source" accountName="Fictional source"
-    status={status} health={health} refresh={async () => {}}/>);
+    status={status} health={health} refresh={async () => {}} observedAt={now}/>);
 }
+
+test("server render without an observation time stays deterministic until the client clock starts",context=>{
+  context.mock.method(Date,"now",()=>{throw Error("Render must not read the clock.");});
+  const html=renderToStaticMarkup(<AutomaticSyncControl provider="square" connectionId="fictional-source" accountName="Fictional source" status={base} refresh={async()=>{}}/>);
+  assert.match(html,/Checking last run time/);
+  assert.match(html,/Scheduled check:/);
+  assert.doesNotMatch(html,/Scheduled check overdue|Last run finished/);
+});
 
 test("a completed job cannot claim freshness for overdue source records", context => {
   context.mock.method(Date, "now", () => now);

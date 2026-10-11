@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetch } from "./supabase-browser";
 import ProviderPrivacyNotice from "./provider-privacy-notice";
 import { providerPrivacyAcceptance } from "../domain/provider-privacy";
@@ -25,28 +25,35 @@ function safeSlackChannelUrl(value: string | null | undefined) {
   if (!value) return null;
   try { const url = new URL(value); return url.origin === "https://slack.com" && url.pathname === "/app_redirect" ? url.href : null; } catch { return null; }
 }
+async function readSlackSnapshot(signal:AbortSignal,refresh=false,connectionId?:string|null) {
+  const response=await apiFetch("/api/v1/integrations/slack/messages",refresh?{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({connectionId}),signal}:{signal});
+  return {response,body:await response.json()};
+}
 
 export default function SlackMessages({ onManage }: { onManage?: () => void }) {
   const [snapshot, setSnapshot] = useState<SlackSnapshot | null>(null);
   const [loading, setLoading] = useState(true), [busy, setBusy] = useState(false), [error, setError] = useState("");
   const [ownerOnly, setOwnerOnly] = useState(false), [consent, setConsent] = useState(false);
-  const [now, setNow] = useState(Date.now);
+  const [now, setNow] = useState(0);
   const request = useRef<AbortController | null>(null), serial = useRef(0);
+  const applyReadResult=useCallback(({response,body}:Awaited<ReturnType<typeof readSlackSnapshot>>)=>{
+    setNow(Date.now());
+    if(!response.ok){
+      if([401,403,404,409].includes(response.status))setSnapshot(null);
+      if(response.status===403)setOwnerOnly(true);
+      if(response.status===429&&typeof body.nextReadAt==="string")setSnapshot(current=>current?{...current,nextReadAt:body.nextReadAt}:current);
+      throw Error(body.error?.message||"Slack could not load. Please try again.");
+    }
+    setOwnerOnly(false);setSnapshot(body);
+  },[]);
   const requestRead = async (refresh = false) => {
     const generation = ++serial.current;
     request.current?.abort(); const abort = new AbortController(); request.current = abort;
-    setError(""); refresh ? setBusy(true) : setLoading(true);
+    setError(""); if(refresh)setBusy(true);else setLoading(true);
     try {
-      const response = await apiFetch("/api/v1/integrations/slack/messages", refresh ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ connectionId: snapshot?.connectionId }), signal: abort.signal } : { signal: abort.signal });
-      const body = await response.json();
+      const result=await readSlackSnapshot(abort.signal,refresh,snapshot?.connectionId);
       if (abort.signal.aborted || serial.current !== generation) return;
-      if (!response.ok) {
-        if ([401, 403, 404, 409].includes(response.status)) setSnapshot(null);
-        if (response.status === 403) setOwnerOnly(true);
-        if (response.status === 429 && typeof body.nextReadAt === "string") setSnapshot(current => current ? { ...current, nextReadAt: body.nextReadAt } : current);
-        throw Error(body.error?.message || "Slack could not load. Please try again.");
-      }
-      setOwnerOnly(false); setSnapshot(body);
+      applyReadResult(result);
     } catch (cause) {
       if (!abort.signal.aborted && serial.current === generation) setError(cause instanceof Error ? cause.message : "Slack could not load. Please try again.");
     } finally {
@@ -54,11 +61,13 @@ export default function SlackMessages({ onManage }: { onManage?: () => void }) {
     }
   };
   useEffect(() => {
-    void requestRead();
-    return () => { serial.current++; request.current?.abort(); };
+    const generation=++serial.current,abort=new AbortController();request.current=abort;
+    void readSlackSnapshot(abort.signal).then(result=>{if(!abort.signal.aborted&&serial.current===generation)applyReadResult(result);})
+      .catch(cause=>{if(!abort.signal.aborted&&serial.current===generation)setError(cause instanceof Error?cause.message:"Slack could not load. Please try again.");})
+      .finally(()=>{if(!abort.signal.aborted&&serial.current===generation){setLoading(false);setBusy(false);}});
+    return () => { abort.abort(); request.current?.abort(); };
     // The panel is remounted for each workspace scope. Provider reads are manual.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [applyReadResult]);
   useEffect(() => {
     if (!snapshot?.nextReadAt) return;
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
