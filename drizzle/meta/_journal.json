@@ -484,6 +484,62 @@
       "when": 1790989241229,
       "tag": "0068_old_sentinel",
       "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "6",
+      "when": 1791078681808,
+      "tag": "0069_industry_configuration",
+      "breakpoints": true
+    },
+    {
+      "idx": 70,
+      "version": "6",
+      "when": 1791078947777,
+      "tag": "0070_dealership_operations",
+      "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "6",
+      "when": 1791078983541,
+      "tag": "0071_foodservice",
+      "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "6",
+      "when": 1791090032740,
+      "tag": "0072_mean_hobgoblin",
+      "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "6",
+      "when": 1791096391778,
+      "tag": "0073_careless_daimon_hellstrom",
+      "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "6",
+      "when": 1791115345520,
+      "tag": "0074_blue_lucky_pierre",
+      "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "6",
+      "when": 1791536287078,
+      "tag": "0075_busy_zarda",
+      "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "6",
+      "when": 1791588184180,
+      "tag": "0076_meta_spend_money",
+      "breakpoints": true
     }
   ]
 }

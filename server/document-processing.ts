@@ -5,6 +5,7 @@ import { deleteExtractionResult, documentProviderConfiguration, DocumentProvider
 import { beginAzureScan, deleteAzureScan, pollAzureScan, type AzureScanOperation } from "./azure-document-scanner.ts";
 
 import { matchesCleanupRetryLease, type DocumentCleanupRetry } from "./document-cleanup-state.ts";
+import { DOCUMENT_PROCESSING_NOT_DELETING_SQL } from "./account-deletion-guards.ts";
 
 type Processing = {
   version: 1; noticeVersion: string; authorizedBy: string; authorizedAt: number;
@@ -146,7 +147,7 @@ export async function processDocument(input: {
   const lock = crypto.randomUUID();
   job = { ...job, lock, leaseUntil: now + 90_000 };
   envelope = { ...envelope, processing: job };
-  const claim = await db.prepare("UPDATE workspace_documents SET extracted_json = ?, updated_at = ? WHERE id = ? AND organization_id = ? AND extracted_json = ? AND status NOT IN ('approved', 'rejected', 'deletion_pending')").bind(JSON.stringify(envelope), Math.floor(now / 1000), documentId, organizationId, row.extracted_json).run();
+  const claim = await db.prepare(`UPDATE workspace_documents SET extracted_json = ?, updated_at = ? WHERE id = ? AND organization_id = ? AND extracted_json = ? AND status NOT IN ('approved', 'rejected', 'deletion_pending') AND ${DOCUMENT_PROCESSING_NOT_DELETING_SQL}`).bind(JSON.stringify(envelope), Math.floor(now / 1000), documentId, organizationId, row.extracted_json, input.actorUserId, organizationId).run();
   if (claim.meta.changes !== 1) return { state: "busy", newlyAuthorized: false };
   let scan = row.scan_status, security = row.security_state, extractionStatus = row.extraction_status;
   const save = async (stage: Processing["stage"], release = true) => {

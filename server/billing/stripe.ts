@@ -195,9 +195,32 @@ export async function expireStripeCheckout(sessionId: string, attemptId: string,
   return stripeFormRequest(`/v1/checkout/sessions/${sessionId}/expire`, new URLSearchParams(), "POST", fetcher, `vanteloq-expire-${attemptId}`);
 }
 
-export async function createStripePortal(customerId: string, origin: string, fetcher: typeof fetch = fetch) {
+export async function createStripePortal(customerId: string, origin: string, fetcher: typeof fetch = fetch, cancelSubscriptionId?: string) {
   if (!CUSTOMER_ID.test(customerId)) throw new ApiError(409, "STRIPE_CUSTOMER_REQUIRED", "Complete Stripe checkout before opening billing management.");
-  const session = await stripeFormRequest("/v1/billing_portal/sessions", new URLSearchParams({ customer: customerId, return_url: `${origin}/?billing=returned` }), "POST", fetcher);
+  requireProductionStripeKey(origin);
+  const returnUrl = `${origin}/?billing=returned#billing`;
+  const fields = new URLSearchParams({ customer: customerId, return_url: returnUrl });
+  if (cancelSubscriptionId !== undefined) {
+    if (!SUBSCRIPTION_ID.test(cancelSubscriptionId)) throw new ApiError(409, "STRIPE_SUBSCRIPTION_REQUIRED", "There is no current subscription to cancel.");
+    const subscription = await retrieveStripeSubscription(cancelSubscriptionId, fetcher);
+    if (subscription.id !== cancelSubscriptionId || subscription.customer !== customerId) throw new ApiError(409, "STRIPE_BILLING_IDENTITY_MISMATCH", "The subscription could not be verified for this workspace.");
+    if (["canceled", "incomplete_expired"].includes(string(subscription.status))) throw new ApiError(409, "STRIPE_SUBSCRIPTION_ALREADY_ENDED", "This subscription has already ended. Refresh billing to see its current status.");
+    // A portal flow inherits cancellation timing from its configuration. Verify
+    // the existing setting, then pin it to the session; never change it here.
+    const configurations = await stripeFormRequest("/v1/billing_portal/configurations", new URLSearchParams({ active: "true", is_default: "true", limit: "1" }), "GET", fetcher);
+    const configuration = Array.isArray(configurations.data) && configurations.data.length === 1 && isObject(configurations.data[0]) ? configurations.data[0] : null;
+    const features = configuration && isObject(configuration.features) ? configuration.features : {};
+    const cancellation = isObject(features.subscription_cancel) ? features.subscription_cancel : {};
+    if (!configuration || configuration.active !== true || configuration.is_default !== true || !/^bpc_[A-Za-z0-9]{8,128}$/.test(string(configuration.id)) || cancellation.enabled !== true || cancellation.mode !== "at_period_end") {
+      throw new ApiError(503, "STRIPE_CANCELLATION_CONFIGURATION_REQUIRED", "Period-end cancellation could not be opened. Use Manage billing to review Stripe's available options, or contact billing support before renewal.");
+    }
+    fields.set("configuration", string(configuration.id));
+    fields.set("flow_data[type]", "subscription_cancel");
+    fields.set("flow_data[subscription_cancel][subscription]", cancelSubscriptionId);
+    fields.set("flow_data[after_completion][type]", "redirect");
+    fields.set("flow_data[after_completion][redirect][return_url]", returnUrl);
+  }
+  const session = await stripeFormRequest("/v1/billing_portal/sessions", fields, "POST", fetcher);
   const url = typeof session.url === "string" ? session.url : "";
   if (!url.startsWith("https://billing.stripe.com/")) throw new ApiError(502, "STRIPE_PORTAL_RESPONSE_INVALID", "Stripe did not return a secure billing portal URL.");
   return { url };
@@ -280,6 +303,7 @@ export function normalizeStripeSubscription(object: Record<string, unknown>): No
   if (base.plan === "bookloq" && addon) {
     throw new ApiError(400, "STRIPE_SUBSCRIPTION_PAYLOAD_INVALID", "A standalone BookLoQ subscription cannot also contain the BookLoQ add-on.");
   }
+  const scheduledCancellation = !["canceled", "incomplete_expired"].includes(status) ? unixDate(object.cancel_at) : null;
   return {
     organizationId,
     customerId,
@@ -293,8 +317,10 @@ export function normalizeStripeSubscription(object: Record<string, unknown>): No
     trialPolicy: string(metadata.vanteloq_trial_policy),
     checkoutAttemptId: string(metadata.vanteloq_checkout_attempt),
     paidInvoicePeriodEndsAt: paidSubscriptionInvoicePeriod(object.latest_invoice, customerId, subscriptionId, base.priceId, base.itemId),
-    currentPeriodEndsAt: base.period ?? unixDate(object.current_period_end),
-    cancelAtPeriodEnd: object.cancel_at_period_end === true,
+    // Flexible billing portal cancellations use cancel_at instead of the
+    // legacy flag. Keep the existing ending-date/status interface accurate.
+    currentPeriodEndsAt: scheduledCancellation ?? base.period ?? unixDate(object.current_period_end),
+    cancelAtPeriodEnd: object.cancel_at_period_end === true || scheduledCancellation !== null,
     addon,
   };
 }

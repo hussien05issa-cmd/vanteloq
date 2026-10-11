@@ -1,3 +1,5 @@
+import { exactSum } from "./executive-metrics";
+
 export type PurchaseCommitmentLineInput = {
   sku: string;
   description: string;
@@ -52,7 +54,7 @@ export function buildPurchaseCommitmentBoard(orders: readonly PurchaseCommitment
         return {
           ...line,
           remainingQuantity,
-          remainingCostCents: remainingQuantity * Math.max(0, line.unitCostCents),
+          remainingCostCents: exactSum([remainingQuantity * Math.max(0, line.unitCostCents)]),
           priceChangeRate,
           duplicateWarning: remainingQuantity
             ? plannedStatuses.has(order.status)
@@ -65,7 +67,7 @@ export function buildPurchaseCommitmentBoard(orders: readonly PurchaseCommitment
         ...order,
         statusLabel: statusLabel(order.status),
         lines,
-        remainingMerchandiseCents: lines.reduce((sum, line) => sum + line.remainingCostCents, 0),
+        remainingMerchandiseCents: exactSum(lines.map(line => line.remainingCostCents)),
         remainingUnits: lines.reduce((sum, line) => sum + line.remainingQuantity, 0),
       };
     })
@@ -84,7 +86,7 @@ export function buildPurchaseCommitmentBoard(orders: readonly PurchaseCommitment
     supplierName: vendorOrders[0].supplierName,
     currency: vendorOrders[0].currency,
     openOrderCount: vendorOrders.length,
-    remainingMerchandiseCents: vendorOrders.reduce((sum, order) => sum + order.remainingMerchandiseCents, 0),
+    remainingMerchandiseCents: exactSum(vendorOrders.map(order => order.remainingMerchandiseCents)),
     remainingUnits: vendorOrders.reduce((sum, order) => sum + order.remainingUnits, 0),
     nextDeliveryDate: vendorOrders.map((order) => order.expectedDeliveryDate).filter((value): value is string => Boolean(value)).sort()[0] ?? null,
     orders: [...vendorOrders].sort((left, right) => (left.expectedDeliveryDate ?? "9999-12-31").localeCompare(right.expectedDeliveryDate ?? "9999-12-31")),
@@ -92,7 +94,8 @@ export function buildPurchaseCommitmentBoard(orders: readonly PurchaseCommitment
   return {
     vendors,
     plannedOrders,
-    totalRemainingMerchandiseCents: vendors.reduce((sum, vendor) => sum + vendor.remainingMerchandiseCents, 0),
+    totalRemainingMerchandiseCents: new Set(vendors.map(vendor => vendor.currency)).size > 1
+      ? null : exactSum(vendors.map(vendor => vendor.remainingMerchandiseCents)),
     boundary: "This is the line-cost value of open, unreceived merchandise. It excludes order-level tax and discounts and is not a remaining invoice balance. Supplier bills are reconciled separately so the same purchase is not counted twice.",
   };
 }

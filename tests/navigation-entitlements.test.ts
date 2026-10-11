@@ -25,6 +25,7 @@ test("subscription navigation fails closed and labels every paid workspace view"
     "Intelligence",
     "Forecasting",
     "Action Centre",
+    "Messages",
     "Business Brief",
     "Advisor",
     "BookLoQ",

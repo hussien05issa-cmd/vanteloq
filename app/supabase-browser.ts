@@ -2,6 +2,8 @@
 
 import { createClient, type Session, type SupabaseClient } from "@supabase/supabase-js";
 import { createSessionReader } from "./browser-session";
+import { businessContextHeaders } from "../domain/business-context";
+import { recoverApiResponse, requestRecoveryMessage } from "./request-recovery";
 
 const SUPABASE_URL = "https://wqiwmpqnthshgyxpettl.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_756K45Ii9HTN4fk9ZtIUew_ap8XBaDp";
@@ -51,11 +53,20 @@ export function currentSession(): Promise<Session | null> { return sessionReader
 
 export async function apiFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
   init.signal?.throwIfAborted();
-  const headers = new Headers(init.headers);
+  // Capture the originating tab's business before awaiting session refresh.
+  const headers = typeof window === "undefined" ? new Headers(init.headers) : businessContextHeaders(init.headers, window.location.href);
   const session = await currentSession();
   init.signal?.throwIfAborted();
   if (session?.access_token) headers.set("Authorization", `Bearer ${session.access_token}`);
-  const response = await fetch(input, { ...init, headers });
+  const isWrite = !["GET", "HEAD"].includes((init.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase());
+  let rawResponse: Response;
+  try { rawResponse = await fetch(input, { ...init, headers }); }
+  catch (error) {
+    // Caller-owned cancellation keeps its identity; never retry a failed write here.
+    if (init.signal?.aborted) throw error;
+    throw new Error(requestRecoveryMessage(0, isWrite));
+  }
+  const response = await recoverApiResponse(rawResponse, isWrite);
   if (response.status === 401) {
     const body = await response.clone().json().catch(() => null);
     if (body?.error?.code === "SESSION_EXPIRED") window.dispatchEvent(new Event("vanteloq-session-expired"));

@@ -9,6 +9,8 @@ import { createCommerceReportLoader, type CommerceReportState } from "./commerce
 import { providerDisplayName } from "../domain/display-labels";
 import { businessClock, businessDateOffset } from "../domain/intraday-sales";
 import { FieldLabel } from "./form-primitives";
+import { ReportImportPrivacyNotice } from "./report-import-privacy";
+import { importPrivacyAcknowledgement } from "../domain/report-import-privacy";
 
 type Mode = "Sales" | "Inventory" | "Customers" | "Suppliers";
 type TaskSeed = { title: string; detail: string; priority: "high" | "medium" | "low"; sourceType?: "alert"; sourceRef?: string };
@@ -52,6 +54,11 @@ type Snapshot = {
 };
 
 type CostImportRow = { row: number; sku: string; provider: string | null; unitCostCents: number };
+
+export function inventoryCostRequest(source: "manual" | "csv", entries: Array<Record<string, unknown>>, privacyAccepted = false) {
+  if (source === "csv" && !privacyAccepted) throw new Error("Acknowledge the import privacy notice before importing the product cost CSV.");
+  return { source, entries, ...(source === "csv" ? { importPrivacyAcknowledgement: importPrivacyAcknowledgement() } : {}) };
+}
 
 const money = (value: number | null, currency: string) => value == null
   ? "Not available"
@@ -151,8 +158,8 @@ function DataEmpty({ mode, navigate }: { mode: Mode; navigate: (view: "Integrati
   </section>;
 }
 
-export default function CommerceIntelligenceWorkspace({ initialPeriod, mode, currency, timeZone = "UTC", activeLocationId, navigate, createTask, onAsk }: {
-  initialPeriod?:{from:string;to:string}; mode: Mode; currency: string; timeZone?: string; activeLocationId: string | null; navigate: (view: "Integrations") => void; createTask: (seed: TaskSeed) => void; onAsk?: (seed: RetailAdvisorSeed) => void;
+export default function CommerceIntelligenceWorkspace({ initialPeriod, initialCostImportOpen = false, mode, currency, timeZone = "UTC", activeLocationId, navigate, createTask, onAsk }: {
+  initialPeriod?:{from:string;to:string}; initialCostImportOpen?: boolean; mode: Mode; currency: string; timeZone?: string; activeLocationId: string | null; navigate: (view: "Integrations") => void; createTask: (seed: TaskSeed) => void; onAsk?: (seed: RetailAdvisorSeed) => void;
 }) {
   const today = () => businessClock(new Date(), timeZone)!.date;
   const [from, setFrom] = useState(() => initialPeriod?.from??businessDateOffset(today(), -29));
@@ -166,10 +173,21 @@ export default function CommerceIntelligenceWorkspace({ initialPeriod, mode, cur
   const [query, setQuery] = useState("");
   const [costPreview, setCostPreview] = useState<CostImportRow[]>([]);
   const [costFileName, setCostFileName] = useState("");
+  const [acceptedCostImport, setAcceptedCostImport] = useState<string | null>(null);
+  const costImportContext = JSON.stringify([activeLocationId, costFileName, costPreview]);
+  const costPrivacyAccepted = acceptedCostImport === costImportContext;
   const [costError, setCostError] = useState("");
   const [costSaving, setCostSaving] = useState(false);
   const [editingCostKey, setEditingCostKey] = useState("");
   const [costDraft, setCostDraft] = useState("");
+  const costFileInput = useRef<HTMLInputElement>(null), costImportFocused = useRef(false);
+  useEffect(() => {
+    if (initialCostImportOpen && mode === "Inventory" && costFileInput.current && !costImportFocused.current) {
+      costImportFocused.current = true;
+      costFileInput.current.focus({ preventScroll: true });
+      costFileInput.current.scrollIntoView({ block: "center", behavior: "instant" });
+    }
+  }, [data, initialCostImportOpen, mode]);
   const requests = useRef<ReturnType<typeof createCommerceReportLoader<Snapshot>> | null>(null);
   if (requests.current === null) { requests.current = createCommerceReportLoader<Snapshot>(apiFetch, setRead); }
   const currentScope = useRef<string | null>(scope);
@@ -182,13 +200,14 @@ export default function CommerceIntelligenceWorkspace({ initialPeriod, mode, cur
   }, [load, scope]);
 
   const saveCosts = useCallback(async (source: "manual" | "csv", entries: Array<Record<string, unknown>>) => {
+    if (costSaving) return;
     setCostSaving(true);
     setCostError("");
     try {
       const response = await apiFetch("/api/v1/inventory-costs", {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ source, entries }),
+        body: JSON.stringify(inventoryCostRequest(source, entries, costPrivacyAccepted)),
       });
       const body = await response.json();
       if (!response.ok) {
@@ -197,17 +216,19 @@ export default function CommerceIntelligenceWorkspace({ initialPeriod, mode, cur
       }
       setCostPreview([]);
       setCostFileName("");
+      setAcceptedCostImport(null);
       setEditingCostKey("");
       setCostDraft("");
       await load();
     } catch (caught) {
       setCostError(caught instanceof Error ? caught.message : "Inventory costs could not be saved.");
     } finally { setCostSaving(false); }
-  }, [load]);
+  }, [load, costPrivacyAccepted, costSaving]);
 
   const readCostFile = useCallback(async (file: File | undefined) => {
     setCostPreview([]);
     setCostFileName("");
+    setAcceptedCostImport(null);
     setCostError("");
     if (!file) return;
     if (file.size > 1_000_000) { setCostError("Choose a CSV smaller than 1 MB."); return; }
@@ -276,7 +297,7 @@ export default function CommerceIntelligenceWorkspace({ initialPeriod, mode, cur
           <div><p>INVENTORY COSTS</p><h3 id="inventory-cost-title">Add verified unit costs</h3><span>Enter a cost beside one item or upload a CSV. Owner costs are kept separate from POS values and used for margin calculations.</span></div>
           <div className="commerce-cost-actions">
             <button type="button" onClick={downloadCostTemplate}>Download template</button>
-            {data.permissions.importCosts && <label>Choose cost CSV<input type="file" accept=".csv,text/csv" onChange={(event) => void readCostFile(event.target.files?.[0])} /></label>}
+            {data.permissions.importCosts && <label>Import product cost CSV<input ref={costFileInput} type="file" accept=".csv,text/csv" disabled={costSaving} onChange={(event) => void readCostFile(event.target.files?.[0])} /></label>}
           </div>
         </header>
         {costError && <div className="commerce-cost-error" role="alert">{costError}</div>}
@@ -284,7 +305,9 @@ export default function CommerceIntelligenceWorkspace({ initialPeriod, mode, cur
           <div><b>{costFileName}</b><span>{costPreview.length} {costPreview.length === 1 ? "cost" : "costs"} ready for review</span></div>
           <div className="commerce-cost-preview-rows">{costPreview.slice(0, 6).map((row) => <span key={`${row.row}:${row.sku}`}><b>{row.sku}</b><small>{row.provider ? providerDisplayName(row.provider) : "Any matching provider"}</small><strong>{preciseMoney(row.unitCostCents, currency)}</strong></span>)}</div>
           {costPreview.length > 6 && <small>+ {costPreview.length - 6} more rows</small>}
-          <div className="commerce-cost-confirm"><button type="button" onClick={() => { setCostPreview([]); setCostFileName(""); }}>Cancel</button><button type="button" disabled={costSaving} onClick={() => void saveCosts("csv", costPreview.map((row) => ({ sku: row.sku, provider: row.provider, unitCostCents: row.unitCostCents })))}>{costSaving ? "Saving…" : `Save ${costPreview.length} costs`}</button></div>
+          <p>This preview is processed in your browser. Importing sends the reviewed cost records to Vanteloq.</p>
+          <ReportImportPrivacyNotice accepted={costPrivacyAccepted} onChange={accepted => setAcceptedCostImport(accepted ? costImportContext : null)} disabled={costSaving}/>
+          <div className="commerce-cost-confirm"><button type="button" disabled={costSaving} onClick={() => { setCostPreview([]); setCostFileName(""); setAcceptedCostImport(null); }}>Cancel</button><button type="button" disabled={costSaving || !costPrivacyAccepted || !data.permissions.importCosts} onClick={() => void saveCosts("csv", costPreview.map((row) => ({ sku: row.sku, provider: row.provider, unitCostCents: row.unitCostCents })))}>{costSaving ? "Importing…" : `Import product cost CSV (${costPreview.length} costs)`}</button></div>
         </div>}
       </section>}
       <section className="dense-panel commerce-intelligence-table">

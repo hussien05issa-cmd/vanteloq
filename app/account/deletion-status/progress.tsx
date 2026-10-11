@@ -12,10 +12,12 @@ export default function DeletionProgress() {
   const [complete, setComplete] = useState(false);
   const [busy, setBusy] = useState(false);
   const [retained, setRetained] = useState(false);
+  const [needsDocuments, setNeedsDocuments] = useState(false);
   const resume = useCallback(async () => {
     if (running.current) return;
     running.current = true;
     setBusy(true);
+    setNeedsDocuments(false);
     try {
       const saved = sessionStorage.getItem("vanteloq:deletion-session");
       if (!saved) throw new Error("No deletion session is saved in this browser tab. Return to Settings to begin, or contact the Privacy Officer with your receipt number. Do not share passwords or verification codes.");
@@ -27,12 +29,13 @@ export default function DeletionProgress() {
         body: JSON.stringify(session), credentials: "omit", cache: "no-store",
       });
       const body = await response.json();
+      setNeedsDocuments(body.error?.code === "DELETION_DOCUMENT_CLEANUP_REQUIRED");
       if (!response.ok) throw new Error(body.error?.message ?? "Deletion is not confirmed. You can retry safely using this saved session.");
       if (body.deleted !== true) { setStatus(body.message ?? "Deletion is still processing. Check again shortly."); return; }
       sessionStorage.setItem("vanteloq:deletion-session", JSON.stringify({ ...session, complete: true }));
       setComplete(true);
       setRetained(body.identityRetained === true);
-      setStatus("Vanteloq deletion is complete. Save your receipt number for your records.");
+      setStatus("Deletion from active Vanteloq records is complete. Save your receipt number for your records.");
       // Only end this browser's Vanteloq session; never sign out every service.
       const client = await getSupabase();
       await client?.auth.signOut({ scope: "local" }).catch(() => undefined);
@@ -50,7 +53,9 @@ export default function DeletionProgress() {
     <p role="status" aria-live="polite">{status}</p>
     {receipt && <p>Receipt number: <code style={{ overflowWrap: "anywhere" }}>{receipt}</code></p>}
     {complete && retained && <p>Your shared sign-in remains available for another workspace or the private console. Deletion did not remove those separate services.</p>}
+    {complete && <p>Limited deletion receipts, managed backups and independent provider records remain subject to the retention policy. This confirmation does not certify immediate removal from those systems.</p>}
     {!complete && <button type="button" disabled={busy} onClick={() => void resume()} style={{ padding: "14px 22px", margin: "16px 0", borderRadius: 8, border: 0, background: "#1558db", color: "white" }}>{busy ? "Processing…" : "Retry or check status"}</button>}
+    {needsDocuments && <p><Link href="/">Open Vanteloq and go to Documents</Link> to finish the pending step, then return here to retry this saved request.</p>}
     <p><a href="/contact">Contact the Privacy Officer</a> if the process cannot finish. Share only the receipt number, not your private deletion session key.</p>
     <p><Link href="/privacy#retention">Retention and deletion information</Link> · <Link href="/">Return to Vanteloq</Link></p>
   </main>;

@@ -20,5 +20,5 @@ export const organizationJsonLd = {
   url: SITE_ORIGIN,
   logo: absoluteUrl("/brand/vanteloq-logo.png"),
   description:
-    "Vanteloq is a source-aware business operations and analytics platform for independent retail.",
+    "Vanteloq connects source records with sector-specific operating workflows for retail shops, dealerships, cafés and restaurants.",
 };

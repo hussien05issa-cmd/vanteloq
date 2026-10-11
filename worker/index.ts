@@ -135,7 +135,7 @@ const worker = {
     headers.delete("X-Powered-By");
     headers.set("X-Content-Type-Options", "nosniff");
     headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
-    headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=()");
+    headers.set("Permissions-Policy", "camera=(), microphone=(self), geolocation=(), payment=(), usb=()");
     headers.set("X-Frame-Options", "DENY");
     headers.set("X-DNS-Prefetch-Control", "off");
     headers.set(

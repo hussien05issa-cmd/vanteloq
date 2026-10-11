@@ -1,3 +1,4 @@
+import { bankCashSnapshot } from "../../../../domain/bank-cash-snapshot";
 import { getD1 } from "../../../../db";
 import { requireAccess } from "../../../../server/authorization";
 import { ApiError, clientSource, enforceRateLimit, handleApi, jsonResponse } from "../../../../server/api";
@@ -8,13 +9,14 @@ import {
   effectiveBookLoQPermissions,
   forecastCash,
   normalizeBookLoQTimestamp,
-  type LedgerAccountRow,
 } from "../../../../server/bookloq";
+import { canReadCompleteBookLoQLedger, loadBookLoQLedgerAccounts } from "../../../../server/bookloq-ledger-view";
+import { visibleBookLoQAlert, visibleBookLoQInvoice, visibleBookLoQJournal, visibleBookLoQMatch, visibleBookLoQSupplier, visibleBookLoQTransaction } from "../../../../server/bookloq-visibility";
+import { BOOKLOQ_TRANSACTION_SOURCE_SQL } from "../../../../server/bookloq-source";
 import { effectivePermissions, requirePermission } from "../../../../server/permissions";
 import { calculateCashFlowIntelligence, type CashFlowItem } from "../../../../domain/cash-flow-intelligence";
 import { authorizedLocationDataScope } from "../../../../server/location-access";
 import { requireAddon } from "../../../../server/entitlements/engine";
-import { calculateVerifiedPurchasingCapacity } from "../../../../domain/purchasing-intelligence";
 import {
   buildThirteenWeekCashFlow,
   type CashFlowDecisionBlock,
@@ -23,6 +25,10 @@ import {
 import { rankTransactionMatches } from "../../../../domain/bookloq-cash-management";
 import { loadBookloqCashActivity } from "../../../../server/bookloq-cash-activity";
 import { businessClock } from "../../../../domain/intraday-sales";
+import { loadBookloqAdvertisingSpend } from "../../../../server/bookloq-advertising-spend";
+import type { AdvertisingBudget } from "../../../../domain/bookloq-advertising-spend";
+import { loadBookloqPayrollSource } from "../../../../server/bookloq-payroll-source";
+import { bookloqPayrollSourceAllowed } from "../../../../domain/bookloq-payroll-source";
 
 const readers = ["owner", "admin", "manager", "employee", "read_only"] as const;
 
@@ -133,15 +139,7 @@ export async function GET(request: Request) {
       database.prepare(`SELECT base_currency baseCurrency, country_code countryCode, province_code provinceCode,
         accounting_basis accountingBasis, cash_safety_threshold_cents cashSafetyThresholdCents,
         status, data_mode dataMode FROM bookloq_settings WHERE organization_id = ?`).bind(organizationId).all<SettingsRow>(),
-      database.prepare(`SELECT a.id, a.code, a.name, a.account_type accountType, a.account_subtype accountSubtype,
-        a.normal_balance normalBalance, a.system_key systemKey, a.description, a.plain_language plainLanguage,
-        COALESCE(SUM(CASE WHEN e.status IN ('posted', 'reversed') THEN l.debit_cents ELSE 0 END), 0) debitCents,
-        COALESCE(SUM(CASE WHEN e.status IN ('posted', 'reversed') THEN l.credit_cents ELSE 0 END), 0) creditCents
-        FROM financial_accounts a
-        LEFT JOIN journal_lines l ON l.account_id = a.id AND l.organization_id = a.organization_id
-        LEFT JOIN journal_entries e ON e.id = l.journal_entry_id AND e.organization_id = a.organization_id
-        WHERE a.organization_id = ? AND a.active = 1
-        GROUP BY a.id ORDER BY a.code`).bind(organizationId).all<LedgerAccountRow>(),
+      loadBookLoQLedgerAccounts(database, organizationId),
       database.prepare(`SELECT t.id, t.transaction_date transactionDate, t.posting_date postingDate,
         t.description, t.original_description originalDescription, t.amount_cents amountCents,
         t.currency, t.tax_amount_cents taxAmountCents, t.source_system sourceSystem,
@@ -155,13 +153,7 @@ export async function GET(request: Request) {
         LEFT JOIN financial_accounts a ON a.id = t.category_account_id AND a.organization_id = t.organization_id
         LEFT JOIN bookloq_contacts c ON c.id = t.contact_id AND c.organization_id = t.organization_id
         WHERE t.organization_id = ?
-          AND (t.source_system <> 'plaid' OR EXISTS (
-            SELECT 1 FROM integration_connections c
-            WHERE c.organization_id = t.organization_id AND c.provider = 'plaid'
-              AND c.status = 'connected' AND c.data_promotion_status = 'approved'
-              AND (c.sync_lease_owner IS NULL OR c.sync_lease_expires_at IS NULL
-                OR c.sync_lease_expires_at <= CAST(strftime('%s', 'now') AS INTEGER))
-          ))${transactionLocationClause}
+          AND ${BOOKLOQ_TRANSACTION_SOURCE_SQL}${transactionLocationClause}
         ORDER BY t.posting_date DESC, t.created_at DESC LIMIT 1000`).bind(organizationId, ...locationBindings).all(),
       database.prepare(`SELECT b.id, b.name, b.account_type accountType, b.institution_name institutionName,
         b.masked_number maskedNumber, b.live_balance_cents liveBalanceCents,
@@ -214,13 +206,7 @@ export async function GET(request: Request) {
           SELECT t.categorization_status, t.reconciliation_status
           FROM financial_transactions t
           WHERE t.organization_id = ?
-            AND (t.source_system <> 'plaid' OR EXISTS (
-              SELECT 1 FROM integration_connections c
-              WHERE c.organization_id = t.organization_id AND c.provider = 'plaid'
-                AND c.status = 'connected' AND c.data_promotion_status = 'approved'
-                AND (c.sync_lease_owner IS NULL OR c.sync_lease_expires_at IS NULL
-                  OR c.sync_lease_expires_at <= CAST(strftime('%s', 'now') AS INTEGER))
-            ))
+            AND ${BOOKLOQ_TRANSACTION_SOURCE_SQL}
         )
         SELECT
           EXISTS(SELECT 1 FROM journal_entries
@@ -260,7 +246,7 @@ export async function GET(request: Request) {
       database.prepare(`SELECT b.id, b.account_id accountId, b.period_start periodStart, b.period_end periodEnd,
         b.location_ref locationRef, b.department_ref departmentRef, b.budget_cents budgetCents,
         b.committed_cents committedCents, b.forecast_cents forecastCents,
-        a.code accountCode, a.name accountName, a.account_type accountType,
+        a.code accountCode, a.name accountName, a.account_type accountType, a.system_key accountSystemKey,
         (SELECT COALESCE(SUM(CASE WHEN a.account_type = 'revenue'
           THEN jl.credit_cents - jl.debit_cents ELSE jl.debit_cents - jl.credit_cents END), 0)
           FROM journal_lines jl
@@ -290,10 +276,12 @@ export async function GET(request: Request) {
         m.customer_invoice_id customerInvoiceId, m.document_id documentId,
         COALESCE(sb.bill_number, ci.invoice_number, wd.file_name) targetLabel
         FROM bookloq_transaction_matches m
+        INNER JOIN financial_transactions t ON t.id = m.transaction_id AND t.organization_id = m.organization_id
         LEFT JOIN supplier_bills sb ON sb.id = m.supplier_bill_id AND sb.organization_id = m.organization_id
         LEFT JOIN customer_invoices ci ON ci.id = m.customer_invoice_id AND ci.organization_id = m.organization_id
         LEFT JOIN workspace_documents wd ON wd.id = m.document_id AND wd.organization_id = m.organization_id
-        WHERE m.organization_id = ? ORDER BY m.updated_at DESC LIMIT 500`).bind(organizationId).all(),
+        WHERE m.organization_id = ? AND ${BOOKLOQ_TRANSACTION_SOURCE_SQL}${transactionLocationClause}
+        ORDER BY m.updated_at DESC LIMIT 500`).bind(organizationId, ...locationBindings).all(),
       database.prepare(`SELECT r.id, r.name, r.match_text matchText, r.direction, r.account_id accountId,
         a.code accountCode, a.name accountName
         FROM bookloq_category_rules r JOIN financial_accounts a
@@ -329,12 +317,12 @@ export async function GET(request: Request) {
     // Complete ledger totals can reconstruct protected wage and bank balances.
     // Keep independent bank and invoice permissions, but do not publish a
     // partially redacted trial balance that still reveals the hidden accounts.
-    const fullLedgerPermission = access.payrollTotals && access.bankBalances && access.accountsPayableReceivable;
+    const fullLedgerPermission = canReadCompleteBookLoQLedger(permissions);
     const ledgerReadable = ledgerAvailable && fullLedgerPermission;
     // Raw bank feeds may contain uncategorized payroll. An account label alone
     // cannot reliably establish that a transaction is safe for payroll-limited roles.
     const transactionReadable = access.bankTransactions && access.payrollTotals;
-    const accountCatalog = accountRows.map((account) => ({
+    const accountCatalog = accountRows.filter(account => account.active === 1).map((account) => ({
       id: account.id, code: account.code, name: account.name,
       accountType: account.accountType, accountSubtype: account.accountSubtype,
       normalBalance: account.normalBalance, systemKey: account.systemKey,
@@ -357,14 +345,17 @@ export async function GET(request: Request) {
     const asOf = businessClock(new Date(), context.organization.timezone)!.date;
     const integrationRows = rows(integrationsResult) as Array<{ provider: string; status: string; dataPromotionStatus: string; lastSuccessfulSyncAt: number | null }>;
     const documentRows = rows(documentsResult) as Array<{ id: string; documentType: string; fileName: string; status: string; securityState: string; extractionStatus: string; createdAt: number }>;
-    const transactionMatches = (rows(transactionMatchesResult) as Array<{ id: string; transactionId: string; status: string; method: string; confidenceBasisPoints: number; matchedAmountCents: number; reasonsJson: string; note: string; supplierBillId: string | null; customerInvoiceId: string | null; documentId: string | null; targetLabel: string }>).map((match) => (
-      !canViewDocuments && match.documentId ? { ...match, documentId: null, targetLabel: "Financial document" } : match
-    ));
+    const transactionMatches = (rows(transactionMatchesResult) as Array<{ id: string; transactionId: string; status: string; method: string; confidenceBasisPoints: number; matchedAmountCents: number; reasonsJson: string; note: string; supplierBillId: string | null; customerInvoiceId: string | null; documentId: string | null; targetLabel: string }>).map((match) => visibleBookLoQMatch(match, {
+      contactIdentity: access.contactIdentity, accountsPayableReceivable: access.accountsPayableReceivable, documents: canViewDocuments,
+    }));
     const categoryRules = rows(categoryRulesResult);
     const plaidConnection = integrationRows.find((item) => item.provider === "plaid" && item.status === "connected")
       ?? integrationRows.find((item) => item.provider === "plaid");
     const canReconcile = permissions.includes("finance.reconcile");
     const uiPermissions = effectiveBookLoQPermissions(context.role).filter((permission) => {
+      if (permission === "view_profit") return permissions.includes("metrics.profit") && access.costs;
+      if (permission === "view_revenue") return permissions.includes("metrics.revenue");
+      if (permission === "lock_periods" || permission === "unlock_periods") return permissions.includes("finance.periods");
       if (permission === "view_banking") return access.bankBalances;
       if (permission === "view_payroll") return access.payrollTotals;
       if (permission === "view_audit_logs") return access.audit;
@@ -398,32 +389,19 @@ export async function GET(request: Request) {
         return { ...bank, lastSyncAt: synchronizedAt, lastReconciledAt: reconciledAt, balanceState };
       }) : [];
     const matchesDataMode = (demoRecord: number) => dataMode === "demonstration" ? Boolean(demoRecord) : !Boolean(demoRecord);
-    const visibleBills = access.accountsPayableReceivable ? bills.filter((bill) => matchesDataMode(bill.demoRecord)) : [];
-    const visibleInvoices = access.accountsPayableReceivable ? invoices.filter((invoice) => matchesDataMode(invoice.demoRecord)) : [];
+    const visibleBills = access.accountsPayableReceivable ? bills.filter((bill) => matchesDataMode(bill.demoRecord)).map(bill => visibleBookLoQSupplier(bill, access.contactIdentity)) : [];
+    const visibleInvoices = access.accountsPayableReceivable ? invoices.filter((invoice) => matchesDataMode(invoice.demoRecord)).map(invoice => visibleBookLoQInvoice(invoice, access.contactIdentity)) : [];
     const visibleContacts = access.contactIdentity ? rows(contactsResult) : [];
     const demonstrationCashBanks = visibleBanks.filter((bank) =>
       cashAccountTypes.has(bank.accountType)
       && bank.currency.toUpperCase() === baseCurrency.toUpperCase(),
     );
     const plaidBanks = visibleBanks.filter((bank) => bank.provider === "plaid" && !Boolean(bank.demoRecord));
-    const verifiedBankCash = calculateVerifiedPurchasingCapacity({
-      connectionVerified: access.bankBalances
-        && dataMode === "live"
-        && integrationRows.some((item) => item.provider === "plaid" && item.status === "connected" && item.dataPromotionStatus === "approved"),
-      nowMs,
-      maximumAgeMs: 48 * 60 * 60 * 1_000,
-      baseCurrency,
-      cashSafetyReserveCents: 0,
-      outstandingBillsCents: 0,
-      openPurchaseCommitmentsCents: 0,
-      accounts: plaidBanks.map((bank) => ({
-        accountType: bank.accountType,
-        currency: bank.currency,
-        connectionStatus: bank.connectionStatus,
-        availableBalanceCents: bank.availableBalanceCents,
-        liveBalanceCents: bank.liveBalanceCents,
-        lastSyncAtMs: bank.lastSyncAt,
-      })),
+    const verifiedBankCash = bankCashSnapshot({
+      allowed: access.bankBalances && dataMode === "live",
+      connected: integrationRows.some(item=>item.provider==="plaid"&&item.status==="connected"&&item.dataPromotionStatus==="approved"),
+      nowMs, currency: baseCurrency,
+      accounts: plaidBanks.map(bank=>({accountType:bank.accountType,currency:bank.currency,connectionStatus:bank.connectionStatus,availableBalanceCents:bank.availableBalanceCents,liveBalanceCents:bank.liveBalanceCents,lastSyncAtMs:bank.lastSyncAt,demoRecord:bank.demoRecord})),
     });
     const verifiedBankCashCents = verifiedBankCash.status === "available" ? verifiedBankCash.verifiedCashCents : null;
     const bankBalanceCents = dataMode === "demonstration"
@@ -437,13 +415,10 @@ export async function GET(request: Request) {
       : verifiedBankCashCents !== null
       ? "plaid_available_balance" as const
       : "unavailable" as const;
-    const cashLastSyncMs = plaidBanks
-      .map((bank) => bank.lastSyncAt)
-      .filter((value): value is number => value !== null)
-      .sort((left, right) => right - left)[0] ?? null;
+    const cashLastSyncMs = verifiedBankCash.oldestSyncAt === null ? null : Date.parse(verifiedBankCash.oldestSyncAt);
     const cashLastSyncAt = cashLastSyncMs === null ? null : Math.floor(cashLastSyncMs / 1_000);
-    const visibleBillsForCash = access.accountsPayableReceivable ? bills.filter((bill) => matchesDataMode(bill.demoRecord)) : [];
-    const visibleInvoicesForCash = access.accountsPayableReceivable ? invoices.filter((invoice) => matchesDataMode(invoice.demoRecord)) : [];
+    const visibleBillsForCash = visibleBills;
+    const visibleInvoicesForCash = visibleInvoices;
     const confirmedTransactionIds = new Set(transactionMatches.filter((match) => match.status === "confirmed").map((match) => match.transactionId));
 
     const matchCandidates = transactions.filter((transaction) => ["posted", "modified"].includes(transaction.sourceState)).flatMap((transaction) => rankTransactionMatches({
@@ -533,9 +508,9 @@ export async function GET(request: Request) {
           .all<{ postingDate: string; amountCents: number }>()
       : null,
     ]);
-    const calculationBills: CalculationBill[] = calculationResults ? rows(calculationResults[0]) : [];
-    const calculationInvoices: CalculationInvoice[] = calculationResults ? rows(calculationResults[1]) : [];
-    const calculationPurchaseOrders: CalculationPurchaseOrder[] = calculationResults ? rows(calculationResults[2]) : [];
+    const calculationBills: CalculationBill[] = calculationResults ? rows(calculationResults[0]).map(bill => visibleBookLoQSupplier(bill, access.contactIdentity)) : [];
+    const calculationInvoices: CalculationInvoice[] = calculationResults ? rows(calculationResults[1]).map(invoice => visibleBookLoQInvoice(invoice, access.contactIdentity)) : [];
+    const calculationPurchaseOrders: CalculationPurchaseOrder[] = calculationResults ? rows(calculationResults[2]).map(order => visibleBookLoQSupplier(order, access.contactIdentity)) : [];
     const openBillStatuses = new Set(["draft", "received", "extracted", "under_review", "matched", "awaiting_approval", "approved", "scheduled", "partially_paid", "disputed"]);
     const isConfirmedBill = (bill: CalculationBill) =>
       ["approved", "scheduled", "partially_paid"].includes(bill.status)
@@ -711,6 +686,15 @@ export async function GET(request: Request) {
       accountsPayableCents: null,
       netSalesTaxCents: null,
     };
+    const advertisingSpend = await loadBookloqAdvertisingSpend(context, {
+      baseCurrency, locationId: locationAccess.selectedLocation?.id ?? null,
+      budgets: fullLedgerPermission ? rows(budgetsResult) as AdvertisingBudget[] : [],
+      allowed: fullLedgerPermission && permissions.includes("marketing.view"), dataMode, nowMs,
+    });
+    const payrollSource = await loadBookloqPayrollSource(context, {
+      allowed: bookloqPayrollSourceAllowed(permissions, context.role),
+      dataMode, locationId: locationAccess.selectedLocation?.id ?? null,
+    });
     return jsonResponse({
       bookloq: {
         configured: Boolean(settings) || ledgerAvailable || visibleBanks.length > 0 || documentRows.length > 0 || invoices.length > 0,
@@ -721,14 +705,16 @@ export async function GET(request: Request) {
         transactionAccess: {
           available: transactionReadable,
           reason: transactionReadable ? null : "Complete bank transaction views require bank transaction and payroll total permissions because an uncategorized bank feed can contain payroll information.",
+          sourceBoundary: "Plaid rows require approval of the current connected item for their source bank account. Retained disconnected records are not promoted by a replacement connection.",
         },
         ledgerAccess: {
           available: ledgerReadable,
           reason: !fullLedgerPermission
-            ? "Complete ledger views require payroll totals, bank balances and accounts payable/receivable permissions. Other permitted sections remain available."
+            ? "Complete ledger views require revenue, profit, costs, payroll totals, bank balances and accounts payable/receivable permissions. Other permitted sections remain available."
             : !ledgerAvailable ? "Post verified journals before reviewing ledger totals." : null,
         },
         organization: {
+          id: context.organizationId,
           name: context.organization.businessName,
           legalName: context.organization.legalName,
           email: context.organization.businessEmail,
@@ -746,6 +732,7 @@ export async function GET(request: Request) {
           availableCashCents: decisionCashAllowed && cashOpeningBalanceCents !== null
             ? cashOpeningBalanceCents - dueNext30Cents
             : null,
+          bankCashSnapshot: dataMode === "live" && access.bankBalances ? verifiedBankCash : null,
           bankBalanceCents,
           bookBalanceCents: ledgerReadable ? statements.cashCents : null,
           cashSource,
@@ -794,21 +781,23 @@ export async function GET(request: Request) {
           evidence: [],
         },
         cashActivity,
-        transactions: transactionReadable ? transactions : [],
+        advertisingSpend,
+        payrollSource,
+        transactions: transactionReadable ? transactions.map(transaction => visibleBookLoQTransaction(transaction, access.contactIdentity)) : [],
         transactionMatches: transactionReadable ? transactionMatches : [],
         matchCandidates: transactionReadable && access.accountsPayableReceivable ? matchCandidates : [],
-        categoryRules: transactionReadable ? categoryRules : [],
+        categoryRules: transactionReadable && access.contactIdentity ? categoryRules : [],
         banks: visibleBanks,
         reconciliations: canReconcile && access.bankBalances ? reconciliations : [],
         bills: visibleBills,
         invoices: visibleInvoices.map((invoice) => canViewDocuments ? invoice : { ...invoice, documentId: null }),
         contacts: visibleContacts,
-        alerts: fullLedgerPermission ? rows(alertsResult) : [],
-        journals: ledgerReadable ? journalRows : [],
+        alerts: fullLedgerPermission ? rows(alertsResult).map(alert => visibleBookLoQAlert(alert, access.contactIdentity)) : [],
+        journals: ledgerReadable ? journalRows.map(journal => visibleBookLoQJournal(journal, access.contactIdentity)) : [],
         periods: rows(periodsResult),
-        closeItems,
+        closeItems: access.contactIdentity ? closeItems : closeItems.map(item => ({ ...item, blocker: "" })),
         budgets: fullLedgerPermission ? rows(budgetsResult) : [],
-        audit: access.audit ? rows(auditResult).map((event) => fullLedgerPermission ? event : { ...event, detailsJson: "{}" }) : [],
+        audit: access.audit ? rows(auditResult).map((event) => fullLedgerPermission && access.contactIdentity && canViewDocuments ? event : { ...event, detailsJson: "{}" }) : [],
         documentSummary: {
           total: canViewDocuments ? documentRows.length : 0,
           invoices: canViewDocuments ? documentRows.filter((document) => document.documentType === "invoice").length : 0,

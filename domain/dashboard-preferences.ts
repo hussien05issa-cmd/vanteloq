@@ -32,20 +32,22 @@ export type DashboardPreferences = {
 };
 
 const defaultGoalRings: DashboardPreferences["goalRings"] = ["net_revenue", "gross_margin", "cash_balance"];
+const commerceOverviewMetrics: readonly DashboardWidgetId[] = ["net_revenue", "gross_profit", "gross_margin", "transactions"];
+const commerceOverviewOrder = [...commerceOverviewMetrics, ...dashboardWidgetIds.filter(id => !commerceOverviewMetrics.includes(id))];
 
 const profileOrder: Record<DashboardProfile, readonly DashboardWidgetId[]> = {
-  owner: dashboardWidgetIds,
+  owner: commerceOverviewOrder,
   manager: ["net_revenue", "gross_profit", "transactions", "average_order_value", "units_sold", "inventory_value", "gross_margin", "cash_balance", "cash_flow", "operating_profit", "net_margin"],
   finance: ["net_revenue", "gross_profit", "gross_margin", "operating_profit", "net_margin", "cash_balance", "cash_flow", "inventory_value", "transactions", "average_order_value", "units_sold"],
   inventory: ["inventory_value", "units_sold", "net_revenue", "gross_profit", "gross_margin", "transactions", "average_order_value", "cash_balance", "cash_flow", "operating_profit", "net_margin"],
-  sales: ["net_revenue", "transactions", "average_order_value", "units_sold", "gross_profit", "gross_margin", "inventory_value", "cash_balance", "cash_flow", "operating_profit", "net_margin"],
+  sales: [...commerceOverviewMetrics, "average_order_value", "units_sold", "inventory_value", "cash_balance", "cash_flow", "operating_profit", "net_margin"],
 };
 const visibleByProfile: Record<DashboardProfile, ReadonlySet<DashboardWidgetId>> = {
-  owner: new Set(["net_revenue", "gross_profit", "gross_margin", "cash_balance", "cash_flow", "inventory_value"]),
+  owner: new Set(commerceOverviewMetrics),
   manager: new Set(["net_revenue", "gross_profit", "transactions", "average_order_value", "units_sold", "inventory_value"]),
   finance: new Set(["net_revenue", "gross_profit", "gross_margin", "operating_profit", "cash_balance", "cash_flow"]),
   inventory: new Set(["inventory_value", "units_sold", "net_revenue", "gross_profit", "gross_margin", "transactions"]),
-  sales: new Set(["net_revenue", "transactions", "average_order_value", "units_sold", "gross_profit", "gross_margin"]),
+  sales: new Set(commerceOverviewMetrics),
 };
 
 const includes = <T extends readonly string[]>(items: T, value: unknown): value is T[number] => typeof value === "string" && items.includes(value as T[number]);
@@ -58,7 +60,7 @@ export function dashboardPreferencePreset(profile: DashboardProfile = "owner"): 
     profile,
     defaultPeriod: "30d",
     comparison: "previous",
-    widgets: profileOrder[profile].map((id, index) => ({ id, visible: visible.has(id), size: profile !== "owner" && index < 2 ? "wide" : "standard" })),
+    widgets: profileOrder[profile].map((id, index) => ({ id, visible: visible.has(id), size: profile !== "owner" && profile !== "sales" && index < 2 ? "wide" : "standard" })),
     sections: { needsAttention: true, collections: true, financialDetail: profile === "owner" || profile === "finance" },
     goalRings: [...defaultGoalRings],
     targets: {},

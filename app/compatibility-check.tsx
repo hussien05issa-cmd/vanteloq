@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import ConnectorAvailabilityBadge from "./connector-availability-badge";
 import IntegrationBrandLogo from "./integration-brand-logo";
 import { integrationCatalog, integrationPublicStatus, integrationCategoryGuide } from "./integration-catalog";
+import { useMotionPreference } from './use-motion-preference';
 
 const GROUPS = [
   { name: "Point of sale & online stores", categories: ["Point of sale", "Commerce"] },
@@ -15,16 +16,19 @@ const GROUPS = [
 ];
 
 export default function CompatibilityCheck() {
+  const motion = useMotionPreference();
   const [selection, setSelection] = useState<string | null>(null);
   const details = useRef<HTMLDivElement>(null);
+  const previousSelection = useRef<string | null>(null);
   const provider = integrationCatalog.find(item => item.id === selection);
   const status = provider ? integrationPublicStatus(provider) : { label: "Available", tone: "setup" };
   const unavailable = provider && status.tone !== "setup";
   useEffect(() => {
-    if (!selection) return;
+    if (!selection || selection === previousSelection.current) return;
+    previousSelection.current = selection;
     details.current?.focus({ preventScroll: true });
-    details.current?.scrollIntoView({ block: "nearest", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
-  }, [selection]);
+    details.current?.scrollIntoView({ block: "nearest", behavior: motion ? "smooth" : "auto" });
+  }, [selection, motion]);
 
   return <div className="home-provider-directory" aria-labelledby="provider-directory-title">
     <header><div><h3 id="provider-directory-title">Which system do you use?</h3><p>Select a provider for setup details. All connections and availability are shown below.</p></div><span>Reports require authorization, a completed import and reviewed source totals.</span></header>

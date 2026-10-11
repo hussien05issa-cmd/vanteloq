@@ -1,4 +1,4 @@
-import { ledgerIntelligence } from "../domain/executive-metrics.ts";
+import { exactSum, ledgerIntelligence } from "../domain/executive-metrics.ts";
 import type { Role } from "./authorization";
 import { ApiError } from "./api.ts";
 import { isCalendarDate } from "../domain/calendar-date.ts";
@@ -196,6 +196,150 @@ export function reverseJournalLines(lines: readonly JournalInputLine[]): Journal
   return lines.map((line) => ({ ...line, debitCents: line.creditCents, creditCents: line.debitCents }));
 }
 
+type JournalReplayRequest = { kind: "manual"; input: JournalInput }
+  | { kind: "reversal"; entryId: string; reason: string; reversalDate: string };
+
+export async function findJournalReplay(database: D1Database, organizationId: string, key: string, request: JournalReplayRequest) {
+  const entry = await database.prepare(`SELECT id, entry_number entryNumber, status, source_type sourceType,
+    entry_date entryDate, memo, currency, reversal_of_entry_id reversalOfEntryId,
+    total_debit_cents totalDebitCents, total_credit_cents totalCreditCents
+    FROM journal_entries WHERE organization_id = ? AND idempotency_key = ?`)
+    .bind(organizationId, key).first<{ id: string; entryNumber: string; status: string; sourceType: string;
+      entryDate: string; memo: string; currency: string; reversalOfEntryId: string | null;
+      totalDebitCents: number; totalCreditCents: number }>();
+  if (!entry) return null;
+  let matches = false;
+  if (request.kind === "reversal") {
+    matches = entry.sourceType === "reversal" && entry.reversalOfEntryId === request.entryId
+      && entry.entryDate === request.reversalDate && entry.memo === request.reason;
+  } else {
+    const input = request.input;
+    const result = await database.prepare(`SELECT account_id accountId, description, debit_cents debitCents,
+      credit_cents creditCents, tax_code taxCode, tax_amount_cents taxAmountCents, contact_id contactId,
+      location_ref locationRef, department_ref departmentRef, project_ref projectRef
+      FROM journal_lines WHERE organization_id = ? AND journal_entry_id = ? ORDER BY line_number`)
+      .bind(organizationId, entry.id).all<JournalInputLine>();
+    const lines = result.results ?? [];
+    const fields = ["accountId", "description", "debitCents", "creditCents", "taxCode", "taxAmountCents",
+      "contactId", "locationRef", "departmentRef", "projectRef"] as const;
+    matches = entry.sourceType === "manual" && entry.reversalOfEntryId === null
+      && entry.entryDate === input.entryDate && entry.memo === input.memo && entry.currency === input.currency
+      && entry.totalDebitCents === input.totalDebitCents && entry.totalCreditCents === input.totalCreditCents
+      && lines.length === input.lines.length
+      && lines.every((line, index) => fields.every(field => line[field] === input.lines[index][field]));
+  }
+  if (!matches) throw new ApiError(409, "JOURNAL_REQUEST_CONFLICT", "This request key belongs to a different journal action. Use a new request key for a different posting or reversal.");
+  return { id: entry.id, entryNumber: entry.entryNumber, status: entry.status };
+}
+
+export async function validateJournalContacts(database: D1Database, organizationId: string, lines: readonly JournalInputLine[]) {
+  const ids = [...new Set(lines.map(line => line.contactId).filter((id): id is string => id !== null))];
+  if (!ids.length) return;
+  const result = await database.prepare(`SELECT id FROM bookloq_contacts
+    WHERE organization_id = ? AND active = 1 AND id IN (${ids.map(() => "?").join(",")})`)
+    .bind(organizationId, ...ids).all<{ id: string }>();
+  const available = new Set((result.results ?? []).map(row => row.id));
+  if (ids.some(id => !available.has(id))) throw new ApiError(400, "JOURNAL_CONTACT_UNAVAILABLE", "Every journal contact must be an active contact from this organization.");
+}
+
+type SupportingMatchInput = {
+  organizationId: string; transactionId: string; targetType: "supplier_bill" | "customer_invoice" | "receipt";
+  targetId: string; amountCents: number; currency: string; demoRecord: number; note: string;
+  actorUserId: string; timestamp: number;
+};
+
+// All writers use the guarded statement, not a prior read, to decide which
+// supporting record may become the one confirmed match for a transaction.
+export async function confirmSupportingMatch(database: D1Database, input: SupportingMatchInput) {
+  const { organizationId, transactionId, targetId, targetType, amountCents, currency, demoRecord, note, actorUserId, timestamp } = input;
+  const targetColumn = targetType === "supplier_bill" ? "supplier_bill_id" : targetType === "customer_invoice" ? "customer_invoice_id" : "document_id";
+  const targetGuard = targetType === "receipt"
+    ? `EXISTS (SELECT 1 FROM workspace_documents d WHERE d.organization_id = ? AND d.id = ?
+        AND d.document_type = 'receipt' AND d.security_state = 'clean' AND d.status NOT IN ('deleted', 'deleting'))`
+    : `EXISTS (SELECT 1 FROM ${targetType === "supplier_bill" ? "supplier_bills" : "customer_invoices"} d
+        WHERE d.organization_id = ? AND d.id = ? AND UPPER(d.currency) = UPPER(?) AND d.demo_record = ?
+        AND ${targetType === "supplier_bill" ? "d.status <> 'void'" : "d.status NOT IN ('draft', 'void', 'written_off')"})`;
+  const guard = `EXISTS (SELECT 1 FROM financial_transactions t
+      WHERE t.organization_id = ? AND t.id = ? AND t.source_state IN ('posted', 'modified')
+        AND t.reconciliation_status IN ('unreconciled', 'matched')
+        AND t.amount_cents = ? AND t.currency = ? AND t.demo_record = ?)
+    AND ${targetGuard}
+    AND NOT EXISTS (SELECT 1 FROM bookloq_transaction_matches other
+      WHERE other.organization_id = ? AND other.transaction_id = ? AND other.status = 'confirmed'
+        AND (other.${targetColumn} IS NULL OR other.${targetColumn} <> ?))`;
+  const guardValues = [organizationId, transactionId, amountCents, currency, demoRecord,
+    organizationId, targetId, ...(targetType === "receipt" ? [] : [currency, demoRecord]),
+    organizationId, transactionId, targetId];
+  const matchId = crypto.randomUUID();
+  const results = await database.batch([
+    database.prepare(`INSERT INTO bookloq_transaction_matches
+      (id, organization_id, transaction_id, supplier_bill_id, customer_invoice_id, document_id,
+       status, method, confidence_basis_points, matched_amount_cents, reasons_json, note,
+       matched_by_user_id, created_at, updated_at)
+      SELECT ?, ?, ?, ?, ?, ?, 'confirmed', 'manual', 10000, ?, '["Manual confirmation"]', ?, ?, ?, ?
+      WHERE ${guard}
+      ON CONFLICT(organization_id, transaction_id, ${targetColumn}) DO UPDATE SET
+        status = 'confirmed', method = 'manual', confidence_basis_points = 10000,
+        matched_amount_cents = excluded.matched_amount_cents, reasons_json = excluded.reasons_json,
+        note = excluded.note, matched_by_user_id = excluded.matched_by_user_id, updated_at = excluded.updated_at
+      RETURNING id`)
+      .bind(matchId, organizationId, transactionId,
+        targetType === "supplier_bill" ? targetId : null, targetType === "customer_invoice" ? targetId : null,
+        targetType === "receipt" ? targetId : null, Math.abs(amountCents), note, actorUserId, timestamp, timestamp, ...guardValues),
+    database.prepare(`UPDATE financial_transactions SET reconciliation_status = 'matched', updated_at = ?
+      WHERE organization_id = ? AND id = ? AND ${guard}`)
+      .bind(timestamp, organizationId, transactionId, ...guardValues),
+  ]);
+  const persisted = results[0]?.results?.[0] as { id: string } | undefined;
+  if (!persisted) throw new ApiError(409, "MATCH_RECORD_CHANGED", "The transaction or supporting record changed, or another match was confirmed. Refresh before trying again.");
+  return persisted.id;
+}
+
+export async function saveBookloqBudget(database: D1Database, input: {
+  organizationId: string; accountId: string; periodStart: string; periodEnd: string; locationRef: string;
+  departmentRef: string; budgetCents: number; committedCents: number; forecastCents: number; timestamp: number;
+}) {
+  const { organizationId, accountId, periodStart, periodEnd, locationRef, departmentRef, budgetCents, committedCents, forecastCents, timestamp } = input;
+  const row = await database.prepare(`INSERT INTO bookloq_budgets
+    (id, organization_id, account_id, period_start, period_end, location_ref, department_ref,
+     budget_cents, committed_cents, forecast_cents, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(organization_id, account_id, period_start, period_end, location_ref, department_ref)
+    DO UPDATE SET budget_cents = excluded.budget_cents, committed_cents = excluded.committed_cents,
+      forecast_cents = excluded.forecast_cents, updated_at = excluded.updated_at
+    RETURNING id`)
+    .bind(crypto.randomUUID(), organizationId, accountId, periodStart, periodEnd, locationRef,
+      departmentRef, budgetCents, committedCents, forecastCents, timestamp, timestamp).first<{ id: string }>();
+  if (!row) throw new ApiError(409, "BUDGET_CHANGED", "The budget changed before saving. Refresh and try again.");
+  return row.id;
+}
+
+export async function updateCloseItem(database: D1Database, input: {
+  organizationId: string; itemId: string; beforeStatus: string; status: string; timestamp: number;
+}) {
+  const row = await database.prepare(`UPDATE month_end_items SET status = ?, completed_at = ?, updated_at = ?
+    WHERE organization_id = ? AND id = ? AND status = ?
+      AND EXISTS (SELECT 1 FROM accounting_periods p WHERE p.id = month_end_items.period_id
+        AND p.organization_id = month_end_items.organization_id AND p.status IN ('open', 'review'))
+    RETURNING id`)
+    .bind(input.status, input.status === "complete" ? input.timestamp : null, input.timestamp,
+      input.organizationId, input.itemId, input.beforeStatus).first<{ id: string }>();
+  if (!row) throw new ApiError(409, "CLOSE_ITEM_LOCKED_OR_CHANGED", "The checklist item changed or its accounting period is locked. Refresh before editing; reopen a locked period with a recorded reason.");
+}
+
+export async function lockBookloqPeriod(database: D1Database, input: {
+  organizationId: string; periodId: string; actorUserId: string; timestamp: number;
+}) {
+  const row = await database.prepare(`UPDATE accounting_periods SET status = 'locked', locked_at = ?, locked_by_user_id = ?, updated_at = ?
+    WHERE organization_id = ? AND id = ? AND status IN ('open', 'review')
+      AND EXISTS (SELECT 1 FROM month_end_items m WHERE m.organization_id = accounting_periods.organization_id AND m.period_id = accounting_periods.id)
+      AND NOT EXISTS (SELECT 1 FROM month_end_items m WHERE m.organization_id = accounting_periods.organization_id
+        AND m.period_id = accounting_periods.id AND m.status <> 'complete')
+    RETURNING id`)
+    .bind(input.timestamp, input.actorUserId, input.timestamp, input.organizationId, input.periodId).first<{ id: string }>();
+  if (!row) throw new ApiError(409, "CLOSE_INCOMPLETE_OR_CHANGED", "Review and complete every checklist item before locking an open period. Refresh if another reviewer changed it. Checklist completion records your review; it is not automatic verification of the books.");
+}
+
 export function reconciliationDifference(statementClosingCents: number, bookBalanceCents: number): number {
   if (!Number.isSafeInteger(statementClosingCents) || !Number.isSafeInteger(bookBalanceCents)) {
     throw new Error("Reconciliation values must use integer minor units.");
@@ -303,9 +447,8 @@ export function forecastCash(openingCashCents: number, items: readonly { dueDate
     const end = new Date(asOfMs + days * 86_400_000).toISOString().slice(0, 10);
     // The caller supplies outstanding balances, including unpaid overdue items.
     const included = items.filter((item) => item.dueDate <= end);
-    const confirmedNetCents = included.filter((item) => item.certainty === "confirmed").reduce((sum, item) => sum + (item.direction === "in" ? item.amountCents : -item.amountCents), 0);
-    const probableNetCents = included.filter((item) => item.certainty === "probable").reduce((sum, item) => sum + (item.direction === "in" ? item.amountCents : -item.amountCents), 0);
-    const estimatedNetCents = included.filter((item) => item.certainty === "estimated").reduce((sum, item) => sum + (item.direction === "in" ? item.amountCents : -item.amountCents), 0);
-    return { days, endDate: end, confirmedNetCents, probableNetCents, estimatedNetCents, closingCashCents: openingCashCents + confirmedNetCents + probableNetCents + estimatedNetCents };
+    const net = (certainty: "confirmed" | "probable" | "estimated") => exactSum(included.filter(item => item.certainty === certainty).map(item => item.direction === "in" ? item.amountCents : -item.amountCents));
+    const confirmedNetCents = net("confirmed"), probableNetCents = net("probable"), estimatedNetCents = net("estimated");
+    return { days, endDate: end, confirmedNetCents, probableNetCents, estimatedNetCents, closingCashCents: exactSum([openingCashCents, confirmedNetCents, probableNetCents, estimatedNetCents]) };
   });
 }

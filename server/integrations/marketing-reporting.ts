@@ -51,6 +51,15 @@ function gaValues(row?: NonNullable<GAResponse["rows"]>[number]) {
   const result = values(["sessions", "engagedSessions", "views", "keyEvents"], row?.metricValues?.map((v) => v.value) ?? []);
   return { ...result, engagementRate: metricRatio(result.engagedSessions, result.sessions, 100) };
 }
+const GA_LEAD_EVENT = "generate_lead";
+function gaLeadCount(rows: GAResponse["rows"], eventDimension: number) {
+  if ((rows?.length ?? 0) > LIMIT) return null;
+  const matching = (rows ?? []).filter(row => row.dimensionValues?.[eventDimension]?.value === GA_LEAD_EVENT);
+  // Multiple returned buckets cannot be safely recombined into a unique event total.
+  if (matching.length !== 1) return null;
+  const count = finiteMetric(matching[0].metricValues?.[0]?.value);
+  return count !== null && Number.isSafeInteger(count) && count >= 0 ? count : null;
+}
 async function gaReport(token: string, selection: SelectedMarketingResource, report: MarketingReport) {
   if (!/^properties\/\d+$/.test(selection.externalResourceRef)) throw new ApiError(409, "MARKETING_RESOURCE_INVALID", "Choose a valid Analytics property.");
   const root = `https://analyticsdata.googleapis.com/v1beta/${selection.externalResourceRef}`;
@@ -69,19 +78,54 @@ async function gaReport(token: string, selection: SelectedMarketingResource, rep
     metrics: gaNames.map((name) => ({ name })), limit: String(LIMIT), returnPropertyQuota: true,
     ...(dimensions.length ? { orderBys: report.view === "daily" ? [{ dimension: { dimensionName: "date" } }] : [{ metric: { metricName: "sessions" }, desc: true }] } : {}),
   });
-  const [detail, total, previous] = await Promise.all([request(report.period, [dimension]), request(report.period, []), request(report.previousPeriod!, [])]);
+  // Event counts are queried independently. Filtering the session query would change its denominator.
+  // https://developers.google.com/analytics/devguides/reporting/data/v1/basics#dimension_filters
+  const leadRequest = (period: Period, daily: boolean) => providerReport<GAResponse>(`${root}:runReport`, token, {
+    dateRanges: [{ startDate: period.start, endDate: period.end }],
+    dimensions: (daily ? ["date", "eventName"] : ["eventName"]).map(name => ({ name })),
+    metrics: [{ name: "eventCount" }],
+    dimensionFilter: { filter: { fieldName: "eventName", stringFilter: { matchType: "EXACT", value: GA_LEAD_EVENT, caseSensitive: true } } },
+    keepEmptyRows: true, limit: String(LIMIT), returnPropertyQuota: true,
+    ...(daily ? { orderBys: [{ dimension: { dimensionName: "date" } }] } : {}),
+  });
+  const [detail, total, previous, leadResults] = await Promise.all([
+    request(report.period, [dimension]), request(report.period, []), request(report.previousPeriod!, []),
+    report.view === "daily" ? Promise.allSettled([leadRequest(report.period, true), leadRequest(report.period, false), leadRequest(report.previousPeriod!, false)]) : Promise.resolve([]),
+  ]);
   report.columns = [column("sessions", "Sessions"), column("views", "Page views"), column("keyEvents", "Key events"), column("engagementRate", "Engagement rate", "percent")];
   report.rows = (detail.rows ?? []).slice(0, LIMIT).map((row) => {
     const label = safeLabel(row.dimensionValues?.[0]?.value);
     return { label: report.view === "daily" && /^\d{8}$/.test(label) ? `${label.slice(0,4)}-${label.slice(4,6)}-${label.slice(6)}` : label, values: gaValues(row) };
   });
   report.totals = gaValues(total.rows?.[0]); report.previous = gaValues(previous.rows?.[0]);
+  const leadReports = leadResults.map(result => result.status === "fulfilled" ? result.value : null);
+  if (report.view === "daily") {
+    report.columns.splice(2, 0, column("leadEvents", "Lead events · generate_lead"));
+    report.totals.leadEvents = gaLeadCount(leadReports[1]?.rows, 0);
+    report.previous.leadEvents = gaLeadCount(leadReports[2]?.rows, 0);
+    const dailyLeads = new Map<string, NonNullable<GAResponse["rows"]>>();
+    for (const row of (leadReports[0]?.rows ?? []).slice(0, LIMIT)) {
+      const rawDate = row.dimensionValues?.[0]?.value;
+      if (!rawDate || !/^\d{8}$/.test(rawDate) || row.dimensionValues?.[1]?.value !== GA_LEAD_EVENT) continue;
+      const date = `${rawDate.slice(0,4)}-${rawDate.slice(4,6)}-${rawDate.slice(6)}`;
+      const timestamp = Date.parse(`${date}T00:00:00Z`);
+      if (!Number.isFinite(timestamp) || new Date(timestamp).toISOString().slice(0,10) !== date || date < report.period.start || date > report.period.end) continue;
+      dailyLeads.set(date, [...(dailyLeads.get(date) ?? []), row]);
+    }
+    const dailyRows = new Map(report.rows.map(row => [row.label, row]));
+    for (const date of dailyLeads.keys()) if (!dailyRows.has(date)) dailyRows.set(date, { label: date, values: gaValues() });
+    report.rows = [...dailyRows.values()].sort((a, b) => a.label.localeCompare(b.label)).map(row => ({ ...row, values: { ...row.values, leadEvents: gaLeadCount(dailyLeads.get(row.label), 1) } }));
+    if (leadResults.some(result => result.status === "rejected")) report.warnings.push("Some GA4 lead-event measures could not be retrieved. Unavailable values are not replaced with zero or inferred from other events.");
+    else if (report.totals.leadEvents === null) report.warnings.push("GA4 did not return a usable generate_lead count for this period. Confirm event tagging and source reporting limits; this does not establish zero leads.");
+  }
   report.timeZone = total.metadata?.timeZone || "GA4 property time zone";
-  report.truncated = (detail.rowCount ?? 0) > LIMIT || (detail.rows?.length ?? 0) > LIMIT;
-  if ([detail, total, previous].some((r) => r.metadata?.subjectToThresholding)) report.warnings.push("GA4 privacy thresholding can omit results.");
-  if ([detail, total, previous].some((r) => r.metadata?.dataLossFromOtherRow)) report.warnings.push("GA4 grouped some dimension values into its Other row.");
-  if ([detail, total, previous].some((r) => r.metadata?.samplingMetadatas?.length)) report.warnings.push("GA4 returned sampled data.");
+  report.truncated = (detail.rowCount ?? 0) > LIMIT || (detail.rows?.length ?? 0) > LIMIT || leadReports.some(result => (result?.rowCount ?? 0) > LIMIT || (result?.rows?.length ?? 0) > LIMIT);
+  const responses = [detail, total, previous, ...leadReports];
+  if (responses.some((r) => r?.metadata?.subjectToThresholding)) report.warnings.push("GA4 privacy thresholding can omit results.");
+  if (responses.some((r) => r?.metadata?.dataLossFromOtherRow)) report.warnings.push("GA4 grouped some dimension values into its Other row.");
+  if (responses.some((r) => r?.metadata?.samplingMetadatas?.length)) report.warnings.push("GA4 returned sampled data.");
   report.limitations = ["Totals are requested separately from dimension rows. Sessions across pages are not additive.", "Key events depend on the property's event configuration and are not automatically leads or sales.", "Recent GA4 reports can change as processing completes. Missing results remain unavailable."];
+  if (report.view === "daily") report.limitations.push("Lead events count exactly generate_lead occurrences across this property's traffic sources. The event must be configured and sent by the website or app. They are not unique people, qualified leads or leads attributed only to Google advertising. Repeated event firing may count the same person more than once.", "Lead-event current and prior totals are requested independently for the same property and matching report periods. They are not added to key events, advertising conversions or recorded journey leads. Custom lead event names are not included; missing responses remain unavailable.");
 }
 
 type SearchResponse = { rows?: Array<{ keys?: string[]; clicks?: number; impressions?: number; position?: number }>; responseAggregationType?: string };

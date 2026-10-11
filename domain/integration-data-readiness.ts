@@ -69,3 +69,63 @@ export function aggregateConnectionReadiness(connections: readonly ConnectionDat
       reason: readyConnectionIds.length ? "Ready only in the listed verified account scopes; this does not authorize combining them." : "Review each account's fields and report scope. Evidence from different accounts is never combined to satisfy a dependency." };
   });
 }
+
+/** Coverage of recorded dates, not attestation that a provider returned every transaction. */
+export function recordedDateScopeCoverage(input: { from: string | null; to: string | null; expectedScopes: readonly string[]; records: readonly { date: string; scope: string }[] }) {
+  const expectedScopes = new Set(input.expectedScopes);
+  const validPeriod = input.from !== null && input.to !== null && isDate(input.from) && isDate(input.to) && input.from <= input.to;
+  const days = validPeriod ? (Date.parse(input.to!) - Date.parse(input.from!)) / 86_400_000 + 1 : 0;
+  const inPeriod = input.records.filter(row => validPeriod && isDate(row.date) && row.date >= input.from! && row.date <= input.to!);
+  const expectedObservations = inPeriod.filter(row => expectedScopes.has(row.scope));
+  const observations = new Set(expectedObservations.map(row => JSON.stringify([row.date, row.scope])));
+  const duplicateRecords = expectedObservations.length - observations.size;
+  const unknownScopeRecords = inPeriod.filter(row => !expectedScopes.has(row.scope)).length;
+  const expectedRecords = days * expectedScopes.size;
+  return { observedRecords: observations.size, expectedRecords, expectedDays: days, expectedScopes: expectedScopes.size, unknownScopeRecords, duplicateRecords,
+    complete: expectedRecords > 0 && observations.size === expectedRecords && unknownScopeRecords === 0 && duplicateRecords === 0,
+    rate: expectedRecords > 0 ? observations.size / expectedRecords : null };
+}
+
+/** Reports can expose recorded facts before independent completeness and reconciliation
+ * proof exists. This shared disclosure deliberately cannot certify from row counts. */
+export function buildRecordedReportReadiness(input: {
+  organizationId: string; connectionIds: readonly string[]; locationIds: readonly string[];
+  currency: string; timeZone: string; from: string | null; to: string | null; generatedAt: string;
+  authority: string; sourceConflict: boolean; sourcesAvailable: boolean; recordCount: number;
+  dateCoverage: ReturnType<typeof recordedDateScopeCoverage> | null;
+  providerLastSuccessfulSyncAt: readonly (string | null)[]; latestRecordUpdatedAt: string | null;
+  limitations?: readonly string[];
+}) {
+  const checked = Date.parse(input.generatedAt);
+  const syncs = input.providerLastSuccessfulSyncAt.map(value => value === null ? NaN : Date.parse(value));
+  const knownSyncs = Number.isFinite(checked) && syncs.length > 0 && syncs.every(value => Number.isFinite(value) && value <= checked + 300_000);
+  const oldestSourceSyncAt = knownSyncs ? new Date(Math.min(...syncs)).toISOString() : null;
+  const freshnessState = !knownSyncs ? "unknown" : checked - Math.min(...syncs) > 36 * 3_600_000 ? "stale" : "current";
+  const limitations = [...(input.limitations ?? [])];
+  if (input.sourceConflict) limitations.push("Overlapping source authority must be resolved before consolidated totals are used.");
+  if (!input.sourcesAvailable) limitations.push("At least one selected source has no available approved evidence.");
+  if (input.dateCoverage && !input.dateCoverage.complete) limitations.push("Recorded dates do not cover every selected source scope. Missing dates are unknown, not verified closures or zero activity.");
+  if (!input.dateCoverage) limitations.push("Payment activity does not establish complete daily sales or a reconciled collection period.");
+  if (freshnessState === "stale") limitations.push("At least one selected provider has not completed a successful sync in the last 36 hours.");
+  if (freshnessState === "unknown") limitations.push("Provider sync freshness is unavailable; record update timestamps are not provider completeness evidence.");
+  limitations.push("Complete database pagination only means all stored matching records were read. Provider history coverage, late-arriving records and reconciliation are not certified.");
+  return {
+    ready: false as const, certification: "not_certified" as const,
+    state: input.sourceConflict ? "source_conflict" : !input.recordCount ? "missing" : !input.sourcesAvailable || input.dateCoverage && !input.dateCoverage.complete ? "partial" : freshnessState === "stale" ? "stale" : "recorded",
+    scope: { organizationId: input.organizationId, connectionIds: [...input.connectionIds], locationIds: [...input.locationIds], currency: input.currency, timeZone: input.timeZone, from: input.from, to: input.to },
+    authority: input.authority,
+    coverage: { databasePaginationComplete: true, providerPaginationComplete: null, dateScopes: input.dateCoverage },
+    freshness: { state: freshnessState, oldestSourceSyncAt, latestRecordUpdatedAt: input.latestRecordUpdatedAt, checkedAt: input.generatedAt, thresholdHours: 36 },
+    calculationVersion: "recorded-report-evidence-v1", normalizationVersion: null, reconciliation: "not_verified" as const,
+    limitations,
+  };
+}
+
+/** Existing catalogue coverage only establishes that a recorded view can open. */
+export function recordedReportCatalogItem<T extends { status: "ready" | "needs_data"; implementationStatus: "available" | "planned"; dataNeeded: readonly string[] }>(item: T, sourceConflict = false) {
+  return { ...item, status: "needs_data" as const,
+    recordedDataAvailable: !sourceConflict && item.implementationStatus === "available" && item.status === "ready",
+    readinessReason: sourceConflict ? "Resolve source authority before opening this consolidated view." : "Recorded facts may be inspected; complete period and metric reconciliation have not been verified.",
+    dataNeeded: [...item.dataNeeded, ...(item.implementationStatus === "available" ? [sourceConflict ? "source authority selection" : "verified period and metric reconciliation"] : [])],
+  };
+}

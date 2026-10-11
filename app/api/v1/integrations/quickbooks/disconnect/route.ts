@@ -1,3 +1,4 @@
+import { releaseIntegrationSelectionIfUnused } from "../../../../../../server/integrations/free-selection";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../../../../../../db";
 import { integrationConsents, integrationOAuthStates } from "../../../../../../db/schema";
@@ -36,7 +37,8 @@ export async function POST(request: Request) {
       action: "integration.disconnected", resourceType: "integration_connection", resourceId: connection.id,
       details: { provider: QUICKBOOKS_PROVIDER, ...removal, dataPromotionEnabled: false },
     });
-    return jsonResponse({ disconnected: true, connectionId: connection.id, ...removal,
+    await releaseIntegrationSelectionIfUnused(context.organizationId, "quickbooks");
+      return jsonResponse({ disconnected: true, connectionId: connection.id, ...removal,
       message: removal.providerRevocationRequired
         ? "QuickBooks was removed from Vanteloq. Remove Vanteloq from your Intuit connected apps to finish revoking provider access."
         : "QuickBooks was disconnected and local credentials were deleted." });

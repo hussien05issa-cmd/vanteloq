@@ -1,4 +1,5 @@
 import { isCalendarDate } from "../domain/calendar-date";
+import { INDUSTRY_LABELS } from "../domain/industry-templates";
 import { ApiError } from "./api";
 import { ISO_COUNTRY_CODES } from "../app/address-data";
 import {
@@ -23,16 +24,7 @@ const days = [
   "Saturday",
   "Sunday",
 ] as const;
-const industries = [
-  "Retail",
-  "Dealership",
-  "Food & beverage",
-  "Health & wellness",
-  "Professional services",
-  "Hospitality",
-  "E-commerce",
-  "Other",
-] as const;
+const industries = INDUSTRY_LABELS;
 const canadianRegions = [
   "AB",
   "BC",
@@ -304,6 +296,7 @@ export function onboardingInput(value: Record<string, unknown>) {
     "phone",
     "website",
     "industry",
+    "industryConfiguration",
     "country",
     "province",
     "city",
@@ -456,9 +449,11 @@ export function taskCreateInput(value: Record<string, unknown>) {
     "sourceType",
     "sourceRef",
     "expectedImpact",
+    "assigneeUserId",
+    "locationId",
   ]);
   const dueDate = optionalString(value.dueDate, "due date", 10);
-  if (dueDate && !DATE.test(dueDate))
+  if (dueDate && (!DATE.test(dueDate) || !Number.isFinite(new Date(dueDate + "T00:00:00Z").getTime()) || new Date(dueDate + "T00:00:00Z").toISOString().slice(0, 10) !== dueDate))
     throw new ApiError(400, "INVALID_FIELD", "Enter a valid due date.");
   return {
     title: requiredString(value.title, "task title", 120),
@@ -469,6 +464,8 @@ export function taskCreateInput(value: Record<string, unknown>) {
       "priority",
     ),
     assignee: optionalString(value.assignee, "assignee", 80) || "Owner",
+    assigneeUserId: optionalString(value.assigneeUserId, "team member", 200) || null,
+    locationId: optionalString(value.locationId, "location", 200) || null,
     dueDate: dueDate || null,
     sourceType: selected(
       value.sourceType ?? "manual",
@@ -486,12 +483,13 @@ export function taskCreateInput(value: Record<string, unknown>) {
 }
 
 export function taskUpdateInput(value: Record<string, unknown>) {
-  rejectUnknown(value, ["id", "status"]);
+  rejectUnknown(value, ["id", "status", "expectedVersion"]);
   if (!Number.isSafeInteger(value.id) || Number(value.id) <= 0) {
     throw new ApiError(400, "INVALID_FIELD", "Select a valid task.");
   }
   return {
     id: Number(value.id),
+    expectedVersion: value.expectedVersion === undefined ? null : integerValue(value.expectedVersion, "task version", 1),
     status: selected(
       value.status,
       ["open", "in_progress", "done"] as const,
@@ -623,7 +621,7 @@ function dailyMetricRow(value: unknown) {
 }
 
 export function dailyMetricImportInput(value: Record<string, unknown>) {
-  rejectUnknown(value, ["importType", "fileName", "rows", "replacement"]);
+  rejectUnknown(value, ["importType", "fileName", "rows", "replacement", "importPrivacyAcknowledgement"]);
   const importType = selected(
     value.importType ?? "daily_summary_csv",
     ["daily_summary_csv", "manual_entry"] as const,

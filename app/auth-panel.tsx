@@ -470,12 +470,12 @@ export default function AuthPanel({
 
   useModalFocus(dialogRef, true, dismiss);
 
-  const title = mode === "signup" ? "Create Your Workspace"
-    : mode === "verify-signup" ? "Verify Your Email"
-    : mode === "signin" ? "Welcome Back"
-    : mode === "request-reset" ? "Reset Your Password"
-    : mode === "verify-recovery" ? "Check Your Email"
-    : recoveryMfaRequired ? "Verify it's you" : "Choose a New Password";
+  const title = mode === "signup" ? "Create your workspace"
+    : mode === "verify-signup" ? "Verify your email"
+    : mode === "signin" ? "Welcome back"
+    : mode === "request-reset" ? "Reset your password"
+    : mode === "verify-recovery" ? "Check your email"
+    : recoveryMfaRequired ? "Verify it's you" : "Choose a new password";
   const description = mode === "signup"
     ? "Create your account, verify your email, then secure and set up your business."
     : mode === "verify-signup"
@@ -489,29 +489,29 @@ export default function AuthPanel({
         : recoveryMfaRequired
           ? "Enter the current six-digit code from your authenticator app before changing your password."
           : "Enter a new password for your Vanteloq account.";
-  const submitLabel = mode === "signup" ? "Create Account"
-    : mode === "verify-signup" ? "Verify and Continue"
-    : mode === "signin" ? "Sign In"
-    : mode === "request-reset" ? "Send Reset Link and Code"
-    : mode === "verify-recovery" ? "Verify Recovery Code"
-    : recoveryMfaRequired ? "Verify and Continue" : "Update Password";
+  const submitLabel = mode === "signup" ? "Create account"
+    : mode === "verify-signup" ? "Verify and continue"
+    : mode === "signin" ? "Sign in"
+    : mode === "request-reset" ? "Send reset link and code"
+    : mode === "verify-recovery" ? "Verify recovery code"
+    : recoveryMfaRequired ? "Verify and continue" : "Update password";
 
   return <div ref={dialogRef} className="auth-backdrop" role="dialog" aria-modal="true" aria-labelledby="auth-title" aria-describedby="auth-description" tabIndex={-1}>
     <section className="auth-panel">
       <header><ProductBrandLogo product="vanteloq"/><button type="button" onClick={dismiss} aria-label="Close account form">×</button></header>
-      <small>SECURE VANTELOQ ACCOUNT</small>
+      <small className="auth-eyebrow">Secure Vanteloq account</small>
       <h2 id="auth-title">{title}</h2>
       <p id="auth-description">{description}</p>
       {mode === "signup" && planSelection && <div className="auth-plan-selection"><span><strong>{planSelection.plan === "free" ? FREE_PLAN.displayName : PLANS[planSelection.plan].displayName}{planSelection.bookloq ? " + BookLoQ" : ""}</strong><small>{planSelection.plan === "free" ? "$0 · No card required · No expiry" : `$${(PLANS[planSelection.plan].prices.month.amountCents + (planSelection.bookloq ? ADDONS.bookloq.prices.month.amountCents : 0)) / 100} CAD / month before tax. Review before payment.`}</small></span><Link href="/pricing">Change</Link></div>}
-      {configured === false && <div className="auth-message error">Account service is temporarily unavailable.</div>}
-      <form key={mode} onSubmit={submit}>
+      {configured === false && <div className="auth-message error" role="alert">Account service is temporarily unavailable.</div>}
+      <form key={mode} onSubmit={submit} aria-busy={busy} aria-describedby={message ? "auth-feedback" : undefined}>
         <FormLegend/>
-        {mode === "signup" && <label><FieldLabel>Full Name</FieldLabel><FormInput aria-label="Full Name" autoComplete="name" value={name} onChange={event => setName(event.target.value)} minLength={2} maxLength={120} required/></label>}
-        {mode !== "reset-password" && mode !== "verify-signup" && <label><FieldLabel>Email Address</FieldLabel><FormInput aria-label="Email Address" type="email" autoComplete="email" value={email} onChange={event => setEmail(event.target.value)} required/></label>}
-        {(mode === "verify-signup" || mode === "verify-recovery") && <label><FieldLabel>{mode === "verify-recovery" ? "Recovery Email Code" : "Verification Code"}</FieldLabel><FormInput aria-label={mode === "verify-recovery" ? "Recovery Email Code" : "Verification Code"} autoFocus value={verificationCode} onChange={event => setVerificationCode(normalizeEmailVerificationCode(event.target.value).slice(0, MAXIMUM_EMAIL_VERIFICATION_CODE_LENGTH))} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6,10}" title="Enter the 6 to 10 digit code from your email." hint="Enter the code from your email." minLength={MINIMUM_EMAIL_VERIFICATION_CODE_LENGTH} maxLength={MAXIMUM_EMAIL_VERIFICATION_CODE_LENGTH} required/></label>}
-        {recoveryMfaRequired && <label><FieldLabel>Authenticator App Code</FieldLabel><FormInput aria-label="Authenticator App Code" autoFocus value={recoveryMfaCode} onChange={event => setRecoveryMfaCode(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" title="Enter the six-digit code from your authenticator." hint="Enter the current six-digit code." minLength={6} maxLength={6} required/></label>}
-        {(mode === "signup" || mode === "signin" || (mode === "reset-password" && recoveryMfaState === "ready")) && <label><FieldLabel>{mode === "reset-password" ? "New Password" : "Password"}</FieldLabel><PasswordInput aria-label={mode === "reset-password" ? "New Password" : "Password"} autoComplete={mode === "signin" ? "current-password" : "new-password"} validate={mode === "signin" ? undefined : value => passwordRules(value).find(rule => !rule.met)?.label || ""} value={password} onChange={event => setPassword(event.target.value)} minLength={mode === "signin" ? 1 : MINIMUM_PASSWORD_LENGTH} required/></label>}
-        {mode === "reset-password" && recoveryMfaState === "ready" && <label><FieldLabel>Confirm New Password</FieldLabel><PasswordInput aria-label="Confirm New Password" autoComplete="new-password" value={passwordConfirmation} onChange={event => setPasswordConfirmation(event.target.value)} minLength={MINIMUM_PASSWORD_LENGTH} required/></label>}
+        {mode === "signup" && <label><FieldLabel>Full name</FieldLabel><FormInput aria-label="Full name" autoComplete="name" value={name} onChange={event => setName(event.target.value)} minLength={2} maxLength={120} required/></label>}
+        {mode !== "reset-password" && mode !== "verify-signup" && <label><FieldLabel>Email address</FieldLabel><FormInput aria-label="Email address" type="email" autoComplete="email" value={email} onChange={event => setEmail(event.target.value)} required/></label>}
+        {(mode === "verify-signup" || mode === "verify-recovery") && <label><FieldLabel>{mode === "verify-recovery" ? "Recovery email code" : "Verification code"}</FieldLabel><FormInput aria-label={mode === "verify-recovery" ? "Recovery email code" : "Verification code"} autoFocus value={verificationCode} onChange={event => setVerificationCode(normalizeEmailVerificationCode(event.target.value).slice(0, MAXIMUM_EMAIL_VERIFICATION_CODE_LENGTH))} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6,10}" title="Enter the 6 to 10 digit code from your email." hint="Enter the code from your email." minLength={MINIMUM_EMAIL_VERIFICATION_CODE_LENGTH} maxLength={MAXIMUM_EMAIL_VERIFICATION_CODE_LENGTH} required/></label>}
+        {recoveryMfaRequired && <label><FieldLabel>Authenticator app code</FieldLabel><FormInput aria-label="Authenticator app code" autoFocus value={recoveryMfaCode} onChange={event => setRecoveryMfaCode(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" title="Enter the six-digit code from your authenticator." hint="Enter the current six-digit code." minLength={6} maxLength={6} required/></label>}
+        {(mode === "signup" || mode === "signin" || (mode === "reset-password" && recoveryMfaState === "ready")) && <label><FieldLabel>{mode === "reset-password" ? "New password" : "Password"}</FieldLabel><PasswordInput aria-label={mode === "reset-password" ? "New password" : "Password"} autoComplete={mode === "signin" ? "current-password" : "new-password"} validate={mode === "signin" ? undefined : value => passwordRules(value).find(rule => !rule.met)?.label || ""} value={password} onChange={event => setPassword(event.target.value)} minLength={mode === "signin" ? 1 : MINIMUM_PASSWORD_LENGTH} required/></label>}
+        {mode === "reset-password" && recoveryMfaState === "ready" && <label><FieldLabel>Confirm new password</FieldLabel><PasswordInput aria-label="Confirm new password" autoComplete="new-password" value={passwordConfirmation} onChange={event => setPasswordConfirmation(event.target.value)} minLength={MINIMUM_PASSWORD_LENGTH} required/></label>}
         {(mode === "signup" || (mode === "reset-password" && recoveryMfaState === "ready")) && <details className="auth-password-details"><summary>Use 12+ characters, upper and lowercase, a number and a symbol.</summary><div className="auth-password-rules" aria-label="Password requirements">{passwordRules(password).map(rule => <span className={rule.met ? "met" : ""} key={rule.id}>{rule.met ? "Met" : "Required"}: {rule.label}</span>)}<span>Known breached passwords are rejected when you submit.</span></div></details>}
         {showsTurnstile && siteKey && turnstileAction && <TurnstileField
           siteKey={siteKey}
@@ -520,7 +520,8 @@ export default function AuthPanel({
           onToken={acceptTurnstileToken}
           onError={error => { setTurnstileToken(""); setMessageIsError(true); setMessage(error); }}
         />}
-        {message && <div className={`auth-message${messageIsError ? " error" : ""}`} aria-live="polite">{message}</div>}
+        {showsTurnstile && !siteKey && !verificationUnavailable && <div className="auth-security-pending" role="status">Preparing security verification…</div>}
+        {message && <div id="auth-feedback" className={`auth-message${messageIsError ? " error" : ""}`} role={messageIsError ? "alert" : "status"}>{message}</div>}
         {showsTurnstile && verificationUnavailable && <button className="auth-secondary" type="button" onClick={() => {
           setVerificationUnavailable(false);
           setMessage("");
@@ -532,14 +533,14 @@ export default function AuthPanel({
         <button type="submit" className="auth-submit" disabled={busy || configured !== true || (protectedMode && (!siteKey || !turnstileToken)) || ((mode === "verify-signup" || mode === "verify-recovery") && !isCompleteEmailVerificationCode(verificationCode)) || (mode === "signup" && !legalAccepted) || (mode === "reset-password" && (recoveryReady !== true || recoveryMfaState === "checking" || recoveryMfaState === "error" || (recoveryMfaState === "challenge_required" && recoveryMfaCode.length !== 6)))}>{busy || configured === null || (mode === "reset-password" && (recoveryReady === null || recoveryMfaState === "checking")) ? "Please wait…" : submitLabel}</button>
       </form>
       {mode === "signup" && <p className="auth-setup-progress">Next: verify email · set up 2FA · confirm a plan · add your business</p>}
-      {mode === "signin" && <button className="auth-switch" type="button" onClick={() => changeMode("request-reset")}>Forgot Password?</button>}
-      {mode === "request-reset" && <button className="auth-switch" type="button" onClick={() => changeMode("signin")}>Back to Sign In</button>}
+      {mode === "signin" && <button className="auth-switch" type="button" onClick={() => changeMode("request-reset")}>Forgot password?</button>}
+      {mode === "request-reset" && <button className="auth-switch" type="button" onClick={() => changeMode("signin")}>Back to sign in</button>}
       {(mode === "request-reset" || (mode === "reset-password" && recoveryReady === false)) && <button className="auth-switch" type="button" onClick={() => changeMode("verify-recovery")}>I already have a recovery email code</button>}
       {mode === "verify-recovery" && <button className="auth-switch" type="button" onClick={() => changeMode("request-reset")}>Send a new recovery email</button>}
-      {mode === "verify-recovery" && <button className="auth-switch auth-switch-secondary" type="button" onClick={() => changeMode("signin")}>Back to Sign In</button>}
+      {mode === "verify-recovery" && <button className="auth-switch auth-switch-secondary" type="button" onClick={() => changeMode("signin")}>Back to sign in</button>}
       {mode === "reset-password" && recoveryReady === false && <button className="auth-switch" type="button" onClick={() => changeMode("request-reset")}>Request a new reset link</button>}
       {mode === "verify-signup" && <button className="auth-switch" type="button" onClick={() => changeMode("signup")}>Use a different email address</button>}
-      {mode === "verify-signup" && <button className="auth-switch auth-switch-secondary" type="button" onClick={() => changeMode("signin")}>Already verified? Sign In</button>}
+      {mode === "verify-signup" && <button className="auth-switch auth-switch-secondary" type="button" onClick={() => changeMode("signin")}>Already verified? Sign in</button>}
       {(mode === "signup" || mode === "signin") && <button className="auth-switch auth-switch-secondary" type="button" onClick={() => { changeMode(mode === "signup" ? "signin" : "signup"); setSiteKey(""); }}>
         {mode === "signup" ? "Already have an account? Sign in" : "New to Vanteloq? Create an account"}
       </button>}

@@ -39,6 +39,10 @@ import "./commerce-visuals.css?public-surface";
 import "./dashboard-explorer.css?public-surface";
 import "./interface-motion.css";
 import "./readability-refinement.css";
+import "./advisor-appearance.css";
+import "./premium-tokens.css";
+import "./premium-auth.css";
+import "./premium-workspace.css";
 const GOOGLE_ANALYTICS_CONSENT_DEFAULT = `
 window.dataLayer = window.dataLayer || [];
 window.gtag = window.gtag || function () { window.dataLayer.push(arguments); };
@@ -52,21 +56,21 @@ window.gtag("consent", "default", {
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_ORIGIN),
-  title: "Vanteloq | Business Analytics for Independent Retail",
-  description: "Inspect sales, stock and cash with the records behind the numbers. Built for independent retail, with BookLoQ accounting and Vanteloq AI. Try the demo without signup.",
+  title: "Vanteloq | Sales, Stock and Financial Clarity",
+  description: "Inspect sales, stock and cash with the records behind the numbers. For retail, dealerships, cafés and restaurants, with BookLoQ accounting and Vanteloq AI. Try the demo without signup.",
   alternates: { canonical: "/" },
   openGraph: {
     type: "website",
     url: "/",
     siteName: "Vanteloq",
-    title: "Vanteloq | Business Analytics for Independent Retail",
-    description: "Sales, stock and cash, with the records behind the numbers. Explore Vanteloq for independent retail.",
+    title: "Vanteloq | Sales, Stock and Financial Clarity",
+    description: "Sales, stock and cash, with the records behind the numbers. Explore Vanteloq for retail, dealerships, cafés and restaurants.",
     images: [{ url: DEFAULT_SOCIAL_IMAGE, width: 1487, height: 1058, alt: "Vanteloq business operating view" }],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Vanteloq | Business Analytics for Independent Retail",
-    description: "Sales, stock and cash, with the records behind the numbers. Explore Vanteloq for independent retail.",
+    title: "Vanteloq | Sales, Stock and Financial Clarity",
+    description: "Sales, stock and cash, with the records behind the numbers. Explore Vanteloq for retail, dealerships, cafés and restaurants.",
     images: [DEFAULT_SOCIAL_IMAGE],
   },
   icons: {

@@ -1,3 +1,4 @@
+import { requireIntegrationCallbackAccess, releaseIntegrationSelectionIfUnused } from "../../../../../../server/integrations/free-selection";
 import { requireOAuthBrowser } from "../../../../../../server/integrations/oauth-browser";
 import { and, eq, gt, isNull } from "drizzle-orm";
 import { getDb } from "../../../../../../db";
@@ -61,6 +62,7 @@ export async function GET(request: Request) {
       userId: actor.userId, organizationId: actor.organizationId, role: actor.role,
       authSubject: actor.authSubject, authProvider: actor.authProvider, organization: actor.organization,
     };
+    await requireIntegrationCallbackAccess(context, "clover", stored.connectionId);
     await requirePermission(context, "integrations.manage");
     const [consumed] = await getDb().update(integrationOAuthStates).set({ consumedAt: now }).where(and(
       eq(integrationOAuthStates.stateHash, stateHash), eq(integrationOAuthStates.provider, CLOVER_PROVIDER),
@@ -80,6 +82,7 @@ export async function GET(request: Request) {
         eq(integrationConnections.provider, CLOVER_PROVIDER), eq(integrationConnections.status, "pending"),
       ));
       await recordAudit({ request, requestId, organizationId: context.organizationId, actorUserId: context.userId, action: "integration.authorization_declined", resourceType: "integration", resourceId: connectionId, details: { provider: CLOVER_PROVIDER } });
+      await releaseIntegrationSelectionIfUnused(context.organizationId, CLOVER_PROVIDER);
       return Response.redirect(returnUrl(request, "declined"), 303);
     }
 
@@ -132,7 +135,7 @@ export async function GET(request: Request) {
       const errorCode = error instanceof ApiError ? error.code : "CLOVER_CONNECTION_FAILED";
       await getDb().delete(integrationSecrets).where(and(eq(integrationSecrets.organizationId, context.organizationId), eq(integrationSecrets.provider, CLOVER_PROVIDER), eq(integrationSecrets.connectionId, connectionId)));
       await getDb().delete(integrationLocationMappings).where(and(eq(integrationLocationMappings.organizationId, context.organizationId), eq(integrationLocationMappings.provider, CLOVER_PROVIDER), eq(integrationLocationMappings.connectionId, connectionId)));
-      await getDb().update(integrationConnections).set({ status: "error", dataPromotionStatus: "blocked", connectedAt: null, lastErrorCode: errorCode, updatedAt: new Date() }).where(and(eq(integrationConnections.id, connectionId), eq(integrationConnections.organizationId, context.organizationId), eq(integrationConnections.provider, CLOVER_PROVIDER)));
+      await getDb().update(integrationConnections).set({ status: "error", dataPromotionStatus: "blocked", connectedAt: null, lastErrorCode: errorCode, updatedAt: new Date() }).where(and(eq(integrationConnections.id, connectionId), eq(integrationConnections.organizationId, context.organizationId), eq(integrationConnections.provider, CLOVER_PROVIDER), eq(integrationConnections.status, "pending")));
       await recordAudit({ request, requestId, organizationId: context.organizationId, actorUserId: context.userId, action: "integration.connection_failed", resourceType: "integration", resourceId: connectionId, details: { provider: CLOVER_PROVIDER, errorCode } });
       return Response.redirect(returnUrl(request, "failed"), 303);
     }

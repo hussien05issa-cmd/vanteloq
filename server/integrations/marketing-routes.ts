@@ -1,3 +1,4 @@
+import { requireIntegrationAccess, requireIntegrationCallbackAccess, integrationGrantId, releaseIntegrationSelectionIfUnused } from "./free-selection";
 import { requireProviderPrivacy } from "./provider-privacy";
 import { requireIntegrationRollout } from "./rollout-access";
 import { and, eq, gt, isNull, sql } from "drizzle-orm";
@@ -78,7 +79,7 @@ export function marketingAuthorize(request: Request, provider: MarketingProvider
     requireSameOrigin(request);
     const requiredFeature = marketingProviderFeature(provider);
     if (!requiredFeature) throw new ApiError(400, "MARKETING_PROVIDER_INVALID", "Choose Google or Meta.");
-    const context = await requireAccess(request, ["owner", "admin"], requiredFeature);
+    const context = await requireIntegrationAccess(request, ["owner", "admin"], provider, true);
     await requireMarketingPermissions(context);
     await requireIntegrationRollout(context, provider);
     await enforceRateLimit(`${provider}:marketing:authorize`, context.userId, 10, 3_600);
@@ -88,6 +89,7 @@ export function marketingAuthorize(request: Request, provider: MarketingProvider
     const now = new Date();
     const expiresAt = new Date(now.getTime() + 10 * 60_000);
     await getDb().insert(integrationConnections).values({
+      freeGrantId: await integrationGrantId(context, provider),
       id: connectionId,
       organizationId: context.organizationId,
       provider,
@@ -222,6 +224,7 @@ export function marketingCallback(request: Request, provider: MarketingProvider)
     )).limit(1);
     if (!storedState) throw new ApiError(400, "MARKETING_STATE_INVALID", "The marketing authorization attempt expired or was already used. Start again.");
     const context = await callbackActor(storedState.organizationId, storedState.actorUserId);
+    await requireIntegrationCallbackAccess(context, provider, storedState.connectionId);
     const [consumed] = await getDb().update(integrationOAuthStates).set({ consumedAt: now }).where(and(
       eq(integrationOAuthStates.stateHash, stateHash),
       eq(integrationOAuthStates.provider, provider),
@@ -248,6 +251,7 @@ export function marketingCallback(request: Request, provider: MarketingProvider)
         resourceId: pending.id,
         details: { provider, connectionId: pending.id },
       });
+      await releaseIntegrationSelectionIfUnused(context.organizationId, provider);
       return Response.redirect(returnUrl(request, provider, "declined"), 303);
     }
 
@@ -626,13 +630,22 @@ export function marketingResources(request: Request, provider: MarketingProvider
   });
 }
 
-async function persistSnapshot(
+export async function persistMarketingSnapshot(
   snapshot: MarketingSyncSnapshot,
   input: { organizationId: string; connectionId: string; provider: MarketingProvider; mode: "sample" | "incremental" },
 ) {
   const database = getD1();
   const now = Math.floor(Date.now() / 1_000);
   const metricStatements = [
+    // A day absent from a refreshed report is unknown, not a retained financial
+    // amount or an inferred zero. Keep analytics history but invalidate its
+    // previous money verification before writing this snapshot's evidence.
+    ...(input.provider === "meta" ? [database.prepare(`UPDATE marketing_daily_metrics
+      SET money_amount_minor = NULL, money_currency = NULL, reporting_timezone = NULL
+      WHERE metric_key = 'meta_spend' AND resource_selection_id IN (
+        SELECT id FROM marketing_resource_selections
+        WHERE organization_id = ? AND connection_id = ? AND provider = 'meta' AND dataset = 'meta_ads'
+      )`).bind(input.organizationId, input.connectionId)] : []),
     ...(input.mode === "sample" ? [database.prepare(`
       DELETE FROM marketing_daily_metrics
       WHERE resource_selection_id IN (
@@ -644,8 +657,8 @@ async function persistSnapshot(
     ...snapshot.metrics.map((row) => database.prepare(`
     INSERT INTO marketing_daily_metrics (
       id, resource_selection_id, metric_date, metric_key, value_milli,
-      source_event_id, created_at, updated_at
-    ) SELECT ?, ?, ?, ?, ?, ?, ?, ?
+      source_event_id, created_at, updated_at, money_amount_minor, money_currency, reporting_timezone
+    ) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
     WHERE EXISTS (
       SELECT 1 FROM marketing_resource_selections
       WHERE id = ? AND organization_id = ? AND connection_id = ? AND provider = ?
@@ -655,10 +668,14 @@ async function persistSnapshot(
       metric_date = excluded.metric_date,
       metric_key = excluded.metric_key,
       value_milli = excluded.value_milli,
+      money_amount_minor = excluded.money_amount_minor,
+      money_currency = excluded.money_currency,
+      reporting_timezone = excluded.reporting_timezone,
       updated_at = excluded.updated_at
     `).bind(
     crypto.randomUUID(), row.resourceSelectionId, row.metricDate, row.metricKey,
     row.valueMilli, row.sourceEventId, now, now,
+    row.moneyAmountMinor ?? null, row.moneyCurrency ?? null, row.reportingTimezone ?? null,
     row.resourceSelectionId, input.organizationId, input.connectionId, input.provider,
     )),
   ];
@@ -773,7 +790,7 @@ export function marketingSync(request: Request, provider: MarketingProvider) {
       }
       const leaseRenewed = await renewIntegrationSyncLease(lease, 20 * 60_000);
       if (!leaseRenewed) throw new ApiError(409, "MARKETING_SYNC_LEASE_LOST", "The marketing synchronization lease expired before the replacement snapshot could be saved.");
-      await persistSnapshot(normalizedSnapshot, {
+      await persistMarketingSnapshot(normalizedSnapshot, {
         organizationId: context.organizationId,
         connectionId: connection.id,
         provider,
@@ -926,6 +943,7 @@ export function marketingDisconnect(request: Request, provider: MarketingProvide
       `).bind(deletedAtSeconds, deletedAtSeconds, connection.id, context.organizationId, provider),
     ]);
     const providerRevoked = accessToken ? await revokeMarketingAccess(provider, accessToken).catch(() => false) : false;
+    await releaseIntegrationSelectionIfUnused(context.organizationId, provider);
     await recordAudit({
       request,
       requestId,

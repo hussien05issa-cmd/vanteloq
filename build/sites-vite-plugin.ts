@@ -1,6 +1,8 @@
 import { access, cp, mkdir, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { Plugin } from "vite";
+import { canonicalizeMigrationArtifacts } from "./migration-artifacts.mjs";
+import { orderRscAssetManifest } from "./rsc-asset-integrity.mjs";
 
 async function exists(path: string): Promise<boolean> {
   try {
@@ -23,6 +25,7 @@ export function sites(): Plugin {
     apply: "build",
     configResolved(config) {
       root = config.root;
+      orderRscAssetManifest(config.plugins);
     },
     async closeBundle() {
       const outputDirectory = resolve(root, "dist", ".openai");
@@ -39,6 +42,7 @@ export function sites(): Plugin {
         await cp(drizzleSource, resolve(outputDirectory, "drizzle"), {
           recursive: true,
         });
+        await canonicalizeMigrationArtifacts(resolve(outputDirectory, "drizzle"));
       }
     },
   };

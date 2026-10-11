@@ -3,8 +3,10 @@ import { advisorDefaults, type AdvisorPreferences, type AdvisorCurrentTurn } fro
 import AdvisorPersonalize from "./advisor-personalize";
 import LinkedFilesPanel from "./linked-files-panel";
 import InventoryVehicleWorkspace from "./vehicle-inventory-panel";
+import CollaborationMessages from "./collaboration-messages";
+import { defaultIndustryConfiguration, resolveIndustryTemplate, type IndustryConfiguration } from "../domain/industry-templates";
 
-import ProviderPrivacyNotice, { ProviderPolicyLinks } from "./provider-privacy-notice";
+import ProviderPrivacyNotice, { ProviderPolicyLinks, ProviderPermissionSummary } from "./provider-privacy-notice";
 import { PROVIDER_PRIVACY_NOTICE_VERSION } from "../domain/provider-privacy";
 import { buildIntegrationCapabilities, type IntegrationCapabilities } from "../domain/integration-capabilities";
 import { dataReadinessStateLabels, type ConnectionDataReadiness } from "../domain/integration-data-readiness";
@@ -12,20 +14,43 @@ import { dataReadinessStateLabels, type ConnectionDataReadiness } from "../domai
 import "./workspace-base-styles";
 import "./workspace-styles";
 import "./readability-refinement.css";
+import "./owner-pathways.css";
+import "./sidebar-polish.css";
+import "./workspace-appearance.css";
+import "./workspace-contrast.css";
+import "./premium-tokens.css";
+import "./premium-workspace.css";
+import "./premium-header.css";
+import { useWorkspaceAppearance } from "./workspace-appearance";
+import BusinessWorkspaceSelector, { OwnerWorkspaceContext } from "./business-workspace-selector";
+import { workspaceViewFromHash, workspaceViewHash } from "../domain/owner-navigation";
+import { integrationReturnPath } from "../domain/integration-return";
+import { settingsSectionFromHash, settingsSectionHash } from "../domain/settings-navigation";
 import { parseDailyCsv } from "../domain/daily-summary-csv";
 import DailyImportReviewPanel from "./daily-import-review";
+import ReportImportHub, { ReportImportChoices, type ReportImportChoice, type ReportImportTarget } from "./report-import-hub";
+import { ReportImportPrivacyNotice } from "./report-import-privacy";
+import { importPrivacyAcknowledgement } from "../domain/report-import-privacy";
 import type { DailyImportReview } from "../server/daily-metric-import";
 import WorkspaceSkeleton from "./workspace-skeleton";
 import DashboardGreeting from "./dashboard-greeting";
-import OwnerBriefingPanel from "./owner-briefing";
+import OwnerBriefingPanel, { useBriefingSelection } from "./owner-briefing";
 import type { OwnerBriefing, OwnerBriefingPriority } from "../domain/owner-briefing";
 import { PRODUCT_RELEASE_NAME } from "../domain/product-release";
 import { documentEmailAccessKey } from "./document-email-client";
 import { isAwaitingSalesRecords } from "../domain/intraday-sales";
+import { formatRecordedTimestamp } from "../domain/executive-presentation";
 
 import Image from "next/image";
 import { lazy, Suspense, FormEvent, Fragment, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 const BookLoQWorkspace = lazy(() => import("./bookloq-workspace"));
+const DealershipWorkspace = lazy(() => import("./dealership-workspace"));
+const FoodserviceWorkspace = lazy(() => import("./foodservice-workspace"));
+const OperatingWorkflows = lazy(() => import("./operating-workflows"));
+const BusinessWorkflows = lazy(() => import("./business-workflows"));
+const WorkflowFollowup = lazy(() => import("./workflow-followup"));
+const InventoryWorkflows = lazy(() => import("./inventory-workflows"));
+import { WorkflowDisclosure } from "./operating-workflows";
 const CommunicationsWorkspace = lazy(() => import("./communications-workspace"));
 const CommerceIntelligenceWorkspace = lazy(() => import("./commerce-intelligence-workspace"));
 import type { RetailAdvisorSeed } from "./retail-intelligence-workspace";
@@ -41,6 +66,7 @@ import { SlackChannelActions } from "./slack-channel-actions";
 import AutomaticSyncControl, { type AutomaticSyncStatus } from "./automatic-sync-control";
 const ShopifyPrivacyRequests = lazy(() => import("./shopify-privacy-requests"));
 import AdvisorComposer, { canAskAdvisor } from "./advisor-composer";
+import AdvisorDashboardActions from "./advisor-dashboard-actions";
 import AdvisorThinking from "./advisor-thinking";
 import AdvisorResponse from "./advisor-response";
 import { readAdvisorAnswer, type AdvisorPayload } from "./advisor-client";
@@ -97,6 +123,7 @@ type View =
   | "Forecasting"
   | "Intelligence"
   | "Action Centre"
+  | "Messages"
   | "Business Brief"
   | "Advisor"
   | "BookLoQ"
@@ -124,7 +151,7 @@ type View =
 const nav: [string, View[]][] = [
   [
     "Command centre",
-    ["Dashboard", "Forecasting", "Intelligence", "Action Centre", "Business Brief", "Advisor"],
+    ["Dashboard", "Forecasting", "Intelligence", "Action Centre", "Messages", "Business Brief", "Advisor"],
   ],
   [
     "Sales and customers",
@@ -156,6 +183,7 @@ const navigationGuide: Record<View, { outcome: string; data: string }> = {
   Dashboard: { outcome: "Prioritizes the owner’s current operating picture and exceptions.", data: "Verified sales, margin, cash, inventory and task records." },
   Intelligence: { outcome: "Explains supported changes, confidence and missing evidence.", data: "Metric history, comparisons, provenance and quality checks." },
   "Action Centre": { outcome: "Turns decisions and exceptions into assigned, measurable work.", data: "Owner actions, due dates, assignees and linked evidence." },
+  Messages: { outcome: "Keeps team discussions beside shared tasks and location channels.", data: "Authorised team messages, member display names and task context." },
   "Business Brief": { outcome: "Creates a compact review of performance and next actions.", data: "Verified command-centre metrics and ranked insights." },
   Advisor: { outcome: "Answers supported operating questions and states its limits.", data: "The same verified metrics and source contracts used by the dashboard." },
   Sales: { outcome: "Shows revenue, transactions, average order value and payment mix.", data: "Completed sales, refunds, discounts, payments, dates and locations." },
@@ -211,6 +239,7 @@ const viewPermission: Partial<Record<View, string>> = {
   Intelligence: "insights.view",
   Forecasting: "sales.view",
   "Action Centre": "operations.tasks",
+  Messages: "operations.tasks",
   "Business Brief": "dashboard.view",
   Advisor: "insights.view",
   BookLoQ: "finance.statements",
@@ -599,6 +628,7 @@ type CommandCentre = {
     discountsCents: number;
     lastSaleAt: string | null;
     sourceGranularity: "intraday" | "daily";
+    hasVerifiedDailyRecords?: boolean;
     asOf?: string | null;
     timeZone?: string;
     hourlyUnavailableReason?: string | null;
@@ -714,10 +744,11 @@ export default function VanteloqApp({
   organizationName: string;
   accountName: string;
 }) {
+  const appearance = useWorkspaceAppearance();
   const billingEntitlements = useBillingEntitlements();
   const subscriptionFeatures = billingEntitlements.features;
   const standaloneBookloq = billingEntitlements.plan === "bookloq";
-  const [view, setView] = useState<View>(() => typeof window !== "undefined" && window.location.hash === "#billing" ? "Settings" : typeof window !== "undefined" && new URLSearchParams(window.location.search).get("linkedFiles") === "connected" ? "Documents" : billingEntitlements.plan === "bookloq" ? "BookLoQ" : "Dashboard");
+  const [view, setView] = useState<View>(() => typeof window !== "undefined" && workspaceViewFromHash(window.location.hash) ? workspaceViewFromHash(window.location.hash)! : typeof window !== "undefined" && new URLSearchParams(window.location.search).get("linkedFiles") === "connected" ? "Documents" : billingEntitlements.plan === "bookloq" ? "BookLoQ" : "Dashboard");
   const [workspaceName, setWorkspaceName] = useState(organizationName);
   const [advisorScope,setAdvisorScope]=useState("");
   const advisorConsent=useAdvisorConsent(apiFetch,advisorScope,view==="Advisor");
@@ -726,14 +757,24 @@ export default function VanteloqApp({
   const [data, setData] = useState<CommandCentre | null>(null);
   const [currency, setCurrency] = useState("CAD");
   const [businessIndustry, setBusinessIndustry] = useState("Other");
+  const [industryConfiguration,setIndustryConfiguration]=useState<IndustryConfiguration>(()=>defaultIndustryConfiguration("Other"));
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [refreshError, setRefreshError] = useState("");
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  useEffect(() => {
+    const sidebarNav = document.querySelector<HTMLElement>("#primary-sidebar > nav");
+    const selected = sidebarNav?.querySelector<HTMLElement>('[aria-current="page"]');
+    if (!sidebarNav || !selected) return;
+    const area = sidebarNav.getBoundingClientRect(), item = selected.getBoundingClientRect();
+    if (item.top < area.top || item.bottom > area.bottom) sidebarNav.scrollTop += item.top - area.top - 10;
+  }, [view, mobileNavOpen, loading]);
   const [taskSeed, setTaskSeed] = useState<TaskSeed | null>(null);
   const [notice, setNotice] = useState("");
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
+  const [reportImportsOpen, setReportImportsOpen] = useState(false);
+  const [reportImportDestination, setReportImportDestination] = useState<{ target: ReportImportTarget; key: number } | null>(null);
   const [appRole, setAppRole] = useState("employee");
   const [emailAccessKey, setEmailAccessKey] = useState("");
   const [appPermissions, setAppPermissions] = useState<string[]>([]);
@@ -753,6 +794,7 @@ export default function VanteloqApp({
   const preferenceQueueRef = useRef<Promise<void>>(Promise.resolve());
   const preferenceWriteRef = useRef(0);
   const dashboardRequestRef = useRef<AbortController | null>(null);
+  const noticeTimerRef = useRef<number | null>(null);
 
   const refresh = useCallback(async (silent = false) => {
     if (silent && dashboardRequestRef.current) return;
@@ -787,6 +829,7 @@ export default function VanteloqApp({
       setAdvisorScope(body.organization.id);
       setCurrency(body.organization.currency);
       setBusinessIndustry(body.organization.industry || "Other");
+      setIndustryConfiguration(body.organization.industryConfiguration??defaultIndustryConfiguration(body.organization.industry));
       setAppRole(body.organization.role ?? "employee");
       setEmailAccessKey(documentEmailAccessKey(body.organization));
       setAppPermissions(body.organization.permissions ?? []);
@@ -815,6 +858,7 @@ export default function VanteloqApp({
   // A same-workspace mutation refresh must preserve the active form or sync
   // reconciliation panel. Scope changes still use the full loading boundary.
   const refreshWorkspace = useCallback(() => refresh(true), [refresh]);
+  useEffect(()=>{const changed=()=>void refresh(true);window.addEventListener("vanteloq:industry-changed",changed);window.addEventListener("vanteloq:locations-changed",changed);return()=>{window.removeEventListener("vanteloq:industry-changed",changed);window.removeEventListener("vanteloq:locations-changed",changed);};},[refresh]);
   useEffect(() => {
     let cancelled = false;
     void apiFetch("/api/v1/preferences", { headers: { Accept: "application/json" } })
@@ -836,7 +880,7 @@ export default function VanteloqApp({
         if (!cancelled && preferenceWriteRef.current === 0) setHiddenNavigation([]);
       });
     return () => { cancelled = true; };
-  }, []);
+  }, [billingEntitlements.accessType]);
   useEffect(() => {
     const timer = window.setTimeout(() => void refresh(), 0);
     return () => {
@@ -875,7 +919,7 @@ export default function VanteloqApp({
       const state = parameters.get("connection");
       if (integration === "clover" && !state && parameters.get("action") === "connect") {
         setNotice("Open the Clover card and select Connect to authorize your merchant account.");
-        window.history.replaceState({}, "", window.location.pathname);
+        window.history.replaceState({}, "", integrationReturnPath(window.location.href));
         return;
       }
       if (integration === "quickbooks") {
@@ -888,7 +932,7 @@ export default function VanteloqApp({
               : state
                 ? "QuickBooks authorization needs to be restarted. Open its connection card to continue."
                 : "Open the QuickBooks card to connect or reconnect your company.");
-        window.history.replaceState({}, "", window.location.pathname);
+        window.history.replaceState({}, "", integrationReturnPath(window.location.href));
         return;
       }
       if (integration === "plaid") {
@@ -903,7 +947,7 @@ export default function VanteloqApp({
       if (integration === "google" || integration === "meta") {
         const name = integration === "google" ? "Google" : "Meta";
         setNotice(state === "connected" ? `${name} is connected. Sync it to update Marketing.` : state === "declined" ? `${name} authorization was declined.` : `${name} authorization needs to be restarted.`);
-        window.history.replaceState({}, "", window.location.pathname);
+        window.history.replaceState({}, "", integrationReturnPath(window.location.href));
         return;
       }
       setNotice(
@@ -925,7 +969,7 @@ export default function VanteloqApp({
           ? `${integration === "stripe" ? "Stripe" : integration === "lightspeed-r" ? "R-Series" : integration === "shopify" ? "Shopify e-commerce" : integration === "shopify-pos" ? "Shopify POS" : integration === "clover" ? "Clover" : integration === "square" ? "Square" : "X-Series"} authorization was declined`
           : `${integration === "stripe" ? "Stripe" : integration === "lightspeed-r" ? "R-Series" : integration === "shopify" ? "Shopify e-commerce" : integration === "shopify-pos" ? "Shopify POS" : integration === "clover" ? "Clover" : integration === "square" ? "Square" : "X-Series"} authorization needs to be restarted`,
       );
-      window.history.replaceState({}, "", window.location.pathname);
+      window.history.replaceState({}, "", integrationReturnPath(window.location.href));
     }, 0);
     return () => window.clearTimeout(timer);
   }, [subscriptionFeatures]);
@@ -944,9 +988,22 @@ export default function VanteloqApp({
     return () => window.removeEventListener("keydown", shortcut);
   }, []);
   const showNotice = (message: string) => {
+    if (noticeTimerRef.current !== null) window.clearTimeout(noticeTimerRef.current);
     setNotice(message);
-    window.setTimeout(() => setNotice(""), 3000);
+    noticeTimerRef.current = window.setTimeout(() => { setNotice(""); noticeTimerRef.current = null; }, 6000);
   };
+  useEffect(() => () => { if (noticeTimerRef.current !== null) window.clearTimeout(noticeTimerRef.current); }, []);
+  useEffect(() => {
+    if (loading) return;
+    const restoreDestination = () => {
+      const next = workspaceViewFromHash(window.location.hash) ?? (standaloneBookloq ? "BookLoQ" : "Dashboard");
+      if (!viewIsAvailable(next, appPermissions, subscriptionFeatures, standaloneBookloq)) return;
+      setView(next);
+      setMobileNavOpen(false);
+    };
+    window.addEventListener("hashchange", restoreDestination);
+    return () => window.removeEventListener("hashchange", restoreDestination);
+  }, [appPermissions, loading, standaloneBookloq, subscriptionFeatures]);
   const navigate = (next: View) => {
     const subscriptionAccess = navigationEntitlement(next, subscriptionFeatures);
     if (standaloneBookloq && !standaloneBookloqViews.has(next)) {
@@ -971,10 +1028,27 @@ export default function VanteloqApp({
       showNotice("Your role does not have access to this workspace.");
       return;
     }
+    setReportImportDestination(null);
     setView(next);
     setMobileNavOpen(false);
+    if (next !== "Settings" || !settingsSectionFromHash(window.location.hash)) window.location.hash = workspaceViewHash(next);
     window.scrollTo({ top: 0, behavior: "instant" });
     window.requestAnimationFrame(()=>document.querySelector<HTMLElement>(".main-panel")?.focus({preventScroll:true}));
+  };
+  const importChoices: ReportImportChoice[] = [];
+  if (!standaloneBookloq && viewIsAvailable("Integrations", appPermissions, subscriptionFeatures, standaloneBookloq) && subscriptionFeatures.includes("analytics.sales.basic") && appPermissions.includes("data.import")) importChoices.push({target:"sales",title:"Sales & daily balances",formats:"CSV template · up to 366 daily records",description:"Update sales trends, margin and recorded cash or inventory balances.",icon:"Sales"});
+  if (viewIsAvailable("Inventory", appPermissions, subscriptionFeatures, standaloneBookloq) && subscriptionFeatures.includes("products.margin") && appPermissions.includes("dashboard.view") && appPermissions.includes("metrics.revenue") && appPermissions.includes("data.import") && appPermissions.includes("inventory.adjust")) importChoices.push({target:"costs",title:"Product costs",formats:"CSV template · existing products",description:"Match product references and update unit costs used in margin analysis.",icon:"Inventory"});
+  if (viewIsAvailable("Inventory", appPermissions, subscriptionFeatures, standaloneBookloq) && industryConfiguration.capabilities.includes("dealership_operations") && subscriptionFeatures.includes("inventory.lots") && appPermissions.includes("data.import") && appPermissions.includes("inventory.adjust")) importChoices.push({target:"vehicles",title:"Vehicle stock",formats:"Dealership CSV template",description:"Review vehicle details and import stock records into your dealership inventory.",icon:"Inventory"});
+  if (viewIsAvailable("Documents", appPermissions, subscriptionFeatures, standaloneBookloq) && subscriptionFeatures.includes("invoice.basic") && appPermissions.includes("documents.upload")) {
+    importChoices.push({target:"documents",title:"Invoices, receipts & reports",formats:"PDF, JPG, PNG or WEBP · up to 10 MB",description:"Upload private supporting documents for review. Files do not post journals automatically.",icon:"Documents"});
+    if (viewIsAvailable("BookLoQ", appPermissions, subscriptionFeatures, standaloneBookloq) && subscriptionFeatures.includes("bookloq.transactions") && ["documents.view", "documents.review", "finance.bank_transactions", "finance.bank_balances", "payroll.totals", "finance.reconcile"].every(permission => appPermissions.includes(permission))) importChoices.push({target:"statement",title:"Bank statements",formats:"Upload a PDF, then review in BookLoQ",description:"Check statement balances and historical cash movements before confirming an import.",icon:"Banking"});
+  }
+  const openImportTarget = (target: ReportImportTarget) => {
+    if (!importChoices.some(choice => choice.target === target)) { showNotice("Your access to this import changed. Refresh the workspace before continuing."); return; }
+    const destination: View = target === "sales" ? "Integrations" : target === "documents" ? "Documents" : target === "statement" ? "BookLoQ" : "Inventory";
+    navigate(destination);
+    setReportImportDestination({ target, key: Date.now() });
+    setReportImportsOpen(false);
   };
   const createTask = (seed: TaskSeed) => {
     if (!subscriptionFeatures.includes("operations.basic")) {
@@ -1010,6 +1084,7 @@ export default function VanteloqApp({
     };
     const revision = ++preferenceWriteRef.current;
     preferenceStateRef.current = next;
+    if (next.activeLocationId !== current.activeLocationId) { setLoading(true); setData(null); setError(""); }
     setHiddenNavigation(next.hiddenNavigation);
     setActiveLocationId(next.activeLocationId);
     const operation = preferenceQueueRef.current.then(async () => {
@@ -1029,6 +1104,7 @@ export default function VanteloqApp({
     }).catch((caught) => {
       if (preferenceWriteRef.current === revision) {
         const confirmed = confirmedPreferenceRef.current;
+        if (confirmed.activeLocationId !== preferenceStateRef.current.activeLocationId) { setLoading(true); setData(null); setError(""); }
         preferenceStateRef.current = confirmed;
         setHiddenNavigation(confirmed.hiddenNavigation);
         setActiveLocationId(confirmed.activeLocationId);
@@ -1039,7 +1115,7 @@ export default function VanteloqApp({
     return operation;
   };
   return (
-    <main className="app-shell operating-shell">
+    <main className="app-shell operating-shell" data-workspace-theme={appearance.theme} data-workspace-appearance={appearance.appearance}>
       <aside
         id="primary-sidebar"
         className={mobileNavOpen ? "sidebar mobile-open" : "sidebar"}
@@ -1080,10 +1156,10 @@ export default function VanteloqApp({
             </small>
           </span>
           <label className="location-switcher">
-            <span className="sr-only">Dashboard location</span>
+            <span className="sr-only">Workspace location</span>
             <select
               value={activeLocationId ?? ""}
-              disabled={billingEntitlements.accessType === "free"}
+              disabled={loading || billingEntitlements.accessType === "free"}
               onChange={(event) => {
                 const next = event.target.value || null;
                 void savePreferences({ activeLocationId: next }).catch((caught) => showNotice(caught instanceof Error ? caught.message : "Location preference could not be saved."));
@@ -1094,6 +1170,7 @@ export default function VanteloqApp({
             </select>
           </label>
         </div>
+        <BusinessWorkspaceSelector selectedWorkspaceId={advisorScope || null} compact/>
         <div className="subscription-summary" aria-label="Current subscription">
           <span>{billingEntitlements.accessType === "internal" ? "Internal access" : billingEntitlements.accessType === "complimentary" ? "Complimentary access" : billingEntitlements.plan === "bookloq" ? "BookLoQ standalone" : `${billingEntitlements.plan ? humanizeIdentifier(billingEntitlements.plan) : "Paid"} plan`}</span>
           {billingEntitlements.addons.includes("bookloq") && <small>{billingEntitlements.plan === "bookloq" ? "Finance workspace active" : "BookLoQ active"}</small>}
@@ -1131,7 +1208,7 @@ export default function VanteloqApp({
                         variant="full"
                         className="bookloq-nav-lockup"
                       />
-                    ) : <><WorkspaceIcon name={item}/><span className="nav-label">{workspaceViewLabel(item)}</span></>}
+                    ) : <><WorkspaceIcon name={item}/><span className="nav-label">{item==="Inventory"?resolveIndustryTemplate(businessIndustry).inventoryLabel:item==="Sales"&&industryConfiguration.templateId==="dealership"?"Vehicle sales":workspaceViewLabel(item)}</span></>}
                     {!subscriptionAccess.allowed && <small className="nav-plan-lock">{subscriptionAccess.upgradeLabel}</small>}
                   </button>
                 })}
@@ -1192,7 +1269,9 @@ export default function VanteloqApp({
       )}
       <section className="main-panel" tabIndex={-1} aria-label={`${workspaceViewLabel(view)} workspace`}>
         <header className="topbar">
+          <div className="topbar-heading">
           <button
+            type="button"
             className="mobile-menu"
             aria-label={mobileNavOpen ? "Close navigation" : "Open navigation"}
             aria-expanded={mobileNavOpen}
@@ -1207,10 +1286,22 @@ export default function VanteloqApp({
             </p>
             <h1>{view === "Dashboard" ? "Dashboard" : view === "Profit" ? "BookLoQ · Reports" : view === "Cash" ? "BookLoQ · Cash Flow" : view === "Bookkeeping" ? "BookLoQ · Transactions" : workspaceViewLabel(view)}</h1>
           </div>
-          <div className="top-actions">
-            <button className="command-trigger" onClick={() => setCommandOpen(true)} aria-label="Open workspace search"><WorkspaceIcon name="Search"/><span>Search workspace</span><kbd>⌘K</kbd></button>
+          </div>
+          <button
+            type="button"
+            className="icon-button notification"
+            aria-label={data?.ownerBriefing?.criticalCount ? `Open alerts, ${data.ownerBriefing.criticalCount} critical` : "Open alerts"}
+            aria-expanded={notificationsOpen}
+            onClick={() => setNotificationsOpen((value) => !value)}
+          >
+            <WorkspaceIcon name="Alerts"/><span aria-hidden="true">Alerts</span>
+            {!!data?.ownerBriefing?.criticalCount && <span className="owner-alert-count" aria-hidden="true">{data.ownerBriefing.criticalCount}</span>}
+          </button>
+          <div className="topbar-context-row">
+            <OwnerWorkspaceContext businessName={workspaceName} industry={businessIndustry} locationName={activeLocationId ? locations.find(location => location.id === activeLocationId)?.name ?? "Selected location" : null} limitedScope={appRole !== "owner" && appRole !== "admin"}/>
             <span
               className={`source-pill ${loading || error || data?.source.syncing ? "pending" : data?.liveSource.lastSuccessfulSyncAt ? "current" : data?.source.freshness ?? "missing"}`}
+              role="status"
               aria-busy={loading || Boolean(data?.source.syncing)}
             >
               {loading ? "Loading records…" : error ? "Records unavailable" : data?.source.syncing ? "Syncing source records" : data?.liveSource.lastSuccessfulSyncAt
@@ -1219,16 +1310,15 @@ export default function VanteloqApp({
                 ? `${humanizeIdentifier(data.source.freshness)} data`
                 : "No data"}
             </span>
-            <button
-              className="icon-button notification"
-              aria-label={data?.ownerBriefing?.criticalCount ? `Open alerts, ${data.ownerBriefing.criticalCount} critical` : "Open alerts"}
-              onClick={() => setNotificationsOpen((value) => !value)}
-            >
-              <WorkspaceIcon name="Alerts"/><span aria-hidden="true">Alerts</span>
-              {!!data?.ownerBriefing?.criticalCount && <span className="owner-alert-count" aria-hidden="true">{data.ownerBriefing.criticalCount}</span>}
-            </button>
+          </div>
+          <div className="top-actions" role="group" aria-label="Workspace actions">
+            {!!importChoices.length && <button type="button" className="report-import-trigger" disabled={loading || Boolean(error)} onClick={() => setReportImportsOpen(true)}><WorkspaceIcon name="Documents"/><span>Import reports</span></button>}
+            <button type="button" className="command-trigger" onClick={() => setCommandOpen(true)} aria-label="Open workspace search"><WorkspaceIcon name="Search"/><span>Search workspace</span><kbd>⌘K</kbd></button>
             {subscriptionFeatures.includes("operations.basic") && appPermissions.includes("operations.manage") && <button
+              type="button"
               className="primary"
+              aria-label="Create a task"
+              title="Create a task"
               onClick={() =>
                 createTask({
                   title: "",
@@ -1247,22 +1337,28 @@ export default function VanteloqApp({
           <button className="secondary" onClick={() => void refresh(true)}>Retry refresh</button>
         </div>}
         {loading ? (
-          <LoadingState />
+          <LoadingState overview={view === "Dashboard"}/>
         ) : error ? (
           <FailureState message={error} retry={refresh} />
         ) : data?.source.syncing && ["Intelligence", "Business Brief", "Scenario Planner", "Operations"].includes(view) ? (
           <SourceSyncingState refresh={refreshWorkspace} />
         ) : (
-          <Suspense fallback={<WorkspaceSkeleton label="Loading this workspace"/>}><Workspace
+          <Suspense fallback={<WorkspaceSkeleton label={`Loading ${workspaceViewLabel(view)}`} variant={view === "Dashboard" ? "overview" : "records"}/>}><Workspace
+            key={`${advisorScope}:${reportImportDestination?.key ?? "workspace"}`}
+            reportImportTarget={reportImportDestination?.target}
+            reportImportChoices={importChoices}
+            onImportTarget={openImportTarget}
             view={view}
             advisorConsent={advisorConsent}
             advisorAvailability={advisorAvailability}
             data={data!}
             permissions={appPermissions}
             emailAccessKey={emailAccessKey}
+            appRole={appRole}
             subscriptionFeatures={subscriptionFeatures}
             currency={currency}
             businessIndustry={businessIndustry}
+            industryConfiguration={industryConfiguration}
             navigate={navigate}
             refresh={refreshWorkspace}
             showNotice={showNotice}
@@ -1285,6 +1381,7 @@ export default function VanteloqApp({
                 permissions={appPermissions}
                 subscriptionFeatures={subscriptionFeatures}
                 standaloneBookloq={standaloneBookloq}
+                onDashboard={() => { navigate(standaloneBookloq ? "BookLoQ" : "Dashboard"); if(!standaloneBookloq)window.history.replaceState(null, "", "#dashboard/customize"); }}
                 update={(item, visible) => {
                   const next = setNavigationVisibility(preferenceStateRef.current.hiddenNavigation, item, visible, allNavigationViews, protectedNavigation);
                   void savePreferences({ hiddenNavigation: next })
@@ -1302,6 +1399,7 @@ export default function VanteloqApp({
       {taskSeed && subscriptionFeatures.includes("operations.basic") && (
         <TaskComposer
           seed={taskSeed}
+          activeLocationId={activeLocationId}
           close={() => setTaskSeed(null)}
           saved={() => {
             setTaskSeed(null);
@@ -1317,6 +1415,7 @@ export default function VanteloqApp({
           navigate={next => { setNotificationsOpen(false); navigate(next); }}
         />
       )}
+      {reportImportsOpen && <ReportImportHub choices={importChoices} onSelect={openImportTarget} onClose={() => setReportImportsOpen(false)}/>}
       {notice && (
         <div className="toast" role="status">
           {notice}
@@ -1329,11 +1428,13 @@ export default function VanteloqApp({
 
 function GlobalCommand({ permissions, subscriptionFeatures, standaloneBookloq, navigate, close }: { permissions: string[]; subscriptionFeatures: readonly string[]; standaloneBookloq: boolean; navigate: (view: View) => void; close: () => void }) {
   const [query, setQuery] = useState("");
+  const dialogRef = useRef<HTMLElement>(null);
+  useModalFocus(dialogRef, true, close);
   const options = useMemo(() => ([...nav.flatMap(([, items]) => items), "Integrations", "Settings"] as View[])
     .filter((item, index, list) => list.indexOf(item) === index)
     .filter((item) => viewIsAvailable(item, permissions, subscriptionFeatures, standaloneBookloq))
     .filter((item) => !query || `${item} ${workspaceViewLabel(item)}`.toLowerCase().includes(query.toLowerCase())), [permissions, query, standaloneBookloq, subscriptionFeatures]);
-  return <div className="modal-backdrop command-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}><section className="command-modal" role="dialog" aria-modal="true" aria-label="Workspace search"><div className="command-input"><span>⌕</span><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Go to a workspace…"/><button onClick={close}>ESC</button></div><div className="command-results"><small>WORKSPACES</small>{options.map((option) => <button key={option} onClick={() => navigate(option)}><span>↳</span><span>{workspaceViewLabel(option)}</span><b>→</b></button>)}{!options.length && <p>No matching workspace.</p>}</div></section></div>;
+  return <div className="modal-backdrop command-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}><section ref={dialogRef} tabIndex={-1} className="command-modal" role="dialog" aria-modal="true" aria-label="Workspace search"><div className="command-input"><span aria-hidden="true">⌕</span><input aria-label="Search available workspaces" autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Go to a workspace…"/><button type="button" aria-label="Close workspace search" onClick={close}>ESC</button></div><div className="command-results"><small>WORKSPACES</small>{options.map((option) => <button type="button" key={option} onClick={() => navigate(option)}><span aria-hidden="true">↳</span><span>{workspaceViewLabel(option)}</span><b aria-hidden="true">→</b></button>)}{!options.length && <p role="status">No matching workspace.</p>}</div></section></div>;
 }
 
 function NavigationSettingsPanel({
@@ -1343,7 +1444,9 @@ function NavigationSettingsPanel({
   standaloneBookloq,
   update,
   restoreAll,
+  onDashboard,
 }: {
+  onDashboard: () => void;
   hidden: View[];
   permissions: string[];
   subscriptionFeatures: readonly string[];
@@ -1357,6 +1460,7 @@ function NavigationSettingsPanel({
   ];
   return (
     <section className="navigation-settings-panel" aria-labelledby="navigation-settings-title">
+      <section className="workspace-appearance-control"><h3>Your dashboard</h3><p>Choose metrics, reorder and resize panels, set goals, and save layouts for your business.</p><button type="button" onClick={onDashboard}>{standaloneBookloq ? "Open BookLoQ Overview" : "Customize Dashboard"}</button></section>
       <header>
         <div>
           <p>SIDEBAR</p>
@@ -1398,7 +1502,11 @@ function NavigationSettingsPanel({
 }
 
 function Workspace({
+  reportImportTarget,
+  reportImportChoices,
+  onImportTarget,
   view,
+  appRole,
   advisorConsent,
   advisorAvailability,
   data,
@@ -1407,6 +1515,7 @@ function Workspace({
   subscriptionFeatures,
   currency,
   businessIndustry,
+  industryConfiguration,
   navigate,
   refresh,
   showNotice,
@@ -1420,7 +1529,11 @@ function Workspace({
   selectLocation,
   navigationSettings,
 }: {
+  reportImportTarget?: ReportImportTarget;
+  reportImportChoices: ReportImportChoice[];
+  onImportTarget: (target: ReportImportTarget) => void;
   view: View;
+  appRole: string;
   advisorConsent: ReturnType<typeof useAdvisorConsent>;
   advisorAvailability: ReturnType<typeof useAdvisorAvailability>;
   data: CommandCentre;
@@ -1429,6 +1542,7 @@ function Workspace({
   subscriptionFeatures: readonly string[];
   currency: string;
   businessIndustry: string;
+  industryConfiguration: IndustryConfiguration;
   navigate: (view: View) => void;
   refresh: () => Promise<void>;
   showNotice: (message: string) => void;
@@ -1446,20 +1560,35 @@ function Workspace({
   const [reportSeed, setReportSeed] = useState<{ from: string; to: string; locationId: string | null } | null>(null);
   const [executiveDrill,setExecutiveDrill]=useState<{from:string;to:string}|undefined>();
   const [intelligenceTab, setIntelligenceTab] = useState<"opportunities" | "retail">("opportunities");
+  const [inventoryTab,setInventoryTab]=useState<"specialised"|"products">(reportImportTarget === "costs" ? "products" : "specialised");
+  const [dealerOverviewTab,setDealerOverviewTab]=useState<"vehicles"|"business">("vehicles");
+  const dealer=industryConfiguration.capabilities.includes("dealership_operations");
+  const food=industryConfiguration.capabilities.includes("food_costing");
+  const specialisedAccess=subscriptionFeatures.includes("inventory.lots")&&permissions.includes("inventory.view");
+  const foodAccess=specialisedAccess&&permissions.includes("inventory.value");
+  const canScheduleBriefings=appRole==="owner"&&subscriptionFeatures.includes("business.brief.basic")&&permissions.includes("insights.view");
   const [reviewSelection, setReviewSelection] = useState<{ id: string; followup: boolean } | undefined>();
   const openReview = (id?: string, followup = false) => { setReviewSelection(id ? { id, followup } : undefined); setIntelligenceTab("opportunities"); navigate("Intelligence"); };
   const [retailAdvisorSeed, setRetailAdvisorSeed] = useState<RetailAdvisorSeed | null>(null);
   const askRetailAdvisor = (seed: RetailAdvisorSeed) => { setRetailAdvisorSeed(seed); navigate("Advisor"); };
   useEffect(() => { if (view === "Advisor" && retailAdvisorSeed) queueMicrotask(() => setRetailAdvisorSeed(null)); }, [view, retailAdvisorSeed]);
   if (view === "Forecasting") return <ForecastingWorkspace activeLocationId={activeLocationId} currency={currency} navigate={navigate}/>;
+  const dealerOverviewSwitch=dealer&&specialisedAccess&&view==="Dashboard"?<nav className="intelligence-switch" aria-label="Dealership overview views"><button type="button" aria-pressed={dealerOverviewTab==="vehicles"} onClick={()=>setDealerOverviewTab("vehicles")}>Dealership operations</button><button type="button" aria-pressed={dealerOverviewTab==="business"} onClick={()=>setDealerOverviewTab("business")}>Business overview & goals</button></nav>:null;
+  if (dealer && specialisedAccess && ["Dashboard","Inventory","Sales","Customers"].includes(view) && (view!=="Dashboard"||dealerOverviewTab==="vehicles")) {
+    const initialTab=view==="Inventory"?"inventory":view==="Sales"?"sales":view==="Customers"?"customers":"overview";
+    return <>{dealerOverviewSwitch}{view==="Inventory"&&industryConfiguration.capabilities.includes("products")&&<nav className="intelligence-switch" aria-label="Dealership inventory views"><button type="button" aria-pressed={inventoryTab==="specialised"} onClick={()=>setInventoryTab("specialised")}>Vehicles</button><button type="button" aria-pressed={inventoryTab==="products"} onClick={()=>setInventoryTab("products")}>Products & parts</button></nav>}{view==="Inventory"&&industryConfiguration.capabilities.includes("products")&&inventoryTab==="products"?<CommerceIntelligenceWorkspace mode="Inventory" initialCostImportOpen={reportImportTarget === "costs"} currency={currency} timeZone={data.today.timeZone} activeLocationId={activeLocationId} navigate={navigate} createTask={createTask} onAsk={askRetailAdvisor}/>:<DealershipWorkspace key={`${activeLocationId??"all"}:${initialTab}`} activeLocationId={activeLocationId} initialTab={initialTab} agingReviewDays={industryConfiguration.agingReviewDays}/>}</>;
+  }
   if (view === "Dashboard")
     return (
+      <>
+      {dealerOverviewSwitch}
+      {food&&foodAccess&&<FoodserviceWorkspace key={`food:${activeLocationId??"all"}`} activeLocationId={activeLocationId} compactOverview onOpen={()=>{setInventoryTab("specialised");navigate("Inventory");}}/>}
       <Overview
         onAsk={subscriptionFeatures.includes("ai.basic") && permissions.includes("insights.view") ? askRetailAdvisor : undefined}
         onReview={subscriptionFeatures.includes("analytics.sales.advanced") && permissions.includes("insights.view") ? openReview : undefined}
         canCreate={subscriptionFeatures.includes("operations.basic") && permissions.includes("insights.create_task")}
         canForecast={permissions.includes("sales.view") && subscriptionFeatures.includes("forecasting.revenue")}
-        onDrill={(view,period)=>{setExecutiveDrill(period);navigate(view);}}
+        onDrill={(view,period)=>{setExecutiveDrill(period);if(view==="Inventory")setInventoryTab("products");navigate(view);}}
         activeLocationId={activeLocationId}
         accountName={accountName}
         data={data}
@@ -1470,10 +1599,11 @@ function Workspace({
         paymentRange={paymentRange}
         setPaymentRange={setPaymentRange}
       />
+      </>
     );
   if (view === "Intelligence")
     return (
-      <><nav className="intelligence-switch" aria-label="Intelligence views"><button type="button" aria-pressed={intelligenceTab === "opportunities"} onClick={() => setIntelligenceTab("opportunities")}>Opportunities</button><button type="button" aria-pressed={intelligenceTab === "retail"} onClick={() => setIntelligenceTab("retail")}>Retail analysis</button></nav>
+      <><nav className="intelligence-switch" aria-label="Intelligence views"><button type="button" aria-pressed={intelligenceTab === "opportunities"} onClick={() => setIntelligenceTab("opportunities")}>Opportunities</button><button type="button" aria-pressed={intelligenceTab === "retail"} onClick={() => setIntelligenceTab("retail")}>Commerce analysis</button></nav>
         {intelligenceTab === "retail" ? <CommerceIntelligenceWorkspace key={activeLocationId ?? "all"} mode="Sales" currency={currency} timeZone={data.today.timeZone} activeLocationId={activeLocationId} navigate={navigate} createTask={createTask} onAsk={askRetailAdvisor}/> : <Intelligence
           initialSelection={reviewSelection}
           data={data} navigate={navigate} createTask={createTask} activeLocationId={activeLocationId} onAsk={askRetailAdvisor}
@@ -1485,6 +1615,8 @@ function Workspace({
   if (view === "Action Centre")
     return (
       <TaskCentre
+        key={activeLocationId ?? "all"}
+        activeLocationId={activeLocationId}
         onReviewOutcome={id => openReview(id, true)}
         showNotice={showNotice}
         navigate={navigate}
@@ -1498,22 +1630,23 @@ function Workspace({
         }
       />
     );
+  if (view === "Messages") return <CollaborationMessages key={activeLocationId ?? "all"} activeLocationId={activeLocationId} onManageIntegrations={() => navigate("Integrations")}/>;
   if (view === "BookLoQ" || view === "Profit" || view === "Cash" || view === "Bookkeeping") {
-    const initialSection = view === "Profit" ? "Reports" : view === "Cash" ? "Cash Flow" : view === "Bookkeeping" ? "Transactions" : "Overview";
-    return <BookLoQWorkspace key={initialSection} initialSection={initialSection} createTask={createTask} showNotice={showNotice} navigate={navigate} activeLocationId={activeLocationId} />;
+    const initialSection = reportImportTarget === "statement" ? "Banking" : view === "Profit" ? "Reports" : view === "Cash" ? "Cash Flow" : view === "Bookkeeping" ? "Transactions" : "Overview";
+    return <BookLoQWorkspace key={initialSection} initialSection={initialSection} initialImportOpen={reportImportTarget === "statement"} canUploadDocuments={permissions.includes("documents.upload") && subscriptionFeatures.includes("invoice.basic")} canViewDocuments={permissions.includes("documents.view") && subscriptionFeatures.includes("invoice.basic")} createTask={createTask} showNotice={showNotice} navigate={navigate} activeLocationId={activeLocationId} />;
   }
   if (view === "Communications") return <CommunicationsWorkspace activeLocationId={activeLocationId} />;
   if (view === "Marketing")
     return <GrowthWorkspace key={activeLocationId ?? "organization"} currency={currency} navigate={navigate} activeLocationId={activeLocationId} canOptimize={subscriptionFeatures.includes("marketing.optimization")} />;
   if (view === "Integrations")
-    return <DataHub refresh={refresh} showNotice={showNotice} navigate={navigate} subscriptionFeatures={subscriptionFeatures} />;
+    return <DataHub refresh={refresh} showNotice={showNotice} navigate={navigate} subscriptionFeatures={subscriptionFeatures} initialTab={reportImportTarget === "sales" ? "import" : undefined} importChoices={reportImportChoices} onImportTarget={onImportTarget} canImport={permissions.includes("data.import") && subscriptionFeatures.includes("analytics.sales.basic")} />;
   if (view === "Decision Journal")
-    return <DecisionJournal currency={currency} showNotice={showNotice} />;
+    return <><DecisionJournal currency={currency} showNotice={showNotice} /><WorkflowDisclosure title="Measure the outcome of an action"><BusinessWorkflows activeLocationId={activeLocationId} initialKind="outcome"/></WorkflowDisclosure></>;
   if (view === "Scenario Planner")
     return <ScenarioPlanner source={data.current} currency={currency} />;
   if (view === "Business Brief")
     return (
-      <BusinessBrief
+      <><BusinessBrief
         canCreate={subscriptionFeatures.includes("operations.basic") && permissions.includes("insights.create_task")}
         activeLocationId={activeLocationId}
         onAsk={subscriptionFeatures.includes("ai.basic") && permissions.includes("insights.view") ? askRetailAdvisor : undefined}
@@ -1522,7 +1655,7 @@ function Workspace({
         currency={currency}
         navigate={navigate}
         createTask={createTask}
-      />
+      />{canScheduleBriefings&&<WorkflowDisclosure title="Opening and closing briefings"><WorkflowFollowup mode="briefings"/></WorkflowDisclosure>}</>
     );
   if (view === "Advisor")
     return <Advisor canAttach={workspacePlan.accessType !== "free"} savedConsent={advisorConsent} availability={advisorAvailability} key={`${advisorConsent.scope}:${activeLocationId ?? "organization"}`} data={data} navigate={navigate} createTask={createTask} activeLocationId={activeLocationId} retailSeed={retailAdvisorSeed?.locationId === activeLocationId ? retailAdvisorSeed : null} />;
@@ -1539,18 +1672,19 @@ function Workspace({
         onOpenRetail={() => { setIntelligenceTab("retail"); navigate("Intelligence"); }}
       />
     );
+  if (view === "Inventory" && food && foodAccess) return <><nav className="intelligence-switch" aria-label="Menu and ingredient views"><button type="button" aria-pressed={inventoryTab==="specialised"} onClick={()=>setInventoryTab("specialised")}>Recipe & food costs</button><button type="button" aria-pressed={inventoryTab==="products"} onClick={()=>setInventoryTab("products")}>Product inventory</button></nav>{inventoryTab==="specialised"?<FoodserviceWorkspace key={activeLocationId??"all"} activeLocationId={activeLocationId}/>:<CommerceIntelligenceWorkspace initialPeriod={executiveDrill} mode="Inventory" initialCostImportOpen={reportImportTarget === "costs"} currency={currency} timeZone={data.today.timeZone} activeLocationId={activeLocationId} navigate={navigate} createTask={createTask} onAsk={askRetailAdvisor}/>}</>;
   if (view === "Inventory")
-    return <InventoryVehicleWorkspace key={activeLocationId ?? "all"} industry={businessIndustry} activeLocationId={activeLocationId}><CommerceIntelligenceWorkspace initialPeriod={executiveDrill} mode="Inventory" currency={currency} timeZone={data.today.timeZone} activeLocationId={activeLocationId} navigate={navigate} createTask={createTask} onAsk={askRetailAdvisor}/></InventoryVehicleWorkspace>;
+    return <InventoryVehicleWorkspace key={`${activeLocationId??"all"}:${industryConfiguration.templateId}`} initialView={reportImportTarget === "costs" ? "products" : reportImportTarget === "vehicles" ? "vehicles" : undefined} industry={businessIndustry} configuration={industryConfiguration} activeLocationId={activeLocationId}><CommerceIntelligenceWorkspace initialPeriod={executiveDrill} mode="Inventory" initialCostImportOpen={reportImportTarget === "costs"} currency={currency} timeZone={data.today.timeZone} activeLocationId={activeLocationId} navigate={navigate} createTask={createTask} onAsk={askRetailAdvisor}/></InventoryVehicleWorkspace>;
   if (view === "Sales" || view === "Customers" || view === "Suppliers")
     return <CommerceIntelligenceWorkspace initialPeriod={executiveDrill} key={view + activeLocationId + (executiveDrill?.from??"") + (executiveDrill?.to??"")} mode={view} currency={currency} timeZone={data.today.timeZone} activeLocationId={activeLocationId} navigate={navigate} createTask={createTask} onAsk={askRetailAdvisor} />;
   if (view === "Purchase Orders")
     return (
-      <PurchaseOrdersWorkspace
+      <><PurchaseOrdersWorkspace
         currency={currency}
         showNotice={showNotice}
         createTask={createTask}
         activeLocationId={activeLocationId}
-      />
+      />{specialisedAccess&&permissions.includes("inventory.value")&&<WorkflowDisclosure title="Receiving, stock movements and supplier follow-up"><InventoryWorkflows activeLocationId={activeLocationId}/></WorkflowDisclosure>}</>
     );
   if (view === "Locations" && workspacePlan.accessType === "free")
     return <section className="content"><header className="workspace-section-heading"><p>YOUR LOCATION</p><h2>One location. One overview.</h2><p>Your Free plan combines daily records in the main dashboard. Upgrade in Billing & plans to compare and manage multiple locations.</p></header><button className="primary" onClick={() => navigate("Dashboard")}>Open your dashboard</button><button className="secondary" onClick={() => { window.location.hash = "billing"; navigate("Settings"); }}>View plans</button></section>;
@@ -1595,6 +1729,7 @@ function Workspace({
         navigationSettings={navigationSettings}
       />
     );
+  if (view === "Operations") return <OperatingWorkflows activeLocationId={activeLocationId} configuration={industryConfiguration} permissions={permissions} subscriptionFeatures={subscriptionFeatures} canScheduleBriefings={canScheduleBriefings}><ModuleWorkspace name={view} definition={moduleDefinitions[view]} data={data} currency={currency} navigate={navigate} createTask={createTask}/></OperatingWorkflows>;
   return (
     <ModuleWorkspace
       name={view}
@@ -1707,20 +1842,20 @@ function LiveSalesPanel({ data, currency, paymentRange, setPaymentRange, compact
   return (
     <>
       <section className="today-metric-grid">
-        <Metric label={intraday ? "Net sales today" : "Latest daily net sales"} value={awaitingRecords ? "Awaiting records" : money(today.netSalesCents, currency)} delta={awaitingRecords ? "No current-day records received" : comparisonCopy(data.todayComparison?.changes.netSalesRate, baselineLabel)} detail={`${formatBusinessDate(today.businessDate)} · excludes sales tax`} tone="indigo" />
+        <Metric label={intraday ? "Net sales today" : "Latest daily net sales"} value={awaitingRecords ? "Awaiting records" : money(today.netSalesCents, currency)} delta={awaitingRecords ? "Verified sales records required" : comparisonCopy(data.todayComparison?.changes.netSalesRate, baselineLabel)} detail={`${formatBusinessDate(today.businessDate)} · excludes sales tax`} tone="indigo" />
         <Metric label={intraday ? "Gross profit today" : "Latest daily gross profit"} value={awaitingRecords ? "Not available" : today.grossProfitCents == null ? "Not available" : money(today.grossProfitCents, currency)} delta={awaitingRecords ? "Sales records required" : comparisonCopy(data.todayComparison?.changes.grossProfitRate, baselineLabel)} detail={today.grossProfitCents == null ? "Verified product costs required" : "Net sales less product cost"} tone="emerald" />
-        <Metric label="Gross margin" value={today.netSalesCents > 0 && today.grossProfitCents != null ? `${(today.grossProfitCents / today.netSalesCents * 100).toFixed(1)}%` : "Not available"} delta="Product economics" detail="Gross profit ÷ positive net sales" tone="emerald" />
+        <Metric label="Gross margin" value={!awaitingRecords && today.netSalesCents > 0 && today.grossProfitCents != null ? `${(today.grossProfitCents / today.netSalesCents * 100).toFixed(1)}%` : "Not available"} delta="Product economics" detail="Gross profit ÷ positive net sales" tone="emerald" />
         <Metric label="Discounts" value={awaitingRecords ? "Not available" : money(today.discountsCents, currency)} delta={awaitingRecords ? "Sales records required" : today.netSalesCents + today.discountsCents ? `${(today.discountsCents / (today.netSalesCents + today.discountsCents) * 100).toFixed(1)}% of pre-discount value` : "No discount activity"} detail="Verified line and sale discounts" tone="amber" />
-        <Metric label="Average transaction" value={today.averageTransactionCents == null ? "Not available" : money(today.averageTransactionCents, currency, 2)} delta={intraday ? "Today's basket value" : "Latest daily basket value"} detail="Net sales ÷ completed transactions" tone="amber" />
-        <Metric label="Number of sales" value={awaitingRecords ? "Awaiting records" : today.transactionCount == null ? "Not available" : today.transactionCount.toLocaleString()} delta={awaitingRecords ? "No completed sales received" : comparisonCopy(data.todayComparison?.changes.transactionRate, baselineLabel)} detail={today.unitsSold == null ? "Revenue permission required" : `${quantityLabel(today.unitsSold, "line item")} recorded`} tone="cyan" />
+        <Metric label="Average transaction" value={awaitingRecords || today.averageTransactionCents == null ? "Not available" : money(today.averageTransactionCents, currency, 2)} delta={intraday ? "Today's basket value" : "Latest daily basket value"} detail="Net sales ÷ completed transactions" tone="amber" />
+        <Metric label="Number of sales" value={awaitingRecords ? "Awaiting records" : today.transactionCount == null ? "Not available" : today.transactionCount.toLocaleString()} delta={awaitingRecords ? "No completed sales received" : comparisonCopy(data.todayComparison?.changes.transactionRate, baselineLabel)} detail={awaitingRecords ? "Verified sales records required" : today.unitsSold == null ? "Revenue permission required" : `${quantityLabel(today.unitsSold, "line item")} recorded`} tone="cyan" />
       </section>
       <section className={compact ? "live-sales-grid compact" : "live-sales-grid"}>
         <article className="card live-sales-chart-card">
           <div className="card-head">
             <div><p className="card-kicker">{intraday ? "TODAY'S SALES PULSE" : "LATEST VERIFIED DAY"}</p><h3>Sales by hour</h3></div>
-            <span className="verified-tag">{sourceName} · approved records</span>
+            <span className="verified-tag">{sourceName} · {awaitingRecords ? "awaiting verified records" : "approved records"}</span>
           </div>
-          {awaitingRecords ? <div className="intel-empty"><b>Waiting for today’s records</b><span>No approved transactions have been received for this business day. This does not confirm that the business made no sales.</span></div> : today.sourceGranularity === "intraday"
+          {awaitingRecords ? <div className="intel-empty"><b>Waiting for verified sales records</b><span>The selected source has not supplied verified sales records for this reporting day. This does not confirm that the business made no sales.</span></div> : today.sourceGranularity === "intraday"
             ? <IntradaySalesChart data={today.hourly} currency={currency} comparison={matched ? data.todayComparison?.baseline.hourly : undefined} comparisonDate={matched ? data.todayComparison?.baselineDate : undefined} asOf={today.asOf} timeZone={today.timeZone} />
             : <div className="intel-empty"><b>Hourly detail is not available</b><span>{today.hourlyUnavailableReason || "The totals above come from the latest verified daily summary. Connect a provider with transaction timestamps to unlock the intraday chart."}</span></div>}
           {!awaitingRecords && <div className="chart-foot">
@@ -1753,10 +1888,10 @@ type BriefActions = { onAsk?: (seed: RetailAdvisorSeed) => void; onReview?: (id?
 function briefingDestination(item: OwnerBriefingPriority): View {
   return NAVIGATION_VIEW_IDS.some(view => view === item.destination) ? item.destination as View : "Dashboard";
 }
-function DailyBrief({ data, navigate, createTask, canCreate = false, activeLocationId, onAsk, onReview, expanded = false }: BriefActions & { data: CommandCentre; navigate: (view: View) => void; createTask: (seed: TaskSeed) => void; canCreate?: boolean; activeLocationId?: string | null; expanded?: boolean }) {
+function DailyBrief({ data, navigate, createTask, canCreate = false, activeLocationId, onAsk, onReview, expanded = false, selectedPriority }: BriefActions & { data: CommandCentre; navigate: (view: View) => void; createTask: (seed: TaskSeed) => void; canCreate?: boolean; activeLocationId?: string | null; expanded?: boolean; selectedPriority?: { id: string; request: number } }) {
   const brief = data.ownerBriefing;
   if (!brief) return null;
-  return <OwnerBriefingPanel briefing={brief} scopeLabel={brief.scopeLabel} sourcePeriod={brief.reportingPeriod} hoursBasis={brief.hoursBasis} expanded={expanded}
+  return <OwnerBriefingPanel briefing={brief} scopeLabel={brief.scopeLabel} sourcePeriod={brief.reportingPeriod} hoursBasis={brief.hoursBasis} expanded={expanded} selectedPriority={selectedPriority}
     onEvidence={item => { if (onReview && data.operatingSystem?.decisions.some(decision => decision.id === item.id)) onReview(item.id); else navigate(briefingDestination(item)); }}
     onAction={canCreate ? item => {
       if (onReview && data.operatingSystem?.decisions.some(decision => decision.id === item.id)) { onReview(item.id); return; }
@@ -1766,18 +1901,19 @@ function DailyBrief({ data, navigate, createTask, canCreate = false, activeLocat
     onReview={onReview ? () => onReview() : undefined} onSettings={() => navigate("Settings")}/>
 }
 
-export function Overview({ canCreate=false, canForecast=false, onDrill, onAsk, onReview, activeLocationId, accountName = "", data, currency, industry, navigate, createTask, paymentRange, setPaymentRange }: BriefActions & { canCreate?:boolean; canForecast?:boolean; onDrill?: (view:"Sales"|"BookLoQ"|"Integrations"|"Intelligence",period?:{from:string;to:string})=>void; activeLocationId?: string | null; accountName?: string; data: CommandCentre; currency: string; industry?: string | null; navigate: (view: View) => void; createTask: (seed: TaskSeed) => void; paymentRange: PaymentRange; setPaymentRange: (range: PaymentRange) => void }) {
-
+export function Overview({ canCreate=false, canForecast=false, onDrill, onAsk, onReview, activeLocationId, accountName = "", data, currency, industry, navigate, createTask, paymentRange, setPaymentRange }: BriefActions & { canCreate?:boolean; canForecast?:boolean; onDrill?: (view:"Sales"|"BookLoQ"|"Integrations"|"Intelligence"|"Reports"|"Inventory",period?:{from:string;to:string})=>void; activeLocationId?: string | null; accountName?: string; data: CommandCentre; currency: string; industry?: string | null; navigate: (view: View) => void; createTask: (seed: TaskSeed) => void; paymentRange: PaymentRange; setPaymentRange: (range: PaymentRange) => void }) {
+  const scopeKey = JSON.stringify([activeLocationId ?? null, data.ownerBriefing?.scopeLabel ?? null]);
+  const { detailsRef: briefRef, selectedPriority, onFinding: openBriefingFinding } = useBriefingSelection(scopeKey, data.ownerBriefing?.priorities ?? []);
   const sourceName = data.liveSource.accountName || (data.liveSource.provider ? providerLabel(data.liveSource.provider) : "the connected source");
   return (
     <div className="content command-page">
       
-      <DashboardGreeting syncing={Boolean(data.source.syncing)} accountName={accountName} sourceName={sourceName} latestBusinessDate={data.source.latestBusinessDate}
+      <DashboardGreeting key={`greeting:${scopeKey}`} syncing={Boolean(data.source.syncing)} accountName={accountName} sourceName={sourceName} latestBusinessDate={data.source.latestBusinessDate}
         lastSuccessfulSyncAt={data.liveSource.lastSuccessfulSyncAt} needsAttention={Boolean(data.liveSource.lastErrorCode)||data.source.freshness!=="current"} onConnections={() => navigate("Integrations")}
-        overview={{scope:data.ownerBriefing?.scopeLabel??sourceName,period:"Latest verified source periods, independent of report filters",metrics:data.ownerBriefing?.pulseMetrics??[],priorities:data.ownerBriefing?.priorities??[],criticalCount:data.ownerBriefing?.criticalCount??0,onFinding:item=>{if(onReview&&data.operatingSystem?.decisions.some(decision=>decision.id===item.id))onReview(item.id);else navigate(briefingDestination(item));}}}/>
-      <DailyBrief data={data} navigate={navigate} createTask={createTask} canCreate={canCreate} activeLocationId={activeLocationId} onAsk={onAsk} onReview={onReview}/>
+        overview={{scope:data.ownerBriefing?.scopeLabel??sourceName,period:"Latest verified source periods, independent of report filters",metrics:data.ownerBriefing?.pulseMetrics??[],priorities:data.ownerBriefing?.priorities??[],criticalCount:data.ownerBriefing?.criticalCount??0,onFinding:openBriefingFinding}}/>
+      <details className="overview-daily-brief" key={`briefing:${scopeKey}`} ref={briefRef}><summary>Your daily briefing <span>Priorities, opening checks and follow-ups</span></summary><DailyBrief data={data} navigate={navigate} createTask={createTask} canCreate={canCreate} activeLocationId={activeLocationId} onAsk={onAsk} onReview={onReview} selectedPriority={selectedPriority}/></details>
       {canForecast && <Suspense fallback={null}><ForecastPin currency={currency} locationId={activeLocationId??null} onOpen={()=>navigate("Forecasting")}/></Suspense>}
-      <ExecutiveOverview currency={currency} industry={industry} activeLocationId={activeLocationId} navigate={onDrill??navigate} refreshKey={`${data.liveSource.lastSuccessfulSyncAt??""}:${Boolean(data.source.syncing)}`}/>
+      <ExecutiveOverview currency={currency} industry={industry} activeLocationId={activeLocationId} navigate={onDrill??navigate} onAsk={onAsk} refreshKey={`${data.liveSource.lastSuccessfulSyncAt??""}:${Boolean(data.source.syncing)}:${data.source.rowCount}:${Object.values(data.metrics).map(metric=>metric.sourceTimestamp??"").join("|")}`}/>
       {!data.source.syncing&&<details className="dashboard-current-day-details"><summary>Today’s Sales Details<span>Payment mix, transactions and hourly activity</span></summary><LiveSalesPanel data={data} currency={currency} paymentRange={paymentRange} setPaymentRange={setPaymentRange} compact/></details>}
     </div>
   );
@@ -2049,23 +2185,31 @@ type Task = {
   priority: "high" | "medium" | "low";
   status: "open" | "in_progress" | "done";
   assignee: string;
+  assigneeUserId: string | null;
+  locationId: string | null;
+  version: number;
   dueDate: string | null;
   sourceType: string;
   sourceRef: string | null;
   expectedImpact: string;
 };
-function TaskCentre({
+export function TaskCentre({
+  activeLocationId,
   showNotice,
   openComposer,
   navigate,
   onReviewOutcome,
 }: {
+  activeLocationId: string | null;
   onReviewOutcome: (id: string) => void;
   navigate: (view: View) => void;
   showNotice: (message: string) => void;
   openComposer: () => void;
 }) {
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [capabilities, setCapabilities] = useState({canManage:false,canPost:false,userId:""});
+  const [discussion, setDiscussion] = useState<Task | null>(null);
+  const [mine, setMine] = useState(false);
   const [completedReview, setCompletedReview] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("active");
@@ -2073,31 +2217,53 @@ function TaskCentre({
   const [updateError, setUpdateError] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const load = useCallback(async () => {
+  const taskRead = useRef<AbortController | null>(null);
+  const archiveExpanded = useRef(false);
+  const [nextCursor, setNextCursor] = useState<number | null>(null), [olderPending, setOlderPending] = useState(false), [archiveError, setArchiveError] = useState("");
+  const load = useCallback(async (before?: number) => {
+    taskRead.current?.abort();
+    const request = new AbortController(); taskRead.current = request;
+    if (before) setOlderPending(true);
     try {
-      const response = await apiFetch("/api/v1/tasks");
+      const parameters = new URLSearchParams();
+      if (activeLocationId) parameters.set("location", activeLocationId);
+      if (before) parameters.set("before", String(before));
+      const response = await apiFetch(`/api/v1/tasks?${parameters}`, { signal: request.signal });
       const body = await response.json();
-      if (!response.ok)
+      if (request.signal.aborted) return;
+      if (!response.ok) {
+        if (response.status === 401 || response.status === 403) { setTasks([]); setNextCursor(null); setCapabilities({canManage:false,canPost:false,userId:""}); }
         throw new Error(body.error?.message ?? "Unable to load actions.");
-      setTasks(body.tasks);
+      }
+      setTasks(current => {
+        const page = body.tasks.map((task:Task) => {const existing=current.find(item=>item.id===task.id);return existing&&existing.version>task.version?existing:task;});
+        return before ? [...current, ...page.filter((task:Task) => !current.some(item => item.id === task.id))] : page;
+      });
+      archiveExpanded.current = Boolean(before);
+      setNextCursor(body.hasEarlier ? body.nextCursor : null); setArchiveError("");
+      setCapabilities({canManage:body.canManage,canPost:body.canPost,userId:body.userId});
       setError("");
     } catch (caught) {
-      setError(
+      if (request.signal.aborted) return;
+      (before ? setArchiveError : setError)(
         caught instanceof Error ? caught.message : "Unable to load actions.",
       );
     } finally {
-      setLoading(false);
+      if (taskRead.current === request) { if (!request.signal.aborted) setLoading(false); setOlderPending(false); taskRead.current = null; }
     }
-  }, []);
+  }, [activeLocationId]);
   useEffect(() => {
     const timer = window.setTimeout(() => void load(), 0);
-    return () => window.clearTimeout(timer);
+    const refresh = () => { if(document.visibilityState === "visible" && !taskRead.current && !archiveExpanded.current) void load(); };
+    const poll = window.setInterval(refresh, 30000);
+    window.addEventListener("focus", refresh); document.addEventListener("visibilitychange", refresh);
+    return () => { taskRead.current?.abort(); window.clearTimeout(timer); window.clearInterval(poll); window.removeEventListener("focus", refresh); document.removeEventListener("visibilitychange", refresh); };
   }, [load]);
   const update = async (task: Task, status: Task["status"]) => {
     if (updating !== null) return;
     setUpdating(task.id); setUpdateError("");
     try {
-      const response = await apiFetch("/api/v1/tasks", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: task.id, status }) });
+      const response = await apiFetch("/api/v1/tasks", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: task.id, status, expectedVersion:task.version }) });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error?.message ?? "The action could not be updated. Please retry.");
       setTasks(current => current.map(item => item.id === task.id ? body.task : item));
@@ -2107,25 +2273,27 @@ function TaskCentre({
     finally { setUpdating(null); }
   };
   const filteredTasks = tasks.filter(task => (statusFilter === "all" || statusFilter === "active" && task.status !== "done" || task.status === statusFilter)
-    && `${task.title} ${task.detail} ${task.assignee}`.toLowerCase().includes(query.toLowerCase().trim()))
+    && (!mine || task.assigneeUserId === capabilities.userId) && `${task.title} ${task.detail} ${task.assignee}`.toLowerCase().includes(query.toLowerCase().trim()))
     .sort((a, b) => ({high:0,medium:1,low:2}[a.priority] - {high:0,medium:1,low:2}[b.priority]) || (a.dueDate ?? "9999").localeCompare(b.dueDate ?? "9999"));
   const active = tasks.filter((task) => task.status !== "done");
+  if (discussion) return <CollaborationMessages key={discussion.id} taskId={discussion.id} activeLocationId={discussion.locationId} onBack={() => setDiscussion(null)}/>;
   return (
     <div className="content tasks-page">
       {completedReview && <div className="owner-outcome-prompt" role="status"><div><strong>Action complete. What changed?</strong><p>Record the result against its saved evidence. Completing a task does not prove a financial improvement.</p></div><button type="button" onClick={() => onReviewOutcome(completedReview)}>Record outcome</button><button type="button" aria-label="Dismiss outcome reminder" onClick={() => setCompletedReview(null)}>×</button></div>}
       <section className="page-intro">
         <div>
-          <p>EXECUTION LAYER</p>
-          <h2>Every insight ends in accountable work.</h2>
+          <p>YOUR TEAM’S WORK</p>
+          <h2>Tasks and follow-through.</h2>
           <span>
             Assign an owner, deadline and expected impact. Source links preserve
             why the action exists.
           </span>
         </div>
-        <button className="primary" onClick={openComposer}>
-          + Create action
+        <button className="primary" disabled={!capabilities.canManage} onClick={openComposer}>
+          + Create task
         </button>
       </section>
+      <p className="task-archive-summary" role="status">{loading ? "Loading tasks…" : `${tasks.length} loaded tasks. ${nextCursor ? "Earlier tasks are available below. Counts and filters describe loaded tasks." : "End of the accessible archive."}`} The latest page refreshes every 30 seconds while visible. Reading earlier tasks pauses automatic refresh. Refresh actions starts from the latest page.</p>
       <section className="task-stats">
         <div>
           <strong>{active.length}</strong>
@@ -2150,8 +2318,9 @@ function TaskCentre({
           <span>Completed</span>
         </div>
       </section>
-      <div className="action-tools"><label>Find an action<input type="search" value={query} placeholder="Search title, owner or evidence" onChange={event => setQuery(event.target.value)}/></label><label>Status<select value={statusFilter} onChange={event => setStatusFilter(event.target.value)}><option value="active">Active</option><option value="all">All actions</option><option value="open">To do</option><option value="in_progress">In progress</option><option value="done">Done</option></select></label><button className="secondary" type="button" disabled={updating !== null} onClick={() => void load()}>Refresh actions</button></div>
+      <div className="action-tools"><label>Find an action<input type="search" value={query} placeholder="Search loaded tasks" onChange={event => setQuery(event.target.value)}/></label><label>Status<select value={statusFilter} onChange={event => setStatusFilter(event.target.value)}><option value="active">Active</option><option value="all">All actions</option><option value="open">To do</option><option value="in_progress">In progress</option><option value="done">Done</option></select></label><button className="secondary" type="button" disabled={updating !== null || olderPending} onClick={() => void load()}>Refresh actions</button></div>
       {updateError && <p className="action-update-error" role="alert">{updateError}</p>}
+      <label className="task-member-field"><span><input type="checkbox" checked={mine} onChange={event => setMine(event.target.checked)}/> Assigned to me</span><small>Visible tasks follow your workspace, location and evidence permissions.</small></label>
       <article className="card task-board">
         {loading ? (
           <WorkspaceSkeleton compact label="Loading your actions"/>
@@ -2163,7 +2332,7 @@ function TaskCentre({
             <span>
               Create one manually or convert a Vanteloq insight into work.
             </span>
-            <button onClick={openComposer}>Create the first action</button>
+            {capabilities.canManage && <button onClick={openComposer}>Create the first task</button>}
           </div>
         ) : (
           <div className="task-list">
@@ -2175,7 +2344,7 @@ function TaskCentre({
               >
                 <button
                   className="check-task"
-                  disabled={updating !== null || task.sourceRef?.startsWith("shopify-privacy:")}
+                  disabled={!capabilities.canPost || updating !== null || task.sourceRef?.startsWith("shopify-privacy:")}
                   aria-label={`${task.status === "done" ? "Reopen" : "Complete"} ${task.title}`}
                   onClick={() =>
                     void update(task, task.status === "done" ? "open" : "done")
@@ -2201,10 +2370,11 @@ function TaskCentre({
                     {task.expectedImpact ? ` · ${task.expectedImpact}` : ""}
                   </small>
                   {(task.sourceType === "insight" || task.sourceType === "decision") && <button className="task-source-link" type="button" onClick={() => task.sourceRef?.startsWith("opportunity:") ? onReviewOutcome(task.sourceRef.slice("opportunity:".length)) : navigate("Intelligence")}>{task.sourceRef?.startsWith("opportunity:") ? "Evidence & outcome" : "Review current opportunities"} →</button>}
+                  <button className="task-discussion-button" type="button" onClick={() => setDiscussion(task)}>Discuss with team</button>
                 </div>
                 <select
                   aria-label={`Status for ${task.title}`}
-                  disabled={updating !== null || task.sourceRef?.startsWith("shopify-privacy:")}
+                  disabled={!capabilities.canPost || updating !== null || task.sourceRef?.startsWith("shopify-privacy:")}
                   value={task.status}
                   onChange={(event) =>
                     void update(task, event.target.value as Task["status"])
@@ -2219,20 +2389,33 @@ function TaskCentre({
           </div>
         )}
       </article>
+      {archiveError && <p className="action-update-error" role="alert">{archiveError} Loaded tasks are preserved.</p>}
+      {nextCursor !== null && <button className="secondary" type="button" disabled={olderPending || updating !== null} onClick={() => void load(nextCursor)}>{olderPending ? "Loading earlier tasks…" : "Load earlier tasks"}</button>}
     </div>
   );
 }
 
 function TaskComposer({
   seed,
+  activeLocationId,
   close,
   saved,
 }: {
   seed: TaskSeed;
+  activeLocationId: string | null;
   close: () => void;
   saved: () => void;
 }) {
   const [saving, setSaving] = useState(false);
+  const [location, setLocation] = useState(seed.sourceType && seed.sourceType !== "manual" ? "" : activeLocationId ?? "");
+  const [directory, setDirectory] = useState<{members:{id:string;name:string}[];locations:{id:string;name:string}[];organizationWide:boolean}|null>(null);
+  const [directoryError, setDirectoryError] = useState("");
+  const [assignee, setAssignee] = useState("");
+  useEffect(() => {
+    let active = true; const abort = new AbortController();
+    void apiFetch(`/api/v1/collaboration/members${location ? `?location=${encodeURIComponent(location)}` : ""}`, {signal:abort.signal}).then(async response => {const body=await response.json();if(!response.ok)throw Error(body.error?.message || "Team members could not load. Please retry.");if(active){setDirectory(body);setDirectoryError("");if(!body.organizationWide&&!location&&body.locations?.[0])setLocation(body.locations[0].id);}}).catch(cause => {if(active&&cause.name!=="AbortError")setDirectoryError(cause.message);});
+    return () => {active=false;abort.abort();};
+  }, [location]);
   const dialogId = useId();
   const formRef = useRef<HTMLFormElement>(null);
   useModalFocus(formRef, true, () => { if (!saving) close(); });
@@ -2244,7 +2427,7 @@ function TaskComposer({
     setSaving(true);
     setError("");
     const form = new FormData(event.currentTarget);
-    const payload = JSON.stringify({ title: form.get("title"), detail: form.get("detail"), priority: form.get("priority"), assignee: form.get("assignee"), dueDate: form.get("dueDate") || null, sourceType: seed.sourceType ?? "manual", sourceRef: seed.sourceRef ?? null, expectedImpact: form.get("expectedImpact") });
+    const payload = JSON.stringify({ title: form.get("title"), detail: form.get("detail"), priority: form.get("priority"), assignee: "Unassigned", assigneeUserId:assignee || null,locationId:location || null, dueDate: form.get("dueDate") || null, sourceType: seed.sourceType ?? "manual", sourceRef: seed.sourceRef ?? null, expectedImpact: form.get("expectedImpact") });
     if (!attempt.current || attempt.current.payload !== payload) attempt.current = { payload, key: crypto.randomUUID() };
     try {
       const response = await apiFetch("/api/v1/tasks", { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": attempt.current.key }, body: payload });
@@ -2263,7 +2446,7 @@ function TaskComposer({
         <div className="modal-title">
           <div>
             <p>QUICK ACTION</p>
-            <h2 id={dialogId}>Assign the next move</h2>
+            <h2 id={dialogId}>Create a team task</h2>
           </div>
           <button type="button" disabled={saving} aria-label="Close action form" onClick={close}>
             ×
@@ -2291,14 +2474,16 @@ function TaskComposer({
             </select>
           </label>
           <label>
-            Owner
-            <input name="assignee" defaultValue="Owner" maxLength={80} />
+            Assigned to
+            <select value={assignee} onChange={event => setAssignee(event.target.value)} disabled={!directory}><option value="">Unassigned</option>{directory?.members.map(member => <option key={member.id} value={member.id}>{member.name}</option>)}</select>
           </label>
           <label>
             <FieldLabel required={false}>Due Date</FieldLabel>
             <input type="date" name="dueDate" />
           </label>
         </div>
+        <label className="task-member-field">Location<select value={location} disabled={saving || !directory || (seed.sourceType !== undefined && seed.sourceType !== "manual")} onChange={event => {setLocation(event.target.value);setAssignee("");}}>{directory?.organizationWide && <option value="">Whole workspace</option>}{directory?.locations.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select><small>Only authorised team members can view or discuss this task.</small></label>
+        {directoryError && <p role="alert">{directoryError}</p>}
         <label>
           <FieldLabel required={false}>Expected Impact</FieldLabel>
           <input
@@ -2317,8 +2502,8 @@ function TaskComposer({
           <button type="button" disabled={saving} onClick={close}>
             Cancel
           </button>
-          <button className="primary" disabled={saving}>
-            {saving ? "Saving…" : "Assign action"}
+          <button className="primary" disabled={saving || !directory || Boolean(directoryError)}>
+            {saving ? "Saving…" : "Save task"}
           </button>
         </div>
       </form>
@@ -2329,6 +2514,9 @@ function TaskComposer({
 type IntegrationConnection = IntegrationCatalogEntry & {
   capabilities?: IntegrationCapabilities;
   customerAvailability?: CustomerIntegrationAvailability;
+  freeSelected?: boolean;
+  freeEligible?: boolean;
+  cleanupRequired?: boolean;
   status: string;
   maskedAccountRef: string | null;
   externalAccountName: string | null;
@@ -2371,7 +2559,8 @@ type IntegrationConnection = IntegrationCatalogEntry & {
     };
     syncActive: boolean;
     automaticSync?: AutomaticSyncStatus | null;
-    canonicalCoverage: CanonicalCommerceCoverage;
+    pendingRemovalConnectionIds?: string[];
+  canonicalCoverage: CanonicalCommerceCoverage;
     dataReadiness?: ConnectionDataReadiness;
     featureCoverage: ProviderFeatureCoverage[];
     reportCatalog: {
@@ -2393,6 +2582,7 @@ type IntegrationConnection = IntegrationCatalogEntry & {
     resourceSelectionRequired?: boolean;
     syncEligible?: boolean;
   };
+  pendingRemovalConnectionIds?: string[];
   canonicalCoverage: CanonicalCommerceCoverage;
   featureCoverage: ProviderFeatureCoverage[];
 };
@@ -2426,17 +2616,25 @@ type PendingDataApproval = {
 };
 
 function DataHub({
+  initialTab,
+  importChoices,
+  onImportTarget,
+  canImport,
   refresh,
   showNotice,
   navigate,
   subscriptionFeatures,
 }: {
+  initialTab?: "import" | "connections";
+  importChoices: ReportImportChoice[];
+  onImportTarget: (target: ReportImportTarget) => void;
+  canImport: boolean;
   refresh: () => Promise<void>;
   showNotice: (message: string) => void;
   navigate: (view: View) => void;
   subscriptionFeatures: readonly string[];
 }) {
-  const [tab, setTab] = useState<"import" | "connections">(() => subscriptionFeatures.includes("pos.reporting.core") ? "connections" : "import");
+  const [tab, setTab] = useState<"import" | "connections">(() => initialTab ?? (subscriptionFeatures.includes("pos.reporting.core") ? "connections" : "import"));
   const [providerQuery, setProviderQuery] = useState("");
   const [providerCategory, setProviderCategory] = useState("All categories");
   const [connections, setConnections] = useState<IntegrationConnection[]>([]);
@@ -2445,6 +2643,7 @@ function DataHub({
   const [connectionsLoaded, setConnectionsLoaded] = useState(false);
   const [canManage, setCanManage] = useState(false);
   const [canManageBankConnections, setCanManageBankConnections] = useState(false);
+  const [freeAllowance,setFreeAllowance]=useState<{used:number;limit:number;selectedProviders:string[]}|null>(null);
   const [providerActions, setProviderActions] = useState<Record<string, string>>({});
   const [marketingResourcePanel, setMarketingResourcePanel] = useState<MarketingResourcePanel | null>(null);
   const [marketingResourceErrors, setMarketingResourceErrors] = useState<Record<string, { message: string; reconnect: boolean }>>({});
@@ -2535,6 +2734,7 @@ function DataHub({
         throw new Error(body.error?.message ?? "Connection status could not be loaded.");
       }
       setConnections(body.integrations ?? []);
+      setFreeAllowance(body.freeAllowance ?? null);
       setCanManage(body.canManage === true);
       setCanManageBankConnections(body.canManageBankConnections === true);
     } catch (error) {
@@ -2564,6 +2764,7 @@ function DataHub({
       if (!connection) throw new Error("The connected R-Series account is no longer available.");
       if (!connection.syncActive) {
         setConnections(body.integrations ?? []);
+      setFreeAllowance(body.freeAllowance ?? null);
         setCanManage(body.canManage === true);
         setCanManageBankConnections(body.canManageBankConnections === true);
         if (connection.lastSuccessfulSyncAt && connection.lastSuccessfulSyncAt !== startedFrom) {
@@ -2665,7 +2866,7 @@ function DataHub({
   const syncDeelConnection = async (connectionId: string) => {
     const body = await providerPost("deel", providerSyncRoutes.deel, "sync", connectionId);
     if (!body) return;
-    showNotice(body.nextStep ?? "Finalized aggregate payroll evidence was staged for review.");
+    showNotice(body.nextStep ?? "Available payroll-report aggregates were staged for review.");
     await loadConnections();
   };
   const testSlackConnection = async (connectionId: string) => {
@@ -2956,6 +3157,13 @@ function DataHub({
     showNotice(typeof body.message === "string" ? body.message : `${providerLabel} disconnected`);
     await loadConnections();
   };
+  const finishSlackRemoval = async (connectionId: string, confirmedProviderRemoval = false) => {
+    if (confirmedProviderRemoval && !window.confirm("Confirm that you already removed Vanteloq in Slack? This clears the encrypted removal-only material. It does not verify removal with Slack.")) return;
+    const body = await providerPost("slack", "/api/v1/integrations/slack/disconnect", "disconnect", connectionId, { confirmedProviderRemoval });
+    if (!body) return;
+    showNotice(body.message ?? "Slack removal status updated.");
+    await loadConnections();
+  };
   const loadProviderLocations = async (provider: "lightspeed" | "lightspeed-r" | "shopify" | "shopify-pos" | "square" | "clover", connectionId?: string) => {
     const actionKey = integrationActionKey(provider, connectionId);
     setProviderActions((current) => ({ ...current, [actionKey]: "locations" }));
@@ -3021,13 +3229,14 @@ function DataHub({
   const filteredProviders = filterConnectors(providerRows, providerQuery, providerCategory);
   return (
     <div className="content data-hub">
-      {privacyNoticeProvider && <ProviderPrivacyNotice key={privacyNoticeProvider} provider={privacyNoticeProvider} onComplete={accepted => { privacyNoticeResolver.current?.(accepted); privacyNoticeResolver.current = null; setPrivacyNoticeProvider(null); }}/>}
+      {freeAllowance&&<p className="free-integration-allowance" role="status">Your Free integrations: {freeAllowance.used} of {freeAllowance.limit} selected. Choose any available provider. Disconnect a provider to change your choices.</p>}
+      {privacyNoticeProvider && <ProviderPrivacyNotice key={privacyNoticeProvider} provider={privacyNoticeProvider} scopes={connections.find(item => item.id === privacyNoticeProvider)?.providerReadiness?.scopes} preview={connections.find(item => item.id === privacyNoticeProvider)?.customerAvailability?.previewAccess === true} onComplete={accepted => { privacyNoticeResolver.current?.(accepted); privacyNoticeResolver.current = null; setPrivacyNoticeProvider(null); }}/>}
       <section className="page-intro">
         <div>
           <p>CONNECTIONS AND DATA</p>
           <h2>Connect sources, review the data, then use the results.</h2>
           <span>
-            Each connection keeps its own authorization, location mappings,
+            Free includes two available integrations of your choice. Each connection keeps its own authorization, location mappings,
             sync history, and review status before data reaches the command centre.
           </span>
         </div>
@@ -3047,13 +3256,13 @@ function DataHub({
             className={tab === "import" ? "active" : ""}
             onClick={() => setTab("import")}
           >
-            Import data
+            Import reports
           </button>
         </div>
       </section>
       <Suspense fallback={null}><ShopifyPrivacyRequests quietUnauthorized /></Suspense>
       {tab === "import" ? (
-        <DailyImport refresh={refresh} showNotice={showNotice} />
+        <><section className="report-import-intro" aria-label="Report import destinations"><p>Sales CSVs update your dashboard. Product costs update margin analysis. Invoices, receipts and statements go through a separate review in BookLoQ.</p><ReportImportChoices choices={importChoices.filter(choice => choice.target !== "sales")} onSelect={onImportTarget}/></section>{canImport ? <DailyImport refresh={refresh} showNotice={showNotice} /> : <p role="status">Your role cannot import daily records. Ask your workspace owner for import access.</p>}</>
       ) : (
         <>
           {connectionError && (
@@ -3091,8 +3300,8 @@ function DataHub({
               <div className="integration-grid">
             {filteredProviders.filter((provider) => provider.category === category).map((provider) => {
               const providerFeature = integrationProviderFeature(provider.id);
-              const providerEntitled = providerFeature !== null && subscriptionFeatures.includes(providerFeature);
-              const providerPlanLabel = providerFeature?.startsWith("bookloq")
+              const providerEntitled = provider.freeEligible === true || (providerFeature !== null && subscriptionFeatures.includes(providerFeature));
+              const providerPlanLabel = freeAllowance ? "Two Free choices are in use" : providerFeature?.startsWith("bookloq")
                 ? "BookLoQ access"
                 : providerFeature?.startsWith("marketing.")
                   ? "Growth plan"
@@ -3125,12 +3334,14 @@ function DataHub({
               const capabilities = provider.capabilities ?? buildIntegrationCapabilities(provider);
               const disabledReason = !customerAvailability.canStartConnection
                 ? "Coming Soon"
-                : !providerEntitled ? `${providerPlanLabel} required for this connection.`
+                : !providerEntitled ? freeAllowance ? "Disconnect a selected provider to change your two Free choices, or upgrade." : `${providerPlanLabel} required for this connection.`
                 : !canManageProvider ? "Your role can view connections. Ask a workspace owner to make changes."
                 : !configured ? "This connection is temporarily unavailable. Contact support for help." : "";
 
               return (
               <article className={`integration-card${showPlanRequirement ? " subscription-locked" : ""}`} data-provider={provider.id} key={provider.id}>
+                {freeAllowance&&hasSavedConnection&&!provider.freeSelected&&!providerComingSoon&&provider.freeEligible&&<button type="button" disabled={!canManage} onClick={()=>void apiFetch("/api/v1/integrations",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"select_provider",provider:provider.id})}).then(async response=>{const body=await response.json();if(!response.ok)throw Error(body.error?.message??"Selection could not be saved.");await loadConnections();}).catch(error=>showNotice(error.message))}>Use this provider in Free</button>}
+                {provider.freeSelected&&<small className="free-provider-selected">Selected in your Free plan</small>}
                 <div className="integration-card-head">
                   <IntegrationBrandLogo name={provider.name} />
                   <div className="integration-card-labels">
@@ -3158,14 +3369,16 @@ function DataHub({
                 </details>}
                 {isQuickBooks && quickBooksConsentOpen && <form className="moneris-connect-form" onSubmit={(event) => { event.preventDefault(); void connectQuickBooks(); }}>
                   <header><b>Connect a QuickBooks Online company</b><span>Verify your company and save its authorization securely. Accounting import is not available yet, so this connection does not update your reports.</span></header>
-                  <label className="moneris-consent"><input type="checkbox" checked={quickBooksConsentAccepted} required onChange={(event) => setQuickBooksConsentAccepted(event.target.checked)} /><span>I authorize Vanteloq to receive the selected QuickBooks company identifier, company name, authorization status, and future read only accounting records for mapping, reconciliation, and reporting. Vanteloq will not create or change QuickBooks transactions during this stage.</span></label>
+                  <ProviderPermissionSummary provider="quickbooks"/>
+                  <label className="moneris-consent"><input type="checkbox" checked={quickBooksConsentAccepted} required onChange={(event) => setQuickBooksConsentAccepted(event.target.checked)} /><span>I authorise Vanteloq to verify the selected QuickBooks company identifier, company name and connection status, and securely store continuing-access credentials. Ledger, invoice, bill and tax imports are not enabled during this stage. Any future import requires its own identified records and review controls.</span></label>
                   <ProviderPolicyLinks provider="quickbooks"/>
                   <small>Intuit will show its own company selection and permission screen next. You can disconnect later to revoke the authorization and delete the stored token.</small>
                   <footer><button type="button" onClick={() => { setQuickBooksConsentOpen(false); setQuickBooksConsentAccepted(false); }}>Cancel</button><button type="submit" className="primary" disabled={!canManageProvider || providerAction === "authorize" || !quickBooksConsentAccepted}>{providerAction === "authorize" ? "Opening QuickBooks…" : "Continue to Intuit"}</button></footer>
                 </form>}
                 {isDeel && deelConsentOpen && <form className="moneris-connect-form" onSubmit={(event) => { event.preventDefault(); void connectDeel(); }}>
-                  <header><b>Connect aggregate Deel payroll</b><span>Vanteloq stages finalized payroll-cycle totals for BookLoQ review. It does not store employee-level payroll records.</span></header>
-                  <label className="moneris-consent"><input type="checkbox" checked={deelConsentAccepted} required onChange={(event) => setDeelConsentAccepted(event.target.checked)} /><span>I authorize Vanteloq to read legal entity names, finalized payroll-cycle dates, and currency-level payroll category totals. Employee names, bank details, payslips, contract identifiers, and individual compensation are excluded.</span></label>
+                  <header><b>Connect aggregate Deel payroll</b><span>Vanteloq stages available payroll-report category totals for review. Report availability does not establish finalised or paid payroll.</span></header>
+                  <ProviderPermissionSummary provider="deel"/>
+                  <label className="moneris-consent"><input type="checkbox" checked={deelConsentAccepted} required onChange={(event) => setDeelConsentAccepted(event.target.checked)} /><span>I authorise Vanteloq to process supported payroll-report responses and retain legal entity names, cycle dates and currency-level category totals. Worker identifiers, payment details and individual payroll information are discarded during aggregation; payslip files are not imported. Reports remain staged for review and do not certify finalised, approved or paid payroll.</span></label>
                   <ProviderPolicyLinks provider="deel"/>
                   <small>Imported totals remain staged and do not update labour KPIs or accounting reports automatically. You can disconnect and delete the staged aggregates later.</small>
                   <footer><button type="button" onClick={() => { setDeelConsentOpen(false); setDeelConsentAccepted(false); }}>Cancel</button><button type="submit" className="primary" disabled={!canManageProvider || providerAction === "authorize" || !deelConsentAccepted}>{providerAction === "authorize" ? "Opening Deel…" : "Continue to Deel"}</button></footer>
@@ -3178,6 +3391,7 @@ function DataHub({
                   <label><span>Application ID</span><input value={monerisDraft.clientId} maxLength={256} autoComplete="off" required onChange={(event) => setMonerisDraft((current) => ({ ...current, clientId: event.target.value }))} /></label>
                   <label><span>Client secret</span><input type="password" value={monerisDraft.clientSecret} maxLength={512} autoComplete="new-password" required onChange={(event) => setMonerisDraft((current) => ({ ...current, clientSecret: event.target.value }))} /></label>
                   <label><span>Read scope</span><input value="payment.read" readOnly /><small>Vanteloq only requests permission to read payments.</small></label>
+                  <ProviderPermissionSummary provider="moneris"/>
                   <label className="moneris-consent"><input type="checkbox" checked={monerisDraft.accepted} required onChange={(event) => setMonerisDraft((current) => ({ ...current, accepted: event.target.checked }))} /><span>I authorize Vanteloq to retrieve payment amounts, currency, status, timestamps and settlement references for reconciliation. No raw card data is requested or stored.</span></label>
                   <ProviderPolicyLinks provider="moneris"/>
                   <footer><button type="button" onClick={() => setMonerisFormOpen(false)}>Cancel</button><button type="submit" className="primary" disabled={!canManageProvider || providerAction === "connect" || !monerisDraft.accepted}>{providerAction === "connect" ? "Validating…" : "Validate and connect"}</button></footer>
@@ -3210,6 +3424,7 @@ function DataHub({
                             : "No provider resources selected"}</small>}
                           {(provider.category === "Point of sale" || provider.id === "shopify") && connection.dataReadiness && <details className="integration-feature-checklist"><summary>Imported fields and report requirements</summary><p>{connection.dataReadiness.boundary}</p>{connection.dataReadiness.observedPeriod.from && <small>Observed sales dates: {connection.dataReadiness.observedPeriod.from} to {connection.dataReadiness.observedPeriod.to}. Gaps and omitted history may remain.</small>}{connection.dataReadiness.fields.map(field => <div key={field.id}><span className={`feature-state ${field.state === "supported" ? "available" : "needs-data"}`}>{dataReadinessStateLabels[field.state]}</span><p><b>{field.label}</b>{field.records !== null && field.populated !== null && <small>{field.populated} of {field.records} imported records contain this field</small>}</p></div>)}{connection.dataReadiness.metrics.map(metric => <p key={metric.id}><b>{metric.label}</b><small>{metric.reason}</small></p>)}</details>}
                           {connection.lastErrorCode && <small role="alert">Needs attention: {humanizeIdentifier(connection.lastErrorCode)}</small>}
+                          {accountHealth.state === "reauthorize" && <small id={`connection-recovery-${connection.id}`} role="status">{accountHealth.detail} Sign in again and choose this same business account.</small>}
                         </div>
                         <span className="provider-account-state" data-health-tone={resourceError?.reconnect ? "warning" : accountHealth.tone}>{resourceError?.reconnect ? "Authorization needed" : accountHealth.label}</span>
                         {isMarketingProvider && connection.sampleSummary && <section className="marketing-sample-review" aria-label={`Warning-free ${provider.name} sample review`}>
@@ -3222,7 +3437,7 @@ function DataHub({
                         </section>}
                         {connection.automaticSync && connection.status === "connected" && <AutomaticSyncControl
                           provider={provider.id} connectionId={connection.id} accountName={accountLabel}
-                          status={connection.automaticSync} refresh={loadConnections} />}
+                          status={connection.automaticSync} health={accountHealth} refresh={loadConnections} />}
                         {isMarketingProvider && resourceError && <section
                           id={resourceErrorId}
                           className="marketing-resource-error"
@@ -3231,17 +3446,25 @@ function DataHub({
                         >
                           <b>{resourceError.reconnect ? `${provider.name} needs authorization` : "Resources could not be loaded"}</b>
                           <p>{resourceError.message}</p>
-                          {resourceError.reconnect && <>
+                          {resourceError.reconnect && accountHealth.state !== "reauthorize" && <>
                             <p>Sign in with this account again, then choose the resources for this business.</p>
                             <button
                               type="button"
                               onClick={() => void connectProvider(provider.id as "google" | "meta")}
-                              disabled={!canManageProvider || Boolean(connectionAction) || Boolean(providerAction)}
+                              disabled={Boolean(disabledReason) || Boolean(connectionAction) || Boolean(providerAction)}
                             >{providerAction === "authorize" ? `Opening ${provider.name}…` : `Reconnect ${provider.name}`}</button>
                           </>}
                         </section>}
                         <div className="provider-account-actions">
-                          {connection.status === "connected" && <>
+                          {accountHealth.state === "reauthorize" && <button
+                            type="button"
+                            aria-label={`Reconnect ${provider.name} account ${accountLabel}`}
+                            aria-describedby={`connection-recovery-${connection.id}`}
+                            onClick={() => isMoneris ? setMonerisFormOpen(true) : isQuickBooks ? setQuickBooksConsentOpen(true) : isDeel ? setDeelConsentOpen(true) : provider.id === "shopify" || provider.id === "shopify-pos" ? setShopifyConnectProvider(provider.id) : void connectProvider(actionableProvider)}
+                            disabled={Boolean(disabledReason) || Boolean(connectionAction) || Boolean(providerAction) || connection.syncActive}
+                            title={disabledReason || `Sign in again and choose ${accountLabel}, the same business account.`}
+                          >{providerAction === "authorize" ? `Opening ${provider.name}…` : "Reconnect account"}</button>}
+                          {connection.status === "connected" && accountHealth.state !== "reauthorize" && <>
                             {isQuickBooks ? <small>Company verified. Accounting import is not available yet. This connection does not update your reports.</small> : isMarketingProvider ? <>
                               <button
                                 type="button"
@@ -3316,6 +3539,14 @@ function DataHub({
                   </div>
                   </details>
                 )}
+                {isSlack && Boolean(provider.pendingRemovalConnectionIds?.length) && <section className="provider-setup-needed slack-removal-pending" aria-label="Slack removal follow-up">
+                  <b>Slack access is off. Complete provider removal.</b>
+                  <p>Vanteloq cannot send messages. Encrypted removal-only material may remain until cleanup succeeds or you confirm that you removed the app in Slack. Complete this before reconnecting.</p>
+                  {provider.pendingRemovalConnectionIds?.map(connectionId => <div key={connectionId} className="integration-actions">
+                    <button type="button" disabled={!canManage || Boolean(providerActions[integrationActionKey("slack",connectionId)])} onClick={() => void finishSlackRemoval(connectionId)}>Retry removal</button>
+                    <button type="button" disabled={!canManage || Boolean(providerActions[integrationActionKey("slack",connectionId)])} onClick={() => void finishSlackRemoval(connectionId,true)}>I removed Vanteloq in Slack</button>
+                  </div>)}
+                </section>}
                 {isMoneris && hasSavedConnection && provider.providerReadiness?.dataPromotionEnabled !== true && (
                   <div className="provider-setup-needed" role="note"><b>Payment import only</b><span>Imported payments stay separate from business reports while currency, refunds and settlement reconciliation are completed.</span></div>
                 )}
@@ -3377,6 +3608,8 @@ function DataHub({
                     >Approve reviewed data</button>}
                     <PlaidLinkButton
                       connected={connected}
+                      cleanupRequired={provider.cleanupRequired}
+                      canCleanup={canManageBankConnections}
                       repairRequired={repairRequired}
                       configured={configured}
                       canStartConnection={customerAvailability.canStartConnection}
@@ -3387,7 +3620,7 @@ function DataHub({
                     />
                   </NewConnectionContainer> : supportsConnectionControls ? <NewConnectionContainer className="provider-actions">
                     {customerAvailability.previewAccess && <summary>Preview Connection</summary>}
-                    {!connected && <button
+                    {!connected && health.state !== "reauthorize" && <button
                       type="button"
                       onClick={() => isMoneris ? setMonerisFormOpen(true) : isQuickBooks ? setQuickBooksConsentOpen(true) : isDeel ? setDeelConsentOpen(true) : provider.id === "shopify" || provider.id === "shopify-pos" ? setShopifyConnectProvider(provider.id) : void connectProvider(actionableProvider)}
                       disabled={Boolean(disabledReason) || Boolean(providerAction)}
@@ -3635,7 +3868,7 @@ const toCents = (
     throw new Error(`Invalid money value: ${String(value)}`);
   return Math.round(number * 100);
 };
-function DailyImport({
+export function DailyImport({
   refresh,
   showNotice,
 }: {
@@ -3646,6 +3879,7 @@ function DailyImport({
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [privacyAccepted, setPrivacyAccepted] = useState(false);
   const [pending, setPending] = useState<{
     rows: unknown[]; importType: string; fileName: string; key: string; review: DailyImportReview;
   } | null>(null);
@@ -3657,13 +3891,14 @@ function DailyImport({
     key = crypto.randomUUID(),
     replacement?: { snapshot: string; reason: string },
   ) => {
+    if (!privacyAccepted) throw new Error("Review the Privacy Policy and authorise this import before continuing.");
     const response = await apiFetch("/api/v1/daily-metrics", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "Idempotency-Key": key,
       },
-      body: JSON.stringify({ importType, fileName, rows, replacement }),
+      body: JSON.stringify({ importType, fileName, rows, replacement, importPrivacyAcknowledgement: importPrivacyAcknowledgement() }),
     });
     const body = await response.json();
     if (response.status === 409 && body.review) {
@@ -3680,15 +3915,16 @@ function DailyImport({
     setReason("");
     await refresh();
     showNotice(
-      `${body.import.rowCount} verified daily record${body.import.rowCount === 1 ? "" : "s"} saved`,
+      `${body.import.rowCount} daily record${body.import.rowCount === 1 ? "" : "s"} saved. Dashboard measurements updated.`,
     );
     return true;
   };
   const importCsv = async () => {
-    if (!file || pending) return;
+    if (!file || pending || !privacyAccepted) return;
     setBusy(true);
     setError("");
     try {
+      if (file.size > 512000) throw new Error("Choose a sales CSV smaller than 500 KB. Use the template and keep up to 366 daily records.");
       const saved = await submitRows(
         parseDailyCsv(await file.text()),
         "daily_summary_csv",
@@ -3705,7 +3941,7 @@ function DailyImport({
   };
   const submitManual = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (pending) return;
+    if (pending || !privacyAccepted) return;
     const formElement = event.currentTarget;
     setBusy(true);
     setError("");
@@ -3743,7 +3979,7 @@ function DailyImport({
     }
   };
   const confirmReplacement = async () => {
-    if (!pending || reason.trim().length < 3) return;
+    if (!pending || reason.trim().length < 3 || !privacyAccepted) return;
     setBusy(true);
     setError("");
     try {
@@ -3770,12 +4006,12 @@ function DailyImport({
   };
   return (
     <div className="import-layout">
-      <LinkedFilesPanel onUseCsv={setFile}/>
+      <LinkedFilesPanel onUseCsv={busy || pending ? undefined : file => { setFile(file); setPrivacyAccepted(false); }}/>
       <article className="card csv-import">
         <div className="card-head">
           <div>
-            <p className="card-kicker">FASTEST START</p>
-            <h3>Daily summary CSV</h3>
+            <p className="card-kicker">SALES AND DAILY BALANCES</p>
+            <h3>Upload a sales CSV</h3>
           </div>
           <button onClick={downloadTemplate}>Download template</button>
         </div>
@@ -3789,14 +4025,15 @@ function DailyImport({
             type="file"
             accept=".csv,text/csv"
             disabled={busy || Boolean(pending)}
-            onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+            onChange={(event) => { setFile(event.target.files?.[0] ?? null); setPrivacyAccepted(false); setError(""); }}
           />
           <b>{file ? file.name : "Choose a CSV file"}</b>
-          <span>Maximum 366 daily rows · no customer or payment-card data</span>
+          <span>Maximum 366 daily rows · 500 KB · no customer or payment-card data</span>
         </label>
+        <ReportImportPrivacyNotice accepted={privacyAccepted} onChange={setPrivacyAccepted} disabled={busy || Boolean(pending)}/>
         <button
           className="primary wide"
-          disabled={!file || busy || Boolean(pending)}
+          disabled={!file || !privacyAccepted || busy || Boolean(pending)}
           onClick={() => void importCsv()}
         >
           {busy ? "Validating…" : "Validate and import"}
@@ -3806,7 +4043,7 @@ function DailyImport({
         <div className="card-head">
           <div>
             <p className="card-kicker">MANUAL ENTRY</p>
-            <h3>Add one verified day</h3>
+            <h3>Add one recorded day</h3>
           </div>
           <span>All amounts in dollars</span>
         </div>
@@ -3858,8 +4095,9 @@ function DailyImport({
             <input name="payable" inputMode="decimal" />
           </label>
         </fieldset>
-        <button className="primary wide" disabled={busy || Boolean(pending)}>
-          {busy ? "Saving…" : "Save verified day"}
+        <ReportImportPrivacyNotice accepted={privacyAccepted} onChange={setPrivacyAccepted} disabled={busy || Boolean(pending)}/>
+        <button className="primary wide" disabled={!privacyAccepted || busy || Boolean(pending)}>
+          {busy ? "Saving…" : "Save recorded day"}
         </button>
       </form>
       {error && <p className="import-error" role="alert">{error}</p>}
@@ -4312,6 +4550,7 @@ function Advisor({
         {thinking && streamText && <AdvisorResponse title="Vanteloq AI" body={streamText} limitation="" streaming/>}
         {responseError && <div className="ai-response-error" role="status"><strong>Reply not completed</strong><p>{responseError}</p><span>Your question remains in the message box.</span><button type="submit" form="advisor-form" disabled={loading || !question.trim()}>Retry response</button></div>}
         {answer && reply(answer, submittedQuestion, true)}
+        {answer && <AdvisorDashboardActions key={submittedQuestion} question={submittedQuestion} disabled={loading} onOpenOverview={() => navigate("Dashboard")}/>}
       </AdvisorComposer>
     </div>
   );
@@ -4388,11 +4627,13 @@ type LocationIntelligence = {
   scopeLabel: string;
   latestBusinessDate: string | null;
   unmappedSourceLocations: number;
+  comparisonLimitations: string[];
   locations: Array<{
     id: string;
     name: string;
     address: string;
     timezone: string;
+    currency: string;
     validationStatus: string;
     sourceMappings: Array<{ provider: string; name: string }>;
     metrics: {
@@ -4403,11 +4644,19 @@ type LocationIntelligence = {
       transactionCount: number | null;
       inventoryValueCents: number | null;
       lastUpdatedAt: string | null;
+      currency: string;
+      timeZone: string;
+      from: string | null;
+      to: string | null;
+      status: string;
+      profitAvailability: string;
+      coverage: { complete: boolean; observedRecords: number | null; expectedRecords: number | null; expectedDays: number; sourceScopes: number; queryComplete: boolean };
+      limitations: string[];
     };
   }>;
 };
 
-function LocationsWorkspace({
+export function LocationsWorkspace({
   currency,
   activeLocationId,
   selectLocation,
@@ -4454,11 +4703,12 @@ function LocationsWorkspace({
           <button onClick={() => navigate("Integrations")}>Map provider locations</button>
         </section>
       )}
+      {data.comparisonLimitations?.length > 0 && <section className="card location-data-contract"><h3>Review coverage before comparing stores.</h3>{data.comparisonLimitations.map(line => <p key={line}>{line}</p>)}</section>}
       {!data.locations.length ? (
         <section className="card location-empty-state">
           <h3>Add the first organization location.</h3>
           <p>A location name and address are required before a POS shop can be mapped or a store dashboard can be selected.</p>
-          <button className="primary" onClick={() => navigate("Settings")}>Open location settings</button>
+          <button className="primary" onClick={() => { window.location.hash = settingsSectionHash("locations"); navigate("Settings"); }}>Open location settings</button>
         </section>
       ) : (
         <section className="location-intelligence-grid">
@@ -4469,11 +4719,12 @@ function LocationsWorkspace({
                 {activeLocationId === location.id && <strong>Current scope</strong>}
               </header>
               <div className="location-metric-grid">
-                <span><small>NET SALES</small><b>{money(location.metrics.netSalesCents, currency)}</b><em>{location.metrics.period ?? "No verified period"}</em></span>
-                <span><small>GROSS PROFIT</small><b>{money(location.metrics.grossProfitCents, currency)}</b><em>Permission and cost data required</em></span>
-                <span><small>TRANSACTIONS</small><b>{location.metrics.transactionCount?.toLocaleString() ?? "Not available"}</b><em>{location.metrics.days} verified days</em></span>
-                <span><small>INVENTORY VALUE</small><b>{money(location.metrics.inventoryValueCents, currency)}</b><em>Latest verified balance</em></span>
+                <span><small>NET SALES</small><b>{money(location.metrics.netSalesCents, location.metrics.currency || currency)}</b><em>{location.metrics.period ?? "Awaiting dated records"}</em></span>
+                <span><small>GROSS PROFIT</small><b>{money(location.metrics.grossProfitCents, location.metrics.currency || currency)}</b><em>{location.metrics.profitAvailability === "owner_reviewed" ? "Owner-reviewed daily costs" : "Complete cost evidence required"}</em></span>
+                <span><small>TRANSACTIONS</small><b>{location.metrics.transactionCount?.toLocaleString() ?? "Not available"}</b><em>{location.metrics.days} recorded days</em></span>
+                <span><small>INVENTORY VALUE</small><b>{money(location.metrics.inventoryValueCents, location.metrics.currency || currency)}</b><em>{location.metrics.inventoryValueCents === null ? "Closing valuation required" : "Recorded closing balance"}</em></span>
               </div>
+              <details className="location-source-list"><summary>Source coverage and reporting scope</summary><p>{location.metrics.from && location.metrics.to ? `${location.metrics.from} to ${location.metrics.to}` : "No reporting period available"} · {location.metrics.timeZone || location.timezone} · {location.metrics.currency || currency}</p>{location.metrics.coverage?.observedRecords !== null && <p>{location.metrics.coverage?.observedRecords ?? 0} of {location.metrics.coverage?.expectedRecords ?? 0} expected date and source records. Missing dates remain unknown.</p>}{location.metrics.lastUpdatedAt && <p>Last recorded update: {formatRecordedTimestamp(location.metrics.lastUpdatedAt)}</p>}{location.metrics.limitations?.map(line => <p key={line}>{line}</p>)}</details>
               <div className="location-source-list">
                 <b>Mapped data sources</b>
                 {location.sourceMappings.length
@@ -4704,23 +4955,8 @@ function AlertDrawer({
     </aside>
   );
 }
-function LoadingState() {
-  return (
-    <div className="workspace-loading ledger-skeleton" role="status" aria-live="polite" aria-label="Loading workspace data">
-      <span className="sr-only">Verifying the operating picture…</span>
-      <div className="skeleton-heading" aria-hidden="true">
-        <i />
-        <i />
-      </div>
-      <div className="skeleton-summary" aria-hidden="true">
-        {[1, 2, 3, 4, 5].map((item) => <i key={item} />)}
-      </div>
-      <div className="skeleton-ledger" aria-hidden="true">
-        <b />
-        {[1, 2, 3, 4, 5, 6].map((item) => <span key={item}><i /><i /><i /><i /></span>)}
-      </div>
-    </div>
-  );
+function LoadingState({ overview = false }: { overview?: boolean }) {
+  return <WorkspaceSkeleton label="Loading workspace data" variant={overview ? "overview" : "records"}/>;
 }
 export function SourceSyncingState({ refresh }: { refresh: () => void | Promise<void> }) {
   return <section className="failure-state" role="status" aria-live="polite" aria-busy="true">

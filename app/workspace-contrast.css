@@ -1,0 +1,228 @@
+/* Themes include lazy-loaded data panels and portal-based configuration. */
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(p,small,dt,.skeleton-status) { color:var(--ws-muted)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(h1,h2,h3,h4,strong,b,dd,label,legend) { color:var(--ws-ink)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(input,select,textarea) { color:var(--ws-ink)!important; background:var(--ws-panel)!important; border-color:var(--ws-control)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(:where(button:not(.primary):not(.bookloq-primary):not(.fc-primary):not(.foodservice-primary):not(.ai-send):not(.danger)),.secondary) { color:var(--ws-ink)!important; background-color:var(--ws-raised)!important; border-color:var(--ws-control)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is([class*="empty"],.report-period-control,.growth-summary-grid>article,.provider-parity-contract,.provider-capability-list>article,.decision-preview,.brief-question-grid>article) { background:var(--ws-panel)!important; color:var(--ws-ink)!important; border-color:var(--ws-line)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.required-mark,.owner-priority-toggle,.connector-toolbar>span,.task-stats span,.report-source-control header p,.report-inspector header p,.report-date-fields span,.marketing-measurement-card header p,.bookloq-start p:first-child,.record-preview header>div>p) { color:var(--ws-blue)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.task-stats,.task-summary,.task-metrics,.report-source-buttons) small { color:var(--ws-muted)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.ai-prompt-grid span,.professor-guide strong,.professor-guide p) { color:var(--ws-ink)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .professor-guide small { color:var(--ws-muted)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.commerce-chart,.bookloq-dashboard-visuals,.bq-collections) {
+  --commerce-ink:var(--ws-ink); --commerce-muted:var(--ws-muted); --commerce-line:var(--ws-line); --commerce-grid:var(--ws-line);
+  --commerce-blue:var(--ws-blue); --commerce-teal:var(--ws-positive); --commerce-negative:var(--ws-negative); --commerce-comparison:var(--ws-purple); --commerce-surface:var(--ws-panel);
+  --bq-ink:var(--ws-ink); --bq-muted:var(--ws-muted); --bq-line:var(--ws-line);
+  --chart-blue:var(--ws-blue); --chart-teal:var(--ws-positive); --chart-coral:var(--ws-negative); --chart-violet:var(--ws-purple);
+}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.intel-empty,.sales-comparison-grid>article,.sales-comparison-grid>div,.period-summary-card,.bookloq-start,.bookloq-activation,.bq-cash-metrics article,.bq-cash-observations article,.bq-collection-panel,.bq-collection-kpis>button,.dashboard-drawer,.dashboard-drawer>header,.dashboard-drawer>footer,.bookloq-review-detail,.bookloq-period-workflow,.bookloq-discovery,.navigation-settings-panel) {
+  background:var(--ws-panel)!important; color:var(--ws-ink)!important; border-color:var(--ws-line)!important; box-shadow:var(--ws-shadow)!important;
+}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.bq-cash-periods,.bq-collections-context>div,.bq-collection-switch,.bq-record-detail,.bq-collection-empty,.bq-collection-customize,.dashboard-library>article,.dashboard-options,.dashboard-goal,.dashboard-name-view,.dashboard-view-list>article,.dashboard-drawer fieldset,.bookloq-review-receipt,.bookloq-period-preview,.navigation-settings-panel article) {
+  background:var(--ws-raised)!important; color:var(--ws-ink)!important; border-color:var(--ws-line)!important; box-shadow:none!important;
+}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.chart-foot b,.intel-empty b,.sales-comparison-grid strong,.sales-comparison-grid b,.period-summary-card dd,.bookloq-start b,.bq-cash-metrics strong,.bq-cash-observations strong,.bq-cash-observations dd,.bq-category-centre strong,.bq-collection-kpis strong,.bq-collection-kpis>button>span,.bq-record-detail dd,.bq-focus-grid b,.bq-focus-grid strong,.bq-aging-legend strong,.dashboard-drawer :is(h2,h3,h4,strong,b,label,legend),.bookloq-review-detail :is(h3,strong,b,dd),.navigation-settings-panel :is(h2,h3,strong,b)) { color:var(--ws-ink)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.intel-empty span,.bookloq-start p,.bookloq-start small,.bookloq-activation p,.sales-comparison-grid span,.sales-comparison-grid small,.period-summary-card dt,.bq-cash-metrics span,.bq-cash-metrics small,.bq-cash-observations p,.bq-cash-observations dt,.bq-category-centre span,.bq-collections p,.bq-collections small,.bq-collection-review-flags,.bq-recorded-tag,.dashboard-drawer p,.dashboard-drawer small,.dashboard-drawer .dashboard-eyebrow,.bookloq-review-detail :is(p,small,dt),.navigation-settings-panel :is(p,small)) { color:var(--ws-muted)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.bq-collections button,.bq-cash-periods button,.bq-cash-review,.dashboard-drawer button,.bookloq-start button,.bookloq-review-detail button) { background:var(--ws-raised)!important; color:var(--ws-ink)!important; border-color:var(--ws-control)!important; box-shadow:none!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.bq-collections button[aria-pressed="true"],.bq-cash-periods button[aria-pressed="true"],.dashboard-drawer button[aria-pressed="true"]) { background:var(--ws-selected)!important; color:var(--ws-blue)!important; border-color:var(--ws-blue)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.bq-collections .bq-primary,.dashboard-drawer .dashboard-save,.dashboard-drawer button.primary) { background:var(--ws-primary)!important; color:var(--ws-on-primary)!important; border-color:var(--ws-primary)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.bq-collection-kicker,.bq-collection-kpis em,.bq-focus-grid em,.bq-collection-definitions summary,.bookloq-overview-extended>summary,.bookloq-start>span,.dashboard-drawer summary) { color:var(--ws-blue)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.bq-collections input,.bq-collections select,.dashboard-drawer input,.dashboard-drawer select) { background:var(--ws-panel)!important; color:var(--ws-ink)!important; border-color:var(--ws-control)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.bq-collections th,.commerce-chart th) { background:var(--ws-raised)!important; color:var(--ws-muted)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.bq-collections td,.bq-focus-grid>button,.bq-collection-kpis em,.dashboard-widget-controls,.dashboard-check) { border-color:var(--ws-line)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .bq-collection-kpis i { background:var(--ws-selected)!important; color:var(--ws-blue)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.bq-status-pill,.bq-recorded-tag) { background:var(--ws-raised)!important; color:var(--ws-muted)!important; border-color:var(--ws-line)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.state.confirmed,.close-state.complete) { background:var(--ws-positive-bg)!important; color:var(--ws-positive)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.state.suggested,.state.accountant_review,.close-state.blocked) { background:var(--ws-warning-bg)!important; color:var(--ws-warning)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.form-error,.bookloq-form-error,.bq-status-pill.overdue,.bq-collection-error) { background:var(--ws-negative-bg)!important; color:var(--ws-negative)!important; border-color:var(--ws-negative)!important; }
+.operating-shell[data-workspace-theme] .sidebar .bookloq-main-nav { background:var(--ws-raised)!important; color:var(--ws-ink)!important; }
+.operating-shell[data-workspace-theme] .sidebar .bookloq-main-nav.active { background:var(--ws-selected)!important; box-shadow:inset 3px 0 0 var(--ws-blue)!important; }
+.operating-shell[data-workspace-theme] .bookloq-main-nav img { background:#fff; padding:4px 8px; border-radius:7px; box-sizing:content-box; max-width:calc(100% - 16px); }
+/* Source-state animation never fabricates a financial trend. */
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.business-pulse-control,.pulse-status) { --pulse-colour:var(--ws-blue); --pulse-bg:var(--ws-selected); }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] [data-pulse-state="review"] { --pulse-colour:var(--ws-warning); --pulse-bg:var(--ws-warning-bg); }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] [data-pulse-state="critical"] { --pulse-colour:var(--ws-negative); --pulse-bg:var(--ws-negative-bg); }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .business-pulse-control { border:1px solid var(--ws-line)!important; background:var(--ws-panel)!important; border-radius:15px; padding:11px 14px; box-shadow:0 3px 16px color-mix(in srgb,var(--pulse-colour) 12%,transparent)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .business-pulse-control :is(svg,i) { color:var(--pulse-colour)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .business-pulse-control:hover { border-color:var(--pulse-colour)!important; background:var(--pulse-bg)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .pulse-status { border-left:3px solid var(--pulse-colour)!important; background:var(--pulse-bg)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .pulse-status>i { background:var(--pulse-colour)!important; box-shadow:0 0 0 5px color-mix(in srgb,var(--pulse-colour) 14%,transparent); }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .pulse-metrics article { border-top:2px solid var(--ws-blue)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .pulse-metrics article:nth-child(3n+2) { border-top-color:var(--ws-purple)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .pulse-metrics article:nth-child(3n) { border-top-color:var(--ws-positive)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .pulse-critical-marker { background:var(--ws-negative)!important; }
+@keyframes source-sync-glow { 50% { opacity:.55; transform:scale(.96); } }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] [data-pulse-state="syncing"]>svg { animation:source-sync-glow 1.8s ease-in-out infinite; }
+@media(prefers-reduced-motion:reduce) { [data-pulse-state] svg { animation:none!important; } }
+[data-motion="off"] [data-pulse-state] svg { animation:none!important; }
+/* Supporting accounting flows use these same surfaces, including original receipts. */
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.finance-chart.commerce-chart,.workspace-chart-empty) { background:var(--ws-panel)!important; color:var(--ws-ink)!important; border-color:var(--ws-line)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.finance-chart-currency,.workspace-chart-readout select,.finance-chart-readout select) { background:var(--ws-raised)!important; color:var(--ws-ink)!important; border-color:var(--ws-control)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.bookloq-period-unlock,.bookloq-receipt-evidence,.bookloq-number-guide) { background:var(--ws-panel)!important; color:var(--ws-ink)!important; border-color:var(--ws-line)!important; box-shadow:none!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.bookloq-number-guide,.bookloq-receipt-evidence,.bookloq-period-unlock) :is(strong,b,h3,h4,label) { color:var(--ws-ink)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.bookloq-number-guide,.bookloq-receipt-evidence,.bookloq-period-unlock) :is(p,small) { color:var(--ws-muted)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.bookloq-number-guide .disclosure-plus,.bookloq-period-setup>summary) { background:var(--ws-raised)!important; color:var(--ws-purple)!important; border-color:var(--ws-line)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.sales-comparison-grid .positive,.bq-collections .positive) { color:var(--ws-positive)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.sales-comparison-grid .negative,.bq-collections .negative,.bq-cash-metrics .bq-cash-negative) { color:var(--ws-negative)!important; }
+
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.question-stack>article,.provider-capability-list>div,.bookloq-cash-value) { background:var(--ws-raised)!important; color:var(--ws-ink)!important; border-color:var(--ws-line)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.empty-command-hero span,.empty-visual-preview>header span,.empty-preview-sources em,.action-stats span,.connector-toolbar>span,.bookloq-number-guide :is(span,dd,dt)) { color:var(--ws-muted)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.empty-command-hero>div>p,.empty-visual-preview header p,.report-source-control header p,.report-inspector header p,.marketing-measurement-card header p) { color:var(--ws-blue)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.positive,.change-up,.retail-up,.safe) { color:var(--ws-positive)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.negative,.change-down,.retail-down,[data-negative="true"],.danger-text,.field-error,.form-error,.bookloq-form-error,.foodservice-field-error,.ai-consent-error) { color:var(--ws-negative)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.warning,.risk,.tax-warning,.integrity-warning) { color:var(--ws-warning)!important; }
+/* Nested operational cards share the active workspace palette. */
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.page-intro,.workspace-titlebar) p { color:var(--ws-muted)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(td,th) { color:var(--ws-ink)!important; border-color:var(--ws-line)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.executive-mix-ring>div,.empty-visual-preview>header span,.po-summary>article,.purchasing-health-overview>article,.sync-health,.communication-stats>article,.owner-plan-coverage,.directory-tools>label,.security-flags>span,.document-pipeline>article,.location-scope-summary,.location-intelligence-grid>article,.location-metric-grid>div,.location-data-contract>div,.scenario-mode,.scenario-source-note,.scenario-boundary,.data-requirement-row,.sales-evidence-notice,.connector-pathway>article,.provider-parity-contract>header,.po-table>header,.document-table>header) { background:var(--ws-raised)!important; color:var(--ws-ink)!important; border-color:var(--ws-line)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.executive-chart-symbol,.governance-tabs .active span,.active-location>header>span,.document-pipeline .not_configured) { background:var(--ws-selected)!important; color:var(--ws-blue)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.bq-load-status,.executive-table-empty span,.commerce-intel-card>header>span,.upcoming-purchase-commitments header p,.procurement-source-empty p,.po-table>header span,.document-table>header span,.growth-summary-grid small,.growth-chart-empty p,.growth-boundary,.dense-panel>header>span,.communication-stats span,.document-service-status>header>span,.location-source-list>span,.location-data-contract p,.scenario-boundary,.forecast-card>header>span) { color:var(--ws-muted)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .data-hub .provider-parity-contract>header :is(p,span) { color:var(--ws-muted)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .data-hub .provider-parity-contract>header>strong { background:var(--ws-selected)!important; color:var(--ws-blue)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.page-intro,.workspace-titlebar)>div>span { color:var(--ws-muted)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.bookloq-overview-note,.upcoming-purchase-commitments header span,.procurement-source-empty>span,.growth-summary-grid span,.growth-chart-empty>span,.growth-boundary>span,.location-intelligence-grid header span,.document-service-status>summary span) { color:var(--ws-muted)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.location-metric-grid>span,.location-data-contract>div>span,.data-requirement-row>span,.governance-tabs>.active>span,.location-intelligence-grid header>strong) { background:var(--ws-raised)!important; color:var(--ws-ink)!important; border-color:var(--ws-line)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.bookloq-activation span,.generic-row>span,.permission-list span,.bookloq-bank-connection-copy>div>span,.bookloq-bank-connection-action>span,.receipt-capture span) { color:var(--ws-muted)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.connector-pathway>div,.governance-tabs>.active>b,.report-summary>div,.budget-bars article,.bookloq-journal-form,.business-cash-report,.business-cash-report>header,.bookloq-review-next,.bookloq-number-guide>summary:hover,.bq-cash-demo-note,.bq-load-panel,.bq-collections-skeleton>span,.bq-collections-skeleton>div,.bookloq-bank-use-list small,.statement-loading,.statement-undo) { background:var(--ws-raised)!important; color:var(--ws-ink)!important; border-color:var(--ws-line)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.statement-error,.bookloq-loading.error) { background:var(--ws-negative-bg)!important; border-color:var(--ws-negative)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.statement-error,.bookloq-loading.error) :is(p,span,strong) { color:var(--ws-negative)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .statement-warning { background:var(--ws-warning-bg)!important; color:var(--ws-warning)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .statement-warning :is(p,span,strong) { color:var(--ws-warning)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .statement-success { background:var(--ws-positive-bg)!important; color:var(--ws-positive)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .statement-success :is(p,span,strong) { color:var(--ws-positive)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.finance-chart-empty>div,.bookloq-toolbar>label,.bookloq-provider-gate>.provider-state,.business-cash-kpis>div) { background:var(--ws-raised)!important; color:var(--ws-ink)!important; border-color:var(--ws-line)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.transaction-status-row span,.bookloq-empty-line span,.business-cash-report>header span,.business-cash-kpis span,.report-summary span) { color:var(--ws-muted)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .business-cash-kpis>article { background:var(--ws-raised)!important; color:var(--ws-ink)!important; border-color:var(--ws-line)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .wiring-principles { background:var(--ws-raised)!important; color:var(--ws-ink)!important; border-color:var(--ws-line)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.report-catalogue header span,.row-actions>span,.bookloq-page-intro span,.export-gates>span,.line-text>span) { color:var(--ws-muted)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .wiring-principles>article { background:var(--ws-raised)!important; color:var(--ws-ink)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.control-surface-heading,.executive-preference-status) { background:var(--ws-raised)!important; color:var(--ws-ink)!important; border-color:var(--ws-line)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .connector-pathway>div>span { color:var(--ws-blue)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .wiring-principles>* { background:var(--ws-raised)!important; color:var(--ws-ink)!important; }
+/* Loading shapes reserve the layout without a bright flash in dark mode. */
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.skeleton-metrics>div,.skeleton-records,.skeleton-metric-card,.skeleton-panel,.skeleton-attention-row) { background:var(--ws-panel)!important; border-color:var(--ws-line)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .workspace-skeleton i { background:linear-gradient(100deg,var(--ws-raised) 25%,var(--ws-control) 45%,var(--ws-raised) 65%)!important; background-size:220% 100%!important; border-color:var(--ws-line)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .skeleton-rings { background:radial-gradient(circle,transparent 0 32%,var(--ws-line) 32% 39%,transparent 39% 43%,var(--ws-line) 43% 50%,transparent 50% 54%,var(--ws-line) 54% 61%,transparent 61%)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .wiring-principles span { color:var(--ws-muted)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .control-surface-heading span { color:var(--ws-blue)!important; }
+/* Report source notices and catalogues retain contrast in either workspace theme. */
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .report-source-conflict { background:var(--ws-warning-bg)!important; color:var(--ws-ink)!important; border-color:var(--ws-warning)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .report-source-conflict>div:first-child>span { color:var(--ws-muted)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.report-source-conflict button,.provider-report-list section>button) { background:var(--ws-raised)!important; color:var(--ws-ink)!important; border-color:var(--ws-control)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.report-source-conflict button>span,.provider-report-list>summary,.provider-report-list section>button>em) { color:var(--ws-blue)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.provider-report-list,.provider-report-list>section) { border-color:var(--ws-line)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .provider-report-list>section>div { background:var(--ws-raised)!important; color:var(--ws-ink)!important; border-color:var(--ws-line)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .gated-report>span { color:var(--ws-muted)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.report-source-conflict button:disabled,.provider-report-list section>button:disabled) { color:var(--ws-muted)!important; opacity:1!important; cursor:not-allowed; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.report-source-conflict button:disabled,.provider-report-list section>button:disabled) :is(b,small,span,em) { color:var(--ws-muted)!important; }
+
+/* Accounting values, disclosures and chart captions share the active palette. */
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .cashflow-grid>div>span:where(:not(.positive):not(.negative):not([data-negative="true"])) { color:var(--ws-ink)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .cashflow-grid>.cashflow-head>span { color:var(--ws-muted)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.finance-chart-data>summary,.workspace-chart-data>summary,.bookloq-financial-details>summary,.bq-outflow-categories summary) { color:var(--ws-blue)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.finance-chart-data caption,.workspace-chart-data caption,.bq-cash-observation-label) { color:var(--ws-muted)!important; }
+/* Zero is meaningful financial context, so it is stronger than decorative grids. */
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.chart-zero-line,.finance-chart-zero) { stroke:var(--ws-control)!important; }
+
+/* Supporting navigation text stays legible beside the existing primary labels. */
+.operating-shell[data-workspace-theme] .sidebar :is(.brand-name small,.workspace-switcher small,.business-workspace-choices small,.subscription-summary span,.subscription-summary small,.profile small,.profile-signout,.release-name,.workspace-release-name) { font-size:12px!important; line-height:1.5; }
+.operating-shell[data-workspace-theme] .sidebar .nav-group>p { font-size:12px!important; line-height:1.5; }
+.operating-shell[data-workspace-theme] .topbar-title>.eyebrow { font-size:12px!important; line-height:1.5; }
+.operating-shell[data-workspace-theme] .topbar .source-pill { font-size:12px!important; line-height:1.5; }
+
+/* Secondary operational labels and service badges keep their semantic surfaces. */
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.purchasing-health-overview em,.employee-person em,.location-metric-grid em) { color:var(--ws-muted)!important; font-size:12px!important; line-height:1.5; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.report-catalogue em,.document-pipeline>article>span,.document-table em.gated) { background:var(--ws-raised)!important; color:var(--ws-muted)!important; font-size:12px!important; line-height:1.5; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.report-catalogue em.live,.document-pipeline>article>span.configured,.document-pipeline>article>span.live,.document-pipeline>article>span.browser_supported) { background:var(--ws-positive-bg)!important; color:var(--ws-positive)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.document-pipeline>article>span.not_configured,.document-table em:not(.gated)) { background:var(--ws-warning-bg)!important; color:var(--ws-warning)!important; font-size:12px!important; line-height:1.5; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.page-intro p,.card-kicker) { font-size:12px!important; line-height:1.5; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.journal-page,.tasks-page,.collaboration-page) .empty-state>b { font-size:14px!important; line-height:1.5; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .failure-state[aria-busy="true"]>span { color:var(--ws-muted)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.bookloq-page-intro p,.bookloq-bank-use-list small) { font-size:12px!important; line-height:1.5; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .bookloq-review-list em { color:var(--ws-muted)!important; font-size:12px!important; line-height:1.5; }
+
+/* The detailed performance chart has more specific legacy presentation rules. */
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .financial-explorer .chart-legend>span { color:var(--ws-muted)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .financial-explorer .trend-axis-label { fill:var(--ws-muted)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .financial-explorer .trend-gridline { stroke:var(--ws-line)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .financial-explorer :is(.trend-sales-line,.active-sales-point) { stroke:var(--ws-blue)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .financial-explorer :is(.trend-profit-line,.active-profit-point) { stroke:var(--ws-positive)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .financial-explorer :is(.trend-comparison-line,.comparison-observation-point) { stroke:var(--ws-purple)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .financial-explorer :is(.active-sales-point,.active-profit-point,.comparison-observation-point) { fill:var(--ws-panel)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .financial-explorer .chart-active-marker line { stroke:var(--ws-muted)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .workspace-series-chart.commerce-chart.financial-explorer .workspace-chart-readout :is(label,dt) { color:var(--ws-muted)!important; font-size:12px!important; line-height:1.5; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .workspace-series-chart.commerce-chart.financial-explorer .workspace-chart-readout dd[data-negative="true"] { color:var(--ws-negative)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .performance-summary :is(dt,small) { font-size:12px!important; line-height:1.5; }
+
+/* BookLoQ navigation and source notices inherit the same readable theme. */
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.bookloq-side nav p,.bookloq-top>div:first-child>p) { font-size:12px!important; line-height:1.5; color:var(--ws-muted)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .bookloq-side-foot { background:var(--ws-raised)!important; color:var(--ws-ink)!important; border-color:var(--ws-line)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .bookloq-side-foot b { color:var(--ws-ink)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.bookloq-side-foot small,.bookloq-demo-banner span) { color:var(--ws-muted)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .bookloq-ad-spend-state.review { background:var(--ws-warning-bg)!important; color:var(--ws-warning)!important; }
+
+/* Settings previews and status labels pair theme text with theme surfaces. */
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .settings-governance .page-intro p { font-size:12px!important; line-height:1.5; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .settings-governance :is(.provider-settings article>span,.location-list em.entered) { background:var(--ws-raised)!important; color:var(--ws-muted)!important; font-size:12px!important; line-height:1.5; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.settings-reporting-context,.branding-preview) { background:var(--ws-raised)!important; color:var(--ws-ink)!important; border-color:var(--ws-line)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.settings-reporting-context h3,.branding-preview h3,.branding-preview .logo-preview>b) { color:var(--ws-ink)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .branding-preview .logo-preview:has(>b) { background:var(--ws-selected)!important; border-color:var(--ws-line)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.branding-preview span,.logo-drop>span,.settings-governance .location-list span,.navigation-settings-panel>header span,.settings-reporting-context dt) { color:var(--ws-muted)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .settings-reporting-context a { color:var(--ws-blue)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .source-pill.missing { background:var(--ws-raised)!important; color:var(--ws-muted)!important; border-color:var(--ws-line)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .source-pill.missing i { background:var(--ws-control)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .source-pill.pending { background:var(--ws-selected)!important; color:var(--ws-blue)!important; border-color:var(--ws-blue)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .source-pill.pending i { background:var(--ws-blue)!important; box-shadow:0 0 0 3px var(--ws-selected)!important; }
+
+/* Populated accounting records retain readable labels beside their values. */
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .bookloq-mobile-nav>span { color:var(--ws-muted)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .bank-grid article>span>b { font-size:14px!important; line-height:1.5; color:var(--ws-ink)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .bank-grid article>em { color:var(--ws-warning)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.budget-bars footer>span,.bookloq-period-toolbar>span) { color:var(--ws-muted)!important; font-size:12px!important; line-height:1.5; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .budget-bars footer>b { color:var(--ws-ink)!important; font-size:12px!important; line-height:1.5; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.close-state.not_started,.close-state.in_progress) { background:var(--ws-raised)!important; color:var(--ws-muted)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .growth-visual-hero>div>p { font-size:12px!important; line-height:1.5; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .fc-day.unavailable>span { color:var(--ws-muted)!important; }
+
+/* Loaded billing cards use workspace surfaces without changing public pricing. */
+/* A search input fits its field instead of inheriting full form-control sizing. */
+.operating-shell[data-workspace-theme] .settings-nav>label { height:44px; min-height:44px; padding:0 12px; border-color:var(--ws-control)!important; }
+.operating-shell[data-workspace-theme] .settings-nav>label>input { flex:1; min-width:0; width:100%; height:100%!important; min-height:0!important; padding:0!important; border:0!important; border-radius:0; background:transparent!important; box-shadow:none!important; outline:0; font-size:14px!important; line-height:1.5; }
+.operating-shell[data-workspace-theme] .settings-nav>label>input::placeholder { color:var(--ws-muted); opacity:1; }
+.operating-shell[data-workspace-theme] .settings-nav>label:focus-within { outline:2px solid var(--ws-purple); outline-offset:2px; }
+@media(max-width:680px) { .operating-shell[data-workspace-theme] .settings-nav>label>input { font-size:16px!important; } }
+
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .billing-settings :is(.billing-product-choice,.billing-product-choice.standalone-product,.billing-addon,.billing-addon.standalone,.billing-subscription-controls,.billing-selected-total,.free-plan-card,.custom-plan-cta.custom-plan-callout) { background:var(--ws-raised)!important; color:var(--ws-ink)!important; border-color:var(--ws-line)!important; box-shadow:none!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .billing-settings .billing-plan-option { background:var(--ws-panel)!important; color:var(--ws-ink)!important; border-color:var(--ws-control)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .billing-settings .billing-plan-option.selected { background:var(--ws-selected)!important; border-color:var(--ws-blue)!important; box-shadow:inset 0 0 0 1px var(--ws-blue)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .billing-settings .billing-plan-option:has(input:disabled) { opacity:1!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .billing-settings .billing-plan-option:has(input:focus-visible) { outline:3px solid var(--ws-purple)!important; outline-offset:3px; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .billing-settings .billing-plan-option:has(input:not(:disabled)):hover { border-color:var(--ws-blue)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .billing-settings .billing-plan-option>input { accent-color:var(--ws-blue); }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .billing-settings :is(.billing-plan-badge,.custom-plan-callout-label) { color:var(--ws-blue)!important; font-size:12px!important; line-height:1.5; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .billing-settings :is(.billing-product-choice legend,.billing-selected-total strong,.billing-selected-total b,.billing-plans ul) { color:var(--ws-ink)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .billing-settings .billing-plans ul { border-color:var(--ws-line)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .billing-settings .billing-plans li { font-size:12px!important; line-height:1.5; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .billing-settings .billing-plans strong { font-size:26px!important; line-height:1.2; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .billing-settings .billing-addon>span { display:flex; flex-direction:column; gap:4px; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .billing-settings :is(.billing-monthly-note>span,.billing-internal>span) { color:var(--ws-muted)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .billing-settings .billing-internal { background:var(--ws-positive-bg)!important; color:var(--ws-positive)!important; border-color:var(--ws-positive)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .billing-settings .billing-internal>b { color:var(--ws-positive)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .billing-settings .provider-settings article>span { background:var(--ws-selected)!important; color:var(--ws-blue)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .settings-form .billing-status-recovery { background:var(--ws-warning-bg)!important; color:var(--ws-ink)!important; border-color:var(--ws-warning)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .billing-settings :is(.billing-monthly-note a,.billing-subscription-help a) { color:var(--ws-blue)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .billing-settings .billing-subscription-actions button:not(.primary) { background:var(--ws-panel)!important; color:var(--ws-ink)!important; border-color:var(--ws-control)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .billing-settings .billing-subscription-actions button:not(.primary):hover:not(:disabled) { background:var(--ws-selected)!important; border-color:var(--ws-blue)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .billing-settings .billing-subscription-actions button.billing-cancel-button:not(.primary) { color:var(--ws-negative)!important; border-color:var(--ws-negative)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .billing-settings .billing-subscription-actions button.billing-cancel-button:not(.primary):hover:not(:disabled) { background:var(--ws-negative-bg)!important; border-color:var(--ws-negative)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .billing-settings :is(.billing-subscription-actions button:disabled,.billing-status-recovery button:disabled,footer>button:disabled) { background:var(--ws-raised)!important; color:var(--ws-muted)!important; border-color:var(--ws-control)!important; opacity:1!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .billing-settings .billing-subscription-actions button.billing-cancel-button:not(.primary):disabled { color:var(--ws-muted)!important; border-color:var(--ws-control)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .billing-settings .custom-plan-cta.custom-plan-callout :is(h2,h3) { color:var(--ws-ink)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .billing-settings .custom-plan-cta.custom-plan-callout>a.custom-plan-callout-action { background:var(--ws-primary)!important; color:var(--ws-on-primary)!important; border-color:var(--ws-primary)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .billing-settings .custom-plan-cta.custom-plan-callout>a.custom-plan-callout-action:hover { background:var(--ws-primary-hover)!important; }
+/* Feed recovery uses the same readable, touch-sized controls as the workspace. */
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .communications-page .sync-health { align-items:flex-start; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .communications-page .sync-health>span { min-width:0; gap:3px; overflow-wrap:anywhere; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .communications-page .sync-health :is(b,small) { font-size:12px; line-height:1.5; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .communications-page .sync-health button { align-self:flex-start; min-height:40px; margin-top:5px; padding:8px 12px; border:1px solid var(--ws-control); border-radius:9px; background:var(--ws-panel); color:var(--ws-blue); font:inherit; font-size:13px; font-weight:650; cursor:pointer; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .communications-page .sync-health button:focus-visible { outline:3px solid var(--ws-blue); outline-offset:3px; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .communications-page .sync-health button:disabled { opacity:.7; cursor:wait; }

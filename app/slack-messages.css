@@ -1,0 +1,19 @@
+.slack-conversation-panel{padding:clamp(18px,3vw,28px);display:grid;gap:18px;color:var(--ws-ink,#111e35)}
+.slack-conversation-panel header,.slack-conversation-toolbar{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.slack-conversation-panel h3{font-size:20px;line-height:1.3;margin:0 0 6px;font-weight:750;letter-spacing:-.025em}
+.slack-conversation-panel p{font-size:14px;line-height:1.6;margin:0;color:var(--ws-muted,#43516a)}
+.slack-conversation-panel small{font-size:12px;line-height:1.6;color:var(--ws-muted,#43516a)}
+.slack-conversation-panel a{color:var(--ws-blue,#0062d5);font-weight:650;text-decoration:underline;text-underline-offset:3px}
+.slack-conversation-panel button,.messages-source-tabs button{min-height:44px;line-height:1.4}
+.slack-conversation-list{display:grid;gap:12px;list-style:none;margin:0;padding:0}
+.slack-conversation-list li{padding:16px;border:1px solid var(--ws-line,#d8e1ed);border-radius:16px;background:var(--ws-raised,#f5f8fc)}
+.slack-conversation-list li header{margin-bottom:8px;align-items:center}
+.slack-conversation-list li strong{font-size:13px;color:var(--ws-ink,#111e35)}
+.slack-conversation-list li p{white-space:pre-wrap;overflow-wrap:anywhere;color:var(--ws-ink,#111e35);font-size:15px;line-height:1.65}
+.slack-conversation-status{padding:16px;border:1px solid var(--ws-line,#d8e1ed);border-radius:14px;background:var(--ws-raised,#f5f8fc);display:grid;gap:8px}
+.messages-source-tabs{display:flex;gap:6px;flex-wrap:wrap;padding:5px;border:1px solid var(--ws-line,#d8e1ed);border-radius:16px;background:var(--ws-raised,#f5f8fc);width:fit-content;max-width:100%}
+.messages-source-tabs button{padding:9px 18px;border:1px solid transparent;border-radius:12px;background:transparent;color:var(--ws-muted,#43516a);font-size:14px;font-weight:650;cursor:pointer}
+.messages-source-tabs button[aria-selected=true]{background:var(--ws-panel,#fff);color:var(--ws-ink,#111e35);border-color:var(--ws-line,#d8e1ed);box-shadow:0 2px 8px #081e4410}
+.messages-source-tabs button:focus-visible,.slack-conversation-panel :is(button,a):focus-visible{outline:3px solid var(--ws-blue,#4285ff);outline-offset:3px}
+.collaboration-page [hidden]{display:none}
+@media(max-width:600px){.slack-conversation-toolbar{align-items:stretch}.slack-conversation-toolbar button{width:100%}.slack-conversation-list li{padding:14px}.messages-source-tabs{width:100%}.messages-source-tabs button{flex:1}}

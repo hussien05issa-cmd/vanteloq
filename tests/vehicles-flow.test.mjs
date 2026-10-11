@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { importPrivacyAcknowledgement } from "../domain/report-import-privacy.ts";
 import { createEnvironment, createReportWorkspace, dispatch, origin, context as executionContext, identityHeaders } from "./helpers/retail-worker-fixture.mjs";
 
 const vehicle = { identifierKind: "vin", identifier: "1HGCM82633A004352", year: 2003, make: "Honda", model: "Accord", stockNumber: "A-01", status: "available", acquiredDate: "2026-09-10", currency: "CAD", acquisitionCents: 1234567, reconditioningCents: null };
@@ -12,7 +13,9 @@ test("vehicle records enforce tenant boundaries, explicit imports, atomic duplic
   try {
     const a = await createReportWorkspace(worker, environment, database, "vehicles-a");
     const b = await createReportWorkspace(worker, environment, database, "vehicles-b");
-    const request = (path, options = {}) => dispatch(worker, environment, path, { ...a.owner, ...options });
+    await database.prepare("UPDATE workspaces SET industry='Car dealership' WHERE id IN (?,?)").bind(a.organizationId,b.organizationId).run();
+    await database.prepare("DELETE FROM workspace_industry_config WHERE organization_id IN (?,?)").bind(a.organizationId,b.organizationId).run();
+    const request = (path, options = {}) => dispatch(worker, environment, path, { ...a.owner, ...options, ...(path === "/api/v1/vehicles" && ["preview", "confirm"].includes(options.body?.action) ? { body: { importPrivacyAcknowledgement: importPrivacyAcknowledgement(), ...options.body } } : {}) });
     const created = await ok(await request("/api/v1/vehicles", { method: "POST", body: { action: "create", locationId: a.locationId, vehicle } }), 201);
     const id = created.ids[0];
     assert.equal((await request("/api/v1/vehicles", { method: "POST", body: { action: "create", locationId: b.locationId, vehicle: { ...vehicle, stockNumber: "FOREIGN", identifier: "1HGCM82633A004354" } } })).status, 403);
@@ -51,6 +54,8 @@ test("vehicle reads redact costs and respect location, role, import, MFA and sub
   const { worker, environment, database, dispose } = await createEnvironment();
   try {
     const a = await createReportWorkspace(worker, environment, database, "vehicle-permissions");
+    await database.prepare("UPDATE workspaces SET industry='Car dealership' WHERE id=?").bind(a.organizationId).run();
+    await database.prepare("DELETE FROM workspace_industry_config WHERE organization_id=?").bind(a.organizationId).run();
     const ownerRequest = (options = {}) => dispatch(worker, environment, "/api/v1/vehicles", { ...a.owner, ...options });
     const first = await ok(await ownerRequest({ method: "POST", body: { action: "create", locationId: a.locationId, vehicle } }), 201);
     const secondLocation = crypto.randomUUID();
@@ -63,7 +68,7 @@ test("vehicle reads redact costs and respect location, role, import, MFA and sub
       database.prepare("INSERT INTO access_roles(id,organization_id,name,permissions_json,created_by_user_id,created_at,updated_at) VALUES(?,?,'Vehicle reader','[\"inventory.view\"]',?,1,1)").bind(roleId, a.organizationId, a.userId),
       database.prepare("INSERT INTO team_members(id,organization_id,user_id,role_id,first_name,last_name,email,employee_code,primary_location_id,permitted_locations_json,status,remote_login,created_by_user_id,created_at,updated_at) VALUES(?,?,?,?,'Vehicle','Reader',?,'VEHICLE-READER',?,?,'active',1,?,1,1)").bind(crypto.randomUUID(), a.organizationId, userId, roleId, reader.email, a.locationId, JSON.stringify([a.locationId]), a.userId),
     ]);
-    const request = (path = "/api/v1/vehicles", options = {}) => dispatch(worker, environment, path, { ...reader, ...options });
+    const request = (path = "/api/v1/vehicles", options = {}) => dispatch(worker, environment, path, { ...reader, ...options, ...(path === "/api/v1/vehicles" && ["preview", "confirm"].includes(options.body?.action) ? { body: { importPrivacyAcknowledgement: importPrivacyAcknowledgement(), ...options.body } } : {}) });
     let view = await ok(await request()); assert.equal(view.vehicles.length, 1); assert.equal(view.vehicles[0].acquisitionCents, null); assert.equal(view.permissions.edit, false);
     assert.equal((await request("/api/v1/vehicles?format=csv")).status, 403);
     assert.equal((await request("/api/v1/vehicles", { method: "PATCH", body: { id: first.ids[0], expectedVersion: 1, locationId: a.locationId, vehicle } })).status, 403);

@@ -1,3 +1,4 @@
+import { releaseIntegrationSelectionIfUnused } from "../../../../../../server/integrations/free-selection";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../../../../../../db";
 import { integrationConnections, integrationOAuthStates, integrationSecrets } from "../../../../../../db/schema";
@@ -43,6 +44,7 @@ export async function POST(request: Request) {
       action: "integration.disconnected", resourceType: "integration", resourceId: connection.id,
       details: { provider: CLOVER_PROVIDER, connectionId: connection.id, localTokensDeleted: true, stagedHistoryRetained: true },
     });
-    return jsonResponse({ disconnected: true, connectionId: connection.id, localCredentialsDeleted: true });
+    await releaseIntegrationSelectionIfUnused(context.organizationId, "clover");
+      return jsonResponse({ disconnected: true, connectionId: connection.id, localCredentialsDeleted: true });
   });
 }

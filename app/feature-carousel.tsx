@@ -5,6 +5,7 @@ import { demoAnalysis } from "../domain/product-demo";
 import { bookloqDemo } from "../domain/bookloq-demo";
 import VanteloqAiLogo from "./vanteloq-ai-logo";
 import "./feature-carousel.css";
+import { useMotionPreference } from './use-motion-preference';
 
 const money = (cents: number) => new Intl.NumberFormat("en-CA", { style: "currency", currency: "CAD", maximumFractionDigits: 0 }).format(cents / 100);
 const slides = [
@@ -30,13 +31,14 @@ function Preview({ index }: { index: number }) {
 }
 
 export default function FeatureCarousel() {
+  const motion = useMotionPreference();
   const id = useId();
   const track = useRef<HTMLDivElement>(null);
   const [active, setActive] = useState(0);
   const select = (index: number) => {
     const element = track.current?.children[index] as HTMLElement | undefined;
     if (!element || !track.current) return;
-    track.current.scrollTo({ left: element.offsetLeft - (track.current.children[0] as HTMLElement).offsetLeft, behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+    track.current.scrollTo({ left: element.offsetLeft - (track.current.children[0] as HTMLElement).offsetLeft, behavior: motion ? "smooth" : "auto" });
   };
   return <div className="feature-carousel" role="region" aria-roledescription="carousel" aria-label="Explore Vanteloq features">
     <div className="feature-carousel-toolbar"><p>Explore what you can do <span>Swipe or use the arrows</span></p><div><button type="button" aria-label="Previous feature" aria-controls={id} disabled={active === 0} onClick={() => select(active - 1)}>←</button><button type="button" aria-label="Next feature" aria-controls={id} disabled={active === slides.length - 1} onClick={() => select(active + 1)}>→</button></div></div>

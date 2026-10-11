@@ -1,3 +1,4 @@
+import type { bankCashSnapshot } from "../domain/bank-cash-snapshot";
 import { changePercent, executiveDefinitions, type ExecutiveKey, type ExecutivePeriod } from "../domain/executive-metrics";
 import type { loadExecutiveFinance } from "./executive-finance";
 import type { MetricResult } from "./data-trust";
@@ -10,7 +11,7 @@ type Sales = {
   reportingPeriod?:{comparable:boolean;coverage?:{current:{complete:boolean};previous:{complete:boolean}};previousInventoryValueCents?:number|null};
   insights:{id:string;title:string;whatHappened:string;probableCause:string;financialImpact:string;recommendedAction:string;confidence:string}[];
 };
-export function buildExecutiveReport(period:ExecutivePeriod,sales:Sales,finance:Finance,financeReason:string|null,basis:"commerce"|"ledger",revenueSources:RevenueAttribution=null) {
+export function buildExecutiveReport(period:ExecutivePeriod,sales:Sales,finance:Finance,financeReason:string|null,basis:"commerce"|"ledger",revenueSources:RevenueAttribution=null, bankCash:ReturnType<typeof bankCashSnapshot>|null=null) {
   const f=finance?.current,p=finance?.previous;
   const moneyValues=(v:typeof f):Partial<Record<ExecutiveKey,number|null>>=>v?{net_revenue:v.operatingRevenueCents,gross_profit:v.grossProfitCents,gross_margin:v.operatingRevenueCents>0?v.grossProfitCents/v.operatingRevenueCents:null,operating_profit:v.operatingProfitCents,net_margin:v.netMargin,cash_flow:v.cashCents}:{};
   const ledger=moneyValues(f),prior=moneyValues(p),plan=moneyValues(finance?.budget??null);
@@ -31,8 +32,8 @@ export function buildExecutiveReport(period:ExecutivePeriod,sales:Sales,finance:
     if(!useSales&&def.key==="cash_flow"&&!finance?.accountCoverage.cash)value=null;
     const target=!useSales&&value!==null?plan[def.key]??null:null;
     const trend=useSales?sales.trend.map(row=>({date:row.date,value:def.key==="net_revenue"?row.netSalesCents:def.key==="gross_profit"?row.grossProfitCents:def.key==="inventory_value"?row.inventoryValueCents??null:def.key==="transactions"?row.transactionCount:def.key==="average_order_value"?row.averageTransactionCents:def.key==="units_sold"?row.unitsSold:def.key==="gross_margin"&&row.netSalesCents>0&&row.grossProfitCents!==null?row.grossProfitCents/row.netSalesCents:null})):finance?.dailyLedger.map(row=>({date:row.date,value:def.key==="cash_flow"?row.cashCents:def.key==="cash_balance"?row.cashBalanceCents:def.key==="inventory_value"?row.inventoryBalanceCents:def.key==="net_revenue"?row.operatingRevenueCents:!row.hasCosts?null:def.key==="gross_profit"?row.grossProfitCents:def.key==="gross_margin"&&row.operatingRevenueCents>0?row.grossProfitCents/row.operatingRevenueCents:def.key==="operating_profit"?row.operatingProfitCents:def.key==="net_margin"?row.netMargin:null}))??[];
-    return {...def,value,previous,goalEligible:value!==null&&(useSales?sales.reportingPeriod?.coverage?.current.complete===true:Boolean(finance)),freshness:useSales?(metric?.freshnessStatus??"missing"):"recorded",change:changePercent(value,previous),budget:target,budgetVariance:value!==null&&target!==null?value-target:null,source:useSales?(metric?.sourceSystem??"Sales records"):"BookLoQ posted ledger",sourceTimestamp:useSales?(metric?.sourceTimestamp??null):updatedAt,confidence:value===null?"unavailable":useSales?(metric?.confidenceLevel??"low"):"Recorded, not audited",limitations:useSales?(metric?.limitations??[reason]):[finance?.boundary??reason],reason:value===null?reason:null,trend:value===null?[]:trend,drill:useSales?"Sales":"BookLoQ"} as const;
+    return {...def,value,previous,goalEligible:value!==null&&(useSales?sales.reportingPeriod?.coverage?.current.complete===true:Boolean(finance)),freshness:useSales?(metric?.freshnessStatus??"missing"):"recorded",change:changePercent(value,previous),budget:target,budgetVariance:value!==null&&target!==null?value-target:null,source:useSales?(metric?.sourceSystem??"Sales records"):"BookLoQ posted ledger",sourceTimestamp:useSales?(metric?.sourceTimestamp??null):updatedAt,confidence:value===null?"unavailable":useSales?(metric?.confidenceLevel??"low"):"Recorded, not audited",limitations:useSales?(metric?.limitations??[reason]):[finance?.boundary??reason],reason:value===null?reason:null,trend:value===null?[]:trend,drill:useSales?(def.key==="inventory_value"?"Inventory":"Sales"):"BookLoQ"} as const;
   });
-  return {period,basis,metrics,finance,financeReason,revenueSources:basis==="commerce"?revenueSources:null,insights:sales.insights,sourceCoverage:sales.reportingPeriod?.comparable===true,generatedAt:new Date().toISOString()};
+  return {period,basis,metrics,finance,financeReason,bankCash,revenueSources:basis==="commerce"?revenueSources:null,insights:sales.insights,sourceCoverage:sales.reportingPeriod?.comparable===true,generatedAt:new Date().toISOString()};
 }
 export type ExecutiveReport=ReturnType<typeof buildExecutiveReport>;

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { TERMS_OF_SERVICE_VERSION, LEGAL_DOCUMENT_UPDATED_LABEL } from "../shared/legal-versions.ts";
+import { TERMS_OF_SERVICE_VERSION, PRIVACY_POLICY_VERSION, LEGAL_DOCUMENT_UPDATED_LABEL } from "../shared/legal-versions.ts";
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
 
@@ -54,7 +54,8 @@ test("legal and retention documents identify the operator and retain deletion li
   assert.match(retention, /DELETE PLAID DATA/);
   assert.match(retention, /quarterly operational review/);
   assert.match(shell, /LEGAL_DOCUMENT_UPDATED_LABEL/);
-  assert.equal(LEGAL_DOCUMENT_UPDATED_LABEL, new Intl.DateTimeFormat("en-US", {month:"long", day:"numeric", year:"numeric", timeZone:"UTC"}).format(new Date(TERMS_OF_SERVICE_VERSION+"T00:00:00Z")));
+  const latestPolicy = [TERMS_OF_SERVICE_VERSION, PRIVACY_POLICY_VERSION].sort().at(-1);
+  assert.equal(LEGAL_DOCUMENT_UPDATED_LABEL, new Intl.DateTimeFormat("en-US", {month:"long", day:"numeric", year:"numeric", timeZone:"UTC"}).format(new Date(latestPolicy+"T00:00:00Z")));
 
   for (const document of [legal, retention, shell, versions]) assert.doesNotMatch(document, /\u2014/);
 });

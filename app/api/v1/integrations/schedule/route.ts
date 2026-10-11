@@ -1,3 +1,4 @@
+import { requireIntegrationProviderAccess } from "../../../../../server/integrations/free-selection";
 import { and, eq } from "drizzle-orm";
 import { getD1, getDb, getRuntimeEnv } from "../../../../../db";
 import { integrationConsents, integrationSyncSchedules } from "../../../../../db/schema";
@@ -9,13 +10,13 @@ import { recordAudit } from "../../../../../server/audit";
 import { requireOrganizationWideLocationAccess } from "../../../../../server/location-access";
 import { requireOwnedIntegrationConnection } from "../../../../../server/integrations/connection";
 import { isScheduledPosProvider } from "../../../../../server/integrations/sync-policy";
-import { SYNC_AUTHORIZATION_VERSION } from "../../../../../server/integrations/sync-scheduler";
+import { requireCurrentBackgroundSyncConsent, SYNC_AUTHORIZATION_VERSION } from "../../../../../server/integrations/sync-scheduler";
 import { requirePermission } from "../../../../../server/permissions";
 
 export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
-    const context = await requireAccess(request, ["owner"], "pos.reporting.core");
+    const context = await requireAccess(request, ["owner"], "business.settings");
     await requirePermission(context, "integrations.manage");
     await requireOrganizationWideLocationAccess(context);
     const input = await readJsonObject(request, 2048);
@@ -24,19 +25,21 @@ export async function POST(request: Request) {
     const connection = await requireOwnedIntegrationConnection(context.organizationId, input.provider, input.connectionId);
     const now = new Date();
     if (input.enabled) {
+      await requireIntegrationProviderAccess(context, input.provider, connection.id);
       if ((getRuntimeEnv().POS_SYNC_SECRET?.length ?? 0) < 32) throw new ApiError(503, "SYNC_SCHEDULER_UNAVAILABLE", "Background synchronization has not been activated.");
       if (input.authorizationVersion !== SYNC_AUTHORIZATION_VERSION || context.identity.provider !== "supabase" || !context.authSubject)
         throw new ApiError(400, "SYNC_AUTHORIZATION_REQUIRED", "Sign in as the owner and authorize automatic syncing.");
       if (connection.status !== "connected" || connection.privacyDataDeletedAt)
         throw new ApiError(409, "INTEGRATION_NOT_CONNECTED", "Reconnect the account before enabling automatic sync.");
-      const consent = await getD1().prepare("SELECT status FROM integration_consents WHERE organization_id=? AND provider=? ORDER BY accepted_at DESC, created_at DESC LIMIT 1")
-        .bind(context.organizationId, input.provider).first<{status:string}>();
-      if (input.consentAccepted === true && input.consentNoticeVersion === POS_SYNC_CONSENT_VERSION) {
+      if (input.consentAccepted === true) {
+        if (input.consentNoticeVersion !== POS_SYNC_CONSENT_VERSION) {
+          throw new ApiError(403, "INTEGRATION_CONSENT_REQUIRED", "Review the current automatic sync data notice and authorize background imports again.");
+        }
         await getDb().insert(integrationConsents).values({ id: crypto.randomUUID(), organizationId: context.organizationId,
           actorUserId: context.userId, provider: input.provider, status: "accepted", noticeVersion: POS_SYNC_CONSENT_VERSION,
           privacyPolicyVersion: PRIVACY_POLICY_VERSION, dataCategoriesJson: JSON.stringify(posSyncDataCategories(input.provider)),
           purposesJson: JSON.stringify(POS_SYNC_PURPOSES), consentSource: "in_app", acceptedAt: now, createdAt: now, updatedAt: now });
-      } else if (consent?.status !== "accepted") throw new ApiError(403, "INTEGRATION_CONSENT_REQUIRED", "Review the automatic sync data notice and enable it again to authorize background imports.");
+      } else await requireCurrentBackgroundSyncConsent({ organizationId: context.organizationId, actorUserId: context.userId, provider: input.provider });
       const [existing] = await getDb().select().from(integrationSyncSchedules).where(eq(integrationSyncSchedules.connectionId, connection.id));
       await getDb().insert(integrationSyncSchedules).values({
         connectionId: connection.id, organizationId: context.organizationId, provider: input.provider, enabled: true,

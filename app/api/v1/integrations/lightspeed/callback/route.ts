@@ -1,3 +1,4 @@
+import { requireIntegrationCallbackAccess, releaseIntegrationSelectionIfUnused } from "../../../../../../server/integrations/free-selection";
 import { and, eq, gt, isNull } from "drizzle-orm";
 import { getDb } from "../../../../../../db";
 import {
@@ -127,6 +128,7 @@ export async function GET(request: Request) {
       authProvider: actor.authProvider,
       organization: actor.organization,
     };
+    await requireIntegrationCallbackAccess(context, "lightspeed", storedState.connectionId);
     await requirePermission(context, "integrations.manage");
 
     const [consumedState] = await getDb()
@@ -186,6 +188,7 @@ export async function GET(request: Request) {
           dataPromotionEnabled: false,
         },
       });
+      await releaseIntegrationSelectionIfUnused(context.organizationId, "lightspeed");
       return returnToVanteloq(request, "declined");
     }
 

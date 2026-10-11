@@ -1,16 +1,14 @@
-import { requireAccess } from "../../../../../../server/authorization";
+import { requireIntegrationAccess } from "../../../../../../server/integrations/free-selection";
 import { recordAudit } from "../../../../../../server/audit";
 import { ApiError, enforceRateLimit, handleApi, jsonResponse, requireSameOrigin } from "../../../../../../server/api";
 import { PLAID_PROVIDER, plaidReadiness, syncPlaidTransactions } from "../../../../../../server/integrations/plaid";
 import { requirePermission } from "../../../../../../server/permissions";
-import { requireAddon } from "../../../../../../server/entitlements/engine";
 import { requireOrganizationWideLocationAccess } from "../../../../../../server/location-access";
 
 export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
-    const context = await requireAccess(request, ["owner", "admin", "manager"], "bookloq.reconciliation");
-    await requireAddon(context, "bookloq");
+    const context = await requireIntegrationAccess(request, ["owner", "admin", "manager"], "plaid", false);
     await requirePermission(context, "finance.connections");
     await requireOrganizationWideLocationAccess(context);
     await enforceRateLimit("plaid:sync", context.organizationId, 20, 3_600);

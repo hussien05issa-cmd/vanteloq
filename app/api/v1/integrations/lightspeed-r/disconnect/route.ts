@@ -1,3 +1,4 @@
+import { releaseIntegrationSelectionIfUnused } from "../../../../../../server/integrations/free-selection";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../../../../../../db";
 import { integrationConnections, integrationOAuthStates, integrationSecrets } from "../../../../../../db/schema";
@@ -31,6 +32,7 @@ export async function POST(request: Request) {
       action: "integration.disconnected", resourceType: "integration", resourceId: connection.id,
       details: { provider: LIGHTSPEED_R_PROVIDER, connectionId: connection.id, localTokensDeleted: true, stagedHistoryRetained: true, dataPromotionEnabled: false },
     });
-    return jsonResponse({ disconnected: true, connectionId: connection.id, localCredentialsDeleted: true, retainedForAudit: ["shop mappings", "sync runs", "staged records", "audit events"] });
+    await releaseIntegrationSelectionIfUnused(context.organizationId, "lightspeed-r");
+      return jsonResponse({ disconnected: true, connectionId: connection.id, localCredentialsDeleted: true, retainedForAudit: ["shop mappings", "sync runs", "staged records", "audit events"] });
   });
 }

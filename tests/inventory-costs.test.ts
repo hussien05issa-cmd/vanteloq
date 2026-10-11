@@ -30,8 +30,10 @@ test("manual and CSV cost workflows require review and survive connector refresh
     source("server/integrations/sync/lightspeed-r.ts"),
   ]);
   assert.match(workspace, /Download template/);
-  assert.match(workspace, /Choose cost CSV/);
-  assert.match(workspace, /Save \$\{costPreview\.length\} costs/);
+  assert.match(workspace, /Import product cost CSV/);
+  assert.match(workspace, /Import product cost CSV \(\$\{costPreview\.length\} costs\)/);
+  assert.match(workspace, /inventoryCostRequest\(source, entries, costPrivacyAccepted\)/);
+  assert.match(workspace, /ReportImportPrivacyNotice accepted=\{costPrivacyAccepted\}/);
   assert.match(workspace, /saveManualCost\(row\)/);
   assert.match(workspace, /Unit cost/);
   for (const connector of [square, clover, lightspeed]) {

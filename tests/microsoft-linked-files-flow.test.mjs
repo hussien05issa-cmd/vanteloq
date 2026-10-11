@@ -58,7 +58,7 @@ test("Microsoft linked files enforce consent and import only selected files into
     // Install after initial route setup, which initializes the framework fetch wrapper.
     globalThis.fetch = providerFetch;
     const post = (body, runtime = env) => dispatch(worker, runtime, "/api/v1/linked-files", { method: "POST", ...owner, body });
-    const authorize = { action: "authorize", provider: "microsoft-files", accepted: true, noticeVersion: "linked-files-2026-09-26" };
+    const authorize = { action: "authorize", provider: "microsoft-files", accepted: true, noticeVersion: "linked-files-2026-10-04" };
     const expectError = async (response, status, code) => {
       assert.equal(response.status, status, await response.clone().text());
       assert.equal((await response.json()).error.code, code);

@@ -1,7 +1,13 @@
 "use client";
 import MarketingPreferences from "./marketing-consent";
+import { WorkspaceAppearanceControl } from "./workspace-appearance";
+import IndustryConfigurationSettings from "./industry-configuration";
 import WorkspaceSkeleton from "./workspace-skeleton";
 import CustomPlanCallout from "./custom-plan-callout";
+import BillingSubscriptionControls, { BillingStatusRecovery } from "./billing-subscription-controls";
+import { billingRequestMessage } from "../domain/billing-feedback";
+import { filterSettingsSections, SETTINGS_SECTIONS, settingsSectionFromHash, settingsSectionHash, type SettingsSectionId } from "../domain/settings-navigation";
+import LocationSetupDialog from "./location-setup-dialog";
 import { useBillingEntitlements } from "./billing-entitlements-context";
 import { readPlanSelection, clearPlanSelection } from "../shared/plan-selection";
 
@@ -1035,73 +1041,77 @@ function AccessSafeguards({ security }: { security: Governance["security"] }) {
 export function SettingsWorkspace({ showNotice, onBrandChange, navigationSettings }: Props) {
   const { data, setData, loading, error, load } = useGovernance();
   const access = useBillingEntitlements();
-  const [section, setSection] = useState(() => typeof window !== "undefined" && window.location.hash === "#billing" ? "billing" : "profile");
+  const [settingsQuery, setSettingsQuery] = useState("");
+  const settingsNav = useRef<HTMLElement>(null);
+  const settingsContent = useRef<HTMLElement>(null);
+  const [section, setSection] = useState<SettingsSectionId>(() => typeof window !== "undefined" ? settingsSectionFromHash(window.location.hash) ?? "profile" : "profile");
   useEffect(() => {
-    const openBilling = () => { if (window.location.hash === "#billing") setSection("billing"); };
-    window.addEventListener("hashchange", openBilling);
-    return () => window.removeEventListener("hashchange", openBilling);
+    const openSection = () => { const requested = settingsSectionFromHash(window.location.hash); if (requested) setSection(requested); };
+    window.addEventListener("hashchange", openSection);
+    return () => window.removeEventListener("hashchange", openSection);
   }, []);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
   if (loading || !data)
     return <Loading error={error} retry={() => void load()} />;
-  const sections = [
-    ["profile", "My profile"],
-    ["account", "Account & login"],
-    ["security", "Security"],
-    ["notifications", "Notifications"],
-    ["organization", "Organization"],
-    ["branding", "Branding"],
-    ["navigation", "Sidebar & workspaces"],
-    ["locations", "Locations"],
-    ["integrations", "Integrations"],
-    ["privacy", "Data & privacy"],
-    ["billing", "Billing & plans"],
-  ];
+  const sections = filterSettingsSections(settingsQuery);
+  const selectSection = (id: SettingsSectionId) => {
+    setSection(id);
+    setSaveError("");
+    window.location.hash = settingsSectionHash(id);
+    window.requestAnimationFrame(() => settingsContent.current?.focus({ preventScroll: true }));
+  };
   return (
     <div className="content governance-page settings-governance">
       <section className="page-intro">
         <div>
           <p>SETTINGS</p>
-          <h2>Control the account, organization and security boundary.</h2>
+          <h2>Manage your account and business.</h2>
           <span>
-            Signup information stays editable here, while accounting history and
-            audit events remain immutable.
+            Review your profile, business details, locations, access and subscription.
           </span>
         </div>
       </section>
-      {access.accessType === "free" && section !== "billing" && <div className="free-settings-shortcut"><div><b>You're on Free</b><span>1 owner · 1 location · Upgrade whenever you need more.</span></div><button type="button" className="primary" onClick={() => { window.location.hash = "billing"; setSection("billing"); }}>View plans & upgrade</button></div>}
+      {access.accessType === "free" && section !== "billing" && <div className="free-settings-shortcut"><div><b>You&apos;re on Free</b><span>1 owner · 1 location · Upgrade whenever you need more.</span></div><button type="button" className="primary" onClick={() => { window.location.hash = "billing"; setSection("billing"); }}>View plans & upgrade</button></div>}
+      {access.accessType === "subscription" && section !== "billing" && <div className="free-settings-shortcut"><div><b>Subscription &amp; billing</b><span>Review your plan, payment details or cancellation.</span></div><button type="button" className="primary" onClick={() => { window.location.hash = "billing"; setSection("billing"); }}>Manage or cancel subscription</button></div>}
       <div className="settings-layout">
-        <aside className="settings-nav">
+        <aside className="settings-nav" ref={settingsNav} aria-label="Settings sections">
           <label>
             ⌕
-            <input aria-label="Search settings" placeholder="Search settings" />
+            <input type="search" aria-label="Search settings" placeholder="Search settings" value={settingsQuery} maxLength={100}
+              onChange={event => setSettingsQuery(event.target.value)}
+              onKeyDown={event => {
+                if (event.key === "Escape") { event.preventDefault(); setSettingsQuery(""); }
+                if (event.key === "ArrowDown") { event.preventDefault(); settingsNav.current?.querySelector<HTMLButtonElement>("[data-settings-section]")?.focus(); }
+                if (event.key === "Enter" && sections.length === 1) { event.preventDefault(); selectSection(sections[0].id); }
+              }}
+            />
           </label>
-          {sections.map(([id, label]) => (
+          {settingsQuery && <button type="button" onClick={() => { setSettingsQuery(""); settingsNav.current?.querySelector<HTMLInputElement>("input")?.focus(); }}>Clear search</button>}
+          {sections.length === 0 && <p role="status">No settings match “{settingsQuery}”. Try a section name, cancellation or deletion.</p>}
+          {sections.map(({id, label}) => (
             <button
+              type="button"
+              data-settings-section={id}
+              aria-current={section === id ? "page" : undefined}
               className={section === id ? "active" : ""}
               key={id}
-              onClick={() => {
-                setSection(id);
-                if (id === "billing") window.location.hash = "billing";
-                else if (window.location.hash === "#billing") {
-                  const url = new URL(window.location.href);
-                  url.hash = "";
-                  window.history.replaceState(window.history.state, "", url);
-                }
-              }}
+              onClick={() => selectSection(id)}
             >
               {label}
               <span>›</span>
             </button>
           ))}
         </aside>
-        <section className="settings-content card">
+        <section ref={settingsContent} tabIndex={-1} className="settings-content card" aria-label={`${SETTINGS_SECTIONS.find(item => item.id === section)?.label ?? "Business"} settings`}>
+          {saveError && <p className="form-error" role="alert">{saveError} Your entries are still here. Review the message and try again.</p>}
           {section === "profile" && (
             <ProfileSettings
               data={data}
               saving={saving}
               save={async (body) => {
                 setSaving(true);
+                setSaveError("");
                 try {
                   const next = await governanceAction({
                     action: "update_profile",
@@ -1110,6 +1120,7 @@ export function SettingsWorkspace({ showNotice, onBrandChange, navigationSetting
                   setData(next);
                   showNotice("Profile and preferences updated");
                 } catch (caught) {
+                  setSaveError(caught instanceof Error ? caught.message : "Unable to save profile.");
                   showNotice(
                     caught instanceof Error
                       ? caught.message
@@ -1122,11 +1133,12 @@ export function SettingsWorkspace({ showNotice, onBrandChange, navigationSetting
             />
           )}
           {section === "organization" && (
-            <OrganizationSettings
+            <><OrganizationSettings
               data={data}
               saving={saving}
               save={async (body) => {
                 setSaving(true);
+                setSaveError("");
                 try {
                   const next = await governanceAction({
                     action: "update_organization",
@@ -1139,6 +1151,7 @@ export function SettingsWorkspace({ showNotice, onBrandChange, navigationSetting
                   );
                   showNotice("Organization settings updated and audited");
                 } catch (caught) {
+                  setSaveError(caught instanceof Error ? caught.message : "Unable to save business details.");
                   showNotice(
                     caught instanceof Error
                       ? caught.message
@@ -1148,7 +1161,7 @@ export function SettingsWorkspace({ showNotice, onBrandChange, navigationSetting
                   setSaving(false);
                 }
               }}
-            />
+            /><IndustryConfigurationSettings/></>
           )}
           {section === "branding" && (
             <BrandingSettings
@@ -1166,7 +1179,8 @@ export function SettingsWorkspace({ showNotice, onBrandChange, navigationSetting
               data={data}
               created={(next) => {
                 setData(next);
-                showNotice("Location created with entered-address status");
+                window.dispatchEvent(new CustomEvent("vanteloq:locations-changed"));
+                showNotice("Location created. Map its source records in Integrations to include them in location reports.");
               }}
             />
           )}
@@ -1178,6 +1192,7 @@ export function SettingsWorkspace({ showNotice, onBrandChange, navigationSetting
               notificationsOnly
               save={async (body) => {
                 setSaving(true);
+                setSaveError("");
                 try {
                   setData(
                     await governanceAction({
@@ -1187,6 +1202,7 @@ export function SettingsWorkspace({ showNotice, onBrandChange, navigationSetting
                   );
                   showNotice("Notification preferences updated");
                 } catch (caught) {
+                  setSaveError(caught instanceof Error ? caught.message : "Unable to save preferences.");
                   showNotice(
                     caught instanceof Error
                       ? caught.message
@@ -1343,6 +1359,7 @@ function ProfileSettings({
             : "Your verified email is supplied by secure sign-in and cannot be overwritten by a profile form."}
         </span>
       </header>
+      {!notificationsOnly && <WorkspaceAppearanceControl/>}
       {!notificationsOnly && (
         <div className="settings-grid">
           <label>
@@ -1437,38 +1454,41 @@ function OrganizationSettings({
     >
       <header>
         <p>ORGANIZATION</p>
-        <h2>Business identity and reporting context</h2>
+        <h2>Business identity and reporting preferences</h2>
         <span>
-          Changing legal, tax, country, currency or fiscal settings never
-          rewrites posted history.
+          Update your operating details. Review the reporting settings recorded during setup below.
         </span>
       </header>
       <div className="settings-grid">
         <label>
-          Operating name
+          <FieldLabel>Operating Name</FieldLabel>
           <input
+            required maxLength={160}
             value={form.displayName}
             onChange={(event) => set("displayName", event.target.value)}
           />
         </label>
         <label>
-          Legal business name
+          <FieldLabel>Legal Business Name</FieldLabel>
           <input
+            required maxLength={160}
             value={form.legalName}
             onChange={(event) => set("legalName", event.target.value)}
           />
         </label>
         <label>
-          Business email
+          <FieldLabel>Business Email</FieldLabel>
           <input
             type="email"
+            required maxLength={254} autoComplete="email"
             value={form.businessEmail}
             onChange={(event) => set("businessEmail", event.target.value)}
           />
         </label>
         <label>
-          Business phone
+          <FieldLabel required={false}>Business Phone</FieldLabel>
           <input
+            type="tel" maxLength={40} autoComplete="tel"
             value={form.phone}
             onChange={(event) => set("phone", event.target.value)}
           />
@@ -1496,6 +1516,11 @@ function OrganizationSettings({
           />
         </label>
       </div>
+      <section className="settings-reporting-context" aria-label="Saved reporting preferences">
+        <h3>Current reporting preferences</h3>
+        <dl><div><dt>Business type</dt><dd>{data.organization.industry || "Not recorded"}</dd></div><div><dt>Reporting currency</dt><dd>{data.organization.currency || "Not recorded"}</dd></div><div><dt>Reporting timezone</dt><dd>{data.organization.timezone || "Not recorded"}</dd></div><div><dt>Fiscal year starts</dt><dd>{data.organization.fiscalYearStart || "Not recorded"}</dd></div></dl>
+        <p>Business type and tools can be reviewed below. Currency, timezone and fiscal year changes are not available in this form. <a href="/contact">Contact support to review a reporting change</a> before entering records under different settings.</p>
+      </section>
       <div className="integrity-warning">
         <b>Historical integrity</b>
         <span>
@@ -1633,17 +1658,19 @@ function LocationsSettings({
   created: (data: Governance) => void;
 }) {
   const [adding, setAdding] = useState(false);
+  const access = useBillingEntitlements();
+  const freeLocationLimit = access.accessType === "free" && data.locations.length >= 1;
   return (
     <section className="settings-form">
       <header>
         <p>LOCATIONS</p>
-        <h2>Global, organization-scoped addresses</h2>
+        <h2>Your business locations</h2>
         <span>
-          Addresses retain entered, suggested or validated status. A
-          postal-pattern match alone never becomes a deliverability claim.
+          Add a location, then map its source records in Integrations. Location reports use its reporting timezone and currency.
         </span>
       </header>
       <div className="location-list">
+        {!data.locations.length && <p className="location-empty-state">No locations are saved yet. Add your first business location to prepare location reports.</p>}
         {data.locations.map((location) => (
           <article key={location.id}>
             <div>
@@ -1663,12 +1690,11 @@ function LocationsSettings({
         ))}
       </div>
       <footer>
-        <button className="primary" onClick={() => setAdding(true)}>
-          + Add location
-        </button>
+        {freeLocationLimit ? <><p>Your Free plan includes one location. Review a paid plan before adding another.</p><button type="button" className="primary" onClick={() => { window.location.hash = settingsSectionHash("billing"); }}>View plans for more locations</button></> : <button type="button" className="primary" onClick={() => setAdding(true)}>+ Add location</button>}
       </footer>
       {adding && (
         <LocationModal
+          organization={data.organization}
           close={() => setAdding(false)}
           created={(next) => {
             setAdding(false);
@@ -1683,97 +1709,13 @@ function LocationsSettings({
 function LocationModal({
   close,
   created,
+  organization,
 }: {
   close: () => void;
   created: (data: Governance) => void;
+  organization: Governance["organization"];
 }) {
-  const [error, setError] = useState("");
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    try {
-      created(
-        await governanceAction({
-          action: "create_location",
-          name: form.get("name"),
-          countryCode: form.get("countryCode"),
-          addressLine1: form.get("addressLine1"),
-          addressLine2: form.get("addressLine2"),
-          addressLine3: form.get("addressLine3"),
-          locality: form.get("locality"),
-          district: form.get("district"),
-          administrativeArea: form.get("administrativeArea"),
-          postalCode: form.get("postalCode"),
-          timezone: form.get("timezone"),
-          currency: form.get("currency"),
-          locale: form.get("locale"),
-          taxJurisdiction: form.get("taxJurisdiction"),
-        }),
-      );
-    } catch (caught) {
-      setError(
-        caught instanceof Error ? caught.message : "Unable to create location.",
-      );
-    }
-  };
-  return (
-    <div className="modal-backdrop">
-      <form className="employee-wizard" onSubmit={submit}>
-        <header>
-          <div>
-            <p>NEW LOCATION</p>
-            <h2>Add a global business address</h2>
-          </div>
-          <button type="button" onClick={close}>
-            ×
-          </button>
-        </header>
-        <div className="wizard-grid">
-          <label><FieldLabel>Name</FieldLabel><input name="name" required />
-          </label>
-          <label><FieldLabel>ISO Country Code</FieldLabel><input name="countryCode" maxLength={2} placeholder="CA" required />
-          </label>
-          <label className="full"><FieldLabel>Address Line 1</FieldLabel><input name="addressLine1" required />
-          </label>
-          <label>
-            Address line 2<input name="addressLine2" />
-          </label>
-          <label>
-            Address line 3<input name="addressLine3" />
-          </label>
-          <label><FieldLabel>City / Locality</FieldLabel><input name="locality" required />
-          </label>
-          <label>
-            District / county
-            <input name="district" />
-          </label>
-          <label><FieldLabel>Province / State / Region</FieldLabel><input name="administrativeArea" required />
-          </label>
-          <label>
-            Postal / ZIP code
-            <input name="postalCode" />
-          </label>
-          <label><FieldLabel>Timezone</FieldLabel><input name="timezone" defaultValue="America/Edmonton" required />
-          </label>
-          <label><FieldLabel>Currency</FieldLabel><input name="currency" defaultValue="CAD" maxLength={3} required />
-          </label>
-          <label><FieldLabel>Locale</FieldLabel><input name="locale" defaultValue="en-CA" required />
-          </label>
-          <label>
-            Tax jurisdiction
-            <input name="taxJurisdiction" />
-          </label>
-        </div>
-        {error && <p className="form-error">{error}</p>}
-        <footer>
-          <button type="button" onClick={close}>
-            Cancel
-          </button>
-          <button className="primary">Create location</button>
-        </footer>
-      </form>
-    </div>
-  );
+  return <LocationSetupDialog close={close} country={organization.country || "CA"} timezone={organization.timezone || "UTC"} currency={organization.currency || "CAD"} locale={organization.locale || "en-CA"} create={async body => { created(await governanceAction({ ...body, action: "create_location" })); }}/>
 }
 
 function ProviderSettings({
@@ -1810,6 +1752,8 @@ function ProviderSettings({
 type AccountDeletionData = {
   available: boolean;
   scope: "account" | "workspace";
+  organizationId: string;
+  organizationName: string;
   confirmation: string;
   consequences: string[];
 };
@@ -1858,7 +1802,7 @@ export function AccountDeletionSettings() {
       const response = await apiFetch("/api/v1/account/deletion", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ confirmation, acknowledgeNoRecovery, acknowledgeBillingCancellation, ...deletionSession }),
+        body: JSON.stringify({ confirmation, acknowledgeNoRecovery, acknowledgeBillingCancellation, ...deletionSession, expectedOrganizationId: data.organizationId }),
       });
       const body = await response.json();
       if (!response.ok) throw new Error(message(body, "The deletion request could not be completed."));
@@ -1875,14 +1819,16 @@ export function AccountDeletionSettings() {
         <h2>{data?.scope === "workspace" ? "Delete this Vanteloq workspace" : "Delete my Vanteloq account"}</h2>
         <span>This protected action requires recent multifactor authentication. It cannot be undone.</span>
       </header>
+      {data?.organizationName && <p>Workspace: <strong>{data.organizationName}</strong></p>}
       {data?.consequences?.length ? <ul>{data.consequences.map((item) => <li key={item}>{item}</li>)}</ul> : null}
+      <p>Review <a href="/privacy#retention">what is deleted and retained</a> before continuing.</p>
       <p>Already confirmed a deletion? <a href="/account/deletion-status">Resume the saved deletion session</a>. Keep that browser tab open until completion is confirmed.</p>
       {data && <div className="deletion-confirmation">
         <label>
           Type <strong>{data.confirmation}</strong>
           <input autoComplete="off" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} />
         </label>
-        <label className="deletion-check"><input type="checkbox" checked={acknowledgeNoRecovery} onChange={(event) => setAcknowledgeNoRecovery(event.target.checked)} /><span>I understand that deleted Vanteloq data and files cannot be recovered.</span></label>
+        <label className="deletion-check"><input type="checkbox" checked={acknowledgeNoRecovery} onChange={(event) => setAcknowledgeNoRecovery(event.target.checked)} /><span>I understand that data and files removed by this action cannot be restored through Vanteloq.</span></label>
         <label>Current six-digit authenticator code<input inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} value={verificationCode} onChange={(event) => setVerificationCode(event.target.value.replace(/\D/g, "").slice(0, 6))} /></label>
         {data.scope === "workspace" && <label className="deletion-check"><input type="checkbox" checked={acknowledgeBillingCancellation} onChange={(event) => setAcknowledgeBillingCancellation(event.target.checked)} /><span>I understand that the Stripe subscription will be canceled immediately.</span></label>}
         <button type="button" className="danger" disabled={!data.available || !/^\d{6}$/.test(verificationCode) || confirmation !== data.confirmation || !acknowledgeNoRecovery || (data.scope === "workspace" && !acknowledgeBillingCancellation) || busy} onClick={() => void remove()}>{busy ? "Deleting securely…" : data.scope === "workspace" ? "Permanently delete workspace" : "Permanently delete my account"}</button>
@@ -1908,15 +1854,20 @@ function BillingSettings() {
   const [data, setData] = useState<BillingData | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [refreshing, setRefreshing] = useState(true);
+  const [statusStale, setStatusStale] = useState(false);
+  const opening = useRef(false);
   const [plan, setPlan] = useState<"starter" | "growth" | "pro" | "bookloq">("growth");
   const [bookloq, setBookloq] = useState(false);
   useEffect(() => {
     let active = true;
-    void apiFetch("/api/v1/billing", { headers: { Accept: "application/json" } }).then(async (response) => {
+    void apiFetch("/api/v1/billing", { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(15_000) }).then(async (response) => {
       const body = await response.json();
       if (!response.ok) throw new Error(message(body, "Billing status could not be loaded."));
       if (active) {
         setData(body);
+        setStatusStale(false);
         const requested = readPlanSelection();
         if (body.accessType === "free" && requested && requested.plan !== "free") {
           setPlan(requested.plan); setBookloq(requested.bookloq);
@@ -1926,21 +1877,24 @@ function BillingSettings() {
         }
         clearPlanSelection();
       }
-    }).catch((reason) => { if (active) setError(reason instanceof Error ? reason.message : "Billing status could not be loaded."); });
+    }).catch((reason) => { if (active) { setError(billingRequestMessage(reason, "status")); setStatusStale(true); } }).finally(() => { if (active) setRefreshing(false); });
     return () => { active = false; };
-  }, []);
+  }, [refreshKey]);
   const open = async (path: string, body?: Record<string, unknown>) => {
+    if (opening.current) return;
+    opening.current = true;
     setBusy(true); setError("");
     try {
-      const response = await apiFetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body ?? {}) });
+      const response = await apiFetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body ?? {}), signal: AbortSignal.timeout(30_000) });
       const result = await response.json();
       if (!response.ok) throw new Error(message(result, "Stripe could not open billing."));
       const allowedOrigin = path.endsWith("/portal") ? "https://billing.stripe.com" : "https://checkout.stripe.com";
       if (typeof result.url !== "string" || new URL(result.url).origin !== allowedOrigin) throw new Error("A secure billing page could not be opened. Try again.");
       window.location.assign(result.url);
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "Stripe could not open billing."); setBusy(false); }
+    } catch (reason) { setError(billingRequestMessage(reason, path.endsWith("/portal") ? "portal" : "checkout")); setBusy(false); opening.current = false; }
   };
-  if (!data && !error) return <section className="settings-form"><header><p>STRIPE BILLING</p><h2>Loading verified subscription status…</h2></header></section>;
+  const refreshStatus = () => { setError(""); setRefreshing(true); setRefreshKey(key => key + 1); };
+  if (!data) return <section className="settings-form"><header><p>STRIPE BILLING</p><h2>{refreshing ? "Loading verified subscription status…" : "Billing status unavailable"}</h2></header>{!refreshing && <BillingStatusRecovery message={error || "Billing status could not be loaded."} busy={false} onRetry={refreshStatus}/>}</section>;
   const managed = data?.current.hasSubscription === true;
   const vanteloqPlans = data?.plans.filter((item) => item.key !== "bookloq") ?? [];
   const standaloneBookloq = data?.plans.find((item) => item.key === "bookloq");
@@ -1957,13 +1911,19 @@ function BillingSettings() {
     <p>{item.description}</p>
     <ul>{item.included.map(feature => <li key={feature}>{feature}</li>)}</ul>
   </label>;
-  return <section className="settings-form billing-settings"><header><p>BILLING & PLANS</p><h2>Manage your plan</h2><span>Free requires no payment method. Choose a paid upgrade below and review its price in secure checkout.</span></header>
-    {error && <p className="form-error">{error}</p>}
+  return <section className="settings-form billing-settings"><header><p>BILLING & SUBSCRIPTION</p><h2>Manage your plan</h2><span>{managed ? "Review your subscription, payment details and cancellation in Stripe." : "Free requires no payment method. Choose a paid upgrade below and review its price in secure checkout."}</span></header>
+    {statusStale ? <BillingStatusRecovery message={error || "Checking the latest billing status."} stale busy={refreshing} onRetry={refreshStatus}/> : error && <p className="form-error" role="alert">{error}</p>}
+    {managed && data && <BillingSubscriptionControls
+      current={data.current} busy={busy || refreshing}
+      onManage={() => void open("/api/v1/billing/portal")}
+      onCancel={() => void open("/api/v1/billing/portal", { action: "cancel" })}
+      onRefresh={refreshStatus}
+    />}
     {data?.accessType === "complimentary" ? <div className="billing-internal"><b>Complimentary access active</b><span>Your included plan does not require a payment method or a Stripe subscription.</span></div> : data?.accessType === "internal" ? <div className="billing-internal"><b>Internal access active</b><span>This workspace has verified internal access and does not require a Stripe subscription.</span></div> : <>
-      {data?.accessType === "free" && <article className="free-plan-card free-usage-card"><div><span className="billing-plan-badge">CURRENT PLAN</span><h3>Free</h3><p>$0 · No expiry · No card required</p><p>1 owner and 1 location. Your saved records stay available when you reach a limit.</p><p>Upgrade for live POS connections, more users and advanced tools.</p></div>{data.freeUsage && <div className="free-usage-meters">{[["AI replies", data.freeUsage.aiReplies], ["Daily sales records", data.freeUsage.importRows]].map(([label, allowance]) => { const usage = allowance as {used: number; limit: number}; return <label key={label as string}><span>{label as string}<b>{usage.used} / {usage.limit}</b></span><progress value={usage.used} max={usage.limit}/><small>{Math.max(0, usage.limit - usage.used)} remaining this month</small></label>; })}<small>Resets {new Date(data.freeUsage.resetsAt).toLocaleDateString("en-CA", {timeZone: "UTC"})} at 00:00 UTC.</small></div>}</article>}
+      {data?.accessType === "free" && <article className="free-plan-card free-usage-card"><div><span className="billing-plan-badge">CURRENT PLAN</span><h3>Free</h3><p>$0 · No expiry · No card required</p><p>1 owner and 1 location. Your saved records stay available when you reach a limit.</p><p>Choose two available integrations on Free. Upgrade for more connections, more users and advanced tools.</p></div>{data.freeUsage && <div className="free-usage-meters">{[["AI replies", data.freeUsage.aiReplies], ["Daily sales records", data.freeUsage.importRows]].map(([label, allowance]) => { const usage = allowance as {used: number; limit: number}; return <label key={label as string}><span>{label as string}<b>{usage.used} / {usage.limit}</b></span><progress value={usage.used} max={usage.limit}/><small>{Math.max(0, usage.limit - usage.used)} remaining this month</small></label>; })}<small>Resets {new Date(data.freeUsage.resetsAt).toLocaleDateString("en-CA", {timeZone: "UTC"})} at 00:00 UTC.</small></div>}</article>}
       {data?.current.status === "trialing" && data.current.trialEndsAt && <p className="billing-monthly-note"><b>7-day free trial</b><span>{data.current.cancelAtPeriodEnd ? "Trial access ends" : "First billing date"}: {new Date(data.current.trialEndsAt).toLocaleString("en-CA")}. {data.current.cancelAtPeriodEnd ? "Cancellation is scheduled." : "The selected monthly subscription renews automatically. Cancel in Manage billing before the trial ends to avoid the first charge."}</span></p>}
       {data?.trialEligible && <p className="billing-monthly-note"><b>{data.accessType === "free" ? "Optional paid upgrade: 7-day trial" : "7-day free trial included"}</b><span>Your first paid subscription requires a payment method. After the trial, your selected monthly total plus applicable taxes renews automatically. Review the exact first billing date in Stripe and cancel through Manage billing before the trial ends to avoid the first charge. BookLoQ selected now shares the same trial.</span></p>}
-      <p className="billing-monthly-note"><b>{managed && data?.current.billingInterval === "year" ? "Annual billing" : "Paid plans bill monthly"}</b><span>{managed ? `Your current subscription renews ${data?.current.billingInterval === "year" ? "annually" : "monthly"}.` : "Paid upgrades renew month to month."} {managed && data?.current.currentPeriodEndsAt ? `${data.current.cancelAtPeriodEnd ? "Access ends" : "Next renewal"}: ${new Date(data.current.currentPeriodEndsAt).toLocaleDateString("en-CA",{timeZone:"UTC"})}.` : "Cancel a paid subscription before renewal to stop the next charge."} Review any changes in Stripe before confirming.</span></p>
+      <p className="billing-monthly-note"><b>{managed && data?.current.billingInterval === "year" ? "Annual billing" : "Paid plans bill monthly"}</b><span>{managed ? data?.current.cancelAtPeriodEnd ? "Your subscription is scheduled to end." : `Your current subscription renews ${data?.current.billingInterval === "year" ? "annually" : "monthly"}.` : "Paid upgrades renew month to month."} {managed && data?.current.currentPeriodEndsAt ? `${data.current.cancelAtPeriodEnd ? "Recorded subscription end" : "Next renewal"}: ${new Date(data.current.currentPeriodEndsAt).toLocaleDateString("en-CA",{timeZone:"UTC"})}.` : "Cancel a paid subscription before renewal to stop the next charge."} Review any changes in Stripe before confirming.</span></p>
       <fieldset className="billing-product-choice">
         <legend>{data?.accessType === "free" ? "Choose your upgrade" : "Vanteloq operating plans"}</legend>
         <p>Retail operations, sales and inventory intelligence. Your workspace and records carry over.</p>
@@ -1976,9 +1936,9 @@ function BillingSettings() {
       </fieldset>}
       {plan === "bookloq" ? <div className="billing-addon standalone"><span><b>BookLoQ is complete on its own</b><small>No Vanteloq plan or separate BookLoQ add-on is required.</small></span></div> : <label className="billing-addon"><input type="checkbox" checked={bookloq} onChange={(event) => setBookloq(event.target.checked)} disabled={managed}/><span><b>Add BookLoQ</b><small>${((data?.addon.price ?? 0) / 100).toLocaleString("en-CA")} CAD / month</small></span></label>}
       {managed && <p className="billing-monthly-note"><span>Use Stripe to manage payment details and cancellation. To add or remove BookLoQ, <a href="/custom-plan">request a subscription change</a>. Changes take effect after billing confirmation.</span></p>}
-      <div className="provider-settings"><article><div><b>Current access</b><p>{data?.current.plan ? data.accessType === "free" ? "Free · No expiry" : `${humanizeIdentifier(data.current.plan)} · ${data.current.status}` : "No synchronized paid subscription."}</p></div><span>{data?.current.cancelAtPeriodEnd ? "Cancels at renewal" : data?.accessType === "free" ? "Active" : data?.current.status ?? "Not subscribed"}</span></article></div>
+      <div className="provider-settings"><article><div><b>Current access</b><p>{data?.current.plan ? data.accessType === "free" ? "Free · No expiry" : `${humanizeIdentifier(data.current.plan)} · ${data.current.status}` : "No synchronized paid subscription."}</p></div><span>{data?.current.cancelAtPeriodEnd ? "Cancellation scheduled" : data?.accessType === "free" ? "Active" : data?.current.status ?? "Not subscribed"}</span></article></div>
       <div className="billing-selected-total"><span><b>{data?.plans.find(item => item.key === plan)?.name}{plan !== "bookloq" && bookloq ? " + BookLoQ" : ""}</b><small>Paid subscription, before applicable tax.</small></span><strong>${((data?.plans.find(item => item.key === plan)?.price ?? 0) + (plan !== "bookloq" && bookloq ? data?.addon.price ?? 0 : 0)) / 100} CAD / month</strong></div>
-      <footer>{managed ? <button className="primary" disabled={busy || !data?.configured} onClick={() => void open("/api/v1/billing/portal")}>{busy ? "Opening…" : "Manage billing in Stripe"}</button> : <button className="primary" disabled={busy || !data?.configured} title={!data?.configured ? "Stripe products, prices and webhook secret must be configured first." : "Open secure Stripe Checkout"} onClick={() => void open("/api/v1/billing/checkout", { plan, interval: "month", includeBookloq: plan === "bookloq" ? false : bookloq })}>{busy ? "Opening…" : data?.configured ? data.accessType === "free" ? `Upgrade to ${data.plans.find(item => item.key === plan)?.name ?? "paid"}` : "Continue to secure checkout" : "Paid upgrades temporarily unavailable"}</button>}</footer>
+      {!managed && <footer><button className="primary" disabled={busy || !data?.configured} title={!data?.configured ? "Stripe products, prices and webhook secret must be configured first." : "Open secure Stripe Checkout"} onClick={() => void open("/api/v1/billing/checkout", { plan, interval: "month", includeBookloq: plan === "bookloq" ? false : bookloq })}>{busy ? "Opening…" : data?.configured ? data.accessType === "free" ? `Upgrade to ${data.plans.find(item => item.key === plan)?.name ?? "paid"}` : "Continue to secure checkout" : "Paid upgrades temporarily unavailable"}</button></footer>}
     </>}
     <CustomPlanCallout/>
   </section>;

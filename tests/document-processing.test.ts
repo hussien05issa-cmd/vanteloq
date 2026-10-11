@@ -12,6 +12,7 @@ async function setup(t: { after: (callback: () => Promise<void>) => void }) {
   const mf = new Miniflare({ modules: true, script: "export default { fetch() { return new Response('ok'); } }", d1Databases: ["DB"], r2Buckets: ["BUCKET"] });
   t.after(() => mf.dispose());
   const database = await mf.getD1Database("DB") as unknown as D1Database, bucket = await mf.getR2Bucket("BUCKET") as unknown as R2Bucket;
+  await database.prepare("CREATE TABLE account_deletion_jobs(user_id TEXT,organization_id TEXT,scope TEXT,stage TEXT)").run();
   await database.prepare("CREATE TABLE workspace_documents (id TEXT PRIMARY KEY, organization_id TEXT, object_key TEXT, content_type TEXT, document_type TEXT, sha256_hex TEXT, security_state TEXT DEFAULT 'quarantined', scan_status TEXT DEFAULT 'pending', extraction_status TEXT DEFAULT 'not_configured', extracted_json TEXT DEFAULT '{}', status TEXT DEFAULT 'review_required', scan_provider TEXT, scanned_at INTEGER, updated_at INTEGER)").run();
   const pdf = await PDFDocument.create(); pdf.addPage(); pdf.addPage(); pdf.addPage();
   const bytes = await pdf.save();
@@ -456,6 +457,18 @@ test("scan cleanup claim loss resumes from its exact verified verdict without re
     assert.equal(job.operation, undefined, "the scan step cannot start extraction");
     assert.deepEqual(await new Response((await bucket.get("tenant-a/private.pdf"))!.body).arrayBuffer(), originalBytes);
   });
+});
+
+test("workspace deletion blocks late processing claims while an unconfirmed request permits cleanup", async t => {
+  const { base, database, row } = await setup(t);
+  const scanner = scannerFixture();
+  await database.prepare("INSERT INTO account_deletion_jobs VALUES('other-owner','tenant-a','workspace','confirmed')").run();
+  assert.equal((await processDocument({ ...base, transport: scanner.transport })).state,"busy");
+  assert.equal(scanner.calls.length,0);
+  assert.equal((await row())?.extracted_json,"{}");
+  await database.prepare("UPDATE account_deletion_jobs SET stage='checking'").run();
+  assert.equal((await processDocument({ ...base, transport: scanner.transport })).state,"scan_waiting");
+  assert.equal(scanner.calls.filter(call=>call === "PUT").length,1);
 });
 
 test("a lost scan DELETE response retains the verified receipt until explicit cleanup retry succeeds", async t => {

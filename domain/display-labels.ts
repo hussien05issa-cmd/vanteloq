@@ -56,5 +56,6 @@ export function humanizeIdentifier(value: string | null | undefined) {
 
 export function workspaceViewLabel(view: string) {
   if (view === "Advisor") return "Vanteloq AI";
+  if (view === "Action Centre") return "Tasks";
   return view;
 }

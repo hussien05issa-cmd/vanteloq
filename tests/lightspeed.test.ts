@@ -136,7 +136,7 @@ test("R-Series sale normalization preserves financial facts and excludes custome
     saleID: "401", timeStamp: "2026-08-05T12:00:00Z", completeTime: "2026-08-05T11:59:00Z",
     completed: "true", voided: "false", shopID: "8", total: "61.75", taxTotal: "3.75",
     calcFIFOCost: "24.10", calcDiscount: "2.00", Customer: { firstName: "Do not store", email: "private@example.invalid" },
-    SaleLines: { SaleLine: [{ saleLineID: "1" }, { saleLineID: "2" }] },
+    SaleLines: { SaleLine: [{ saleLineID: "1", unitQuantity: "3" }, { saleLineID: "2", unitQuantity: "2" }] },
   });
   assert.equal(normalized.externalSaleId, "401");
   assert.equal(normalized.outletRef, "8");
@@ -256,7 +256,7 @@ test("R-Series daily metrics aggregate completed sales and refunds by source sho
   const sale = await normalizeLightspeedRSale({
     saleID: "sale-1", completed: "true", shopID: "8", completeTime: "2026-08-09T10:00:00-06:00",
     total: "107.00", taxTotal: "5.00", calcFIFOCost: "40.00", calcDiscount: "3.00",
-    SaleLines: { SaleLine: [{ saleLineID: "1" }, { saleLineID: "2" }] },
+    SaleLines: { SaleLine: [{ saleLineID: "1", unitQuantity: "3" }, { saleLineID: "2", unitQuantity: "2" }] },
   });
   const refund = await normalizeLightspeedRSale({
     saleID: "sale-2", completed: "true", shopID: "8", completeTime: "2026-08-09T11:00:00-06:00",
@@ -270,7 +270,7 @@ test("R-Series daily metrics aggregate completed sales and refunds by source sho
     netSalesCents: 8_200,
     costOfGoodsCents: 3_200,
     transactionCount: 1,
-    unitsSold: 2,
+    unitsSold: 5,
     refundsCents: 2_000,
     discountsCents: 300,
   }]);
@@ -280,7 +280,7 @@ test("R-Series live snapshot calculates current-day sales, profit, average trans
   const saleOne = await normalizeLightspeedRSale({
     saleID: "today-1", completed: "true", shopID: "8", completeTime: "2026-08-09T10:15:00-06:00",
     total: "107.00", taxTotal: "5.00", calcFIFOCost: "40.00", calcDiscount: "3.00",
-    SaleLines: { SaleLine: [{ saleLineID: "1" }, { saleLineID: "2" }] },
+    SaleLines: { SaleLine: [{ saleLineID: "1", unitQuantity: "3" }, { saleLineID: "2", unitQuantity: "2" }] },
   });
   const saleTwo = await normalizeLightspeedRSale({
     saleID: "today-2", completed: "true", shopID: "8", completeTime: "2026-08-09T11:45:00-06:00",

@@ -1,4 +1,4 @@
-import { hasAmbiguousRSeriesCosts } from "../../../../server/integrations/cost-evidence";
+import { verifiedPosPublicationSql } from "../../../../server/integrations/pos-publication";
 import { recordedLabourCost } from "../../../../domain/labour-evidence";
 import { businessTimestampRange, businessTimestampExtrema, businessDatesFromExtrema, type TimestampExtrema } from "../../../../domain/business-period";
 import { and, asc, eq, gt, gte, inArray, lte, sql, type SQL } from "drizzle-orm";
@@ -17,12 +17,13 @@ import {
   effectivePermissions,
   requirePermission,
 } from "../../../../server/permissions";
-import { authorizedLocationDataScope } from "../../../../server/location-access";
+import { authorizedLocationDataScope, requireAccessibleLocation } from "../../../../server/location-access";
 import { approvedFactSource, noActiveIntegrationLease } from "../../../../server/integrations/trusted-data";
 import { authoritativeDailySalesScope } from "../../../../server/integrations/daily-sales-scope";
 import { commerceSourceAuthority, defaultCommerceChannel } from "../../../../server/integrations/source-authority";
 import { buildCanonicalReportCatalog, buildProviderReportCatalog, reportCapableCommerceProviders } from "../../../../domain/provider-report-contracts";
 import type { CanonicalCommerceCoverage } from "../../../../domain/provider-feature-coverage";
+import { buildRecordedReportReadiness, recordedDateScopeCoverage, recordedReportCatalogItem } from "../../../../domain/integration-data-readiness";
 import { scopeExternalRef } from "../../../../domain/integration-source";
 import { providerDisplayName } from "../../../../domain/display-labels";
 import { recordAudit } from "../../../../server/audit";
@@ -41,6 +42,15 @@ type ReportId = (typeof supported)[number];
 const REPORT_PAGE_SIZE = 500;
 
 import { csvCell } from "../../../../domain/csv";
+
+/** Append provenance columns so existing data columns and one-row-per-record CSVs remain intact. */
+export function reportExportProvenance(report: string, readiness: ReturnType<typeof buildRecordedReportReadiness>, lineage: unknown) {
+  const { scope, freshness, coverage } = readiness;
+  return {
+    headers: ["Report", "Organization ID", "Currency", "Business time zone", "Period start", "Period end", "Generated UTC", "Source authority", "Metric certification", "Evidence state", "Oldest source sync UTC", "Latest record update UTC", "Freshness", "Observed date-source records", "Expected date-source records", "Stored query complete", "Provider coverage verified", "Reconciliation", "Calculation version", "Source lineage", "Limitations"],
+    values: [report, scope.organizationId, scope.currency, scope.timeZone, scope.from, scope.to, freshness.checkedAt, readiness.authority, readiness.certification, readiness.state, freshness.oldestSourceSyncAt, freshness.latestRecordUpdatedAt, freshness.state, coverage.dateScopes?.observedRecords ?? null, coverage.dateScopes?.expectedRecords ?? null, "yes", "not verified", readiness.reconciliation, readiness.calculationVersion, JSON.stringify(lineage), readiness.limitations.join(" ")],
+  };
+}
 
 function dateOffset(iso: string, days: number) {
   const date = new Date(`${iso}T00:00:00Z`);
@@ -155,7 +165,9 @@ export async function GET(request: Request) {
       sourceNamespace: integrationConnections.sourceNamespace,
       status: integrationConnections.status,
       dataPromotionStatus: integrationConnections.dataPromotionStatus,
+      publicationVerified: sql<boolean>`(${sql.raw(verifiedPosPublicationSql("integration_connections"))})`.mapWith(Boolean),
       lastErrorCode: integrationConnections.lastErrorCode,
+      lastSuccessfulSyncAt: integrationConnections.lastSuccessfulSyncAt,
       syncLeaseOwner: integrationConnections.syncLeaseOwner,
       syncLeaseExpiresAt: integrationConnections.syncLeaseExpiresAt,
     }).from(integrationConnections)
@@ -164,12 +176,11 @@ export async function GET(request: Request) {
     const posRows = connectedRows.filter((row) => posProviders.has(row.provider));
     const connectedPosRows = posRows.filter((row) => row.status === "connected");
     const now = Date.now();
-    const approvedPosRows = connectedPosRows.filter((row) => row.dataPromotionStatus === "approved"
+    const approvedPosRows = connectedPosRows.filter((row) => row.publicationVerified && row.dataPromotionStatus === "approved"
       && (!row.syncLeaseOwner || !row.syncLeaseExpiresAt || row.syncLeaseExpiresAt.getTime() <= now));
-    const hasProfitAccess = canViewProfit && !approvedPosRows.some((row) =>
-      row.provider === "square" && row.lastErrorCode === "SQUARE_PRODUCT_COST_UNAVAILABLE"
-    );
-    let canViewVerifiedProfit = hasProfitAccess;
+    // Provider daily aggregates do not prove attributable cost completeness.
+    // Only explicit owner-reviewed summaries may supply recorded costs here.
+    const recordedCostFor = (row: typeof dailyBusinessMetrics.$inferSelect) => canViewProfit && !row.sourceConnectionId && (!row.sourceProvider || row.sourceProvider === "manual") ? row.costOfGoodsCents : null;
     const connectedPosProviders = new Set(approvedPosRows.map((row) => row.provider));
     const localLocationIds = locationAccess.locationIds ?? locationAccess.locations.map((location) => location.id);
     const [salesAuthority, paymentAuthority] = await Promise.all([
@@ -212,7 +223,7 @@ export async function GET(request: Request) {
       filters.push(inArray(dailyBusinessMetrics.locationRef, locationRefs));
     const unscopedRows = await loadAllDailyMetricRows(and(...filters, sourcePredicate));
     const rows = unscopedRows;
-    canViewVerifiedProfit = canViewVerifiedProfit && !await hasAmbiguousRSeriesCosts(context.organizationId, rows, context.organization.timezone);
+    const canViewVerifiedProfit = rows.length > 0 && rows.every(row => recordedCostFor(row) !== null);
     const generatedAt = new Date().toISOString();
     const distinctDates = [...new Set(rows.map((row) => row.businessDate))];
     const paymentWindow = businessTimestampRange("p.paid_at", start, end, context.organization.timezone);
@@ -230,6 +241,7 @@ export async function GET(request: Request) {
                 AND approved_source.provider = p.provider
                 AND approved_source.status = 'connected'
                 AND approved_source.data_promotion_status = 'approved'
+                AND ${verifiedPosPublicationSql('approved_source')}
                 AND (approved_source.sync_lease_owner IS NULL OR approved_source.sync_lease_expires_at IS NULL
                   OR approved_source.sync_lease_expires_at <= CAST(strftime('%s', 'now') AS INTEGER)))
         `).bind(
@@ -239,8 +251,8 @@ export async function GET(request: Request) {
         ).first<TimestampExtrema>()
       : null;
     const paymentBounds = businessDatesFromExtrema(rawPaymentBounds, context.organization.timezone);
-    const resolvedStart = start ?? distinctDates.at(0) ?? paymentBounds?.earliestDate ?? null;
-    const resolvedEnd = end ?? distinctDates.at(-1) ?? paymentBounds?.latestDate ?? null;
+    const resolvedStart = start ?? (presentation === "payment_mix" ? paymentBounds?.earliestDate : distinctDates.at(0)) ?? null;
+    const resolvedEnd = end ?? (presentation === "payment_mix" ? paymentBounds?.latestDate : distinctDates.at(-1)) ?? null;
     const expectedDays = resolvedStart && resolvedEnd ? inclusiveDays(resolvedStart, resolvedEnd) : 0;
     const selectedConnection = scopedApprovedPosRows.find((row) => row.id === requestedConnectionId);
     const returnedProviders = [...new Set(rows.map((row) => row.sourceProvider).filter((provider): provider is string => Boolean(provider) && provider !== "manual"))];
@@ -282,12 +294,35 @@ export async function GET(request: Request) {
     if (!expectedLocationIds.size) {
       for (const row of rows) expectedLocationIds.add(normalizedRowLocation(row));
     }
+    const currencyAligned = !locationAccess.locations.some(location => expectedLocationIds.has(location.id) && location.currency !== context.organization.currency);
     const verifiedScopeDays = new Set(rows.map((row) => `${row.businessDate}:${normalizedRowLocation(row)}`));
     const expectedRecords = expectedDays * expectedLocationIds.size;
     const manualEvidenceLocations = new Set(manualRows.map((row) => row.locationRef));
     const salesScopeNeedsData = requestedConnectionId
       ? salesAuthority.candidates.some((candidate) => candidate.connectionId === requestedConnectionId && (!candidate.hasFacts || candidate.availability !== "ready"))
       : (salesAuthority.needsData ?? []).some((entry) => !manualEvidenceLocations.has(entry.localLocationId));
+    const expectedSalesScopes = [...selectedSalesLineage.flatMap(selection => selection.metricLocationRef ? [JSON.stringify([selection.connectionId, selection.metricLocationRef])] : []),
+      ...(!requestedConnectionId ? manualLocationIds.map(id => JSON.stringify([null, id])) : [])];
+    const salesDateCoverage = recordedDateScopeCoverage({ from: resolvedStart, to: resolvedEnd, expectedScopes: expectedSalesScopes,
+      records: rows.map(row => ({ date: row.businessDate, scope: JSON.stringify([row.sourceConnectionId, row.locationRef]) })) });
+    const latestRowTime = rows.reduce((latest, row) => Math.max(latest, Number.isFinite(row.updatedAt.getTime()) ? row.updatedAt.getTime() : 0), 0);
+    const readinessFor = (basis: "sales" | "payments", recordCount: number, sourcesAvailable: boolean, latestRecordUpdatedAt: string | null) => {
+      const lineage = basis === "sales" ? selectedSalesLineage : selectedPaymentLineage;
+      const ids = [...new Set(lineage.map(entry => entry.connectionId))];
+      const scopedLocationIds = basis === "sales" ? [...expectedLocationIds] : [...new Set(lineage.map(entry => entry.localLocationId))];
+      return buildRecordedReportReadiness({ organizationId: context.organizationId,
+        connectionIds: canViewIntegrationMetadata ? ids : [], locationIds: scopedLocationIds,
+        currency: context.organization.currency, timeZone: context.organization.timezone, from: resolvedStart, to: resolvedEnd, generatedAt,
+        authority: requestedConnectionId ? "provider_specific" : basis === "sales" ? salesAuthority.status : paymentAuthority.status,
+        sourceConflict: consolidationBlocked, sourcesAvailable, recordCount,
+        dateCoverage: basis === "sales" ? salesDateCoverage : null,
+        providerLastSuccessfulSyncAt: ids.map(id => connectedRows.find(connection => connection.id === id)?.lastSuccessfulSyncAt?.toISOString() ?? null),
+        latestRecordUpdatedAt,
+        limitations: ["Amounts are recorded in workspace currency; no currency conversion is performed.",
+          ...(locationAccess.locations.some(location => scopedLocationIds.includes(location.id) && location.currency !== context.organization.currency) ? ["At least one selected location uses another currency. Its currency alignment with normalized facts requires review; growth comparisons are withheld."] : []),
+          ...(!canViewVerifiedProfit ? ["Profit and cost values are unavailable under the current permissions or source cost evidence."] : [])],
+      });
+    };
     const source = {
       type: !canViewIntegrationMetadata && returnedProviders.length
         ? manualRows.length ? "Approved authoritative records plus owner-reviewed summaries" : "Approved authoritative records"
@@ -306,9 +341,14 @@ export async function GET(request: Request) {
       expectedLocations: expectedLocationIds.size,
       expectedScopes: expectedLocationIds.size,
       completenessRate: expectedRecords ? verifiedScopeDays.size / expectedRecords : null,
-      earliestBusinessDate: rows.at(0)?.businessDate ?? paymentBounds?.earliestDate ?? null,
-      latestBusinessDate: rows.at(-1)?.businessDate ?? paymentBounds?.latestDate ?? null,
+      earliestBusinessDate: presentation === "payment_mix" ? paymentBounds?.earliestDate ?? null : rows.at(0)?.businessDate ?? null,
+      latestBusinessDate: presentation === "payment_mix" ? paymentBounds?.latestDate ?? null : rows.at(-1)?.businessDate ?? null,
       generatedAt,
+      currency: context.organization.currency,
+      timeZone: context.organization.timezone,
+      observedDays: distinctDates.length,
+      profitAvailability: !canViewProfit ? "permission_required" : canViewVerifiedProfit ? "owner_reviewed" : "needs_cost_evidence",
+      readiness: readinessFor("sales", rows.length, !salesScopeNeedsData, latestRowTime ? new Date(latestRowTime).toISOString() : null),
       organizationId: context.organizationId,
       location: selectedLocation?.name ?? (locationRestricted ? "Accessible locations" : "All locations"),
       locationId: selectedLocation?.id ?? null,
@@ -358,9 +398,10 @@ export async function GET(request: Request) {
     }
     if (format === "csv" && presentation === "sales") {
       if (salesScopeNeedsData || !rows.length) {
-        throw new ApiError(409, "REPORT_DATA_INCOMPLETE", "Verified sales evidence is not available for every authoritative location in this export.");
+        throw new ApiError(409, "REPORT_DATA_INCOMPLETE", "Recorded sales evidence is not available for every authoritative location in this export.");
       }
       await requirePermission(context, "reports.export");
+      const provenance = reportExportProvenance(report, source.readiness, source.lineage);
       const headers = [
         "Business date",
         "Location",
@@ -378,6 +419,7 @@ export async function GET(request: Request) {
         "Cost of goods (minor units)",
         "Gross profit (minor units)",
         "Labour cost (minor units)",
+        ...provenance.headers,
       ];
       const lines = rows.map((row) =>
         [
@@ -394,11 +436,12 @@ export async function GET(request: Request) {
           row.unitsSold,
           canViewRefunds ? row.discountsCents : null,
           canViewRefunds ? row.refundsCents : null,
-          canViewVerifiedProfit ? row.costOfGoodsCents : null,
-          canViewVerifiedProfit
+          recordedCostFor(row),
+          recordedCostFor(row) !== null
             ? row.netSalesCents - row.costOfGoodsCents
             : null,
           canViewPayroll ? recordedLabourCost(row) : null,
+          ...provenance.values,
         ]
           .map(csvCell)
           .join(","),
@@ -429,14 +472,24 @@ export async function GET(request: Request) {
       if (locationRefs !== null) comparisonFilters.push(inArray(dailyBusinessMetrics.locationRef, locationRefs));
       comparisonRows = await loadAllDailyMetricRows(and(...comparisonFilters, sourcePredicate));
     }
-    const comparisonCostsVerified = hasProfitAccess && !await hasAmbiguousRSeriesCosts(context.organizationId, comparisonRows, context.organization.timezone);
+    const comparisonCostsVerified = comparisonRows.length > 0 && comparisonRows.every(row => recordedCostFor(row) !== null);
     const comparisonTotals = totalsFor(comparisonRows);
+    const comparisonDateCoverage = recordedDateScopeCoverage({ from: comparisonPeriod?.start ?? null, to: comparisonPeriod?.end ?? null, expectedScopes: expectedSalesScopes,
+      records: comparisonRows.map(row => ({ date: row.businessDate, scope: JSON.stringify([row.sourceConnectionId, row.locationRef]) })) });
+    const comparisonLimitations = [
+      ...(!salesDateCoverage.complete || !comparisonDateCoverage.complete ? ["Both periods must contain every selected date and source record. Missing dates remain unknown."] : []),
+      ...(!currencyAligned ? ["Currency alignment is unresolved across the selected locations."] : []),
+      ...(selectedSalesLineage.length && source.readiness.freshness.state !== "current" ? ["At least one selected provider has stale or unknown sync freshness."] : []),
+      ...(salesScopeNeedsData || consolidationBlocked ? ["Authoritative source evidence is unavailable or unresolved."] : []),
+    ];
+    const comparable = presentation === "sales" && comparisonLimitations.length === 0;
     const resolvedPaymentWindow = businessTimestampRange("p.paid_at", resolvedStart, resolvedEnd, context.organization.timezone);
     const paymentMixResult = !consolidationBlocked && paymentScopes.length && resolvedStart && resolvedEnd
       ? await getD1().prepare(`
           SELECT p.provider, p.connection_id AS connectionId, p.category, p.payment_type_name AS paymentTypeName,
                  SUM(CASE WHEN amount_cents > 0 THEN amount_cents ELSE 0 END) AS amountCents,
-                 COUNT(DISTINCT CASE WHEN amount_cents > 0 THEN external_sale_id END) AS transactionCount
+                 COUNT(DISTINCT CASE WHEN amount_cents > 0 THEN external_sale_id END) AS transactionCount,
+                 MAX(p.updated_at) AS latestUpdatedAt
           FROM commerce_payments p
           WHERE p.organization_id = ? AND (${paymentScopeClause}) AND p.paid_at IS NOT NULL AND p.amount_cents > 0
             AND ${resolvedPaymentWindow.sql}
@@ -447,6 +500,7 @@ export async function GET(request: Request) {
                 AND approved_source.provider = p.provider
                 AND approved_source.status = 'connected'
                 AND approved_source.data_promotion_status = 'approved'
+                AND ${verifiedPosPublicationSql('approved_source')}
                 AND (approved_source.sync_lease_owner IS NULL OR approved_source.sync_lease_expires_at IS NULL
                   OR approved_source.sync_lease_expires_at <= CAST(strftime('%s', 'now') AS INTEGER)))
           GROUP BY p.provider, p.connection_id, p.category, p.payment_type_name
@@ -458,6 +512,7 @@ export async function GET(request: Request) {
           paymentTypeName: string | null;
           amountCents: number;
           transactionCount: number;
+          latestUpdatedAt: number;
         }>()
       : { results: [] };
     const paymentRows = (paymentMixResult.results ?? [])
@@ -477,12 +532,17 @@ export async function GET(request: Request) {
     const paymentScopeNeedsData = requestedConnectionId
       ? paymentAuthority.candidates.some((candidate) => candidate.connectionId === requestedConnectionId && (!candidate.hasFacts || candidate.availability !== "ready"))
       : paymentAuthority.status === "needs_data";
+    if (presentation === "payment_mix") {
+      const latest = paymentRows.reduce((value, row) => Math.max(value, Number(row.latestUpdatedAt) || 0), 0);
+      source.readiness = readinessFor("payments", paymentRows.length, !paymentScopeNeedsData, latest ? new Date(latest * 1000).toISOString() : null);
+    }
     if (format === "csv" && presentation === "payment_mix") {
       if (paymentScopeNeedsData || !paymentMix.length) {
-        throw new ApiError(409, "REPORT_DATA_INCOMPLETE", "Verified payment evidence is not available for every authoritative location in this export.");
+        throw new ApiError(409, "REPORT_DATA_INCOMPLETE", "Recorded payment evidence is not available for every authoritative location in this export.");
       }
       await requirePermission(context, "reports.export");
-      const headers = ["Source provider", "Source account", "Source connection", "Payment category", "Payment type", "Amount (minor units)", "Recorded payments"];
+      const provenance = reportExportProvenance("payment_mix", source.readiness, source.lineage);
+      const headers = ["Source provider", "Source account", "Source connection", "Payment category", "Payment type", "Amount (minor units)", "Recorded payments", ...provenance.headers];
       const lines = paymentRows.map((row) => [
         row.provider,
         canViewIntegrationMetadata ? connectedRows.find((connection) => connection.id === row.connectionId)?.externalAccountName ?? "" : "",
@@ -491,6 +551,7 @@ export async function GET(request: Request) {
         row.paymentTypeName,
         row.amountCents,
         row.transactionCount,
+        ...provenance.values,
       ].map(csvCell).join(","));
       return new Response([headers.join(","), ...lines].join("\n"), {
         headers: {
@@ -538,10 +599,13 @@ export async function GET(request: Request) {
         suppliers: Number(supplierFact?.count ?? 0) > 0,
         locations: Number(locationFact?.count ?? 0) > 0,
       };
+      const catalog = buildProviderReportCatalog({ provider: connection.provider, connectionId: connection.id, coverage });
       return {
         coverage,
         catalog: {
-          ...buildProviderReportCatalog({ provider: connection.provider, connectionId: connection.id, coverage }),
+          ...catalog,
+          canonicalReports: catalog.canonicalReports.map(item => recordedReportCatalogItem(item)),
+          providerReports: catalog.providerReports.map(item => recordedReportCatalogItem(item)),
           accountName: connection.externalAccountName,
         },
       };
@@ -578,9 +642,7 @@ export async function GET(request: Request) {
         payments: { ...visiblePaymentAuthority, conflicts: visiblePaymentAuthority.conflicts.map((conflict) => ({ ...conflict, locationName: locationNameById.get(conflict.localLocationId) ?? "Accessible location" })) },
         providerSpecific: Boolean(requestedConnectionId),
       },
-      canonicalReportCatalog: buildCanonicalReportCatalog(canonicalCoverage).map((item) => consolidationBlocked && item.implementationStatus === "available"
-        ? { ...item, status: "needs_data" as const, dataNeeded: ["source authority selection"] }
-        : item),
+      canonicalReportCatalog: buildCanonicalReportCatalog(canonicalCoverage).map(item => recordedReportCatalogItem(item, consolidationBlocked)),
       providerReportCatalogs: canViewIntegrationMetadata ? connectionCoverage.map((entry) => entry.catalog) : [],
       canResolveSourceAuthority: permissions.includes("integrations.manage"),
       canExport: permissions.includes("reports.export"),
@@ -599,6 +661,9 @@ export async function GET(request: Request) {
       comparison: !consolidationBlocked && comparisonPeriod && comparisonRows.length ? {
         periodStart: comparisonPeriod.start,
         periodEnd: comparisonPeriod.end,
+        comparable,
+        coverage: comparisonDateCoverage,
+        limitations: comparisonLimitations,
         verifiedDays: new Set(comparisonRows.map((row) => row.businessDate)).size,
         totals: {
           netSalesCents: comparisonTotals.netSalesCents,
@@ -607,10 +672,10 @@ export async function GET(request: Request) {
           averageTransactionCents: comparisonTotals.averageTransactionCents,
         },
         changes: {
-          netSalesRate: change(totals.netSalesCents, comparisonTotals.netSalesCents),
-          grossProfitRate: canViewVerifiedProfit && comparisonCostsVerified ? change(totals.grossProfitCents, comparisonTotals.grossProfitCents) : null,
-          transactionRate: change(totals.transactionCount, comparisonTotals.transactionCount),
-          averageTransactionRate: totals.averageTransactionCents !== null && comparisonTotals.averageTransactionCents !== null
+          netSalesRate: comparable ? change(totals.netSalesCents, comparisonTotals.netSalesCents) : null,
+          grossProfitRate: comparable && canViewVerifiedProfit && comparisonCostsVerified ? change(totals.grossProfitCents, comparisonTotals.grossProfitCents) : null,
+          transactionRate: comparable ? change(totals.transactionCount, comparisonTotals.transactionCount) : null,
+          averageTransactionRate: comparable && totals.averageTransactionCents !== null && comparisonTotals.averageTransactionCents !== null
             ? change(totals.averageTransactionCents, comparisonTotals.averageTransactionCents)
             : null,
         },
@@ -624,7 +689,7 @@ export async function GET(request: Request) {
         sourceImportId: canViewImportMetadata ? row.sourceImportId : null,
         sourceKind: sourceKind(row),
         netSalesCents: row.netSalesCents,
-        costOfGoodsCents: canViewVerifiedProfit ? row.costOfGoodsCents : null,
+        costOfGoodsCents: recordedCostFor(row),
         transactionCount: row.transactionCount,
       })),
       explainAndAct: consolidationBlocked ? {
@@ -632,16 +697,22 @@ export async function GET(request: Request) {
         likelyDrivers: "Two or more approved sources cover the same location and channel.",
         confidence: "blocked",
         recommendedAction: "Ask an owner or admin to choose the authoritative reporting source.",
+      } : presentation === "payment_mix" ? {
+        executiveSummary: paymentRows.length ? "Recorded collections are grouped by payment type for the selected business-date range. They are not reconciled sales or profit." : "No recorded payments match the selected filters.",
+        significantChanges: "Comparable payment-period completeness has not been verified.",
+        likelyDrivers: "Payment categories do not establish product, customer or revenue drivers.",
+        confidence: "not_certified",
+        recommendedAction: "Review the source payments and reconcile collections against sales and bank evidence.",
       } : {
         executiveSummary: rows.length
-          ? `${distinctDates.length} verified day${distinctDates.length === 1 ? "" : "s"} are included${expectedDays && distinctDates.length < expectedDays ? ` across a ${expectedDays}-day range` : ""}.`
-          : "No verified records match the selected filters.",
-        significantChanges: comparisonRows.length
-          ? `Net sales changed ${new Intl.NumberFormat("en-CA", { style: "percent", maximumFractionDigits: 1, signDisplay: "exceptZero" }).format(change(totals.netSalesCents, comparisonTotals.netSalesCents) ?? 0)} versus the immediately preceding matched period.`
-          : "A complete preceding matched period is not available for comparison.",
+          ? `${distinctDates.length} recorded day${distinctDates.length === 1 ? "" : "s"} are included${expectedDays && distinctDates.length < expectedDays ? ` across a ${expectedDays}-day range` : ""}. Completeness and reconciliation are not certified.`
+          : "No recorded daily sales match the selected filters.",
+        significantChanges: comparable && comparisonRows.length && comparisonTotals.netSalesCents !== 0
+          ? `Recorded net sales changed ${new Intl.NumberFormat("en-CA", { style: "percent", maximumFractionDigits: 1, signDisplay: "exceptZero" }).format(change(totals.netSalesCents, comparisonTotals.netSalesCents)!)} versus the preceding date range. This is a comparison of stored facts, not certified performance.`
+          : "Comparable date and source coverage, currency alignment and a nonzero preceding baseline are required to report a percentage change.",
         likelyDrivers:
           "Daily aggregates cannot isolate product, customer, supplier or hourly drivers.",
-        confidence: distinctDates.length >= 7 && distinctDates.length === expectedDays ? "high" : distinctDates.length >= 7 ? "medium" : "low",
+        confidence: "not_certified",
         supportingRecords: rows
           .map((row) => `${row.businessDate}:${row.locationRef}`)
           .slice(0, 50),
@@ -664,6 +735,7 @@ export async function POST(request: Request) {
     if (body.action !== "set_source_authority" || typeof body.locationId !== "string" || typeof body.connectionId !== "string" || typeof body.factFamily !== "string" || !families.includes(body.factFamily as typeof families[number]) || !Number.isSafeInteger(body.expectedVersion) || Number(body.expectedVersion) < 0) {
       throw new ApiError(400, "INVALID_SOURCE_AUTHORITY", "Choose a location and an approved reporting connection.");
     }
+    await requireAccessibleLocation(context, body.locationId);
     const mappings = await getDb().select({
       provider: integrationLocationMappings.provider,
       connectionId: integrationLocationMappings.connectionId,
@@ -674,6 +746,7 @@ export async function POST(request: Request) {
       eq(integrationConnections.organizationId, integrationLocationMappings.organizationId),
       eq(integrationConnections.status, "connected"),
       eq(integrationConnections.dataPromotionStatus, "approved"),
+      sql.raw(verifiedPosPublicationSql("integration_connections")),
       noActiveIntegrationLease(integrationConnections.syncLeaseOwner, integrationConnections.syncLeaseExpiresAt),
     )).where(and(
       eq(integrationLocationMappings.organizationId, context.organizationId),

@@ -4,6 +4,7 @@ import { requireAccess } from "../../../../server/authorization";
 import { ApiError, enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameOrigin } from "../../../../server/api";
 import { requirePermission } from "../../../../server/permissions";
 import { applyOwnerInventoryCosts } from "../../../../server/inventory-costs";
+import { requireReportImportPrivacyAcknowledgement, reportImportPrivacyAuditDetails } from "../../../../server/report-import-privacy";
 
 const roles = ["owner", "admin", "manager", "employee", "read_only"] as const;
 const MAX_ENTRIES = 500;
@@ -79,6 +80,7 @@ export async function POST(request: Request) {
     const source = body.source === "csv" ? "csv" as const : body.source === "manual" ? "manual" as const : null;
     if (!source) throw new ApiError(400, "INVENTORY_COST_SOURCE_INVALID", "Choose manual entry or CSV upload.");
     if (source === "csv") await requirePermission(context, "data.import");
+    const acknowledgement = source === "csv" ? requireReportImportPrivacyAcknowledgement(body.importPrivacyAcknowledgement) : null;
     const entries = parseEntries(body.entries);
     const database = getD1();
     const productResult = await database.prepare(`
@@ -158,7 +160,7 @@ export async function POST(request: Request) {
       actorUserId: context.userId,
       action: source === "csv" ? "inventory.costs_imported" : "inventory.cost_updated",
       resourceType: "inventory_product_cost",
-      details: { source, rows: resolved.length, connections: affectedConnections.length },
+      details: { source, rows: resolved.length, connections: affectedConnections.length, ...(acknowledgement ? reportImportPrivacyAuditDetails(acknowledgement) : {}) },
     });
     return jsonResponse({
       saved: resolved.length,

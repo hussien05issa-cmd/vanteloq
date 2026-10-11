@@ -23,28 +23,35 @@ export default function HomepageStory() {
   const playing = started && !paused && !finished && visible && pageVisible;
   useEffect(() => {
     const media = matchMedia("(min-width: 801px)");
-    setSaveData(Boolean((navigator as Navigator & { connection?: { saveData?: boolean } }).connection?.saveData));
-    const resize = () => setDesktop(media.matches); resize(); media.addEventListener("change", resize);
+    let disposed = false;
+    const resize = () => setDesktop(media.matches); media.addEventListener("change", resize);
     const observer = new IntersectionObserver(([entry]) => setVisible(entry.isIntersecting), { threshold: .15 });
     if (stage.current) observer.observe(stage.current);
-    const visibility = () => setPageVisible(!document.hidden); visibility(); document.addEventListener("visibilitychange", visibility);
-    return () => { media.removeEventListener("change", resize); observer.disconnect(); document.removeEventListener("visibilitychange", visibility); };
+    const visibility = () => setPageVisible(!document.hidden); document.addEventListener("visibilitychange", visibility);
+    queueMicrotask(() => { if (!disposed) { setSaveData(Boolean((navigator as Navigator & { connection?: { saveData?: boolean } }).connection?.saveData)); resize(); visibility(); } });
+    return () => { disposed = true; media.removeEventListener("change", resize); observer.disconnect(); document.removeEventListener("visibilitychange", visibility); };
   }, []);
   useEffect(() => {
-    if (motion && desktop && visible && !saveData && !automaticStarted.current && !started) { automaticStarted.current = true; setStarted(true); }
-    if (wasMotion.current && !motion) setPaused(true);
-    wasMotion.current = motion;
+    let disposed = false;
+    queueMicrotask(() => {
+      if (disposed) return;
+      if (motion && desktop && visible && !saveData && !automaticStarted.current && !started) { automaticStarted.current = true; setStarted(true); }
+      if (wasMotion.current && !motion) setPaused(true);
+      wasMotion.current = motion;
+    });
+    return () => { disposed = true; };
   }, [motion, desktop, visible, started, saveData]);
   useEffect(() => {
-    if (!playing) { video.current?.pause(); return; }
-    if (video.current && !video.current.ended) void video.current.play().catch(() => { /* Poster remains visible when playback is unavailable. */ });
+    const mediaElement = video.current;
+    if (!playing) { mediaElement?.pause(); return; }
+    if (mediaElement && !mediaElement.ended) void mediaElement.play().catch(() => { /* Poster remains visible when playback is unavailable. */ });
     let last = performance.now();
     const timer = window.setInterval(() => {
       const now = performance.now(); elapsed.current = Math.min(12000, elapsed.current + now - last); last = now;
       setStep(Math.min(3, Math.floor(elapsed.current / 3000)));
-      if (elapsed.current >= 12000) { setFinished(true); video.current?.pause(); }
+      if (elapsed.current >= 12000) { setFinished(true); mediaElement?.pause(); }
     }, 150);
-    return () => { clearInterval(timer); video.current?.pause(); };
+    return () => { clearInterval(timer); mediaElement?.pause(); };
   }, [playing, desktop]);
   function play(replay = false) {
     automaticStarted.current = true;
@@ -53,7 +60,7 @@ export default function HomepageStory() {
   }
   function select(index: number) { automaticStarted.current = true; setPaused(true); setStep(index); elapsed.current = index * 3000; setFinished(false); }
   return <div className="hp-story" ref={stage} aria-label="Twelve-second product illustration" aria-live="off">
-    {!failed && <div className="hp-environment" aria-hidden="true"><picture><source media="(max-width:800px)" srcSet={`${MEDIA}mobile-poster.webp`}/>{/* eslint-disable-next-line @next/next/no-img-element */}<img src={`${MEDIA}desktop-poster.webp`} width="864" height="496" alt="" fetchPriority="high" onError={() => setFailed(true)}/></picture>{started && <video ref={video} key={desktop ? "desktop" : "mobile"} muted playsInline preload="none" poster={`${MEDIA}${desktop ? "desktop" : "mobile"}-poster.webp`} onError={() => setFailed(true)}><source src={`${MEDIA}${desktop ? "desktop" : "mobile"}.webm`} type="video/webm"/><source src={`${MEDIA}${desktop ? "desktop" : "mobile"}.mp4`} type="video/mp4"/></video>}</div>}
+    {!failed && <div className="hp-environment" aria-hidden="true"><picture><source media="(max-width:800px)" srcSet={`${MEDIA}mobile-poster.webp`}/><img src={`${MEDIA}desktop-poster.webp`} width="864" height="496" alt="" fetchPriority="high" onError={() => setFailed(true)}/></picture>{started && <video ref={video} key={desktop ? "desktop" : "mobile"} muted playsInline preload="none" poster={`${MEDIA}${desktop ? "desktop" : "mobile"}-poster.webp`} onError={() => setFailed(true)}><source src={`${MEDIA}${desktop ? "desktop" : "mobile"}.webm`} type="video/webm"/><source src={`${MEDIA}${desktop ? "desktop" : "mobile"}.mp4`} type="video/mp4"/></video>}</div>}
     <div className="hp-product-window"><div className="hp-window-title"><ProductBrandLogo product="vanteloq" className="hp-window-mark"/><strong>Retail overview</strong><span>Product illustration</span></div><SampleContext/>
       <dl className="hp-metrics"><div><dt>Net sales</dt><dd>{money(demo.current.netCents)}</dd><small>{((demo.salesChange ?? 0) * 100).toFixed(1)}% vs prior 28 days</small></div><div><dt>Transactions</dt><dd>{demo.current.purchaseBaskets}</dd><small>{demo.prior.purchaseBaskets} in prior period</small></div><div><dt>Average basket</dt><dd>{money(demo.current.averageBasketCents)}</dd><small>{money(demo.prior.averageBasketCents)} in prior period</small></div></dl>
       <div className="hp-story-scene" data-step={STEPS[step]}>

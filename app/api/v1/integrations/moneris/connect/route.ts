@@ -5,7 +5,7 @@ import { and, eq } from "drizzle-orm";
 import { getDb } from "../../../../../../db";
 import { integrationConnections, integrationConsents } from "../../../../../../db/schema";
 import { recordAudit } from "../../../../../../server/audit";
-import { requireAccess } from "../../../../../../server/authorization";
+import { requireIntegrationAccess } from "../../../../../../server/integrations/free-selection";
 import { ApiError, enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameOrigin } from "../../../../../../server/api";
 import { MONERIS_API_VERSION, MONERIS_PROVIDER, requestMonerisAccessToken, resolveMonerisEnvironment, saveMonerisCredentials, validateMonerisCredentialInput } from "../../../../../../server/integrations/moneris";
 import { requirePermission } from "../../../../../../server/permissions";
@@ -13,7 +13,7 @@ import { requirePermission } from "../../../../../../server/permissions";
 export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
-    const context = await requireAccess(request, ["owner", "admin"], "pos.reporting.core");
+    const context = await requireIntegrationAccess(request, ["owner", "admin"], "moneris", true);
     await requirePermission(context, "integrations.manage");
     await requireIntegrationRollout(context, "moneris");
     await enforceRateLimit("moneris:connect", context.userId, 6, 3_600);

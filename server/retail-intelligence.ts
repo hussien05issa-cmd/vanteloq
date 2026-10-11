@@ -1,3 +1,4 @@
+import { verifiedPosPublicationSql } from "./integrations/pos-publication";
 import { getD1 } from "../db";
 import { ApiError } from "./api";
 import type { AccessContext } from "./authorization";
@@ -32,6 +33,7 @@ export const approvedRetailSource = (alias: string, connectionColumn = "connecti
   SELECT 1 FROM integration_connections approved WHERE approved.organization_id = ${alias}.organization_id
     AND approved.id = ${alias}.${connectionColumn} AND approved.provider = ${alias}.${providerColumn}
     AND approved.status = 'connected' AND approved.data_promotion_status = 'approved'
+    AND ${verifiedPosPublicationSql('approved')}
     AND (approved.provider <> 'moneris' OR approved.source_namespace LIKE 'production:%')
     AND (approved.sync_lease_owner IS NULL OR approved.sync_lease_expires_at IS NULL OR approved.sync_lease_expires_at <= CAST(strftime('%s','now') AS INTEGER)))`;
 

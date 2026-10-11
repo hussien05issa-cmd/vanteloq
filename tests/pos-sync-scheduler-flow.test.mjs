@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { createHmac, randomUUID } from "node:crypto";
 import test from "node:test";
 import { createEnvironment, createReportWorkspace, dispatch, origin, context } from "./helpers/retail-worker-fixture.mjs";
+import { POS_SYNC_CONSENT_VERSION, POS_SYNC_PURPOSES, posSyncDataCategories } from "../domain/pos-sync-consent.ts";
+import { PRIVACY_POLICY_VERSION } from "../shared/legal-versions.ts";
 const secret = "fixture-only-background-secret-32-characters";
 const schedulePath = "/api/v1/integrations/schedule";
 test("durable POS jobs enforce owner grants, tenant boundaries, signed ticks, replay protection, retries, consent and pause", async () => {
@@ -32,7 +34,8 @@ test("durable POS jobs enforce owner grants, tenant boundaries, signed ticks, re
       VALUES (?,?,'stripe','production:fixture','connected','acct_SchedulerA','Fixture merchant',?,?,'staging')`)
       .bind(id,a.organizationId,now,now).run();
     await database.prepare(`INSERT INTO integration_consents(id,organization_id,actor_user_id,provider,status,notice_version,privacy_policy_version,data_categories_json,purposes_json,accepted_at,created_at,updated_at)
-      VALUES ('consent-fixture',?,?,'stripe','accepted','test','test','[]','[]',?,?,?)`).bind(a.organizationId,a.userId,now,now,now).run();
+      VALUES ('consent-fixture',?,?,'stripe','accepted',?,?,?,?,?,?,?)`)
+      .bind(a.organizationId,a.userId,POS_SYNC_CONSENT_VERSION,PRIVACY_POLICY_VERSION,JSON.stringify(posSyncDataCategories("stripe")),JSON.stringify(POS_SYNC_PURPOSES),now,now,now).run();
     const setting = { provider: "stripe", connectionId: id, enabled: true, authorizationVersion: "owner-background-sync-v1" };
     const configure = (body, owner = a.owner) => dispatch(worker,environment,schedulePath,{method:"POST",...owner,body});
     const foreign = await configure(setting,b.owner);

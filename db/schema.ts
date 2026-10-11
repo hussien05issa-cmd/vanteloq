@@ -1,3 +1,9 @@
+export * from "./foodservice-schema";
+export * from "./business-workflow-schema";
+export * from "../server/workflow-followup-schema";
+export * from "../server/sector-operations-schema";
+export * from "../server/workflow-inventory-schema";
+export * from "./dealership-schema";
 import { sql } from "drizzle-orm";
 // Reviewed statement records retain their original document and separate cash activity from ledger posting.
 import {
@@ -302,6 +308,9 @@ export const workspaceTasks = sqliteTable(
     priority: text("priority", { enum: ["high", "medium", "low"] }).notNull().default("medium"),
     status: text("status", { enum: ["open", "in_progress", "done"] }).notNull().default("open"),
     assignee: text("assignee").notNull().default("Owner"),
+    assigneeUserId: text("assignee_user_id").references(() => users.id, { onDelete: "set null" }),
+    locationId: text("location_id").references(() => organizationLocations.id),
+    version: integer("version").notNull().default(1),
     dueDate: text("due_date"),
     sourceType: text("source_type", { enum: ["manual", "insight", "alert", "decision"] }).notNull().default("manual"),
     sourceRef: text("source_ref"),
@@ -321,6 +330,23 @@ export const workspaceTasks = sqliteTable(
     check("workspace_tasks_source_type_check", sql`${table.sourceType} in ('manual', 'insight', 'alert', 'decision')`),
   ],
 );
+
+export const collaborationMessages = sqliteTable("collaboration_messages", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  locationId: text("location_id").references(() => organizationLocations.id),
+  taskId: integer("task_id").references(() => workspaceTasks.id, { onDelete: "cascade" }),
+  authorUserId: text("author_user_id").references(() => users.id, { onDelete: "set null" }),
+  authorName: text("author_name").notNull(),
+  body: text("body").notNull(),
+  idempotencyKey: text("idempotency_key").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+}, table => [
+  uniqueIndex("collaboration_message_request_unique").on(table.organizationId, table.idempotencyKey),
+  index("collaboration_message_channel_idx").on(table.organizationId, table.locationId, table.id),
+  index("collaboration_message_task_idx").on(table.organizationId, table.taskId, table.id),
+  check("collaboration_message_length", sql`length(${table.body}) BETWEEN 1 AND 4000`),
+]);
 
 export const opportunityReviews = sqliteTable("opportunity_reviews", {
   id: text("id").primaryKey(),
@@ -721,6 +747,7 @@ export const integrationConnections = sqliteTable(
     organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
     provider: text("provider").notNull(),
     sourceNamespace: text("source_namespace").notNull().default("legacy"),
+    freeGrantId: text("free_grant_id"),
     status: text("status", { enum: ["not_connected", "pending", "connected", "error", "revoked"] }).notNull().default("not_connected"),
     externalAccountRef: text("external_account_ref"),
     externalAccountName: text("external_account_name"),
@@ -751,6 +778,14 @@ export const integrationConnections = sqliteTable(
     check("integration_connections_promotion_check", sql`${table.dataPromotionStatus} in ('blocked', 'staging', 'approved')`),
   ],
 );
+
+export const freeIntegrationSelections = sqliteTable("free_integration_selections", {
+  organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete:"cascade" }),
+  provider: text("provider").notNull(),
+  grantId: text("grant_id").notNull(),
+  createdAt: integer("created_at").notNull(),
+  expiresAt: integer("expires_at").notNull(),
+}, table => [primaryKey({columns:[table.organizationId,table.provider]}), uniqueIndex("free_integration_grant_unique").on(table.grantId)]);
 
 export const integrationSyncSchedules = sqliteTable("integration_sync_schedules", {
   connectionId: text("connection_id").primaryKey().references(() => integrationConnections.id, { onDelete: "cascade" }),
@@ -836,6 +871,11 @@ export const marketingDailyMetrics = sqliteTable(
     metricDate: text("metric_date").notNull(),
     metricKey: text("metric_key").notNull(),
     valueMilli: integer("value_milli").notNull(),
+    // Typed source money is separate from generic measurement scaling. Legacy
+    // metrics remain unverified for financial comparison until synchronized.
+    moneyAmountMinor: integer("money_amount_minor"),
+    moneyCurrency: text("money_currency"),
+    reportingTimezone: text("reporting_timezone"),
     sourceEventId: text("source_event_id").notNull(),
     createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
     updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
@@ -1059,6 +1099,7 @@ export const integrationStagedSales = sqliteTable(
     costCents: integer("cost_cents").notNull().default(0),
     discountCents: integer("discount_cents").notNull().default(0),
     lineCount: integer("line_count").notNull().default(0),
+    unitsMilli: integer("units_milli"),
     sourcePayloadHash: text("source_payload_hash").notNull(),
     syncRunId: text("sync_run_id").notNull().references(() => integrationSyncRuns.id, { onDelete: "cascade" }),
     stagedAt: integer("staged_at", { mode: "timestamp" }).notNull(),
@@ -2011,6 +2052,9 @@ export const customerInvoiceLines = sqliteTable(
     description: text("description").notNull(),
     quantityMilli: integer("quantity_milli").notNull(),
     unitPriceCents: integer("unit_price_cents").notNull(),
+    // Legacy SQLite INTEGER affinity is non-STRICT: rates may use tenths of a
+    // basis point (997.5 = 9.975%). Money columns remain integer minor units.
+    // Invoice validation converts this numeric rate to integer units for math.
     taxRateBasisPoints: integer("tax_rate_basis_points").notNull().default(0),
     subtotalCents: integer("subtotal_cents").notNull(),
     taxCents: integer("tax_cents").notNull().default(0),
@@ -2427,3 +2471,18 @@ export const shopifyPrivacyRequests = sqliteTable("shopify_privacy_requests", {
   check("shopify_privacy_export_check", sql`${table.lastExportComplete} IN (0,1)`),
   check("shopify_privacy_completion_check", sql`${table.completionMethod} IN ('secure_delivery','no_retained_data')`),
 ]);
+
+export const workspaceIndustryConfig=sqliteTable("workspace_industry_config",{
+ organizationId:text("organization_id").primaryKey().notNull().references(()=>workspaces.id,{onDelete:"cascade"}),
+ industryLabel:text("industry_label").notNull(),configJson:text("config_json").notNull(),revision:integer("revision").notNull(),
+ updatedBy:text("updated_by").references(()=>users.id,{onDelete:"set null"}),updatedAt:integer("updated_at").notNull(),
+},t=>[check("workspace_industry_config_json",sql`json_valid(${t.configJson})`),check("workspace_industry_revision",sql`${t.revision}>=1`)]);
+export const workspaceIndustryHistory=sqliteTable("workspace_industry_history",{
+ id:integer("id").primaryKey({autoIncrement:true}),organizationId:text("organization_id").notNull().references(()=>workspaces.id,{onDelete:"cascade"}),
+ industryLabel:text("industry_label").notNull(),configJson:text("config_json").notNull(),revision:integer("revision").notNull(),
+ changedBy:text("changed_by").references(()=>users.id,{onDelete:"set null"}),changedAt:integer("changed_at").notNull(),
+},t=>[unique("workspace_industry_history_revision").on(t.organizationId,t.revision),check("workspace_industry_history_json",sql`json_valid(${t.configJson})`)]);
+export const onboardingDrafts=sqliteTable("onboarding_drafts",{
+ userId:text("user_id").primaryKey().notNull().references(()=>users.id,{onDelete:"cascade"}),draftJson:text("draft_json").notNull(),
+ revision:integer("revision").notNull(),updatedAt:integer("updated_at").notNull(),expiresAt:integer("expires_at").notNull(),
+},t=>[check("onboarding_draft_json",sql`json_valid(${t.draftJson})`),check("onboarding_draft_revision",sql`${t.revision}>=1`),index("onboarding_drafts_expiry_idx").on(t.expiresAt)]);

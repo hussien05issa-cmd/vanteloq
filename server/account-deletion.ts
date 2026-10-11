@@ -5,6 +5,7 @@ import { terminateStripeBilling } from "./billing/stripe";
 import { closeCheckoutBeforeDeletion } from "./billing/checkout";
 import { encryptIntegrationSecret, decryptIntegrationSecret } from "./integrations/lightspeed";
 import { assertDocumentIngestsDisposed } from "./document-ingest";
+import { WORKSPACE_DOCUMENTS_DISPOSED_SQL } from "./account-deletion-guards";
 
 export type DeletionPlan = {
   subject: string;
@@ -84,9 +85,37 @@ async function deleteWorkspaceObjects(organizationId: string, renewLease: () => 
   throw new ApiError(503, "DELETION_FILES_PENDING", "More files remain to be removed. Continue this deletion session.");
 }
 
-async function eraseLocal(job: DeletionJob, plan: DeletionPlan) {
+function currentDeletionScope(job: DeletionJob, plan: DeletionPlan) {
+  const identity = "EXISTS(SELECT 1 FROM users WHERE id=? AND auth_subject=? AND status='active')";
+  if (job.scope === "workspace") return {
+    sql: `${identity} AND EXISTS(SELECT 1 FROM memberships WHERE user_id=? AND organization_id=? AND role='owner' AND status='active')`,
+    values: [job.user_id, plan.subject, job.user_id, job.organization_id],
+  };
+  if (!job.organization_id) return {
+    sql: `(${identity} OR NOT EXISTS(SELECT 1 FROM users WHERE id=? OR auth_subject=?)) AND NOT EXISTS(SELECT 1 FROM memberships WHERE user_id=?)`,
+    values: [job.user_id, plan.subject, job.user_id, plan.subject, job.user_id],
+  };
+  return {
+    sql: `${identity} AND EXISTS(SELECT 1 FROM memberships WHERE user_id=? AND organization_id=? AND role<>'owner' AND status='active') AND NOT EXISTS(SELECT 1 FROM memberships WHERE user_id=? AND organization_id<>?)`,
+    values: [job.user_id, plan.subject, job.user_id, job.organization_id, job.user_id, job.organization_id],
+  };
+}
+
+async function assertCurrentDeletionScope(job: DeletionJob, plan: DeletionPlan) {
+  const guard = currentDeletionScope(job, plan);
+  const current = await getD1().prepare(`SELECT 1 allowed WHERE ${guard.sql}`).bind(...guard.values).first();
+  if (!current) throw new ApiError(409, "DELETION_SCOPE_CHANGED", "Account or workspace ownership changed after confirmation. No further cleanup is authorized. Contact the Privacy Officer to review this saved request.");
+}
+
+export async function assertWorkspaceDeletionReady(organizationId: string) {
+  const ready = await getD1().prepare(`SELECT 1 ready WHERE ${WORKSPACE_DOCUMENTS_DISPOSED_SQL}`).bind(organizationId, organizationId).first();
+  if (!ready) throw new ApiError(409, "DELETION_DOCUMENT_CLEANUP_REQUIRED", "Open Documents and finish pending uploads, Scan and Read steps, or Retry Cleanup/Retry Deletion before deleting this workspace. If an interrupted step cannot finish, contact the Privacy Officer. Deletion is not complete and cleanup references are preserved.");
+}
+
+async function eraseLocal(job: DeletionJob, plan: DeletionPlan, leaseUntil: number) {
   const db = getD1();
   const now = Math.floor(Date.now() / 1_000);
+  const guard = currentDeletionScope(job, plan);
   const organizationHash = await hashIdentifier(`vanteloq-workspace:${job.organization_id}`);
   const alias = `deleted+${job.account_hash.slice(0, 24)}@invalid.vanteloq`;
   const statements = job.scope === "workspace" ? [
@@ -96,10 +125,21 @@ async function eraseLocal(job: DeletionJob, plan: DeletionPlan) {
     db.prepare("DELETE FROM workspaces WHERE id = ?").bind(job.organization_id),
     ...plan.exclusiveUserIds.map((id) => db.prepare("DELETE FROM users WHERE id = ? AND NOT EXISTS (SELECT 1 FROM memberships WHERE user_id = ?)").bind(id, id)),
   ] : [
+    db.prepare("DELETE FROM workspace_sessions WHERE user_id=?").bind(job.user_id),
+    db.prepare("DELETE FROM account_notifications WHERE user_id=?").bind(job.user_id),
+    db.prepare("DELETE FROM onboarding_drafts WHERE user_id=?").bind(job.user_id),
+    db.prepare("DELETE FROM forecasting_views WHERE user_id=?").bind(job.user_id),
+    db.prepare("DELETE FROM workflow_deliveries WHERE user_id=? AND organization_id=?").bind(job.user_id,job.organization_id),
+    db.prepare("DELETE FROM workflow_delivery_preferences WHERE user_id=? AND organization_id=?").bind(job.user_id,job.organization_id),
+    ...["business_workflow_records","sector_operation_records","collection_followups"].map(table=>db.prepare(`UPDATE ${table} SET updated_by=NULL WHERE updated_by=? AND organization_id=?`).bind(job.user_id,job.organization_id)),
+    ...["business_workflow_revisions","sector_operation_revisions","workflow_inventory_history","workflow_inventory_movements","workflow_inventory_receipts","workflow_inventory_records"].map(table=>db.prepare(`UPDATE ${table} SET actor_id=NULL WHERE actor_id=? AND organization_id=?`).bind(job.user_id,job.organization_id)),
+    db.prepare("UPDATE collection_followup_events SET actor_user_id=NULL WHERE actor_user_id=? AND organization_id=?").bind(job.user_id,job.organization_id),
     db.prepare("DELETE FROM cloud_file_connections WHERE user_id=? AND organization_id=?").bind(job.user_id,job.organization_id),
     db.prepare("DELETE FROM advisor_preferences WHERE user_id = ?").bind(job.user_id),
     db.prepare("DELETE FROM advisor_requests WHERE user_id = ?").bind(job.user_id),
     db.prepare("DELETE FROM assistant_messages WHERE user_id = ?").bind(job.user_id),
+    db.prepare("DELETE FROM collaboration_messages WHERE author_user_id=? AND organization_id=?").bind(job.user_id, job.organization_id),
+    db.prepare("UPDATE workspace_tasks SET assignee_user_id=NULL, assignee='Unassigned', version=version+1 WHERE assignee_user_id=? AND organization_id=?").bind(job.user_id, job.organization_id),
     db.prepare("DELETE FROM assistant_conversations WHERE user_id = ?").bind(job.user_id),
     db.prepare("DELETE FROM legal_acceptances WHERE user_id = ?").bind(job.user_id),
     db.prepare("DELETE FROM account_preferences WHERE user_id = ?").bind(job.user_id),
@@ -109,13 +149,19 @@ async function eraseLocal(job: DeletionJob, plan: DeletionPlan) {
     db.prepare("UPDATE audit_events SET actor_user_id = NULL, source_hash = NULL, details_json = '{}' WHERE actor_user_id = ? AND organization_id = ?").bind(job.user_id, job.organization_id),
     db.prepare("UPDATE users SET email = ?, display_name = 'Deleted user', status = 'suspended', auth_subject = NULL, auth_provider = NULL, updated_at = ? WHERE id = ? AND NOT EXISTS (SELECT 1 FROM memberships WHERE user_id = ?)").bind(alias, now, job.user_id, job.user_id),
   ];
-  await db.batch([
+  try { await db.batch([
+    // The existing stage CHECK aborts the entire batch if authority or the
+    // processing lease changed. Do not let a saved capability outlive ownership.
+    db.prepare(`UPDATE account_deletion_jobs SET stage=CASE WHEN stage='confirmed' AND lease_until=? AND lease_until>? AND ${guard.sql} ${job.scope === "workspace" ? `AND ${WORKSPACE_DOCUMENTS_DISPOSED_SQL}` : ""} THEN 'local_deleted' ELSE 'scope_changed' END WHERE id=?`)
+      .bind(leaseUntil, now, ...guard.values, ...(job.scope === "workspace" ? [job.organization_id, job.organization_id] : []), job.id),
     ...statements,
     db.prepare(`INSERT INTO account_deletion_receipts (id, account_hash, organization_hash, scope, result, retained_categories_json, provider_outcomes_json, completed_at, expires_at)
       VALUES (?, ?, ?, ?, 'auth_cleanup_pending', ?, '{}', ?, ?) ON CONFLICT(id) DO NOTHING`)
       .bind(job.id, job.account_hash, organizationHash, job.scope, JSON.stringify(["Independent provider records and legally required accounting records", "Shared identities needed by another service or workspace", "Pseudonymous deletion receipt for 24 months", "Minimal keyed email suppression and unlinked consent evidence"]), now, now + RECEIPT_TTL),
-    db.prepare("UPDATE account_deletion_jobs SET stage = 'local_deleted' WHERE id = ?").bind(job.id),
-  ]);
+  ]); } catch (error) {
+    if (/account_deletion_jobs_stage_check/.test(String(error))) throw new ApiError(409, "DELETION_SCOPE_CHANGED", "Account ownership or the processing session changed before local deletion. Contact the Privacy Officer to review this saved request.");
+    throw error;
+  }
 }
 
 export async function advanceDeletion(job: DeletionJob, token: string) {
@@ -141,16 +187,27 @@ export async function advanceDeletion(job: DeletionJob, token: string) {
     if (job.stage === "completed") return { deleted: true, receiptId: job.id, ...JSON.parse(job.result_json) };
     const plan = await openDeletionPlan(job);
     if (job.stage === "checking") {
+      await assertCurrentDeletionScope(job, plan);
+      if (job.scope === "workspace") await assertWorkspaceDeletionReady(job.organization_id);
       const remote = await identityBridge(job, token, "prepare");
       await renewLease();
+      await assertCurrentDeletionScope(job, plan);
       if (remote.organizationId !== null && !ID.test(remote.organizationId ?? "")) throw new Error("Invalid identity plan");
       plan.remote = { organizationId: remote.organizationId ?? null };
-      await db.prepare("UPDATE account_deletion_jobs SET plan_encrypted = ?, stage = 'confirmed' WHERE id = ?")
-        .bind(await sealDeletionPlan(plan), job.id).run();
+      const guard = currentDeletionScope(job, plan);
+      const confirmed = await db.prepare(`UPDATE account_deletion_jobs SET plan_encrypted=?, stage='confirmed' WHERE id=? AND stage='checking' AND lease_until=? AND ${guard.sql} ${job.scope === "workspace" ? `AND ${WORKSPACE_DOCUMENTS_DISPOSED_SQL}` : ""} RETURNING id`)
+        .bind(await sealDeletionPlan(plan), job.id, leaseUntil, ...guard.values, ...(job.scope === "workspace" ? [job.organization_id, job.organization_id] : [])).first();
+      if (!confirmed) {
+        await assertCurrentDeletionScope(job, plan);
+        if (job.scope === "workspace") await assertWorkspaceDeletionReady(job.organization_id);
+        throw new ApiError(409, "DELETION_RETRY_REQUIRED", "The deletion session changed. Retry the saved request; completion is not confirmed.");
+      }
       job.stage = "confirmed";
     }
     if (job.stage === "confirmed") {
+      await assertCurrentDeletionScope(job, plan);
       if (job.scope === "workspace") {
+        await assertWorkspaceDeletionReady(job.organization_id);
         const connected = await db.prepare("SELECT id FROM integration_connections WHERE organization_id = ? AND status NOT IN ('not_connected','revoked') LIMIT 1").bind(job.organization_id).first();
         if (connected) throw new ApiError(409, "DELETION_PROVIDER_REVIEW", "A provider connection changed after confirmation. Contact the Privacy Officer before continuing.");
         const members = await db.prepare("SELECT u.auth_subject subject FROM users u JOIN memberships m ON m.user_id = u.id WHERE m.organization_id = ?").bind(job.organization_id).all<{subject: string | null}>();
@@ -168,16 +225,19 @@ export async function advanceDeletion(job: DeletionJob, token: string) {
             plan.customerId = billing.stripe_customer_id;
             await db.prepare("UPDATE account_deletion_jobs SET plan_encrypted=? WHERE id=? AND stage='confirmed'").bind(await sealDeletionPlan(plan),job.id).run();
           }
+          await assertCurrentDeletionScope(job, plan);
           await closeCheckoutBeforeDeletion(job.organization_id, plan.subscriptionId);
+          await assertCurrentDeletionScope(job, plan);
           await terminateStripeBilling({ subscriptionId: plan.subscriptionId, customerId: plan.customerId });
           await renewLease();
           result.billingCanceled = true;
           await db.prepare("UPDATE account_deletion_jobs SET result_json = ? WHERE id = ?").bind(JSON.stringify(result), job.id).run();
         }
-        await deleteWorkspaceObjects(job.organization_id, renewLease);
+        await deleteWorkspaceObjects(job.organization_id, async () => { await renewLease(); await assertCurrentDeletionScope(job, plan); await assertWorkspaceDeletionReady(job.organization_id); });
       }
       await renewLease();
-      await eraseLocal(job, plan);
+      await assertCurrentDeletionScope(job, plan);
+      await eraseLocal(job, plan, leaseUntil);
       job.stage = "local_deleted";
     }
     if (job.scope === "workspace") await deleteWorkspaceObjects(job.organization_id, renewLease);

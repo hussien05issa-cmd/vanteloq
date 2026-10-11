@@ -1,17 +1,17 @@
-import { and, eq, sql } from "drizzle-orm";
-import { getDb } from "../../../db";
-import { integrationConnections, integrationLocationMappings, integrationSyncRuns, retailMeasurements } from "../../../db/schema";
+import { and, eq } from "drizzle-orm";
+import { getD1, getDb } from "../../../db";
+import { integrationConnections, integrationLocationMappings, integrationSyncRuns } from "../../../db/schema";
 import { scopeExternalRef } from "../../../domain/integration-source";
 import { recordAudit } from "../../audit";
 import type { AccessContext } from "../../authorization";
 import { ApiError, enforceRateLimit, jsonResponse } from "../../api";
 import {
-  DEEL_PROVIDER, fetchDeelGrossToNetSummary, fetchDeelOrganization,
-  fetchFinalizedDeelPayrollCycles,
+  DEEL_PROVIDER, deelAccessToken, deelLeaseGuard, stageDeelMeasurement, fetchDeelGrossToNetSummaryWithToken, fetchDeelOrganizationWithToken,
+  fetchFinalizedDeelPayrollCyclesWithToken,
 } from "../deel";
 import {
   acquireIntegrationSyncLease, releaseIntegrationSyncLease, renewIntegrationSyncLease,
-  requireOwnedIntegrationConnection,
+  requireOwnedIntegrationConnection, sqliteTimestampSeconds,
 } from "../connection";
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -35,7 +35,7 @@ function validateRange(start: string, end: string) {
   const endMs = Date.parse(`${end}T23:59:59Z`);
   if (startMs > endMs) throw new ApiError(400, "DEEL_DATE_RANGE_INVALID", "The payroll start date must not be after the end date.");
   if (endMs > Date.now() + 24 * 60 * 60 * 1000) throw new ApiError(400, "DEEL_DATE_RANGE_INVALID", "The payroll date range cannot extend into the future.");
-  if (endMs - startMs > 366 * 24 * 60 * 60 * 1000) throw new ApiError(400, "DEEL_DATE_RANGE_TOO_LARGE", "Import at most 366 days of finalized payroll evidence at a time.");
+  if (endMs - startMs > 366 * 24 * 60 * 60 * 1000) throw new ApiError(400, "DEEL_DATE_RANGE_TOO_LARGE", "Import at most 366 days of payroll-report evidence at a time.");
 }
 
 export async function runDeelSync(
@@ -71,7 +71,7 @@ export async function runDeelSync(
       recordsRead: 0, recordsStaged: 0, duplicatesSkipped: 0, warningCount: 0,
       errorCode: null, startedAt, completedAt: null, createdByUserId: context.userId,
     });
-    const providerOrganization = await fetchDeelOrganization(context.organizationId, connection.id);
+    const providerOrganization = await fetchDeelOrganizationWithToken(await deelAccessToken(context.organizationId, connection.id, fetch, lease));
     if (providerOrganization.id !== connection.externalAccountRef) {
       throw new ApiError(409, "DEEL_ORGANIZATION_CHANGED", "The authorized Deel organization changed. Reconnect before importing payroll evidence.");
     }
@@ -88,16 +88,17 @@ export async function runDeelSync(
     if (!usableMappings.length) throw new ApiError(409, "DEEL_LOCATION_MAPPING_REQUIRED", "Map at least one Deel legal entity to a Vanteloq location before importing payroll evidence.");
 
     for (const mapping of usableMappings) {
-      const cycles = await fetchFinalizedDeelPayrollCycles(context.organizationId, connection.id, mapping.legalEntityId, dateStart, dateEnd);
+      const cycles = await fetchFinalizedDeelPayrollCyclesWithToken(await deelAccessToken(context.organizationId, connection.id, fetch, lease), mapping.legalEntityId, dateStart, dateEnd);
       recordsRead += cycles.length;
       for (const cycle of cycles) {
-        const summaries = await fetchDeelGrossToNetSummary(context.organizationId, connection.id, cycle.id);
+        const summaries = await fetchDeelGrossToNetSummaryWithToken(await deelAccessToken(context.organizationId, connection.id, fetch, lease), cycle.id);
         if (!summaries.length) { warnings += 1; continue; }
         for (const summary of summaries) {
-          const now = new Date();
           const outletRef = scopeExternalRef(connection.sourceNamespace, mapping.legalEntityId)!;
           const valuesJson = JSON.stringify([{ reference: "location", values: {
-            finalized: true,
+            reportAvailable: true,
+            finalized: null,
+            payrollStatusVerified: false,
             reportingEligible: false,
             complete: false,
             currency: summary.currency,
@@ -111,19 +112,11 @@ export async function runDeelSync(
             wagesCents: null,
             cycleType: cycle.type,
             sourceUpdatedAt: summary.sourceUpdatedAt,
-            evidenceBoundary: "Finalized Deel category-group aggregate. Not promoted as wages, paid hours, or an accounting classification.",
+            evidenceBoundary: "Available Deel report category-group aggregate. Finality, approval and payment are unverified. Not promoted as wages, paid hours or an accounting classification.",
           } }]);
-          await getDb().insert(retailMeasurements).values({
-            id: crypto.randomUUID(), organizationId: context.organizationId,
-            connectionId: connection.id, provider: DEEL_PROVIDER, outletRef,
-            kind: "labour", reference: `deel-payroll-cycle:${cycle.id}:${summary.currency}`,
-            periodFrom: cycle.dateStart.slice(0, 10), periodTo: cycle.dateEnd.slice(0, 10),
-            sourceLabel: "Deel finalized payroll-cycle aggregate", valuesJson,
-            updatedByUserId: context.userId, version: 1, updatedAt: now,
-          }).onConflictDoUpdate({
-            target: [retailMeasurements.organizationId, retailMeasurements.connectionId, retailMeasurements.outletRef, retailMeasurements.kind, retailMeasurements.reference, retailMeasurements.periodFrom, retailMeasurements.periodTo],
-            set: { valuesJson, sourceLabel: "Deel finalized payroll-cycle aggregate", updatedByUserId: context.userId,
-              version: sql`${retailMeasurements.version} + 1`, updatedAt: now },
+          await stageDeelMeasurement(lease, connection.sourceNamespace, {
+            outletRef, reference: `deel-payroll-cycle:${cycle.id}:${summary.currency}`,
+            periodFrom: cycle.dateStart.slice(0, 10), periodTo: cycle.dateEnd.slice(0, 10), valuesJson, updatedByUserId: context.userId,
           });
           recordsStaged += 1;
         }
@@ -132,26 +125,29 @@ export async function runDeelSync(
     }
     const completedAt = new Date();
     const cursor = JSON.stringify({ version: 1, dateStart, dateEnd, completedAt: completedAt.toISOString() });
-    await getDb().update(integrationSyncRuns).set({
-      status: "completed", cursorAfter: cursor, recordsRead, recordsStaged,
-      warningCount: warnings, completedAt,
-    }).where(eq(integrationSyncRuns.id, runId));
-    await getDb().update(integrationConnections).set({
-      dataPromotionStatus: "staging", lastSuccessfulSyncAt: completedAt,
-      lastSyncCursor: cursor, lastErrorCode: null, updatedAt: completedAt,
-    }).where(and(
-      eq(integrationConnections.id, connection.id), eq(integrationConnections.organizationId, context.organizationId), eq(integrationConnections.provider, DEEL_PROVIDER),
-    ));
+    const guard = deelLeaseGuard(lease, connection.sourceNamespace);
+    const nestedGuard = deelLeaseGuard(lease, connection.sourceNamespace, "connected", "c.");
+    const results = await getD1().batch([
+      getD1().prepare(`UPDATE integration_connections SET data_promotion_status = 'staging', last_successful_sync_at = ?,
+        last_sync_cursor = ?, last_error_code = NULL, updated_at = ? WHERE ${guard.sql}`)
+        .bind(sqliteTimestampSeconds(completedAt.getTime()), cursor, sqliteTimestampSeconds(completedAt.getTime()), ...guard.bindings),
+      getD1().prepare(`UPDATE integration_sync_runs SET status = 'completed', cursor_after = ?, records_read = ?, records_staged = ?,
+        warning_count = ?, completed_at = ? WHERE id = ? AND organization_id = ? AND provider = ? AND connection_id = ?
+        AND EXISTS (SELECT 1 FROM integration_connections c WHERE ${nestedGuard.sql})`)
+        .bind(cursor, recordsRead, recordsStaged, warnings, sqliteTimestampSeconds(completedAt.getTime()), runId,
+          context.organizationId, DEEL_PROVIDER, connection.id, ...nestedGuard.bindings),
+    ]);
+    if (results.some(result => Number(result.meta.changes ?? 0) !== 1)) throw new ApiError(409, "DEEL_GRANT_CHANGED", "The Deel synchronization was superseded before it could complete.");
     await recordAudit({ request, requestId, organizationId: context.organizationId, actorUserId: context.userId,
       action: "integration.sync_completed", resourceType: "integration_connection", resourceId: connection.id,
       details: { provider: DEEL_PROVIDER, recordsRead, aggregateRecordsStaged: recordsStaged, warnings,
-        finalizedCyclesOnly: true, employeeRecordsStored: false, dataPromotionEnabled: false },
+        reportsAvailableOnly: true, payrollStatusVerified: false, employeeRecordsStored: false, dataPromotionEnabled: false },
     });
     return jsonResponse({
       provider: DEEL_PROVIDER, connectionId: connection.id, dateStart, dateEnd,
-      finalizedCyclesRead: recordsRead, aggregateRecordsStaged: recordsStaged, warnings,
+      payrollCyclesRead: recordsRead, aggregateRecordsStaged: recordsStaged, warnings,
       employeeRecordsStored: false, dataPromotionEnabled: false, requiresReview: true,
-      nextStep: "Finalized payroll category totals are staged for owner review. Vanteloq will not treat them as wages or paid hours without a verified mapping.",
+      nextStep: "Available payroll-report category totals are staged for owner review. Payroll finality, approval and payment are unverified. These totals do not update approved wages, paid hours or accounting reports.",
     });
   } catch (error) {
     const errorCode = error instanceof ApiError ? error.code : "DEEL_SYNC_FAILED";
@@ -159,9 +155,9 @@ export async function runDeelSync(
       status: "failed", recordsRead, recordsStaged, warningCount: warnings,
       errorCode, completedAt: new Date(),
     }).where(eq(integrationSyncRuns.id, runId));
-    await getDb().update(integrationConnections).set({ lastErrorCode: errorCode, updatedAt: new Date() }).where(and(
-      eq(integrationConnections.id, connection.id), eq(integrationConnections.organizationId, context.organizationId), eq(integrationConnections.provider, DEEL_PROVIDER),
-    ));
+    const guard = deelLeaseGuard(lease, connection.sourceNamespace);
+    await getD1().prepare(`UPDATE integration_connections SET last_error_code = ?, updated_at = ? WHERE ${guard.sql}`)
+      .bind(errorCode, sqliteTimestampSeconds(), ...guard.bindings).run();
     throw error;
   } finally {
     await releaseIntegrationSyncLease(lease);

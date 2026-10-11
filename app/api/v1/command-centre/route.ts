@@ -1,11 +1,15 @@
+import { verifiedPosPublicationSql } from "../../../../server/integrations/pos-publication";
+import { bankCashSnapshot } from "../../../../domain/bank-cash-snapshot";
+import { freeIntegrationSelection } from "../../../../server/integrations/free-selection";
 import { getTenantEntitlements, hasAddon } from "../../../../server/entitlements/engine";
+import { getWorkspaceIndustry } from "../../../../server/industry-configuration";
 import { loadExecutiveFinance } from "../../../../server/executive-finance";
 import { buildExecutiveReport } from "../../../../server/executive-report";
 import { revenueAttribution } from "../../../../server/revenue-attribution";
 import { commerceSourceAuthority } from "../../../../server/integrations/source-authority";
 import { authoritativeDailySalesScope } from "../../../../server/integrations/daily-sales-scope";
 import { executivePeriod } from "../../../../domain/executive-metrics";
-import { and, desc, eq, gte, inArray, lte } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { getD1, getDb } from "../../../../db";
 import { bankAccounts, dailyBusinessMetrics, integrationConnections, integrationLocationMappings, organizationProfiles } from "../../../../db/schema";
 import { requireAccess } from "../../../../server/authorization";
@@ -20,7 +24,6 @@ import { buildLightspeedRLiveSalesSnapshot, LIGHTSPEED_R_PROVIDER, type Lightspe
 import { authorizedLocationDataScope } from "../../../../server/location-access";
 import { scopeExternalRef } from "../../../../domain/integration-source";
 import { approvedBankSource, approvedFactSource, noActiveIntegrationLease } from "../../../../server/integrations/trusted-data";
-import { calculateVerifiedPurchasingCapacity } from "../../../../domain/purchasing-intelligence";
 import { businessClock, salesDay, sameWeekdayComparison, salesChange } from "../../../../domain/intraday-sales";
 import { businessTimestampRange } from "../../../../domain/business-period";
 
@@ -65,6 +68,7 @@ function buildDailySourceSnapshot(
     return {
       ...buildLightspeedRLiveSalesSnapshot([], timeZone),
       sourceGranularity: "daily" as const,
+      hasVerifiedDailyRecords: false,
     };
   }
   const latestRows = rows.filter((row) => row.businessDate === latestDate);
@@ -73,6 +77,7 @@ function buildDailySourceSnapshot(
   const transactionCount = latestRows.reduce((sum, row) => sum + row.transactionCount, 0);
   return {
     businessDate: latestDate,
+    hasVerifiedDailyRecords: true,
     netSalesCents,
     grossProfitCents: netSalesCents - costOfGoodsCents,
     averageTransactionCents: transactionCount ? Math.round(netSalesCents / transactionCount) : null,
@@ -162,6 +167,7 @@ export async function loadCommandCentre(request: Request) {
       sourceNamespace: integrationConnections.sourceNamespace,
       status: integrationConnections.status,
       dataPromotionStatus: integrationConnections.dataPromotionStatus,
+      publicationVerified: sql<boolean>`(${sql.raw(verifiedPosPublicationSql("integration_connections"))})`.mapWith(Boolean),
       promotionAuthorizedAt: integrationConnections.promotionAuthorizedAt,
       lastSuccessfulSyncAt: integrationConnections.lastSuccessfulSyncAt,
       externalAccountRef: integrationConnections.externalAccountRef,
@@ -173,6 +179,7 @@ export async function loadCommandCentre(request: Request) {
       .from(integrationConnections)
       .where(eq(integrationConnections.organizationId, context.organizationId));
     const plaidAccountRows = await getDb().select({
+      demoRecord: bankAccounts.demoRecord,
       externalItemRef: bankAccounts.externalItemRef,
       accountType: bankAccounts.accountType,
       currency: bankAccounts.currency,
@@ -212,9 +219,9 @@ export async function loadCommandCentre(request: Request) {
       throw new ApiError(503, "SOURCE_SYNCING", "Syncing source records. Verified totals will return when the refresh finishes. Try again shortly.");
     }
     if (period && salesAuthority.status === "conflict" && new URL(request.url).searchParams.get("basis") !== "ledger") {
-      throw new ApiError(409, "SALES_SOURCE_CONFLICT", "Choose the reporting source for overlapping locations in Sales. Totals are withheld to avoid counting the same sales twice.");
+      throw new ApiError(409, "SALES_SOURCE_CONFLICT", "Choose the reporting source for overlapping locations in Reports. Totals are withheld to avoid counting the same sales twice.");
     }
-    const sourceConnections = connectedSourceConnections.filter((row) => salesAuthority.status !== "conflict" && salesAuthority.authoritativeConnectionIds.includes(row.id) && row.dataPromotionStatus === "approved"
+    const sourceConnections = connectedSourceConnections.filter((row) => row.publicationVerified && salesAuthority.status !== "conflict" && salesAuthority.authoritativeConnectionIds.includes(row.id) && row.dataPromotionStatus === "approved"
       && (!row.syncLeaseOwner || !row.syncLeaseExpiresAt || row.syncLeaseExpiresAt.getTime() <= now));
     const canViewVerifiedProfit = permissions.includes("metrics.revenue") && permissions.includes("metrics.profit") && !sourceConnections.some((row) =>
       row.provider === "square" && row.lastErrorCode === "SQUARE_PRODUCT_COST_UNAVAILABLE"
@@ -288,24 +295,18 @@ export async function loadCommandCentre(request: Request) {
       && row.status === "connected"
       && row.dataPromotionStatus === "approved"
       && (!row.syncLeaseOwner || !row.syncLeaseExpiresAt || row.syncLeaseExpiresAt.getTime() <= now));
-    const plaidCash = calculateVerifiedPurchasingCapacity({
-      connectionVerified: plaidConnections.length > 0,
-      nowMs: now,
-      maximumAgeMs: 48 * 60 * 60 * 1000,
-      baseCurrency: context.organization.currency,
-      cashSafetyReserveCents: 0,
-      outstandingBillsCents: 0,
-      openPurchaseCommitmentsCents: 0,
-      accounts: plaidAccountRows.map((account) => ({
-        ...account,
-        lastSyncAtMs: account.lastSyncAt?.getTime() ?? null,
-      })),
+    const bankPlan = await getTenantEntitlements(context);
+    const bankAllowed = permissions.includes("metrics.cash") && permissions.includes("finance.bank_balances")
+      && !locationRestricted && locationAccess.organizationWide && !selectedLocation
+      && (await hasAddon(context,"bookloq") || (bankPlan.accessType === "free" && Boolean(await freeIntegrationSelection(context.organizationId,"plaid"))));
+    const bankSettings = bankAllowed ? await getD1().prepare("SELECT data_mode FROM bookloq_settings WHERE organization_id=?").bind(context.organizationId).first<{data_mode:string}>() : null;
+    const plaidCash = bankCashSnapshot({
+      allowed: bankAllowed && bankSettings?.data_mode !== "demonstration",
+      connected: plaidConnections.length > 0, currency: context.organization.currency, nowMs: now,
+      accounts: plaidAccountRows.map(account=>({...account,lastSyncAtMs:account.lastSyncAt?.getTime()??null})),
     });
     if (!period && !locationRestricted && plaidCash.status === "available" && plaidCash.verifiedCashCents !== null) {
-      const latestBankSync = plaidAccountRows
-        .map((account) => account.lastSyncAt)
-        .filter((value): value is Date => Boolean(value))
-        .sort((left, right) => right.getTime() - left.getTime())[0] ?? null;
+      const latestBankSync = plaidCash.oldestSyncAt ? new Date(plaidCash.oldestSyncAt) : null;
       const balanceDate = (latestBankSync ?? new Date()).toISOString().slice(0, 10);
       baseCommandCentre.balances = {
         inventoryValueCents: baseCommandCentre.balances?.inventoryValueCents ?? null,
@@ -556,7 +557,7 @@ export async function loadCommandCentre(request: Request) {
         expectedCents: commandCentre.metrics.net_sales?.actuality === "actual" ? commandCentre.metrics.net_sales.value : null,
         revealSources: permissions.includes("integrations.view"),
       });
-      executiveReport=buildExecutiveReport(period,commandCentre,finance,financeReason,new URL(request.url).searchParams.get("basis")==="ledger"?"ledger":"commerce",attribution);
+      executiveReport=buildExecutiveReport(period,commandCentre,finance,financeReason,new URL(request.url).searchParams.get("basis")==="ledger"?"ledger":"commerce",attribution,bankAllowed?plaidCash:null);
     }
     const ownerBriefing = !executive ? buildServerOwnerBriefing({
       now: new Date(now),
@@ -590,6 +591,7 @@ export async function loadCommandCentre(request: Request) {
         id: context.organizationId,
         name: branding?.displayName ?? context.organization.businessName,
         industry: context.organization.industry,
+        industryConfiguration: (await getWorkspaceIndustry(context)).configuration,
         currency: context.organization.currency,
         role: context.role,
         logoAvailable: Boolean(branding?.logoObjectKey),

@@ -53,3 +53,13 @@ test("FEFO orders dated inventory before undated and uses received date as a sta
   ]);
   assert.deepEqual(lots.map((lot) => lot.id), ["earlier", "later", "undated"]);
 });
+
+test("elapsed best-before date prompts quality review, not an expiration or safety claim", () => {
+  const result=assessInventoryLot({...base,expirationDate:null,bestBeforeDate:"2026-08-01"},new Date("2026-08-08T12:00:00Z"));
+  assert.equal(result.risk,"monitor");assert.equal(result.trackedDateKind,"best_before");assert.match(result.recommendation,/does not establish that food is unsafe/);assert.doesNotMatch(result.recommendation,/Quarantine/);
+});
+
+test("actual elapsed expiration takes precedence over an earlier best-before date", () => {
+  const result=assessInventoryLot({...base,expirationDate:"2026-08-07",bestBeforeDate:"2026-08-01"},new Date("2026-08-08T12:00:00Z"));
+  assert.equal(result.risk,"expired");assert.equal(result.trackedDateKind,"expiration");assert.match(result.recommendation,/Quarantine/);
+});

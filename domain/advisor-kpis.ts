@@ -1,12 +1,12 @@
 import { periodEvidence } from "./period-evidence.ts";
+import { exactSum } from "./executive-metrics.ts";
 
 export type AdvisorDay = { date: string; locationRef: string; netSalesCents: number | null; grossProfitCents: number | null; transactions: number | null; discountsCents: number | null; refundsCents: number | null; unitsSold: number | null; labourCostCents: number | null; inventoryValueCents: number | null; accountsPayableCents: number | null };
 const shift = (date: string, days: number) => new Date(Date.parse(`${date}T00:00:00Z`) + days * 86400000).toISOString().slice(0, 10);
 type NumericField = Exclude<keyof AdvisorDay, "date" | "locationRef">;
 const total = (rows: AdvisorDay[], field: NumericField) => {
   if (!rows.length || rows.some(row => row[field] === null || !Number.isSafeInteger(row[field]))) return null;
-  const value = rows.reduce((sum, row) => sum + row[field]!, 0);
-  return Number.isSafeInteger(value) ? value : null;
+  try { return exactSum(rows.map(row => row[field]!)); } catch { return null; }
 };
 
 export function advisorDailySeries(rows: AdvisorDay[]) {

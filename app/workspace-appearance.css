@@ -1,0 +1,434 @@
+/* Shared workspace palette. Public pages have no workspace theme attribute. */
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme="dark"] {
+  color-scheme: dark;
+  --ws-canvas: #0B1222; --ws-panel: #111D32; --ws-raised: #19283F;
+  --ws-ink: #EEF4FF; --ws-muted: #B1BFD4; --ws-line: #34465F;
+  --ws-control: #7185A3; --ws-blue: #8AB8FF; --ws-purple: #C5ADFF;
+  --ws-primary: #285FD2; --ws-on-primary: #FFFFFF; --ws-primary-hover: #2458C4;
+  --ws-positive: #6EE7AD; --ws-negative: #FF9D9D; --ws-warning: #F3C477;
+  --ws-positive-bg: #102F2B; --ws-negative-bg: #39232F; --ws-warning-bg: #342C20;
+  --ws-selected: #20385D; --ws-shadow: 0 12px 36px #02061138;
+}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme="light"] {
+  color-scheme: light;
+  --ws-canvas: #F2F6FB; --ws-panel: #FFFFFF; --ws-raised: #EDF3FB;
+  --ws-ink: #14243B; --ws-muted: #52637A; --ws-line: #C7D3E2;
+  --ws-control: #7889A2; --ws-blue: #215ABB; --ws-purple: #6534AB;
+  --ws-primary: #285FD2; --ws-on-primary: #FFFFFF; --ws-primary-hover: #2458C4;
+  --ws-positive: #087747; --ws-negative: #B63245; --ws-warning: #845500;
+  --ws-positive-bg: #EAF7F0; --ws-negative-bg: #FFF0F1; --ws-warning-bg: #FFF6DF;
+  --ws-selected: #E3EDFF; --ws-shadow: 0 8px 26px #163D6910;
+}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] {
+  --ink: var(--ws-ink); --muted: var(--ws-muted); --line: var(--ws-line);
+  --canvas: var(--ws-canvas); --surface: var(--ws-panel); --surface-soft: var(--ws-raised);
+  --blue: var(--ws-blue); --navy: var(--ws-ink); --violet: var(--ws-purple);
+  --green: var(--ws-positive); --rose: var(--ws-negative); --amber: var(--ws-warning);
+  --text-primary: var(--ws-ink); --text-secondary: var(--ws-muted); --border-color: var(--ws-line);
+  --ui-ink: var(--ws-ink); --ui-muted: var(--ws-muted); --ui-canvas: var(--ws-canvas);
+  --ui-surface: var(--ws-panel); --ui-glass: var(--ws-panel); --ui-shadow: var(--ws-shadow);
+  --ui-action: var(--ws-primary); --ui-action-hover: var(--ws-primary-hover);
+  --sidebar-panel: var(--ws-panel); --sidebar-line: var(--ws-line); --sidebar-heading: var(--ws-ink);
+  --sidebar-muted: var(--ws-muted); --sidebar-hover: var(--ws-raised); --sidebar-active: var(--ws-blue);
+  color: var(--ws-ink); background: var(--ws-canvas); accent-color: var(--ws-blue);
+}
+.workspace-theme-scope { display: contents; }
+
+/* Opaque working surfaces keep dense data clear. No image or logo filters. */
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(
+  .main-panel,.bookloq-main,.bookloq-content,.content,.fc-workspace
+) { background: var(--ws-canvas); color: var(--ws-ink); }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(
+  .sidebar,.bookloq-side,.topbar,.bookloq-top,.side-bottom
+) { background: var(--ws-panel); color: var(--ws-ink); border-color: var(--ws-line); box-shadow: none; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(
+  .card,.dense-panel,.metric-card,.integration-card,.insight-card,.decision-explorer,
+  .executive-kpi,.executive-detail,.executive-insights,.executive-financial-details,.executive-operating-ring,
+  .executive-bank-cash,.executive-no-widgets,.executive-summary-panels>section,
+  .bookloq-card,.bookloq-kpi,.bookloq-review-workspace,.bookloq-record-drawer,.bank-grid>article,
+  .report-summary,.assistant-card,.transaction-stat,.receipt-capture,.budget-bars,
+  .foodservice-workspace,.foodservice-workspace form,.foodservice-records article,.food-operations-review,
+  .dealership-workspace,.dl-card,.dl-stock-detail,.dl-preview,.dl-import,.dl-appointment,
+  .retail-intelligence,.retail-inputs,.retail-kpi,.retail-view,.retail-segment,
+  .fc-card,.fc-chart,.fc-settings,.fc-plan,.fc-kpis article,
+  .collaboration-thread,.collaboration-message,.task-item,.document-upload,.settings-content,
+  .permission-editor,.safeguards-grid>article,.account-deletion-control,.provider-settings,
+  .control-surface,.provider-privacy-dialog,.invoice-composer,.bookloq-modal,.dl-modal,.document-delete-dialog
+) { background: var(--ws-panel); color: var(--ws-ink); border-color: var(--ws-line); box-shadow: var(--ws-shadow); }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(
+  h1,h2,h3,h4,h5,h6,.page-intro h2,.brand-name,.topbar-title,.workspace-switcher b,.profile b,
+  .metric-card strong,.executive-kpi strong,.executive-kpi-label,.executive-chart-readout b,
+  .bookloq-kpi strong,.bookloq-kpi b,.bookloq-card-head,.report-summary strong,
+  .bookloq-review-summary b,.collaboration-message strong,.collaboration-message p,.collaboration-toolbar label,
+  .collaboration-composer label,.task-copy strong,.foodservice-metrics dd,.retail-hour-detail strong,
+  .bookloq-review-workspace>header h3,.provider-permission-summary dt,.invoice-bottom strong
+) { color: var(--ws-ink); }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(
+  .page-intro p,.page-intro>span,.topbar p,.eyebrow,.nav-group>p,.profile small,.workspace-switcher small,
+  .release-name,.subscription-summary,.card-kicker,.section-heading p,.metric-card small,.metric-label,
+  .executive-source,.executive-prior,.executive-target,.executive-period-label,.executive-kpi strong.unavailable,
+  .executive-heading p,.executive-heading span,.executive-detail header p,.executive-panel-note,
+  .executive-empty-message p,.executive-empty-dates,.executive-empty-axis,.executive-mini-chart small,
+  .bookloq-page-intro p,.bookloq-side-foot,.bookloq-kpi small,.bookloq-kpi span,.calculation-note,
+  .bookloq-empty-line,.bookloq-value-unavailable,.bookloq-review-workspace>header div>span,
+  .bookloq-review-summary span,.bookloq-bank-legal,.transaction-status-row,.cash-legend,.cash-mix,.bookloq-setup-card p,
+  .collaboration-message time,.collaboration-composer small,.collaboration-toolbar small,.task-copy small,
+  .field-hint,.dl-hint,.foodservice-note,.foodservice-metrics small,.foodservice-metrics dt,.foodservice-eyebrow,
+  .retail-note,.retail-method,.retail-period,.retail-evidence,.retail-footer small,.retail-hour-detail,
+  .retail-hour-chart small,.retail-hour-missing,.retail-kpi small,.retail-kpi>span,
+  .provider-privacy-footnote,.provider-policy-links,.provider-permission-summary dd,.provider-data-use p,
+  .settings-form p,.settings-form small,.setting-toggles small,.setting-toggles p,.security-flags,
+  .document-service-status,.provider-boundary,.data-contract,.connector-next-step,.integration-requirements,
+  .integration-type,.integration-category>header p,.connector-next-step small
+) { color: var(--ws-muted) !important; }
+
+/* Forms retain native affordances; data-heavy controls have a visible boundary. */
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(input,select,textarea) {
+  background-color: var(--ws-panel); color: var(--ws-ink); border-color: var(--ws-control);
+  caret-color: var(--ws-blue); box-shadow: none;
+}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(input,textarea)::placeholder { color: var(--ws-muted); opacity: 1; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(input,select,textarea):disabled { color: var(--ws-muted); background: var(--ws-raised); }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(input[type="checkbox"],input[type="radio"]) { accent-color: var(--ws-blue); }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] option { background: var(--ws-panel); color: var(--ws-ink); }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(label,legend,.field-label) { color: var(--ws-ink); }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(
+  button,.secondary,.icon-button,.command-trigger,.table-action,.bookloq-toolbar a,
+  .bookloq-display-controls button,.bookloq-setup-card header>button
+) { color: var(--ws-ink); border-color: var(--ws-control); background: var(--ws-raised); }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] button:not(:disabled):hover { background-color: var(--ws-selected); border-color: var(--ws-blue); }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(
+  .primary,.bookloq-primary,.fc-primary,.foodservice-primary,.ai-send
+) { background: var(--ws-primary) !important; color: var(--ws-on-primary) !important; border-color: var(--ws-primary) !important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.primary,.bookloq-primary,.fc-primary,.foodservice-primary,.ai-send):hover:not(:disabled) { background: var(--ws-primary-hover) !important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] a:not(.primary):not(.bookloq-primary) { color: var(--ws-blue); }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(button,a,input,textarea,select,summary,[tabindex]):focus-visible { outline: 3px solid var(--ws-purple) !important; outline-offset: 3px; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(button,a,input,select,textarea)[aria-invalid="true"] { border-color: var(--ws-negative); }
+
+/* Sidebar shape, spacing and responsive behaviour remain in sidebar-polish.css. */
+.operating-shell[data-workspace-theme] .sidebar :is(.nav-item,.profile-signout,.sidebar-close) { color: var(--ws-ink); background: transparent; }
+.operating-shell[data-workspace-theme] .sidebar .nav-item:hover { background: var(--ws-raised); }
+.operating-shell[data-workspace-theme] .sidebar .nav-item.active { color: var(--ws-blue); background: var(--ws-selected); box-shadow: inset 3px 0 0 var(--ws-blue); }
+.operating-shell[data-workspace-theme] .sidebar .bookloq-main-nav { color: var(--ws-positive) !important; background: var(--ws-positive-bg) !important; border-color: var(--ws-line) !important; }
+.operating-shell[data-workspace-theme] .sidebar .bookloq-main-nav.active { box-shadow: inset 3px 0 0 var(--ws-positive); }
+.operating-shell[data-workspace-theme] :is(.workspace-switcher,.business-workspace-selector,.profile,.nav-group,.side-bottom) { border-color: var(--ws-line); }
+.operating-shell[data-workspace-theme] :is(.workspace-avatar,.avatar) { background: var(--ws-selected); color: var(--ws-blue); }
+
+/* Tables, filters and secondary groups. Preserve table alignment and layout. */
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(table,.bookloq-tr,.generic-row,.cashflow-grid,.employee-row,.location-list article) { color: var(--ws-ink); background: var(--ws-panel); border-color: var(--ws-line); }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(th,.bookloq-th,.generic-head,.cashflow-head,.employee-table-head,.invoice-line-head) { color: var(--ws-muted); background: var(--ws-raised); border-color: var(--ws-line); }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(td,th,.bookloq-tr,.generic-row,.employee-row,.journal-entry-line,.bookloq-review-row,.invoice-line-row) { border-color: var(--ws-line); }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(tbody tr:hover,.bookloq-tr:hover,.employee-row:hover) { background: var(--ws-raised); }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(
+  .executive-filters>div,.executive-source-details,.executive-customize,.executive-goal-settings,
+  .executive-finance-grid article,.executive-loading>div,.executive-status-frame,.executive-refresh-notice,
+  .free-integration-allowance,.provider-setup-needed,.integration-enablement,.provider-parity-contract,
+  .automatic-sync-control,.marketing-resource-panel,.integration-feature-checklist,.drop-zone,
+  .bookloq-demo-banner,.bookloq-scope-banner,.bookloq-start,.bookloq-activation,.bookloq-bank-connection,
+  .bookloq-provider-gate,.bookloq-review-summary,.bookloq-review-filters,.bookloq-review-progress,.bookloq-pending-controls,
+  .bookloq-review-empty,.transaction-review,.transaction-match-list,.business-cash-kpis>div,
+  .cash-period-switch,.cash-category-breakdown,.invoice-bottom aside,.journal-balance,
+  .retail-footer,.retail-opportunity,.retail-inputs-preview,.retail-ai-period,.retail-hour-detail,
+  .dl-filters,.dl-stock-filters,.dl-facts,.dl-form-context,.dl-boundary,.dl-empty,
+  .foodservice-metrics>div,.foodservice-modifier-choice,.food-review-boundary,.food-review-limited,
+  .fc-day,.fc-notice,.fc-result,.effective-access,.employee-review,.owner-protection,
+  .collaboration-message.is-own,.provider-data-use,.provider-requested-permissions,.provider-privacy-check
+) { background: var(--ws-raised); color: var(--ws-ink); border-color: var(--ws-line); box-shadow: none; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(
+  .executive-filters button[aria-pressed="true"],.financial-series-switch button[aria-pressed="true"],
+  .settings-nav button.active,.governance-tabs button.active,.bookloq-side button.active,
+  .retail-tabs button[aria-selected="true"],.retail-tabs button[aria-pressed="true"],
+  .dl-tabs button[aria-selected="true"],.fc-tabs button[aria-pressed="true"],.fc-day.busier,
+  .report-switch button.active,.cash-period-switch button.active,.segmented button.active
+) { background: var(--ws-selected); color: var(--ws-blue); border-color: var(--ws-blue); box-shadow: inset 0 -2px 0 var(--ws-blue); }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.executive-kpi.selected,.role-list button.selected) { border-color: var(--ws-blue); box-shadow: inset 3px 0 0 var(--ws-blue); }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.executive-selection,.executive-kpi.selected .executive-selection,.executive-kpi-label i,.retail-eyebrow,.dl-eyebrow,.fc-eyebrow) { color: var(--ws-blue); }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.executive-source,.collaboration-toolbar,.collaboration-composer,.retail-footer,.bookloq-card-head,.bookloq-review-workspace>header,.provider-permission-summary>div,.control-surface-heading) { border-color: var(--ws-line); }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.bookloq-brand-lockup,.logo-preview,.integration-logo) { background: #FFFFFF; }
+
+/* Component-local variables otherwise override inherited tokens. */
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .executive-overview { --exec-text: var(--ws-ink); --exec-muted: var(--ws-muted); }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .bookloq-shell { --bq-ink: var(--ws-ink); --bq-muted: var(--ws-muted); --bq-line: var(--ws-line); --bq-bg: var(--ws-canvas); --bq-card: var(--ws-panel); --bq-green: var(--ws-positive); --bq-blue: var(--ws-blue); --bq-red: var(--ws-negative); }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .dealership-workspace { --dl-ink: var(--ws-ink); --dl-muted: var(--ws-muted); --dl-blue: var(--ws-blue); --dl-line: var(--ws-line); }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .retail-intelligence { --ri-ink: var(--ws-ink); --ri-muted: var(--ws-muted); --ri-border: var(--ws-line); --ri-blue: var(--ws-blue); }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .data-hub { --connection-ink: var(--ws-ink); --connection-muted: var(--ws-muted); --connection-line: var(--ws-line); --connection-surface: var(--ws-panel); }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .fc-workspace { --fc-ink: var(--ws-ink); --fc-muted: var(--ws-muted); }
+
+/* Explicit chart primitives only. Provider logos and unrelated SVGs are untouched. */
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.trend-gridline,.fc-grid,.executive-empty-grid,.chart-zero-line) { stroke: var(--ws-line); }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.trend-axis-label,.fc-plot text) { fill: var(--ws-muted); }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.trend-sales-line,.fc-actual) { stroke: var(--ws-blue); }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.trend-comparison-line,.fc-future) { stroke: var(--ws-muted); }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .trend-profit-line { stroke: var(--ws-positive); }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.active-sales-point,.comparison-observation-point) { fill: var(--ws-blue); stroke: var(--ws-panel); }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .active-profit-point { fill: var(--ws-positive); stroke: var(--ws-panel); }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .chart-active-marker line { stroke: var(--ws-muted); }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.ring-track,.cash-ring-track) { stroke: var(--ws-line); }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.ring-sales,.cash-ring-available) { stroke: var(--ws-blue); }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .ring-margin { stroke: var(--ws-purple); }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .ring-cash { stroke: var(--ws-positive); }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.chart-legend,.workspace-chart-readout,.workspace-chart-empty,.chart-foot,.workspace-chart-data caption,.commerce-chart-context) { color: var(--ws-muted); }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.workspace-chart-readout,.workspace-chart-data,.financial-explorer-toolbar,.performance-summary,.cash-bridge-rows) { background: var(--ws-panel); color: var(--ws-ink); border-color: var(--ws-line); }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.workspace-chart-readout dd,.performance-summary dd) { color: var(--ws-ink); }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.retail-bar-track,.cash-bridge-track) { background: var(--ws-raised); }
+
+/* Financial signs and status text retain semantic colours, plus existing labels/arrows. */
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.positive,.change-up,.retail-up,.safe,.dl-success,.state.confirmed,.close-state.complete) { color: var(--ws-positive) !important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.negative,.change-down,.retail-down,[data-negative="true"],.danger-text,.field-error,.form-error,.bookloq-form-error,.foodservice-field-error) { color: var(--ws-negative) !important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.warning,.risk,.state.suggested,.state.accountant_review,.close-state.blocked) { color: var(--ws-warning) !important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.danger,.executive-error,.collaboration-error,.foodservice-error,.dl-error,.fc-error,.retail-error,.document-delete-name,.deletion-confirmation) { color: var(--ws-negative) !important; background: var(--ws-negative-bg); border-color: var(--ws-negative); }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.tax-warning,.integrity-warning,.retail-quality-notice,.dl-notice) { color: var(--ws-warning) !important; background: var(--ws-warning-bg); border-color: var(--ws-warning); }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.dl-success,.bookloq-health,.verified-tag) { background: var(--ws-positive-bg); border-color: var(--ws-positive); color: var(--ws-positive); }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.retail-negative-bar,.retail-hour-negative i,.cash-bridge-track .is-negative) { background: var(--ws-negative); }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .executive-change small { color: var(--ws-muted); }
+
+/* Legacy screen CSS can arrive after this file. These targeted paint overrides
+   keep the authenticated scope readable regardless of dynamic import order. */
+.operating-shell[data-workspace-theme] .sidebar {
+  --sidebar-text: var(--ws-ink); --sidebar-heading: var(--ws-ink);
+  --sidebar-muted: var(--ws-muted); --sidebar-panel: var(--ws-panel);
+  --sidebar-line: var(--ws-line); --sidebar-hover: var(--ws-raised);
+  --sidebar-active: var(--ws-blue);
+}
+.operating-shell[data-workspace-theme] .sidebar :is(.workspace-switcher,.business-workspace-selector) {
+  background: var(--ws-panel) !important; color: var(--ws-ink) !important;
+  border-color: var(--ws-line) !important; box-shadow: none !important;
+}
+.operating-shell[data-workspace-theme] .sidebar .workspace-switcher .location-switcher select {
+  background: var(--ws-raised) !important; color: var(--ws-ink) !important;
+  border-color: var(--ws-control) !important; box-shadow: none !important;
+}
+.operating-shell[data-workspace-theme] .sidebar :is(.brand-name,.workspace-switcher b,.profile b) { color: var(--ws-ink) !important; }
+.operating-shell[data-workspace-theme] .sidebar :is(.workspace-switcher small,.profile small,.nav-group>p,.workspace-release-name,.brand-name small) { color: var(--ws-muted) !important; }
+.operating-shell[data-workspace-theme] .sidebar .nav-item {
+  color: var(--ws-ink) !important; background: transparent !important;
+  border: 0 !important; box-shadow: none;
+}
+.operating-shell[data-workspace-theme] .sidebar .nav-item .nav-label { color: inherit !important; }
+.operating-shell[data-workspace-theme] .sidebar .nav-item:hover:not(:disabled) { background: var(--ws-raised) !important; }
+.operating-shell[data-workspace-theme] .sidebar .nav-item:is(.active,[aria-current="page"]) {
+  color: var(--ws-blue) !important; background: var(--ws-selected) !important;
+  box-shadow: inset 3px 0 0 var(--ws-blue);
+}
+.operating-shell[data-workspace-theme] .sidebar .bookloq-main-nav {
+  color: var(--ws-positive) !important; background: var(--ws-positive-bg) !important;
+}
+.operating-shell[data-workspace-theme] .sidebar .bookloq-main-nav:is(.active,[aria-current="page"]) { box-shadow: inset 3px 0 0 var(--ws-positive); }
+.operating-shell[data-workspace-theme] :is(.topbar p strong,.dashboard-greeting-title h2) { color: var(--ws-ink) !important; }
+.operating-shell[data-workspace-theme] :is(.dashboard-greeting-copy p,.topbar p,.topbar small) { color: var(--ws-muted) !important; }
+
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .executive-overview {
+  --exec-text: var(--ws-ink); --exec-muted: var(--ws-muted); --overview-accent: var(--ws-purple);
+}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .executive-overview :is(
+  .executive-kpi,.executive-detail,.executive-insights,.executive-operating-ring,
+  .executive-advisor,.executive-financial-details,.invoice-overview
+) { background: var(--ws-panel) !important; color: var(--ws-ink) !important; border-color: var(--ws-line) !important; box-shadow: var(--ws-shadow) !important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .executive-overview .executive-kpi:hover {
+  background: var(--ws-raised) !important; border-color: var(--ws-blue) !important;
+}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .executive-overview .executive-kpi.selected {
+  background: var(--ws-selected) !important; border-color: var(--ws-purple) !important;
+  box-shadow: inset 3px 0 0 var(--ws-purple),var(--ws-shadow) !important;
+}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .executive-overview :is(
+  .executive-kpi-label,.executive-kpi strong:not(.unavailable),.executive-insights details>summary,
+  .executive-detail h3,.executive-insights h3,.operating-ring-copy h3,.operating-goal-list b,
+  .interactive-ring-readout,.interactive-ring-readout strong,.executive-advisor h3,.executive-advisor h4,
+  .executive-source-details dd,.executive-chart-value>b
+) { color: var(--ws-ink) !important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .executive-overview :is(
+  .executive-kpi strong.unavailable,.executive-detail header span,.executive-insights details p,
+  .executive-insights details>summary small,.operating-ring-copy>span,.operating-ring-copy small,
+  .operating-ring-action span,.operating-ring-action details,.operating-goal-list small,
+  .interactive-ring-readout small,.executive-advisor>p,.executive-advisor>small,.executive-advisor>header>span,
+  .executive-goal-settings label>span,.executive-chart-readout,.executive-chart-value>span,.executive-chart-caption
+) { color: var(--ws-muted) !important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .executive-overview :is(
+  .executive-filters,.executive-filters>div,.executive-dates,.executive-chart-value,
+  .executive-customize,.executive-goal-settings,.executive-customize fieldset.executive-goal-settings label,
+  .executive-insights details,.executive-insights details[open],.executive-source-details
+) { background: var(--ws-raised) !important; border-color: var(--ws-line) !important; box-shadow: none !important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .executive-overview :is(
+  .executive-filters select,.executive-dates input,.executive-customize input,.executive-customize select,
+  .executive-advisor form input,.executive-target-input input
+) { background: var(--ws-panel) !important; color: var(--ws-ink) !important; border-color: var(--ws-control) !important; box-shadow: none !important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .executive-overview :is(
+  .executive-filters button,.operating-goal-list>button,.operating-ring-action>button,.executive-insights>header>button
+) { background: transparent !important; color: var(--ws-blue) !important; border-color: transparent !important; box-shadow: none !important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .executive-overview :is(
+  .executive-filters button[aria-pressed="true"],.operating-goal-list>button[aria-pressed="true"]
+) { background: var(--ws-selected) !important; color: var(--ws-blue) !important; border-color: var(--ws-blue) !important; box-shadow: inset 0 -2px 0 var(--ws-blue) !important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .executive-overview :is(
+  .executive-selection,.executive-kpi.selected .executive-selection,.operating-ring-copy>p,.operating-ring-action summary,.executive-source-details>summary
+) { color: var(--ws-blue) !important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .executive-overview :is(.goal-progress-track,.executive-commerce-layout .executive-kpi-label i) { background: var(--ws-line) !important; border-color: var(--ws-line) !important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .interactive-goal-ring .interactive-ring-track { stroke: var(--ws-line) !important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .interactive-goal-ring[aria-pressed="true"] .interactive-ring-track { stroke: var(--ws-control) !important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .interactive-goal-ring:focus-visible .interactive-ring-track { stroke: var(--ws-purple) !important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .executive-overview .executive-advisor { border-color: var(--ws-purple) !important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .executive-overview .executive-advisor>.advisor-question { background: var(--ws-raised) !important; color: var(--ws-purple) !important; border-color: var(--ws-line) !important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .executive-overview .executive-advisor form { border-color: var(--ws-line) !important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .executive-overview .executive-advisor form button { background: var(--ws-primary) !important; color: var(--ws-on-primary) !important; border-color: var(--ws-primary) !important; }
+
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(
+  .overview-daily-brief,.owner-briefing,.owner-briefing-item,.owner-briefing-empty,
+  .business-pulse-control,.business-pulse>summary,.business-pulse>div,.pulse-metrics article,.pulse-empty
+) { background: var(--ws-panel) !important; color: var(--ws-ink) !important; border-color: var(--ws-line) !important; box-shadow: none !important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(
+  .overview-daily-brief>summary,.owner-briefing-item h3,.owner-briefing-item-heading>.owner-priority-title,
+  .owner-briefing-next b,.business-pulse-control b,.pulse-metrics strong,.pulse-attention b
+) { color: var(--ws-ink) !important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(
+  .overview-daily-brief>summary span,.owner-briefing-heading p,.owner-briefing-eyebrow span,
+  .owner-briefing-context,.owner-briefing-item-heading>span:not(.owner-priority-title),.owner-briefing-item p,
+  .owner-briefing-evidence dt,.owner-briefing-evidence small,.owner-briefing-checklist ol,
+  .owner-briefing-checklist p,.owner-briefing-note,.owner-briefing-footer>span,
+  .business-pulse-control small,.business-pulse small,.business-pulse p,
+  .pulse-status p,.pulse-context,.pulse-metrics small,.pulse-attention small,.pulse-attention>p,.pulse-empty p,.pulse-footer p
+) { color: var(--ws-muted) !important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(
+  .owner-briefing-actions button,.owner-briefing-footer button,.owner-briefing-more,.owner-briefing-rank,
+  .owner-briefing-count,.pulse-footer button
+) { background: var(--ws-raised) !important; color: var(--ws-blue) !important; border-color: var(--ws-line) !important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.owner-briefing-evidence summary,.owner-briefing-checklist summary,.owner-briefing-heading .owner-briefing-eyebrow) { color: var(--ws-blue) !important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .owner-briefing-count.is-critical { background: var(--ws-negative-bg) !important; color: var(--ws-negative) !important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .owner-briefing-item.severity-critical { border-left-color: var(--ws-negative) !important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .severity-critical .owner-briefing-item-heading>span:not(.owner-priority-title) { color: var(--ws-negative) !important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .pulse-attention>button { background: transparent !important; color: var(--ws-ink) !important; border-color: var(--ws-line) !important; }
+
+.operating-shell[data-workspace-theme] .governance-page { --gov-line: var(--ws-line); --gov-soft: var(--ws-raised); }
+.operating-shell[data-workspace-theme] :is(.settings-content.card,.settings-nav>label,.settings-form,.workspace-appearance-control) { background: var(--ws-panel) !important; color: var(--ws-ink) !important; border-color: var(--ws-line) !important; box-shadow: none !important; }
+.operating-shell[data-workspace-theme] .settings-nav>button { color: var(--ws-ink) !important; background: transparent !important; border: 0 !important; box-shadow: none !important; }
+.operating-shell[data-workspace-theme] .settings-nav>button.active { color: var(--ws-blue) !important; background: var(--ws-selected) !important; box-shadow: inset 3px 0 0 var(--ws-blue) !important; }
+.operating-shell[data-workspace-theme] :is(.settings-form>header span,.settings-grid label small,.settings-form p:not([role="alert"]):not(.form-error):not(.field-error):not(.positive):not(.negative):not([data-negative="true"]),.settings-form small:not(.positive):not(.negative)) { color: var(--ws-muted) !important; }
+.operating-shell[data-workspace-theme] :is(.settings-form>header h2,.settings-form>header h3,.settings-grid label,.settings-form label) { color: var(--ws-ink) !important; }
+.operating-shell[data-workspace-theme] .settings-form>header p { color: var(--ws-blue) !important; }
+.operating-shell[data-workspace-theme] :is(.settings-grid input,.settings-grid select,.settings-form textarea,.settings-nav input) { background: var(--ws-panel) !important; color: var(--ws-ink) !important; border-color: var(--ws-control) !important; }
+.operating-shell[data-workspace-theme] .settings-form>footer { border-color: var(--ws-line) !important; }
+.operating-shell[data-workspace-theme] .settings-form>footer button:not(.primary):not(.danger) { background: var(--ws-raised) !important; color: var(--ws-ink) !important; border-color: var(--ws-control) !important; }
+
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .executive-overview :is(.executive-change:not(.change-up):not(.change-down),.executive-change small,.executive-source small) { color: var(--ws-muted) !important; }
+.operating-shell[data-workspace-theme] .dashboard-record-coverage { color: var(--ws-muted) !important; }
+
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .executive-insights>header { flex-wrap: wrap; gap: 10px; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .executive-insights>header>button { width: auto !important; max-width: 100%; min-width: 0; flex: 0 1 auto; }
+
+/* Settings control: native radio keys, persistent selected boundary, readable swatches. */
+.workspace-appearance-control { padding: 22px; margin-bottom: 24px; border: 1px solid var(--ws-line); border-radius: 18px; background: var(--ws-panel); color: var(--ws-ink); }
+.workspace-appearance-heading { display: flex; align-items: start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+.workspace-appearance-heading h3 { margin: 0 0 6px; font-size: 18px; }
+.workspace-appearance-heading p,.workspace-appearance-description,.workspace-appearance-notice p { margin: 0; color: var(--ws-muted); line-height: 1.6; font-size: 13px; }
+.workspace-appearance-current { color: var(--ws-blue); background: var(--ws-selected); border: 1px solid var(--ws-line); border-radius: 999px; padding: 6px 10px; font-size: 12px; white-space: nowrap; }
+.workspace-appearance-control fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
+.workspace-appearance-legend { font-size: 13px; font-weight: 650; padding: 0 0 10px; }
+.workspace-appearance-choices { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; }
+.workspace-appearance-option { display: grid; position: relative; grid-template-columns: auto 1fr; align-items: center; gap: 10px; min-width: 0; padding: 14px; border: 1px solid var(--ws-control); border-radius: 13px; background: var(--ws-raised); cursor: pointer; }
+.workspace-appearance-option[data-selected="true"] { border-color: var(--ws-blue); box-shadow: inset 0 0 0 1px var(--ws-blue); background: var(--ws-selected); }
+.workspace-appearance-option:focus-within { outline: 3px solid var(--ws-purple); outline-offset: 3px; }
+.workspace-appearance-option input { margin: 0; width: 18px; height: 18px; min-height: 18px; }
+.workspace-appearance-option>span:last-child { grid-column: 1 / -1; }
+.workspace-appearance-option strong,.workspace-appearance-option small { display: block; }
+.workspace-appearance-option strong { font-size: 14px; color: var(--ws-ink); }
+.workspace-appearance-option small { margin-top: 4px; font-size: 12px; line-height: 1.5; color: var(--ws-muted); }
+.workspace-appearance-swatch { height: 34px; display: flex; gap: 4px; padding: 7px; border: 1px solid var(--ws-control); border-radius: 7px; background: #0B1222; }
+.workspace-appearance-swatch i { display: block; flex: 1; border-radius: 3px; background: #34465F; }
+.workspace-appearance-swatch i:first-child { flex: .35; background: #285FD2; }
+.workspace-appearance-swatch-light { background: #F2F6FB; }
+.workspace-appearance-swatch-light i { background: #C7D3E2; }
+.workspace-appearance-swatch-system { background: linear-gradient(90deg,#0B1222 50%,#F2F6FB 50%); }
+.workspace-appearance-swatch-system i:last-child { background: #C7D3E2; }
+.workspace-appearance-description { margin-top: 14px; }
+.workspace-appearance-notice p { margin-top: 10px; color: var(--ws-warning); }
+@media (max-width: 640px) {
+  .workspace-appearance-control { padding: 16px; }
+  .workspace-appearance-heading { flex-wrap: wrap; }
+  .workspace-appearance-choices { grid-template-columns: 1fr; }
+  .workspace-appearance-option { grid-template-columns: auto 62px 1fr; min-height: 72px; }
+  .workspace-appearance-option>span:last-child { grid-column: auto; }
+}
+@media (prefers-reduced-motion: reduce) {
+  :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.workspace-appearance-option,.executive-kpi,.collaboration-message) { transition: none; animation: none; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.sidebar,.topbar,.bookloq-side,.control-surface) { backdrop-filter: none; background: var(--ws-panel); }
+}
+@media (forced-colors: active) {
+  :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] {
+    --ws-canvas: Canvas; --ws-panel: Canvas; --ws-raised: Canvas; --ws-ink: CanvasText;
+    --ws-muted: CanvasText; --ws-line: ButtonBorder; --ws-control: ButtonBorder;
+    --ws-blue: LinkText; --ws-purple: Highlight; --ws-primary: ButtonFace; --ws-on-primary: ButtonText;
+    --ws-primary-hover: ButtonFace; --ws-positive: CanvasText; --ws-negative: CanvasText; --ws-warning: CanvasText;
+    --ws-positive-bg: Canvas; --ws-negative-bg: Canvas; --ws-warning-bg: Canvas; --ws-selected: Canvas;
+    --ws-shadow: none; forced-color-adjust: auto;
+  }
+  .workspace-appearance-option[data-selected="true"] { outline: 2px solid Highlight; outline-offset: -4px; }
+  :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.nav-item.active,[aria-pressed="true"],[aria-selected="true"]) { border: 2px solid Highlight !important; }
+}
+
+/* Commerce surfaces and labels retain contrast throughout dark workspaces. */
+.operating-shell[data-workspace-theme="dark"] :is(.commerce-intelligence-page,.retail-intelligence) {
+  --commerce-ink: var(--ws-ink); --commerce-muted: var(--ws-muted);
+  --commerce-line: var(--ws-line); --commerce-grid: var(--ws-line);
+  --commerce-blue: var(--ws-blue); --commerce-teal: var(--ws-positive);
+  --commerce-negative: var(--ws-negative); --commerce-comparison: var(--ws-purple);
+  --commerce-surface: var(--ws-panel);
+}
+.operating-shell[data-workspace-theme="dark"] :is(
+  .commerce-period-picker,.commerce-stats,.commerce-alert-rail,.commerce-cost-manager,
+  .commerce-product-rank,.commerce-loading-canvas,.retail-heading,.retail-evidence,
+  .retail-empty,.commerce-intelligence-page>.executive-filters,.module-hero,.module-signal
+) { background: var(--ws-panel) !important; color: var(--ws-ink) !important; border-color: var(--ws-line) !important; box-shadow: none !important; }
+.operating-shell[data-workspace-theme="dark"] :is(
+  .commerce-date-context,.commerce-cost-manager>header,.commerce-cost-preview,
+  .commerce-cost-preview-rows>span,.retail-table-wrap caption,.retail-table-wrap thead th,.retail-score
+) { background: var(--ws-raised) !important; color: var(--ws-muted) !important; border-color: var(--ws-line) !important; }
+.operating-shell[data-workspace-theme="dark"] :is(
+  .commerce-intelligence-head h2,.commerce-stat strong,.commerce-alert b,
+  .commerce-alert-rail header h3,.commerce-cost-manager header h3,.commerce-cost-preview b,
+  .commerce-cost-preview-rows strong,.commerce-intelligence-table>header h3,.commerce-ledger b,
+  .commerce-product-rank header h3,.commerce-product-rank article b,.commerce-product-rank article strong,
+  .retail-heading h2,.retail-view h3,.retail-kpi b,.retail-table-wrap tbody th,
+  .commerce-source-strip b,.commerce-summary-strip b,.module-hero h2,.module-signal b,
+  .feature-detail-row b,.data-requirement-row b
+) { color: var(--ws-ink) !important; }
+.operating-shell[data-workspace-theme="dark"] :is(
+  .commerce-intelligence-head>div>span,.commerce-period-picker label,.commerce-period-picker .field-label,
+  .commerce-date-context,.commerce-date-context small,.commerce-stat small,.commerce-stat span,
+  .commerce-alert small,.commerce-alert-rail header>span,.commerce-cost-manager header span,
+  .commerce-cost-preview>div>span,.commerce-cost-preview-rows small,.commerce-ledger>div,.commerce-ledger small,
+  .commerce-product-rank header>span,.commerce-product-rank article small,.commerce-intelligence-empty>span,
+  .retail-heading p,.retail-period small,.retail-kpi span,.retail-kpi small,.retail-evidence ul,
+  .retail-table-wrap small,.retail-filters label,.retail-pairs dt,.retail-expiry small,
+  .commerce-source-strip small,.commerce-summary-strip small,.commerce-summary-strip span,
+  .module-hero>div>span,.module-signal small,.module-signal span,.feature-detail-row small,.data-requirement-row>span
+) { color: var(--ws-muted) !important; }
+.operating-shell[data-workspace-theme="dark"] :is(
+  .commerce-intelligence-head p,.commerce-alert-rail header p,.commerce-cost-manager header p,
+  .commerce-intelligence-table>header p,.commerce-product-rank header p,.commerce-date-context>span,
+  .commerce-intelligence-empty p,.commerce-source-detail>summary,.retail-existing-decisions>summary,.module-hero p
+) { color: var(--ws-blue) !important; }
+.operating-shell[data-workspace-theme="dark"] :is(
+  .commerce-stat,.commerce-alert,.commerce-alert-rail>header,.commerce-product-rank>header,
+  .commerce-ledger>div,.commerce-cost-preview-rows>span,.retail-evidence dl div,
+  .retail-hour-scroll,.retail-hour-positive,.retail-existing-decisions,.commerce-source-detail
+) { border-color: var(--ws-line) !important; }
+.operating-shell[data-workspace-theme="dark"] .commerce-ledger .commerce-ledger-head { background: var(--ws-raised) !important; color: var(--ws-muted) !important; }
+.operating-shell[data-workspace-theme="dark"] .commerce-ledger>div:not(.commerce-ledger-head):hover { background: var(--ws-raised) !important; }
+.operating-shell[data-workspace-theme="dark"] .commerce-ledger .positive,.operating-shell[data-workspace-theme="dark"] .commerce-product-rank article em { color: var(--ws-positive) !important; }
+.operating-shell[data-workspace-theme="dark"] .commerce-ledger .negative { color: var(--ws-negative) !important; }
+.operating-shell[data-workspace-theme="dark"] :is(.commerce-api-error,.commerce-cost-error,.commerce-source-error) { background: var(--ws-negative-bg) !important; color: var(--ws-negative) !important; border-color: var(--ws-negative) !important; }
+.operating-shell[data-workspace-theme="dark"] .commerce-loading-canvas i { background: var(--ws-raised) !important; }
+.operating-shell[data-workspace-theme="dark"] .retail-hour-chart>button[aria-pressed="true"] { background: var(--ws-selected) !important; }
+.operating-shell[data-workspace-theme="dark"] .inventory-workflows { --iw-navy: var(--ws-ink); --iw-muted: var(--ws-muted); --iw-blue: var(--ws-blue); background: var(--ws-panel) !important; color: var(--ws-ink) !important; border-color: var(--ws-line) !important; }
+.operating-shell[data-workspace-theme="dark"] :is(.inventory-workflows-grid>article,.inventory-workflows-empty,.inventory-workflows-editor,.inventory-workflows-preview,.inventory-workflows-history) { background: var(--ws-raised) !important; color: var(--ws-ink) !important; border-color: var(--ws-line) !important; }
+.operating-shell[data-workspace-theme="dark"] :is(.inventory-workflows-grid>article>span,.inventory-workflows-optional,.inventory-workflows-history small) { color: var(--ws-muted) !important; }
+.operating-shell[data-workspace-theme="dark"] :is(.inventory-workflows-eyebrow,.inventory-workflows a) { color: var(--ws-blue) !important; }
+.operating-shell[data-workspace-theme="dark"] :is(.inventory-workflows-line,.inventory-workflows-editor footer) { border-color: var(--ws-line) !important; }
+
+/* Disabled AI suggestions remain muted and legible without compounded opacity. */
+.operating-shell[data-workspace-theme] .ai-studio[data-ai-theme="dark"] .ai-prompt-grid button:disabled {
+  background: var(--ai-raised,var(--ws-raised)) !important; color: var(--ai-muted,var(--ws-muted)) !important;
+  border-color: var(--ai-line,var(--ws-line)) !important; opacity: 1 !important; cursor: not-allowed;
+}
+.operating-shell[data-workspace-theme] .ai-studio[data-ai-theme="dark"] .ai-prompt-grid button:disabled :is(span,.workspace-icon) { color: inherit !important; opacity: 1 !important; }
