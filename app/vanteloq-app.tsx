@@ -9,6 +9,7 @@ import { PROVIDER_PRIVACY_NOTICE_VERSION } from "../domain/provider-privacy";
 import { buildIntegrationCapabilities, type IntegrationCapabilities } from "../domain/integration-capabilities";
 import { dataReadinessStateLabels, type ConnectionDataReadiness } from "../domain/integration-data-readiness";
 
+import { useAppearance, AppearanceSelect } from "./appearance-control";
 import "./workspace-base-styles";
 import "./workspace-styles";
 import "./readability-refinement.css";
@@ -714,6 +715,7 @@ export default function VanteloqApp({
   organizationName: string;
   accountName: string;
 }) {
+  const { appearance, changeAppearance, resolved } = useAppearance();
   const billingEntitlements = useBillingEntitlements();
   const subscriptionFeatures = billingEntitlements.features;
   const standaloneBookloq = billingEntitlements.plan === "bookloq";
@@ -1039,7 +1041,7 @@ export default function VanteloqApp({
     return operation;
   };
   return (
-    <main className="app-shell operating-shell">
+    <main className="app-shell operating-shell" data-appearance={resolved}>
       <aside
         id="primary-sidebar"
         className={mobileNavOpen ? "sidebar mobile-open" : "sidebar"}
@@ -1208,6 +1210,7 @@ export default function VanteloqApp({
             <h1>{view === "Dashboard" ? "Dashboard" : view === "Profit" ? "BookLoQ · Reports" : view === "Cash" ? "BookLoQ · Cash Flow" : view === "Bookkeeping" ? "BookLoQ · Transactions" : workspaceViewLabel(view)}</h1>
           </div>
           <div className="top-actions">
+            <AppearanceSelect compact value={appearance} onChange={changeAppearance} />
             <button className="command-trigger" onClick={() => setCommandOpen(true)} aria-label="Open workspace search"><WorkspaceIcon name="Search"/><span>Search workspace</span><kbd>⌘K</kbd></button>
             <span
               className={`source-pill ${loading || error || data?.source.syncing ? "pending" : data?.liveSource.lastSuccessfulSyncAt ? "current" : data?.source.freshness ?? "missing"}`}
