@@ -204,21 +204,22 @@
   padding: 14px 18px;
   border: 1px solid #4C82FF;
   border-radius: 12px;
-  background: linear-gradient(180deg, #173A7F, #102C63);
-  color: #F7F9FC;
+  background: #2F6BFF;
+  color: #020203;
   font-family: inherit;
   font-size: 15px;
   font-weight: 600;
   line-height: 1.4;
   letter-spacing: normal;
   text-align: center;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08);
+  box-shadow: none;
   cursor: pointer;
   transition: background 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
 }
 .auth-panel .auth-submit:not(:disabled):hover,
 .founder-mfa-gate .founder-mfa-form > button:not(:disabled):hover {
-  background: #17448F;
+  background: #4C82FF;
+  color: #020203;
   border-color: #79A5FF;
 }
 .auth-panel .auth-secondary,
@@ -236,6 +237,27 @@
   color: #A9B2C3;
   box-shadow: none;
   cursor: not-allowed;
+}
+/* These account controls must also outrank lazily loaded legacy form styles. */
+.auth-backdrop > .auth-panel .auth-submit,
+.founder-mfa-gate > section .founder-mfa-form > button[type="submit"] {
+  background: #2F6BFF !important;
+  background-image: none !important;
+  color: #020203 !important;
+  box-shadow: none !important;
+}
+.auth-backdrop > .auth-panel .auth-submit:not(:disabled):hover,
+.founder-mfa-gate > section .founder-mfa-form > button[type="submit"]:not(:disabled):hover {
+  background: #4C82FF !important;
+  color: #020203 !important;
+  border-color: #79A5FF;
+}
+.auth-backdrop > .auth-panel .auth-submit:disabled,
+.founder-mfa-gate > section .founder-mfa-form > button[type="submit"]:disabled {
+  background: #171D29 !important;
+  color: #A9B2C3 !important;
+  border-color: #53617A;
+  opacity: 1;
 }
 .auth-panel .auth-switch {
   display: block;
