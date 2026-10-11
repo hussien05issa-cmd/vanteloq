@@ -18,6 +18,7 @@
 .public-demo-link:active { transform: scale(.98); }
 .public-demo-link:focus-visible { outline: 3px solid #286ad8; outline-offset: 3px; }
 .book-demo-page { max-width: 1160px; margin-inline: auto; padding-block: 64px; align-items: start; }
+.book-demo-page > section { min-width: 0; }
 .book-demo-page h1 { font-size: clamp(34px, 4vw, 52px); line-height: 1.12; letter-spacing: -.035em; }
 .book-demo-page .custom-plan-intro > p:not(.demo-eyebrow) { color: #3d526c; }
 .book-demo-page .custom-plan-intro ul { padding-left: 20px; color: #284561; line-height: 1.7; }
@@ -32,5 +33,9 @@
 .book-demo-page .custom-plan-consent input { flex: none; margin-top: 3px; width: 20px; height: 20px; accent-color: #155dd0; }
 .book-demo-page .custom-plan-form a { color: #1554b4; text-decoration: underline; text-underline-offset: 3px; }
 .book-demo-page .custom-plan-reference { color: #334b66; overflow-wrap: anywhere; }
-@media (max-width: 800px) { .book-demo-page { padding-block: 32px; }.public-shell-links > .public-demo-link { justify-content: flex-start; } }
+.book-demo-page .turnstile-field { min-width: 0; overflow: visible; }
+.book-demo-page .turnstile-widget-container { width: 100%; min-width: 0; }
+.book-demo-page .turnstile-field > span { font-size: 14px; color: #233d5b; }
+.book-demo-page .turnstile-field > small { font-size: 12px; color: #3d526c; }
+@media (max-width: 800px) { .book-demo-page { grid-template-columns: minmax(0, 1fr); padding-block: 32px; }.public-shell-links > .public-demo-link { justify-content: flex-start; } }
 @media (prefers-reduced-motion: reduce) { .public-demo-link { transition: none !important; transform: none !important; } }
