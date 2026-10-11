@@ -1,0 +1,301 @@
+/* Shared authenticated header. Scope is separate from actions so narrow screens
+   retain their title and reporting context instead of compressing both. */
+.operating-shell[data-workspace-theme] .topbar {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) 44px auto;
+  grid-template-rows: auto auto;
+  align-items: center;
+  gap: 8px 16px;
+  width: 100%;
+  min-width: 0;
+  height: auto;
+  min-height: 96px;
+  padding: 16px clamp(16px, 2.3vw, 32px);
+  padding-top: max(16px, env(safe-area-inset-top));
+  background: var(--ws-panel, #07090d);
+  border-bottom: 1px solid var(--ws-line, rgb(255 255 255 / .1));
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.operating-shell[data-workspace-theme] .topbar::before,
+.operating-shell[data-workspace-theme] .topbar::after,
+.operating-shell[data-workspace-theme] .topbar-heading::before,
+.operating-shell[data-workspace-theme] .topbar-title::before {
+  content: none !important;
+}
+.operating-shell[data-workspace-theme] .topbar-heading {
+  grid-column: 1;
+  grid-row: 1;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 12px;
+  padding: 0;
+}
+.operating-shell[data-workspace-theme] .topbar-title {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+  padding: 0;
+}
+.operating-shell[data-workspace-theme] .topbar-title h1 {
+  max-width: none;
+  margin: 0;
+  color: var(--ws-ink, #f7f9fc);
+  font-size: clamp(26px, 2vw, 32px) !important;
+  line-height: 1.18;
+  font-weight: 650;
+  letter-spacing: -.035em;
+  white-space: normal;
+  overflow: visible;
+  overflow-wrap: normal;
+  word-break: normal;
+  text-overflow: clip;
+}
+.operating-shell[data-workspace-theme] .topbar-title .eyebrow {
+  margin: 0 0 5px;
+  color: var(--ws-blue, #4c82ff) !important;
+  font-size: 10px !important;
+  line-height: 1.4;
+  font-weight: 600;
+  letter-spacing: .09em;
+}
+.operating-shell[data-workspace-theme] .topbar-context-row {
+  grid-column: 1;
+  grid-row: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  min-width: 0;
+}
+.operating-shell[data-workspace-theme] .topbar .owner-workspace-context {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  flex: 0 1 auto;
+  gap: 4px 8px;
+  max-width: 100%;
+  min-width: 0;
+  margin: 0;
+  color: var(--ws-muted, #a9b2c3);
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+.operating-shell[data-workspace-theme] .topbar .owner-workspace-context strong {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  color: var(--ws-ink, #f7f9fc) !important;
+  font-weight: 600;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.operating-shell[data-workspace-theme] .topbar .owner-workspace-context span {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  color: var(--ws-muted, #a9b2c3);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.operating-shell[data-workspace-theme] .topbar .owner-workspace-context span::before {
+  content: "·";
+  margin-right: 8px;
+  color: var(--ws-muted, #a9b2c3);
+}
+.operating-shell[data-workspace-theme] .topbar .source-pill {
+  display: inline-flex !important;
+  flex: 0 1 auto;
+  min-width: 0;
+  min-height: 25px;
+  max-width: 100%;
+  padding: 3px 8px;
+  color: var(--ws-muted, #a9b2c3);
+  background: var(--ws-raised, #0b0f17);
+  border: 1px solid var(--ws-line, rgb(255 255 255 / .1));
+  border-radius: 6px;
+  font-size: 12px !important;
+  line-height: 1.4;
+  font-weight: 500;
+  text-transform: none;
+  white-space: normal;
+  overflow-wrap: normal;
+}
+.operating-shell[data-workspace-theme] .topbar .top-actions {
+  grid-column: 3;
+  grid-row: 1 / span 2;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+}
+.operating-shell[data-workspace-theme] .topbar :is(.mobile-menu, .command-trigger, .notification, .report-import-trigger, .top-actions > .primary) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  min-width: 44px;
+  min-height: 44px;
+  height: 44px;
+  margin: 0;
+  border: 1px solid var(--ws-control, #596579);
+  border-radius: 10px;
+  color: var(--ws-ink, #f7f9fc);
+  background: var(--ws-raised, #0b0f17);
+  font-size: 13px !important;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+  box-shadow: none;
+  transition: background-color 160ms ease, border-color 160ms ease;
+}
+.operating-shell[data-workspace-theme] .topbar :is(.command-trigger, .report-import-trigger, .top-actions > .primary) {
+  width: auto;
+  padding: 0 12px;
+  gap: 8px;
+}
+.operating-shell[data-workspace-theme] .topbar .report-import-trigger {
+  color: var(--ws-on-primary, #fff) !important;
+  background-color: var(--ws-primary, #2f6bff) !important;
+  background-image: none !important;
+  border-color: var(--ws-primary, #2f6bff) !important;
+  white-space: nowrap;
+}
+.operating-shell[data-workspace-theme] .topbar .top-actions > .primary {
+  color: var(--ws-ink, #f7f9fc) !important;
+  background-color: var(--ws-raised, #0b0f17) !important;
+  background-image: none !important;
+  border: 1px solid var(--ws-control, #596579) !important;
+}
+.operating-shell[data-workspace-theme] .topbar .command-trigger {
+  min-width: 44px;
+  justify-content: flex-start;
+}
+.operating-shell[data-workspace-theme] .topbar .command-trigger span {
+  font-size: 13px !important;
+}
+.operating-shell[data-workspace-theme] .topbar .command-trigger kbd {
+  margin-left: 8px;
+  color: var(--ws-muted, #a9b2c3);
+  background: var(--ws-panel, #07090d);
+  border-color: var(--ws-line, rgb(255 255 255 / .1));
+  font-size: 11px;
+}
+.operating-shell[data-workspace-theme] .topbar .top-actions > .primary::before {
+  content: none;
+}
+.operating-shell[data-workspace-theme] .topbar > .notification {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  width: 44px;
+  padding: 0;
+  position: relative;
+}
+.operating-shell[data-workspace-theme] .topbar > .notification > span:not(.owner-alert-count) {
+  display: none;
+}
+.operating-shell[data-workspace-theme] .topbar > .notification .owner-alert-count {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  display: grid;
+  place-items: center;
+  min-width: 19px;
+  width: auto;
+  height: 19px;
+  padding: 0 4px;
+  border: 2px solid var(--ws-panel, #07090d);
+  border-radius: 999px;
+  color: var(--ws-on-primary, #fff);
+  background: var(--ws-primary, #2f6bff);
+  font-size: 10px !important;
+  font-weight: 600;
+  line-height: 1;
+}
+.operating-shell[data-workspace-theme] .topbar > .notification .owner-alert-count::before {
+  content: none;
+}
+.operating-shell[data-workspace-theme] .topbar :is(.mobile-menu, .command-trigger, .notification, .top-actions > .primary):hover {
+  background: var(--ws-selected, #142345);
+  border-color: var(--ws-blue, #4c82ff);
+}
+.operating-shell[data-workspace-theme] .topbar .report-import-trigger:hover:not(:disabled) {
+  background-color: var(--ws-primary-hover, #4c82ff) !important;
+  border-color: var(--ws-primary-hover, #4c82ff) !important;
+}
+.operating-shell[data-workspace-theme] .topbar .top-actions > .primary:hover:not(:disabled) {
+  background-color: var(--ws-selected, #142345) !important;
+  border-color: var(--ws-blue, #4c82ff) !important;
+}
+.operating-shell[data-workspace-theme] .topbar :is(.mobile-menu, .command-trigger, .notification, .report-import-trigger, .top-actions > .primary):focus-visible {
+  outline: 3px solid var(--ws-blue, #4c82ff);
+  outline-offset: 3px;
+}
+.operating-shell[data-workspace-theme] .topbar .report-import-trigger:disabled {
+  opacity: 1;
+  color: var(--ws-muted, #a9b2c3) !important;
+  background-color: var(--ws-raised, #0b0f17) !important;
+  border-color: var(--ws-control, #596579) !important;
+  cursor: not-allowed;
+}
+@media (min-width: 901px) {
+  .operating-shell[data-workspace-theme] .topbar .mobile-menu { display: none !important; }
+}
+@media (max-width: 1240px) {
+  .operating-shell[data-workspace-theme] .topbar .command-trigger { width: 44px; padding: 0; justify-content: center; }
+  .operating-shell[data-workspace-theme] .topbar .command-trigger :is(span, kbd) { display: none; }
+  .operating-shell[data-workspace-theme] .topbar .top-actions > .primary { width: 44px; padding: 0; font-size: 0 !important; }
+  .operating-shell[data-workspace-theme] .topbar .top-actions > .primary::before { content: "+"; font-size: 24px; font-weight: 450; }
+}
+@media (max-width: 900px) {
+  .operating-shell[data-workspace-theme] .topbar {
+    grid-template-columns: minmax(0, 1fr) 44px;
+    grid-template-rows: auto auto auto;
+    align-items: start;
+    gap: 10px 12px;
+    min-height: 0;
+    padding: 12px 16px;
+    padding-top: max(12px, env(safe-area-inset-top));
+  }
+  .operating-shell[data-workspace-theme] .topbar-heading { gap: 10px; align-self: center; }
+  .operating-shell[data-workspace-theme] .topbar-title h1 { font-size: clamp(25px, 4vw, 30px) !important; }
+  .operating-shell[data-workspace-theme] .topbar-title .eyebrow { display: none; }
+  .operating-shell[data-workspace-theme] .topbar .mobile-menu { display: inline-flex !important; width: 44px; flex: 0 0 44px; padding: 0; }
+  .operating-shell[data-workspace-theme] .topbar > .notification { grid-column: 2; grid-row: 1; align-self: center; }
+  .operating-shell[data-workspace-theme] .topbar-context-row { grid-column: 1 / -1; grid-row: 2; gap: 6px 8px; }
+  .operating-shell[data-workspace-theme] .topbar .owner-workspace-context { flex: 1 1 100%; font-size: 13px; }
+  .operating-shell[data-workspace-theme] .topbar .top-actions {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    justify-content: flex-start;
+    gap: 8px;
+    flex-wrap: wrap;
+    width: 100%;
+  }
+  .operating-shell[data-workspace-theme] .topbar .report-import-trigger { flex: 1 1 auto; max-width: 260px; }
+}
+@media (max-width: 374px) {
+  .operating-shell[data-workspace-theme] .topbar { padding-inline: 12px; gap: 10px 8px; }
+  .operating-shell[data-workspace-theme] .topbar-heading { gap: 8px; }
+  .operating-shell[data-workspace-theme] .topbar-title h1 { font-size: 25px !important; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .operating-shell[data-workspace-theme] .topbar * { transition: none !important; }
+}
+html[data-motion="off"] .operating-shell[data-workspace-theme] .topbar * { transition: none !important; }
+@media (forced-colors: active) {
+  .operating-shell[data-workspace-theme] .topbar :is(.mobile-menu, .command-trigger, .notification, .report-import-trigger, .top-actions > .primary) {
+    border: 1px solid ButtonText;
+  }
+}

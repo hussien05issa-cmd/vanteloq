@@ -20,7 +20,8 @@ export function BusinessWorkspaceChoices({ listing, selectedWorkspaceId, busy = 
 }
 
 export function OwnerWorkspaceContext({ businessName, industry, locationName, limitedScope = false }: { businessName: string; industry: string; locationName: string | null; limitedScope?: boolean }) {
-  return <p className="owner-workspace-context" aria-label="Current business and reporting scope"><strong>{businessName}</strong><span>{industry || "Business"}</span><span>{locationName ?? (limitedScope ? "All accessible locations" : "All locations")}</span></p>;
+  const reportingLocation = locationName ?? (limitedScope ? "All accessible locations" : "All locations");
+  return <p className="owner-workspace-context" aria-label="Current business and reporting scope"><strong className="owner-workspace-business" title={businessName}>{businessName}</strong><span className="owner-workspace-industry">{industry || "Business"}</span><span className="owner-workspace-location" title={reportingLocation}>{reportingLocation}</span></p>;
 }
 
 export default function BusinessWorkspaceSelector({ selectedWorkspaceId, compact = false }: { selectedWorkspaceId: string | null; compact?: boolean }) {

@@ -7,7 +7,8 @@ type TurnstileApi = {
   render(container: HTMLElement, options: {
     sitekey: string;
     action: string;
-    theme: "light";
+    theme: "dark";
+    size: "flexible" | "compact";
     callback(token: string): void;
     "error-callback"(code: string): void;
     "expired-callback"(): void;
@@ -40,28 +41,51 @@ export default function TurnstileField({
   const errorCallback = useRef(onError);
   const [attempt, setAttempt] = useState(0);
   const [failed, setFailed] = useState(false);
+  const [widgetSize, setWidgetSize] = useState<"flexible" | "compact" | null>(null);
+  const [verificationStatus, setVerificationStatus] = useState<"loading" | "ready" | "verified" | "failed">("loading");
 
   useEffect(() => { tokenCallback.current = onToken; }, [onToken]);
   useEffect(() => { errorCallback.current = onError; }, [onError]);
 
   useEffect(() => {
-    if (!siteKey || !action || !container.current) return;
+    if (!container.current) return;
+    const element = container.current;
+    // Cloudflare's flexible widget has a supported minimum width of 300px.
+    // Use its compact presentation on narrower forms, without scaling or
+    // clipping the protected iframe or changing the challenge mode.
+    const measure = () => setWidgetSize(element.getBoundingClientRect().width < 300 ? "compact" : "flexible");
+    measure();
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", measure);
+      return () => window.removeEventListener("resize", measure);
+    }
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!siteKey || !action || !container.current || !widgetSize) return;
     let cancelled = false;
     const fail = (message: string) => {
       if (cancelled) return;
       tokenCallback.current("");
       setFailed(true);
+      setVerificationStatus("failed");
       errorCallback.current(message);
     };
     void loadTurnstile().then(() => {
       if (cancelled || !window.turnstile || !container.current || widget.current) return;
+      setVerificationStatus("ready");
       widget.current = window.turnstile.render(container.current, {
         sitekey: siteKey,
         action,
-        theme: "light",
+        theme: "dark",
+        size: widgetSize,
         callback: token => {
           if (cancelled) return;
           setFailed(false);
+          setVerificationStatus("verified");
           tokenCallback.current(token);
         },
         "expired-callback": () => fail("The security check expired. Retry verification to continue."),
@@ -75,20 +99,23 @@ export default function TurnstileField({
       widget.current = null;
       tokenCallback.current("");
     };
-  }, [action, siteKey, attempt]);
+  }, [action, siteKey, attempt, widgetSize]);
 
   useEffect(() => {
     if (resetSignal > 0 && widget.current && window.turnstile) {
       tokenCallback.current("");
+      setVerificationStatus("ready");
       window.turnstile.reset(widget.current);
     }
   }, [resetSignal]);
 
-  return <div className="turnstile-field">
+  return <div className="turnstile-field" data-verification-status={verificationStatus}>
     <span>Security verification</span>
-    <div ref={container} aria-label="Cloudflare security verification"/>
+    <div ref={container} className="turnstile-widget-container" data-size={widgetSize ?? "pending"} aria-label="Cloudflare security verification"/>
+    <p className="turnstile-status" role="status">{verificationStatus === "verified" ? "Security check complete." : verificationStatus === "failed" ? "Security check needs attention." : verificationStatus === "ready" ? "Cloudflare is checking this session." : "Loading security check…"}</p>
     {failed && <button className="auth-secondary" type="button" onClick={() => {
       setFailed(false);
+      setVerificationStatus("loading");
       tokenCallback.current("");
       setAttempt(value => value + 1);
     }}>Retry security verification</button>}

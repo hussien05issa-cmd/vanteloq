@@ -1,0 +1,363 @@
+/* Shared premium tokens are defined once in premium-tokens.css.
+   Existing financial, provider and permission components retain their own logic. */
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme="dark"],
+:is(.billing-onboarding-gate,.legal-acceptance-gate,.setup-shell,.workspace-entry-loading,.entry-loading) {
+  color-scheme: dark;
+  --ws-canvas: var(--premium-canvas);
+  --ws-panel: var(--premium-panel);
+  --ws-raised: var(--premium-raised);
+  --ws-input: var(--premium-input);
+  --ws-ink: var(--premium-ink);
+  --ws-muted: var(--premium-secondary);
+  --ws-subtle: var(--premium-muted);
+  --ws-line: var(--premium-border);
+  --ws-control: #64718A;
+  --ws-blue: #79A5FF;
+  --ws-purple: var(--ws-blue);
+  --ws-primary: #285FE6;
+  --ws-on-primary: #FFFFFF;
+  --ws-primary-hover: #2457D5;
+  --ws-positive: #5CE0AC;
+  --ws-negative: #FF8F9C;
+  --ws-warning: #F5B366;
+  --ws-positive-bg: #08261C;
+  --ws-negative-bg: #2B1119;
+  --ws-warning-bg: #2B2010;
+  --ws-selected: #102346;
+  --ws-shadow: 0 12px 32px #00000038;
+}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme="light"] {
+  color-scheme: light;
+  --ws-canvas: #F3F6FA;
+  --ws-panel: #FFFFFF;
+  --ws-raised: #EDF2F8;
+  --ws-input: #F8FAFD;
+  --ws-ink: #122039;
+  --ws-muted: #4B5B72;
+  --ws-subtle: #56657A;
+  --ws-line: #CAD3E0;
+  --ws-control: #748198;
+  --ws-blue: #235DC2;
+  --ws-purple: var(--ws-blue);
+  --ws-primary: #285FE6;
+  --ws-on-primary: #FFFFFF;
+  --ws-primary-hover: #2457D5;
+  --ws-positive: #087548;
+  --ws-negative: #AE3045;
+  --ws-warning: #805013;
+  --ws-positive-bg: #EAF7F0;
+  --ws-negative-bg: #FFF0F2;
+  --ws-warning-bg: #FFF5E5;
+  --ws-selected: #E4EDFD;
+  --ws-shadow: 0 8px 24px #172B4810;
+}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] {
+  font-family: var(--premium-font,var(--font-product));
+  font-size: 15px;
+  letter-spacing: 0;
+  line-height: 1.55;
+  color: var(--ws-ink);
+  background: var(--ws-canvas);
+}
+/* Earlier shared layers use these aliases in important declarations. Resolve
+   them at the active theme rather than leaving a pale legacy card boundary. */
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme],
+:is(.billing-onboarding-gate,.legal-acceptance-gate,.setup-shell,.workspace-entry-loading,.entry-loading) {
+  --vql-canvas: var(--ws-canvas); --vql-surface: var(--ws-panel);
+  --vql-ink: var(--ws-ink); --vql-muted: var(--ws-muted); --vql-subtle: var(--ws-muted);
+  --vql-line: var(--ws-line); --vql-line-soft: var(--ws-line);
+  --vql-blue-700: var(--ws-primary); --vql-blue-600: var(--ws-primary); --vql-blue-100: var(--ws-selected);
+  --vql-navy-950: var(--ws-panel); --vql-navy-900: var(--ws-raised); --vql-navy-800: var(--ws-selected);
+  --vql-success: var(--ws-positive); --vql-success-bg: var(--ws-positive-bg);
+  --vql-danger: var(--ws-negative); --vql-danger-bg: var(--ws-negative-bg);
+  --vql-warning: var(--ws-warning); --vql-warning-bg: var(--ws-warning-bg);
+  --vql-unavailable: var(--ws-muted); --vql-radius: 20px; --vql-shadow: var(--ws-shadow);
+  --readable-muted: var(--ws-muted); --readable-subtle: var(--ws-muted);
+  --readable-line: var(--ws-line); --readable-line-soft: var(--ws-line); --readable-shadow: var(--ws-shadow);
+}
+.operating-shell[data-workspace-theme] {
+  min-height: 100dvh;
+  --overview-accent: var(--ws-blue);
+}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(
+  .card,.dense-panel,.executive-kpi,.executive-detail,.executive-insights,
+  .executive-operating-ring,.executive-summary-panels>article,.bookloq-card,
+  .integration-card,.settings-content,.control-surface,.dashboard-drawer
+) { border-radius: 20px; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(
+  .executive-summary-panels>article,.executive-empty-message,.executive-industry-guide,
+  .executive-industry-guide li,.executive-insight-empty>span,.report-inspector,
+  .csv-import,.manual-entry,.document-email-settings,.industry-settings
+) { background: var(--ws-panel); color: var(--ws-ink); border-color: var(--ws-line); box-shadow: none; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(
+  .page-intro h2,.workspace-titlebar h1,.bookloq-page-intro h1,.bookloq-page-intro h2
+) { font-size: clamp(30px,2.3vw,38px); font-weight: 680; line-height: 1.16; letter-spacing: -.035em; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(
+  .page-intro p,.bookloq-page-intro>span,.workspace-titlebar>div>span
+) { font-size: 16px; line-height: 1.65; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(
+  .card h3,.dense-panel h3,.executive-detail h3,.executive-insights h3,
+  .executive-summary-panels h3,.bookloq-card-head h3,.integration-card h3
+) { font-weight: 650; letter-spacing: -.025em; line-height: 1.3; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(
+  .settings-form label,.field-label,.settings-grid label,.executive-customize label
+) { font-size: 14px; font-weight: 580; line-height: 1.45; letter-spacing: 0; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(button,[role="button"]) {
+  min-height: 44px !important;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 580;
+  line-height: 1.4;
+  letter-spacing: 0;
+  text-transform: none;
+  touch-action: manipulation;
+  transition-duration: var(--premium-duration,160ms);
+}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(
+  .icon-button,.surface-close,.table-action,.bookloq-display-controls button,
+  .executive-widget-list button,.dashboard-widget-controls button
+) { min-width: 44px; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(input,select,textarea):not([type="checkbox"]):not([type="radio"]) {
+  min-height: 44px !important;
+  background: var(--ws-input) !important;
+  color: var(--ws-ink) !important;
+  border-color: var(--ws-control) !important;
+  border-radius: 12px;
+  font-family: inherit;
+  font-size: 15px;
+}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(input,textarea)::placeholder { color: var(--ws-muted); opacity: 1; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(input,select,textarea):not([type="checkbox"]):not([type="radio"]):is([aria-invalid="true"],:user-invalid) {
+  border-color: var(--ws-negative) !important; background: var(--ws-negative-bg) !important;
+}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(button,input,select,textarea):disabled {
+  opacity: 1 !important;
+  color: var(--ws-muted) !important;
+  background: var(--ws-raised) !important;
+  border-color: var(--ws-control) !important;
+  cursor: not-allowed;
+}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(button,a,input,select,textarea,summary,[tabindex]):focus-visible {
+  outline: 3px solid var(--ws-blue) !important;
+  outline-offset: 3px;
+}
+/* The widget is a real metric button. Quiet depth does not obscure its data. */
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .executive-overview .executive-kpi {
+  min-width: 0;
+  min-height: 178px !important;
+  padding: 20px !important;
+  text-align: left;
+  background: var(--ws-panel) !important;
+  box-shadow: var(--ws-shadow) !important;
+}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .executive-overview .executive-kpi.selected {
+  border-color: var(--ws-blue) !important;
+  box-shadow: inset 3px 0 0 var(--ws-blue),var(--ws-shadow) !important;
+}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .executive-kpi-label { font-size: 14px !important; font-weight: 580; line-height: 1.4 !important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .executive-overview .executive-kpi strong { font-size: clamp(25px,8cqi,34px); font-weight: 680; line-height: 1.2; margin-block: 10px 8px; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.executive-change,.executive-source,.executive-source small,.executive-prior,.executive-target) { font-size: 12px !important; line-height: 1.5; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.bookloq-kpi>span,.bookloq-kpi>small,.bq-cash-metrics article>span) { font-size: 14px !important; line-height: 1.5; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .executive-source { border-top: 0; padding-top: 8px; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .executive-empty-spark i { background: var(--ws-line); }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .executive-overview .executive-advisor { border-color: var(--ws-line) !important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .executive-status-frame .executive-insights { text-align: left; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .executive-trend-empty { grid-template-rows: minmax(210px,250px) 24px; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .executive-empty-plot { border-color: var(--ws-line); }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .executive-empty-grid {
+  background-image: linear-gradient(var(--ws-line) 1px,transparent 1px),linear-gradient(90deg,var(--ws-line) 1px,transparent 1px);
+  opacity: .5;
+}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .executive-empty-message {
+  max-width: min(100%,350px);
+  margin: 12px;
+  padding: 16px;
+  border: 0;
+  background: var(--ws-panel) !important;
+  text-align: left;
+  font-size: 14px;
+  line-height: 1.6;
+}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .executive-empty-message p { font-size: 14px; line-height: 1.6; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .executive-commerce-layout .executive-chart svg { min-height: 0; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.executive-insight-empty,.executive-insight-empty p) { font-size: 15px; line-height: 1.65; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.business-pulse-control,.control-surface) { box-shadow: var(--ws-shadow) !important; backdrop-filter: none; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .business-pulse-control[data-pulse-state="review"] { --pulse-colour: var(--ws-blue); --pulse-bg: var(--ws-selected); }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .pulse-status>i { box-shadow: none; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .ring-margin .ring-value { stroke: #6FD8D3; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme="light"] .ring-margin .ring-value { stroke: #087A80; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .interactive-goal-ring { --ring-ink: var(--ws-blue); }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .interactive-goal-ring.ring-tone-1 { --ring-ink: #6FD8D3; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme="light"] .interactive-goal-ring.ring-tone-1 { --ring-ink: #087A80; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .interactive-goal-ring.ring-tone-2 { --ring-ink: var(--ws-positive); }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.operating-goal-list i,.goal-progress-track>span) { background: var(--ws-blue); }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.operating-goal-list i.ring-margin,.goal-progress-track.ring-tone-1>span) { background: #6FD8D3; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme="light"] :is(.operating-goal-list i.ring-margin,.goal-progress-track.ring-tone-1>span) { background: #087A80; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.operating-goal-list i.ring-cash,.goal-progress-track.ring-tone-2>span) { background: var(--ws-positive); }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .interactive-ring-value { transition-duration: var(--premium-duration,160ms); }
+/* Conversation appearance remains an independent saved light/dark/system setting. */
+.operating-shell .ai-studio[data-ai-theme="dark"] {
+  --ai-canvas: var(--premium-canvas); --ai-panel: var(--premium-panel);
+  --ai-raised: var(--premium-raised); --ai-ink: var(--premium-ink);
+  --ai-muted: var(--premium-secondary); --ai-purple: #79A5FF; --ai-blue: #79A5FF;
+  --ai-line: var(--premium-border); --ai-control: #64718A; --ai-focus: #79A5FF; --ai-error: #FF8F9C;
+}
+.operating-shell .ai-studio[data-ai-theme="light"] {
+  --ai-canvas: #F3F6FA; --ai-panel: #FFFFFF; --ai-raised: #EDF2F8;
+  --ai-ink: #122039; --ai-muted: #4B5B72; --ai-purple: #235DC2; --ai-blue: #235DC2;
+  --ai-line: #CAD3E0; --ai-control: #748198; --ai-focus: #235DC2; --ai-error: #AE3045;
+}
+.operating-shell .ai-studio[data-ai-theme] :is(h2,h3,h4,strong,b,label,legend,dt,.ai-user-message,.ai-answer-content,.ai-answer-content p,.ai-answer-content li,.ai-answer-content th,.ai-answer-content td,.ai-response-body) { color: var(--ai-ink) !important; }
+.operating-shell .ai-studio[data-ai-theme] :is(.ai-welcome>p,.ai-consent,.ai-consent>span,.ai-submit-help,.ai-character-count,.ai-response-footer p,.ai-settings p,.ai-settings-header span,.ai-saved-chats time,.ai-attachment-list small,.ai-powered-by,.ai-help-scope,.ai-sent-files) { color: var(--ai-muted) !important; }
+.operating-shell .ai-studio[data-ai-theme] :is(.ai-header-tools button,.ai-prompt-grid button,.ai-saved-chats button,.ai-settings-header>button,.ai-response-actions button,.ai-attach-button,.ai-dictation-button,.ai-response-error button,.ai-preference-actions button,.ai-privacy-actions button) { background: var(--ai-panel) !important; color: var(--ai-ink) !important; border-color: var(--ai-control) !important; }
+.operating-shell .ai-studio[data-ai-theme] :is(.ai-header-tools button,.ai-prompt-grid button,.ai-saved-chats button,.ai-attach-button,.ai-dictation-button):hover:not(:disabled) { background: var(--ai-raised) !important; border-color: var(--ai-blue) !important; }
+.operating-shell .ai-studio[data-ai-theme] :is(.ai-user-message,.ai-attachment-notice,.ai-settings .ai-provider-pending,.ai-dashboard-action,.ai-dictation-review,.ai-dictation-feedback) { background: var(--ai-raised) !important; color: var(--ai-ink) !important; border-color: var(--ai-line) !important; }
+.operating-shell .ai-studio[data-ai-theme] .advisor-thinking { background: var(--ai-raised) !important; color: var(--ai-ink) !important; border-color: var(--ai-line) !important; box-shadow: none; }
+.operating-shell .ai-studio[data-ai-theme] :is(.ai-provider-label select,.ai-preference-grid select,.ai-appearance select,.ai-settings input:not([type="checkbox"]),.ai-settings select) { background: var(--ai-raised) !important; color: var(--ai-ink) !important; border-color: var(--ai-control) !important; }
+.operating-shell .ai-studio[data-ai-theme] :is(.ai-text-button,.ai-response-footer button,.ai-response-footer a,.ai-settings a,.ai-response-sources a) { color: var(--ai-blue) !important; }
+.operating-shell .ai-studio[data-ai-theme] :is(.ai-consent-error,.ai-response-error>span) { color: var(--ai-error) !important; }
+.operating-shell .ai-studio[data-ai-theme] :is(button,input,select,textarea):disabled { background: var(--ai-raised) !important; color: var(--ai-muted) !important; border-color: var(--ai-control) !important; }
+.operating-shell .ai-studio[data-ai-theme] :is(button,summary,select,a,textarea,[tabindex]):focus-visible { outline: 3px solid var(--ai-focus) !important; outline-offset: 3px; }
+.operating-shell .ai-studio[data-ai-theme] :is(.ai-input-toolbar .ai-send,.ai-input-toolbar .ai-stop,.ai-dashboard-action-controls button:first-child) {
+  background: #285FE6 !important; border-color: #285FE6 !important; color: #FFFFFF !important;
+}
+.operating-shell .ai-studio[data-ai-theme] :is(.ai-input-toolbar .ai-send,.ai-input-toolbar .ai-stop,.ai-dashboard-action-controls button:first-child):hover:not(:disabled) { background: #2457D5 !important; }
+.operating-shell .ai-studio[data-ai-theme] :is(.ai-input-toolbar .ai-send,.ai-dashboard-action-controls button):disabled { background: var(--ai-raised) !important; border-color: var(--ai-control) !important; color: var(--ai-muted) !important; }
+.operating-shell .ai-studio[data-ai-theme] .ai-compose-area textarea { min-height: 56px; background: transparent !important; color: var(--ai-ink) !important; border-radius: 0; }
+.operating-shell .ai-studio[data-ai-theme] .ai-compose-area textarea::placeholder { color: var(--ai-muted); opacity: 1; }
+.operating-shell .ai-studio[data-ai-theme] :is(.ai-answer-content p,.ai-answer-content li,.ai-response-body) { font-size: 16px; line-height: 1.75; }
+.operating-shell .ai-studio[data-ai-theme] :is(.ai-submit-help,.ai-consent,.ai-consent>span,.ai-attachment-notice,.ai-response-footer p) { font-size: 13px !important; line-height: 1.55; }
+/* Authenticated setup gates use the same palette before a workspace is opened. */
+:is(.billing-onboarding-gate,.legal-acceptance-gate,.setup-shell,.workspace-entry-loading,.entry-loading) {
+  min-height: 100dvh; background: var(--ws-canvas); color: var(--ws-ink);
+  font-family: var(--premium-font,var(--font-product));
+  padding-bottom: max(24px,env(safe-area-inset-bottom));
+}
+:is(.billing-onboarding-gate,.legal-acceptance-gate)>section,
+.setup-shell>aside { background: var(--ws-panel); color: var(--ws-ink); border-color: var(--ws-line); box-shadow: var(--ws-shadow); }
+:is(.billing-onboarding-gate,.legal-acceptance-gate)>section>header,
+:is(.billing-onboarding-gate,.legal-acceptance-gate)>section>footer { background: var(--ws-panel); color: var(--ws-ink); border-color: var(--ws-line); }
+:is(.billing-onboarding-gate,.legal-acceptance-gate,.setup-shell) :is(h1,h2,h3,b,strong,label,legend) { color: var(--ws-ink); }
+:is(.billing-onboarding-gate,.legal-acceptance-gate) :is(p,small,li),
+.setup-shell :is(.setup-message>span,.setup-step>span,.setup-security,.field-hint,.form-legend,.setup-progress) { color: var(--ws-muted); }
+:is(.billing-onboarding-gate,.legal-acceptance-gate,.setup-shell) :is(.billing-onboarding-security,.billing-onboarding-unavailable,.billing-onboarding-message,.billing-product-choice,.billing-addon,.billing-internal,.legal-acceptance-links a,.onboarding-legal-consent,.billing-plan-option,.verified-identity,.setup-review,.onboarding-kpi-guide,.industry-resume) { background: var(--ws-raised); color: var(--ws-ink); border-color: var(--ws-line); box-shadow: none; }
+:is(.billing-onboarding-gate,.legal-acceptance-gate,.setup-shell) :is(input,select,textarea):not([type="checkbox"]):not([type="radio"]) { min-height: 54px; background: var(--ws-input); color: var(--ws-ink); border-color: var(--ws-control); font-size: 16px; border-radius: 12px; }
+:is(.billing-onboarding-gate,.legal-acceptance-gate,.setup-shell) :is(input,textarea)::placeholder { color: var(--ws-muted); opacity: 1; }
+:is(.billing-onboarding-gate,.legal-acceptance-gate,.setup-shell) :is(button,a,input,select,textarea):focus-visible { outline: 3px solid var(--ws-blue); outline-offset: 3px; }
+:is(.billing-onboarding-gate,.legal-acceptance-gate,.setup-shell) button { min-height: 44px; font-family: inherit; font-size: 14px; background: var(--ws-raised); color: var(--ws-ink); border-color: var(--ws-control); }
+:is(.billing-onboarding-gate,.legal-acceptance-gate,.setup-shell) :is(a,.billing-plan-badge,.setup-step>p,.setup-message>p,.billing-onboarding-copy>p) { color: var(--ws-blue); }
+:is(.billing-onboarding-gate,.legal-acceptance-gate,.setup-shell) :is(.billing-onboarding-submit,.setup-actions .continue,.primary),
+.legal-acceptance-gate>section>button { background: var(--ws-primary); color: #FFFFFF; border-color: var(--ws-primary); }
+:is(.billing-onboarding-gate,.legal-acceptance-gate,.setup-shell) :is(button,input,select,textarea):disabled { background: var(--ws-raised); color: var(--ws-muted); border-color: var(--ws-control); opacity: 1; }
+:is(.billing-onboarding-gate,.legal-acceptance-gate,.setup-shell) :is(.setup-error,.billing-onboarding-message.error,.field-error) { background: var(--ws-negative-bg); color: var(--ws-negative); border-color: var(--ws-negative); }
+:is(.billing-onboarding-gate,.legal-acceptance-gate,.setup-shell) label { font-size: 14px !important; line-height: 1.5; }
+:is(.billing-onboarding-gate,.legal-acceptance-gate,.setup-shell) :is(input,select,textarea):not([type="checkbox"]):not([type="radio"]) { font-size: 16px !important; }
+:is(.billing-onboarding-gate,.legal-acceptance-gate,.setup-shell) :is(input,select,textarea):not([type="checkbox"]):not([type="radio"]):is([aria-invalid="true"],:user-invalid) { border-color: var(--ws-negative) !important; background: var(--ws-negative-bg) !important; }
+.setup-shell .setup-step h2 { font-size: clamp(30px,3vw,38px); font-weight: 680; letter-spacing: -.035em; }
+.setup-shell .setup-step>.form-grid { grid-template-columns: minmax(0,1fr); }
+.setup-shell .setup-progress>i { background: var(--ws-line); }
+.setup-shell .setup-progress>i b { background: var(--premium-blue); }
+.setup-shell aside li.active>b,.setup-shell aside li.done>b { background: var(--ws-selected); color: var(--ws-blue); border-color: var(--ws-blue); }
+.setup-shell aside li.active span,.setup-shell aside li.done span { color: var(--ws-ink); }
+.billing-onboarding-gate .billing-plan-option.selected { background: var(--ws-selected); border-color: var(--ws-blue); box-shadow: inset 0 0 0 1px var(--ws-blue); }
+.billing-onboarding-gate :is(.billing-onboarding-copy>span,.billing-onboarding-security>span,.billing-onboarding-unavailable>span,.billing-plans small,.billing-plans p,.billing-addon small) { color: var(--ws-muted); }
+/* A full brand asset has a generic square wrapper. Keep the BookLoQ lockup
+   within the sidebar's horizontal slot without changing or cropping the logo. */
+.operating-shell[data-workspace-theme] .bookloq-side .bookloq-brand-lockup {
+  display: grid; width: 142px; height: 44px; min-width: 142px; max-width: 142px;
+  flex-shrink: 0; overflow: hidden; border-radius: 6px; box-shadow: none;
+}
+.operating-shell[data-workspace-theme] .bookloq-side .bookloq-brand-lockup img {
+  display: block; width: 100%; height: 100%; max-width: 100%; max-height: 44px;
+  object-fit: contain; object-position: center; transform: none;
+}
+.operating-shell[data-workspace-theme] .bookloq-side .bookloq-search {
+  background: var(--ws-input) !important; color: var(--ws-muted) !important;
+  border-color: var(--ws-control) !important;
+}
+.operating-shell[data-workspace-theme] .bookloq-side .bookloq-search :is(svg,.workspace-icon) { color: var(--ws-muted) !important; }
+@media(min-width: 621px) {
+  .operating-shell[data-workspace-theme] .bookloq-collapsed .bookloq-side .bookloq-brand-lockup { display: none; }
+}
+/* Statement import is lazy loaded. Its component paint must not restore pale
+   controls after the active workspace theme has already been resolved. */
+.operating-shell[data-workspace-theme] .bookloq-import-actions .bookloq-document-actions>button:not(.bookloq-primary),
+.operating-shell[data-workspace-theme] .statement-import button:not(.bookloq-primary) {
+  background: var(--ws-raised) !important; color: var(--ws-ink) !important;
+  border-color: var(--ws-control) !important; box-shadow: none;
+}
+.operating-shell[data-workspace-theme] .bookloq-import-actions .bookloq-document-actions>button:not(.bookloq-primary):hover:not(:disabled),
+.operating-shell[data-workspace-theme] .statement-import button:not(.bookloq-primary):hover:not(:disabled) {
+  background: var(--ws-selected) !important; border-color: var(--ws-blue) !important;
+}
+.operating-shell[data-workspace-theme] .bookloq-card.statement-import {
+  background: var(--ws-panel) !important; color: var(--ws-ink) !important; border-color: var(--ws-line) !important;
+}
+.operating-shell[data-workspace-theme] .bookloq-import-actions .bookloq-document-actions>button:disabled,
+.operating-shell[data-workspace-theme] .statement-import button:disabled {
+  background: var(--ws-raised) !important; color: var(--ws-muted) !important;
+  border-color: var(--ws-control) !important; opacity: 1 !important;
+}
+/* Disclosure and portal contents have their own legacy card paint. Resolve
+   these exact surfaces against the theme rather than recolouring assets. */
+.operating-shell[data-workspace-theme] .data-hub .provider-parity-contract,
+.operating-shell[data-workspace-theme] .data-hub .provider-parity-contract>summary,
+.operating-shell[data-workspace-theme] .data-hub .provider-parity-contract>header,
+.operating-shell[data-workspace-theme] .data-hub .provider-capability-list>article {
+  background: var(--ws-raised) !important; color: var(--ws-ink) !important;
+  border-color: var(--ws-line) !important; box-shadow: none;
+}
+.operating-shell[data-workspace-theme] .data-hub .provider-parity-contract>summary:hover { background: var(--ws-selected) !important; }
+.operating-shell[data-workspace-theme] .data-hub .provider-parity-contract :is(h3,.provider-capability-list>article>span) { color: var(--ws-ink) !important; }
+.operating-shell[data-workspace-theme] .data-hub .provider-parity-contract :is(p,header>div>span) { color: var(--ws-muted) !important; }
+.workspace-theme-scope[data-workspace-theme] :is(.metric-detail-values>article,.metric-detail-state,.pulse-metrics>article,.pulse-empty,.executive-finance-grid>article) {
+  background: var(--ws-raised) !important; color: var(--ws-ink) !important; border-color: var(--ws-line) !important;
+}
+.workspace-theme-scope[data-workspace-theme] .metric-detail-values>article>strong { color: var(--ws-ink) !important; }
+.workspace-theme-scope[data-workspace-theme] :is(.metric-detail-values>article>span,.metric-detail-context,.metric-detail-formula) { color: var(--ws-muted) !important; font-size: 14px; line-height: 1.6; }
+.workspace-theme-scope[data-workspace-theme] .metric-expanded-content .executive-source-details { border-color: var(--ws-line); }
+.operating-shell[data-workspace-theme] .executive-overview .executive-filters select:not([multiple]):not([size]) {
+  min-width: 0; width: 100%; font-size: 14px !important; padding-inline: 10px 28px;
+}
+@media(max-width: 360px) {
+  .operating-shell[data-workspace-theme] .executive-overview .executive-filters { display: grid; grid-template-columns: minmax(0,1fr); }
+}
+@container executive (max-width: 540px) {
+  .executive-commerce-layout .executive-kpis { display: grid; grid-template-columns: minmax(0,1fr); overflow: visible; }
+  .executive-commerce-layout .executive-kpi.size-wide { grid-column: auto; }
+}
+@media(max-width: 540px) {
+  :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .executive-kpis { display: grid; grid-template-columns: minmax(0,1fr); overflow: visible; padding: 0; }
+  :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .executive-kpi.size-wide { grid-column: auto; }
+  :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .executive-trend-empty { grid-template-columns: 20px minmax(0,1fr); grid-template-rows: minmax(210px,230px) 24px; gap: 6px; }
+  :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .executive-empty-message { padding: 14px 10px; margin: 8px; }
+  :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .executive-refresh-notice { flex-wrap: wrap; align-items: flex-start; gap: 12px; }
+  :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .executive-refresh-notice>span { min-width: 0; }
+  :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .executive-refresh-notice button { justify-self: start; }
+  .operating-shell[data-workspace-theme] .content { padding-bottom: max(32px,calc(env(safe-area-inset-bottom) + 24px)); }
+  :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .executive-commerce-layout .executive-detail { padding: 18px; }
+  :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .executive-insights { text-align: left; }
+  :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .workspace-chart-empty { min-height: 200px; padding: 20px; }
+  .operating-shell .ai-studio[data-ai-theme] .ai-compose-area textarea { font-size: 16px; }
+}
+@media(prefers-reduced-motion: reduce) {
+  :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(button,.executive-kpi,.control-surface,.executive-chart,.pulse-status),
+  :is(.billing-onboarding-gate,.legal-acceptance-gate,.setup-shell) :is(button,input,select,textarea) { transition: none !important; }
+}
+@media(forced-colors: active) {
+  :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme],
+  :is(.billing-onboarding-gate,.legal-acceptance-gate,.setup-shell,.workspace-entry-loading,.entry-loading) {
+    --ws-canvas: Canvas; --ws-panel: Canvas; --ws-raised: Canvas; --ws-input: Canvas;
+    --ws-ink: CanvasText; --ws-muted: CanvasText; --ws-subtle: CanvasText;
+    --ws-line: ButtonBorder; --ws-control: ButtonBorder; --ws-blue: LinkText; --ws-purple: Highlight;
+    --ws-primary: ButtonFace; --ws-on-primary: ButtonText; --ws-primary-hover: ButtonFace;
+    --ws-positive: CanvasText; --ws-negative: CanvasText; --ws-warning: CanvasText;
+    --ws-positive-bg: Canvas; --ws-negative-bg: Canvas; --ws-warning-bg: Canvas; --ws-selected: Canvas; --ws-shadow: none;
+  }
+  .operating-shell .ai-studio[data-ai-theme] { --ai-canvas: Canvas; --ai-panel: Canvas; --ai-raised: Canvas; --ai-ink: CanvasText; --ai-muted: CanvasText; --ai-purple: LinkText; --ai-blue: LinkText; --ai-line: ButtonBorder; --ai-control: ButtonBorder; --ai-focus: Highlight; --ai-error: CanvasText; }
+  :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .interactive-goal-ring.ring-tone-1 { --ring-ink: CanvasText; }
+  :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.operating-goal-list i.ring-margin,.goal-progress-track.ring-tone-1>span) { background: CanvasText; }
+  .operating-shell .ai-studio[data-ai-theme] :is(.ai-input-toolbar .ai-send,.ai-input-toolbar .ai-stop,.ai-dashboard-action-controls button:first-child),
+  :is(.billing-onboarding-gate,.legal-acceptance-gate,.setup-shell) :is(.billing-onboarding-submit,.setup-actions .continue,.primary),
+  .legal-acceptance-gate>section>button { background: ButtonFace !important; color: ButtonText !important; border-color: ButtonBorder !important; }
+}

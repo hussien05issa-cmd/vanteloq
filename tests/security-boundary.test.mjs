@@ -227,7 +227,7 @@ test("reported medium-risk routes keep location, permission, and data-integrity 
   assert.match(shopifyLock, /ON CONFLICT\(shop_domain\) DO NOTHING/);
   assert.match(shopifyLock, /owner\.organizationId !== organizationId/);
   assert.match(shopifyMigration, /shop_domain.*PRIMARY KEY/s);
-  assert.match(shopifySync, /row_number\(\) OVER \(PARTITION BY external_sale_id ORDER BY staged_at DESC, id DESC\)/);
+  assert.match(shopifySync, /row_number\(\) OVER \(PARTITION BY external_sale_id ORDER BY staged_at DESC,\s*id DESC\)/);
   assert.match(moneris, /domainPrefix: null/);
   assert.doesNotMatch(moneris, /domainPrefix: credentials\.environment/);
 

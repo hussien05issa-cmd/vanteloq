@@ -18,6 +18,9 @@ import "./owner-pathways.css";
 import "./sidebar-polish.css";
 import "./workspace-appearance.css";
 import "./workspace-contrast.css";
+import "./premium-tokens.css";
+import "./premium-workspace.css";
+import "./premium-header.css";
 import { useWorkspaceAppearance } from "./workspace-appearance";
 import BusinessWorkspaceSelector, { OwnerWorkspaceContext } from "./business-workspace-selector";
 import { workspaceViewFromHash, workspaceViewHash } from "../domain/owner-navigation";
@@ -1266,7 +1269,9 @@ export default function VanteloqApp({
       )}
       <section className="main-panel" tabIndex={-1} aria-label={`${workspaceViewLabel(view)} workspace`}>
         <header className="topbar">
+          <div className="topbar-heading">
           <button
+            type="button"
             className="mobile-menu"
             aria-label={mobileNavOpen ? "Close navigation" : "Open navigation"}
             aria-expanded={mobileNavOpen}
@@ -1280,13 +1285,23 @@ export default function VanteloqApp({
               {view === "Dashboard" ? "OWNER COMMAND CENTRE" : view === "BookLoQ" || view === "Profit" || view === "Cash" || view === "Bookkeeping" ? "BOOKLOQ FINANCE" : "VANTELOQ WORKSPACE"}
             </p>
             <h1>{view === "Dashboard" ? "Dashboard" : view === "Profit" ? "BookLoQ · Reports" : view === "Cash" ? "BookLoQ · Cash Flow" : view === "Bookkeeping" ? "BookLoQ · Transactions" : workspaceViewLabel(view)}</h1>
-            <OwnerWorkspaceContext businessName={workspaceName} industry={businessIndustry} locationName={activeLocationId ? locations.find(location => location.id === activeLocationId)?.name ?? "Selected location" : null} limitedScope={appRole !== "owner" && appRole !== "admin"}/>
           </div>
-          <div className="top-actions">
-            {!!importChoices.length && <button type="button" className="report-import-trigger" disabled={loading || Boolean(error)} onClick={() => setReportImportsOpen(true)}><WorkspaceIcon name="Documents"/><span>Import reports</span></button>}
-            <button className="command-trigger" onClick={() => setCommandOpen(true)} aria-label="Open workspace search"><WorkspaceIcon name="Search"/><span>Search workspace</span><kbd>⌘K</kbd></button>
+          </div>
+          <button
+            type="button"
+            className="icon-button notification"
+            aria-label={data?.ownerBriefing?.criticalCount ? `Open alerts, ${data.ownerBriefing.criticalCount} critical` : "Open alerts"}
+            aria-expanded={notificationsOpen}
+            onClick={() => setNotificationsOpen((value) => !value)}
+          >
+            <WorkspaceIcon name="Alerts"/><span aria-hidden="true">Alerts</span>
+            {!!data?.ownerBriefing?.criticalCount && <span className="owner-alert-count" aria-hidden="true">{data.ownerBriefing.criticalCount}</span>}
+          </button>
+          <div className="topbar-context-row">
+            <OwnerWorkspaceContext businessName={workspaceName} industry={businessIndustry} locationName={activeLocationId ? locations.find(location => location.id === activeLocationId)?.name ?? "Selected location" : null} limitedScope={appRole !== "owner" && appRole !== "admin"}/>
             <span
               className={`source-pill ${loading || error || data?.source.syncing ? "pending" : data?.liveSource.lastSuccessfulSyncAt ? "current" : data?.source.freshness ?? "missing"}`}
+              role="status"
               aria-busy={loading || Boolean(data?.source.syncing)}
             >
               {loading ? "Loading records…" : error ? "Records unavailable" : data?.source.syncing ? "Syncing source records" : data?.liveSource.lastSuccessfulSyncAt
@@ -1295,16 +1310,15 @@ export default function VanteloqApp({
                 ? `${humanizeIdentifier(data.source.freshness)} data`
                 : "No data"}
             </span>
-            <button
-              className="icon-button notification"
-              aria-label={data?.ownerBriefing?.criticalCount ? `Open alerts, ${data.ownerBriefing.criticalCount} critical` : "Open alerts"}
-              onClick={() => setNotificationsOpen((value) => !value)}
-            >
-              <WorkspaceIcon name="Alerts"/><span aria-hidden="true">Alerts</span>
-              {!!data?.ownerBriefing?.criticalCount && <span className="owner-alert-count" aria-hidden="true">{data.ownerBriefing.criticalCount}</span>}
-            </button>
+          </div>
+          <div className="top-actions" role="group" aria-label="Workspace actions">
+            {!!importChoices.length && <button type="button" className="report-import-trigger" disabled={loading || Boolean(error)} onClick={() => setReportImportsOpen(true)}><WorkspaceIcon name="Documents"/><span>Import reports</span></button>}
+            <button type="button" className="command-trigger" onClick={() => setCommandOpen(true)} aria-label="Open workspace search"><WorkspaceIcon name="Search"/><span>Search workspace</span><kbd>⌘K</kbd></button>
             {subscriptionFeatures.includes("operations.basic") && appPermissions.includes("operations.manage") && <button
+              type="button"
               className="primary"
+              aria-label="Create a task"
+              title="Create a task"
               onClick={() =>
                 createTask({
                   title: "",
