@@ -15,6 +15,9 @@ async function postAtomicBatch(database: ReturnType<typeof getD1>, statements: D
   try {
     await database.batch(statements);
   } catch (error) {
+    if (error instanceof Error && error.message.includes("BANK_JOURNAL_RETAINED")) {
+      throw new ApiError(409, "BANK_CORRECTION_REQUIRED", "Open Banking or Reconciliation and review this entry's bank accounting history. Reopen the latest statement if it is complete, then release its ledger match or use the bank reversal action to correct a posted movement.");
+    }
     if (error instanceof Error && error.message.includes("ACCOUNTING_PERIOD_UNAVAILABLE")) {
       throw new ApiError(409, "ACCOUNTING_PERIOD_UNAVAILABLE", "The accounting period changed before posting. Refresh and select an open period.");
     }
@@ -136,6 +139,15 @@ export async function PATCH(request: Request) {
       total_debit_cents totalDebitCents, total_credit_cents totalCreditCents
       FROM journal_entries WHERE organization_id = ? AND id = ?`).bind(context.organizationId, body.entryId).first<{ id: string; entryNumber: string; status: string; currency: string; totalDebitCents: number; totalCreditCents: number }>();
     if (!original || original.status !== "posted") return jsonResponse({ error: { code: "JOURNAL_NOT_REVERSIBLE", message: "Only a posted, unreversed journal can be reversed." } }, { status: 409 });
+    if (await database.prepare("SELECT id FROM invoice_accounting_events WHERE organization_id=? AND journal_entry_id=?").bind(context.organizationId, original.id).first()) {
+      throw new ApiError(409, "INVOICE_CORRECTION_REQUIRED", "Correct this entry from its invoice accounting history so the invoice and payment balances remain consistent.");
+    }
+    if (await database.prepare("SELECT e.id FROM bank_accounting_events e WHERE e.organization_id=? AND e.journal_entry_id=? AND e.event_type IN ('post','match') AND NOT EXISTS(SELECT 1 FROM bank_accounting_events r WHERE r.organization_id=e.organization_id AND r.reversal_of_event_id=e.id)").bind(context.organizationId, original.id).first()) {
+      throw new ApiError(409, "BANK_CORRECTION_REQUIRED", "Correct this entry from bank review so the source movement and ledger link remain consistent.");
+    }
+    if (await database.prepare("SELECT r.run_id FROM bank_reconciliation_lines r JOIN journal_lines l ON l.id=r.cash_line_id WHERE r.organization_id=? AND l.journal_entry_id=? AND r.active=1").bind(context.organizationId, original.id).first()) {
+      throw new ApiError(409, "BANK_RECONCILIATION_PROTECTED", "Reopen the latest completed reconciliation before correcting its cleared ledger entries.");
+    }
     const existingReversal = await database.prepare(`SELECT id FROM journal_entries WHERE organization_id = ? AND reversal_of_entry_id = ?`).bind(context.organizationId, original.id).first();
     if (existingReversal) return jsonResponse({ error: { code: "JOURNAL_ALREADY_REVERSED", message: "This journal already has a reversal." } }, { status: 409 });
     const period = await database.prepare(`SELECT id, status FROM accounting_periods WHERE organization_id = ? AND start_date <= ? AND end_date >= ? LIMIT 1`)

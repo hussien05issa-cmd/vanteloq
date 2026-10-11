@@ -65,3 +65,11 @@ test("evidence matching does not remove a transaction before reconciliation is c
   assert.match(items[0].reason, /Matched to evidence but not reconciled/);
   assert.match(items[0].nextAction, /remaining difference/);
 });
+
+test("category confirmation cannot substitute for posting, and a cleared invoice receipt needs no separate category", () => {
+  const transaction = { id: "reviewed", postingDate: "2026-09-18", description: "Receipt", amountCents: 10000, sourceSystem: "bank_csv", categorizationStatus: "confirmed", reconciliationStatus: "matched", confidenceBasisPoints: 10000 };
+  const pending = buildBookloqReviewQueue({ ...empty, transactions: [{ ...transaction, journalEntryId: null }] });
+  assert.match(pending[0].reason, /Ledger posting is missing/);
+  assert.match(pending[0].nextAction, /post or match an existing cash entry/);
+  assert.deepEqual(buildBookloqReviewQueue({ ...empty, transactions: [{ ...transaction, journalEntryId: "invoice-payment", categorizationStatus: "uncategorized", reconciliationStatus: "reconciled" }] }), []);
+});

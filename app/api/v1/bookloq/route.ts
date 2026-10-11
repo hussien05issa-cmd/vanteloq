@@ -146,9 +146,12 @@ export async function GET(request: Request) {
         t.external_source_id externalSourceId, t.location_ref locationRef,
         t.reconciliation_status reconciliationStatus, t.categorization_status categorizationStatus,
         t.confidence_basis_points confidenceBasisPoints, t.approval_status approvalStatus,
-        t.demo_record demoRecord, t.source_state sourceState, a.code accountCode, a.name accountName,
+        t.demo_record demoRecord, t.source_state sourceState, t.account_id accountId, t.journal_entry_id journalEntryId, a.code accountCode, a.name accountName,
         a.account_type categoryAccountType, a.account_subtype categoryAccountSubtype, a.system_key categorySystemKey,
-        c.name contactName
+        c.name contactName,
+        (SELECT e.id FROM bank_accounting_events e WHERE e.organization_id=t.organization_id AND e.transaction_id=t.id AND e.event_type IN ('post','match') AND NOT EXISTS (SELECT 1 FROM bank_accounting_events r WHERE r.organization_id=e.organization_id AND r.reversal_of_event_id=e.id) LIMIT 1) accountingEventId,
+        (SELECT e.event_type FROM bank_accounting_events e WHERE e.organization_id=t.organization_id AND e.transaction_id=t.id AND e.event_type IN ('post','match') AND NOT EXISTS (SELECT 1 FROM bank_accounting_events r WHERE r.organization_id=e.organization_id AND r.reversal_of_event_id=e.id) LIMIT 1) accountingEventType,
+        (EXISTS(SELECT 1 FROM bank_accounting_events e WHERE e.organization_id=t.organization_id AND e.transaction_id=t.id) OR EXISTS(SELECT 1 FROM invoice_accounting_events e WHERE e.organization_id=t.organization_id AND e.source_transaction_id=t.id)) hasAccountingHistory
         FROM financial_transactions t
         LEFT JOIN financial_accounts a ON a.id = t.category_account_id AND a.organization_id = t.organization_id
         LEFT JOIN bookloq_contacts c ON c.id = t.contact_id AND c.organization_id = t.organization_id
@@ -189,7 +192,7 @@ export async function GET(request: Request) {
       database.prepare(`SELECT i.id, i.invoice_number invoiceNumber, i.invoice_date invoiceDate, i.due_date dueDate,
         i.status, i.subtotal_cents subtotalCents, i.tax_cents taxCents, i.total_cents totalCents,
         i.paid_cents paidCents, i.currency, i.document_id documentId, i.sent_at sentAt,
-        i.emailed_to emailedTo, i.demo_record demoRecord, c.name customerName, c.email customerEmail
+        i.emailed_to emailedTo, i.journal_entry_id journalEntryId, i.demo_record demoRecord, c.name customerName, c.email customerEmail
         FROM customer_invoices i JOIN bookloq_contacts c ON c.id = i.customer_id AND c.organization_id = i.organization_id
         WHERE i.organization_id = ? ORDER BY i.due_date LIMIT 200`).bind(organizationId).all(),
       database.prepare(`SELECT id, contact_type contactType, name, email, phone, billing_address billingAddress,
@@ -726,6 +729,7 @@ export async function GET(request: Request) {
           country: context.organization.country,
           taxNumber: context.organization.taxNumber,
           currency: settings?.baseCurrency ?? context.organization.currency,
+          timezone: context.organization.timezone,
         },
         summary: {
           currentCashCents: cashFactsAllowed ? cashOpeningBalanceCents : null,

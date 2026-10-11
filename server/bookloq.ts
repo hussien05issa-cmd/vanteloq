@@ -259,15 +259,23 @@ export async function confirmSupportingMatch(database: D1Database, input: Suppor
     : `EXISTS (SELECT 1 FROM ${targetType === "supplier_bill" ? "supplier_bills" : "customer_invoices"} d
         WHERE d.organization_id = ? AND d.id = ? AND UPPER(d.currency) = UPPER(?) AND d.demo_record = ?
         AND ${targetType === "supplier_bill" ? "d.status <> 'void'" : "d.status NOT IN ('draft', 'void', 'written_off')"})`;
+  const accountingGuard = targetType === "receipt" ? "" : targetType === "supplier_bill"
+    ? "AND t.journal_entry_id IS NULL"
+    : `AND (t.journal_entry_id IS NULL OR EXISTS (
+        SELECT 1 FROM invoice_accounting_events e JOIN journal_entries j ON j.id=e.journal_entry_id AND j.organization_id=e.organization_id
+        WHERE e.organization_id=t.organization_id AND e.invoice_id=? AND e.source_transaction_id=t.id
+          AND e.journal_entry_id=t.journal_entry_id AND e.event_type='payment' AND j.status='posted'
+          AND NOT EXISTS(SELECT 1 FROM invoice_accounting_events r WHERE r.organization_id=e.organization_id AND r.reversal_of_event_id=e.id)))`;
   const guard = `EXISTS (SELECT 1 FROM financial_transactions t
       WHERE t.organization_id = ? AND t.id = ? AND t.source_state IN ('posted', 'modified')
         AND t.reconciliation_status IN ('unreconciled', 'matched')
-        AND t.amount_cents = ? AND t.currency = ? AND t.demo_record = ?)
+        AND t.amount_cents = ? AND t.currency = ? AND t.demo_record = ? ${accountingGuard})
     AND ${targetGuard}
     AND NOT EXISTS (SELECT 1 FROM bookloq_transaction_matches other
       WHERE other.organization_id = ? AND other.transaction_id = ? AND other.status = 'confirmed'
         AND (other.${targetColumn} IS NULL OR other.${targetColumn} <> ?))`;
   const guardValues = [organizationId, transactionId, amountCents, currency, demoRecord,
+    ...(targetType === "customer_invoice" ? [targetId] : []),
     organizationId, targetId, ...(targetType === "receipt" ? [] : [currency, demoRecord]),
     organizationId, transactionId, targetId];
   const matchId = crypto.randomUUID();
@@ -330,13 +338,15 @@ export async function updateCloseItem(database: D1Database, input: {
 export async function lockBookloqPeriod(database: D1Database, input: {
   organizationId: string; periodId: string; actorUserId: string; timestamp: number;
 }) {
-  const row = await database.prepare(`UPDATE accounting_periods SET status = 'locked', locked_at = ?, locked_by_user_id = ?, updated_at = ?
+  let row;
+  try { row = await database.prepare(`UPDATE accounting_periods SET status = 'locked', locked_at = ?, locked_by_user_id = ?, updated_at = ?
     WHERE organization_id = ? AND id = ? AND status IN ('open', 'review')
       AND EXISTS (SELECT 1 FROM month_end_items m WHERE m.organization_id = accounting_periods.organization_id AND m.period_id = accounting_periods.id)
       AND NOT EXISTS (SELECT 1 FROM month_end_items m WHERE m.organization_id = accounting_periods.organization_id
         AND m.period_id = accounting_periods.id AND m.status <> 'complete')
     RETURNING id`)
-    .bind(input.timestamp, input.actorUserId, input.timestamp, input.organizationId, input.periodId).first<{ id: string }>();
+    .bind(input.timestamp, input.actorUserId, input.timestamp, input.organizationId, input.periodId).first<{ id: string }>(); }
+  catch(error) { if(error instanceof Error && error.message.includes("BANK_CLOSE_REVIEW_REQUIRED")) throw new ApiError(409,"BANK_CLOSE_REVIEW_REQUIRED","Post or match every live imported statement movement in this period and complete its ledger reconciliation before locking. Review Banking, then return to the close checklist."); throw error; }
   if (!row) throw new ApiError(409, "CLOSE_INCOMPLETE_OR_CHANGED", "Review and complete every checklist item before locking an open period. Refresh if another reviewer changed it. Checklist completion records your review; it is not automatic verification of the books.");
 }
 

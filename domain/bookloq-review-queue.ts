@@ -20,7 +20,7 @@ export type BookloqReviewItem = Readonly<{
 }>;
 
 type AlertInput = Readonly<{ id: string; status: string; severity: string; title: string; explanation: string; dollarImpactCents: number | null; confidence: string; recommendedAction: string; createdAt: number; supportingRecordsJson?: string }>;
-type TransactionInput = Readonly<{ id: string; postingDate: string; description: string; amountCents: number; sourceSystem: string; categorizationStatus: string; reconciliationStatus: string; confidenceBasisPoints: number }>;
+type TransactionInput = Readonly<{ id: string; postingDate: string; description: string; amountCents: number; sourceSystem: string; categorizationStatus: string; reconciliationStatus: string; confidenceBasisPoints: number; journalEntryId?: string | null }>;
 type BillInput = Readonly<{ id: string; billNumber: string; dueDate: string; status: string; totalCents: number; paidCents: number; supplierName: string; approvalStatus: string }>;
 type CloseInput = Readonly<{ id: string; title: string; status: string; dueDate: string | null; blocker: string }>;
 type DocumentInput = Readonly<{ id: string; fileName: string; status: string; securityState: string; extractionStatus: string; createdAt: number }>;
@@ -107,9 +107,11 @@ export function buildBookloqReviewQueue(input: BookloqReviewQueueInput): Bookloq
   }
 
   for (const transaction of input.transactions) {
-    const categoryOpen = transaction.categorizationStatus !== "confirmed";
+    const ledgerKnown = transaction.journalEntryId !== undefined;
+    const ledgerOpen = ledgerKnown && transaction.journalEntryId === null;
+    const categoryOpen = !transaction.journalEntryId && transaction.categorizationStatus !== "confirmed";
     const reconciliationOpen = transaction.reconciliationStatus !== "reconciled";
-    if (!categoryOpen && !reconciliationOpen) continue;
+    if (!categoryOpen && !reconciliationOpen && !ledgerOpen) continue;
     const amount = Math.abs(transaction.amountCents);
     const lowConfidence = transaction.confidenceBasisPoints < 7_000;
     const priority: BookloqReviewPriority = amount >= 250_000 || lowConfidence ? "high" : amount >= 50_000 ? "medium" : "low";
@@ -117,7 +119,7 @@ export function buildBookloqReviewQueue(input: BookloqReviewQueueInput): Bookloq
     const reconciliationReason = transaction.reconciliationStatus === "matched"
       ? "Matched to evidence but not reconciled"
       : "Not matched or reconciled";
-    const openReasons = [categoryOpen ? "Category needs confirmation" : "", reconciliationOpen ? reconciliationReason : ""].filter(Boolean);
+    const openReasons = [ledgerOpen ? "Ledger posting is missing" : "", categoryOpen ? "Category needs confirmation" : "", reconciliationOpen ? reconciliationReason : ""].filter(Boolean);
     items.push({
       id: `transaction:${transaction.id}`,
       kind: "transaction",
@@ -127,7 +129,9 @@ export function buildBookloqReviewQueue(input: BookloqReviewQueueInput): Bookloq
       amountCents: amount,
       ageDays: age,
       owner: "Unassigned",
-      nextAction: categoryOpen
+      nextAction: ledgerOpen
+        ? "Review the purpose and post or match an existing cash entry"
+        : categoryOpen
         ? "Confirm the category and supporting evidence"
         : transaction.reconciliationStatus === "matched"
           ? "Review the remaining difference before reconciliation"

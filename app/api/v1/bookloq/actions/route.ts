@@ -1,7 +1,7 @@
 import { getD1 } from "../../../../../db";
 import { recordAudit } from "../../../../../server/audit";
 import { requireAccess } from "../../../../../server/authorization";
-import { enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameOrigin } from "../../../../../server/api";
+import { ApiError, enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameOrigin } from "../../../../../server/api";
 import { confirmSupportingMatch, lockBookloqPeriod, requireBookLoQPermission, saveBookloqBudget, updateCloseItem } from "../../../../../server/bookloq";
 import { requirePermission } from "../../../../../server/permissions";
 import { requireAddon, requireFeature } from "../../../../../server/entitlements/engine";
@@ -50,11 +50,12 @@ export async function POST(request: Request) {
       if (!transactionId || !accountId) return jsonResponse({ error: { code: "INVALID_CATEGORY", message: "Select a transaction and an active ledger category." } }, { status: 400 });
       const [transaction, account] = await Promise.all([
         database.prepare(`SELECT category_account_id categoryAccountId, categorization_status categorizationStatus,
-          description, original_description originalDescription, amount_cents amountCents
-          FROM financial_transactions WHERE organization_id = ? AND id = ?`).bind(context.organizationId, transactionId).first<{ categoryAccountId: string | null; categorizationStatus: string; description: string; originalDescription: string; amountCents: number }>(),
+          description, original_description originalDescription, amount_cents amountCents, journal_entry_id journalEntryId
+          FROM financial_transactions WHERE organization_id = ? AND id = ?`).bind(context.organizationId, transactionId).first<{ categoryAccountId: string | null; categorizationStatus: string; description: string; originalDescription: string; amountCents: number; journalEntryId: string | null }>(),
         database.prepare(`SELECT id, code, name, account_type accountType FROM financial_accounts WHERE organization_id = ? AND id = ? AND active = 1`).bind(context.organizationId, accountId).first<{ id: string; code: string; name: string; accountType: string }>(),
       ]);
       if (!transaction) return jsonResponse({ error: { code: "TRANSACTION_NOT_FOUND", message: "Transaction not found." } }, { status: 404 });
+      if (transaction.journalEntryId) throw new ApiError(409,"TRANSACTION_ALREADY_POSTED","Review the linked accounting entry and use its correction workflow before changing this category.");
       if (!account) return jsonResponse({ error: { code: "CATEGORY_NOT_FOUND", message: "The ledger category is unavailable." } }, { status: 404 });
       const mutations = [database.prepare(`UPDATE financial_transactions SET category_account_id = ?, categorization_status = 'confirmed', confidence_basis_points = 10000, updated_at = ? WHERE organization_id = ? AND id = ?`)
         .bind(account.id, timestamp, context.organizationId, transactionId)];
@@ -72,7 +73,8 @@ export async function POST(request: Request) {
             updated_at = excluded.updated_at`)
           .bind(ruleId, context.organizationId, `${matchText} → ${account.name}`.slice(0, 180), matchText, direction, account.id, context.userId, timestamp, timestamp));
       }
-      await database.batch(mutations);
+      try { await database.batch(mutations); }
+      catch(error) { if(error instanceof Error && error.message.includes("INVOICE_ACCOUNTING_TRANSACTION_POSTED")) throw new ApiError(409,"TRANSACTION_ALREADY_POSTED","This movement was posted before the category changed. Refresh its accounting history."); throw error; }
       await recordAudit({ request, requestId, organizationId: context.organizationId, actorUserId: context.userId,
         action: "financial_transaction.categorized", resourceType: "financial_transaction", resourceId: transactionId,
         details: { previousAccountId: transaction.categoryAccountId, previousStatus: transaction.categorizationStatus, accountId: account.id, accountCode: account.code, accountName: account.name, accountType: account.accountType, status: "confirmed" } });

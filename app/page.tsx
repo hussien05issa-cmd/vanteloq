@@ -465,6 +465,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
       </div>
       <nav id="public-navigation" aria-label="Main navigation">
         <Link prefetch={false} href="/how-it-works">How it works</Link><a href="#connections" aria-current={activeSection === "connections" ? "location" : undefined}>Connections</a><a href="/demo" aria-current={activeSection === "demo" ? "location" : undefined}>Open the demo</a><Link prefetch={false} data-public-event="pricing_view" href="/pricing">Pricing</Link><Link prefetch={false} href="/help">Help</Link>
+        <Link prefetch={false} className="public-demo-link" href="/book-demo">Book a free demo</Link>
         <a href="#social" aria-current={activeSection === "social" ? "location" : undefined}>Socials</a><div className="public-nav-socials"><SocialLinks/></div>
       </nav>
       <div className="public-nav-actions">

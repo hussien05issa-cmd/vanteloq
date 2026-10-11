@@ -2042,6 +2042,40 @@ export const customerInvoices = sqliteTable(
   ],
 );
 
+export const invoiceAccountingEvents = sqliteTable(
+  "invoice_accounting_events",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    invoiceId: text("invoice_id").notNull().references(() => customerInvoices.id, { onDelete: "cascade" }),
+    eventType: text("event_type", { enum: ["issue", "payment", "reverse_payment", "void"] }).notNull(),
+    eventDate: text("event_date").notNull(),
+    amountCents: integer("amount_cents").notNull(),
+    currency: text("currency").notNull(),
+    invoiceTotalCents: integer("invoice_total_cents").notNull(),
+    priorPaidCents: integer("prior_paid_cents").notNull(),
+    invoiceJournalEntryId: text("invoice_journal_entry_id").notNull().references(() => journalEntries.id),
+    journalEntryId: text("journal_entry_id").notNull().references(() => journalEntries.id),
+    reversalOfEventId: text("reversal_of_event_id"),
+    cashAccountId: text("cash_account_id").references(() => financialAccounts.id),
+    sourceTransactionId: text("source_transaction_id").references(() => financialTransactions.id),
+    reference: text("reference").notNull().default(""),
+    reason: text("reason").notNull().default(""),
+    idempotencyKey: text("idempotency_key").notNull(),
+    requestJson: text("request_json").notNull(),
+    actorUserId: text("actor_user_id").notNull().references(() => users.id),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("invoice_accounting_request_unique").on(table.organizationId, table.idempotencyKey),
+    uniqueIndex("invoice_accounting_journal_unique").on(table.journalEntryId),
+    uniqueIndex("invoice_accounting_reversal_unique").on(table.organizationId, table.reversalOfEventId),
+    index("invoice_accounting_history_idx").on(table.organizationId, table.invoiceId, table.eventDate),
+    check("invoice_accounting_type_check", sql`${table.eventType} in ('issue','payment','reverse_payment','void')`),
+    check("invoice_accounting_amount_check", sql`typeof(${table.amountCents}) = 'integer' and ${table.amountCents} > 0 and ${table.amountCents} <= 9007199254740991 and typeof(${table.priorPaidCents}) = 'integer' and ${table.priorPaidCents} >= 0 and ${table.priorPaidCents} <= ${table.invoiceTotalCents}`),
+  ],
+);
+
 export const customerInvoiceLines = sqliteTable(
   "customer_invoice_lines",
   {
@@ -2277,6 +2311,39 @@ export const bankStatementRows = sqliteTable("bank_statement_rows", {
   unique().on(table.transactionId),
   check("bank_statement_row_number", sql`${table.rowNumber} BETWEEN 1 AND 500`),
 ]);
+
+// CSV originals are retained separately from scanned document uploads. They are
+// validated as inert UTF-8 data and are downloadable only as plain-text evidence.
+export const bankCsvImports = sqliteTable("bank_csv_imports", {
+  id:text("id").primaryKey(), organizationId:text("organization_id").notNull().references(()=>workspaces.id,{onDelete:"cascade"}),
+  bankAccountId:text("bank_account_id").notNull().references(()=>bankAccounts.id), financialAccountId:text("financial_account_id").notNull().references(()=>financialAccounts.id),
+  startDate:text("start_date").notNull(),endDate:text("end_date").notNull(),currency:text("currency").notNull(),
+  openingBalanceCents:integer("opening_balance_cents").notNull(),closingBalanceCents:integer("closing_balance_cents").notNull(),rowCount:integer("row_count").notNull(),inflowCents:integer("inflow_cents").notNull(),outflowCents:integer("outflow_cents").notNull(),
+  sourceDigest:text("source_digest").notNull(),fingerprint:text("fingerprint").notNull(),fileName:text("file_name").notNull(),objectKey:text("object_key").notNull(),mappingJson:text("mapping_json").notNull(),
+  status:text("status").notNull(),approvedByUserId:text("approved_by_user_id").notNull().references(()=>users.id),createdAt:integer("created_at").notNull(),
+},t=>[uniqueIndex("bank_csv_source_unique").on(t.organizationId,t.fingerprint),index("bank_csv_digest_idx").on(t.organizationId,t.sourceDigest),index("bank_csv_period_idx").on(t.organizationId,t.bankAccountId,t.startDate,t.endDate),check("bank_csv_balance",sql`${t.openingBalanceCents}+${t.inflowCents}-${t.outflowCents}=${t.closingBalanceCents}`),check("bank_csv_rows_count",sql`${t.rowCount} BETWEEN 1 AND 500`),check("bank_csv_status",sql`${t.status} IN ('staging','approved')`)]);
+export const bankCsvVoidEvents=sqliteTable("bank_csv_void_events",{
+  id:text("id").primaryKey(),organizationId:text("organization_id").notNull().references(()=>workspaces.id,{onDelete:"cascade"}),importId:text("import_id").notNull().references(()=>bankCsvImports.id),reason:text("reason").notNull(),actorUserId:text("actor_user_id").notNull().references(()=>users.id),createdAt:integer("created_at").notNull(),
+},t=>[uniqueIndex("bank_csv_void_unique").on(t.organizationId,t.importId)]);
+export const bankCsvRows = sqliteTable("bank_csv_rows",{
+  importId:text("import_id").notNull().references(()=>bankCsvImports.id,{onDelete:"cascade"}),transactionId:text("transaction_id").notNull().references(()=>financialTransactions.id),sourceRowNumber:integer("source_row_number").notNull(),
+},t=>[primaryKey({columns:[t.importId,t.sourceRowNumber]}),uniqueIndex("bank_csv_transaction_unique").on(t.transactionId)]);
+export const bankAccountingEvents = sqliteTable("bank_accounting_events",{
+  id:text("id").primaryKey(),organizationId:text("organization_id").notNull().references(()=>workspaces.id,{onDelete:"cascade"}),transactionId:text("transaction_id").notNull().references(()=>financialTransactions.id),
+  eventType:text("event_type").notNull(),eventDate:text("event_date").notNull(),amountCents:integer("amount_cents").notNull(),cashAccountId:text("cash_account_id").notNull().references(()=>financialAccounts.id),
+  journalEntryId:text("journal_entry_id").notNull().references(()=>journalEntries.id),cashLineId:text("cash_line_id").notNull().references(()=>journalLines.id),reversalOfEventId:text("reversal_of_event_id"),
+  counterAccountId:text("counter_account_id").references(()=>financialAccounts.id),reason:text("reason").notNull(),idempotencyKey:text("idempotency_key").notNull(),requestJson:text("request_json").notNull(),actorUserId:text("actor_user_id").notNull().references(()=>users.id),createdAt:integer("created_at").notNull(),
+},t=>[uniqueIndex("bank_accounting_request_unique").on(t.organizationId,t.idempotencyKey),uniqueIndex("bank_accounting_reversal_unique").on(t.organizationId,t.reversalOfEventId),index("bank_accounting_transaction_idx").on(t.organizationId,t.transactionId),check("bank_accounting_type",sql`${t.eventType} IN ('post','match','reverse','unmatch')`)]);
+export const bankReconciliationRuns = sqliteTable("bank_reconciliation_runs",{
+  id:text("id").primaryKey(),organizationId:text("organization_id").notNull().references(()=>workspaces.id,{onDelete:"cascade"}),reconciliationId:text("reconciliation_id").notNull().references(()=>reconciliations.id),
+  sourceType:text("source_type").notNull(),sourceId:text("source_id").notNull(),accountId:text("account_id").notNull().references(()=>financialAccounts.id),currency:text("currency").notNull(),
+  baselineDate:text("baseline_date").notNull(),openingBookCents:integer("opening_book_cents").notNull(),closingBookCents:integer("closing_book_cents").notNull(),unclearedCents:integer("uncleared_cents").notNull(),
+  fingerprint:text("fingerprint").notNull(),snapshotJson:text("snapshot_json").notNull(),status:text("status").notNull(),reopenReason:text("reopen_reason").notNull().default(""),actorUserId:text("actor_user_id").notNull().references(()=>users.id),createdAt:integer("created_at").notNull(),
+},t=>[index("bank_reconciliation_source_idx").on(t.organizationId,t.sourceType,t.sourceId),check("bank_reconciliation_run_status",sql`${t.status} IN ('staging','completed','reopened')`)]);
+export const bankReconciliationLines = sqliteTable("bank_reconciliation_lines",{
+  runId:text("run_id").notNull().references(()=>bankReconciliationRuns.id,{onDelete:"cascade"}),organizationId:text("organization_id").notNull().references(()=>workspaces.id,{onDelete:"cascade"}),
+  transactionId:text("transaction_id").notNull().references(()=>financialTransactions.id),cashLineId:text("cash_line_id").notNull().references(()=>journalLines.id),amountCents:integer("amount_cents").notNull(),active:integer("active").notNull().default(1),
+},t=>[primaryKey({columns:[t.runId,t.transactionId]}),uniqueIndex("bank_reconciliation_cash_line_unique").on(t.cashLineId).where(sql`${t.active}=1`),uniqueIndex("bank_reconciliation_source_row_unique").on(t.transactionId).where(sql`${t.active}=1`)]);
 
 
 // Personal newsletter preferences are independent of workspace notifications.
