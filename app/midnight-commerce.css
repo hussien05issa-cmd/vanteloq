@@ -112,7 +112,6 @@
 .operating-shell[data-appearance="dark"] .appearance-control select {background:#151b25;color:#f5f7fb;border-color:#56647b}
 .operating-shell .appearance-control select:focus-visible {outline:3px solid #9ac7ff!important;outline-offset:2px}
 .operating-shell[data-appearance="dark"] .main-panel {background:#050608}
-.operating-shell[data-appearance="dark"] :is(.content,.workspace-main-content) {color:#f5f7fb}
 .operating-shell[data-appearance="dark"] :is(.content,.workspace-main-content) > :is(.page-intro,.welcome-row,.workspace-section-heading) :is(h1,h2,h3) {color:#f5f7fb}
 .operating-shell[data-appearance="dark"] .metric-card {background:#0e1118;border-color:#293344;box-shadow:none}
 .operating-shell[data-appearance="dark"] .metric-card > :is(h3,.metric-unavailable-value) {color:#f5f7fb}
