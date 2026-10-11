@@ -1,0 +1,30 @@
+name: Midnight Commerce validation
+on:
+  pull_request:
+    paths:
+      - "app/appearance-control.tsx"
+      - "app/midnight-commerce.css"
+      - "app/vanteloq-app.tsx"
+      - "app/layout.tsx"
+      - ".github/workflows/midnight-commerce.yml"
+  workflow_dispatch:
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: TypeScript
+        run: npm run typecheck
+      - name: Lint
+        run: npm run lint
+      - name: Regression tests
+        run: npm run test:operating-intelligence && npm run test:product-experience && npm run test:quickbooks
+      - name: Production build
+        run: npm run build
