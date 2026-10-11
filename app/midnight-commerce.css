@@ -5,7 +5,7 @@
  * recoloured without their own contrast audit.
  * Sources: Apple HIG Dark Mode/Materials, WCAG 2.2 SC 1.4.3, 1.4.11, 2.4.7.
  */
-.operating-shell {
+.operating-shell[data-appearance="dark"] {
   --midnight-canvas: #050608;
   --midnight-sidebar: #080b11;
   --midnight-surface: #0e1118;
@@ -31,75 +31,92 @@
   color-scheme: dark;
   background: var(--midnight-canvas);
 }
-.operating-shell .sidebar {
+.operating-shell[data-appearance="dark"] .sidebar {
   color-scheme: dark;
   background: var(--midnight-sidebar);
   color: var(--midnight-foreground);
   border-right-color: var(--midnight-stroke);
 }
-.operating-shell .sidebar .workspace-switcher {
+.operating-shell[data-appearance="dark"] .sidebar .workspace-switcher {
   background: var(--midnight-surface);
   border-color: var(--midnight-stroke);
 }
-.operating-shell .sidebar :is(.brand-name, .profile b),
-.operating-shell .sidebar .workspace-switcher > span:nth-child(2) b {
+.operating-shell[data-appearance="dark"] .sidebar :is(.brand-name, .profile b),
+.operating-shell[data-appearance="dark"] .sidebar .workspace-switcher > span:nth-child(2) b {
   color: var(--midnight-foreground);
 }
-.operating-shell .sidebar :is(.brand-name small, .subscription-summary span, .subscription-summary small, .nav-group > p, .profile small, .workspace-release-name),
-.operating-shell .sidebar .workspace-switcher > span:nth-child(2) small {
+.operating-shell[data-appearance="dark"] .sidebar :is(.brand-name small, .subscription-summary span, .subscription-summary small, .nav-group > p, .profile small, .workspace-release-name),
+.operating-shell[data-appearance="dark"] .sidebar .workspace-switcher > span:nth-child(2) small {
   color: var(--midnight-secondary);
 }
-.operating-shell .sidebar .nav-item:not(:disabled):not([aria-disabled="true"]) {
+.operating-shell[data-appearance="dark"] .sidebar .nav-item:not(:disabled):not([aria-disabled="true"]) {
   color: var(--midnight-secondary);
 }
-.operating-shell .sidebar .nav-item:not(:disabled):not([aria-disabled="true"]):hover {
+.operating-shell[data-appearance="dark"] .sidebar .nav-item:not(:disabled):not([aria-disabled="true"]):hover {
   color: var(--midnight-foreground);
   background: var(--sidebar-hover);
 }
-.operating-shell .sidebar .nav-item.active,
-.operating-shell .sidebar .nav-item[aria-current="page"] {
+.operating-shell[data-appearance="dark"] .sidebar .nav-item.active,
+.operating-shell[data-appearance="dark"] .sidebar .nav-item[aria-current="page"] {
   color: #fff !important;
   background: var(--sidebar-current-bg);
   border-color: var(--sidebar-current-line);
 }
-.operating-shell .sidebar .nav-item.active .workspace-icon,
-.operating-shell .sidebar .nav-item[aria-current="page"] .workspace-icon {
+.operating-shell[data-appearance="dark"] .sidebar .nav-item.active .workspace-icon,
+.operating-shell[data-appearance="dark"] .sidebar .nav-item[aria-current="page"] .workspace-icon {
   color: currentColor;
 }
-.operating-shell .sidebar .side-bottom,
-.operating-shell .sidebar .profile {
+.operating-shell[data-appearance="dark"] .sidebar .side-bottom,
+.operating-shell[data-appearance="dark"] .sidebar .profile {
   border-color: var(--midnight-stroke);
 }
 /* Isolated chrome. Interior app surfaces remain unchanged until per-view QA. */
-.operating-shell .topbar {
+.operating-shell[data-appearance="dark"] .topbar {
   background: rgba(12, 16, 24, .96);
   border-bottom-color: var(--midnight-stroke);
   color: var(--midnight-foreground);
   -webkit-backdrop-filter: blur(14px);
   backdrop-filter: blur(14px);
 }
-.operating-shell .topbar h1 { color: var(--midnight-foreground); }
-.operating-shell .topbar :is(.eyebrow, .card-kicker) { color: var(--midnight-secondary); }
-.operating-shell .topbar :is(.command-trigger, .icon-button, .source-pill) {
+.operating-shell[data-appearance="dark"] .topbar h1 { color: var(--midnight-foreground); }
+.operating-shell[data-appearance="dark"] .topbar :is(.eyebrow, .card-kicker) { color: var(--midnight-secondary); }
+.operating-shell[data-appearance="dark"] .topbar :is(.command-trigger, .icon-button, .source-pill) {
   color: var(--midnight-foreground);
   background: var(--midnight-elevated);
   border-color: #465268;
 }
-.operating-shell .sidebar :is(a, button, input, select, summary):focus-visible,
-.operating-shell .topbar :is(a, button, input, select, summary):focus-visible {
+.operating-shell[data-appearance="dark"] .sidebar :is(a, button, input, select, summary):focus-visible,
+.operating-shell[data-appearance="dark"] .topbar :is(a, button, input, select, summary):focus-visible {
   outline: 3px solid var(--midnight-focus) !important;
   outline-offset: 3px !important;
 }
-.operating-shell .sidebar :is(button, a)[aria-disabled="true"],
-.operating-shell .sidebar :is(button, a):disabled {
+.operating-shell[data-appearance="dark"] .sidebar :is(button, a)[aria-disabled="true"],
+.operating-shell[data-appearance="dark"] .sidebar :is(button, a):disabled {
   cursor: not-allowed;
 }
 @media (prefers-reduced-transparency: reduce) {
-  .operating-shell .topbar { background: #0c1018; -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .operating-shell[data-appearance="dark"] .topbar { background: #0c1018; -webkit-backdrop-filter: none; backdrop-filter: none; }
 }
 @media (forced-colors: active) {
-  .operating-shell .sidebar { color: CanvasText; background: Canvas; border-color: CanvasText; }
-  .operating-shell .sidebar .nav-item,
-  .operating-shell .sidebar .nav-item.active { color: CanvasText !important; background: Canvas; border-color: Highlight; }
-  .operating-shell .topbar { color: CanvasText; background: Canvas; border-color: CanvasText; }
+  .operating-shell[data-appearance="dark"] .sidebar { color: CanvasText; background: Canvas; border-color: CanvasText; }
+  .operating-shell[data-appearance="dark"] .sidebar .nav-item,
+  .operating-shell[data-appearance="dark"] .sidebar .nav-item.active { color: CanvasText !important; background: Canvas; border-color: Highlight; }
+  .operating-shell[data-appearance="dark"] .topbar { color: CanvasText; background: Canvas; border-color: CanvasText; }
 }
+
+/* Stable appearance selector in all three modes. */
+.operating-shell .appearance-control {display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
+.operating-shell .appearance-control label {font-size:12px!important;font-weight:600;white-space:nowrap}
+.operating-shell .appearance-control select {min-height:40px;min-width:106px;border:1px solid #b9c7d8;border-radius:9px;background:#fff;color:#17304b;padding:8px 12px;font-size:13px!important;cursor:pointer}
+.operating-shell[data-appearance="dark"] .appearance-control label {color:#b4becd}
+.operating-shell[data-appearance="dark"] .appearance-control select {background:#151b25;color:#f5f7fb;border-color:#56647b}
+.operating-shell .appearance-control select:focus-visible {outline:3px solid #9ac7ff!important;outline-offset:2px}
+.operating-shell[data-appearance="dark"] .main-panel {background:#050608}
+.operating-shell[data-appearance="dark"] :is(.content,.workspace-main-content) {color:#f5f7fb}
+.operating-shell[data-appearance="dark"] :is(.content,.workspace-main-content) > :is(.page-intro,.welcome-row,.workspace-section-heading) :is(h1,h2,h3) {color:#f5f7fb}
+.operating-shell[data-appearance="dark"] .metric-card {background:#0e1118;border-color:#293344;box-shadow:none}
+.operating-shell[data-appearance="dark"] .metric-card > :is(h3,.metric-unavailable-value) {color:#f5f7fb}
+.operating-shell[data-appearance="dark"] .metric-card > :is(p,small,.metric-context,.metric-evidence) {color:#b4becd}
+.operating-shell[data-appearance="dark"] .topbar .source-pill {background:#151b25;color:#b4becd;border-color:#56647b}
+@media(max-width:720px){.operating-shell .appearance-control label{display:none}.operating-shell .appearance-control select{min-width:85px;max-width:112px}}
+@media(prefers-reduced-motion:reduce){.operating-shell[data-appearance="dark"] :is(.sidebar,.topbar,.metric-card){animation:none!important;transition:none!important}}
