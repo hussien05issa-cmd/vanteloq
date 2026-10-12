@@ -21,6 +21,8 @@ import HomeDecisionPreview from "./home-decision-preview";
 import FeatureCarousel from "./feature-carousel";
 import IndustryFitPreview from "./industry-fit-preview";
 import ProductBrandLogo from "./product-brand-logo";
+import PublicAppearanceControl from "./public-appearance-control";
+import { useWorkspaceAppearance } from "./workspace-appearance";
 import FinanceProof from "./finance-proof";
 import WorkspaceShowcase from "./workspace-showcase";
 import ResourceArticleBrowser from "./resource-article-browser";
@@ -479,13 +481,13 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
     window.addEventListener("resize", schedule);
     return () => { window.cancelAnimationFrame(frame); resize.disconnect(); window.removeEventListener("scroll", schedule); window.removeEventListener("resize", schedule); };
   }, []);
-  return <div ref={siteRef} className="public-site journey-home reference-home">
+  const appearance = useWorkspaceAppearance();
+  return <div ref={siteRef} className="public-site journey-home reference-home" data-public-theme={appearance.theme} data-public-appearance={appearance.appearance}>
     <a className="home-skip-link" href="#main-content">Skip to main content</a>
     <header className="public-nav" data-menu-open={mobileNavigationOpen}>
       <div className="public-brand-family">
       <button type="button" className="public-brand" aria-label="Vanteloq home" onClick={() => { setMobileNavigationOpen(false); window.scrollTo({ top: 0, behavior: motionEnabled ? "smooth" : "auto" }); }}>
         <ProductBrandLogo product="vanteloq" priority/>
-        <span>Vanteloq</span>
       </button>
       </div>
       <button ref={menuButtonRef} type="button" className="public-nav-menu" aria-label={mobileNavigationOpen ? "Close navigation menu" : "Open navigation menu"} aria-expanded={mobileNavigationOpen} aria-controls="public-navigation public-account-actions" onClick={() => setMobileNavigationOpen(open => !open)}>Menu</button>
@@ -495,6 +497,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
         <a href="#social" aria-current={activeSection === "social" ? "location" : undefined}>Socials</a><div className="public-nav-socials"><SocialLinks/></div>
       </nav>
       <div className="public-nav-actions" id="public-account-actions">
+        <PublicAppearanceControl/>
         <button type="button" className="nav-login" onClick={() => { setMobileNavigationOpen(false); start("signin"); }}>Sign in</button>
         <button type="button" data-public-event="signup_start" onClick={() => { setMobileNavigationOpen(false); start("signup"); }}>Create a workspace</button>
       </div>
@@ -563,7 +566,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
     </main>
 
     <footer className="home-footer" id="company">
-      <div className="home-footer-brand"><div><ProductBrandLogo product="vanteloq"/><strong>Vanteloq</strong></div><p>Sales, stock and cash, with the records behind the numbers.</p><div className="home-footer-owner">
+      <div className="home-footer-brand"><div><ProductBrandLogo product="vanteloq"/></div><p>Sales, stock and cash, with the records behind the numbers.</p><div className="home-footer-owner">
         <ProductBrandLogo product="lexedge" variant="full"/>
         <span>LexEdge Consulting is the consulting business behind Vanteloq, covering business analysis, financial review, operations and marketing support. It builds and operates the software; your business decisions stay yours.</span>
       </div></div>

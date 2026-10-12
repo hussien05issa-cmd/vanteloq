@@ -231,9 +231,7 @@ export default function SecureOnboardingFlow({
       <aside>
         <div className="public-brand">
           <ProductBrandLogo product={standaloneBookloq ? "bookloq" : "vanteloq"} />
-          <span>
-            {standaloneBookloq ? "BookLoQ" : "Vanteloq"}<small>SECURE WORKSPACE SETUP</small>
-          </span>
+          {standaloneBookloq && <span>BookLoQ<small>SECURE WORKSPACE SETUP</small></span>}
         </div>
         <div className="setup-message">
           <p>WELCOME TO {standaloneBookloq ? "BOOKLOQ" : "VANTELOQ"}</p>

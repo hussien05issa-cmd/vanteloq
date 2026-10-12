@@ -65,7 +65,7 @@ export default function HomeDashboardPreview() {
     }}>
       <div className="home-monitor-body">
         <aside className="home-preview-sidebar">
-          <div className="home-preview-brand"><ProductBrandLogo product="vanteloq"/><b>Vanteloq</b></div>
+          <div className="home-preview-brand"><ProductBrandLogo product="vanteloq"/></div>
           <div className="home-preview-workspace"><strong>Sample workspace</strong><span>Retail · CAD</span></div>
           <nav aria-label="Explore product demo">
             <a href="/demo#retail" aria-label="Explore the overview" className="is-current"><WorkspaceIcon name="Dashboard"/><span>Overview</span></a>

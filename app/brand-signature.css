@@ -19,9 +19,12 @@
   box-shadow: none;
 }
 .brand-signature-divider { width: 1px; height: 80px; background: #40516a; }
-.vanteloq-ai-artwork { display: inline-grid; place-items: center; border-radius: 13px; background: #000; border: 1px solid #526dac; box-shadow: 0 0 0 1px #7271c329; }
-.vanteloq-ai-artwork > span, .vanteloq-ai-artwork .product-brand-artwork.icon { width: 100%; height: 100%; }
-.vanteloq-ai-artwork .product-brand-artwork.icon { border: 0; border-radius: inherit; }
-.vanteloq-ai-artwork .product-brand-viewport { overflow: hidden !important; }
+.brand-signature > .product-brand-logo.product-brand-artwork.vanteloq.icon {
+  width: min(28%, 112px);
+  height: auto;
+  aspect-ratio: 1;
+  border: 0;
+  box-shadow: none;
+}
 @media (max-width: 540px) { .brand-signature { min-height: 160px; padding: 20px; gap: 18px; } .brand-signature-divider { height: 64px; } }
 @media (forced-colors: active) { .brand-signature { border-color: CanvasText; } .brand-signature-divider { background: CanvasText; } }

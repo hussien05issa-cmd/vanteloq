@@ -2,6 +2,8 @@
 
 ## October 11, 2026 brand and appearance update
 
+The following owner correction supersedes the initial branding pass: Vanteloq shows its symbol without duplicate visible lettering or the photograph's wordmark. Vanteloq AI retains the earlier orbital V identity. The homepage starts with the premium jet-black theme and shares the saved Dark, Light and System device preference with the workspace. The appearance control is compact and accessible; expanded public preview panels retain the selected theme.
+
 The supplied metallic Vanteloq, BookLoQ and LexEdge Consulting artwork replaces the earlier UI identity. Use the original JPEGs in `public/brand/origin-metal-2026`, with the shared logo component framing those pixels on an opaque black carrier. Do not redraw, invert or recolour the marks. Third-party integration logos retain their own identity.
 
 The recovered phone branch's midnight direction is completed in the existing appearance system. Dark uses graphite surfaces, cobalt controls and readable silver text. Light and System remain available. Keep dense records opaque, status changes meaningful, tabular financial figures and the existing Geist family. Remove decorative flashing markers while retaining useful status labels and data warnings. Prefer compact, accessible navigation with at least 44 px targets.

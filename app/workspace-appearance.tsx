@@ -136,7 +136,7 @@ export function useWorkspaceAppearance(store?: WorkspaceAppearanceStore) {
   return { ...snapshot, choose: store?.choose ?? choose };
 }
 
-/** Wrap the content passed to createPortal; never set a theme on body or public pages. */
+/** Wrap portalled details in an explicit scope without changing the document body. */
 export function WorkspaceAppearanceBoundary({ children, store }: { children: ReactNode; store?: WorkspaceAppearanceStore }) {
   const { appearance, theme } = useWorkspaceAppearance(store);
   return <div className="workspace-theme-scope" data-workspace-theme={theme} data-workspace-appearance={appearance}>{children}</div>;
@@ -152,7 +152,7 @@ export function WorkspaceAppearanceControl({ store }: { store?: WorkspaceAppeara
         <input type="radio" name={`${id}-appearance`} value={option.value} checked={appearance.appearance === option.value} onChange={() => appearance.choose(option.value)}/><span className={`workspace-appearance-swatch workspace-appearance-swatch-${option.value}`} aria-hidden="true"><i/><i/><i/></span><span><strong>{option.label}</strong><small>{option.description}</small></span>
       </label>)}
     </div></fieldset>
-    <p id={`${id}-description`} className="workspace-appearance-description">Saved in this browser for your workspaces, BookLoQ and Vanteloq AI. Your public website keeps its own appearance.</p>
+    <p id={`${id}-description`} className="workspace-appearance-description">Saved in this browser across Vanteloq, BookLoQ and Vanteloq AI.</p>
     <div className="workspace-appearance-notice" role="status" aria-live="polite">{appearance.storageNotice && <p>{appearance.storageNotice}</p>}{appearance.systemNotice && <p>{appearance.systemNotice}</p>}</div>
   </section>;
 }

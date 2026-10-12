@@ -1,0 +1,377 @@
+/* Homepage-only midnight materials. Light, authentication and the workspace
+   retain their own appearance contracts. Numbers sit on opaque surfaces. */
+.public-site.reference-home[data-public-theme="dark"] {
+  --public-canvas: #050608;
+  --public-panel: #0e1118;
+  --public-raised: #151b25;
+  --public-selected: #12376f;
+  --public-line: #2d394a;
+  --public-control: #718198;
+  --public-ink: #f5f7fb;
+  --public-secondary: #b4becd;
+  --public-muted: #a0acbe;
+  --public-link: #78b2ff;
+  --public-purple: #c2acff;
+  --public-positive: #6ee7ad;
+  --public-negative: #ff9d9d;
+  --public-warning: #ffd08a;
+  --public-positive-bg: #0b2b22;
+  --public-negative-bg: #351a24;
+  --public-warning-bg: #33250f;
+  --public-primary: #1d60dc;
+  --public-primary-hover: #2b6de3;
+  --public-on-primary: #ffffff;
+  --public-focus: #9ac7ff;
+  --ui-ink: var(--public-ink);
+  --ui-muted: var(--public-secondary);
+  --ui-canvas: var(--public-canvas);
+  --ui-surface: var(--public-panel);
+  --ui-action: var(--public-primary);
+  --ui-action-hover: var(--public-primary-hover);
+  --commerce-ink: var(--public-ink);
+  --commerce-muted: var(--public-secondary);
+  --commerce-surface: var(--public-panel);
+  --commerce-line: var(--public-line);
+  --commerce-grid: var(--public-line);
+  --commerce-blue: var(--public-link);
+  --commerce-teal: var(--public-positive);
+  --commerce-negative: var(--public-negative);
+  color-scheme: dark;
+  color: var(--public-ink);
+  background: var(--public-canvas);
+  font-family: var(--font-product, "Vanteloq Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif);
+}
+
+/* Keep the existing page rhythm, hierarchy and interactions. */
+.public-site.reference-home[data-public-theme="dark"] :is(main, main > section, .reference-connections) {
+  background: var(--public-canvas);
+}
+.public-site.reference-home[data-public-theme="dark"] :is(h1, h2, h3, h4, h5, strong, b, dt, summary) { color: var(--public-ink); }
+.public-site.reference-home[data-public-theme="dark"] :is(p, small, dd, li) { color: var(--public-secondary); }
+.public-site.reference-home[data-public-theme="dark"] :is(a, .home-company-credit a, .home-live-caption a) { color: var(--public-link); }
+.public-site.reference-home[data-public-theme="dark"] :is(button, input, select, textarea) { font-family: inherit; }
+.public-site.reference-home[data-public-theme="dark"] :is(button, input, select, textarea):not(.public-brand) {
+  background: var(--public-raised); color: var(--public-ink); border-color: var(--public-control); box-shadow: none;
+}
+.public-site.reference-home[data-public-theme="dark"] :is(input, textarea)::placeholder { color: var(--public-muted); opacity: 1; }
+.public-site.reference-home[data-public-theme="dark"] :is(button, input, select, textarea, a, summary, [tabindex]):focus-visible {
+  outline: 3px solid var(--public-focus) !important; outline-offset: 3px;
+}
+.public-site.reference-home[data-public-theme="dark"] :is(button, select):disabled { color: var(--public-muted); opacity: 1; }
+.public-site.reference-home[data-public-theme="dark"] :is(input[type="checkbox"], input[type="radio"]) { accent-color: var(--public-primary); }
+.public-site.reference-home[data-public-theme="dark"] :is(button[aria-pressed="true"], button[aria-expanded="true"]) {
+  color: var(--public-link); border-color: var(--public-link); background: var(--public-selected);
+}
+.public-site.reference-home[data-public-theme="dark"] :is(.home-skip-link, .public-nav-menu) { background: var(--public-panel); color: var(--public-ink); border-color: var(--public-control); }
+.public-site.reference-home[data-public-theme="dark"] :is(.home-eyebrow, .demo-eyebrow, .home-section-heading > p, .home-ai-copy > p, .home-feature-label) { color: var(--public-link); }
+.public-site.reference-home[data-public-theme="dark"] :is(.home-section-heading > span, .journey-steps span, .reel-window-bar > span:last-child, .reel-insight > div > span) { color: var(--public-secondary); }
+.public-site.reference-home[data-public-theme="dark"] :is(.home-provider-group, .journey-steps, .journey-trust) { border-color: var(--public-line); }
+
+/* Translucency belongs to chrome, never the financial tables underneath it. */
+.public-site.reference-home[data-public-theme="dark"] .public-nav {
+  background: #050608ed; border-bottom: 1px solid var(--public-line);
+  box-shadow: 0 10px 30px #00000025; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+}
+.public-site.reference-home[data-public-theme="dark"] .public-brand { color: var(--public-ink); background: transparent; }
+.public-site.reference-home[data-public-theme="dark"] .public-nav nav > a { color: var(--public-secondary); }
+.public-site.reference-home[data-public-theme="dark"] .public-nav nav > a:is(:hover, [aria-current]) { color: var(--public-ink); background: var(--public-raised); }
+.public-site.reference-home[data-public-theme="dark"] .public-nav nav > a.public-demo-link {
+  color: var(--public-ink); background: var(--public-raised); border-color: var(--public-control); box-shadow: none;
+}
+.public-site.reference-home[data-public-theme="dark"] .public-nav nav > a.public-demo-link:is(:hover, :focus-visible) {
+  color: var(--public-ink); background: #192231; border-color: var(--public-link);
+}
+.public-site.reference-home[data-public-theme="dark"] .public-nav-socials { border-color: var(--public-line); }
+.public-site.reference-home[data-public-theme="dark"] .public-nav-socials .public-social-link { background: transparent; color: var(--public-secondary); border: 0; }
+.public-site.reference-home[data-public-theme="dark"] .public-nav-socials .social-instagram:is(:hover, :focus-visible) { color: #ff9ecd; }
+.public-site.reference-home[data-public-theme="dark"] .public-nav-socials .social-tiktok:is(:hover, :focus-visible) { color: #ff7a95; }
+.public-site.reference-home[data-public-theme="dark"] .public-nav-socials .social-youtube:is(:hover, :focus-visible) { color: #ff7777; }
+.public-site.reference-home[data-public-theme="dark"] .public-nav-socials .social-facebook:is(:hover, :focus-visible) { color: var(--public-link); }
+.public-site.reference-home[data-public-theme="dark"] .public-appearance-control { color: var(--public-secondary); }
+.public-site.reference-home[data-public-theme="dark"] .public-appearance-control select { background: var(--public-panel); color: var(--public-ink); border-color: var(--public-control); }
+.public-site.reference-home[data-public-theme="dark"] .public-appearance-notice { color: var(--public-warning); background: var(--public-warning-bg); border-color: #8b6a34; }
+.public-site.reference-home[data-public-theme="dark"] :is(.public-nav-actions button:not(.nav-login), .public-actions a:first-child, .journey-final > button, .executive-overview .executive-save, .home-social-follow, .public-price-grid article > a, .public-free-plan aside > a, .public-bookloq-standalone aside > a, .custom-plan-callout-action) {
+  background: var(--public-primary); color: var(--public-on-primary); border-color: var(--public-primary); box-shadow: inset 0 1px 0 #ffffff1f, 0 4px 14px #00000024;
+}
+.public-site.reference-home[data-public-theme="dark"] :is(.public-nav-actions button:not(.nav-login), .public-actions a:first-child, .journey-final > button, .executive-overview .executive-save, .home-social-follow, .public-price-grid article > a, .public-free-plan aside > a, .public-bookloq-standalone aside > a, .custom-plan-callout-action):hover {
+  background: var(--public-primary-hover); border-color: var(--public-primary-hover); color: var(--public-on-primary);
+}
+.public-site.reference-home[data-public-theme="dark"] .public-actions button { backdrop-filter: none; background: var(--public-raised); border-color: var(--public-control); color: var(--public-ink); }
+.public-site.reference-home[data-public-theme="dark"] .home-hero:has(.home-live-product) { background: radial-gradient(ellipse at 96% 2%, #16356233, transparent 55%), var(--public-canvas); }
+.public-site.reference-home[data-public-theme="dark"] .home-hero h1 { color: var(--public-ink); }
+.public-site.reference-home[data-public-theme="dark"] .home-hero:has(.home-live-product) h1 em { color: var(--public-ink); -webkit-text-fill-color: currentColor; }
+.public-site.reference-home[data-public-theme="dark"] .home-hero-copy > p:not(.home-eyebrow) { color: var(--public-secondary); }
+.public-site.reference-home[data-public-theme="dark"] .home-hero:has(.home-live-product) .home-hero-copy > .home-source-principle { color: var(--public-link); }
+.public-site.reference-home[data-public-theme="dark"] :is(.home-proof, .home-proof li, .home-company-credit) { color: var(--public-secondary); }
+.public-site.reference-home[data-public-theme="dark"] .home-proof li::before { color: var(--public-link); }
+.public-site.reference-home[data-public-theme="dark"] .reference-connections { border-color: var(--public-line); }
+.public-site.reference-home[data-public-theme="dark"] .reference-connections > span { color: var(--public-muted); }
+.public-site.reference-home[data-public-theme="dark"] .reference-connections .integration-logo { background: #ffffff; border-radius: 7px; padding: 3px; box-sizing: border-box; }
+
+/* The interactive homepage overview uses the real metric and customisation UI. */
+.public-site.reference-home[data-public-theme="dark"] .home-live-product {
+  --preview-ink: var(--public-ink); --preview-muted: var(--public-secondary); --preview-line: var(--public-line); --preview-purple: var(--public-purple);
+}
+.public-site.reference-home[data-public-theme="dark"] .home-monitor { border-color: var(--public-line); background: var(--public-panel); box-shadow: 0 22px 60px #00000048, 0 0 0 1px #ffffff04; }
+.public-site.reference-home[data-public-theme="dark"] :is(.home-preview-sidebar, .home-monitor-top) { background: #080b11; border-color: var(--public-line); }
+.public-site.reference-home[data-public-theme="dark"] :is(.home-monitor-screen, .home-preview-workspace) { background: var(--public-panel); border-color: var(--public-line); }
+.public-site.reference-home[data-public-theme="dark"] :is(.home-preview-brand b, .home-monitor-top b, .home-preview-workspace strong) { color: var(--public-ink); }
+.public-site.reference-home[data-public-theme="dark"] :is(.home-live-controls > span, .home-preview-sidebar a.home-preview-ai-link) { color: var(--public-purple); }
+.public-site.reference-home[data-public-theme="dark"] .home-preview-sidebar a { color: var(--public-secondary); }
+.public-site.reference-home[data-public-theme="dark"] .home-preview-sidebar a:hover { background: var(--public-raised); color: var(--public-ink); }
+.public-site.reference-home[data-public-theme="dark"] .home-preview-sidebar a.is-current { background: var(--public-selected); color: var(--public-link); border-color: #37639f; }
+.public-site.reference-home[data-public-theme="dark"] .home-preview-data-badge { background: var(--public-selected); color: var(--public-link); }
+.public-site.reference-home[data-public-theme="dark"] .executive-overview { --exec-text: var(--public-ink); --exec-muted: var(--public-secondary); }
+.public-site.reference-home[data-public-theme="dark"] :is(.executive-detail, .executive-insights, .executive-financial-details, .executive-customize, .executive-operating-ring, .executive-summary-panels > article, .executive-finance-grid article, .executive-industry-guide, .invoice-overview) {
+  background: var(--public-panel); border-color: var(--public-line); box-shadow: none;
+}
+.public-site.reference-home[data-public-theme="dark"] .executive-overview .executive-kpi { background: var(--public-raised); border-color: var(--public-line); box-shadow: 0 3px 12px #00000015; }
+.public-site.reference-home[data-public-theme="dark"] .executive-overview .executive-kpi:hover { background: #192231; border-color: var(--public-control); }
+.public-site.reference-home[data-public-theme="dark"] .executive-overview .executive-kpi.selected { background: #152a47; border-color: var(--public-link); box-shadow: inset 3px 0 0 var(--public-link); }
+.public-site.reference-home[data-public-theme="dark"] :is(.executive-kpi-label, .executive-kpi strong, .executive-selection, .executive-customize legend, .executive-customize-basics label) { color: var(--public-ink); }
+.public-site.reference-home[data-public-theme="dark"] :is(.executive-heading p, .executive-detail header p, .executive-customize > header p, .operating-ring-copy > p) { color: var(--public-link); }
+.public-site.reference-home[data-public-theme="dark"] :is(.executive-prior, .executive-target, .executive-source, .executive-period-label, .dashboard-record-coverage, .executive-change small, .executive-kpi strong.unavailable) { color: var(--public-secondary); }
+.public-site.reference-home[data-public-theme="dark"] .executive-change { color: var(--public-secondary); }
+.public-site.reference-home[data-public-theme="dark"] .executive-change.change-up { color: var(--public-positive); }
+.public-site.reference-home[data-public-theme="dark"] .executive-change.change-down { color: var(--public-negative); }
+.public-site.reference-home[data-public-theme="dark"] :is(.executive-filters > div, .executive-widget-list > div, .executive-source-details, .executive-preference-status, .executive-no-widgets, .executive-industry-guide li) { background: var(--public-raised); border-color: var(--public-line); }
+.public-site.reference-home[data-public-theme="dark"] .executive-filters button[aria-pressed="true"] { background: var(--public-selected); color: var(--public-link); border-color: var(--public-link); box-shadow: inset 0 -2px 0 var(--public-link); }
+.public-site.reference-home[data-public-theme="dark"] .executive-overview button:not(.executive-kpi):hover:not(:disabled) { background: #192231; color: var(--public-ink); border-color: var(--public-control); }
+.public-site.reference-home[data-public-theme="dark"] .executive-overview button.executive-save:hover:not(:disabled) { background: var(--public-primary-hover); color: var(--public-on-primary); border-color: var(--public-primary-hover); }
+.public-site.reference-home[data-public-theme="dark"] .executive-overview :is(.executive-source, .executive-insights details, th, td, fieldset, .operating-ring-action, .executive-finance-grid dl > div) { border-color: var(--public-line); }
+.public-site.reference-home[data-public-theme="dark"] .executive-chart svg text { fill: var(--public-secondary); }
+.public-site.reference-home[data-public-theme="dark"] :is(.ring-track, .goal-track) { stroke: var(--public-line); }
+.public-site.reference-home[data-public-theme="dark"] .dashboard-sample-banner { background: var(--public-raised); color: var(--public-secondary); border-color: var(--public-line); }
+.public-site.reference-home[data-public-theme="dark"] .dashboard-drawer { background: var(--public-panel); border-color: var(--public-line); color: var(--public-ink); }
+.public-site.reference-home[data-public-theme="dark"] .dashboard-drawer :is(p, small, label) { color: var(--public-secondary); }
+.public-site.reference-home[data-public-theme="dark"] :is(.executive-empty-message, .executive-mix-ring > div, .executive-refresh-notice, .home-proof-insight) { background: var(--public-raised); border-color: var(--public-line); color: var(--public-ink); box-shadow: none; }
+.public-site.reference-home[data-public-theme="dark"] :is(.executive-empty-axis, .executive-empty-dates, .executive-mix-content dt, .executive-table-empty span, .executive-panel-note, .invoice-overview-body > div > span) { color: var(--public-secondary); }
+.public-site.reference-home[data-public-theme="dark"] .executive-mix-content dd { color: var(--public-ink); }
+.public-site.reference-home[data-public-theme="dark"] .executive-summary-panels th { background: var(--public-raised); color: var(--public-secondary); }
+.public-site.reference-home[data-public-theme="dark"] .executive-empty-plot { border-color: var(--public-line); }
+.public-site.reference-home[data-public-theme="dark"] .executive-empty-grid { background-image: linear-gradient(var(--public-line) 1px, transparent 1px), linear-gradient(90deg, var(--public-line) 1px, transparent 1px); }
+.public-site.reference-home[data-public-theme="dark"] .invoice-aging-bars > button { background: transparent; color: var(--public-secondary); }
+.public-site.reference-home[data-public-theme="dark"] .invoice-aging-bars > button[aria-pressed="true"] { background: var(--public-selected); border-color: var(--public-link); }
+.public-site.reference-home[data-public-theme="dark"] .invoice-aging-bars > button > i { background: var(--public-line); }
+
+/* These are shared commerce components whose sheets can arrive after the
+   layout sheet. The local selectors retain the chosen palette on that path. */
+.public-site.reference-home[data-public-theme="dark"] .executive-overview.commerce-reference {
+  --exec-text: var(--public-ink); --exec-muted: var(--public-secondary); --overview-accent: var(--public-purple);
+}
+.public-site.reference-home[data-public-theme="dark"] .executive-overview.commerce-reference .executive-detail > header :is(p, span) { color: var(--public-secondary); }
+.public-site.reference-home[data-public-theme="dark"] .executive-overview.commerce-reference :is(.executive-chart-frequency, .executive-chart-caption) { color: var(--public-secondary); }
+.public-site.reference-home[data-public-theme="dark"] .executive-overview.commerce-reference .executive-chart-value { background: var(--public-raised); border-color: var(--public-line); }
+.public-site.reference-home[data-public-theme="dark"] .executive-overview.commerce-reference .executive-chart-value > span { color: var(--public-secondary); }
+.public-site.reference-home[data-public-theme="dark"] .executive-overview.commerce-reference .executive-chart-value > b { color: var(--public-ink); }
+.public-site.reference-home[data-public-theme="dark"] .executive-overview.commerce-reference .operating-ring-copy > span { color: var(--public-secondary); }
+.public-site.reference-home[data-public-theme="dark"] .executive-overview.commerce-reference .operating-goal-list > button { background: transparent; border-color: transparent; color: var(--public-ink); }
+.public-site.reference-home[data-public-theme="dark"] .executive-overview.commerce-reference .operating-goal-list > button[aria-pressed="true"] { background: var(--public-selected); border-color: var(--public-link); color: var(--public-ink); }
+.public-site.reference-home[data-public-theme="dark"] .executive-overview.commerce-reference .operating-goal-list b { color: var(--public-ink); }
+.public-site.reference-home[data-public-theme="dark"] .executive-overview.commerce-reference .operating-goal-list small { color: var(--public-secondary); }
+.public-site.reference-home[data-public-theme="dark"] .interactive-goal-rings .interactive-ring-readout { color: var(--public-ink); }
+.public-site.reference-home[data-public-theme="dark"] .interactive-goal-rings .interactive-ring-readout small { color: var(--public-secondary); }
+.public-site.reference-home[data-public-theme="dark"] .interactive-goal-ring .interactive-ring-track { stroke: var(--public-line); }
+.public-site.reference-home[data-public-theme="dark"] .interactive-goal-ring:focus-visible .interactive-ring-track { stroke: var(--public-focus); }
+.public-site.reference-home[data-public-theme="dark"] .executive-overview.commerce-reference .executive-insights details { background: var(--public-raised); border-color: var(--public-line); }
+.public-site.reference-home[data-public-theme="dark"] .executive-overview.commerce-reference .executive-insights details[open] { background: #152a47; border-color: #527bac; }
+.public-site.reference-home[data-public-theme="dark"] .executive-overview.commerce-reference .executive-insights details > summary { color: var(--public-ink); }
+.public-site.reference-home[data-public-theme="dark"] .executive-overview.commerce-reference .executive-insights details > summary small { color: var(--public-secondary); }
+.public-site.reference-home[data-public-theme="dark"] .executive-overview.commerce-reference .executive-advisor { background: var(--public-panel); border-color: #65537f; }
+.public-site.reference-home[data-public-theme="dark"] .executive-overview.commerce-reference .executive-advisor > header > span { color: var(--public-purple); }
+.public-site.reference-home[data-public-theme="dark"] .executive-overview.commerce-reference .executive-advisor > .advisor-question { background: var(--public-raised); color: var(--public-purple); border-color: #65537f; }
+.public-site.reference-home[data-public-theme="dark"] .executive-overview.commerce-reference .executive-advisor form { border-color: var(--public-line); }
+.public-site.reference-home[data-public-theme="dark"] .executive-overview.commerce-reference .executive-advisor form button { background: var(--public-primary); color: var(--public-on-primary); border-color: var(--public-primary); }
+.public-site.reference-home[data-public-theme="dark"] .revenue-source-detail { background: var(--public-raised); border-color: var(--public-line); color: var(--public-ink); }
+.public-site.reference-home[data-public-theme="dark"] .revenue-source-detail :is(header > span, small) { color: var(--public-secondary); }
+.public-site.reference-home[data-public-theme="dark"] .revenue-source-total > span { color: var(--public-ink); }
+.public-site.reference-home[data-public-theme="dark"] .revenue-source-detail li { border-color: var(--public-line); }
+.public-site.reference-home[data-public-theme="dark"] .revenue-source-detail > button { background: var(--public-raised) !important; color: var(--public-link) !important; border-color: var(--public-control) !important; }
+.public-site.reference-home[data-public-theme="dark"] .revenue-source-detail > button:hover { background: #192231 !important; }
+
+/* Film chrome is dark; source pixels and the video remain unchanged. */
+.public-site.reference-home[data-public-theme="dark"] :is(.home-film-card, .home-film-error) { background: var(--public-panel); border-color: var(--public-line); box-shadow: 0 18px 48px #00000024; }
+.public-site.reference-home[data-public-theme="dark"] :is(.home-film-top, .home-film-bottom, .home-film-data-note, .home-film-message) { color: var(--public-secondary); border-color: var(--public-line); }
+.public-site.reference-home[data-public-theme="dark"] .home-film-copy h2 em { color: var(--public-purple); }
+.public-site.reference-home[data-public-theme="dark"] .home-film-play { background: #0e1118f5; color: var(--public-ink); border-color: var(--public-control); box-shadow: 0 8px 28px #00000050; }
+.public-site.reference-home[data-public-theme="dark"] .home-film-play > small { color: var(--public-secondary); }
+.public-site.reference-home[data-public-theme="dark"] .home-film-top > span:first-child { color: var(--public-ink); }
+
+/* Decision slides, goal controls and industry walkthroughs. */
+.public-site.reference-home[data-public-theme="dark"] :is(.feature-slide, .feature-preview, .home-ring-visual, .home-live-proof, .feature-reel, .industry-fit-stage, .industry-fit-window, .industry-record) { background: var(--public-panel); border-color: var(--public-line); box-shadow: 0 12px 30px #00000024; }
+.public-site.reference-home[data-public-theme="dark"] :is(.feature-carousel-toolbar p, .feature-preview header, .feature-slide-copy > span, .home-goal-preview, .home-ring-steps span) { color: var(--public-ink); }
+.public-site.reference-home[data-public-theme="dark"] :is(.feature-carousel-toolbar p span, .feature-slide-copy > small, .feature-preview > small, .feature-preview > p, .feature-preview-bars span, .feature-preview-bars small, .feature-stock-rows small, .feature-carousel-pagination, .home-goal-preview > small) { color: var(--public-secondary); }
+.public-site.reference-home[data-public-theme="dark"] :is(.feature-stock-rows > div, .feature-cash-rows > div, .home-sample-metrics, .home-sample-metrics > div) { border-color: var(--public-line); }
+.public-site.reference-home[data-public-theme="dark"] .feature-question { background: var(--public-raised); border-color: var(--public-line); color: var(--public-ink); }
+.public-site.reference-home[data-public-theme="dark"] .home-operating-ring-story { border-color: var(--public-line); }
+.public-site.reference-home[data-public-theme="dark"] .home-operating-ring-story > div:last-child > p:not(.demo-eyebrow) { color: var(--public-secondary); }
+.public-site.reference-home[data-public-theme="dark"] .proof-studio-copy > a { background: var(--public-raised); color: var(--public-link); border-color: var(--public-control); }
+.public-site.reference-home[data-public-theme="dark"] .home-ring-visual :is(strong, small) { color: var(--public-ink); }
+.public-site.reference-home[data-public-theme="dark"] .industry-fit { --ink: var(--public-ink); --muted: var(--public-secondary); --blue: var(--public-link); }
+.public-site.reference-home[data-public-theme="dark"] .industry-fit-label { color: var(--public-link); }
+.public-site.reference-home[data-public-theme="dark"] :is(.industry-fit-choices, .industry-path-node, .industry-sample, .industry-record-outcome, .industry-fit-window) { background: var(--public-raised); border-color: var(--public-line); color: var(--public-secondary); }
+.public-site.reference-home[data-public-theme="dark"] .industry-workflow-path button { background: transparent; color: var(--public-ink); }
+.public-site.reference-home[data-public-theme="dark"] .industry-workflow-path button[aria-pressed="true"] { background: var(--public-selected); border-color: var(--public-link); }
+.public-site.reference-home[data-public-theme="dark"] .industry-workflow-path button[aria-pressed="true"] .industry-path-node { background: var(--public-primary); color: var(--public-on-primary); border-color: var(--public-primary); }
+.public-site.reference-home[data-public-theme="dark"] :is(.industry-window-bar, .reel-window-bar) { background: #080b11; border-color: var(--public-line); }
+.public-site.reference-home[data-public-theme="dark"] :is(.industry-record-rows dt, .industry-window-navigation > span, .industry-window-progress > span, .industry-record-heading > div > span, .industry-fit-playback > span) { color: var(--public-secondary); }
+.public-site.reference-home[data-public-theme="dark"] .industry-record-rows dd { color: var(--public-ink); }
+.public-site.reference-home[data-public-theme="dark"] :is(.industry-record-rows, .industry-record-rows > div) { border-color: var(--public-line); }
+.public-site.reference-home[data-public-theme="dark"] .industry-record-outcome p { color: var(--public-secondary); }
+.public-site.reference-home[data-public-theme="dark"] .industry-fit-stage::before { background: none; }
+.public-site.reference-home[data-public-theme="dark"] .industry-fit :is(.industry-fit-choices button, .industry-workflow-path button):hover { background: var(--public-raised); border-color: var(--public-control); }
+.public-site.reference-home[data-public-theme="dark"] .industry-fit :is(.industry-fit-choices button, .industry-workflow-path button)[aria-pressed="true"]:hover { background: var(--public-selected); border-color: var(--public-link); }
+
+/* Provider colours stay on their supplied artwork, with a neutral carrier. */
+.public-site.reference-home[data-public-theme="dark"] :is(.home-provider-directory > header p, .home-provider-directory > header > span, .home-provider-group-heading > span, .provider-setup-details p, .provider-setup-details dd) { color: var(--public-secondary); }
+.public-site.reference-home[data-public-theme="dark"] .home-provider-tiles > button { background: var(--public-panel); border-color: var(--public-line); box-shadow: inset 0 1px 0 #ffffff04, 0 4px 14px #0000001a; }
+.public-site.reference-home[data-public-theme="dark"] .home-provider-tiles > button:is(:hover, :focus-visible, [aria-expanded="true"]) { background: #15243b; border-color: var(--public-link); box-shadow: 0 0 0 1px #78b2ff20, 0 10px 28px #00000035; }
+.public-site.reference-home[data-public-theme="dark"] .provider-tile-label > strong { color: var(--public-ink); }
+.public-site.reference-home[data-public-theme="dark"] .home-provider-tiles .integration-logo { background: #ffffff; border-color: #dbe5f2; box-shadow: none; }
+.public-site.reference-home[data-public-theme="dark"] .connector-availability-sticker { --sticker-ink: #a8cfff; --sticker-fill: #12376f; border-color: #6185b5; box-shadow: 0 0 0 1px #314b70, 0 3px 6px #00000040; }
+.public-site.reference-home[data-public-theme="dark"] .connector-availability-sticker.is-coming-soon { --sticker-ink: #dbcbff; --sticker-fill: #302248; border-color: #8c78ae; box-shadow: 0 0 0 1px #514169, 0 3px 6px #00000040; }
+.public-site.reference-home[data-public-theme="dark"] .connector-availability-sticker::after { background: #ffffff17; box-shadow: -1px -1px 0 #ffffff1a; }
+.public-site.reference-home[data-public-theme="dark"] .provider-setup-details { background: var(--public-raised); color: var(--public-ink); border-color: var(--public-line); }
+.public-site.reference-home[data-public-theme="dark"] .provider-mark-notice { color: var(--public-secondary) !important; border-color: var(--public-line); }
+.public-site.reference-home[data-public-theme="dark"] .home-connection-status.setup { color: var(--public-positive); background: var(--public-positive-bg); border-color: #40785f; }
+.public-site.reference-home[data-public-theme="dark"] .home-connection-status.development { color: var(--public-purple); background: #302248; border-color: #8c78ae; }
+.public-site.reference-home[data-public-theme="dark"] :is(.reel-flow > span, .reel-flow > b, .feature-reel-screen, .reel-insight, .reel-metric) { background: var(--public-raised); border-color: var(--public-line); }
+.public-site.reference-home[data-public-theme="dark"] :is(.reel-metric > span, .reel-metric p, .reel-visual-label, .reel-chart-axis, .feature-reel > footer > span) { color: var(--public-secondary); }
+.public-site.reference-home[data-public-theme="dark"] :is(.reel-cover-row, .reel-cash-row, .reel-compare-row, .reel-bridge > div) { border-color: var(--public-line); color: var(--public-secondary); }
+.public-site.reference-home[data-public-theme="dark"] .reel-sales-bars { border-color: var(--public-line); background: repeating-linear-gradient(to top, var(--public-line) 0 1px, transparent 1px 33px); }
+.public-site.reference-home[data-public-theme="dark"] .reel-sales-bars > i > span { color: var(--public-link); }
+
+/* AI and the live arithmetic example retain their meaning and source labels. */
+.public-site.reference-home[data-public-theme="dark"] :is(.home-ai-grid article, .finance-proof-example, .financial-review-card) { background: var(--public-panel); border-color: var(--public-line); color: var(--public-ink); box-shadow: none; }
+.public-site.reference-home[data-public-theme="dark"] :is(.home-ai-copy > span, .home-ai-grid article > span, .home-ai-note, .ai-orbit-topics, .ai-orbit-attribution, .finance-proof-example > label) { color: var(--public-secondary); }
+.public-site.reference-home[data-public-theme="dark"] :is(.finance-proof-example > span, .financial-review-card summary small) { color: var(--public-link); }
+.public-site.reference-home[data-public-theme="dark"] .financial-review-card[data-status="needs_review"] { background: var(--public-warning-bg); border-color: #8b6a34; }
+.public-site.reference-home[data-public-theme="dark"] .financial-review-checks > div { border-color: var(--public-line); }
+.public-site.reference-home[data-public-theme="dark"] .financial-review-checks strong[data-status="balanced"] { color: var(--public-positive); }
+.public-site.reference-home[data-public-theme="dark"] .financial-review-checks strong[data-status="needs_review"] { color: var(--public-warning); }
+.public-site.reference-home[data-public-theme="dark"] :is(.financial-review-card > p, .financial-review-checks small, .financial-review-card summary > span:last-child) { color: var(--public-secondary); }
+
+/* BookLoQ is an interactive ledger, not a darkened screenshot. */
+.public-site.reference-home[data-public-theme="dark"] :is(.workspace-preview-shell, .workspace-preview-main, .workspace-preview-visuals article, .workspace-preview-kpis button, .workspace-preview-cash-chart, .workspace-preview-cash-totals > div, .workspace-preview-record-detail, .workspace-file-preview, .workspace-file-options > span) { background: var(--public-panel); border-color: var(--public-line); color: var(--public-ink); box-shadow: none; }
+.public-site.reference-home[data-public-theme="dark"] .workspace-preview-shell > aside { background: #080b11; border-color: var(--public-line); }
+.public-site.reference-home[data-public-theme="dark"] .workspace-preview-shell > aside nav button { background: transparent; color: var(--public-secondary); border-color: transparent; }
+.public-site.reference-home[data-public-theme="dark"] .workspace-preview-shell > aside nav button[aria-pressed="true"] { background: var(--public-selected); color: var(--public-link); border-color: #37639f; }
+.public-site.reference-home[data-public-theme="dark"] :is(.workspace-preview-switch, .workspace-preview-badge, .workspace-preview-insight, .workspace-preview-record-summary, .workspace-preview-week-detail, .workspace-preview-report-note, .workspace-preview-empty, .workspace-preview-donut > div) { background: var(--public-raised); border-color: var(--public-line); color: var(--public-ink); }
+.public-site.reference-home[data-public-theme="dark"] :is(.workspace-preview-kpis button > span:first-child, .workspace-preview-top div > span, .workspace-preview-legend, .workspace-preview-axis, .workspace-preview-key, .workspace-preview-panel-title > span, .workspace-preview-record-summary span, .workspace-preview-cash-totals span, .workspace-preview-record-detail dt, .workspace-preview-helper, .workspace-preview-status) { color: var(--public-secondary); }
+.public-site.reference-home[data-public-theme="dark"] .workspace-preview-key b { color: var(--public-ink); }
+.public-site.reference-home[data-public-theme="dark"] .workspace-preview-donut > div > span { color: var(--public-secondary); }
+.public-site.reference-home[data-public-theme="dark"] .workspace-showcase > footer > span { color: var(--public-secondary); }
+.public-site.reference-home[data-public-theme="dark"] .workspace-preview-status { background: var(--public-raised); border-color: var(--public-line); }
+.public-site.reference-home[data-public-theme="dark"] .workspace-preview-status.late { color: var(--public-warning); background: var(--public-warning-bg); border-color: #8b6a34; }
+.public-site.reference-home[data-public-theme="dark"] .workspace-preview-status.paid { color: var(--public-positive); background: var(--public-positive-bg); border-color: #40785f; }
+.public-site.reference-home[data-public-theme="dark"] .workspace-preview-table-wrap { background: var(--public-panel); border-color: var(--public-line); }
+.public-site.reference-home[data-public-theme="dark"] .workspace-preview-table-wrap table { background: var(--public-panel); color: var(--public-ink); }
+.public-site.reference-home[data-public-theme="dark"] .workspace-preview-table-wrap :is(caption, thead th, tfoot th, tfoot td) { background: var(--public-raised); color: var(--public-secondary); border-color: var(--public-line); }
+.public-site.reference-home[data-public-theme="dark"] .workspace-preview-table-wrap :is(td, th) { color: var(--public-ink); border-color: var(--public-line); }
+.public-site.reference-home[data-public-theme="dark"] .workspace-preview-table-wrap tbody tr.selected { background: var(--public-selected); }
+.public-site.reference-home[data-public-theme="dark"] .workspace-preview-record-link { color: var(--public-link); background: transparent; }
+.public-site.reference-home[data-public-theme="dark"] .workspace-preview-search input { background: var(--public-raised); color: var(--public-ink); border-color: var(--public-control); }
+.public-site.reference-home[data-public-theme="dark"] .workspace-preview-record-detail dl { border-color: var(--public-line); }
+.public-site.reference-home[data-public-theme="dark"] .workspace-preview-text-button { color: var(--public-link); background: transparent; border: 0; }
+
+/* Working charts: readable axes and neutral guides, with series colours intact. */
+.public-site.reference-home[data-public-theme="dark"] .finance-chart { --chart-blue: var(--public-link); --chart-mint: var(--public-positive); --chart-coral: var(--public-negative); --chart-violet: var(--public-purple); background: var(--public-panel); color: var(--public-ink); border-color: var(--public-line); box-shadow: none; }
+.public-site.reference-home[data-public-theme="dark"] :is(.finance-chart-currency, .finance-chart-readout, .finance-chart-empty-designed > div:last-child, .executive-empty-canvas > div:last-child) { background: var(--public-raised); color: var(--public-secondary); border-color: var(--public-line); box-shadow: none; }
+.public-site.reference-home[data-public-theme="dark"] :is(.finance-chart-legend li, .finance-chart-readout label, .finance-chart-readout dt, .finance-chart-data caption, .finance-chart-data th, .home-live-proof-top > div > span) { color: var(--public-secondary); }
+.public-site.reference-home[data-public-theme="dark"] .finance-chart-readout dd { color: var(--public-ink); }
+.public-site.reference-home[data-public-theme="dark"] .finance-chart-axis { fill: var(--public-secondary); }
+.public-site.reference-home[data-public-theme="dark"] :is(.finance-chart-grid, .workspace-preview-plot line) { stroke: var(--public-line); }
+.public-site.reference-home[data-public-theme="dark"] .finance-chart-zero { stroke: var(--public-control); }
+.public-site.reference-home[data-public-theme="dark"] .finance-chart-data table { background: var(--public-panel); color: var(--public-ink); }
+.public-site.reference-home[data-public-theme="dark"] .finance-chart-data :is(td, th) { border-color: var(--public-line); }
+.public-site.reference-home[data-public-theme="dark"] [data-negative="true"] { color: var(--public-negative); }
+
+/* Plans, policies, answers and resource links remain easy to scan. */
+.public-site.reference-home[data-public-theme="dark"] :is(.journey-trust article, .journey-pricing .public-price-grid article, .public-free-plan, .public-trial-notice, .public-addon-choice, .public-bookloq-standalone, .journey-custom, .home-faq details, .journey-final, .resource-article-browser, .resource-article-list article) { background: var(--public-panel); border-color: var(--public-line); box-shadow: none; color: var(--public-ink); }
+.public-site.reference-home[data-public-theme="dark"] .journey-pricing .public-price-grid .plan-growth { background: #101b2d; border-color: #527bac; }
+.public-site.reference-home[data-public-theme="dark"] :is(.public-price-grid strong, .public-free-plan aside > strong, .public-bookloq-standalone aside > strong) { color: var(--public-ink); font-variant-numeric: tabular-nums; }
+.public-site.reference-home[data-public-theme="dark"] :is(.plan-audience, .custom-plan-callout-label, .resource-article-meta) { color: var(--public-link); }
+.public-site.reference-home[data-public-theme="dark"] .resource-article-meta > span:first-child { color: var(--public-link); }
+.public-site.reference-home[data-public-theme="dark"] .resource-article-meta > span:last-child { color: var(--public-secondary); }
+.public-site.reference-home[data-public-theme="dark"] .public-trial-notice { border-left-color: var(--public-link); }
+.public-site.reference-home[data-public-theme="dark"] :is(.public-free-plan aside, .public-bookloq-standalone aside) { background: var(--public-raised); border-color: var(--public-line); }
+.public-site.reference-home[data-public-theme="dark"] :is(.home-faq-list, .home-faq-list details) { border-color: var(--public-line); }
+.public-site.reference-home[data-public-theme="dark"] .home-faq-list summary::after { color: var(--public-link); }
+.public-site.reference-home[data-public-theme="dark"] :is(.home-social-card, .home-social-hub-link) { background: var(--public-panel); border-color: var(--public-line); box-shadow: 0 12px 30px #0000001a; }
+.public-site.reference-home[data-public-theme="dark"] :is(.home-social-copy h2, .home-social-card h3) { color: var(--public-ink); }
+.public-site.reference-home[data-public-theme="dark"] .home-social-qr { background: #ffffff; border-color: #dbe5f2; }
+.public-site.reference-home[data-public-theme="dark"] .home-social-banner { border-color: var(--public-line); box-shadow: 0 14px 36px #0000002a; }
+.public-site.reference-home[data-public-theme="dark"] .home-footer { background: #030406; border-top: 1px solid var(--public-line); }
+.public-site.reference-home[data-public-theme="dark"] .home-footer :is(a, button, p, .home-footer-owner span) { color: var(--public-secondary); }
+.public-site.reference-home[data-public-theme="dark"] .home-footer button { background: transparent; border: 0; }
+.public-site.reference-home[data-public-theme="dark"] .home-footer :is(a, button):hover { color: var(--public-ink); }
+.public-site.reference-home[data-public-theme="dark"] .home-footer > div > strong { color: var(--public-link); }
+.public-site.reference-home[data-public-theme="dark"] .home-footer-note { border-color: var(--public-line); }
+
+/* Five existing light labels fell just below normal-text contrast. This is
+   colour-only correction on their existing backgrounds, not a light redesign. */
+.public-site.reference-home[data-public-theme="light"] .executive-overview.commerce-reference :is(.executive-insights > header > button, .operating-ring-action > button) { color: #245eae; }
+.public-site.reference-home[data-public-theme="light"] :is(.home-provider-directory > header > span, .home-ai-note) { color: #4b5b72; }
+.public-site.reference-home[data-public-theme="light"] .reel-chart-axis { color: #53677e; }
+.public-site.reference-home[data-public-theme="light"] .reel-window-bar > span:last-child { color: #53677e; }
+
+/* Geometry is identical in all choices; only the selected palette changes. */
+.public-site.reference-home[data-public-theme] .public-appearance-control { display: inline-flex; align-items: center; gap: 8px; position: relative; }
+.public-site.reference-home[data-public-theme] .public-appearance-control select {
+  box-sizing: border-box; min-height: 44px; min-width: 92px; border: 1px solid #718198;
+  border-radius: 10px; padding: 9px 10px; font: 500 13px/1.4 var(--font-product, "Vanteloq Geist", Arial, sans-serif);
+  cursor: pointer;
+}
+
+/* The consent dialog is a separate root. Its explicit theme never changes the
+   consent decision, copy, focus trap or the equal availability of both choices. */
+.analytics-consent.analytics-consent-compact[data-consent-theme="dark"], .analytics-settings-button[data-consent-theme="dark"] {
+  --consent-panel: #0e1118; --consent-raised: #151b25; --consent-ink: #f5f7fb;
+  --consent-secondary: #b4becd; --consent-control: #718198; --consent-link: #78b2ff; --consent-focus: #9ac7ff;
+  color-scheme: dark; background: var(--consent-panel); color: var(--consent-ink); border-color: var(--consent-control);
+  font-family: var(--font-product, "Vanteloq Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif);
+  box-shadow: 0 12px 36px #00000060;
+}
+.analytics-consent.analytics-consent-compact[data-consent-theme="dark"] .analytics-consent-copy h2 { color: var(--consent-ink); }
+.analytics-consent.analytics-consent-compact[data-consent-theme="dark"] .analytics-consent-copy p { color: var(--consent-secondary); }
+.analytics-consent.analytics-consent-compact[data-consent-theme="dark"] .analytics-consent-copy a { color: var(--consent-link); }
+.analytics-consent.analytics-consent-compact[data-consent-theme="dark"] .analytics-consent-actions button {
+  background: var(--consent-raised); color: var(--consent-ink); border: 1px solid var(--consent-control);
+  box-shadow: none; min-height: 44px; font-weight: 600;
+}
+.analytics-consent.analytics-consent-compact[data-consent-theme="dark"] .analytics-consent-actions button:hover,
+.analytics-settings-button[data-consent-theme="dark"]:hover { background: #192231; border-color: var(--consent-link); color: var(--consent-ink); }
+.analytics-consent.analytics-consent-compact[data-consent-theme="dark"] :is(button, a):focus-visible,
+.analytics-settings-button[data-consent-theme="dark"]:focus-visible { outline: 3px solid var(--consent-focus); outline-offset: 3px; }
+
+/* Decorative dots are not business signals. Status labels remain present. */
+.public-site.reference-home[data-public-theme="dark"] :is(.home-proof-dot, .home-film-top i, .industry-window-progress i, .industry-flow-halo) { display: none; }
+.public-site.reference-home[data-public-theme="dark"] .home-ring-steps i { box-shadow: none; }
+@media (max-width: 880px) {
+  .public-site.reference-home[data-public-theme="dark"] .public-nav nav { background: var(--public-panel); border-color: var(--public-line); }
+  .public-site.reference-home[data-public-theme="dark"] .public-nav-actions { border-color: var(--public-line); }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .public-site.reference-home[data-public-theme="dark"] .public-nav { background: var(--public-canvas); backdrop-filter: none; -webkit-backdrop-filter: none; }
+  .public-site.reference-home[data-public-theme="dark"] .home-film-play { background: var(--public-panel); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .public-site.reference-home[data-public-theme="dark"] * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+@media (forced-colors: active) {
+  .public-site.reference-home[data-public-theme="dark"] {
+    --public-canvas: Canvas; --public-panel: Canvas; --public-raised: Canvas; --public-selected: Canvas;
+    --public-line: CanvasText; --public-control: ButtonText; --public-ink: CanvasText; --public-secondary: CanvasText;
+    --public-muted: CanvasText; --public-link: LinkText; --public-purple: LinkText; --public-focus: Highlight;
+    --public-positive: CanvasText; --public-negative: CanvasText; --public-warning: CanvasText;
+    --public-positive-bg: Canvas; --public-negative-bg: Canvas; --public-warning-bg: Canvas;
+    --public-primary: Highlight; --public-primary-hover: Highlight; --public-on-primary: HighlightText;
+  }
+  .public-site.reference-home[data-public-theme="dark"] .public-nav { background: Canvas; backdrop-filter: none; -webkit-backdrop-filter: none; }
+  .public-site.reference-home[data-public-theme="dark"] .home-hero:has(.home-live-product) { background: Canvas; }
+  .public-site.reference-home[data-public-theme="dark"] :is(button[aria-pressed="true"], button[aria-expanded="true"], .executive-kpi.selected) { border: 2px solid Highlight; }
+  .analytics-consent.analytics-consent-compact[data-consent-theme="dark"], .analytics-settings-button[data-consent-theme="dark"] {
+    --consent-panel: Canvas; --consent-raised: Canvas; --consent-ink: CanvasText;
+    --consent-secondary: CanvasText; --consent-control: ButtonText; --consent-link: LinkText; --consent-focus: Highlight;
+  }
+}

@@ -45,6 +45,7 @@ import "./premium-auth.css";
 import "./premium-workspace.css";
 import "./demo-booking.css";
 import "./public-header-polish.css";
+import "./public-jetblack.css";
 const GOOGLE_ANALYTICS_CONSENT_DEFAULT = `
 window.dataLayer = window.dataLayer || [];
 window.gtag = window.gtag || function () { window.dataLayer.push(arguments); };

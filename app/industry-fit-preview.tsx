@@ -71,7 +71,7 @@ export default function IndustryFitPreview() {
       </div>
       <div className="industry-fit-window" id="industry-workflow-record" role="region" aria-label={`${template.label}: sample workflow`}>
         <span className="industry-stage-status" role="status">{template.label}, {active.title}, stage {step + 1} of 3.</span>
-        <div className="industry-window-bar"><strong><ProductBrandLogo product="vanteloq"/> Vanteloq</strong><span>{workflow.workspace}</span></div>
+        <div className="industry-window-bar"><strong><ProductBrandLogo product="vanteloq"/></strong><span>{workflow.workspace}</span></div>
         <div className="industry-window-progress" aria-hidden="true">{workflow.steps.map((item, index) => <span key={item.title} data-current={index === step} data-complete={index < step}><i/>{item.shortTitle}</span>)}</div>
         <div className="industry-flow-track" aria-hidden="true"><svg viewBox="0 0 480 38" fill="none"><path d="M22 19H458"/><path className="industry-flow-trail" d="M22 19H458" style={{strokeDasharray:"436",strokeDashoffset:String(436-(step+1)/3*436)}}/>{[22,240,458].map((x,index)=><g key={x} data-current={index===step} data-active={index<=step}><circle cx={x} cy="19" r="8"/><circle className="industry-flow-halo" cx={x} cy="19" r="14"/></g>)}</svg></div>
         <div ref={record}><RecordPreview step={active}/></div>

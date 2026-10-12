@@ -7,6 +7,7 @@ import { createCookieNoticeNavigation, shouldShowConsentPanel } from "./analytic
 import { publicMarketingEvent } from "../shared/public-marketing-events";
 import { useModalFocus } from "./use-modal-focus";
 import { getPublicRoot, getServerPublicRoot, subscribePublicRoot } from "./analytics-public-surface";
+import { useWorkspaceAppearance } from "./workspace-appearance";
 
 type ConsentChoice = "analytics" | "essential";
 type GtagCommand = [string, ...unknown[]];
@@ -135,6 +136,7 @@ const getClientHydrationSnapshot = () => true;
 const getServerHydrationSnapshot = () => false;
 
 export function GoogleAnalyticsConsent() {
+  const appearance = useWorkspaceAppearance();
   const pathname = usePathname();
   const publicRoot = useSyncExternalStore(subscribePublicRoot, getPublicRoot, getServerPublicRoot);
   const hydrated = useSyncExternalStore(subscribeToHydration, getClientHydrationSnapshot, getServerHydrationSnapshot);
@@ -226,7 +228,7 @@ export function GoogleAnalyticsConsent() {
   return (
     <>
       {panelOpen && (
-        <section ref={panelRef} className="analytics-consent analytics-consent-compact" role="dialog" aria-modal="true" aria-labelledby="analytics-consent-title" aria-describedby="analytics-consent-copy" tabIndex={-1}>
+        <section ref={panelRef} className="analytics-consent analytics-consent-compact" data-consent-theme={appearance.theme} role="dialog" aria-modal="true" aria-labelledby="analytics-consent-title" aria-describedby="analytics-consent-copy" tabIndex={-1}>
           <div className="analytics-consent-copy">
             <h2 id="analytics-consent-title">Privacy choices</h2>
             <p id="analytics-consent-copy">Optional Google Analytics measures public-page use. Account data, form entries and workspace records stay excluded. No advertising tracking. Essential only gives you the same access.</p>
@@ -239,7 +241,7 @@ export function GoogleAnalyticsConsent() {
         </section>
       )}
       {!panelOpen && (
-        <button type="button" className="analytics-settings-button" onClick={() => setSettingsOpen(true)} aria-label="Open cookie settings">
+        <button type="button" className="analytics-settings-button" data-consent-theme={appearance.theme} onClick={() => setSettingsOpen(true)} aria-label="Open cookie settings">
           Cookie Settings
         </button>
       )}

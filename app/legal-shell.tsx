@@ -24,7 +24,7 @@ export function LegalShell({
       <header className="legal-header">
         <Link className="legal-brand" href="/" aria-label="Vanteloq home">
           <ProductBrandLogo product="vanteloq" priority />
-          <span>Vanteloq<small>LEGAL CENTRE</small></span>
+          <span>Legal centre</span>
         </Link>
         <nav aria-label="Legal navigation">
           <Link href="/legal">Legal centre</Link>
@@ -68,7 +68,7 @@ export function LegalShell({
       </main>
 
       <footer className="legal-footer">
-        <div><ProductBrandLogo product="vanteloq"/><span><strong>Vanteloq</strong><small>2855706 ALBERTA INC · LexEdge Consulting</small></span></div>
+        <div><ProductBrandLogo product="vanteloq"/><span><small>2855706 ALBERTA INC · LexEdge Consulting</small></span></div>
         <nav aria-label="Legal footer navigation"><Link href="/">Home</Link><Link href="/resources">Resources</Link><Link href="/privacy">Privacy</Link><Link href="/terms">Terms</Link><Link href="/cookies">Cookies</Link><Link href="/data-processing">Data processing</Link><Link href="/subprocessors">Subprocessors</Link></nav>
         <p>Questions about these documents can be sent through <LegalContactLink/>.</p>
       </footer>

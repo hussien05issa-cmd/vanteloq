@@ -1127,11 +1127,9 @@ export default function VanteloqApp({
         >
           Close
         </button>
-        <button className="brand" onClick={() => navigate(standaloneBookloq ? "BookLoQ" : "Dashboard")}>
+        <button className="brand" aria-label={standaloneBookloq ? "Go to BookLoQ" : "Go to overview"} onClick={() => navigate(standaloneBookloq ? "BookLoQ" : "Dashboard")}>
           <ProductBrandLogo product={standaloneBookloq ? "bookloq" : "vanteloq"} />
-          <span className="brand-name">
-            {standaloneBookloq ? "BookLoQ" : "Vanteloq"}<small>{standaloneBookloq ? "FINANCIAL REVIEW" : "OPERATING INTELLIGENCE"}</small>
-          </span>
+          {standaloneBookloq && <span className="brand-name">BookLoQ<small>FINANCIAL REVIEW</small></span>}
         </button>
         <div className="workspace-switcher">
           <span className="workspace-avatar">

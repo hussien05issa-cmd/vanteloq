@@ -20,7 +20,7 @@ export default function PublicPageNav({ signIn }: { signIn?: () => void }) {
     return () => { media.removeEventListener("change", resize); document.removeEventListener("pointerdown", dismiss); };
   }, []);
   return <header ref={shell} className="public-shell-nav" role={open ? "dialog" : undefined} aria-modal={open ? true : undefined} aria-label={open ? "Public navigation" : undefined}>
-    <Link className="public-shell-brand" href="/" aria-label="Vanteloq home"><ProductBrandLogo product="vanteloq" priority/><span>Vanteloq</span></Link>
+    <Link className="public-shell-brand" href="/" aria-label="Vanteloq home"><ProductBrandLogo product="vanteloq" priority/></Link>
     {open && <button className="public-shell-scrim" aria-label="Close navigation" onClick={close} tabIndex={-1}/>}
     <nav id="public-main-navigation" ref={menu} className={`public-shell-links${open ? " is-open" : ""}`} aria-label="Public navigation" onKeyDown={event => { if (event.key === "Escape" && resources.current) resources.current.open = false; }}>
       <Link href="/how-it-works" aria-current={path === "/how-it-works" ? "page" : undefined} onClick={close}>How it works</Link><Link href="/solutions/retail" aria-current={path === "/solutions/retail" ? "page" : undefined} onClick={close}>Retail</Link><Link href="/#connections" onClick={close}>Connections</Link><Link href="/pricing" aria-current={path === "/pricing" ? "page" : undefined} onClick={close} data-public-event="pricing_view" data-public-section="header">Pricing</Link>

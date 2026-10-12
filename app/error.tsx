@@ -12,7 +12,7 @@ export default function PageRecovery({ reset }: { error: Error & { digest?: stri
   useEffect(() => { heading.current?.focus(); }, []);
   return <main className="client-load-recovery" aria-labelledby="page-recovery-title">
     <section className="client-load-card">
-      <div className="client-load-brand"><ProductBrandLogo product="vanteloq" priority/><span>Vanteloq</span></div>
+      <div className="client-load-brand"><ProductBrandLogo product="vanteloq" priority/></div>
       <span className="client-load-status"><i aria-hidden="true"/>A brief interruption</span>
       <h1 id="page-recovery-title" ref={heading} tabIndex={-1}>This view couldn’t load.</h1>
       <p>Please try again. If this keeps happening, our support team can help.</p>

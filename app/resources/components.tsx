@@ -8,7 +8,7 @@ export function ResourceHeader() {
     <header className="resource-header">
       <Link className="resource-brand" href="/" aria-label="Vanteloq home">
         <ProductBrandLogo product="vanteloq" priority />
-        <span>Vanteloq<small>RESOURCES</small></span>
+        <span>Resources</span>
       </Link>
       <nav aria-label="Resource navigation">
         <Link href="/">Home</Link>
@@ -44,7 +44,6 @@ export function ResourceFooter() {
       <div>
         <Link className="resource-brand" href="/" aria-label="Vanteloq home">
           <ProductBrandLogo product="vanteloq" />
-          <span>Vanteloq<small>BUSINESS OPERATING SYSTEM</small></span>
         </Link>
         <p>Practical operating guidance built around clear definitions, traceable inputs and human review.</p>
       </div>

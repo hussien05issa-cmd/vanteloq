@@ -16,12 +16,15 @@ export default function ProductBrandLogo({
   className = "",
 }: ProductBrandLogoProps) {
   const artwork = PRODUCT_BRAND_ASSETS[product];
-  const frame = artwork.frames[variant];
+  // Vanteloq uses the symbol alone, including legacy full-lockup call sites.
+  // BookLoQ and LexEdge retain their supplied wordmarks.
+  const displayedVariant = product === "vanteloq" ? "icon" : variant;
+  const frame = artwork.frames[displayedVariant];
   const clipId = useId();
   if (priority) preload(artwork.source, { as: "image", fetchPriority: "high" });
 
   return (
-    <span className={`product-brand-logo product-brand-artwork ${product} ${variant} ${className}`.trim()}>
+    <span className={`product-brand-logo product-brand-artwork ${product} ${displayedVariant} ${className}`.trim()}>
       <svg
         className="product-brand-viewport"
         role="img"

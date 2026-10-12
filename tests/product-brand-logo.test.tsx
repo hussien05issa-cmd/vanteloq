@@ -25,11 +25,12 @@ test("all installed brand files preserve the exact customer-supplied JPEG bytes"
   }
 });
 
-test("full and icon frames stay within the original image bounds and preserve its aspect ratio", () => {
+test("rendered frames stay within the original image bounds and preserve its aspect ratio", () => {
   for (const product of products) {
     const artwork = PRODUCT_BRAND_ASSETS[product];
     for (const variant of ["icon", "full"] as const) {
-      const frame = artwork.frames[variant];
+      const displayedVariant = product === "vanteloq" ? "icon" : variant;
+      const frame = artwork.frames[displayedVariant];
       assert.ok(frame.x >= 0 && frame.y >= 0 && frame.width > 0 && frame.height > 0, `${product} ${variant}`);
       assert.ok(frame.x + frame.width <= artwork.width && frame.y + frame.height <= artwork.height, `${product} ${variant}`);
       const html = renderToStaticMarkup(<ProductBrandLogo product={product} variant={variant}/>);
@@ -38,6 +39,18 @@ test("full and icon frames stay within the original image bounds and preserve it
       assert.ok(html.includes(`<image href="${artwork.source}" width="${artwork.width}" height="${artwork.height}"`));
     }
   }
+});
+
+test("Vanteloq symbol-only branding excludes the supplied wordmark even at legacy full-lockup call sites", () => {
+  const artwork = PRODUCT_BRAND_ASSETS.vanteloq;
+  const icon = artwork.frames.icon;
+  const wordmark = artwork.frames.full;
+  const html = renderToStaticMarkup(<ProductBrandLogo product="vanteloq" variant="full"/>);
+  assert.match(html, /class="product-brand-logo product-brand-artwork vanteloq icon"/);
+  assert.ok(html.includes(`viewBox="${icon.x} ${icon.y} ${icon.width} ${icon.height}"`));
+  assert.ok(!html.includes(`viewBox="${wordmark.x} ${wordmark.y} ${wordmark.width} ${wordmark.height}"`));
+  assert.equal((html.match(/role="img"/g) ?? []).length, 1);
+  assert.match(html, /aria-label="Vanteloq logo"/);
 });
 
 test("each visible mark has one accessible image name without an extra trademark or decorative text", () => {

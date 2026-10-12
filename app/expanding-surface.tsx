@@ -10,7 +10,7 @@ import "./control-surfaces.css";
 /** One shared, interruptible origin-to-panel transition, with a static fallback. */
 export default function ExpandingSurface({ open, onClose, onAfterClose, originRef, title, children }: { open: boolean; onClose: () => void; onAfterClose?: () => void; originRef: RefObject<HTMLElement | null>; title: string; children: ReactNode }) {
   const [present, setPresent] = useState(false);
-  const [inWorkspace, setInWorkspace] = useState(false);
+  const [themedOrigin, setThemedOrigin] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null), animationRef = useRef<Animation | null>(null), generation = useRef(0);
   const titleId = useId(), motion = useMotionPreference();
   const wasPresent = useRef(false);
@@ -22,7 +22,7 @@ export default function ExpandingSurface({ open, onClose, onAfterClose, originRe
     if (!open && wasPresent.current) { wasPresent.current = false; onAfterClose?.(); }
   }, [open, present, onAfterClose]);
   // Defer mounting until after hydration, preserving an interruptible opening.
-  useLayoutEffect(() => { let cancelled = false; if (open) queueMicrotask(() => { if (!cancelled) { setInWorkspace(Boolean(originRef.current?.closest(".operating-shell[data-workspace-theme]"))); setPresent(true); } }); return () => { cancelled = true; }; }, [open, originRef]);
+  useLayoutEffect(() => { let cancelled = false; if (open) queueMicrotask(() => { if (!cancelled) { setThemedOrigin(Boolean(originRef.current?.closest(".operating-shell[data-workspace-theme],.public-site[data-public-theme]"))); setPresent(true); } }); return () => { cancelled = true; }; }, [open, originRef]);
   useLayoutEffect(() => {
     const panel = panelRef.current;
     if (!present || !panel) return;
@@ -54,5 +54,5 @@ export default function ExpandingSurface({ open, onClose, onAfterClose, originRe
       <div className="control-surface-content">{children}</div>
     </div>
   </div>;
-  return createPortal(inWorkspace ? <WorkspaceAppearanceBoundary>{surface}</WorkspaceAppearanceBoundary> : surface, document.body);
+  return createPortal(themedOrigin ? <WorkspaceAppearanceBoundary>{surface}</WorkspaceAppearanceBoundary> : surface, document.body);
 }
