@@ -100,7 +100,7 @@
 :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .wiring-principles>* { background:var(--ws-raised)!important; color:var(--ws-ink)!important; }
 /* Loading shapes reserve the layout without a bright flash in dark mode. */
 :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.skeleton-metrics>div,.skeleton-records,.skeleton-metric-card,.skeleton-panel,.skeleton-attention-row) { background:var(--ws-panel)!important; border-color:var(--ws-line)!important; }
-:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .workspace-skeleton i { background:linear-gradient(100deg,var(--ws-raised) 25%,var(--ws-control) 45%,var(--ws-raised) 65%)!important; background-size:220% 100%!important; border-color:var(--ws-line)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .workspace-skeleton i { background:linear-gradient(100deg,var(--sk-fill) 25%,var(--sk-highlight) 45%,var(--sk-fill) 65%)!important; background-size:220% 100%!important; border-color:var(--ws-line)!important; }
 :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .skeleton-rings { background:radial-gradient(circle,transparent 0 32%,var(--ws-line) 32% 39%,transparent 39% 43%,var(--ws-line) 43% 50%,transparent 50% 54%,var(--ws-line) 54% 61%,transparent 61%)!important; }
 :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .wiring-principles span { color:var(--ws-muted)!important; }
 :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .control-surface-heading span { color:var(--ws-blue)!important; }

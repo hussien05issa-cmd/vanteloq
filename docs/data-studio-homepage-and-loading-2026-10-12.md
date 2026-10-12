@@ -1,0 +1,13 @@
+# Data Studio homepage and loading themes
+
+The homepage presents the published R1 Executive Review, with a keyboard-accessible seven-sheet preview and a Higgsfield product film. Existing hero, connector availability, pricing, authentication and workspace permissions remain unchanged. Open Reports retains the Reports destination through sign-in; the visitor then selects Data Studio.
+
+The preview and film use fictional records: CAD 8,700, CAD 5,700 and a CAD 200 refund, with corresponding costs of CAD 5,500, CAD 3,600 and a CAD 100 cost reversal. Net sales are CAD 14,200; gross profit is CAD 5,200; weighted margin is 36.6%. Inventory and cash are explicitly described as posted ledger evidence. No provider-history certification, live bank balance, native Excel charts, SQL workspace or editable workbook is claimed.
+
+The 12-second film was authored with Higgsfield's native Higgsedit compositor, using registered Inter fonts, bounded entrance and exit tracks, and exact text. Native frame checks returned no diagnostics. Its checked web encode is 1920 × 1080 H.264, 845,859 bytes. Playback metadata precedes video bytes. The 1920 × 1080 WebP poster is 71,678 bytes. No generative video job was submitted. The video source is mounted only after visitor intent, with native controls, no autoplay, off-screen and hidden-page pausing, and retry/return controls. Reduced-motion changes pause playback; the interactive text preview remains available.
+
+The initial authenticated loader now reads the existing Dark, Light and System preference without importing workspace layout styles into the public bundle. Its early palette uses the same graphite canvas and panels as the dark workspace. Shared workspace and BookLoQ skeleton bars, panels, plots, rings and borders use theme tokens. Their shapes and accessible loading status remain unchanged.
+
+Verification: 30 focused checks passed, including skeleton shapes, appearance, homepage and deferred-style boundaries. TypeScript checking passed. Actual component browser checks covered desktop and 390 px mobile, all seven sheet selections, keyboard arrows, film reveal and playback, return to preview, initial dark loader without private styles, workspace and BookLoQ loader colours, and Light/System preference resolution. No production customer records were changed. Production publication and exact GitHub tree verification are recorded separately in the release receipt.
+
+Independent review found a keyboard-focus gap in the film error screen. The fix was tested with a local fictional media failure: failure focuses Try again, retry focuses the new video, and Return to preview focuses the selected sheet tab. The mobile heading retains a space when its desktop line break is hidden.
