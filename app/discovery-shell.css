@@ -33,6 +33,10 @@
 .discovery-shell :is(a,button,input,select,textarea,summary):focus-visible { outline: 3px solid var(--discovery-focus); outline-offset: 4px; }
 .discovery-shell .public-shell-nav { background: var(--discovery-panel); color: var(--discovery-ink); border-color: var(--discovery-line); }
 .discovery-shell .public-shell-nav a { color: inherit; }
+.discovery-shell .public-shell-nav a:is(:hover, :focus-visible),
+.discovery-shell .public-shell-links summary:is(:hover, :focus-visible) { color: var(--discovery-link); }
+.discovery-shell .public-shell-links > .public-demo-link { color: var(--discovery-ink); background: var(--discovery-raised); border-color: var(--discovery-line); }
+.discovery-shell .public-shell-links > .public-demo-link:is(:hover, :focus-visible) { color: var(--discovery-ink); background: var(--discovery-panel); border-color: var(--discovery-link); }
 .discovery-shell .public-shell-resources,
 .discovery-shell .public-shell-links.is-open { background: var(--discovery-panel); border-color: var(--discovery-line); }
 .discovery-shell .public-shell-resources a:hover { background: var(--discovery-raised); }
