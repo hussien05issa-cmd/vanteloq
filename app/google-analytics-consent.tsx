@@ -241,9 +241,11 @@ export function GoogleAnalyticsConsent() {
         </section>
       )}
       {!panelOpen && (
-        <button type="button" className="analytics-settings-button" data-consent-theme={appearance.theme} onClick={() => setSettingsOpen(true)} aria-label="Open cookie settings">
-          Cookie Settings
-        </button>
+        <div className="analytics-settings-footer">
+          <button type="button" className="analytics-settings-button" data-consent-theme={appearance.theme} onClick={() => setSettingsOpen(true)} aria-label="Open cookie settings">
+            Cookie Settings
+          </button>
+        </div>
       )}
     </>
   );

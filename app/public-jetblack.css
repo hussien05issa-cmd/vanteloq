@@ -325,6 +325,9 @@
 
 /* The consent dialog is a separate root. Its explicit theme never changes the
    consent decision, copy, focus trap or the equal availability of both choices. */
+.public-site.reference-home[data-public-theme="dark"] ~ .analytics-settings-footer {
+  display: flow-root; background: #050608;
+}
 .analytics-consent.analytics-consent-compact[data-consent-theme="dark"], .analytics-settings-button[data-consent-theme="dark"] {
   --consent-panel: #0e1118; --consent-raised: #151b25; --consent-ink: #f5f7fb;
   --consent-secondary: #b4becd; --consent-control: #718198; --consent-link: #78b2ff; --consent-focus: #9ac7ff;
