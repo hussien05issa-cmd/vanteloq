@@ -1127,7 +1127,7 @@ export default function VanteloqApp({
           Close
         </button>
         <button className="brand" aria-label={standaloneBookloq ? "Go to BookLoQ" : "Go to overview"} onClick={() => navigate(standaloneBookloq ? "BookLoQ" : "Dashboard")}>
-          <ProductBrandLogo product={standaloneBookloq ? "bookloq" : "vanteloq"} />
+          <ProductBrandLogo product={standaloneBookloq ? "bookloq" : "vanteloq"} clearCarrier />
           {standaloneBookloq && <span className="brand-name">BookLoQ<small>FINANCIAL REVIEW</small></span>}
         </button>
         <div className="workspace-switcher">
@@ -1203,6 +1203,7 @@ export default function VanteloqApp({
                       <ProductBrandLogo
                         product="bookloq"
                         variant="full"
+                        clearCarrier
                         className="bookloq-nav-lockup"
                       />
                     ) : <><WorkspaceIcon name={item}/><span className="nav-label">{item==="Inventory"?resolveIndustryTemplate(businessIndustry).inventoryLabel:item==="Sales"&&industryConfiguration.templateId==="dealership"?"Vehicle sales":workspaceViewLabel(item)}</span></>}

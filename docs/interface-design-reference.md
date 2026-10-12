@@ -6,6 +6,8 @@ The following owner correction supersedes the initial branding pass: Vanteloq sh
 
 The supplied metallic Vanteloq, BookLoQ and LexEdge Consulting artwork replaces the earlier UI identity. Use the original JPEGs in `public/brand/origin-metal-2026`, with the shared logo component framing those pixels on an opaque black carrier. Do not redraw, invert or recolour the marks. Third-party integration logos retain their own identity.
 
+October 12 sidebar correction: compact Vanteloq and BookLoQ navigation marks use a clear carrier, as directly requested by the owner. The shared SVG component masks near-black carrier pixels without replacing or recolouring the original JPEG assets. Public and marketing marks retain their existing carrier. The Vanteloq symbol crop stops before the photographed wordmark; no partial lettering should appear beneath the symbol. Period controls align to the content edge and stack vertically on small screens. The dashboard details and document canvas follow the resolved Dark, Light or System workspace theme.
+
 The recovered phone branch's midnight direction is completed in the existing appearance system. Dark uses graphite surfaces, cobalt controls and readable silver text. Light and System remain available. Keep dense records opaque, status changes meaningful, tabular financial figures and the existing Geist family. Remove decorative flashing markers while retaining useful status labels and data warnings. Prefer compact, accessible navigation with at least 44 px targets.
 
 This update supersedes older instructions below to preserve the previous logo artwork. It does not alter calculations, permissions, consent, billing or provider availability.

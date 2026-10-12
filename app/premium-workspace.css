@@ -323,6 +323,64 @@
 .operating-shell[data-workspace-theme] .executive-overview .executive-filters select:not([multiple]):not([size]) {
   min-width: 0; width: 100%; font-size: 14px !important; padding-inline: 10px 28px;
 }
+.operating-shell[data-workspace-theme] .executive-overview .executive-filters {
+  display: grid;
+  grid-template-columns: repeat(2,minmax(0,1fr));
+  justify-content: start;
+  align-items: end;
+  gap: 12px;
+  width: min(100%,516px);
+  padding: 12px;
+  border: 1px solid var(--ws-line);
+  border-radius: 16px;
+}
+.operating-shell[data-workspace-theme] .executive-overview .executive-filters>label {
+  display: grid;
+  grid-template-columns: minmax(0,1fr);
+  align-items: start;
+  gap: 6px;
+  min-width: 0;
+  width: auto;
+  margin: 0;
+}
+.operating-shell[data-workspace-theme] .sidebar>.brand {
+  width: fit-content;
+  min-width: 44px;
+  min-height: 52px;
+  margin: 0 0 12px;
+  padding: 4px 8px;
+  background: transparent !important;
+  border: 0;
+  border-radius: 12px;
+  box-shadow: none !important;
+}
+.operating-shell[data-workspace-theme] .sidebar>.brand:hover { background: var(--ws-raised) !important; }
+.operating-shell[data-workspace-theme] .sidebar>.brand .product-brand-artwork.icon {
+  width: 42px;
+  height: 42px;
+  border: 0 !important;
+}
+.operating-shell[data-workspace-theme] .sidebar .bookloq-nav-lockup.clear-carrier {
+  width: 146px;
+  max-width: 100%;
+  height: 38px;
+}
+/* Keep the original steel artwork distinct on a bright navigation surface. */
+.operating-shell[data-workspace-theme="light"] .sidebar .product-brand-artwork.clear-carrier>.product-brand-viewport {
+  filter: drop-shadow(0 1px 1px #14243b80) !important;
+}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .dashboard-current-day-details {
+  background: var(--ws-panel);
+  color: var(--ws-ink);
+  border-color: var(--ws-line);
+}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .dashboard-current-day-details>summary {
+  color: var(--ws-ink);
+  border-color: var(--ws-line);
+}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .dashboard-current-day-details>summary>span { color: var(--ws-muted); }
+body:has(.operating-shell[data-workspace-theme="dark"]) { background: #050608; color-scheme: dark; }
+body:has(.operating-shell[data-workspace-theme="light"]) { background: #F2F6FB; color-scheme: light; }
 /* Navigation uses quiet depth; records and figures always have opaque backing. */
 .operating-shell[data-workspace-theme] :is(.sidebar,.bookloq-side) {
   background: var(--ws-navigation,var(--ws-panel)) !important;
@@ -422,7 +480,7 @@
 .operating-shell .ai-studio[data-ai-theme] :is(.ai-response-error,.ai-consent-error) {
   color: var(--ai-error) !important;
 }
-@media(max-width: 360px) {
+@media(max-width: 540px) {
   .operating-shell[data-workspace-theme] .executive-overview .executive-filters { display: grid; grid-template-columns: minmax(0,1fr); }
 }
 @container executive (max-width: 540px) {

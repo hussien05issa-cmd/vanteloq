@@ -66,6 +66,12 @@
   opacity: 1 !important;
 }
 
+.product-brand-logo.product-brand-artwork.clear-carrier {
+  background: transparent !important;
+  border: 0;
+  box-shadow: none;
+}
+
 /* The official Lightspeed download supplies a complete horizontal wordmark.
    Preserve it on a neutral carrier, including its original charcoal colour. */
 .integration-logo.brand-lightspeed {

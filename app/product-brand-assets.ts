@@ -7,7 +7,7 @@ export const PRODUCT_BRAND_ASSETS = {
     width: 1254,
     height: 1254,
     frames: {
-      icon: { x: 396, y: 382, width: 467, height: 379 },
+      icon: { x: 396, y: 382, width: 467, height: 373 },
       full: { x: 259, y: 382, width: 738, height: 483 },
     },
   },
