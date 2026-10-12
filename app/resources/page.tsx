@@ -26,6 +26,7 @@ export const metadata: Metadata = {
 
 export default function ResourcesPage() {
   const featured = RESOURCE_ARTICLES[0];
+  const populatedCategories = RESOURCE_CATEGORIES.filter((category) => getArticlesByCategory(category.slug).length > 0);
   return (
     <ResourceShell>
       <main>
@@ -41,7 +42,7 @@ export default function ResourcesPage() {
               <img src="/brand/vanteloq-command-ledger.webp" alt="Vanteloq command centre with sales, margin, cash, inventory and decision views." width={1487} height={1058} loading="eager" fetchPriority="high" />
               <figcaption>Real Vanteloq interface · Illustrative values</figcaption>
             </figure>
-            <div><span>OUR EDITORIAL STANDARD</span><strong>Evidence before advice.</strong><p>Each guide separates facts, formulas, assumptions and limitations so you can see what a decision actually depends on.</p></div>
+            <div><span>OUR EDITORIAL STANDARD</span><strong>Evidence before advice.</strong><p>Each guide separates facts, formulas, assumptions and limitations so you can see what a decision actually depends on.</p><Link href="/about/editorial">Read our editorial method</Link></div>
           </aside>
         </section>
 
@@ -51,10 +52,10 @@ export default function ResourcesPage() {
             <h2 id="browse-topics">Browse by operating question</h2>
           </div>
           <div className="resource-category-grid">
-            {RESOURCE_CATEGORIES.map((category) => (
+            {populatedCategories.map((category) => (
               <Link href={`/resources/${category.slug}`} key={category.slug}>
                 <ResourceVisual category={category.slug} compact />
-                <span>{getArticlesByCategory(category.slug).length ? `${getArticlesByCategory(category.slug).length} ${getArticlesByCategory(category.slug).length === 1 ? "guide" : "guides"}` : "Guides planned"}</span>
+                <span>{getArticlesByCategory(category.slug).length} {getArticlesByCategory(category.slug).length === 1 ? "guide" : "guides"}</span>
                 <strong>{category.name}</strong>
                 <p>{category.description}</p>
               </Link>

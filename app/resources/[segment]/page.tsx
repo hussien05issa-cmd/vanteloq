@@ -38,7 +38,7 @@ export async function generateMetadata({ params }: SegmentProps): Promise<Metada
     return {
       title: article.seoTitle,
       description: article.description,
-      authors: [{ name: article.author }],
+      authors: [{ name: article.author, url: absoluteUrl("/about/editorial") }],
       alternates: { canonical: url },
       openGraph: {
         type: "article",
@@ -47,7 +47,7 @@ export async function generateMetadata({ params }: SegmentProps): Promise<Metada
         description: article.description,
         publishedTime: article.published,
         modifiedTime: article.updated,
-        authors: [article.author],
+        authors: [absoluteUrl("/about/editorial")],
         section: getCategory(article.category)?.name,
         images: [{ url: socialImage.src, width: socialImage.width, height: socialImage.height, alt: socialImage.alt }],
       },
@@ -67,6 +67,7 @@ export async function generateMetadata({ params }: SegmentProps): Promise<Metada
       title,
       description: category.description,
       alternates: { canonical: `/resources/${category.slug}` },
+      ...(getArticlesByCategory(category.slug).length === 0 ? { robots: { index: false, follow: true } } : {}),
       openGraph: { type: "website", url: `/resources/${category.slug}`, title, description: category.description },
       twitter: { card: "summary", title, description: category.description },
     };
@@ -103,7 +104,7 @@ function ArticlePage({ article }: { article: ResourceArticle }) {
     dateModified: article.updated,
     articleSection: category?.name,
     image: absoluteUrl(article.hero?.src ?? DEFAULT_SOCIAL_IMAGE),
-    author: { "@type": "Organization", name: article.author },
+    author: { "@type": "Organization", name: article.author, url: absoluteUrl("/about/editorial") },
     publisher: { "@id": `${absoluteUrl()}#organization` },
   };
   const breadcrumbs = breadcrumbJsonLd([
@@ -130,7 +131,7 @@ function ArticlePage({ article }: { article: ResourceArticle }) {
               <h1>{article.title}</h1>
               <p className="article-dek">{article.dek}</p>
               <dl className="article-byline">
-                <div><dt>Written by</dt><dd>{article.author}</dd></div>
+                <div><dt>Written by</dt><dd><Link href="/about/editorial">{article.author}</Link></dd></div>
                 <div><dt>Published</dt><dd><time dateTime={article.published}>{formatDate(article.published)}</time></dd></div>
                 <div><dt>Updated</dt><dd><time dateTime={article.updated}>{formatDate(article.updated)}</time></dd></div>
                 <div><dt>Reading time</dt><dd>{getReadingTime(article)} minutes</dd></div>
@@ -173,7 +174,11 @@ function ArticlePage({ article }: { article: ResourceArticle }) {
               <aside className="article-disclaimer">
                 <strong>Editorial note</strong>
                 <p>This guide is general operational information, not accounting, tax or legal advice. Definitions and obligations can vary by business, jurisdiction and reporting policy.</p>
+                <Link href="/about/editorial">How we prepare and update guides</Link>
               </aside>
+              {article.slug === "dealership-inventory-aging-carrying-costs" && <nav className="article-sources" aria-label="Apply the dealership guide"><h2>Apply the method</h2><ul><li><Link href="/tools/vehicle-holding-cost">Estimate vehicle holding costs with your own assumptions</Link></li><li><Link href="/solutions/dealerships">Explore Vanteloq for dealership operations</Link></li></ul></nav>}
+              {article.slug === "cafe-recipe-cost-margin-food-waste" && <nav className="article-sources" aria-label="Apply the café guide"><h2>Apply the method</h2><ul><li><Link href="/solutions/cafes">Explore café recipe, purchasing and waste workflows</Link></li><li><Link href="/solutions/restaurants">Explore restaurant operating workflows</Link></li></ul></nav>}
+              {article.slug === "retail-inventory-turnover-cash-flow" && <nav className="article-sources" aria-label="Apply the stock and cash guide"><h2>Apply the method</h2><ul><li><Link href="/tools/cash-order-planner">Compare a proposed stock order with a cash planning scenario</Link></li><li><Link href="/solutions/retail">Explore Vanteloq for independent retail</Link></li></ul></nav>}
             </div>
           </div>
         </article>

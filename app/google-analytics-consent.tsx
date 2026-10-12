@@ -29,7 +29,7 @@ const CONSENT_STORAGE_KEY = "vanteloq:cookie-consent:v1";
 const SCRIPT_ID = "vanteloq-google-analytics";
 const READY_EVENT = "vanteloq:analytics-ready";
 let analyticsAllowed = false;
-const PUBLIC_MEASUREMENT_PATHS = new Set(["/", "/demo", "/help", "/pricing", "/contact", "/custom-plan", "/cookies", "/data-processing", "/legal", "/privacy", "/subprocessors", "/terms", "/solutions/retail"]);
+const PUBLIC_MEASUREMENT_PATHS = new Set(["/", "/demo", "/help", "/pricing", "/contact", "/book-demo", "/custom-plan", "/cookies", "/data-processing", "/legal", "/privacy", "/subprocessors", "/terms", "/solutions", "/solutions/retail", "/solutions/dealerships", "/solutions/cafes", "/solutions/restaurants", "/integrations", "/integrations/square", "/integrations/lightspeed-r", "/tools", "/tools/cash-order-planner", "/tools/vehicle-holding-cost", "/about", "/about/editorial"]);
 
 function runGtag(...args: GtagCommand) {
   window.dataLayer = window.dataLayer ?? [];

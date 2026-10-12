@@ -60,20 +60,20 @@ window.gtag("consent", "default", {
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_ORIGIN),
-  title: "Vanteloq | Sales, Stock and Financial Clarity",
-  description: "Inspect sales, stock and cash with the records behind the numbers. For retail, dealerships, cafés and restaurants, with BookLoQ accounting and Vanteloq AI. Try the demo without signup.",
+  title: "Vanteloq | Sales, Inventory and Cash Flow Analytics",
+  description: "Trace sales, inventory and cash to source records. Built for retail, dealerships, cafés and restaurants, with BookLoQ accounting. Explore the free demo.",
   alternates: { canonical: "/" },
   openGraph: {
     type: "website",
     url: "/",
     siteName: "Vanteloq",
-    title: "Vanteloq | Sales, Stock and Financial Clarity",
+    title: "Vanteloq | Sales, Inventory and Cash Flow Analytics",
     description: "Sales, stock and cash, with the records behind the numbers. Explore Vanteloq for retail, dealerships, cafés and restaurants.",
     images: [{ url: DEFAULT_SOCIAL_IMAGE, width: 1487, height: 1058, alt: "Vanteloq business operating view" }],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Vanteloq | Sales, Stock and Financial Clarity",
+    title: "Vanteloq | Sales, Inventory and Cash Flow Analytics",
     description: "Sales, stock and cash, with the records behind the numbers. Explore Vanteloq for retail, dealerships, cafés and restaurants.",
     images: [DEFAULT_SOCIAL_IMAGE],
   },

@@ -16,7 +16,7 @@ export function ResourceHeader() {
         <Link href="/resources/inventory">Inventory</Link>
         <Link href="/resources/analytics">Analytics</Link>
         <Link href="/resources/finance">Finance</Link>
-        <Link href="/resources/pos">POS</Link>
+        <Link href="/integrations">Integration guides</Link>
       </nav>
       <details className="resource-mobile-menu">
         <summary>Browse</summary>
@@ -26,7 +26,7 @@ export function ResourceHeader() {
           <Link href="/resources/inventory">Inventory</Link>
           <Link href="/resources/analytics">Analytics</Link>
           <Link href="/resources/finance">Finance</Link>
-          <Link href="/resources/pos">POS</Link>
+          <Link href="/integrations">Integration guides</Link>
           <Link href="/?start=signup">Create workspace</Link>
         </nav>
       </details>
@@ -49,6 +49,8 @@ export function ResourceFooter() {
       </div>
       <nav aria-label="Footer navigation">
         <Link href="/resources">Resources</Link>
+        <Link href="/tools">Planning tools</Link>
+        <Link href="/about/editorial">Editorial standards</Link>
         <Link href="/#platform">Platform</Link>
         <Link href="/#connections">Connections</Link>
         <Link href="/privacy">Privacy</Link>

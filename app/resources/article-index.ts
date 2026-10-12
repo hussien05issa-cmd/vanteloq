@@ -57,5 +57,26 @@ export const RESOURCE_ARTICLE_SUMMARIES = [
     "description": "Compare BookLoQ with other financial tools and see how sales, payouts, transaction review, documents and cash decisions can work together.",
     "category": "finance",
     "readingTime": 7
+  },
+  {
+    "slug": "dealership-inventory-aging-carrying-costs",
+    "title": "Dealership Inventory Aging: What Each Extra Day Costs",
+    "description": "Review dealership inventory aging, recorded vehicle costs and carrying-cost assumptions with a practical weekly stock review and clear calculation examples.",
+    "category": "inventory",
+    "readingTime": 4
+  },
+  {
+    "slug": "cafe-recipe-cost-margin-food-waste",
+    "title": "Café Recipe Costs: Measure Food Contribution and Waste",
+    "description": "Calculate café recipe costs, compare theoretical and actual food use, and review recorded waste without confusing food contribution with operating profit.",
+    "category": "operations",
+    "readingTime": 4
+  },
+  {
+    "slug": "retail-inventory-turnover-cash-flow",
+    "title": "Retail Inventory Turnover: Connect Stock to Cash Flow",
+    "description": "Connect retail inventory turnover with stock age, supplier payment dates and cash forecasts, using clear cost-based formulas and fictional examples.",
+    "category": "finance",
+    "readingTime": 4
   }
 ] as const satisfies readonly ResourceArticleSummary[];

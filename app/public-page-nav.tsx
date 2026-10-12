@@ -3,11 +3,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import ProductBrandLogo from "./product-brand-logo";
+import PublicAppearanceControl from "./public-appearance-control";
 import { useModalFocus } from "./use-modal-focus";
 import { planSelectionUrl } from "../shared/plan-selection";
 import "./public-shell.css";
-export default function PublicPageNav({ signIn }: { signIn?: () => void }) {
-  const path = usePathname();
+export default function PublicPageNav({ signIn, appearanceControl = false }: { signIn?: () => void; appearanceControl?: boolean }) {
+  const path = usePathname() ?? "/";
   const [open, setOpen] = useState(false);
   const menu = useRef<HTMLElement>(null), shell = useRef<HTMLElement>(null), resources = useRef<HTMLDetailsElement>(null);
   const close = useCallback(() => setOpen(false), []);
@@ -23,12 +24,12 @@ export default function PublicPageNav({ signIn }: { signIn?: () => void }) {
     <Link className="public-shell-brand" href="/" aria-label="Vanteloq home"><ProductBrandLogo product="vanteloq" priority/></Link>
     {open && <button className="public-shell-scrim" aria-label="Close navigation" onClick={close} tabIndex={-1}/>}
     <nav id="public-main-navigation" ref={menu} className={`public-shell-links${open ? " is-open" : ""}`} aria-label="Public navigation" onKeyDown={event => { if (event.key === "Escape" && resources.current) resources.current.open = false; }}>
-      <Link href="/how-it-works" aria-current={path === "/how-it-works" ? "page" : undefined} onClick={close}>How it works</Link><Link href="/solutions/retail" aria-current={path === "/solutions/retail" ? "page" : undefined} onClick={close}>Retail</Link><Link href="/#connections" onClick={close}>Connections</Link><Link href="/pricing" aria-current={path === "/pricing" ? "page" : undefined} onClick={close} data-public-event="pricing_view" data-public-section="header">Pricing</Link>
+      <Link href="/how-it-works" aria-current={path === "/how-it-works" ? "page" : undefined} onClick={close}>How it works</Link><Link href="/solutions" aria-current={path.startsWith("/solutions") ? "page" : undefined} onClick={close}>Businesses</Link><Link href="/#connections" onClick={close}>Connections</Link><Link href="/pricing" aria-current={path === "/pricing" ? "page" : undefined} onClick={close} data-public-event="pricing_view" data-public-section="header">Pricing</Link>
       <Link prefetch={false} className="public-demo-link" href="/book-demo" aria-current={path === "/book-demo" ? "page" : undefined} onClick={close}>Book a free demo</Link>
-      <details ref={resources}><summary>Resources</summary><div className="public-shell-resources"><Link href="/help" onClick={close}>Help & setup</Link><Link href="/resources" onClick={close}>Business guides</Link><Link href="/demo" onClick={close}>Interactive demo</Link><Link href="/contact" onClick={close}>Contact</Link></div></details>
+      <details ref={resources}><summary>Resources</summary><div className="public-shell-resources"><Link href="/help" onClick={close}>Help & setup</Link><Link href="/resources" onClick={close}>Business guides</Link><Link href="/integrations" onClick={close}>Integration guides</Link><Link href="/tools" onClick={close}>Planning tools</Link><Link href="/demo" onClick={close}>Interactive demo</Link><Link href="/about" onClick={close}>About Vanteloq</Link><Link href="/contact" onClick={close}>Contact</Link></div></details>
       {open && <div className="public-shell-mobile-account"><Link prefetch={false} href="/?start=signin" onClick={close}>Sign in</Link><button type="button" onClick={close}>Close menu</button></div>}
     </nav>
-    <div className="public-shell-account">{signIn ? <button className="public-shell-signin" type="button" onClick={signIn}>Sign in</button> : <Link prefetch={false} className="public-shell-signin" href="/?start=signin">Sign in</Link>}<Link prefetch={false} className="public-shell-free" data-public-event="signup_start" data-public-section="header" data-public-plan="free" href={planSelectionUrl({ plan: "free", bookloq: false })}>Start Free</Link></div>
+    <div className="public-shell-account">{appearanceControl && <PublicAppearanceControl/>}{signIn ? <button className="public-shell-signin" type="button" onClick={signIn}>Sign in</button> : <Link prefetch={false} className="public-shell-signin" href="/?start=signin">Sign in</Link>}<Link prefetch={false} className="public-shell-free" data-public-event="signup_start" data-public-section="header" data-public-plan="free" href={planSelectionUrl({ plan: "free", bookloq: false })}>Start Free</Link></div>
     <button type="button" className="public-shell-menu" aria-expanded={open} aria-controls="public-main-navigation" onClick={() => setOpen(value => !value)}>{open ? "Close" : "Menu"}</button>
   </header>;
 }
