@@ -202,8 +202,9 @@ function ArticleHero({ article }: { article: ResourceArticle }) {
       className={`resource-visual visual-${article.category}`}
       style={{ aspectRatio: `${article.hero.width} / ${article.hero.height}`, display: "block", minHeight: 0, padding: 0 }}
     >
-      {/* The pre-compressed WebP is served directly because this Worker runtime has no image transformation binding. */}
-      {/* eslint-disable-next-line @next/next/no-img-element */}
+      {/* Lossless delivery uses the unchanged original as fallback. No runtime transformation binding is needed. */}
+      <picture style={{ display: "block", height: "100%", width: "100%" }}>
+      {article.hero.webpSrc && <source type="image/webp" srcSet={article.hero.webpSrc}/>}
       <img
         src={article.hero.src}
         alt={article.hero.alt}
@@ -214,6 +215,7 @@ function ArticleHero({ article }: { article: ResourceArticle }) {
         fetchPriority="high"
         style={{ display: "block", height: "100%", objectFit: "cover", position: "relative", width: "100%", zIndex: 1 }}
       />
+      </picture>
     </div>
   );
 }

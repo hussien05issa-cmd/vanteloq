@@ -47,6 +47,7 @@ export type ResourceArticle = {
   updated: string;
   hero?: {
     src: string;
+    webpSrc?: string;
     alt: string;
     width: number;
     height: number;
@@ -1056,6 +1057,7 @@ const articles: readonly ResourceArticle[] = [
     updated: "2026-08-11",
     hero: {
       src: "/brand/bookloq-cash-control-v1.png",
+      webpSrc: "/brand/delivery-2026-10/bookloq-cash-control-lossless.webp",
       alt: "A BookLoQ finance illustration showing source records moving through categorized cash flow, a forecast band and spend-control review.",
       width: 1774,
       height: 887,
@@ -1184,6 +1186,7 @@ const articles: readonly ResourceArticle[] = [
     updated: "2026-09-19",
     hero: {
       src: "/brand/bookloq-cash-control-v1.png",
+      webpSrc: "/brand/delivery-2026-10/bookloq-cash-control-lossless.webp",
       alt: "A BookLoQ financial workspace connecting source records, reviewed accounting activity and a visible cash forecast.",
       width: 1774,
       height: 887,

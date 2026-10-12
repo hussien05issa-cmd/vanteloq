@@ -263,6 +263,9 @@ export default function Home() {
         }
       });
       unsubscribe = () => listener?.data.subscription.unsubscribe();
+    }).catch(() => {
+      // Session reads and account forms already expose their recovery state.
+      // A failed optional listener initialization must not reject unhandled.
     });
     return () => {
       active = false;

@@ -4,6 +4,8 @@ import { readFile } from "node:fs/promises";
 import vm from "node:vm";
 import { transform } from "esbuild";
 import * as publicMarketingEvents from "../shared/public-marketing-events.ts";
+import * as consentNavigation from "../app/analytics-consent-navigation.ts";
+import * as publicRoutes from "../app/analytics-public-routes.ts";
 
 const source = await readFile(new URL("../app/google-analytics-consent.tsx", import.meta.url), "utf8");
 const { code } = await transform(source, { loader: "tsx", format: "cjs", jsx: "automatic", target: "es2022" });
@@ -45,7 +47,9 @@ function fixture({ root = true, pathname = "/", search = "" } = {}) {
     "next/link": { default: noop }, "next/navigation": { usePathname: () => window.location.pathname },
     "./product-brand-logo": { default: noop }, "./use-modal-focus": { useModalFocus: noop },
     "../shared/public-marketing-events": publicMarketingEvents,
-    "./analytics-consent-navigation": { createCookieNoticeNavigation: () => ({ href: "/cookies" }), shouldShowConsentPanel: () => false },
+    "./analytics-consent-navigation": { ...consentNavigation, shouldShowConsentPanel: () => false },
+    "./analytics-public-routes": publicRoutes,
+    "./workspace-appearance": { useWorkspaceAppearance: () => ({ theme: "dark" }) },
     "./analytics-public-surface": { getPublicRoot: () => root, getServerPublicRoot: () => false, subscribePublicRoot(listener) { rootListeners.add(listener); return () => rootListeners.delete(listener); } },
   };
   const evaluatedModule = { exports: {} };
@@ -128,11 +132,13 @@ test("a select measures its change once and DOM clicks cannot fake completion", 
   f.convert(); assert.equal(f.commands("event").at(-1)[1], "inquiry_sent");
 });
 
-test("only the explicit retail solution route gains public measurement", t => {
+test("registered industry solutions gain public measurement, unknown industry routes do not", t => {
   const f = fixture({ pathname: "/solutions/retail" }); t.after(() => f.close()); f.commit("analytics"); f.finishLoad();
   assert.equal(f.commands("event").length, 1);
   f.window.location.pathname = "/solutions/restaurants"; f.commit();
+  assert.equal(f.commands("event").length, 2);
+  f.window.location.pathname = "/solutions/unlisted"; f.commit();
   f.interact("click", { publicEvent: "hero_play", publicSection: "hero" });
-  assert.equal(f.commands("event").length, 1);
+  assert.equal(f.commands("event").length, 2);
   assert.equal(f.window["ga-disable-G-TEST123"], true);
 });

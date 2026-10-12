@@ -91,7 +91,7 @@ test("high-risk tenant and privilege boundaries remain enforced in source", asyn
   assert.match(commerce, /canReadSuppliers \? suppliers\.results \?\? \[\] : \[\]/);
   assert.match(inventoryLifecycle, /canViewValue/);
   assert.match(inventoryLifecycle, /unitCostCents: canViewValue \? lot\.unitCostCents : null/);
-  assert.match(inventoryLifecycle, /costAtRiskCents: canViewValue/);
+  assert.match(inventoryLifecycle, /costAtRiskCents: lotsComplete && canViewValue/);
 
   for (const tenantJoin of [
     /a\.id = b\.financial_account_id AND a\.organization_id = b\.organization_id/,

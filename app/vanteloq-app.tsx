@@ -1,9 +1,6 @@
 "use client";
 import { advisorDefaults, type AdvisorPreferences, type AdvisorCurrentTurn } from "../domain/advisor-personalization";
 import AdvisorPersonalize from "./advisor-personalize";
-import LinkedFilesPanel from "./linked-files-panel";
-import InventoryVehicleWorkspace from "./vehicle-inventory-panel";
-import CollaborationMessages from "./collaboration-messages";
 import { defaultIndustryConfiguration, resolveIndustryTemplate, type IndustryConfiguration } from "../domain/industry-templates";
 
 import ProviderPrivacyNotice, { ProviderPolicyLinks, ProviderPermissionSummary } from "./provider-privacy-notice";
@@ -58,6 +55,15 @@ const GrowthWorkspace = lazy(() => import("./growth-workspace"));
 const ForecastingWorkspace = lazy(() => import("./forecasting-workspace"));
 const ForecastPin = lazy(() => import("./forecast-pin"));
 const ScenarioPlanner = lazy(() => import("./scenario-planner"));
+const LinkedFilesPanel = lazy(() => import("./linked-files-panel"));
+const InventoryVehicleWorkspace = lazy(() => import("./vehicle-inventory-panel"));
+const CollaborationMessages = lazy(() => import("./collaboration-messages"));
+const SettingsWorkspace = lazy(() => import("./governance-workspaces").then(module => ({ default: module.SettingsWorkspace })));
+const TeamWorkspace = lazy(() => import("./governance-workspaces").then(module => ({ default: module.TeamWorkspace })));
+const DataQualityWorkspace = lazy(() => import("./control-workspaces").then(module => ({ default: module.DataQualityWorkspace })));
+const DocumentsWorkspace = lazy(() => import("./control-workspaces").then(module => ({ default: module.DocumentsWorkspace })));
+const PurchaseOrdersWorkspace = lazy(() => import("./control-workspaces").then(module => ({ default: module.PurchaseOrdersWorkspace })));
+const ReportsWorkspace = lazy(() => import("./control-workspaces").then(module => ({ default: module.ReportsWorkspace })));
 import { connectorHealth, connectorNextStep, filterConnectors } from "../domain/connector-guidance";
 import { customerIntegrationAvailability, hasConnectionAttention, type CustomerIntegrationAvailability } from "../domain/integration-availability";
 import ConnectorAvailabilityBadge from "./connector-availability-badge";
@@ -93,13 +99,6 @@ import {
   MetricSparkline,
   type Tone,
 } from "./dashboard-charts";
-import { SettingsWorkspace, TeamWorkspace } from "./governance-workspaces";
-import {
-  DataQualityWorkspace,
-  DocumentsWorkspace,
-  PurchaseOrdersWorkspace,
-  ReportsWorkspace,
-} from "./control-workspaces";
 import {
   NAVIGATION_VIEW_IDS,
   PROTECTED_NAVIGATION_VIEW_IDS,
@@ -3296,7 +3295,10 @@ function DataHub({
               <strong>{universalPosContract.length} commerce capabilities</strong>
             </header>
             <div className="provider-parity-body">
-              <Image src="/brand/pos-commerce-intelligence.png" alt="Supported point-of-sale sources organized into sales, payment, inventory and customer intelligence" width={1774} height={887} unoptimized />
+              <picture className="provider-parity-artwork">
+                <source type="image/webp" srcSet="/brand/delivery-2026-10/pos-commerce-intelligence-lossless.webp"/>
+                <Image src="/brand/pos-commerce-intelligence.png" alt="Supported point-of-sale sources organized into sales, payment, inventory and customer intelligence" width={1774} height={887} loading="lazy" decoding="async" unoptimized />
+              </picture>
               <div className="provider-capability-list">{universalPosContract.map((feature) => <article key={feature.id}><span>{feature.label}</span><p>{feature.insight}</p></article>)}</div>
             </div>
           </details>

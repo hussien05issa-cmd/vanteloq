@@ -30,6 +30,8 @@ export default function ProductBrandLogo({
         role="img"
         aria-label={`${artwork.name} logo`}
         focusable="false"
+        width={frame.width}
+        height={frame.height}
         viewBox={`${frame.x} ${frame.y} ${frame.width} ${frame.height}`}
         preserveAspectRatio="xMidYMid meet"
       >

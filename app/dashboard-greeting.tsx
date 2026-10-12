@@ -50,8 +50,10 @@ export default function DashboardGreeting({ accountName = "", sourceName, latest
     <div className="dashboard-greeting-copy">
       <div className="dashboard-greeting-title">
         {/* Static brand artwork is served directly by the Sites asset cache. */}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <span className="greeting-smile-shine" aria-hidden="true"><img src="/brand/vantatalk-greeting-smile.png" alt="" width={36} height={36}/></span>
+        <span className="greeting-smile-shine" aria-hidden="true"><picture>
+          <source type="image/webp" srcSet="/brand/delivery-2026-10/vantatalk-greeting-smile-lossless.webp"/>
+          <img src="/brand/vantatalk-greeting-smile.png" alt="" width={36} height={36} decoding="async"/>
+        </picture></span>
         <h2>Your business, at a glance.</h2>
       </div>
       <p>{greetingForHour(now?.getHours() ?? null)}{firstName ? `, ${firstName}` : ""}. See performance and what needs your attention.</p>

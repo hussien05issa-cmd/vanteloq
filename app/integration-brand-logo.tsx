@@ -21,59 +21,70 @@ const simpleMarks: Record<string, SimpleIcon> = {
   },
 };
 
-const officialProviderAssets: Record<string, string> = {
-  DoorDash: "/integrations/doordash-mark.svg",
-  Stripe: "/integrations/stripe-wordmark-blurple.svg",
-  Clover: "/integrations/clover-mark.svg",
-  "Uber Eats": "/integrations/uber-eats-stacked-black.svg",
+type ProviderAsset = { source: string; width: number; height: number; highDensity?: { source: string; width: number } };
+
+// Dimensions describe the unmodified local files. Explicit sizing reserves the
+// artwork's ratio before decoding, while the tile's CSS controls its display size.
+const officialProviderAssets: Record<string, ProviderAsset> = {
+  DoorDash: { source: "/integrations/doordash-mark.svg", width: 32, height: 18 },
+  Stripe: { source: "/integrations/stripe-wordmark-blurple.svg", width: 360, height: 150 },
+  Clover: { source: "/integrations/clover-mark.svg", width: 22, height: 22 },
+  "Uber Eats": { source: "/integrations/uber-eats-stacked-black.svg", width: 679, height: 579 },
 };
+
+function ProviderArtwork({ asset }: { asset: ProviderAsset }) {
+  // These are exact provider files, not runtime transformations or external requests.
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={asset.source} width={asset.width} height={asset.height}
+    srcSet={asset.highDensity ? `${asset.source} ${asset.width}w, ${asset.highDensity.source} ${asset.highDensity.width}w` : undefined}
+    sizes={asset.highDensity ? "32px" : undefined}
+    loading="lazy" decoding="async" alt="" aria-hidden="true" />;
+}
 
 export default function IntegrationBrandLogo({ name, compact = false }: { name: string; compact?: boolean }) {
   const officialAsset = officialProviderAssets[name];
   if (officialAsset) {
     return <span className={`integration-logo brand-${slug(name)}${compact ? " compact" : ""}`} role="img" aria-label={`${name} logo`}>
       {/* Provider artwork is served locally. Source and usage notes are in docs/brand-asset-sources.md. */}
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={officialAsset} alt="" aria-hidden="true" />
+      <ProviderArtwork asset={officialAsset}/>
     </span>;
   }
   if (name === "Google" || name === "Meta") {
     return <span className={`integration-logo brand-${slug(name)}${compact ? " compact" : ""}`} role="img" aria-label={`${name} logo`}>
       {/* Local brand artwork; provenance is recorded in docs/brand-asset-sources.md. */}
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={name === "Google" ? "/brand/google-g-ui.webp" : "/brand/meta-mark.svg"} width={28} height={28} alt="" aria-hidden="true" />
+      <ProviderArtwork asset={name === "Google"
+        ? { source: "/brand/google-g-ui.webp", width: 84, height: 86, highDensity: { source: "/brand/google-g.png", width: 200 } }
+        : { source: "/brand/meta-mark.svg", width: 24, height: 24 }}/>
     </span>;
   }
   if (name === "Lightspeed" || name.startsWith("Lightspeed ")) {
     return <span className={`integration-logo brand-lightspeed${compact ? " compact" : ""}`} role="img" aria-label="Lightspeed logo">
-      {/* Standalone Lightspeed flame artwork; the wordmark is intentionally excluded. */}
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/brand/lightspeed-mark-ui.webp" alt="" aria-hidden="true" />
+      {/* Complete, unmodified vector wordmark from Lightspeed's official media kit. */}
+      <ProviderArtwork asset={{ source: "/integrations/lightspeed-logo-charcoal.svg", width: 432, height: 101 }}/>
     </span>;
   }
 
   if (name === "Plaid") {
     return <span className={`integration-logo brand-plaid${compact ? " compact" : ""}`} role="img" aria-label="Plaid logo">
       {/* Plaid's standalone knot mark, cropped from the unchanged brand lockup. */}
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/brand/plaid-mark-ui.webp" alt="" aria-hidden="true" />
+      <ProviderArtwork asset={{ source: "/brand/plaid-mark-ui.webp", width: 84, height: 85, highDensity: { source: "/brand/plaid-mark.png", width: 127 } }}/>
     </span>;
   }
 
   if (name === "Deel" || name === "Slack") {
-    const asset = name === "Deel" ? "/integrations/deel-wordmark-white.svg" : "/integrations/slack-icon.svg";
+    const asset = name === "Deel"
+      ? { source: "/integrations/deel-wordmark-white.svg", width: 430, height: 145 }
+      : { source: "/integrations/slack-icon.svg", width: 400, height: 400 };
     return <span className={`integration-logo brand-${slug(name)}${compact ? " compact" : ""}`} role="img" aria-label={`${name} logo`}>
       {/* Official, unmodified provider artwork. Provenance is recorded in docs/brand-asset-sources.md. */}
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={asset} alt="" aria-hidden="true" />
+      <ProviderArtwork asset={asset}/>
     </span>;
   }
 
   if (name === "Moneris") {
     return <span className={`integration-logo brand-moneris${compact ? " compact" : ""}`} role="img" aria-label="Moneris logo">
       {/* Official Moneris bilingual wordmark, hosted locally without recolouring or redrawing. */}
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/integrations/moneris-official-black.png" alt="" aria-hidden="true" />
+      <ProviderArtwork asset={{ source: "/integrations/moneris-official-black.png", width: 614, height: 194 }}/>
     </span>;
   }
 

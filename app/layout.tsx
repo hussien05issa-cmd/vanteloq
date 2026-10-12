@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import InterfaceMotion from "./interface-motion";
 import { GoogleAnalyticsConsent } from "./google-analytics-consent";
+import { CONSENT_PRESENTATION_BOOTSTRAP } from "./analytics-consent-navigation";
 import { DEFAULT_SOCIAL_IMAGE, organizationJsonLd, safeJsonLd, SITE_ORIGIN } from "./seo";
 import "./globals.css?public-surface";
 import "./operating.css?public-surface";
@@ -94,6 +95,7 @@ export default function RootLayout({
       <head>
         <link rel="preload" href="/fonts/geist-latin.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
         <script id="vanteloq-google-consent-default" dangerouslySetInnerHTML={{ __html: GOOGLE_ANALYTICS_CONSENT_DEFAULT }} />
+        <script id="vanteloq-consent-presentation" dangerouslySetInnerHTML={{ __html: CONSENT_PRESENTATION_BOOTSTRAP }} />
       </head>
       <body className="antialiased">
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(organizationJsonLd) }} />

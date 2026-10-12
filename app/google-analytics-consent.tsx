@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { createCookieNoticeNavigation, shouldShowConsentPanel } from "./analytics-consent-navigation";
+import { CONSENT_STORAGE_KEY, createCookieNoticeNavigation, shouldShowConsentPanel, validConsentChoice } from "./analytics-consent-navigation";
+import { isPublicMeasurementPath } from "./analytics-public-routes";
 import { publicMarketingEvent } from "../shared/public-marketing-events";
 import { useModalFocus } from "./use-modal-focus";
 import { getPublicRoot, getServerPublicRoot, subscribePublicRoot } from "./analytics-public-surface";
@@ -25,11 +26,9 @@ const PUBLIC_GOOGLE_ANALYTICS_ID = "G-RVY9BP00R2";
 const ANALYTICS_ID =
   process.env.NEXT_PUBLIC_GOOGLE_ANALYTICS_ID?.trim() || PUBLIC_GOOGLE_ANALYTICS_ID;
 const ANALYTICS_ID_PATTERN = /^G-[A-Z0-9]+$/;
-const CONSENT_STORAGE_KEY = "vanteloq:cookie-consent:v1";
 const SCRIPT_ID = "vanteloq-google-analytics";
 const READY_EVENT = "vanteloq:analytics-ready";
 let analyticsAllowed = false;
-const PUBLIC_MEASUREMENT_PATHS = new Set(["/", "/demo", "/help", "/pricing", "/contact", "/book-demo", "/custom-plan", "/cookies", "/data-processing", "/legal", "/privacy", "/subprocessors", "/terms", "/solutions", "/solutions/retail", "/solutions/dealerships", "/solutions/cafes", "/solutions/restaurants", "/integrations", "/integrations/square", "/integrations/lightspeed-r", "/tools", "/tools/cash-order-planner", "/tools/vehicle-holding-cost", "/about", "/about/editorial"]);
 
 function runGtag(...args: GtagCommand) {
   window.dataLayer = window.dataLayer ?? [];
@@ -65,8 +64,7 @@ function configureAnalytics() {
 }
 
 function isPublicMeasurementPage(pathname: string) {
-  const isPublicPath = PUBLIC_MEASUREMENT_PATHS.has(pathname) || pathname === "/resources" || pathname.startsWith("/resources/") || pathname.startsWith("/features/");
-  return isPublicPath && window.location.pathname === pathname && window.location.search === "" && (pathname !== "/" || getPublicRoot());
+  return isPublicMeasurementPath(pathname) && window.location.pathname === pathname && window.location.search === "" && (pathname !== "/" || getPublicRoot());
 }
 
 function markAnalyticsReady() {
@@ -117,7 +115,7 @@ function stopAnalytics(clearCookies = true) {
 function readSavedChoice(): ConsentChoice | null {
   try {
     const saved = window.localStorage.getItem(CONSENT_STORAGE_KEY);
-    return saved === "analytics" || saved === "essential" ? saved : null;
+    return validConsentChoice(saved);
   } catch {
     return null;
   }
@@ -143,9 +141,11 @@ export function GoogleAnalyticsConsent() {
   const [choiceOverride, setChoiceOverride] = useState<ConsentChoice | null>();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const panelRef = useRef<HTMLElement>(null);
-  const storedChoice = hydrated ? readSavedChoice() : undefined;
+  // Privacy text is part of the server response, not a late client-only LCP.
+  // A known saved choice is suppressed before paint by the head bootstrap.
+  const storedChoice = hydrated ? readSavedChoice() : null;
   const choice = choiceOverride === undefined ? storedChoice : choiceOverride;
-  const panelOpen = hydrated && shouldShowConsentPanel(pathname, choice, settingsOpen);
+  const panelOpen = (settingsOpen || isPublicMeasurementPath(pathname)) && shouldShowConsentPanel(pathname, choice, settingsOpen);
   const configured = ANALYTICS_ID_PATTERN.test(ANALYTICS_ID);
 
   const applyChoice = useCallback((nextChoice: ConsentChoice) => {
@@ -160,7 +160,7 @@ export function GoogleAnalyticsConsent() {
     else setSettingsOpen(false);
   }, [applyChoice, choice]);
 
-  useModalFocus(panelRef, configured && panelOpen, dismissPanel);
+  useModalFocus(panelRef, configured && hydrated && panelOpen, dismissPanel);
 
   useEffect(() => {
     const sync = (event: StorageEvent) => {
@@ -228,7 +228,7 @@ export function GoogleAnalyticsConsent() {
   return (
     <>
       {panelOpen && (
-        <section ref={panelRef} className="analytics-consent analytics-consent-compact" data-consent-theme={appearance.theme} role="dialog" aria-modal="true" aria-labelledby="analytics-consent-title" aria-describedby="analytics-consent-copy" tabIndex={-1}>
+        <section ref={panelRef} className="analytics-consent analytics-consent-compact" data-consent-initial={!hydrated && !settingsOpen} data-consent-theme={appearance.theme} role="dialog" aria-modal="true" aria-labelledby="analytics-consent-title" aria-describedby="analytics-consent-copy" tabIndex={-1}>
           <div className="analytics-consent-copy">
             <h2 id="analytics-consent-title">Privacy choices</h2>
             <p id="analytics-consent-copy">Optional Google Analytics measures public-page use. Account data, form entries and workspace records stay excluded. No advertising tracking. Essential only gives you the same access.</p>

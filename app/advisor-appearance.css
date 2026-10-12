@@ -83,7 +83,8 @@
 .ai-appearance select { width:100%; border-radius:10px; padding:9px 12px; font:inherit; }
 .greeting-smile-shine { position:relative; display:inline-flex; flex:0 0 auto; width:36px; height:36px; filter:drop-shadow(0 2px 5px #246dff35); }
 .greeting-smile-shine img { width:100%; height:100%; object-fit:contain; }
-.greeting-smile-shine::after { content:""; position:absolute; inset:0; pointer-events:none; background:linear-gradient(115deg,transparent 30%,#fff9 48%,transparent 65%); mask:url('/brand/vantatalk-greeting-smile.png') center/contain no-repeat; opacity:.4; transform:translateX(-12%); animation:greeting-glint 650ms ease-out both; }
+.greeting-smile-shine picture { display:block; width:100%; height:100%; }
+.greeting-smile-shine::after { content:""; position:absolute; inset:0; pointer-events:none; background:linear-gradient(115deg,transparent 30%,#fff9 48%,transparent 65%); mask:url('/brand/delivery-2026-10/vantatalk-greeting-smile-lossless.webp') center/contain no-repeat; opacity:.4; transform:translateX(-12%); animation:greeting-glint 650ms ease-out both; }
 @keyframes greeting-glint { from { opacity:0; transform:translateX(-25%); } 45% { opacity:.5; } to { opacity:0; transform:translateX(25%); } }
 @media(max-width:760px) { .greeting-smile-shine { width:30px; height:30px; } .ai-appearance label { max-width:none; } }
 @media(prefers-reduced-motion:reduce) { .greeting-smile-shine::after { display:none; } }
