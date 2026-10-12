@@ -207,6 +207,13 @@
 .public-site.reference-home[data-public-theme="dark"] .home-operating-ring-story > div:last-child > p:not(.demo-eyebrow) { color: var(--public-secondary); }
 .public-site.reference-home[data-public-theme="dark"] .proof-studio-copy > a { background: var(--public-raised); color: var(--public-link); border-color: var(--public-control); }
 .public-site.reference-home[data-public-theme="dark"] .home-ring-visual :is(strong, small) { color: var(--public-ink); }
+.public-site.reference-home[data-public-theme="dark"] .home-goal-ring-stage {
+  background: linear-gradient(145deg, var(--public-raised), var(--public-panel));
+  border-color: var(--public-control);
+  box-shadow: inset 0 1px 0 #ffffff08, 0 14px 35px #00000024;
+}
+.public-site.reference-home[data-public-theme="dark"] .home-goal-preview .interactive-ring-readout strong { color: var(--public-ink); }
+.public-site.reference-home[data-public-theme="dark"] .home-goal-preview .interactive-ring-readout small { color: var(--public-secondary); }
 .public-site.reference-home[data-public-theme="dark"] .industry-fit { --ink: var(--public-ink); --muted: var(--public-secondary); --blue: var(--public-link); }
 .public-site.reference-home[data-public-theme="dark"] .industry-fit-label { color: var(--public-link); }
 .public-site.reference-home[data-public-theme="dark"] :is(.industry-fit-choices, .industry-path-node, .industry-sample, .industry-record-outcome, .industry-fit-window) { background: var(--public-raised); border-color: var(--public-line); color: var(--public-secondary); }
