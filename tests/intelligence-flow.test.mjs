@@ -340,14 +340,16 @@ test("commerce and payment reports use local midnight for evening provider sales
     assert.equal(payments.status, 200);
     const paymentBody = await payments.json();
     assert.equal(paymentBody.paymentMix.reduce((sum,row)=>sum+row.amountCents,0),600);
-    // Owner cost updates must rebuild the same local day, including account namespaces.
+    // A new owner cost is effective now. Historical local-day amounts and
+    // namespaces must remain intact instead of adopting today's supplier price.
     await database.prepare("UPDATE integration_connections SET source_namespace='account-a' WHERE id=?").bind(connectionId).run();
     await database.prepare("UPDATE commerce_sale_lines SET outlet_ref='account-a:shop', product_ref='account-a:item' WHERE connection_id=?").bind(connectionId).run();
     await database.prepare(`INSERT INTO commerce_products (id,organization_id,provider,connection_id,external_product_id,sku,name,source_payload_hash,sync_run_id,updated_at) VALUES ('cost-item',?,'lightspeed-r',?,'account-a:item','TEST','Test item','test',?,?)`).bind(identity.organizationId,connectionId,runId,now).run();
     await database.prepare("UPDATE daily_business_metrics SET location_ref='lightspeed-r:account-a:shop' WHERE organization_id=? AND source_connection_id=?").bind(identity.organizationId,connectionId).run();
     const costs = await dispatch(worker, environment, "/api/v1/inventory-costs", { ...identity.owner, method: "POST", body: { source: "manual", entries: [{ provider: "lightspeed-r", connectionId, externalProductId: "account-a:item", unitCostCents: 25 }] } });
-    assert.equal(costs.status, 200, await costs.text());
-    assert.equal((await database.prepare("SELECT cost_of_goods_cents cents FROM daily_business_metrics WHERE organization_id=? AND business_date='2026-08-14'").bind(identity.organizationId).first()).cents, 75);
+    assert.equal(costs.status, 200, await costs.clone().text());
+    assert.equal((await costs.json()).historicalCostsPreserved, true);
+    assert.equal((await database.prepare("SELECT cost_of_goods_cents cents FROM daily_business_metrics WHERE organization_id=? AND business_date='2026-08-14'").bind(identity.organizationId).first()).cents, 0);
   } finally { await dispose(); }
 });
 
@@ -375,6 +377,10 @@ test("intraday API compares matched hours and redacts all profit paths for reven
       insert.bind("current-latest", identity.organizationId, connectionId, "current", "2", `${currentDate}T00:00:00Z`, 10000, 6000, runId, now - 1),
       insert.bind("baseline", identity.organizationId, connectionId, "previous", "1", `${baselineDate}T00:00:00Z`, 5000, 2000, runId, now - 1),
     ]);
+    for (const [id,date,net,cost] of [["current",currentDate,10000,6000],["previous",baselineDate,5000,2000]]) {
+      await database.prepare("INSERT INTO commerce_sale_lines(id,organization_id,provider,connection_id,external_sale_id,external_line_id,outlet_ref,sold_at,quantity_milli,net_sales_cents,cost_cents,cost_known,source_payload_hash,sync_run_id,updated_at) VALUES (?,?,'lightspeed-r',?,?,?,'shop',?,1000,?,?,1,'fixture',?,?)")
+        .bind(`line-${id}`,identity.organizationId,connectionId,id,id,`${date}T00:00:00Z`,net,cost,runId,now).run();
+    }
     const load = async (user = identity.owner, suffix = "") => {
       const response = await dispatch(worker, environment, `/api/v1/command-centre${suffix}`, user);
       assert.equal(response.status, 200);
@@ -803,8 +809,8 @@ test("migrations, tenant isolation and the complete intelligence-to-action flow 
     assert.equal(provisionalFlowResponse.status, 200);
     const provisionalFlow = (await provisionalFlowResponse.json()).bookloq.thirteenWeekCashFlow;
     assert.equal(provisionalFlow.purchasingCapacityCents, baselinePurchasingCapacity - 100000);
-    assert.equal(provisionalFlow.weeks.reduce((sum, week) => sum + week.confirmedNetCents, 0), -100000);
-    assert.equal(provisionalFlow.weeks.reduce((sum, week) => sum + week.expectedNetCents, 0), 0);
+    assert.equal(provisionalFlow.weeks.reduce((sum, week) => sum + week.confirmedNetCents, 0), 0);
+    assert.equal(provisionalFlow.weeks.reduce((sum, week) => sum + week.expectedNetCents, 0), -100000, "The linked unreviewed bill is reserved once and remains an expected outflow until approved.");
     await database.prepare(`UPDATE supplier_bills SET status = 'approved', approval_status = 'approved', updated_at = ?
       WHERE id = 'cash-flow-linked-bill' AND organization_id = ?`)
       .bind(freshBankNow + 1, ownerRecord.organizationId).run();
@@ -916,7 +922,7 @@ test("migrations, tenant isolation and the complete intelligence-to-action flow 
     const sandboxPurchasingResponse = await dispatch(worker, environment, "/api/v1/purchasing", owner);
     assert.equal(sandboxPurchasingResponse.status, 200);
     const sandboxCash = (await sandboxPurchasingResponse.json()).catalog.cashContext;
-    assert.equal(sandboxCash.status, "needs_bank_connection");
+    assert.equal(sandboxCash.status, "needs_obligation_review", "The earlier foreign-currency bill still requires review, independently of the unusable sandbox bank balance.");
     assert.equal(sandboxCash.verifiedCashCents, null);
     assert.equal(sandboxCash.verifiedPurchasingCapacityCents, null);
     assert.equal(sandboxCash.accountsUsed, 0);

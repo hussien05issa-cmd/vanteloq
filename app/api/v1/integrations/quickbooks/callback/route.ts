@@ -1,4 +1,5 @@
 import { requireIntegrationCallbackAccess, releaseIntegrationSelectionIfUnused } from "../../../../../../server/integrations/free-selection";
+import { getTenantEntitlements } from "../../../../../../server/entitlements/engine";
 import { requireOAuthBrowser } from "../../../../../../server/integrations/oauth-browser";
 import { and, eq, gt, isNull, or } from "drizzle-orm";
 import { getDb } from "../../../../../../db";
@@ -70,6 +71,9 @@ async function callbackActor(initiation: typeof integrationOAuthStates.$inferSel
     authProvider: actor.authProvider,
     organization: actor.organization,
   };
+  // QuickBooks retains the verified initiation assurance in its one-time state.
+  // Recheck it against the current internal grant before any token exchange.
+  await getTenantEntitlements(context);
   await requirePermission(context, "integrations.manage");
   return context;
 }

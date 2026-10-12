@@ -544,7 +544,7 @@ test("BookLoQ cash-flow route deduplicates commitments and only counts trusted c
       });
     });
 
-    await t.test("a provisional bill below its PO value leaves only the unpaid PO amount confirmed", async () => {
+    await t.test("a provisional bill below its PO reserves confirmed and unreviewed exposure once", async () => {
       await clearLiveCommitments(database, identity.organizationId);
       await seedPurchaseOrder(database, {
         organizationId: identity.organizationId,
@@ -566,12 +566,12 @@ test("BookLoQ cash-flow route deduplicates commitments and only counts trusted c
       });
 
       assert.deepEqual(forecastTotals(await getCashFlow(worker, environment, email)), {
-        confirmedCents: -80_000,
-        expectedCents: 0,
+        confirmedCents: -40_000,
+        expectedCents: -40_000,
       });
     });
 
-    await t.test("a provisional bill above its PO value retains the uncovered variance as expected", async () => {
+    await t.test("a provisional bill above its PO reserves the complete unpaid bill as unreviewed", async () => {
       await clearLiveCommitments(database, identity.organizationId);
       await seedPurchaseOrder(database, {
         organizationId: identity.organizationId,
@@ -593,8 +593,8 @@ test("BookLoQ cash-flow route deduplicates commitments and only counts trusted c
       });
 
       assert.deepEqual(forecastTotals(await getCashFlow(worker, environment, email)), {
-        confirmedCents: -80_000,
-        expectedCents: -40_000,
+        confirmedCents: 0,
+        expectedCents: -120_000,
       });
     });
 

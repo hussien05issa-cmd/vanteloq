@@ -36,6 +36,10 @@ test("executive profit is withheld for ambiguous R-Series return costs without c
     assert.equal(metrics.find(m => m.key === "gross_profit").value, 6000, "an unknown previous period must not hide current verified profit");
     assert.equal(metrics.find(m => m.key === "gross_profit").previous, null);
     await database.prepare("UPDATE integration_staged_sales SET cost_cents=-2799 WHERE id=?").bind(stagedId).run();
+    // The aggregate alone is insufficient. A known retained return line must
+    // reconcile to the parent before the returned cost can support profit.
+    await database.prepare("INSERT INTO commerce_sale_lines(id,organization_id,provider,connection_id,external_sale_id,external_line_id,outlet_ref,sold_at,quantity_milli,net_sales_cents,cost_cents,cost_known,source_payload_hash,sync_run_id,updated_at) VALUES ('known-return-line',?,'lightspeed-r',?,'return-1','return-1',?,'2026-08-25T12:00:00-06:00',-1000,-5999,-2799,1,'fixture','fixture',?)")
+      .bind(a.organizationId,connectionId,namespace + ":1",Date.now()).run();
     await database.prepare("UPDATE daily_business_metrics SET cost_of_goods_cents=-2799 WHERE organization_id=? AND business_date='2026-08-25'").bind(a.organizationId).run();
     metrics = await load();
     assert.equal(metrics.find(m => m.key === "net_revenue").value, 0);

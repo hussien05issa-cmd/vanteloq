@@ -9,7 +9,7 @@ import { appendImportPrivacyAcknowledgement } from "../domain/report-import-priv
 import { documentPipelineLabel } from "../domain/document-pipeline-labels";
 import { useModalFocus } from "./use-modal-focus";
 
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "./supabase-browser";
 import { reportCsvRequest } from "./report-csv-request";
 import { InventoryLifecycleWorkspace } from "./inventory-lifecycle-workspace";
@@ -35,6 +35,7 @@ type SharedProps = {
   showNotice: (message: string) => void;
   createTask: (seed: TaskSeed) => void;
 };
+const DataStudioPanel = lazy(() => import("./data-studio-panel"));
 
 const reportGroups: Record<string, string[]> = {
   "Sales & refunds": [
@@ -295,8 +296,11 @@ export function ReportsWorkspace({
   initialPeriod,
   timeZone = "UTC",
   onOpenConnections,
-}: SharedProps & { activeLocationId: string | null; canExportFeature: boolean; onOpenRetail?: () => void; onOpenConnections?: () => void; timeZone?: string; initialPeriod?: { from: string; to: string } }) {
+  authorizationKey = "",
+}: SharedProps & { activeLocationId: string | null; canExportFeature: boolean; onOpenRetail?: () => void; onOpenConnections?: () => void; timeZone?: string; initialPeriod?: { from: string; to: string }; authorizationKey?: string }) {
   const [query, setQuery] = useState("");
+  const [studioOpen, setStudioOpen] = useState(false);
+  const [studioDates, setStudioDates] = useState({ from: "", to: "" });
   const [group, setGroup] = useState("All reports");
   const [selected, setSelected] = useState("Sales totals");
   const [loadedReport, setReport] = useState<{ contextKey: string; body: Record<string, unknown> } | null>(null);
@@ -454,6 +458,7 @@ export function ReportsWorkspace({
     setSourceConnectionId(connectionId); setSourceReportLabel(connectionId ? item.label : "");
     setSelected(item.presentation === "payment_mix" ? "Payment-method performance" : "Sales totals");
   };
+  if (studioOpen) return <div className="content control-page reports-centre"><Suspense fallback={<WorkspaceSkeleton label="Executive Review"/>}><DataStudioPanel key={`${authorizationKey}:${activeLocationId ?? ""}:${sourceConnectionId}:${timeZone}`} activeLocationId={activeLocationId} sourceConnectionId={sourceConnectionId} from={studioDates.from} to={studioDates.to} timeZone={timeZone} onDatesChange={(from,to) => setStudioDates({from,to})} onClose={() => setStudioOpen(false)}/></Suspense></div>;
   if (sourceDetail) return <div className="reports-centre">
     <section className="content page-intro"><div><button type="button" onClick={()=>setSourceDetail(null)}>Back to reports</button><h2>{sourceDetail.title}</h2><span>Recorded view for the selected period and location. Source presence does not certify complete reporting.</span></div></section>
     <CommerceIntelligenceWorkspace key={`${sourceDetail.connectionId}:${sourceDetail.mode}:${activeLocationId}`} mode={sourceDetail.mode} sourceConnectionId={sourceDetail.connectionId || undefined} initialPeriod={sourceDetail.period} currency={currency} timeZone={timeZone} activeLocationId={activeLocationId} navigate={()=>onOpenConnections?.()} createTask={createTask}/>
@@ -470,9 +475,7 @@ export function ReportsWorkspace({
             the records and permissions it needs.
           </span>
         </div>
-        <button className="secondary" disabled title="Scheduled delivery requires an approved email provider, queue, export permission checks and retry handling.">
-          Schedule delivery · provider required
-        </button>
+        <button type="button" className="secondary" onClick={() => { setStudioDates({from:start,to:end}); setStudioOpen(true); }}>Open Data Studio</button>
       </section>
       {onOpenRetail && <section className="sales-evidence-notice" aria-label="Retail intelligence reports">
         <div><strong>Go deeper than the total.</strong><p>Explore category and SKU performance, basket patterns, stock and hourly demand. Add reviewed inputs where your source needs more context.</p></div>
@@ -740,10 +743,11 @@ export function ReportsWorkspace({
                   </button>
                 )}
                 <button
-                  disabled
-                  title="XLSX generation provider is not configured"
+                  type="button"
+                  title="Open the seven-sheet Executive Review for the selected date, location and approved source scope."
+                  onClick={() => { setStudioDates({from:start,to:end}); setStudioOpen(true); }}
                 >
-                  XLSX · gated
+                  Executive Review XLSX
                 </button>
                 <button
                   disabled

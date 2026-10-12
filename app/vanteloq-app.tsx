@@ -1666,6 +1666,7 @@ function Workspace({
         createTask={createTask}
         activeLocationId={activeLocationId}
         canExportFeature={subscriptionFeatures.includes("reporting.exports")}
+        authorizationKey={`${advisorConsent.scope}:${[...permissions].sort().join("|")}:${[...subscriptionFeatures].sort().join("|")}`}
         timeZone={data.today.timeZone}
         onOpenConnections={() => navigate("Integrations")}
         onOpenRetail={() => { setIntelligenceTab("retail"); navigate("Intelligence"); }}

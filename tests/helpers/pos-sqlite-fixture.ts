@@ -6,6 +6,7 @@ import { resolve } from "node:path";
 export async function posSqliteFixture() {
   const sqlite = new DatabaseSync(":memory:");
   let beforeBatch: ((items: Prepared[]) => void) | undefined;
+  let batchTail = Promise.resolve();
   class Prepared {
     values: unknown[] = [];
     constructor(readonly sql: string) {}
@@ -17,10 +18,18 @@ export async function posSqliteFixture() {
     async run() { const result = this.query().run(...this.values as never[]); return { success: true, results: [], meta: { changes: Number(result.changes), last_row_id: Number(result.lastInsertRowid) } }; }
   }
   const database = { prepare: (sql: string) => new Prepared(sql), batch: async(items: Prepared[]) => {
-    beforeBatch?.(items);
-    sqlite.exec("BEGIN IMMEDIATE");
-    try { const results = []; for (const item of items) results.push(/^\s*(SELECT|WITH|EXPLAIN)\b/i.test(item.sql) ? await item.all() : await item.run()); sqlite.exec("COMMIT"); return results; }
-    catch (error) { sqlite.exec("ROLLBACK"); throw error; }
+    // D1 serializes transactions. Concurrent report batches must not open nested
+    // BEGINs on this fixture's single SQLite connection.
+    const previous = batchTail;
+    let release!: () => void;
+    batchTail = new Promise<void>(resolve => { release = resolve; });
+    await previous;
+    try {
+      beforeBatch?.(items);
+      sqlite.exec("BEGIN IMMEDIATE");
+      try { const results = []; for (const item of items) results.push(/^\s*(SELECT|WITH|EXPLAIN)\b/i.test(item.sql) ? await item.all() : await item.run()); sqlite.exec("COMMIT"); return results; }
+      catch (error) { sqlite.exec("ROLLBACK"); throw error; }
+    } finally { release(); }
   } } as unknown as D1Database;
   const migrationDir = resolve(process.env.POS_PATCH_SOURCE_REPO ?? process.cwd(), "drizzle");
   for (const name of (await readdir(migrationDir)).filter(name => /^\d{4}.*\.sql$/.test(name)).sort()) {

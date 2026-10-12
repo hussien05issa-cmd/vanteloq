@@ -40,7 +40,7 @@ test("initial story is useful without video or JavaScript and never fetches vide
 test("retail landing keeps truthful plan boundaries, sample labels, available-only POS strip and real routes", () => {
   const html = renderToStaticMarkup(createElement(HomepageLanding, { retail: true }));
   for (const text of ["BookLoQ required", "Growth and Pro", "No expiry", "100 daily sales records", "10 Vanteloq AI replies", "Scripted product illustration", "Know what sold."]) assert.ok(html.includes(text), text);
-  for (const route of ["/demo", "/pricing", "/help", "/resources", "/privacy", "/solutions/retail"]) assert.ok(html.includes(`href="${route}"`), route);
+  for (const route of ["/demo", "/pricing", "/help", "/resources", "/privacy", "/solutions"]) assert.ok(html.includes(`href="${route}"`), route);
   const strip = html.slice(html.indexOf('class="hp-available"'), html.indexOf('class="hp-section hp-retail-problems"'));
   const available = integrationCatalog.filter(row => row.category === "Point of sale" && integrationPublicStatus(row).tone === "setup");
   for (const row of available) assert.ok(strip.includes(row.name));

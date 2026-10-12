@@ -1,0 +1,26 @@
+{
+  "observedDate": "2026-10-12",
+  "environment": "Codex in-app desktop browser with fictional local API and actual DataStudioPanel source",
+  "customerRecords": false,
+  "keyboardPreview": true,
+  "keyboardReturnUnmountsPanel": true,
+  "cleanReopenClearsResult": true,
+  "keyboardDateChangeRetainedAfterReopen": "2026-09-29",
+  "deniedExportClearsProtectedResult": true,
+  "emptyAndRecoveryStatesInspected": true,
+  "lightAndDarkInspected": true,
+  "mobileViewportWidth": 390,
+  "desktopViewportWidth": 1440,
+  "kpiFontPixels": { "mobile": 24, "desktop": 26 },
+  "maximumFixture": {
+    "renderedRows": 2000,
+    "netSalesCents": 11345000,
+    "grossProfitCents": 6945000,
+    "transactions": 25000,
+    "singleDevelopmentProfilerTableRenderMilliseconds": 234,
+    "p95": null,
+    "peakMemory": null
+  },
+  "productionOwnerWorkflowVerified": false,
+  "limits": "Development profiling of one fictional table render is not production latency or a physical-mobile-device benchmark. Viewport overrides were reset. Native desktop Excel/LibreOffice rendering was unavailable."
+}

@@ -197,6 +197,8 @@ export async function seedReportMetric(database, {
   const timestamp = Math.floor(Date.now() / 1_000);
   const publicationImport = sourceConnectionId && sourceImportId === null
     ? `fixture-pos:${organizationId}:${sourceConnectionId}` : sourceImportId;
+  const sourceConnection = sourceConnectionId ? await database.prepare("SELECT provider FROM integration_connections WHERE id=? AND organization_id=?").bind(sourceConnectionId,organizationId).first() : null;
+  if (sourceConnectionId) assert.ok(sourceConnection, "A fixture fact requires its own organization's connection.");
   // D1 enforces source_import_id immediately. Establish the parent before facts;
   // the exact completed cohort and proof are updated after the new fact exists.
   if (sourceConnectionId && sourceImportId === null) {
@@ -211,7 +213,7 @@ export async function seedReportMetric(database, {
      created_by_user_id, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, 0, 1, 1, 0, 0, 0, ?, ?, ?, ?, ?, ?)`)
     .bind(organizationId, businessDate, locationRef, netSalesCents, netSalesCents,
-      sourceConnectionId ? "lightspeed-r" : null, sourceConnectionId, publicationImport,
+      sourceConnection?.provider ?? null, sourceConnectionId, publicationImport,
       userId, timestamp, timestamp).run();
   // Positive reporting fixtures represent a completed, coherent publication.
   // Explicit import identifiers remain caller-owned for invalid-lineage tests.
@@ -229,10 +231,10 @@ export async function seedReportPublication(database, { organizationId, userId, 
   await database.prepare(`INSERT INTO data_imports(id,organization_id,import_type,status,file_name,row_count,idempotency_key,imported_by_user_id,created_at)
     VALUES(?,?,'manual_entry','completed','Fictional verified source',?,?,?,?)
     ON CONFLICT(id) DO UPDATE SET row_count=excluded.row_count`).bind(publicationImport,organizationId,count,publicationImport,userId,timestamp).run();
-  const connection=await database.prepare("SELECT sync_version FROM integration_connections WHERE id=? AND organization_id=?").bind(sourceConnectionId,organizationId).first();
+  const connection=await database.prepare("SELECT provider,sync_version FROM integration_connections WHERE id=? AND organization_id=?").bind(sourceConnectionId,organizationId).first();
   assert.ok(connection, "Publication must reference a connection in this fixture's organization.");
   const syncVersion=Math.max(1,connection.sync_version??0);
-  const cursor=JSON.stringify({version:6,publication:{contract:"pos-financial-v2",importId:publicationImport,metricRowCount:count,syncVersion}});
+  const cursor=JSON.stringify({version:connection.provider === "lightspeed-r" ? 6 : 2,publication:{contract:"pos-financial-v2",importId:publicationImport,metricRowCount:count,syncVersion}});
   await database.prepare("UPDATE integration_connections SET sync_version=?,last_sync_cursor=? WHERE id=? AND organization_id=?").bind(syncVersion,cursor,sourceConnectionId,organizationId).run();
 }
 

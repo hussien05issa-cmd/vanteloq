@@ -1,0 +1,21 @@
+{
+  "artifact": "final R1 build",
+  "generationBoundary": "server download only",
+  "chunks": [
+    {
+      "path": "dist/client/_next/static/chunks/data-studio-panel-Bhsyhkgt.js",
+      "rawBytes": 14118,
+      "gzipBytes": 4652
+    },
+    {
+      "path": "dist/client/_next/static/css/data-studio-panel.CMBkRJ6f.css",
+      "rawBytes": 3538,
+      "gzipBytes": 1080
+    },
+    {
+      "path": "dist/server/_next/static/exceljs.bare-CLBk0ZUv.js",
+      "rawBytes": 486426,
+      "gzipBytes": 128377
+    }
+  ]
+}

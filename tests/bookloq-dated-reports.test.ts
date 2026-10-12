@@ -163,3 +163,14 @@ test("unsafe aggregate cents never produce rounded financial totals", async () =
     await assert.rejects(() => loadBookloqDatedReport(db, { organizationId: "org", currency: "CAD", timeZone: "UTC", contactIdentity: true, individualDetails: true, query: query() }), code("BOOKLOQ_REPORT_AMOUNT_INVALID"));
   } finally { f.close(); }
 });
+
+test("a settings change before the balance transaction prevents a mismatched accounting report", async () => {
+  const f = await fixture();
+  try {
+    const database = { prepare: f.database.prepare.bind(f.database), batch: async (items: D1PreparedStatement[]) => {
+      await f.db.prepare("UPDATE bookloq_settings SET data_mode='demonstration' WHERE organization_id='org'").run();
+      return f.database.batch(items);
+    } } as D1Database;
+    await assert.rejects(() => loadBookloqDatedReport(database, { organizationId: "org", currency: "CAD", timeZone: "UTC", contactIdentity: false, individualDetails: false, query: query() }), code("BOOKLOQ_REPORT_PROFILE_CHANGED"));
+  } finally { f.close(); }
+});

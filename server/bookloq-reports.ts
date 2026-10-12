@@ -87,8 +87,12 @@ export async function loadBookloqDatedReport(database: D1Database, input: { orga
       ORDER BY e.entry_date DESC,e.id DESC,l.line_number DESC LIMIT ?`).bind(organizationId, query.accountId, settings.currency, query.to,
       ...(query.report === "pnl" ? [query.from] : []), ...(cursor ? [cursor[0], cursor[0], cursor[1], cursor[0], cursor[1], cursor[2]] : []), (query.format === "csv" ? EXPORT_LIMIT : DETAIL_LIMIT) + 1));
   }
+  // Fence profile settings inside the same read transaction as the balances.
+  statements.push(database.prepare("SELECT base_currency currency,accounting_basis basis,status,data_mode dataMode FROM bookloq_settings WHERE organization_id=?").bind(organizationId));
   // D1's read batch keeps balances, coverage and drilldown on the same read transaction.
   const results = await database.batch(statements);
+  const capturedSettings = results.at(-1)?.results?.[0] as Record<string, unknown> | undefined;
+  if (!capturedSettings || (["currency", "basis", "status", "dataMode"] as const).some(key => capturedSettings[key] !== settings[key])) throw new ApiError(409, "BOOKLOQ_REPORT_PROFILE_CHANGED", "The accounting profile changed while this report was prepared. Refresh it before using the figures.");
   const raw = results[0].results as Array<Omit<BookloqReportAccount, "periodBalanceCents" | "closingBalanceCents"> & { lastPostedAt: number | null }>;
   if (raw.length > LIMIT) throw new ApiError(409, "BOOKLOQ_REPORT_LIMIT", "This report exceeds 2,000 accounts. No partial financial totals are shown.");
   if (query.accountId && !raw.some(row => row.id === query.accountId)) throw new ApiError(404, "BOOKLOQ_REPORT_ACCOUNT_NOT_FOUND", "This account is unavailable in the current business.");

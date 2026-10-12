@@ -76,7 +76,9 @@ test("the Lightspeed integration uses the standalone image asset", async () => {
     new URL("../app/integration-brand-logo.tsx", import.meta.url),
     "utf8",
   );
-  assert.match(source, /\/brand\/lightspeed-mark-ui\.webp/);
+  assert.match(source, /\/integrations\/lightspeed-logo-charcoal\.svg/);
+  const asset = await readFile(new URL("../public/integrations/lightspeed-logo-charcoal.svg", import.meta.url), "utf8");
+  assert.match(asset, /<svg/);
   assert.doesNotMatch(source, /name === "Lightspeed"[\s\S]{0,200}<path/);
 });
 
