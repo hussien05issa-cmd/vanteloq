@@ -1,30 +1,32 @@
-/* Shared premium tokens are defined once in premium-tokens.css.
-   Existing financial, provider and permission components retain their own logic. */
+/* Authenticated palettes complete the midnight direction independently of the
+   public presentation. Financial, provider and permission logic is unchanged. */
 :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme="dark"],
 :is(.billing-onboarding-gate,.legal-acceptance-gate,.setup-shell,.workspace-entry-loading,.entry-loading) {
   color-scheme: dark;
-  --ws-canvas: var(--premium-canvas);
-  --ws-panel: var(--premium-panel);
-  --ws-raised: var(--premium-raised);
-  --ws-input: var(--premium-input);
-  --ws-ink: var(--premium-ink);
-  --ws-muted: var(--premium-secondary);
-  --ws-subtle: var(--premium-muted);
-  --ws-line: var(--premium-border);
-  --ws-control: #64718A;
-  --ws-blue: #79A5FF;
-  --ws-purple: var(--ws-blue);
-  --ws-primary: #285FE6;
+  --ws-canvas: #050608;
+  --ws-panel: #0E1118;
+  --ws-raised: #151B25;
+  --ws-input: #10151E;
+  --ws-navigation: #080B11;
+  --ws-ink: #F5F7FB;
+  --ws-muted: #B4BECD;
+  --ws-subtle: #9BA7B8;
+  --ws-line: #303B4D;
+  --ws-control: #718198;
+  --ws-blue: #78B2FF;
+  --ws-purple: #C5ADFF;
+  --ws-focus: #9AC7FF;
+  --ws-primary: #1D60DC;
   --ws-on-primary: #FFFFFF;
-  --ws-primary-hover: #2457D5;
-  --ws-positive: #5CE0AC;
-  --ws-negative: #FF8F9C;
-  --ws-warning: #F5B366;
+  --ws-primary-hover: #2B6DE3;
+  --ws-positive: #6EE7AD;
+  --ws-negative: #FF9D9D;
+  --ws-warning: #F3C477;
   --ws-positive-bg: #08261C;
   --ws-negative-bg: #2B1119;
   --ws-warning-bg: #2B2010;
-  --ws-selected: #102346;
-  --ws-shadow: 0 12px 32px #00000038;
+  --ws-selected: #12376F;
+  --ws-shadow: none;
 }
 :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme="light"] {
   color-scheme: light;
@@ -32,13 +34,15 @@
   --ws-panel: #FFFFFF;
   --ws-raised: #EDF2F8;
   --ws-input: #F8FAFD;
+  --ws-navigation: #F8FAFD;
   --ws-ink: #122039;
   --ws-muted: #4B5B72;
   --ws-subtle: #56657A;
   --ws-line: #CAD3E0;
   --ws-control: #748198;
   --ws-blue: #235DC2;
-  --ws-purple: var(--ws-blue);
+  --ws-purple: #6534AB;
+  --ws-focus: #235DC2;
   --ws-primary: #285FE6;
   --ws-on-primary: #FFFFFF;
   --ws-primary-hover: #2457D5;
@@ -49,7 +53,7 @@
   --ws-negative-bg: #FFF0F2;
   --ws-warning-bg: #FFF5E5;
   --ws-selected: #E4EDFD;
-  --ws-shadow: 0 8px 24px #172B4810;
+  --ws-shadow: none;
 }
 :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] {
   font-family: var(--premium-font,var(--font-product));
@@ -138,7 +142,7 @@
   cursor: not-allowed;
 }
 :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(button,a,input,select,textarea,summary,[tabindex]):focus-visible {
-  outline: 3px solid var(--ws-blue) !important;
+  outline: 3px solid var(--ws-focus,var(--ws-blue)) !important;
   outline-offset: 3px;
 }
 /* The widget is a real metric button. Quiet depth does not obscure its data. */
@@ -152,7 +156,7 @@
 }
 :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .executive-overview .executive-kpi.selected {
   border-color: var(--ws-blue) !important;
-  box-shadow: inset 3px 0 0 var(--ws-blue),var(--ws-shadow) !important;
+  box-shadow: inset 3px 0 0 var(--ws-blue) !important;
 }
 :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .executive-kpi-label { font-size: 14px !important; font-weight: 580; line-height: 1.4 !important; }
 :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .executive-overview .executive-kpi strong { font-size: clamp(25px,8cqi,34px); font-weight: 680; line-height: 1.2; margin-block: 10px 8px; }
@@ -183,7 +187,7 @@
 :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.executive-insight-empty,.executive-insight-empty p) { font-size: 15px; line-height: 1.65; }
 :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.business-pulse-control,.control-surface) { box-shadow: var(--ws-shadow) !important; backdrop-filter: none; }
 :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .business-pulse-control[data-pulse-state="review"] { --pulse-colour: var(--ws-blue); --pulse-bg: var(--ws-selected); }
-:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .pulse-status>i { box-shadow: none; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .pulse-status>i { display: none; box-shadow: none; animation: none !important; }
 :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .ring-margin .ring-value { stroke: #6FD8D3; }
 :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme="light"] .ring-margin .ring-value { stroke: #087A80; }
 :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .interactive-goal-ring { --ring-ink: var(--ws-blue); }
@@ -197,14 +201,14 @@
 :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .interactive-ring-value { transition-duration: var(--premium-duration,160ms); }
 /* Conversation appearance remains an independent saved light/dark/system setting. */
 .operating-shell .ai-studio[data-ai-theme="dark"] {
-  --ai-canvas: var(--premium-canvas); --ai-panel: var(--premium-panel);
-  --ai-raised: var(--premium-raised); --ai-ink: var(--premium-ink);
-  --ai-muted: var(--premium-secondary); --ai-purple: #79A5FF; --ai-blue: #79A5FF;
-  --ai-line: var(--premium-border); --ai-control: #64718A; --ai-focus: #79A5FF; --ai-error: #FF8F9C;
+  --ai-canvas: #050608; --ai-panel: #0E1118;
+  --ai-raised: #151B25; --ai-ink: #F5F7FB;
+  --ai-muted: #B4BECD; --ai-purple: #C5ADFF; --ai-blue: #78B2FF;
+  --ai-line: #303B4D; --ai-control: #718198; --ai-focus: #9AC7FF; --ai-error: #FF9D9D;
 }
 .operating-shell .ai-studio[data-ai-theme="light"] {
   --ai-canvas: #F3F6FA; --ai-panel: #FFFFFF; --ai-raised: #EDF2F8;
-  --ai-ink: #122039; --ai-muted: #4B5B72; --ai-purple: #235DC2; --ai-blue: #235DC2;
+  --ai-ink: #122039; --ai-muted: #4B5B72; --ai-purple: #6534AB; --ai-blue: #235DC2;
   --ai-line: #CAD3E0; --ai-control: #748198; --ai-focus: #235DC2; --ai-error: #AE3045;
 }
 .operating-shell .ai-studio[data-ai-theme] :is(h2,h3,h4,strong,b,label,legend,dt,.ai-user-message,.ai-answer-content,.ai-answer-content p,.ai-answer-content li,.ai-answer-content th,.ai-answer-content td,.ai-response-body) { color: var(--ai-ink) !important; }
@@ -219,9 +223,9 @@
 .operating-shell .ai-studio[data-ai-theme] :is(button,input,select,textarea):disabled { background: var(--ai-raised) !important; color: var(--ai-muted) !important; border-color: var(--ai-control) !important; }
 .operating-shell .ai-studio[data-ai-theme] :is(button,summary,select,a,textarea,[tabindex]):focus-visible { outline: 3px solid var(--ai-focus) !important; outline-offset: 3px; }
 .operating-shell .ai-studio[data-ai-theme] :is(.ai-input-toolbar .ai-send,.ai-input-toolbar .ai-stop,.ai-dashboard-action-controls button:first-child) {
-  background: #285FE6 !important; border-color: #285FE6 !important; color: #FFFFFF !important;
+  background: #1D60DC !important; border-color: #1D60DC !important; color: #FFFFFF !important;
 }
-.operating-shell .ai-studio[data-ai-theme] :is(.ai-input-toolbar .ai-send,.ai-input-toolbar .ai-stop,.ai-dashboard-action-controls button:first-child):hover:not(:disabled) { background: #2457D5 !important; }
+.operating-shell .ai-studio[data-ai-theme] :is(.ai-input-toolbar .ai-send,.ai-input-toolbar .ai-stop,.ai-dashboard-action-controls button:first-child):hover:not(:disabled) { background: #2B6DE3 !important; }
 .operating-shell .ai-studio[data-ai-theme] :is(.ai-input-toolbar .ai-send,.ai-dashboard-action-controls button):disabled { background: var(--ai-raised) !important; border-color: var(--ai-control) !important; color: var(--ai-muted) !important; }
 .operating-shell .ai-studio[data-ai-theme] .ai-compose-area textarea { min-height: 56px; background: transparent !important; color: var(--ai-ink) !important; border-radius: 0; }
 .operating-shell .ai-studio[data-ai-theme] .ai-compose-area textarea::placeholder { color: var(--ai-muted); opacity: 1; }
@@ -319,6 +323,105 @@
 .operating-shell[data-workspace-theme] .executive-overview .executive-filters select:not([multiple]):not([size]) {
   min-width: 0; width: 100%; font-size: 14px !important; padding-inline: 10px 28px;
 }
+/* Navigation uses quiet depth; records and figures always have opaque backing. */
+.operating-shell[data-workspace-theme] :is(.sidebar,.bookloq-side) {
+  background: var(--ws-navigation,var(--ws-panel)) !important;
+  border-color: var(--ws-line) !important;
+  box-shadow: none !important;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.operating-shell[data-workspace-theme] .sidebar .bookloq-main-nav {
+  color: var(--ws-ink) !important; background: transparent !important; box-shadow: none;
+}
+.operating-shell[data-workspace-theme] .sidebar .bookloq-main-nav:is(.active,[aria-current="page"]) {
+  color: var(--ws-blue) !important; background: var(--ws-selected) !important;
+  box-shadow: inset 3px 0 0 var(--ws-blue) !important;
+}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(
+  .source-pill>i,.pulse-status>i,.pulse-attention>button>span:first-child
+) { display: none !important; animation: none !important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(
+  .executive-kpi strong,.metric-card strong,.bookloq-kpi strong,.bq-collection-kpis strong,
+  .business-workflow-metrics dd,.foodservice-metrics dd,.source-decision-value,td,dd
+) { font-variant-numeric: tabular-nums; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(table,.bq-record-table-wrap table) { font-size: 14px; line-height: 1.5; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(th,.bq-record-table-wrap th) { font-size: 12px; font-weight: 600; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .bq-record-table-wrap {
+  min-width: 0; width: 100%; max-width: 100%; overflow-x: auto;
+  overscroll-behavior-inline: contain;
+}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .bq-record-table-wrap th {
+  top: 0;
+}
+
+/* Lazy-loaded decision and workflow sheets have local light defaults. Resolve
+   their exact surfaces against the saved theme without a second theme store. */
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .source-decision-cards {
+  --decision-surface: var(--ws-panel) !important;
+  --decision-ink: var(--ws-ink) !important;
+  --decision-muted: var(--ws-muted) !important;
+}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .source-decision-card {
+  background: var(--ws-panel) !important; color: var(--ws-ink); box-shadow: none;
+}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .business-workflows {
+  --bw-ink: var(--ws-ink); --bw-muted: var(--ws-muted); --bw-line: var(--ws-line);
+}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(
+  .business-workflow-record,.business-workflow-detail,.business-workflow-editor,.business-workflow-empty,
+  .business-workflow-confirm,.business-workflow-preview,.business-workflow-outcome-source
+) { background: var(--ws-panel) !important; color: var(--ws-ink) !important; border-color: var(--ws-line) !important; box-shadow: none !important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(
+  .business-workflow-entry,.business-workflow-metrics>div,.business-workflow-state,.business-workflow-loading
+) { background: var(--ws-raised) !important; color: var(--ws-ink) !important; border-color: var(--ws-line) !important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.business-workflow-eyebrow,.business-workflow-state[data-state="reviewed"]) {
+  color: var(--ws-blue) !important;
+}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .business-workflow-state[data-state="completed"] {
+  background: var(--ws-positive-bg) !important; color: var(--ws-positive) !important;
+}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .business-workflow-attention {
+  background: var(--ws-warning-bg) !important; color: var(--ws-warning) !important; border-color: var(--ws-warning) !important;
+}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .business-workflow-error {
+  background: var(--ws-negative-bg) !important; color: var(--ws-negative) !important; border-color: var(--ws-negative) !important;
+}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .business-workflow-tabs button[aria-pressed="true"] {
+  background: var(--ws-selected) !important; color: var(--ws-blue) !important;
+  border-color: var(--ws-blue) !important; box-shadow: inset 0 -2px 0 var(--ws-blue);
+}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(
+  .business-workflow-primary,.source-decision-primary,.bq-primary
+):not(:disabled) {
+  background: var(--ws-primary) !important; color: var(--ws-on-primary) !important; border-color: var(--ws-primary) !important;
+}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(
+  .business-workflow-primary,.source-decision-primary,.bq-primary
+):hover:not(:disabled) { background: var(--ws-primary-hover) !important; }
+
+/* Financial direction and blocking feedback keep their meaning after generic
+   heading, table and paragraph rules. Labels and signs accompany every colour. */
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(
+  .positive,.change-up,.retail-up,.safe,.dl-success
+),
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.positive,.change-up,.retail-up) :is(strong,b,span,small) { color: var(--ws-positive) !important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(
+  .negative,.change-down,.retail-down,[data-negative="true"],.source-decision-error
+),
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.negative,.change-down,.retail-down) :is(strong,b,span,small) { color: var(--ws-negative) !important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .business-pulse-control[data-pulse-state="review"] {
+  --pulse-colour: var(--ws-warning); --pulse-bg: var(--ws-warning-bg);
+}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .business-pulse-control[data-pulse-state="critical"] {
+  --pulse-colour: var(--ws-negative); --pulse-bg: var(--ws-negative-bg);
+}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.pulse-status,.control-surface-heading) {
+  background: var(--ws-raised) !important; border-color: var(--ws-line) !important;
+}
+.operating-shell .ai-studio[data-ai-theme] :is(.ai-response-error,.ai-consent-error) {
+  color: var(--ai-error) !important;
+}
 @media(max-width: 360px) {
   .operating-shell[data-workspace-theme] .executive-overview .executive-filters { display: grid; grid-template-columns: minmax(0,1fr); }
 }
@@ -348,6 +451,7 @@
   :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme],
   :is(.billing-onboarding-gate,.legal-acceptance-gate,.setup-shell,.workspace-entry-loading,.entry-loading) {
     --ws-canvas: Canvas; --ws-panel: Canvas; --ws-raised: Canvas; --ws-input: Canvas;
+    --ws-navigation: Canvas; --ws-focus: Highlight;
     --ws-ink: CanvasText; --ws-muted: CanvasText; --ws-subtle: CanvasText;
     --ws-line: ButtonBorder; --ws-control: ButtonBorder; --ws-blue: LinkText; --ws-purple: Highlight;
     --ws-primary: ButtonFace; --ws-on-primary: ButtonText; --ws-primary-hover: ButtonFace;

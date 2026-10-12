@@ -44,6 +44,7 @@ import "./premium-tokens.css";
 import "./premium-auth.css";
 import "./premium-workspace.css";
 import "./demo-booking.css";
+import "./public-header-polish.css";
 const GOOGLE_ANALYTICS_CONSENT_DEFAULT = `
 window.dataLayer = window.dataLayer || [];
 window.gtag = window.gtag || function () { window.dataLayer.push(arguments); };
@@ -75,9 +76,9 @@ export const metadata: Metadata = {
     images: [DEFAULT_SOCIAL_IMAGE],
   },
   icons: {
-    icon: { url: "/brand/vanteloq-mark.png", type: "image/png" },
-    shortcut: "/brand/vanteloq-mark.png",
-    apple: "/brand/vanteloq-mark.png",
+    icon: { url: "/brand/origin-metal-2026/favicon.svg", type: "image/svg+xml" },
+    shortcut: "/brand/origin-metal-2026/favicon.svg",
+    apple: "/brand/origin-metal-2026/vanteloq.jpg",
   },
 };
 

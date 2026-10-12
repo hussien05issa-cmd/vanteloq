@@ -429,7 +429,32 @@ function FeatureReel() {
 function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) {
   const motionEnabled = useMotionPreference();
   const siteRef = useRef<HTMLDivElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const [activeSection, setActiveSection] = useState("");
+  useEffect(() => {
+    if (!mobileNavigationOpen) return;
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setMobileNavigationOpen(false);
+      menuButtonRef.current?.focus();
+    };
+    document.addEventListener("keydown", escape);
+    return () => document.removeEventListener("keydown", escape);
+  }, [mobileNavigationOpen]);
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const desktop = window.matchMedia("(min-width: 881px)");
+    const closeOnDesktop = () => { if (desktop.matches) setMobileNavigationOpen(false); };
+    closeOnDesktop();
+    if (desktop.addEventListener) {
+      desktop.addEventListener("change", closeOnDesktop);
+      return () => desktop.removeEventListener("change", closeOnDesktop);
+    }
+    desktop.addListener(closeOnDesktop);
+    return () => desktop.removeListener(closeOnDesktop);
+  }, []);
   useEffect(() => {
     const site = siteRef.current, header = site?.querySelector<HTMLElement>(".public-nav");
     if (!site || !header) return;
@@ -456,21 +481,22 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
   }, []);
   return <div ref={siteRef} className="public-site journey-home reference-home">
     <a className="home-skip-link" href="#main-content">Skip to main content</a>
-    <header className="public-nav">
+    <header className="public-nav" data-menu-open={mobileNavigationOpen}>
       <div className="public-brand-family">
-      <button type="button" className="public-brand" aria-label="Vanteloq home" onClick={() => { window.scrollTo({ top: 0, behavior: motionEnabled ? "smooth" : "auto" }); }}>
+      <button type="button" className="public-brand" aria-label="Vanteloq home" onClick={() => { setMobileNavigationOpen(false); window.scrollTo({ top: 0, behavior: motionEnabled ? "smooth" : "auto" }); }}>
         <ProductBrandLogo product="vanteloq" priority/>
-        <span>Vanteloq<small>Business analytics by LexEdge Consulting</small></span>
+        <span>Vanteloq</span>
       </button>
       </div>
-      <nav id="public-navigation" aria-label="Main navigation">
+      <button ref={menuButtonRef} type="button" className="public-nav-menu" aria-label={mobileNavigationOpen ? "Close navigation menu" : "Open navigation menu"} aria-expanded={mobileNavigationOpen} aria-controls="public-navigation public-account-actions" onClick={() => setMobileNavigationOpen(open => !open)}>Menu</button>
+      <nav id="public-navigation" aria-label="Main navigation" onClick={event => { if (event.target instanceof Element && event.target.closest("a")) setMobileNavigationOpen(false); }}>
         <Link prefetch={false} href="/how-it-works">How it works</Link><a href="#connections" aria-current={activeSection === "connections" ? "location" : undefined}>Connections</a><a href="/demo" aria-current={activeSection === "demo" ? "location" : undefined}>Open the demo</a><Link prefetch={false} data-public-event="pricing_view" href="/pricing">Pricing</Link><Link prefetch={false} href="/help">Help</Link>
         <Link prefetch={false} className="public-demo-link" href="/book-demo">Book a free demo</Link>
         <a href="#social" aria-current={activeSection === "social" ? "location" : undefined}>Socials</a><div className="public-nav-socials"><SocialLinks/></div>
       </nav>
-      <div className="public-nav-actions">
-        <button type="button" className="nav-login" onClick={() => start("signin")}>Sign in</button>
-        <button type="button" data-public-event="signup_start" onClick={() => start("signup")}>Create a workspace</button>
+      <div className="public-nav-actions" id="public-account-actions">
+        <button type="button" className="nav-login" onClick={() => { setMobileNavigationOpen(false); start("signin"); }}>Sign in</button>
+        <button type="button" data-public-event="signup_start" onClick={() => { setMobileNavigationOpen(false); start("signup"); }}>Create a workspace</button>
       </div>
     </header>
 
@@ -538,8 +564,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
 
     <footer className="home-footer" id="company">
       <div className="home-footer-brand"><div><ProductBrandLogo product="vanteloq"/><strong>Vanteloq</strong></div><p>Sales, stock and cash, with the records behind the numbers.</p><div className="home-footer-owner">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/brand/lexedge-consulting-logo-web.png" alt="LexEdge Consulting" width={480} height={320} loading="lazy" />
+        <ProductBrandLogo product="lexedge" variant="full"/>
         <span>LexEdge Consulting is the consulting business behind Vanteloq, covering business analysis, financial review, operations and marketing support. It builds and operates the software; your business decisions stay yours.</span>
       </div></div>
       <div><strong>PRODUCT</strong><Link prefetch={false} href="/features/retail-intelligence">Retail intelligence</Link><Link prefetch={false} href="/features/inventory-and-cash">Inventory and cash</Link><Link prefetch={false} data-public-event="pricing_view" href="/pricing">Pricing</Link><Link prefetch={false} href="/demo">Interactive demo</Link><a href="#platform">How it works</a><a href="#capabilities">Capabilities</a><a href="#connections">Connections</a><a href="#security">Security</a></div>

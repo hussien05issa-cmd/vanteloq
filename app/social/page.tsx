@@ -1,6 +1,7 @@
 /* eslint-disable @next/next/no-img-element */
 import type { Metadata } from "next";
 import Link from "next/link";
+import BrandSignature from "../brand-signature";
 import { SOCIAL_PROFILES } from "../social-profiles";
 import "./social-hub.css";
 
@@ -28,7 +29,7 @@ export default function SocialHubPage() {
           <nav className="social-hub-cloud" aria-label="Jump to a social channel">
             {Object.entries(SOCIAL_PROFILES).map(([slug, profile]) => <a className={`social-hub-float social-hub-float-${slug}`} href={`#${slug}`} key={slug} aria-label={`Find Vanteloq on ${profile.name}`}><img src={`/brand/social/${slug}-mark.svg`} alt="" width={64} height={64}/></a>)}
           </nav>
-          <div className="social-hub-banner"><img src="/brand/social/lexedge-vanteloq-banner.jpg" alt="Lexedge Consulting and Vanteloq. Better systems. Stronger businesses. Consulting, analytics and business software." width={1536} height={585}/></div>
+          <div className="social-hub-banner"><BrandSignature /></div>
         </section>
         <section className="social-hub-grid" id="social-channels" aria-label="Vanteloq social media channels">
           {Object.entries(SOCIAL_PROFILES).map(([slug, profile]) => <article className={`social-hub-card social-hub-${slug}`} id={slug} key={slug}>

@@ -1,5 +1,13 @@
 # Vanteloq Interface Direction
 
+## October 11, 2026 brand and appearance update
+
+The supplied metallic Vanteloq, BookLoQ and LexEdge Consulting artwork replaces the earlier UI identity. Use the original JPEGs in `public/brand/origin-metal-2026`, with the shared logo component framing those pixels on an opaque black carrier. Do not redraw, invert or recolour the marks. Third-party integration logos retain their own identity.
+
+The recovered phone branch's midnight direction is completed in the existing appearance system. Dark uses graphite surfaces, cobalt controls and readable silver text. Light and System remain available. Keep dense records opaque, status changes meaningful, tabular financial figures and the existing Geist family. Remove decorative flashing markers while retaining useful status labels and data warnings. Prefer compact, accessible navigation with at least 44 px targets.
+
+This update supersedes older instructions below to preserve the previous logo artwork. It does not alter calculations, permissions, consent, billing or provider availability.
+
 User-approved direction, September 14, 2026. Applies to public pages and the authenticated workspace, including BookLoQ, AI, settings, integrations and forms.
 
 - Keep Vanteloq's navy and blue identity. Use smooth, restrained gradients, subtle glossy highlights and frosted navigation. Keep records, charts and inputs opaque and off-white.

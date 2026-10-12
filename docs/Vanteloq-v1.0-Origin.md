@@ -354,3 +354,13 @@ Release 356 added historical cost protection, dated reconciled-statement cash sc
 The following increment improves owner briefings, optional local onboarding CSV insights and sourced decision cards in Collections, reviewed Food Operations periods and settlement workflows. Exact arithmetic, source dates, permissions, incomplete-data gates and recoverable controls remain explicit. The implementation record, research and scope are in `docs/Origin-decision-workflow-refinement-2026-10-11.md`. Calculation adapters without customer-screen bindings are not advertised as new available features.
 
 The competitive direction is a source-to-decision-to-action-to-outcome workflow, supported by historical costs, inventory constraints, dated cash obligations and sector-specific evidence. This is a credible product strength, not measured proof of market superiority. Production recovery, unattended delivery, provider acceptance and signed-in customer accounting verification remain separate from deployment and isolated tests.
+
+### October 11 brand and midnight appearance refinement
+
+The three supplied metallic identities replace the previous Vanteloq, BookLoQ and LexEdge UI artwork. Shared components frame the original JPEG pixels on black carriers across navigation, authentication, product demonstrations, BookLoQ, AI and social/ownership surfaces. Third-party integration identities are unchanged.
+
+The incomplete phone branch's graphite direction is completed in the existing workspace appearance system, preserving Light, Dark and System, saved preferences, cross-tab/device changes and portal appearance. Dense records use opaque surfaces; cobalt controls, readable secondary text, financial signs and restrained semantic colours retain meaning. Geist and tabular financial numbers remain consistent. Decorative source/Pulse dots and the indefinite synchronisation spin are removed while status labels remain.
+
+Mobile homepage navigation now uses an accessible Menu disclosure that retains every destination, account action and social link. Escape closes it and returns focus. BookLoQ record tables retain bounded horizontal scrolling with sticky headings at their own scroll boundary.
+
+The bounded release checks include source/asset verification, appearance-store and contrast checks, rendered dark/light/System and portal cycles, 360 px table containment, and desktop/mobile public layouts. Fictional component previews do not establish a signed-in production acceptance test, full-site accessibility certification or real iOS home-screen-icon support. Recorded advertising footage and historical editorial images are separate media assets and are not rewritten by the shared logo component.

@@ -48,7 +48,8 @@ test("homepage copy stays within the verified product boundary", async () => {
   for (const path of ["/privacy", "/terms", "/cookies", "/contact", "/pricing", "/custom-plan"]) assert.ok(html.includes('href="' + path + '"'),path);
   assert.match(html, /built and operated by/);
   assert.match(html, /LexEdge Consulting/);
-  assert.match(html, /lexedge-consulting-logo-web\.png/);
+  assert.match(html, /aria-label="LexEdge Consulting logo"/);
+  assert.match(html, /href="\/brand\/origin-metal-2026\/lexedge\.jpg"/);
   assert.match(html, /Memory starts off/);
   assert.match(html, /Which system do you use/);
   assert.match(html, /review the imported totals/);
@@ -177,7 +178,7 @@ test("generated editorial visuals stay compact and production-ready", async () =
 });
 
 test("the supplied LexEdge ownership mark is present and web ready", async () => {
-  const asset = await stat(new URL("../public/brand/lexedge-consulting-logo-web.png", import.meta.url));
+  const asset = await stat(new URL("../public/brand/origin-metal-2026/lexedge.jpg", import.meta.url));
   assert.ok(asset.size < 100_000, `LexEdge logo should stay below 100 KB, received ${asset.size}`);
 });
 

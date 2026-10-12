@@ -1,14 +1,13 @@
+import { useId } from "react";
+import { preload } from "react-dom";
+import { PRODUCT_BRAND_ASSETS, type ProductBrand, type ProductBrandVariant } from "./product-brand-assets";
+
 type ProductBrandLogoProps = {
-  product: "vanteloq" | "bookloq";
-  variant?: "icon" | "full";
+  product: ProductBrand;
+  variant?: ProductBrandVariant;
   priority?: boolean;
   className?: string;
 };
-
-const PRODUCT_NAMES = {
-  vanteloq: "Vanteloq",
-  bookloq: "BookLoQ",
-} as const;
 
 export default function ProductBrandLogo({
   product,
@@ -16,33 +15,25 @@ export default function ProductBrandLogo({
   priority = false,
   className = "",
 }: ProductBrandLogoProps) {
-  const name = PRODUCT_NAMES[product];
-  const source = product === "vanteloq"
-    ? variant === "full"
-      ? "/brand/vanteloq-logo-ui.webp"
-      : "/brand/vanteloq-mark-ui.webp"
-    : variant === "full"
-      ? "/brand/bookloq-logo-ui.webp"
-      : "/brand/bookloq-mark-ui.webp";
-
-  const dimensions = product === "vanteloq"
-    ? variant === "full" ? { width: 1030, height: 576 } : { width: 447, height: 402 }
-    : variant === "full" ? { width: 1229, height: 363 } : { width: 378, height: 331 };
+  const artwork = PRODUCT_BRAND_ASSETS[product];
+  const frame = artwork.frames[variant];
+  const clipId = useId();
+  if (priority) preload(artwork.source, { as: "image", fetchPriority: "high" });
 
   return (
-    <span className={`product-brand-logo ${product} ${variant} ${className}`.trim()}>
-      {/* Local product artwork is served directly so previews and production do not depend on an image-transformation binding. */}
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={source}
-        alt={`${name} logo`}
-        width={dimensions.width}
-        height={dimensions.height}
-        loading={priority ? "eager" : "lazy"}
-        fetchPriority={priority ? "high" : "auto"}
-        decoding="async"
-      />
-      <sup className="brand-trademark" aria-hidden="true">™</sup>
+    <span className={`product-brand-logo product-brand-artwork ${product} ${variant} ${className}`.trim()}>
+      <svg
+        className="product-brand-viewport"
+        role="img"
+        aria-label={`${artwork.name} logo`}
+        focusable="false"
+        viewBox={`${frame.x} ${frame.y} ${frame.width} ${frame.height}`}
+        preserveAspectRatio="xMidYMid meet"
+      >
+        <defs><clipPath id={clipId}><rect x={frame.x} y={frame.y} width={frame.width} height={frame.height} /></clipPath></defs>
+        {/* Only the viewport changes. Both variants display the same original JPEG. */}
+        <image href={artwork.source} width={artwork.width} height={artwork.height} clipPath={`url(#${clipId})`} />
+      </svg>
     </span>
   );
 }

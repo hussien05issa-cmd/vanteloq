@@ -15,7 +15,7 @@ createServer(async(req,res)=>{
   if(path==='/preview.js'){res.setHeader('Content-Type','application/javascript');res.end(bundle.outputFiles.find(file=>file.path.endsWith('.js')).text);return;}
   if(path.startsWith('/brand/')||path.startsWith('/fonts/')||path.startsWith('/integrations/')){
    const root=resolve('public'),file=resolve(root,'.'+path);if(!file.startsWith(root+sep))throw new Error('Invalid path');
-   res.setHeader('Content-Type',({'.png':'image/png','.webp':'image/webp','.woff2':'font/woff2','.svg':'image/svg+xml','.mp4':'video/mp4','.webm':'video/webm'})[extname(file)]||'application/octet-stream');res.end(await readFile(file));return;
+   res.setHeader('Content-Type',({'.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.woff2':'font/woff2','.svg':'image/svg+xml','.mp4':'video/mp4','.webm':'video/webm'})[extname(file)]||'application/octet-stream');res.end(await readFile(file));return;
   }
   const css=(await Promise.all(styles.map(async({file,project})=>{const css=await readFile('app/'+file,'utf8');return project?publicSurfaceCss(css,file):css;}))).join('\n')+'\n'+(bundle.outputFiles.find(file=>file.path.endsWith('.css'))?.text??'');
   res.setHeader('Content-Type','text/html; charset=utf-8');res.end(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Vanteloq public design preview</title><style>${css}</style><div id="root"></div><script type="module" src="/preview.js"></script></html>`);

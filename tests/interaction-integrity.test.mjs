@@ -48,7 +48,10 @@ test("BookLoQ connects Plaid directly with versioned consent and guarded financi
   assert.match(privacy, /plaid-financial-data-v3/);
   assert.match(privacy, /13-week cash-flow forecasting/);
   assert.match(privacy, /reorder-capacity analysis when combined with inventory and supplier records/);
-  assert.match(purchasing, /Connect and synchronize Plaid in BookLoQ before cash can constrain reorder quantities/);
+  assert.match(purchasing, /loadReconciledCashScenario/);
+  assert.match(purchasing, /const currentBank=result\.status==="available"\?result\.verifiedCashCents:null/);
+  assert.match(purchasing, /const openingCash=currentBank\?\?statement\.purchasingOpeningCashCents/);
+  assert.match(purchasing, /datedPurchasingCapacity\(\{openingCashCents:openingCash,[\s\S]{0,120}obligations\}\)/);
   assert.match(purchasing, /Demand quantities use verified 30-day performance/);
 });
 
@@ -77,22 +80,20 @@ test("the Lightspeed integration uses the standalone image asset", async () => {
   assert.doesNotMatch(source, /name === "Lightspeed"[\s\S]{0,200}<path/);
 });
 
-test("product branding uses the supplied BookLoQ assets and a shared trademark glyph", async () => {
-  const [productLogoSource, homepage, financeProof, homepageCss] = await Promise.all([
+test("product branding uses the supplied artwork without an added trademark or redraw", async () => {
+  const [productLogoSource, artwork, homepage, financeProof] = await Promise.all([
     readFile(new URL("../app/product-brand-logo.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/product-brand-assets.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/finance-proof.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../app/homepage.css", import.meta.url), "utf8"),
   ]);
-  assert.match(productLogoSource, /\/brand\/bookloq-logo-ui\.webp/);
-  assert.match(productLogoSource, /\/brand\/bookloq-mark-ui\.webp/);
-  assert.doesNotMatch(productLogoSource, /bookloq-logo\.jpeg/);
-  assert.match(productLogoSource, /brand-trademark/);
-  assert.match(productLogoSource, />™<\/sup>/);
+  assert.match(artwork, /\/brand\/origin-metal-2026\/bookloq\.jpg/);
+  assert.match(artwork, /\/brand\/origin-metal-2026\/vanteloq\.jpg/);
+  assert.match(artwork, /\/brand\/origin-metal-2026\/lexedge\.jpg/);
+  assert.match(productLogoSource, /<image/);
+  assert.doesNotMatch(productLogoSource, /brand-trademark|>™<\/sup>|<path/);
   assert.match(homepage, /<FinanceProof\s*\/>/);
   assert.match(financeProof, /<ProductBrandLogo product="bookloq" variant="full"/);
-  assert.match(homepageCss, /\.home-product-logo-shell\.bookloq-logo-shell \{[^}]*background:\s*transparent/);
-  assert.match(homepageCss, /\.product-brand-logo\.bookloq\.full \{[^}]*background:\s*transparent/);
 });
 
 test("Lightspeed Retail X-Series and R-Series are distinct, actionable connection choices", async () => {
@@ -132,20 +133,29 @@ test("invoice files stay behind authenticated document downloads", async () => {
   assert.match(documentsRoute, /Cache-Control": "private, no-store"/);
 });
 
-test("the product story advances automatically and respects reduced motion", async () => {
-  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
-  assert.match(source, /function FeatureReelStage/);
-  assert.match(source, /current => \(current \+ 1\) % featureReelScenes\.length/);
-  assert.match(source, /if \(motion\.matches\) return/);
-  assert.match(source, /motion\.removeEventListener\("change", updateMotion\)/);
-  assert.doesNotMatch(source, /feature-reel-play|setPlaying/);
+test("the product story has explicit playback and shared reduced-motion safeguards", async () => {
+  const [source, film, motion] = await Promise.all([
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/home-product-film.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/use-motion-preference.ts", import.meta.url), "utf8"),
+  ]);
+  assert.match(source, /<HomeProductFilm\s*\/>/);
+  assert.match(film, /const motion = useMotionPreference\(\)/);
+  assert.match(film, /if \(!motion\) video\.current\?\.pause\(\)/);
+  assert.match(film, /if \(document\.hidden\) video\.current\?\.pause\(\)/);
+  assert.match(film, /preload="none"/);
+  assert.match(film, /controls=\{loaded && !failed\}/);
+  assert.match(film, /onClick=\{watch\}/);
+  assert.doesNotMatch(film, /autoPlay|autoplay/);
+  assert.match(motion, /prefers-reduced-motion: reduce/);
   assert.doesNotMatch(source, /vanteloq-feature-reel-v1\.webp/);
 });
 
 test("R-Series reconciliation warnings keep source records out of live metrics and preserve the retry cursor", async () => {
   const sync = await readFile(new URL("../server/integrations/sync/lightspeed-r.ts", import.meta.url), "utf8");
   assert.match(sync, /const publicationWarnings = normalizationWarnings\.sales \+ unmappedLocations/);
-  assert.match(sync, /const publishCanonical = publicationAuthorized && publicationWarnings === 0/);
+  assert.match(sync, /let publishCanonical = publicationAuthorized && publicationWarnings === 0/);
+  assert.match(sync, /if \(quantitiesPending\) publishCanonical = false/);
   assert.match(sync, /const publishedDailyMetrics = publishCanonical \? dailyMetrics : \[\]/);
   assert.match(sync, /publicationWarnings > 0 \? connection\.lastSyncCursor/);
 });
@@ -208,7 +218,7 @@ test("live sales and report time frames stay connected to real API filters", asy
   assert.match(reports, /new URLSearchParams\(\{ report: id \}\)/);
   assert.match(reports, /params\.set\("start", start\)/);
   assert.match(reports, /params\.set\("end", end\)/);
-  assert.match(reports, /format=csv/);
+  assert.match(reports, /new URLSearchParams\(\{ report: liveReports\[selected\], format: "csv" \}\)/);
   assert.match(reportRoute, /INVALID_DATE_RANGE/);
   assert.match(reportRoute, /periodStart: resolvedStart/);
   assert.match(reportRoute, /periodEnd: resolvedEnd/);
@@ -242,7 +252,8 @@ test("connector and document controls reflect real workflow readiness", async ()
   assert.match(app, /sampleResult\.readyForReview/);
   assert.match(app, /sampleResult\.run\.warningCount > 0/);
   assert.match(app, /canUpload=\{permissions\.includes\("documents\.upload"\)\}/);
-  assert.match(controls, /if \(!canUpload \|\| !file\) return/);
+  assert.match(controls, /if \(!canUpload \|\| !uploadAccepted \|\| uploading \|\| !file\) return/);
+  assert.match(controls, /appendImportPrivacyAcknowledgement\(form\)/);
   assert.match(controls, /Document upload access required/);
   assert.doesNotMatch(integrationsRoute, /INTEGRATION_BACKFILL_INCOMPLETE/);
   assert.match(integrationsRoute, /integration_staged_sales/);
@@ -302,11 +313,12 @@ test("sales payment mix defaults to today and offers verified date windows", asy
   assert.match(route, /PAYMENT_PERIOD_INVALID/);
 });
 
-test("integrations open on Connections and never render a raw provider account identifier", async () => {
+test("integrations choose a feature-appropriate entry tab and never render a raw provider account identifier", async () => {
   const app = await readFile(new URL("../app/vanteloq-app.tsx", import.meta.url), "utf8");
   const route = await readFile(new URL("../app/api/v1/integrations/route.ts", import.meta.url), "utf8");
-  assert.match(app, /useState<"import" \| "connections">\("connections"\)/);
-  assert.match(app, /Connections[\s\S]{0,500}Import data/);
+  assert.match(app, /useState<"import" \| "connections">\(\(\) => initialTab \?\? \(subscriptionFeatures\.includes\("pos\.reporting\.core"\) \? "connections" : "import"\)\)/);
+  assert.match(app, /Connections[\s\S]{0,500}Import reports/);
+  assert.match(app, /onClick=\{\(\) => setTab\("import"\)\}/);
   assert.doesNotMatch(app, /Account ID \{provider\.externalAccountRef\}/);
   assert.match(route, /maskedAccountRef/);
   assert.doesNotMatch(route, /externalAccountRef: byProvider/);
@@ -382,7 +394,7 @@ test("sidebar scrolling is bounded and navigation customization lives in Setting
   ]);
   assert.doesNotMatch(app, /Customize navigation|NavigationEditor/);
   assert.match(app, /NavigationSettingsPanel/);
-  assert.match(governance, /Sidebar & workspaces/);
+  assert.match(governance, /section === "navigation" && navigationSettings/);
   assert.match(css, /sidebar>nav\{overflow-y:auto;overscroll-behavior:contain\}/);
   assert.doesNotMatch(css, /sidebar>nav\{overflow-y:visible\}/);
 });
@@ -603,12 +615,27 @@ test("paid API access is server-enforced with narrow billing and privacy excepti
 
   assert.deepEqual(billingExceptions, [
     "billing/checkout/route.ts",
+    "billing/free/route.ts",
     "billing/portal/route.ts",
     "billing/route.ts",
     "documents/email/route.ts",
     "entitlements/route.ts",
+    "onboarding/draft/route.ts",
     "session/route.ts",
   ]);
+  const freeEnrollment = await readFile(new URL("billing/free/route.ts", apiRoot), "utf8");
+  assert.match(freeEnrollment, /requireBillingAccess\(request, \["owner"\]\)/);
+  assert.match(freeEnrollment, /requirePermission\(context, "organization\.billing"\)/);
+  assert.match(freeEnrollment, /requireSameOrigin\(request\)/);
+  assert.match(freeEnrollment, /hasCurrentLegalAcceptance\(context\.userId\)/);
+  assert.match(freeEnrollment, /ACCESS_ALREADY_ACTIVE/);
+  assert.match(freeEnrollment, /FREE_PLAN_CAPACITY_REQUIRED/);
+  const setupDraft = await readFile(new URL("onboarding/draft/route.ts", apiRoot), "utf8");
+  assert.match(setupDraft, /requireBillingAccess\(request,\["owner"\]\)/);
+  assert.match(setupDraft, /context\.organization\.setupComplete[\s\S]{0,100}SETUP_COMPLETED/);
+  assert.match(setupDraft, /requireSameOrigin\(request\)/);
+  assert.match(setupDraft, /validateOnboardingDraft\(body\.draft\)/);
+  assert.match(setupDraft, /WHERE user_id=\? AND revision=\?/);
   const emailSettings = await readFile(new URL("documents/email/route.ts", apiRoot), "utf8");
   assert.match(emailSettings, /body\.action==="disable"[\s\S]*SET enabled=0/);
   assert.match(emailSettings, /requireTenantServiceAccess\(entitlement\);requireAddonEntitlement\(entitlement,"bookloq"\)/);
@@ -633,12 +660,19 @@ test("paid API access is server-enforced with narrow billing and privacy excepti
     "integrations/plaid/disconnect/route.ts",
     "integrations/quickbooks/disconnect/route.ts",
     "integrations/shopify-pos/disconnect/route.ts",
+    "integrations/shopify/privacy/route.ts",
     "integrations/slack/disconnect/route.ts",
     "integrations/square/disconnect/route.ts",
     "integrations/stripe/disconnect/route.ts",
     "legal/acceptance/route.ts",
     "linked-files/route.ts",
   ]);
+  const shopifyPrivacy = await readFile(new URL("integrations/shopify/privacy/route.ts", apiRoot), "utf8");
+  assert.match(shopifyPrivacy, /requirePrivacyAccess\(request, \["owner", "admin"\]\)/);
+  assert.match(shopifyPrivacy, /requirePermission\(context, "privacy\.manage"\)/);
+  assert.match(shopifyPrivacy, /requireOrganizationWideLocationAccess\(context\)/);
+  assert.match(shopifyPrivacy, /requireSameOrigin\(request\)/);
+  assert.match(shopifyPrivacy, /requirePermission\(context, "customers\.export"\)/);
 
   for (const path of ["integrations/plaid/delete-data/route.ts", "integrations/plaid/disconnect/route.ts"]) {
     const source = await readFile(new URL(path, apiRoot), "utf8");

@@ -18,7 +18,7 @@ export const organizationJsonLd = {
   "@id": `${SITE_ORIGIN}/#organization`,
   name: SITE_NAME,
   url: SITE_ORIGIN,
-  logo: absoluteUrl("/brand/vanteloq-logo.png"),
+  logo: absoluteUrl("/brand/origin-metal-2026/vanteloq.jpg"),
   description:
     "Vanteloq connects source records with sector-specific operating workflows for retail shops, dealerships, cafés and restaurants.",
 };
