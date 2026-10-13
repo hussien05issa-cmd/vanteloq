@@ -1,6 +1,5 @@
-/* Exact supplied metallic artwork uses an opaque black carrier in either theme.
-   Scope overrides to these marks so provider logos and product surfaces retain
-   their own colours and layout. */
+/* Preserve the supplied metallic artwork. Clear-carrier marks reveal the
+   surrounding surface without recolouring provider logos or product panels. */
 .product-brand-logo.product-brand-artwork {
   position: relative;
   display: inline-flex;
@@ -65,6 +64,10 @@
   background: transparent !important;
   border: 0;
   box-shadow: none;
+}
+
+.product-brand-logo.product-brand-artwork.bookloq.clear-carrier > .product-brand-viewport {
+  filter: drop-shadow(0 1px 1px #132a474d) !important;
 }
 
 /* The official Lightspeed download supplies a complete horizontal wordmark.

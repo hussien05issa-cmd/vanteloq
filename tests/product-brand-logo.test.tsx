@@ -109,7 +109,13 @@ test("each visible mark has one accessible image name without an extra trademark
       assert.equal((html.match(/role="img"/g) ?? []).length, 1);
       assert.ok(html.includes(`aria-label="${artwork.name} logo"`));
       assert.match(html, /focusable="false"/);
-      assert.doesNotMatch(html, /<sup|brand-trademark|™|<text|<path|<filter|<foreignObject|<img/);
+      assert.doesNotMatch(html, /<sup|brand-trademark|™|<text|<path|<foreignObject|<img/);
+      if (product === "bookloq") {
+        assert.match(html, /clear-carrier/);
+        assert.match(html, /<mask/);
+        assert.match(html, /mask="url\(#/);
+        assert.match(html, /color-interpolation-filters="sRGB"/);
+      } else assert.doesNotMatch(html, /<filter|<mask/);
       assert.doesNotMatch(html, /logo-ui\.webp|mark-ui\.webp|src="https?:|href="https?:/);
     }
   }
@@ -127,7 +133,7 @@ test("priority artwork is preloaded as the same local image with high fetch prio
 test("non-priority marks avoid eager resource hints and default to the icon frame", () => {
   const html = renderToStaticMarkup(<ProductBrandLogo product="bookloq" className="sidebar-brand"/>);
   const frame = PRODUCT_BRAND_ASSETS.bookloq.frames.icon;
-  assert.match(html, /class="product-brand-logo product-brand-artwork bookloq icon sidebar-brand"/);
+  assert.match(html, /class="product-brand-logo product-brand-artwork bookloq icon clear-carrier sidebar-brand"/);
   assert.ok(html.includes(`viewBox="${frame.x} ${frame.y} ${frame.width} ${frame.height}"`));
   assert.doesNotMatch(html, /rel="preload"|fetchPriority="high"/);
 });

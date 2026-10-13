@@ -15,7 +15,7 @@ export default function ProductBrandLogo({
   product,
   variant = "icon",
   priority = false,
-  clearCarrier = false,
+  clearCarrier = product === "bookloq",
   fullArtwork = false,
   className = "",
 }: ProductBrandLogoProps) {
@@ -53,8 +53,8 @@ export default function ProductBrandLogo({
             </mask>
           </>}
         </defs>
-        {/* The original colour pixels are retained. An optional mask hides only
-            the near-black JPEG carrier for compact navigation artwork. */}
+        {/* The original colour pixels are retained. The mask hides only the
+            near-black JPEG carrier, including all default BookLoQ artwork. */}
         <image href={artwork.source} width={artwork.width} height={artwork.height} clipPath={`url(#${clipId})`} mask={clearCarrier ? `url(#${carrierMaskId})` : undefined} />
       </svg>
     </span>
