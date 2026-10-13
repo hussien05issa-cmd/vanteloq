@@ -13,7 +13,8 @@ test("the homepage keeps the exact animated source principle above its business 
   assert.match(original, /<span class="sr-only">A number without a source is a rumour\.<\/span>/);
   assert.equal((original.match(/class="home-source-word"/g) ?? []).length, 8);
   assert.ok(original.indexOf(principle) < original.indexOf('<h1 id="home-title">Your business, <em>at a glance.</em></h1>'));
-  assert.match(original, /Retail\. Dealerships\. Cafés\. Restaurants\./);
+  assert.doesNotMatch(original, /Retail\. Dealerships\. Cafés\. Restaurants\./);
+  assert.doesNotMatch(original, /id="business-workflows"/);
   assert.match(original, /href="\/how-it-works"/);
   assert.doesNotMatch(original, /See what is happening\. Know what to do next/);
 });

@@ -66,7 +66,7 @@ export default function HomeDashboardPreview() {
       <div className="home-monitor-body">
         <aside className="home-preview-sidebar">
           <div className="home-preview-brand"><ProductBrandLogo product="vanteloq"/></div>
-          <div className="home-preview-workspace"><strong>Sample workspace</strong><span>Retail · CAD</span></div>
+          <div className="home-preview-workspace"><strong>Sample workspace</strong><span>Sample data · CAD</span></div>
           <nav aria-label="Explore product demo">
             <a href="/demo#retail" aria-label="Explore the overview" className="is-current"><WorkspaceIcon name="Dashboard"/><span>Overview</span></a>
             {[["Sales", "retail"], ["Inventory", "inventory"], ["BookLoQ", "bookloq"]].map(([name, anchor]) => <a key={name} aria-label={`Explore ${name}`} href={`/demo#${anchor}`}><WorkspaceIcon name={name}/><span>{name}</span></a>)}

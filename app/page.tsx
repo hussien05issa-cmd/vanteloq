@@ -20,7 +20,6 @@ import HomeProductFilm from "./home-product-film";
 import HomeDataStudio from "./home-data-studio";
 import HomeDecisionPreview from "./home-decision-preview";
 import FeatureCarousel from "./feature-carousel";
-import IndustryFitPreview from "./industry-fit-preview";
 import ProductBrandLogo from "./product-brand-logo";
 import PublicAppearanceControl from "./public-appearance-control";
 import { useWorkspaceAppearance } from "./workspace-appearance";
@@ -31,6 +30,7 @@ import { RESOURCE_ARTICLE_SUMMARIES } from "./resources/article-index";
 import SocialLinks from "./social-links";
 import HomeSocialSection from "./home-social-section";
 import IntegrationBrandLogo from "./integration-brand-logo";
+import "./homepage-connectors.css";
 import type { AuthPanelMode } from "./auth-panel";
 import { useModalFocus } from "./use-modal-focus";
 import { currentSession, getSupabase, signOut } from "./supabase-browser";
@@ -511,7 +511,6 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
     <main id="main-content">
       <section className="home-hero" aria-labelledby="home-title">
         <div className="home-hero-copy">
-          <p className="home-eyebrow">Retail. Dealerships. Cafés. Restaurants.</p>
           <p className="home-source-principle" data-motion={motionEnabled ? "on" : "off"}>
             <span className="sr-only">A number without a source is a rumour.</span>
             <span aria-hidden="true">{"A number without a source is a rumour.".split(" ").map((word, index) => <span className="home-source-word" key={index} style={{ animationDelay: `${index * 65}ms` }}>{word}{index < 7 ? " " : ""}</span>)}</span>
@@ -525,14 +524,13 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
         </div>
         <HomeDashboardPreview/>
       </section>
-      <div className="reference-connections" aria-label="Explore data connections"><span>YOUR TOOLS, CONNECTED</span><div>{["Lightspeed","Square","Shopify","Stripe","Google"].map(name=><a key={name} href="#connections" aria-label={`Check ${name} availability`}><IntegrationBrandLogo name={name} compact/><strong>{name}</strong></a>)}</div><a href="#connections">View Availability <span aria-hidden="true">→</span></a></div>
+      <div className="reference-connections" aria-label="Explore data connections"><span>YOUR TOOLS, CONNECTED</span><div>{["Lightspeed","Square","Shopify","Stripe","Google"].map(name=><a className="home-connector-brand" key={name} href="#connections" aria-label={`Check ${name} availability`}><IntegrationBrandLogo name={name} compact/>{!["Lightspeed", "Stripe"].includes(name) && <strong>{name}</strong>}</a>)}</div><a href="#connections">View availability <span aria-hidden="true">→</span></a></div>
       <HomeProductFilm/>
       <HomeDataStudio openReports={() => { window.location.hash = "workspace/reports"; start("signin"); }}/>
       <section className="home-decision-proof" id="platform" aria-labelledby="decision-proof-title">
         <span id="capabilities"/><div className="reference-section-heading" data-motion-item="0"><div><p className="demo-eyebrow">YOUR BUSINESS. YOUR PRIORITIES.</p><h2 id="decision-proof-title">What changed? What needs your attention?</h2></div><p>Open the records behind a finding. Review the next step, assign the work and follow the outcome. Missing costs and incomplete sources stay visible.</p></div>
         <FeatureCarousel/>
       </section>
-      <IndustryFitPreview/>
       <section className="home-operating-ring-story" aria-labelledby="home-operating-ring-title">
         <HomeGoalPreview/>
         <div data-motion-group><p data-motion-item="0" className="demo-eyebrow">YOUR BUSINESS. YOUR GOALS.</p><h2 data-motion-item="1" id="home-operating-ring-title">Set the goal. See the progress.</h2><p>Choose the numbers you want to improve, set a target and a date, and follow your progress. Your dashboard makes the next milestone visible while keeping missing information clear.</p><div className="home-ring-steps" data-motion-item="2"><span><i/>Choose your metrics</span><span><i/>Set your targets</span><span><i/>Follow your progress</span></div><Link prefetch={false} href="/demo#retail">Explore your dashboard <span aria-hidden="true">↗</span></Link></div>

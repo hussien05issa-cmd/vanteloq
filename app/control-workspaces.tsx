@@ -545,7 +545,6 @@ export function ReportsWorkspace({
               }}
             />
           </label>
-          <span aria-hidden="true">to</span>
           <label>
             <span>To</span>
             <input
@@ -567,6 +566,7 @@ export function ReportsWorkspace({
       <div className="report-toolbar">
         <label>
           ⌕
+          <span className="sr-only">Search reports</span>
           <input
             placeholder="Search the complete report catalogue"
             value={query}
@@ -574,6 +574,7 @@ export function ReportsWorkspace({
           />
         </label>
         <select
+          aria-label="Report category"
           value={group}
           onChange={(event) => setGroup(event.target.value)}
         >

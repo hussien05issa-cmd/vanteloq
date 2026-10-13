@@ -28,7 +28,7 @@ test("all public navigation, social destinations and account actions remain reac
 test("public polish preserves the source principle and business overview heading", () => {
   assert.match(homepage, /<span class="sr-only">A number without a source is a rumour\.<\/span>/);
   assert.match(homepage, /<h1 id="home-title">Your business, <em>at a glance\.<\/em><\/h1>/);
-  assert.match(homepage, /Retail\. Dealerships\. Cafés\. Restaurants\./);
+  assert.doesNotMatch(homepage, /Retail\. Dealerships\. Cafés\. Restaurants\./);
 });
 
 test("both public footers display the supplied LexEdge artwork through the shared full-logo component", () => {

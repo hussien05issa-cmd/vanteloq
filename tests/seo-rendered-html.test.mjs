@@ -27,7 +27,7 @@ test("homepage exposes the marketing page in initial HTML", async () => {
   assert.ok(text.indexOf(principle) < text.indexOf('<h1 id="home-title">'));
   assert.doesNotMatch(text, />Preparing Vanteloq…</);
   assert.equal((text.match(/<h1\b/g) ?? []).length, 1);
-  assert.match(text, /Retail\. Dealerships\. Cafés\. Restaurants\./);
+  assert.doesNotMatch(text, /Retail\. Dealerships\. Cafés\. Restaurants\./);
   assert.match(text, /Lightspeed Retail R-Series/);
   for (const slug of [
     "how-to-track-inventory-small-business",

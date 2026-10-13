@@ -1,0 +1,93 @@
+/* Keep complete wordmarks and symbol/name pairs inside their own responsive
+   cards. The provider artwork retains its original colours and proportions. */
+.public-site.reference-home .reference-connections {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 24px;
+  padding: 24px max(22px, calc((100vw - 1440px) / 2));
+}
+.public-site.reference-home .reference-connections > div {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+  min-width: 0;
+}
+.public-site.reference-home .reference-connections .home-connector-brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 64px;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--public-line, #c7d3e2);
+  border-radius: 14px;
+  background: var(--public-panel, #fff);
+  color: var(--public-ink, #102344);
+  box-sizing: border-box;
+}
+.public-site.reference-home .reference-connections .home-connector-brand:hover {
+  border-color: var(--public-link, #175cd0);
+  background: var(--public-raised, #f2f6fb);
+}
+.public-site.reference-home .reference-connections strong {
+  font-size: 15px;
+  line-height: 1.3;
+  letter-spacing: -.02em;
+  white-space: nowrap;
+}
+.public-site.reference-home .reference-connections .integration-logo.compact {
+  flex: 0 0 32px;
+  width: 32px;
+  min-width: 32px;
+  max-width: 32px;
+  height: 32px;
+  padding: 4px;
+  margin: 0;
+  border: 0;
+  border-radius: 7px;
+  background: #fff;
+  box-sizing: border-box;
+  opacity: 1;
+  filter: none;
+}
+.public-site.reference-home .reference-connections .integration-logo.brand-lightspeed.compact {
+  flex: 0 1 118px;
+  width: 118px;
+  min-width: 0;
+  max-width: 118px;
+  height: 36px;
+  padding: 6px;
+}
+.public-site.reference-home .reference-connections .integration-logo.brand-stripe.compact {
+  flex: 0 0 76px;
+  width: 76px;
+  min-width: 76px;
+  max-width: 76px;
+  height: 36px;
+  padding: 3px 7px;
+}
+.public-site.reference-home .reference-connections .integration-logo :is(img, svg) {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: none;
+}
+@media (max-width: 1150px) {
+  .public-site.reference-home .reference-connections { grid-template-columns: 1fr auto; gap: 16px; }
+  .public-site.reference-home .reference-connections > span { max-width: none; }
+  .public-site.reference-home .reference-connections > div { grid-column: 1 / -1; grid-row: 2; width: 100%; }
+  .public-site.reference-home .reference-connections > a:last-child { grid-column: 2; grid-row: 1; margin: 0; }
+}
+@media (max-width: 900px) {
+  .public-site.reference-home .reference-connections > div { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 620px) {
+  .public-site.reference-home .reference-connections { gap: 14px; }
+  .public-site.reference-home .reference-connections > div { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .public-site.reference-home .reference-connections .home-connector-brand:last-child { grid-column: 1 / -1; justify-self: center; width: calc((100% - 10px) / 2); }
+}
+@media (forced-colors: active) {
+  .public-site.reference-home .reference-connections .home-connector-brand { border-color: CanvasText; }
+}

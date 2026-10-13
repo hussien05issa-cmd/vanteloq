@@ -105,6 +105,29 @@
 :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .wiring-principles span { color:var(--ws-muted)!important; }
 :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .control-surface-heading span { color:var(--ws-blue)!important; }
 /* Report source notices and catalogues retain contrast in either workspace theme. */
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .reports-centre { --ctl-line:var(--ws-line); --ctl-soft:var(--ws-raised); }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .reports-centre :is(.report-toolbar,.report-toolbar>label) { background:var(--ws-panel)!important; color:var(--ws-muted)!important; border-color:var(--ws-control)!important; box-shadow:none; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .reports-centre .report-toolbar input { background:transparent!important; border:0!important; box-shadow:none!important; min-height:44px; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .reports-centre .report-period-control { flex-wrap:wrap; align-items:flex-end; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .reports-centre .report-date-fields { align-items:flex-end; gap:12px; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .reports-centre .report-date-fields label { background:transparent!important; border:0!important; height:auto; min-width:0; padding:0; gap:8px; justify-content:flex-start; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .reports-centre .report-date-fields label>span { color:var(--ws-muted)!important; font-size:13px!important; line-height:20px; letter-spacing:0; text-transform:none; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .reports-centre :is(.report-period-presets,.report-metrics article) { background:var(--ws-raised)!important; color:var(--ws-ink)!important; border-color:var(--ws-line)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .reports-centre :is(.report-comparison-strip,.report-period-chart,.report-payment-mix) { background:var(--ws-panel)!important; color:var(--ws-ink)!important; border-color:var(--ws-line)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .reports-centre :is(.report-comparison-strip small,.report-comparison-strip span,.performance-range-toolbar span) { color:var(--ws-muted)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .reports-centre :is(button,input,select,section,article,label,.report-period-presets,.report-toolbar) { transition-property:transform,box-shadow,border-color,outline-color; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .reports-centre :is(.financial-series-switch,table thead,table tfoot) { background:var(--ws-raised)!important; color:var(--ws-muted)!important; border-color:var(--ws-line)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .reports-centre :is(table th,table td) { border-color:var(--ws-line)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .reports-centre .financial-series-switch button[aria-pressed="true"] { background:var(--ws-selected)!important; color:var(--ws-ink)!important; border-color:var(--ws-blue)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .reports-centre :is(.report-period-presets button.active,.report-catalogue button.selected) { background:var(--ws-selected)!important; color:var(--ws-ink)!important; box-shadow:inset 3px 0 var(--ws-blue); }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .reports-centre :is(.report-source-control header>span,.report-inspector header>span) { background:var(--ws-raised)!important; color:var(--ws-muted)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .reports-centre .report-inspector header>span.live { background:var(--ws-positive-bg)!important; color:var(--ws-positive)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .reports-centre .report-metrics article>span { color:var(--ws-muted)!important; font-size:12px!important; line-height:1.5; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .reports-centre .report-metrics b { font-size:24px!important; line-height:1.25; font-variant-numeric:tabular-nums; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .reports-centre .explain-act { background:var(--ws-raised)!important; color:var(--ws-ink)!important; border:1px solid var(--ws-line); }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .reports-centre .explain-act :is(p,dt,dd) { color:var(--ws-muted)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .reports-centre .explain-act dl div { border-color:var(--ws-line)!important; }
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .reports-centre .gated-report>i { color:var(--ws-warning)!important; }
 :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .report-source-conflict { background:var(--ws-warning-bg)!important; color:var(--ws-ink)!important; border-color:var(--ws-warning)!important; }
 :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .report-source-conflict>div:first-child>span { color:var(--ws-muted)!important; }
 :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.report-source-conflict button,.provider-report-list section>button) { background:var(--ws-raised)!important; color:var(--ws-ink)!important; border-color:var(--ws-control)!important; }

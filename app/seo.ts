@@ -25,5 +25,5 @@ export const organizationJsonLd = {
   sameAs: Object.values(SOCIAL_PROFILES).map((profile) => profile.href),
   logo: absoluteUrl("/brand/origin-metal-2026/vanteloq.jpg"),
   description:
-    "Vanteloq is operated by 2855706 ALBERTA INC, doing business as LexEdge Consulting. It connects source records with operating workflows for retail shops, dealerships, cafés and restaurants.",
+    "Vanteloq is operated by 2855706 ALBERTA INC, doing business as LexEdge Consulting. It connects business source records with operating workflows, financial review and reporting.",
 };

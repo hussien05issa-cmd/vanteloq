@@ -25,3 +25,8 @@
 @media(max-width:600px){.home-film-card{border-radius:16px}.home-film-top,.home-film-bottom{padding:12px 14px;font-size:12px;gap:6px 12px}.home-film-play{inset:auto 12px 12px;max-width:250px;padding:11px 14px;grid-template-columns:38px 1fr;gap:2px 10px;border-radius:12px}.home-film-play>span{width:36px;height:36px}.home-film-play>b{font-size:14px}.home-film-play>small{font-size:12px}.home-film-bottom>span+span::before{margin-right:12px}}
 @media(forced-colors:active){.home-film-play,.home-film-card{border:1px solid CanvasText}.home-film-play>span{background:Highlight;color:HighlightText}.home-film-stage{background:Canvas}}
 html[data-motion="off"] .home-film-play{translate:none!important;scale:1!important}
+/* Put the play action below the poster so it never obscures the figures. */
+.public-site.reference-home[data-public-theme] .home-film-play-row>.home-film-play{position:static;inset:auto;width:100%;max-width:none;padding:14px 20px;grid-template-columns:38px minmax(0,1fr);border:0;border-top:1px solid var(--public-line,#c7d3e2);border-radius:0;background:var(--public-panel,#fff);color:var(--public-ink,#102344);box-shadow:none;translate:none}
+.home-film-play-row>.home-film-play>span{width:38px;height:38px;background:var(--public-primary,#1d60dc)}
+.home-film-play-row>.home-film-play>b{font-size:14px}.home-film-play-row>.home-film-play>small{color:var(--public-secondary,#52627c)}
+.home-film-play-row>.home-film-play:focus-visible{outline-offset:-4px}
