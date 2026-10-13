@@ -10,9 +10,9 @@ export const metadata: Metadata = {
 
 export default function LegalPage() {
   return (
-    <LegalShell eyebrow="VANTELOQ LEGAL CENTRE" title="Clear rules for using Vanteloq." summary="Find the policies that explain how the service works, how personal information is handled, and what each party is responsible for.">
+    <LegalShell eyebrow="VANTELOQ LEGAL CENTRE" title="Clear rules for using Vanteloq." summary="Find the policies that explain how the service works, how personal information is handled, and what each party is responsible for." updated="October 13, 2026">
       <PolicySection id="documents" title="Legal documents">
-        <p>These documents apply to the Vanteloq website, workspaces, resource library, and supported service features. Read the Privacy Policy and Terms of Service before creating or administering a workspace.</p>
+        <p>These documents apply to the Vanteloq website, workspaces, resource library, Vanteloq Advisory, and supported service features. Read the Privacy Policy and Terms of Service before creating or administering a workspace or entering a paid Advisory engagement.</p>
         <div className="legal-card-grid">
           <Link href="/privacy"><small>PRIVACY</small><strong>Privacy Policy</strong><span>What we collect, why we use it, who may process it, and how to make a privacy request.</span></Link>
           <Link href="/terms"><small>SERVICE RULES</small><strong>Terms of Service</strong><span>Account responsibilities, acceptable use, connected data, service limits, and legal terms.</span></Link>
@@ -31,6 +31,7 @@ export default function LegalPage() {
           <li>A Plaid connection begins through an authorized provider consent flow and is read-only for the disclosed data products. It does not allow Vanteloq to move money. Disconnecting revokes or deletes stored access credentials and stops scheduled access, while accounting records may remain under a valid retention requirement.</li>
           <li>Uploaded invoices and receipts remain source evidence. Extracted fields can be incomplete or incorrect and require comparison with the original document before posting, payment, filing, or tax use.</li>
           <li>Vanteloq and BookLoQ support record organization, analysis, reconciliation, and review. They do not replace legal, accounting, tax, payroll, or financial advice.</li>
+          <li>A Vanteloq Advisory inquiry or introductory conversation does not create a paid engagement or professional retainer. Advisory supports business analysis and implementation, but does not provide legal, tax, audit, assurance, investment, or other regulated professional advice.</li>
           <li>A transaction or customer record is not automatically consent to send marketing. Customers remain responsible for establishing express or implied consent, or an applicable CASL exception, and for sender information, unsubscribe controls, consent evidence, and suppression records.</li>
           <li>An integration, recommendation, or workflow does not guarantee sales, profit, legal compliance, tax treatment, provider availability, or a particular business result.</li>
         </ul>

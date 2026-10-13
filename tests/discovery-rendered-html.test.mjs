@@ -47,13 +47,13 @@ test("connection pages preserve read permissions, series boundaries and review l
   }
 });
 
-test("empty resource categories remain navigable but are excluded from search eligibility", async () => {
+test("newly populated resource categories are crawlable and listed once", async () => {
   const sitemap = (await page("/sitemap.xml")).html;
   for (const topic of ["marketing", "ai", "pos"]) {
     const { response, html } = await page(`/resources/${topic}`);
     assert.equal(response.status, 200);
-    assert.match(html, /name="robots" content="noindex, follow"/);
-    assert.ok(!sitemap.includes(`<loc>https://vanteloq.com/resources/${topic}</loc>`));
+    assert.doesNotMatch(html, /name="robots" content="noindex/);
+    assert.equal(sitemap.split(`<loc>https://vanteloq.com/resources/${topic}</loc>`).length - 1, 1);
   }
   for (const path of ["/advisory", "/solutions/dealerships", "/integrations/square", "/tools/cash-order-planner", "/about/editorial", "/book-demo"]) {
     assert.ok(sitemap.includes(`<loc>https://vanteloq.com${path}</loc>`), path);

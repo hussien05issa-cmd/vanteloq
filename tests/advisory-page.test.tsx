@@ -54,9 +54,16 @@ test("advisory content is concise, accessible and focused on one conversion path
   assert.equal(Array.from(faq.matchAll(/<details/g)).length, 4);
   assert.equal(Array.from(faq.matchAll(/<details open/g)).length, 0);
   assert.match(html, /Use Advisory With or Without Vanteloq Workspace\./);
+  assert.equal((html.match(/href="\/resources\/business-consulting-vs-business-software"/g) ?? []).length, 1);
   assert.match(html, /purpose="advisory"/);
   assert.match(html, /href="\/social"/);
   assert.match(html, /aria-label="Follow Vanteloq"/);
   assert.match(html, /"@type":"Service"/);
   assert.doesNotMatch(html, /guarantee|guaranteed revenue|certified accountant|legal advice/i);
+});
+
+test("advisory clarity calls use the first-party inquiry flow", () => {
+  assert.match(html, /href="#advisory-inquiry-form"[^>]*>Request a 30-Minute Clarity Call/);
+  assert.match(html, /id="advisory-inquiry-form"[^>]*data-inquiry-purpose="advisory"/);
+  assert.doesNotMatch(html, /calendly\.com|hussienissa-lexedgeconsulting|Book a 30-Minute Clarity Call/);
 });

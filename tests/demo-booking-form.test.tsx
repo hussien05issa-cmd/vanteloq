@@ -17,7 +17,8 @@ test("demo collection presents required contact fields, optional interests and u
  assert.doesNotMatch(html, /2855706|LexEdge/i);
  assert.match(html, /respond to my request and schedule a Vanteloq demo/);
  assert.match(html, /does not subscribe me to marketing/);
- assert.match(html, /through Resend, which may process them in the United States/);
+ assert.match(html, /Cloudflare Turnstile processes limited browser and security signals/);
+ assert.match(html, /through Resend, which may process it in the United States/);
  for (const href of ["/privacy", "/subprocessors", "/contact"]) assert.ok(html.includes(`href="${href}"`));
  assert.match(html, /\$0, no obligation and no card required/);
  assert.match(html, /contact you to arrange a time/);
@@ -50,8 +51,14 @@ test("advisory collection asks for one business priority with clear consent and 
  assert.match(html, /What Would You Like to Improve\?/);
  assert.match(html, /respond to my Vanteloq Advisory inquiry/);
  assert.match(html, /does not subscribe me to marketing/);
- assert.match(html, /through Resend, which may process them in the United States/);
+ assert.match(html, /Cloudflare Turnstile processes limited browser and security signals/);
+ assert.match(html, /through Resend, which may process it in the United States/);
  assert.match(html, /Contact our Privacy Officer/);
+ for (const href of ["/privacy", "/subprocessors", "/contact"]) assert.ok(html.includes(`href="${href}"`));
+ assert.match(html, /does not provide legal, tax, audit, assurance, investment or other regulated professional advice/);
+ assert.match(html, /No paid engagement, subscription or payment is created/);
+ assert.match(html, /respond to and manage this inquiry as described in the Privacy Policy/);
+ assert.match(html, /Any paid work begins only after a written scope and fee are agreed/);
  assert.match(html, />Start the Conversation<\/button>/);
  assert.match(html, /Share the business context needed to understand your priority/);
  assert.doesNotMatch(html, /schedule a Vanteloq demo|Send Custom Plan Request/);

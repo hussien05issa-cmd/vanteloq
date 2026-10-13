@@ -6,7 +6,7 @@ const env={RESEND_API_KEY:"fixture-secret",CUSTOM_PLAN_INQUIRY_TO:"private-owner
 const body={name:"Test owner",email:"visitor@example.com",company:"Example store",phone:"",needs:"We need a larger workspace for five retail locations.",website:"",consent:true,noticeVersion:CUSTOM_PLAN_NOTICE_VERSION,submissionId:"1a111111-1111-4111-8111-111111111111",token:"security-token"};
 const json=(x:unknown,status=200)=>new Response(JSON.stringify(x),{status,headers:{"content-type":"application/json"}});
 const demoBody = () => ({ ...body, purpose: "demo", company: "", needs: "", noticeVersion: DEMO_INQUIRY_NOTICE_VERSION, consentSubmittedAt: new Date().toISOString() });
-const advisoryBody = () => ({ ...body, purpose: "advisory", company: "", needs: "We need a clearer view of margins and inventory decisions.", noticeVersion: ADVISORY_INQUIRY_NOTICE_VERSION });
+const advisoryBody = () => ({ ...body, purpose: "advisory", company: "", needs: "We need a clearer view of margins and inventory decisions.", noticeVersion: ADVISORY_INQUIRY_NOTICE_VERSION, consentSubmittedAt: new Date().toISOString() });
 test("public inquiry configuration never exposes delivery credentials or recipient",()=>{
  assert.deepEqual(inquiryConfiguration(env,"vanteloq.com"),{configured:true,siteKey:"public-site-key",action:"custom-plan"});
  assert.deepEqual(inquiryConfiguration(env,"evil.example"),{configured:false});
@@ -163,10 +163,15 @@ test("advisory requests use a distinct consent notice and require a meaningful b
  assert.equal(validated.purpose, "advisory");
  assert.equal(validated.company, "");
  assert.equal(validated.noticeVersion, ADVISORY_INQUIRY_NOTICE_VERSION);
+ assert.equal(validated.consentSubmittedAt, advisory.consentSubmittedAt);
  for (const changes of [
   { consent: false },
   { noticeVersion: CUSTOM_PLAN_NOTICE_VERSION },
   { noticeVersion: DEMO_INQUIRY_NOTICE_VERSION },
+  { consentSubmittedAt: undefined },
+  { consentSubmittedAt: "invalid" },
+  { consentSubmittedAt: new Date(Date.now() + 6 * 60_000).toISOString() },
+  { consentSubmittedAt: new Date(Date.now() - 25 * 60 * 60_000).toISOString() },
   { needs: "Too short" },
   { needs: "" },
  ]) assert.throws(() => validateInquiry({ ...advisory, ...changes }));
@@ -188,7 +193,8 @@ test("a confirmed advisory request is delivered only to the fixed owner as an ad
  assert.equal(message.subject, "Vanteloq Advisory inquiry");
  assert.match(message.text, /Vanteloq Advisory inquiry/);
  assert.match(message.text, /Contact consent: advisory-inquiry-v1/);
+ assert.ok(message.text.includes(`Visitor consent submitted at (UTC): ${advisory.consentSubmittedAt}`));
  assert.match(message.text, /authorized a response about this advisory inquiry, not marketing enrollment/);
- assert.match(message.text, /No subscription or payment was created/);
+ assert.match(message.text, /No paid engagement, professional retainer, subscription or payment was created/);
  assert.doesNotMatch(message.text, /security-token|fixture-secret|captcha-secret/);
 });

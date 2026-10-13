@@ -166,6 +166,7 @@
 .advisory-workspace-grid article > p:first-child { margin: 0 0 24px; color: var(--advisory-blue)!important; font-size: .76rem; font-weight: 740; letter-spacing: .11em; text-transform: uppercase; }
 .advisory-workspace-grid h3 { margin: 0 0 14px; font-size: 1.45rem; }
 .advisory-workspace-grid h3 + p { margin: 0; line-height: 1.7; }
+.advisory-workspace-actions { display: flex; flex-wrap: wrap; column-gap: clamp(24px, 4vw, 48px); row-gap: 4px; }
 
 .advisory-faq { display: grid; grid-template-columns: minmax(260px, .7fr) minmax(0, 1.3fr); gap: clamp(40px, 7vw, 92px); }
 .advisory-faq-list details { border-top: 1px solid var(--advisory-glass-line); }

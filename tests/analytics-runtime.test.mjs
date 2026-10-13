@@ -59,7 +59,7 @@ function fixture({ root = true, pathname = "/", search = "" } = {}) {
     commit(choice) { for (const cleanup of cleanups) cleanup(); if (choice !== undefined) storage.set("vanteloq:cookie-consent:v1", choice); effects = []; evaluatedModule.exports.GoogleAnalyticsConsent(); cleanups = effects.map(run => run()).filter(value => typeof value === "function"); },
     setRoot(value) { root = value; for (const listener of rootListeners) listener(); },
     withdrawInAnotherTab() { storage.set("vanteloq:cookie-consent:v1", "essential"); const event = new Event("storage"); Object.defineProperty(event, "key", { value: "vanteloq:cookie-consent:v1" }); window.dispatchEvent(event); },
-    convert() { window.dispatchEvent(new CustomEventMock("vanteloq:public-conversion", { detail: "inquiry_sent" })); },
+    convert(detail = "inquiry_sent") { window.dispatchEvent(new CustomEventMock("vanteloq:public-conversion", { detail })); },
     interact(type, dataset, options = {}) { const event = new Event(type); Object.defineProperty(event, "target", { value: new ElementMock({ dataset, ...options }) }); document.dispatchEvent(event); },
     finishLoad() { const script = scripts.get("vanteloq-google-analytics"); assert.ok(script); script.dispatchEvent(new Event("load")); },
     commands: name => calls.filter(call => call[0] === name),
@@ -141,4 +141,17 @@ test("registered industry solutions gain public measurement, unknown industry ro
   f.interact("click", { publicEvent: "hero_play", publicSection: "hero" });
   assert.equal(f.commands("event").length, 2);
   assert.equal(f.window["ga-disable-G-TEST123"], true);
+});
+
+test("the Advisory landing page is an approved public measurement route", () => {
+  assert.equal(publicRoutes.isPublicMeasurementPath("/advisory"), true);
+});
+
+test("confirmed public forms use a fixed conversion vocabulary", t => {
+  const f = fixture({ pathname: "/advisory" }); t.after(() => f.close()); f.commit("analytics"); f.finishLoad();
+  const initial = f.commands("event").length;
+  f.convert("advisory_inquiry_sent");
+  f.convert("demo_request_sent");
+  f.convert("private_form_value");
+  assert.deepEqual(f.commands("event").slice(initial).map(call => call[1]), ["advisory_inquiry_sent", "demo_request_sent"]);
 });

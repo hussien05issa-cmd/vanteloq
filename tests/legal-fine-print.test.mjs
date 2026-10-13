@@ -40,6 +40,23 @@ test("terms keep bookkeeping, extraction, and commercial messages within reviewe
   ]) assert.match(terms, new RegExp(phrase));
 });
 
+test("Advisory inquiries have named privacy purposes and do not create a paid or regulated engagement", () => {
+  const privacy = read("../app/privacy/page.tsx");
+  const terms = read("../app/terms/page.tsx");
+  const providers = read("../app/subprocessors/page.tsx");
+  const processing = read("../app/data-processing/page.tsx");
+  const legal = read("../app/legal/page.tsx");
+
+  assert.match(privacy, /Public inquiries and Vanteloq Advisory/);
+  assert.match(privacy, /limited consent evidence/);
+  assert.match(privacy, /does not enroll you in marketing, create a subscription or create a paid Advisory engagement/);
+  assert.match(providers, /free demo and Vanteloq Advisory requests/);
+  assert.match(terms, /does not create a paid engagement, professional retainer, subscription, payment obligation/);
+  assert.match(terms, /does not provide legal, tax, audit, assurance, investment or other regulated professional advice/);
+  assert.match(processing, /public Vanteloq Advisory inquiry is used by Vanteloq to manage its own prospective customer relationship/);
+  assert.match(legal, /does not create a paid engagement or professional retainer/);
+});
+
 test("legal and retention documents identify the operator and retain deletion limits", () => {
   const legal = read("../app/legal/page.tsx");
   const retention = read("../docs/DATA_RETENTION.md");

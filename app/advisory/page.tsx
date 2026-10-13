@@ -206,7 +206,10 @@ export default function AdvisoryPage() {
           <article><p>Human Service</p><h3>Vanteloq Advisory</h3><p>Work with the team to understand a problem, choose a priority and implement an improvement. A software subscription is not required.</p></article>
           <article><p>Connected Follow-Through</p><h3>Advisory + Workspace</h3><p>Keep approved sources, analysis, decisions, responsibilities and follow-up work connected inside Vanteloq.</p></article>
         </div>
-        <Link className="advisory-inline-action" href="/how-it-works">Explore Vanteloq Workspace <span aria-hidden="true">↗</span></Link>
+        <div className="advisory-workspace-actions">
+          <Link className="advisory-inline-action" href="/how-it-works">Explore Vanteloq Workspace <span aria-hidden="true">↗</span></Link>
+          <Link className="advisory-inline-action" href="/resources/business-consulting-vs-business-software">Compare Advisory and Workspace <span aria-hidden="true">↗</span></Link>
+        </div>
       </section>
 
       <section className="advisory-section advisory-faq" aria-labelledby="faq-title">
@@ -222,9 +225,9 @@ export default function AdvisoryPage() {
           <h2 id="contact-title">Start With One Business Priority.</h2>
           <p>Tell us what is changing, what feels unclear or where the business is getting stuck. A few sentences are enough for the first step.</p>
           <div className="advisory-contact-points"><p><strong>Virtual or in person</strong><span>Meet online or in Edmonton, Alberta.</span></p><p><strong>Focused first conversation</strong><span>Bring one question. You do not need a presentation.</span></p></div>
-          <a className="advisory-schedule-link" href="https://calendly.com/hussienissa-lexedgeconsulting/30min" target="_blank" rel="noopener noreferrer">Book a 30-Minute Clarity Call <span aria-hidden="true">↗</span><span className="advisory-visually-hidden"> (opens in a new tab)</span></a>
+          <a className="advisory-schedule-link" href="#advisory-inquiry-form">Request a 30-Minute Clarity Call <span aria-hidden="true">↓</span></a>
         </div>
-        <div className="advisory-contact-panel" data-inquiry-purpose="advisory"><CustomPlanForm purpose="advisory" /></div>
+        <div id="advisory-inquiry-form" className="advisory-contact-panel" data-inquiry-purpose="advisory"><CustomPlanForm purpose="advisory" /></div>
       </section>
 
       <section className="advisory-social" aria-labelledby="social-title">

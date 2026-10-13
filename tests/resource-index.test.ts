@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -58,4 +59,32 @@ test("BookLoQ comparison metadata stays aligned and the public copy keeps the ve
   assert.equal(chart.table.rows.length, 8);
   assert.match(JSON.stringify(chart.table.rows), /13-week forecast/);
   assert.match(JSON.stringify(chart.table.rows), /does not file returns, move money or certify completeness/i);
+});
+
+test("Advisory and Workspace guidance is consolidated under the current Vanteloq brand", () => {
+  const article = getArticle("business-consulting-vs-business-software");
+  assert.ok(article, "Advisory and Workspace comparison article is missing");
+  assert.equal(article.title, "Do You Need Vanteloq Advisory, Workspace or Both?");
+  assert.equal(article.seoTitle, "Business Advisory vs. Business Software: How to Choose | Vanteloq");
+  assert.equal(article.author, "Vanteloq Editorial Team");
+  assert.equal(article.published, "2026-09-16");
+  assert.equal(article.updated, "2026-10-13");
+  assert.equal(article.category, "operations");
+  assert.ok(article.related.every(slug => getArticle(slug)), "Every related resource must be published");
+
+  const publicCopy = JSON.stringify(article);
+  assert.match(publicCopy, /Vanteloq Inc\. provides two related offers/);
+  assert.match(publicCopy, /Vanteloq Advisory/);
+  assert.match(publicCopy, /Vanteloq Workspace/);
+  assert.doesNotMatch(publicCopy, /Lexedge|VantaTalk/);
+});
+
+test("the Advisory comparison article keeps VantaTalk separate and offers both next paths", async () => {
+  const guide = await readFile(new URL("../app/professor-guide.tsx", import.meta.url), "utf8");
+  const route = await readFile(new URL("../app/resources/[segment]/page.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(guide, /VantaTalk/);
+  assert.match(guide, /Vanteloq guide/);
+  assert.match(route, /article\.slug === "business-consulting-vs-business-software"/);
+  assert.match(route, /href="\/advisory#contact">Talk to an Advisor/);
+  assert.match(route, /href="\/how-it-works">Explore Workspace/);
 });

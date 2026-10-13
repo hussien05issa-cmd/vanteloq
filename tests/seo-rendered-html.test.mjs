@@ -51,7 +51,7 @@ test("resource index is server rendered with distinct metadata", async () => {
   assert.match(text, /<title>Small Business Operations Resources \| Vanteloq<\/title>/);
   assert.match(text, /href="https:\/\/vanteloq\.com\/resources"/);
   assert.match(text, /How to Track Inventory for a Small Business/);
-  assert.match(text, /vanteloq-command-ledger\.webp/);
+  assert.match(text, /glass-2026-10-12\/command-ledger\.svg/);
   assert.ok(text.includes('<details class="resource-article-browser">'), "Articles should be collapsed in the initial HTML");
   assert.ok(text.includes('href="/resources/how-to-calculate-gross-margin-small-business"'));
   assert.ok(text.includes("min read"));
@@ -91,7 +91,7 @@ test("new analytics and bookkeeping guides render their metadata, heroes, and sc
     {
       path: "/resources/data-analytics-for-small-business",
       title: "Data Analytics for Small Business: A Practical Guide",
-      hero: "vanteloq-command-ledger.webp",
+      hero: "glass-2026-10-12/command-ledger.svg",
       alt: "Vanteloq command centre showing sales, margin, cash, inventory, purchasing and accountable business decisions in one operating view.",
     },
     {

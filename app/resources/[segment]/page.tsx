@@ -1,4 +1,5 @@
 import ProfessorGuide from "../../professor-guide";
+import { ADVISORY_RESOURCE_ARTICLES } from "../advisory-articles";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -29,6 +30,7 @@ export async function generateMetadata({ params }: SegmentProps): Promise<Metada
   const article = getArticle(segment);
   if (article) {
     const url = `/resources/${article.slug}`;
+    const authorUrl = articleAuthorUrl(article);
     const socialImage = article.hero && !/\.svg(?:[?#]|$)/i.test(article.hero.src) ? article.hero : {
       src: DEFAULT_SOCIAL_IMAGE,
       alt: "Vanteloq glass blue and silver logo",
@@ -38,7 +40,7 @@ export async function generateMetadata({ params }: SegmentProps): Promise<Metada
     return {
       title: article.seoTitle,
       description: article.description,
-      authors: [{ name: article.author, url: absoluteUrl("/about/editorial") }],
+      authors: [{ name: article.author, url: authorUrl }],
       alternates: { canonical: url },
       openGraph: {
         type: "article",
@@ -47,7 +49,7 @@ export async function generateMetadata({ params }: SegmentProps): Promise<Metada
         description: article.description,
         publishedTime: article.published,
         modifiedTime: article.updated,
-        authors: [absoluteUrl("/about/editorial")],
+        authors: [authorUrl],
         section: getCategory(article.category)?.name,
         images: [{ url: socialImage.src, width: socialImage.width, height: socialImage.height, alt: socialImage.alt }],
       },
@@ -93,6 +95,8 @@ function ArticlePage({ article }: { article: ResourceArticle }) {
   const category = getCategory(article.category);
   const related = article.related.map(getArticle).filter((item): item is ResourceArticle => Boolean(item));
   const articleUrl = absoluteUrl(`/resources/${article.slug}`);
+  const authorUrl = articleAuthorUrl(article);
+  const isAdvisoryGuide = ADVISORY_RESOURCE_ARTICLES.some((item) => item.slug === article.slug);
   const articleJsonLd = {
     "@context": "https://schema.org",
     "@type": "Article",
@@ -104,7 +108,9 @@ function ArticlePage({ article }: { article: ResourceArticle }) {
     dateModified: article.updated,
     articleSection: category?.name,
     image: absoluteUrl(article.hero?.src ?? DEFAULT_SOCIAL_IMAGE),
-    author: { "@type": "Organization", name: article.author, url: absoluteUrl("/about/editorial") },
+    author: article.author === "Hussien Issa"
+      ? { "@type": "Person", name: article.author, url: authorUrl }
+      : { "@type": "Organization", name: article.author, url: authorUrl },
     publisher: { "@id": `${absoluteUrl()}#organization` },
   };
   const breadcrumbs = breadcrumbJsonLd([
@@ -131,7 +137,7 @@ function ArticlePage({ article }: { article: ResourceArticle }) {
               <h1>{article.title}</h1>
               <p className="article-dek">{article.dek}</p>
               <dl className="article-byline">
-                <div><dt>Written by</dt><dd><Link href="/about/editorial">{article.author}</Link></dd></div>
+                <div><dt>Written by</dt><dd><Link href={article.author === "Hussien Issa" ? "/advisory#team" : "/about/editorial"}>{article.author}</Link></dd></div>
                 <div><dt>Published</dt><dd><time dateTime={article.published}>{formatDate(article.published)}</time></dd></div>
                 <div><dt>Updated</dt><dd><time dateTime={article.updated}>{formatDate(article.updated)}</time></dd></div>
                 <div><dt>Reading time</dt><dd>{getReadingTime(article)} minutes</dd></div>
@@ -167,7 +173,7 @@ function ArticlePage({ article }: { article: ResourceArticle }) {
 
               <section className="article-sources" aria-labelledby="sources">
                 <h2 id="sources">Sources and further reading</h2>
-                <p>These sources support the accounting, platform or technical boundaries discussed in this guide. They are not endorsements of Vanteloq.</p>
+                <p>These sources support the operational, financial, platform or technical boundaries discussed in this guide. They are not endorsements of Vanteloq.</p>
                 <ul>{article.sources.map((source) => <li key={source.url}><a href={source.url} rel="noreferrer" target="_blank">{source.title}</a><span>{source.publisher}</span></li>)}</ul>
               </section>
 
@@ -185,10 +191,16 @@ function ArticlePage({ article }: { article: ResourceArticle }) {
 
         {related.length > 0 && <section className="related-guides"><div className="resource-section-heading"><p className="resource-eyebrow">KEEP READING</p><h2>Related guides</h2></div><div className="resource-card-grid">{related.map((item) => <ArticleCard article={item} key={item.slug} />)}</div></section>}
 
-        <section className="resource-wide-cta article-cta">
+        {article.slug === "business-consulting-vs-business-software" ? <section className="resource-wide-cta article-cta">
+          <div><p className="resource-eyebrow">CHOOSE THE SUPPORT THAT FITS</p><h2>Start with the problem, then choose the path.</h2><p>Use Advisory for a focused business question, Workspace for repeatable operating work, or combine them when the change needs both.</p></div>
+          <div><Link href="/advisory#contact">Talk to an Advisor</Link><Link className="secondary" href="/how-it-works">Explore Workspace</Link></div>
+        </section> : isAdvisoryGuide ? <section className="resource-wide-cta article-cta">
+          <div><p className="resource-eyebrow">APPLY THE GUIDE</p><h2>Turn the next decision into a practical operating step.</h2><p>Use Vanteloq Advisory to clarify the problem and implementation path, or Vanteloq Workspace to keep approved inputs, decisions, responsibilities and follow-up work connected.</p></div>
+          <div><Link href="/advisory#contact">Talk to an Advisor</Link><Link className="secondary" href="/how-it-works">Explore Workspace</Link></div>
+        </section> : <section className="resource-wide-cta article-cta">
           <div><p className="resource-eyebrow">FROM GUIDE TO OPERATING RHYTHM</p><h2>Keep the source and the decision together.</h2><p>Vanteloq organizes verified operating inputs, calculation context and approval-owned actions in one business view.</p></div>
           <div><Link href="/?start=signup">Create your workspace</Link><Link className="secondary" href="/#platform">Explore Vanteloq</Link></div>
-        </section>
+        </section>}
       </main>
     </ResourceShell>
   );
@@ -257,4 +269,8 @@ export default async function ResourceSegmentPage({ params }: SegmentProps) {
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" }).format(new Date(`${value}T00:00:00Z`));
+}
+
+function articleAuthorUrl(article: ResourceArticle) {
+  return absoluteUrl(article.author === "Hussien Issa" ? "/advisory#team" : "/about/editorial");
 }

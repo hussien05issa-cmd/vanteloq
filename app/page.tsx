@@ -520,7 +520,6 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
           <p className="home-hero-support">See what changed, inspect the source and decide what needs attention. Keep the systems you use and a dashboard built around your business.</p>
           <div className="public-actions"><a href="/demo" data-public-event="demo_view">Open the demo <span aria-hidden="true">→</span></a><button type="button" data-public-event="signup_start" onClick={() => start("signup")}>Create a workspace</button></div>
           <ul className="home-proof"><li>No signup for the demo</li><li>Totals open to source rows</li><li>AI memory starts off</li></ul>
-          <p className="home-company-credit">A <a href="#company">Vanteloq Inc.</a> product.</p>
         </div>
         <HomeDashboardPreview/>
       </section>

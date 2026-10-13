@@ -28,6 +28,7 @@ const ANALYTICS_ID =
 const ANALYTICS_ID_PATTERN = /^G-[A-Z0-9]+$/;
 const SCRIPT_ID = "vanteloq-google-analytics";
 const READY_EVENT = "vanteloq:analytics-ready";
+const PUBLIC_CONVERSION_EVENTS = new Set(["inquiry_sent", "demo_request_sent", "advisory_inquiry_sent"]);
 let analyticsAllowed = false;
 
 function runGtag(...args: GtagCommand) {
@@ -212,8 +213,8 @@ export function GoogleAnalyticsConsent() {
       runGtag("event", interaction.name, { ...interaction.properties, page_location: `${window.location.origin}${pathname}`, page_path: pathname });
     };
     const confirmed = (event: Event) => {
-      if (!analyticsAllowed || !isPublicMeasurementPage(pathname) || !window.__vanteloqAnalyticsReady || !(event instanceof CustomEvent) || event.detail !== "inquiry_sent") return;
-      runGtag("event", "inquiry_sent", { page_location: `${window.location.origin}${pathname}`, page_path: pathname });
+      if (!analyticsAllowed || !isPublicMeasurementPage(pathname) || !window.__vanteloqAnalyticsReady || !(event instanceof CustomEvent) || typeof event.detail !== "string" || !PUBLIC_CONVERSION_EVENTS.has(event.detail)) return;
+      runGtag("event", event.detail, { page_location: `${window.location.origin}${pathname}`, page_path: pathname });
     };
     document.addEventListener("click", measure);
     document.addEventListener("change", measure);
