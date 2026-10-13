@@ -92,7 +92,7 @@ export default function ResourcesPage() {
 
         <section className="resource-wide-cta">
           <div><p className="resource-eyebrow">VANTELOQ</p><h2>Bring the operating view together.</h2><p>Organize source-backed sales, cash, inventory and daily work while your team keeps approval over decisions.</p></div>
-          <div><Link href="/?start=signup">Create your workspace</Link><Link className="secondary" href="/#platform">See the operating model</Link></div>
+          <div><Link href="/?start=signup">Build your dashboard</Link><Link className="secondary" href="/#platform">See the operating model</Link></div>
         </section>
       </main>
     </ResourceShell>

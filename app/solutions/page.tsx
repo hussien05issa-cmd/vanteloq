@@ -36,7 +36,7 @@ export default function SolutionsPage() {
           <p className="sector-eyebrow">Vanteloq for your business</p>
           <h1 id="solutions-title">A clearer review of the work your business runs on.</h1>
           <p className="sector-introduction">A shop, a dealership and a kitchen need different operating records. Choose your industry to see the inputs, decisions and limits of its Vanteloq workflows.</p>
-          <div className="sector-actions"><Link className="sector-button" href="/book-demo">Book a free demo</Link><Link className="sector-button secondary" prefetch={false} href={planSelectionUrl({ plan: "free", bookloq: false })} data-public-event="signup_start" data-public-section="hero" data-public-plan="free">Create a workspace</Link></div>
+          <div className="sector-actions"><Link className="sector-button" href="/book-demo">Book a free demo</Link><Link className="sector-button secondary" prefetch={false} href={planSelectionUrl({ plan: "free", bookloq: false })} data-public-event="signup_start" data-public-section="hero" data-public-plan="free">Build your dashboard</Link></div>
           <p className="sector-small">Prefer to explore first? <Link href="/demo">Try the fictional retail demo.</Link></p>
         </div>
         <aside className="sector-question-panel" aria-label="How the review works">

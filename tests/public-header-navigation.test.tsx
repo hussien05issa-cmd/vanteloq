@@ -21,7 +21,7 @@ test("the mobile disclosure identifies both navigation and account destinations 
 
 test("all public navigation, social destinations and account actions remain reachable in the header", () => {
   for (const href of ["/how-it-works", "/advisory", "/demo", "/pricing", "/help", "/book-demo", "#social"]) assert.ok(header.includes(`href="${href}"`), href);
-  for (const label of ["Sign in", "Create a workspace", "Instagram", "YouTube", "TikTok", "Facebook"]) assert.ok(header.includes(label), label);
+  for (const label of ["Sign in", "Build your dashboard", "Instagram", "YouTube", "TikTok", "Facebook"]) assert.ok(header.includes(label), label);
   assert.match(header, /data-public-event="pricing_view"/);
   assert.match(header, /data-public-event="signup_start"/);
   assert.doesNotMatch(header, /Business analytics by LexEdge Consulting/);

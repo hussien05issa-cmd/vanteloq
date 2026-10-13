@@ -470,7 +470,7 @@ export default function AuthPanel({
 
   useModalFocus(dialogRef, true, dismiss);
 
-  const title = mode === "signup" ? "Create your workspace"
+  const title = mode === "signup" ? "Build your dashboard"
     : mode === "verify-signup" ? "Verify your email"
     : mode === "signin" ? "Welcome back"
     : mode === "request-reset" ? "Reset your password"

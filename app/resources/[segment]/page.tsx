@@ -199,7 +199,7 @@ function ArticlePage({ article }: { article: ResourceArticle }) {
           <div><Link href="/advisory#contact">Talk to an Advisor</Link><Link className="secondary" href="/how-it-works">Explore Workspace</Link></div>
         </section> : <section className="resource-wide-cta article-cta">
           <div><p className="resource-eyebrow">FROM GUIDE TO OPERATING RHYTHM</p><h2>Keep the source and the decision together.</h2><p>Vanteloq organizes verified operating inputs, calculation context and approval-owned actions in one business view.</p></div>
-          <div><Link href="/?start=signup">Create your workspace</Link><Link className="secondary" href="/#platform">Explore Vanteloq</Link></div>
+          <div><Link href="/?start=signup">Build your dashboard</Link><Link className="secondary" href="/#platform">Explore Vanteloq</Link></div>
         </section>}
       </main>
     </ResourceShell>

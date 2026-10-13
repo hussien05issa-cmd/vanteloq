@@ -16,6 +16,9 @@ test("public interactions retain only fixed properties relevant to their event",
   assert.deepEqual(publicMarketingEvent({
     publicEvent: "hero_play", publicSection: "hero", publicStep: "sales",
   }), { name: "hero_play", properties: { section: "hero" } });
+  assert.deepEqual(publicMarketingEvent({
+    publicEvent: "demo_booking_start", publicSection: "header", publicPlan: "private-account",
+  }), { name: "demo_booking_start", properties: { section: "header" } });
 });
 
 test("unknown values, input text and URL-shaped properties never leave the allowlist", () => {

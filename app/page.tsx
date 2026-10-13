@@ -504,7 +504,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
       <div className="public-nav-actions" id="public-account-actions">
         <PublicAppearanceControl/>
         <button type="button" className="nav-login" onClick={() => { setMobileNavigationOpen(false); start("signin"); }}>Sign in</button>
-        <button type="button" data-public-event="signup_start" onClick={() => { setMobileNavigationOpen(false); start("signup"); }}>Create a workspace</button>
+        <button type="button" data-public-event="signup_start" onClick={() => { setMobileNavigationOpen(false); start("signup"); }}>Build your dashboard</button>
       </div>
     </header>
 
@@ -518,7 +518,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
           <h1 id="home-title">Your business, <em>at a glance.</em></h1>
           <p>Sales, stock and cash. With the records behind the numbers.</p>
           <p className="home-hero-support">See what changed, inspect the source and decide what needs attention. Keep the systems you use and a dashboard built around your business.</p>
-          <div className="public-actions"><a href="/demo" data-public-event="demo_view">Open the demo <span aria-hidden="true">→</span></a><button type="button" data-public-event="signup_start" onClick={() => start("signup")}>Create a workspace</button></div>
+          <div className="public-actions"><a href="/demo" data-public-event="demo_view">Open the demo <span aria-hidden="true">→</span></a><button type="button" data-public-event="signup_start" onClick={() => start("signup")}>Build your dashboard</button></div>
           <ul className="home-proof"><li>No signup for the demo</li><li>Totals open to source rows</li><li>AI memory starts off</li></ul>
         </div>
         <HomeDashboardPreview/>
@@ -560,7 +560,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
         <details><summary>Can I use BookLoQ without a Vanteloq plan?</summary><p>Yes. BookLoQ is $59 CAD per month as a standalone finance workspace, or $39 CAD per month when added to a Vanteloq plan. It organizes financial records, journals, statements, transaction review, evidence matching and cash planning. It does not file tax returns or certify your books. Keep your accountant involved.</p></details>
         <details><summary>Can I make the dashboard my own?</summary><p>Choose your metrics, reorder cards, adjust chart styles and save views for different priorities. Set goals with dates and a location scope. Your layout stays with your account in your workspace.</p></details><details><summary>Can I control when my data updates?</summary><p>Enable or pause automatic updates for supported connections. Review sync status and imported records before using the results.</p></details><details><summary>Can I control what AI remembers?</summary><p>Yes. Memory starts off. Choose whether to share permitted workspace summaries, turn memory on or off, and delete saved chats in AI Settings. AI access remains limited by your role.</p><Link prefetch={false} href="/privacy">Read the privacy details →</Link></details>
         <details><summary>Can I change or cancel my subscription?</summary><p>Open Stripe’s billing portal from workspace billing to review available changes or cancellation. Check the effective date and any prorated charges before confirming.</p></details>
-        <div className="journey-final"><strong>Start with a question you would ask about your own business.</strong><a href="/demo">Open the demo →</a><button type="button" data-public-event="signup_start" onClick={() => start("signup")}>Create a workspace</button></div>
+        <div className="journey-final"><strong>Start with a question you would ask about your own business.</strong><a href="/demo">Open the demo →</a><button type="button" data-public-event="signup_start" onClick={() => start("signup")}>Build your dashboard</button></div>
       </div></section>
 
 
@@ -576,7 +576,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
       <div><strong>PRODUCT</strong><Link prefetch={false} href="/features/retail-intelligence">Retail intelligence</Link><Link prefetch={false} href="/features/inventory-and-cash">Inventory and cash</Link><Link prefetch={false} data-public-event="pricing_view" href="/pricing">Pricing</Link><Link prefetch={false} href="/demo">Interactive demo</Link><a href="#platform">How it works</a><a href="#capabilities">Capabilities</a><a href="#connections">Connections</a><a href="#security">Security</a></div>
       <div><strong>RESOURCES</strong><Link prefetch={false} href="/social">Follow Vanteloq</Link><Link prefetch={false} href="/help">Help centre</Link><Link prefetch={false} href="/resources">All resources</Link><Link prefetch={false} href="/solutions">Business types</Link><Link prefetch={false} href="/integrations">Integration guides</Link><Link prefetch={false} href="/tools">Planning tools</Link><Link prefetch={false} href="/advisory">Vanteloq Advisory</Link><Link prefetch={false} href="/about">About Vanteloq</Link><Link prefetch={false} href="/resources/inventory">Inventory</Link><Link prefetch={false} href="/resources/finance">Finance</Link><Link prefetch={false} href="/resources/analytics">Analytics</Link></div>
       <div><strong>LEGAL</strong><Link prefetch={false} href="/legal">Legal centre</Link><Link prefetch={false} href="/privacy">Privacy</Link><Link prefetch={false} href="/terms">Terms</Link><Link prefetch={false} href="/cookies">Cookies</Link></div>
-      <div><strong>ACCOUNT</strong><Link prefetch={false} href="/contact">Contact</Link><button type="button" onClick={() => start("signin")}>Sign in</button><button type="button" data-public-event="signup_start" onClick={() => start("signup")}>Create a workspace</button></div>
+      <div><strong>ACCOUNT</strong><Link prefetch={false} href="/contact">Contact</Link><button type="button" onClick={() => start("signin")}>Sign in</button><button type="button" data-public-event="signup_start" onClick={() => start("signup")}>Build your dashboard</button></div>
       <p className="home-footer-note"><strong>{PRODUCT_RELEASE_NAME}</strong><br/>© {new Date().getFullYear()} Vanteloq Inc. Feature availability depends on workspace access, configured sources and verified records.</p>
     </footer>
   </div>;

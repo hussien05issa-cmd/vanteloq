@@ -32,6 +32,11 @@
 .book-demo-page .custom-plan-consent { align-items: flex-start; font-size: 14px; }
 .book-demo-page .custom-plan-consent input { flex: none; margin-top: 3px; width: 20px; height: 20px; accent-color: #155dd0; }
 .book-demo-page .custom-plan-form a { color: #1554b4; text-decoration: underline; text-underline-offset: 3px; }
+.book-demo-page .custom-plan-privacy-details { margin: 14px 0; overflow: hidden; border: 1px solid #c7d5e4; border-radius: 12px; background: #f8fbfe; }
+.book-demo-page .custom-plan-privacy-details summary { display: flex; min-height: 46px; align-items: center; justify-content: space-between; gap: 14px; padding: 10px 14px; color: #233d5b; font-size: 14px; font-weight: 650; cursor: pointer; }
+.book-demo-page .custom-plan-privacy-details summary::after { content: "+"; color: #1554b4; font-size: 18px; transition: transform 160ms ease; }
+.book-demo-page .custom-plan-privacy-details[open] summary::after { transform: rotate(45deg); }
+.book-demo-page .custom-plan-privacy-details p { margin: 0; padding: 0 14px 14px; color: #3d526c; font-size: 13px; line-height: 1.65; }
 .book-demo-page .custom-plan-reference { color: #334b66; overflow-wrap: anywhere; }
 .book-demo-page .turnstile-field { min-width: 0; overflow: visible; }
 .book-demo-page .turnstile-widget-container { width: 100%; min-width: 0; }

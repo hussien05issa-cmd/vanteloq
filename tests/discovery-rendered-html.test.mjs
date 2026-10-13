@@ -19,7 +19,13 @@ test("discovery pages expose distinct crawlable content and correct canonical pa
     assert.equal((html.match(/<h1\b/g) ?? []).length, 1, `${path} needs one clear H1`);
     assert.ok(html.includes(`href="https://vanteloq.com${path}"`), `${path} canonical missing`);
     assert.ok(html.includes('id="discovery-main"'), `${path} skip-link destination missing`);
-    assert.ok(html.includes('aria-label="Colour theme"'), `${path} appearance control missing`);
+    if (path === "/advisory") {
+      assert.ok(html.includes('data-public-theme="dark"'), "Advisory fixed dark theme missing");
+      assert.ok(html.includes('data-public-appearance="dark"'), "Advisory fixed dark appearance missing");
+      assert.ok(!html.includes('aria-label="Colour theme"'), "Advisory must not expose an appearance selector");
+    } else {
+      assert.ok(html.includes('aria-label="Colour theme"'), `${path} appearance control missing`);
+    }
     assert.doesNotMatch(html, /name="robots" content="noindex/, `${path} should be eligible for indexation`);
     assert.doesNotMatch(html, /aggregateRating|Supplement World|hussienissa@/i, `${path} must not imply customer results or expose owner details`);
     const title = html.match(/<title>([^<]+)<\/title>/)?.[1];
