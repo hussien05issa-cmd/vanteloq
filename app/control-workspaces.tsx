@@ -297,7 +297,8 @@ export function ReportsWorkspace({
   timeZone = "UTC",
   onOpenConnections,
   authorizationKey = "",
-}: SharedProps & { activeLocationId: string | null; canExportFeature: boolean; onOpenRetail?: () => void; onOpenConnections?: () => void; timeZone?: string; initialPeriod?: { from: string; to: string }; authorizationKey?: string }) {
+  onOpenStudio,
+}: SharedProps & { activeLocationId: string | null; canExportFeature: boolean; onOpenRetail?: () => void; onOpenConnections?: () => void; onOpenStudio?: (scope:{from:string;to:string;connection:string})=>void; timeZone?: string; initialPeriod?: { from: string; to: string }; authorizationKey?: string }) {
   const [query, setQuery] = useState("");
   const [studioOpen, setStudioOpen] = useState(false);
   const [studioDates, setStudioDates] = useState({ from: "", to: "" });
@@ -475,7 +476,7 @@ export function ReportsWorkspace({
             the records and permissions it needs.
           </span>
         </div>
-        <button type="button" className="secondary" onClick={() => { setStudioDates({from:start,to:end}); setStudioOpen(true); }}>Open Data Studio</button>
+        <button type="button" className="secondary" onClick={() => { if (onOpenStudio) { onOpenStudio({from:start,to:end,connection:sourceConnectionId}); return; } setStudioDates({from:start,to:end}); setStudioOpen(true); }}>Open Data Studio</button>
       </section>
       {onOpenRetail && <section className="sales-evidence-notice" aria-label="Retail intelligence reports">
         <div><strong>Go deeper than the total.</strong><p>Explore category and SKU performance, basket patterns, stock and hourly demand. Add reviewed inputs where your source needs more context.</p></div>
@@ -591,11 +592,11 @@ export function ReportsWorkspace({
             .map((category) => {
               const rows = visible.filter((item) => item.category === category);
               return rows.length ? (
-                <article className="card" key={category}>
-                  <header>
+                <details className="card" key={category} open={Boolean(query || group !== "All reports" || rows.some(item => item.name === selected))}>
+                  <summary>
                     <h3>{category}</h3>
                     <span>{rows.length} reports</span>
-                  </header>
+                  </summary>
                   {rows.map((item) => (
                     <button
                       className={selected === item.name ? "selected" : ""}
@@ -610,7 +611,7 @@ export function ReportsWorkspace({
                       </em>
                     </button>
                   ))}
-                </article>
+                </details>
               ) : null;
             })}
         </section>

@@ -568,6 +568,13 @@
       "when": 1791704961332,
       "tag": "0080_bank_match_integrity",
       "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "6",
+      "when": 1791857551597,
+      "tag": "0081_studio_definitions",
+      "breakpoints": true
     }
   ]
 }

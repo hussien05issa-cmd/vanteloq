@@ -526,7 +526,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
       </section>
       <div className="reference-connections" aria-label="Explore data connections"><span>YOUR TOOLS, CONNECTED</span><div>{["Lightspeed","Square","Shopify","Stripe","Google"].map(name=><a className="home-connector-brand" key={name} href="#connections" aria-label={`Check ${name} availability`}><IntegrationBrandLogo name={name} compact/>{!["Lightspeed", "Stripe"].includes(name) && <strong>{name}</strong>}</a>)}</div><a href="#connections">View availability <span aria-hidden="true">→</span></a></div>
       <HomeProductFilm/>
-      <HomeDataStudio openReports={() => { window.location.hash = "workspace/reports"; start("signin"); }}/>
+      <HomeDataStudio openReports={() => { window.location.hash = "workspace/data-studio"; start("signin"); }}/>
       <section className="home-decision-proof" id="platform" aria-labelledby="decision-proof-title">
         <span id="capabilities"/><div className="reference-section-heading" data-motion-item="0"><div><p className="demo-eyebrow">YOUR BUSINESS. YOUR PRIORITIES.</p><h2 id="decision-proof-title">What changed? What needs your attention?</h2></div><p>Open the records behind a finding. Review the next step, assign the work and follow the outcome. Missing costs and incomplete sources stay visible.</p></div>
         <FeatureCarousel/>

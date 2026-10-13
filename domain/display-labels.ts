@@ -55,6 +55,9 @@ export function humanizeIdentifier(value: string | null | undefined) {
 }
 
 export function workspaceViewLabel(view: string) {
+  if (view === "Studio Dashboards") return "Dashboards";
+  if (view === "Studio Sheets") return "Sheets";
+  if (view === "Studio SQL") return "SQL";
   if (view === "Advisor") return "Vanteloq AI";
   if (view === "Action Centre") return "Tasks";
   return view;

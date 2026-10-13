@@ -8,8 +8,8 @@ import "./data-studio.css";
 const tabs = ["Overview", "Sales", "Margin", "Inventory", "Cash", "Data Quality", "Sources"] as const;
 type Tab = typeof tabs[number];
 const failure = (body: unknown, fallback: string) => body && typeof body === "object" && "error" in body && body.error && typeof body.error === "object" && "message" in body.error && typeof body.error.message === "string" ? body.error.message : fallback;
-export default function DataStudioPanel({ activeLocationId, sourceConnectionId, from, to, timeZone, onClose, onDatesChange }: {
-  activeLocationId: string | null; sourceConnectionId: string; from: string; to: string; timeZone: string; onClose: () => void; onDatesChange?: (from:string,to:string)=>void;
+export default function DataStudioPanel({ activeLocationId, sourceConnectionId, from, to, timeZone, onClose, onDatesChange, closeLabel = "Back to reports" }: {
+  activeLocationId: string | null; sourceConnectionId: string; from: string; to: string; timeZone: string; onClose: () => void; onDatesChange?: (from:string,to:string)=>void; closeLabel?:string;
 }) {
   const today = businessClock(new Date(), timeZone)?.date ?? new Date().toISOString().slice(0, 10);
   const defaultStart = new Date(`${today}T00:00:00Z`); defaultStart.setUTCDate(defaultStart.getUTCDate() - 29);
@@ -84,7 +84,7 @@ export default function DataStudioPanel({ activeLocationId, sourceConnectionId, 
   };
   const summary = review?.sales.summary;
   return <section className="data-studio" aria-labelledby="data-studio-title">
-    <header className="page-intro"><div><p>DATA STUDIO</p><h2 id="data-studio-title">Executive Review</h2><span>Inspect the scope, then take the same numbers into Excel.</span></div><button type="button" onClick={onClose}>Back to reports</button></header>
+    <header className="page-intro"><div><p>DATA STUDIO TEMPLATE</p><h2 id="data-studio-title">Executive Review</h2><span>Inspect the scope, then take the same numbers into Excel.</span></div><button type="button" onClick={onClose}>{closeLabel}</button></header>
     <details className="card studio-scope-card" open={!review}><summary>Reporting scope{review ? ` · ${start} to ${end} · ${review.metadata.currency}` : ""}</summary>
     <form className="studio-scope" onSubmit={e => { e.preventDefault(); void preview(); }}>
       <label>From<input type="date" value={start} max={end} onChange={e => { cancel(); setError(""); setStart(e.target.value); onDatesChange?.(e.target.value,end); }} required/></label>

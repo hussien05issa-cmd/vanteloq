@@ -38,6 +38,7 @@ import "./bookloq-dashboard-visuals.css?public-surface";
 import "./marketing-consent.css?public-surface";
 import "./commerce-visuals.css?public-surface";
 import "./dashboard-explorer.css?public-surface";
+import "./workspace-density.css?public-surface";
 import "./interface-motion.css";
 import "./readability-refinement.css";
 import "./advisor-appearance.css";

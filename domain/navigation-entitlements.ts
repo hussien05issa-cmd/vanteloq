@@ -27,6 +27,10 @@ export const navigationEntitlementViews = [
   "Decision Journal",
   "Scenario Planner",
   "Reports",
+  "Data Studio",
+  "Studio Dashboards",
+  "Studio Sheets",
+  "Studio SQL",
   "Integrations",
   "Settings",
 ] as const;
@@ -60,6 +64,10 @@ const requiredFeatureByView: Readonly<Record<NavigationEntitlementView, FeatureK
   "Decision Journal": "growth.strategy",
   "Scenario Planner": "forecasting.scenarios",
   Reports: "reporting.basic",
+  "Data Studio": "reporting.basic",
+  "Studio Dashboards": "reporting.basic",
+  "Studio Sheets": "reporting.basic",
+  "Studio SQL": "reporting.basic",
   Integrations: "business.settings",
   Settings: "business.settings",
 });

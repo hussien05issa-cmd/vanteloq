@@ -64,6 +64,8 @@ const DataQualityWorkspace = lazy(() => import("./control-workspaces").then(modu
 const DocumentsWorkspace = lazy(() => import("./control-workspaces").then(module => ({ default: module.DocumentsWorkspace })));
 const PurchaseOrdersWorkspace = lazy(() => import("./control-workspaces").then(module => ({ default: module.PurchaseOrdersWorkspace })));
 const ReportsWorkspace = lazy(() => import("./control-workspaces").then(module => ({ default: module.ReportsWorkspace })));
+const StudioWorkspace = lazy(() => import("./studio-workspace"));
+const StudioPins = lazy(() => import("./studio-pins"));
 import { connectorHealth, connectorNextStep, filterConnectors } from "../domain/connector-guidance";
 import { customerIntegrationAvailability, hasConnectionAttention, type CustomerIntegrationAvailability } from "../domain/integration-availability";
 import ConnectorAvailabilityBadge from "./connector-availability-badge";
@@ -144,6 +146,10 @@ type View =
   | "Decision Journal"
   | "Scenario Planner"
   | "Reports"
+  | "Data Studio"
+  | "Studio Dashboards"
+  | "Studio Sheets"
+  | "Studio SQL"
   | "Integrations"
   | "Settings";
 
@@ -168,6 +174,7 @@ const nav: [string, View[]][] = [
     "Growth and relationships",
     ["Marketing", "Communications"],
   ],
+  ["Vanteloq Studio", ["Data Studio", "Studio Dashboards", "Studio Sheets", "Studio SQL"]],
   [
     "Operations and governance",
     ["Operations", "Team", "Documents", "Data Quality", "Locations", "Decision Journal", "Scenario Planner"],
@@ -196,6 +203,10 @@ const navigationGuide: Record<View, { outcome: string; data: string }> = {
   BookLoQ: { outcome: "Organizes financial records, reconciliation and month-end review.", data: "Bank activity, POS payouts, invoices, receipts and reviewed journal entries." },
   Bookkeeping: { outcome: "Explains the close workflow and unresolved accounting records.", data: "Transactions, source documents, tax coding and reconciliation status." },
   Reports: { outcome: "Produces traceable operating and accountant-ready exports.", data: "Verified metrics, periods, sources and role permissions." },
+  "Data Studio": { outcome: "Opens your dashboard, spreadsheet and SQL analysis apps.", data: "The same permitted source records, calculation definitions and saved views." },
+  "Studio Dashboards": { outcome: "Builds charts and pins saved analysis to the owner overview.", data: "Authorized source rows for the selected dates, locations and provider." },
+  "Studio Sheets": { outcome: "Explores source tables and tests separate assumptions with formulas.", data: "Read-only recorded facts and your private analytical assumptions." },
+  "Studio SQL": { outcome: "Runs supported read-only queries over approved analytical datasets.", data: "Permitted source columns, complete accepted rows and query definitions." },
   Marketing: { outcome: "Recommends measurable growth work constrained by operations.", data: "Search, journeys, campaign cost, customers, margin, stock and location." },
   Communications: { outcome: "Keeps customer outreach gated by consent and evidence.", data: "Authorized contacts, consent, campaign purpose and delivery status." },
   Team: { outcome: "Manages roles, location scope and organization-paid access.", data: "Employee profiles, permissions, assigned locations and security state." },
@@ -260,6 +271,10 @@ const viewPermission: Partial<Record<View, string>> = {
   "Decision Journal": "insights.view",
   "Scenario Planner": "metrics.cash",
   Reports: "reports.operational",
+  "Data Studio": "reports.operational",
+  "Studio Dashboards": "reports.operational",
+  "Studio Sheets": "reports.operational",
+  "Studio SQL": "reports.operational",
   Integrations: "integrations.view",
   Settings: "organization.settings",
 };
@@ -269,6 +284,7 @@ const standaloneBookloqViews = new Set<View>([
   "Advisor",
   "Documents",
   "Reports",
+  "Data Studio", "Studio Dashboards", "Studio Sheets", "Studio SQL",
   "Integrations",
   "Settings",
 ]);
@@ -1556,6 +1572,7 @@ function Workspace({
 }) {
   const workspacePlan = useBillingEntitlements();
   const [reportSeed, setReportSeed] = useState<{ from: string; to: string; locationId: string | null } | null>(null);
+  const [studioSeed, setStudioSeed] = useState<{from:string;to:string;connection:string} | undefined>();
   const [executiveDrill,setExecutiveDrill]=useState<{from:string;to:string}|undefined>();
   const [intelligenceTab, setIntelligenceTab] = useState<"opportunities" | "retail">("opportunities");
   const [inventoryTab,setInventoryTab]=useState<"specialised"|"products">(reportImportTarget === "costs" ? "products" : "specialised");
@@ -1597,6 +1614,7 @@ function Workspace({
         paymentRange={paymentRange}
         setPaymentRange={setPaymentRange}
       />
+      {permissions.includes("reports.operational") && subscriptionFeatures.includes("reporting.basic") && <WorkflowDisclosure title="Your Studio dashboards"><StudioPins key={`${advisorConsent.scope}:${activeLocationId ?? "all"}:${appRole}:${[...permissions].sort().join("|")}:${[...subscriptionFeatures].sort().join("|")}`} activeLocationId={activeLocationId} onOpen={() => navigate("Data Studio")}/></WorkflowDisclosure>}
       </>
     );
   if (view === "Intelligence")
@@ -1671,8 +1689,10 @@ function Workspace({
         timeZone={data.today.timeZone}
         onOpenConnections={() => navigate("Integrations")}
         onOpenRetail={() => { setIntelligenceTab("retail"); navigate("Intelligence"); }}
+        onOpenStudio={(seed) => { setStudioSeed(seed); navigate("Data Studio"); }}
       />
     );
+  if (["Data Studio", "Studio Dashboards", "Studio Sheets", "Studio SQL"].includes(view)) return <StudioWorkspace key={`${advisorConsent.scope}:${activeLocationId ?? "all"}:${appRole}:${[...permissions].sort().join("|")}:${[...subscriptionFeatures].sort().join("|")}`} app={view === "Studio Dashboards" ? "dashboards" : view === "Studio Sheets" ? "sheets" : view === "Studio SQL" ? "sql" : "home"} activeLocationId={activeLocationId} timeZone={data.today.timeZone ?? "UTC"} initialScope={studioSeed} canSave={appRole !== "read_only"} onNavigate={(app) => navigate(app === "dashboards" ? "Studio Dashboards" : app === "sheets" ? "Studio Sheets" : app === "sql" ? "Studio SQL" : "Data Studio")} onOpenReports={() => navigate("Reports")} onImport={() => navigate("Integrations")}/>;
   if (view === "Inventory" && food && foodAccess) return <><nav className="intelligence-switch" aria-label="Menu and ingredient views"><button type="button" aria-pressed={inventoryTab==="specialised"} onClick={()=>setInventoryTab("specialised")}>Recipe & food costs</button><button type="button" aria-pressed={inventoryTab==="products"} onClick={()=>setInventoryTab("products")}>Product inventory</button></nav>{inventoryTab==="specialised"?<FoodserviceWorkspace key={activeLocationId??"all"} activeLocationId={activeLocationId}/>:<CommerceIntelligenceWorkspace initialPeriod={executiveDrill} mode="Inventory" initialCostImportOpen={reportImportTarget === "costs"} currency={currency} timeZone={data.today.timeZone} activeLocationId={activeLocationId} navigate={navigate} createTask={createTask} onAsk={askRetailAdvisor}/>}</>;
   if (view === "Inventory")
     return <InventoryVehicleWorkspace key={`${activeLocationId??"all"}:${industryConfiguration.templateId}`} initialView={reportImportTarget === "costs" ? "products" : reportImportTarget === "vehicles" ? "vehicles" : undefined} industry={businessIndustry} configuration={industryConfiguration} activeLocationId={activeLocationId}><CommerceIntelligenceWorkspace initialPeriod={executiveDrill} mode="Inventory" initialCostImportOpen={reportImportTarget === "costs"} currency={currency} timeZone={data.today.timeZone} activeLocationId={activeLocationId} navigate={navigate} createTask={createTask} onAsk={askRetailAdvisor}/></InventoryVehicleWorkspace>;

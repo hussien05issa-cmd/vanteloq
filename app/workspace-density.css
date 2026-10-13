@@ -1,0 +1,26 @@
+/* Comfortable working layouts. Dense tables scroll within their own region. */
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .card{min-width:0;overflow-wrap:break-word}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .reports-centre{display:grid;gap:20px}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .reports-centre .reports-layout{gap:24px;align-items:start}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .report-catalogue{display:grid;gap:20px;min-width:0}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .report-catalogue>.card{padding:20px!important;border-radius:20px}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .report-catalogue :is(header,summary){display:flex;align-items:center;justify-content:space-between;gap:16px;padding:4px 0 16px;min-height:44px;cursor:pointer}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .report-catalogue h3{font-size:18px!important;line-height:1.35;margin:0}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .report-catalogue :is(header,summary)>span{flex-shrink:0;color:var(--ws-muted);font-size:13px!important}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .report-catalogue .card>button{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;min-height:56px;padding:14px!important;margin-bottom:8px;border-radius:12px;text-align:left}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .report-catalogue button>span{line-height:1.5;font-size:14px!important;white-space:normal}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .report-catalogue button>em{font-size:12px!important;line-height:1.4;max-width:140px;white-space:normal;text-align:right}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.report-source-control,.report-inspector){padding:24px!important;min-width:0}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.report-source-control,.report-inspector)>header{display:flex;flex-wrap:wrap;align-items:start;gap:16px;margin-bottom:20px}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .report-source-buttons{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:16px;margin-block:16px}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .report-source-buttons button{padding:18px!important;min-height:92px;display:grid;align-content:start;gap:10px;text-align:left;white-space:normal}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .report-source-buttons :is(b,small){line-height:1.5}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .report-metrics{grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));gap:16px;margin-block:20px}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .report-metrics article{padding:20px!important;min-height:125px;display:flex;flex-direction:column;gap:10px;border-radius:16px}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .report-metrics :is(small,span){line-height:1.5;white-space:normal}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.quality-scoreboard,.po-summary,.document-pipeline,.procurement-signal-strip,.catalog-recommendation-grid,.recommendation-metrics){gap:16px;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr))}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.quality-scoreboard,.po-summary,.document-pipeline)>article{padding:20px!important;display:flex;flex-direction:column;gap:12px;min-width:0}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.catalog-recommendation,.procurement-signal){padding:22px!important;line-height:1.6;min-width:0}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.bookloq-dashboard-stats,.bookloq-kpis,.executive-kpis){gap:16px}
+:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.report-source-conflict,.report-canonical-list)>button{white-space:normal;min-width:0;gap:12px}
+@media(max-width:640px){:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(.report-source-control,.report-inspector,.report-catalogue>.card){padding:18px!important}:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .report-catalogue .card>button{grid-template-columns:1fr;gap:8px}:is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] .report-catalogue button>em{max-width:none;text-align:left;justify-self:start}}

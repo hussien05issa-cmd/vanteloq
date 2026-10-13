@@ -129,6 +129,7 @@ async function eraseLocal(job: DeletionJob, plan: DeletionPlan, leaseUntil: numb
     db.prepare("DELETE FROM account_notifications WHERE user_id=?").bind(job.user_id),
     db.prepare("DELETE FROM onboarding_drafts WHERE user_id=?").bind(job.user_id),
     db.prepare("DELETE FROM forecasting_views WHERE user_id=?").bind(job.user_id),
+    db.prepare("DELETE FROM studio_definitions WHERE user_id=?").bind(job.user_id),
     db.prepare("DELETE FROM workflow_deliveries WHERE user_id=? AND organization_id=?").bind(job.user_id,job.organization_id),
     db.prepare("DELETE FROM workflow_delivery_preferences WHERE user_id=? AND organization_id=?").bind(job.user_id,job.organization_id),
     ...["business_workflow_records","sector_operation_records","collection_followups"].map(table=>db.prepare(`UPDATE ${table} SET updated_by=NULL WHERE updated_by=? AND organization_id=?`).bind(job.user_id,job.organization_id)),

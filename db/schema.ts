@@ -2553,3 +2553,25 @@ export const onboardingDrafts=sqliteTable("onboarding_drafts",{
  userId:text("user_id").primaryKey().notNull().references(()=>users.id,{onDelete:"cascade"}),draftJson:text("draft_json").notNull(),
  revision:integer("revision").notNull(),updatedAt:integer("updated_at").notNull(),expiresAt:integer("expires_at").notNull(),
 },t=>[check("onboarding_draft_json",sql`json_valid(${t.draftJson})`),check("onboarding_draft_revision",sql`${t.revision}>=1`),index("onboarding_drafts_expiry_idx").on(t.expiresAt)]);
+
+// Private analysis definitions only. Source rows, query results and tokens are
+// never included in these bounded JSON documents.
+export const studioDefinitions = sqliteTable("studio_definitions", {
+  id: text("id").primaryKey(),
+  organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  app: text("app", { enum: ["dashboards", "sheets", "sql"] }).notNull(),
+  scopeJson: text("scope_json").notNull(),
+  contentJson: text("content_json").notNull(),
+  version: integer("version").notNull().default(1),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+}, table => [
+  index("studio_definitions_owner_updated_idx").on(table.organizationId, table.userId, table.updatedAt, table.id),
+  check("studio_definition_app_check", sql`${table.app} IN ('dashboards','sheets','sql')`),
+  check("studio_definition_title_check", sql`length(${table.title}) BETWEEN 1 AND 100`),
+  check("studio_definition_scope_check", sql`json_valid(${table.scopeJson}) AND length(CAST(${table.scopeJson} AS BLOB))<=2048`),
+  check("studio_definition_content_check", sql`json_valid(${table.contentJson}) AND length(CAST(${table.contentJson} AS BLOB))<=16384`),
+  check("studio_definition_version_check", sql`${table.version}>=1 AND ${table.version}<9007199254740991`),
+]);
