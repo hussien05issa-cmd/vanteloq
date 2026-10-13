@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { validateInquiry, inquiryConfiguration, deliverCustomPlanInquiry, CUSTOM_PLAN_NOTICE_VERSION, DEMO_INQUIRY_NOTICE_VERSION } from "../server/custom-plan-inquiry.ts";
+import { validateInquiry, inquiryConfiguration, deliverCustomPlanInquiry, ADVISORY_INQUIRY_NOTICE_VERSION, CUSTOM_PLAN_NOTICE_VERSION, DEMO_INQUIRY_NOTICE_VERSION } from "../server/custom-plan-inquiry.ts";
 import type { VanteloqRuntimeEnv } from "../db/index.ts";
 const env={RESEND_API_KEY:"fixture-secret",CUSTOM_PLAN_INQUIRY_TO:"private-owner@example.com",TURNSTILE_SITE_KEY:"public-site-key",TURNSTILE_SECRET_KEY:"captcha-secret",TURNSTILE_ALLOWED_HOSTNAMES:"vanteloq.com"} as VanteloqRuntimeEnv;
 const body={name:"Test owner",email:"visitor@example.com",company:"Example store",phone:"",needs:"We need a larger workspace for five retail locations.",website:"",consent:true,noticeVersion:CUSTOM_PLAN_NOTICE_VERSION,submissionId:"1a111111-1111-4111-8111-111111111111",token:"security-token"};
 const json=(x:unknown,status=200)=>new Response(JSON.stringify(x),{status,headers:{"content-type":"application/json"}});
 const demoBody = () => ({ ...body, purpose: "demo", company: "", needs: "", noticeVersion: DEMO_INQUIRY_NOTICE_VERSION, consentSubmittedAt: new Date().toISOString() });
+const advisoryBody = () => ({ ...body, purpose: "advisory", company: "", needs: "We need a clearer view of margins and inventory decisions.", noticeVersion: ADVISORY_INQUIRY_NOTICE_VERSION });
 test("public inquiry configuration never exposes delivery credentials or recipient",()=>{
  assert.deepEqual(inquiryConfiguration(env,"vanteloq.com"),{configured:true,siteKey:"public-site-key",action:"custom-plan"});
  assert.deepEqual(inquiryConfiguration(env,"evil.example"),{configured:false});
@@ -154,4 +155,40 @@ test("demo delivery can retry an unconfirmed provider response without duplicate
  assert.deepEqual(await deliverCustomPlanInquiry({ ...demo, token: "fresh-token" }, env, "vanteloq.com", request), { sent: true, reference: demo.submissionId });
  assert.equal(messages[0].body, messages[1].body);
  assert.equal(new Headers(messages[0].headers).get("Idempotency-Key"), new Headers(messages[1].headers).get("Idempotency-Key"));
+});
+
+test("advisory requests use a distinct consent notice and require a meaningful business priority", () => {
+ const advisory = advisoryBody();
+ const validated = validateInquiry(advisory);
+ assert.equal(validated.purpose, "advisory");
+ assert.equal(validated.company, "");
+ assert.equal(validated.noticeVersion, ADVISORY_INQUIRY_NOTICE_VERSION);
+ for (const changes of [
+  { consent: false },
+  { noticeVersion: CUSTOM_PLAN_NOTICE_VERSION },
+  { noticeVersion: DEMO_INQUIRY_NOTICE_VERSION },
+  { needs: "Too short" },
+  { needs: "" },
+ ]) assert.throws(() => validateInquiry({ ...advisory, ...changes }));
+});
+
+test("a confirmed advisory request is delivered only to the fixed owner as an advisory inquiry", async () => {
+ const advisory = advisoryBody();
+ const calls: Array<{ url: string; init: RequestInit }> = [];
+ const request = (async (url, init) => {
+  calls.push({ url: String(url), init: init! });
+  if (String(url).includes("siteverify")) return json({ success: true, hostname: "vanteloq.com", action: "custom-plan" });
+  return json({ id: "advisory-provider-receipt" });
+ }) as typeof fetch;
+ assert.deepEqual(await deliverCustomPlanInquiry(advisory, env, "vanteloq.com", request), { sent: true, reference: advisory.submissionId });
+ assert.equal(calls.length, 2);
+ const message = JSON.parse(calls[1].init.body as string);
+ assert.deepEqual(message.to, [env.CUSTOM_PLAN_INQUIRY_TO]);
+ assert.equal(message.reply_to, advisory.email);
+ assert.equal(message.subject, "Vanteloq Advisory inquiry");
+ assert.match(message.text, /Vanteloq Advisory inquiry/);
+ assert.match(message.text, /Contact consent: advisory-inquiry-v1/);
+ assert.match(message.text, /authorized a response about this advisory inquiry, not marketing enrollment/);
+ assert.match(message.text, /No subscription or payment was created/);
+ assert.doesNotMatch(message.text, /security-token|fixture-secret|captcha-secret/);
 });

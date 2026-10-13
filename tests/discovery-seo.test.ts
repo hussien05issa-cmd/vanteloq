@@ -59,6 +59,8 @@ test("sitemap dates come from article records or known new page content", () => 
     assert.ok(byUrl.has(absoluteUrl(path)), path);
     assert.equal(byUrl.get(absoluteUrl(path))?.lastModified, undefined, `No established content date for ${path}.`);
   }
+  assert.equal(byUrl.get(absoluteUrl("/advisory"))?.lastModified, "2026-10-13");
+  assert.equal(byUrl.get(absoluteUrl("/advisory"))?.priority, 0.85);
   for (const path of ["/solutions", "/solutions/dealerships", "/solutions/cafes", "/solutions/restaurants", "/integrations", "/integrations/square", "/integrations/lightspeed-r", "/tools", "/tools/cash-order-planner", "/tools/vehicle-holding-cost", "/about", "/about/editorial"]) {
     assert.equal(byUrl.get(absoluteUrl(path))?.lastModified, "2026-10-11", path);
   }

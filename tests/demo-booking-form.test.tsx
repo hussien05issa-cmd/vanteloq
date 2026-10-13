@@ -34,3 +34,25 @@ test("custom plan and contact forms preserve their description requirement and o
   assert.doesNotMatch(html, /schedule a Vanteloq demo/);
  }
 });
+
+test("advisory collection asks for one business priority with clear consent and a focused action", () => {
+ const html = renderToStaticMarkup(<CustomPlanForm purpose="advisory"/>);
+ assert.match(html, /<form aria-label="Vanteloq Advisory inquiry"/);
+ const input = (name: string) => html.match(new RegExp(`<input[^>]*name="${name}"[^>]*>`))?.[0] ?? "";
+ assert.match(input("name"), /required=""/);
+ assert.match(input("email"), /required=""/);
+ assert.doesNotMatch(input("company"), /required=/);
+ assert.doesNotMatch(input("phone"), /required=/);
+ assert.doesNotMatch(input("consent"), /checked=/);
+ const priority = html.match(/<textarea[^>]*name="needs"[^>]*>/)?.[0] ?? "";
+ assert.match(priority, /required=""/);
+ assert.match(priority, /minLength="20"/i);
+ assert.match(html, /What Would You Like to Improve\?/);
+ assert.match(html, /respond to my Vanteloq Advisory inquiry/);
+ assert.match(html, /does not subscribe me to marketing/);
+ assert.match(html, /through Resend, which may process them in the United States/);
+ assert.match(html, /Contact our Privacy Officer/);
+ assert.match(html, />Start the Conversation<\/button>/);
+ assert.match(html, /Share the business context needed to understand your priority/);
+ assert.doesNotMatch(html, /schedule a Vanteloq demo|Send Custom Plan Request/);
+});

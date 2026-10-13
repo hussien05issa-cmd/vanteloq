@@ -13,7 +13,7 @@ export default async ({ project, rect, text, frame, path, media }) => {
   ]), { at, dur, name });
   async function base(dir, label) {
     const p = await project({ dir, size: "1920x1080", fps: 30, background: "#050608" });
-    const logo = await p.add("/home/user/vanteloq-midnight-assets/vanteloq-mark.png");
+    const logo = await p.add("/home/user/vanteloq-midnight-assets/vanteloq-glass-symbol.png");
     p.compose([
       media({ file: logo, x: 100, y: 57, width: 72, height: 58, fit: "contain" }),
       t("Vanteloq", 186, 62, 360, 36, ink, 600),

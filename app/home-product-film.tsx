@@ -45,9 +45,9 @@ export default function HomeProductFilm() {
       <div className="home-film-stage" ref={stage}>
         {/* A native lazy poster avoids loading the video before the visitor plays it. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        {(!loaded || failed) && <img src="/brand/homepage-midnight-2026-10-12/product-poster.webp" alt="Vanteloq’s dark commerce dashboard illustration with readable sample sales, profit and margin figures." width={1920} height={1080} loading="lazy" decoding="async"/>}
-        <video ref={video} hidden={!loaded || failed} tabIndex={0} poster="/brand/homepage-midnight-2026-10-12/product-poster.webp" preload="none" controls={loaded && !failed} playsInline muted onPlay={() => setMessage('')} onError={() => { setFailed(true); setMessage('The film could not load. Please try again, or explore the demo.'); }} aria-label="Vanteloq product film: dark commerce overview, source records and Data Studio. Fictional sample records.">
-          {loaded && <source src="/brand/homepage-midnight-2026-10-12/product-film.mp4" type="video/mp4"/>}
+        {(!loaded || failed) && <img src="/brand/homepage-glass-2026-10-13/product-poster.webp" alt="Vanteloq’s dark commerce dashboard illustration with readable sample sales, profit and margin figures." width={1920} height={1080} loading="lazy" decoding="async"/>}
+        <video ref={video} hidden={!loaded || failed} tabIndex={0} poster="/brand/homepage-glass-2026-10-13/product-poster.webp" preload="none" controls={loaded && !failed} playsInline muted onPlay={() => setMessage('')} onError={() => { setFailed(true); setMessage('The film could not load. Please try again, or explore the demo.'); }} aria-label="Vanteloq product film: dark commerce overview, source records and Data Studio. Fictional sample records.">
+          {loaded && <source src="/brand/homepage-glass-2026-10-13/product-film.mp4" type="video/mp4"/>}
         </video>
         {failed && <div className="home-film-error"><p role="alert">{message}</p><button type="button" onClick={watch}>Try again</button><a href="/demo">Open the demo</a></div>}
       </div>

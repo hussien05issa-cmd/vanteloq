@@ -24,6 +24,55 @@ test("all installed brand files preserve the exact customer-supplied JPEG bytes"
   }
 });
 
+test("square favicons retain the original logo and keep its wordmark out of tab-sized images", async () => {
+  const { default: sharp } = await import("sharp");
+  const directory = new URL("../public/brand/glass-2026-10-12/", import.meta.url);
+  const svg = readFileSync(new URL("favicon-v2.svg", directory), "utf8");
+  const embedded = svg.match(/data:image\/jpeg;base64,([A-Za-z0-9+/=]+)/)?.[1];
+  assert.ok(embedded, "favicon embeds the supplied artwork");
+  assert.equal(createHash("sha256").update(Buffer.from(embedded, "base64")).digest("hex"), expectedArtwork.vanteloq.hash);
+  assert.equal(readFileSync(new URL("favicon.svg", directory), "utf8"), svg);
+  assert.equal(readFileSync(new URL("../public/favicon.svg", import.meta.url), "utf8"), svg);
+
+  for (const size of [16, 32, 48, 180]) {
+    const file = size === 180 ? "apple-touch-icon-v2.png" : `favicon-v2-${size}.png`;
+    const { data, info } = await sharp(readFileSync(new URL(file, directory))).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+    assert.equal(info.width, size);
+    assert.equal(info.height, size);
+    let silverPixels = 0;
+    let bluePixels = 0;
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const index = (y * size + x) * info.channels;
+        const [red, green, blue] = [data[index], data[index + 1], data[index + 2]];
+        if (red > 100 && green > 100 && blue > 100) silverPixels++;
+        if (blue > red + 50 && blue > green + 15) bluePixels++;
+        if (y >= size - Math.ceil(size * .13)) {
+          assert.ok(Math.max(red, green, blue) < 45, `${file} has no wordmark leakage at ${x},${y}`);
+        }
+      }
+    }
+    assert.ok(silverPixels > 0 && bluePixels > 0, `${file} retains the silver and blue symbol`);
+  }
+});
+
+test("the conventional and versioned ICO contain the complete 16, 32 and 48 pixel fallbacks", () => {
+  const directory = new URL("../public/brand/glass-2026-10-12/", import.meta.url);
+  const ico = readFileSync(new URL("favicon-v2.ico", directory));
+  assert.deepEqual(readFileSync(new URL("../public/favicon.ico", import.meta.url)), ico);
+  assert.equal(ico.readUInt16LE(0), 0);
+  assert.equal(ico.readUInt16LE(2), 1);
+  assert.equal(ico.readUInt16LE(4), 3);
+  for (const [index, size] of [16, 32, 48].entries()) {
+    const entry = 6 + index * 16;
+    assert.equal(ico[entry], size);
+    assert.equal(ico[entry + 1], size);
+    const length = ico.readUInt32LE(entry + 8);
+    const offset = ico.readUInt32LE(entry + 12);
+    assert.deepEqual(ico.subarray(offset, offset + length), readFileSync(new URL(`favicon-v2-${size}.png`, directory)));
+  }
+});
+
 test("rendered frames stay within the original image bounds and preserve its aspect ratio", () => {
   for (const product of products) {
     const artwork = PRODUCT_BRAND_ASSETS[product];

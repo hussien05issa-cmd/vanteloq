@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -7,6 +8,7 @@ import PublicFooter from "../app/public-footer";
 
 const homepage = renderToStaticMarkup(createElement(Home));
 const header = homepage.slice(homepage.indexOf('<header class="public-nav"'), homepage.indexOf('</header>', homepage.indexOf('<header class="public-nav"')));
+const sharedNavigation = readFileSync(new URL("../app/public-page-nav.tsx", import.meta.url), "utf8");
 
 test("the mobile disclosure identifies both navigation and account destinations without an expanded initial state", () => {
   assert.match(header, /class="public-nav-menu"/);
@@ -18,11 +20,18 @@ test("the mobile disclosure identifies both navigation and account destinations 
 });
 
 test("all public navigation, social destinations and account actions remain reachable in the header", () => {
-  for (const href of ["/how-it-works", "#connections", "/demo", "/pricing", "/help", "/book-demo", "#social"]) assert.ok(header.includes(`href="${href}"`), href);
+  for (const href of ["/how-it-works", "/advisory", "/demo", "/pricing", "/help", "/book-demo", "#social"]) assert.ok(header.includes(`href="${href}"`), href);
   for (const label of ["Sign in", "Create a workspace", "Instagram", "YouTube", "TikTok", "Facebook"]) assert.ok(header.includes(label), label);
   assert.match(header, /data-public-event="pricing_view"/);
   assert.match(header, /data-public-event="signup_start"/);
   assert.doesNotMatch(header, /Business analytics by LexEdge Consulting/);
+});
+
+test("shared public navigation promotes Advisory and keeps connections in Resources", () => {
+  assert.match(sharedNavigation, /href="\/advisory"/);
+  assert.match(sharedNavigation, /path === "\/advisory" \? "page"/);
+  assert.match(sharedNavigation, /href="\/#connections"/);
+  assert.match(sharedNavigation, />Connections & integrations</);
 });
 
 test("public polish preserves the source principle and business overview heading", () => {
@@ -37,6 +46,7 @@ test("both public footers identify Vanteloq Inc. and use the supplied parent art
     assert.match(html, /Vanteloq Inc\./);
     assert.match(html, /aria-label="Vanteloq logo"/);
     assert.match(html, /href="\/brand\/glass-2026-10-12\/vanteloq\.jpg"/);
+    assert.match(html, /href="\/advisory"/);
     assert.doesNotMatch(html, /lexedge/i);
   }
 });

@@ -80,9 +80,15 @@ export const metadata: Metadata = {
     images: [DEFAULT_SOCIAL_IMAGE],
   },
   icons: {
-    icon: { url: "/brand/glass-2026-10-12/favicon.svg", type: "image/svg+xml" },
-    shortcut: "/brand/glass-2026-10-12/favicon.svg",
-    apple: "/brand/glass-2026-10-12/vanteloq.jpg",
+    icon: [
+      { url: "/brand/glass-2026-10-12/favicon-v2.ico", type: "image/x-icon", sizes: "16x16 32x32 48x48" },
+      { url: "/brand/glass-2026-10-12/favicon-v2-16.png", type: "image/png", sizes: "16x16" },
+      { url: "/brand/glass-2026-10-12/favicon-v2-32.png", type: "image/png", sizes: "32x32" },
+      { url: "/brand/glass-2026-10-12/favicon-v2-48.png", type: "image/png", sizes: "48x48" },
+      { url: "/brand/glass-2026-10-12/favicon-v2.svg", type: "image/svg+xml", sizes: "any" },
+    ],
+    shortcut: "/brand/glass-2026-10-12/favicon-v2.ico",
+    apple: { url: "/brand/glass-2026-10-12/apple-touch-icon-v2.png", type: "image/png", sizes: "180x180" },
   },
 };
 

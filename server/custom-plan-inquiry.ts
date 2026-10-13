@@ -4,6 +4,7 @@ import { ApiError } from "./api.ts";
 const emailPattern = /^[A-Z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}@[A-Z0-9](?:[A-Z0-9.-]{0,188}[A-Z0-9])?\.[A-Z]{2,63}$/i;
 export const CUSTOM_PLAN_NOTICE_VERSION = "custom-plan-contact-v2";
 export const DEMO_INQUIRY_NOTICE_VERSION = "demo-request-v2";
+export const ADVISORY_INQUIRY_NOTICE_VERSION = "advisory-inquiry-v1";
 
 function field(value: unknown, name: string, max: number, required = true, multiline = false) {
   if (value === undefined && !required) return "";
@@ -22,8 +23,8 @@ export function inquiryConfiguration(env: VanteloqRuntimeEnv, hostname: string) 
 export function validateInquiry(body: Record<string, unknown>) {
   if (Object.keys(body).some(key => !["purpose", "name", "email", "company", "phone", "needs", "website", "consent", "noticeVersion", "consentSubmittedAt", "submissionId", "token"].includes(key))) throw new ApiError(400, "INQUIRY_INVALID", "The inquiry contains an unsupported field.");
   const purpose = body.purpose ?? "custom_plan";
-  if (purpose !== "custom_plan" && purpose !== "contact" && purpose !== "demo") throw new ApiError(400, "INQUIRY_INVALID", "Choose a valid inquiry type.");
-  const noticeVersion = purpose === "demo" ? DEMO_INQUIRY_NOTICE_VERSION : CUSTOM_PLAN_NOTICE_VERSION;
+  if (purpose !== "custom_plan" && purpose !== "contact" && purpose !== "demo" && purpose !== "advisory") throw new ApiError(400, "INQUIRY_INVALID", "Choose a valid inquiry type.");
+  const noticeVersion = purpose === "demo" ? DEMO_INQUIRY_NOTICE_VERSION : purpose === "advisory" ? ADVISORY_INQUIRY_NOTICE_VERSION : CUSTOM_PLAN_NOTICE_VERSION;
   if (body.consent !== true || body.noticeVersion !== noticeVersion) throw new ApiError(400, "INQUIRY_CONSENT_REQUIRED", "Confirm that we may contact you about this request.");
   let consentSubmittedAt = "";
   if (purpose === "demo") {
@@ -55,14 +56,14 @@ export async function deliverCustomPlanInquiry(body: Record<string, unknown>, en
     verification = await response.json();
   } catch { throw new ApiError(503, "INQUIRY_VERIFICATION_UNAVAILABLE", "Security verification could not finish. Please retry."); }
   if (verification.success !== true || verification.hostname?.toLowerCase() !== hostname.toLowerCase() || verification.action !== "custom-plan") throw new ApiError(400, "INQUIRY_VERIFICATION_FAILED", "Complete a fresh security check and try again.");
-  const contact = { purpose: inquiry.purpose, name: inquiry.name, company: inquiry.company, email: inquiry.email, phone: inquiry.phone, needs: inquiry.needs, submissionId: inquiry.submissionId, ...(inquiry.purpose === "demo" ? { noticeVersion: inquiry.noticeVersion, consentSubmittedAt: inquiry.consentSubmittedAt } : {}) };
+  const contact = { purpose: inquiry.purpose, name: inquiry.name, company: inquiry.company, email: inquiry.email, phone: inquiry.phone, needs: inquiry.needs, submissionId: inquiry.submissionId, ...((inquiry.purpose === "demo" || inquiry.purpose === "advisory") ? { noticeVersion: inquiry.noticeVersion } : {}), ...(inquiry.purpose === "demo" ? { consentSubmittedAt: inquiry.consentSubmittedAt } : {}) };
   const digest = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(contact))))).map(byte => byte.toString(16).padStart(2, "0")).join("");
   let result: { id?: unknown };
   try {
     const response = await request("https://api.resend.com/emails", { method: "POST", redirect: "manual", signal: AbortSignal.timeout(12_000),
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.RESEND_API_KEY!.trim()}`, "Idempotency-Key": `vanteloq-inquiry-${digest}` },
       body: JSON.stringify({ from: "Vanteloq <noreply@vanteloq.com>", to: [env.CUSTOM_PLAN_INQUIRY_TO!.trim()], reply_to: inquiry.email,
-        subject: inquiry.purpose === "demo" ? "Vanteloq free demo request" : inquiry.purpose === "custom_plan" ? "Vanteloq custom plan inquiry" : "Vanteloq privacy or support inquiry", text: `A visitor submitted a ${inquiry.purpose === "demo" ? "free demo scheduling request" : inquiry.purpose === "custom_plan" ? "custom plan request" : "privacy or support inquiry"}.\n\nName: ${inquiry.name}\nBusiness: ${inquiry.company || "Not provided"}\nEmail: ${inquiry.email}\nPhone: ${inquiry.phone || "Not provided"}\n\nMessage:\n${inquiry.needs || "Not provided"}\n\nReference: ${inquiry.submissionId}\nContact consent: ${inquiry.noticeVersion}${inquiry.consentSubmittedAt ? `\nVisitor consent submitted at (UTC): ${inquiry.consentSubmittedAt}` : ""}\nThe visitor authorized ${inquiry.purpose === "demo" ? "a response and demo scheduling" : "a response about this inquiry"}, not marketing enrollment. ${inquiry.purpose === "demo" ? "The demo is $0 with no obligation. No appointment, subscription or payment was created. Contact the visitor to arrange a time." : "No subscription or payment was created."}` }),
+        subject: inquiry.purpose === "demo" ? "Vanteloq free demo request" : inquiry.purpose === "advisory" ? "Vanteloq Advisory inquiry" : inquiry.purpose === "custom_plan" ? "Vanteloq custom plan inquiry" : "Vanteloq privacy or support inquiry", text: `A visitor submitted a ${inquiry.purpose === "demo" ? "free demo scheduling request" : inquiry.purpose === "advisory" ? "Vanteloq Advisory inquiry" : inquiry.purpose === "custom_plan" ? "custom plan request" : "privacy or support inquiry"}.\n\nName: ${inquiry.name}\nBusiness: ${inquiry.company || "Not provided"}\nEmail: ${inquiry.email}\nPhone: ${inquiry.phone || "Not provided"}\n\nMessage:\n${inquiry.needs || "Not provided"}\n\nReference: ${inquiry.submissionId}\nContact consent: ${inquiry.noticeVersion}${inquiry.consentSubmittedAt ? `\nVisitor consent submitted at (UTC): ${inquiry.consentSubmittedAt}` : ""}\nThe visitor authorized ${inquiry.purpose === "demo" ? "a response and demo scheduling" : inquiry.purpose === "advisory" ? "a response about this advisory inquiry" : "a response about this inquiry"}, not marketing enrollment. ${inquiry.purpose === "demo" ? "The demo is $0 with no obligation. No appointment, subscription or payment was created. Contact the visitor to arrange a time." : "No subscription or payment was created."}` }),
     });
     if (!response.ok) throw new Error("Delivery rejected");
     result = await response.json();

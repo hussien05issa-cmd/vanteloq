@@ -13,7 +13,7 @@ async function page(path) {
 
 test("discovery pages expose distinct crawlable content and correct canonical paths", async () => {
   const titles = new Set();
-  for (const path of ["/solutions", "/solutions/dealerships", "/solutions/cafes", "/solutions/restaurants", "/integrations", "/integrations/square", "/integrations/lightspeed-r", "/tools", "/tools/cash-order-planner", "/tools/vehicle-holding-cost", "/about", "/about/editorial"]) {
+  for (const path of ["/advisory", "/solutions", "/solutions/dealerships", "/solutions/cafes", "/solutions/restaurants", "/integrations", "/integrations/square", "/integrations/lightspeed-r", "/tools", "/tools/cash-order-planner", "/tools/vehicle-holding-cost", "/about", "/about/editorial"]) {
     const { response, html } = await page(path);
     assert.equal(response.status, 200, path);
     assert.equal((html.match(/<h1\b/g) ?? []).length, 1, `${path} needs one clear H1`);
@@ -55,7 +55,7 @@ test("empty resource categories remain navigable but are excluded from search el
     assert.match(html, /name="robots" content="noindex, follow"/);
     assert.ok(!sitemap.includes(`<loc>https://vanteloq.com/resources/${topic}</loc>`));
   }
-  for (const path of ["/solutions/dealerships", "/integrations/square", "/tools/cash-order-planner", "/about/editorial", "/book-demo"]) {
+  for (const path of ["/advisory", "/solutions/dealerships", "/integrations/square", "/tools/cash-order-planner", "/about/editorial", "/book-demo"]) {
     assert.ok(sitemap.includes(`<loc>https://vanteloq.com${path}</loc>`), path);
   }
 });
