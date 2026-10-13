@@ -31,12 +31,12 @@ test("public polish preserves the source principle and business overview heading
   assert.doesNotMatch(homepage, /Retail\. Dealerships\. Cafés\. Restaurants\./);
 });
 
-test("both public footers display the supplied LexEdge artwork through the shared full-logo component", () => {
+test("both public footers identify Vanteloq Inc. and use the supplied parent artwork", () => {
   const footer = renderToStaticMarkup(createElement(PublicFooter));
   for (const html of [homepage, footer]) {
-    assert.match(html, /product-brand-artwork lexedge full/);
-    assert.match(html, /aria-label="LexEdge Consulting logo"/);
-    assert.match(html, /href="\/brand\/origin-metal-2026\/lexedge\.jpg"/);
-    assert.doesNotMatch(html, /lexedge-consulting-logo-web\.png/);
+    assert.match(html, /Vanteloq Inc\./);
+    assert.match(html, /aria-label="Vanteloq logo"/);
+    assert.match(html, /href="\/brand\/glass-2026-10-12\/vanteloq\.jpg"/);
+    assert.doesNotMatch(html, /lexedge/i);
   }
 });

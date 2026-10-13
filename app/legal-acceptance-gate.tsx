@@ -76,7 +76,7 @@ export default function LegalAcceptanceGate({ children }: { children: ReactNode 
     <header><ProductBrandLogo product="vanteloq" priority/><span><b>Policy update</b><small>REVIEW REQUIRED</small></span></header>
     <p>CURRENT SERVICE TERMS</p>
     <h1>Review the updated Vanteloq terms.</h1>
-    <span>The update explains self service account deletion, billing cancellation during workspace deletion, connected service processing, retention exceptions, and customer responsibilities.</span>
+    <span>The update identifies Vanteloq Inc. as the company that operates Vanteloq and is responsible for the service and its privacy notices.</span>
     <div className="legal-acceptance-links"><a href="/terms" target="_blank" rel="noreferrer">Read Terms of Service</a><a href="/privacy" target="_blank" rel="noreferrer">Read Privacy Policy</a><a href="/data-processing" target="_blank" rel="noreferrer">Read Data Processing Addendum</a><a href="/subprocessors" target="_blank" rel="noreferrer">View subprocessors</a></div>
     <label><input type="checkbox" disabled={!checkedVersions || needsRefresh || busy} checked={checked} onChange={(event) => setChecked(event.target.checked)}/><span>I agree to the current Terms of Service and acknowledge the Privacy Policy and Data Processing Addendum.</span></label>
     {error && <div className="billing-onboarding-message error" role="alert">{error}</div>}

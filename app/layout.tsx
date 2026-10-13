@@ -71,7 +71,7 @@ export const metadata: Metadata = {
     siteName: "Vanteloq",
     title: "Vanteloq | Sales, Inventory and Cash Flow Analytics",
     description: "Sales, stock and cash, with the records behind the numbers. Explore Vanteloq, BookLoQ and the new Data Studio.",
-    images: [{ url: DEFAULT_SOCIAL_IMAGE, width: 1487, height: 1058, alt: "Vanteloq business operating view" }],
+    images: [{ url: DEFAULT_SOCIAL_IMAGE, width: 1254, height: 1254, alt: "Vanteloq glass blue and silver logo" }],
   },
   twitter: {
     card: "summary_large_image",
@@ -80,9 +80,9 @@ export const metadata: Metadata = {
     images: [DEFAULT_SOCIAL_IMAGE],
   },
   icons: {
-    icon: { url: "/brand/origin-metal-2026/favicon.svg", type: "image/svg+xml" },
-    shortcut: "/brand/origin-metal-2026/favicon.svg",
-    apple: "/brand/origin-metal-2026/vanteloq.jpg",
+    icon: { url: "/brand/glass-2026-10-12/favicon.svg", type: "image/svg+xml" },
+    shortcut: "/brand/glass-2026-10-12/favicon.svg",
+    apple: "/brand/glass-2026-10-12/vanteloq.jpg",
   },
 };
 

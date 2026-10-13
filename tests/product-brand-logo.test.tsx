@@ -7,9 +7,8 @@ import ProductBrandLogo from "../app/product-brand-logo";
 import { PRODUCT_BRAND_ASSETS, type ProductBrand } from "../app/product-brand-assets";
 
 const expectedArtwork = {
-  vanteloq: { width: 1254, height: 1254, hash: "a4d20a2a773f104ca5b98be1270e8a2765309eaa7a62c4227af8306ed134123f" },
+  vanteloq: { width: 1254, height: 1254, hash: "0f81ca4d90c976eb13028ffee2f6f1746a3d9bea25f8fe467bb276700743da71" },
   bookloq: { width: 1280, height: 853, hash: "e387ae8b42cc2b5242526b53acd20f4a244094b0a043d7cadced8fec8147221e" },
-  lexedge: { width: 1254, height: 1254, hash: "841c30596a398833c0d34388fc599e40c0260c7a9e91095f6505e5eea00e6dbb" },
 } as const;
 
 const products = Object.keys(expectedArtwork) as ProductBrand[];
@@ -17,7 +16,7 @@ const products = Object.keys(expectedArtwork) as ProductBrand[];
 test("all installed brand files preserve the exact customer-supplied JPEG bytes", () => {
   for (const product of products) {
     const artwork = PRODUCT_BRAND_ASSETS[product];
-    assert.equal(artwork.source, `/brand/origin-metal-2026/${product}.jpg`);
+    assert.equal(artwork.source, product === "vanteloq" ? "/brand/glass-2026-10-12/vanteloq.jpg" : `/brand/origin-metal-2026/${product}.jpg`);
     assert.equal(artwork.width, expectedArtwork[product].width);
     assert.equal(artwork.height, expectedArtwork[product].height);
     const bytes = readFileSync(new URL(`../public${artwork.source}`, import.meta.url));
@@ -85,9 +84,16 @@ test("non-priority marks avoid eager resource hints and default to the icon fram
 });
 
 test("each viewport clips to its own crop when differently shaped logo containers share a page", () => {
-  const html = renderToStaticMarkup(<><ProductBrandLogo product="vanteloq"/><ProductBrandLogo product="bookloq" variant="full"/><ProductBrandLogo product="lexedge"/></>);
+  const html = renderToStaticMarkup(<><ProductBrandLogo product="vanteloq"/><ProductBrandLogo product="bookloq" variant="full"/><ProductBrandLogo product="vanteloq" variant="full" fullArtwork/></>);
   const clipIds = [...html.matchAll(/<clipPath id="([^"]+)"/g)].map(match => match[1]);
   assert.equal(clipIds.length, 3);
   assert.equal(new Set(clipIds).size, 3);
   for (const clipId of clipIds) assert.ok(html.includes(`clip-path="url(#${clipId})"`));
+});
+
+test("the dedicated brand banner can display the full supplied parent artwork", () => {
+  const html = renderToStaticMarkup(<ProductBrandLogo product="vanteloq" variant="full" fullArtwork/>);
+  const frame = PRODUCT_BRAND_ASSETS.vanteloq.frames.full;
+  assert.match(html, /product-brand-artwork vanteloq full/);
+  assert.ok(html.includes(`viewBox="${frame.x} ${frame.y} ${frame.width} ${frame.height}"`));
 });

@@ -7,6 +7,7 @@ type ProductBrandLogoProps = {
   variant?: ProductBrandVariant;
   priority?: boolean;
   clearCarrier?: boolean;
+  fullArtwork?: boolean;
   className?: string;
 };
 
@@ -15,12 +16,13 @@ export default function ProductBrandLogo({
   variant = "icon",
   priority = false,
   clearCarrier = false,
+  fullArtwork = false,
   className = "",
 }: ProductBrandLogoProps) {
   const artwork = PRODUCT_BRAND_ASSETS[product];
   // Vanteloq uses the symbol alone, including legacy full-lockup call sites.
-  // BookLoQ and LexEdge retain their supplied wordmarks.
-  const displayedVariant = product === "vanteloq" ? "icon" : variant;
+  // Full parent artwork is reserved for the dedicated brand banner.
+  const displayedVariant = product === "vanteloq" && !fullArtwork ? "icon" : variant;
   const frame = artwork.frames[displayedVariant];
   const clipId = useId();
   const carrierMaskId = `${clipId}-carrier`;

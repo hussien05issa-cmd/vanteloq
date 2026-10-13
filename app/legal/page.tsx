@@ -23,7 +23,7 @@ export default function LegalPage() {
         </div>
       </PolicySection>
       <PolicySection id="operator" title="Who operates Vanteloq">
-        <p>Vanteloq is operated by 2855706 ALBERTA INC, doing business as LexEdge Consulting, in Alberta, Canada. References to “Vanteloq,” “we,” “us,” or “our” in these documents refer to 2855706 ALBERTA INC operating the Vanteloq service.</p>
+        <p>Vanteloq is a product of Vanteloq Inc., which operates the service in Alberta, Canada. References to “Vanteloq,” “we,” “us,” or “our” in these documents refer to Vanteloq Inc. operating the Vanteloq service.</p>
         <p>Questions about these documents can be sent through <Link href="/contact">our private contact form</Link>.</p>
       </PolicySection>
       <PolicySection id="boundaries" title="Connected data and product boundaries">

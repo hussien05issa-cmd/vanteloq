@@ -3,7 +3,6 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: clamp(18px, 4vw, 44px);
   min-height: 210px;
   padding: 28px;
   background: #000;
@@ -11,14 +10,13 @@
   border-radius: 22px;
   box-sizing: border-box;
 }
-.brand-signature > .product-brand-logo.product-brand-artwork:is(.vanteloq,.lexedge).full {
-  width: min(42%, 260px);
+.brand-signature > .product-brand-logo.product-brand-artwork.vanteloq.full {
+  width: min(100%, 260px);
   height: auto;
-  aspect-ratio: 1.5;
+  aspect-ratio: 803 / 528;
   border: 0;
   box-shadow: none;
 }
-.brand-signature-divider { width: 1px; height: 80px; background: #40516a; }
 .brand-signature > .product-brand-logo.product-brand-artwork.vanteloq.icon {
   width: min(28%, 112px);
   height: auto;
@@ -26,5 +24,5 @@
   border: 0;
   box-shadow: none;
 }
-@media (max-width: 540px) { .brand-signature { min-height: 160px; padding: 20px; gap: 18px; } .brand-signature-divider { height: 64px; } }
-@media (forced-colors: active) { .brand-signature { border-color: CanvasText; } .brand-signature-divider { background: CanvasText; } }
+@media (max-width: 540px) { .brand-signature { min-height: 160px; padding: 20px; } }
+@media (forced-colors: active) { .brand-signature { border-color: CanvasText; } }

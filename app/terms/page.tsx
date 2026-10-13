@@ -13,7 +13,7 @@ export default function TermsPage() {
       <div className="legal-note"><strong>Please read these terms carefully.</strong> By creating an account, accepting an order, or using Vanteloq, you agree to these Terms of Service on behalf of yourself and, where applicable, the organization you represent.</div>
 
       <PolicySection id="agreement" title="1. Agreement and operator">
-        <p>Vanteloq is operated by 2855706 ALBERTA INC, doing business as LexEdge Consulting, in Alberta, Canada. “Vanteloq,” “we,” “us,” and “our” refer to 2855706 ALBERTA INC operating the Vanteloq service. “Customer” means the organization that creates or receives a workspace. “User” means an individual permitted to access that workspace.</p>
+        <p>Vanteloq is a product of Vanteloq Inc., which operates the service in Alberta, Canada. “Vanteloq,” “we,” “us,” and “our” refer to Vanteloq Inc. operating the Vanteloq service. “Customer” means the organization that creates or receives a workspace. “User” means an individual permitted to access that workspace.</p>
         <p>If you use Vanteloq for an organization, you confirm that you have authority to accept these terms for that organization. If you do not have that authority or do not agree, do not create or use the workspace.</p>
       </PolicySection>
 

@@ -69,22 +69,12 @@
   align-items: start;
   margin-top: 0;
 }
-.reference-home .home-footer-owner .product-brand-logo.lexedge.full {
-  width: 174px;
-  height: 116px;
-  max-width: 100%;
-}
 .reference-home .home-footer-owner > span:not(.product-brand-logo) {
   display: block;
   max-width: 100%;
   font-size: 13px;
   line-height: 1.65;
   letter-spacing: normal;
-}
-.public-shell-footer-main > div > .product-brand-logo.lexedge.full {
-  width: 174px;
-  height: 116px;
-  margin: 4px 0 20px;
 }
 @media (min-width: 881px) and (max-width: 1280px) {
   .reference-home .public-nav { grid-template-columns: minmax(0, 1fr) auto; row-gap: 10px; }

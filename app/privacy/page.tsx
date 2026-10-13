@@ -13,7 +13,7 @@ export default function PrivacyPage() {
     <LegalShell eyebrow="PRIVACY POLICY" title="Your information should have a clear purpose." summary="This policy explains what Vanteloq handles, why it is needed, and the choices available to account holders and other individuals." updated="October 12, 2026">
       <PolicySection id="scope" title="1. Scope and accountability">
         <p>This Privacy Policy applies when you visit vanteloq.com, create or use a Vanteloq account, administer a workspace, connect a supported service, submit a form, or contact us.</p>
-        <p>2855706 ALBERTA INC, doing business as LexEdge Consulting and operating Vanteloq, is responsible for personal information under its control. The privacy contact is the Vanteloq Privacy Officer through <LegalContactLink/>.</p>
+        <p>Vanteloq Inc. operates Vanteloq and is responsible for personal information under its control. The privacy contact is the Vanteloq Privacy Officer through <LegalContactLink/>.</p>
         <p>Vanteloq follows Alberta’s <a href="https://www.alberta.ca/personal-information-protection-act">Personal Information Protection Act</a> and Canada’s <a href="https://www.priv.gc.ca/en/privacy-topics/privacy-laws-in-canada/the-personal-information-protection-and-electronic-documents-act-pipeda/">Personal Information Protection and Electronic Documents Act</a> where each law applies.</p>
       </PolicySection>
 

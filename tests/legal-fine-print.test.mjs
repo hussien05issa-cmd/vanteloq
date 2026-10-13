@@ -46,7 +46,8 @@ test("legal and retention documents identify the operator and retain deletion li
   const shell = read("../app/legal-shell.tsx");
   const versions = read("../shared/legal-versions.ts");
 
-  assert.match(legal, /2855706 ALBERTA INC/);
+  assert.match(legal, /Vanteloq Inc\./);
+  assert.doesNotMatch(legal, /2855706|LexEdge/i);
   assert.match(legal, /does not guarantee sales, profit, legal compliance/);
   assert.match(retention, /Disconnection is not the same as deletion of lawfully retained accounting records/);
   assert.match(retention, /unsubscribe and suppression records/i);

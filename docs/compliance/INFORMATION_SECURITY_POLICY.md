@@ -2,10 +2,11 @@
 
 | Document control | Value |
 | --- | --- |
-| Organization | LexEdge Consulting, operating Vanteloq |
+| Organization | Vanteloq Inc., operating Vanteloq |
 | Policy owner | Hussien Issa, Owner and Security Lead |
-| Version | 1.0 |
+| Version | 1.1 |
 | Prepared | 2026-08-13 |
+| Operator identity updated | 2026-10-12 |
 | Review cycle | Quarterly control review; full annual review |
 | Approval status | Awaiting owner approval |
 

@@ -97,7 +97,7 @@ test("a confirmed demo request emails only the owner with consent evidence and a
  assert.deepEqual(message.to, [env.CUSTOM_PLAN_INQUIRY_TO]);
  assert.equal(message.reply_to, demo.email);
  assert.equal(message.subject, "Vanteloq free demo request");
- assert.match(message.text, /Contact consent: demo-request-v1/);
+ assert.match(message.text, /Contact consent: demo-request-v2/);
  assert.ok(message.text.includes(`Visitor consent submitted at (UTC): ${demo.consentSubmittedAt}`));
  assert.match(message.text, /a response and demo scheduling, not marketing enrollment/);
  assert.match(message.text, /No appointment, subscription or payment was created/);

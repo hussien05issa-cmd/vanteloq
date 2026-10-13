@@ -13,7 +13,8 @@ test("demo collection presents required contact fields, optional interests and u
  assert.match(interests, /maxLength="3000"/i);
  assert.doesNotMatch(interests, /required=|minLength=/i);
  assert.match(html, /Work Email/);
- assert.match(html, /2855706 ALBERTA INC\., trading as LexEdge Consulting/);
+ assert.match(html, /Vanteloq Inc\./);
+ assert.doesNotMatch(html, /2855706|LexEdge/i);
  assert.match(html, /respond to my request and schedule a Vanteloq demo/);
  assert.match(html, /does not subscribe me to marketing/);
  assert.match(html, /through Resend, which may process them in the United States/);

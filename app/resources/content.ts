@@ -663,7 +663,7 @@ const articles: readonly ResourceArticle[] = [
     published: "2026-08-30",
     updated: "2026-08-30",
     hero: {
-      src: "/brand/vanteloq-command-ledger.webp",
+      src: "/brand/glass-2026-10-12/command-ledger.svg",
       alt: "Vanteloq command centre showing sales, margin, cash, inventory, purchasing and accountable business decisions in one operating view.",
       width: 1487,
       height: 1058,

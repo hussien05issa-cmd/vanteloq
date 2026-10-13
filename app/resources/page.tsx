@@ -14,7 +14,7 @@ export const metadata: Metadata = {
     url: "/resources",
     title: "Small Business Operations Resources | Vanteloq",
     description: "Actionable, source-aware guides for business owners and operators.",
-    images: [{ url: DEFAULT_SOCIAL_IMAGE, width: 1487, height: 1058, alt: "Vanteloq business operating view" }],
+    images: [{ url: DEFAULT_SOCIAL_IMAGE, width: 1254, height: 1254, alt: "Vanteloq glass blue and silver logo" }],
   },
   twitter: {
     card: "summary_large_image",
@@ -39,7 +39,7 @@ export default function ResourcesPage() {
           <aside aria-label="Editorial standard">
             <figure>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/brand/vanteloq-command-ledger.webp" alt="Vanteloq command centre with sales, margin, cash, inventory and decision views." width={1487} height={1058} loading="eager" fetchPriority="high" />
+              <img src="/brand/glass-2026-10-12/command-ledger.svg" alt="Vanteloq command centre with sales, margin, cash, inventory and decision views." width={1487} height={1058} loading="eager" fetchPriority="high" />
               <figcaption>Real Vanteloq interface · Illustrative values</figcaption>
             </figure>
             <div><span>OUR EDITORIAL STANDARD</span><strong>Evidence before advice.</strong><p>Each guide separates facts, formulas, assumptions and limitations so you can see what a decision actually depends on.</p><Link href="/about/editorial">Read our editorial method</Link></div>

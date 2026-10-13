@@ -9,7 +9,7 @@ test("demo request route enforces its consent boundary, retries unconfirmed deli
  const originalFetchDescriptor = Object.getOwnPropertyDescriptor(globalThis, originalFetchSymbol);
  const body = {
   purpose: "demo", name: "Demo visitor", email: "visitor@example.com", consent: true,
-  noticeVersion: "demo-request-v1", consentSubmittedAt: new Date().toISOString(),
+  noticeVersion: "demo-request-v2", consentSubmittedAt: new Date().toISOString(),
   submissionId: "11111111-1111-4111-8111-111111111111", website: "", token: "first-demo-token",
  };
  let address = 10, providerStatus = 200, verification = { success: true, hostname: "vanteloq.example", action: "custom-plan" };
@@ -38,7 +38,7 @@ test("demo request route enforces its consent boundary, retries unconfirmed deli
    assert.equal(message.reply_to, body.email);
    assert.equal(message.subject, "Vanteloq free demo request");
    assert.ok(message.text.includes(body.consentSubmittedAt));
-   assert.match(message.text, /demo-request-v1/);
+   assert.match(message.text, /demo-request-v2/);
    assert.match(message.text, /not marketing enrollment/);
    assert.match(message.text, /No appointment, subscription or payment was created/);
    assert.doesNotMatch(message.text, /first-demo-token|fresh-demo-token|captcha-secret|fixture-secret/);

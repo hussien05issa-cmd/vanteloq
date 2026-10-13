@@ -3,7 +3,7 @@ import { SOCIAL_PROFILES } from "./social-profiles";
 
 export const SITE_NAME = "Vanteloq";
 export const SITE_ORIGIN = CANONICAL_APP_ORIGIN;
-export const DEFAULT_SOCIAL_IMAGE = "/brand/vanteloq-command-ledger.png";
+export const DEFAULT_SOCIAL_IMAGE = "/brand/glass-2026-10-12/vanteloq.jpg";
 
 export function absoluteUrl(path = "/") {
   return new URL(path, `${SITE_ORIGIN}/`).toString();
@@ -18,12 +18,12 @@ export const organizationJsonLd = {
   "@type": "Organization",
   "@id": `${SITE_ORIGIN}/#organization`,
   name: SITE_NAME,
-  legalName: "2855706 ALBERTA INC",
-  alternateName: "LexEdge Consulting",
+  legalName: "Vanteloq Inc.",
+  alternateName: "Vanteloq",
   url: SITE_ORIGIN,
   email: "support@vanteloq.com",
   sameAs: Object.values(SOCIAL_PROFILES).map((profile) => profile.href),
-  logo: absoluteUrl("/brand/origin-metal-2026/vanteloq.jpg"),
+  logo: absoluteUrl("/brand/glass-2026-10-12/vanteloq.jpg"),
   description:
-    "Vanteloq is operated by 2855706 ALBERTA INC, doing business as LexEdge Consulting. It connects business source records with operating workflows, financial review and reporting.",
+    "Vanteloq is a product of Vanteloq Inc. It connects business source records with operating workflows, financial review and reporting.",
 };

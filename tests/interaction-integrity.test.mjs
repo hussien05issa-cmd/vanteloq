@@ -90,8 +90,8 @@ test("product branding uses the supplied artwork without an added trademark or r
     readFile(new URL("../app/finance-proof.tsx", import.meta.url), "utf8"),
   ]);
   assert.match(artwork, /\/brand\/origin-metal-2026\/bookloq\.jpg/);
-  assert.match(artwork, /\/brand\/origin-metal-2026\/vanteloq\.jpg/);
-  assert.match(artwork, /\/brand\/origin-metal-2026\/lexedge\.jpg/);
+  assert.match(artwork, /\/brand\/glass-2026-10-12\/vanteloq\.jpg/);
+  assert.doesNotMatch(artwork, /lexedge/i);
   assert.match(productLogoSource, /<image/);
   assert.doesNotMatch(productLogoSource, /brand-trademark|>™<\/sup>|<path/);
   assert.match(homepage, /<FinanceProof\s*\/>/);

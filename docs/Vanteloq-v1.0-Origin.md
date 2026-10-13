@@ -6,13 +6,13 @@ Canonical Google Docs handover: https://docs.google.com/document/d/19gsY0oAZfxoG
 
 Review date: October 11, 2026
 
-Operator: 2855706 ALBERTA INC, doing business as LexEdge Consulting.
+Operator: Vanteloq Inc. Operator identity and branding updated October 12, 2026.
 
 This is the canonical Origin handover. It supersedes earlier Origin release summaries. Legal policies, source history, migrations, test reports and deployment receipts remain supporting records. This document does not replace customer terms or provider agreements.
 
 ## Release decision
 
-Vanteloq provides source-aware operations and analytics. BookLoQ is its accounting and cash workspace, purchased separately or as an add-on. LexEdge Consulting operates the product. Owners can inspect performance, follow a total to permitted records, review work requiring attention and maintain a dashboard suited to their business.
+Vanteloq provides source-aware operations and analytics. BookLoQ is its accounting and cash workspace, purchased separately or as an add-on. Vanteloq Inc. operates the product. Owners can inspect performance, follow a total to permitted records, review work requiring attention and maintain a dashboard suited to their business.
 
 The site is live at https://vanteloq.com/. The baseline entering the October 11 connected-workflow audit was release 355. Earlier audit increments remain recorded below. This record supports a controlled release of implemented workflows, not completion of every requested accounting, restaurant or dealership system. Credentials, a saved connection, provider approval and reconciled production data are separate milestones.
 
@@ -211,7 +211,7 @@ Maintain least access, rotation/expiry ownership and a private secret inventory.
 
 ### Policy alignment
 
-Published operator: 2855706 ALBERTA INC, doing business as LexEdge Consulting. Reviewed privacy/provider disclosures cover operating records, AI, linked files, processors, retention and controls. Privacy version is 2026-10-04; Terms is 2026-10-01. Changes to data, scopes, processing, memory or retention require notice/consent review before activation.
+Operator identity: Vanteloq Inc., as supplied by the owner on October 12, 2026. Reviewed privacy/provider disclosures cover operating records, AI, linked files, processors, retention and controls. Privacy and Terms versions are 2026-10-12. The identity update retains the existing privacy, processing, retention and customer-responsibility clauses. Existing historical acceptance records remain unchanged; the current legal and data-use checks require fresh acceptance where applicable. Changes to data, scopes, processing, memory or retention require notice/consent review before activation.
 
 Alberta PIPA applies to relevant private-sector Alberta activity; federal PIPEDA can apply to interprovincial/international commercial handling depending on facts. Safeguards, reasonable collection, accuracy and retention/destruction require actual practice. References: [Alberta PIPA](https://oipc.ab.ca/legislation/pipa/), [organisation responsibilities](https://www.alberta.ca/organization-responsibilities-for-protecting-personal-information), [OPC legislation](https://www.priv.gc.ca/en/privacy-topics/privacy-laws-in-canada/02_05_d_15/).
 
@@ -357,7 +357,7 @@ The competitive direction is a source-to-decision-to-action-to-outcome workflow,
 
 ### October 11 brand and midnight appearance refinement
 
-The three supplied metallic identities replace the previous Vanteloq, BookLoQ and LexEdge UI artwork. Shared components frame the original JPEG pixels on black carriers across navigation, authentication, product demonstrations, BookLoQ, AI and social/ownership surfaces. Third-party integration identities are unchanged.
+The latest owner-supplied glass Vanteloq artwork in `public/brand/glass-2026-10-12/vanteloq.jpg` replaces the earlier Vanteloq UI artwork. Vanteloq Inc. is the product operator, and previous secondary company logos, banners and attribution are removed from current product surfaces. BookLoQ retains its supplied artwork, and Vanteloq AI retains its orbital identity. Shared components display the original artwork across navigation, authentication, product demonstrations and public surfaces. Third-party integration identities are unchanged.
 
 The incomplete phone branch's graphite direction is completed in the existing workspace appearance system, preserving Light, Dark and System, saved preferences, cross-tab/device changes and portal appearance. Dense records use opaque surfaces; cobalt controls, readable secondary text, financial signs and restrained semantic colours retain meaning. Geist and tabular financial numbers remain consistent. Decorative source/Pulse dots and the indefinite synchronisation spin are removed while status labels remain.
 

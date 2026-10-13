@@ -2,8 +2,8 @@ import type { VanteloqRuntimeEnv } from "../db/index.ts";
 import { ApiError } from "./api.ts";
 
 const emailPattern = /^[A-Z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}@[A-Z0-9](?:[A-Z0-9.-]{0,188}[A-Z0-9])?\.[A-Z]{2,63}$/i;
-export const CUSTOM_PLAN_NOTICE_VERSION = "custom-plan-contact-v1";
-export const DEMO_INQUIRY_NOTICE_VERSION = "demo-request-v1";
+export const CUSTOM_PLAN_NOTICE_VERSION = "custom-plan-contact-v2";
+export const DEMO_INQUIRY_NOTICE_VERSION = "demo-request-v2";
 
 function field(value: unknown, name: string, max: number, required = true, multiline = false) {
   if (value === undefined && !required) return "";

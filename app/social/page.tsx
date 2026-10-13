@@ -6,11 +6,11 @@ import { SOCIAL_PROFILES } from "../social-profiles";
 import "./social-hub.css";
 
 export const metadata: Metadata = {
-  title: "Follow Vanteloq | Lexedge Consulting",
+  title: "Follow Vanteloq",
   description: "Connect with Vanteloq on Instagram, TikTok, YouTube and Facebook. Follow product updates, practical business insights and the team behind the platform.",
   alternates: { canonical: "/social" },
-  openGraph: { title: "Follow the Vanteloq Journey", description: "Business insights, product updates and the build behind Vanteloq by Lexedge Consulting.", url: "/social", type: "website" },
-  twitter: { title: "Follow the Vanteloq Journey", description: "Connect with Vanteloq by Lexedge Consulting." },
+  openGraph: { title: "Follow the Vanteloq Journey", description: "Business insights, product updates and the build behind Vanteloq Inc.", url: "/social", type: "website" },
+  twitter: { title: "Follow the Vanteloq Journey", description: "Connect with Vanteloq Inc." },
 };
 
 export default function SocialHubPage() {
@@ -18,7 +18,7 @@ export default function SocialHubPage() {
     <a className="social-hub-skip" href="#social-channels">Skip to Social Channels</a>
     <div className="social-hub-wrap">
       <header className="social-hub-nav">
-        <div className="social-hub-brand"><a href="https://lexedgeconsulting.com/">LEXEDGE</a><span aria-hidden="true">×</span><Link href="/">VANTELOQ</Link></div>
+        <div className="social-hub-brand"><Link href="/">VANTELOQ</Link></div>
         <Link className="social-hub-home" href="/">Visit Vanteloq <span aria-hidden="true">↗︎</span></Link>
       </header>
       <main>
@@ -42,11 +42,11 @@ export default function SocialHubPage() {
           </article>)}
         </section>
         <section className="social-hub-cta" aria-labelledby="social-hub-explore">
-          <div><h2 id="social-hub-explore">Better systems.<br/>Stronger businesses.</h2><p>Consulting, analytics and business software from Lexedge Consulting and Vanteloq.</p></div>
+          <div><h2 id="social-hub-explore">Better systems.<br/>Stronger businesses.</h2><p>Business analytics and operational software from Vanteloq Inc.</p></div>
           <div className="social-hub-cta-actions"><Link className="social-hub-explore" href="/">Explore Vanteloq <span aria-hidden="true">↗︎</span></Link><Link href="/demo">Try the Interactive Demo <span aria-hidden="true">→</span></Link></div>
         </section>
       </main>
-      <footer className="social-hub-footer"><div><strong>Lexedge Consulting × Vanteloq</strong><p>Business clarity. Practical systems. Better decisions.</p></div><nav aria-label="Social page footer"><Link href="/contact">Contact</Link><Link href="/privacy">Privacy</Link><Link href="/">Home</Link></nav></footer>
+      <footer className="social-hub-footer"><div><strong>Vanteloq Inc.</strong><p>Business clarity. Practical systems. Better decisions.</p></div><nav aria-label="Social page footer"><Link href="/contact">Contact</Link><Link href="/privacy">Privacy</Link><Link href="/">Home</Link></nav></footer>
     </div>
   </div>;
 }

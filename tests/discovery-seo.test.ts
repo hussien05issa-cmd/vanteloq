@@ -4,7 +4,7 @@ import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import sitemap from "../app/sitemap";
-import { absoluteUrl, organizationJsonLd } from "../app/seo";
+import { absoluteUrl, DEFAULT_SOCIAL_IMAGE, organizationJsonLd } from "../app/seo";
 import { SOCIAL_PROFILES } from "../app/social-profiles";
 import { RESOURCE_ARTICLES, RESOURCE_CATEGORIES, getArticlesByCategory, getReadingTime } from "../app/resources/content";
 import { RESOURCE_ARTICLE_SUMMARIES } from "../app/resources/article-index";
@@ -15,11 +15,13 @@ import EditorialPage, { metadata as editorialMetadata } from "../app/about/edito
 
 test("organization identity and public profiles describe the actual operator", () => {
   assert.equal(organizationJsonLd.name, "Vanteloq");
-  assert.equal(organizationJsonLd.legalName, "2855706 ALBERTA INC");
-  assert.equal(organizationJsonLd.alternateName, "LexEdge Consulting");
+  assert.equal(organizationJsonLd.legalName, "Vanteloq Inc.");
+  assert.equal(organizationJsonLd.alternateName, "Vanteloq");
   assert.equal(organizationJsonLd.email, "support@vanteloq.com");
+  assert.equal(DEFAULT_SOCIAL_IMAGE, "/brand/glass-2026-10-12/vanteloq.jpg");
+  assert.equal(organizationJsonLd.logo, absoluteUrl(DEFAULT_SOCIAL_IMAGE));
   assert.deepEqual(organizationJsonLd.sameAs, Object.values(SOCIAL_PROFILES).map(profile => profile.href));
-  assert.doesNotMatch(JSON.stringify(organizationJsonLd), /aggregateRating|review|award|certification/);
+  for (const key of ["aggregateRating", "review", "award", "certification"]) assert.equal(key in organizationJsonLd, false);
 });
 
 test("lightweight resource summaries cover the complete published catalogue", () => {
@@ -84,8 +86,8 @@ test("credibility pages disclose the operator and give readers a usable correcti
     const html = renderToStaticMarkup(createElement(Page));
     assert.equal(Array.from(html.matchAll(/<h1(?:\s|>)/g)).length, 1);
     assert.match(html, /<main id="discovery-main"/);
-    assert.match(html, /2855706 ALBERTA INC/);
-    assert.match(html, /LexEdge Consulting/);
+    assert.match(html, /Vanteloq Inc\./);
+    assert.doesNotMatch(html, /2855706|LexEdge/i);
     assert.match(html, /href="mailto:support@vanteloq\.com"/);
     assert.match(html, /href="\/contact"/);
     assert.match(html, /<time dateTime="2026-10-11">/);

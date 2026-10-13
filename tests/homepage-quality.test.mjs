@@ -46,10 +46,10 @@ test("homepage copy stays within the verified product boundary", async () => {
   assert.match(html, /ai-orbit-showcase/);
   assert.doesNotMatch(html, /Preview thinking|Pause logo animation/);
   for (const path of ["/privacy", "/terms", "/cookies", "/contact", "/pricing", "/custom-plan"]) assert.ok(html.includes('href="' + path + '"'),path);
-  assert.match(html, /built and operated by/);
-  assert.match(html, /LexEdge Consulting/);
-  assert.match(html, /aria-label="LexEdge Consulting logo"/);
-  assert.match(html, /href="\/brand\/origin-metal-2026\/lexedge\.jpg"/);
+  assert.match(html, /Vanteloq Inc\./);
+  assert.doesNotMatch(html, /LexEdge|Lexedge|lexedge/);
+  assert.match(html, /aria-label="Vanteloq logo"/);
+  assert.match(html, /href="\/brand\/glass-2026-10-12\/vanteloq\.jpg"/);
   assert.match(html, /Memory starts off/);
   assert.match(html, /Which system do you use/);
   assert.match(html, /review the imported totals/);
@@ -177,9 +177,9 @@ test("generated editorial visuals stay compact and production-ready", async () =
   }
 });
 
-test("the supplied LexEdge ownership mark is present and web ready", async () => {
-  const asset = await stat(new URL("../public/brand/origin-metal-2026/lexedge.jpg", import.meta.url));
-  assert.ok(asset.size < 100_000, `LexEdge logo should stay below 100 KB, received ${asset.size}`);
+test("the supplied Vanteloq mark is present and web ready", async () => {
+  const asset = await stat(new URL("../public/brand/glass-2026-10-12/vanteloq.jpg", import.meta.url));
+  assert.ok(asset.size < 100_000, `Vanteloq logo should stay below 100 KB, received ${asset.size}`);
 });
 
 test("the public demo works without workspace bindings and identifies sample analysis", async () => {

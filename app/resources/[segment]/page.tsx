@@ -29,11 +29,11 @@ export async function generateMetadata({ params }: SegmentProps): Promise<Metada
   const article = getArticle(segment);
   if (article) {
     const url = `/resources/${article.slug}`;
-    const socialImage = article.hero ?? {
+    const socialImage = article.hero && !/\.svg(?:[?#]|$)/i.test(article.hero.src) ? article.hero : {
       src: DEFAULT_SOCIAL_IMAGE,
-      alt: "Vanteloq business operating view",
-      width: 1487,
-      height: 1058,
+      alt: "Vanteloq glass blue and silver logo",
+      width: 1254,
+      height: 1254,
     };
     return {
       title: article.seoTitle,
