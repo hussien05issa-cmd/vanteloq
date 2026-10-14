@@ -171,14 +171,13 @@
 .home-monitor-stand{display:grid;justify-items:center;height:30px;position:relative;margin-top:-1px;pointer-events:none}
 .home-monitor-stand::before{content:'';width:106px;height:23px;background:linear-gradient(90deg,#cfdaeb,#f7faff 46%,#b8c5dd);clip-path:polygon(21% 0,79% 0,100% 100%,0 100%)}
 .home-monitor-stand i{position:absolute;bottom:0;width:240px;height:8px;border:1px solid #c0cde0;border-radius:50% 50% 5px 5px;background:linear-gradient(#eff5fd,#c7d3e4);box-shadow:0 5px 12px #1a375814}
-.home-live-controls>span{font-size:12px}.home-live-controls>button{font-size:14px;box-shadow:inset 0 1px #fff}.home-live-controls>.home-motion-toggle{min-width:112px;color:#543483}
+.home-live-controls>span{font-size:12px}.home-live-controls>button{font-size:14px;box-shadow:inset 0 1px #fff}
 .home-monitor-screen .dashboard-greeting{padding-right:0}.home-monitor-screen .executive-heading{position:static;justify-content:flex-end;margin-top:-8px}
 .home-monitor-screen .commerce-reference .executive-kpi-label{font-size:14px}.home-monitor-screen .commerce-reference .executive-kpi strong{font-size:clamp(24px,2.1vw,32px)}
 .home-monitor-screen .executive-overview.commerce-reference .executive-kpis{grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
 @media(hover:hover) and (pointer:fine) and (prefers-reduced-motion:no-preference){.home-monitor{transition:translate 360ms var(--interface-ease),box-shadow 360ms ease}.home-monitor:has(:focus-visible),.home-monitor:hover{translate:0 -2px;box-shadow:inset 0 1px #fff,0 28px 64px #18375920,0 3px 10px #43246b0b}.home-preview-sidebar a{transition:translate 180ms var(--interface-ease),background-color 160ms ease}.home-preview-sidebar a:hover{translate:2px 0}}
 @media(max-width:1100px){.home-monitor-screen .executive-overview.commerce-reference .executive-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:800px){.home-monitor-stand{display:none}.home-monitor{padding:2px}.home-monitor-body{border-radius:11px}}
-@media(max-width:600px){.home-live-controls>button{font-size:14px;flex-basis:calc(50% - 4px)}.home-live-controls>.home-motion-toggle{flex:0 0 auto;min-width:112px}.home-monitor-screen .executive-heading{margin-top:0}}
+@media(max-width:600px){.home-live-controls>button{font-size:14px;flex-basis:calc(50% - 4px)}.home-monitor-screen .executive-heading{margin-top:0}}
 @media(prefers-reduced-motion:reduce){.home-monitor{translate:none!important}}
 html[data-motion=off] .home-monitor{translate:none!important}
-.home-live-controls>.home-motion-toggle:disabled{opacity:1;color:#52627c;background:#f2f5fa;cursor:default}

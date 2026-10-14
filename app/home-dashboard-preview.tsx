@@ -5,7 +5,7 @@ import DashboardGreeting from './dashboard-greeting';
 import ProductBrandLogo from './product-brand-logo';
 import WorkspaceIcon from './workspace-icon';
 import { dashboardDemoPreferences, dashboardDemoReport } from './dashboard-demo-report';
-import { setMotionPreference, useMotionPreference } from './use-motion-preference';
+import { useMotionPreference } from './use-motion-preference';
 import './home-dashboard-preview.css';
 
 export default function HomeDashboardPreview() {
@@ -16,7 +16,6 @@ export default function HomeDashboardPreview() {
   const entryPlayed = useRef(false);
   const pointerFrame = useRef(0);
   const motion = useMotionPreference();
-  const [reducedMotion, setReducedMotion] = useState(false);
   const report = useMemo(() => dashboardDemoReport('all', empty), [empty]);
   const preferences = useMemo(() => dashboardDemoPreferences(report), [report]);
 
@@ -30,11 +29,6 @@ export default function HomeDashboardPreview() {
     element.addEventListener('focusin', cancel); element.addEventListener('pointerdown', cancel); document.addEventListener('visibilitychange', visibility);
     return () => { cancel(); element.removeEventListener('focusin', cancel); element.removeEventListener('pointerdown', cancel); document.removeEventListener('visibilitychange', visibility); };
   }, [motion]);
-  useEffect(() => {
-    const media = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const read = () => setReducedMotion(media.matches);
-    read(); media.addEventListener('change', read); return () => media.removeEventListener('change', read);
-  }, []);
   useEffect(() => {
     if (motion) return;
     cancelAnimationFrame(pointerFrame.current); pointerFrame.current = 0;
@@ -51,7 +45,6 @@ export default function HomeDashboardPreview() {
       <span>EXPLORE YOUR DASHBOARD</span>
       <button type="button" aria-pressed={empty} onClick={() => setEmpty(!empty)}>{empty ? 'Show sample records' : 'Before connecting'}</button>
       <button type="button" aria-expanded={expanded} aria-controls={previewId} onClick={() => setExpanded(!expanded)}>{expanded ? 'Show overview' : 'Show more detail'}</button>
-      <button type="button" className="home-motion-toggle" aria-pressed={motion} disabled={reducedMotion} title={reducedMotion ? 'Your device is set to reduce motion.' : 'Turn interface motion on or off.'} onClick={() => setMotionPreference(!motion)}>{reducedMotion ? 'Reduced motion' : motion ? 'Motion on' : 'Motion off'}</button>
     </div>
     <div className="home-monitor" ref={monitor} onPointerLeave={resetLight} onPointerMove={event => {
       if (!motion || event.pointerType !== 'mouse' || document.hidden || pointerFrame.current) return;
