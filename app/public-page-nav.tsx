@@ -3,7 +3,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import ProductBrandLogo from "./product-brand-logo";
-import PublicAppearanceControl from "./public-appearance-control";
 import { useModalFocus } from "./use-modal-focus";
 import { planSelectionUrl } from "../shared/plan-selection";
 import "./public-shell.css";
@@ -14,7 +13,7 @@ type PrimaryAction = {
   shortLabel?: string;
 };
 
-export default function PublicPageNav({ signIn, appearanceControl = false, primaryAction }: { signIn?: () => void; appearanceControl?: boolean; primaryAction?: PrimaryAction }) {
+export default function PublicPageNav({ signIn, primaryAction }: { signIn?: () => void; primaryAction?: PrimaryAction }) {
   const path = usePathname() ?? "/";
   const [open, setOpen] = useState(false);
   const menu = useRef<HTMLElement>(null), shell = useRef<HTMLElement>(null), resources = useRef<HTMLDetailsElement>(null);
@@ -37,7 +36,7 @@ export default function PublicPageNav({ signIn, appearanceControl = false, prima
       <details ref={resources}><summary>Resources</summary><div className="public-shell-resources"><Link href="/vanteloqworkspace" onClick={close}>Workspace apps</Link><Link href="/help" onClick={close}>Help & setup</Link><Link href="/resources" onClick={close}>Business guides</Link><Link href="/#connections" onClick={close}>Connections & integrations</Link><Link href="/integrations" onClick={close}>Integration guides</Link><Link href="/tools" onClick={close}>Planning tools</Link><Link href="/demo" onClick={close}>Interactive demo</Link><Link href="/about" onClick={close}>About Vanteloq</Link><Link href="/contact" onClick={close}>Contact</Link></div></details>
       {open && <div className="public-shell-mobile-account"><Link prefetch={false} href="/?start=signin" onClick={close}>Sign in</Link><button type="button" onClick={close}>Close menu</button></div>}
     </nav>
-    <div className="public-shell-account">{appearanceControl && <PublicAppearanceControl/>}{signIn ? <button className="public-shell-signin" type="button" onClick={signIn}>Sign in</button> : <Link prefetch={false} className="public-shell-signin" href="/?start=signin">Sign in</Link>}<Link prefetch={false} className="public-shell-free" aria-label={action.label} data-public-event={primaryAction ? "demo_booking_start" : "signup_start"} data-public-section="header" data-public-plan={primaryAction ? undefined : "free"} href={action.href}><span className="public-shell-free-full">{action.label}</span><span className="public-shell-free-short" aria-hidden="true">{action.shortLabel ?? action.label}</span></Link></div>
+    <div className="public-shell-account">{signIn ? <button className="public-shell-signin" type="button" onClick={signIn}>Sign in</button> : <Link prefetch={false} className="public-shell-signin" href="/?start=signin">Sign in</Link>}<Link prefetch={false} className="public-shell-free" aria-label={action.label} data-public-event={primaryAction ? "demo_booking_start" : "signup_start"} data-public-section="header" data-public-plan={primaryAction ? undefined : "free"} href={action.href}><span className="public-shell-free-full">{action.label}</span><span className="public-shell-free-short" aria-hidden="true">{action.shortLabel ?? action.label}</span></Link></div>
     <button type="button" className="public-shell-menu" aria-expanded={open} aria-controls="public-main-navigation" onClick={() => setOpen(value => !value)}>{open ? "Close" : "Menu"}</button>
   </header>;
 }

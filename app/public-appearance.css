@@ -1,0 +1,66 @@
+/* Public detail portals are outside the homepage root. They must not depend on
+   the authenticated app's lazily loaded appearance stylesheet for their paint. */
+.workspace-theme-scope[data-public-appearance="system"][data-workspace-theme] .control-surface {
+  background: var(--ws-panel) !important;
+  color: var(--ws-ink) !important;
+  border-color: var(--ws-line) !important;
+  /* Charts retain their own horizontal scroll; the dialog has one vertical
+     scroll axis, including fractional widths during the spring transition. */
+  overflow-x: hidden;
+}
+.workspace-theme-scope[data-public-appearance="system"][data-workspace-theme] .control-surface-heading {
+  background: var(--ws-raised) !important;
+  color: var(--ws-ink) !important;
+  border-color: var(--ws-line) !important;
+}
+.workspace-theme-scope[data-public-appearance="system"][data-workspace-theme] .control-surface :is(h2,h3,h4,b,strong,summary,dt,dd) { color: var(--ws-ink); }
+.workspace-theme-scope[data-public-appearance="system"][data-workspace-theme] .control-surface-heading > div > span { color: var(--ws-blue); }
+.workspace-theme-scope[data-public-appearance="system"][data-workspace-theme] .control-surface-content {
+  background: var(--ws-panel);
+  color: var(--ws-ink);
+}
+.workspace-theme-scope[data-public-appearance="system"][data-workspace-theme] .metric-expanded-content {
+  --exec-text: var(--ws-ink);
+  --exec-muted: var(--ws-muted);
+  color: var(--ws-ink);
+}
+.workspace-theme-scope[data-public-appearance="system"][data-workspace-theme] .control-surface :is(
+  .metric-detail-context,.metric-detail-formula,.metric-detail-values span,
+  .metric-detail-state p,.executive-source-details p,.executive-source-details dt,
+  .executive-chart-caption,.pulse-context,.pulse-status p,.pulse-metrics span,
+  .pulse-metrics small,.pulse-attention small,.pulse-attention > p,.pulse-empty p,.pulse-footer p
+) { color: var(--ws-muted) !important; }
+.workspace-theme-scope[data-public-appearance="system"][data-workspace-theme] .control-surface :is(
+  .metric-detail-values > article,.metric-detail-state,.pulse-metrics > article,.pulse-empty,
+  .executive-empty-message,.executive-chart-value,.executive-source-details
+) {
+  background: var(--ws-raised) !important;
+  color: var(--ws-ink) !important;
+  border-color: var(--ws-line) !important;
+  box-shadow: none;
+}
+.workspace-theme-scope[data-public-appearance="system"][data-workspace-theme] .control-surface button {
+  background: var(--ws-raised);
+  color: var(--ws-ink);
+  border-color: var(--ws-control);
+}
+.workspace-theme-scope[data-public-appearance="system"][data-workspace-theme] .control-surface button:hover:not(:disabled) { background: var(--ws-selected); border-color: var(--ws-blue); }
+.workspace-theme-scope[data-public-appearance="system"][data-workspace-theme] .control-surface :is(button,summary,[tabindex]):focus-visible { outline: 3px solid var(--ws-focus) !important; outline-offset: 3px; }
+.workspace-theme-scope[data-public-appearance="system"][data-workspace-theme] .control-surface a { color: var(--ws-blue); }
+.workspace-theme-scope[data-public-appearance="system"][data-workspace-theme] .control-surface :is(.executive-source-details,.pulse-footer,.pulse-attention > button) { border-color: var(--ws-line); }
+.workspace-theme-scope[data-public-appearance="system"][data-workspace-theme] .pulse-attention > button { background: transparent; }
+.workspace-theme-scope[data-public-appearance="system"][data-workspace-theme] .pulse-status[data-pulse-state="critical"] strong { color: var(--ws-negative); }
+.workspace-theme-scope[data-public-appearance="system"][data-workspace-theme] .pulse-status[data-pulse-state="review"] strong { color: var(--ws-warning); }
+.workspace-theme-scope[data-public-appearance="system"][data-workspace-theme] .executive-chart :is(.executive-chart-value b,td,th) { color: var(--ws-ink); }
+.workspace-theme-scope[data-public-appearance="system"][data-workspace-theme] .executive-chart :is(.executive-chart-value > span,.executive-chart-frequency,caption) { color: var(--ws-muted); }
+.workspace-theme-scope[data-public-appearance="system"][data-workspace-theme] .executive-chart :is(.executive-chart-grid text,svg > text) { fill: var(--ws-muted); }
+.workspace-theme-scope[data-public-appearance="system"][data-workspace-theme] .executive-chart-grid line { stroke: var(--ws-line); }
+.workspace-theme-scope[data-public-appearance="system"][data-workspace-theme] .executive-chart linearGradient:not([id$="-area"]) > stop:first-child { stop-color: var(--ws-blue); }
+.workspace-theme-scope[data-public-appearance="system"][data-workspace-theme] .executive-chart linearGradient:not([id$="-area"]) > stop:last-child { stop-color: var(--ws-purple); }
+.workspace-theme-scope[data-public-appearance="system"][data-workspace-theme] .executive-chart-data > circle { fill: var(--ws-purple); stroke: var(--ws-panel); }
+.workspace-theme-scope[data-public-appearance="system"][data-workspace-theme] .executive-chart :is(th,td) { border-color: var(--ws-line); }
+.workspace-theme-scope[data-public-appearance="system"][data-workspace-theme] .executive-chart th { background: var(--ws-raised); }
+.workspace-theme-scope[data-public-appearance="system"][data-workspace-theme] .executive-chart table { background: var(--ws-panel); }
+.workspace-theme-scope[data-public-appearance="system"][data-workspace-theme] :is(.executive-empty-axis,.executive-empty-dates,.executive-empty-message p) { color: var(--ws-muted); }
+.workspace-theme-scope[data-public-appearance="system"][data-workspace-theme] .executive-empty-grid { background-image: linear-gradient(var(--ws-line) 1px,transparent 1px),linear-gradient(90deg,var(--ws-line) 1px,transparent 1px); }
+.workspace-theme-scope[data-public-appearance="system"][data-workspace-theme] .executive-empty-plot { border-color: var(--ws-line); }

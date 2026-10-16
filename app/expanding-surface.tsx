@@ -2,15 +2,22 @@
 import { type ReactNode, type RefObject, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { WorkspaceAppearanceBoundary } from "./workspace-appearance";
+import { PublicAppearanceBoundary } from "./public-appearance";
 import { surfaceFrames } from "../domain/surface-motion";
 import { useModalFocus } from "./use-modal-focus";
 import { useMotionPreference } from "./use-motion-preference";
 import "./control-surfaces.css";
 
+export function surfaceAppearanceSource(origin?: Pick<Element, "closest"> | null): "workspace" | "public" | null {
+  const scope = origin?.closest(".operating-shell[data-workspace-theme],.workspace-theme-scope[data-workspace-theme],.public-site[data-public-theme]");
+  if (!scope) return null;
+  return scope.hasAttribute("data-public-theme") || scope.hasAttribute("data-public-appearance") ? "public" : "workspace";
+}
+
 /** One shared, interruptible origin-to-panel transition, with a static fallback. */
 export default function ExpandingSurface({ open, onClose, onAfterClose, originRef, title, children }: { open: boolean; onClose: () => void; onAfterClose?: () => void; originRef: RefObject<HTMLElement | null>; title: string; children: ReactNode }) {
   const [present, setPresent] = useState(false);
-  const [themedOrigin, setThemedOrigin] = useState(false);
+  const [themedOrigin, setThemedOrigin] = useState<"workspace" | "public" | null>(null);
   const panelRef = useRef<HTMLDivElement>(null), animationRef = useRef<Animation | null>(null), generation = useRef(0);
   const titleId = useId(), motion = useMotionPreference();
   const wasPresent = useRef(false);
@@ -22,7 +29,7 @@ export default function ExpandingSurface({ open, onClose, onAfterClose, originRe
     if (!open && wasPresent.current) { wasPresent.current = false; onAfterClose?.(); }
   }, [open, present, onAfterClose]);
   // Defer mounting until after hydration, preserving an interruptible opening.
-  useLayoutEffect(() => { let cancelled = false; if (open) queueMicrotask(() => { if (!cancelled) { setThemedOrigin(Boolean(originRef.current?.closest(".operating-shell[data-workspace-theme],.public-site[data-public-theme]"))); setPresent(true); } }); return () => { cancelled = true; }; }, [open, originRef]);
+  useLayoutEffect(() => { let cancelled = false; if (open) queueMicrotask(() => { if (!cancelled) { setThemedOrigin(surfaceAppearanceSource(originRef.current)); setPresent(true); } }); return () => { cancelled = true; }; }, [open, originRef]);
   useLayoutEffect(() => {
     const panel = panelRef.current;
     if (!present || !panel) return;
@@ -54,5 +61,5 @@ export default function ExpandingSurface({ open, onClose, onAfterClose, originRe
       <div className="control-surface-content">{children}</div>
     </div>
   </div>;
-  return createPortal(themedOrigin ? <WorkspaceAppearanceBoundary>{surface}</WorkspaceAppearanceBoundary> : surface, document.body);
+  return createPortal(themedOrigin === "public" ? <PublicAppearanceBoundary>{surface}</PublicAppearanceBoundary> : themedOrigin === "workspace" ? <WorkspaceAppearanceBoundary>{surface}</WorkspaceAppearanceBoundary> : surface, document.body);
 }

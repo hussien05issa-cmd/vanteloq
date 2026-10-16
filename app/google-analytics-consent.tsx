@@ -8,7 +8,7 @@ import { isPublicMeasurementPath } from "./analytics-public-routes";
 import { publicMarketingEvent } from "../shared/public-marketing-events";
 import { useModalFocus } from "./use-modal-focus";
 import { getPublicRoot, getServerPublicRoot, subscribePublicRoot } from "./analytics-public-surface";
-import { useWorkspaceAppearance } from "./workspace-appearance";
+import { usePublicAppearance } from "./public-appearance";
 
 type ConsentChoice = "analytics" | "essential";
 type GtagCommand = [string, ...unknown[]];
@@ -135,7 +135,7 @@ const getClientHydrationSnapshot = () => true;
 const getServerHydrationSnapshot = () => false;
 
 export function GoogleAnalyticsConsent() {
-  const appearance = useWorkspaceAppearance();
+  const appearance = usePublicAppearance();
   const pathname = usePathname();
   const publicRoot = useSyncExternalStore(subscribePublicRoot, getPublicRoot, getServerPublicRoot);
   const hydrated = useSyncExternalStore(subscribeToHydration, getClientHydrationSnapshot, getServerHydrationSnapshot);

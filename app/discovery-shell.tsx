@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import PublicPageNav from "./public-page-nav";
 import PublicFooter from "./public-footer";
-import { useWorkspaceAppearance } from "./workspace-appearance";
+import { usePublicAppearance } from "./public-appearance";
 import "./discovery-shell.css";
 
 type DiscoveryShellProps = {
@@ -17,13 +17,12 @@ type DiscoveryShellProps = {
   };
 };
 
-/** Public guides share the product appearance unless a focused landing page sets a fixed theme. */
+/** Public guides follow the device; explicit brand-page themes remain fixed. */
 export default function DiscoveryShell({ children, className = "", fixedTheme, primaryNavAction }: DiscoveryShellProps) {
-  const appearance = useWorkspaceAppearance();
-  const theme = fixedTheme ?? appearance.theme;
-  return <div className={`public-site discovery-shell ${className}`} data-public-theme={theme} data-public-appearance={fixedTheme ?? appearance.appearance}>
+  const appearance = usePublicAppearance();
+  return <div className={`public-site discovery-shell ${className}`} data-public-theme={fixedTheme ?? appearance.theme} data-public-appearance={fixedTheme ?? appearance.appearance}>
     <a className="discovery-skip" href="#discovery-main">Skip to content</a>
-    <PublicPageNav appearanceControl={!fixedTheme} primaryAction={primaryNavAction}/>
+    <PublicPageNav primaryAction={primaryNavAction}/>
     {children}
     <PublicFooter/>
   </div>;

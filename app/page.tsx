@@ -21,7 +21,7 @@ import HomeDataStudio from "./home-data-studio";
 import HomeDecisionPreview from "./home-decision-preview";
 import FeatureCarousel from "./feature-carousel";
 import ProductBrandLogo from "./product-brand-logo";
-import PublicAppearanceControl from "./public-appearance-control";
+import { usePublicAppearance } from "./public-appearance";
 import { useWorkspaceAppearance } from "./workspace-appearance";
 import FinanceProof from "./finance-proof";
 import WorkspaceShowcase from "./workspace-showcase";
@@ -477,8 +477,8 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
     window.addEventListener("resize", schedule);
     return () => { window.cancelAnimationFrame(frame); resize.disconnect(); window.removeEventListener("resize", schedule); };
   }, []);
-  const appearance = useWorkspaceAppearance();
-  return <div ref={siteRef} className="public-site journey-home reference-home" data-public-theme={appearance.theme} data-public-appearance={appearance.appearance}>
+  const appearance = usePublicAppearance();
+  return <div ref={siteRef} className="public-site journey-home reference-home" data-public-theme={appearance.theme} data-public-appearance="system">
     <a className="home-skip-link" href="#main-content">Skip to main content</a>
     <header className="public-nav" data-menu-open={mobileNavigationOpen}>
       <div className="public-brand-family">
@@ -492,14 +492,14 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
         <Link prefetch={false} className="public-demo-link" href="/book-demo">Book a free demo</Link>
       </nav>
       <div className="public-nav-actions" id="public-account-actions">
-        <PublicAppearanceControl/>
         <button type="button" className="nav-login" onClick={() => { setMobileNavigationOpen(false); start("signin"); }}>Sign in</button>
         <button type="button" data-public-event="signup_start" onClick={() => { setMobileNavigationOpen(false); start("signup"); }}>Build your dashboard</button>
       </div>
     </header>
 
     <main id="main-content">
-      <section className="home-hero" aria-labelledby="home-title">
+      <section className="home-hero home-editorial" aria-labelledby="home-title">
+        <div className="home-editorial-row">
         <div className="home-hero-copy">
           <p className="home-source-principle" data-motion={motionEnabled ? "on" : "off"}>
             <span className="sr-only">A number without a source is a rumour.</span>
@@ -507,8 +507,15 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
           </p>
           <h1 id="home-title">Your business, <em>at a glance.</em></h1>
           <p>Sales, stock and cash. With the records behind the numbers.</p>
-          <p className="home-hero-support">See what changed. Follow the source. Decide your next step.</p>
-          <div className="public-actions"><a href="/demo" data-public-event="demo_view">Open the demo <span aria-hidden="true">→</span></a><button type="button" data-public-event="signup_start" onClick={() => start("signup")}>Build your dashboard</button></div>
+          <div className="public-actions"><button className="home-editorial-primary" type="button" data-public-event="signup_start" onClick={() => start("signup")}>Build your dashboard <span aria-hidden="true">↗</span></button><a className="home-editorial-demo" href="/demo" data-public-event="demo_view">Open the demo <span aria-hidden="true">→</span></a></div>
+        </div>
+        <figure className="home-editorial-visual" data-motion-item="1">
+          <picture>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/brand/hero-dashboard-2026-10-16/dashboard-1440.webp" srcSet="/brand/hero-dashboard-2026-10-16/dashboard-640.webp 640w, /brand/hero-dashboard-2026-10-16/dashboard-960.webp 960w, /brand/hero-dashboard-2026-10-16/dashboard-1440.webp 1440w, /brand/hero-dashboard-2026-10-16/dashboard-1920.webp 1920w" sizes="(max-width: 800px) calc(100vw - 40px), (max-width: 1600px) 52vw, 740px" alt="Vanteloq dashboard displayed on a cinematic screen, showing sales, margins and goal rings with fictional sample data." width={2560} height={1712} loading="eager" fetchPriority="high" decoding="async"/>
+          </picture>
+          <figcaption>Dashboard illustration · Sample data</figcaption>
+        </figure>
         </div>
         <HomeDashboardPreview/>
       </section>
