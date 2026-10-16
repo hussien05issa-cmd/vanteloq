@@ -146,6 +146,28 @@ test("each viewport clips to its own crop when differently shaped logo container
   for (const clipId of clipIds) assert.ok(html.includes(`clip-path="url(#${clipId})"`));
 });
 
+test("an explicit SVG ID prefix is stable across server and browser render prefixes", () => {
+  const render = (identifierPrefix: string) => renderToStaticMarkup(
+    <ProductBrandLogo product="vanteloq" clearCarrier svgIdPrefix="public-footer-vanteloq"/>,
+    { identifierPrefix },
+  );
+  const serverHtml = render("server-");
+  const browserHtml = render("browser-");
+  const definitionIds = (html: string) => [...html.matchAll(/<(?:clipPath|filter|mask) id="([^"]+)"/g)].map(match => match[1]);
+  const expectedIds = [
+    "public-footer-vanteloq-clip",
+    "public-footer-vanteloq-carrier-filter",
+    "public-footer-vanteloq-carrier",
+  ];
+
+  assert.deepEqual(definitionIds(serverHtml), expectedIds);
+  assert.deepEqual(definitionIds(browserHtml), expectedIds);
+  for (const id of expectedIds) {
+    assert.ok(serverHtml.includes(`url(#${id})`), id);
+    assert.ok(browserHtml.includes(`url(#${id})`), id);
+  }
+});
+
 test("the dedicated brand banner can display the full supplied parent artwork", () => {
   const html = renderToStaticMarkup(<ProductBrandLogo product="vanteloq" variant="full" fullArtwork/>);
   const frame = PRODUCT_BRAND_ASSETS.vanteloq.frames.full;

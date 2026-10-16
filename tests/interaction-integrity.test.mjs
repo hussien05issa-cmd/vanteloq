@@ -718,6 +718,7 @@ test("the worker enforces the complete content security policy", async () => {
   assert.match(source, /frame-ancestors 'none'/);
   assert.match(source, /object-src 'none'/);
   assert.match(source, /https:\/\/challenges\.cloudflare\.com/);
+  assert.match(source, /https:\/\/static\.cloudflareinsights\.com/);
   assert.match(source, /upgrade-insecure-requests/);
   assert.match(source, /headers\.delete\("Content-Security-Policy-Report-Only"\)/);
 });

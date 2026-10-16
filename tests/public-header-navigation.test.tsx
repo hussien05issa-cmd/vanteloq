@@ -9,6 +9,7 @@ import PublicFooter from "../app/public-footer";
 const homepage = renderToStaticMarkup(createElement(Home));
 const header = homepage.slice(homepage.indexOf('<header class="public-nav"'), homepage.indexOf('</header>', homepage.indexOf('<header class="public-nav"')));
 const sharedNavigation = readFileSync(new URL("../app/public-page-nav.tsx", import.meta.url), "utf8");
+const sharedFooter = readFileSync(new URL("../app/public-footer.tsx", import.meta.url), "utf8");
 
 test("the mobile disclosure identifies both navigation and account destinations without an expanded initial state", () => {
   assert.match(header, /class="public-nav-menu"/);
@@ -39,6 +40,11 @@ test("shared public navigation promotes Workspace and Advisory while keeping con
   assert.match(sharedNavigation, />Connections & integrations</);
   assert.match(sharedNavigation, /data-public-event=\{primaryAction \? undefined : "signup_start"\}/);
   assert.doesNotMatch(sharedNavigation, /demo_booking_start/);
+});
+
+test("shared public shell logos pin deterministic SVG fragment prefixes", () => {
+  assert.match(sharedNavigation, /svgIdPrefix="public-navigation-vanteloq"/);
+  assert.match(sharedFooter, /svgIdPrefix="public-footer-vanteloq"/);
 });
 
 test("public polish preserves the source principle and business overview heading", () => {

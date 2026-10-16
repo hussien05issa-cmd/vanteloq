@@ -9,6 +9,7 @@ type ProductBrandLogoProps = {
   clearCarrier?: boolean;
   fullArtwork?: boolean;
   className?: string;
+  svgIdPrefix?: string;
 };
 
 export default function ProductBrandLogo({
@@ -18,15 +19,18 @@ export default function ProductBrandLogo({
   clearCarrier = product === "bookloq",
   fullArtwork = false,
   className = "",
+  svgIdPrefix,
 }: ProductBrandLogoProps) {
   const artwork = PRODUCT_BRAND_ASSETS[product];
   // Vanteloq uses the symbol alone, including legacy full-lockup call sites.
   // Full parent artwork is reserved for the dedicated brand banner.
   const displayedVariant = product === "vanteloq" && !fullArtwork ? "icon" : variant;
   const frame = artwork.frames[displayedVariant];
-  const clipId = useId();
-  const carrierMaskId = `${clipId}-carrier`;
-  const carrierFilterId = `${clipId}-carrier-filter`;
+  const generatedId = useId();
+  const fragmentPrefix = svgIdPrefix ?? generatedId;
+  const clipId = `${fragmentPrefix}-clip`;
+  const carrierMaskId = `${fragmentPrefix}-carrier`;
+  const carrierFilterId = `${fragmentPrefix}-carrier-filter`;
   if (priority) preload(artwork.source, { as: "image", fetchPriority: "high" });
 
   return (

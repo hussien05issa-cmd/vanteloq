@@ -6,6 +6,7 @@ import { readFileSync, statSync } from "node:fs";
 import AdvisoryPage, { metadata } from "../app/advisory/page";
 import {
   connectionAllowsCinematicMedia,
+  isUnexpectedCinematicMediaError,
   isCinematicMediaNearViewport,
   readCinematicDocumentState,
   requestCinematicPlayback,
@@ -83,6 +84,7 @@ test("origin film is preserved as a deliberate click-to-play story", () => {
 test("hero motion is deferred, self-hosted and resilient", () => {
   const media = readFileSync(new URL("../app/advisory/advisory-hero-media.tsx", import.meta.url), "utf8");
   const policy = readFileSync(new URL("../app/advisory/advisory-hero-media-policy.ts", import.meta.url), "utf8");
+  const styles = readFileSync(new URL("../app/advisory/advisory.css", import.meta.url), "utf8");
   assert.match(media, /useMotionPreference/);
   assert.match(media, /IntersectionObserver/);
   assert.match(media, /visibilitychange/);
@@ -102,7 +104,12 @@ test("hero motion is deferred, self-hosted and resilient", () => {
   assert.ok(statSync(new URL("../public/brand/advisory/vanteloq-advisory-connected-systems-mobile.mp4", import.meta.url)).size < 2_000_000);
   assert.ok(statSync(new URL("../public/brand/advisory/vanteloq-advisory-connected-systems.mp4", import.meta.url)).size < 5_000_000);
   assert.match(media, /setFailed\(true\)/);
-  assert.doesNotMatch(media, /\bloop\b/);
+  assert.match(media, /\bloop\b/);
+  assert.match(media, /data-cinematic-active=/);
+  assert.match(styles, /data-cinematic-active="false"[\s\S]*animation-play-state: paused/);
+  for (const label of ["Connected Business System", "Signals", "Sales", "Inventory", "Cash", "Operations", "Analysis", "One Business View", "Decision", "Clear Priority", "Follow-Through", "Priority", "Owner", "Review"]) {
+    assert.match(media, new RegExp(label));
+  }
   assert.doesNotMatch(media, /cloudfront|https?:\/\//i);
   assert.match(html, /alt=""[^>]*fetchPriority="high"/);
   assert.doesNotMatch(html, /vanteloq-advisory-connected-systems\.mp4/);
@@ -151,8 +158,32 @@ test("hero cinematic source stops rendering and playing when the network policy 
   assert.equal(shouldPlayCinematicSource(blocked), false);
 
   const media = readFileSync(new URL("../app/advisory/advisory-hero-media.tsx", import.meta.url), "utf8");
-  assert.match(media, /video\.current\?\.pause\(\)/);
+  assert.match(media, /intentionallySuppressedVideos\.current\.add\(element\)/);
+  assert.match(media, /element\.pause\(\)/);
   assert.match(media, /setSourceMounted\(false\)/);
+});
+
+test("an intentional network-gate unmount does not poison a later cinematic remount", () => {
+  const intentionallySuppressed = new WeakSet<object & { error?: { code: number } | null }>();
+  const abandonedElement = { error: { code: 4 } };
+  const recoveredElement = { error: { code: 4 } };
+  const skippedSource = { error: null };
+
+  intentionallySuppressed.add(abandonedElement);
+  assert.equal(isUnexpectedCinematicMediaError(abandonedElement, intentionallySuppressed), false);
+  assert.equal(isUnexpectedCinematicMediaError(abandonedElement, intentionallySuppressed), false);
+  assert.equal(isUnexpectedCinematicMediaError(skippedSource, intentionallySuppressed), false);
+  assert.equal(isUnexpectedCinematicMediaError(recoveredElement, intentionallySuppressed), true);
+
+  assert.equal(shouldMountCinematicSource({
+    failed: false,
+    mediaAllowed: true,
+    motion: true,
+    pageLoaded: true,
+    pageVisible: true,
+    sourceMounted: false,
+    visible: true,
+  }), true);
 });
 
 test("hero document state synchronizes loaded and hidden tabs immediately", () => {

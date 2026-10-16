@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useMotionPreference } from "../use-motion-preference";
 import {
   connectionAllowsCinematicMedia,
+  isUnexpectedCinematicMediaError,
   isCinematicMediaNearViewport,
   readCinematicDocumentState,
   requestCinematicPlayback,
@@ -29,6 +30,7 @@ export default function AdvisoryHeroMedia() {
   const motion = useMotionPreference();
   const stage = useRef<HTMLDivElement>(null);
   const video = useRef<HTMLVideoElement>(null);
+  const intentionallySuppressedVideos = useRef(new WeakSet<HTMLVideoElement>());
   const [visible, setVisible] = useState(false);
   const [pageVisible, setPageVisible] = useState(() => typeof document === "undefined" || readCinematicDocumentState(document).pageVisible);
   const [pageLoaded, setPageLoaded] = useState(() => typeof document !== "undefined" && readCinematicDocumentState(document).pageLoaded);
@@ -69,7 +71,11 @@ export default function AdvisoryHeroMedia() {
     const updateConnection = () => {
       const allowed = connectionAllowsCinematicMedia(connection);
       if (!allowed) {
-        video.current?.pause();
+        const element = video.current;
+        if (element) {
+          intentionallySuppressedVideos.current.add(element);
+          element.pause();
+        }
         setReady(false);
         setSourceMounted(false);
       }
@@ -111,8 +117,14 @@ export default function AdvisoryHeroMedia() {
   }, [failed, mediaAllowed, motion, pageVisible, sourceMounted, visible]);
 
   const renderSource = shouldRenderCinematicSource({ failed, mediaAllowed, sourceMounted });
+  const cinematicActive = motion && mediaAllowed && pageVisible && visible;
 
-  return <div className="advisory-hero-media" ref={stage} data-video-ready={ready && mediaAllowed && motion ? "true" : "false"}>
+  return <div
+    className="advisory-hero-media"
+    ref={stage}
+    data-cinematic-active={cinematicActive ? "true" : "false"}
+    data-video-ready={ready && mediaAllowed && motion ? "true" : "false"}
+  >
     <picture className="advisory-hero-poster">
       <source
         srcSet="/brand/advisory/vanteloq-advisory-signal-path-480.webp 480w, /brand/advisory/vanteloq-advisory-signal-path-768.webp 768w, /brand/advisory/vanteloq-advisory-signal-path-1280.webp 1280w"
@@ -131,16 +143,51 @@ export default function AdvisoryHeroMedia() {
     {renderSource && <video
       ref={video}
       muted
+      loop
       playsInline
       preload="none"
       poster="/brand/advisory/vanteloq-advisory-signal-path-1280.webp"
       aria-hidden="true"
       tabIndex={-1}
       onPlaying={() => setReady(true)}
-      onError={() => { setFailed(true); setReady(false); }}
+      onError={event => {
+        if (!isUnexpectedCinematicMediaError(event.currentTarget, intentionallySuppressedVideos.current)) return;
+        setFailed(true);
+        setReady(false);
+      }}
     >
       <source media="(max-width: 680px)" src="/brand/advisory/vanteloq-advisory-connected-systems-mobile.mp4" type="video/mp4" />
       <source src="/brand/advisory/vanteloq-advisory-connected-systems.mp4" type="video/mp4" />
     </video>}
+    <div className="advisory-system-layer" aria-hidden="true">
+      <div className="advisory-system-kicker"><span />Connected Business System</div>
+      <svg className="advisory-system-routes" viewBox="0 0 1000 550" preserveAspectRatio="none">
+        <path className="advisory-system-route" d="M90 306 C230 306 292 282 407 281 S604 246 734 205 S846 180 922 160" />
+        <path className="advisory-system-route advisory-system-route-pulse" d="M90 306 C230 306 292 282 407 281 S604 246 734 205 S846 180 922 160" />
+        <path className="advisory-system-return" d="M888 357 C764 474 486 480 278 411 S121 348 90 306" />
+      </svg>
+
+      <div className="advisory-system-node advisory-system-signals">
+        <span className="advisory-system-label">Signals</span>
+        <div className="advisory-system-signal-list">
+          <span>Sales</span><span>Inventory</span><span>Cash</span><span>Operations</span>
+        </div>
+      </div>
+
+      <div className="advisory-system-node advisory-system-analysis">
+        <img src="/brand/vanteloq-mark-ui.webp" width={32} height={32} alt="" />
+        <div><span className="advisory-system-label">Analysis</span><strong>One Business View</strong></div>
+      </div>
+
+      <div className="advisory-system-node advisory-system-decision">
+        <span className="advisory-system-label">Decision</span>
+        <strong>Clear Priority</strong>
+      </div>
+
+      <div className="advisory-system-node advisory-system-follow">
+        <span className="advisory-system-label">Follow-Through</span>
+        <div className="advisory-system-follow-list"><span>Priority</span><span>Owner</span><span>Review</span></div>
+      </div>
+    </div>
   </div>;
 }

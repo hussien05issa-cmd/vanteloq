@@ -21,6 +21,13 @@ type CinematicVideo = Pick<HTMLVideoElement, "pause" | "play">;
 
 type CinematicViewportBounds = Pick<DOMRect, "bottom" | "top">;
 
+export function isUnexpectedCinematicMediaError<T extends object & { error?: { code: number } | null }>(
+  element: T,
+  intentionallySuppressed: WeakSet<T>,
+) {
+  return !intentionallySuppressed.has(element) && Boolean(element.error);
+}
+
 export function connectionAllowsCinematicMedia(connection?: AdvisoryNetworkInformation) {
   return !connection?.saveData && !["slow-2g", "2g", "3g"].includes(connection?.effectiveType ?? "");
 }
