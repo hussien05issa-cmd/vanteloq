@@ -1,5 +1,27 @@
 /* Shared authenticated header. Scope is separate from actions so narrow screens
    retain their title and reporting context instead of compressing both. */
+.operating-shell[data-workspace-theme] .workspace-suite-launcher {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  gap: 8px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 6px 10px;
+  border: 1px solid var(--ws-control, #596579);
+  border-radius: 12px;
+  color: var(--ws-ink, #f7f9fc);
+  background: var(--ws-raised, #0b0f17);
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+.operating-shell[data-workspace-theme] .workspace-suite-launcher > span { display: grid; gap: 1px; }
+.operating-shell[data-workspace-theme] .workspace-suite-launcher small { color: var(--ws-muted, #a9b2c3); font-size: 11px; font-weight: 400; }
+.operating-shell[data-workspace-theme] .workspace-suite-launcher:hover { background: var(--ws-selected, #142345); border-color: var(--ws-blue, #4c82ff); }
+.operating-shell[data-workspace-theme] .workspace-suite-launcher:focus-visible { outline: 3px solid var(--ws-blue, #4c82ff); outline-offset: 3px; }
 .operating-shell[data-workspace-theme] .topbar {
   display: grid;
   grid-template-columns: minmax(240px, 1fr) 44px auto;
@@ -253,6 +275,11 @@
   .operating-shell[data-workspace-theme] .topbar .mobile-menu { display: none !important; }
 }
 @media (max-width: 1240px) {
+  /* Preserve visible labels while the desktop sidebar still occupies space. */
+  .operating-shell[data-workspace-theme] .topbar { grid-template-columns: minmax(0, 1fr) 44px; }
+  .operating-shell[data-workspace-theme] .topbar > .notification { grid-row: 1; }
+  .operating-shell[data-workspace-theme] .topbar-context-row { grid-column: 1 / -1; }
+  .operating-shell[data-workspace-theme] .topbar .top-actions { grid-column: 1 / -1; grid-row: 3; justify-content: flex-start; flex-wrap: wrap; }
   .operating-shell[data-workspace-theme] .topbar .command-trigger { width: 44px; padding: 0; justify-content: center; }
   .operating-shell[data-workspace-theme] .topbar .command-trigger :is(span, kbd) { display: none; }
   .operating-shell[data-workspace-theme] .topbar .top-actions > .primary { width: 44px; padding: 0; font-size: 0 !important; }

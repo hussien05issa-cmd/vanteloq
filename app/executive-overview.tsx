@@ -194,7 +194,6 @@ export default function ExecutiveOverview({currency,industry,activeLocationId,ba
           <span className="executive-kpi-label">{m.label}<i aria-hidden="true">↗</i></span>
           <strong className={m.value===null?"unavailable":""}>{m.value===null?"—":display(m.value,m.unit,currency)}</strong>
           <span className={`executive-change${percent===null?"":percent>0?" change-up":percent<0?" change-down":""}`}>{percent===null?(m.value===null?"Ready for your records":"Comparison not yet available"):`${percent>0?"+":""}${number(percent)}${m.unit==="percent"?" pp":"%"}`}{percent!==null&&<small>{compare==="previous"?"vs previous period":compare==="yoy"?"vs previous year":compare==="target"?"vs your target":"vs ledger budget"}</small>}</span>
-          {m.previous!==null&&<span className="executive-prior">Previous: {display(m.previous,m.unit,currency)}</span>}
           {(compare==="target"||compare==="budget"||validTarget!==null)&&<span className="executive-target">{compare==="target"?"Target":"Budget"}: {validTarget===null?"Not set":display(validTarget,m.unit,currency)}{m.value!==null&&validTarget!==null?` · ${m.unit==="percent"?`${number((m.value-validTarget)*100)} pp`:display(m.value-validTarget,m.unit,currency)} variance`:""}</span>}
           <div className="executive-mini-chart">{hasTrend?<MetricSparkline values={m.trend.map(point=>point.value??NaN)} tone="indigo"/>:<span className="executive-empty-spark" aria-label="Empty trend grid, no recorded values"><i/><i/><i/></span>}</div>
           <span className="executive-source"><span>{m.source.replaceAll("_"," ")}</span><small>{updated?`Updated ${updated}`:m.value===null?"View setup & sources":"Update time unavailable"}</small></span>
@@ -252,7 +251,7 @@ function OperatingRing({report,preferences,currency,onCustomize,locationId}:{rep
   const value=(amount:number,unit:string|undefined)=>unit==="money"?`${currency} ${number(amount)}`:`${number(amount)}${unit==="percent"?"%":""}`;
   return <section className="executive-operating-ring interactive-operating-goals" aria-label="Your goals">
     <div className="operating-goal-ring-stage"><InteractiveGoalRings goals={goals} selected={active?.key??""} onSelect={setSelected} label="Select a goal to inspect progress"/></div>
-    <div className="operating-ring-copy"><h3>Business Pulse</h3>
+    <div className="operating-ring-copy"><h3>Your goals</h3>
       <span>{configured.length?`${complete} of ${configured.length} goals reached.`:"Choose a target to get started."} Select a ring to explore.</span>
       <div className="operating-selected-goal" aria-live="polite" aria-atomic="true"><b>{active?.label}</b>
         <span>{active?.progress!=null&&active.actual!=null?`${value(active.actual,active.metric?.unit)} recorded`:active?.status}</span>

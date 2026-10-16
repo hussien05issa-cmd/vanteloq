@@ -19,9 +19,12 @@ test("the mobile disclosure identifies both navigation and account destinations 
   assert.match(header, /id="public-account-actions"/);
 });
 
-test("all public navigation, social destinations and account actions remain reachable in the header", () => {
-  for (const href of ["/how-it-works", "/advisory", "/demo", "/pricing", "/help", "/book-demo", "#social"]) assert.ok(header.includes(`href="${href}"`), href);
-  for (const label of ["Sign in", "Build your dashboard", "Instagram", "YouTube", "TikTok", "Facebook"]) assert.ok(header.includes(label), label);
+test("the header prioritizes product, pricing and account actions while secondary destinations remain on the page", () => {
+  for (const href of ["/how-it-works", "/advisory", "/pricing", "/help", "/book-demo"]) assert.ok(header.includes(`href="${href}"`), href);
+  for (const label of ["Sign in", "Build your dashboard"]) assert.ok(header.includes(label), label);
+  for (const label of ["Instagram", "YouTube", "TikTok", "Facebook"]) assert.ok(homepage.includes(label), label);
+  assert.ok(homepage.includes('href="/demo"'));
+  assert.doesNotMatch(header, /public-nav-socials/);
   assert.match(header, /data-public-event="pricing_view"/);
   assert.match(header, /data-public-event="signup_start"/);
   assert.doesNotMatch(header, /Business analytics by LexEdge Consulting/);
@@ -42,6 +45,8 @@ test("public polish preserves the source principle and business overview heading
 
 test("both public footers identify Vanteloq Inc. and use the supplied parent artwork", () => {
   const footer = renderToStaticMarkup(createElement(PublicFooter));
+  assert.doesNotMatch(footer, /Motion:/);
+  assert.doesNotMatch(homepage, /Motion (?:on|off)|Reduced motion/);
   for (const html of [homepage, footer]) {
     assert.match(html, /Vanteloq Inc\./);
     assert.match(html, /aria-label="Vanteloq logo"/);

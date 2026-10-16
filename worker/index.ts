@@ -134,7 +134,7 @@ const worker = {
     headers.delete("Server");
     headers.delete("X-Powered-By");
     headers.set("X-Content-Type-Options", "nosniff");
-    headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+    headers.set("Referrer-Policy", url.pathname === "/datstudio" || url.pathname.startsWith("/datstudio/") ? "no-referrer" : "strict-origin-when-cross-origin");
     headers.set("Permissions-Policy", "camera=(), microphone=(self), geolocation=(), payment=(), usb=()");
     headers.set("X-Frame-Options", "DENY");
     headers.set("X-DNS-Prefetch-Control", "off");

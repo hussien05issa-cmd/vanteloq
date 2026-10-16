@@ -88,6 +88,7 @@ import {
 } from "./integration-catalog";
 import ProductBrandLogo from "./product-brand-logo";
 import WorkspaceIcon from "./workspace-icon";
+import WorkspaceLauncher from "./workspace-launcher";
 const DecisionWorkspace = lazy(() => import("./decision-workspace"));
 import { useModalFocus } from "./use-modal-focus";
 import { comparisonCopy, quantityLabel } from "../domain/workspace-presentation";
@@ -1326,6 +1327,7 @@ export default function VanteloqApp({
             </span>
           </div>
           <div className="top-actions" role="group" aria-label="Workspace actions">
+            <WorkspaceLauncher/>
             {!!importChoices.length && <button type="button" className="report-import-trigger" disabled={loading || Boolean(error)} onClick={() => setReportImportsOpen(true)}><WorkspaceIcon name="Documents"/><span>Import reports</span></button>}
             <button type="button" className="command-trigger" onClick={() => setCommandOpen(true)} aria-label="Open workspace search"><WorkspaceIcon name="Search"/><span>Search workspace</span><kbd>⌘K</kbd></button>
             {subscriptionFeatures.includes("operations.basic") && appPermissions.includes("operations.manage") && <button

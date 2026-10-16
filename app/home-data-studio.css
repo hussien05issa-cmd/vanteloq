@@ -3,8 +3,6 @@
 .home-studio-copy>p:not(.demo-eyebrow){font-size:16px;line-height:1.75;color:var(--public-secondary,#425674);max-width:440px;margin:0 0 20px}.home-studio-copy>small{display:block;margin-top:12px;color:var(--public-secondary,#52627c);font-size:12px;line-height:1.65;max-width:390px}
 .home-studio-copy>button{display:inline-flex;align-items:center;gap:18px;min-height:44px;padding:0;border:0;background:transparent;color:var(--public-link,#175cd0);font:inherit;font-size:16px;font-weight:650;cursor:pointer}.home-studio-copy>button:hover{text-decoration:underline}
 .home-studio-copy>.demo-eyebrow{display:flex;flex-wrap:wrap;align-items:center;gap:12px}
-.home-studio-new{padding:4px 9px;border:1px solid var(--public-control,#a4b4c8);border-radius:999px;background:var(--public-selected,#e5efff);color:var(--public-link,#175cd0);font-size:10px;font-weight:650;letter-spacing:.03em;line-height:1.4;text-transform:uppercase}
-.home-studio-benefits{display:grid;gap:10px;list-style:none;margin:0 0 24px;padding:0;font-size:14px;line-height:1.5;color:var(--public-secondary,#52627c)}.home-studio-benefits>li::before{content:'✓';margin-right:10px;color:var(--public-link,#175cd0)}
 .public-site.reference-home[data-public-theme] .home-studio-preview .home-studio-teaser{display:block;width:100%;padding:0;border:0;border-bottom:1px solid var(--public-line,#c7d3e2);border-radius:0;background:var(--public-panel,#fff);color:var(--public-ink,#102344);text-align:left;font:inherit;cursor:pointer}
 .home-studio-teaser>img{display:block;width:100%;height:auto;aspect-ratio:16/9;object-fit:contain;background:#050608}
 .home-studio-teaser-label{display:flex;align-items:center;gap:12px;padding:14px 20px}

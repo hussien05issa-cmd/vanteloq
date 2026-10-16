@@ -6,18 +6,23 @@ import { readFileSync } from "node:fs";
 import AdvisoryPage, { metadata } from "../app/advisory/page";
 import AdvisoryInquiry, { advisoryInquiryReducer, isAdvisoryInquiryHash } from "../app/advisory/advisory-inquiry";
 import { isInterfaceMotionDisabledPath } from "../app/interface-motion";
+import { SOCIAL_PROFILES } from "../app/social-profiles";
 
 const html = renderToStaticMarkup(createElement(AdvisoryPage));
 
 test("advisory route gives the service one clear identity and customer journey", () => {
   assert.equal(metadata.alternates?.canonical, "/advisory");
+  assert.equal(metadata.title, "Business Consulting and Analytics in Edmonton | Vanteloq");
+  assert.match(String(metadata.description), /Business consulting, analytics and practical implementation/);
   assert.equal(Array.from(html.matchAll(/<h1(?:\s|>)/g)).length, 1);
   assert.match(html, /<main id="discovery-main"/);
   assert.match(html, /Vanteloq Advisory/);
-  assert.match(html, /Clearer Business Decisions\. <span>Practical <span class="advisory-keep-together">Follow-Through\.<\/span><\/span>/);
+  assert.match(html, /Clearer Business Decisions\. <span class="advisory-title-accent">Practical <span class="advisory-keep-together">Follow-Through\.<\/span><\/span>/);
   assert.match(html, /href="#contact"/);
   assert.match(html, /href="#method"/);
+  assert.doesNotMatch(html, /advisory-outcome-flow/);
   assert.match(html, /Based in Edmonton, Alberta/);
+  assert.match(html, /provides business consulting, analytics and practical implementation/);
   assert.match(html, /data-public-theme="dark"/);
   assert.doesNotMatch(html, /aria-label="Colour theme"/);
   assert.match(html, /aria-label="Book a Walkthrough"[^>]*href="\/book-demo"/);
@@ -73,19 +78,30 @@ test("advisory content is concise, accessible and focused on one conversion path
   assert.match(html, /href="\/social"/);
   assert.match(html, /aria-label="Follow Vanteloq"/);
   assert.match(html, /id="team"/);
-  assert.equal(Array.from(html.matchAll(/class="advisory-social-card advisory-social-card-/g)).length, 4);
-  for (const platform of ["Instagram", "TikTok", "YouTube", "Facebook"]) assert.match(html, new RegExp(`>${platform}<`));
+  const socialStart = html.indexOf('<section class="advisory-social"');
+  const social = html.slice(socialStart, html.indexOf('</section>', socialStart));
+  assert.match(social, /aria-label="Vanteloq social profiles"/);
+  assert.doesNotMatch(social, /advisory-social-card|<h2/);
+  for (const profile of Object.values(SOCIAL_PROFILES)) {
+    assert.ok(social.includes(`href="${profile.href.replaceAll("&", "&amp;")}"`));
+    assert.ok(social.includes(`>${profile.name}</a>`));
+  }
   assert.doesNotMatch(html, /-qr\.(?:svg|png)/);
   assert.match(html, /"@type":"Service"/);
+  for (const type of ["WebPage", "BreadcrumbList", "FAQPage"]) assert.match(html, new RegExp(`"@type":"${type}"`));
+  assert.equal(Array.from(html.matchAll(/"@type":"Person"/g)).length, 3);
+  assert.equal(Array.from(html.matchAll(/"@type":"Question"/g)).length, 4);
   assert.doesNotMatch(html, /guarantee|guaranteed revenue|certified accountant|legal advice/i);
+  assert.doesNotMatch(html, /aggregateRating|meta name="keywords"/i);
 });
 
 test("advisory clarity calls use the first-party inquiry flow", () => {
-  assert.match(html, /href="#advisory-inquiry-form"[^>]*>Request a 30-Minute Clarity Call/);
+  assert.match(html, /href="#contact"[^>]*>Talk to an Advisor/);
+  assert.doesNotMatch(html, /advisory-schedule-link|advisory-contact-points/);
   assert.match(html, /id="advisory-inquiry-form"[^>]*data-inquiry-purpose="advisory"/);
   assert.match(html, /vanteloq-advisory-signal-path-480\.webp 480w/);
   assert.match(html, /vanteloq-advisory-signal-path-1280\.webp 1280w/);
-  for (const detail of ["30 minutes", "Virtual or Edmonton", "No payment to request"]) assert.match(html, new RegExp(detail));
+  for (const detail of ["30 minutes, virtual or in Edmonton.", "No payment to request.", "We agree on scope and fees before paid work."]) assert.ok(html.includes(detail));
   assert.doesNotMatch(html, /calendly\.com|hussienissa-lexedgeconsulting|Book a 30-Minute Clarity Call/);
 });
 
@@ -103,7 +119,32 @@ test("advisory loading is reserved for the real asynchronous form", () => {
   assert.match(css, /prefers-reduced-motion: no-preference/);
   assert.match(css, /data-motion="off"/);
   assert.match(css, /forced-colors: active/);
-  assert.doesNotMatch(css, /advisory-(?:enter|signal-drift|light-sweep|social-float|social-orbit|capability-glow)/);
+  assert.doesNotMatch(css, /transition:\s*all/i);
+});
+
+test("advisory motion is progressive, sequenced and scoped to the route", () => {
+  const css = readFileSync(new URL("../app/advisory/advisory.css", import.meta.url), "utf8");
+  const controller = readFileSync(new URL("../app/advisory/advisory-motion.tsx", import.meta.url), "utf8");
+  assert.equal(Array.from(html.matchAll(/data-advisory-reveal="true"/g)).length, 8);
+  assert.equal(Array.from(html.matchAll(/class="advisory-team-card"[^>]*data-advisory-item="true"/g)).length, 3);
+  assert.equal(Array.from(html.matchAll(/class="advisory-method-list"[\s\S]*?<\/ol>/g))[0]?.[0].match(/data-advisory-item/g)?.length, 5);
+  assert.match(html, /class="advisory-method-progress" aria-hidden="true"/);
+  assert.equal(Array.from(html.matchAll(/class="advisory-faq-answer"/g)).length, 4);
+
+  for (const token of ["--advisory-motion-ease", "--advisory-motion-base", "--advisory-motion-distance"]) assert.match(css, new RegExp(token));
+  for (const animation of ["advisory-hero-enter", "advisory-accent-draw", "advisory-orb-drift"]) assert.match(css, new RegExp(`@keyframes ${animation}`));
+  assert.match(css, /data-advisory-motion="ready"/);
+  assert.match(css, /data-advisory-visible="true"/);
+  assert.match(css, /transform:\s*scaleX\(0\)/);
+  assert.match(css, /transform:\s*scaleY\(0\)/);
+  assert.match(css, /@media \(hover: hover\) and \(pointer: fine\)/);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
+
+  assert.match(controller, /IntersectionObserver/);
+  assert.match(controller, /requestAnimationFrame/);
+  assert.match(controller, /focusin/);
+  assert.match(controller, /useMotionPreference/);
+  assert.match(controller, /observer\.disconnect\(\)/);
 });
 
 test("advisory motion and inquiry loading remain correct across navigation and retries", () => {

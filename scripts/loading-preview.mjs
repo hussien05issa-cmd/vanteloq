@@ -11,10 +11,9 @@ const bundle = await build({ stdin: { contents: `
   import React,{useState} from 'react'; import {createRoot} from 'react-dom/client';
   import {LandingPage} from './app/page'; import WorkspaceSkeleton from './app/workspace-skeleton';
   import BookLoQSkeleton from './app/bookloq-skeleton'; import InterfaceMotion from './app/interface-motion';
-  import {setMotionPreference} from './app/use-motion-preference';
   const params=new URLSearchParams(location.search),screen=params.get('screen')||'hero';
   function Preview(){ const [notice,setNotice]=useState(''); const section=params.get('section')||'Overview';
-    return <><div className="loading-qa"><span>Local visual QA · Placeholder shapes only · Read only</span><div><button onClick={()=>setMotionPreference(false)}>Motion off</button><button onClick={()=>setMotionPreference(true)}>Motion on</button></div>{notice&&<p role="status">{notice}</p>}</div>
+    return <><div className="loading-qa"><span>Local visual QA · Placeholder shapes only · Read only</span>{notice&&<p role="status">{notice}</p>}</div>
       {screen==='hero'?<LandingPage start={()=>setNotice('Account actions are unavailable in this local visual preview.')}/>:<div className="operating-shell"><main>{screen==='bookloq'?<BookLoQSkeleton section={section}/>:<WorkspaceSkeleton variant="overview" label="Loading executive overview"/>}</main></div>}<InterfaceMotion/></>;
   } createRoot(document.getElementById('root')).render(<Preview/>);
 `, resolveDir: process.cwd(), loader: "tsx" }, plugins: [{ name: "loading-qa", setup(builder) {

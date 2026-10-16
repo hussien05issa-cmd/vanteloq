@@ -33,7 +33,6 @@
 @keyframes home-source-word-in { from { opacity: .65; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @media (forced-colors: active) { .reference-home .home-hero:has(.home-live-product) .home-hero-copy > .home-source-principle { color: CanvasText; } }
 .reference-home .home-hero:has(.home-live-product) .public-actions { margin: 20px 0 14px; }
-.reference-home .home-hero:has(.home-live-product) .home-proof { margin-top: 0; background: transparent; border: 0; padding: 0; box-shadow: none; max-width: none; }
 .reference-home .home-hero:has(.home-live-product) .home-company-credit { margin-top: 12px; }
 .home-live-product {
   --preview-ink: #10162f; --preview-muted: #52627c; --preview-line: #dfe6f1; --preview-purple: #43246b;

@@ -1,5 +1,4 @@
-/* Keep FAQ questions inset from their cards and give the introduction a useful
-   starting point. Native details retain their keyboard and touch behaviour. */
+/* One quiet reading column. Native details retain keyboard and touch behaviour. */
 .public-site.reference-home .journey-faq {
   --faq-panel: #ffffff;
   --faq-line: #d7e0ec;
@@ -7,7 +6,7 @@
   --faq-secondary: #53647b;
   --faq-link: #175abd;
   display: grid;
-  grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: clamp(28px, 4.5vw, 60px);
   align-items: start;
 }
@@ -22,6 +21,9 @@
 
 .public-site.reference-home .journey-faq :is(.home-faq-intro, .home-faq-list) {
   min-width: 0;
+  width: 100%;
+  max-width: 960px;
+  margin-inline: auto;
 }
 
 .public-site.reference-home .journey-faq .home-faq-intro {
@@ -29,72 +31,10 @@
   gap: 30px;
 }
 
-.public-site.reference-home .journey-faq .home-faq-start {
-  margin: 0;
-  padding: 24px;
-  border: 1px solid var(--faq-line);
-  border-radius: 18px;
-  background: var(--faq-panel);
-}
-
-.public-site.reference-home .journey-faq .home-faq-start h3 {
-  margin: 0;
-  color: var(--faq-ink);
-  font-size: 21px;
-  line-height: 1.3;
-  letter-spacing: -.025em;
-}
-
-.public-site.reference-home .journey-faq .home-faq-start > p {
-  margin: 10px 0 22px;
-  color: var(--faq-secondary);
-  font-size: 14px;
-  line-height: 1.6;
-}
-
-.public-site.reference-home .journey-faq .home-faq-start ul {
-  display: grid;
-  gap: 0;
-  margin: 0 0 14px;
-  padding: 0;
-  list-style: none;
-}
-
-.public-site.reference-home .journey-faq .home-faq-start li {
-  display: grid;
-  gap: 5px;
-  padding: 15px 0;
-  border-top: 1px solid var(--faq-line);
-}
-
-.public-site.reference-home .journey-faq .home-faq-start li strong {
-  color: var(--faq-ink);
-  font-size: 14px;
-  font-weight: 650;
-  line-height: 1.45;
-}
-
-.public-site.reference-home .journey-faq .home-faq-start li span {
-  color: var(--faq-secondary);
-  font-size: 13px;
-  line-height: 1.6;
-}
-
-.public-site.reference-home .journey-faq .home-faq-start > a {
-  display: inline-flex;
-  align-items: center;
-  min-height: 44px;
-  color: var(--faq-link);
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 1.5;
-  text-underline-offset: 4px;
-}
-
 .public-site.reference-home .journey-faq .home-faq-list {
   display: grid;
   gap: 12px;
-  margin: 0;
+  margin-block: 0;
   border: 0;
 }
 
@@ -199,7 +139,7 @@
 }
 
 @media (max-width: 480px) {
-  .public-site.reference-home .journey-faq :is(.home-faq-start, .journey-final) {
+  .public-site.reference-home .journey-faq .journey-final {
     padding: 20px;
   }
 

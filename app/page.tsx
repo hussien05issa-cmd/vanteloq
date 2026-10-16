@@ -27,7 +27,6 @@ import FinanceProof from "./finance-proof";
 import WorkspaceShowcase from "./workspace-showcase";
 import ResourceArticleBrowser from "./resource-article-browser";
 import { RESOURCE_ARTICLE_SUMMARIES } from "./resources/article-index";
-import SocialLinks from "./social-links";
 import HomeSocialSection from "./home-social-section";
 import IntegrationBrandLogo from "./integration-brand-logo";
 import "./homepage-connectors.css";
@@ -438,7 +437,6 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
   const siteRef = useRef<HTMLDivElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
-  const [activeSection, setActiveSection] = useState("");
   useEffect(() => {
     if (!mobileNavigationOpen) return;
     const escape = (event: KeyboardEvent) => {
@@ -469,22 +467,15 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
     const update = () => {
       frame = 0;
       const height = header.getBoundingClientRect().height;
-      const section = Array.from(site.querySelectorAll<HTMLElement>("main > section")).find(element => {
-        const box = element.getBoundingClientRect();
-        return box.top <= height + 80 && box.bottom > height + 80;
-      });
-      // Complete geometry reads before invalidating layout, and avoid writing
-      // the same header height on every scroll frame.
+      // Anchor offsets only depend on navigation size, not page scrolling.
       const offset = `${height + 20}px`;
       if (site.style.getPropertyValue("--public-nav-height") !== offset) site.style.setProperty("--public-nav-height", offset);
-      setActiveSection(section?.id ?? "");
     };
     const schedule = () => { if (!frame) frame = window.requestAnimationFrame(update); };
     const resize = new ResizeObserver(schedule);
     resize.observe(header); update();
-    window.addEventListener("scroll", schedule, { passive: true });
     window.addEventListener("resize", schedule);
-    return () => { window.cancelAnimationFrame(frame); resize.disconnect(); window.removeEventListener("scroll", schedule); window.removeEventListener("resize", schedule); };
+    return () => { window.cancelAnimationFrame(frame); resize.disconnect(); window.removeEventListener("resize", schedule); };
   }, []);
   const appearance = useWorkspaceAppearance();
   return <div ref={siteRef} className="public-site journey-home reference-home" data-public-theme={appearance.theme} data-public-appearance={appearance.appearance}>
@@ -497,9 +488,8 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
       </div>
       <button ref={menuButtonRef} type="button" className="public-nav-menu" aria-label={mobileNavigationOpen ? "Close navigation menu" : "Open navigation menu"} aria-expanded={mobileNavigationOpen} aria-controls="public-navigation public-account-actions" onClick={() => setMobileNavigationOpen(open => !open)}>Menu</button>
       <nav id="public-navigation" aria-label="Main navigation" onClick={event => { if (event.target instanceof Element && event.target.closest("a")) setMobileNavigationOpen(false); }}>
-        <Link prefetch={false} href="/how-it-works">How it works</Link><Link prefetch={false} href="/advisory">Advisory</Link><a href="/demo" aria-current={activeSection === "demo" ? "location" : undefined}>Open the demo</a><Link prefetch={false} data-public-event="pricing_view" href="/pricing">Pricing</Link><Link prefetch={false} href="/help">Help</Link>
+        <Link prefetch={false} href="/how-it-works">How it works</Link><Link prefetch={false} href="/advisory">Advisory</Link><Link prefetch={false} data-public-event="pricing_view" href="/pricing">Pricing</Link><Link prefetch={false} href="/help">Help</Link>
         <Link prefetch={false} className="public-demo-link" href="/book-demo">Book a free demo</Link>
-        <a href="#social" aria-current={activeSection === "social" ? "location" : undefined}>Socials</a><div className="public-nav-socials"><SocialLinks/></div>
       </nav>
       <div className="public-nav-actions" id="public-account-actions">
         <PublicAppearanceControl/>
@@ -517,25 +507,23 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
           </p>
           <h1 id="home-title">Your business, <em>at a glance.</em></h1>
           <p>Sales, stock and cash. With the records behind the numbers.</p>
-          <p className="home-hero-support">See what changed, inspect the source and decide what needs attention. Keep the systems you use and a dashboard built around your business.</p>
+          <p className="home-hero-support">See what changed. Follow the source. Decide your next step.</p>
           <div className="public-actions"><a href="/demo" data-public-event="demo_view">Open the demo <span aria-hidden="true">→</span></a><button type="button" data-public-event="signup_start" onClick={() => start("signup")}>Build your dashboard</button></div>
-          <ul className="home-proof"><li>No signup for the demo</li><li>Totals open to source rows</li><li>AI memory starts off</li></ul>
         </div>
         <HomeDashboardPreview/>
       </section>
       <div className="reference-connections" aria-label="Explore data connections"><span>YOUR TOOLS, CONNECTED</span><div>{["Lightspeed","Square","Shopify","Stripe","Google"].map(name=><a className="home-connector-brand" key={name} href="#connections" aria-label={`Check ${name} availability`}><IntegrationBrandLogo name={name} compact/>{!["Lightspeed", "Stripe"].includes(name) && <strong>{name}</strong>}</a>)}</div><a href="#connections">View availability <span aria-hidden="true">→</span></a></div>
-      <HomeProductFilm/>
-      <HomeDataStudio openReports={() => { window.location.hash = "workspace/data-studio"; start("signin"); }}/>
       <section className="home-decision-proof" id="platform" aria-labelledby="decision-proof-title">
         <span id="capabilities"/><div className="reference-section-heading" data-motion-item="0"><div><p className="demo-eyebrow">YOUR BUSINESS. YOUR PRIORITIES.</p><h2 id="decision-proof-title">What changed? What needs your attention?</h2></div><p>Open the records behind a finding. Review the next step, assign the work and follow the outcome. Missing costs and incomplete sources stay visible.</p></div>
         <FeatureCarousel/>
       </section>
+      <HomeProductFilm/>
+      <HomeDataStudio openReports={() => { window.location.hash = "workspace/data-studio"; start("signin"); }}/>
       <section className="home-operating-ring-story" aria-labelledby="home-operating-ring-title">
         <HomeGoalPreview/>
         <div data-motion-group><p data-motion-item="0" className="demo-eyebrow">YOUR BUSINESS. YOUR GOALS.</p><h2 data-motion-item="1" id="home-operating-ring-title">Set the goal. See the progress.</h2><p>Choose the numbers you want to improve, set a target and a date, and follow your progress. Your dashboard makes the next milestone visible while keeping missing information clear.</p><div className="home-ring-steps" data-motion-item="2"><span><i/>Choose your metrics</span><span><i/>Set your targets</span><span><i/>Follow your progress</span></div><Link prefetch={false} href="/demo#retail">Explore your dashboard <span aria-hidden="true">↗</span></Link></div>
       </section>
       <section className="home-proof-studio" id="demo" aria-labelledby="home-demo-entry-title"><div className="proof-studio-copy"><p className="demo-eyebrow">TRY IT WITH SAMPLE RECORDS</p><h2 id="home-demo-entry-title">Sales changed.<br/>Show me why.</h2><p>Choose a location. Watch the totals update. Follow the result into the baskets, products and discounts behind it.</p><p className="proof-studio-note">Fictional records. Working calculations. No signup required.</p><Link prefetch={false} href="/demo" data-public-event="demo_engaged">Open the full demo <span aria-hidden="true">→</span></Link></div><HomeDecisionPreview/>
-        <div className="journey-steps" aria-label="From signup to the first insight"><div><b>1</b><span><strong>Set up your account</strong>Verify your email, secure your account and choose a plan.</span></div><div><b>2</b><span><strong>Bring in your records</strong>Connect your source, map locations and review the imported totals.</span></div><div><b>3</b><span><strong>Turn a finding into a next step</strong>Assign an action, set a due date and track its status with your team.</span></div></div>
       </section>
       <section className="home-connections" id="connections" aria-labelledby="connections-title">
         <div className="home-section-heading compact"><p>CHECK YOUR FIT FIRST</p><h2 id="connections-title">Keep your POS.<br/>Get more from its data.</h2><span>Choose your system to see what it can support, what you need to connect and what is still in development.</span></div>
@@ -553,7 +541,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
         <div className="journey-trust"><article><strong>The right people. The right access.</strong><p>Keep your team’s work together while roles and location permissions control access to business and financial information.</p></article><article><strong>Missing data stays visible</strong><p>Missing costs do not become zero. An incomplete import does not prove the store was closed.</p></article><article><strong>You own the decision</strong><p>Vanteloq connects your business records to the decisions that need your attention. You review consequential actions and own the decision.</p></article><div><Link prefetch={false} href="/privacy">Privacy and deletion</Link><Link prefetch={false} href="/subprocessors">Data processors</Link><Link prefetch={false} href="/contact">Contact us</Link></div></div>
       </section>
       <section className="journey-pricing" id="plans" aria-labelledby="home-plans-title"><div className="home-section-heading compact"><p>CHOOSE YOUR CAPACITY</p><h2 id="home-plans-title">One location or several. Start with what you need.</h2><span>Choose the Vanteloq capacity that fits your operation, add BookLoQ, or use BookLoQ as its own finance workspace.</span></div><PublicPlanCards compact/><CustomPlanCallout className="journey-custom" headingLevel={3} title="Need more locations or a custom scope?"/></section>
-      <section className="home-faq journey-faq" aria-labelledby="faq-title"><div className="home-faq-intro"><div className="home-section-heading compact"><p>BEFORE YOU CONNECT YOUR BUSINESS</p><h2 id="faq-title">What happens next?</h2><Link prefetch={false} href="/help">Visit the help centre →</Link></div><article className="home-faq-start"><h3>A clear starting point.</h3><p>Begin with a question you want your numbers to answer.</p><ul><li><strong>Try the demo</strong><span>Explore the dashboard with fictional records.</span></li><li><strong>Bring in your records</strong><span>Use a supported connection or a CSV template that fits your data.</span></li><li><strong>Make the view yours</strong><span>Choose your metrics and set goals for what matters.</span></li><li><strong>Check the source</strong><span>Review imported totals and missing information before acting.</span></li></ul><Link prefetch={false} href="/demo">Explore the working demo →</Link></article></div><div className="home-faq-list">
+      <section className="home-faq journey-faq" aria-labelledby="faq-title"><div className="home-faq-intro"><div className="home-section-heading compact"><h2 id="faq-title">What happens next?</h2><Link prefetch={false} href="/help">Visit the help centre →</Link></div></div><div className="home-faq-list">
         <details><summary>Can I try it before signing up?</summary><p>Yes. The demo uses fictional records and working retail calculations. It does not access customer records or send requests to an AI provider.</p><Link prefetch={false} href="/demo">Open the demo →</Link></details>
         <details><summary>Will it work with my POS?</summary><p>Check the provider selector for current availability and supported data. Each business authorizes its own account, maps locations and reviews imported totals before relying on reports. CSV is an alternative where a supported template fits your records.</p><a href="#connections">Check your system →</a></details>
         <details><summary>What happens after signup?</summary><p>Verify your email, set up an authenticator and choose a plan. Select your business type and priorities during setup. Then add supported records, map locations and review the import. Reports show which records are available so you can see what is ready and what is missing.</p></details>
