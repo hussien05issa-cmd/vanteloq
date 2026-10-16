@@ -20,7 +20,7 @@ test("the mobile disclosure identifies both navigation and account destinations 
 });
 
 test("the header prioritizes product, pricing and account actions while secondary destinations remain on the page", () => {
-  for (const href of ["/how-it-works", "/advisory", "/pricing", "/help", "/book-demo"]) assert.ok(header.includes(`href="${href}"`), href);
+  for (const href of ["/how-it-works", "/workspace", "/advisory", "/pricing", "/book-demo"]) assert.ok(header.includes(`href="${href}"`), href);
   for (const label of ["Sign in", "Build your dashboard"]) assert.ok(header.includes(label), label);
   for (const label of ["Instagram", "YouTube", "TikTok", "Facebook"]) assert.ok(homepage.includes(label), label);
   assert.ok(homepage.includes('href="/demo"'));
@@ -30,11 +30,15 @@ test("the header prioritizes product, pricing and account actions while secondar
   assert.doesNotMatch(header, /Business analytics by LexEdge Consulting/);
 });
 
-test("shared public navigation promotes Advisory and keeps connections in Resources", () => {
+test("shared public navigation promotes Workspace and Advisory while keeping connections in Resources", () => {
+  assert.match(sharedNavigation, /href="\/workspace"/);
+  assert.match(sharedNavigation, /path === "\/workspace" \? "page"/);
   assert.match(sharedNavigation, /href="\/advisory"/);
   assert.match(sharedNavigation, /path === "\/advisory" \? "page"/);
   assert.match(sharedNavigation, /href="\/#connections"/);
   assert.match(sharedNavigation, />Connections & integrations</);
+  assert.match(sharedNavigation, /data-public-event=\{primaryAction \? undefined : "signup_start"\}/);
+  assert.doesNotMatch(sharedNavigation, /demo_booking_start/);
 });
 
 test("public polish preserves the source principle and business overview heading", () => {
@@ -47,6 +51,7 @@ test("both public footers identify Vanteloq Inc. and use the supplied parent art
   const footer = renderToStaticMarkup(createElement(PublicFooter));
   assert.doesNotMatch(footer, /Motion:/);
   assert.doesNotMatch(homepage, /Motion (?:on|off)|Reduced motion/);
+  assert.match(footer, /href="\/workspace"/);
   for (const html of [homepage, footer]) {
     assert.match(html, /Vanteloq Inc\./);
     assert.match(html, /aria-label="Vanteloq logo"/);

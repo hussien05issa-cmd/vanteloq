@@ -16,6 +16,7 @@ import PublicPlanCards from "./public-plan-cards";
 import CustomPlanCallout from "./custom-plan-callout";
 import HomeGoalPreview from "./home-goal-preview";
 import HomeDashboardPreview from "./home-dashboard-preview";
+import HomeCinematicDashboard from "./home-cinematic-dashboard";
 import HomeProductFilm from "./home-product-film";
 import HomeDataStudio from "./home-data-studio";
 import HomeDecisionPreview from "./home-decision-preview";
@@ -488,7 +489,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
       </div>
       <button ref={menuButtonRef} type="button" className="public-nav-menu" aria-label={mobileNavigationOpen ? "Close navigation menu" : "Open navigation menu"} aria-expanded={mobileNavigationOpen} aria-controls="public-navigation public-account-actions" onClick={() => setMobileNavigationOpen(open => !open)}>Menu</button>
       <nav id="public-navigation" aria-label="Main navigation" onClick={event => { if (event.target instanceof Element && event.target.closest("a")) setMobileNavigationOpen(false); }}>
-        <Link prefetch={false} href="/how-it-works">How it works</Link><Link prefetch={false} href="/advisory">Advisory</Link><Link prefetch={false} data-public-event="pricing_view" href="/pricing">Pricing</Link><Link prefetch={false} href="/help">Help</Link>
+        <Link prefetch={false} href="/how-it-works">How it works</Link><Link prefetch={false} href="/workspace">Workspace</Link><Link prefetch={false} href="/advisory">Advisory</Link><Link prefetch={false} data-public-event="pricing_view" href="/pricing">Pricing</Link>
         <Link prefetch={false} className="public-demo-link" href="/book-demo">Book a free demo</Link>
       </nav>
       <div className="public-nav-actions" id="public-account-actions">
@@ -509,13 +510,7 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
           <p>Sales, stock and cash. With the records behind the numbers.</p>
           <div className="public-actions"><button className="home-editorial-primary" type="button" data-public-event="signup_start" onClick={() => start("signup")}>Build your dashboard <span aria-hidden="true">↗</span></button><a className="home-editorial-demo" href="/demo" data-public-event="demo_view">Open the demo <span aria-hidden="true">→</span></a></div>
         </div>
-        <figure className="home-editorial-visual" data-motion-item="1">
-          <picture>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/brand/hero-dashboard-2026-10-16/dashboard-1440.webp" srcSet="/brand/hero-dashboard-2026-10-16/dashboard-640.webp 640w, /brand/hero-dashboard-2026-10-16/dashboard-960.webp 960w, /brand/hero-dashboard-2026-10-16/dashboard-1440.webp 1440w, /brand/hero-dashboard-2026-10-16/dashboard-1920.webp 1920w" sizes="(max-width: 800px) calc(100vw - 40px), (max-width: 1600px) 52vw, 740px" alt="Vanteloq dashboard displayed on a cinematic screen, showing sales, margins and goal rings with fictional sample data." width={2560} height={1712} loading="eager" fetchPriority="high" decoding="async"/>
-          </picture>
-          <figcaption>Dashboard illustration · Sample data</figcaption>
-        </figure>
+        <HomeCinematicDashboard motionEnabled={motionEnabled}/>
         </div>
         <HomeDashboardPreview/>
       </section>

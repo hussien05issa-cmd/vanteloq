@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import ExecutiveOverview from './executive-overview';
 import DashboardGreeting from './dashboard-greeting';
 import ProductBrandLogo from './product-brand-logo';
@@ -9,14 +9,11 @@ import { useMotionPreference } from './use-motion-preference';
 import './home-dashboard-preview.css';
 
 export default function HomeDashboardPreview() {
-  const [empty, setEmpty] = useState(false);
-  const [expanded, setExpanded] = useState(false);
-  const previewId = useId();
   const monitor = useRef<HTMLDivElement>(null);
   const entryPlayed = useRef(false);
   const pointerFrame = useRef(0);
   const motion = useMotionPreference();
-  const report = useMemo(() => dashboardDemoReport('all', empty), [empty]);
+  const report = useMemo(() => dashboardDemoReport('all'), []);
   const preferences = useMemo(() => dashboardDemoPreferences(report), [report]);
 
   useEffect(() => {
@@ -40,11 +37,9 @@ export default function HomeDashboardPreview() {
     monitor.current?.style.removeProperty('--monitor-light-x');
   };
 
-  return <div className={`home-live-product${expanded ? ' is-expanded' : ''}`} data-motion-surface>
+  return <div className="home-live-product" id="dashboard-preview" role="region" tabIndex={-1} aria-label="Interactive sample dashboard" data-motion-surface>
     <div className="home-live-controls">
       <span>EXPLORE YOUR DASHBOARD</span>
-      <button type="button" aria-pressed={empty} onClick={() => setEmpty(!empty)}>{empty ? 'Show sample records' : 'Before connecting'}</button>
-      <button type="button" aria-expanded={expanded} aria-controls={previewId} onClick={() => setExpanded(!expanded)}>{expanded ? 'Show overview' : 'Show more detail'}</button>
     </div>
     <div className="home-monitor" ref={monitor} onPointerLeave={resetLight} onPointerMove={event => {
       if (!motion || event.pointerType !== 'mouse' || document.hidden || pointerFrame.current) return;
@@ -70,14 +65,14 @@ export default function HomeDashboardPreview() {
         </aside>
         <div className="home-monitor-main">
           <div className="home-monitor-top"><span>Workspace <i aria-hidden="true">/</i> <b>Overview</b></span><span className="home-preview-data-badge">Sample data</span><a href="#connections">Connect your business <span aria-hidden="true">↗</span></a></div>
-          <div className="home-monitor-screen" id={previewId}>
-            <DashboardGreeting accountName="" sourceName="Sample receipts" latestBusinessDate={empty ? null : report.period.to} lastSuccessfulSyncAt={null} needsAttention={false} showSourceStatus={false} onConnections={() => { window.location.hash = 'connections'; }}/>
-            <ExecutiveOverview key={empty ? 'empty' : 'sample'} currency="CAD" industry="Retail" compact={false} initialReport={report} initialPreferences={preferences} navigate={view => { window.location.href = view === 'Integrations' ? '#connections' : view === 'BookLoQ' ? '/demo#bookloq' : view === 'Intelligence' ? '#vanteloq-ai' : '/demo#retail'; }}/>
+          <div className="home-monitor-screen">
+            <DashboardGreeting accountName="" sourceName="Sample receipts" latestBusinessDate={report.period.to} lastSuccessfulSyncAt={null} needsAttention={false} showSourceStatus={false} onConnections={() => { window.location.hash = 'connections'; }}/>
+            <ExecutiveOverview currency="CAD" industry="Retail" compact={false} initialReport={report} initialPreferences={preferences} navigate={view => { window.location.href = view === 'Integrations' ? '#connections' : view === 'BookLoQ' ? '/demo#bookloq' : view === 'Intelligence' ? '#vanteloq-ai' : '/demo#retail'; }}/>
           </div>
         </div>
       </div>
     </div>
     <div className="home-monitor-stand" aria-hidden="true"><i/></div>
-    <p className="home-live-caption">Select a metric, explore its source or try Customize. {!empty && 'Sample goals use previous-period results as illustrative targets, not business recommendations. '}<a href="/demo">Open the full demo <span aria-hidden="true">↗</span></a></p>
+    <p className="home-live-caption">Select a metric, explore its source or try Customize. Sample goals use previous-period results as illustrative targets, not business recommendations. <a href="/demo">Open the full demo <span aria-hidden="true">↗</span></a></p>
   </div>;
 }

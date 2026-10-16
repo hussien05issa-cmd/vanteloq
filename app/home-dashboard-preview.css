@@ -74,10 +74,29 @@
   display: block; width: 100%; height: 100%; object-fit: contain;
 }
 .home-editorial-visual figcaption { margin-top: 12px; color: var(--public-secondary, #435d79); font-size: 12px; line-height: 1.5; text-align: right; }
-@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
-  .home-editorial-visual img { transition: transform 700ms cubic-bezier(.2,.7,.3,1); }
-  .home-editorial-visual:hover img { transform: scale(1.01); }
+.home-cinematic-link { display: block; border-radius: inherit; color: #f7fbff; text-decoration: none; -webkit-tap-highlight-color: transparent; }
+.home-cinematic-entry, .home-cinematic-stage { position: relative; display: block; border-radius: inherit; }
+.home-cinematic-link:focus-visible { outline: 3px solid var(--public-link, #175abd); outline-offset: 6px; }
+.home-cinematic-cue {
+  position: absolute; right: 18px; bottom: 16px; display: inline-flex; align-items: center;
+  gap: 18px; min-height: 44px; padding: 10px 16px; border-radius: 999px;
+  border: 1px solid #779bd0; background: #101a2bed; color: #f7fbff;
+  font-size: 13px; line-height: 1.5; font-weight: 550; pointer-events: none;
 }
+.home-cinematic-cue > span { font-size: 16px; }
+@media (prefers-reduced-motion: no-preference) {
+  html:has(.home-cinematic-link[data-motion="on"]) { scroll-behavior: smooth; }
+  .home-cinematic-link[data-motion="on"][data-ready="true"] .home-cinematic-entry { animation: home-cinematic-settle 1100ms cubic-bezier(.16,1,.3,1) both; }
+  .home-cinematic-link[data-motion="on"][data-active="false"] .home-cinematic-entry { animation: none; }
+  .home-cinematic-link[data-motion="on"] .home-cinematic-stage { transform: perspective(1600px) rotateX(var(--hero-turn-x, 0deg)) rotateY(var(--hero-turn-y, 0deg)) scale(1); transition: transform 420ms cubic-bezier(.2,.7,.3,1); }
+  .home-cinematic-link[data-motion="on"]:active .home-cinematic-stage { transform: scale(.992); transition-duration: 120ms; }
+  .home-cinematic-link[data-motion="on"] .home-cinematic-cue > span { transition: transform 220ms ease; }
+  .home-cinematic-link[data-motion="on"]:is(:hover,:focus-visible) .home-cinematic-cue > span { transform: translate(2px,-2px); }
+}
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  .home-cinematic-link[data-motion="on"]:hover:not(:active) .home-cinematic-stage { transform: perspective(1600px) rotateX(var(--hero-turn-x, .25deg)) rotateY(var(--hero-turn-y, -.4deg)) scale(1.006); }
+}
+@keyframes home-cinematic-settle { from { opacity: .94; transform: perspective(1600px) rotateY(-2deg) translateY(8px) scale(.99); } to { opacity: 1; transform: none; } }
 @media (max-width: 1000px) and (min-width: 801px) {
   .home-editorial-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 32px; }
   .public-site.reference-home .home-editorial h1 { font-size: 48px; }
@@ -98,7 +117,9 @@
 .home-live-product {
   --preview-ink: #10162f; --preview-muted: #52627c; --preview-line: #dfe6f1; --preview-purple: #43246b;
   order: 1; width: 100%; max-width: 1440px; min-width: 0; justify-self: center; color: var(--preview-ink);
+  scroll-margin-top: var(--public-nav-height, 100px);
 }
+.home-live-product:focus-visible { outline: 3px solid var(--public-link, #175abd); outline-offset: 8px; border-radius: 20px; }
 .home-live-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; margin-bottom: 12px; }
 .home-live-controls > span { margin-right: auto; font-size: 11px; letter-spacing: .12em; font-weight: 700; color: var(--preview-purple); }
 .home-live-controls > button {
@@ -154,7 +175,6 @@
 .home-monitor-screen .executive-chart svg { max-height: none; }
 .home-monitor-screen .executive-chart-readout { height: auto; min-height: 28px; }
 .home-monitor-screen .executive-detail p { margin: 0; }
-.home-live-product:not(.is-expanded) .home-monitor-screen > .executive-overview > :is(.invoice-overview, .executive-summary-panels, .executive-financial-details) { display: none; }
 .home-live-caption { margin: 13px 2px 0; font-size: 12px; line-height: 1.65; color: var(--preview-muted); }
 .home-live-caption a { color: #43246b; font-weight: 600; }
 .reference-home .dashboard-drawer > header h2 { font-size: 24px; line-height: 1.2; margin: 0; letter-spacing: -.6px; }

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { dashboardDemoPreferences, dashboardDemoReport } from '../app/dashboard-demo-report';
 import ExecutiveOverview from '../app/executive-overview';
@@ -49,7 +50,15 @@ test('illustrative sample goals use prior results, exact displayed dates and eli
   assert.match(html,/Revenue share by source/);
   assert.match(html,/Fictional sample receipts/);
   assert.doesNotMatch(html,/Empty revenue composition ring|Your next decision starts here|Target not set/);
-  assert.match(renderToStaticMarkup(<HomeDashboardPreview/>),/illustrative targets, not business recommendations/);
+  const preview=renderToStaticMarkup(<HomeDashboardPreview/>);
+  assert.match(preview,/illustrative targets, not business recommendations/);
+  assert.match(preview,/class="home-live-product"/);
+  assert.match(preview,/id="dashboard-preview" role="region" tabindex="-1" aria-label="Interactive sample dashboard"/);
+  assert.match(preview,/Fictional sample receipts|Fictional sample records/);
+  assert.match(preview,/Customize/);
+  assert.doesNotMatch(preview,/Before connecting|Show sample records|Show more detail|Show overview|is-expanded/);
+  const styles=readFileSync(new URL('../app/home-dashboard-preview.css',import.meta.url),'utf8');
+  assert.doesNotMatch(styles,/\.home-live-product:not\(\.is-expanded\)/,'customized panels must not depend on the removed preview expansion control');
 });
 
 test('before-connecting preview has no sample attribution, insight or goal progress',()=>{

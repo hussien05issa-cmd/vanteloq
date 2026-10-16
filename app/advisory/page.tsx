@@ -2,8 +2,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import DiscoveryShell from "../discovery-shell";
 import { absoluteUrl, DEFAULT_SOCIAL_IMAGE, safeJsonLd } from "../seo";
-import { SOCIAL_PROFILES } from "../social-profiles";
+import SocialLinks from "../social-links";
 import AdvisoryInquiry from "./advisory-inquiry";
+import AdvisoryHeroMedia from "./advisory-hero-media";
 import AdvisoryMotion from "./advisory-motion";
 import "./advisory.css";
 
@@ -153,11 +154,14 @@ export default function AdvisoryPage() {
         <div className="advisory-hero-copy">
           <p className="advisory-eyebrow">Vanteloq Advisory</p>
           <h1 id="advisory-title">Clearer Business Decisions. <span className="advisory-title-accent">Practical <span className="advisory-keep-together">Follow-Through.</span></span></h1>
-          <p className="advisory-lead">Vanteloq Advisory provides business consulting, analytics and practical implementation for owner-led businesses in Edmonton and virtually. Work with our team independently or alongside Vanteloq Workspace.</p>
+          <p className="advisory-lead">Vanteloq Advisory provides business consulting, analytics and practical implementation for owner-led businesses in Edmonton and virtually.</p>
           <div className="advisory-actions">
             <a className="advisory-button advisory-button-primary" href="#contact">Talk to an Advisor <span aria-hidden="true">↗</span></a>
-            <a className="advisory-text-action" href="#method">See How We Work <span aria-hidden="true">↓</span></a>
           </div>
+        </div>
+        <AdvisoryHeroMedia />
+        <div className="advisory-hero-meta">
+          <a className="advisory-text-action" href="#method">See How We Work <span aria-hidden="true">↓</span></a>
           <p className="advisory-location">Based in Edmonton, Alberta. Available virtually and in person.</p>
         </div>
       </header>
@@ -235,7 +239,7 @@ export default function AdvisoryPage() {
           <article data-advisory-item data-advisory-order="2"><p>Connected Follow-Through</p><h3>Advisory + Workspace</h3><p>Keep approved sources, analysis, decisions, responsibilities and follow-up work connected inside Vanteloq.</p></article>
         </div>
         <div className="advisory-workspace-actions" data-advisory-item data-advisory-order="3">
-          <Link className="advisory-inline-action" href="/how-it-works">Explore Vanteloq Workspace <span aria-hidden="true">↗</span></Link>
+          <Link className="advisory-inline-action" href="/workspace">Explore Vanteloq Workspace <span aria-hidden="true">↗</span></Link>
           <Link className="advisory-inline-action" href="/resources/business-consulting-vs-business-software">Compare Advisory and Workspace <span aria-hidden="true">↗</span></Link>
         </div>
       </section>
@@ -267,8 +271,8 @@ export default function AdvisoryPage() {
       <section className="advisory-social" aria-label="Follow Vanteloq" data-advisory-reveal>
         <p data-advisory-item data-advisory-order="0">Follow Vanteloq</p>
         <nav className="advisory-social-links" aria-label="Vanteloq social profiles" data-advisory-item data-advisory-order="1">
-          {Object.entries(SOCIAL_PROFILES).map(([slug, profile]) => <a href={profile.href} target="_blank" rel="noopener noreferrer" key={slug} aria-label={`Vanteloq on ${profile.name} (opens in a new tab)`}>{profile.name}</a>)}
-          <Link href="/social">Social hub <span aria-hidden="true">↗</span></Link>
+          <SocialLinks/>
+          <Link className="advisory-social-hub" href="/social">Social hub <span aria-hidden="true">↗</span></Link>
         </nav>
       </section>
     </main>

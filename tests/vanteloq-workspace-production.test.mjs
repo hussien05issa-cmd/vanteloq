@@ -51,20 +51,32 @@ test("Data Studio navigation rejects unsupported routes and mutation methods", a
   assert.equal(response.headers.has("location"), false);
 });
 
-test("the built worker serves the exact Workspace gateway route with its security boundary", async () => {
-  const response = await fetchRoute("/vanteloqworkspace");
+test("the built worker serves the canonical Workspace route with its security boundary", async () => {
+  const response = await fetchRoute("/workspace");
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("cache-control"), "no-store, max-age=0");
   assert.equal(response.headers.get("x-frame-options"), "DENY");
   assert.match(response.headers.get("content-security-policy") ?? "", /frame-ancestors 'none'/);
 
   const html = await response.text();
-  assert.match(html, /https:\/\/vanteloq\.com\/vanteloqworkspace/);
+  assert.match(html, /https:\/\/vanteloq\.com\/workspace/);
   assert.match(html, /https:\/\/vanteloq-workspace\.hussien05issa\.chatgpt\.site\//);
   for (const name of ["Compose", "Model", "Deckly", "Blueprint", "Calendar", "Studio"]) assert.match(html, new RegExp(`>${name}<`));
   assert.match(html, /separate sign-in and data boundary/i);
-  assert.match(html, /No merchant sync or customer account is created here/);
+  assert.match(html, /not automatically shared/i);
   assert.doesNotMatch(html, /<iframe|access_token|refresh_token|oai-authenticated-user/);
+});
+
+test("the compatibility route permanently redirects, retains campaigns and discards sensitive parameters", async () => {
+  const response = await fetchRoute("/vanteloqworkspace?utm_source=legacy&utm_campaign=workspace&access_token=do-not-forward&return_to=https%3A%2F%2Funtrusted.invalid&app=studio");
+  assert.equal(response.status, 308);
+  const destination = new URL(response.headers.get("location"), "http://localhost");
+  assert.equal(destination.pathname, "/workspace");
+  assert.equal(destination.searchParams.get("utm_source"), "legacy");
+  assert.equal(destination.searchParams.get("utm_campaign"), "workspace");
+  assert.equal(destination.searchParams.has("access_token"), false);
+  assert.equal(destination.searchParams.has("return_to"), false);
+  assert.equal(destination.searchParams.has("app"), false);
 });
 
 test("the built worker leaves adjacent and existing route ownership intact", async () => {
@@ -72,4 +84,6 @@ test("the built worker leaves adjacent and existing route ownership intact", asy
   assert.equal(root.status, 200);
   assert.equal(adjacent.status, 404);
   assert.match(adjacent.headers.get("x-robots-tag") ?? "", /noindex/);
+  const dataStudio = await fetchRoute("/datstudio");
+  assert.equal(dataStudio.status, 302);
 });

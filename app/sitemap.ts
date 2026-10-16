@@ -48,7 +48,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: absoluteUrl("/contact"), changeFrequency: "monthly", priority: 0.5 },
     { url: absoluteUrl("/book-demo"), changeFrequency: "monthly", priority: 0.7 },
     { url: absoluteUrl("/advisory"), lastModified: "2026-10-15", changeFrequency: "monthly", priority: 0.85 },
-    { url: absoluteUrl("/vanteloqworkspace"), lastModified: "2026-10-15", changeFrequency: "monthly", priority: 0.85 },
+    { url: absoluteUrl("/workspace"), lastModified: "2026-10-16", changeFrequency: "monthly", priority: 0.85 },
     { url: absoluteUrl("/custom-plan"), changeFrequency: "monthly", priority: 0.6 },
     { url: absoluteUrl("/demo"), changeFrequency: "monthly", priority: 0.8 },
     { url: absoluteUrl("/solutions/retail"), changeFrequency: "monthly", priority: 0.8 },
