@@ -20,6 +20,23 @@ import { SOCIAL_PROFILES } from "../app/social-profiles";
 
 const html = renderToStaticMarkup(createElement(AdvisoryPage));
 
+test("advisory search and share metadata use its actual high-resolution hero", () => {
+  const imagePath = "/brand/advisory/vanteloq-advisory-signal-path-1280.webp";
+  assert.deepEqual(metadata.openGraph?.images, [{
+    url: imagePath,
+    width: 1280,
+    height: 716,
+    alt: "Blue paths pass through three glass panels and converge into an upward arrow on a dark background.",
+  }]);
+  const graph = Array.from(html.matchAll(/<script type="application\/ld\+json">(.*?)<\/script>/g), match => JSON.parse(match[1]))
+    .find(item => Array.isArray(item["@graph"]))["@graph"];
+  const webpage = graph.find((item: Record<string, unknown>) => item["@type"] === "WebPage");
+  assert.equal(webpage.primaryImageOfPage.contentUrl, `https://vanteloq.com${imagePath}`);
+  assert.equal(webpage.primaryImageOfPage.width, 1280);
+  assert.equal(webpage.primaryImageOfPage.height, 716);
+  assert.ok(statSync(new URL(`../public${imagePath}`, import.meta.url)).size < 50_000);
+});
+
 test("advisory route gives the service one clear identity and customer journey", () => {
   assert.equal(metadata.alternates?.canonical, "/advisory");
   assert.equal(metadata.title, "Business Consulting and Analytics in Edmonton | Vanteloq");

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import DiscoveryShell from "../discovery-shell";
-import { absoluteUrl, DEFAULT_SOCIAL_IMAGE, safeJsonLd } from "../seo";
+import { absoluteUrl, safeJsonLd } from "../seo";
 import SocialLinks from "../social-links";
 import AdvisoryInquiry from "./advisory-inquiry";
 import AdvisoryHeroMedia from "./advisory-hero-media";
@@ -11,23 +11,30 @@ import "./advisory.css";
 const ADVISORY_TITLE = "Business Consulting and Analytics in Edmonton | Vanteloq";
 const ADVISORY_DESCRIPTION = "Business consulting, analytics and practical implementation for owner-led businesses in Edmonton, Alberta, with virtual and in-person advisory support.";
 const ADVISORY_URL = absoluteUrl("/advisory");
+const ADVISORY_IMAGE = {
+  url: "/brand/advisory/vanteloq-advisory-signal-path-1280.webp",
+  width: 1280,
+  height: 716,
+  alt: "Blue paths pass through three glass panels and converge into an upward arrow on a dark background.",
+};
 
 export const metadata: Metadata = {
   title: ADVISORY_TITLE,
   description: ADVISORY_DESCRIPTION,
   alternates: { canonical: "/advisory" },
+  robots: { googleBot: { "max-image-preview": "large" } },
   openGraph: {
     type: "website",
     url: "/advisory",
     title: ADVISORY_TITLE,
     description: ADVISORY_DESCRIPTION,
-    images: [{ url: DEFAULT_SOCIAL_IMAGE, width: 1254, height: 1254, alt: "Vanteloq glass blue and silver logo" }],
+    images: [ADVISORY_IMAGE],
   },
   twitter: {
     card: "summary_large_image",
     title: ADVISORY_TITLE,
     description: ADVISORY_DESCRIPTION,
-    images: [DEFAULT_SOCIAL_IMAGE],
+    images: [{ url: ADVISORY_IMAGE.url, alt: ADVISORY_IMAGE.alt }],
   },
 };
 
@@ -115,6 +122,13 @@ const structuredData = {
       description: ADVISORY_DESCRIPTION,
       mainEntity: { "@id": `${ADVISORY_URL}#service` },
       breadcrumb: { "@id": `${ADVISORY_URL}#breadcrumb` },
+      primaryImageOfPage: {
+        "@type": "ImageObject",
+        contentUrl: absoluteUrl(ADVISORY_IMAGE.url),
+        width: ADVISORY_IMAGE.width,
+        height: ADVISORY_IMAGE.height,
+        caption: ADVISORY_IMAGE.alt,
+      },
     },
     {
       "@type": "BreadcrumbList",

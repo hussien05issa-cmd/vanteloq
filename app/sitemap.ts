@@ -47,7 +47,14 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: absoluteUrl("/pricing"), changeFrequency: "monthly", priority: 0.8 },
     { url: absoluteUrl("/contact"), changeFrequency: "monthly", priority: 0.5 },
     { url: absoluteUrl("/book-demo"), changeFrequency: "monthly", priority: 0.7 },
-    { url: absoluteUrl("/advisory"), lastModified: "2026-10-15", changeFrequency: "monthly", priority: 0.85 },
+    {
+      url: absoluteUrl("/advisory"),
+      // The hero and its search/share image metadata were updated on this date.
+      lastModified: "2026-10-16",
+      changeFrequency: "monthly",
+      priority: 0.85,
+      images: [absoluteUrl("/brand/advisory/vanteloq-advisory-signal-path-1280.webp")],
+    },
     { url: absoluteUrl("/workspace"), lastModified: "2026-10-16", changeFrequency: "monthly", priority: 0.85 },
     { url: absoluteUrl("/custom-plan"), changeFrequency: "monthly", priority: 0.6 },
     { url: absoluteUrl("/demo"), changeFrequency: "monthly", priority: 0.8 },

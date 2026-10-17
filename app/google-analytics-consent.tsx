@@ -9,6 +9,7 @@ import { publicMarketingEvent } from "../shared/public-marketing-events";
 import { useModalFocus } from "./use-modal-focus";
 import { getPublicRoot, getServerPublicRoot, subscribePublicRoot } from "./analytics-public-surface";
 import { usePublicAppearance } from "./public-appearance";
+import { blockOptionalAnalyticsNetwork, optionalAnalyticsNetworkBlocked } from "./analytics-network-policy";
 
 type ConsentChoice = "analytics" | "essential";
 type GtagCommand = [string, ...unknown[]];
@@ -76,6 +77,11 @@ function markAnalyticsReady() {
 }
 
 function loadAnalytics() {
+  if (optionalAnalyticsNetworkBlocked()) {
+    // Never refresh automatically on route changes or another tab's choice.
+    // Explicit opt-in below may start a fresh document after showing the notice.
+    return;
+  }
   analyticsAllowed = true;
   setAnalyticsDisabled(false);
   runGtag("consent", "update", {
@@ -103,13 +109,17 @@ function loadAnalytics() {
 
 function stopAnalytics(clearCookies = true) {
   analyticsAllowed = false;
+  // The SDK must see the opt-out before processing consent updates or queued work.
+  setAnalyticsDisabled(true);
+  if (document.getElementById(SCRIPT_ID) && (clearCookies || readSavedChoice() !== "analytics" || !isPublicMeasurementPage(window.location.pathname))) {
+    blockOptionalAnalyticsNetwork();
+  }
   runGtag("consent", "update", {
     analytics_storage: "denied",
     ad_storage: "denied",
     ad_user_data: "denied",
     ad_personalization: "denied",
   });
-  setAnalyticsDisabled(true);
   if (clearCookies) clearAnalyticsCookies();
 }
 
@@ -154,6 +164,7 @@ export function GoogleAnalyticsConsent() {
     setChoiceOverride(nextChoice);
     setSettingsOpen(false);
     if (nextChoice === "essential") stopAnalytics();
+    else if (optionalAnalyticsNetworkBlocked()) window.location.reload();
   }, []);
 
   const dismissPanel = useCallback(() => {
@@ -233,6 +244,7 @@ export function GoogleAnalyticsConsent() {
           <div className="analytics-consent-copy">
             <h2 id="analytics-consent-title">Privacy choices</h2>
             <p id="analytics-consent-copy">Optional Google Analytics measures public-page use. Account data, form entries and workspace records stay excluded. No advertising tracking. Essential only gives you the same access.</p>
+            {hydrated && optionalAnalyticsNetworkBlocked() && <p>Allowing analytics again refreshes this page. Save any unfinished form first.</p>}
             <Link {...cookieNoticeNavigation}>Cookie Notice</Link>
           </div>
           <div className="analytics-consent-actions">

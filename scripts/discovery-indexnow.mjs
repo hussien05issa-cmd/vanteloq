@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { selectDiscoveryUrls } from "./discovery-url-policy.mjs";
 
 // The verification key is deliberately served as a public ownership file.
 // This script sends only canonical public URLs, never workspace records.
@@ -8,20 +9,18 @@ if (origin.href !== "https://vanteloq.com/" || config.endpoint !== "https://api.
 const key = (await readFile(new URL(`../public/${config.keyFile}`, import.meta.url), "utf8")).trim();
 if (!/^[a-f0-9]{32}$/.test(key) || config.keyFile !== `${key}.txt`) throw new Error("Invalid public verification file.");
 const args = process.argv.slice(2);
-if (args.some(arg => arg !== "--submit")) throw new Error("Use no flags for a dry run, or --submit after deployment.");
+if (args.some(arg => arg !== "--submit" && !arg.startsWith("--path="))) throw new Error("Use --path=/advisory to select changed public paths, and --submit only after deployment.");
+const requestedPaths = args.filter(arg => arg.startsWith("--path=")).map(arg => arg.slice("--path=".length));
 const timeout = () => AbortSignal.timeout(30_000);
 const sitemapResponse = await fetch(new URL("/sitemap.xml", origin), { signal: timeout() });
 if (!sitemapResponse.ok) throw new Error(`Public sitemap check failed (${sitemapResponse.status}).`);
 const sitemap = await sitemapResponse.text();
-const urls = [...new Set([...sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)].map(match => match[1]))];
-if (!urls.length || urls.length > 10_000) throw new Error("Public sitemap URL count is invalid.");
-for (const value of urls) {
-  const url = new URL(value);
-  if (url.origin !== origin.origin || url.search || url.hash || url.pathname.startsWith("/api/") || url.pathname.startsWith("/workspace")) throw new Error("Sitemap contains an ineligible discovery URL.");
-}
+const sitemapUrls = [...sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)].map(match => match[1]);
+// Select only changed pages when requested instead of resubmitting the catalogue.
+const urls = selectDiscoveryUrls(sitemapUrls, requestedPaths, origin.origin);
 const keyLocation = new URL(`/${config.keyFile}`, origin).href;
 if (!args.includes("--submit")) {
-  console.log(JSON.stringify({ mode: "dry-run", publicUrlCount: urls.length, submissionRequiredAfterDeployment: true }));
+  console.log(JSON.stringify({ mode: "dry-run", publicUrlCount: urls.length, selectedUrls: requestedPaths.length ? urls : undefined, submissionRequiredAfterDeployment: true }));
 } else {
   const keyResponse = await fetch(keyLocation, { signal: timeout() });
   if (!keyResponse.ok || (await keyResponse.text()).trim() !== key) throw new Error("The deployed verification file does not match. Publish before submitting.");

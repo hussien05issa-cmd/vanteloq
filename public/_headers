@@ -1,0 +1,12 @@
+# Preserve Vinext's default policy for content-hashed bundles. Vinext does not
+# add its generated rule when this file is supplied by the application.
+/_next/static/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# Correct media types for public images and fonts without changing their cache
+# lifetime, file contents, or headers on HTML, API and authenticated responses.
+/brand/*.webp
+  Content-Type: image/webp
+
+/fonts/*.woff2
+  Content-Type: font/woff2

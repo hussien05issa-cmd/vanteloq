@@ -497,7 +497,7 @@ test("authentication and analytics dialogs manage keyboard focus", async () => {
   assert.match(analyticsConsent, /useModalFocus/);
   assert.match(analyticsConsent, /aria-modal="true"/);
   assert.match(analyticsConsent, /if \(!configured \|\| choice !== "analytics" \|\| !pathname \|\| !isPublicMeasurementPage\(pathname\)\) \{\s*stopAnalytics\([^;]+\);\s*return;\s*\}[\s\S]*?loadAnalytics\(\);/);
-  assert.match(analyticsConsent, /function loadAnalytics\(\) \{\s*analyticsAllowed = true;\s*setAnalyticsDisabled\(false\);/);
+  assert.match(analyticsConsent, /function loadAnalytics\(\) \{\s*if \(optionalAnalyticsNetworkBlocked\(\)\) \{[\s\S]*?return;\s*\}\s*analyticsAllowed = true;\s*setAnalyticsDisabled\(false\);/);
   assert.match(modalFocus, /event\.key === "Escape"/);
   assert.match(modalFocus, /event\.key !== "Tab"/);
   assert.match(modalFocus, /sibling\.inert = true/);
@@ -718,7 +718,16 @@ test("the worker enforces the complete content security policy", async () => {
   assert.match(source, /frame-ancestors 'none'/);
   assert.match(source, /object-src 'none'/);
   assert.match(source, /https:\/\/challenges\.cloudflare\.com/);
-  assert.match(source, /https:\/\/static\.cloudflareinsights\.com/);
+  const policy = source.match(/"default-src 'self';[^\n]+"/)?.[0]?.slice(1, -1);
+  assert.ok(policy, "enforced policy is present");
+  const directives = new Map(policy.split(";").map(value => value.trim().split(/\s+/)).map(([name, ...values]) => [name, values]));
+  assert.ok(!directives.get("script-src").includes("https://static.cloudflareinsights.com"), "optional edge analytics must not bypass consent");
+  assert.equal(directives.has("script-src-elem"), false, "no alternate script policy may re-enable the beacon");
+  for (const name of ["script-src", "connect-src", "frame-src"]) {
+    assert.ok(directives.get(name).includes("https://challenges.cloudflare.com"), `Turnstile stays allowed in ${name}`);
+  }
+  assert.ok(directives.get("script-src").includes("https://www.googletagmanager.com"), "consented Google loader stays allowed");
+  assert.ok(directives.get("connect-src").includes("https://www.google-analytics.com"), "consented Google measurement stays allowed");
   assert.match(source, /upgrade-insecure-requests/);
   assert.match(source, /headers\.delete\("Content-Security-Policy-Report-Only"\)/);
 });

@@ -19,7 +19,8 @@ function render(pathname) {
     "next/navigation": { usePathname: () => pathname },
     "./analytics-consent-navigation": navigation, "./analytics-public-routes": routes,
     "./analytics-public-surface": { subscribePublicRoot: () => () => {}, getPublicRoot: () => false, getServerPublicRoot: () => false },
-    "./workspace-appearance": { useWorkspaceAppearance: () => ({ theme: "dark" }) },
+    "./public-appearance": { usePublicAppearance: () => ({ theme: "dark" }) },
+    "./analytics-network-policy": { blockOptionalAnalyticsNetwork: () => {}, optionalAnalyticsNetworkBlocked: () => false },
     "./use-modal-focus": { useModalFocus: () => {} },
     "../shared/public-marketing-events": { publicMarketingEvent: () => null },
   };
