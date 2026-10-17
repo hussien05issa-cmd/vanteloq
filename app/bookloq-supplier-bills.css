@@ -1,0 +1,12 @@
+.supplier-bill-dialog{max-width:680px}
+.supplier-bill-dialog .accounting-fields{grid-template-columns:minmax(0,1fr)}
+.supplier-bill-dialog .accounting-fields>label{min-width:0;color:var(--ws-ink,#17364e)}
+.supplier-bill-dialog .accounting-fields :is(input,select,textarea){width:100%;box-sizing:border-box;background:var(--ws-panel,#fff);color:var(--ws-ink,#17364e);border:1px solid var(--ws-control,#bfd0df);border-radius:8px;padding:10px 12px}
+.supplier-bill-dialog .accounting-fields textarea{min-height:88px;resize:vertical}
+.supplier-bill-dialog .accounting-fields small{line-height:1.55;color:var(--ws-muted,#526b7d)}
+.supplier-bill-dialog .accounting-confirm input{width:18px;padding:0}
+.supplier-bill-dialog .accounting-summary{grid-template-columns:repeat(2,minmax(0,1fr))}
+.supplier-bill-dialog .accounting-history>div{overflow-wrap:anywhere}
+.supplier-bill-dialog .accounting-history>div>span:last-child{white-space:nowrap;flex-shrink:0}
+@media(max-width:500px){.supplier-bill-dialog .accounting-fields :is(input,select,textarea){font-size:16px}.supplier-bill-dialog .accounting-summary{gap:8px}.supplier-bill-dialog .accounting-history>div{flex-direction:column}}
+@media(prefers-reduced-motion:reduce){.supplier-bill-dialog{animation:none!important;transition:none!important}}

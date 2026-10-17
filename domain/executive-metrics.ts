@@ -45,6 +45,7 @@ export const changePercent = (current:number|null,previous:number|null) => curre
 export const positiveRatio = (n:number,d:number) => d>0 ? n/d : null;
 export type ExecutiveLedgerRow = { id:string; name:string; accountType:string; accountSubtype:string; systemKey:string|null; debitCents:number; creditCents:number };
 const cashKeys=new Set(["operating_cash","cash","bank","cash_equivalents"]);
+export const isLedgerCashAccount=(row:ExecutiveLedgerRow)=>row.accountType==="asset"&&(cashKeys.has(row.systemKey??row.accountSubtype)||["bank","cash"].includes(row.accountSubtype));
 const financeKeys=new Set(["interest_expense","finance_cost","finance_costs","income_tax","income_tax_expense"]);
 export function ledgerIntelligence(accounts: readonly ExecutiveLedgerRow[]) {
   const value=(row:ExecutiveLedgerRow)=>exactSum([row.debitCents,-row.creditCents]);
@@ -56,7 +57,7 @@ export function ledgerIntelligence(accounts: readonly ExecutiveLedgerRow[]) {
   const financeAndTax=selected(row=>row.accountType==="expense"&&financeKeys.has(key(row)));
   const operatingRevenue=exactSum([revenue,-otherIncome]), operatingExpenses=exactSum([expenses,-cogs,-financeAndTax]);
   const assets=selected(row=>row.accountType==="asset"), liabilities=selected(row=>row.accountType==="liability",-1), contributedEquity=selected(row=>row.accountType==="equity",-1);
-  const cash=selected(row=>row.accountType==="asset"&&(cashKeys.has(key(row))||["bank","cash"].includes(row.accountSubtype)));
+  const cash=selected(isLedgerCashAccount);
   const inventory=selected(row=>row.accountType==="asset"&&["inventory","inventory_asset"].includes(key(row)));
   const currentAssetKeys=new Set([...cashKeys,"accounts_receivable","inventory","inventory_asset","prepaid_expenses","gst_recoverable","short_term_investments"]);
   const currentLiabilityKeys=new Set(["accounts_payable","gst_collected","sales_tax_payable","payroll_payable","credit_card","current_loan","current_portion_debt"]);

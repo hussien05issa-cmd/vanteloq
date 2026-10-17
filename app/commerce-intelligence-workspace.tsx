@@ -7,8 +7,10 @@ import RetailIntelligenceWorkspace, { type RetailAdvisorSeed } from "./retail-in
 import { apiFetch } from "./supabase-browser";
 import { createCommerceReportLoader, type CommerceReportState } from "./commerce-read";
 import { providerDisplayName } from "../domain/display-labels";
-import { businessClock, businessDateOffset } from "../domain/intraday-sales";
+import { businessClock, businessDateOffset, businessDateForTimestamp } from "../domain/intraday-sales";
 import { FieldLabel } from "./form-primitives";
+import { ReportImportPrivacyNotice } from "./report-import-privacy";
+import { importPrivacyAcknowledgement } from "../domain/report-import-privacy";
 
 type Mode = "Sales" | "Inventory" | "Customers" | "Suppliers";
 type TaskSeed = { title: string; detail: string; priority: "high" | "medium" | "low"; sourceType?: "alert"; sourceRef?: string };
@@ -49,9 +51,20 @@ type Snapshot = {
   }>;
   alerts: Array<{ type: string; severity: "urgent" | "warning" | "review"; title: string; detail: string; action: string }>;
   permissions: { customerIdentity: boolean; productCosts: boolean; profit: boolean; suppliers: boolean; inventory: boolean; manageCosts: boolean; importCosts: boolean };
+  sourceScope?: { connectionId: string | null; provider: string | null; accountName: string | null };
+  readiness?: {
+    databaseViewComplete: boolean;
+    displayedEvidence: { saleLines: boolean; inventory: boolean; customers: boolean; suppliers: boolean; products: boolean };
+    limitations: string[];
+  };
 };
 
 type CostImportRow = { row: number; sku: string; provider: string | null; unitCostCents: number };
+
+export function inventoryCostRequest(source: "manual" | "csv", entries: Array<Record<string, unknown>>, privacyAccepted = false) {
+  if (source === "csv" && !privacyAccepted) throw new Error("Acknowledge the import privacy notice before importing the product cost CSV.");
+  return { source, entries, ...(source === "csv" ? { importPrivacyAcknowledgement: importPrivacyAcknowledgement() } : {}) };
+}
 
 const money = (value: number | null, currency: string) => value == null
   ? "Not available"
@@ -61,7 +74,22 @@ const preciseMoney = (value: number | null, currency: string) => value == null
   : new Intl.NumberFormat("en-CA", { style: "currency", currency, minimumFractionDigits: 2 }).format(value / 100);
 const percent = (value: number | null, digits = 1) => value == null ? "Not available" : `${(value * 100).toFixed(digits)}%`;
 const changeCopy = (value: number | null) => value == null ? "No matched baseline" : `${value >= 0 ? "+" : ""}${(value * 100).toFixed(1)}% vs prior period`;
-const dateTime = (value: string | null, timeZone: string) => value ? new Intl.DateTimeFormat("en-CA", { timeZone, month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(value)) : "Not supplied";
+export function formatCommerceSourceTimestamp(value: string | null, timeZone: string): string {
+  if (!value) return "Not supplied";
+  // An offset-free provider time is business-local evidence, not a device-local
+  // instant. Format its validated wall time without guessing a DST offset.
+  const normalized = value.trim().replace(/^(\d{4}-\d{2}-\d{2}) /, "$1T");
+  const local = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$/.test(normalized);
+  try {
+    if (!businessDateForTimestamp(normalized, timeZone)) return "Time unavailable";
+    const formatted = new Intl.DateTimeFormat("en-CA", { timeZone: local ? "UTC" : timeZone, month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })
+      .format(new Date(local ? `${normalized}Z` : normalized));
+    return `${formatted} · ${timeZone}${local ? " (source local time)" : ""}`;
+  } catch {
+    return "Time unavailable";
+  }
+}
+const dateTime = formatCommerceSourceTimestamp;
 const csvCell = (value: unknown) => {
   const raw = String(value ?? "");
   // Prevent spreadsheet applications from executing a provider-supplied value as a formula.
@@ -144,15 +172,22 @@ function DataEmpty({ mode, navigate }: { mode: Mode; navigate: (view: "Integrati
     <div>
       <p>CONNECTED COMMERCE INTELLIGENCE</p>
       <h3>{mode === "Sales" ? "Your sales records will appear here." : mode === "Inventory" ? "Build a clear picture of your stock." : mode === "Customers" ? "Get to know your customer activity." : "Keep your supplier records together."}</h3>
-      <span>Connect an authorized source and complete its first sync to see verified records. You can review connection status and permissions in Integrations.</span>
+      <span>Connect an authorized source and complete its first sync to see recorded data. Review its date coverage, sync status and permissions in Integrations.</span>
       <button onClick={() => navigate("Integrations")}>Review connections</button>
     </div>
     <div className="workspace-empty-mark" aria-hidden="true"><WorkspaceIcon name={mode}/></div>
   </section>;
 }
 
-export default function CommerceIntelligenceWorkspace({ initialPeriod, mode, currency, timeZone = "UTC", activeLocationId, navigate, createTask, onAsk }: {
-  initialPeriod?:{from:string;to:string}; mode: Mode; currency: string; timeZone?: string; activeLocationId: string | null; navigate: (view: "Integrations") => void; createTask: (seed: TaskSeed) => void; onAsk?: (seed: RetailAdvisorSeed) => void;
+export function CommerceReportCoverage({ readiness }: { readiness: NonNullable<Snapshot["readiness"]> }) {
+  return <details className="executive-source-details"><summary>Coverage and calculation limits</summary>
+    <p>{readiness.databaseViewComplete ? "Aggregated values include the matching stored records for this report." : "This dashboard is a limited preview. Narrow the dates or location for a complete stored-record view."} Provider completeness and reconciliation are not certified.</p>
+    {readiness.limitations.map((limitation, index) => <p key={index}>{limitation}</p>)}
+  </details>;
+}
+
+export default function CommerceIntelligenceWorkspace({ initialPeriod, initialCostImportOpen = false, mode, currency, timeZone = "UTC", activeLocationId, sourceConnectionId, navigate, createTask, onAsk }: {
+  initialPeriod?:{from:string;to:string}; initialCostImportOpen?: boolean; mode: Mode; currency: string; timeZone?: string; activeLocationId: string | null; sourceConnectionId?: string; navigate: (view: "Integrations") => void; createTask: (seed: TaskSeed) => void; onAsk?: (seed: RetailAdvisorSeed) => void;
 }) {
   const today = () => businessClock(new Date(), timeZone)!.date;
   const [from, setFrom] = useState(() => initialPeriod?.from??businessDateOffset(today(), -29));
@@ -160,16 +195,28 @@ export default function CommerceIntelligenceWorkspace({ initialPeriod, mode, cur
   const [applied, setApplied] = useState({ from, to });
   const params = new URLSearchParams({ from: applied.from, to: applied.to, mode });
   if (activeLocationId) params.set("location", activeLocationId);
+  if (sourceConnectionId) params.set("connection", sourceConnectionId);
   const scope = `/api/v1/commerce-intelligence?${params}`;
   const [read, setRead] = useState<CommerceReportState<Snapshot>>({ scope: "", data: null, error: "", loading: true });
   const { data, error, loading } = read.scope === scope ? read : { data: null, error: "", loading: true };
   const [query, setQuery] = useState("");
   const [costPreview, setCostPreview] = useState<CostImportRow[]>([]);
   const [costFileName, setCostFileName] = useState("");
+  const [acceptedCostImport, setAcceptedCostImport] = useState<string | null>(null);
+  const costImportContext = JSON.stringify([activeLocationId, costFileName, costPreview]);
+  const costPrivacyAccepted = acceptedCostImport === costImportContext;
   const [costError, setCostError] = useState("");
   const [costSaving, setCostSaving] = useState(false);
   const [editingCostKey, setEditingCostKey] = useState("");
   const [costDraft, setCostDraft] = useState("");
+  const costFileInput = useRef<HTMLInputElement>(null), costImportFocused = useRef(false);
+  useEffect(() => {
+    if (initialCostImportOpen && mode === "Inventory" && costFileInput.current && !costImportFocused.current) {
+      costImportFocused.current = true;
+      costFileInput.current.focus({ preventScroll: true });
+      costFileInput.current.scrollIntoView({ block: "center", behavior: "instant" });
+    }
+  }, [data, initialCostImportOpen, mode]);
   const requests = useRef<ReturnType<typeof createCommerceReportLoader<Snapshot>> | null>(null);
   if (requests.current === null) { requests.current = createCommerceReportLoader<Snapshot>(apiFetch, setRead); }
   const currentScope = useRef<string | null>(scope);
@@ -182,13 +229,14 @@ export default function CommerceIntelligenceWorkspace({ initialPeriod, mode, cur
   }, [load, scope]);
 
   const saveCosts = useCallback(async (source: "manual" | "csv", entries: Array<Record<string, unknown>>) => {
+    if (costSaving) return;
     setCostSaving(true);
     setCostError("");
     try {
       const response = await apiFetch("/api/v1/inventory-costs", {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ source, entries }),
+        body: JSON.stringify(inventoryCostRequest(source, entries, costPrivacyAccepted)),
       });
       const body = await response.json();
       if (!response.ok) {
@@ -197,17 +245,19 @@ export default function CommerceIntelligenceWorkspace({ initialPeriod, mode, cur
       }
       setCostPreview([]);
       setCostFileName("");
+      setAcceptedCostImport(null);
       setEditingCostKey("");
       setCostDraft("");
       await load();
     } catch (caught) {
       setCostError(caught instanceof Error ? caught.message : "Inventory costs could not be saved.");
     } finally { setCostSaving(false); }
-  }, [load]);
+  }, [load, costPrivacyAccepted, costSaving]);
 
   const readCostFile = useCallback(async (file: File | undefined) => {
     setCostPreview([]);
     setCostFileName("");
+    setAcceptedCostImport(null);
     setCostError("");
     if (!file) return;
     if (file.size > 1_000_000) { setCostError("Choose a CSV smaller than 1 MB."); return; }
@@ -235,13 +285,13 @@ export default function CommerceIntelligenceWorkspace({ initialPeriod, mode, cur
   const title = { Sales: "Sale-line intelligence", Inventory: "Inventory control", Customers: "Customer value", Suppliers: "Supplier directory" }[mode];
   const description = {
     Sales: "Inspect each imported transaction line, its customer link, discounts, product economics and margin contribution.",
-    Inventory: "Track verified on-hand stock, demand velocity, cover, reorder thresholds and stock-risk exceptions by location.",
+    Inventory: "Track recorded on-hand stock, demand velocity, cover, reorder thresholds and stock-risk exceptions by location.",
     Customers: "Understand purchase frequency, basket value, revenue contribution and recency without exposing identity to unauthorized roles.",
     Suppliers: "Connect vendor contacts to catalog coverage, demand, margin and stock exposure for purchasing review.",
   }[mode];
   return <div className="content commerce-intelligence-page">
     <section className="commerce-intelligence-head">
-      <div><p>VERIFIED COMMERCE RECORDS</p><h2>{title}</h2><span>{description}</span></div>
+      <div><p>RECORDED COMMERCE</p><h2>{title}</h2><span>{description}</span>{data?.sourceScope && <small>{data.sourceScope.accountName || (data.sourceScope.provider ? providerDisplayName(data.sourceScope.provider) : "Consolidated sources")} · Recorded source view. Completeness is not certified.</small>}</div>
       <form className="commerce-period-picker" aria-busy={loading} onSubmit={(event) => { event.preventDefault(); setApplied({ from, to }); }}>
         <label><FieldLabel>From</FieldLabel><input type="date" value={from} max={to} onChange={(event) => setFrom(event.target.value)} required /></label>
         <label><FieldLabel>To</FieldLabel><input type="date" value={to} min={from} max={today()} onChange={(event) => setTo(event.target.value)} required /></label>
@@ -250,9 +300,10 @@ export default function CommerceIntelligenceWorkspace({ initialPeriod, mode, cur
     </section>
     <div className="executive-filters" role="group" aria-label="Quick reporting period"><div>{[["today","Today"],["7d","7D"],["30d","30D"],["mtd","MTD"],["qtd","QTD"],["ytd","YTD"]].map(([key,label])=><button type="button" key={key} onClick={()=>{const p=executivePeriod(new URLSearchParams({period:key}),today());setFrom(p.from);setTo(p.to);setApplied({from:p.from,to:p.to});}}>{label}</button>)}</div></div>
     {error ? <section className="commerce-api-error" role="alert"><b>Commerce data could not be loaded.</b><span>{error}</span><button type="button" disabled={loading} onClick={() => void load()}>Try Again</button></section> : null}
-    {mode !== "Suppliers" && <RetailIntelligenceWorkspace key={mode + applied.from + applied.to + activeLocationId} from={applied.from} to={applied.to} locationId={activeLocationId} currency={currency} navigate={navigate} createTask={createTask} onAsk={onAsk} initialSection={mode === "Sales" ? "Why it changed" : mode}/>}
-    {data ? <details className="commerce-source-detail" open={mode === "Suppliers"}><summary>Source records and controls</summary>
+    {!sourceConnectionId && mode !== "Suppliers" && <RetailIntelligenceWorkspace key={mode + applied.from + applied.to + activeLocationId} from={applied.from} to={applied.to} locationId={activeLocationId} currency={currency} navigate={navigate} createTask={createTask} onAsk={onAsk} initialSection={mode === "Sales" ? "Why it changed" : mode}/>}
+    {data ? <details className="commerce-source-detail" open={Boolean(sourceConnectionId) || mode === "Suppliers"}><summary>Source records and controls</summary>
       <section className="commerce-date-context"><span>{data.period.from} → {data.period.to}</span><b>{data.period.days} calendar {data.period.days === 1 ? "day" : "days"}</b><small>Compared with {data.period.comparisonFrom} → {data.period.comparisonTo}</small></section>
+      {data.readiness && <CommerceReportCoverage readiness={data.readiness} />}
       {mode === "Sales" && <section className="commerce-stats">
         <Stat label="NET SALES" value={money(data.kpis.netSalesCents, currency)} note={changeCopy(data.kpis.changes.netSalesRate)} />
         <Stat label="GROSS MARGIN" value={percent(data.kpis.grossMarginRate)} note={data.kpis.changes.grossMarginPointChange == null ? "No matched baseline" : `${data.kpis.changes.grossMarginPointChange >= 0 ? "+" : ""}${(data.kpis.changes.grossMarginPointChange * 100).toFixed(1)} percentage points vs prior period`} tone="green" />
@@ -262,7 +313,7 @@ export default function CommerceIntelligenceWorkspace({ initialPeriod, mode, cur
         <Stat label="KNOWN CUSTOMERS" value={data.kpis.knownCustomerTransactions.toLocaleString()} note={`${data.kpis.transactions ? ((data.kpis.knownCustomerTransactions / data.kpis.transactions) * 100).toFixed(1) : "0.0"}% of transactions linked`} tone="violet" />
       </section>}
       {mode === "Inventory" && <section className="commerce-stats">
-        <Stat label="VERIFIED SKUS" value={data.inventory.length.toLocaleString()} note="Across imported stock locations" />
+        <Stat label="RECORDED SKUS" value={data.inventory.length.toLocaleString()} note="Across imported stock locations" />
         <Stat label="STOCKOUTS" value={data.inventory.filter((row) => row.stockStatus === "stockout").length.toLocaleString()} note="Zero units on hand" tone="coral" />
         <Stat label="LOW STOCK" value={data.inventory.filter((row) => row.stockStatus === "low").length.toLocaleString()} note="At or below source reorder point" tone="amber" />
         <Stat label="COVER WATCH" value={data.inventory.filter((row) => row.stockStatus === "watch").length.toLocaleString()} note="Under 14 estimated selling days" tone="violet" />
@@ -271,12 +322,12 @@ export default function CommerceIntelligenceWorkspace({ initialPeriod, mode, cur
         <header><div><p>EXCEPTION QUEUE</p><h3>Issues supported by the selected records</h3></div><span>{data.alerts.length} for review</span></header>
         <div>{data.alerts.slice(0, 8).map((alert, index) => <article key={`${alert.type}:${alert.title}:${index}`} className={`commerce-alert ${alert.severity}`}><i /><span><b>{alert.title}</b><small>{alert.detail} {alert.action}</small></span><button onClick={() => createTask({ title: alert.title, detail: `${alert.detail} ${alert.action}`, priority: alert.severity === "urgent" ? "high" : "medium", sourceType: "alert", sourceRef: `${alert.type}:${index}` })}>Assign →</button></article>)}</div>
       </section>}
-      {mode === "Inventory" && data.permissions.manageCosts && <section className="commerce-cost-manager" aria-labelledby="inventory-cost-title">
+      {!sourceConnectionId && mode === "Inventory" && data.permissions.manageCosts && <section className="commerce-cost-manager" aria-labelledby="inventory-cost-title">
         <header>
-          <div><p>INVENTORY COSTS</p><h3 id="inventory-cost-title">Add verified unit costs</h3><span>Enter a cost beside one item or upload a CSV. Owner costs are kept separate from POS values and used for margin calculations.</span></div>
+          <div><p>INVENTORY COSTS</p><h3 id="inventory-cost-title">Add verified unit costs</h3><span>Enter a cost beside one item or upload a CSV. Owner costs stay separate from POS values. A new cost applies from its saved time; earlier sales keep their historical costs.</span></div>
           <div className="commerce-cost-actions">
             <button type="button" onClick={downloadCostTemplate}>Download template</button>
-            {data.permissions.importCosts && <label>Choose cost CSV<input type="file" accept=".csv,text/csv" onChange={(event) => void readCostFile(event.target.files?.[0])} /></label>}
+            {data.permissions.importCosts && <label>Import product cost CSV<input ref={costFileInput} type="file" accept=".csv,text/csv" disabled={costSaving} onChange={(event) => void readCostFile(event.target.files?.[0])} /></label>}
           </div>
         </header>
         {costError && <div className="commerce-cost-error" role="alert">{costError}</div>}
@@ -284,11 +335,13 @@ export default function CommerceIntelligenceWorkspace({ initialPeriod, mode, cur
           <div><b>{costFileName}</b><span>{costPreview.length} {costPreview.length === 1 ? "cost" : "costs"} ready for review</span></div>
           <div className="commerce-cost-preview-rows">{costPreview.slice(0, 6).map((row) => <span key={`${row.row}:${row.sku}`}><b>{row.sku}</b><small>{row.provider ? providerDisplayName(row.provider) : "Any matching provider"}</small><strong>{preciseMoney(row.unitCostCents, currency)}</strong></span>)}</div>
           {costPreview.length > 6 && <small>+ {costPreview.length - 6} more rows</small>}
-          <div className="commerce-cost-confirm"><button type="button" onClick={() => { setCostPreview([]); setCostFileName(""); }}>Cancel</button><button type="button" disabled={costSaving} onClick={() => void saveCosts("csv", costPreview.map((row) => ({ sku: row.sku, provider: row.provider, unitCostCents: row.unitCostCents })))}>{costSaving ? "Saving…" : `Save ${costPreview.length} costs`}</button></div>
+          <p>This preview is processed in your browser. Importing sends the reviewed cost records to Vanteloq.</p>
+          <ReportImportPrivacyNotice accepted={costPrivacyAccepted} onChange={accepted => setAcceptedCostImport(accepted ? costImportContext : null)} disabled={costSaving}/>
+          <div className="commerce-cost-confirm"><button type="button" disabled={costSaving} onClick={() => { setCostPreview([]); setCostFileName(""); setAcceptedCostImport(null); }}>Cancel</button><button type="button" disabled={costSaving || !costPrivacyAccepted || !data.permissions.importCosts} onClick={() => void saveCosts("csv", costPreview.map((row) => ({ sku: row.sku, provider: row.provider, unitCostCents: row.unitCostCents })))}>{costSaving ? "Importing…" : `Import product cost CSV (${costPreview.length} costs)`}</button></div>
         </div>}
       </section>}
       <section className="dense-panel commerce-intelligence-table">
-        <header><div><p>{mode.toUpperCase()}</p><h3>{mode === "Sales" ? "Transaction-line ledger" : mode === "Inventory" ? "Stock and reorder directory" : mode === "Customers" ? "Customer performance directory" : "Vendor performance directory"}</h3></div><div className="commerce-table-actions"><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Search ${mode.toLowerCase()}…`} aria-label={`Search ${mode.toLowerCase()}`} />{mode === "Inventory" && <button onClick={() => downloadInventoryCsv(inventory, data.period.from, data.period.to)} disabled={!inventory.length}>Export CSV</button>}</div></header>
+        <header><div><p>{mode.toUpperCase()}</p><h3>{mode === "Sales" ? "Transaction preview" : mode === "Inventory" ? "Stock and reorder directory" : mode === "Customers" ? "Customer activity directory" : "Supplier coverage directory"}</h3>{mode === "Sales" && data.readiness?.displayedEvidence.saleLines === false && <span>Newest 1,000 lines. Product totals use all matching stored lines.</span>}</div><div className="commerce-table-actions"><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Search ${mode.toLowerCase()}…`} aria-label={`Search ${mode.toLowerCase()}`} />{mode === "Inventory" && <button onClick={() => downloadInventoryCsv(inventory, data.period.from, data.period.to)} disabled={!inventory.length}>Export CSV</button>}</div></header>
         {hasRecords ? <div className="commerce-scroll-table" role="region" aria-label={`${mode} records`} tabIndex={0}>
           {mode === "Sales" && <div className="commerce-ledger commerce-ledger-sales">
             <div className="commerce-ledger-head"><span>Date / sale</span><span>Item</span><span>Customer</span><span>Qty</span><span>Net sales</span><span>Discount</span><span>Margin</span></div>
@@ -299,7 +352,7 @@ export default function CommerceIntelligenceWorkspace({ initialPeriod, mode, cur
             {inventory.map((row) => {
               const costKey = `${row.provider}:${row.connectionId}:${row.externalProductId ?? row.sku}`;
               const editing = editingCostKey === costKey;
-              return <div key={`${row.provider}:${row.connectionId}:${row.locationRef}:${row.sku}`}><span><b>{row.name}</b><small>{row.sku}</small></span><span>{row.locationRef.split(":").at(-1)}</span><span className="commerce-unit-cost">{editing ? <form onSubmit={(event) => { event.preventDefault(); saveManualCost(row); }}><label><span className="sr-only">Unit cost for {row.name}</span><input autoFocus inputMode="decimal" value={costDraft} onChange={(event) => setCostDraft(event.target.value)} placeholder="0.00" /></label><button disabled={costSaving}>Save</button><button type="button" onClick={() => { setEditingCostKey(""); setCostDraft(""); }}>Cancel</button></form> : <><b>{preciseMoney(row.effectiveCostCents, currency)}</b><small>{row.costSource ? `${row.costSource === "provider" ? "POS" : row.costSource.toUpperCase()} source` : "Cost needed"}</small>{data.permissions.manageCosts && row.externalProductId ? <button type="button" onClick={() => { setCostError(""); setEditingCostKey(costKey); setCostDraft(row.effectiveCostCents == null ? "" : (row.effectiveCostCents / 100).toFixed(2)); }}>Edit</button> : null}</>}</span><span>{row.onHandQuantity.toLocaleString()}</span><span>{row.dailyVelocity.toFixed(2)}/day</span><span>{row.daysOfCover == null ? "Needs current evidence" : `${row.daysOfCover.toFixed(1)} days`}</span><span><i className={`stock-state ${row.stockStatus}`}>{row.stockStatus}</i></span><span><b>{row.recommendedOrderUnits == null ? "Needs current evidence" : row.recommendedOrderUnits > 0 ? `${row.recommendedOrderUnits} units` : "No order"}</b><small>Review—not automatic</small></span></div>;
+              return <div key={`${row.provider}:${row.connectionId}:${row.locationRef}:${row.sku}`}><span><b>{row.name}</b><small>{row.sku}</small></span><span>{row.locationRef.split(":").at(-1)}</span><span className="commerce-unit-cost">{editing ? <form onSubmit={(event) => { event.preventDefault(); saveManualCost(row); }}><label><span className="sr-only">Unit cost for {row.name}</span><input autoFocus inputMode="decimal" value={costDraft} onChange={(event) => setCostDraft(event.target.value)} placeholder="0.00" /></label><button disabled={costSaving}>Save</button><button type="button" onClick={() => { setEditingCostKey(""); setCostDraft(""); }}>Cancel</button></form> : <><b>{preciseMoney(row.effectiveCostCents, currency)}</b><small>{row.costSource ? `${row.costSource === "provider" ? "POS" : row.costSource.toUpperCase()} source` : "Cost needed"}</small>{!sourceConnectionId && data.permissions.manageCosts && row.externalProductId ? <button type="button" onClick={() => { setCostError(""); setEditingCostKey(costKey); setCostDraft(row.effectiveCostCents == null ? "" : (row.effectiveCostCents / 100).toFixed(2)); }}>Edit</button> : null}</>}</span><span>{row.onHandQuantity.toLocaleString()}</span><span>{row.dailyVelocity.toFixed(2)}/day</span><span>{row.daysOfCover == null ? "Needs current evidence" : `${row.daysOfCover.toFixed(1)} days`}</span><span><i className={`stock-state ${row.stockStatus}`}>{row.stockStatus}</i></span><span><b>{row.recommendedOrderUnits == null ? "Needs current evidence" : row.recommendedOrderUnits > 0 ? `${row.recommendedOrderUnits} units` : "No order"}</b><small>Review—not automatic</small></span></div>;
             })}
           </div>}
           {mode === "Customers" && <div className="commerce-ledger commerce-ledger-customers">
@@ -313,7 +366,7 @@ export default function CommerceIntelligenceWorkspace({ initialPeriod, mode, cur
         </div> : <DataEmpty mode={mode} navigate={navigate} />}
       </section>
       {mode === "Sales" && data.products.length > 0 && <section className="commerce-product-rank">
-        <header><div><p>PRODUCT ECONOMICS</p><h3>Revenue, discount and margin leaders</h3></div><span>Selected date range</span></header>
+        <header><div><p>PRODUCT ECONOMICS</p><h3>Revenue, discount and margin leaders</h3></div><span>{Math.min(12, data.products.length)} of {data.products.length} products · Selected date range</span></header>
         <div>{data.products.slice(0, 12).map((product, index) => <article key={product.productRef}><i>{index + 1}</i><span><b>{product.name}</b><small>{(product.quantityMilli / 1000).toFixed(1)} units · {product.transactionCount} baskets</small></span><strong>{money(product.netSalesCents, currency)}</strong><em>{percent(product.marginRate)} margin</em><small>{money(product.discountCents, currency)} discounts</small></article>)}</div>
       </section>}
     </details> : loading ? <section className="commerce-loading-canvas" aria-label="Loading commerce intelligence"><i /><i /><i /></section> : null}

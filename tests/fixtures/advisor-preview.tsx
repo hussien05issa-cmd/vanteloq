@@ -5,6 +5,8 @@ import { createRoot } from "react-dom/client";
 import InterfaceMotion from "../../app/interface-motion";
 import AdvisorPrivacy from "../../app/advisor-privacy";
 import AdvisorComposer from "../../app/advisor-composer";
+import AdvisorDashboardActions from "../../app/advisor-dashboard-actions";
+import { dashboardPreferencePreset, normalizeDashboardPreferences } from "../../domain/dashboard-preferences";
 import AdvisorThinking from "../../app/advisor-thinking";
 import AdvisorResponse from "../../app/advisor-response";
 import type { AdvisorMode } from "../../domain/advisor-providers";
@@ -13,10 +15,12 @@ import { readAdvisorAnswer } from "../../app/advisor-client";
 
 let consentReads = 0;
 let fixturePreferences=advisorDefaults;
+let fixtureDashboard=dashboardPreferencePreset();
 let fixtureChats = [{ id: "fixture-chat-one", createdAt: Date.now(), updatedAt: Date.now() }];
 const example = '## Performance at a glance\nIllustrative figures for this local preview.\n| KPI | Example value |\n| --- | --- |\n| Net sales | CAD $24,800.00 |\n| Gross margin | Unavailable |\n| Transactions | 620 |\n## What deserves attention\n- **Verify product costs.** Revenue alone cannot establish profitability.\n- **Compare matched periods.** Check that both windows include the same locations and complete sales days.\n## Next step\nConfirm the source coverage, then ask which changes are supported by the verified records.';
 let fixtureConsent = JSON.parse(sessionStorage.getItem("fixture-advisor-consent") ?? '{"analysis":false,"help":false}');
 const fixtureFetch: typeof fetch = async (url, init) => {
+  if(url==="/api/v1/preferences") { if(init?.method==="POST") fixtureDashboard=normalizeDashboardPreferences(JSON.parse(String(init.body)).dashboardPreferences); return Response.json({dashboardPreferences:fixtureDashboard,preferenceScope:{userId:"fictional-preview-user",workspaceId:"fictional-preview-workspace"}}); }
   if(url==="/api/v1/advisor/preferences") {if(init?.method==="PUT")fixturePreferences=advisorPreferences(JSON.parse(String(init.body)).preferences);if(init?.method==="DELETE")fixturePreferences=advisorDefaults;return Response.json({preferences:fixturePreferences});}
   if (url === "/api/v1/advisor/consent") {
     if (!init?.method || init.method === "GET") consentReads++;
@@ -66,6 +70,7 @@ function Preview() {
     {state === "thinking" && partial && <AdvisorResponse title="Vanteloq AI" body={partial} limitation="" streaming/>}
     {error && <div className="ai-response-error" role="status"><strong>Reply not completed</strong><p>{error}</p></div>}
     {(state === "answer" || state === "long") && <AdvisorResponse title="Vanteloq AI" body={initial === "long" ? example.repeat(5) : example} coverage={{latestDate:"2026-09-29",sourceCount:2,days:30}} onReuse={() => setQuestion(sent)} animate limitation="Visual fixture only. No customer data, AI request or business action."/>}
+    {state === "answer" && <AdvisorDashboardActions key={sent} question={sent} disabled={false} fetcher={fixtureFetch} onOpenOverview={()=>setError("Preview layout saved only in this fictional fixture.")}/>}
   </AdvisorComposer></main>}</div>;
 }
 createRoot(document.getElementById("root")!).render(<Preview/>);

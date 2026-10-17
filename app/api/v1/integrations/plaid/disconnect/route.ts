@@ -1,3 +1,4 @@
+import { releaseIntegrationSelectionIfUnused } from "../../../../../../server/integrations/free-selection";
 import { requirePrivacyAccess } from "../../../../../../server/authorization";
 import { recordAudit } from "../../../../../../server/audit";
 import { ApiError, enforceRateLimit, handleApi, jsonResponse, requireSameOrigin } from "../../../../../../server/api";
@@ -34,6 +35,7 @@ export async function POST(request: Request) {
           dataPromotionEnabled: false,
         },
       });
+      await releaseIntegrationSelectionIfUnused(context.organizationId, "plaid");
       return jsonResponse({ disconnected: true, retained: "Reviewed accounting records and audit history remain. Plaid access tokens were deleted." });
     } catch (error) {
       await recordAudit({

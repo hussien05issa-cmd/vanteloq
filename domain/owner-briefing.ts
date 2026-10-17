@@ -52,7 +52,7 @@ export type OwnerBriefing = {
   title: string;
   summary: string;
   priorities: OwnerBriefingPriority[];
-  /** Counts all eligible, deduplicated signals before the five-item presentation limit. */
+  /** All eligible critical signals are retained; ordinary priorities are limited to five. */
   criticalCount: number;
   totalCount: number;
   omittedCount: number;
@@ -199,7 +199,9 @@ export function buildOwnerBriefing(input: OwnerBriefingInput): OwnerBriefing {
     || compareText(a.dueDate ?? "9999-12-31", b.dueDate ?? "9999-12-31")
     || compareText(a.id, b.id) || compareText(a.title, b.title));
   const unique = normalized.filter((signal, index, all) => all.findIndex(other => other.id === signal.id) === index);
-  const priorities = unique.slice(0, 5).map((signal, index) => ({ ...signal, rank: index + 1 }));
+  let ordinaryCount = 0;
+  const priorities = unique.filter(signal => signal.severity === "critical" || ordinaryCount++ < 5)
+    .map((signal, index) => ({ ...signal, rank: index + 1 }));
   const criticalCount = unique.filter(signal => signal.severity === "critical").length;
   const titles: Record<OwnerBriefingPhase, string> = { opening: "Opening briefing", trading: "Today's priorities", closing: "Closing briefing", closed: "Closed-day review", daily: "Daily owner briefing" };
   const summary = criticalCount ? `${criticalCount} critical recorded ${criticalCount === 1 ? "item needs" : "items need"} review first.`

@@ -42,7 +42,7 @@ test("SQL sales, tender and cost windows agree for UTC, offset and local timesta
 });
 
 test("R-Series groups offset and local evidence into the same business-day total", () => {
-  const base = { outletRef: "shop", state: "completed", totalCents: 10500, taxCents: 500, costCents: 6000, discountCents: 0, lineCount: 1 };
+  const base = { outletRef: "shop", state: "completed", totalCents: 10500, taxCents: 500, costCents: 6000, discountCents: 0, lineCount: 1, unitsMilli: 1000 };
   const metrics = buildLightspeedRDailyMetrics([
     { ...base, externalSaleId: "a", soldAt: "2026-08-15T01:00:00Z" },
     { ...base, externalSaleId: "b", soldAt: "2026-08-14T19:00:00" },

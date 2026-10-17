@@ -6,7 +6,7 @@ import WorkspaceIcon from "./workspace-icon";
 import { cumulativeSalesHours } from "../domain/intraday-sales";
 import "./dashboard-chart-polish.css";
 import { useChartWidth } from "./use-chart-width";
-import { temporalPositions, temporalLabelIndices, observationSegments } from "../domain/chart-geometry";
+import { temporalPositions, temporalLabelIndices, observationSegments, smoothChartPath } from "../domain/chart-geometry";
 import { financialChartDomain } from "../domain/financial-chart-domain";
 import { summarizeRecordedTrend } from "../domain/recorded-trend-summary";
 
@@ -15,7 +15,8 @@ type IntradayPoint = { hour: number; label: string; netSalesCents: number; gross
 type Tone = "indigo" | "emerald" | "cyan" | "amber" | "rose";
 type PlotPoint = { key: string; label: string; shortLabel: string; netSalesCents: number; grossProfitCents: number | null; transactionCount?: number; comparisonCents?: number | null };
 const toneColour: Record<Tone, string> = {
-  indigo: "#245fce", emerald: "#087f78", cyan: "#087da5", amber: "#a96813", rose: "#b43c55",
+  indigo: "var(--ws-blue, #245fce)", emerald: "var(--ws-positive, #087f78)",
+  cyan: "var(--ws-blue, #087da5)", amber: "var(--ws-warning, #a96813)", rose: "var(--ws-negative, #b43c55)",
 };
 function fullMoney(cents: number, currency: string) {
   return new Intl.NumberFormat("en-CA", { style: "currency", currency, minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(cents / 100);
@@ -31,13 +32,15 @@ function xAt(index: number, length: number, width: number) {
   return length === 1 ? width / 2 : index * width / (length - 1);
 }
 function linePath(values: (number | null)[], width: number, height: number, domain: ReturnType<typeof chartDomain>) {
-  let connected = false;
-  return values.map((value, index) => {
-    if (value == null || !Number.isFinite(value)) { connected = false; return ""; }
-    const command = connected ? "L" : "M";
-    connected = true;
-    return `${command}${xAt(index, values.length, width).toFixed(2)},${chartY(value, height, domain).toFixed(2)}`;
-  }).join(" ");
+  const paths: string[] = [];
+  let points: {x:number;y:number}[] = [];
+  const finish = () => { if (points.length) paths.push(smoothChartPath(points)); points = []; };
+  values.forEach((value, index) => {
+    if (value == null || !Number.isFinite(value)) { finish(); return; }
+    points.push({x:xAt(index, values.length, width),y:chartY(value, height, domain)});
+  });
+  finish();
+  return paths.join(" ");
 }
 export function MetricSparkline({ values, tone }: { values: number[]; tone: Tone }) {
   const id = useId().replaceAll(":", "");
@@ -78,6 +81,10 @@ function FinancialSeriesChart({ data, currency, title, intraday = false, compari
   const salesSegments = observationSegments(data.map(point => point.netSalesCents), times, positions, ordinate, interval);
   const profitSegments = observationSegments(data.map(point => point.grossProfitCents), times, positions, ordinate, interval);
   const comparisonSegments = observationSegments(data.map(point => point.comparisonCents ?? null), times, positions, ordinate, interval);
+  const smoothSegments = (segments: typeof salesSegments, value: (index:number) => number | null) => segments.map(segment => ({...segment,path:smoothChartPath(data.slice(segment.firstIndex,segment.lastIndex+1).map((_,offset)=>{const index=segment.firstIndex+offset;return {x:positions[index],y:ordinate(value(index)!)};}))}));
+  const salesCurves = smoothSegments(salesSegments,index=>data[index].netSalesCents);
+  const profitCurves = smoothSegments(profitSegments,index=>data[index].grossProfitCents);
+  const comparisonCurves = smoothSegments(comparisonSegments,index=>data[index].comparisonCents??null);
   const zeroY = chartY(0, plotHeight, domain);
   const activeX = positions[selectedIndex];
   const labels = new Set(temporalLabelIndices(positions, Math.max(88, plotWidth / 6)));
@@ -102,9 +109,9 @@ function FinancialSeriesChart({ data, currency, title, intraday = false, compari
         })}
         <g transform={`translate(${left} ${top})`}>
           <line className="chart-zero-line" x1="0" x2={plotWidth} y1={zeroY} y2={zeroY}/>
-          {salesSegments.filter(segment => segment.lastIndex > segment.firstIndex).map(segment => <path className="trend-sales-area" key={`area-${segment.firstIndex}`} d={`${segment.path} L${segment.lastX},${zeroY} L${segment.firstX},${zeroY} Z`} fill={`url(#${id})`}/>)}
-          {comparisonLabel && <path d={comparisonSegments.map(segment => segment.path).join(" ")} className="trend-comparison-line"/>}
-          <path d={salesSegments.map(segment => segment.path).join(" ")} className="trend-sales-line"/><path d={profitSegments.map(segment => segment.path).join(" ")} className="trend-profit-line"/>
+          {salesCurves.filter(segment => segment.lastIndex > segment.firstIndex).map(segment => <path className="trend-sales-area" key={`area-${segment.firstIndex}`} d={`${segment.path} L${segment.lastX},${zeroY} L${segment.firstX},${zeroY} Z`} fill={`url(#${id})`}/>)}
+          {comparisonLabel && <path d={comparisonCurves.map(segment => segment.path).join(" ")} className="trend-comparison-line"/>}
+          <path d={salesCurves.map(segment => segment.path).join(" ")} className="trend-sales-line"/><path d={profitCurves.map(segment => segment.path).join(" ")} className="trend-profit-line"/>
           {[
             { segments: salesSegments, value: (index: number) => data[index].netSalesCents, className: "active-sales-point" },
             { segments: profitSegments, value: (index: number) => data[index].grossProfitCents, className: "active-profit-point" },

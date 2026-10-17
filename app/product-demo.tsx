@@ -93,7 +93,7 @@ export default function ProductDemo({ standalone = false }: { standalone?: boole
       </div>
       <footer className="demo-app-footer"><span>Fictional business. Real {view === "BookLoQ cash" ? "cash-flow" : "KPI"} calculation logic.</span><span>No account connection · No AI provider request · No saved demo data</span></footer>
     </div>
-    <div className="demo-conversion"><div><h3>Your next decision, with your own data.</h3><p>Check your connection, choose a plan and review your first records.</p></div><Link data-public-event="signup_start" href="/?start=signup">Create your workspace →</Link><Link data-public-event="pricing_view" href="/pricing">View plans & pricing →</Link></div>
+    <div className="demo-conversion"><div><h3>Your next decision, with your own data.</h3><p>Check your connection, choose a plan and review your first records.</p></div><Link data-public-event="signup_start" href="/?start=signup">Build your dashboard →</Link><Link data-public-event="pricing_view" href="/pricing">View plans & pricing →</Link></div>
     <div className="demo-proof-links"><p>Inspect how it works, including its limits.</p><a href={`https://github.com/hussien05issa-cmd/vanteloq/blob/main/domain/${view === "BookLoQ cash" ? "thirteen-week-cash-flow" : view === "Retail intelligence" ? "retail-intelligence" : "advisor-kpis"}.ts`} target="_blank" rel="noopener noreferrer">View the calculation source ↗</a><a href="/privacy">Read the privacy policy →</a><Link href="/#connections">Check provider availability →</Link></div>
   </section>;
 }

@@ -1,4 +1,6 @@
 import { normalizeDashboardPreferences } from "../../../../domain/dashboard-preferences";
+import { defaultIndustryConfiguration, validateIndustryConfiguration, resolveIndustryTemplate } from "../../../../domain/industry-templates";
+import { initialIndustryStatement } from "../../../../server/industry-configuration";
 import { eq } from "drizzle-orm";
 import { getD1, getDb } from "../../../../db";
 import { memberships, users } from "../../../../db/schema";
@@ -93,6 +95,11 @@ export async function POST(request: Request) {
     if (body.complimentaryId !== undefined && !complimentary) throw new ApiError(403, "INVITATION_INVALID", "This invitation is not available for this account.");
     const input = complimentary ? complimentarySetupInput(body, identity, complimentary)
       : checkoutStage ? checkoutOnboardingInput(body, identity) : onboardingInput(body);
+    let industryConfiguration = defaultIndustryConfiguration(input.industry);
+    if (!checkoutStage && !complimentary && body.industryConfiguration !== undefined) {
+      try { industryConfiguration=validateIndustryConfiguration(body.industryConfiguration,input.industry); }
+      catch(error) { throw new ApiError(400,"INDUSTRY_INVALID",error instanceof Error?error.message:"Review the business configuration."); }
+    }
     const [existingUser] = await getDb()
       .select({ id: users.id, status: users.status, authSubject: users.authSubject, authProvider: users.authProvider })
       .from(users)
@@ -208,7 +215,7 @@ export async function POST(request: Request) {
           businessAddress.address, businessAddress.postalCode, input.timezone, input.currency, input.fiscalYearStart,
           input.taxNumber, input.hoursJson, input.sourceMode, input.selectedPos, checkoutStage ? 0 : 1, now, now,
         ),
-        ...(!checkoutStage ? [database.prepare(`
+        ...(!checkoutStage ? [database.prepare("DELETE FROM onboarding_drafts WHERE user_id=?").bind(userId),initialIndustryStatement(organizationId,userId,industryConfiguration,resolveIndustryTemplate(industryConfiguration.templateId).label,now),database.prepare(`
           INSERT OR IGNORE INTO organization_locations (
             id, organization_id, name, status, country_code, address_line_1,
             address_line_2, address_line_3, locality, district, administrative_area,

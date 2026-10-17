@@ -6,6 +6,7 @@ import { Miniflare } from "miniflare";
 import { registerSupabaseTestServer } from "./helpers/supabase-loopback-transport.mjs";
 import { activateTestSubscription } from "./helpers/subscription-fixture.mjs";
 import { ACCOUNT_ACCEPTANCE_NOTICE_VERSION, PRIVACY_POLICY_VERSION, TERMS_OF_SERVICE_VERSION } from "../shared/legal-versions.ts";
+import { ADVISOR_CONSENT_NOTICE_VERSION } from "../domain/privacy-controls.ts";
 import { providerPrivacyAcceptance } from "../domain/provider-privacy.ts";
 
 const origin = "https://vanteloq.example";
@@ -310,9 +311,9 @@ test("exact marketing resources remain versioned, approval-bound, separated, and
     const unauthorizedReport = await worker.fetch(new Request(`${origin}/api/v1/marketing/reports`), environment, executionContext);
     assert.equal(unauthorizedReport.status, 401);
     environment.OPENAI_API_KEY = "fixture-openai-key";
-    const savedConsent = await dispatch(worker, environment, "/api/v1/advisor/consent", { method: "POST", body: { accepted: true, purpose: "analysis", noticeVersion: "vanteloq-ai-v9-personalization-context", privacyPolicyVersion: "2026-10-01" } });
+    const savedConsent = await dispatch(worker, environment, "/api/v1/advisor/consent", { method: "POST", body: { accepted: true, purpose: "analysis", noticeVersion: ADVISOR_CONSENT_NOTICE_VERSION, privacyPolicyVersion: PRIVACY_POLICY_VERSION } });
     assert.equal(savedConsent.status, 200, await savedConsent.clone().text());
-    const advisor = await dispatch(worker, environment, "/api/v1/advisor/chat", { method: "POST", body: { question: "What does our marketing evidence show?", dataUseAccepted: true, noticeVersion: "vanteloq-ai-v9-personalization-context", privacyPolicyVersion: "2026-10-01" } });
+    const advisor = await dispatch(worker, environment, "/api/v1/advisor/chat", { method: "POST", body: { question: "What does our marketing evidence show?", dataUseAccepted: true, noticeVersion: ADVISOR_CONSENT_NOTICE_VERSION, privacyPolicyVersion: PRIVACY_POLICY_VERSION } });
     assert.equal(advisor.status, 200, await advisor.clone().text());
     const advisorBody = await advisor.json();
     assert.equal(advisorBody.status, "answered");
@@ -323,7 +324,7 @@ test("exact marketing resources remain versioned, approval-bound, separated, and
     assert.match(advisorText, /comparisonComplete/);
     assert.doesNotMatch(advisorText, /sc-domain:example.ca|properties\/123|google-access-token/);
 
-    const aiQuestion = { question: "Which KPIs need attention?", conversationId: advisorBody.conversationId, dataUseAccepted: true, noticeVersion: "vanteloq-ai-v9-personalization-context", privacyPolicyVersion: "2026-10-01" };
+    const aiQuestion = { question: "Which KPIs need attention?", conversationId: advisorBody.conversationId, dataUseAccepted: true, noticeVersion: ADVISOR_CONSENT_NOTICE_VERSION, privacyPolicyVersion: PRIVACY_POLICY_VERSION };
     const noConsent = await dispatch(worker, environment, "/api/v1/advisor/chat", {method: "POST", body: {...aiQuestion, dataUseAccepted: false}});
     assert.equal(noConsent.status, 409);
     const staleConsent = await dispatch(worker, environment, "/api/v1/advisor/chat", {method: "POST", body: {...aiQuestion, noticeVersion: "gemini-evidence-advisor-v2-marketing"}});

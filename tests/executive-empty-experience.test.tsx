@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { Children, isValidElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import ExecutiveOverview from "../app/executive-overview";
 import ExecutiveStatusFrame from "../app/executive-status-frame";
@@ -10,9 +11,22 @@ import { buildExecutiveReport } from "../server/executive-report";
 
 const blank=()=>buildExecutiveReport(executivePeriod(new URLSearchParams("period=30d"),"2026-09-27"),{metrics:{},previous:null,trend:[],insights:[]},null,"No posted records for this period.","commerce");
 
-test("a disconnected executive dashboard retains six cards, its chart and records table without sample figures",()=>{
+function clickButton(node: ReactNode, label: string): boolean {
+  for (const child of Children.toArray(node)) {
+    if (!isValidElement<{ children?: ReactNode; onClick?: () => void }>(child)) continue;
+    if (child.type === "button" && child.props.children === label) {
+      assert.equal(typeof child.props.onClick, "function", `${label} must be actionable`);
+      child.props.onClick!();
+      return true;
+    }
+    if (clickButton(child.props.children, label)) return true;
+  }
+  return false;
+}
+
+test("a disconnected executive dashboard retains four cards, its chart and records table without sample figures",()=>{
   const html=renderToStaticMarkup(<ExecutiveOverview currency="CAD" initialReport={blank()} navigate={()=>{}}/>);
-  assert.equal((html.match(/class="executive-kpi size-/g)??[]).length,6);
+  assert.equal((html.match(/class="executive-kpi size-/g)??[]).length,4);
   assert.match(html,/Your .*net revenue.* trend/);
   assert.match(html,/Revenue by Source/);
   assert.match(html,/Recent Daily Results/);
@@ -24,11 +38,42 @@ test("a disconnected executive dashboard retains six cards, its chart and record
 test("sync and source-conflict states preserve the layout while withholding all values",()=>{
   for(const syncing of [true,false]){
     const html=renderToStaticMarkup(<ExecutiveStatusFrame syncing={syncing} message="Review required" preferences={dashboardPreferencePreset()} onSources={()=>{}} onRetry={()=>{}}/>);
-    assert.equal((html.match(/class="executive-kpi size-/g)??[]).length,6);
+    assert.equal((html.match(/class="executive-kpi size-/g)??[]).length,4);
     assert.match(html,/PERIOD TREND/);
     assert.match(html,/Totals are withheld/);
     assert.doesNotMatch(html,/\$\d|data-testid="actual-value"/);
   }
+});
+
+test("source gates keep reporting review and connection review as separate actions",()=>{
+  for (const syncing of [true, false]) {
+    const destinations: string[] = [];
+    const frame = ExecutiveStatusFrame({
+      syncing,
+      message: "Review required",
+      preferences: dashboardPreferencePreset(),
+      onSources: () => destinations.push("Reports"),
+      onConnections: () => destinations.push("Integrations"),
+      onRetry: () => destinations.push("retry"),
+    });
+    assert.equal(clickButton(frame, "Review Sources"), true);
+    assert.equal(clickButton(frame, "Review Connections"), true);
+    assert.deepEqual(destinations, ["Reports", "Integrations"]);
+  }
+});
+
+test("existing source-gate callers retain their connection-review fallback",()=>{
+  let reviewed = 0;
+  const frame = ExecutiveStatusFrame({ syncing: true, message: "Refreshing", preferences: dashboardPreferencePreset(), onSources: () => reviewed++, onRetry: () => {} });
+  assert.equal(clickButton(frame, "Review Connections"), true);
+  assert.equal(reviewed, 1);
+});
+
+test("an in-flight source retry keeps recovery actions visible and prevents duplicate checks",()=>{
+  const html=renderToStaticMarkup(<ExecutiveStatusFrame syncing checking message="Review required" preferences={dashboardPreferencePreset()} onSources={()=>{}} onConnections={()=>{}} onRetry={()=>{}}/>);
+  assert.match(html,/<button type="button" disabled="">Checking…<\/button>/);
+  assert.match(html,/>Review Sources<\/button>/);assert.match(html,/>Review Connections<\/button>/);
+  assert.doesNotMatch(html,/Loading executive overview|\$\d/);
 });
 
 test("source composition keeps signed amounts exact and does not turn negative shares into a pie",()=>{

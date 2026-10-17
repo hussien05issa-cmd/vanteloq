@@ -1,3 +1,4 @@
+import { seedReportMetric } from "./helpers/retail-worker-fixture.mjs";
 import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
 import { createServer } from "node:http";
@@ -188,26 +189,6 @@ async function seedReportConnection(database, {
   return `lightspeed-r:${namespace}:${externalLocationRef}`;
 }
 
-async function seedReportMetric(database, {
-  organizationId,
-  userId,
-  businessDate,
-  locationRef,
-  netSalesCents,
-  sourceConnectionId = null,
-  sourceImportId = null,
-}) {
-  const timestamp = Math.floor(Date.now() / 1_000);
-  await database.prepare(`INSERT INTO daily_business_metrics
-    (organization_id, business_date, location_ref, gross_sales_cents, net_sales_cents,
-     cost_of_goods_cents, transaction_count, units_sold, refunds_cents, discounts_cents,
-     labour_cost_cents, source_provider, source_connection_id, source_import_id,
-     created_by_user_id, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, 0, 1, 1, 0, 0, 0, ?, ?, ?, ?, ?, ?)`)
-    .bind(organizationId, businessDate, locationRef, netSalesCents, netSalesCents,
-      sourceConnectionId ? "lightspeed-r" : null, sourceConnectionId, sourceImportId,
-      userId, timestamp, timestamp).run();
-}
 
 async function seedSalesAuthority(database, { organizationId, locationId, connectionId, userId }) {
   const timestamp = Math.floor(Date.now() / 1_000);

@@ -1,4 +1,18 @@
-import { ApiError } from "./api.ts";
+import { ApiError, hashIdentifier } from "./api.ts";
+
+/** A cursor may resume only within the same currently authorized data scope. */
+export async function operationsFeedWindow(scope: {
+  organizationId: string; accessibleLocationIds: readonly string[];
+  selectedLocationId: string | null; locationIds: readonly string[] | null; locationRefs: readonly string[] | null;
+}, requestedFingerprint: string | null, requestedAfter: number) {
+  const sorted = (values: readonly string[]) => [...new Set(values)].sort();
+  const scopeFingerprint = await hashIdentifier(JSON.stringify({ version: 1, organizationId: scope.organizationId,
+    accessibleLocationIds: sorted(scope.accessibleLocationIds), selectedLocationId: scope.selectedLocationId,
+    locationIds: scope.locationIds === null ? null : sorted(scope.locationIds),
+    locationRefs: scope.locationRefs === null ? null : sorted(scope.locationRefs) }));
+  const after = requestedFingerprint === scopeFingerprint && Number.isSafeInteger(requestedAfter) && requestedAfter > 0 ? requestedAfter : 0;
+  return { scopeFingerprint, after };
+}
 
 export type PaymentLine = Readonly<{
   sku: string;

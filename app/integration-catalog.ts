@@ -216,8 +216,8 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
     providerCompany: "Deel Inc.",
     category: "Labour",
     availability: "credentials_required",
-    activationRequirement: "Coming soon. Reconcile finalized payroll-cycle totals with labour cost, cash planning and BookLoQ without exposing individual payroll details.",
-    setupDetails: "Vanteloq is preparing a read-only Deel connection for aggregate payroll-cycle evidence. Public access requires a Deel organization app, sandbox payroll verification, partner review and production approval. Employee names, banking details and payslip files are outside the initial connection.",
+    activationRequirement: "Coming soon. Stage available payroll-report category totals by currency for review. Payroll finality and accounting classification require separate verification.",
+    setupDetails: "Vanteloq is preparing a read-only Deel connection for aggregate payroll-report evidence. Public access requires a Deel organization app, sandbox verification, partner review and production approval. Worker-level details can be present in provider responses but are discarded during aggregation; payslip files are not imported.",
   },
   {
     id: "slack",

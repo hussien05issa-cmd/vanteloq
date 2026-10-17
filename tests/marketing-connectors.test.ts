@@ -111,6 +111,7 @@ test("marketing sync calls only exact selected resources and preserves selection
     if (url.includes("searchAnalytics/query")) return Response.json({ rows: [{ keys: ["2026-08-01"], clicks: 4, impressions: 40, ctr: 0.1, position: 3.5 }] });
     if (url.includes("properties/123:runReport")) return Response.json({ rows: [{ dimensionValues: [{ value: "20260801" }], metricValues: [{ value: "10" }, { value: "8" }, { value: "2" }, { value: "20" }] }] });
     if (url.includes("act_456/insights")) return Response.json({ data: [{ date_start: "2026-08-01", impressions: "100", reach: "80", clicks: "9", inline_link_clicks: "7", spend: "12.50", ctr: "7", cpc: "1.39" }] });
+    if (url.includes("/act_456?")) return Response.json({ id: "act_456", currency: "CAD", timezone_name: "America/Edmonton" });
     throw new Error(`Unexpected provider request: ${url}`);
   };
   try {
@@ -127,6 +128,9 @@ test("marketing sync calls only exact selected resources and preserves selection
     assert.ok(calls.every((url) => !url.endsWith("/sites") && !url.includes("accountSummaries") && !url.includes("/me/adaccounts")));
     assert.deepEqual(new Set(google.metrics.map((row) => row.resourceSelectionId)), new Set(["search-selection", "analytics-selection"]));
     assert.deepEqual(new Set(meta.metrics.map((row) => row.resourceSelectionId)), new Set(["meta-selection"]));
+    assert.equal(meta.metrics.find(row => row.metricKey === "meta_spend")?.moneyAmountMinor, 1250);
+    assert.equal(meta.metrics.find(row => row.metricKey === "meta_spend")?.moneyCurrency, "CAD");
+    assert.equal(meta.metrics.find(row => row.metricKey === "meta_spend")?.reportingTimezone, "America/Edmonton");
   } finally {
     globalThis.fetch = originalFetch;
   }

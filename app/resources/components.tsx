@@ -8,7 +8,7 @@ export function ResourceHeader() {
     <header className="resource-header">
       <Link className="resource-brand" href="/" aria-label="Vanteloq home">
         <ProductBrandLogo product="vanteloq" priority />
-        <span>Vanteloq<small>RESOURCES</small></span>
+        <span>Resources</span>
       </Link>
       <nav aria-label="Resource navigation">
         <Link href="/">Home</Link>
@@ -16,7 +16,7 @@ export function ResourceHeader() {
         <Link href="/resources/inventory">Inventory</Link>
         <Link href="/resources/analytics">Analytics</Link>
         <Link href="/resources/finance">Finance</Link>
-        <Link href="/resources/pos">POS</Link>
+        <Link href="/integrations">Integration guides</Link>
       </nav>
       <details className="resource-mobile-menu">
         <summary>Browse</summary>
@@ -26,7 +26,7 @@ export function ResourceHeader() {
           <Link href="/resources/inventory">Inventory</Link>
           <Link href="/resources/analytics">Analytics</Link>
           <Link href="/resources/finance">Finance</Link>
-          <Link href="/resources/pos">POS</Link>
+          <Link href="/integrations">Integration guides</Link>
           <Link href="/?start=signup">Create workspace</Link>
         </nav>
       </details>
@@ -44,12 +44,13 @@ export function ResourceFooter() {
       <div>
         <Link className="resource-brand" href="/" aria-label="Vanteloq home">
           <ProductBrandLogo product="vanteloq" />
-          <span>Vanteloq<small>BUSINESS OPERATING SYSTEM</small></span>
         </Link>
         <p>Practical operating guidance built around clear definitions, traceable inputs and human review.</p>
       </div>
       <nav aria-label="Footer navigation">
         <Link href="/resources">Resources</Link>
+        <Link href="/tools">Planning tools</Link>
+        <Link href="/about/editorial">Editorial standards</Link>
         <Link href="/#platform">Platform</Link>
         <Link href="/#connections">Connections</Link>
         <Link href="/privacy">Privacy</Link>

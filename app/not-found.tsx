@@ -13,9 +13,9 @@ export default function NotFound() {
     <main className="site-not-found">
       <NotFoundMetadataGuard />
       <ProductBrandLogo product="vanteloq" priority />
-      <p>404</p>
-      <h1>This page is not in the operating view.</h1>
-      <span>The link may be outdated, or the page may have moved.</span>
+      <p>Let’s get you back</p>
+      <h1>We couldn’t find this page.</h1>
+      <span>The link may have changed. Check the address or return to Vanteloq.</span>
       <div><Link href="/">Return home</Link><Link href="/resources">Browse resources</Link></div>
     </main>
   );

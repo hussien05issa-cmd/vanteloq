@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import InterfaceMotion from "./interface-motion";
 import { GoogleAnalyticsConsent } from "./google-analytics-consent";
+import { CONSENT_PRESENTATION_BOOTSTRAP } from "./analytics-consent-navigation";
 import { DEFAULT_SOCIAL_IMAGE, organizationJsonLd, safeJsonLd, SITE_ORIGIN } from "./seo";
 import "./globals.css?public-surface";
 import "./operating.css?public-surface";
@@ -37,8 +38,17 @@ import "./bookloq-dashboard-visuals.css?public-surface";
 import "./marketing-consent.css?public-surface";
 import "./commerce-visuals.css?public-surface";
 import "./dashboard-explorer.css?public-surface";
+import "./workspace-density.css?public-surface";
 import "./interface-motion.css";
 import "./readability-refinement.css";
+import "./advisor-appearance.css";
+import "./premium-tokens.css";
+import "./premium-auth.css";
+import "./premium-workspace.css";
+import "./demo-booking.css";
+import "./public-header-polish.css";
+import "./public-jetblack.css";
+import "./homepage-faq-polish.css";
 const GOOGLE_ANALYTICS_CONSENT_DEFAULT = `
 window.dataLayer = window.dataLayer || [];
 window.gtag = window.gtag || function () { window.dataLayer.push(arguments); };
@@ -52,27 +62,33 @@ window.gtag("consent", "default", {
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_ORIGIN),
-  title: "Vanteloq | Business Analytics for Independent Retail",
-  description: "Inspect sales, stock and cash with the records behind the numbers. Built for independent retail, with BookLoQ accounting and Vanteloq AI. Try the demo without signup.",
+  title: "Vanteloq | Sales, Inventory and Cash Flow Analytics",
+  description: "Trace sales, inventory and cash to source records. Bring your business into one clear view with BookLoQ and Vanteloq Data Studio. Explore the free demo.",
   alternates: { canonical: "/" },
   openGraph: {
     type: "website",
     url: "/",
     siteName: "Vanteloq",
-    title: "Vanteloq | Business Analytics for Independent Retail",
-    description: "Sales, stock and cash, with the records behind the numbers. Explore Vanteloq for independent retail.",
-    images: [{ url: DEFAULT_SOCIAL_IMAGE, width: 1487, height: 1058, alt: "Vanteloq business operating view" }],
+    title: "Vanteloq | Sales, Inventory and Cash Flow Analytics",
+    description: "Sales, stock and cash, with the records behind the numbers. Explore Vanteloq, BookLoQ and the new Data Studio.",
+    images: [{ url: DEFAULT_SOCIAL_IMAGE, width: 1254, height: 1254, alt: "Vanteloq glass blue and silver logo" }],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Vanteloq | Business Analytics for Independent Retail",
-    description: "Sales, stock and cash, with the records behind the numbers. Explore Vanteloq for independent retail.",
+    title: "Vanteloq | Sales, Inventory and Cash Flow Analytics",
+    description: "Sales, stock and cash, with the records behind the numbers. Explore Vanteloq, BookLoQ and the new Data Studio.",
     images: [DEFAULT_SOCIAL_IMAGE],
   },
   icons: {
-    icon: { url: "/brand/vanteloq-mark.png", type: "image/png" },
-    shortcut: "/brand/vanteloq-mark.png",
-    apple: "/brand/vanteloq-mark.png",
+    icon: [
+      { url: "/brand/glass-2026-10-12/favicon-v2.ico", type: "image/x-icon", sizes: "16x16 32x32 48x48" },
+      { url: "/brand/glass-2026-10-12/favicon-v2-16.png", type: "image/png", sizes: "16x16" },
+      { url: "/brand/glass-2026-10-12/favicon-v2-32.png", type: "image/png", sizes: "32x32" },
+      { url: "/brand/glass-2026-10-12/favicon-v2-48.png", type: "image/png", sizes: "48x48" },
+      { url: "/brand/glass-2026-10-12/favicon-v2.svg", type: "image/svg+xml", sizes: "any" },
+    ],
+    shortcut: "/brand/glass-2026-10-12/favicon-v2.ico",
+    apple: { url: "/brand/glass-2026-10-12/apple-touch-icon-v2.png", type: "image/png", sizes: "180x180" },
   },
 };
 
@@ -82,10 +98,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <link rel="preload" href="/fonts/geist-latin.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
         <script id="vanteloq-google-consent-default" dangerouslySetInnerHTML={{ __html: GOOGLE_ANALYTICS_CONSENT_DEFAULT }} />
+        <script id="vanteloq-consent-presentation" dangerouslySetInnerHTML={{ __html: CONSENT_PRESENTATION_BOOTSTRAP }} />
       </head>
       <body className="antialiased">
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(organizationJsonLd) }} />

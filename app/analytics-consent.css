@@ -1,3 +1,4 @@
+html[data-analytics-consent-saved="true"] .analytics-consent[data-consent-initial="true"] { display: none; }
 .analytics-consent.analytics-consent-compact {
   position: fixed;
   z-index: 2200;

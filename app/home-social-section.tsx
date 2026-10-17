@@ -1,5 +1,6 @@
 /* eslint-disable @next/next/no-img-element */
 import Link from "next/link";
+import BrandSignature from "./brand-signature";
 import { SOCIAL_PROFILES } from "./social-profiles";
 import "./home-social-section.css";
 
@@ -12,7 +13,7 @@ export default function HomeSocialSection() {
         <p>Product updates, practical retail questions and a closer look at the work behind Vanteloq.</p>
         <Link className="home-social-hub-link" href="/social">Open the social hub <span aria-hidden="true">↗︎</span></Link>
       </div>
-      <img className="home-social-banner" src="/brand/social/lexedge-vanteloq-banner.jpg" width={1536} height={585} loading="lazy" alt="Lexedge Consulting and Vanteloq. Better systems. Stronger businesses."/>
+      <BrandSignature className="home-social-banner" />
     </div>
     <div className="home-social-cards">
       {Object.entries(SOCIAL_PROFILES).map(([slug, profile]) => <article className={`home-social-card home-social-card-${slug}`} key={slug}>

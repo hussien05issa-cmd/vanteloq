@@ -96,16 +96,16 @@ test("Deel money conversion refuses silent rounding and scientific notation", ()
 });
 
 test("Deel routes enforce consent, privacy, role, staging and deletion boundaries", () => {
-  const authorize = readFileSync(`${process.cwd()}/app/api/v1/integrations/deel/authorize/route.ts`, "utf8");
-  const sync = readFileSync(`${process.cwd()}/server/integrations/sync/deel.ts`, "utf8");
-  const disconnect = readFileSync(`${process.cwd()}/app/api/v1/integrations/deel/disconnect/route.ts`, "utf8");
+  const authorize = readFileSync(new URL("../app/api/v1/integrations/deel/authorize/route.ts", import.meta.url), "utf8");
+  const sync = readFileSync(new URL("../server/integrations/sync/deel.ts", import.meta.url), "utf8");
+  const disconnect = readFileSync(new URL("../app/api/v1/integrations/deel/disconnect/route.ts", import.meta.url), "utf8");
   assert.match(authorize, /confirmedAggregatePayrollOnly/);
   assert.match(authorize, /requireIntegrationRollout/);
   assert.match(authorize, /payroll\.totals/);
-  assert.match(sync, /dataPromotionStatus: "staging"/);
+  assert.match(sync, /data_promotion_status = 'staging'/);
   assert.match(sync, /wagesCents: null/);
   assert.match(sync, /paidMinutes: null/);
   assert.doesNotMatch(sync, /contract_oid|payment_data|employeeName|bankAccount|payslip/);
-  assert.match(disconnect, /delete\(retailMeasurements\)/);
+  assert.match(disconnect, /removeDeelLocalGrant/);
   assert.match(disconnect, /providerRevocationSupported: false/);
 });

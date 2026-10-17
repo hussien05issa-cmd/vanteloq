@@ -54,7 +54,9 @@ test("public style projection removes only audited non-public selectors", () => 
     .filter(file => routeEntry.test(file)).map(file => resolve("app", file));
   const publicSource = [...runtimeGraph(entries, true, true)].filter(file => !file.endsWith(".css"))
     .map(file => source(file).replace(/^import[^;]+;/gm, "")).join("\n");
-  for (const anchor of workspaceAnchors) assert.doesNotMatch(publicSource, new RegExp(`(?<![\\w-])${anchor}(?![\\w-])`), `Public/auth/demo code now needs ${anchor}; remove it from workspace-only anchors.`);
+  // A shared component may inspect a workspace ancestor with '.class' without
+  // rendering that class or requiring its layout stylesheet in public views.
+  for (const anchor of workspaceAnchors) assert.doesNotMatch(publicSource, new RegExp(`(?<![\\w.-])${anchor}(?![\\w-])`), `Public/auth/demo code now needs ${anchor}; remove it from workspace-only anchors.`);
   const input = `@font-face{font-family:test;src:url(test.woff2)}
     :root{--shared:1}.primary{color:navy}
     @media(max-width:600px){.operating-shell .primary{color:blue}.public-site .primary{color:black}}
@@ -108,7 +110,7 @@ test("workspace CSS is excluded from public, demo and authentication import grap
       for (const selector of rule.selectors) {
         const requiredClass = selector.trim().match(/^(?:body:has\()?\.([a-zA-Z_][\w-]*)/)?.[1];
         assert.ok(requiredClass, `Global selector cannot be deferred: ${selector}`);
-        assert.doesNotMatch(publicSource, new RegExp(`(?<![\\w-])${requiredClass}(?![\\w-])`), `Public code references ${requiredClass} from ${file}`);
+        assert.doesNotMatch(publicSource, new RegExp(`(?<![\\w.-])${requiredClass}(?![\\w-])`), `Public code references ${requiredClass} from ${file}`);
       }
     });
   }

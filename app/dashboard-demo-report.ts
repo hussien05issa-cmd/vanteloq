@@ -20,7 +20,7 @@ export function dashboardDemoPreferences(report: ExecutiveReport): DashboardPref
     targets[key] = metric.unit === 'money' ? metric.previous / 100 : metric.unit === 'percent' ? metric.previous * 100 : metric.previous;
     goalRules[key] = {direction:'higher',from:report.period.from,to:report.period.to,locationId:null};
   }
-  return normalizeDashboardPreferences({...base,widgets:base.widgets.map(widget=>({...widget,size:'standard'})),goalRings,targets,goalRules});
+  return normalizeDashboardPreferences({...base,goalRings,targets,goalRules});
 }
 
 /** Fictional receipt-derived preview, never sent to account APIs or storage. */

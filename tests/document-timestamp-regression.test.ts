@@ -26,6 +26,7 @@ async function setup(t: { after(callback: () => Promise<void>): void }) {
   t.after(() => mf.dispose());
   const database = await mf.getD1Database("DB") as unknown as D1Database;
   const bucket = await mf.getR2Bucket("BUCKET") as unknown as R2Bucket;
+  await database.prepare("CREATE TABLE account_deletion_jobs(user_id TEXT,organization_id TEXT,scope TEXT,stage TEXT)").run();
   await database.prepare(`CREATE TABLE workspace_documents(id TEXT PRIMARY KEY, organization_id TEXT, object_key TEXT,
     content_type TEXT, document_type TEXT, sha256_hex TEXT, security_state TEXT DEFAULT 'quarantined',
     status TEXT DEFAULT 'review_required', scan_status TEXT DEFAULT 'pending', extraction_status TEXT DEFAULT 'not_configured',

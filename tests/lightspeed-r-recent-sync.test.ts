@@ -1,7 +1,7 @@
+import { verifiedPosPublicationSql } from "../server/integrations/pos-publication.ts";
 import assert from "node:assert/strict";
-import { readFile, readdir } from "node:fs/promises";
 import test from "node:test";
-import { Miniflare } from "miniflare";
+import { posSqliteFixture } from "./helpers/pos-sqlite-fixture.ts";
 import { getDb, type VanteloqRuntimeEnv } from "../db/index.ts";
 import { users, workspaces, integrationConnections, integrationLocationMappings } from "../db/schema.ts";
 import { saveLightspeedRTokens, lightspeedRCheckpointReadyForApproval } from "../server/integrations/lightspeed-r.ts";
@@ -9,23 +9,17 @@ import { runSync } from "../server/integrations/sync/lightspeed-r.ts";
 import { nextSyncAt } from "../server/integrations/sync-policy.ts";
 
 test("R-Series resumes more than 100 recent receipts independently of historical pages before completing its watermark", async t => {
-  const mf = new Miniflare({ modules: true, script: "export default { fetch() { return new Response('ok') } }", d1Databases: ["DB"] });
-  const database = await mf.getD1Database("DB") as unknown as D1Database;
+  const fixture = await posSqliteFixture();
+  const {database} = fixture;
   const priorFetch = globalThis.fetch;
   const runtime = globalThis as typeof globalThis & { __vanteloqEnv?: VanteloqRuntimeEnv };
   const priorEnv = runtime.__vanteloqEnv;
-  t.after(async () => { globalThis.fetch = priorFetch; runtime.__vanteloqEnv = priorEnv; await mf.dispose(); });
-  const migrationDir = new URL("../drizzle/", import.meta.url);
-  for (const file of (await readdir(migrationDir)).filter(file => /^\d{4}.*\.sql$/.test(file)).sort()) {
-    const sql = await readFile(new URL(file, migrationDir), "utf8");
-    const statements = sql.split("--> statement-breakpoint").map(sql => sql.trim()).filter(Boolean);
-    await database.batch(statements.map(sql => database.prepare(sql)));
-  }
+  t.after(async () => { globalThis.fetch = priorFetch; runtime.__vanteloqEnv = priorEnv; fixture.close(); });
   runtime.__vanteloqEnv = { DB: database, INTEGRATION_ENCRYPTION_KEY: Buffer.alloc(32, 11).toString("base64"), LIGHTSPEED_R_CLIENT_ID: "fictional-client", LIGHTSPEED_R_CLIENT_SECRET: "fictional-secret", LIGHTSPEED_R_REDIRECT_URI: "https://vanteloq.example/api/v1/integrations/lightspeed-r/callback" };
   const db = getDb(), now = new Date(), recentTime = new Date(now.getTime() - 60 * 60_000).toISOString();
   const oldTime = new Date(now.getTime() - 7 * 86400_000).toISOString(), oldWatermark = new Date(now.getTime() - 30 * 86400_000).toISOString();
   const historyUrl = "https://api.lightspeedapp.com/API/V3/Account/123/Sale.json?history=1&page=0&limit=100";
-  const initialCheckpoint = { version: 5, catalogVersion: 1, watermark: oldWatermark, salesCursor: historyUrl,
+  const initialCheckpoint = { version: 6, catalogVersion: 1, watermark: oldWatermark, salesCursor: historyUrl,
     saleLinesCursor: null, itemsCursor: null, customersCursor: null, suppliersCursor: null,
     salesComplete: false, saleLinesComplete: false, itemsComplete: false, customersComplete: false, suppliersComplete: false };
   await db.insert(users).values({ id: "r-recent-owner", email: "r-recent@example.invalid", displayName: "Fictional Owner", createdAt: now, updatedAt: now });
@@ -83,11 +77,41 @@ test("R-Series resumes more than 100 recent receipts independently of historical
   assert.equal(lightspeedRCheckpointReadyForApproval(JSON.stringify(secondCheckpoint)), true);
   assert.equal(lightspeedRCheckpointReadyForApproval(JSON.stringify({ ...secondCheckpoint, recentSalesCursor: firstCheckpoint.recentSalesCursor })), false);
   assert.equal(second.dataPromotionEnabled, true);
+  assert.equal((await database.prepare(`SELECT ${verifiedPosPublicationSql("c")} verified FROM integration_connections c WHERE id='r-recent-connection'`).first<{verified:number}>())?.verified,1);
   assert.equal(reads.filter(url => url.includes("/Sale.json") && url.includes("offset=100")).length, 1);
   assert.equal((await database.prepare("SELECT COUNT(*) count FROM commerce_sale_lines WHERE organization_id=? AND connection_id='r-recent-connection'").bind(organization.id).first<{count:number}>())?.count, 103);
   assert.equal((await database.prepare("SELECT COUNT(*) count FROM integration_staged_sales WHERE organization_id=? AND connection_id='r-recent-connection'").bind(organization.id).first<{count:number}>())?.count, 103);
   await invoke();
   assert.deepEqual(await database.prepare("SELECT SUM(net_sales_cents) sales, SUM(cost_of_goods_cents) costs, SUM(transaction_count) receipts FROM daily_business_metrics WHERE source_connection_id='r-recent-connection'").first(), metric, "overlapping recent reads must not double-count");
+  // A retained historical line count is not quantity evidence. Simulate the
+  // additive migration and repair the exact same provider version in place.
+  const original = await database.prepare("SELECT id,external_version version,staged_at stamp,line_count lines FROM integration_staged_sales WHERE connection_id='r-recent-connection' AND external_sale_id LIKE '%:1'").first<{id:string;version:string;stamp:number;lines:number}>();
+  assert.ok(original);
+  await database.prepare("UPDATE integration_staged_sales SET units_milli=NULL WHERE id=?").bind(original.id).run();
+  await database.prepare("UPDATE integration_connections SET last_sync_cursor=?,data_promotion_status='staging',promotion_authorized_at=1 WHERE id='r-recent-connection'").bind(JSON.stringify({version:5})).run();
+  const repair = await invoke();
+  assert.equal(repair.run.cursorPreserved && JSON.parse(repair.run.cursorPreserved).version,6);
+  assert.deepEqual(await database.prepare("SELECT id,external_version version,staged_at stamp,line_count lines FROM integration_staged_sales WHERE id=?").bind(original.id).first(),original);
+  assert.equal((await database.prepare("SELECT units_milli quantity FROM integration_staged_sales WHERE id=?").bind(original.id).first<{quantity:number}>())?.quantity,1000);
+  assert.equal((await database.prepare("SELECT COUNT(*) count FROM integration_staged_sales WHERE connection_id='r-recent-connection'").first<{count:number}>())?.count,103);
+  await invoke(); // Finish the resumed recent pages before testing missing evidence.
+
+  const originalQuantity = recent[0].SaleLines.SaleLine[0].unitQuantity;
+  Reflect.deleteProperty(recent[0].SaleLines.SaleLine[0],"unitQuantity");
+  const beforeMissing = await database.prepare("SELECT SUM(net_sales_cents) sales, SUM(units_sold) units FROM daily_business_metrics WHERE source_connection_id='r-recent-connection'").first();
+  const missing = await invoke();
+  assert.equal(missing.dataPromotionEnabled,false); assert.match(missing.nextStep,/quantity history/i);
+  assert.equal((await database.prepare("SELECT units_milli quantity FROM integration_staged_sales WHERE id=?").bind(original.id).first<{quantity:number|null}>())?.quantity,null);
+  const missingFinished = await invoke();
+  assert.equal(JSON.parse(missingFinished.run.cursorPreserved).watermark,null,"Unknown historical quantities must remain eligible for a source reread");
+  assert.deepEqual(await database.prepare("SELECT SUM(net_sales_cents) sales, SUM(units_sold) units FROM daily_business_metrics WHERE source_connection_id='r-recent-connection'").first(),beforeMissing,"Incomplete evidence cannot replace retained canonical metrics");
+  assert.equal((await database.prepare("SELECT last_error_code error FROM integration_connections WHERE id='r-recent-connection'").first<{error:string}>())?.error,"LIGHTSPEED_R_QUANTITY_REVIEW_REQUIRED");
+  recent[0].SaleLines.SaleLine[0].unitQuantity=originalQuantity;
+  const recovered = await invoke();
+  assert.equal((await database.prepare(`SELECT ${verifiedPosPublicationSql("c")} verified FROM integration_connections c WHERE id='r-recent-connection'`).first<{verified:number}>())?.verified,1);
+  assert.equal(recovered.dataPromotionEnabled,true,"Preserved authorization permits recovery after the same-version source reread");
+  assert.equal((await database.prepare("SELECT COUNT(*) count FROM integration_staged_sales WHERE connection_id='r-recent-connection'").first<{count:number}>())?.count,103);
+  assert.deepEqual(await database.prepare("SELECT SUM(net_sales_cents) sales, SUM(units_sold) units FROM daily_business_metrics WHERE source_connection_id='r-recent-connection'").first(),beforeMissing);
   const callsBeforeForeign = reads.length;
   await assert.rejects(runSync(new Request("https://vanteloq.example"), crypto.randomUUID(), { ...context, organizationId: "other-tenant" }, { connectionId: "r-recent-connection" }, "scheduled"), { status: 404 });
   assert.equal(reads.length, callsBeforeForeign);

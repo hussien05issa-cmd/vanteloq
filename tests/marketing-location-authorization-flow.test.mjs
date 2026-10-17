@@ -2,11 +2,13 @@ import assert from "node:assert/strict";
 import { createHash, randomBytes } from "node:crypto";
 import test from "node:test";
 import { createEnvironment, createReportWorkspace, dispatch, seedReportLocation, origin, context } from "./helpers/retail-worker-fixture.mjs";
+import { grantIntegrationPreview } from "./helpers/integration-preview-fixture.mjs";
 
 test("Google and Meta account management rechecks organization-wide location access", { timeout: 120_000 }, async () => {
   const { worker, environment, database, dispose } = await createEnvironment();
   try {
     const account = await createReportWorkspace(worker, environment, database, "marketing-scope");
+    await grantIntegrationPreview(database, environment, account.organizationId, account.owner.email);
     const secondLocation = await seedReportLocation(database, account.organizationId, "Second store");
     const roleId = crypto.randomUUID();
     const now = Math.floor(Date.now() / 1000);

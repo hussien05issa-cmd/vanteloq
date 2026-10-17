@@ -46,12 +46,13 @@ test("homepage copy stays within the verified product boundary", async () => {
   assert.match(html, /ai-orbit-showcase/);
   assert.doesNotMatch(html, /Preview thinking|Pause logo animation/);
   for (const path of ["/privacy", "/terms", "/cookies", "/contact", "/pricing", "/custom-plan"]) assert.ok(html.includes('href="' + path + '"'),path);
-  assert.match(html, /built and operated by/);
-  assert.match(html, /LexEdge Consulting/);
-  assert.match(html, /lexedge-consulting-logo-web\.png/);
+  assert.match(html, /Vanteloq Inc\./);
+  assert.doesNotMatch(html, /LexEdge|Lexedge|lexedge/);
+  assert.match(html, /aria-label="Vanteloq logo"/);
+  assert.match(html, /href="\/brand\/glass-2026-10-12\/vanteloq\.jpg"/);
   assert.match(html, /Memory starts off/);
   assert.match(html, /Which system do you use/);
-  assert.match(html, /review the imported totals/);
+  assert.match(html, /reviews imported totals before relying on reports/);
 });
 
 test("connector disclosure stays compact and names the selected provider company", async () => {
@@ -72,10 +73,10 @@ test("homepage omits the former independent retail label", async () => {
   assert.doesNotMatch(html, /<span class="public-pill">/);
 });
 
-test("homepage keeps the three-step journey and explicit subscription context", async () => {
+test("homepage keeps setup and subscription details in the relevant FAQ", async () => {
   const html = await (await fetchRoute("/")).text();
-  assert.match(html, /From signup to the first insight/);
-  for (const label of ["Set up your account", "Bring in your records", "Turn a finding into a next step"]) assert.ok(html.includes(label), label);
+  assert.match(html, /What happens after signup\?/);
+  for (const label of ["Verify your email", "authenticator", "review the import"]) assert.ok(html.includes(label), label);
   assert.match(html, /BookLoQ/);
   assert.match(html, /CAD \/ month/);
 });
@@ -112,7 +113,7 @@ test("homepage preserves responsive and keyboard interaction safeguards", async 
   assert.match(css, /@media \(max-width: 620px\)[\s\S]*?\.home-ai-grid \{ grid-template-columns: 1fr/);
   assert.match(css, /:focus-visible/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
-  assert.match(source, /public-nav-socials/);
+  assert.match(source, /<HomeSocialSection\//);
   assert.match(css, /@media \(max-width: 620px\)[\s\S]*?\.public-nav\s*>\s*\.public-nav-actions\s*\{\s*display:\s*none/);
   assert.match(css, /@media \(max-width: 620px\)[\s\S]*?\.public-nav-mobile-actions\s*\{\s*display:\s*grid/);
   assert.match(css, /\.home-connection-grid article > div \.home-connection-status[\s\S]{0,260}font-size:\s*12px/);
@@ -139,7 +140,6 @@ test("homepage and resource cards keep the hosted visual layout", async () => {
   assert.match(resources, /resource-article-link/);
   assert.doesNotMatch(resources, /<details[^>]*resource-article-browser[^>]*\bopen(?:[ =>])/);
   assert.doesNotMatch(resources, /resource-card-hero/);
-  assert.match(homepageCss, /\.home-proof li::before[^}]*content:\s*"✓"/);
   assert.doesNotMatch(homepageCss, /home-step-review-visual|home-step-visual/);
   assert.match(homepageCss, /\.home-resource-grid \{[^}]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)/);
   assert.doesNotMatch(homepageCss, /\.home-resource-grid[^}]*repeat\(6, minmax\(0, 1fr\)\)/);
@@ -176,9 +176,9 @@ test("generated editorial visuals stay compact and production-ready", async () =
   }
 });
 
-test("the supplied LexEdge ownership mark is present and web ready", async () => {
-  const asset = await stat(new URL("../public/brand/lexedge-consulting-logo-web.png", import.meta.url));
-  assert.ok(asset.size < 100_000, `LexEdge logo should stay below 100 KB, received ${asset.size}`);
+test("the supplied Vanteloq mark is present and web ready", async () => {
+  const asset = await stat(new URL("../public/brand/glass-2026-10-12/vanteloq.jpg", import.meta.url));
+  assert.ok(asset.size < 100_000, `Vanteloq logo should stay below 100 KB, received ${asset.size}`);
 });
 
 test("the public demo works without workspace bindings and identifies sample analysis", async () => {

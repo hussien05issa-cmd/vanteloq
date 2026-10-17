@@ -1,0 +1,52 @@
+// Isolated UI verification. Every amount and record below is fictional.
+import { act, useState } from "react";
+import { createRoot } from "react-dom/client";
+import OwnerBriefingPanel, { type OwnerBriefingSourceStatus } from "../../app/owner-briefing";
+import { buildOwnerBriefing, type OwnerBriefingPriority, type OwnerBriefingSignal } from "../../domain/owner-briefing";
+import "../../app/typography.css";
+import "../../app/workspace-appearance.css";
+import "../../app/premium-tokens.css";
+import "../../app/premium-workspace.css";
+
+const hours = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map(day => ({ day, open: "09:00", close: "17:00", closed: false }));
+const signals: OwnerBriefingSignal[] = [
+  { id: "cash", title: "Check your available cash before the next payment", detail: "The recorded balance is negative. Upcoming obligations need review before a new payment.", nextStep: "Open the bank records and confirm the obligations already due.", destination: "BookLoQ", severity: "critical", category: "cash", evidence: [{ label: "Recorded cash balance", value: "CAD -$425.00", source: "Fictional bank records", asOf: "2026-10-05T14:15:00Z" }] },
+  { id: "sales", title: "Review the products behind the change in net sales", detail: "Recorded net sales declined by 8% across the comparable completed periods. These records do not establish a cause.", nextStep: "Inspect the product and discount records before changing the offer.", destination: "Sales", severity: "high", category: "sales", evidence: [{ label: "Net sales change", value: "-8%", source: "Fictional sales records", asOf: "2026-10-04" }] },
+  { id: "cost", title: "Complete the product cost review", detail: "Some sales lines have no recorded cost. A complete gross profit cannot be calculated from those records.", nextStep: "Review the missing product costs before relying on margin.", destination: "Inventory", severity: "medium", category: "inventory", evidence: [{ label: "Cost coverage", value: "Costs missing", source: "Fictional inventory records" }] },
+  { id: "bills", title: "Review the bills due before Friday", detail: "The recorded due dates fall within the next operating week.", nextStep: "Review the supplier obligations against available cash.", destination: "BookLoQ", severity: "medium", category: "payables", evidence: [{ label: "Open amounts due", value: "CAD $1,240.00", source: "Fictional bill records", asOf: "2026-10-05" }] },
+  { id: "invoice", title: "Follow up on the overdue invoice", detail: "The invoice remains open in the supplied records.", nextStep: "Confirm the customer balance and review a reminder.", destination: "BookLoQ", severity: "low", category: "receivables", evidence: [{ label: "Open amount", value: "CAD $560.00", source: "Fictional invoice records", asOf: "2026-10-05" }] },
+];
+const makeBrief = (empty = false) => buildOwnerBriefing({ now: "2026-10-05T14:30:00Z", timezone: "America/Edmonton", hours, signals: empty ? [] : signals });
+const root = createRoot(document.getElementById("root")!);
+const states: Record<string, OwnerBriefingSourceStatus> = {
+  loading: { state: "loading", message: "The fictional source is refreshing. Existing records remain dated as shown." },
+  partial: { state: "partial", message: "Some fictional records have not arrived. Check coverage before acting." },
+  stale: { state: "stale", message: "The newest fictional sales records are from October 4. Check the source before relying on them." },
+  error: { state: "error", message: "The fictional refresh did not finish. Review source status to recover." },
+};
+function Preview() {
+  const [theme, setTheme] = useState("dark"), [state, setState] = useState("ready"), [notice, setNotice] = useState(""), [fail, setFail] = useState(false);
+  return <main className="operating-shell briefing-review-preview" data-workspace-theme={theme}><header><p>LOCAL UI REVIEW · FICTIONAL RECORDS</p><h1>Your next operating decisions</h1><p>The production briefing component and actual workspace styles.</p></header><nav aria-label="Fictional preview controls"><button type="button" onClick={() => setTheme(value => value === "dark" ? "light" : "dark")}>Switch to {theme === "dark" ? "light" : "dark"}</button><label>Source state<select value={state} onChange={event => setState(event.target.value)}>{["ready", "loading", "partial", "stale", "error", "empty"].map(option => <option key={option}>{option}</option>)}</select></label><label><input type="checkbox" checked={fail} onChange={event => setFail(event.target.checked)}/> Fail the next action</label></nav><OwnerBriefingPanel key={state} briefing={makeBrief(state === "empty" || state === "loading")} scopeLabel="Fictional downtown store" sourcePeriod={{ from: "2026-09-06", to: "2026-10-05" }} sourceStatus={states[state]} onRetry={() => setNotice("Source recovery selected. This fixture sends no provider request.")} onEvidence={item => setNotice(`Records selected: ${item.id}. Scope: fictional downtown store. Evidence dates are unchanged.`)} onAction={async item => { await new Promise(resolve => setTimeout(resolve, 600)); if (fail) throw new Error("Private internal fixture error must never appear in the interface"); setNotice(`Action selected: ${item.id}. The finding and its evidence remain attached.`); }} onAsk={item => setNotice(`Permitted explanation selected: ${item.id}. No AI request is sent by this fixture.`)} onReview={() => setNotice("Action and outcome review selected.")} onSettings={() => setNotice("Business settings selected.")}/><p className="fixture-notice" role="status">{notice}</p></main>;
+}
+
+const results: { name: string; passed: boolean; message?: string }[] = [];
+async function verify() {
+  (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+  const assert = (value: unknown, message: string) => { if (!value) throw new Error(message); };
+  const get = <T extends Element = HTMLElement>(selector: string) => { const element = document.querySelector<T>(selector); if (!element) throw new Error(`Missing ${selector}`); return element; };
+  const click = async (element: HTMLElement) => { await act(async () => element.click()); };
+  let resolveAction!: () => void, rejectAction!: (reason: Error) => void, calls = 0, selected: OwnerBriefingPriority | undefined;
+  const render = async (canCreate = true) => { await act(async () => root.render(<OwnerBriefingPanel briefing={makeBrief()} sourcePeriod={{ from: "2026-09-06", to: "2026-10-05" }} onEvidence={item => { selected = item; }} onAction={canCreate ? item => { calls++; selected = item; return new Promise<void>((resolve, reject) => { resolveAction = resolve; rejectAction = reject; }); } : undefined}/>)); };
+  const cases: [string, () => Promise<void>][] = [
+    ["Default scan is closed and all critical summaries stay visible", async () => { await render(); assert(document.querySelectorAll("[data-briefing-priority]").length === 3, "Unexpected initial priority count"); assert(!get<HTMLDetailsElement>(".owner-priority-detail").open, "Default card started expanded"); assert(get(".owner-critical-alert").textContent?.includes("Critical items"), "Critical alert missing"); }],
+    ["Native summary opens its records without replacing the reviewed item", async () => { await click(get(".owner-priority-summary")); assert(get<HTMLDetailsElement>(".owner-priority-detail").open, "Native disclosure stayed closed"); await click(get(".owner-evidence-button")); assert(selected?.id === "cash", "Wrong evidence item"); assert(selected?.evidence[0].asOf === "2026-10-05T14:15:00Z", "Evidence date changed"); }],
+    ["Pending actions prevent duplicate activation and preserve dated evidence", async () => { const button = Array.from(document.querySelectorAll<HTMLButtonElement>(".owner-briefing-actions button")).find(item => item.textContent === "Create an action")!; await click(button); assert(button.disabled, "Pending action is enabled"); assert(document.querySelector('[role="status"]')?.textContent?.includes("Opening"), "Pending state absent"); await click(button); assert(calls === 1, "Duplicate action callback"); assert(get('[data-briefing-priority="cash"]').textContent?.includes("CAD -$425.00"), "Pending state lost amount"); }],
+    ["Rejected actions keep context and hide internal errors", async () => { await act(async () => { rejectAction(new Error("SQL_PRIVATE_FIXTURE")); }); const recovery = get(".owner-priority-recovery"); assert(recovery.textContent?.includes("evidence are still here"), "Recovery explanation absent"); assert(!document.body.textContent?.includes("SQL_PRIVATE_FIXTURE"), "Internal error leaked"); assert(get<HTMLDetailsElement>(".owner-priority-detail").open, "Failed action closed the reviewed finding"); }],
+    ["Retry uses the same finding and its original source date", async () => { await click(get(".owner-priority-recovery button")); assert(calls === 2 && selected?.id === "cash", "Retry changed item or failed to run"); await act(async () => { resolveAction(); }); assert(!document.querySelector(".owner-priority-recovery"), "Recovery persisted after retry"); assert(selected?.evidence[0].asOf === "2026-10-05T14:15:00Z", "Retry changed source date"); }],
+    ["Updated permissions remove action and AI controls", async () => { await render(false); assert(!Array.from(document.querySelectorAll("button")).some(button => /Create an action|Explain with AI|Try again/.test(button.textContent || "")), "Unauthorized action exposed"); assert(document.querySelector(".owner-evidence-button"), "Authorized evidence control removed"); }],
+  ];
+  for (const [name, run] of cases) { try { await run(); results.push({ name, passed: true }); } catch (error) { results.push({ name, passed: false, message: error instanceof Error ? error.message : "Verification failure" }); } }
+  await act(async () => root.render(<main className="browser-results"><h1>Owner briefing browser verification</h1><p>{results.filter(result => result.passed).length} of {results.length} checks passed.</p><ul>{results.map(result => <li key={result.name}>{result.passed ? "PASS" : "FAIL"}: {result.name}{result.message ? ` (${result.message})` : ""}</li>)}</ul></main>));
+  document.documentElement.dataset.ownerBriefingTests = results.every(result => result.passed) ? "passed" : "failed";
+}
+if (new URLSearchParams(location.search).has("test")) void verify(); else root.render(<Preview/>);

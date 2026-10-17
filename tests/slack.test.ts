@@ -190,7 +190,7 @@ test("Slack disconnect calls the official uninstall endpoint without following r
 });
 
 test("Slack routes preserve tenant, browser, rollout, permission, and credential deletion boundaries", () => {
-  const route = (path: string) => readFileSync(join(process.cwd(), path), "utf8");
+  const route = (path: string) => readFileSync(new URL("../" + path, import.meta.url), "utf8");
   const authorize = route("app/api/v1/integrations/slack/authorize/route.ts");
   const callback = route("app/api/v1/integrations/slack/callback/route.ts");
   const status = route("app/api/v1/integrations/slack/status/route.ts");
@@ -204,6 +204,6 @@ test("Slack routes preserve tenant, browser, rollout, permission, and credential
   assert.doesNotMatch(status, /integrationSecrets|accessTokenCiphertext|webhookUrl/);
   assert.match(notification, /requireOwnedIntegrationConnection/);
   assert.doesNotMatch(notification, /input\.message|input\.text|input\.blocks/);
-  assert.ok(disconnect.indexOf("revokeSlackInstallation") < disconnect.indexOf("delete(integrationSecrets)"));
-  assert.match(disconnect, /SLACK_DEAUTHORIZATION_FAILED/);
+  assert.match(disconnect, /withdrawSlackGrant/);
+  assert.match(disconnect, /localAccessRemoved: true|localAccessRemoved:true/);
 });

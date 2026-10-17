@@ -4,7 +4,7 @@ import { oauthBrowserCookie } from "../../../../../../server/integrations/oauth-
 import { getDb } from "../../../../../../db";
 import { integrationConnections, integrationOAuthStates } from "../../../../../../db/schema";
 import { recordAudit } from "../../../../../../server/audit";
-import { requireAccess } from "../../../../../../server/authorization";
+import { requireIntegrationAccess, integrationGrantId } from "../../../../../../server/integrations/free-selection";
 import { enforceRateLimit, handleApi, jsonResponse, requireSameOrigin } from "../../../../../../server/api";
 import {
   buildStripeAuthorizationUrl,
@@ -17,7 +17,7 @@ import { requirePermission } from "../../../../../../server/permissions";
 export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
-    const context = await requireAccess(request, ["owner", "admin"], "pos.reporting.core");
+    const context = await requireIntegrationAccess(request, ["owner", "admin"], "stripe", true);
     await requirePermission(context, "integrations.manage");
     await requireIntegrationRollout(context, STRIPE_PROVIDER);
     await enforceRateLimit("stripe:authorize", context.userId, 10, 3_600);
@@ -28,6 +28,7 @@ export async function POST(request: Request) {
     const now = new Date();
     const expiresAt = new Date(now.getTime() + 10 * 60_000);
     await getDb().insert(integrationConnections).values({
+      freeGrantId: await integrationGrantId(context, "stripe"),
       id: connectionId,
       organizationId: context.organizationId,
       provider: STRIPE_PROVIDER,

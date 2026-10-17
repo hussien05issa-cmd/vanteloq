@@ -2,12 +2,16 @@
 
 import { cloneElement, isValidElement, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import VanteloqAiLogo from "./vanteloq-ai-logo";
+import { ADVISOR_QUESTION_LIMIT } from "../shared/advisor-limits";
+import ProfessorGuide from "./professor-guide";
 import WorkspaceIcon from "./workspace-icon";
+import AdvisorDictation, { type AdvisorDictationHandle } from "./advisor-dictation";
+import { useWorkspaceAppearance, type WorkspaceAppearance } from "./workspace-appearance";
 import { ADVISOR_ATTACHMENT_ACCEPT, advisorAttachmentSelectionError } from "../shared/advisor-attachments";
 import { ADVISOR_PROVIDER_LABELS, advisorProviders, type AdvisorMode } from "../domain/advisor-providers";
 
 export function canAskAdvisor(question: string, consent: boolean, loading: boolean) {
-  return consent && !loading && question.trim().length > 0 && question.trim().length <= 800;
+  return consent && !loading && question.trim().length > 0 && question.trim().length <= ADVISOR_QUESTION_LIMIT;
 }
 
 function AttachmentPreview({file}:{file:File}) {
@@ -55,10 +59,12 @@ type Props = {
 /** Shared by the authenticated advisor and isolated presentation tests. */
 export default function AdvisorComposer({ question, onQuestion, dataUseAccepted, onConsent, loading, thinking = loading, onStop, consentLoading = false, consentError = "", onConsentRetry, purpose = "analysis", onPurpose, onSubmit, onNewChat, children, hasConversation = false, memoryEnabled = false, onMemory, privacyControls, scopeControls, personalization, historyPaused=false, provider = "openai", providersLoading = false, providers = { openai: { ready: false } }, attachments = [], onAttachments, attachmentAccepted = false, onAttachmentConsent }: Props) {
   const selectedReady = advisorProviders(provider).every(item => providers[item].ready);
+  const appearance = useWorkspaceAppearance();
   const ready = !providersLoading && !consentLoading && !consentError && selectedReady && (!attachments.length || attachmentAccepted) && canAskAdvisor(question, dataUseAccepted, loading);
   const fileInput = useRef<HTMLInputElement>(null);
   const [attachmentError, setAttachmentError] = useState("");
   const input = useRef<HTMLTextAreaElement>(null);
+  const dictation = useRef<AdvisorDictationHandle>(null);
   const settings = useRef<HTMLDialogElement>(null);
   const savedHeading = useRef<HTMLHeadingElement>(null);
   const [settingsSection, setSettingsSection] = useState<"general" | "history">("general");
@@ -100,7 +106,7 @@ export default function AdvisorComposer({ question, onQuestion, dataUseAccepted,
     following.current = true;
     setShowLatest(false);
     jumping.current = setTimeout(() => { jumping.current = null; if (following.current) viewport.scrollTop = viewport.scrollHeight; }, 500);
-    viewport.scrollTo({ top: viewport.scrollHeight, behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+    viewport.scrollTo({ top: viewport.scrollHeight, behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches || document.documentElement.dataset.motion === "off" ? "auto" : "smooth" });
   };
 
   useEffect(() => {
@@ -116,7 +122,7 @@ export default function AdvisorComposer({ question, onQuestion, dataUseAccepted,
     input.current.style.height = `${Math.min(input.current.scrollHeight, 176)}px`;
   }, [question]);
 
-  const openSettings = (showDataUse = false, section: "general" | "history" = "general") => { setSettingsSection(section); setDataDetailsOpen(showDataUse); setSettingsOpen(true); };
+  const openSettings = (showDataUse = false, section: "general" | "history" = "general") => { dictation.current?.stop(); setSettingsSection(section); setDataDetailsOpen(showDataUse); setSettingsOpen(true); };
   const suggestions = [
     { icon: "Reports", title: "Review my business", question: "Which KPIs need attention, and what should I check next?" },
     { icon: "Sales", title: "Understand my products", question: "Which products and basket patterns deserve attention?" },
@@ -125,11 +131,11 @@ export default function AdvisorComposer({ question, onQuestion, dataUseAccepted,
   ];
   const submitLabel = thinking ? "Preparing response…" : loading ? "Loading conversation…" : "Send message";
 
-  return <section className={`ai-studio${hasConversation ? " has-conversation" : " is-empty"}`} aria-label="Vanteloq AI conversation">
+  return <section className={`ai-studio${hasConversation ? " has-conversation" : " is-empty"}${question.trim() ? " is-composing" : ""}`} data-ai-theme={appearance.theme} aria-label="Vanteloq AI conversation">
     <header className="ai-studio-header">
       <div className="vanteloq-ai-heading"><VanteloqAiLogo size={36} thinking={thinking} active={Boolean(question.trim())} decorative/><strong>Vanteloq AI</strong></div>
       <div className="ai-header-tools">
-        {onNewChat && <button type="button" disabled={loading} onClick={() => { onNewChat(); input.current?.focus(); }} title="Start a new chat. Saved chats stay in History."><WorkspaceIcon name="Business Brief"/><span>New chat</span></button>}
+        {onNewChat && <button type="button" disabled={loading} onClick={() => { dictation.current?.stop(); onNewChat(); input.current?.focus(); }} title="Start a new chat. Saved chats stay in History."><WorkspaceIcon name="Business Brief"/><span>New chat</span></button>}
         {privacyControls && <button type="button" aria-haspopup="dialog" aria-controls="advisor-settings" onClick={() => { setHistoryRequest(value => value + 1); openSettings(false, "history"); }}><WorkspaceIcon name="Reports"/><span>History</span></button>}
         <button type="button" aria-haspopup="dialog" aria-controls="advisor-settings" onClick={() => openSettings()}><WorkspaceIcon name="Settings"/><span>Settings</span></button>
       </div>
@@ -145,15 +151,16 @@ export default function AdvisorComposer({ question, onQuestion, dataUseAccepted,
 
       <div className="ai-compose-area">
         {showLatest && <button className="ai-jump-latest" type="button" onClick={jumpToLatest}>Jump to latest</button>}
-        <form id="advisor-form" onSubmit={event => { if (!ready) { event.preventDefault(); return; } following.current = true; setSuggestionsOpen(false); onSubmit(event); }}>
+        <form id="advisor-form" onSubmit={event => { dictation.current?.stop(); if (!ready) { event.preventDefault(); return; } following.current = true; setSuggestionsOpen(false); onSubmit(event); }}>
           {attachments.length > 0 && <ul className="ai-attachment-list" aria-label="Selected attachments">{attachments.map((file, index) => <li key={`${file.name}-${index}`}><AttachmentPreview file={file}/><span><strong>{file.name}</strong><small>{file.size < 1024 * 1024 ? `${Math.ceil(file.size / 1024)} KB` : `${(file.size / (1024 * 1024)).toFixed(1)} MB`}</small></span><button type="button" disabled={loading} aria-label={`Remove ${file.name}`} onClick={() => { onAttachments?.(attachments.filter((_, at) => at !== index)); onAttachmentConsent?.(false); setAttachmentError(""); }}>×</button></li>)}</ul>}
           <label className="ai-visually-hidden" htmlFor="advisor-question">Your message</label>
-          <textarea ref={input} id="advisor-question" rows={2} value={question} disabled={loading} onChange={event => onQuestion(event.target.value)} onKeyDown={event => {
+          <textarea ref={input} id="advisor-question" rows={2} value={question} disabled={loading} onBeforeInput={() => dictation.current?.stop()} onCompositionStart={() => dictation.current?.stop()} onChange={event => { dictation.current?.stop(); onQuestion(event.target.value); }} onKeyDown={event => {
             if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+              dictation.current?.stop();
               event.preventDefault();
               if (ready) event.currentTarget.form?.requestSubmit();
             }
-          }} maxLength={800} required aria-describedby="advisor-submit-help" placeholder="Ask Vanteloq AI…"/>
+          }} maxLength={ADVISOR_QUESTION_LIMIT} required aria-describedby="advisor-submit-help" placeholder="Ask Vanteloq AI…"/>
           <div className="ai-input-toolbar">
             <div className="ai-attach-tools">{onAttachments && <><input ref={fileInput} type="file" hidden multiple accept={ADVISOR_ATTACHMENT_ACCEPT} aria-label="Choose files for Vanteloq AI" onChange={event => {
               const next = [...attachments, ...Array.from(event.target.files ?? [])];
@@ -162,7 +169,7 @@ export default function AdvisorComposer({ question, onQuestion, dataUseAccepted,
               setAttachmentError(error ?? "");
               if (!error) { onAttachments(next); onAttachmentConsent?.(false); }
             }}/><button className="ai-attach-button" type="button" disabled={loading} onClick={() => fileInput.current?.click()} title="PDF, photos, TXT or CSV. Up to 4 files; 5 MB each, 8 MB total."><WorkspaceIcon name="Documents"/><span>Attach files</span></button></>}<span className="ai-powered-by">Powered by {ADVISOR_PROVIDER_LABELS[provider]}</span></div>
-            <div className="ai-send-tools">{question.length > 600 && <span className="ai-character-count">{question.length}/800</span>}{thinking && onStop ? <button key="stop" className="ai-send ai-stop" type="button" onClick={event => { event.preventDefault(); onStop(); }} aria-label="Stop response" title="Stop response"><span aria-hidden="true"/></button> : <button key="send" className="ai-send" type="submit" disabled={!ready} aria-label={submitLabel} title={submitLabel} aria-describedby="advisor-submit-help"><WorkspaceIcon name="Chevron"/></button>}</div>
+            <div className="ai-send-tools">{question.length > 600 && <span className="ai-character-count">{question.length}/800</span>}<AdvisorDictation ref={dictation} question={question} onQuestion={onQuestion} disabled={loading || settingsOpen}/>{thinking && onStop ? <button key="stop" className="ai-send ai-stop" type="button" onClick={event => { event.preventDefault(); onStop(); }} aria-label="Stop response" title="Stop response"><span aria-hidden="true"/></button> : <button key="send" className="ai-send" type="submit" disabled={!ready} aria-label={submitLabel} title={submitLabel} aria-describedby="advisor-submit-help"><WorkspaceIcon name="Chevron"/></button>}</div>
           </div>
         </form>
         {attachmentError && <p className="ai-consent-error" role="alert">{attachmentError}</p>}
@@ -176,10 +183,11 @@ export default function AdvisorComposer({ question, onQuestion, dataUseAccepted,
           <button className="ai-text-button ai-memory-status" type="button" onClick={() => openSettings()} aria-label={`Memory ${attachments.length || historyPaused ? "paused for attachments" : memoryEnabled ? "on" : "off"}. Open settings.`}>Memory {attachments.length || historyPaused ? "paused" : memoryEnabled ? "on" : "off"}</button>
         </div>
 
+        <ProfessorGuide compact onExplain={() => { dictation.current?.stop(); onQuestion(hasConversation ? "Explain the sales and financial figures in this conversation in plain language. Use only the records I permitted. Tell me what changed, what it means, and one practical next step. Separate unknown facts from assumptions." : "Help me understand which sales, costs and cash metrics matter for my business type. Explain each simply, tell me what records it needs, and suggest one practical next step."); input.current?.focus(); }}/>
         <div className="ai-suggestions">
           <button className="ai-text-button ai-suggestions-toggle" type="button" aria-expanded={suggestionsOpen} aria-controls="advisor-suggestions" onClick={() => setSuggestionsOpen(open => !open)}>{suggestionsOpen ? "Hide suggestions" : "Show suggestions"}</button>
           <div id="advisor-suggestions" className="ai-prompt-grid" role="group" aria-label="Suggested questions" hidden={!suggestionsOpen}>
-            {suggestions.map(item => <button key={item.title} type="button" disabled={loading} onClick={() => { onQuestion(item.question); setSuggestionsOpen(false); input.current?.focus(); }}><WorkspaceIcon name={item.icon}/><span>{item.title}</span></button>)}
+            {suggestions.map(item => <button key={item.title} type="button" disabled={loading} onClick={() => { dictation.current?.stop(); onQuestion(item.question); setSuggestionsOpen(false); input.current?.focus(); }}><WorkspaceIcon name={item.icon}/><span>{item.title}</span></button>)}
           </div>
         </div>
       </div>
@@ -194,6 +202,7 @@ export default function AdvisorComposer({ question, onQuestion, dataUseAccepted,
     }}>
       <header className="ai-settings-header"><div><span>Vanteloq AI</span><h2 id="advisor-settings-title">Settings</h2></div><button type="button" onClick={() => setSettingsOpen(false)}>Done</button></header>
       <div className="ai-settings-body">
+        <section className="ai-appearance" aria-labelledby="advisor-appearance-title"><h3 id="advisor-appearance-title">Appearance</h3><label>Colour mode<select value={appearance.appearance} onChange={event => appearance.choose(event.target.value as WorkspaceAppearance)}><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label><p>Saved on this device. System follows your device’s colour setting.</p>{appearance.storageNotice && <p role="status">{appearance.storageNotice}</p>}{appearance.systemNotice && <p role="status">{appearance.systemNotice}</p>}</section>
         <section aria-labelledby="advisor-agreement-title"><h3 id="advisor-agreement-title">Data Use Agreement</h3><p>{consentLoading ? "Checking your saved agreement…" : dataUseAccepted ? "Accepted for this workspace. New chats keep this choice. We ask again if the notice or permitted data changes." : "Accept the notice below the message box before your first question."}</p>{dataUseAccepted && <button className="ai-text-button ai-withdraw-consent" type="button" disabled={loading || consentLoading} onClick={() => onConsent(false)}>Withdraw agreement</button>}{consentError && <p role="alert">{consentError} <button className="ai-text-button" type="button" onClick={onConsentRetry} disabled={consentLoading}>Retry</button></p>}</section>
         {onPurpose && <section aria-labelledby="advisor-context-title">
           <div className="ai-setting-row"><h3 id="advisor-context-title">Workspace Data</h3><label className="ai-memory-switch"><input type="checkbox" role="switch" aria-label="Include workspace data" checked={purpose === "analysis"} disabled={loading || consentLoading} onChange={event => { onPurpose(event.target.checked ? "analysis" : "help"); }}/><span aria-hidden="true"/></label></div>

@@ -2,10 +2,11 @@
 
 | Document control | Value |
 | --- | --- |
-| Organization | 2855706 ALBERTA INC, doing business as LexEdge Consulting and operating Vanteloq |
+| Organization | Vanteloq Inc., operating Vanteloq |
 | Policy owner | Hussien Issa, Owner and Security Lead |
-| Version | 1.4 |
+| Version | 1.5 |
 | Prepared | 2026-09-23 |
+| Operator identity updated | 2026-10-12 |
 | Technical baseline reviewed | 2026-09-30 |
 | Review cycle | Quarterly enforcement review and annual policy review |
 | Proposed first quarterly review | 2026-12-22 |

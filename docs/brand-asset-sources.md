@@ -26,3 +26,15 @@ September 25, 2026: DoorDash, Stripe, Clover and Uber Eats now use locally serve
 - Uber Eats: official stacked all-black SVG, asset 5790 in https://assets.uber.com/d/4YRwkQaXMgFz/logos/collection/150, saved as public/integrations/uber-eats-stacked-black.svg. Original paths and clear space are retained. Guidance at https://merchants.ubereats.com/gb/en/resources/learning-center/co-marketing-tools/ says not to use the previous two-colour wordmark. Brand approval is separate from accurate artwork and integration availability.
 
 All four assets are displayed on neutral surfaces without filters, distortion or animation applied to the marks. Existing ownership attribution, independence disclaimer and connector availability are unchanged.
+
+October 11, 2026: the shared Lightspeed logo now uses the complete unmodified
+charcoal vector wordmark from Lightspeed's official Media Kit at
+https://brand.lightspeedhq.com/document/151#/media-kit/resources. The downloaded
+archive `Assets 2026-10-12.zip` contains the member
+`Lightspeed_Logo_Charcoal attachments/Lightspeed_Logo_Charcoal.svg`, installed
+byte-identically as `public/integrations/lightspeed-logo-charcoal.svg` (3,458
+bytes; SHA-256 `35087805d3de2d8522477857158d6c19c89ff04b0f10eb7ad6c937ae307e31ff`).
+The full flame and wordmark are preserved in their original charcoal colour
+on a neutral carrier. This replaces the 30 × 44 pixel raster without redrawing,
+recolouring or cropping provider artwork. No partner badge is used and no
+integration readiness or ownership claim is changed.

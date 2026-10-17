@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { usePathname } from "next/navigation";
 import { useMotionPreference } from "./use-motion-preference";
 
 const surfaces = [
@@ -14,9 +15,15 @@ const surfaces = [
 ].join(",");
 
 // Content is visible by default. Motion never gates rendering or data access.
+export function isInterfaceMotionDisabledPath(pathname: string | null) {
+  return pathname === "/advisory";
+}
+
 export default function InterfaceMotion() {
   const motion = useMotionPreference();
+  const pathname = usePathname();
   useEffect(() => {
+    if (isInterfaceMotionDisabledPath(pathname)) return;
     const preference = window.matchMedia("(prefers-reduced-motion: reduce)");
     if (!("IntersectionObserver" in window) || !("animate" in Element.prototype)) return;
     let stop = () => {};
@@ -125,6 +132,6 @@ export default function InterfaceMotion() {
     start();
     preference.addEventListener("change", start);
     return () => { stop(); preference.removeEventListener("change", start); };
-  }, [motion]);
+  }, [motion, pathname]);
   return null;
 }

@@ -1,3 +1,9 @@
+export * from "./foodservice-schema";
+export * from "./business-workflow-schema";
+export * from "../server/workflow-followup-schema";
+export * from "../server/sector-operations-schema";
+export * from "../server/workflow-inventory-schema";
+export * from "./dealership-schema";
 import { sql } from "drizzle-orm";
 // Reviewed statement records retain their original document and separate cash activity from ledger posting.
 import {
@@ -302,6 +308,9 @@ export const workspaceTasks = sqliteTable(
     priority: text("priority", { enum: ["high", "medium", "low"] }).notNull().default("medium"),
     status: text("status", { enum: ["open", "in_progress", "done"] }).notNull().default("open"),
     assignee: text("assignee").notNull().default("Owner"),
+    assigneeUserId: text("assignee_user_id").references(() => users.id, { onDelete: "set null" }),
+    locationId: text("location_id").references(() => organizationLocations.id),
+    version: integer("version").notNull().default(1),
     dueDate: text("due_date"),
     sourceType: text("source_type", { enum: ["manual", "insight", "alert", "decision"] }).notNull().default("manual"),
     sourceRef: text("source_ref"),
@@ -321,6 +330,23 @@ export const workspaceTasks = sqliteTable(
     check("workspace_tasks_source_type_check", sql`${table.sourceType} in ('manual', 'insight', 'alert', 'decision')`),
   ],
 );
+
+export const collaborationMessages = sqliteTable("collaboration_messages", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  locationId: text("location_id").references(() => organizationLocations.id),
+  taskId: integer("task_id").references(() => workspaceTasks.id, { onDelete: "cascade" }),
+  authorUserId: text("author_user_id").references(() => users.id, { onDelete: "set null" }),
+  authorName: text("author_name").notNull(),
+  body: text("body").notNull(),
+  idempotencyKey: text("idempotency_key").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+}, table => [
+  uniqueIndex("collaboration_message_request_unique").on(table.organizationId, table.idempotencyKey),
+  index("collaboration_message_channel_idx").on(table.organizationId, table.locationId, table.id),
+  index("collaboration_message_task_idx").on(table.organizationId, table.taskId, table.id),
+  check("collaboration_message_length", sql`length(${table.body}) BETWEEN 1 AND 4000`),
+]);
 
 export const opportunityReviews = sqliteTable("opportunity_reviews", {
   id: text("id").primaryKey(),
@@ -721,6 +747,7 @@ export const integrationConnections = sqliteTable(
     organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
     provider: text("provider").notNull(),
     sourceNamespace: text("source_namespace").notNull().default("legacy"),
+    freeGrantId: text("free_grant_id"),
     status: text("status", { enum: ["not_connected", "pending", "connected", "error", "revoked"] }).notNull().default("not_connected"),
     externalAccountRef: text("external_account_ref"),
     externalAccountName: text("external_account_name"),
@@ -751,6 +778,14 @@ export const integrationConnections = sqliteTable(
     check("integration_connections_promotion_check", sql`${table.dataPromotionStatus} in ('blocked', 'staging', 'approved')`),
   ],
 );
+
+export const freeIntegrationSelections = sqliteTable("free_integration_selections", {
+  organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete:"cascade" }),
+  provider: text("provider").notNull(),
+  grantId: text("grant_id").notNull(),
+  createdAt: integer("created_at").notNull(),
+  expiresAt: integer("expires_at").notNull(),
+}, table => [primaryKey({columns:[table.organizationId,table.provider]}), uniqueIndex("free_integration_grant_unique").on(table.grantId)]);
 
 export const integrationSyncSchedules = sqliteTable("integration_sync_schedules", {
   connectionId: text("connection_id").primaryKey().references(() => integrationConnections.id, { onDelete: "cascade" }),
@@ -836,6 +871,11 @@ export const marketingDailyMetrics = sqliteTable(
     metricDate: text("metric_date").notNull(),
     metricKey: text("metric_key").notNull(),
     valueMilli: integer("value_milli").notNull(),
+    // Typed source money is separate from generic measurement scaling. Legacy
+    // metrics remain unverified for financial comparison until synchronized.
+    moneyAmountMinor: integer("money_amount_minor"),
+    moneyCurrency: text("money_currency"),
+    reportingTimezone: text("reporting_timezone"),
     sourceEventId: text("source_event_id").notNull(),
     createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
     updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
@@ -1059,6 +1099,7 @@ export const integrationStagedSales = sqliteTable(
     costCents: integer("cost_cents").notNull().default(0),
     discountCents: integer("discount_cents").notNull().default(0),
     lineCount: integer("line_count").notNull().default(0),
+    unitsMilli: integer("units_milli"),
     sourcePayloadHash: text("source_payload_hash").notNull(),
     syncRunId: text("sync_run_id").notNull().references(() => integrationSyncRuns.id, { onDelete: "cascade" }),
     stagedAt: integer("staged_at", { mode: "timestamp" }).notNull(),
@@ -2001,6 +2042,40 @@ export const customerInvoices = sqliteTable(
   ],
 );
 
+export const invoiceAccountingEvents = sqliteTable(
+  "invoice_accounting_events",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    invoiceId: text("invoice_id").notNull().references(() => customerInvoices.id, { onDelete: "cascade" }),
+    eventType: text("event_type", { enum: ["issue", "payment", "reverse_payment", "void"] }).notNull(),
+    eventDate: text("event_date").notNull(),
+    amountCents: integer("amount_cents").notNull(),
+    currency: text("currency").notNull(),
+    invoiceTotalCents: integer("invoice_total_cents").notNull(),
+    priorPaidCents: integer("prior_paid_cents").notNull(),
+    invoiceJournalEntryId: text("invoice_journal_entry_id").notNull().references(() => journalEntries.id),
+    journalEntryId: text("journal_entry_id").notNull().references(() => journalEntries.id),
+    reversalOfEventId: text("reversal_of_event_id"),
+    cashAccountId: text("cash_account_id").references(() => financialAccounts.id),
+    sourceTransactionId: text("source_transaction_id").references(() => financialTransactions.id),
+    reference: text("reference").notNull().default(""),
+    reason: text("reason").notNull().default(""),
+    idempotencyKey: text("idempotency_key").notNull(),
+    requestJson: text("request_json").notNull(),
+    actorUserId: text("actor_user_id").notNull().references(() => users.id),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("invoice_accounting_request_unique").on(table.organizationId, table.idempotencyKey),
+    uniqueIndex("invoice_accounting_journal_unique").on(table.journalEntryId),
+    uniqueIndex("invoice_accounting_reversal_unique").on(table.organizationId, table.reversalOfEventId),
+    index("invoice_accounting_history_idx").on(table.organizationId, table.invoiceId, table.eventDate),
+    check("invoice_accounting_type_check", sql`${table.eventType} in ('issue','payment','reverse_payment','void')`),
+    check("invoice_accounting_amount_check", sql`typeof(${table.amountCents}) = 'integer' and ${table.amountCents} > 0 and ${table.amountCents} <= 9007199254740991 and typeof(${table.priorPaidCents}) = 'integer' and ${table.priorPaidCents} >= 0 and ${table.priorPaidCents} <= ${table.invoiceTotalCents}`),
+  ],
+);
+
 export const customerInvoiceLines = sqliteTable(
   "customer_invoice_lines",
   {
@@ -2011,6 +2086,9 @@ export const customerInvoiceLines = sqliteTable(
     description: text("description").notNull(),
     quantityMilli: integer("quantity_milli").notNull(),
     unitPriceCents: integer("unit_price_cents").notNull(),
+    // Legacy SQLite INTEGER affinity is non-STRICT: rates may use tenths of a
+    // basis point (997.5 = 9.975%). Money columns remain integer minor units.
+    // Invoice validation converts this numeric rate to integer units for math.
     taxRateBasisPoints: integer("tax_rate_basis_points").notNull().default(0),
     subtotalCents: integer("subtotal_cents").notNull(),
     taxCents: integer("tax_cents").notNull().default(0),
@@ -2234,6 +2312,39 @@ export const bankStatementRows = sqliteTable("bank_statement_rows", {
   check("bank_statement_row_number", sql`${table.rowNumber} BETWEEN 1 AND 500`),
 ]);
 
+// CSV originals are retained separately from scanned document uploads. They are
+// validated as inert UTF-8 data and are downloadable only as plain-text evidence.
+export const bankCsvImports = sqliteTable("bank_csv_imports", {
+  id:text("id").primaryKey(), organizationId:text("organization_id").notNull().references(()=>workspaces.id,{onDelete:"cascade"}),
+  bankAccountId:text("bank_account_id").notNull().references(()=>bankAccounts.id), financialAccountId:text("financial_account_id").notNull().references(()=>financialAccounts.id),
+  startDate:text("start_date").notNull(),endDate:text("end_date").notNull(),currency:text("currency").notNull(),
+  openingBalanceCents:integer("opening_balance_cents").notNull(),closingBalanceCents:integer("closing_balance_cents").notNull(),rowCount:integer("row_count").notNull(),inflowCents:integer("inflow_cents").notNull(),outflowCents:integer("outflow_cents").notNull(),
+  sourceDigest:text("source_digest").notNull(),fingerprint:text("fingerprint").notNull(),fileName:text("file_name").notNull(),objectKey:text("object_key").notNull(),mappingJson:text("mapping_json").notNull(),
+  status:text("status").notNull(),approvedByUserId:text("approved_by_user_id").notNull().references(()=>users.id),createdAt:integer("created_at").notNull(),
+},t=>[uniqueIndex("bank_csv_source_unique").on(t.organizationId,t.fingerprint),index("bank_csv_digest_idx").on(t.organizationId,t.sourceDigest),index("bank_csv_period_idx").on(t.organizationId,t.bankAccountId,t.startDate,t.endDate),check("bank_csv_balance",sql`${t.openingBalanceCents}+${t.inflowCents}-${t.outflowCents}=${t.closingBalanceCents}`),check("bank_csv_rows_count",sql`${t.rowCount} BETWEEN 1 AND 500`),check("bank_csv_status",sql`${t.status} IN ('staging','approved')`)]);
+export const bankCsvVoidEvents=sqliteTable("bank_csv_void_events",{
+  id:text("id").primaryKey(),organizationId:text("organization_id").notNull().references(()=>workspaces.id,{onDelete:"cascade"}),importId:text("import_id").notNull().references(()=>bankCsvImports.id),reason:text("reason").notNull(),actorUserId:text("actor_user_id").notNull().references(()=>users.id),createdAt:integer("created_at").notNull(),
+},t=>[uniqueIndex("bank_csv_void_unique").on(t.organizationId,t.importId)]);
+export const bankCsvRows = sqliteTable("bank_csv_rows",{
+  importId:text("import_id").notNull().references(()=>bankCsvImports.id,{onDelete:"cascade"}),transactionId:text("transaction_id").notNull().references(()=>financialTransactions.id),sourceRowNumber:integer("source_row_number").notNull(),
+},t=>[primaryKey({columns:[t.importId,t.sourceRowNumber]}),uniqueIndex("bank_csv_transaction_unique").on(t.transactionId)]);
+export const bankAccountingEvents = sqliteTable("bank_accounting_events",{
+  id:text("id").primaryKey(),organizationId:text("organization_id").notNull().references(()=>workspaces.id,{onDelete:"cascade"}),transactionId:text("transaction_id").notNull().references(()=>financialTransactions.id),
+  eventType:text("event_type").notNull(),eventDate:text("event_date").notNull(),amountCents:integer("amount_cents").notNull(),cashAccountId:text("cash_account_id").notNull().references(()=>financialAccounts.id),
+  journalEntryId:text("journal_entry_id").notNull().references(()=>journalEntries.id),cashLineId:text("cash_line_id").notNull().references(()=>journalLines.id),reversalOfEventId:text("reversal_of_event_id"),
+  counterAccountId:text("counter_account_id").references(()=>financialAccounts.id),reason:text("reason").notNull(),idempotencyKey:text("idempotency_key").notNull(),requestJson:text("request_json").notNull(),actorUserId:text("actor_user_id").notNull().references(()=>users.id),createdAt:integer("created_at").notNull(),
+},t=>[uniqueIndex("bank_accounting_request_unique").on(t.organizationId,t.idempotencyKey),uniqueIndex("bank_accounting_reversal_unique").on(t.organizationId,t.reversalOfEventId),index("bank_accounting_transaction_idx").on(t.organizationId,t.transactionId),check("bank_accounting_type",sql`${t.eventType} IN ('post','match','reverse','unmatch')`)]);
+export const bankReconciliationRuns = sqliteTable("bank_reconciliation_runs",{
+  id:text("id").primaryKey(),organizationId:text("organization_id").notNull().references(()=>workspaces.id,{onDelete:"cascade"}),reconciliationId:text("reconciliation_id").notNull().references(()=>reconciliations.id),
+  sourceType:text("source_type").notNull(),sourceId:text("source_id").notNull(),accountId:text("account_id").notNull().references(()=>financialAccounts.id),currency:text("currency").notNull(),
+  baselineDate:text("baseline_date").notNull(),openingBookCents:integer("opening_book_cents").notNull(),closingBookCents:integer("closing_book_cents").notNull(),unclearedCents:integer("uncleared_cents").notNull(),
+  fingerprint:text("fingerprint").notNull(),snapshotJson:text("snapshot_json").notNull(),status:text("status").notNull(),reopenReason:text("reopen_reason").notNull().default(""),actorUserId:text("actor_user_id").notNull().references(()=>users.id),createdAt:integer("created_at").notNull(),
+},t=>[index("bank_reconciliation_source_idx").on(t.organizationId,t.sourceType,t.sourceId),check("bank_reconciliation_run_status",sql`${t.status} IN ('staging','completed','reopened')`)]);
+export const bankReconciliationLines = sqliteTable("bank_reconciliation_lines",{
+  runId:text("run_id").notNull().references(()=>bankReconciliationRuns.id,{onDelete:"cascade"}),organizationId:text("organization_id").notNull().references(()=>workspaces.id,{onDelete:"cascade"}),
+  transactionId:text("transaction_id").notNull().references(()=>financialTransactions.id),cashLineId:text("cash_line_id").notNull().references(()=>journalLines.id),amountCents:integer("amount_cents").notNull(),active:integer("active").notNull().default(1),
+},t=>[primaryKey({columns:[t.runId,t.transactionId]}),uniqueIndex("bank_reconciliation_cash_line_unique").on(t.cashLineId).where(sql`${t.active}=1`),uniqueIndex("bank_reconciliation_source_row_unique").on(t.transactionId).where(sql`${t.active}=1`)]);
+
 
 // Personal newsletter preferences are independent of workspace notifications.
 // Hashes and audit evidence are private server records, never client edit targets.
@@ -2426,4 +2537,41 @@ export const shopifyPrivacyRequests = sqliteTable("shopify_privacy_requests", {
   check("shopify_privacy_status_check", sql`${table.status} IN ('pending','completed')`),
   check("shopify_privacy_export_check", sql`${table.lastExportComplete} IN (0,1)`),
   check("shopify_privacy_completion_check", sql`${table.completionMethod} IN ('secure_delivery','no_retained_data')`),
+]);
+
+export const workspaceIndustryConfig=sqliteTable("workspace_industry_config",{
+ organizationId:text("organization_id").primaryKey().notNull().references(()=>workspaces.id,{onDelete:"cascade"}),
+ industryLabel:text("industry_label").notNull(),configJson:text("config_json").notNull(),revision:integer("revision").notNull(),
+ updatedBy:text("updated_by").references(()=>users.id,{onDelete:"set null"}),updatedAt:integer("updated_at").notNull(),
+},t=>[check("workspace_industry_config_json",sql`json_valid(${t.configJson})`),check("workspace_industry_revision",sql`${t.revision}>=1`)]);
+export const workspaceIndustryHistory=sqliteTable("workspace_industry_history",{
+ id:integer("id").primaryKey({autoIncrement:true}),organizationId:text("organization_id").notNull().references(()=>workspaces.id,{onDelete:"cascade"}),
+ industryLabel:text("industry_label").notNull(),configJson:text("config_json").notNull(),revision:integer("revision").notNull(),
+ changedBy:text("changed_by").references(()=>users.id,{onDelete:"set null"}),changedAt:integer("changed_at").notNull(),
+},t=>[unique("workspace_industry_history_revision").on(t.organizationId,t.revision),check("workspace_industry_history_json",sql`json_valid(${t.configJson})`)]);
+export const onboardingDrafts=sqliteTable("onboarding_drafts",{
+ userId:text("user_id").primaryKey().notNull().references(()=>users.id,{onDelete:"cascade"}),draftJson:text("draft_json").notNull(),
+ revision:integer("revision").notNull(),updatedAt:integer("updated_at").notNull(),expiresAt:integer("expires_at").notNull(),
+},t=>[check("onboarding_draft_json",sql`json_valid(${t.draftJson})`),check("onboarding_draft_revision",sql`${t.revision}>=1`),index("onboarding_drafts_expiry_idx").on(t.expiresAt)]);
+
+// Private analysis definitions only. Source rows, query results and tokens are
+// never included in these bounded JSON documents.
+export const studioDefinitions = sqliteTable("studio_definitions", {
+  id: text("id").primaryKey(),
+  organizationId: text("organization_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  app: text("app", { enum: ["dashboards", "sheets", "sql"] }).notNull(),
+  scopeJson: text("scope_json").notNull(),
+  contentJson: text("content_json").notNull(),
+  version: integer("version").notNull().default(1),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+}, table => [
+  index("studio_definitions_owner_updated_idx").on(table.organizationId, table.userId, table.updatedAt, table.id),
+  check("studio_definition_app_check", sql`${table.app} IN ('dashboards','sheets','sql')`),
+  check("studio_definition_title_check", sql`length(${table.title}) BETWEEN 1 AND 100`),
+  check("studio_definition_scope_check", sql`json_valid(${table.scopeJson}) AND length(CAST(${table.scopeJson} AS BLOB))<=2048`),
+  check("studio_definition_content_check", sql`json_valid(${table.contentJson}) AND length(CAST(${table.contentJson} AS BLOB))<=16384`),
+  check("studio_definition_version_check", sql`${table.version}>=1 AND ${table.version}<9007199254740991`),
 ]);

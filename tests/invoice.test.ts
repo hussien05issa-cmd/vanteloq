@@ -3,8 +3,10 @@ import test from "node:test";
 import { parseCustomerInvoice } from "../domain/invoice";
 import { createInvoicePdf } from "../server/invoice-pdf";
 import { PDFDocument, PDFPage } from "pdf-lib";
-import { decimalUnits, invoiceLineAmounts, invoiceTotals } from "../domain/invoice-amounts";
+import { decimalUnits, formatInvoiceTaxPercent, invoiceLineAmounts, invoiceTaxRateUnits, invoiceTotals, parseInvoiceTaxPercent } from "../domain/invoice-amounts";
 import { normalizedSourceTimestamp } from "../server/data-trust";
+import { DatabaseSync } from "node:sqlite";
+import { readFileSync } from "node:fs";
 
 const fixture = {
   invoiceNumber: "INV-20260811-01",
@@ -44,6 +46,81 @@ test("invoice PDF is generated as a valid document", async () => {
   const bytes = await createInvoicePdf(parseCustomerInvoice(fixture), null, null);
   assert.ok(bytes.byteLength > 2_000);
   assert.equal(new TextDecoder().decode(bytes.subarray(0, 5)), "%PDF-");
+});
+
+test("invoice tax precision preserves GST, exact QST and combined calculations", () => {
+  for (const [percent, basisPoints, expectedTax] of [
+    ["0", 0, 0], ["5", 500, 5_000], ["9.975", 997.5, 9_975],
+    ["14.975", 1497.5, 14_975], ["100", 10_000, 100_000], ["12.341", 1234.1, 12_341],
+  ] as const) {
+    const rate = parseInvoiceTaxPercent(percent);
+    assert.equal(rate, basisPoints);
+    assert.equal(formatInvoiceTaxPercent(rate), percent + "%");
+    const preview = invoiceLineAmounts(1_000, 100_000, rate);
+    const saved = parseCustomerInvoice({ ...fixture, lines: [{ ...fixture.lines[0], quantityMilli: 1_000, unitPriceCents: 100_000, taxRateBasisPoints: rate }] });
+    assert.equal(preview.taxCents, expectedTax);
+    assert.equal(saved.lines[0].taxRateBasisPoints, basisPoints);
+    assert.equal(saved.taxCents, expectedTax);
+    assert.equal(saved.totalCents, 100_000 + expectedTax);
+    assert.equal(saved.totalCents, preview.totalCents);
+  }
+  assert.equal(invoiceLineAmounts(1_000, 2_000, 997.5).taxCents, 200, "QST half cent rounds up");
+  assert.equal(invoiceLineAmounts(1_000, 2_000, 1497.5).taxCents, 300, "combined half cent rounds up");
+  assert.equal(invoiceLineAmounts(1_000, 1_999, 997.5).taxCents, 199, "below half cent rounds down");
+  assert.equal(formatInvoiceTaxPercent(parseInvoiceTaxPercent(".005")), "0.005%");
+});
+
+test("invoice tax inputs reject excessive precision and invalid or out-of-range rates without rounding", () => {
+  for (const percent of ["9.9751", "14.97501", "100.001", "-1", "NaN", "Infinity", "1e1", "9,975", ""]) {
+    assert.throws(() => parseInvoiceTaxPercent(percent), /tax rate.*three decimal/);
+  }
+  for (const value of [997.51, 1497.501, -1, 10_000.1, NaN, Infinity, "997.5", true]) {
+    assert.throws(() => invoiceTaxRateUnits(value), /tax rate.*three decimal/);
+    assert.throws(() => parseCustomerInvoice({ ...fixture, lines: [{ ...fixture.lines[0], taxRateBasisPoints: value }] }), /tax rate.*line 1/);
+  }
+  assert.throws(() => invoiceLineAmounts(1_000, 10_000, 997.51), /tax rate.*three decimal/);
+});
+
+test("all existing whole-basis-point tax rates retain the previous rounded amounts", () => {
+  for (let rate = 0; rate <= 10_000; rate++) {
+    const oldTax = Number((BigInt(99_995) * BigInt(rate) + BigInt(5_000)) / BigInt(10_000));
+    assert.equal(invoiceLineAmounts(1_000, 99_995, rate).taxCents, oldTax, "basis points " + rate);
+  }
+});
+
+test("existing invoice schema round-trips fractional rates and reopened PDF displays exact QST", async () => {
+  const database = new DatabaseSync(":memory:");
+  const drawn: string[] = [];
+  const original = PDFPage.prototype.drawText;
+  PDFPage.prototype.drawText = function(text, options) { drawn.push(text); return original.call(this, text, options); };
+  try {
+    database.exec("CREATE TABLE workspaces(id TEXT PRIMARY KEY); CREATE TABLE customer_invoices(id TEXT PRIMARY KEY); INSERT INTO workspaces VALUES('workspace'); INSERT INTO customer_invoices VALUES('invoice');");
+    database.exec(readFileSync(new URL("../drizzle/0029_shallow_calypso.sql", import.meta.url), "utf8").split("--> statement-breakpoint")[0]);
+    const rates = [500, 997.5, 1234.1, 0, 10_000];
+    for (const [index, rate] of rates.entries()) {
+      const amounts = invoiceLineAmounts(1_000, 100_000, rate);
+      database.prepare("INSERT INTO customer_invoice_lines(id,organization_id,invoice_id,line_number,description,quantity_milli,unit_price_cents,tax_rate_basis_points,subtotal_cents,tax_cents,total_cents,created_at) VALUES(?,'workspace','invoice',?,'Tax precision fixture',1000,100000,?,?,?,?,1)").run(String(index), index + 1, rate, amounts.subtotalCents, amounts.taxCents, amounts.totalCents);
+    }
+    const rows = database.prepare("SELECT tax_rate_basis_points AS rate, tax_cents AS taxCents FROM customer_invoice_lines ORDER BY line_number").all();
+    assert.deepEqual(rows.map(row => row.rate), rates);
+    assert.equal(rows[1].taxCents, 9_975);
+    const reopened = parseCustomerInvoice({ ...fixture, lines: [{ ...fixture.lines[0], quantityMilli: 1_000, unitPriceCents: 100_000, taxRateBasisPoints: rows[1].rate }] });
+    const bytes = await createInvoicePdf(reopened, null, null);
+    assert.equal((await PDFDocument.load(bytes)).getPageCount(), 1);
+    assert.ok(drawn.includes("9.975%"));
+    assert.ok(!drawn.includes("9.98%"));
+    assert.ok(drawn.some(text => text.includes("99.75")));
+  } finally { PDFPage.prototype.drawText = original; database.close(); }
+});
+
+test("combined QST calculation cannot create an invoice with an undisclosed combined rate", async () => {
+  const invoice = parseCustomerInvoice({ ...fixture, lines: [{ ...fixture.lines[0], quantityMilli: 1_000, unitPriceCents: 100_000, taxRateBasisPoints: 1497.5 }] });
+  assert.equal(invoice.taxCents, 14_975);
+  await assert.rejects(() => createInvoicePdf(invoice, null, null), error => {
+    assert.equal((error as { code?: string }).code, "INVOICE_TAX_COMPONENTS_REQUIRED");
+    assert.match((error as Error).message, /separate GST and QST disclosure/);
+    return true;
+  });
 });
 
 test("fractional quantities round half up identically in preview and persisted totals", () => {

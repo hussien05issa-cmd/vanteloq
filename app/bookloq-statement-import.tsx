@@ -25,12 +25,12 @@ async function request(path: string, body?: unknown, signal?: AbortSignal) {
   return bookloqRequest(apiFetch, path, body ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal } : { signal });
 }
 
-export default function BookloqStatementImport({ currency, onUploaded, onComplete }: { currency: string; onUploaded: () => void; onComplete: () => Promise<void> }) {
+export default function BookloqStatementImport({ currency, onUploaded, onComplete, initialOpen = false }: { currency: string; onUploaded?: () => void; onComplete: () => Promise<void>; initialOpen?: boolean }) {
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const catalogRequests = useRef(createDocumentEmailRequests());
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [catalogError, setCatalogError] = useState("");
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(initialOpen);
   const [step, setStep] = useState(1);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -143,9 +143,9 @@ export default function BookloqStatementImport({ currency, onUploaded, onComplet
         <form className="statement-form" onSubmit={event => { event.preventDefault(); void next(); }}>
           {step > 1 && <button type="button" disabled={busy} onClick={() => void downloadOriginal()}>Download Original for Comparison</button>}
           {step === 1 && <>
-            <button type="button" className="secondary" onClick={onUploaded}>Upload or Scan a Statement</button>
+            {onUploaded && <button type="button" className="secondary" onClick={onUploaded}>Upload or Scan a Statement</button>}
             <label><span>Statement Document <span aria-hidden="true">*</span></span><select required value={documentId} onChange={e => setDocumentId(e.target.value)}><option value="">Choose a clean uploaded statement</option>{catalog.documents.map(doc => <option key={doc.id} value={doc.id}>{doc.fileName}{doc.extractionReady ? " · Text extracted" : " · Manual review"}</option>)}</select></label>
-            {!catalog.documents.length && <p>Upload your PDF in Documents and complete Scan and Read. Return here when its security state is Clean.</p>}
+            {!catalog.documents.length && <p>{onUploaded ? "Upload your PDF in Documents and complete Scan and Read. Return here when its security state is Clean." : "An authorised document uploader must add and scan a statement before it can be reviewed here."}</p>}
             <label><span>Cash Account <span aria-hidden="true">*</span></span><select value={bankAccountId} onChange={e => setBankAccountId(e.target.value)}><option value="">Create a manual statement account</option>{catalog.accounts.map(account => <option key={account.id} value={account.id}>{account.name} · {account.maskedNumber} · {account.currency}</option>)}</select></label>
             {!bankAccountId && <><label><span>Account Name <span aria-hidden="true">*</span></span><input required maxLength={100} value={newAccount.name} onChange={e => setNewAccount({ ...newAccount, name: e.target.value })} placeholder="Business chequing"/></label><label><span>Bank or Institution <span aria-hidden="true">*</span></span><input required maxLength={100} value={newAccount.institutionName} onChange={e => setNewAccount({ ...newAccount, institutionName: e.target.value })}/></label><label><span>Last 4 Account Digits <span aria-hidden="true">*</span></span><input required inputMode="numeric" pattern="[0-9]{4}" maxLength={4} value={newAccount.last4} onChange={e => setNewAccount({ ...newAccount, last4: e.target.value.replace(/\D/g, "").slice(0, 4) })}/><small>Do not enter the full account number.</small></label></>}
           </>}

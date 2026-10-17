@@ -49,3 +49,6 @@ next-env.d.ts
 
 # Local verification logs remain outside source history
 /output/*.log
+
+# Local visual QA captures and temporary browser harnesses
+/qa/

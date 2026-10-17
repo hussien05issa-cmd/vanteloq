@@ -34,7 +34,7 @@ export function ClientLoadRecovery() {
 
   return <main className="client-load-recovery" aria-labelledby="client-load-title">
     <section className="client-load-card">
-      <div className="client-load-brand"><ProductBrandLogo product="vanteloq" priority/><span>Vanteloq</span></div>
+      <div className="client-load-brand"><ProductBrandLogo product="vanteloq" priority/></div>
       <span className="client-load-status"><i aria-hidden="true"/>Page File Unavailable</span>
       <h1 id="client-load-title" ref={heading} tabIndex={-1}>Your Workspace Could Not Load</h1>
       <p>A required file could not load. This can happen after an update or a connection interruption.</p>

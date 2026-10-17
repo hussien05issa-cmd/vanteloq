@@ -3,7 +3,7 @@ import { and, eq, or } from "drizzle-orm";
 import { getDb } from "../../../../../../db";
 import { integrationConnections, integrationConsents, integrationOAuthStates } from "../../../../../../db/schema";
 import { recordAudit } from "../../../../../../server/audit";
-import { requireAccess } from "../../../../../../server/authorization";
+import { requireIntegrationAccess, integrationGrantId } from "../../../../../../server/integrations/free-selection";
 import { ApiError, enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameOrigin } from "../../../../../../server/api";
 import {
   buildDeelAuthorizationUrl, DEEL_API_VERSION, DEEL_DATA_CATEGORIES, DEEL_NOTICE_VERSION,
@@ -17,7 +17,7 @@ import { PRIVACY_POLICY_VERSION } from "../../../../../../shared/legal-versions"
 export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
-    const context = await requireAccess(request, ["owner", "admin"], "bookloq.reconciliation");
+    const context = await requireIntegrationAccess(request, ["owner", "admin"], "deel", true);
     await requirePermission(context, "integrations.manage");
     await requirePermission(context, "payroll.totals");
     await requireIntegrationRollout(context, DEEL_PROVIDER);
@@ -25,7 +25,7 @@ export async function POST(request: Request) {
     await requireProviderPrivacy(request, context, "deel", requestId);
     const input = await readJsonObject(request);
     if (input.confirmedAggregatePayrollOnly !== true) {
-      throw new ApiError(409, "DEEL_CONSENT_REQUIRED", "Confirm the finalized aggregate payroll notice before connecting Deel.");
+      throw new ApiError(409, "DEEL_CONSENT_REQUIRED", "Confirm the payroll-report data-use notice before connecting Deel.");
     }
     const [active] = await getDb().select({ id: integrationConnections.id }).from(integrationConnections).where(and(
       eq(integrationConnections.organizationId, context.organizationId),
@@ -42,6 +42,7 @@ export async function POST(request: Request) {
     const now = new Date();
     const expiresAt = new Date(now.getTime() + 10 * 60_000);
     await getDb().insert(integrationConnections).values({
+      freeGrantId: await integrationGrantId(context, "deel"),
       id: connectionId, organizationId: context.organizationId, provider: DEEL_PROVIDER,
       sourceNamespace: connectionId, status: "pending", externalAccountRef: null,
       externalAccountName: "New Deel organization", domainPrefix: null,
@@ -67,12 +68,12 @@ export async function POST(request: Request) {
     await recordAudit({
       request, requestId, organizationId: context.organizationId, actorUserId: context.userId,
       action: "integration.authorization_started", resourceType: "integration_connection", resourceId: connectionId,
-      details: { provider: DEEL_PROVIDER, mode: "aggregate_finalized_payroll_staging", employeeRecordsStored: false, expiresInSeconds: 600 },
+      details: { provider: DEEL_PROVIDER, mode: "aggregate_payroll_report_staging", employeeRecordsStored: false, expiresInSeconds: 600 },
     });
     return jsonResponse({
       authorizationUrl, connectionId,
       expiresAt: expiresAt.toISOString(), scopes: [...DEEL_READ_SCOPES],
-      mode: "aggregate_finalized_payroll_staging", dataPromotionEnabled: false,
+      mode: "aggregate_payroll_report_staging", dataPromotionEnabled: false,
     }, { headers: { "Set-Cookie": oauthBrowserCookie(DEEL_PROVIDER, state) } });
   });
 }

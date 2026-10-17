@@ -1,0 +1,21 @@
+.bookloq-period-toolbar { display:flex; gap:16px; align-items:end; flex-wrap:wrap; margin-bottom:18px; }
+.bookloq-period-toolbar label { display:grid; gap:7px; flex:1; min-width:220px; color:#334f68; }
+.bookloq-period-toolbar select,.bookloq-period-unlock textarea { width:100%; min-height:44px; border:1px solid #c6d6e5; border-radius:10px; padding:10px 12px; background:#fff; color:#17334e; font:inherit; }
+.bookloq-period-toolbar > span { color:#536b82; padding-bottom:11px; }
+.bookloq-period-unlock { display:grid; gap:12px; padding:20px; border:1px solid #c8b9e5; border-radius:14px; background:#f7f3fc; }
+.bookloq-period-unlock label { display:grid; gap:8px; }
+.bookloq-period-unlock form { display:grid; gap:14px; }
+.bookloq-period-unlock textarea { min-height:90px; resize:vertical; }
+.bookloq-period-unlock button { justify-self:start; }
+.bookloq-period-setup > summary { padding:14px 0; cursor:pointer; color:#3e2e69; font-weight:650; }
+.bookloq-receipt-evidence { border:1px solid #c8b9e5; background:#f8f5fc; border-radius:12px; padding:16px; margin-top:16px; display:grid; gap:14px; }
+.bookloq-receipt-evidence > header { display:flex; align-items:start; justify-content:space-between; gap:12px; }
+.bookloq-receipt-evidence h4 { margin:0; overflow-wrap:anywhere; }
+.bookloq-receipt-evidence p { margin:0; line-height:1.55; }
+.bookloq-receipt-evidence img { display:block; max-width:100%; max-height:420px; width:auto; height:auto; object-fit:contain; background:#fff; border:1px solid #d8e0e9; }
+.bookloq-receipt-evidence a { color:#174f9b; text-decoration:underline; }
+.bookloq-receipt-evidence .bookloq-receipt-confirm { display:flex; align-items:start; gap:10px; }
+.bookloq-receipt-confirm input { width:18px; height:18px; flex:0 0 18px; margin-top:2px; accent-color:#573c85; }
+.bookloq-receipt-evidence :is(button,a,input):focus-visible,.bookloq-period-toolbar select:focus-visible,.bookloq-period-unlock :is(button,textarea):focus-visible { outline:3px solid #336cc1; outline-offset:3px; }
+@media(max-width:620px) { .bookloq-period-toolbar { align-items:stretch; flex-direction:column; }.bookloq-period-toolbar label { min-width:0; }.bookloq-period-unlock { padding:16px; }.bookloq-receipt-evidence > header { flex-direction:column; } }
+@media(forced-colors:active) { .bookloq-period-unlock,.bookloq-receipt-evidence { border-color:CanvasText; } }

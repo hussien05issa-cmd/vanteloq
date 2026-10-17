@@ -10,6 +10,7 @@ import { authorizedLocationDataScope, requireOrganizationWideLocationAccess } fr
 import { saveDailyMetricImport } from "../../../../server/daily-metric-import";
 import { getTenantEntitlements } from "../../../../server/entitlements/engine";
 import { reserveFreeUsage } from "../../../../server/entitlements/free";
+import { requireReportImportPrivacyAcknowledgement } from "../../../../server/report-import-privacy";
 
 const readers = ["owner", "admin", "manager", "employee", "read_only"] as const;
 const writers = ["owner", "admin", "manager", "employee", "read_only"] as const;
@@ -39,7 +40,9 @@ export async function POST(request: Request) {
     await requirePermission(context, "data.import");
     await enforceRateLimit("daily-metrics:write", context.userId, 12, 3_600);
     const key = idempotencyKey(request);
-    const input = dailyMetricImportInput(await readJsonObject(request, 512_000));
+    const body = await readJsonObject(request, 512_000);
+    const acknowledgement = requireReportImportPrivacyAcknowledgement(body.importPrivacyAcknowledgement);
+    const input = dailyMetricImportInput(body);
     const scope = await authorizedLocationDataScope(context, new URL(request.url).searchParams.get("location"));
     if (scope.locationRefs !== null) {
       const allowed = new Set(scope.locationRefs);
@@ -64,6 +67,7 @@ export async function POST(request: Request) {
       actorUserId: context.userId,
       requestId,
       sourceHash: await hashIdentifier(clientSource(request)),
+      importPrivacyVersion: acknowledgement.version,
     }, key, input);
     if (result.kind === "review" || result.replayed) await reservation?.release();
     } catch (error) { await reservation?.release(); throw error; }

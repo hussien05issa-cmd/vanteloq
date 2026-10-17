@@ -33,8 +33,8 @@ export type ProviderReportDefinition = {
   dataNeeded: CoverageKey[];
   sourceMode: "canonical" | "provider_specific";
   implementationStatus: "available" | "planned";
-  queryReportId: "sales_totals" | null;
-  presentation: "sales" | "payment_mix" | null;
+  queryReportId: "sales_totals" | "commerce_intelligence" | null;
+  presentation: "sales" | "payment_mix" | "products" | "inventory" | "customers" | "suppliers" | null;
 };
 
 const vocabularies: Record<string, ProviderVocabulary> = {
@@ -52,9 +52,9 @@ const vocabularies: Record<string, ProviderVocabulary> = {
 const canonicalContracts: Array<Omit<ProviderReportDefinition, "status" | "dataNeeded">> = [
   { id: "sales_performance", label: "Sales performance", description: "Revenue, order volume, average transaction value, and trend.", dataUsed: ["sales", "locations"], sourceMode: "canonical", implementationStatus: "available", queryReportId: "sales_totals", presentation: "sales" },
   { id: "payment_mix", label: "Payment mix", description: "Tender share and collected amounts from verified payment facts.", dataUsed: ["sales", "payments"], sourceMode: "canonical", implementationStatus: "available", queryReportId: "sales_totals", presentation: "payment_mix" },
-  { id: "inventory_health", label: "Inventory health", description: "Stock cover, movement, and stockout risk.", dataUsed: ["products", "inventory", "sales"], sourceMode: "canonical", implementationStatus: "planned", queryReportId: null, presentation: null },
-  { id: "customer_intelligence", label: "Customer intelligence", description: "Repeat activity and retention signals from linked customer facts.", dataUsed: ["customers", "sales"], sourceMode: "canonical", implementationStatus: "planned", queryReportId: null, presentation: null },
-  { id: "supplier_performance", label: "Supplier performance", description: "Supplier exposure, product coverage, and purchasing follow-up.", dataUsed: ["products", "suppliers", "inventory"], sourceMode: "canonical", implementationStatus: "planned", queryReportId: null, presentation: null },
+  { id: "inventory_health", label: "Inventory health", description: "Recorded stock, movement and dated cover estimates. Missing or stale demand remains visible.", dataUsed: ["products", "inventory", "sales"], sourceMode: "canonical", implementationStatus: "available", queryReportId: "commerce_intelligence", presentation: "inventory" },
+  { id: "customer_intelligence", label: "Customer activity", description: "Linked customer purchases and revenue for the selected period. Does not imply complete lifetime retention.", dataUsed: ["customers", "sales"], sourceMode: "canonical", implementationStatus: "available", queryReportId: "commerce_intelligence", presentation: "customers" },
+  { id: "supplier_performance", label: "Supplier coverage", description: "Recorded product links, period sales and low-stock follow-up by supplier. Does not certify delivery or payment performance.", dataUsed: ["products", "suppliers", "inventory"], sourceMode: "canonical", implementationStatus: "available", queryReportId: "commerce_intelligence", presentation: "suppliers" },
   { id: "location_comparison", label: "Location comparison", description: "Mapped store performance and inventory comparison.", dataUsed: ["locations", "sales", "inventory"], sourceMode: "canonical", implementationStatus: "planned", queryReportId: null, presentation: null },
 ];
 
@@ -71,7 +71,7 @@ function report(
 function providerContracts(provider: string, vocabulary: ProviderVocabulary) {
   const generic = [
     report(`${provider}_sales_performance`, `${vocabulary.sales} performance`, `Uses the provider's ${vocabulary.sales.toLowerCase()} terminology while retaining Vanteloq's canonical sales math.`, ["sales", "locations"], { implementationStatus: "available", queryReportId: "sales_totals", presentation: "sales" }),
-    report(`${provider}_product_performance`, `${vocabulary.product} performance`, `Sales and movement grouped by the provider's ${vocabulary.product.toLowerCase()} records.`, ["sales", "products"]),
+    report(`${provider}_product_performance`, `${vocabulary.product} performance`, `Recorded sales and movement by ${vocabulary.product.toLowerCase()} for the selected period. Profit is withheld when line costs are incomplete.`, ["sales", "products"], {implementationStatus:"available",queryReportId:"commerce_intelligence",presentation:"products"}),
     report(`${provider}_payment_performance`, `${vocabulary.payment} performance`, `Collected value and count grouped by the provider's ${vocabulary.payment.toLowerCase()} fields.`, ["sales", "payments"], { implementationStatus: "available", queryReportId: "sales_totals", presentation: "payment_mix" }),
   ];
   if (provider === "moneris") {
@@ -113,7 +113,7 @@ export function buildProviderReportCatalog(input: {
   const vocabulary = providerVocabulary(input.provider);
   const scoped = (reports: ProviderReportDefinition[]) => reports.map(report => {
     if (!input.dataReadiness) return report;
-    const readiness = input.dataReadiness.metrics.find(metric => metric.id === (report.presentation === "payment_mix" ? "payment_mix" : report.presentation === "sales" ? "sales_performance" : report.id));
+    const readiness = input.dataReadiness.metrics.find(metric => metric.id === (report.presentation === "payment_mix" ? "payment_mix" : report.presentation === "sales" ? "sales_performance" : report.presentation === "products" ? "product_performance" : report.id));
     return { ...report, status: report.implementationStatus === "available" && input.dataReadiness.connectionId === input.connectionId && readiness?.ready ? "ready" as const : "needs_data" as const };
   });
   return {

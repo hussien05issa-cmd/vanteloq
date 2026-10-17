@@ -3,7 +3,7 @@ import { oauthBrowserCookie } from "../../../../../../server/integrations/oauth-
 import { getDb } from "../../../../../../db";
 import { integrationConnections, integrationOAuthStates } from "../../../../../../db/schema";
 import { recordAudit } from "../../../../../../server/audit";
-import { requireAccess } from "../../../../../../server/authorization";
+import { requireIntegrationAccess, integrationGrantId } from "../../../../../../server/integrations/free-selection";
 import { enforceRateLimit, handleApi, jsonResponse, requireSameOrigin } from "../../../../../../server/api";
 import { buildSquareAuthorizationUrl, newSquareState, SQUARE_API_VERSION, SQUARE_PROVIDER, SQUARE_READ_SCOPES, squareSha256 } from "../../../../../../server/integrations/square";
 import { requirePermission } from "../../../../../../server/permissions";
@@ -11,7 +11,7 @@ import { requirePermission } from "../../../../../../server/permissions";
 export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
-    const context = await requireAccess(request, ["owner", "admin"], "pos.reporting.core");
+    const context = await requireIntegrationAccess(request, ["owner", "admin"], "square", true);
     await requirePermission(context, "integrations.manage");
     await enforceRateLimit("square:authorize", context.userId, 10, 3600);
     await requireProviderPrivacy(request, context, "square", requestId);
@@ -20,6 +20,7 @@ export async function POST(request: Request) {
     const now = new Date();
     const expiresAt = new Date(now.getTime() + 10 * 60_000);
     await getDb().insert(integrationConnections).values({
+      freeGrantId: await integrationGrantId(context, "square"),
       id: connectionId, organizationId: context.organizationId, provider: SQUARE_PROVIDER,
       sourceNamespace: connectionId, status: "pending", externalAccountRef: null,
       externalAccountName: "New Square seller", domainPrefix: null, apiVersion: SQUARE_API_VERSION,

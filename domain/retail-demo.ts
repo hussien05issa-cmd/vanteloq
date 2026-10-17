@@ -10,6 +10,40 @@ const catalogue = [
   { sku: "HYD-01", name: "Electrolyte hydration", category: "Hydration", itemType: "Powder", price: 3499, cost: 1400 },
   { sku: "VIT-01", name: "Daily multivitamin", category: "Wellness", itemType: "Capsule", price: 2199, cost: 800 },
 ];
+
+// Fictional visits vary across days while every original weekly receipt is retained.
+const currentWeekVisits = [
+  [5, 7, 9, 8, 7, 7, 6], // The first three days retain May's original receipts.
+  [5, 7, 9, 10, 8, 6, 5],
+  [4, 5, 6, 8, 10, 9, 6],
+  [7, 9, 8, 6, 5, 6, 8],
+] as const;
+
+function distributeCurrentVisits(lines: RetailLine[], outlet: string, from: string, shop: number) {
+  for (let week = 0; week < currentWeekVisits.length; week++) {
+    const start = businessDateOffset(from, week * 7), end = businessDateOffset(from, (week + 1) * 7);
+    const receipts = new Map<string, RetailLine[]>();
+    for (const line of lines) {
+      const date = line.soldAt.slice(0, 10);
+      if (line.outletRef !== outlet || date < start || date >= end) continue;
+      const basket = receipts.get(line.saleId) ?? [];
+      basket.push(line);
+      receipts.set(line.saleId, basket);
+    }
+    const baskets = [...receipts.values()];
+    if (baskets.length !== currentWeekVisits[week].reduce((sum, count) => sum + count + shop, 0)) throw new Error("Fictional weekly visits must retain every receipt.");
+    let receiptIndex = 0;
+    for (let weekday = 0; weekday < 7; weekday++) {
+      const count = currentWeekVisits[week][weekday] + shop, date = businessDateOffset(start, weekday);
+      for (let visit = 0; visit < count; visit++) {
+        const hour = 10 + Math.floor(visit * 9 / count), minute = (visit * 17 + weekday * 11 + week * 7) % 60;
+        const soldAt = `${date}T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00`;
+        for (const line of baskets[receiptIndex++]) line.soldAt = soldAt;
+      }
+    }
+  }
+}
+
 export function retailDemoInput(location = "all", missingCost = false) {
   const period = parseCommercePeriod("2026-05-29", "2026-06-25"), now = Date.parse("2026-06-25T19:00:00Z");
   const lines: RetailLine[] = [], stock: RetailStock[] = [], measurements: RetailMeasurement[] = [];
@@ -29,6 +63,7 @@ export function retailDemoInput(location = "all", missingCost = false) {
         }
       }
     }
+    distributeCurrentVisits(lines, outlet, period.from, shop);
     for (const product of catalogue) {
       const onHand = product.sku === "VIT-01" ? 320 : product.sku === "CRE-01" ? 8 + shop * 10 : 80 + shop * 20;
       const sold = lines.filter(line => line.outletRef === outlet && line.sku === product.sku && line.soldAt.slice(0, 10) >= period.from).reduce((total, line) => total + line.quantityMilli / 1000, 0);

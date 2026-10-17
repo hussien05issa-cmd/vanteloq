@@ -13,7 +13,7 @@ test("capabilities compose implemented report contracts rather than offering pla
   const expected = buildProviderReportCatalog({ provider: "square", connectionId: "test", coverage }).providerReports.filter(report => report.implementationStatus === "available");
   assert.deepEqual(result.reports.map(report => report.id), expected.map(report => report.id));
   assert.equal(result.reports.every(report => report.ready), false, "record class booleans cannot prove report completeness");
-  assert.equal(result.reports.some(report => report.id.includes("product_performance")), false);
+  assert.equal(result.reports.some(report => report.id.includes("product_performance")), true, "The recorded product engine exists; readiness still needs scope evidence");
 });
 
 test("record coverage and approval are both required for reports", () => {

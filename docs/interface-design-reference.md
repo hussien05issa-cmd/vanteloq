@@ -1,5 +1,17 @@
 # Vanteloq Interface Direction
 
+## October 12, 2026 brand and appearance update
+
+The following owner correction supersedes the initial branding pass: Vanteloq shows its symbol without duplicate visible lettering or the photograph's wordmark. Vanteloq AI retains the earlier orbital V identity. The homepage starts with the premium jet-black theme and shares the saved Dark, Light and System device preference with the workspace. The appearance control is compact and accessible; expanded public preview panels retain the selected theme.
+
+Vanteloq is a product of Vanteloq Inc. The latest supplied glass Vanteloq artwork in `public/brand/glass-2026-10-12/vanteloq.jpg` replaces the earlier Vanteloq UI identity. Remove previous secondary company logos, banners and attribution from current product surfaces. BookLoQ retains its original JPEG in `public/brand/origin-metal-2026`. Use the shared logo component to display the original pixels. Do not redraw, invert or recolour the marks. Third-party integration logos retain their own identity.
+
+October 12 sidebar correction: compact Vanteloq and BookLoQ navigation marks use a clear carrier, as directly requested by the owner. The shared SVG component masks near-black carrier pixels without replacing or recolouring the original JPEG assets. Public and marketing marks retain their existing carrier. The Vanteloq symbol crop stops before the photographed wordmark; no partial lettering should appear beneath the symbol. Period controls align to the content edge and stack vertically on small screens. The dashboard details and document canvas follow the resolved Dark, Light or System workspace theme.
+
+The recovered phone branch's midnight direction is completed in the existing appearance system. Dark uses graphite surfaces, cobalt controls and readable silver text. Light and System remain available. Keep dense records opaque, status changes meaningful, tabular financial figures and the existing Geist family. Remove decorative flashing markers while retaining useful status labels and data warnings. Prefer compact, accessible navigation with at least 44 px targets.
+
+This update supersedes older instructions below to preserve the previous logo artwork. It does not alter calculations, permissions, consent, billing or provider availability.
+
 User-approved direction, September 14, 2026. Applies to public pages and the authenticated workspace, including BookLoQ, AI, settings, integrations and forms.
 
 - Keep Vanteloq's navy and blue identity. Use smooth, restrained gradients, subtle glossy highlights and frosted navigation. Keep records, charts and inputs opaque and off-white.
@@ -27,4 +39,4 @@ Use the attached broad brief as a reference. Reuse existing features, remove rep
 
 ## Approved Alpine Reference
 
-The September 14 visual reference adds a light silver-blue alpine setting, a large left-aligned navy and blue headline, a glossy product display, frosted navigation, pill-shaped primary actions and lightly outlined feature cards. Carry the materials into shared workspace surfaces while keeping tables and inputs opaque. Preserve the existing Vanteloq, LexEdge, BookLoQ and animated AI identities. Use an explicitly labelled illustration for the hero and retain a working data preview below it. On smaller screens, place readable copy before the image and keep every navigation destination reachable.
+The September 14 visual reference adds a light silver-blue alpine setting, a large left-aligned navy and blue headline, a glossy product display, frosted navigation, pill-shaped primary actions and lightly outlined feature cards. Carry the materials into shared workspace surfaces while keeping tables and inputs opaque. Use the current Vanteloq artwork and preserve the BookLoQ and animated AI identities. Use an explicitly labelled illustration for the hero and retain a working data preview below it. On smaller screens, place readable copy before the image and keep every navigation destination reachable.

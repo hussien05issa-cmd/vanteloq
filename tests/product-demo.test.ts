@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import test from "node:test";
-import { retailDemo } from "../domain/retail-demo";
+import { retailDemo, retailDemoInput } from "../domain/retail-demo";
 import { demoAnalysis, demoRecords, demoScenario } from "../domain/product-demo";
 
 test("sample totals reconcile across shops and use the production KPI definitions", () => {
@@ -22,6 +23,47 @@ test("sample totals reconcile across shops and use the production KPI definition
   assert.notEqual(central.netSalesCents, riverside.netSalesCents);
   assert.equal(central.netSalesCents! + riverside.netSalesCents!, all.current.netSalesCents);
   assert.equal(central.transactions! + riverside.transactions!, all.current.transactions);
+});
+
+test("fictional daily visits vary while exact weekly totals and whole receipts remain intact", () => {
+  const input = retailDemoInput(), analysis = demoAnalysis("all", "complete");
+  const current = input.lines.filter(line => line.soldAt.slice(0, 10) >= input.period.from);
+  assert.deepEqual(analysis.weeks.map(week => week.salesCents), [615_183, 627_746, 601_249, 615_183]);
+  assert.equal(current.reduce((sum, line) => sum + line.netCents, 0), 2_459_361);
+  assert.equal(new Set(current.map(line => line.saleId)).size, 420);
+  assert.equal(current.filter(line => line.soldAt.startsWith("2026-05")).reduce((sum, line) => sum + line.netCents, 0), 263_454);
+  assert.equal(current.filter(line => line.soldAt.startsWith("2026-06")).reduce((sum, line) => sum + line.netCents, 0), 2_195_907);
+  for (const outlet of ["central", "riverside"]) {
+    const dailyRows = analysis.currentRows.filter(row => row.locationRef === outlet);
+    assert.equal(dailyRows.length, 28);
+    assert.ok(new Set(dailyRows.map(row => row.transactions)).size > 3, "visits exceed the old three-day cycle");
+    assert.ok(new Set(dailyRows.map(row => row.netSalesCents)).size > 3, "receipt-derived sales have varied daily totals");
+  }
+  const receiptTimes = new Map<string, string>();
+  for (const line of current) {
+    const existing = receiptTimes.get(line.saleId);
+    if (existing) assert.equal(line.soldAt, existing, "all lines of a receipt keep the same timestamp");
+    receiptTimes.set(line.saleId, line.soldAt);
+    assert.ok(Number.isFinite(Date.parse(line.soldAt)), "receipt timestamps remain valid");
+    assert.ok(line.soldAt.slice(11, 13) >= "10" && line.soldAt.slice(11, 13) <= "18", "visits fall within fictional opening hours");
+    const originalDay = Number(line.saleId.split("-")[1]) - 28;
+    const allocatedDay = (Date.parse(line.soldAt.slice(0, 10)) - Date.parse(input.period.from)) / 86_400_000;
+    assert.equal(Math.floor(allocatedDay / 7), Math.floor(originalDay / 7), "receipts remain in their original seven-day bucket");
+  }
+});
+
+test("fictional date allocation preserves all receipt contents and the entire prior period", () => {
+  const input = retailDemoInput();
+  const current = input.lines.filter(line => line.soldAt.slice(0, 10) >= input.period.from);
+  const prior = input.lines.filter(line => line.soldAt.slice(0, 10) < input.period.from);
+  const fingerprint = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
+  // Fingerprints captured before changing the current-period dates.
+  assert.equal(fingerprint(current.map(line => {
+    const preserved = { ...line };
+    delete (preserved as Partial<typeof preserved>).soldAt;
+    return preserved;
+  })), "4a34df8cc5752ea3bd7cf35e2dcb1593353d4787a2aca6ac64c9c8c4d9341716");
+  assert.equal(fingerprint(prior), "f8a0d6c1da25bb77ff0f8993a219e03d4aa1113f83c1f6dc5853253d0cb23acc");
 });
 
 test("a missing cost blocks profit and scenarios for every location choice", () => {

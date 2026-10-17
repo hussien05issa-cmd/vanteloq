@@ -97,6 +97,16 @@ function assertInputs(inputs: ReorderInputs) {
       throw new Error(`${field} must be null or a finite non-negative number.`);
     }
   }
+  for (const field of ["unitCostCents", "availableCashCents", "cashSafetyThresholdCents", "accountsPayableCents", "payrollCommitmentsCents", "taxCommitmentsCents", "debtCommitmentsCents", "otherCommitmentsCents"] as const) {
+    if (!Number.isSafeInteger(inputs[field])) throw new Error(`${field} must preserve exact integer cents.`);
+  }
+  for (const field of ["weatherFactor", "expiringUnits", "supplierMinimumSpendCents"] as const) {
+    const value = inputs[field];
+    if (value !== undefined && (!Number.isFinite(value) || value < 0)) throw new Error(`${field} must be a finite non-negative number.`);
+  }
+  if (inputs.supplierMinimumSpendCents !== undefined && !Number.isSafeInteger(inputs.supplierMinimumSpendCents)) throw new Error("supplierMinimumSpendCents must preserve exact integer cents.");
+  if (inputs.grossMarginBasisPoints != null && !Number.isSafeInteger(inputs.grossMarginBasisPoints)) throw new Error("grossMarginBasisPoints must be null or exact integer basis points.");
+  if (!Number.isSafeInteger(inputs.casePackUnits) || !Number.isSafeInteger(inputs.minimumOrderUnits)) throw new Error("Supplier packs and minimum quantities must use exact whole units.");
   if (inputs.casePackUnits < 1) throw new Error("casePackUnits must be at least one.");
   if (inputs.unitCostCents < 1) throw new Error("unitCostCents must be at least one cent.");
   if (inputs.seasonalityFactor < 0.25 || inputs.seasonalityFactor > 4) {
@@ -196,6 +206,7 @@ function boundedOrder(inputs: ReorderInputs, demandFactor: number) {
     Math.min(unconstrainedUnits, cashCap, storageCap, shelfLifeCap),
   );
   const orderCostCents = orderUnits * inputs.unitCostCents;
+  if (![demandUnits, safetyStockUnits, targetStockUnits, unconstrainedUnits, orderUnits, committedCashCents, cashAvailableForOrderCents, orderCostCents, inputs.availableCashCents - committedCashCents - orderCostCents].every(Number.isSafeInteger)) throw new Error("Reorder quantities or amounts exceed exact safe-integer precision.");
   return {
     demandUnits,
     safetyStockUnits,
@@ -228,6 +239,7 @@ export function calculateReorderRecommendation(
   ) {
     constrainedBy.push("Supplier minimum order");
   }
+  if (result.orderUnits > 0 && result.orderCostCents < (inputs.supplierMinimumSpendCents ?? 0)) constrainedBy.push("Supplier minimum spend");
 
   const missingInputs: string[] = [];
   const assumptions: string[] = [];
@@ -254,7 +266,7 @@ export function calculateReorderRecommendation(
   const minimumConflict =
     result.unconstrainedUnits > 0 &&
     result.orderUnits > 0 &&
-    result.orderUnits < inputs.minimumOrderUnits;
+    (result.orderUnits < inputs.minimumOrderUnits || result.orderCostCents < (inputs.supplierMinimumSpendCents ?? 0));
   const status: ReorderRecommendation["status"] =
     result.unconstrainedUnits === 0
       ? "no_order"

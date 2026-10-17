@@ -7,6 +7,8 @@ import { effectivePermissions, requirePermission } from "../../../../server/perm
 import { authorizedLocationScope, requireAccessibleLocation } from "../../../../server/location-access";
 import { getTenantEntitlements } from "../../../../server/entitlements/engine";
 import { recordAudit } from "../../../../server/audit";
+import { getWorkspaceIndustry } from "../../../../server/industry-configuration";
+import { requireReportImportPrivacyAcknowledgement, reportImportPrivacyAuditDetails } from "../../../../server/report-import-privacy";
 
 const roles = ["owner", "admin", "manager", "employee", "read_only"] as const;
 const fields = `v.id, v.location_id AS locationId, l.name AS locationName, v.identifier_kind AS identifierKind,
@@ -26,6 +28,7 @@ function publicRecord(row: VehicleRecord, costs: boolean) {
 }
 async function permissionContext(request: Request, write = false) {
   const context = await requireAccess(request, roles, "inventory.lots");
+  if (!(await getWorkspaceIndustry(context)).configuration.capabilities.includes("vehicles")) throw new ApiError(403,"VEHICLE_INDUSTRY_REQUIRED","Vehicle records are available in a dealership workspace. An administrator can review the business type in Settings.");
   await requirePermission(context, "inventory.view");
   if (write) await requirePermission(context, "inventory.adjust");
   const permissions = await effectivePermissions(context);
@@ -93,6 +96,7 @@ export async function POST(request: Request) {
     if (action !== "create" && action !== "preview" && action !== "confirm") throw new ApiError(400, "VEHICLE_ACTION_INVALID", "Choose manual entry or preview and confirm a CSV.");
     const csv = action !== "create";
     if (csv) await requirePermission(context, "data.import");
+    const acknowledgement = csv ? requireReportImportPrivacyAcknowledgement(body.importPrivacyAcknowledgement) : null;
     let entries: VehicleInput[];
     if (csv) {
       if (typeof body.csv !== "string") throw new ApiError(400, "VEHICLE_CSV_REQUIRED", "Choose a vehicle CSV.");
@@ -102,7 +106,10 @@ export async function POST(request: Request) {
     const location = await chosenLocation(context, body.locationId, entries);
     const fingerprint = await hashIdentifier(JSON.stringify(["vehicle-import-v1", context.organizationId, context.userId, location.id, entries]));
     await ensureNew(context, entries);
-    if (action === "preview") return jsonResponse({ entries, fingerprint, location: { id: location.id, name: location.name }, count: entries.length });
+    if (action === "preview") {
+      await recordAudit({ request, requestId, organizationId: context.organizationId, actorUserId: context.userId, action: "inventory.vehicles_import_privacy_acknowledged", resourceType: "inventory_vehicle", details: { stage: "preview", rows: entries.length, ...reportImportPrivacyAuditDetails(acknowledgement!) } });
+      return jsonResponse({ entries, fingerprint, location: { id: location.id, name: location.name }, count: entries.length });
+    }
     if (action === "confirm" && body.fingerprint !== fingerprint) throw new ApiError(409, "VEHICLE_PREVIEW_CHANGED", "Preview the current file and selected location again before confirming.");
     const now = Date.now(), ids = entries.map(() => crypto.randomUUID());
     try {
@@ -110,7 +117,7 @@ export async function POST(request: Request) {
         (id,organization_id,location_id,identifier_kind,identifier,model_year,make,model,stock_number,status,acquired_date,currency,acquisition_cents,reconditioning_cents,source,version,created_by,updated_by,created_at,updated_at)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?,?)`).bind(ids[index], context.organizationId, location.id, row.identifierKind, row.identifier, row.year, row.make, row.model, row.stockNumber, row.status, row.acquiredDate, row.currency, row.acquisitionCents, row.reconditioningCents, csv ? "csv" : "manual", context.userId, context.userId, now, now)));
     } catch (error) { duplicate(error); }
-    await recordAudit({ request, requestId, organizationId: context.organizationId, actorUserId: context.userId, action: csv ? "inventory.vehicles_imported" : "inventory.vehicle_created", resourceType: "inventory_vehicle", details: { rows: entries.length, source: csv ? "csv" : "manual" } });
+    await recordAudit({ request, requestId, organizationId: context.organizationId, actorUserId: context.userId, action: csv ? "inventory.vehicles_imported" : "inventory.vehicle_created", resourceType: "inventory_vehicle", details: { rows: entries.length, source: csv ? "csv" : "manual", ...(acknowledgement ? reportImportPrivacyAuditDetails(acknowledgement) : {}) } });
     return jsonResponse({ saved: entries.length, ids }, { status: 201 });
   });
 }

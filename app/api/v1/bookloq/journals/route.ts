@@ -1,8 +1,8 @@
 import { getD1 } from "../../../../../db";
-import { recordAudit } from "../../../../../server/audit";
+import { prepareAudit } from "../../../../../server/audit";
 import { requireAccess } from "../../../../../server/authorization";
 import { ApiError, enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameOrigin } from "../../../../../server/api";
-import { journalInput, requireBookLoQPermission } from "../../../../../server/bookloq";
+import { findJournalReplay, journalInput, requireBookLoQPermission, validateJournalContacts } from "../../../../../server/bookloq";
 import { idempotencyKey } from "../../../../../server/validation";
 import { requirePermission } from "../../../../../server/permissions";
 import { requireAddon } from "../../../../../server/entitlements/engine";
@@ -11,12 +11,13 @@ import { isCalendarDate } from "../../../../../domain/calendar-date";
 
 const writers = ["owner", "admin", "manager", "employee", "read_only"] as const;
 
-type ExistingEntry = { id: string; entryNumber: string; status: string };
-
 async function postAtomicBatch(database: ReturnType<typeof getD1>, statements: D1PreparedStatement[]) {
   try {
     await database.batch(statements);
   } catch (error) {
+    if (error instanceof Error && error.message.includes("BANK_JOURNAL_RETAINED")) {
+      throw new ApiError(409, "BANK_CORRECTION_REQUIRED", "Open Banking or Reconciliation and review this entry's bank accounting history. Reopen the latest statement if it is complete, then release its ledger match or use the bank reversal action to correct a posted movement.");
+    }
     if (error instanceof Error && error.message.includes("ACCOUNTING_PERIOD_UNAVAILABLE")) {
       throw new ApiError(409, "ACCOUNTING_PERIOD_UNAVAILABLE", "The accounting period changed before posting. Refresh and select an open period.");
     }
@@ -54,10 +55,10 @@ export async function POST(request: Request) {
     await enforceRateLimit("bookloq:journals:create", context.userId, 30, 3_600);
     const key = idempotencyKey(request);
     const database = getD1();
-    const existing = await database.prepare(`SELECT id, entry_number entryNumber, status FROM journal_entries
-      WHERE organization_id = ? AND idempotency_key = ?`).bind(context.organizationId, key).first<ExistingEntry>();
-    if (existing) return jsonResponse({ journal: existing, replayed: true });
     const input = journalInput(await readJsonObject(request, 64_000));
+    const replayRequest = { kind: "manual" as const, input };
+    const existing = await findJournalReplay(database, context.organizationId, key, replayRequest);
+    if (existing) return jsonResponse({ journal: existing, replayed: true });
     const settings = await database.prepare("SELECT base_currency baseCurrency FROM bookloq_settings WHERE organization_id = ?")
       .bind(context.organizationId).first<{ baseCurrency: string }>();
     const baseCurrency = (settings?.baseCurrency ?? context.organization.currency).toUpperCase();
@@ -76,6 +77,7 @@ export async function POST(request: Request) {
     if (requestedIds.some((accountId) => !validIds.has(accountId))) {
       return jsonResponse({ error: { code: "ACCOUNT_NOT_AVAILABLE", message: "Every journal line must use an active account from this organization." } }, { status: 400 });
     }
+    await validateJournalContacts(database, context.organizationId, input.lines);
 
     const now = new Date();
     const timestamp = Math.floor(now.getTime() / 1_000);
@@ -98,10 +100,14 @@ export async function POST(request: Request) {
           line.debitCents, line.creditCents, line.taxCode, line.taxAmountCents, line.contactId,
           line.locationRef, line.departmentRef, line.projectRef, timestamp));
     });
-    await postAtomicBatch(database, statements);
-    await recordAudit({ request, requestId, organizationId: context.organizationId, actorUserId: context.userId,
+    statements.push(await prepareAudit(database, { request, requestId, organizationId: context.organizationId, actorUserId: context.userId,
       action: "journal.posted", resourceType: "journal_entry", resourceId: entryId,
-      details: { entryNumber, entryDate: input.entryDate, debitCents: input.totalDebitCents, creditCents: input.totalCreditCents } });
+      details: { entryNumber, entryDate: input.entryDate, debitCents: input.totalDebitCents, creditCents: input.totalCreditCents } }));
+    try { await postAtomicBatch(database, statements); } catch (error) {
+      const concurrent = await findJournalReplay(database, context.organizationId, key, replayRequest);
+      if (concurrent) return jsonResponse({ journal: concurrent, replayed: true });
+      throw error;
+    }
     return jsonResponse({ journal: { id: entryId, entryNumber, status: "posted", totalDebitCents: input.totalDebitCents, totalCreditCents: input.totalCreditCents }, replayed: false }, { status: 201 });
   });
 }
@@ -126,13 +132,23 @@ export async function PATCH(request: Request) {
     let reason: string;
     try { reason = validReason(body.reason); } catch { return jsonResponse({ error: { code: "INVALID_REVERSAL", message: "Explain why the journal is being reversed." } }, { status: 400 }); }
     const database = getD1();
-    const replay = await database.prepare(`SELECT id, entry_number entryNumber, status FROM journal_entries WHERE organization_id = ? AND idempotency_key = ?`)
-      .bind(context.organizationId, key).first<ExistingEntry>();
+    const replayRequest = { kind: "reversal" as const, entryId: body.entryId, reason, reversalDate: body.reversalDate };
+    const replay = await findJournalReplay(database, context.organizationId, key, replayRequest);
     if (replay) return jsonResponse({ journal: replay, replayed: true });
-    const original = await database.prepare(`SELECT id, entry_number entryNumber, status, currency,
+    const original = await database.prepare(`SELECT id, entry_number entryNumber, status, currency, source_type sourceType,
       total_debit_cents totalDebitCents, total_credit_cents totalCreditCents
-      FROM journal_entries WHERE organization_id = ? AND id = ?`).bind(context.organizationId, body.entryId).first<{ id: string; entryNumber: string; status: string; currency: string; totalDebitCents: number; totalCreditCents: number }>();
+      FROM journal_entries WHERE organization_id = ? AND id = ?`).bind(context.organizationId, body.entryId).first<{ id: string; entryNumber: string; status: string; sourceType: string; currency: string; totalDebitCents: number; totalCreditCents: number }>();
     if (!original || original.status !== "posted") return jsonResponse({ error: { code: "JOURNAL_NOT_REVERSIBLE", message: "Only a posted, unreversed journal can be reversed." } }, { status: 409 });
+    if (["supplier_bill","supplier_bill_payment"].includes(original.sourceType)) throw new ApiError(409,"BILL_CORRECTION_REQUIRED","Correct this entry from the supplier bill history so its payable and payment balances remain consistent.");
+    if (await database.prepare("SELECT id FROM invoice_accounting_events WHERE organization_id=? AND journal_entry_id=?").bind(context.organizationId, original.id).first()) {
+      throw new ApiError(409, "INVOICE_CORRECTION_REQUIRED", "Correct this entry from its invoice accounting history so the invoice and payment balances remain consistent.");
+    }
+    if (await database.prepare("SELECT e.id FROM bank_accounting_events e WHERE e.organization_id=? AND e.journal_entry_id=? AND e.event_type IN ('post','match') AND NOT EXISTS(SELECT 1 FROM bank_accounting_events r WHERE r.organization_id=e.organization_id AND r.reversal_of_event_id=e.id)").bind(context.organizationId, original.id).first()) {
+      throw new ApiError(409, "BANK_CORRECTION_REQUIRED", "Correct this entry from bank review so the source movement and ledger link remain consistent.");
+    }
+    if (await database.prepare("SELECT r.run_id FROM bank_reconciliation_lines r JOIN journal_lines l ON l.id=r.cash_line_id WHERE r.organization_id=? AND l.journal_entry_id=? AND r.active=1").bind(context.organizationId, original.id).first()) {
+      throw new ApiError(409, "BANK_RECONCILIATION_PROTECTED", "Reopen the latest completed reconciliation before correcting its cleared ledger entries.");
+    }
     const existingReversal = await database.prepare(`SELECT id FROM journal_entries WHERE organization_id = ? AND reversal_of_entry_id = ?`).bind(context.organizationId, original.id).first();
     if (existingReversal) return jsonResponse({ error: { code: "JOURNAL_ALREADY_REVERSED", message: "This journal already has a reversal." } }, { status: 409 });
     const period = await database.prepare(`SELECT id, status FROM accounting_periods WHERE organization_id = ? AND start_date <= ? AND end_date >= ? LIMIT 1`)
@@ -168,10 +184,14 @@ export async function PATCH(request: Request) {
       .bind(crypto.randomUUID(), context.organizationId, reversalId, index + 1, line.accountId,
         `Reversal: ${line.description}`.slice(0, 300), line.creditCents, line.debitCents, line.taxCode,
         line.taxAmountCents, line.contactId, line.locationRef, line.departmentRef, line.projectRef, timestamp)));
-    await postAtomicBatch(database, statements);
-    await recordAudit({ request, requestId, organizationId: context.organizationId, actorUserId: context.userId,
+    statements.push(await prepareAudit(database, { request, requestId, organizationId: context.organizationId, actorUserId: context.userId,
       action: "journal.reversed", resourceType: "journal_entry", resourceId: original.id,
-      details: { reversalId, originalEntryNumber: original.entryNumber, reason } });
+      details: { reversalId, originalEntryNumber: original.entryNumber, reason } }));
+    try { await postAtomicBatch(database, statements); } catch (error) {
+      const concurrent = await findJournalReplay(database, context.organizationId, key, replayRequest);
+      if (concurrent) return jsonResponse({ journal: concurrent, replayed: true });
+      throw error;
+    }
     return jsonResponse({ journal: { id: reversalId, entryNumber, status: "posted", reversalOfEntryId: original.id }, replayed: false }, { status: 201 });
   });
 }

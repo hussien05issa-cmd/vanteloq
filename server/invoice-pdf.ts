@@ -1,5 +1,6 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import type { CustomerInvoiceInput } from "../domain/invoice";
+import { formatInvoiceTaxPercent, invoiceTaxRateUnits } from "../domain/invoice-amounts";
 import { ApiError } from "./api";
 
 const WIDTH = 612, HEIGHT = 792, MARGIN = 48, CONTENT = WIDTH - MARGIN * 2;
@@ -29,6 +30,11 @@ function fitRight(page: PDFPage, text: string, font: PDFFont, size: number, righ
   page.drawText(text, { x: right - font.widthOfTextAtSize(text, renderedSize), y, size: renderedSize, font, color });
 }
 export async function createInvoicePdf(input: CustomerInvoiceInput, logoBytes: Uint8Array | null, logoContentType: string | null): Promise<Uint8Array> {
+  // The one-rate invoice model cannot disclose separate GST/QST components.
+  // Revenu Quebec does not permit the combined 14.975% rate on the sale document.
+  if (input.lines.some(line => invoiceTaxRateUnits(line.taxRateBasisPoints) === 14_975)) {
+    throw new ApiError(400, "INVOICE_TAX_COMPONENTS_REQUIRED", "A combined 14.975% rate requires separate GST and QST disclosure. This invoice editor does not yet support separate tax components. Do not replace it with a rounded combined rate.");
+  }
   const pdf = await PDFDocument.create();
   const regular = await pdf.embedFont(StandardFonts.Helvetica), bold = await pdf.embedFont(StandardFonts.HelveticaBold);
   // Reject unsupported scripts before saving, never silently alter legal names.
@@ -97,7 +103,7 @@ export async function createInvoicePdf(input: CustomerInvoiceInput, logoBytes: U
       if (position === 0) {
         fitRight(page, String(line.quantityMilli / 1000), regular, 8, 337, y, 42);
         fitRight(page, money(line.unitPriceCents, input.currency), regular, 8, 425, y, 80);
-        fitRight(page, String(line.taxRateBasisPoints / 100) + "%", regular, 8, 469, y, 38);
+        fitRight(page, formatInvoiceTaxPercent(line.taxRateBasisPoints), regular, 8, 469, y, 38);
         fitRight(page, money(line.totalCents, input.currency), bold, 8, 556, y, 81);
       }
       y -= height; position += count;

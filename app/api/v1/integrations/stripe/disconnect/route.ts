@@ -1,3 +1,4 @@
+import { releaseIntegrationSelectionIfUnused } from "../../../../../../server/integrations/free-selection";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../../../../../../db";
 import { integrationConnections, integrationOAuthStates } from "../../../../../../db/schema";
@@ -50,7 +51,8 @@ export async function POST(request: Request) {
       resourceId: connection.id,
       details: { provider: STRIPE_PROVIDER, providerRevoked: true, stagedHistoryRetained: true, dataPromotionEnabled: false },
     });
-    return jsonResponse({
+    await releaseIntegrationSelectionIfUnused(context.organizationId, "stripe");
+      return jsonResponse({
       disconnected: true,
       providerAuthorizationRevoked: true,
       retainedForAudit: ["sync runs", "staged financial records", "webhook receipts", "audit events"],

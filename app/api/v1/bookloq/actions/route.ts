@@ -1,13 +1,14 @@
 import { getD1 } from "../../../../../db";
 import { recordAudit } from "../../../../../server/audit";
 import { requireAccess } from "../../../../../server/authorization";
-import { enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameOrigin } from "../../../../../server/api";
-import { requireBookLoQPermission } from "../../../../../server/bookloq";
-import { requirePermission } from "../../../../../server/permissions";
+import { ApiError, enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameOrigin } from "../../../../../server/api";
+import { confirmSupportingMatch, lockBookloqPeriod, requireBookLoQPermission, saveBookloqBudget, updateCloseItem } from "../../../../../server/bookloq";
+import { effectivePermissions, requirePermission } from "../../../../../server/permissions";
 import { requireAddon, requireFeature } from "../../../../../server/entitlements/engine";
 import { requireOrganizationWideLocationAccess } from "../../../../../server/location-access";
 import { normalizeCategoryRuleText } from "../../../../../domain/bookloq-cash-management";
 import { bookloqActionFeature } from "../../../../../domain/paid-feature-routing";
+import { removeSupportingMatch } from "../../../../../server/supporting-match-correction";
 
 const writers = ["owner", "admin", "manager", "employee", "read_only"] as const;
 
@@ -50,11 +51,12 @@ export async function POST(request: Request) {
       if (!transactionId || !accountId) return jsonResponse({ error: { code: "INVALID_CATEGORY", message: "Select a transaction and an active ledger category." } }, { status: 400 });
       const [transaction, account] = await Promise.all([
         database.prepare(`SELECT category_account_id categoryAccountId, categorization_status categorizationStatus,
-          description, original_description originalDescription, amount_cents amountCents
-          FROM financial_transactions WHERE organization_id = ? AND id = ?`).bind(context.organizationId, transactionId).first<{ categoryAccountId: string | null; categorizationStatus: string; description: string; originalDescription: string; amountCents: number }>(),
+          description, original_description originalDescription, amount_cents amountCents, journal_entry_id journalEntryId
+          FROM financial_transactions WHERE organization_id = ? AND id = ?`).bind(context.organizationId, transactionId).first<{ categoryAccountId: string | null; categorizationStatus: string; description: string; originalDescription: string; amountCents: number; journalEntryId: string | null }>(),
         database.prepare(`SELECT id, code, name, account_type accountType FROM financial_accounts WHERE organization_id = ? AND id = ? AND active = 1`).bind(context.organizationId, accountId).first<{ id: string; code: string; name: string; accountType: string }>(),
       ]);
       if (!transaction) return jsonResponse({ error: { code: "TRANSACTION_NOT_FOUND", message: "Transaction not found." } }, { status: 404 });
+      if (transaction.journalEntryId) throw new ApiError(409,"TRANSACTION_ALREADY_POSTED","Review the linked accounting entry and use its correction workflow before changing this category.");
       if (!account) return jsonResponse({ error: { code: "CATEGORY_NOT_FOUND", message: "The ledger category is unavailable." } }, { status: 404 });
       const mutations = [database.prepare(`UPDATE financial_transactions SET category_account_id = ?, categorization_status = 'confirmed', confidence_basis_points = 10000, updated_at = ? WHERE organization_id = ? AND id = ?`)
         .bind(account.id, timestamp, context.organizationId, transactionId)];
@@ -72,7 +74,8 @@ export async function POST(request: Request) {
             updated_at = excluded.updated_at`)
           .bind(ruleId, context.organizationId, `${matchText} → ${account.name}`.slice(0, 180), matchText, direction, account.id, context.userId, timestamp, timestamp));
       }
-      await database.batch(mutations);
+      try { await database.batch(mutations); }
+      catch(error) { if(error instanceof Error && error.message.includes("INVOICE_ACCOUNTING_TRANSACTION_POSTED")) throw new ApiError(409,"TRANSACTION_ALREADY_POSTED","This movement was posted before the category changed. Refresh its accounting history."); throw error; }
       await recordAudit({ request, requestId, organizationId: context.organizationId, actorUserId: context.userId,
         action: "financial_transaction.categorized", resourceType: "financial_transaction", resourceId: transactionId,
         details: { previousAccountId: transaction.categoryAccountId, previousStatus: transaction.categorizationStatus, accountId: account.id, accountCode: account.code, accountName: account.name, accountType: account.accountType, status: "confirmed" } });
@@ -141,17 +144,37 @@ export async function POST(request: Request) {
       return jsonResponse({ created: true, type: body.type, category: inserted }, { status: 201 });
     }
 
+    if (body.type === "unmatch_transaction") {
+      const matchPermissions = await effectivePermissions(context);
+      if (!["finance.reconcile", "finance.bank_transactions", "payroll.totals"].every(permission => matchPermissions.includes(permission as typeof matchPermissions[number]))) throw new ApiError(403,"INSUFFICIENT_PERMISSION","You do not have permission to perform this action.");
+      requireBookLoQPermission(context.role, "reconcile_accounts");
+      const transactionId=identifier(body.transactionId),matchId=identifier(body.targetId);
+      if(!transactionId || !matchId || typeof body.reason!=="string") throw new ApiError(400,"MATCH_CORRECTION_INPUT","Select the supporting match and explain this correction.");
+      const match = await database.prepare(`SELECT CASE WHEN document_id IS NOT NULL THEN 'receipt'
+        WHEN supplier_bill_id IS NOT NULL THEN 'supplier_bill' WHEN customer_invoice_id IS NOT NULL THEN 'customer_invoice' END targetType FROM bookloq_transaction_matches
+        WHERE organization_id=? AND transaction_id=? AND id=?`).bind(context.organizationId,transactionId,matchId).first<{targetType:string}>();
+      if (!match) throw new ApiError(404,"MATCH_UNAVAILABLE","The supporting match is unavailable. Refresh this transaction.");
+      if (!["receipt","supplier_bill","customer_invoice"].includes(match.targetType)) throw new ApiError(409,"MATCH_CHANGED","Select a supported invoice, bill or receipt match.");
+      if (!matchPermissions.includes(match.targetType === "receipt" ? "documents.view" : "finance.ap_ar")) throw new ApiError(403,"INSUFFICIENT_PERMISSION","You do not have permission to perform this action.");
+      const result=await removeSupportingMatch(database,{organizationId:context.organizationId,transactionId,matchId,
+        reason:body.reason,actorUserId:context.userId,timestamp,request,requestId});
+      return jsonResponse({updated:true,type:body.type,id:transactionId,...result});
+    }
+
     if (body.type === "match_transaction") {
-      await requirePermission(context, "finance.reconcile");
+      const matchPermissions = await effectivePermissions(context);
+      if (!["finance.reconcile", "finance.bank_transactions", "payroll.totals"].every(permission => matchPermissions.includes(permission as typeof matchPermissions[number]))) throw new ApiError(403,"INSUFFICIENT_PERMISSION","You do not have permission to perform this action.");
       requireBookLoQPermission(context.role, "reconcile_accounts");
       const transactionId = identifier(body.transactionId);
       const targetId = identifier(body.targetId);
       const targetType = body.targetType === "supplier_bill" || body.targetType === "customer_invoice" || body.targetType === "receipt" ? body.targetType : null;
       const note = typeof body.note === "string" ? body.note.trim().normalize("NFC") : "";
       if (!transactionId || !targetId || !targetType || note.length > 1_000) return jsonResponse({ error: { code: "INVALID_MATCH", message: "Choose a transaction and supported invoice, bill, or receipt." } }, { status: 400 });
+      if (!matchPermissions.includes(targetType === "receipt" ? "documents.view" : "finance.ap_ar")) throw new ApiError(403,"INSUFFICIENT_PERMISSION","You do not have permission to perform this action.");
       const transaction = await database.prepare(`SELECT amount_cents amountCents, currency, source_state sourceState, demo_record demoRecord, reconciliation_status reconciliationStatus FROM financial_transactions WHERE organization_id = ? AND id = ? AND source_state <> 'removed'`).bind(context.organizationId, transactionId).first<{ amountCents: number; currency: string; sourceState: string; demoRecord: number; reconciliationStatus: string }>();
       if (!transaction) return jsonResponse({ error: { code: "TRANSACTION_NOT_FOUND", message: "Transaction not found." } }, { status: 404 });
       if (!["posted", "modified"].includes(transaction.sourceState)) return jsonResponse({ error: { code: "MATCH_POSTED_TRANSACTION_REQUIRED", message: "Wait for the transaction to post before confirming a match." } }, { status: 409 });
+      if (transaction.reconciliationStatus === "reconciled") return jsonResponse({ error: { code: "TRANSACTION_RECONCILED", message: "A reconciled transaction cannot be rematched. Reopen its reconciliation through an authorized correction workflow first." } }, { status: 409 });
       if (targetType === "supplier_bill" && transaction.amountCents >= 0) return jsonResponse({ error: { code: "MATCH_DIRECTION_INVALID", message: "A supplier bill must be matched to a cash outflow." } }, { status: 409 });
       if (targetType === "customer_invoice" && transaction.amountCents <= 0) return jsonResponse({ error: { code: "MATCH_DIRECTION_INVALID", message: "A customer invoice must be matched to a cash inflow." } }, { status: 409 });
       const targetQuery = targetType === "supplier_bill"
@@ -164,35 +187,9 @@ export async function POST(request: Request) {
       if (targetType !== "receipt" && (target.currency?.toUpperCase() !== transaction.currency.toUpperCase() || Boolean(target.demoRecord) !== Boolean(transaction.demoRecord))) {
         return jsonResponse({ error: { code: "MATCH_SOURCE_MISMATCH", message: "Match records in the same currency and data mode. Currency conversion requires a separately reviewed accounting entry." } }, { status: 409 });
       }
-      const targetColumn = targetType === "supplier_bill" ? "supplier_bill_id" : targetType === "customer_invoice" ? "customer_invoice_id" : "document_id";
-      const confirmedMatch = await database.prepare(`SELECT id, supplier_bill_id supplierBillId,
-        customer_invoice_id customerInvoiceId, document_id documentId
-        FROM bookloq_transaction_matches WHERE organization_id = ? AND transaction_id = ? AND status = 'confirmed'
-        ORDER BY updated_at DESC LIMIT 1`).bind(context.organizationId, transactionId).first<{ id: string; supplierBillId: string | null; customerInvoiceId: string | null; documentId: string | null }>();
-      const confirmedTargetId = confirmedMatch?.supplierBillId ?? confirmedMatch?.customerInvoiceId ?? confirmedMatch?.documentId ?? null;
-      if (confirmedMatch && confirmedTargetId !== targetId) return jsonResponse({ error: { code: "TRANSACTION_ALREADY_MATCHED", message: "Remove the existing confirmed match before linking this transaction to a different record." } }, { status: 409 });
-      const existing = await database.prepare(`SELECT id FROM bookloq_transaction_matches WHERE organization_id = ? AND transaction_id = ? AND ${targetColumn} = ?`)
-        .bind(context.organizationId, transactionId, targetId).first<{ id: string }>();
-      const matchId = existing?.id ?? crypto.randomUUID();
-      if (existing) {
-        await database.prepare(`UPDATE bookloq_transaction_matches SET status = 'confirmed', method = 'manual',
-          confidence_basis_points = 10000, matched_amount_cents = ?, reasons_json = '["Manual confirmation"]',
-          note = ?, matched_by_user_id = ?, updated_at = ? WHERE organization_id = ? AND id = ?`)
-          .bind(Math.abs(transaction.amountCents), note, context.userId, timestamp, context.organizationId, matchId).run();
-      } else {
-        await database.prepare(`INSERT INTO bookloq_transaction_matches
-          (id, organization_id, transaction_id, supplier_bill_id, customer_invoice_id, document_id,
-           status, method, confidence_basis_points, matched_amount_cents, reasons_json, note,
-           matched_by_user_id, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, 'confirmed', 'manual', 10000, ?, '["Manual confirmation"]', ?, ?, ?, ?)`)
-          .bind(matchId, context.organizationId, transactionId,
-            targetType === "supplier_bill" ? targetId : null,
-            targetType === "customer_invoice" ? targetId : null,
-            targetType === "receipt" ? targetId : null,
-            Math.abs(transaction.amountCents), note, context.userId, timestamp, timestamp).run();
-      }
-      await database.prepare(`UPDATE financial_transactions SET reconciliation_status = 'matched', updated_at = ? WHERE organization_id = ? AND id = ?`)
-        .bind(timestamp, context.organizationId, transactionId).run();
+      const matchId = await confirmSupportingMatch(database, { organizationId: context.organizationId, transactionId,
+        targetType, targetId, amountCents: transaction.amountCents, currency: transaction.currency,
+        demoRecord: transaction.demoRecord, note, actorUserId: context.userId, timestamp });
       await recordAudit({ request, requestId, organizationId: context.organizationId, actorUserId: context.userId,
         action: "financial_transaction.supporting_record_matched", resourceType: "financial_transaction", resourceId: transactionId,
         details: { targetType, targetId, amountCents: Math.abs(transaction.amountCents), previousStatus: transaction.reconciliationStatus } });
@@ -215,12 +212,8 @@ export async function POST(request: Request) {
       }
       const account = await database.prepare(`SELECT id, code, name FROM financial_accounts WHERE organization_id = ? AND id = ? AND active = 1 AND account_type IN ('revenue', 'expense')`).bind(context.organizationId, accountId).first<{ id: string; code: string; name: string }>();
       if (!account) return jsonResponse({ error: { code: "BUDGET_ACCOUNT_NOT_FOUND", message: "Choose an active revenue or expense account." } }, { status: 404 });
-      const budgetId = crypto.randomUUID();
-      await database.prepare(`INSERT INTO bookloq_budgets (id, organization_id, account_id, period_start, period_end, location_ref, department_ref, budget_cents, committed_cents, forecast_cents, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(organization_id, account_id, period_start, period_end, location_ref, department_ref)
-        DO UPDATE SET budget_cents = excluded.budget_cents, committed_cents = excluded.committed_cents, forecast_cents = excluded.forecast_cents, updated_at = excluded.updated_at`)
-        .bind(budgetId, context.organizationId, accountId, periodStart, periodEnd, locationRef, departmentRef, budgetCents, committedCents, forecastCents, timestamp, timestamp).run();
+      const budgetId = await saveBookloqBudget(database, { organizationId: context.organizationId, accountId,
+        periodStart, periodEnd, locationRef, departmentRef, budgetCents, committedCents, forecastCents, timestamp });
       await recordAudit({ request, requestId, organizationId: context.organizationId, actorUserId: context.userId,
         action: "bookloq_budget.saved", resourceType: "bookloq_budget", resourceId: budgetId,
         details: { accountId, accountCode: account.code, accountName: account.name, periodStart, periodEnd, budgetCents, committedCents, forecastCents, locationRef, departmentRef } });
@@ -235,8 +228,7 @@ export async function POST(request: Request) {
       if (!itemId || !status) return jsonResponse({ error: { code: "INVALID_CLOSE_ITEM", message: "Select a valid month-end item and status." } }, { status: 400 });
       const before = await database.prepare(`SELECT status FROM month_end_items WHERE organization_id = ? AND id = ?`).bind(context.organizationId, itemId).first<{ status: string }>();
       if (!before) return jsonResponse({ error: { code: "CLOSE_ITEM_NOT_FOUND", message: "Month-end item not found." } }, { status: 404 });
-      await database.prepare(`UPDATE month_end_items SET status = ?, completed_at = ?, updated_at = ? WHERE organization_id = ? AND id = ?`)
-        .bind(status, status === "complete" ? timestamp : null, timestamp, context.organizationId, itemId).run();
+      await updateCloseItem(database, { organizationId: context.organizationId, itemId, beforeStatus: before.status, status, timestamp });
       await recordAudit({ request, requestId, organizationId: context.organizationId, actorUserId: context.userId,
         action: "month_end.status_changed", resourceType: "bookloq_close_item", resourceId: itemId,
         details: { before: before.status, after: status } });
@@ -269,11 +261,7 @@ export async function POST(request: Request) {
       if (!periodId) return jsonResponse({ error: { code: "INVALID_PERIOD", message: "Select a valid accounting period." } }, { status: 400 });
       const period = await database.prepare(`SELECT status FROM accounting_periods WHERE organization_id = ? AND id = ?`).bind(context.organizationId, periodId).first<{ status: string }>();
       if (!period) return jsonResponse({ error: { code: "PERIOD_NOT_FOUND", message: "Accounting period not found." } }, { status: 404 });
-      const incomplete = await database.prepare(`SELECT COUNT(*) count FROM month_end_items WHERE organization_id = ? AND period_id = ? AND status != 'complete'`)
-        .bind(context.organizationId, periodId).first<{ count: number }>();
-      if ((incomplete?.count ?? 0) > 0) return jsonResponse({ error: { code: "CLOSE_INCOMPLETE", message: "Complete every month-end item before locking this period." } }, { status: 409 });
-      await database.prepare(`UPDATE accounting_periods SET status = 'locked', locked_at = ?, locked_by_user_id = ?, updated_at = ? WHERE organization_id = ? AND id = ?`)
-        .bind(timestamp, context.userId, timestamp, context.organizationId, periodId).run();
+      await lockBookloqPeriod(database, { organizationId: context.organizationId, periodId, actorUserId: context.userId, timestamp });
       await recordAudit({ request, requestId, organizationId: context.organizationId, actorUserId: context.userId,
         action: "accounting_period.locked", resourceType: "accounting_period", resourceId: periodId,
         details: { before: period.status, after: "locked" } });

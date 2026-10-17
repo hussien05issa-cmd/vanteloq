@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { getDb, getRuntimeEnv } from "../../db";
 import { integrationSecrets } from "../../db/schema";
 import { ApiError } from "../api";
+import { advertisingAmountMinor, advertisingCurrencyExponent } from "../../domain/bookloq-advertising-spend";
 import { metaTokenExpiry, prepareMetaGraphRequest } from "./meta-security";
 import { discoverGoogleAdsAccounts, googleAdsEnabled, googleAdsHeaders, googleAdsVersion, GOOGLE_ADS_SETUP_MESSAGES, resolveGoogleAdsAccount } from "./google-ads-access";
 import {
@@ -73,6 +74,9 @@ export type MarketingMetricImport = {
   metricKey: string;
   valueMilli: number;
   sourceEventId: string;
+  moneyAmountMinor?: number | null;
+  moneyCurrency?: string | null;
+  reportingTimezone?: string | null;
 };
 
 export type MarketingSyncSnapshot = {
@@ -593,7 +597,14 @@ async function metricCollector(provider: MarketingProvider) {
     ...row,
     sourceEventId: await sha256Hex(`${provider}|${row.resourceSelectionId}|${row.metricDate}|${row.metricKey}`),
   })));
-  return { add, finish };
+  const addSpend = (resourceSelectionId: string, metricDate: string | null, value: unknown,
+    money: { amountMinor: number; currency: string; timezone: string } | null) => {
+    add(resourceSelectionId, metricDate, "meta_spend", value);
+    const key = `${resourceSelectionId}\u0000${metricDate}\u0000meta_spend`;
+    const row = values.get(key);
+    if (row && money) values.set(key, { ...row, moneyAmountMinor: money.amountMinor, moneyCurrency: money.currency, reportingTimezone: money.timezone });
+  };
+  return { add, addSpend, finish };
 }
 
 async function googleSearchMetrics(accessToken: string, selection: SelectedMarketingResource, add: Awaited<ReturnType<typeof metricCollector>>["add"]) {
@@ -886,7 +897,27 @@ export async function syncMetaMarketing(accessToken: string, selections: readonl
     const warningCodes: string[] = [];
     let recordsRead = 0;
     try {
-      const report = await providerJson<{ data?: Array<Record<string, string>> }>(insights.toString(), { headers: { Accept: "application/json" } }, "META_INSIGHTS_FAILED", "The selected Meta advertising insights could not be loaded.");
+      const report = await providerJson<{ data?: Array<Record<string, string>>; paging?: { next?: string } }>(insights.toString(), { headers: { Accept: "application/json" } }, "META_INSIGHTS_FAILED", "The selected Meta advertising insights could not be loaded.");
+      // Financial comparison requires typed account metadata. A metadata failure
+      // still permits marketing measurements, but never a currency assumption.
+      let moneyMetadata: { currency: string; timezone: string } | null = null;
+      try {
+        const accountUrl = new URL(`https://graph.facebook.com/${current.apiVersion}/${selection.externalResourceRef}`);
+        accountUrl.searchParams.set("fields", "id,currency,timezone_name");
+        accountUrl.searchParams.set("access_token", accessToken);
+        const account = await providerJson<{ id?: string; currency?: string; timezone_name?: string }>(accountUrl.toString(), { headers: { Accept: "application/json" } }, "META_MONEY_METADATA_UNAVAILABLE", "Meta advertising currency and timezone could not be verified.");
+        if (account.id !== selection.externalResourceRef || advertisingCurrencyExponent(account.currency) === null || !account.timezone_name) throw new Error("Invalid money metadata");
+        new Intl.DateTimeFormat("en", { timeZone: account.timezone_name }).format(0);
+        moneyMetadata = { currency: account.currency!, timezone: account.timezone_name };
+      } catch {
+        warningCodes.push("META_MONEY_METADATA_UNAVAILABLE");
+        warnings.push("META_MONEY_METADATA_UNAVAILABLE");
+      }
+      if (report.paging?.next) {
+        moneyMetadata = null;
+        warningCodes.push("META_SPEND_COVERAGE_INCOMPLETE");
+        warnings.push("META_SPEND_COVERAGE_INCOMPLETE");
+      }
       resourcesRead += 1;
       recordsRead = report.data?.length ?? 0;
       for (const row of report.data ?? []) {
@@ -895,7 +926,11 @@ export async function syncMetaMarketing(accessToken: string, selections: readonl
         collector.add(selection.id, date, "meta_reach", row.reach);
         collector.add(selection.id, date, "meta_clicks", row.clicks);
         collector.add(selection.id, date, "meta_link_clicks", row.inline_link_clicks);
-        collector.add(selection.id, date, "meta_spend", row.spend);
+        const amountMinor = moneyMetadata ? advertisingAmountMinor(row.spend, moneyMetadata.currency) : null;
+        collector.addSpend(selection.id, date, row.spend, moneyMetadata && amountMinor !== null ? { ...moneyMetadata, amountMinor } : null);
+        if (moneyMetadata && amountMinor === null && !warningCodes.includes("META_SPEND_AMOUNT_REVIEW_REQUIRED")) {
+          warningCodes.push("META_SPEND_AMOUNT_REVIEW_REQUIRED"); warnings.push("META_SPEND_AMOUNT_REVIEW_REQUIRED");
+        }
         collector.add(selection.id, date, "meta_ctr", row.ctr);
         collector.add(selection.id, date, "meta_cpc", row.cpc);
       }

@@ -145,7 +145,9 @@ test("Square imports resume without publishing partial data or counting tax as r
     assert.deepEqual(lines.results.map((row) => row.net_sales_cents), [5000, 10000]);
     const checkpoint = JSON.parse((await connection()).last_sync_cursor);
     assert.equal(checkpoint.watermark, orderRequests[0].query.filter.date_time_filter.updated_at.end_at);
-    await database.prepare("UPDATE commerce_products SET owner_cost_cents = 2000, owner_cost_source = 'manual' WHERE connection_id = ?").bind(connectionId).run();
+    // A retained cost effective before these fictional sales supports historical
+    // attribution. An undated current price must never rewrite earlier margins.
+    await database.prepare("UPDATE commerce_products SET owner_cost_cents = 2000, owner_cost_source = 'manual', owner_cost_updated_at=? WHERE connection_id = ?").bind(Date.parse("2026-09-01T00:00:00Z"),connectionId).run();
     const approved = await dispatch("/api/v1/integrations", { action: "approve_data", connectionId, confirmed: true });
     assert.equal(approved.status, 200, await approved.clone().text());
     updatedOrder = true;
@@ -194,8 +196,10 @@ test("Square imports resume without publishing partial data or counting tax as r
     returnedItem = true;
     financialRevision++;
     const archivedReturn = await sync();
-    assert.equal(archivedReturn.status, 409, await archivedReturn.clone().text());
-    assert.equal((await archivedReturn.json()).error.code, "SQUARE_RETURN_REVIEW_REQUIRED");
+    assert.equal(archivedReturn.status, 200, await archivedReturn.clone().text());
+    assert.equal((await archivedReturn.json()).dataPromotionEnabled, false, "A known historical return cost can be staged but cannot bypass renewed approval.");
+    assert.deepEqual(await database.prepare("SELECT quantity_milli,cost_cents,cost_known FROM commerce_sale_lines WHERE connection_id=? AND quantity_milli<0").bind(connectionId).first(),
+      { quantity_milli: -1000, cost_cents: -2000, cost_known: 1 }, "The dated historical unit cost supports the reversal; no zero or current-price cost was inferred.");
     assert.equal((await connection()).data_promotion_status, "staging");
     assert.equal((await metrics()).results[0].cost_of_goods_cents, 6000);
     archiveProduct = false;

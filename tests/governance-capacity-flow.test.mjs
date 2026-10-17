@@ -168,6 +168,9 @@ async function createGovernanceUser(database, organizationId, {
   const userId = crypto.randomUUID();
   const roleId = existingRoleId ?? crypto.randomUUID();
   const memberId = crypto.randomUUID();
+  // These fixtures exercise permission delegation with organization-wide
+  // location access. Scoped delegation has its own adversarial flow tests.
+  const locations = await database.prepare("SELECT id FROM organization_locations WHERE organization_id=? AND status='active'").bind(organizationId).all();
   const [firstName, ...lastNameParts] = name.split(" ");
   const statements = [
     database.prepare(`INSERT INTO users
@@ -188,9 +191,9 @@ async function createGovernanceUser(database, organizationId, {
       (id, organization_id, user_id, role_id, first_name, last_name, email, employee_code,
        permitted_locations_json, status, remote_login, require_mfa, pin_enabled, notes,
        created_by_user_id, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, '[]', 'active', 1, 1, 0, '', ?, ?, ?)`)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', 1, 1, 0, '', ?, ?, ?)`)
       .bind(memberId, organizationId, userId, roleId, firstName, lastNameParts.join(" ") || "User",
-        email, `GOV-${userId.slice(0, 8)}`, owner.userId, now, now));
+        email, `GOV-${userId.slice(0, 8)}`, JSON.stringify((locations.results ?? []).map(row => row.id)), owner.userId, now, now));
   await database.batch(statements);
   return { email, name, roleId, memberId };
 }

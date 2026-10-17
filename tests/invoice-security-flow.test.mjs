@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { appendImportPrivacyAcknowledgement } from "../domain/report-import-privacy.ts";
 import { createEnvironment, createReportWorkspace, dispatch, identityHeaders, origin, context } from "./helpers/retail-worker-fixture.mjs";
 
 const details = {
@@ -69,6 +70,7 @@ test("built invoice creation, retry and state preservation; upload-only document
     const employeeHeaders = identityHeaders(employee.email, employee.name, true); delete employeeHeaders["content-type"];
     const document = new FormData(); document.set("file", new Blob(["%PDF-1.4\nFictional private receipt\n%%EOF"], { type: "application/pdf" }), "Private-receipt.pdf");
     const upload = () => worker.fetch(new Request(origin + "/api/v1/documents", { method: "POST", headers: employeeHeaders, body: document }), environment, context);
+    appendImportPrivacyAcknowledgement(document);
     const uploaded = await upload(); assert.equal(uploaded.status, 201, await uploaded.clone().text());
     assert.deepEqual(Object.keys(await uploaded.json()), ["uploadedId"]);
     const duplicate = await upload(); assert.equal(duplicate.status, 409);

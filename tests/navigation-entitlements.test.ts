@@ -25,6 +25,7 @@ test("subscription navigation fails closed and labels every paid workspace view"
     "Intelligence",
     "Forecasting",
     "Action Centre",
+    "Messages",
     "Business Brief",
     "Advisor",
     "BookLoQ",
@@ -46,6 +47,7 @@ test("subscription navigation fails closed and labels every paid workspace view"
     "Decision Journal",
     "Scenario Planner",
     "Reports",
+    "Data Studio", "Studio Dashboards", "Studio Sheets", "Studio SQL",
     "Integrations",
     "Settings",
   ]);

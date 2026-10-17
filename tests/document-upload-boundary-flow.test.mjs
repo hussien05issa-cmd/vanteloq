@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { appendImportPrivacyAcknowledgement } from "../domain/report-import-privacy.ts";
 import { createEnvironment, createReportWorkspace, dispatch, identityHeaders, origin, context } from "./helpers/retail-worker-fixture.mjs";
 
 test("built document uploads bound actual multipart bytes before parsing or writing and return valid timestamp dates", { timeout: 120000 }, async () => {
@@ -46,6 +47,7 @@ test("built document uploads bound actual multipart bytes before parsing or writ
     const form = new FormData();
     form.set("file", new Blob(["%PDF-1.4\nFictional upload boundary test\n%%EOF"], { type: "application/pdf" }), "Fictional.pdf");
     form.set("documentType", "bank_statement");
+    appendImportPrivacyAcknowledgement(form);
     const uploaded = await worker.fetch(new Request(`${origin}/api/v1/documents`, { method: "POST", headers, body: form }), environment, context);
     assert.equal(uploaded.status, 201, await uploaded.clone().text());
     const body = await uploaded.json();

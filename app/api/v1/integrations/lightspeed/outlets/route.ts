@@ -7,7 +7,7 @@ import {
   organizationLocations,
 } from "../../../../../../db/schema";
 import { recordAudit } from "../../../../../../server/audit";
-import { requireAccess } from "../../../../../../server/authorization";
+import { requireIntegrationAccess } from "../../../../../../server/integrations/free-selection";
 import {
   ApiError,
   enforceRateLimit,
@@ -50,7 +50,7 @@ async function list(organizationId: string, connectionId: string) {
 
 export async function GET(request: Request) {
   return handleApi(request, async () => {
-    const context = await requireAccess(request, roles, "pos.reporting.core");
+    const context = await requireIntegrationAccess(request, roles, "lightspeed", false);
     await requirePermission(context, "integrations.manage");
     await requireOrganizationWideLocationAccess(context);
     await enforceRateLimit("lightspeed:outlets:list", context.userId, 120, 3_600);
@@ -64,7 +64,7 @@ export async function POST(request: Request) {
     requireSameOrigin(request);
     const input = await readJsonObject(request);
     const discovering = input.action === "discover";
-    const context = await requireAccess(request, discovering ? roles : ["owner", "admin"], "pos.reporting.core");
+    const context = await requireIntegrationAccess(request, discovering ? roles : ["owner", "admin"], "lightspeed", false);
     await requirePermission(context, "integrations.manage");
     await requireOrganizationWideLocationAccess(context);
     await enforceRateLimit(discovering ? "lightspeed:outlet-discover" : "lightspeed:outlet-map", context.userId, discovering ? 20 : 60, 3_600);

@@ -1,0 +1,38 @@
+.operating-shell .sidebar { gap: 0; padding: 18px 12px 12px; }
+.operating-shell .sidebar > :not(nav) { flex-shrink: 0; }
+.operating-shell .sidebar .brand { padding-bottom: 16px; gap: 9px; }
+.operating-shell .sidebar .workspace-switcher {
+  display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 8px 10px;
+  padding: 12px; margin-bottom: 10px; border-radius: 14px;
+  background: var(--sidebar-panel, rgba(239, 246, 255, .8)); border: 1px solid var(--sidebar-line, #c9d8e8);
+}
+.operating-shell .sidebar .workspace-avatar { grid-column: 1; grid-row: 1; width: 34px; height: 34px; margin: 0; }
+.operating-shell .sidebar .workspace-switcher > span:nth-child(2) { grid-column: 2; grid-row: 1; min-width: 0; }
+.operating-shell .sidebar .workspace-switcher b { font-size: 13px !important; line-height: 1.4 !important; }
+.operating-shell .sidebar .workspace-switcher small { font-size: 11px !important; line-height: 1.5 !important; white-space: normal; }
+.operating-shell .sidebar .location-switcher { grid-column: 1 / -1; grid-row: 2; width: 100%; min-width: 0; margin: 0; }
+.operating-shell .sidebar .location-switcher select { width: 100%; min-width: 0; min-height: 40px; border-radius: 9px; font-size: 13px !important; padding: 8px 10px; }
+.operating-shell .sidebar .business-workspace-selector { margin: 0 0 10px; padding: 10px; background: var(--sidebar-panel); border-color: var(--sidebar-line); }
+.operating-shell .sidebar .business-workspace-choices label { color: var(--sidebar-heading); font-size: 12px !important; }
+.operating-shell .sidebar .business-workspace-choices select { min-height: 40px; font-size: 13px; }
+.operating-shell .sidebar .business-workspace-choices small { color: var(--sidebar-muted); font-size: 11px !important; line-height: 1.45; }
+.operating-shell .sidebar .subscription-summary { margin: 0 2px 10px; min-height: 28px; gap: 6px; flex-wrap: wrap; }
+.operating-shell .sidebar > nav { scrollbar-gutter: stable; padding: 2px 3px 10px 0; }
+.operating-shell .sidebar .nav-group { margin-bottom: 12px; }
+.operating-shell .sidebar .nav-group + .nav-group { padding-top: 12px; border-top: 1px solid var(--sidebar-line, #c9d8e8); }
+.operating-shell .sidebar .nav-group > p { margin-bottom: 5px; line-height: 1.5; }
+.operating-shell .sidebar .nav-item { min-height: 42px; gap: 11px; padding: 9px 11px; border-radius: 10px; line-height: 1.4; }
+.operating-shell .sidebar .nav-label { font-size: 13px !important; }
+.operating-shell .sidebar .nav-item .workspace-icon { flex: 0 0 18px; }
+.operating-shell .sidebar .side-bottom { margin-top: 0; padding-top: 8px; }
+.operating-shell .sidebar .profile { padding: 10px 3px 0; margin-top: 7px; gap: 8px; }
+.operating-shell .sidebar .profile-signout { min-height: 40px; font-size: 11px !important; padding: 8px 10px; border: 1px solid var(--sidebar-line, #c9d8e8); border-radius: 999px; background: var(--sidebar-panel); color: var(--sidebar-heading); white-space: nowrap; }
+.operating-shell .sidebar .profile-signout:hover { background: var(--sidebar-hover); border-color: var(--sidebar-active); }
+.operating-shell .sidebar .release-name { font-size: 11px !important; line-height: 1.5; }
+@media (max-height: 720px) and (min-width: 761px) {
+  .operating-shell .sidebar { padding-top: 12px; }
+  .operating-shell .sidebar .brand { padding-bottom: 10px; }
+  .operating-shell .sidebar .workspace-switcher { padding: 9px 10px; gap: 6px 9px; }
+  .operating-shell .sidebar .nav-group { margin-bottom: 8px; }
+  .operating-shell .sidebar .nav-item { min-height: 40px; padding-block: 8px; }
+}

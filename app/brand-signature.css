@@ -1,0 +1,28 @@
+.brand-signature,
+.brand-signature.home-social-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 210px;
+  padding: 28px;
+  background: #000;
+  border: 1px solid #26364c;
+  border-radius: 22px;
+  box-sizing: border-box;
+}
+.brand-signature > .product-brand-logo.product-brand-artwork.vanteloq.full {
+  width: min(100%, 260px);
+  height: auto;
+  aspect-ratio: 803 / 528;
+  border: 0;
+  box-shadow: none;
+}
+.brand-signature > .product-brand-logo.product-brand-artwork.vanteloq.icon {
+  width: min(28%, 112px);
+  height: auto;
+  aspect-ratio: 1;
+  border: 0;
+  box-shadow: none;
+}
+@media (max-width: 540px) { .brand-signature { min-height: 160px; padding: 20px; } }
+@media (forced-colors: active) { .brand-signature { border-color: CanvasText; } }

@@ -1,0 +1,59 @@
+{
+  "runtime": "Local workerd/Miniflare nodejs_compat; no outbound service",
+  "node": "v24.19.0",
+  "platform": "win32",
+  "architecture": "x64",
+  "concurrency": 1,
+  "shape": "Fictional daily owner summaries; seven sheets; value cells only",
+  "peakWorkerMemory": null,
+  "memoryNote": "Worker peak memory is not exposed by this harness.",
+  "rawBundleBytes": 1412240,
+  "gzipBundleBytes": 241381,
+  "observations": [
+    {
+      "rows": 10,
+      "cells": 239,
+      "trials": 20,
+      "cold": {
+        "generationMs": 59,
+        "wallMs": 442.06419999999997,
+        "bytes": 13868
+      },
+      "generationP50Ms": 9,
+      "generationP95Ms": 11,
+      "wallP50Ms": 12.612300000000005,
+      "wallP95Ms": 17.495499999999993,
+      "bytes": 13868
+    },
+    {
+      "rows": 500,
+      "cells": 6609,
+      "trials": 20,
+      "cold": {
+        "generationMs": 51,
+        "wallMs": 56.2195999999999,
+        "bytes": 40280
+      },
+      "generationP50Ms": 42,
+      "generationP95Ms": 50,
+      "wallP50Ms": 45.954299999999876,
+      "wallP95Ms": 55.122299999999996,
+      "bytes": 40280
+    },
+    {
+      "rows": 2000,
+      "cells": 26109,
+      "trials": 20,
+      "cold": {
+        "generationMs": 177,
+        "wallMs": 181.20260000000007,
+        "bytes": 119196
+      },
+      "generationP50Ms": 167,
+      "generationP95Ms": 214,
+      "wallP50Ms": 172.34850000000006,
+      "wallP95Ms": 218.8523,
+      "bytes": 119196
+    }
+  ]
+}

@@ -2,6 +2,7 @@
 const EVENT_PROPERTIES = {
   demo_view: ["section", "step", "industry"],
   demo_engaged: ["section", "step", "industry"],
+  demo_booking_start: ["section"],
   signup_start: ["section", "plan"],
   plan_selected: ["section", "plan"],
   pricing_view: ["section", "plan"],

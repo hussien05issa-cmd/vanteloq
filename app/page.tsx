@@ -16,16 +16,21 @@ import PublicPlanCards from "./public-plan-cards";
 import CustomPlanCallout from "./custom-plan-callout";
 import HomeGoalPreview from "./home-goal-preview";
 import HomeDashboardPreview from "./home-dashboard-preview";
+import HomeCinematicDashboard from "./home-cinematic-dashboard";
+import HomeProductFilm from "./home-product-film";
+import HomeDataStudio from "./home-data-studio";
 import HomeDecisionPreview from "./home-decision-preview";
 import FeatureCarousel from "./feature-carousel";
 import ProductBrandLogo from "./product-brand-logo";
+import { usePublicAppearance } from "./public-appearance";
+import { useWorkspaceAppearance } from "./workspace-appearance";
 import FinanceProof from "./finance-proof";
 import WorkspaceShowcase from "./workspace-showcase";
 import ResourceArticleBrowser from "./resource-article-browser";
 import { RESOURCE_ARTICLE_SUMMARIES } from "./resources/article-index";
-import SocialLinks from "./social-links";
 import HomeSocialSection from "./home-social-section";
 import IntegrationBrandLogo from "./integration-brand-logo";
+import "./homepage-connectors.css";
 import type { AuthPanelMode } from "./auth-panel";
 import { useModalFocus } from "./use-modal-focus";
 import { currentSession, getSupabase, signOut } from "./supabase-browser";
@@ -259,6 +264,9 @@ export default function Home() {
         }
       });
       unsubscribe = () => listener?.data.subscription.unsubscribe();
+    }).catch(() => {
+      // Session reads and account forms already expose their recovery state.
+      // A failed optional listener initialization must not reject unhandled.
     });
     return () => {
       active = false;
@@ -344,7 +352,8 @@ function AccountFormLoading({ close }: { close: () => void }) {
 }
 
 function AuthenticatedLoading() {
-  return <main className="workspace-entry-loading"><ProductBrandLogo product="vanteloq" priority/><WorkspaceSkeleton label="Preparing your workspace"/></main>;
+  const appearance = useWorkspaceAppearance();
+  return <main className="workspace-entry-loading" data-loading-theme={appearance.theme}><ProductBrandLogo product="vanteloq" priority/><WorkspaceSkeleton label="Preparing your workspace" variant="overview"/></main>;
 }
 
 const featureReelScenes = [
@@ -427,7 +436,31 @@ function FeatureReel() {
 function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) {
   const motionEnabled = useMotionPreference();
   const siteRef = useRef<HTMLDivElement>(null);
-  const [activeSection, setActiveSection] = useState("");
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
+  useEffect(() => {
+    if (!mobileNavigationOpen) return;
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setMobileNavigationOpen(false);
+      menuButtonRef.current?.focus();
+    };
+    document.addEventListener("keydown", escape);
+    return () => document.removeEventListener("keydown", escape);
+  }, [mobileNavigationOpen]);
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const desktop = window.matchMedia("(min-width: 881px)");
+    const closeOnDesktop = () => { if (desktop.matches) setMobileNavigationOpen(false); };
+    closeOnDesktop();
+    if (desktop.addEventListener) {
+      desktop.addEventListener("change", closeOnDesktop);
+      return () => desktop.removeEventListener("change", closeOnDesktop);
+    }
+    desktop.addListener(closeOnDesktop);
+    return () => desktop.removeListener(closeOnDesktop);
+  }, []);
   useEffect(() => {
     const site = siteRef.current, header = site?.querySelector<HTMLElement>(".public-nav");
     if (!site || !header) return;
@@ -435,66 +468,64 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
     const update = () => {
       frame = 0;
       const height = header.getBoundingClientRect().height;
-      const section = Array.from(site.querySelectorAll<HTMLElement>("main > section")).find(element => {
-        const box = element.getBoundingClientRect();
-        return box.top <= height + 80 && box.bottom > height + 80;
-      });
-      // Complete geometry reads before invalidating layout, and avoid writing
-      // the same header height on every scroll frame.
+      // Anchor offsets only depend on navigation size, not page scrolling.
       const offset = `${height + 20}px`;
       if (site.style.getPropertyValue("--public-nav-height") !== offset) site.style.setProperty("--public-nav-height", offset);
-      setActiveSection(section?.id ?? "");
     };
     const schedule = () => { if (!frame) frame = window.requestAnimationFrame(update); };
     const resize = new ResizeObserver(schedule);
     resize.observe(header); update();
-    window.addEventListener("scroll", schedule, { passive: true });
     window.addEventListener("resize", schedule);
-    return () => { window.cancelAnimationFrame(frame); resize.disconnect(); window.removeEventListener("scroll", schedule); window.removeEventListener("resize", schedule); };
+    return () => { window.cancelAnimationFrame(frame); resize.disconnect(); window.removeEventListener("resize", schedule); };
   }, []);
-  return <div ref={siteRef} className="public-site journey-home reference-home">
+  const appearance = usePublicAppearance();
+  return <div ref={siteRef} className="public-site journey-home reference-home" data-public-theme={appearance.theme} data-public-appearance="system">
     <a className="home-skip-link" href="#main-content">Skip to main content</a>
-    <header className="public-nav">
+    <header className="public-nav" data-menu-open={mobileNavigationOpen}>
       <div className="public-brand-family">
-      <button type="button" className="public-brand" aria-label="Vanteloq home" onClick={() => { window.scrollTo({ top: 0, behavior: motionEnabled ? "smooth" : "auto" }); }}>
+      <button type="button" className="public-brand" aria-label="Vanteloq home" onClick={() => { setMobileNavigationOpen(false); window.scrollTo({ top: 0, behavior: motionEnabled ? "smooth" : "auto" }); }}>
         <ProductBrandLogo product="vanteloq" priority/>
-        <span>Vanteloq<small>Retail analytics by LexEdge Consulting</small></span>
       </button>
       </div>
-      <nav id="public-navigation" aria-label="Main navigation">
-        <Link prefetch={false} href="/how-it-works">How it works</Link><a href="#connections" aria-current={activeSection === "connections" ? "location" : undefined}>Connections</a><a href="/demo" aria-current={activeSection === "demo" ? "location" : undefined}>Open the demo</a><Link prefetch={false} data-public-event="pricing_view" href="/pricing">Pricing</Link><Link prefetch={false} href="/help">Help</Link>
-        <a href="#social" aria-current={activeSection === "social" ? "location" : undefined}>Socials</a><div className="public-nav-socials"><SocialLinks/></div>
+      <button ref={menuButtonRef} type="button" className="public-nav-menu" aria-label={mobileNavigationOpen ? "Close navigation menu" : "Open navigation menu"} aria-expanded={mobileNavigationOpen} aria-controls="public-navigation public-account-actions" onClick={() => setMobileNavigationOpen(open => !open)}>Menu</button>
+      <nav id="public-navigation" aria-label="Main navigation" onClick={event => { if (event.target instanceof Element && event.target.closest("a")) setMobileNavigationOpen(false); }}>
+        <Link prefetch={false} href="/how-it-works">How it works</Link><Link prefetch={false} href="/workspace">Workspace</Link><Link prefetch={false} href="/advisory">Advisory</Link><Link prefetch={false} data-public-event="pricing_view" href="/pricing">Pricing</Link>
+        <Link prefetch={false} className="public-demo-link" href="/book-demo">Book a free demo</Link>
       </nav>
-      <div className="public-nav-actions">
-        <button type="button" className="nav-login" onClick={() => start("signin")}>Sign in</button>
-        <button type="button" data-public-event="signup_start" onClick={() => start("signup")}>Create a workspace</button>
+      <div className="public-nav-actions" id="public-account-actions">
+        <button type="button" className="nav-login" onClick={() => { setMobileNavigationOpen(false); start("signin"); }}>Sign in</button>
+        <button type="button" data-public-event="signup_start" onClick={() => { setMobileNavigationOpen(false); start("signup"); }}>Build your dashboard</button>
       </div>
     </header>
 
     <main id="main-content">
-      <section className="home-hero" aria-labelledby="home-title">
+      <section className="home-hero home-editorial" aria-labelledby="home-title">
+        <div className="home-editorial-row">
         <div className="home-hero-copy">
-          <p className="home-eyebrow">Independent retail. Built by someone who ran a store.</p>
-          <h1 id="home-title">A number without a source <em>is a rumour.</em></h1>
-          <p>Follow last week’s sales back to the baskets, discounts and SKUs that caused it.</p>
-          <p className="home-hero-support">Vanteloq brings your sales, stock and cash into focus. Understand the numbers, choose your goals and take control of what comes next. Keep the POS you already pay for.</p>
-          <div className="public-actions"><a href="/demo" data-public-event="demo_view">Open the demo <span aria-hidden="true">→</span></a><button type="button" data-public-event="signup_start" onClick={() => start("signup")}>Create a workspace</button></div>
-          <ul className="home-proof"><li>No signup for the demo</li><li>Totals open to source rows</li><li>AI memory starts off</li></ul>
-          <p className="home-company-credit">A product built and operated by <a href="#company">LexEdge Consulting</a>.</p>
+          <p className="home-source-principle" data-motion={motionEnabled ? "on" : "off"}>
+            <span className="sr-only">A number without a source is a rumour.</span>
+            <span aria-hidden="true">{"A number without a source is a rumour.".split(" ").map((word, index) => <span className="home-source-word" key={index} style={{ animationDelay: `${index * 65}ms` }}>{word}{index < 7 ? " " : ""}</span>)}</span>
+          </p>
+          <h1 id="home-title">Your business, <em>at a glance.</em></h1>
+          <p>Sales, stock and cash. With the records behind the numbers.</p>
+          <div className="public-actions"><button className="home-editorial-primary" type="button" data-public-event="signup_start" onClick={() => start("signup")}>Build your dashboard <span aria-hidden="true">↗</span></button><a className="home-editorial-demo" href="/demo" data-public-event="demo_view">Open the demo <span aria-hidden="true">→</span></a></div>
+        </div>
+        <HomeCinematicDashboard motionEnabled={motionEnabled}/>
         </div>
         <HomeDashboardPreview/>
       </section>
-      <div className="reference-connections" aria-label="Explore data connections"><span>YOUR TOOLS, CONNECTED</span><div>{["Lightspeed","Square","Shopify","Stripe","Google"].map(name=><a key={name} href="#connections" aria-label={`Check ${name} availability`}><IntegrationBrandLogo name={name} compact/><strong>{name}</strong></a>)}</div><a href="#connections">View Availability <span aria-hidden="true">→</span></a></div>
+      <div className="reference-connections" aria-label="Explore data connections"><span>YOUR TOOLS, CONNECTED</span><div>{["Lightspeed","Square","Shopify","Stripe","Google"].map(name=><a className="home-connector-brand" key={name} href="#connections" aria-label={`Check ${name} availability`}><IntegrationBrandLogo name={name} compact/>{!["Lightspeed", "Stripe"].includes(name) && <strong>{name}</strong>}</a>)}</div><a href="#connections">View availability <span aria-hidden="true">→</span></a></div>
       <section className="home-decision-proof" id="platform" aria-labelledby="decision-proof-title">
-        <span id="capabilities"/><div className="reference-section-heading" data-motion-item="0"><div><p className="demo-eyebrow">YOUR BUSINESS. YOUR PRIORITIES.</p><h2 id="decision-proof-title">Know where you stand. Decide where to go.</h2></div><p>Track what matters, understand what changed and turn a finding into a next step. Your records provide the context. You set the direction.</p></div>
+        <span id="capabilities"/><div className="reference-section-heading" data-motion-item="0"><div><p className="demo-eyebrow">YOUR BUSINESS. YOUR PRIORITIES.</p><h2 id="decision-proof-title">What changed? What needs your attention?</h2></div><p>Open the records behind a finding. Review the next step, assign the work and follow the outcome. Missing costs and incomplete sources stay visible.</p></div>
         <FeatureCarousel/>
       </section>
+      <HomeProductFilm/>
+      <HomeDataStudio openReports={() => { window.location.hash = "workspace/data-studio"; start("signin"); }}/>
       <section className="home-operating-ring-story" aria-labelledby="home-operating-ring-title">
         <HomeGoalPreview/>
         <div data-motion-group><p data-motion-item="0" className="demo-eyebrow">YOUR BUSINESS. YOUR GOALS.</p><h2 data-motion-item="1" id="home-operating-ring-title">Set the goal. See the progress.</h2><p>Choose the numbers you want to improve, set a target and a date, and follow your progress. Your dashboard makes the next milestone visible while keeping missing information clear.</p><div className="home-ring-steps" data-motion-item="2"><span><i/>Choose your metrics</span><span><i/>Set your targets</span><span><i/>Follow your progress</span></div><Link prefetch={false} href="/demo#retail">Explore your dashboard <span aria-hidden="true">↗</span></Link></div>
       </section>
       <section className="home-proof-studio" id="demo" aria-labelledby="home-demo-entry-title"><div className="proof-studio-copy"><p className="demo-eyebrow">TRY IT WITH SAMPLE RECORDS</p><h2 id="home-demo-entry-title">Sales changed.<br/>Show me why.</h2><p>Choose a location. Watch the totals update. Follow the result into the baskets, products and discounts behind it.</p><p className="proof-studio-note">Fictional records. Working calculations. No signup required.</p><Link prefetch={false} href="/demo" data-public-event="demo_engaged">Open the full demo <span aria-hidden="true">→</span></Link></div><HomeDecisionPreview/>
-        <div className="journey-steps" aria-label="From signup to the first insight"><div><b>1</b><span><strong>Set up your account</strong>Verify your email, secure your account and choose a plan.</span></div><div><b>2</b><span><strong>Bring in your records</strong>Connect your source, map locations and review the imported totals.</span></div><div><b>3</b><span><strong>Turn a finding into a next step</strong>Assign an action, set a due date and track its status with your team.</span></div></div>
       </section>
       <section className="home-connections" id="connections" aria-labelledby="connections-title">
         <div className="home-section-heading compact"><p>CHECK YOUR FIT FIRST</p><h2 id="connections-title">Keep your POS.<br/>Get more from its data.</h2><span>Choose your system to see what it can support, what you need to connect and what is still in development.</span></div>
@@ -503,23 +534,23 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
       </section>
       <section className="home-ai" id="vanteloq-ai" aria-labelledby="vanteloq-ai-title">
         <VanteloqAiShowcase/>
-        <div className="home-ai-copy" data-motion-item="1"><p>VANTELOQ AI</p><h2 id="vanteloq-ai-title">Ask about your store.<br/>Choose what AI can see.</h2><span>Vanteloq AI is the assistant inside your retail software. Work through sales, margins, cash forecasts or app questions using only the information you permit it to use, within your role’s access.</span><div className="home-ai-grid"><article><strong>Business questions and app help</strong><span>Ask about sales, inventory, marketing or BookLoQ. Get help finding a report or understanding your next step.</span></article><article><strong>Your permission comes first</strong><span>Memory starts off. Choose whether to share permitted business summaries, turn memory on or off, and delete saved chats in AI Settings.</span></article></div><small className="home-ai-note">Review important conclusions. AI does not replace your accountant or approve decisions for you.</small></div>
+        <div className="home-ai-copy" data-motion-item="1"><p>VANTELOQ AI</p><h2 id="vanteloq-ai-title">Ask about your business.<br/>Choose what AI can see.</h2><span>Vanteloq AI is the assistant inside your business workspace. Work through sales, margins, cash forecasts or app questions using only the information you permit it to use, within your role’s access.</span><div className="home-ai-grid"><article><strong>Business questions and app help</strong><span>Ask about sales, inventory, marketing or BookLoQ. Get help finding a report or understanding your next step.</span></article><article><strong>Your permission comes first</strong><span>Memory starts off. Choose whether to share permitted business summaries, turn memory on or off, and delete saved chats in AI Settings.</span></article></div><small className="home-ai-note">Review important conclusions. AI does not replace your accountant or approve decisions for you.</small></div>
       </section>
       <FinanceProof/>
       <WorkspaceShowcase/>
       <section className="journey-evidence" id="security" aria-labelledby="evidence-title">
         <div><p className="demo-eyebrow">KNOW WHAT IS BEHIND THE NUMBER</p><h2 id="evidence-title">Missing records should not look like a quiet day.</h2><p>See what information is available, what needs review and who can access it.</p></div>
-        <div className="journey-trust"><article><strong>The right people. The right access.</strong><p>Keep your team’s work together while roles and location permissions control access to business and financial information.</p></article><article><strong>Missing data stays visible</strong><p>Missing costs do not become zero. An incomplete import does not prove the store was closed.</p></article><article><strong>You own the decision</strong><p>LexEdge Consulting provides business analysis, financial review, operations and marketing support. It builds and operates Vanteloq. You review consequential actions and own the decision.</p></article><div><Link prefetch={false} href="/privacy">Privacy and deletion</Link><Link prefetch={false} href="/subprocessors">Data processors</Link><Link prefetch={false} href="/contact">Contact us</Link></div></div>
+        <div className="journey-trust"><article><strong>The right people. The right access.</strong><p>Keep your team’s work together while roles and location permissions control access to business and financial information.</p></article><article><strong>Missing data stays visible</strong><p>Missing costs do not become zero. An incomplete import does not prove the store was closed.</p></article><article><strong>You own the decision</strong><p>Vanteloq connects your business records to the decisions that need your attention. You review consequential actions and own the decision.</p></article><div><Link prefetch={false} href="/privacy">Privacy and deletion</Link><Link prefetch={false} href="/subprocessors">Data processors</Link><Link prefetch={false} href="/contact">Contact us</Link></div></div>
       </section>
-      <section className="journey-pricing" id="plans" aria-labelledby="home-plans-title"><div className="home-section-heading compact"><p>CHOOSE YOUR CAPACITY</p><h2 id="home-plans-title">One store or several. Start with what you need.</h2><span>Choose the Vanteloq capacity that fits your operation, add BookLoQ, or use BookLoQ as its own finance workspace.</span></div><PublicPlanCards compact/><CustomPlanCallout className="journey-custom" headingLevel={3} title="Need more locations or a custom scope?"/></section>
-      <section className="home-faq journey-faq" aria-labelledby="faq-title"><div className="home-section-heading compact"><p>BEFORE YOU CONNECT YOUR STORE</p><h2 id="faq-title">What happens next?</h2><Link prefetch={false} href="/help">Visit the help centre →</Link></div><div className="home-faq-list">
+      <section className="journey-pricing" id="plans" aria-labelledby="home-plans-title"><div className="home-section-heading compact"><p>CHOOSE YOUR CAPACITY</p><h2 id="home-plans-title">One location or several. Start with what you need.</h2><span>Choose the Vanteloq capacity that fits your operation, add BookLoQ, or use BookLoQ as its own finance workspace.</span></div><PublicPlanCards compact/><CustomPlanCallout className="journey-custom" headingLevel={3} title="Need more locations or a custom scope?"/></section>
+      <section className="home-faq journey-faq" aria-labelledby="faq-title"><div className="home-faq-intro"><div className="home-section-heading compact"><h2 id="faq-title">What happens next?</h2><Link prefetch={false} href="/help">Visit the help centre →</Link></div></div><div className="home-faq-list">
         <details><summary>Can I try it before signing up?</summary><p>Yes. The demo uses fictional records and working retail calculations. It does not access customer records or send requests to an AI provider.</p><Link prefetch={false} href="/demo">Open the demo →</Link></details>
         <details><summary>Will it work with my POS?</summary><p>Check the provider selector for current availability and supported data. Each business authorizes its own account, maps locations and reviews imported totals before relying on reports. CSV is an alternative where a supported template fits your records.</p><a href="#connections">Check your system →</a></details>
-        <details><summary>What happens after signup?</summary><p>Verify your email, set up an authenticator, add your business and confirm a subscription. Then connect a source, map locations and review the import. Reports show which records are available so you can see what is ready and what is missing.</p></details>
+        <details><summary>What happens after signup?</summary><p>Verify your email, set up an authenticator and choose a plan. Select your business type and priorities during setup. Then add supported records, map locations and review the import. Reports show which records are available so you can see what is ready and what is missing.</p></details>
         <details><summary>Can I use BookLoQ without a Vanteloq plan?</summary><p>Yes. BookLoQ is $59 CAD per month as a standalone finance workspace, or $39 CAD per month when added to a Vanteloq plan. It organizes financial records, journals, statements, transaction review, evidence matching and cash planning. It does not file tax returns or certify your books. Keep your accountant involved.</p></details>
         <details><summary>Can I make the dashboard my own?</summary><p>Choose your metrics, reorder cards, adjust chart styles and save views for different priorities. Set goals with dates and a location scope. Your layout stays with your account in your workspace.</p></details><details><summary>Can I control when my data updates?</summary><p>Enable or pause automatic updates for supported connections. Review sync status and imported records before using the results.</p></details><details><summary>Can I control what AI remembers?</summary><p>Yes. Memory starts off. Choose whether to share permitted workspace summaries, turn memory on or off, and delete saved chats in AI Settings. AI access remains limited by your role.</p><Link prefetch={false} href="/privacy">Read the privacy details →</Link></details>
         <details><summary>Can I change or cancel my subscription?</summary><p>Open Stripe’s billing portal from workspace billing to review available changes or cancellation. Check the effective date and any prorated charges before confirming.</p></details>
-        <div className="journey-final"><strong>Start with a question you would ask about your own store.</strong><a href="/demo">Open the demo →</a><button type="button" data-public-event="signup_start" onClick={() => start("signup")}>Create a workspace</button></div>
+        <div className="journey-final"><strong>Start with a question you would ask about your own business.</strong><a href="/demo">Open the demo →</a><button type="button" data-public-event="signup_start" onClick={() => start("signup")}>Build your dashboard</button></div>
       </div></section>
 
 
@@ -528,16 +559,15 @@ function LandingPage({ start }: { start: (mode: "signin" | "signup") => void }) 
     </main>
 
     <footer className="home-footer" id="company">
-      <div className="home-footer-brand"><div><ProductBrandLogo product="vanteloq"/><strong>Vanteloq</strong></div><p>Sales, stock and cash, with the records behind the numbers.</p><div className="home-footer-owner">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/brand/lexedge-consulting-logo-web.png" alt="LexEdge Consulting" width={480} height={320} loading="lazy" />
-        <span>LexEdge Consulting is the consulting business behind Vanteloq, covering business analysis, financial review, operations and marketing support. It builds and operates the software; your business decisions stay yours.</span>
+      <div className="home-footer-brand"><div><ProductBrandLogo product="vanteloq"/></div><p>Sales, stock and cash, with the records behind the numbers.</p><div className="home-footer-owner">
+        <strong>Vanteloq Inc.</strong>
+        <span>Vanteloq Inc. builds and operates Vanteloq. Your records, your workspace and your business decisions.</span>
       </div></div>
       <div><strong>PRODUCT</strong><Link prefetch={false} href="/features/retail-intelligence">Retail intelligence</Link><Link prefetch={false} href="/features/inventory-and-cash">Inventory and cash</Link><Link prefetch={false} data-public-event="pricing_view" href="/pricing">Pricing</Link><Link prefetch={false} href="/demo">Interactive demo</Link><a href="#platform">How it works</a><a href="#capabilities">Capabilities</a><a href="#connections">Connections</a><a href="#security">Security</a></div>
-      <div><strong>RESOURCES</strong><Link prefetch={false} href="/social">Follow Vanteloq</Link><Link prefetch={false} href="/help">Help centre</Link><Link prefetch={false} href="/resources">All resources</Link><Link prefetch={false} href="/resources/inventory">Inventory</Link><Link prefetch={false} href="/resources/finance">Finance</Link><Link prefetch={false} href="/resources/analytics">Analytics</Link></div>
+      <div><strong>RESOURCES</strong><Link prefetch={false} href="/social">Follow Vanteloq</Link><Link prefetch={false} href="/help">Help centre</Link><Link prefetch={false} href="/resources">All resources</Link><Link prefetch={false} href="/solutions">Business types</Link><Link prefetch={false} href="/integrations">Integration guides</Link><Link prefetch={false} href="/tools">Planning tools</Link><Link prefetch={false} href="/advisory">Vanteloq Advisory</Link><Link prefetch={false} href="/about">About Vanteloq</Link><Link prefetch={false} href="/resources/inventory">Inventory</Link><Link prefetch={false} href="/resources/finance">Finance</Link><Link prefetch={false} href="/resources/analytics">Analytics</Link></div>
       <div><strong>LEGAL</strong><Link prefetch={false} href="/legal">Legal centre</Link><Link prefetch={false} href="/privacy">Privacy</Link><Link prefetch={false} href="/terms">Terms</Link><Link prefetch={false} href="/cookies">Cookies</Link></div>
-      <div><strong>ACCOUNT</strong><Link prefetch={false} href="/contact">Contact</Link><button type="button" onClick={() => start("signin")}>Sign in</button><button type="button" data-public-event="signup_start" onClick={() => start("signup")}>Create a workspace</button></div>
-      <p className="home-footer-note"><strong>{PRODUCT_RELEASE_NAME}</strong><br/>© {new Date().getFullYear()} LexEdge Consulting. Feature availability depends on workspace access, configured sources and verified records.</p>
+      <div><strong>ACCOUNT</strong><Link prefetch={false} href="/contact">Contact</Link><button type="button" onClick={() => start("signin")}>Sign in</button><button type="button" data-public-event="signup_start" onClick={() => start("signup")}>Build your dashboard</button></div>
+      <p className="home-footer-note"><strong>{PRODUCT_RELEASE_NAME}</strong><br/>© {new Date().getFullYear()} Vanteloq Inc. Feature availability depends on workspace access, configured sources and verified records.</p>
     </footer>
   </div>;
 }

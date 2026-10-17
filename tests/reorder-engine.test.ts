@@ -78,3 +78,17 @@ test("sufficient on-hand stock produces no suggested order", () => {
   assert.equal(recommendation.recommendedUnits, 0);
   assert.ok(recommendation.scenarios.every((scenario) => scenario.cashAfterOrderCents >= baseInputs.cashSafetyThresholdCents));
 });
+
+test("a cash-capped order below the supplier minimum spend is blocked", () => {
+  const result = calculateReorderRecommendation({ ...baseInputs, supplierMinimumSpendCents: 60_000 });
+  assert.equal(result.recommendedUnits, 96);
+  assert.equal(result.orderCostCents, 48_000);
+  assert.equal(result.status, "blocked");
+  assert.ok(result.constrainedBy.includes("Supplier minimum spend"));
+});
+
+test("reorder money preserves integer cents and optional factors cannot hide nonfinite values", () => {
+  for (const changes of [{ unitCostCents: 500.5 }, { supplierMinimumSpendCents: NaN }, { weatherFactor: NaN }, { expiringUnits: Infinity }, { supplierMinimumSpendCents: 50.5 }, { availableCashCents: Number.MAX_SAFE_INTEGER + 1 }, { grossMarginBasisPoints: NaN }, { averageDailyDemand: Number.MAX_VALUE }]) {
+    assert.throws(() => calculateReorderRecommendation({ ...baseInputs, ...changes }));
+  }
+});

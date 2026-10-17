@@ -1,3 +1,4 @@
+import { releaseIntegrationSelectionIfUnused } from "../../../../../../server/integrations/free-selection";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../../../../../../db";
 import { integrationConnections, integrationSecrets } from "../../../../../../db/schema";
@@ -20,6 +21,7 @@ export async function POST(request: Request) {
     await getDb().update(integrationConnections).set({ status: "revoked", externalAccountRef: null, domainPrefix: null, scopesJson: "[]", dataPromotionStatus: "blocked", promotionAuthorizedAt: null, connectedAt: null, lastErrorCode: null, syncLeaseOwner: null, syncLeaseExpiresAt: null, updatedAt: new Date() })
       .where(and(eq(integrationConnections.id, connection.id), eq(integrationConnections.organizationId, context.organizationId), eq(integrationConnections.provider, MONERIS_PROVIDER)));
     await recordAudit({ request, requestId, organizationId: context.organizationId, actorUserId: context.userId, action: "integration.disconnected", resourceType: "integration_connection", resourceId: connection.id, details: { provider: MONERIS_PROVIDER, localCredentialsDeleted: true, importedPaymentAuditRetained: true } });
-    return jsonResponse({ disconnected: true, connectionId: connection.id, localCredentialsDeleted: true });
+    await releaseIntegrationSelectionIfUnused(context.organizationId, "moneris");
+      return jsonResponse({ disconnected: true, connectionId: connection.id, localCredentialsDeleted: true });
   });
 }
