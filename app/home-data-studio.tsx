@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { useMotionPreference } from "./use-motion-preference";
+import { playProductFilm } from "./play-product-film";
 import "./home-data-studio.css";
 
 const sheets = ["Overview", "Sales", "Margin", "Inventory", "Cash", "Data Quality", "Sources"] as const;
@@ -28,6 +29,7 @@ export default function HomeDataStudio({ openReports }: { openReports: () => voi
   const [sheet, setSheet] = useState<Sheet>("Overview");
   const [film, setFilm] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [playbackMessage, setPlaybackMessage] = useState("");
   const stage = useRef<HTMLDivElement>(null);
   const video = useRef<HTMLVideoElement>(null);
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -54,6 +56,11 @@ export default function HomeDataStudio({ openReports }: { openReports: () => voi
     return () => { document.removeEventListener("visibilitychange", pause); observer?.disconnect(); };
   }, []);
   const select = (value: Sheet) => { setFilm(false); setSheet(value); };
+  const watch = () => {
+    setFilm(true); setFailed(false); setPlaybackMessage("");
+    playProductFilm(video.current, () => setPlaybackMessage("Select Play to watch the review, or use the player’s controls."));
+  };
+  const returnToPreview = () => { video.current?.pause(); setFilm(false); };
   const keys = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
     const next = event.key === "ArrowRight" ? (index + 1) % sheets.length : event.key === "ArrowLeft" ? (index + sheets.length - 1) % sheets.length : event.key === "Home" ? 0 : event.key === "End" ? sheets.length - 1 : null;
     if (next === null) return;
@@ -62,15 +69,18 @@ export default function HomeDataStudio({ openReports }: { openReports: () => voi
   return <section className="home-data-studio" id="data-studio" aria-labelledby={`${id}-title`}>
     <div className="home-studio-copy" data-motion-item="0"><p className="demo-eyebrow">VANTELOQ DATA STUDIO</p><h2 id={`${id}-title`}>Your data.<br/>{" "}<em>Your own workspace.</em></h2><p>Build dashboards, work in Sheets and explore supported SQL. Save your analysis, pin it to your overview and trace results to their sources.</p><button type="button" onClick={openReports}>Open Data Studio <span aria-hidden="true">↗</span></button><small>Choose Data Studio in your workspace sidebar. Existing source, location and export permissions apply.</small></div>
     <div className="home-studio-preview" data-motion-item="1" ref={stage}>
-      <header><div><strong>Executive Review</strong><span>Fictional sample records · CAD</span></div><button type="button" aria-expanded={film} aria-controls={film ? `${id}-film` : undefined} onClick={() => { setFilm(!film); setFailed(false); }}>{film ? "Back to preview" : "Watch the film"}<span aria-hidden="true">{film ? "↩" : "▶"}</span></button></header>
-      {film ? <div className="home-studio-film" id={`${id}-film`}>
-        {failed ? <div className="home-studio-film-error"><p role="alert">The film could not load. Please try again.</p><button ref={retryButton} type="button" onClick={() => setFailed(false)}>Try again</button><button type="button" onClick={() => setFilm(false)}>Return to preview</button></div> : <video ref={video} controls playsInline muted preload="none" poster="/brand/homepage-glass-2026-10-13/data-studio-poster.webp" onError={() => setFailed(true)} aria-label="Data Studio product film. Fictional sample figures, recorded source rows and a seven-sheet Excel review."><source src="/brand/homepage-glass-2026-10-13/data-studio-film.mp4" type="video/mp4"/></video>}
-        <p>12 seconds · Sound off. Choose Play to watch.</p>
-      </div> : <>
-        <button className="home-studio-teaser" type="button" onClick={() => { setFilm(true); setFailed(false); }} aria-label="Watch the 12-second Data Studio film">
+      <header><div><strong>Executive Review</strong><span>Fictional sample records · CAD</span></div><button type="button" aria-expanded={film} aria-controls={`${id}-film`} onClick={film ? returnToPreview : watch}>{film ? "Back to preview" : "Watch Data Studio"}<span aria-hidden="true">{film ? "↩" : "▶"}</span></button></header>
+      <div className="home-studio-film" id={`${id}-film`} hidden={!film}>
+        {failed && <div className="home-studio-film-error"><p role="alert">The film could not load. Please try again.</p><button ref={retryButton} type="button" onClick={watch}>Try again</button><button type="button" onClick={returnToPreview}>Return to preview</button></div>}
+        <video ref={video} src="/brand/homepage-glass-2026-10-13/data-studio-film.mp4" hidden={failed} tabIndex={0} controls playsInline muted preload="none" poster="/brand/homepage-glass-2026-10-13/data-studio-poster.webp" onPlay={() => setPlaybackMessage("")} onError={() => setFailed(true)} aria-label="Data Studio review film. Fictional sample figures and a seven-sheet Excel review."/>
+        {playbackMessage && !failed && <><p role="status">{playbackMessage}</p><button type="button" onClick={watch}>Play Data Studio</button></>}
+        <p>Data Studio review · 12 seconds · Sound off</p>
+      </div>
+      {!film && <>
+        <button className="home-studio-teaser" type="button" onClick={watch} aria-label="Watch the 12-second Data Studio review">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/brand/homepage-glass-2026-10-13/data-studio-poster.webp" alt="" width={1920} height={1080} loading="lazy" decoding="async"/>
-          <span className="home-studio-teaser-label"><span aria-hidden="true">▶</span><span><strong>See Data Studio in motion</strong><small>12 seconds · Sound off</small></span></span>
+          <span className="home-studio-teaser-label"><span aria-hidden="true">▶</span><span><strong>Watch the Data Studio review</strong><small>12 seconds · Sound off</small></span></span>
         </button>
         <div className="home-studio-tabs" role="tablist" aria-label="Executive Review sheets">{sheets.map((value, index) => <button ref={element => { tabRefs.current[index] = element; }} key={value} type="button" role="tab" id={`${id}-tab-${index}`} aria-selected={sheet === value} aria-controls={`${id}-sheet`} tabIndex={sheet === value ? 0 : -1} onKeyDown={event => keys(event, index)} onClick={() => select(value)}>{value}</button>)}</div>
         <div className="home-studio-sheet" key={sheet} id={`${id}-sheet`} role="tabpanel" aria-labelledby={`${id}-tab-${sheets.indexOf(sheet)}`} tabIndex={0}><SheetPreview sheet={sheet}/></div>
