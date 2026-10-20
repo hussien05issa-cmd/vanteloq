@@ -72,7 +72,7 @@ export default function HomeDataStudio({ openReports }: { openReports: () => voi
       <header><div><strong>Executive Review</strong><span>Fictional sample records · CAD</span></div><button type="button" aria-expanded={film} aria-controls={`${id}-film`} onClick={film ? returnToPreview : watch}>{film ? "Back to preview" : "Watch Data Studio"}<span aria-hidden="true">{film ? "↩" : "▶"}</span></button></header>
       <div className="home-studio-film" id={`${id}-film`} hidden={!film}>
         {failed && <div className="home-studio-film-error"><p role="alert">The film could not load. Please try again.</p><button ref={retryButton} type="button" onClick={watch}>Try again</button><button type="button" onClick={returnToPreview}>Return to preview</button></div>}
-        <video ref={video} src="/brand/homepage-glass-2026-10-13/data-studio-film.mp4" hidden={failed} tabIndex={0} controls playsInline muted preload="none" poster="/brand/homepage-glass-2026-10-13/data-studio-poster.webp" onPlay={() => setPlaybackMessage("")} onError={() => setFailed(true)} aria-label="Data Studio review film. Fictional sample figures and a seven-sheet Excel review."/>
+        <video ref={video} src="/films/data-studio-v1" hidden={failed} tabIndex={0} controls playsInline muted preload="none" poster="/brand/homepage-glass-2026-10-13/data-studio-poster.webp" onPlay={() => setPlaybackMessage("")} onError={() => setFailed(true)} aria-label="Data Studio review film. Fictional sample figures and a seven-sheet Excel review."/>
         {playbackMessage && !failed && <><p role="status">{playbackMessage}</p><button type="button" onClick={watch}>Play Data Studio</button></>}
         <p>Data Studio review · 12 seconds · Sound off</p>
       </div>
